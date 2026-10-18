@@ -1,0 +1,12 @@
+{
+  "source_manifest": "source-manifest.json",
+  "scope": "Initial combined289 candidate; existing high-level contracts passed, but complete binding-surface preservation is rejected. Do not transfer its results to a corrected source revision.",
+  "high_level_signature_changes": 0,
+  "raw_calling_convention_changes": 4,
+  "raw_abi_compatible": false,
+  "reason": "New public Result binding wrappers changed legacy raw WASM batch return frames; high-level signature equality does not prove full ABI preservation.",
+  "correction": "Restore legacy synchronous binding signatures over the same internal fallible core, retaining typed errors for new owned Rust execution. No hand-edited glue, unsafe JS throws or numerical fallback.",
+  "type_surface_receipt": "wasm-type-surface.json",
+  "wasm_checks": "wasm-consumer.json",
+  "source_manifest_sha256": "fa3dcc5f5189d7129fe50156672654564c5c30ec35c9cf70bb8ca723eeceb95a"
+}

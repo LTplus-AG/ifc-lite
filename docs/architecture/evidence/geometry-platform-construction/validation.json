@@ -1,0 +1,113 @@
+{
+  "source_manifest": "source-manifest.json",
+  "platform": "Linux-6.17.9-76061709-generic-x86_64-with-glibc2.39",
+  "scope": "typed registry and four owned raw-construction families; full operation graph and cutover incomplete",
+  "workspace": {
+    "passed_invocations": 5554,
+    "failed_invocations": 0,
+    "ignored": 47,
+    "suite_reports": 372,
+    "scope_note": "Absent optional fixture cases may skip internally; passed invocations do not certify complete corpus coverage."
+  },
+  "wasm_contract": {
+    "passed": 206,
+    "failed": 0,
+    "skipped": 7,
+    "fresh_runtime_from_candidate": true,
+    "committed_types_unchanged": true
+  },
+  "real_file_example": {
+    "source_item": 288,
+    "unique_definitions": 1,
+    "ordered_occurrences": 2,
+    "triangles": 12,
+    "source_and_decoder_disposed_before_evaluation": true
+  },
+  "commands": [
+    {
+      "name": "workspace",
+      "command": "IFCLITE_SMLIB_WORKER=/tmp/ifclite-smlib-adapter-native/ifclite_smlib_worker cargo test --workspace",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-construction-workspace.log",
+      "raw_log_sha256": "0155bb5bce18774ed396e649f78e9354233a448fd1a3ba6b8cb6badee8459234"
+    },
+    {
+      "name": "clippy",
+      "command": "cargo clippy --workspace --all-targets -- -D warnings",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-construction-clippy-final.log",
+      "raw_log_sha256": "5a8a692b793b84673fcc2673f1bde79183ff0b70932b1e7b7eff81bdcde62c19"
+    },
+    {
+      "name": "wasm-target",
+      "command": "cargo build --locked -p ifc-lite-processing -p ifc-lite-geometry-runtime --target wasm32-unknown-unknown --target-dir /tmp/ifclite-platform-wasm-target",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-construction-wasm-target.log",
+      "raw_log_sha256": "969eeeb8b8a3a52db8b0ed490a4caa8d2b483d3b05c3ebabdc0a2db1342140f1"
+    },
+    {
+      "name": "wasm-runtime-build",
+      "command": "CI=1 pnpm build:wasm",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-construction-wasm-build.log",
+      "raw_log_sha256": "bc8a94fb876c6d553b02e40a725a2e63b769f9d6c37ea5126507a39e9a51c097"
+    },
+    {
+      "name": "wasm-contract",
+      "command": "pnpm test:wasm-contract",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-construction-wasm-contract.log",
+      "raw_log_sha256": "1afef5fe0d64d945914502ed97ded37c2e13436c61591482aadec5ab4119fdc8"
+    },
+    {
+      "name": "raw-construction-real-file",
+      "command": "target/debug/examples/construction_batch tests/models/buildingsmart/column-straight-rectangle-tessellation.ifc 288 288",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-construction-real-example.log",
+      "raw_log_sha256": "f54d98f6e96403a915731737a84a696cbf18cbbfab9bbe2695508103872616cb"
+    },
+    {
+      "name": "reference-walk-guards",
+      "command": "node scripts/check-refwalk-guards.mjs",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-construction-refwalk.log",
+      "raw_log_sha256": "2a02142ad0ab81cf262617ffa43429f7d6f0563f1e0a67aeccab3dcb4f146f0b"
+    },
+    {
+      "name": "module-size",
+      "command": "node scripts/check-module-size.mjs",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-construction-module-size.log",
+      "raw_log_sha256": "83bb2fbf0ce9480fbc9fa66c06a7652f2bb8b78c0e6a9fd26187adfb00891f61"
+    },
+    {
+      "name": "source-test-guard",
+      "command": "node scripts/check-source-text-assertions.mjs",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-construction-source-tests.log",
+      "raw_log_sha256": "514785c72b6ca40b67bfc36c3bf85f169801f1fc4730dc5c30f4927a0080066d"
+    },
+    {
+      "name": "default-path-base-versus-candidate",
+      "command": "scripts/perf/probe.sh <fixture> --iters 5 --fingerprint --json; base/candidate/candidate/base for each of three fixtures",
+      "orchestration_script_local_path": "/tmp/ifclite-platform-construction-perf.py",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-construction-perf.log",
+      "raw_log_sha256": "a58292d91799339c03b825a5ed505a0b7f377b56645ab27ff058263c7b9f6b69",
+      "receipt": "default-path-perf.json"
+    }
+  ],
+  "not_qualified": [
+    "full representation and operation-graph coverage",
+    "retained-BRep production execution",
+    "all-platform install/package closure",
+    "complete cross-target and consumer qualification",
+    "process/payload memory bounds",
+    "latency non-regression or performance improvement"
+  ],
+  "default_path_comparison": {
+    "fixtures": 3,
+    "mesh_counts_and_ordered_payload_fingerprints_identical": true,
+    "timing_qualified": false
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "frame_variants": {
+    "str:raw_ifc": 40,
+    "str:site_local": 4
+  },
+  "schemas": {
+    "str:IFC4X3": 24,
+    "str:IFC4": 16,
+    "str:IFC2X3": 4
+  },
+  "nonzero_mesh_origins": 776,
+  "nonidentity_local_to_world": 2759,
+  "nonidentity_instance_transforms": 133,
+  "georeferencing_present": 20,
+  "csg_failures": 16,
+  "refused_input_elements": 0,
+  "refused_prepass_records": 0
+}

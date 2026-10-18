@@ -1,0 +1,3214 @@
+{
+  "scope": "historical ownership-layer 226-source candidate; not subsequent mapping edits",
+  "source_manifest_sha256": "8b8b27dfd8c236d3a61d7bbcf2abc9f0edef55231da16382cd3b6f488e0608c8",
+  "source_count": 226,
+  "cases": [
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/tests/fixtures/bath_csg_solid.ifc",
+      "input_sha256": "950424788ef247ebde29026d3a103cd59bb971eee697175bfdd4277f61a4d2e3",
+      "mode": "full",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 1,
+        "meshes": 1,
+        "pixel_textures": 0,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 152,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 208
+      },
+      "scene_sha256": "24e93a10f5bc2b68082e7b3f7963806dfd77f08d9966d419b54360fb575e38b8",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-full/base/manifest.json",
+            "bytes": 5547,
+            "sha256": "bc4cb3138b829a7320c2c604810aa4bac0a7d8de68590a8b5347521aa5e8474f"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-full/base/records.jsonl",
+            "bytes": 54418,
+            "sha256": "d8bba43dfea48c9088c4f212aa651ccaadc11183bad17d7ddb44f9d972dae1a9"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-full/base-repeat/manifest.json",
+            "bytes": 5547,
+            "sha256": "054fa6a44a950df18e8032f5aa85ea6391ac6591951d6dace8e2737cfa40623a"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-full/base-repeat/records.jsonl",
+            "bytes": 54418,
+            "sha256": "41f146a9abec3bdd236713b2d2d0c269058bffb61bdf6e697e09f2f8670669a8"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-full/candidate/manifest.json",
+            "bytes": 5547,
+            "sha256": "84650a912b0132e026e8b530c51d605ececb1b0a3d1f50247045357bbdc5dab4"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-full/candidate/records.jsonl",
+            "bytes": 54418,
+            "sha256": "8fbac73419886cd1516ee601e6fa5ae8c05949b8e0eef26607ef837fb74fd28d"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/tests/fixtures/bath_csg_solid.ifc",
+      "input_sha256": "950424788ef247ebde29026d3a103cd59bb971eee697175bfdd4277f61a4d2e3",
+      "mode": "stream",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 1,
+        "meshes": 1,
+        "pixel_textures": 0,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 152,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 208
+      },
+      "scene_sha256": "73d2e9a06cdbeb2130c0d96c1869fc589ab2aac99e0ebc9a6540c5243f1997f5",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-stream/base/manifest.json",
+            "bytes": 5719,
+            "sha256": "bd0dfe91fed60dab71aa6db09427066d7125772b62f65839052ebd9bae2dddbd"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-stream/base/records.jsonl",
+            "bytes": 55037,
+            "sha256": "1fd4b2931d043669cf0c9378b57bc7ab491a363ce458b388a445cef762979e1e"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-stream/base-repeat/manifest.json",
+            "bytes": 5719,
+            "sha256": "a190848d1587521e53b0c7f20df44a83d41a1042e4bccfa03a3f4e557977099f"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-stream/base-repeat/records.jsonl",
+            "bytes": 55037,
+            "sha256": "72c18f3d37819c5b666bbf90c87c5cb85d078b72aeb9006d95bf705e20d5b8ab"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-stream/candidate/manifest.json",
+            "bytes": 5719,
+            "sha256": "3e1ddf826ef02279c36649f6bca5fd118c8568da237c01eb232dba8ee7d71b2f"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-stream/candidate/records.jsonl",
+            "bytes": 55038,
+            "sha256": "4aba5b2384b02ce0b3efce05802dc65581900c983b9152d76e3ad9ac08660fa4"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/tests/fixtures/bath_csg_solid.ifc",
+      "input_sha256": "950424788ef247ebde29026d3a103cd59bb971eee697175bfdd4277f61a4d2e3",
+      "mode": "instanced",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 1,
+        "meshes": 1,
+        "pixel_textures": 0,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 152,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 208
+      },
+      "scene_sha256": "ab8f238ae6151bf81309f4cab4e5068241dc9eddeb7679fc8f5cbf46a322379d",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-instanced/base/manifest.json",
+            "bytes": 5722,
+            "sha256": "265400d5141aed36f5399f9ba674845f7a39fc3f278159873cc12d4b44bd0691"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-instanced/base/records.jsonl",
+            "bytes": 55038,
+            "sha256": "9a5622e6069e5ff1cc8eef0f21c103943a5987680cb732ac345740c8c98ffd26"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-instanced/base-repeat/manifest.json",
+            "bytes": 5722,
+            "sha256": "ab0db051fed2e7d5fa6697c075b8b54f4b011b4e923f9dfe4960775916f6c660"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-instanced/base-repeat/records.jsonl",
+            "bytes": 55036,
+            "sha256": "673294cf0e78666497a864599d7b2c5df36f70aa962e2743fa5ba1871a4f8c69"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-instanced/candidate/manifest.json",
+            "bytes": 5722,
+            "sha256": "a2717254116a9dc4d835f9ec5fdab1624c465a54c8e03bf773096c0a1839b12a"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-instanced/candidate/records.jsonl",
+            "bytes": 55038,
+            "sha256": "10242e2c3a022983d90cfe830646651dc6a2a4f9d65f4c0298edc3b4a28fff76"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/tests/fixtures/bath_csg_solid.ifc",
+      "input_sha256": "950424788ef247ebde29026d3a103cd59bb971eee697175bfdd4277f61a4d2e3",
+      "mode": "fastfirst",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 1,
+        "meshes": 1,
+        "pixel_textures": 0,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 152,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 208
+      },
+      "scene_sha256": "b51e8d2e1668009fea42e3dd2b6116f35072da54f7194cdfcddc2bbb320cab8c",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-fastfirst/base/manifest.json",
+            "bytes": 5722,
+            "sha256": "d61551486eb55c07f26ab17fb592d7f9d57f40d9748b41f684a3cadc4e5d5655"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-fastfirst/base/records.jsonl",
+            "bytes": 55037,
+            "sha256": "0bf1aab42c3f9081a4d64682a62456b0dc287d20e3b64cdaf4a7dbd0e67c3729"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-fastfirst/base-repeat/manifest.json",
+            "bytes": 5722,
+            "sha256": "e4d838d269b44cbec0c20e92c8727b12c6d291fe6ae005f52bd00f1d7d0dedaa"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-fastfirst/base-repeat/records.jsonl",
+            "bytes": 55039,
+            "sha256": "bd7dcb25437cfe33f1ed14c215457035e91770400cc54d6e3bd2abeb29269c0d"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-fastfirst/candidate/manifest.json",
+            "bytes": 5722,
+            "sha256": "ab60907d24fab3ff42583c9d4a99c1a917a53549f81a481fec3f3547d304e555"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/bath_csg_solid-950424788ef2-fastfirst/candidate/records.jsonl",
+            "bytes": 55037,
+            "sha256": "9f4b0968dc8afd85c8bcc4183d9d9d72d1a922e96adb10875449182e93663c85"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc",
+      "input_sha256": "3069997f0b7d555232180c88bea27d0f6ca4d9c309a9cf4b1c3a8c68bba166ad",
+      "mode": "full",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 64,
+        "pixel_textures": 0,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 768,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 1536
+      },
+      "scene_sha256": "aaf09af60c75976dea68cd4eb19cf54bc98e3cd532289f671842aa846c6e2d30",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-full/base/manifest.json",
+            "bytes": 26712,
+            "sha256": "c59049478ae69fc5830c75ede590df83a7bad2bd6d902573926728ee4b0a959b"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-full/base/records.jsonl",
+            "bytes": 547133,
+            "sha256": "4b228fff4d0cbdbb57ffcda1bfce72e1f4562072abf2435eb225140bdf595f70"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-full/base-repeat/manifest.json",
+            "bytes": 26712,
+            "sha256": "6560753071933648a2e0a3327579b037443f559f033eb0b9b2efa7247a432cea"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-full/base-repeat/records.jsonl",
+            "bytes": 547133,
+            "sha256": "afea8bf6c7a02cd3f0bd29604937f436234fb8ffb7b31f1e9461e08cea283000"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-full/candidate/manifest.json",
+            "bytes": 26712,
+            "sha256": "2a359cedb51a34f62bcd51a3f380d87863e22bf2879af2ca1513db07d3129ab2"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-full/candidate/records.jsonl",
+            "bytes": 547133,
+            "sha256": "2cb12601df58a816a0142c758733da0a06b6de20a29364935318e2c6c42a8d56"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc",
+      "input_sha256": "3069997f0b7d555232180c88bea27d0f6ca4d9c309a9cf4b1c3a8c68bba166ad",
+      "mode": "stream",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 64,
+        "pixel_textures": 0,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 768,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 1536
+      },
+      "scene_sha256": "3d887519ec49f6c789d974631882ac8e3106a1fa111bc78853351a92b225123e",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-stream/base/manifest.json",
+            "bytes": 30351,
+            "sha256": "9093ff0d45deb354b852de2025e97dfd80e519321026e56f12d6783e31659f8f"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-stream/base/records.jsonl",
+            "bytes": 558434,
+            "sha256": "0bd21855f78031cab1d641fb1ec22a184ec83185e9577f27031d1c39ef052308"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-stream/base-repeat/manifest.json",
+            "bytes": 30351,
+            "sha256": "da27fcbf5f52556bc8dcf65fb2d6af62539f30fcf07fbdb533a878adb29486db"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-stream/base-repeat/records.jsonl",
+            "bytes": 558434,
+            "sha256": "88595f96185a568af5cd1ac043fed408349e58539363dbd176bc4243b4e3cf36"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-stream/candidate/manifest.json",
+            "bytes": 30351,
+            "sha256": "a746c40ad0dbb4b7472a31e22c114cf441b1e1c8b911b5add7aa33300dcf20d8"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-stream/candidate/records.jsonl",
+            "bytes": 558434,
+            "sha256": "ce836706627884b937de4895754f185397b16b2c94025b5da052d0f5e65ddc54"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc",
+      "input_sha256": "3069997f0b7d555232180c88bea27d0f6ca4d9c309a9cf4b1c3a8c68bba166ad",
+      "mode": "instanced",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1,
+        "instances": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 63,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 1,
+        "pixel_textures": 0,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 12,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 24
+      },
+      "scene_sha256": "91dac17e749ad71f7aab16e99b4cc8ee0285a676ba7c7794f22f9166cee499cd",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-instanced/base/manifest.json",
+            "bytes": 16436,
+            "sha256": "846080734cbc4709b7c46936f25e609526675bcec0799c309880018b283ccd67"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-instanced/base/records.jsonl",
+            "bytes": 125554,
+            "sha256": "93b91072b4b7bc307f626b10f298041062c5542e2291958c753ddf5030d9ebb9"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-instanced/base-repeat/manifest.json",
+            "bytes": 16436,
+            "sha256": "228c2c41dfc335f651f9203bf916fc594aa1f9209dace06b99090ea7d70fe110"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-instanced/base-repeat/records.jsonl",
+            "bytes": 125554,
+            "sha256": "7f4230857d49becd4082ed024f55faf21764b4b3d4581b9d984b15a425eb3372"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-instanced/candidate/manifest.json",
+            "bytes": 16436,
+            "sha256": "1d8cbde6f140af7959eac5416d11a756b1ed2ec8bc2026d68875d893740d769f"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-instanced/candidate/records.jsonl",
+            "bytes": 125554,
+            "sha256": "1d5f2ac744edd0ff0ad6f3c31b20f98aa681a1f4bc7370fa5f37f314b91bf422"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc",
+      "input_sha256": "3069997f0b7d555232180c88bea27d0f6ca4d9c309a9cf4b1c3a8c68bba166ad",
+      "mode": "fastfirst",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 64,
+        "pixel_textures": 0,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 768,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 1536
+      },
+      "scene_sha256": "6d40e24977713901f67c55663ae22aa091432487fe4d45d4cf1cacdceb9d86fe",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-fastfirst/base/manifest.json",
+            "bytes": 30354,
+            "sha256": "c79ffeb923b5c356c701a9629ca298448cd6bb7d96f5fc633baf40d1b5087cb2"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-fastfirst/base/records.jsonl",
+            "bytes": 558434,
+            "sha256": "65a6ae98a3031493708720f81308201fc3889d3e6724463722ea4cfe4025ecdf"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-fastfirst/base-repeat/manifest.json",
+            "bytes": 30354,
+            "sha256": "ef21434bd72efc0ae3e27ab31bc43c8e045fc761d0093efb57efa3901a8b1c05"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-fastfirst/base-repeat/records.jsonl",
+            "bytes": 558434,
+            "sha256": "4a50cae944535aa2718eec394f306f8c8d8c7a88b308f2af153fa824b4c76912"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-fastfirst/candidate/manifest.json",
+            "bytes": 30354,
+            "sha256": "b2d55a663076e437615e36afa45ca427c9ae55e30b7a9e44b28cc50486468af1"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/mapped_instances_synthetic-3069997f0b7d-fastfirst/candidate/records.jsonl",
+            "bytes": 558434,
+            "sha256": "fcc9a39e9e513eca8a8b4d6f6abb37df6279ba3e5beaa3ccf005c84ae57da20e"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ifc5/Georeferencing_georeferenced-bridge-deck.ifc",
+      "input_sha256": "6b1de724ceb436759d9cdbe7ce7f4c71734065dfde8cc8786b6239de347de1b1",
+      "mode": "full",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 1,
+        "pixel_textures": 0,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 12,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 24
+      },
+      "scene_sha256": "dd4a8125c58a6d6c93c6e9c12809b455a0ddd512e5f2c82185bb6be54afddf75",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 0,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-full/base/manifest.json",
+            "bytes": 5558,
+            "sha256": "53aa871e0d1d738272705a1e9d46a0b331d66f31deda75c2bedc428688c8125e"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-full/base/records.jsonl",
+            "bytes": 16721,
+            "sha256": "145b10435e71ac90fc8dd158c416cdca34e94c494ebd8a37495b938490e16cf7"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-full/base-repeat/manifest.json",
+            "bytes": 5558,
+            "sha256": "53aa871e0d1d738272705a1e9d46a0b331d66f31deda75c2bedc428688c8125e"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-full/base-repeat/records.jsonl",
+            "bytes": 16721,
+            "sha256": "145b10435e71ac90fc8dd158c416cdca34e94c494ebd8a37495b938490e16cf7"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-full/candidate/manifest.json",
+            "bytes": 5558,
+            "sha256": "53aa871e0d1d738272705a1e9d46a0b331d66f31deda75c2bedc428688c8125e"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-full/candidate/records.jsonl",
+            "bytes": 16721,
+            "sha256": "145b10435e71ac90fc8dd158c416cdca34e94c494ebd8a37495b938490e16cf7"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ifc5/Georeferencing_georeferenced-bridge-deck.ifc",
+      "input_sha256": "6b1de724ceb436759d9cdbe7ce7f4c71734065dfde8cc8786b6239de347de1b1",
+      "mode": "stream",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 1,
+        "pixel_textures": 0,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 12,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 24
+      },
+      "scene_sha256": "8b50425821f8a805a75f64862dec882295db5b471c2807eece4d88475cf0d682",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 0,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-stream/base/manifest.json",
+            "bytes": 5730,
+            "sha256": "f26f2a22d2072f665f37dee0f2bea61b69b0d0d8435fedc74587112282f0ec4f"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-stream/base/records.jsonl",
+            "bytes": 17509,
+            "sha256": "51f770607433afc36f2134a5d5f840c7c41d63d2d62fbe114ed58cc7476f9bce"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-stream/base-repeat/manifest.json",
+            "bytes": 5730,
+            "sha256": "f26f2a22d2072f665f37dee0f2bea61b69b0d0d8435fedc74587112282f0ec4f"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-stream/base-repeat/records.jsonl",
+            "bytes": 17509,
+            "sha256": "51f770607433afc36f2134a5d5f840c7c41d63d2d62fbe114ed58cc7476f9bce"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-stream/candidate/manifest.json",
+            "bytes": 5730,
+            "sha256": "f26f2a22d2072f665f37dee0f2bea61b69b0d0d8435fedc74587112282f0ec4f"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-stream/candidate/records.jsonl",
+            "bytes": 17509,
+            "sha256": "51f770607433afc36f2134a5d5f840c7c41d63d2d62fbe114ed58cc7476f9bce"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ifc5/Georeferencing_georeferenced-bridge-deck.ifc",
+      "input_sha256": "6b1de724ceb436759d9cdbe7ce7f4c71734065dfde8cc8786b6239de347de1b1",
+      "mode": "instanced",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 1,
+        "pixel_textures": 0,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 12,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 24
+      },
+      "scene_sha256": "ef921b14439403503aca12638f677a9ca8b827d08457351bce832032d62a3c05",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-instanced/base/manifest.json",
+            "bytes": 5733,
+            "sha256": "6fdc1e462b5c00b2656aaa7f2062c4e470cc4f84b5f70e2f8d498c063ed30601"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-instanced/base/records.jsonl",
+            "bytes": 17508,
+            "sha256": "142d6318b902eb9185c261a59d28cbf27083383700f8aa70f5ad4ca9f02012a6"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-instanced/base-repeat/manifest.json",
+            "bytes": 5733,
+            "sha256": "e438f50e31f5c13546d86289cd528a572da625c1d000e9711c0f26631824b9f7"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-instanced/base-repeat/records.jsonl",
+            "bytes": 17508,
+            "sha256": "95ebb8aa7668fca7669e199ab92017def8a4deceefc9d1b40d3201f30dee8e53"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-instanced/candidate/manifest.json",
+            "bytes": 5733,
+            "sha256": "b6a04113fb55f105a6ad260222de8e9da542230cc553783f307cfaafd12d7d63"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-instanced/candidate/records.jsonl",
+            "bytes": 17508,
+            "sha256": "54592995ad3f56ed1a5f45578a718d47f23fc921bee8c8120885c3c108230e21"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ifc5/Georeferencing_georeferenced-bridge-deck.ifc",
+      "input_sha256": "6b1de724ceb436759d9cdbe7ce7f4c71734065dfde8cc8786b6239de347de1b1",
+      "mode": "fastfirst",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 1,
+        "pixel_textures": 0,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 12,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 24
+      },
+      "scene_sha256": "f541198b10fdf0fb2e38b395764b3c5ac616995899c3d68a8da72a3c124f7751",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-fastfirst/base/manifest.json",
+            "bytes": 5733,
+            "sha256": "d4e97e3d5ff1a0b04c615375213b012dff4262b3d4417f62e8d4342b9494a1fd"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-fastfirst/base/records.jsonl",
+            "bytes": 17509,
+            "sha256": "b03859b00b3347c38fa063fc7d5caafa7a4220dcd44fe4531a6a12d226666abd"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-fastfirst/base-repeat/manifest.json",
+            "bytes": 5733,
+            "sha256": "5570fdf13579cae1ba89feea4c2186f775150116efbc2d171484f7c190e735e3"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-fastfirst/base-repeat/records.jsonl",
+            "bytes": 17509,
+            "sha256": "82873545ef4689b3a6e95bd3b84406df71e9312ea6fded59134e2050f0f366a9"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-fastfirst/candidate/manifest.json",
+            "bytes": 5733,
+            "sha256": "5570fdf13579cae1ba89feea4c2186f775150116efbc2d171484f7c190e735e3"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-fastfirst/candidate/records.jsonl",
+            "bytes": 17509,
+            "sha256": "82873545ef4689b3a6e95bd3b84406df71e9312ea6fded59134e2050f0f366a9"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc",
+      "input_sha256": "a9984558b52629d8507f01a23aba1d62a84cc7257f8159ac4ae4ac06f71b20fd",
+      "mode": "full",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1,
+        "uv_meshes": 1,
+        "pixel_textures": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 1,
+        "pixel_textures": 1,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 64,
+        "type_meshes": 1,
+        "url_textures": 0,
+        "uv_meshes": 1,
+        "vertices": 100
+      },
+      "scene_sha256": "9037e0c555c0daa4fa66e6150ab1a5158b04ff86624b6e3295e850326ca5bff3",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-full/base/manifest.json",
+            "bytes": 5597,
+            "sha256": "cbf7e6a44c4416385c6f0fc2988cf415491041c1e29e99f0628a62ddd2b1eb9b"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-full/base/records.jsonl",
+            "bytes": 1983840,
+            "sha256": "5ce54027115f9936ecd0d89828bc6761a118f2a7c766da312ae17e8822545a1a"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-full/base-repeat/manifest.json",
+            "bytes": 5597,
+            "sha256": "b8e1c5fb19561797124294b9e6227a55682cad1a520427075b317380fb8e5097"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-full/base-repeat/records.jsonl",
+            "bytes": 1983840,
+            "sha256": "dc47d38f9ace7ee9f2c5bd5de9d52201329bafa9fcc3b85f0f65d58ecc19f9f5"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-full/candidate/manifest.json",
+            "bytes": 5597,
+            "sha256": "eaa34ef6e951f609d684e7ff5fe7ad7204920bde1d83d84d954b14e49e6ceafb"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-full/candidate/records.jsonl",
+            "bytes": 1983840,
+            "sha256": "ebab2291672dc30915444c21509f59c7770df4bc4c9b2341ab2924f8e392f605"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc",
+      "input_sha256": "a9984558b52629d8507f01a23aba1d62a84cc7257f8159ac4ae4ac06f71b20fd",
+      "mode": "stream",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1,
+        "uv_meshes": 1,
+        "pixel_textures": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 1,
+        "pixel_textures": 1,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 64,
+        "type_meshes": 1,
+        "url_textures": 0,
+        "uv_meshes": 1,
+        "vertices": 100
+      },
+      "scene_sha256": "5aae41e08c0dc3ef9d82721d848ec17cd1f63594ca02498c128429ab81f31afb",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-stream/base/manifest.json",
+            "bytes": 5769,
+            "sha256": "acf8b6a50c5b2ad208ea6e5f9d36e6723ae5a1a4ae1c436cac9c74ce57a64333"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-stream/base/records.jsonl",
+            "bytes": 1984119,
+            "sha256": "fd97305102f9dd81aa25c32bc1047e3715a880b7f6a54c173324f63a7a6985de"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-stream/base-repeat/manifest.json",
+            "bytes": 5769,
+            "sha256": "e93b1a52046d7385224b1f44936ca9ac20061d4043e436f7af518f74f885b221"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-stream/base-repeat/records.jsonl",
+            "bytes": 1984119,
+            "sha256": "985a40b761f9427a9214adbbdbc5e33869dc35980b942def1344c9f11865e15c"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-stream/candidate/manifest.json",
+            "bytes": 5769,
+            "sha256": "012fa9767a4b2b7a8ec8c779fe658a8fb76ac2a3d2743703b82deef83a9d930f"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-stream/candidate/records.jsonl",
+            "bytes": 1984119,
+            "sha256": "94d63d4fcfaf4c9c70615f46dd98c74756b14ec40cae8421f10b03ab17671dda"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc",
+      "input_sha256": "a9984558b52629d8507f01a23aba1d62a84cc7257f8159ac4ae4ac06f71b20fd",
+      "mode": "instanced",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1,
+        "uv_meshes": 1,
+        "pixel_textures": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 1,
+        "pixel_textures": 1,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 64,
+        "type_meshes": 1,
+        "url_textures": 0,
+        "uv_meshes": 1,
+        "vertices": 100
+      },
+      "scene_sha256": "0875fd109556ccceb9a31d9e778e37a0b90fd7b540a524cef22f9013207a47ca",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-instanced/base/manifest.json",
+            "bytes": 5772,
+            "sha256": "1fdd1e8520b18c1b28849078cac00bb16e3bf76ad001db98c5b3e1b421661690"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-instanced/base/records.jsonl",
+            "bytes": 1984118,
+            "sha256": "6ec29a1965d149eb4c1d086014723dc000003f1a8d94b8ea68581d9b2391f956"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-instanced/base-repeat/manifest.json",
+            "bytes": 5772,
+            "sha256": "a3231af8460e613b4ce5cb6a8e55f61b3964b40e5cca907642c276011eb4b251"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-instanced/base-repeat/records.jsonl",
+            "bytes": 1984118,
+            "sha256": "7e996535c609ac0eb25d4adde8c39f65981274f118a45e4f72e31618d7cd173c"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-instanced/candidate/manifest.json",
+            "bytes": 5772,
+            "sha256": "3603e3286792c5b19e6f6ae8c759626b785563d9016272b79cc68c71baf0ccdb"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-instanced/candidate/records.jsonl",
+            "bytes": 1984118,
+            "sha256": "3bb407860f30ebab8144c1ecc4e26684cb4e16c66658d844dfe115218e9e20c8"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc",
+      "input_sha256": "a9984558b52629d8507f01a23aba1d62a84cc7257f8159ac4ae4ac06f71b20fd",
+      "mode": "fastfirst",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1,
+        "uv_meshes": 1,
+        "pixel_textures": 1,
+        "color_updates": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 1,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 1,
+        "pixel_textures": 1,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 64,
+        "type_meshes": 1,
+        "url_textures": 0,
+        "uv_meshes": 1,
+        "vertices": 100
+      },
+      "scene_sha256": "7020ff10f1444d08288dc479ba8618529dfb4749d2561eb02dffe1d07a1c7aa0",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-fastfirst/base/manifest.json",
+            "bytes": 5939,
+            "sha256": "41696bd1979326b74cf471236333978fb5eebfbe02032a1f1a78f70239a8e866"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-fastfirst/base/records.jsonl",
+            "bytes": 1984233,
+            "sha256": "f0a10d36ce97a6d9cc00610f2e0d0e2b50c17278a94d0b234cc41e5970e58d50"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-fastfirst/base-repeat/manifest.json",
+            "bytes": 5939,
+            "sha256": "6198a4a4858c5f72b5f34fdd93be2c10b342f998e898e385a1e6d5f317440ee0"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-fastfirst/base-repeat/records.jsonl",
+            "bytes": 1984233,
+            "sha256": "1442c1638bd90d2efdc8deebc1641d59b2028cca44b5546a3cd09706fd63897e"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-fastfirst/candidate/manifest.json",
+            "bytes": 5939,
+            "sha256": "8064bdc7717412cd216e479b9aa8dc60f55ad1a8773217e6d5fbe7abdf33225a"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-blob-texture-a9984558b526-fastfirst/candidate/records.jsonl",
+            "bytes": 1984233,
+            "sha256": "c8623253f2e60abac36a341a771705a6ec9e7d9c7842c29d41b7da4b193e2d6d"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc",
+      "input_sha256": "522788afc44ba467730e2b8b521d4baa334df299598a6595ffd430c16a0f7e5e",
+      "mode": "full",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1,
+        "uv_meshes": 1,
+        "pixel_textures": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 1,
+        "pixel_textures": 1,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 64,
+        "type_meshes": 1,
+        "url_textures": 0,
+        "uv_meshes": 1,
+        "vertices": 100
+      },
+      "scene_sha256": "f0ac2af086e040ec24fcc448b3abc0576c42bcea6e396ccd68a66ffe6e2910ec",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-full/base/manifest.json",
+            "bytes": 5598,
+            "sha256": "d2f708e5ee304ff3f3b2ea338b27bb0e30bf03386fec5b31e0aa7d3c7c3e0cf1"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-full/base/records.jsonl",
+            "bytes": 1983856,
+            "sha256": "44f357af6f536e9a3d48eb1acbb0c69392da2d3ff9511db363ec8a57fdba92c9"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-full/base-repeat/manifest.json",
+            "bytes": 5598,
+            "sha256": "d2f708e5ee304ff3f3b2ea338b27bb0e30bf03386fec5b31e0aa7d3c7c3e0cf1"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-full/base-repeat/records.jsonl",
+            "bytes": 1983856,
+            "sha256": "44f357af6f536e9a3d48eb1acbb0c69392da2d3ff9511db363ec8a57fdba92c9"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-full/candidate/manifest.json",
+            "bytes": 5598,
+            "sha256": "e852774e1562733ed3fa3d06756217b7a554ea80a9aa5f23d57f1ea4d0b45870"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-full/candidate/records.jsonl",
+            "bytes": 1983856,
+            "sha256": "7df2e618671c958e629874c1443aadd0ad3cc191baa4492d246a7c6536878214"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc",
+      "input_sha256": "522788afc44ba467730e2b8b521d4baa334df299598a6595ffd430c16a0f7e5e",
+      "mode": "stream",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1,
+        "uv_meshes": 1,
+        "pixel_textures": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 1,
+        "pixel_textures": 1,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 64,
+        "type_meshes": 1,
+        "url_textures": 0,
+        "uv_meshes": 1,
+        "vertices": 100
+      },
+      "scene_sha256": "7399582e216101d66e84d3deaa5bc10f053ff24e7bd3de726bc03d6332e9715c",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-stream/base/manifest.json",
+            "bytes": 5770,
+            "sha256": "fd5caad30a6ffafe4af237277bae1e5c1534d8e072686d87f24e572f5a329eda"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-stream/base/records.jsonl",
+            "bytes": 1984135,
+            "sha256": "bbc03a547985c3e9b9d7a9daed3879b343b35933c57b85625ff51213a0117608"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-stream/base-repeat/manifest.json",
+            "bytes": 5770,
+            "sha256": "9cbc3bfb88e9f3305c2ac7296458c2d2b6b0d30481302e4114f1f67e9563d3c5"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-stream/base-repeat/records.jsonl",
+            "bytes": 1984135,
+            "sha256": "f6f411578a58111a77b213de2109522115cffab1610d825c828d14e18317a808"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-stream/candidate/manifest.json",
+            "bytes": 5770,
+            "sha256": "73b0aff55373594b881998deb366bd8cab3b1d1c12fb42645bdb1084492f4a2c"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-stream/candidate/records.jsonl",
+            "bytes": 1984135,
+            "sha256": "64b89d764630d28674811b0f01d0ee724222da1f8be15025dbba315d3af3152b"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc",
+      "input_sha256": "522788afc44ba467730e2b8b521d4baa334df299598a6595ffd430c16a0f7e5e",
+      "mode": "instanced",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1,
+        "uv_meshes": 1,
+        "pixel_textures": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 1,
+        "pixel_textures": 1,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 64,
+        "type_meshes": 1,
+        "url_textures": 0,
+        "uv_meshes": 1,
+        "vertices": 100
+      },
+      "scene_sha256": "9a83c5c97960a8e1c7ae4eb28905163777bd88567209c9c6dd476266dd2e030d",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-instanced/base/manifest.json",
+            "bytes": 5773,
+            "sha256": "f60fd2beb280c393a53d56b12c16c7c73595d842b14005ce1bb9a36f7f430ceb"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-instanced/base/records.jsonl",
+            "bytes": 1984134,
+            "sha256": "7420dc70a07052522673637b147bab5861deaae5307ade7504e7a8235713b3e7"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-instanced/base-repeat/manifest.json",
+            "bytes": 5773,
+            "sha256": "49184ec477061ebc5fea1bcd6ba93aba80aebb9bf59f95bc4b250fbdca192307"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-instanced/base-repeat/records.jsonl",
+            "bytes": 1984134,
+            "sha256": "1b22f308dec312071810c065ecd252251f25a3f22e8bd502e449fed5c7c16619"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-instanced/candidate/manifest.json",
+            "bytes": 5773,
+            "sha256": "65217650d5bbf4e2921a77e03987053c6155ea39c9ddc7db0936379f39edcd63"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-instanced/candidate/records.jsonl",
+            "bytes": 1984134,
+            "sha256": "55e7adb05778af61b4989b2e6be116f296b676b9c6c3e56b190f4c0057f11cdd"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc",
+      "input_sha256": "522788afc44ba467730e2b8b521d4baa334df299598a6595ffd430c16a0f7e5e",
+      "mode": "fastfirst",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1,
+        "uv_meshes": 1,
+        "pixel_textures": 1,
+        "color_updates": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 1,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 1,
+        "pixel_textures": 1,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 64,
+        "type_meshes": 1,
+        "url_textures": 0,
+        "uv_meshes": 1,
+        "vertices": 100
+      },
+      "scene_sha256": "ec0724f2328fd820e093bf4793bd7d7ccf94c8a3f9e0cd5ee2feb6bc4309ed9d",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-fastfirst/base/manifest.json",
+            "bytes": 5940,
+            "sha256": "2e399a9ea03aa7924d9c4854fcbad6cebec1936d6b11434683b6a5bf29cc62a5"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-fastfirst/base/records.jsonl",
+            "bytes": 1984249,
+            "sha256": "39614e9dd740edcf3b591de80fcb39815f6e0dfaf34ee623b5661c55d9ca26ab"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-fastfirst/base-repeat/manifest.json",
+            "bytes": 5940,
+            "sha256": "902c876b2cdc66fc8a1903b5a560f9bda8eb5eaa3a0c46b11a063accf79e8c38"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-fastfirst/base-repeat/records.jsonl",
+            "bytes": 1984249,
+            "sha256": "da175dc9b20ba909648ec2fbaedb466ff6560c77cd2cf1e2920cdc7e939f4944"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-fastfirst/candidate/manifest.json",
+            "bytes": 5940,
+            "sha256": "f52267bfeaf5bb739baeba480e72d683e87e292fcb9c160c81cc8f88965b75e1"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-pixel-texture-522788afc44b-fastfirst/candidate/records.jsonl",
+            "bytes": 1984249,
+            "sha256": "26ce721c9c19b5c07f68c244551df6de14dbd41e3cd166d23753a95280cd0622"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc",
+      "input_sha256": "eeec637c7c870c289460c5eec18995ec2c2d41af0c26382f32e453a58773c0a6",
+      "mode": "full",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1,
+        "uv_meshes": 1,
+        "url_textures": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 1,
+        "pixel_textures": 0,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 64,
+        "type_meshes": 1,
+        "url_textures": 1,
+        "uv_meshes": 1,
+        "vertices": 100
+      },
+      "scene_sha256": "c95aab49f0d1c749fcc388268cae0ccbd657e4ef61a558623bcd5400816a3d6c",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-full/base/manifest.json",
+            "bytes": 5596,
+            "sha256": "dd4c11fea3032933a545a0c22c0b8477218b9cca4d2461dc4280189d617d0672"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-full/base/records.jsonl",
+            "bytes": 36812,
+            "sha256": "3bbb09018cd18ae5ae8ad2cec0cb0c9274b18e64b852a645c7d6dcc497d7ee1d"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-full/base-repeat/manifest.json",
+            "bytes": 5596,
+            "sha256": "07f8c59401a03d3a172dc9465df8ddb26454ad4410b803fa7c905e3c2661f306"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-full/base-repeat/records.jsonl",
+            "bytes": 36812,
+            "sha256": "43dce190ad0da87b45fbc8819fcffe29d2a9190394fcfaa5d6b150eca4239c6d"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-full/candidate/manifest.json",
+            "bytes": 5596,
+            "sha256": "07f8c59401a03d3a172dc9465df8ddb26454ad4410b803fa7c905e3c2661f306"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-full/candidate/records.jsonl",
+            "bytes": 36812,
+            "sha256": "43dce190ad0da87b45fbc8819fcffe29d2a9190394fcfaa5d6b150eca4239c6d"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc",
+      "input_sha256": "eeec637c7c870c289460c5eec18995ec2c2d41af0c26382f32e453a58773c0a6",
+      "mode": "stream",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1,
+        "uv_meshes": 1,
+        "url_textures": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 1,
+        "pixel_textures": 0,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 64,
+        "type_meshes": 1,
+        "url_textures": 1,
+        "uv_meshes": 1,
+        "vertices": 100
+      },
+      "scene_sha256": "ecaf1f76c54d0d272a2b61ce8d28523d6c1785e3d2a0b4cf01cdbb3cbd8ca097",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-stream/base/manifest.json",
+            "bytes": 5768,
+            "sha256": "95662587fa1f2dec2e0e041922e7914f647e21f35a73c3f7d94ec708c952a454"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-stream/base/records.jsonl",
+            "bytes": 37091,
+            "sha256": "e48f3f5f185ee9d0b40f33d99dd8a33891f4523afb7ba64e9e09f0ab4be2a92c"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-stream/base-repeat/manifest.json",
+            "bytes": 5768,
+            "sha256": "95662587fa1f2dec2e0e041922e7914f647e21f35a73c3f7d94ec708c952a454"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-stream/base-repeat/records.jsonl",
+            "bytes": 37091,
+            "sha256": "e48f3f5f185ee9d0b40f33d99dd8a33891f4523afb7ba64e9e09f0ab4be2a92c"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-stream/candidate/manifest.json",
+            "bytes": 5768,
+            "sha256": "b751bec68c1546641cf54430457407848aac9e597f6a646879e1fc595a24bfe5"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-stream/candidate/records.jsonl",
+            "bytes": 37091,
+            "sha256": "70a8e57c001bafe7886162f200edfa40ef84cb72f6d60ad426dff29e15007692"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc",
+      "input_sha256": "eeec637c7c870c289460c5eec18995ec2c2d41af0c26382f32e453a58773c0a6",
+      "mode": "instanced",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1,
+        "uv_meshes": 1,
+        "url_textures": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 1,
+        "pixel_textures": 0,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 64,
+        "type_meshes": 1,
+        "url_textures": 1,
+        "uv_meshes": 1,
+        "vertices": 100
+      },
+      "scene_sha256": "b5e978370d623c286f3e3a980b7987b8ca9a3d646e5140f3f0e2fa447f862bf4",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-instanced/base/manifest.json",
+            "bytes": 5771,
+            "sha256": "1262cc8d9e58297a5faeb0eabc5c51f4123ac28920bd5cca8344067c165d1e15"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-instanced/base/records.jsonl",
+            "bytes": 37090,
+            "sha256": "9f968a561865bb73f417b36f3d6a4c2db4ba26770de20b4e24ef987de9718f5e"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-instanced/base-repeat/manifest.json",
+            "bytes": 5771,
+            "sha256": "1262cc8d9e58297a5faeb0eabc5c51f4123ac28920bd5cca8344067c165d1e15"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-instanced/base-repeat/records.jsonl",
+            "bytes": 37090,
+            "sha256": "9f968a561865bb73f417b36f3d6a4c2db4ba26770de20b4e24ef987de9718f5e"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-instanced/candidate/manifest.json",
+            "bytes": 5771,
+            "sha256": "c68aa20221db4149f52cca5a4a0ea6ae4e9f6be917b2d641def78ff967820099"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-instanced/candidate/records.jsonl",
+            "bytes": 37090,
+            "sha256": "3f91d40549cee35624f7bfb0ecea596ce84ab59dc8409eb07115e695da21a8f7"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc",
+      "input_sha256": "eeec637c7c870c289460c5eec18995ec2c2d41af0c26382f32e453a58773c0a6",
+      "mode": "fastfirst",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1,
+        "uv_meshes": 1,
+        "url_textures": 1,
+        "color_updates": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 1,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 1,
+        "pixel_textures": 0,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 64,
+        "type_meshes": 1,
+        "url_textures": 1,
+        "uv_meshes": 1,
+        "vertices": 100
+      },
+      "scene_sha256": "dfbef34b8baa2350c0200d778713b3fb2afd816cecc85edd45bee5cd62cd0ee3",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 0,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-fastfirst/base/manifest.json",
+            "bytes": 5938,
+            "sha256": "8091e8557fc424b848b840f03aba25d2fb4a408c27a6393b97059bf0ffe1fa7f"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-fastfirst/base/records.jsonl",
+            "bytes": 37205,
+            "sha256": "6311224288555ad9af2f9ccd1edb3a8160cfe88b31d6c7b33c61d5e2cbfb9023"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-fastfirst/base-repeat/manifest.json",
+            "bytes": 5938,
+            "sha256": "8091e8557fc424b848b840f03aba25d2fb4a408c27a6393b97059bf0ffe1fa7f"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-fastfirst/base-repeat/records.jsonl",
+            "bytes": 37205,
+            "sha256": "6311224288555ad9af2f9ccd1edb3a8160cfe88b31d6c7b33c61d5e2cbfb9023"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-fastfirst/candidate/manifest.json",
+            "bytes": 5938,
+            "sha256": "8091e8557fc424b848b840f03aba25d2fb4a408c27a6393b97059bf0ffe1fa7f"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-image-texture-eeec637c7c87-fastfirst/candidate/records.jsonl",
+            "bytes": 37205,
+            "sha256": "6311224288555ad9af2f9ccd1edb3a8160cfe88b31d6c7b33c61d5e2cbfb9023"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-individual-colors.ifc",
+      "input_sha256": "49a003e142dce4b047f6c420a804aad68e30c7e4f5af3f7e2db2f9f32560e8a5",
+      "mode": "full",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 3,
+        "pixel_textures": 0,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 12,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 24
+      },
+      "scene_sha256": "d3cc48a9c52ff7f0fb7a30ad58c8c82674d01168005b09c0cecad6dbd52113cf",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 0,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-full/base/manifest.json",
+            "bytes": 6266,
+            "sha256": "64c41bea27925fb2209e50af11d0867ec1ff6bab251f0b6973a2e2472693c812"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-full/base/records.jsonl",
+            "bytes": 18272,
+            "sha256": "1e1acaed38ec4683ce5230606d84c20d491cfc0c397adb44d6f0d7f859d2021c"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-full/base-repeat/manifest.json",
+            "bytes": 6266,
+            "sha256": "64c41bea27925fb2209e50af11d0867ec1ff6bab251f0b6973a2e2472693c812"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-full/base-repeat/records.jsonl",
+            "bytes": 18272,
+            "sha256": "1e1acaed38ec4683ce5230606d84c20d491cfc0c397adb44d6f0d7f859d2021c"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-full/candidate/manifest.json",
+            "bytes": 6266,
+            "sha256": "64c41bea27925fb2209e50af11d0867ec1ff6bab251f0b6973a2e2472693c812"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-full/candidate/records.jsonl",
+            "bytes": 18272,
+            "sha256": "1e1acaed38ec4683ce5230606d84c20d491cfc0c397adb44d6f0d7f859d2021c"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-individual-colors.ifc",
+      "input_sha256": "49a003e142dce4b047f6c420a804aad68e30c7e4f5af3f7e2db2f9f32560e8a5",
+      "mode": "stream",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 3,
+        "pixel_textures": 0,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 12,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 24
+      },
+      "scene_sha256": "0e88244f634e1935f331fa24fdb0241540152373d43bfd700d0fb7ab590e0682",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 0,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-stream/base/manifest.json",
+            "bytes": 6603,
+            "sha256": "bb0a9831f7089f6c0f733358f80a22525ee7b167c61107dd1159827259fd20ec"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-stream/base/records.jsonl",
+            "bytes": 18951,
+            "sha256": "fea2b01dc0f463760d404c20d575a4c7a8130ec1aa646da96a8802356a35fa39"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-stream/base-repeat/manifest.json",
+            "bytes": 6603,
+            "sha256": "bb0a9831f7089f6c0f733358f80a22525ee7b167c61107dd1159827259fd20ec"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-stream/base-repeat/records.jsonl",
+            "bytes": 18951,
+            "sha256": "fea2b01dc0f463760d404c20d575a4c7a8130ec1aa646da96a8802356a35fa39"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-stream/candidate/manifest.json",
+            "bytes": 6603,
+            "sha256": "bb0a9831f7089f6c0f733358f80a22525ee7b167c61107dd1159827259fd20ec"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-stream/candidate/records.jsonl",
+            "bytes": 18951,
+            "sha256": "fea2b01dc0f463760d404c20d575a4c7a8130ec1aa646da96a8802356a35fa39"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-individual-colors.ifc",
+      "input_sha256": "49a003e142dce4b047f6c420a804aad68e30c7e4f5af3f7e2db2f9f32560e8a5",
+      "mode": "instanced",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 3,
+        "pixel_textures": 0,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 12,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 24
+      },
+      "scene_sha256": "8e55c164bf254a0fbe7ad95db3fa9740aa8f1a12e2a6d748efba37e7e2ea217b",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 0,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-instanced/base/manifest.json",
+            "bytes": 6606,
+            "sha256": "e42b98364a645c9d4d11a3ac6393d2918d7ebd049028f77908161f1ff7f06e26"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-instanced/base/records.jsonl",
+            "bytes": 18950,
+            "sha256": "55b5ee4cb7a4b71f0ea3116e4cf5bd8d0a7ae46a1e243285f5171e8da0a0d985"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-instanced/base-repeat/manifest.json",
+            "bytes": 6606,
+            "sha256": "e42b98364a645c9d4d11a3ac6393d2918d7ebd049028f77908161f1ff7f06e26"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-instanced/base-repeat/records.jsonl",
+            "bytes": 18950,
+            "sha256": "55b5ee4cb7a4b71f0ea3116e4cf5bd8d0a7ae46a1e243285f5171e8da0a0d985"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-instanced/candidate/manifest.json",
+            "bytes": 6606,
+            "sha256": "e42b98364a645c9d4d11a3ac6393d2918d7ebd049028f77908161f1ff7f06e26"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-instanced/candidate/records.jsonl",
+            "bytes": 18950,
+            "sha256": "55b5ee4cb7a4b71f0ea3116e4cf5bd8d0a7ae46a1e243285f5171e8da0a0d985"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-individual-colors.ifc",
+      "input_sha256": "49a003e142dce4b047f6c420a804aad68e30c7e4f5af3f7e2db2f9f32560e8a5",
+      "mode": "fastfirst",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 0,
+        "meshes": 3,
+        "pixel_textures": 0,
+        "polylines": 0,
+        "property_sets": 0,
+        "texts": 0,
+        "triangles": 12,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 24
+      },
+      "scene_sha256": "c27636a371625c6fcc287ab7b4b587c633219c0bbbafe9d1b2ea4059966589b7",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 0,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-fastfirst/base/manifest.json",
+            "bytes": 6606,
+            "sha256": "40faee2742e24aab6ed0fb158952eef8838efb64b27ab5807358f9122f47bdb0"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-fastfirst/base/records.jsonl",
+            "bytes": 18951,
+            "sha256": "cf752f41f1cb60cb96ce842f08d2e42f0efdc8d3273e2601d2a2bab414adefaf"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-fastfirst/base-repeat/manifest.json",
+            "bytes": 6606,
+            "sha256": "81f25e1dc3620bbacf27d73fb55d712a35c80b0081247c2c7517afa035d6345f"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-fastfirst/base-repeat/records.jsonl",
+            "bytes": 18951,
+            "sha256": "a3f7be8530a8420b9decdf9baf7631b0b7db6fa4b21e0443237e51c234d404aa"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-fastfirst/candidate/manifest.json",
+            "bytes": 6606,
+            "sha256": "40faee2742e24aab6ed0fb158952eef8838efb64b27ab5807358f9122f47bdb0"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-styles/tessellation-with-individual-colors-49a003e142dc-fastfirst/candidate/records.jsonl",
+            "bytes": 18951,
+            "sha256": "cf752f41f1cb60cb96ce842f08d2e42f0efdc8d3273e2601d2a2bab414adefaf"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "input_sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "mode": "full",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1,
+        "texts": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 78,
+        "meshes": 285,
+        "pixel_textures": 0,
+        "polylines": 248,
+        "property_sets": 306,
+        "texts": 65,
+        "triangles": 20322,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 35940
+      },
+      "scene_sha256": "d25fca5b7092bd996812d4603f353f27501cc4798cd9e02f4ad770d9ff979339",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-full/base/manifest.json",
+            "bytes": 101458,
+            "sha256": "bcc78c45ac625c4e2b5cdb1fdc118d57862116197c156ab65ba36f32edc0b1f3"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-full/base/records.jsonl",
+            "bytes": 14276650,
+            "sha256": "0a7d109d2ab2bb17d778dc5d7efa2f28bb8ec49c92f3ca6aac3ad3cf87e2b464"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-full/base-repeat/manifest.json",
+            "bytes": 101458,
+            "sha256": "9aff92618ca97877d7ff493b15fb3a6a5e0d13816d9f1c5782e10aa96b8e3ec5"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-full/base-repeat/records.jsonl",
+            "bytes": 14276650,
+            "sha256": "ab942edc09ec5a1b98dac0bfd2519ae3c599b33a17dd5a18f650b261b87782b0"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-full/candidate/manifest.json",
+            "bytes": 101458,
+            "sha256": "eb34b39b7af90cf45e6a21d023773ef2611a68631896277fa7d2926038b6b8f6"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-full/candidate/records.jsonl",
+            "bytes": 14276650,
+            "sha256": "a63963b44e849495276ed1186cc0bc0e005c458d708601ba5baaedf23cdebfd1"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "input_sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "mode": "stream",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1,
+        "texts": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 78,
+        "meshes": 285,
+        "pixel_textures": 0,
+        "polylines": 248,
+        "property_sets": 306,
+        "texts": 65,
+        "triangles": 20322,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 35940
+      },
+      "scene_sha256": "13582e677423b43cbb01eba22edd0ca17d2698af1256dd715d0dd235a4eef87c",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-stream/base/manifest.json",
+            "bytes": 118715,
+            "sha256": "e80b90e7e8b48670bbd4c7f01a2a825deca06324aee777dba63dfc88223d5b0a"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-stream/base/records.jsonl",
+            "bytes": 14296782,
+            "sha256": "327e3091deb6bf9a90c41478339367ffcf4473bf236e89ad077d551b192a2791"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-stream/base-repeat/manifest.json",
+            "bytes": 118715,
+            "sha256": "df66b112aab276b65f9edd712ba2ec9a40800e3adff18684440f914614428f95"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-stream/base-repeat/records.jsonl",
+            "bytes": 14296782,
+            "sha256": "6abbad7ad633a0f53ba9f79b94dd131106b1f37b210b3d41649bb94856713e2f"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-stream/candidate/manifest.json",
+            "bytes": 118715,
+            "sha256": "df66b112aab276b65f9edd712ba2ec9a40800e3adff18684440f914614428f95"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-stream/candidate/records.jsonl",
+            "bytes": 14296782,
+            "sha256": "6abbad7ad633a0f53ba9f79b94dd131106b1f37b210b3d41649bb94856713e2f"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "input_sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "mode": "instanced",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1,
+        "texts": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 43,
+        "layer_meshes": 0,
+        "materials": 78,
+        "meshes": 242,
+        "pixel_textures": 0,
+        "polylines": 248,
+        "property_sets": 306,
+        "texts": 65,
+        "triangles": 19806,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 34908
+      },
+      "scene_sha256": "b72f2a30ea4379f4333e95fccbf10498ba647d1afe14d267fa475093a51e043f",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-instanced/base/manifest.json",
+            "bytes": 109181,
+            "sha256": "12675e020d3490d3d3dbcdf86210455b137153ec419e5ba386e525bf03e83bb5"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-instanced/base/records.jsonl",
+            "bytes": 13995943,
+            "sha256": "ffbf15886f8402c12a465f24615ba45ede755181c83f12b16de8664c9d02de34"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-instanced/base-repeat/manifest.json",
+            "bytes": 109181,
+            "sha256": "bbccdd28ba23ae49aceaedc8afdd8e895098185b01f8f3fecd60c0a0417977b5"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-instanced/base-repeat/records.jsonl",
+            "bytes": 13995943,
+            "sha256": "b27fd95cb7f928169e59f7f6b99a8f933c5e084f8c68bcc0107fc8dcb5beaed2"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-instanced/candidate/manifest.json",
+            "bytes": 109181,
+            "sha256": "f3f2edc71725d608285eddee69157e003247b622d1e1ba1f9b3706dfccfa71c9"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-instanced/candidate/records.jsonl",
+            "bytes": 13995943,
+            "sha256": "0cdc73b1b919322ceb083914fadd43ff55b6df517e43e8c92bffec304c809d7b"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "input_sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "mode": "fastfirst",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1,
+        "texts": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 78,
+        "meshes": 285,
+        "pixel_textures": 0,
+        "polylines": 248,
+        "property_sets": 306,
+        "texts": 65,
+        "triangles": 20322,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 35940
+      },
+      "scene_sha256": "c7b319d439e1dc0afb2d9249c2db3adc6fcc2fe05bb24dbbf5091c516e3c36c6",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-fastfirst/base/manifest.json",
+            "bytes": 118381,
+            "sha256": "6bc5ce58001c8398f249417e45e58826bda2b40dc4b14f9a07b9a07ff2e1592e"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-fastfirst/base/records.jsonl",
+            "bytes": 14271861,
+            "sha256": "aa3ee59b00f72e8dc91e41335ad46f8b8661f95f5021effdb888574ded2ec31b"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-fastfirst/base-repeat/manifest.json",
+            "bytes": 118381,
+            "sha256": "d85f444d809d4e94d1e9f9575d0d544af53948ec0ce7ceddbcaf6316dba69b5e"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-fastfirst/base-repeat/records.jsonl",
+            "bytes": 14271861,
+            "sha256": "b8ce9b42a0698c4b916bddd658fd0b2fc85f98a5c915d367f215fccadfb1c183"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-fastfirst/candidate/manifest.json",
+            "bytes": 118381,
+            "sha256": "90e39e4b9e637004689ac7dc5e57908e097a80e2f10f7bd627b41712a05aee50"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/AC20-FZK-Haus-d42ab0dee011-fastfirst/candidate/records.jsonl",
+            "bytes": 14271860,
+            "sha256": "5acd830c48e3a5478c3fc4abf3fbce49fd69d6485f6e38a8a059c05dde374d8d"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/duplex.ifc",
+      "input_sha256": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+      "mode": "full",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 271,
+        "meshes": 486,
+        "pixel_textures": 0,
+        "polylines": 695,
+        "property_sets": 1459,
+        "texts": 0,
+        "triangles": 30374,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 51578
+      },
+      "scene_sha256": "d0d68fa918a7513acc09bfb8c10b36c90f35bc53ed83c30b82c372d89dad2221",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-full/base/manifest.json",
+            "bytes": 169509,
+            "sha256": "b7c6af58d713d3f523e3ae3c76542f6a9bd0b8c6696298b8e0dbe305f3b0df10"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-full/base/records.jsonl",
+            "bytes": 17725461,
+            "sha256": "a142250ff52eded6f87d6fb47e6482ba9895ad45ef8f15de6bfbb4d3c9b31ccd"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-full/base-repeat/manifest.json",
+            "bytes": 169509,
+            "sha256": "326a3111cee7b8046df59521f4e5679e231a67dc5ad9b302330802a6bb4412b8"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-full/base-repeat/records.jsonl",
+            "bytes": 17725461,
+            "sha256": "a16ac0811de0f47e761b5d53d248a1696ed12243755396e17db786ac0c8d45c8"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-full/candidate/manifest.json",
+            "bytes": 169509,
+            "sha256": "a4d33094e85cbf84e3442491d5df59876ccad580ded98a05e29a21110e610493"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-full/candidate/records.jsonl",
+            "bytes": 17725461,
+            "sha256": "27f3b7e8f3016574b07333e46fc8558e0f25eed642b97ff35338ee6819eb3935"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/duplex.ifc",
+      "input_sha256": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+      "mode": "stream",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 271,
+        "meshes": 486,
+        "pixel_textures": 0,
+        "polylines": 695,
+        "property_sets": 1459,
+        "texts": 0,
+        "triangles": 30374,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 51578
+      },
+      "scene_sha256": "a84053aaca00f037f085b43299e25843b9bc2f5e2f62027f44e8ecaab2b826d9",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-stream/base/manifest.json",
+            "bytes": 197949,
+            "sha256": "e2247b954c702fa54400a9cf0543f634bd2a12faa5092966f1f1417e1e74792c"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-stream/base/records.jsonl",
+            "bytes": 17768023,
+            "sha256": "8f8f0ad337d6509d88bcef15c2e649d57fb7b9ac56825aa0f18d854e88aa816b"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-stream/base-repeat/manifest.json",
+            "bytes": 197949,
+            "sha256": "0d9e599acbcdd6f3cecb0feb3fe60acffd15d6764487550a99b8d4127a928189"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-stream/base-repeat/records.jsonl",
+            "bytes": 17768023,
+            "sha256": "c841b5c1556366af410370e465534cd7f9f6b6bbc9b23dbaed678ed2be3c703f"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-stream/candidate/manifest.json",
+            "bytes": 197949,
+            "sha256": "6ffbbc957e9a7b4788f6e0d20e4ed66e594fafca6735ed006e10e30177353548"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-stream/candidate/records.jsonl",
+            "bytes": 17768023,
+            "sha256": "5bfdefd942875e8cce5bb066350805b6973820db417972f94fb1dc4b63585a64"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/duplex.ifc",
+      "input_sha256": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+      "mode": "instanced",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 27,
+        "layer_meshes": 0,
+        "materials": 271,
+        "meshes": 459,
+        "pixel_textures": 0,
+        "polylines": 695,
+        "property_sets": 1459,
+        "texts": 0,
+        "triangles": 22746,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 36532
+      },
+      "scene_sha256": "d6ecf9af0773133b3acdad06e94724390a315c5fa21f35f8e298854bd9a17624",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-instanced/base/manifest.json",
+            "bytes": 192512,
+            "sha256": "0120dff6fddb05503e2e3aa360fbd4caa629d2be3e1cbebac135633e89ca1751"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-instanced/base/records.jsonl",
+            "bytes": 14819876,
+            "sha256": "7c36c6ac3aeb80627aa994e593c9a39fe83b5d81bbef99b7172b9895abb820db"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-instanced/base-repeat/manifest.json",
+            "bytes": 192512,
+            "sha256": "64f8a0e442befd8637ff537619c047bfbff63d8c6ae841c21f538423f111083f"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-instanced/base-repeat/records.jsonl",
+            "bytes": 14819876,
+            "sha256": "fd7ce6092133ab5d0726099b7e0a53e2ae09aeeef9b32673ed42b8c37564054e"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-instanced/candidate/manifest.json",
+            "bytes": 192512,
+            "sha256": "fe7dea921b7c638a045dd269b87444e349ba1be17fff95b5febd1c20705eba44"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-instanced/candidate/records.jsonl",
+            "bytes": 14819876,
+            "sha256": "14f303b14c36efb034bab872a116aac21b5f583dcb7aa567d2180f40f11631c4"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/duplex.ifc",
+      "input_sha256": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+      "mode": "fastfirst",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 1,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 271,
+        "meshes": 486,
+        "pixel_textures": 0,
+        "polylines": 695,
+        "property_sets": 1459,
+        "texts": 0,
+        "triangles": 30374,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 51578
+      },
+      "scene_sha256": "da9f17aa3b8e3402c8ca807aa2f7e76f8d3d3096fb8311f02948c16fb66c8476",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-fastfirst/base/manifest.json",
+            "bytes": 197781,
+            "sha256": "9cdc8c1be537723af96827641d4b6689d498e75a4845d87b638e450a4adf136f"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-fastfirst/base/records.jsonl",
+            "bytes": 17723333,
+            "sha256": "4041a44e36c0f24cdb11a2cf46da47255ea04ed3e9398f8f66972ce1c0e4bd20"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-fastfirst/base-repeat/manifest.json",
+            "bytes": 197781,
+            "sha256": "899e2ecd772904b084019d08ba2eb889b53d9536abdd5b07f0756ef474ad004e"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-fastfirst/base-repeat/records.jsonl",
+            "bytes": 17723333,
+            "sha256": "efd22247e7796131954b333139a18f29efa1df7d684cbf45b9f2cbe90b70acf6"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-fastfirst/candidate/manifest.json",
+            "bytes": 197781,
+            "sha256": "33bf63fc894adc67c8d3f64be8484066949f26ad47c5f228e75225792730bc2c"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/duplex-b347a2c8aa8f-fastfirst/candidate/records.jsonl",
+            "bytes": 17723334,
+            "sha256": "a4a35678bbe7204e8de77119d0845baac3e589a1bf18cb7a917a7949293bb837"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/various/rvt01.ifc",
+      "input_sha256": "a83e9aacb43c7f82955ee3ba650ec66dc24af552924ec058e1b0c49a76180ee6",
+      "mode": "full",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 1192,
+        "meshes": 1702,
+        "pixel_textures": 0,
+        "polylines": 415,
+        "property_sets": 2441,
+        "texts": 0,
+        "triangles": 89885,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 132167
+      },
+      "scene_sha256": "0b69cb10a6db4723a482a20635590809271c9afc02a6e1bf71a73fcbf3d686e4",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-full/base/manifest.json",
+            "bytes": 582540,
+            "sha256": "21e1b6f8ef7b8ff23347467f993bace3bbf582f22de7fe702dd49deac10d86a9"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-full/base/records.jsonl",
+            "bytes": 38114198,
+            "sha256": "b595c140dbf9c97e672727fe249fc58b6e2ab076465b86c6caf6576a680db04b"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-full/base-repeat/manifest.json",
+            "bytes": 582540,
+            "sha256": "4f390937c40e2298c671370b0399ca48a0d3e5bbeadd995252fbce153100dd69"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-full/base-repeat/records.jsonl",
+            "bytes": 38114199,
+            "sha256": "dad49f8dcaebca6f2ed8e771cba79bb3616d1a624d7f3d71ca0c653c78686ef8"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-full/candidate/manifest.json",
+            "bytes": 582540,
+            "sha256": "7b854d27d515b6ea73f3406f771455301424fb75d9aff83db9c6456317590b96"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-full/candidate/records.jsonl",
+            "bytes": 38114198,
+            "sha256": "da9be8552cc28fbf0e59d0585b29a30a0f69246875f6395a06ed2dc45d99dbc8"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/various/rvt01.ifc",
+      "input_sha256": "a83e9aacb43c7f82955ee3ba650ec66dc24af552924ec058e1b0c49a76180ee6",
+      "mode": "stream",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 1192,
+        "meshes": 1702,
+        "pixel_textures": 0,
+        "polylines": 415,
+        "property_sets": 2441,
+        "texts": 0,
+        "triangles": 89885,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 132167
+      },
+      "scene_sha256": "d3b51452d3e45b7603aed347a9528f95ed942816fb2c439904c1881b907f2124",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-stream/base/manifest.json",
+            "bytes": 681917,
+            "sha256": "5ee36be436563c52ed43e48ac404e841992447047e7c1190dd892f808f18b675"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-stream/base/records.jsonl",
+            "bytes": 38220792,
+            "sha256": "eab53b64f270049386f89fe9f1f5e4ae2476f30c4f68d3b0dbdd361d6ed4e2bd"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-stream/base-repeat/manifest.json",
+            "bytes": 681917,
+            "sha256": "4cf933d8f5b1058c925b9e3f47846fe8d92b99973ce88cd2670e53d38ca6076f"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-stream/base-repeat/records.jsonl",
+            "bytes": 38220793,
+            "sha256": "41347c793d09423da01c6798b9b79b248e1a24c33514d2e07e1fabfe03feaf1a"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-stream/candidate/manifest.json",
+            "bytes": 681917,
+            "sha256": "e1670de9e935ebf827aace3464035b829d351244e265526943764ade63f15a54"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-stream/candidate/records.jsonl",
+            "bytes": 38220793,
+            "sha256": "e2f066e3080f49210cbb81fa429b3d2b51cdc2b164d3d7ad5f79dcc8a7d11b1b"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/various/rvt01.ifc",
+      "input_sha256": "a83e9aacb43c7f82955ee3ba650ec66dc24af552924ec058e1b0c49a76180ee6",
+      "mode": "instanced",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 1192,
+        "meshes": 1702,
+        "pixel_textures": 0,
+        "polylines": 415,
+        "property_sets": 2441,
+        "texts": 0,
+        "triangles": 89885,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 132167
+      },
+      "scene_sha256": "d86a50da4a42fc73639e7ce903d69da7d8dfc76206d595bc1f9934f1d71c6af4",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-instanced/base/manifest.json",
+            "bytes": 681920,
+            "sha256": "d6eebae852db553151cd5b187fd253203454611b8b163bddf700a527fc1bd0f9"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-instanced/base/records.jsonl",
+            "bytes": 38220792,
+            "sha256": "e63c8ac1093fd7d21b3e74912eef3438ad3f15e6d39c0d9b9c880158ae52d7b3"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-instanced/base-repeat/manifest.json",
+            "bytes": 681920,
+            "sha256": "341f1472b12995e6e399e07f28460a4481097968ccb02b7e6c43000d874cb038"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-instanced/base-repeat/records.jsonl",
+            "bytes": 38220792,
+            "sha256": "7aae92ef604c77cbe220f279731754da724d132305c603289ee3dd2cedc08e76"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-instanced/candidate/manifest.json",
+            "bytes": 681920,
+            "sha256": "0c5a7665281e0b583bb3a0418e35c33033321d94ca6fc9e908aa0530cb80fe9c"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-instanced/candidate/records.jsonl",
+            "bytes": 38220791,
+            "sha256": "5100d4b6bd05e6da9ab82486844900f26795553e997ca89f3913cd6a7742ff43"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/various/rvt01.ifc",
+      "input_sha256": "a83e9aacb43c7f82955ee3ba650ec66dc24af552924ec058e1b0c49a76180ee6",
+      "mode": "fastfirst",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 1,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 1192,
+        "meshes": 1702,
+        "pixel_textures": 0,
+        "polylines": 415,
+        "property_sets": 2441,
+        "texts": 0,
+        "triangles": 89885,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 132167
+      },
+      "scene_sha256": "4fdc187b2902b795f0b6cb204a51c73c6e1213a347f00f6f335759bfb631f5f2",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-fastfirst/base/manifest.json",
+            "bytes": 679076,
+            "sha256": "6d829cf21820c14df59b4b38f545765a134e838303294f92a314a513a41b8a08"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-fastfirst/base/records.jsonl",
+            "bytes": 38077743,
+            "sha256": "57b71cc20471133336476102d8fe4c9668c1358dd895e946d26811b78741faae"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-fastfirst/base-repeat/manifest.json",
+            "bytes": 679076,
+            "sha256": "0bac2c5f14bd79e6bedcfdc99c812358b1e51e833449328b5b55609957bd07ee"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-fastfirst/base-repeat/records.jsonl",
+            "bytes": 38077743,
+            "sha256": "9787d752ada74f404739517d300c25c9bbb7cfe564b67e034d4d122af178aac7"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-fastfirst/candidate/manifest.json",
+            "bytes": 679076,
+            "sha256": "71b6835c8d8c15250f141b92b7143e11d2d6271ad02768a23da4d1c8ae508768"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/rvt01-a83e9aacb43c-fastfirst/candidate/records.jsonl",
+            "bytes": 38077743,
+            "sha256": "795e1512d183426980b694e5ae1cb5c2dd5723b074240df8d04025e93aff9cfd"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/wall-with-opening-and-window.ifc",
+      "input_sha256": "73b0e45d931d5dc13bfee5fdc7bd80f796526445458b2de74c4168d209097832",
+      "mode": "full",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 3,
+        "meshes": 3,
+        "pixel_textures": 0,
+        "polylines": 1,
+        "property_sets": 2,
+        "texts": 0,
+        "triangles": 56,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 96
+      },
+      "scene_sha256": "bde3eb24b5b234a23030021d4d35aeeee71d09491d4a6666a2372ec894c37a50",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-full/base/manifest.json",
+            "bytes": 6231,
+            "sha256": "7892eb46a451a4924b128a6278a4bb3e504bfa8c022d99ea5011bd2e5987b470"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-full/base/records.jsonl",
+            "bytes": 54798,
+            "sha256": "cd7c43899b6039fd1bfe6bf4addc980f6deb50088175da2b38fc4026b557384b"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-full/base-repeat/manifest.json",
+            "bytes": 6231,
+            "sha256": "7892eb46a451a4924b128a6278a4bb3e504bfa8c022d99ea5011bd2e5987b470"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-full/base-repeat/records.jsonl",
+            "bytes": 54798,
+            "sha256": "cd7c43899b6039fd1bfe6bf4addc980f6deb50088175da2b38fc4026b557384b"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-full/candidate/manifest.json",
+            "bytes": 6231,
+            "sha256": "ac61d0615219426a450ed05b535a5f6b3ec05a7e564131e974941ffaa0e19128"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-full/candidate/records.jsonl",
+            "bytes": 54798,
+            "sha256": "d4c4616332a84fa403b2974f7dfeb2c3a8fb324f703fbf59a8a234cddc6384f2"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/wall-with-opening-and-window.ifc",
+      "input_sha256": "73b0e45d931d5dc13bfee5fdc7bd80f796526445458b2de74c4168d209097832",
+      "mode": "stream",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 3,
+        "meshes": 3,
+        "pixel_textures": 0,
+        "polylines": 1,
+        "property_sets": 2,
+        "texts": 0,
+        "triangles": 56,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 96
+      },
+      "scene_sha256": "82265d29a42bfc4409331e1a2032d444dabd06c4383b99c190c2af43d5ceec31",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 0,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-stream/base/manifest.json",
+            "bytes": 6404,
+            "sha256": "5cc39ee4b774acdc2cb2ded9216b157fa8cc46ab9db943db9c405627c4167c13"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-stream/base/records.jsonl",
+            "bytes": 55978,
+            "sha256": "3bf2b00f53ef77dcf3772b85155feb6863a28563f88d7ad96a3ad651c346e462"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-stream/base-repeat/manifest.json",
+            "bytes": 6404,
+            "sha256": "b258a56ac96ce731575202e29ae460d50030154a0ed2e41761349550d30e0ec0"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-stream/base-repeat/records.jsonl",
+            "bytes": 55978,
+            "sha256": "2e94cd8516254fdea67961ebd53b5e4281e93eb53f8fb2960f4bdb8d49a87b33"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-stream/candidate/manifest.json",
+            "bytes": 6404,
+            "sha256": "5cc39ee4b774acdc2cb2ded9216b157fa8cc46ab9db943db9c405627c4167c13"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-stream/candidate/records.jsonl",
+            "bytes": 55978,
+            "sha256": "3bf2b00f53ef77dcf3772b85155feb6863a28563f88d7ad96a3ad651c346e462"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/wall-with-opening-and-window.ifc",
+      "input_sha256": "73b0e45d931d5dc13bfee5fdc7bd80f796526445458b2de74c4168d209097832",
+      "mode": "instanced",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 3,
+        "meshes": 3,
+        "pixel_textures": 0,
+        "polylines": 1,
+        "property_sets": 2,
+        "texts": 0,
+        "triangles": 56,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 96
+      },
+      "scene_sha256": "d1b8a62ff676ce6daffd61af6102cde7b4f6b88659de43ba0d06191fbb09fde9",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-instanced/base/manifest.json",
+            "bytes": 6407,
+            "sha256": "fecd4fbcb475f795af3e6be4e30bae405d53f9bc5c1800ff5d4df330caf0bab7"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-instanced/base/records.jsonl",
+            "bytes": 55977,
+            "sha256": "c194f1306b086abf8377e41ce0459bce4820fae530f4d9cad06b61b09e89d969"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-instanced/base-repeat/manifest.json",
+            "bytes": 6407,
+            "sha256": "8a2d18a9a2af4e969bdbe21bd6cc4f76e0cfc051cdeb34426c8b33b7c702d8f9"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-instanced/base-repeat/records.jsonl",
+            "bytes": 55977,
+            "sha256": "b0cd0aad93c132db465d41909adf14f411c4d7f3bdb0dcc92eace676d932e20b"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-instanced/candidate/manifest.json",
+            "bytes": 6407,
+            "sha256": "8a2d18a9a2af4e969bdbe21bd6cc4f76e0cfc051cdeb34426c8b33b7c702d8f9"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-instanced/candidate/records.jsonl",
+            "bytes": 55977,
+            "sha256": "b0cd0aad93c132db465d41909adf14f411c4d7f3bdb0dcc92eace676d932e20b"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/wall-with-opening-and-window.ifc",
+      "input_sha256": "73b0e45d931d5dc13bfee5fdc7bd80f796526445458b2de74c4168d209097832",
+      "mode": "fastfirst",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 3,
+        "meshes": 3,
+        "pixel_textures": 0,
+        "polylines": 1,
+        "property_sets": 2,
+        "texts": 0,
+        "triangles": 56,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 96
+      },
+      "scene_sha256": "f6091e2ffc87004d8a68fd7d09393ad327dc93797247ee47834951aa21307f70",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 0,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-fastfirst/base/manifest.json",
+            "bytes": 6572,
+            "sha256": "03af2bcd9b3088cbdc6408e606b859f3b5321ab6c696c93ac586f9252d259f9e"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-fastfirst/base/records.jsonl",
+            "bytes": 56030,
+            "sha256": "87175ddf79cd7e96b3500c130e585bcf82057506513d23be2016f07e806a86bb"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-fastfirst/base-repeat/manifest.json",
+            "bytes": 6572,
+            "sha256": "ad3bf3b38d4806284c2f60d297c990ba500019a609ae241853f9eba014103e2f"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-fastfirst/base-repeat/records.jsonl",
+            "bytes": 56030,
+            "sha256": "f9e018559ae35e703fd116b17872b02fe10fbd6f72b5260ecd6747942fc20666"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-fastfirst/candidate/manifest.json",
+            "bytes": 6572,
+            "sha256": "03af2bcd9b3088cbdc6408e606b859f3b5321ab6c696c93ac586f9252d259f9e"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-scene-real/wall-with-opening-and-window-73b0e45d931d-fastfirst/candidate/records.jsonl",
+            "bytes": 56030,
+            "sha256": "87175ddf79cd7e96b3500c130e585bcf82057506513d23be2016f07e806a86bb"
+          }
+        }
+      }
+    }
+  ],
+  "qualified": 44,
+  "case_count": 44,
+  "observed_totals": {
+    "color_updates": 5,
+    "fills": 0,
+    "instances": 133,
+    "layer_meshes": 0,
+    "materials": 6180,
+    "meshes": 10059,
+    "pixel_textures": 8,
+    "polylines": 5436,
+    "property_sets": 16832,
+    "texts": 260,
+    "triangles": 558192,
+    "type_meshes": 12,
+    "url_textures": 4,
+    "uv_meshes": 12,
+    "vertices": 869902
+  },
+  "unwitnessed": [
+    "fills",
+    "layer_meshes"
+  ],
+  "final_library_sha256": {
+    "base": {
+      "ifc_lite_core": "a414ffcd8475301d7704145b440ec7f7e05f9f4a9e336301c0f31208f3e801b5",
+      "ifc_lite_geometry": "3ea2d4671bf8810b1deb7b9ba9b3f438b6437171d185db815b48d6f93b615b21",
+      "ifc_lite_processing": "44ff20c67bc366a3f0742c9d58a26bc0e0e51e3d79ffc2bc9ee61716aba557b3",
+      "serde": "f0cab349843a98de6694f20e773728e488f02625bb4f6dc5a812bd55b937335d",
+      "serde_json": "2982ce89ec152e810879351d90de820370b44a97eeccf3fcd2c0322247fd3c0d",
+      "sha2": "e91112f5d4762288c2bf5ec09bc832e67df0c03f251e081b754f3aab3209d5cc"
+    },
+    "candidate": {
+      "ifc_lite_core": "882fd9855d407a51c6a6a2fe5d69f782578775f805ab801fde5fbb4315d9e1ef",
+      "ifc_lite_geometry": "0a6d5122f92f1dc7b1ba21c6b0b3197315c1af50ba3bf9a993dbf32a96934f3a",
+      "ifc_lite_processing": "bffb8b3ea5133a12effb9b4594ad1877cc0685386154b180eec9a3b66e5a861a",
+      "serde": "d5b3ac3006edeb2f7c7414235dc3c2bd70c22f9377ed0fe247cb237b13e38cb0",
+      "serde_json": "7e8525ec1d719c6ed8f8a0e1b07ec4a831f53df32c33ffdf7b70d4acda68cfd1",
+      "sha2": "e91112f5d4762288c2bf5ec09bc832e67df0c03f251e081b754f3aab3209d5cc"
+    }
+  },
+  "consumer_build_receipt_sha256": "5659185c30e613a0c5831232b227ada7bd8f6e2bc98b77ea033a0605188d1380",
+  "runner_sha256": "1d76aae1139e114167b21df45fc825383e2ffacd42290447ec9adedadffdee43",
+  "finalizer_sha256": "c0a81253ef0bd22bafca891e1625e6ef9f67463d15fccaa84929ce154dac84be",
+  "limitations": [
+    "public full-pass aggregates do not expose per-element hashes/refusal chronology",
+    "external image reference equality does not prove image resolution",
+    "source material-definition graph is not fully exposed; extracted associations are compared",
+    "coverage is limited to the listed actual inputs/modes and positive witnesses; no performance claim",
+    "IFCX and USD have separate actual-consumer evidence"
+  ]
+}

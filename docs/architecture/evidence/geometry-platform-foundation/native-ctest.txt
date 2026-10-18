@@ -1,0 +1,10 @@
+Internal ctest changing into directory: /tmp/ifclite-smlib-adapter-native
+Test project /tmp/ifclite-smlib-adapter-native
+    Start 1: smlib_worker_framing
+1/2 Test #1: smlib_worker_framing .............   Passed    0.04 sec
+    Start 2: smlib_owned_boundary
+2/2 Test #2: smlib_owned_boundary .............   Passed    0.19 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Total Test time (real) =   0.22 sec

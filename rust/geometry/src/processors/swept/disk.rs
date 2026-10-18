@@ -9,6 +9,9 @@ use crate::{
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use crate::router::GeometryProcessor;
+#[path = "disk_plan.rs"]
+mod plan;
+pub(crate) use plan::SweptDiskPlan;
 
 // Two directrix samples closer than this (model units) are one point for
 // tangent purposes: their difference has no usable direction (#5191).
@@ -246,16 +249,13 @@ impl SweptDiskSolidProcessor {
             profile_processor: ProfileProcessor::new(schema),
         }
     }
-}
 
-impl GeometryProcessor for SweptDiskSolidProcessor {
-    fn process(
-        &self,
-        entity: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        _schema: &IfcSchema,
+    /// Resolve the existing directrix sampling and admission into owned raw-file
+    /// construction inputs. No router scale or occurrence placement is applied.
+    pub(crate) fn lower(
+        &self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
         quality: TessellationQuality,
-    ) -> Result<Mesh> {
+    ) -> Result<Option<SweptDiskPlan>> {
         // IfcSweptDiskSolid attributes:
         // 0: Directrix (IfcCurve) - the path to sweep along
         // 1: Radius (IfcPositiveLengthMeasure) - outer radius
@@ -297,36 +297,23 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
         )?;
 
         if !directrix_is_sweepable(&curve_points)? {
-            return Ok(Mesh::new());
+            return Ok(None);
         }
 
-        // Generate tube mesh by sweeping circle along curve
-        // 24 segments around the circle at Medium; scaled by quality.
         let segments = scale_segments(24, 8, 96, quality);
-        let (positions, indices) = build_tube(&curve_points, radius, inner_radius, segments);
+        Ok(Some(SweptDiskPlan { curve_points, radius, inner_radius, segments }))
+    }
+}
 
-        let mut mesh = Mesh {
-            positions,
-            normals: Vec::new(),
-            indices,
-            rtc_applied: false,
-            origin: [0.0; 3],
-            welded_in_object_frame: false,
-            plane_tags: None,
-        instance_meta: None, local_bounds: None, local_to_world: None };
-
-        // Ship smooth per-vertex normals, computed here in the directrix-local
-        // frame where the coordinates are small (0..directrix-length) and so
-        // precise. Without this the swept-disk mesh carried empty normals and
-        // downstream consumers recomputed them from world-space f32 positions.
-        // At a georef-scale placement (national-grid rebar sits ~6 km from the
-        // origin) the edge differences `v1 - v0` cancel catastrophically — the
-        // tube renders as a field of specular sparkles. A round tube wants
-        // smooth (area-weighted) normals, unlike the crease-heavy revolved
-        // solid which is flat-shaded. (#1164)
-        crate::calculate_normals(&mut mesh);
-
-        Ok(mesh)
+impl GeometryProcessor for SweptDiskSolidProcessor {
+    fn process(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        _schema: &IfcSchema,
+        quality: TessellationQuality,
+    ) -> Result<Mesh> {
+        Ok(self.lower(entity, decoder, quality)?.map_or_else(Mesh::new, |plan| plan.evaluate()))
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

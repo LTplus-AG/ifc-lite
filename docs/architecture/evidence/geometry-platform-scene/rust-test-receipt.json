@@ -1,0 +1,31 @@
+{
+  "command": [
+    "rustc",
+    "--edition=2021",
+    "-C",
+    "panic=abort",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tools/smlib-evaluation/scene-comparison/src/main.rs",
+    "-L",
+    "dependency=/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps",
+    "-o",
+    "/tmp/ifclite-scene-build/scene-tests",
+    "--extern",
+    "ifc_lite_core=/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libifc_lite_core-345be4fab942851b.rlib",
+    "--extern",
+    "ifc_lite_geometry=/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libifc_lite_geometry-a1b48094c7fc8649.rlib",
+    "--extern",
+    "ifc_lite_processing=/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libifc_lite_processing-915d2910f76c184d.rlib",
+    "--extern",
+    "serde=/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libserde-e3cc15af0a9b0193.rlib",
+    "--extern",
+    "serde_json=/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libserde_json-8db63b8bd7d1e60b.rlib",
+    "--extern",
+    "sha2=/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libsha2-704a646f6b16e0bb.rlib",
+    "--test",
+    "-Z",
+    "panic_abort_tests"
+  ],
+  "exit": 0,
+  "test_executable_sha256": "ad58e647c731dfc9513410c2d6f0d861ce943e5a4825a23f0bf267a19542b624",
+  "log_sha256": "7664023c5e31afde365cab60e9a23e38cd2d006e4a8d482a71d57b9443401998"
+}

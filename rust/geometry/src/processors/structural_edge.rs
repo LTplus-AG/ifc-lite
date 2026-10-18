@@ -10,11 +10,14 @@
 
 use crate::router::GeometryProcessor;
 use crate::{Mesh, Result};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::{Point3, Vector3};
 use std::collections::HashSet;
 
 use super::advanced_face::edge_loop::sample_edge_curve_points;
+#[path = "structural_edge_plan.rs"]
+mod plan;
+pub(crate) use plan::EdgePlan;
 
 /// Half-width of the rendered ribbon, in file length units. Matches the
 /// convention documented at `alignment::RIBBON_HALF_WIDTH_FILE_UNITS`
@@ -41,6 +44,16 @@ impl IfcEdgeProcessor {
     pub fn new() -> Self {
         Self
     }
+
+    /// Own sampled f64 edge points before the existing ribbon frame/output
+    /// arithmetic. The plan retains no decoder or file-supplied references.
+    pub(crate) fn lower(
+        &self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        quality: crate::TessellationQuality,
+    ) -> Result<EdgePlan> {
+        let points = resolve_edge_points(entity, decoder, quality, 0, &mut HashSet::new())?;
+        Ok(EdgePlan { points })
+    }
 }
 
 impl Default for IfcEdgeProcessor {
@@ -57,8 +70,7 @@ impl GeometryProcessor for IfcEdgeProcessor {
         _schema: &IfcSchema,
         quality: crate::TessellationQuality,
     ) -> Result<Mesh> {
-        let points = resolve_edge_points(entity, decoder, quality, 0, &mut HashSet::new())?;
-        Ok(ribbon_mesh(&points))
+        Ok(self.lower(entity, decoder, quality)?.evaluate())
     }
 
     fn supported_types(&self) -> Vec<IfcType> {
@@ -99,7 +111,7 @@ fn resolve_edge_points(
             })
         }
         IfcType::IfcOrientedEdge => {
-            let edge_id = edge.get_ref(2).ok_or_else(|| {
+            let edge_id = edge.ref_at(slot::IfcOrientedEdge::EDGE_ELEMENT).ok_or_else(|| {
                 crate::Error::geometry(format!("IfcOrientedEdge #{} missing EdgeElement", edge.id))
             })?;
             let underlying = decoder.decode_by_id(edge_id)?;
@@ -111,15 +123,15 @@ fn resolve_edge_points(
             }
             let mut points =
                 resolve_edge_points(&underlying, decoder, quality, depth + 1, visited)?;
-            let orientation = edge.get_bool(3).unwrap_or(true);
+            let orientation = edge.logical_at(slot::IfcOrientedEdge::ORIENTATION).unwrap_or(true);
             if !orientation {
                 points.reverse();
             }
             Ok(points)
         }
         _ if edge.ifc_type.is_subtype_of(IfcType::IfcEdge) => Ok(vec![
-            resolve_vertex_point(edge, 0, decoder)?,
-            resolve_vertex_point(edge, 1, decoder)?,
+            resolve_vertex_point(edge, slot::IfcEdge::EDGE_START.index(), decoder)?,
+            resolve_vertex_point(edge, slot::IfcEdge::EDGE_END.index(), decoder)?,
         ]),
         _ => Err(crate::Error::geometry(format!(
             "Expected IfcEdge, got {} #{}",
@@ -281,7 +293,7 @@ fn resolve_vertex_point(
             edge.id, vertex_id, vertex.ifc_type
         )));
     }
-    let point_id = vertex.get_ref(0).ok_or_else(|| {
+    let point_id = vertex.ref_at(slot::IfcVertexPoint::VERTEX_GEOMETRY).ok_or_else(|| {
         crate::Error::geometry(format!(
             "IfcVertexPoint #{} missing VertexGeometry",
             vertex.id
@@ -294,7 +306,7 @@ fn resolve_vertex_point(
             vertex.id, point_id, point.ifc_type
         )));
     }
-    let coords = point.get_list(0).ok_or_else(|| {
+    let coords = point.get_list(slot::IfcCartesianPoint::COORDINATES.index()).ok_or_else(|| {
         crate::Error::geometry(format!(
             "IfcCartesianPoint #{} missing coordinates",
             point.id

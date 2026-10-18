@@ -1103,6 +1103,7 @@ export class IfcAPI {
      * Thin wrapper over [`IfcAPI::produce_batch`]; converts each produced mesh
      * to MeshDataJs (the IFC Z-up→WebGL Y-up rotation with preserved winding happens
      * there). Flat indices preserve source order through this proper rotation.
+     * Synchronous Rust compatibility entry; this call creates its own live snapshot.
      */
     processGeometryBatch(data: Uint8Array, jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): MeshCollection;
     /**
@@ -1122,6 +1123,7 @@ export class IfcAPI {
      * co-locates identical geometry on one worker, so per-batch collation
      * captures ~all the dedup and no cross-batch merge is needed. Returns empty
      * bytes only when the batch produced zero non-empty meshes.
+     * Synchronous Rust compatibility entry; this call creates its own live snapshot.
      */
     processGeometryBatchInstanced(data: Uint8Array, jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): Uint8Array;
     /**
@@ -1139,6 +1141,7 @@ export class IfcAPI {
      * / lens overlays on instanced geometry) before the worker calls this in
      * place of processGeometryBatch — otherwise those features break for the
      * opaque bulk. See the instanced-only follow-ups.
+     * Synchronous Rust compatibility entry; this call creates its own live snapshot.
      */
     processGeometryBatchPartitioned(data: Uint8Array, jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): PartitionedBatch;
     /**

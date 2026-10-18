@@ -1,0 +1,142 @@
+{
+  "files": {
+    "candidate-build.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "fzk-3-base.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "main.rs": {
+      "sha256": "8b219276f73b633dd1e481d0ad54b387105d32e69e8a806ef3f09626b5018144",
+      "bytes": 5058
+    },
+    "fzk-1-candidate-rss.txt": {
+      "sha256": "1def5002df751ad15788dcc0629d3ec42a7b8f5f439d837af3a0b8e74c057e1b",
+      "bytes": 6
+    },
+    "fzk-2-candidate.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "holter-1-candidate.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "summary.json": {
+      "sha256": "cfee193da36593000ddee161e0ea61caa58f1d6489486a36a3a063fe2f8a753d",
+      "bytes": 11202
+    },
+    "fzk-2-candidate.json": {
+      "sha256": "02bca3f367792f940f73c57a03faf67ff2e341474c02de436d251dd9c6c533a3",
+      "bytes": 8225
+    },
+    "holter-2-candidate-rss.txt": {
+      "sha256": "557192aedaa4e9c25721c24fc942e752746efe0916f093a9f31c613bac835509",
+      "bytes": 7
+    },
+    "fzk-0-base-rss.txt": {
+      "sha256": "9729f2d9bfa864ad90ddbb6e43dbeb798bbe8230a016dd52a0104323f24b2d3a",
+      "bytes": 6
+    },
+    "fzk-1-candidate.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "fzk-0-base.json": {
+      "sha256": "923c278dbc438e94636a18ccf1ba37aa7e2bbe563b7f84cbfe4cdb09a895066b",
+      "bytes": 8225
+    },
+    "fzk-2-candidate-rss.txt": {
+      "sha256": "76bdf7428fdf2d6c3c448360b4b2f038929815a0461c05a73160a1560d95d3d0",
+      "bytes": 6
+    },
+    "holter-2-candidate.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "holter-3-base.json": {
+      "sha256": "26c38264f026079f5bcd49d0327a9c02673b3106c6939dc8306331b6a9bf0033",
+      "bytes": 8595
+    },
+    "fzk-1-candidate.json": {
+      "sha256": "02bca3f367792f940f73c57a03faf67ff2e341474c02de436d251dd9c6c533a3",
+      "bytes": 8225
+    },
+    "fzk-0-base.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "fzk-3-base-rss.txt": {
+      "sha256": "aaefc14e77a278fe604e76eb05e724d2ec3abac5e297a0e27a24190b6182884d",
+      "bytes": 6
+    },
+    "holter-0-base.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "holter-0-base-rss.txt": {
+      "sha256": "cc3c5526f0226088fa9f3536d6be8bc7002c1ebdfda1239717da83d8d6e5b7b5",
+      "bytes": 7
+    },
+    "build-receipt.json": {
+      "sha256": "66a97d8eef966c8e2f5d12b717fb9304d2ab533ebdf098ee355d2d68b0583bbd",
+      "bytes": 8108
+    },
+    "base-build.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "run.py": {
+      "sha256": "92c50b6ed77697f891fa5c4da7c27738df02772071de3edc738cede098beaf26",
+      "bytes": 5445
+    },
+    "driver.log": {
+      "sha256": "1b4404c745ce9fd04114adbd506c10d415434fb464e4f5317ab7ac8fd4d64290",
+      "bytes": 2714
+    },
+    "holter-1-candidate.json": {
+      "sha256": "d2088f1b7b1babc15923c45d9f1c179a7a3d73943add8cb55c626539b4cb0707",
+      "bytes": 8614
+    },
+    "fzk-3-base.json": {
+      "sha256": "785b024e05d327818d28f35b9543fbb8b5176b35a993b83cea2c7c6adba6d97b",
+      "bytes": 8225
+    },
+    "fingerprint.rs": {
+      "sha256": "150056cd6fae4bc5d413a55082d507cef67796f8a087fbf11c212c92ee1a2589",
+      "bytes": 3428
+    },
+    "holter-1-candidate-rss.txt": {
+      "sha256": "af7219dca190d661032dcddc68984454658c437effc38b408edaa1354b3482a2",
+      "bytes": 7
+    },
+    "holter-0-base.json": {
+      "sha256": "ac94c8afdd047dd721eaae464feecdcd90e8bbb66656323a2ee47e098e4014d6",
+      "bytes": 8595
+    },
+    "README.md": {
+      "sha256": "f3e39e53d0f0080729dbbc6ba884957f9dec406a4166023ea3fece04e2e66438",
+      "bytes": 3195
+    },
+    "holter-3-base.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "holter-2-candidate.json": {
+      "sha256": "5580f510b4e83300db30890d9fea971e26022acf7d25186fad3eaf4270585346",
+      "bytes": 8614
+    },
+    "holter-3-base-rss.txt": {
+      "sha256": "921cbbf2952d61721c569e4c56d65ee523d3e3cb634224da4a3aa1f05addbd84",
+      "bytes": 7
+    },
+    "receipt.json": {
+      "sha256": "822c33fa530df5f47508fd31efa00ca8b9f9b73b84b02a8b2a29b1a065de4d31",
+      "bytes": 105795
+    }
+  },
+  "local_scratch_directory": "/tmp/ifclite-context-allocation-diagnostic",
+  "scope": "Same-source System GlobalAlloc diagnostic only; production files and historical receipts untouched."
+}

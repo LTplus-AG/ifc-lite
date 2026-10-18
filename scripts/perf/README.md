@@ -4060,3 +4060,200 @@ now uses the reviewed first-frame clock contract in both cadence and markers,
 and reads finalized sidecars at their actual case paths. Lesson: verify final
 checker contracts and receipt discovery against retained real captures before
 spending another capture window. This integration fix grants no timing verdict.
+
+## SMLib replacement feasibility
+
+The isolated [SMLib evaluation](../../tools/smlib-evaluation/README.md) builds
+the pinned C++ kernel natively and for browser workers without upstream source
+patches or TBB. Known geometric invariants pass on both targets. This is a new
+curved-BRep fidelity/maintenance mechanism, distinct from the retired Manifold
+mesh accelerator; it is not a measured load-time optimization. No production
+geometry path changed and no end-to-end speedup is claimed.
+
+Lesson: verify optional dependency guards before dismissing browser feasibility,
+and retain local coordinate frames before float32 mesh extraction. Native
+concurrency, adapter overhead, tessellation fidelity and full-worker-pool
+performance remain qualification gates.
+
+## Shared geometry execution foundation
+
+The [platform foundation](../../docs/architecture/geometry-platform-foundation.md)
+keeps the exact engine and adds isolated SMLib execution behind explicit operation
+contracts. Canonical output admission is opt-in and copies geometry buffers; it
+is not an optimization and does not activate a new default meshing path. Default-
+path A/B receipts belong with the foundation evidence, not the published baseline.
+No SMLib throughput or retained-document memory win is claimed.
+
+Lesson: distinguish exact predicate decisions, curved-source fidelity and validated
+output. A successful primitive constructor can still publish a collapsed solid at
+large coordinates; local frames and output admission are necessary. Measure worker
+IPC, retention, copies and upstream tessellation peak memory in the actual future
+pipeline before choosing pool sizing or making speed claims. Buffer-transfer limits
+alone do not bound the kernel's temporary allocations.
+
+The execution-layer follow-up adds opt-in authored-source planning, a shared wire
+encoder and supervised native/browser workers. These do not execute on the default
+load path. Separate source-fingerprinted receipts live under
+`docs/architecture/evidence/geometry-platform-execution/`; default-path comparisons
+remain output-identity evidence, without a qualified latency or memory claim.
+Lesson: deadline/cancellation must be enforced outside the thread blocked on kernel
+IPC. Queue time and initialization belong to the deadline, and completion follows
+owned-process reaping; transfer quotas still do not constrain kernel RAM.
+
+The canonical production-stage migration separates strategy planning, numerical
+execution and presentation assembly while keeping one native/browser entry point.
+An owned extrusion construction replays the current builder without source bytes;
+its profile regions remain explicitly sampled. Preservation receipts live under
+`docs/architecture/evidence/geometry-platform-phases/`. No retained-BRep backend
+or performance baseline is activated by this extraction.
+Lesson: empty geometry is not one outcome. Instance-only success, terminal input
+refusal and a host legitimately consumed by an opening need separate decisions;
+otherwise a generic retry can duplicate or resurrect geometry.
+
+The construction-layer follow-up makes the processor registry authoritative for
+family aliases and dispatch origin, and reuses owned primitive/triangle lowering
+through the current builders. Base-versus-candidate whole-worker-pool comparisons
+on the house, opening-heavy and heavy Holter fixtures retain identical mesh counts
+and ordered payload fingerprints. Parse/geometry/total deltas and source hashes
+live under `docs/architecture/evidence/geometry-platform-construction/`.
+Shared-host timings remain unqualified; this is preservation evidence, without a
+latency, retained-BRep throughput or memory-improvement claim.
+Lesson: owning constructor inputs can remove decoder lifetime coupling without
+changing numerical construction. Keep f32/sample admission, frame policy and
+extension dispatch explicit; mesh fingerprints exclude UVs and instancing, so
+independent presentation and occurrence tests remain necessary.
+
+The owned-operation layer extends shared production lowering to tapered,
+revolved, swept, polygonal and faceted constructors and extracts the existing
+solid/solid boolean numerical policy. The opt-in operation arena shares definitions
+and moves mesh buffers to their last consumer. Raw real-file replay and canonical
+base-versus-candidate comparisons preserve the measured geometry payloads; source,
+parse/geometry/total deltas and buffer-fingerprint receipts live under
+`docs/architecture/evidence/geometry-platform-operations/`. Shared-host timings
+remain unqualified, with no latency, retained-BRep throughput or memory-win claim.
+Lesson: preserve lazy unit discovery when extracting numerical execution. Linear
+graph size also does not imply linear diagnostic output: repeated DAG edges can
+double loss records, so bound new records and copies before allocation and report
+exhaustion without deduplicating real semantic occurrences. Conditional execution
+and source/TLS diagnostic ownership remain required before activating the graph.
+
+The constructor-family layer completes shared production lowering for all
+nineteen leaf families, adds demand-driven raw operation scheduling and retains
+owned source/execution reports on failures. Base-versus-candidate whole-worker-pool
+comparisons on the canonical models, advanced BRep samples and Revit export retain
+identical mesh counts and ordered geometry fingerprints. Source pins, phase deltas,
+raw replay checks and qualification commands live under
+`docs/architecture/evidence/geometry-platform-families/`. Shared-host timings remain
+unqualified; no latency non-regression, memory improvement or retained-engine speed
+claim follows from this layer. Some recorded branch timings are slower; an
+exclusive-runner repeat and profiling remain required before a latency verdict.
+Lesson: separating source admission from numerical construction can preserve every
+mesh while reordering refusal reports. Capture/replay mixed-face reports in their
+original execution order and keep source-only snapshots distinct from attributed
+runtime events. Numerical branch skipping also does not eliminate sampling already
+performed during eager lowering; admission effort, contextual budgets and memory
+still need explicit preservation before graph activation.
+
+The cutter/control extraction owns half-space, bounded-prism and void-shell
+inputs, snapshots production polygonal candidates and separates grouped-cut
+numerics. Base-versus-candidate whole-worker-pool comparisons retain matching
+mesh counts and ordered geometry fingerprints on the same six fixtures; source
+pins and parse/geometry/total deltas live under
+`docs/architecture/evidence/geometry-platform-cutters/`. Shared-host timings remain
+unqualified, with no latency or memory-improvement claim. Separate native
+process high-water samples on three fixtures are recorded in the same directory;
+they do not qualify browser/retained-plan memory or establish process limits.
+Geometry fingerprints still omit presentation and occurrence metadata.
+Lesson: preserve conditional admission through owned continuation requests.
+Eagerly decoding a dormant operand mutates decoder refusal state and may sample
+large inputs; deferring numerical execution or TLS publication cannot undo that
+work. A failed grouped cutter union also owns a diagnostic that sequential
+execution cannot reproduce, unlike provisional trial records that are rewound.
+
+The canonical continuation layer deletes recursive boolean/CSG operand dispatch
+and owns suspended hosts, spines, contextual path/visit state and provisional
+batch marks. Whole-worker-pool comparisons retain matching counts and ordered
+geometry fingerprints on the six measured models; source pins and phase deltas
+live under `docs/architecture/evidence/geometry-platform-continuations/`.
+Native process high-water samples cover three fixtures. Shared-host timing and
+those samples do not establish a latency or memory improvement; retained/browser
+memory and complete presentation/occurrence identity remain separate work.
+Lesson: sharing the CSG diagnostic recorder is safe only with depth-first
+execution and mark-relative rewinds that preserve the parent's prefix. Keep
+release-state mutations outside debug assertions, and qualify explicit work
+queues dynamically because the recursive-reference scanner does not inspect
+their continuation transitions.
+
+The initial owned product session replaces the synchronous strategy orchestrator
+while retaining the same canonical producer and presentation builders. It owns
+job metadata, attempt state, outputs and hashing, and installs owned budget/drop
+counters only for a synchronous poll. Worker-pool comparisons preserve the measured
+geometry counts and fingerprints on six fixtures; source pins and phase deltas
+live under `docs/architecture/evidence/geometry-platform-products/`. Native process
+high-water samples cover three fixtures. Some branch timing samples are slower;
+shared-host timing does not establish a latency verdict or memory improvement.
+Lesson: moving state into a session does not permit moving every drain to a poll.
+CSG records remain grouped by processor until the original final drain, and
+extension mutations of triangle-order mode must survive into the next poll while
+the caller's ambient mode is restored. A live router/cache owner still needs a
+lease, diagnostic provenance and publication barriers before asynchronous work.
+
+### Typed product work and executor ownership
+
+The canonical producer now admits and accepts typed synchronous work with
+exclusive decoder/router reservations, configuration generations, pending TLS
+isolation and sparse actual registry-entry identities. This preserves original
+CSG retry/final drain grouping; acceptance validates the packet before assembly
+and does not replay numerical callbacks or cache insertions. Successful packet
+validation does not establish that complete model context or diagnostic/cache
+effects are portable.
+
+[Work-stage measurements](../../docs/architecture/evidence/geometry-platform-work/)
+compare the full worker-pool path against the same base, interleaved on six real
+models. Mesh counts and ordered geometry fingerprints match; the fingerprints
+omit textures, UVs, instances and text metadata. Shared-host timing remains
+unqualified, including samples with slower candidate phases. Native RSS is
+sampled separately on three models. There is no speedup, memory-reduction or
+latency non-regression verdict. The ownership lesson is to reserve the warm
+executor and validate before presentation while retaining channel-specific drain
+semantics; a scheduling boundary alone does not make its caches or diagnostics
+transportable. Exact arithmetic remains the numerical engine on the default path.
+
+The initial reservation implementation failed the existing zero-allocation warm
+router invariant. Lazy shared state preserves it. Compatibility probes also
+required trusted callback generation commits, lexical children through live
+ancestors, final-hook ambient-state preservation and joined mutable-decoder
+worker borrowing. Exclusive ownership must express the existing extension
+contract before it can safely become a scheduling boundary.
+
+### Owned model inputs and mapped traversal
+
+The canonical native chunks and browser batches now retain immutable production
+input snapshots, while mapped-source traversal owns its continuation frames.
+The [context-layer receipts](../../docs/architecture/evidence/geometry-platform-context-final/)
+record passing native, WASM and installed Python consumers, structured scene
+comparisons and positive material-layer invariants. Interleaved base/candidate
+whole-worker-pool measurements preserve the measured geometry counts and ordered
+fingerprints; those fingerprints omit appearance and occurrence metadata.
+
+Timing remains an unqualified shared-host diagnostic. Results are mixed, and
+the heavy Holter model shows slower candidate execution and higher native peak
+memory. Treat this as an unresolved performance risk requiring controlled
+profiling before cutover, not a latency non-regression or memory-win verdict.
+The process high-water samples do not attribute heap costs or qualify browser
+and retained-plan memory. Lesson: immutable ownership and preserved geometry do
+not establish inexpensive ownership. Measure the canonical consumer, retain the
+heavy case, and identify allocation/copy costs before choosing an optimization;
+these observations alone do not identify the responsible component.
+
+The subsequent
+[requested-allocation diagnostic](../../docs/architecture/evidence/geometry-platform-context-final/allocation-diagnostic/)
+links identical instrumented consumers to the pinned native libraries and runs
+the full worker pool. Holter makes more allocation requests and requests more
+allocation traffic, while retained result bytes match and peak requested live
+bytes do not increase. Whole-process RSS remains higher. This narrows the next
+investigation toward allocation traffic and patterns, without identifying copy
+sites or proving allocator fragmentation or arena behavior. Requested backing
+bytes, actual copied bytes and process RSS are different measurements. Preserve
+the uninstrumented controlled-runner latency gate; allocator instrumentation
+adds contention and cannot qualify timing.

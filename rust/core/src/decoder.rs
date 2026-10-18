@@ -19,6 +19,8 @@ use std::sync::Arc;
 
 #[path = "decoder/caches.rs"]
 mod caches;
+#[path = "decoder/execution.rs"]
+mod execution;
 #[path = "decoder/fast_buffers.rs"]
 mod fast_buffers;
 #[path = "decoder/leaf_read.rs"]
@@ -61,6 +63,7 @@ where
 /// String attributes are decoded lossily when tokens become `AttributeValue`s;
 /// structural scanning and byte offsets always use the original source bytes.
 pub struct EntityDecoder<'a> {
+    pub(crate) execution_owner: crate::execution_owner::ExecutionOwner,
     content: &'a [u8],
     /// Cache of decoded entities (entity_id -> `Arc<DecodedEntity>`)
     /// Using Arc avoids expensive clones on cache hits
@@ -132,6 +135,7 @@ impl<'a> EntityDecoder<'a> {
     {
         let content = content.as_ref();
         Self {
+            execution_owner: Default::default(),
             content,
             cache: FxHashMap::default(),
             entity_index: None,
@@ -158,6 +162,7 @@ impl<'a> EntityDecoder<'a> {
     {
         let content = content.as_ref();
         Self {
+            execution_owner: Default::default(),
             content,
             cache: FxHashMap::default(),
             entity_index: Some(EntityIndexStore::Hash(Arc::new(index))),
@@ -184,6 +189,7 @@ impl<'a> EntityDecoder<'a> {
     {
         let content = content.as_ref();
         Self {
+            execution_owner: Default::default(),
             content,
             cache: FxHashMap::default(),
             entity_index: Some(EntityIndexStore::Hash(index)),
@@ -208,6 +214,7 @@ impl<'a> EntityDecoder<'a> {
     /// decoder does not lazily rebuild it via `build_index`. Set it before any
     /// `decode_by_id`/ref-resolving call; afterwards `build_index` no-ops.
     pub fn set_entity_index(&mut self, index: Arc<EntityIndex>) {
+        self.execution_owner.changed();
         self.entity_index = Some(EntityIndexStore::Hash(index));
     }
 
@@ -282,6 +289,7 @@ impl<'a> EntityDecoder<'a> {
     /// The default stays lossless, so a decoder that is missed behaves as
     /// before rather than silently losing data.
     pub fn with_strict_reals(mut self) -> Self {
+        self.execution_owner.changed();
         self.strict_reals = true;
         self
     }
@@ -500,6 +508,7 @@ impl<'a> EntityDecoder<'a> {
     /// file). The orchestrator resolves both scales once on a warm shared
     /// decoder and seeds each worker decoder here.
     pub fn seed_unit_scales(&mut self, length_unit_scale: f64, plane_angle_to_radians: f64) {
+        self.execution_owner.changed();
         self.length_unit_scale_cache = Some(length_unit_scale);
         self.plane_angle_to_radians_cache = Some(plane_angle_to_radians);
     }
@@ -557,6 +566,7 @@ impl<'a> EntityDecoder<'a> {
     /// total, ~90 ms wall (incurred ONCE at task setup; the parallel
     /// hot path then runs lock-free against the populated cache).
     pub fn inject_shared_cache(&mut self, shared: &FxHashMap<u32, Arc<DecodedEntity>>) {
+        self.execution_owner.changed();
         self.cache.reserve(shared.len());
         for (&id, entity) in shared.iter() {
             self.cache.insert(id, Arc::clone(entity));

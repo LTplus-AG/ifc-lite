@@ -1,0 +1,55 @@
+{
+  "baseRevision": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+  "node": "v24.22.0",
+  "python": "3.12.3",
+  "OpenUSD": "0.26.8",
+  "importerSourceSnapshot": "/tmp/ifclite-scene-ifcx-base/packages/ifcx/src",
+  "dependencySourceRoots": [
+    "packages/ifcx",
+    "packages/data",
+    "packages/encoding",
+    "packages/mutations",
+    "packages/pointcloud",
+    "packages/regex-guard"
+  ],
+  "unchangedDependencySourceProof": "git diff --name-only base -- named packages returned no files",
+  "baseDependencyGitTreeListingSha256": "bfb044e9b4195afcbfe8eb5ed96bba4cb43d80234f7e44aca4c13b4e48d5c184",
+  "dependencyRuntimePolicy": "Both entry snapshots use identical current dependency dist files rebuilt through root pnpm build --filter=@ifc-lite/ifcx (7 successful tasks); this importer lane is separate from Rust geometry.",
+  "baseWasmBuild": "CI=1 pnpm build:wasm in immutable pinned-base checkout; tracked git status unchanged after build",
+  "baseArtifacts": {
+    "/tmp/ifclite-smlib-base-8acd0715a/packages/wasm/pkg/ifc-lite.js": "04c85b1449d8fee992f25f0685170ff03fb4360726fa4e4d2a2d180314c169c0",
+    "/tmp/ifclite-smlib-base-8acd0715a/packages/wasm/pkg/ifc-lite_bg.wasm": "b5f103a8d2992e5d0ee8128579c999c28d746b773a0e8a2c7585e1cabb88b7a9"
+  },
+  "candidateArtifacts": {
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/packages/wasm/pkg/ifc-lite.js": "04c85b1449d8fee992f25f0685170ff03fb4360726fa4e4d2a2d180314c169c0",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/packages/wasm/pkg/ifc-lite_bg.wasm": "e35e5d31656171f583e14443f46e76266da06a2b5827bf0f99e5309d344390cc"
+  },
+  "logs": {
+    "/tmp/ifclite-scene-ifcx-fetch.log": "ac675c0b1f73433c88b5e6800ee3e6a4f07a227690cce781267bf5a8ea16a52a",
+    "/tmp/ifclite-scene-ifcx-turbo-build.log": "281de7b8ea272235dd3a7cf831fac973c23104bde8b9abdcd464b13c8b77c276",
+    "/tmp/ifclite-scene-ifcx-base-wasm-build.log": "003a1428f8c4a93562f57b64824d26da604121fd62f4731cc87ddc6587bf2fe9",
+    "/tmp/ifclite-scene-ifcx-base.log": "a73a4b4d4df7f19c12d13aa501a314151d88b99817997f8562ea74ac848a04dc",
+    "/tmp/ifclite-scene-ifcx-candidate.log": "a73a4b4d4df7f19c12d13aa501a314151d88b99817997f8562ea74ac848a04dc",
+    "/tmp/ifclite-scene-usd-base.log": "7d522170c1efe100bf970637c1f1ad5aad5db68351631a85ab6e8e6fbbbdc294",
+    "/tmp/ifclite-scene-usd-candidate.log": "7d522170c1efe100bf970637c1f1ad5aad5db68351631a85ab6e8e6fbbbdc294",
+    "/tmp/ifclite-scene-usd-semantic.log": "4b896d60f8d61e30d9747ec008509abbb05f579249c63477d44e50ea7e52b9e9"
+  },
+  "localSceneRecords": "Full structured records and USD byte artifacts retained under /tmp/ifclite-scene-ifcx-* and /tmp/ifclite-scene-usd-*; no model buffers or source bytes are embedded in this small receipt.",
+  "harnessSources": {
+    "tools/smlib-evaluation/scene-comparison/ifcx/compare.mjs": "d0cf0bb65bfa0bb01bb9b3a375db07931712d14a29ffa535dd9f0b1d127968c9",
+    "tools/smlib-evaluation/scene-comparison/ifcx/importer.mjs": "f8c77e9f0137ae4c3da05306fdd61fc3df7fd2cd9d2db8b6f1e4329512c771c7",
+    "tools/smlib-evaluation/scene-comparison/ifcx/inventory.py": "40ea68a8091ec919f11faad24c83be0dc561cd9f7988310b28d65e81e423e3c6",
+    "tools/smlib-evaluation/scene-comparison/ifcx/usd-export.mjs": "7edd64f2af72dbe92de6e58234fb8b3199d785fb616dc63537c05f3b6c3d1c90",
+    "tools/smlib-evaluation/scene-comparison/ifcx/usd-semantic.py": "370e388d246458382076b6f1f564505288e1c348c7f4be73f3ff7ad0f35da66b"
+  },
+  "candidateFrozenRustManifest": {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/docs/architecture/evidence/geometry-platform-work/source-manifest.json",
+    "sha256": "8b8b27dfd8c236d3a61d7bbcf2abc9f0edef55231da16382cd3b6f488e0608c8"
+  },
+  "rejectedHarnessAttempt": {
+    "path": "/tmp/ifclite-scene-usd-roundtrip-rejected.log",
+    "sha256": "acf8d521ff782db67f40408d154abeb5d4e6b7c65db22da570464ecbef53f3ac",
+    "scope": "Optional Python OpenUSD layer-roundtrip harness initially dropped a temporary Stage before Export and hit a NULL weak layer pointer. Holding the real Stage alive corrected the harness; original base/candidate exporter and semantic comparisons had already passed. Final complete semantic plus roundtrip run passes seven cases."
+  },
+  "assetConsumerLimit": "Archive member bytes and file-declared JPEG dimensions are inventoried; that is not a GPU/image-display assertion."
+}

@@ -1,0 +1,505 @@
+{
+  "source_manifest": "../source-manifest-ratchet-corrected.json",
+  "source_manifest_sha256": "63bb222be30076a296d109eb6cc7d057ec3ab880f727313d62892df82d65ff93",
+  "source_count": 288,
+  "source_hashes_verified_after_run": true,
+  "scope": "Three synthetic annotation invariants in four actual native load modes with independent baseline repeat. No real-exporter, GPU, WASM, resource or cross-platform qualification.",
+  "fixture_provenance": [
+    {
+      "name": "filled-hole-mm-ifc4",
+      "path": "/tmp/ifclite-context-final-fill-witnesses/filled-hole-mm-ifc4.ifc",
+      "sha256": "9e5a0f12dfb5651412262480be4e15bf668c597b965431a0a0c580ad582df650",
+      "bytes": 1669,
+      "basis_test_source": "rust/processing/tests/annotation_fills_4406.rs",
+      "basis_test_source_sha256": "fe6824684ba5b76ec095440aaac7ece1f079b350589c087814e6977d2021027c",
+      "fixture_kind": "Synthetic invariant derived from existing test, producer metadata normalized; not real-exporter evidence."
+    },
+    {
+      "name": "filled-hole-mm-ifc2x3",
+      "path": "/tmp/ifclite-context-final-fill-witnesses/filled-hole-mm-ifc2x3.ifc",
+      "sha256": "0ee73ff4367725ce72db2e53a7d2b88e7d9f3fbe6941cee9c93b33a5ff3e8b26",
+      "bytes": 1709,
+      "basis_test_source": "rust/processing/tests/annotation_fills_4406.rs",
+      "basis_test_source_sha256": "fe6824684ba5b76ec095440aaac7ece1f079b350589c087814e6977d2021027c",
+      "fixture_kind": "Synthetic invariant derived from existing test, producer metadata normalized; not real-exporter evidence."
+    },
+    {
+      "name": "mixed-annotation-mm-ifc4",
+      "path": "/tmp/ifclite-context-final-fill-witnesses/mixed-annotation-mm-ifc4.ifc",
+      "sha256": "c66c6f810d49f4810e236f18023b2c03be160145c185666803500857a1180ba4",
+      "bytes": 1126,
+      "basis_test_source": "rust/processing/tests/issue_5389_annotation_symbolic_items.rs",
+      "basis_test_source_sha256": "5fc91b457bdd4fc7cf457c5e0fa62f2d40cef944b2147f5110aec8347c41f4fd",
+      "fixture_kind": "Synthetic invariant derived from existing test, producer metadata normalized; not real-exporter evidence."
+    }
+  ],
+  "cases": [
+    {
+      "fixture": "filled-hole-mm-ifc4.ifc",
+      "fixture_sha256": "9e5a0f12dfb5651412262480be4e15bf668c597b965431a0a0c580ad582df650",
+      "mode": "full",
+      "equal": true,
+      "baseline_repeat_equal": true,
+      "positive_fill_invariants": {
+        "base": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "d03bc3dfccb5082f40ab8f5052afe0a973a6e9a8d7449562ada2e9b80c3a9eda",
+          "records_bytes": 15924
+        },
+        "base-repeat": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "49caab7b35d565bc66482b89b848b2600aa531fc37fb09bcdf315e719fba82e7",
+          "records_bytes": 15924
+        },
+        "candidate": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "de17ecf9d24cf63015e11910f4c792d195cf4060bc513b5dd75090ecbfc46baa",
+          "records_bytes": 15924
+        }
+      }
+    },
+    {
+      "fixture": "filled-hole-mm-ifc4.ifc",
+      "fixture_sha256": "9e5a0f12dfb5651412262480be4e15bf668c597b965431a0a0c580ad582df650",
+      "mode": "stream",
+      "equal": true,
+      "baseline_repeat_equal": true,
+      "positive_fill_invariants": {
+        "base": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "57d56444416e519096e66c7aab166df5689f7110beb0741297441790917c30c1",
+          "records_bytes": 16218
+        },
+        "base-repeat": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "f2663682412f7e8c525e5522d49ad537114e267262a5191ed1e285d1d26b866f",
+          "records_bytes": 16218
+        },
+        "candidate": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "274d05265985e3c8df55b2d9b45c70ea97e328986f9315330577f78e65052435",
+          "records_bytes": 16218
+        }
+      }
+    },
+    {
+      "fixture": "filled-hole-mm-ifc4.ifc",
+      "fixture_sha256": "9e5a0f12dfb5651412262480be4e15bf668c597b965431a0a0c580ad582df650",
+      "mode": "instanced",
+      "equal": true,
+      "baseline_repeat_equal": true,
+      "positive_fill_invariants": {
+        "base": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "09f20830a80035a36dbebcdf4ee488c738ba2364f9e187937f2c9f2c63b65d4e",
+          "records_bytes": 16217
+        },
+        "base-repeat": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "09f20830a80035a36dbebcdf4ee488c738ba2364f9e187937f2c9f2c63b65d4e",
+          "records_bytes": 16217
+        },
+        "candidate": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "09f20830a80035a36dbebcdf4ee488c738ba2364f9e187937f2c9f2c63b65d4e",
+          "records_bytes": 16217
+        }
+      }
+    },
+    {
+      "fixture": "filled-hole-mm-ifc4.ifc",
+      "fixture_sha256": "9e5a0f12dfb5651412262480be4e15bf668c597b965431a0a0c580ad582df650",
+      "mode": "fastfirst",
+      "equal": true,
+      "baseline_repeat_equal": true,
+      "positive_fill_invariants": {
+        "base": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "dcb2ba25df6b6e27452f62ba80b2ed1ed312359fe0c84e02a3874532384a12c6",
+          "records_bytes": 16235
+        },
+        "base-repeat": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "dcb2ba25df6b6e27452f62ba80b2ed1ed312359fe0c84e02a3874532384a12c6",
+          "records_bytes": 16235
+        },
+        "candidate": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "45f80b221ae20692a6346ad6954a9e2735d6923a176cccaf76265408b3560c26",
+          "records_bytes": 16235
+        }
+      }
+    },
+    {
+      "fixture": "filled-hole-mm-ifc2x3.ifc",
+      "fixture_sha256": "0ee73ff4367725ce72db2e53a7d2b88e7d9f3fbe6941cee9c93b33a5ff3e8b26",
+      "mode": "full",
+      "equal": true,
+      "baseline_repeat_equal": true,
+      "positive_fill_invariants": {
+        "base": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "e687960f253c64e18accdd2e7f178d9688610ea61fdbd369248d478e6e47e880",
+          "records_bytes": 16046
+        },
+        "base-repeat": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "67c02d903004b29041361ff9f85af22c48e6a5f94dafdaa2af7da8c1853db9d8",
+          "records_bytes": 16046
+        },
+        "candidate": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "e687960f253c64e18accdd2e7f178d9688610ea61fdbd369248d478e6e47e880",
+          "records_bytes": 16046
+        }
+      }
+    },
+    {
+      "fixture": "filled-hole-mm-ifc2x3.ifc",
+      "fixture_sha256": "0ee73ff4367725ce72db2e53a7d2b88e7d9f3fbe6941cee9c93b33a5ff3e8b26",
+      "mode": "stream",
+      "equal": true,
+      "baseline_repeat_equal": true,
+      "positive_fill_invariants": {
+        "base": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "de1fb4ac94af101575d1d3589bb3dc28f60c759cbbc20dfc987604fa3066bddc",
+          "records_bytes": 16342
+        },
+        "base-repeat": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "de1fb4ac94af101575d1d3589bb3dc28f60c759cbbc20dfc987604fa3066bddc",
+          "records_bytes": 16342
+        },
+        "candidate": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "de1fb4ac94af101575d1d3589bb3dc28f60c759cbbc20dfc987604fa3066bddc",
+          "records_bytes": 16342
+        }
+      }
+    },
+    {
+      "fixture": "filled-hole-mm-ifc2x3.ifc",
+      "fixture_sha256": "0ee73ff4367725ce72db2e53a7d2b88e7d9f3fbe6941cee9c93b33a5ff3e8b26",
+      "mode": "instanced",
+      "equal": true,
+      "baseline_repeat_equal": true,
+      "positive_fill_invariants": {
+        "base": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "d110614e5fcdd8a2f1213fa9db86ed49b7b7fd6f3b7b6fd36fc9f23b78c47e27",
+          "records_bytes": 16341
+        },
+        "base-repeat": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "d110614e5fcdd8a2f1213fa9db86ed49b7b7fd6f3b7b6fd36fc9f23b78c47e27",
+          "records_bytes": 16341
+        },
+        "candidate": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "d110614e5fcdd8a2f1213fa9db86ed49b7b7fd6f3b7b6fd36fc9f23b78c47e27",
+          "records_bytes": 16341
+        }
+      }
+    },
+    {
+      "fixture": "filled-hole-mm-ifc2x3.ifc",
+      "fixture_sha256": "0ee73ff4367725ce72db2e53a7d2b88e7d9f3fbe6941cee9c93b33a5ff3e8b26",
+      "mode": "fastfirst",
+      "equal": true,
+      "baseline_repeat_equal": true,
+      "positive_fill_invariants": {
+        "base": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "057c985a8a1a92103388033539fd1a266a1830dc9882d85446adc3312d7a4d8c",
+          "records_bytes": 16359
+        },
+        "base-repeat": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "8a35aff93ef0975d609ec65681edee33b2f51a983098a3abaec40c1e894e8c9b",
+          "records_bytes": 16359
+        },
+        "candidate": {
+          "mesh_and_symbolic_fill_count": 2,
+          "analytically_checked_mesh_areas_square_metres": [
+            15.0,
+            15.0
+          ],
+          "hole_intersection_area_zero": true,
+          "records_sha256": "057c985a8a1a92103388033539fd1a266a1830dc9882d85446adc3312d7a4d8c",
+          "records_bytes": 16359
+        }
+      }
+    },
+    {
+      "fixture": "mixed-annotation-mm-ifc4.ifc",
+      "fixture_sha256": "c66c6f810d49f4810e236f18023b2c03be160145c185666803500857a1180ba4",
+      "mode": "full",
+      "equal": true,
+      "baseline_repeat_equal": true,
+      "positive_fill_invariants": {
+        "base": {
+          "mesh_and_symbolic_fill_count": 1,
+          "analytically_checked_mesh_areas_square_metres": [
+            16.0
+          ],
+          "hole_intersection_area_zero": false,
+          "records_sha256": "1ad9953d7c2f053652d7375ff4d58487f8a35ea878bee0e9c0d8c53843ec239a",
+          "records_bytes": 10116
+        },
+        "base-repeat": {
+          "mesh_and_symbolic_fill_count": 1,
+          "analytically_checked_mesh_areas_square_metres": [
+            16.0
+          ],
+          "hole_intersection_area_zero": false,
+          "records_sha256": "70d9074753a5010dac9447ae05dce1a42c018014ddf519fd319a43e4e060f236",
+          "records_bytes": 10116
+        },
+        "candidate": {
+          "mesh_and_symbolic_fill_count": 1,
+          "analytically_checked_mesh_areas_square_metres": [
+            16.0
+          ],
+          "hole_intersection_area_zero": false,
+          "records_sha256": "912dd38462b99839c6d6dc8551d2766d2e9d272e2334857be3f9965a258ed2c1",
+          "records_bytes": 10116
+        }
+      }
+    },
+    {
+      "fixture": "mixed-annotation-mm-ifc4.ifc",
+      "fixture_sha256": "c66c6f810d49f4810e236f18023b2c03be160145c185666803500857a1180ba4",
+      "mode": "stream",
+      "equal": true,
+      "baseline_repeat_equal": true,
+      "positive_fill_invariants": {
+        "base": {
+          "mesh_and_symbolic_fill_count": 1,
+          "analytically_checked_mesh_areas_square_metres": [
+            16.0
+          ],
+          "hole_intersection_area_zero": false,
+          "records_sha256": "b945d325f24ad3c1f05a35b7ddb46c0b4e83e304d5a18d23b86a68ebd5cf11f4",
+          "records_bytes": 10411
+        },
+        "base-repeat": {
+          "mesh_and_symbolic_fill_count": 1,
+          "analytically_checked_mesh_areas_square_metres": [
+            16.0
+          ],
+          "hole_intersection_area_zero": false,
+          "records_sha256": "b945d325f24ad3c1f05a35b7ddb46c0b4e83e304d5a18d23b86a68ebd5cf11f4",
+          "records_bytes": 10411
+        },
+        "candidate": {
+          "mesh_and_symbolic_fill_count": 1,
+          "analytically_checked_mesh_areas_square_metres": [
+            16.0
+          ],
+          "hole_intersection_area_zero": false,
+          "records_sha256": "31ace1d2a98e3c8e5a5af9a959ba68cf1460b1b376a8e176cb1867638b2e3a43",
+          "records_bytes": 10411
+        }
+      }
+    },
+    {
+      "fixture": "mixed-annotation-mm-ifc4.ifc",
+      "fixture_sha256": "c66c6f810d49f4810e236f18023b2c03be160145c185666803500857a1180ba4",
+      "mode": "instanced",
+      "equal": true,
+      "baseline_repeat_equal": true,
+      "positive_fill_invariants": {
+        "base": {
+          "mesh_and_symbolic_fill_count": 1,
+          "analytically_checked_mesh_areas_square_metres": [
+            16.0
+          ],
+          "hole_intersection_area_zero": false,
+          "records_sha256": "ce0d60caa21b59e242e77f5d1631ea60ee90e427957271bea5e1be4305efe115",
+          "records_bytes": 10410
+        },
+        "base-repeat": {
+          "mesh_and_symbolic_fill_count": 1,
+          "analytically_checked_mesh_areas_square_metres": [
+            16.0
+          ],
+          "hole_intersection_area_zero": false,
+          "records_sha256": "ce0d60caa21b59e242e77f5d1631ea60ee90e427957271bea5e1be4305efe115",
+          "records_bytes": 10410
+        },
+        "candidate": {
+          "mesh_and_symbolic_fill_count": 1,
+          "analytically_checked_mesh_areas_square_metres": [
+            16.0
+          ],
+          "hole_intersection_area_zero": false,
+          "records_sha256": "ce0d60caa21b59e242e77f5d1631ea60ee90e427957271bea5e1be4305efe115",
+          "records_bytes": 10410
+        }
+      }
+    },
+    {
+      "fixture": "mixed-annotation-mm-ifc4.ifc",
+      "fixture_sha256": "c66c6f810d49f4810e236f18023b2c03be160145c185666803500857a1180ba4",
+      "mode": "fastfirst",
+      "equal": true,
+      "baseline_repeat_equal": true,
+      "positive_fill_invariants": {
+        "base": {
+          "mesh_and_symbolic_fill_count": 1,
+          "analytically_checked_mesh_areas_square_metres": [
+            16.0
+          ],
+          "hole_intersection_area_zero": false,
+          "records_sha256": "9ddc6fac68fbd37627dfb5c972756350cfd726e3a26e96f7dea23d4670a3fec3",
+          "records_bytes": 10411
+        },
+        "base-repeat": {
+          "mesh_and_symbolic_fill_count": 1,
+          "analytically_checked_mesh_areas_square_metres": [
+            16.0
+          ],
+          "hole_intersection_area_zero": false,
+          "records_sha256": "9ddc6fac68fbd37627dfb5c972756350cfd726e3a26e96f7dea23d4670a3fec3",
+          "records_bytes": 10411
+        },
+        "candidate": {
+          "mesh_and_symbolic_fill_count": 1,
+          "analytically_checked_mesh_areas_square_metres": [
+            16.0
+          ],
+          "hole_intersection_area_zero": false,
+          "records_sha256": "9ddc6fac68fbd37627dfb5c972756350cfd726e3a26e96f7dea23d4670a3fec3",
+          "records_bytes": 10411
+        }
+      }
+    }
+  ],
+  "case_count": 12,
+  "qualified": 12,
+  "coordinate_oracle": "IFC millimetres convert to metres. Rigid local-to-world inverse restores planar local coordinates. Filled outer square4x4 minus square1x1 has area15; mixed solid square has area16. Every actual triangle clipped against hole has zero positive intersection area.",
+  "presentation_oracle": "IFC4 direct fill style and IFC2X3 presentation-style assignment yield Cyan fill/color. Fast-first intentionally retains initial gray meshes without material_name and delivers Cyan via actual color-update events; symbolic fills carry Cyan. Other modes retain Cyan mesh/material fields. Horizontal and vertical products retained; footprint-only type excluded. Mixed annotation keeps symbolic text and curves beside its mesh.",
+  "checker_correction": "Initial checker incorrectly required retained material_name in fast-first mode. Actual baseline and candidate retain initial gray mesh fields and emit the later Cyan color update. The corrected checker asserts both halves of that existing contract; no production code changed.",
+  "artifact_identity_receipt": "../native-scene-artifact-identity.json",
+  "limitations": [
+    "Synthetic statements are stated invariants derived from existing tests, not independent real authoring-tool models.",
+    "No hatching-pattern, general conic, material-layer, texture or instance witness is implied.",
+    "Structured semantic comparator excludes execution timing/cache records; this lane qualifies fill/presentation/frame behavior, not work-accounting or performance."
+  ]
+}

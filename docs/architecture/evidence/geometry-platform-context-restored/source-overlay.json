@@ -1,0 +1,8 @@
+{
+  "base_commit": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+  "source_count": 288,
+  "manifest_sha256": "ede5cfafab73e79657c4680398156b84cc4ce62f6fd4fb50a4ef4dba2e16207b",
+  "archive_sha256": "3e26b6e37412d48ae7409a2199d40575c32f88c75f735ccbe4cabde9f7edb32b",
+  "archive_bytes": 613532,
+  "apply": "Extract over base_commit and remove deleted_source_paths from source manifest. Generated WASM runtime and declarations are separate build artifacts."
+}

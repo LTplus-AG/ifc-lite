@@ -1,0 +1,40 @@
+{
+  "scope": "Supplemental installed-wheel suite after acquiring infrastructure fixture; no rebuild or wheel replacement. Supersedes fixture coverage only, preserves original48-pass1-skip receipt.",
+  "original_receipt": "python-consumer.json",
+  "original_receipt_sha256": "0af5e3be3c1e3ac9b50917e1df8a196506aa00e7ff7f409b1b571364236bc504",
+  "source_manifest": "source-manifest.json",
+  "source_manifest_sha256": "ede5cfafab73e79657c4680398156b84cc4ce62f6fd4fb50a4ef4dba2e16207b",
+  "source_count": 288,
+  "all_frozen_source_hashes_match": true,
+  "wheel_local_path": "/tmp/ifclite-context-restored-nativepy-wheel/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl",
+  "wheel_sha256": "e9f6f9aae50a0e212f99d689a35618bcf850be1dde0eb5e7eb48dd0cfe0bc6e6",
+  "installed_extension_local_path": "/tmp/ifclite-smlib-venv/lib/python3.12/site-packages/ifclite_geom/ifclite_geom.abi3.so",
+  "installed_extension_sha256": "0f2d8584cf65fdc691c2161520ad16834cd92ffa95b21559240a8ea15bb18194",
+  "installed_extension_unchanged_before_and_after": true,
+  "fixture_manifest_path": "tests/models/manifest.json",
+  "fixture_manifest_sha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+  "fixture_manifest_entry": {
+    "path": "issues/844_terrain_and_alignment.ifc",
+    "sha256": "f6124170e390ed865120985dbd0e6fd38d5c9caae97dd41082031d3246e6a096",
+    "size": 543228
+  },
+  "actual_fixture_sha256": "f6124170e390ed865120985dbd0e6fd38d5c9caae97dd41082031d3246e6a096",
+  "actual_fixture_bytes": 543228,
+  "command": "/tmp/ifclite-smlib-venv/bin/python -m pytest rust/python/tests -q -ra --junitxml=/tmp/ifclite-context-restored-nativepy-added-fixtures-results.xml",
+  "exit": 0,
+  "passed": 49,
+  "failed": 0,
+  "skipped": 0,
+  "artifacts": {
+    "tests.log": {
+      "local_path": "/tmp/ifclite-context-restored-nativepy-added-fixtures-tests.log",
+      "receipt_path": "python-consumer/added-fixtures-tests.log",
+      "sha256": "1c2dbf1a762f231dad62cb4b8ed0674bbb40f52291693f38c3c46686ef5f30ae"
+    },
+    "results.xml": {
+      "local_path": "/tmp/ifclite-context-restored-nativepy-added-fixtures-results.xml",
+      "receipt_path": "python-consumer/added-fixtures-results.xml",
+      "sha256": "2c54dd2e1a589d79a90e7e0bfea0acaa67d295eb648954dc8698071a8a7949de"
+    }
+  }
+}

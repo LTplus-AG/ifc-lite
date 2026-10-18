@@ -1,0 +1,12 @@
+{
+  "base_commit": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+  "source_count": 288,
+  "manifest_sha256": "29cb0bc3971c14c78f0557309bf6e51b6a24c415f196490dea2f5a80b34a902d",
+  "archive_sha256": "2790cb0061b025219f8a49dbf1b08b07d62979c0f0898fcfe932a5e3960f2546",
+  "archive_bytes": 613750,
+  "changes_from_prior": [
+    "rust/processing/tests/model_context_consumers.rs",
+    "rust/wasm-bindings/src/api/gpu_meshes/batch_entry_points.rs"
+  ],
+  "apply": "Extract over pinned base, then remove deleted_source_paths in manifest. Generated bindings remain separately built artifacts."
+}

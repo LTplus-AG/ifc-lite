@@ -1,0 +1,265 @@
+{
+  "baseRevision": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+  "records": [
+    {
+      "name": "Domestic_Hot_Water_domestic-hot-water.ifcx.json",
+      "baseSha256": "5973e472efe419551696f6eb3ebe541376b3ae0472cef3539ad704d70368c873",
+      "candidateSha256": "5973e472efe419551696f6eb3ebe541376b3ae0472cef3539ad704d70368c873",
+      "equal": true,
+      "baseRecord": "/tmp/ifclite-scene-ifcx-base-results/Domestic_Hot_Water_domestic-hot-water.ifcx.json",
+      "candidateRecord": "/tmp/ifclite-scene-ifcx-candidate/Domestic_Hot_Water_domestic-hot-water.ifcx.json"
+    },
+    {
+      "name": "Georeferencing_georeferenced-bridge-deck.ifcx.json",
+      "baseSha256": "3a06dc30e79810fa1d1c95d86b6e21b2a4f57d4544fdcf9a0ed6e33385d412b0",
+      "candidateSha256": "3a06dc30e79810fa1d1c95d86b6e21b2a4f57d4544fdcf9a0ed6e33385d412b0",
+      "equal": true,
+      "baseRecord": "/tmp/ifclite-scene-ifcx-base-results/Georeferencing_georeferenced-bridge-deck.ifcx.json",
+      "candidateRecord": "/tmp/ifclite-scene-ifcx-candidate/Georeferencing_georeferenced-bridge-deck.ifcx.json"
+    },
+    {
+      "name": "Hello_Wall_hello-wall.ifcx.json",
+      "baseSha256": "8420123755d64237250e86658eff4a3a45c6626c4581f2c42f2c0f305c32cb15",
+      "candidateSha256": "8420123755d64237250e86658eff4a3a45c6626c4581f2c42f2c0f305c32cb15",
+      "equal": true,
+      "baseRecord": "/tmp/ifclite-scene-ifcx-base-results/Hello_Wall_hello-wall.ifcx.json",
+      "candidateRecord": "/tmp/ifclite-scene-ifcx-candidate/Hello_Wall_hello-wall.ifcx.json"
+    },
+    {
+      "name": "PCERT-Sample-Scene_Building-Architecture.ifcx.json",
+      "baseSha256": "d554cbda6039ef3cd33411a9a5945fd382dcd5114187960f96cccf1f7c744dc2",
+      "candidateSha256": "d554cbda6039ef3cd33411a9a5945fd382dcd5114187960f96cccf1f7c744dc2",
+      "equal": true,
+      "baseRecord": "/tmp/ifclite-scene-ifcx-base-results/PCERT-Sample-Scene_Building-Architecture.ifcx.json",
+      "candidateRecord": "/tmp/ifclite-scene-ifcx-candidate/PCERT-Sample-Scene_Building-Architecture.ifcx.json"
+    },
+    {
+      "name": "Point_Cloud_point-cloud.ifcx.json",
+      "baseSha256": "27858c9a6709505f3cc130af294b1b4fb344148516d8842ec6af2017b390ace7",
+      "candidateSha256": "27858c9a6709505f3cc130af294b1b4fb344148516d8842ec6af2017b390ace7",
+      "equal": true,
+      "baseRecord": "/tmp/ifclite-scene-ifcx-base-results/Point_Cloud_point-cloud.ifcx.json",
+      "candidateRecord": "/tmp/ifclite-scene-ifcx-candidate/Point_Cloud_point-cloud.ifcx.json"
+    },
+    {
+      "name": "fire-rating.json",
+      "baseSha256": "98f571e424102a6f1ab6c9ac710a5b57f1f6dd4cfadb8dc330ba2f9b8dcebcc1",
+      "candidateSha256": "98f571e424102a6f1ab6c9ac710a5b57f1f6dd4cfadb8dc330ba2f9b8dcebcc1",
+      "equal": true,
+      "baseRecord": "/tmp/ifclite-scene-ifcx-base-results/fire-rating.json",
+      "candidateRecord": "/tmp/ifclite-scene-ifcx-candidate/fire-rating.json"
+    },
+    {
+      "name": "pbr.json",
+      "baseSha256": "fe9e1c329d037711fda18a644035c71d56c0e4b39338a2fc96da1f8210b9250f",
+      "candidateSha256": "fe9e1c329d037711fda18a644035c71d56c0e4b39338a2fc96da1f8210b9250f",
+      "equal": true,
+      "baseRecord": "/tmp/ifclite-scene-ifcx-base-results/pbr.json",
+      "candidateRecord": "/tmp/ifclite-scene-ifcx-candidate/pbr.json"
+    }
+  ],
+  "scenes": [
+    {
+      "name": "Hello_Wall_hello-wall.ifcx",
+      "sha256": "1a68c1e0f586096ba18c6f25b4f3321c5e5ac6c29d3d3ccd990e0641df3718ee",
+      "witnesses": {
+        "entities": 9,
+        "meshes": 10,
+        "vertices": 288,
+        "triangles": 160,
+        "uvMeshes": 0,
+        "uvCoordinates": 0,
+        "texturedMeshes": 0,
+        "pointClouds": 0,
+        "points": 0,
+        "properties": 9,
+        "quantities": 10,
+        "georeferencing": null
+      }
+    },
+    {
+      "name": "Domestic_Hot_Water_domestic-hot-water.ifcx",
+      "sha256": "bd79a705aede110d0c414426412cf45dfd1dfbc300a81e6335bdf642eafac794",
+      "witnesses": {
+        "entities": 54,
+        "meshes": 16,
+        "vertices": 3026,
+        "triangles": 2312,
+        "uvMeshes": 0,
+        "uvCoordinates": 0,
+        "texturedMeshes": 0,
+        "pointClouds": 0,
+        "points": 0,
+        "properties": 75,
+        "quantities": 0,
+        "georeferencing": null
+      }
+    },
+    {
+      "name": "Georeferencing_georeferenced-bridge-deck.ifcx",
+      "sha256": "5439e9b947bae4395940b03853bf402a9cadf92ad57866f71f6b6c218c5e3faa",
+      "witnesses": {
+        "entities": 6,
+        "meshes": 1,
+        "vertices": 24,
+        "triangles": 12,
+        "uvMeshes": 0,
+        "uvCoordinates": 0,
+        "texturedMeshes": 0,
+        "pointClouds": 2,
+        "points": 2,
+        "properties": 2,
+        "quantities": 0,
+        "georeferencing": null
+      }
+    },
+    {
+      "name": "PCERT-Sample-Scene_Building-Architecture.ifcx",
+      "sha256": "8c9b7a418c04b49021887ef149a902732fbc673f6a7ddcb18fb03266f08b3bd6",
+      "witnesses": {
+        "entities": 17,
+        "meshes": 10,
+        "vertices": 1702,
+        "triangles": 1070,
+        "uvMeshes": 0,
+        "uvCoordinates": 0,
+        "texturedMeshes": 0,
+        "pointClouds": 0,
+        "points": 0,
+        "properties": 59,
+        "quantities": 25,
+        "georeferencing": null
+      }
+    },
+    {
+      "name": "Point_Cloud_point-cloud.ifcx",
+      "sha256": "f6807ccd40090aa3e26493e2700bf5777cd82a0877fabf9d841615a00afa408c",
+      "witnesses": {
+        "entities": 5,
+        "meshes": 0,
+        "vertices": 0,
+        "triangles": 0,
+        "uvMeshes": 0,
+        "uvCoordinates": 0,
+        "texturedMeshes": 0,
+        "pointClouds": 5,
+        "points": 1065,
+        "properties": 5,
+        "quantities": 0,
+        "georeferencing": null
+      }
+    },
+    {
+      "name": "fire-rating",
+      "sha256": "0c38df6de4ae77fb28f52b45044d8fc0a224a87921d0c7275e389e8274d75bed",
+      "witnesses": {
+        "entities": 9,
+        "meshes": 10,
+        "vertices": 288,
+        "triangles": 160,
+        "uvMeshes": 0,
+        "uvCoordinates": 0,
+        "texturedMeshes": 0,
+        "pointClouds": 0,
+        "points": 0,
+        "properties": 10,
+        "quantities": 10,
+        "georeferencing": null
+      },
+      "overlayAttribute": "bsi::ifc::prop::FireRating",
+      "opinionCount": 1,
+      "composedOpinions": [
+        {
+          "path": "93791d5d-5beb-437b-b8ec-2f1f0ba4bf3b",
+          "value": "R30"
+        }
+      ],
+      "changedMeshColors": 0
+    },
+    {
+      "name": "pbr",
+      "sha256": "47d548ae44f424886ce466a307362df51e8e71d1142085fdc0a7598a76aa253f",
+      "witnesses": {
+        "entities": 54,
+        "meshes": 16,
+        "vertices": 3026,
+        "triangles": 2312,
+        "uvMeshes": 0,
+        "uvCoordinates": 0,
+        "texturedMeshes": 0,
+        "pointClouds": 0,
+        "points": 0,
+        "properties": 75,
+        "quantities": 0,
+        "georeferencing": null
+      },
+      "overlayAttribute": "gltf::material",
+      "opinionCount": 2,
+      "composedOpinions": [
+        {
+          "path": "121ccdc4-1832-5f08-8f46-fb39f8f3cfeb",
+          "value": {
+            "pbrMetallicRoughness": {
+              "baseColorFactor": [
+                1,
+                0.9,
+                0.9,
+                1
+              ],
+              "baseColorTexture": "/some/url/here.webp",
+              "metallicFactor": 0.2,
+              "roughnessFactor": 0.2,
+              "metallicRoughnessTexture": "/some/url/here.webp"
+            },
+            "normalTexture": {
+              "texture": "/some/url/here.webp",
+              "scale": 1
+            },
+            "occlusionTexture": {
+              "texture": "/some/url/here.webp",
+              "strength": 1
+            },
+            "emissiveTexture": "/some/url/here.webp",
+            "emissiveFactor": [
+              0.5,
+              0.5,
+              1
+            ],
+            "alphaMode": "OPAQUE",
+            "alphaCutoff": 0.5,
+            "doubleSided": false
+          }
+        },
+        {
+          "path": "16f44595-547e-572c-88fb-ca5178de317f",
+          "value": {
+            "pbrMetallicRoughness": {
+              "baseColorFactor": [
+                0.95,
+                0.95,
+                0.95,
+                1
+              ],
+              "metallicFactor": 0.9,
+              "roughnessFactor": 0.1
+            }
+          }
+        }
+      ],
+      "changedMeshColors": 0
+    }
+  ],
+  "scope": "existing IFCX importer/composition output; no Rust numerical call and no viewer loadFile activation",
+  "excludedFromEquality": [
+    "parseTime",
+    "ephemeral layer UUIDs replaced only with actual supplied filenames"
+  ],
+  "limits": [
+    "No viewer loadFile/store/GPU upload was executed.",
+    "No Rust geometry backend is invoked by this IFCX consumer.",
+    "Remote schema import declarations are retained but not resolved by the current importer.",
+    "These samples emit no UV or texture pixels; that channel is unqualified here.",
+    "Bridge IFCX emits no georeferencing extension result; georeference preservation remains unqualified.",
+    "PBR overlay source opinions are composed but do not change emitted mesh colors or yield texture pixels."
+  ]
+}

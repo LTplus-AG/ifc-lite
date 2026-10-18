@@ -1,0 +1,20 @@
+{
+  "source_manifest_sha256": "fa3dcc5f5189d7129fe50156672654564c5c30ec35c9cf70bb8ca723eeceb95a",
+  "status": "rejected: workspace stopped at two obsolete function-ratchet rows; low-level WASM ABI independently rejected",
+  "workspace_exit_code": 101,
+  "completed_test_reports": 262,
+  "passed_invocations_before_stop": 4776,
+  "failed_invocations_before_stop": 1,
+  "ignored_invocations_before_stop": 36,
+  "not_full_workspace_pass": true,
+  "failure": "allowlist_rows_are_over_the_limit_and_resolve: two removed mapped traversal functions still had allowance rows",
+  "clippy": {
+    "status": "passed",
+    "log": "/tmp/ifclite-context-clippy-corrected.log",
+    "sha256": "dd12fe3fe0eb8e7734f8c8594c46e7bf4e147701bbd27b5101a957f4cb85872b"
+  },
+  "workspace_log": {
+    "path": "/tmp/ifclite-context-workspace.log",
+    "sha256": "a7f76067f1976d33734e2eba9f006420dac31c72faf40e974e6d859ab0607626"
+  }
+}

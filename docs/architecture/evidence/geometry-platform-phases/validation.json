@@ -1,0 +1,146 @@
+{
+  "source_manifest": "source-manifest.json",
+  "platform": "Linux-6.17.9-76061709-generic-x86_64-with-glibc2.39",
+  "scope": "canonical synchronous production-stage extraction and owned sampled-profile extrusion replay; full authored operation graph incomplete",
+  "workspace": {
+    "passed_invocations": 5534,
+    "failed_invocations": 0,
+    "ignored": 47,
+    "suite_reports": 372,
+    "scope_note": "Existing absent-fixture tests can skip internally. This is not complete corpus qualification."
+  },
+  "wasm_contract": {
+    "passed": 206,
+    "failed": 0,
+    "skipped": 7,
+    "fresh_runtime_from_current_sources": true,
+    "committed_types_unchanged": true
+  },
+  "javascript_build": {
+    "successful_tasks": 72,
+    "failed_tasks": 0
+  },
+  "commands": [
+    {
+      "name": "workspace",
+      "command": "IFCLITE_SMLIB_WORKER=/tmp/ifclite-smlib-adapter-native/ifclite_smlib_worker cargo test --workspace",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-platform-phases-workspace-all-models.log",
+      "raw_log_sha256": "e891f6530a301d9a494ca458ddf2087e6bcaf0d39d590decfc7170c66e67b916"
+    },
+    {
+      "name": "clippy",
+      "command": "cargo clippy --workspace --all-targets -- -D warnings",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-platform-phases-clippy-current-source.log",
+      "raw_log_sha256": "e90b811eb0c68b57117296ffdd83c9a377ca4cd2000f6ab4665858d27fe4fe2d"
+    },
+    {
+      "name": "wasm-target",
+      "command": "cargo build --locked -p ifc-lite-processing -p ifc-lite-geometry-runtime --target wasm32-unknown-unknown --target-dir /tmp/ifclite-platform-wasm-target",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-platform-phases-wasm-final.log",
+      "raw_log_sha256": "ef7d1c0cfa511cb339ec272387b2254c6b71addeda52f87e675b605b2fc0c514"
+    },
+    {
+      "name": "wasm-runtime-build",
+      "command": "CI=1 pnpm build:wasm",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-platform-phases-real-wasm-build.log",
+      "raw_log_sha256": "48d5c7046bc32d3991bf80609e7e618b233bcee657040862be6966577d9bb466"
+    },
+    {
+      "name": "javascript-workspace-build",
+      "command": "CI=1 pnpm build",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-platform-phases-workspace-build.log",
+      "raw_log_sha256": "dba21372a8f695d9afb129015a6b566fcafea3f9166bcf8139edef00192b4eee"
+    },
+    {
+      "name": "wasm-contract",
+      "command": "pnpm test:wasm-contract",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-platform-phases-wasm-contract-complete.log",
+      "raw_log_sha256": "1afef5fe0d64d945914502ed97ded37c2e13436c61591482aadec5ab4119fdc8"
+    },
+    {
+      "name": "native-boundary",
+      "command": "ctest --test-dir /tmp/ifclite-smlib-adapter-native --output-on-failure",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-phases-native-ctest.log",
+      "raw_log_sha256": "92d7caf508e6da22c85f2bd424c36a60e29d9fd8224ba46872fb54a768d84cf0"
+    },
+    {
+      "name": "wasm-node-boundary",
+      "command": "ctest --test-dir /tmp/ifclite-smlib-adapter-wasm --output-on-failure",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-phases-wasm-ctest.log",
+      "raw_log_sha256": "ba16f8a1da06c72aae9b99f7455c8648c9254985dac50de08eb90d24e7ed7d40"
+    },
+    {
+      "name": "module-size",
+      "command": "node scripts/check-module-size.mjs",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-phases-module-size-final.log",
+      "raw_log_sha256": "a21c11c7bddfe9fcc41b6869128dafd04b339cec58fb85fac0fb76669d4cd677"
+    },
+    {
+      "name": "test-wiring",
+      "command": "node scripts/check-test-wiring.mjs",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-phases-test-wiring.log",
+      "raw_log_sha256": "534b4e17d0f58684fea51a7c2932facbe1e207c03f7f882c835917be34a0358f"
+    },
+    {
+      "name": "reference-walk-guards",
+      "command": "node scripts/check-refwalk-guards.mjs",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-phases-refwalk-final.log",
+      "raw_log_sha256": "cedb6fc5aa80fcf9a5b5d6f20aa0376f89365aa37b37e6b3d2753cc189c438a0"
+    },
+    {
+      "name": "rust-source-assertions",
+      "command": "node scripts/check-rust-source-text-assertions.mjs",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-phases-rust-assertions-final.log",
+      "raw_log_sha256": "66067d836fc9452809f5eb925d224ef92d96adaebc957d3fb70e742e6ad0547a"
+    },
+    {
+      "name": "module-and-positional-ratchets",
+      "command": "cargo test --locked -p ifc-lite-processing --test module_size_ratchet --test positional_read_ratchet",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-phases-ratchets-verified.log",
+      "raw_log_sha256": "e5bed769a655c2d96caffa73eef0ac8716d8ed7c988a8441b05959dbbc4468b4"
+    },
+    {
+      "name": "function-length-ratchet",
+      "command": "cargo test --locked -p ifc-lite-processing --test function_length_ratchet",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-platform-phases-functions-final3.log",
+      "raw_log_sha256": "dc640ea03224ca2e25c20dab220544444d8ce1c7cee42128573234ec88458d98"
+    },
+    {
+      "name": "wasm-contract-build-prerequisites",
+      "command": "pnpm build --filter=@ifc-lite/renderer...",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-platform-phases-renderer-build.log",
+      "raw_log_sha256": "4d3ae41ee614cb25a9bea442f438d4ec72c4e784db256a4b6eb8071fa5eda1e9"
+    }
+  ],
+  "browser_receipt": "browser.json",
+  "supervision_parallel_stress": "supervision-stress.json",
+  "stress_passed_invocations": 640,
+  "production_smlib_selection": false,
+  "remaining": [
+    "owned lowering for remaining construction families",
+    "typed complete representation and operation graph",
+    "resolved durable appearance and source/face bindings",
+    "application retained-backend integration and asset distribution",
+    "all-platform determinism and full corpus fidelity",
+    "model-scale and kernel OS-memory qualification"
+  ],
+  "performance_receipt": "default-path-perf.json",
+  "performance_claim": "No qualified latency, throughput or retained-memory improvement.",
+  "default_path_ordered_meshes_identical": true,
+  "wasm_artifact_provenance": "Fresh direct build, then renderer dependency build cache miss with the same current Rust global inputs; full workspace build reuses that artifact. Generated public types are unchanged."
+}

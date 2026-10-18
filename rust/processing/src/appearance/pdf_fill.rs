@@ -8,7 +8,6 @@ use super::{
     pdf_fill_types::*,
 };
 use ifc_lite_core::{AttributeValue as A, IfcType};
-use rustc_hash::FxHashMap;
 use crate::fingerprint::{sha256_hex, Sha256Writer};
 
 pub(super) const ALGORITHM: &str = "ifclite-pdf-fill-annotation-v1";
@@ -175,19 +174,19 @@ pub fn plan_pdf_fill_annotation_with_clip(
         return Err("PDF annotation allocation preflight disagrees with authored rows".into());
     }
     source.decoder.inject_shared_cache(&author.entities);
-    let mut styles = crate::prepass::ResolvedPrepass::default();
+    let mut styles = super::owned_context::Styles::default();
     for (item, styled) in styled {
         let info = crate::style::fill::fill_style_from_styled_item(
             &author.entities[&styled],
             &mut source.decoder,
         )
         .ok_or("Generated PDF fill failed canonical style resolution")?;
-        styles.geometry_style_index.insert(item, info);
+        styles.insert_style(item, info);
     }
     let meshes = canonical::produce(
         &mut source,
         annotation,
-        &FxHashMap::default(),
+        &std::sync::Arc::default(),
         Some(&styles),
     )?;
     if meshes.len() != items.len()

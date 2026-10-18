@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: MPL-2.0
+// Actual public WASM batch consumer, synthetic material/provenance invariants.
+import assert from 'node:assert/strict';
+import {readFileSync,writeFileSync} from 'node:fs';
+import {pathToFileURL} from 'node:url';
+import {createHash} from 'node:crypto';
+const [entry,binary,out] = process.argv.slice(2);
+const module = await import(pathToFileURL(entry).href);
+module.initSync({module:readFileSync(binary)});
+const sha = p => createHash('sha256').update(readFileSync(p)).digest('hex');
+function exact(x) {
+ if(x===undefined)return {type:'undefined'};
+ if(typeof x==='bigint')return {type:'bigint',decimal:x.toString()};
+ if(typeof x==='number'){const b=Buffer.alloc(8);b.writeDoubleLE(x);return {type:'f64',hex:b.toString('hex')};}
+ if(ArrayBuffer.isView(x))return {type:x.constructor.name,hex:Buffer.from(x.buffer,x.byteOffset,x.byteLength).toString('hex')};
+ if(Array.isArray(x))return x.map(exact);
+ if(x&&typeof x==='object')return Object.fromEntries(Object.keys(x).sort().map(k=>[k,exact(x[k])]));
+ return x;
+}
+function getters(x){return Object.entries(Object.getOwnPropertyDescriptors(Object.getPrototypeOf(x))).filter(([,d])=>d.get).map(([k])=>k).sort();}
+function capture(x){return Object.fromEntries(getters(x).map(k=>[k,exact(x[k])]));}
+const cases=[];
+for(const name of ['three_layers','air_gap','unsliceable_two_items'])for(const mode of ['lazy_from_content','explicit_worker_columns']){
+ const api=new module.IfcAPI();let collection;
+ try{
+  const path=`/tmp/ifclite-layer-consumer/${name}.ifc`,bytes=readFileSync(path);
+  const index=api.scanEntityIndexShard(bytes,0,bytes.length);
+  api.setEntityIndex(index.ids,index.starts,index.lengths);
+  const pre=api.buildPrePassOnce(bytes);
+  const config={element_ids:[100],axis:[2],layer_counts:[3],direction_sense:[1],offset:[-0.15],layer_material_ids:[200,name==='air_gap'?0:201,200],layer_thicknesses:[0.05,0.2,0.05]};
+  if(mode==='explicit_worker_columns')api.setMaterialLayerIndex(new Uint32Array(config.element_ids),new Uint32Array(config.axis),new Uint32Array(config.layer_counts),new Float64Array(config.direction_sense),new Float64Array(config.offset),new Uint32Array(config.layer_material_ids),new Float64Array(config.layer_thicknesses));
+  collection=api.processGeometryBatch(bytes,pre.jobs,pre.unitScale,...pre.rtcOffset,pre.needsShift,pre.voidKeys,pre.voidCounts,pre.voidValues,pre.styleIds,pre.styleColors,pre.planeAngleToRadians,pre.materialElementIds,pre.materialColorCounts,pre.materialColors);
+  const meshes=[],materials=[],items=[];
+  for(let i=0;i<collection.length;i++){
+   const mesh=collection.get(i);assert.ok(mesh);
+   try{assert.ok(mesh.positions.length>0&&mesh.indices.length>0);assert.equal(mesh.expressId,100);assert.notEqual(mesh.materialId,0);materials.push(mesh.materialId);items.push(mesh.geometryItemId);meshes.push(capture(mesh));}finally{mesh.free();}
+  }
+  const expectedMaterials=name==='three_layers'?[200,201,200]:name==='air_gap'?[200,undefined,200]:[undefined,undefined];
+  const expectedItems=name==='unsliceable_two_items'?[40,48]:[undefined,undefined,undefined];
+  assert.deepEqual(materials,expectedMaterials);assert.deepEqual(items,expectedItems);
+  cases.push({name,mode,input:{path,sha256:sha(path)},configuration:mode==='explicit_worker_columns'?config:'actual lazy MaterialLayerIndex::from_content; no injected columns',index:exact(index),prepass:exact(pre),materialIds:exact(materials),geometryItemIds:exact(items),collection:capture(collection),hasRtcOffset:collection.hasRtcOffset(),meshes});
+ }finally{collection?.free();api.clearPrePassCache();api.free();}
+}
+writeFileSync(out,JSON.stringify({artifacts:{entry,bindings_sha256:sha(entry),binary,wasm_sha256:sha(binary)},cases},null,2)+'\n');
+console.log(JSON.stringify(cases.map(c=>({name:c.name,mode:c.mode,meshCount:c.meshes.length,materialIds:c.materialIds,geometryItemIds:c.geometryItemIds})),null,2));

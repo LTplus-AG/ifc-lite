@@ -1,0 +1,94 @@
+--- a/rust/processing/tests/model_context_consumers.rs
++++ b/rust/processing/tests/model_context_consumers.rs
+@@ -27,9 +27,16 @@
+     let mut sink = Sink::default();
+     let result = process(source.as_bytes(), &request, &mut sink);
+     assert_eq!(result.meshes.len(), 4);
+-    let [Event::Batch(first, processed), Event::Colors(updates), Event::Batch(later, total)] = sink.0.as_slice()
++    let [Event::Batch(first_a, processed_a), Event::Batch(first_b, processed_b),
++        Event::Colors(updates), Event::Batch(later_a, total_a), Event::Batch(later_b, total_b)] = sink.0.as_slice()
+         else { panic!("unexpected deferred-style trace: {:?}", sink.0) };
+-    assert_eq!((*processed, *total), (2, 3), "empty first chunk must not publish or replay styles");
++    // Batch size bounds emitted meshes as well as input jobs. Both meshes from
++    // the first nonempty input chunk precede its deferred style replacement.
++    assert_eq!((*processed_a, *processed_b, *total_a, *total_b), (2, 2, 3, 3),
++        "empty first chunk must not publish or replay styles");
++    assert!([first_a, first_b, later_a, later_b].iter().all(|batch| batch.len() == 1));
++    let first: Vec<_> = first_a.iter().chain(first_b).copied().collect();
++    let later: Vec<_> = later_a.iter().chain(later_b).copied().collect();
+     assert_eq!(first.len(), 2);
+     assert!(first.iter().all(|&(id, color, tris)| id == 23 && color == [0.6, 0.6, 0.6, 1.] && tris > 0));
+     assert_eq!(updates, &vec![(23, [1., 0., 0., 1.])]);
+@@ -37,7 +44,7 @@
+     let eager = process_geometry(&source);
+     let expected: Vec<_> = eager.meshes.iter().filter(|m| m.express_id == 200)
+         .map(|m| (m.express_id, m.color, m.indices.len() / 3)).collect();
+-    assert_eq!(later, &expected, "new chunk must use the replaced style Arc");
++    assert_eq!(later, expected, "new chunk must use the replaced style Arc");
+     assert_eq!(later[0].1, [1., 0., 0., 1.]);
+     assert_eq!(later[1].1, [0., 1., 0., 0.25]);
+ }
+--- a/rust/wasm-bindings/src/api/gpu_meshes/batch_entry_points.rs
++++ b/rust/wasm-bindings/src/api/gpu_meshes/batch_entry_points.rs
+@@ -7,6 +7,11 @@
+ 
+ #[wasm_bindgen]
+ impl IfcAPI {
++    /// Process geometry for a subset of pre-scanned entities → flat
++    /// MeshCollection. Takes raw bytes + pre-pass data from buildPrePassOnce.
++    /// Thin wrapper over [`IfcAPI::produce_batch`]; converts each produced mesh
++    /// to MeshDataJs (the IFC Z-up→WebGL Y-up rotation with preserved winding happens
++    /// there). Flat indices preserve source order through this proper rotation.
+     /// Synchronous Rust compatibility entry; this call creates its own live snapshot.
+     #[wasm_bindgen(js_name = processGeometryBatch)]
+     #[allow(clippy::too_many_arguments)]
+@@ -32,6 +37,16 @@
+         self.try_process_geometry_batch(data, jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys, void_counts, void_values, style_ids, style_colors, plane_angle_to_radians, material_element_ids, material_color_counts, material_colors_rgba)
+             .expect("synchronous batch owns a live production context")
+     }
++    /// Like [`IfcAPI::process_geometry_batch`] but collates the batch's meshes
++    /// into a GPU-instancing shard (IFNS wire format) instead of a flat
++    /// MeshCollection. Repeated geometry collapses to one template + per-
++    /// occurrence transforms; non-instanceable meshes ride as flat singleton
++    /// templates so nothing is dropped. The shard stays in the producer-native
++    /// (IFC Z-up) frame — the renderer composes the constant Z-up→Y-up swap at
++    /// upload. Each batch shard renders independently: affinity routing already
++    /// co-locates identical geometry on one worker, so per-batch collation
++    /// captures ~all the dedup and no cross-batch merge is needed. Returns empty
++    /// bytes only when the batch produced zero non-empty meshes.
+     /// Synchronous Rust compatibility entry; this call creates its own live snapshot.
+     #[wasm_bindgen(js_name = processGeometryBatchInstanced)]
+     #[allow(clippy::too_many_arguments)]
+@@ -57,6 +72,20 @@
+         self.try_process_geometry_batch_instanced(data, jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys, void_counts, void_values, style_ids, style_colors, plane_angle_to_radians, material_element_ids, material_color_counts, material_colors_rgba)
+             .expect("synchronous batch owns a live production context")
+     }
++    /// Produce a batch ONCE and PARTITION it (the instanced-ONLY path): opaque
++    /// ordinary occurrences (colour alpha >= 0.99 AND geometry_class == 0) are
++    /// collated into the instanced shard; everything else (transparent glass,
++    /// type-product geometry) goes to the flat MeshCollection. Each mesh takes
++    /// exactly ONE route, so produce_batch runs once (no emit-both 2× meshing)
++    /// and the renderer draws opaque occurrences via instancing instead of flat.
++    /// Partition mirrors the renderer gates: INSTANCED_ALPHA_CUTOFF (0.99 =
++    /// OPAQUE_ALPHA_CUTOFF) for transparency, geometry_class for the Model/Types
++    /// split.
++    ///
++    /// NOTE: the renderer must be instanced-feature-complete (picking / selection
++    /// / lens overlays on instanced geometry) before the worker calls this in
++    /// place of processGeometryBatch — otherwise those features break for the
++    /// opaque bulk. See the instanced-only follow-ups.
+     /// Synchronous Rust compatibility entry; this call creates its own live snapshot.
+     #[wasm_bindgen(js_name = processGeometryBatchPartitioned)]
+     #[allow(clippy::too_many_arguments)]
+--- a/rust/processing/tests/positional_read_allowlist.txt
++++ b/rust/processing/tests/positional_read_allowlist.txt
+@@ -72,9 +72,7 @@
+ 4 rust/geometry/src/router/annotation.rs
+ 2 rust/geometry/src/router/instancing.rs
+ 2 rust/geometry/src/router/layers.rs
+-3 rust/geometry/src/router/mapped_item.rs
+ 1 rust/geometry/src/router/mod.rs
+-3 rust/geometry/src/router/processing.rs
+ 17 rust/geometry/src/router/rtc_offset.rs
+ 2 rust/geometry/src/router/rtc_offset/raw_coordinate.rs
+ 3 rust/geometry/src/router/textured.rs

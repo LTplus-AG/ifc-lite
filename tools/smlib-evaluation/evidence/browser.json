@@ -1,0 +1,103 @@
+{
+  "passed": true,
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+  "crossOriginIsolated": false,
+  "workers": [
+    {
+      "passed": true,
+      "runs": 3,
+      "cases": 10,
+      "allRunsIdentical": true,
+      "caseResults": [
+        {
+          "case": "box",
+          "passed": true
+        },
+        {
+          "case": "rectangular_opening",
+          "passed": true
+        },
+        {
+          "case": "circular_through_hole",
+          "passed": true
+        },
+        {
+          "case": "overlapping_openings",
+          "passed": true
+        },
+        {
+          "case": "disjoint_subtraction",
+          "passed": true
+        },
+        {
+          "case": "box_union",
+          "passed": true
+        },
+        {
+          "case": "box_intersection",
+          "passed": true
+        },
+        {
+          "case": "nurbs_through_hole",
+          "passed": true
+        },
+        {
+          "case": "survey_coordinate_opening",
+          "passed": true
+        },
+        {
+          "case": "thin_wall_opening",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "passed": true,
+      "runs": 3,
+      "cases": 10,
+      "allRunsIdentical": true,
+      "caseResults": [
+        {
+          "case": "box",
+          "passed": true
+        },
+        {
+          "case": "rectangular_opening",
+          "passed": true
+        },
+        {
+          "case": "circular_through_hole",
+          "passed": true
+        },
+        {
+          "case": "overlapping_openings",
+          "passed": true
+        },
+        {
+          "case": "disjoint_subtraction",
+          "passed": true
+        },
+        {
+          "case": "box_union",
+          "passed": true
+        },
+        {
+          "case": "box_intersection",
+          "passed": true
+        },
+        {
+          "case": "nurbs_through_hole",
+          "passed": true
+        },
+        {
+          "case": "survey_coordinate_opening",
+          "passed": true
+        },
+        {
+          "case": "thin_wall_opening",
+          "passed": true
+        }
+      ]
+    }
+  ]
+}

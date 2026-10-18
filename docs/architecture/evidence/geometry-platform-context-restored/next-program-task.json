@@ -1,0 +1,7 @@
+{
+  "task_id": "node:delegated-task:command%3Amcp%3A40782b11-2ce6-4f4a-b37b-2a6dbccb22b9%3Adelegate-task%3Aifclite-product-program-implementation-round1",
+  "isolation": "managed worktree",
+  "input_manifest_sha256": "ede5cfafab73e79657c4680398156b84cc4ce62f6fd4fb50a4ef4dba2e16207b",
+  "status_at_creation": "running",
+  "scope": "Implement shared reached source traversal and decoder-free numerical operations; parent validation source remains frozen; output patch against reconstructed288 source requires review and fresh qualification."
+}

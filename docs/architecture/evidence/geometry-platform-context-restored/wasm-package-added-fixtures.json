@@ -1,0 +1,28 @@
+{
+  "source_manifest": "source-manifest.json",
+  "source_manifest_sha256": "ede5cfafab73e79657c4680398156b84cc4ce62f6fd4fb50a4ef4dba2e16207b",
+  "all_288_frozen_sources_match": true,
+  "prior_partial_fixture_receipt_sha256": "945ac36e5232da1fed213d95264d086a1a5816d8e8d4038d35e4561192006f84",
+  "reason": "Two previously missing manifest fixtures were fetched; source and generated runtime unchanged. Initial22pass2skip receipt remains historical.",
+  "command": "CI=1 CARGO_TARGET_DIR=/tmp/ifclite-context-wasm-target pnpm test --filter=@ifc-lite/wasm --force",
+  "exit_code": 0,
+  "passed": 24,
+  "failed": 0,
+  "skipped": 0,
+  "suites": 8,
+  "new_owned_context_contracts_passed": 3,
+  "added_fixture_sha256": {
+    "tests/models/issues/844_terrain_and_alignment.ifc": "f6124170e390ed865120985dbd0e6fd38d5c9caae97dd41082031d3246e6a096",
+    "tests/models/issues/858_indexed_colour_map.ifc": "2b48006569d06b9d8f77535cc72ee6c21cbe93cfe87704319a7b1934263d81ba"
+  },
+  "artifact_sha256": {
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "b0f4c1b910c53b0e8385143de6f2019a2fd14ec62a4f89aa8eb50bbf90271f82",
+    "packages/wasm/pkg/ifc-lite.js": "13bcfb47def4df17821d6fe53e4ec2cd3175f56919df33e9b2e46af2982b106c",
+    "packages/wasm/pkg/ifc-lite.d.ts": "8982cdf6e31259e905f8f17276c4ce2cb0f1c82c9115a3b4a865b5e598ba7ab0"
+  },
+  "artifact_hashes_unchanged_by_forced_build_and_test": true,
+  "logs": {
+    "/tmp/ifclite-context-restored-wasm-package-complete.log": "bd8038b554adf45a5f44e6db70a2cebd608b91feb00dc6a4126fe2d31ffe5d67",
+    "/tmp/ifclite-context-restored-added-fixtures.log": "79fe0e9404efadb9370deca4cc13f475863b8b99677b5a561577c352231c2f5a"
+  }
+}

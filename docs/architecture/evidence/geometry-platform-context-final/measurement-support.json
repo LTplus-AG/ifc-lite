@@ -1,0 +1,161 @@
+{
+  "source_manifest": "source-manifest-ratchet-corrected.json",
+  "source_manifest_sha256": "63bb222be30076a296d109eb6cc7d057ec3ab880f727313d62892df82d65ff93",
+  "base_commit": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+  "archive": "measurement-support.tar.gz",
+  "archive_sha256": "af4b4370d53f8fd4a6e56674fb8d4d1bb68a9806ac769238a0d5d0bac431290e",
+  "archive_bytes": 27695,
+  "archive_members": {
+    "perf.py": {
+      "source": "/tmp/ifclite-context-final-perf.py",
+      "sha256": "4519c0cff40721e3a807fcb936447674d0837747f37f41720c36a0fa1a77a01f",
+      "bytes": 3512
+    },
+    "memory.py": {
+      "source": "/tmp/ifclite-context-final-memory.py",
+      "sha256": "83b477b2cdbbf37165f8742be82b5ec4ac816367fcf62b167926d8698b3dfa03",
+      "bytes": 3511
+    },
+    "perf.log": {
+      "source": "/tmp/ifclite-context-final-perf.log",
+      "sha256": "8f8f4bfd3c46e5410fb9629d13748c0e83b4e4ec02f0a2c509f8bfa2b97da9c6",
+      "bytes": 3915
+    },
+    "memory.log": {
+      "source": "/tmp/ifclite-context-final-memory.log",
+      "sha256": "4fe7fe1882268888357a820a6a394483c4c601e244e3ca17c11ead5daf87e2f8",
+      "bytes": 946
+    },
+    "profiling-build.log": {
+      "source": "/tmp/ifclite-context-final-profiling-build.log",
+      "sha256": "0cde33c1f5e20e98ba49b8759cc48a9897dd1537b01828d24d9eb80f8577d0d9",
+      "bytes": 397
+    },
+    "rss/ifclite-context-final-rss-0.txt": {
+      "source": "/tmp/ifclite-context-final-rss-0.txt",
+      "sha256": "6cfc2248acbcad81d68be942dd6c46824e1693c9031b4818aad90ebebcdb615a",
+      "bytes": 6
+    },
+    "rss/ifclite-context-final-rss-1.txt": {
+      "source": "/tmp/ifclite-context-final-rss-1.txt",
+      "sha256": "2d49d4125a21a576ddc0e9413370e45247f3c0a3fd58cbc7ea5fe0fa62e88872",
+      "bytes": 6
+    },
+    "rss/ifclite-context-final-rss-2.txt": {
+      "source": "/tmp/ifclite-context-final-rss-2.txt",
+      "sha256": "b707a930e2024b54459d312ccae152bd247c9f59afabf62bb136280af3504d75",
+      "bytes": 6
+    },
+    "rss/ifclite-context-final-rss-3.txt": {
+      "source": "/tmp/ifclite-context-final-rss-3.txt",
+      "sha256": "6f44fc78f657c07099f68e7e84a2212f0b172e0593c61983f2ea3e0b671daafb",
+      "bytes": 6
+    },
+    "rss/ifclite-context-final-rss-4.txt": {
+      "source": "/tmp/ifclite-context-final-rss-4.txt",
+      "sha256": "cb0f4866177e044637070bd28a36ec062ab49583f33b58f83459ee4f6e083a06",
+      "bytes": 6
+    },
+    "rss/ifclite-context-final-rss-5.txt": {
+      "source": "/tmp/ifclite-context-final-rss-5.txt",
+      "sha256": "f0c7afae92478d9e46c372d9c4294625b30b45caeb2857a8d57b7e28fca27f7b",
+      "bytes": 6
+    },
+    "rss/ifclite-context-final-rss-6.txt": {
+      "source": "/tmp/ifclite-context-final-rss-6.txt",
+      "sha256": "f4f669cb7bbc188c413a8b94bfaff51cd33872e0a2194a8faa6e486875e8e0b2",
+      "bytes": 6
+    },
+    "rss/ifclite-context-final-rss-7.txt": {
+      "source": "/tmp/ifclite-context-final-rss-7.txt",
+      "sha256": "9d9397e7089cdf227f76e058bc700ad7417381eded4b8f9c688a08c0b6a177f9",
+      "bytes": 6
+    },
+    "rss/ifclite-context-final-rss-8.txt": {
+      "source": "/tmp/ifclite-context-final-rss-8.txt",
+      "sha256": "41067473b9dca4f2da05c9448e59f1e3fff2d36352cc639614f6e06b0c1dc4c3",
+      "bytes": 7
+    },
+    "rss/ifclite-context-final-rss-9.txt": {
+      "source": "/tmp/ifclite-context-final-rss-9.txt",
+      "sha256": "22fc54594cc05c7969317f5a0ce9f94a7f2006abe6a6d52cdef2d131044d3ccf",
+      "bytes": 7
+    },
+    "rss/ifclite-context-final-rss-10.txt": {
+      "source": "/tmp/ifclite-context-final-rss-10.txt",
+      "sha256": "669c352b7209eca232a8f194b735c77683b4dc94d83087ab2c4caa05a724f3e9",
+      "bytes": 7
+    },
+    "rss/ifclite-context-final-rss-11.txt": {
+      "source": "/tmp/ifclite-context-final-rss-11.txt",
+      "sha256": "a0529f4afcbf150012f87a7d52d063a75aa6c5116a182ef0e6e5646ffc8cba96",
+      "bytes": 7
+    },
+    "default-path-perf.json": {
+      "source": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/docs/architecture/evidence/geometry-platform-context-final/default-path-perf.json",
+      "sha256": "8a835b53039b90291b16dc55bc23e42fe4f71def693237e0034766a5008cbd62",
+      "bytes": 42025
+    },
+    "default-path-memory.json": {
+      "source": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/docs/architecture/evidence/geometry-platform-context-final/default-path-memory.json",
+      "sha256": "88f9bd77a785e269adddb41c751e3c2dfbdac73f599fa70e1c4d5e950650fd19",
+      "bytes": 21870
+    },
+    "native-workspace.json": {
+      "source": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/docs/architecture/evidence/geometry-platform-context-final/native-workspace.json",
+      "sha256": "e43b640d108eb0b3bd2cfc0580c40c7833405f939fdb807bd117b3cf421ea086",
+      "bytes": 1693
+    },
+    "source-manifest-ratchet-corrected.json": {
+      "source": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/docs/architecture/evidence/geometry-platform-context-final/source-manifest-ratchet-corrected.json",
+      "sha256": "63bb222be30076a296d109eb6cc7d057ec3ab880f727313d62892df82d65ff93",
+      "bytes": 37565
+    }
+  },
+  "fixtures_verified_after_measurement": {
+    "ara3d/AC20-FZK-Haus.ifc": {
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "bytes": 2526511
+    },
+    "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc": {
+      "sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+      "bytes": 177465622
+    },
+    "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": {
+      "sha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131",
+      "bytes": 12030684
+    },
+    "ara3d/duplex.ifc": {
+      "sha256": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+      "bytes": 2380763
+    },
+    "buildingsmart/annex_e/advanced-geometric-shape/basin-advanced-brep.ifc": {
+      "sha256": "e947de66cadaefe167e77da75eaaeca864cfcc47f7d1ed197b760b466ae081a9",
+      "bytes": 10073
+    },
+    "buildingsmart/annex_e/advanced-geometric-shape/cube-advanced-brep.ifc": {
+      "sha256": "40b50cd0dada3fc1032a9d78741df36a65bbe0f8c000c2c4e21de6f59a577dc1",
+      "bytes": 10729
+    }
+  },
+  "native_binaries_verified_after_measurement": {
+    "base": {
+      "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/examples/perf_probe",
+      "sha256": "42d65d4aa0b71e9c48af8f2719e0e9005fb1186a62b18af999de1eedab634ddd",
+      "bytes": 24834792,
+      "bundled": false
+    },
+    "branch": {
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/examples/perf_probe",
+      "sha256": "dc6b61e2562e8e98a513559ff6e6eca199a143752dfa7fa581c2d2e276b1cc3d",
+      "bytes": 25572032,
+      "bundled": false
+    }
+  },
+  "timing_qualified": false,
+  "geometry_identity": "All six measured models match mesh/vertex/triangle counts and ordered geometry fingerprints across all ABBA invocations; presentation and occurrence metadata are outside this fingerprint.",
+  "memory_scope": "Three models; process high-water marks only, no heap attribution or browser/retained-plan qualification.",
+  "risk": "Heavy Holter candidate execution is slower and peak native RSS is higher in these shared-host samples. Controlled profiling remains required before cutover. No cause or latency non-regression is established.",
+  "metadata_note": "Raw measurement JSON retains a generic source-manifest.json label inherited from the driver. Its source_manifest_sha256 and the driver both identify source-manifest-ratchet-corrected.json; this receipt resolves that label without rewriting the raw result.",
+  "source_inputs_verified_after_archive": 288
+}

@@ -8,7 +8,7 @@ use super::BooleanClippingProcessor;
 use crate::diagnostics::{BoolFailureReason, BoolOp};
 use crate::profiles::ProfileProcessor;
 use crate::{Error, Point2, Result, TessellationQuality};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
 
 /// Most distinct vertices a bounded half-space boundary may have before the
 /// cut is refused (#7786). Prism build, earcut cap triangulation and the exact
@@ -32,7 +32,7 @@ impl BooleanClippingProcessor {
         decoder: &mut EntityDecoder,
         quality: TessellationQuality,
     ) -> Result<Option<Vec<Point2<f64>>>> {
-        let boundary_attr = half_space.get(3).ok_or_else(|| {
+        let boundary_attr = half_space.get(slot::IfcPolygonalBoundedHalfSpace::POLYGONAL_BOUNDARY.index()).ok_or_else(|| {
             Error::geometry("PolygonalBoundedHalfSpace missing PolygonalBoundary".to_string())
         })?;
         let boundary = decoder

@@ -1,0 +1,78 @@
+{
+  "source_manifest": "source-manifest.json",
+  "source_manifest_sha256": "ede5cfafab73e79657c4680398156b84cc4ce62f6fd4fb50a4ef4dba2e16207b",
+  "frozen_source_count": 288,
+  "all_frozen_source_hashes_match": true,
+  "scope": "Rebuilt single-thread SIMD wasm32 web bundle, actual matched-base WASM contracts and root turbo package consumers, with restored original high-level and raw batch ABI; no all-platform, remote-emitter or GPU display qualification",
+  "build": {
+    "command": "CI=1 CARGO_TARGET_DIR=/tmp/ifclite-context-wasm-target pnpm build:wasm",
+    "exit_code": 0,
+    "wall_time_from_build_log": "1m 54s",
+    "isolated_target": "/tmp/ifclite-context-wasm-target",
+    "wasm_pack": "0.15.0",
+    "rust_toolchain": "nightly-2025-11-15",
+    "node": "24.22.0",
+    "pnpm": "10.8.1",
+    "optimized_profile": "release",
+    "release_mapping_dead_code_warning_present": false
+  },
+  "artifacts": {
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "b0f4c1b910c53b0e8385143de6f2019a2fd14ec62a4f89aa8eb50bbf90271f82",
+    "packages/wasm/pkg/ifc-lite.js": "13bcfb47def4df17821d6fe53e4ec2cd3175f56919df33e9b2e46af2982b106c",
+    "packages/wasm/pkg/ifc-lite.d.ts": "8982cdf6e31259e905f8f17276c4ce2cb0f1c82c9115a3b4a865b5e598ba7ab0"
+  },
+  "runtime_newer_than_all_frozen_source_files": true,
+  "cargo_locks": {
+    "Cargo.lock": "c8987439833b029efc8627127656e04700586f5b990657cac650a20636a5045e",
+    "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371"
+  },
+  "cargo_locks_unchanged": true,
+  "package_tests": {
+    "command": "CI=1 CARGO_TARGET_DIR=/tmp/ifclite-context-wasm-target pnpm test --filter=@ifc-lite/wasm --force",
+    "exit_code": 0,
+    "passed": 22,
+    "failed": 0,
+    "skipped": 2,
+    "suites": 8,
+    "skip_reasons": [
+      "real OIP circular alignment fixture absent; pnpm fixtures",
+      "issue858 indexed-colour fixture absent; pnpm fixtures"
+    ],
+    "new_owned_context_contracts_passed": 3,
+    "forced_build_and_tests_preserved_artifact_hashes": true
+  },
+  "contracts": {
+    "command": "IFC_WASM_BASE_JS=<pinned base glue> IFC_WASM_BASE_BINARY=<pinned base wasm> pnpm test:wasm-contract",
+    "exit_code": 0,
+    "passed": 223,
+    "failed": 0,
+    "skipped": 0,
+    "baseline_commit": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+    "baseline_artifacts": {
+      "/tmp/ifclite-smlib-base-8acd0715a/packages/wasm/pkg/ifc-lite.js": "04c85b1449d8fee992f25f0685170ff03fb4360726fa4e4d2a2d180314c169c0",
+      "/tmp/ifclite-smlib-base-8acd0715a/packages/wasm/pkg/ifc-lite_bg.wasm": "b5f103a8d2992e5d0ee8128579c999c28d746b773a0e8a2c7585e1cabb88b7a9"
+    }
+  },
+  "type_surface": {
+    "comparison": "TypeScript AST of all high-level declarations and each InitOutput member, comments removed; pre-Result versus regenerated restored output",
+    "high_level_changes": [],
+    "raw_init_output_changes": [],
+    "raw_abi_signatures_restored": true,
+    "all_five_generated_js_batch_decoder_bodies_match_pinned_base": true,
+    "instanced_return_buffer_decode_restored": true,
+    "prior_result_adapter_candidate": "../geometry-platform-context/wasm-consumer.json; historical223pass candidate rejected for raw ABI change, not relabeled"
+  },
+  "logs": {
+    "/tmp/ifclite-context-restored-wasm-build.log": "eca7726ae15d05d0cfcc03f4022bcceefffbfa23468431eb10fa07b56ee7eb75",
+    "/tmp/ifclite-context-restored-wasm-package.log": "b4e188b84eebe758a044112c81b45a91f4551c669e1553061befb29035feb6de",
+    "/tmp/ifclite-context-restored-wasm-contract.log": "41a4fabfcdeaf2d29af903d13edd09a928ab022a9134e29ac97d1f858d53c561",
+    "/tmp/ifclite-context-restored-wasm-type-surface.log": "5ef719f2c8197032fbd0c3e86388d8ec27c26ce3db56bbc5adce5c1ab843e8fa",
+    "/tmp/ifclite-context-restored-js-decode.log": "eb6f8693993b5d7eced19310f1dff033098393da921a03794bfe90eeeec10185",
+    "/tmp/ifclite-context-restored-wasm-artifacts.log": "95885554fe7f1f50dfa373ef710dac3f5df7129bfff183e61fc810123d053925",
+    "/tmp/ifclite-context-restored-locks-before.log": "fb98e165eac9891bbf913f1ed16c47f8b00f4780339c72090b906fb7ee3df710"
+  },
+  "comparison_sources": {
+    "/tmp/ifclite-context-restored-type-diff.mjs": "56973d9c76264c01570506eeba63e1e851680aa387606edf332849a8eb41f622",
+    "/tmp/ifclite-context-restored-js-decode.mjs": "44575f130c47d5d768ec435f689aef76e4ca417c58dbea623af43122d935b865"
+  }
+}

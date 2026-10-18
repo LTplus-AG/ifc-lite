@@ -1,0 +1,183 @@
+{
+  "status": "baseline positive witnesses only; corrected candidate comparison pending",
+  "base_commit": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+  "candidate_source_manifest_sha256": "ede5cfafab73e79657c4680398156b84cc4ce62f6fd4fb50a4ef4dba2e16207b",
+  "archive": "layer-base-artifacts.tar.gz",
+  "archive_sha256": "441505feefcd8ce81798e9796ff981766278d4278604f4c5a1d4ee8c3ae1f6cd",
+  "files": {
+    "air_gap.ifc": {
+      "sha256": "46c198d0708ec22529564ee7d10df671d094e4c681fcc0a5be9a4cf64d50ea3a",
+      "bytes": 1800
+    },
+    "base-build.log": {
+      "sha256": "c47097f3c0205440c77c89e9b98a408e4e9c20c6258fc7589fb53de01c5383fe",
+      "bytes": 271
+    },
+    "base-output.json": {
+      "sha256": "5a0041813d755385097d7d0643fa92f76babae6b8dd247e9cae17df7124bde8d",
+      "bytes": 51171
+    },
+    "base-receipt.json": {
+      "sha256": "5e177688cfd6259ae35a9486564f012dc857ea557b6d808fcfb2fb21aa9a643c",
+      "bytes": 4377
+    },
+    "base-repeat-output.json": {
+      "sha256": "5a0041813d755385097d7d0643fa92f76babae6b8dd247e9cae17df7124bde8d",
+      "bytes": 51171
+    },
+    "base-repeat-run.log": {
+      "sha256": "a2de30858d446ce39a09c1f56a2a214e6a2f2d0f7f0ce4b6d1130df7503c217f",
+      "bytes": 110
+    },
+    "base-run.log": {
+      "sha256": "a2de30858d446ce39a09c1f56a2a214e6a2f2d0f7f0ce4b6d1130df7503c217f",
+      "bytes": 110
+    },
+    "bits.rs": {
+      "sha256": "e9338fbc88728c68d23b079a7a4d904a3e91476c1869ca81718684db0db0c19b",
+      "bytes": 7051
+    },
+    "build-command.json": {
+      "sha256": "c3decdf8d3e75a0281a9519280246402b8bdd66b54e35d01980efddc7a59ba34",
+      "bytes": 980
+    },
+    "fixture.rs": {
+      "sha256": "c10b7855b25ecedaa47907016f85b35b8e9dff1710439e86df799aaef07efc9f",
+      "bytes": 2845
+    },
+    "main.rs": {
+      "sha256": "43e8aa7175322cbefa352976dd9280d2d3b9464b2e19bb490892a0d6302327f0",
+      "bytes": 3183
+    },
+    "mesh.rs": {
+      "sha256": "4d2dd1b530f69fb04e4fff1cd24acfb52b353b06102e03a86f48e55355782117",
+      "bytes": 1963
+    },
+    "provenance.json": {
+      "sha256": "36758670e928cfb1454440b7820b74dcca43736c49c50ac516be13b92156fb16",
+      "bytes": 968
+    },
+    "three_layers.ifc": {
+      "sha256": "f14ca2d1141e3afe5c971da9c2803ce2ccc95f24d9689c263bb1b4d2f7399b5a",
+      "bytes": 1801
+    },
+    "unsliceable_two_items.ifc": {
+      "sha256": "45d6372647e1744242c832042b0318a85f93e6d182cd075674783241daf4a51b",
+      "bytes": 1805
+    }
+  },
+  "base_receipt": {
+    "scope": "Synthetic canonical-element material-layer invariants only; no real-exporter/whole-pass/annotation-fill claim",
+    "base_libraries": {
+      "ifc_lite_core": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libifc_lite_core-345be4fab942851b.rlib",
+        "bytes": 13365852,
+        "mtime_ns": 1792326332309653486,
+        "sha256": "a414ffcd8475301d7704145b440ec7f7e05f9f4a9e336301c0f31208f3e801b5"
+      },
+      "ifc_lite_geometry": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libifc_lite_geometry-a1b48094c7fc8649.rlib",
+        "bytes": 38820286,
+        "mtime_ns": 1792326376619510148,
+        "sha256": "3ea2d4671bf8810b1deb7b9ba9b3f438b6437171d185db815b48d6f93b615b21"
+      },
+      "ifc_lite_processing": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libifc_lite_processing-915d2910f76c184d.rlib",
+        "bytes": 35178572,
+        "mtime_ns": 1792326389831467408,
+        "sha256": "44ff20c67bc366a3f0742c9d58a26bc0e0e51e3d79ffc2bc9ee61716aba557b3"
+      },
+      "serde": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libserde-e3cc15af0a9b0193.rlib",
+        "bytes": 1018230,
+        "mtime_ns": 1792326326987670703,
+        "sha256": "f0cab349843a98de6694f20e773728e488f02625bb4f6dc5a812bd55b937335d"
+      },
+      "serde_json": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libserde_json-8db63b8bd7d1e60b.rlib",
+        "bytes": 2344826,
+        "mtime_ns": 1792326359772564647,
+        "sha256": "2982ce89ec152e810879351d90de820370b44a97eeccf3fcd2c0322247fd3c0d"
+      },
+      "sha2": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libsha2-704a646f6b16e0bb.rlib",
+        "bytes": 812600,
+        "mtime_ns": 1792326358837567671,
+        "sha256": "e91112f5d4762288c2bf5ec09bc832e67df0c03f251e081b754f3aab3209d5cc"
+      }
+    },
+    "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)\nbinary: rustc\ncommit-hash: b6d7ff3aa71e48e2901b0900f8b5d98126b537ed\ncommit-date: 2025-11-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.93.0-nightly\nLLVM version: 21.1.5\n",
+    "source_files": {
+      "main.rs": "43e8aa7175322cbefa352976dd9280d2d3b9464b2e19bb490892a0d6302327f0",
+      "mesh.rs": "4d2dd1b530f69fb04e4fff1cd24acfb52b353b06102e03a86f48e55355782117",
+      "fixture.rs": "c10b7855b25ecedaa47907016f85b35b8e9dff1710439e86df799aaef07efc9f",
+      "bits.rs": "e9338fbc88728c68d23b079a7a4d904a3e91476c1869ca81718684db0db0c19b"
+    },
+    "executable": {
+      "path": "/tmp/ifclite-layer-consumer/layer-base",
+      "sha256": "cd2d5d86c59b1ef05aed6c1fa288ffde6cb44f3880423bf1a01be1f7e34ac29f"
+    },
+    "build_command_file": "/tmp/ifclite-layer-consumer/build-command.json",
+    "build_command_sha256": "c3decdf8d3e75a0281a9519280246402b8bdd66b54e35d01980efddc7a59ba34",
+    "run_command": "cd /tmp/ifclite-layer-consumer && ./layer-base > base-output.json 2> base-run.log",
+    "base_reproducible": true,
+    "output_sha256": "5a0041813d755385097d7d0643fa92f76babae6b8dd247e9cae17df7124bde8d",
+    "fixtures": {
+      "air_gap.ifc": "46c198d0708ec22529564ee7d10df671d094e4c681fcc0a5be9a4cf64d50ea3a",
+      "three_layers.ifc": "f14ca2d1141e3afe5c971da9c2803ce2ccc95f24d9689c263bb1b4d2f7399b5a",
+      "unsliceable_two_items.ifc": "45d6372647e1744242c832042b0318a85f93e6d182cd075674783241daf4a51b"
+    },
+    "cases": [
+      {
+        "air_gap_without_material_sentinel": false,
+        "class_three_unsliced_control": false,
+        "geometry_item_ids": [
+          null,
+          null,
+          null
+        ],
+        "material_ids": [
+          200,
+          201,
+          200
+        ],
+        "name": "three_layers",
+        "positive_actual_material_slices": 3,
+        "sliceable_index": true
+      },
+      {
+        "air_gap_without_material_sentinel": true,
+        "class_three_unsliced_control": false,
+        "geometry_item_ids": [
+          null,
+          null,
+          null
+        ],
+        "material_ids": [
+          200,
+          null,
+          200
+        ],
+        "name": "air_gap",
+        "positive_actual_material_slices": 2,
+        "sliceable_index": true
+      },
+      {
+        "air_gap_without_material_sentinel": false,
+        "class_three_unsliced_control": true,
+        "geometry_item_ids": [
+          40,
+          48
+        ],
+        "material_ids": [
+          null,
+          null
+        ],
+        "name": "unsliceable_two_items",
+        "positive_actual_material_slices": 0,
+        "sliceable_index": true
+      }
+    ]
+  },
+  "scope": "Synthetic canonical public element producer with explicit material-layer index. No real-exporter, native orchestrator, owned-context or browser layer qualification. The same source must be linked to newly rebuilt candidate libraries before any preservation claim."
+}

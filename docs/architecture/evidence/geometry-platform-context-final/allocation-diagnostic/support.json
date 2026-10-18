@@ -1,0 +1,8 @@
+{
+  "archive": "support.tar.gz",
+  "archive_sha256": "27fa1d8a5a00c02acede98ef63738dcc3becb494c5f4d41b03fa97c574aa4933",
+  "bytes": 28772,
+  "scope": "All current small diagnostic files, including globally ignored logs; large executables/libraries remain local as described in README.",
+  "artifact_index_sha256": "ccdb18259baa3b20889b7250109220f0ec9a4024b8816555bb7446bfd537e0bf",
+  "receipt_sha256": "822c33fa530df5f47508fd31efa00ca8b9f9b73b84b02a8b2a29b1a065de4d31"
+}

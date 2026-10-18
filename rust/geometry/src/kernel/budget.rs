@@ -39,6 +39,10 @@ use std::cell::Cell;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[path = "budget_state.rs"]
+mod state;
+pub use state::ElementState;
+
 /// Serialises every test that mutates the process-global `CAP` / `ELEMENT_CAP`
 /// atomics, so cargo's parallel runner can't race them. Shared crate-wide (not
 /// just this module's tests) so cap-mutating tests in OTHER modules — e.g. the

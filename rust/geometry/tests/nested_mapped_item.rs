@@ -7,7 +7,7 @@
 //!
 //! `process_mapped_item_cached` used to `continue` past every nested mapped
 //! item as a stack-overflow guard, silently dropping the nested geometry. Its
-//! sibling `collect_submeshes_from_item_inner` has always recursed, bounded by
+//! sibling submesh consumer preserves the same nested occurrences, bounded by
 //! `MAX_MAPPED_ITEM_DEPTH` plus a per-walk visited set — this pins the cached
 //! path to the same behaviour, including termination on a cyclic chain.
 

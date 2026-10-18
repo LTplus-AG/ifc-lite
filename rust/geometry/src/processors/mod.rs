@@ -18,22 +18,29 @@
 //! - `helpers`: Shared parse functions used by multiple processors
 
 mod advanced;
+pub(crate) mod advanced_plan;
 mod advanced_face;
-mod alignment;
-mod boolean;
+pub(crate) mod alignment;
+pub(crate) mod diagnostic_capture;
+pub(crate) mod boolean;
 mod brep;
-mod csg_primitive;
+pub(crate) mod csg_primitive;
 mod sphere;
 pub(crate) mod extrusion;
 pub(crate) mod extrusion_params;
-mod extrusion_tapered;
+pub(crate) mod extrusion_tapered;
 mod helpers;
-mod sectioned;
-mod structural_edge;
+pub(crate) mod sectioned;
+pub(crate) mod structural_edge;
 mod structural_face;
-mod surface;
-mod swept;
+pub(crate) mod structural_face_plan;
+pub(crate) mod surface;
+pub(crate) mod swept;
 mod tessellated;
+pub(crate) use tessellated::triangulated_plan;
+pub(crate) use tessellated::polygonal_plan;
+pub(crate) use brep::{faceted_plan, SurfaceModelPlan};
+pub(crate) use swept::{SweptDiskPlan, SurfaceCurveSweepPlan};
 pub mod texture;
 
 #[cfg(test)]

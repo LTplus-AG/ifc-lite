@@ -55,9 +55,10 @@ pub(super) fn plan_textured_product(bytes:&[u8], request:&AnnotationPlaneRequest
     let mut styles=crate::prepass::ResolvedPrepass::default();
     let (_,info)=crate::prepass::surface_style_from_styled_item(&author.entities[&styled],&mut source.decoder).ok_or("Generated style failed canonical resolution")?;
     styles.geometry_style_index.insert(item,info);
-    let textures=FxHashMap::from_iter([(item,ResolvedTextureMap { texture_id:image,
+    let textures=std::sync::Arc::new(FxHashMap::from_iter([(item,ResolvedTextureMap { texture_id:image,
         texture:TextureSource::Image(ImageTextureRef { url:r.image_uri.clone(),repeat_s:repeat[0],repeat_t:repeat[1] }),
-        tex_coords:uv.iter().map(|v|v.map(|x|x as f32)).collect(),tex_coord_index:Some(uv_triangles) })]);
+        tex_coords:uv.iter().map(|v|v.map(|x|x as f32)).collect(),tex_coord_index:Some(uv_triangles) })]));
+    let styles=styles.into();
     let mut meshes=canonical::produce(&mut source,annotation,&textures,Some(&styles))?;
     if meshes.len()!=1 { return Err("Canonical annotation geometry did not produce exactly one textured plane".into()); }
     let mesh=meshes.remove(0);

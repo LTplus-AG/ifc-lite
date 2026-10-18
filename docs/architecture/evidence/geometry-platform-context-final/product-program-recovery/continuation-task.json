@@ -1,0 +1,16 @@
+{
+  "previous_task_id": "node:delegated-task:command%3Amcp%3A40782b11-2ce6-4f4a-b37b-2a6dbccb22b9%3Adelegate-task%3Aifclite-product-program-implementation-round1",
+  "previous_terminal_status": "failed",
+  "previous_terminal_reason": "Selected model is at capacity. Please try a different model.",
+  "continuation_task_id": "node:delegated-task:command%3Amcp%3A40782b11-2ce6-4f4a-b37b-2a6dbccb22b9%3Adelegate-task%3Aifclite-product-program-recovery-round2",
+  "provider": "codex_hotmail",
+  "model": "gpt-6.1-sol",
+  "status_at_creation": "running",
+  "isolation": "managed worktree",
+  "inputs": {
+    "recovery.json": "552473d45cff0cc402c46ee4d41dae487a9a53463d3e7086a02f3be958bf2e11",
+    "partial-implementation.patch": "8045edb3cad9a2f480d35bf4f83ad17418430bfade6da11394512339c79f9715",
+    "parent-qualification-fixes.patch": "3a2bebc182b577e374ce20146256749eb790ed16cd86616f6fd78201ad3f4367"
+  },
+  "scope": "Continue actual partial implementation; no partial code is integrated into the qualified parent source. Review and fresh qualification remain required."
+}

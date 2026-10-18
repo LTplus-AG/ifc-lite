@@ -1,0 +1,1614 @@
+{
+  "base_commit": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+  "candidate": "source-manifest.json",
+  "method": "ABBA,5 iterations per invocation; native whole-worker-pool; fingerprints computed after timing",
+  "timing_verdict": "unqualified shared-host diagnostic; no optimization or latency non-regression claim",
+  "timing_qualified": false,
+  "elapsed_seconds": 195.84372973442078,
+  "summaries": [
+    {
+      "fixture": "ara3d/AC20-FZK-Haus.ifc",
+      "counts": [
+        285,
+        35940,
+        20322
+      ],
+      "mesh_fingerprint_fnv1a64": "7377db33331a3523",
+      "ordered_mesh_hash_identical": true,
+      "reported_best_run_phase_medians_ms": {
+        "base": {
+          "parseMs": 7.0,
+          "geometryMs": 27.0,
+          "totalMs": 34.0
+        },
+        "branch": {
+          "parseMs": 7.5,
+          "geometryMs": 26.0,
+          "totalMs": 34.0
+        }
+      },
+      "phase_deltas_ms": {
+        "parseMs": 0.5,
+        "geometryMs": -1.0,
+        "totalMs": 0.0
+      }
+    },
+    {
+      "fixture": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "counts": [
+        1402,
+        219404,
+        136377
+      ],
+      "mesh_fingerprint_fnv1a64": "19b0b1c8ca8da958",
+      "ordered_mesh_hash_identical": true,
+      "reported_best_run_phase_medians_ms": {
+        "base": {
+          "parseMs": 20.0,
+          "geometryMs": 2341.5,
+          "totalMs": 2361.5
+        },
+        "branch": {
+          "parseMs": 21.0,
+          "geometryMs": 2426.5,
+          "totalMs": 2448.5
+        }
+      },
+      "phase_deltas_ms": {
+        "parseMs": 1.0,
+        "geometryMs": 85.0,
+        "totalMs": 87.0
+      }
+    },
+    {
+      "fixture": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "counts": [
+        109514,
+        4515161,
+        2895362
+      ],
+      "mesh_fingerprint_fnv1a64": "500e89efcdd091fa",
+      "ordered_mesh_hash_identical": true,
+      "reported_best_run_phase_medians_ms": {
+        "base": {
+          "parseMs": 446.0,
+          "geometryMs": 1420.5,
+          "totalMs": 1867.0
+        },
+        "branch": {
+          "parseMs": 440.0,
+          "geometryMs": 1383.5,
+          "totalMs": 1824.5
+        }
+      },
+      "phase_deltas_ms": {
+        "parseMs": -6.0,
+        "geometryMs": -37.0,
+        "totalMs": -42.5
+      }
+    },
+    {
+      "fixture": "buildingsmart/annex_e/advanced-geometric-shape/basin-advanced-brep.ifc",
+      "counts": [
+        1,
+        628,
+        1060
+      ],
+      "mesh_fingerprint_fnv1a64": "c5bc229a7e456bb6",
+      "ordered_mesh_hash_identical": true,
+      "reported_best_run_phase_medians_ms": {
+        "base": {
+          "parseMs": 0.0,
+          "geometryMs": 0.0,
+          "totalMs": 0.0
+        },
+        "branch": {
+          "parseMs": 0.0,
+          "geometryMs": 0.0,
+          "totalMs": 0.0
+        }
+      },
+      "phase_deltas_ms": {
+        "parseMs": 0.0,
+        "geometryMs": 0.0,
+        "totalMs": 0.0
+      }
+    },
+    {
+      "fixture": "buildingsmart/annex_e/advanced-geometric-shape/cube-advanced-brep.ifc",
+      "counts": [
+        1,
+        372,
+        580
+      ],
+      "mesh_fingerprint_fnv1a64": "b32f0d7f3d84effc",
+      "ordered_mesh_hash_identical": true,
+      "reported_best_run_phase_medians_ms": {
+        "base": {
+          "parseMs": 0.0,
+          "geometryMs": 0.0,
+          "totalMs": 0.0
+        },
+        "branch": {
+          "parseMs": 0.0,
+          "geometryMs": 0.0,
+          "totalMs": 0.0
+        }
+      },
+      "phase_deltas_ms": {
+        "parseMs": 0.0,
+        "geometryMs": 0.0,
+        "totalMs": 0.0
+      }
+    },
+    {
+      "fixture": "ara3d/duplex.ifc",
+      "counts": [
+        486,
+        51578,
+        30374
+      ],
+      "mesh_fingerprint_fnv1a64": "3362e22e16f5749a",
+      "ordered_mesh_hash_identical": true,
+      "reported_best_run_phase_medians_ms": {
+        "base": {
+          "parseMs": 8.0,
+          "geometryMs": 50.5,
+          "totalMs": 58.5
+        },
+        "branch": {
+          "parseMs": 8.5,
+          "geometryMs": 45.0,
+          "totalMs": 53.5
+        }
+      },
+      "phase_deltas_ms": {
+        "parseMs": 0.5,
+        "geometryMs": -5.5,
+        "totalMs": -5.0
+      }
+    }
+  ],
+  "runs": [
+    {
+      "fixture": "ara3d/AC20-FZK-Haus.ifc",
+      "side": "base",
+      "order": 0,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        7.3662109375,
+        6.2109375,
+        6.34033203125
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "fileMb": 2.409,
+        "entities": 44249,
+        "meshes": 285,
+        "vertices": 35940,
+        "triangles": 20322,
+        "indexBuildMs": 2.03,
+        "parseMs": 7,
+        "entityScanMs": 4,
+        "lookupMs": 1,
+        "preprocessMs": 2,
+        "geometryMs": 28,
+        "facetedBrepMs": 0,
+        "totalMs": 35,
+        "allTotalsMs": [
+          65,
+          38,
+          39,
+          36,
+          35
+        ],
+        "allWallMs": [
+          67.298196,
+          39.829725,
+          40.811716,
+          38.067886,
+          37.474741
+        ],
+        "pointCacheHits": 51708,
+        "pointCacheMisses": 9076,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "7377db33331a3523",
+          "7377db33331a3523",
+          "7377db33331a3523",
+          "7377db33331a3523",
+          "7377db33331a3523"
+        ]
+      }
+    },
+    {
+      "fixture": "ara3d/AC20-FZK-Haus.ifc",
+      "side": "branch",
+      "order": 1,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        7.4970703125,
+        6.25732421875,
+        6.35498046875
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "fileMb": 2.409,
+        "entities": 44249,
+        "meshes": 285,
+        "vertices": 35940,
+        "triangles": 20322,
+        "indexBuildMs": 1.96,
+        "parseMs": 8,
+        "entityScanMs": 4,
+        "lookupMs": 1,
+        "preprocessMs": 2,
+        "geometryMs": 26,
+        "facetedBrepMs": 0,
+        "totalMs": 34,
+        "allTotalsMs": [
+          38,
+          36,
+          34,
+          35,
+          36
+        ],
+        "allWallMs": [
+          40.12126,
+          37.697326000000004,
+          36.295654,
+          36.699359,
+          38.227323
+        ],
+        "pointCacheHits": 51708,
+        "pointCacheMisses": 9076,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "7377db33331a3523",
+          "7377db33331a3523",
+          "7377db33331a3523",
+          "7377db33331a3523",
+          "7377db33331a3523"
+        ]
+      }
+    },
+    {
+      "fixture": "ara3d/AC20-FZK-Haus.ifc",
+      "side": "branch",
+      "order": 2,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        10.8427734375,
+        7.72802734375,
+        6.8701171875
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "fileMb": 2.409,
+        "entities": 44249,
+        "meshes": 285,
+        "vertices": 35940,
+        "triangles": 20322,
+        "indexBuildMs": 1.85,
+        "parseMs": 7,
+        "entityScanMs": 4,
+        "lookupMs": 1,
+        "preprocessMs": 2,
+        "geometryMs": 26,
+        "facetedBrepMs": 0,
+        "totalMs": 34,
+        "allTotalsMs": [
+          42,
+          34,
+          34,
+          35,
+          35
+        ],
+        "allWallMs": [
+          43.788372,
+          35.980063,
+          35.445214,
+          36.460882,
+          37.451415000000004
+        ],
+        "pointCacheHits": 51708,
+        "pointCacheMisses": 9076,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "7377db33331a3523",
+          "7377db33331a3523",
+          "7377db33331a3523",
+          "7377db33331a3523",
+          "7377db33331a3523"
+        ]
+      }
+    },
+    {
+      "fixture": "ara3d/AC20-FZK-Haus.ifc",
+      "side": "base",
+      "order": 3,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        10.8427734375,
+        7.72802734375,
+        6.8701171875
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "fileMb": 2.409,
+        "entities": 44249,
+        "meshes": 285,
+        "vertices": 35940,
+        "triangles": 20322,
+        "indexBuildMs": 1.74,
+        "parseMs": 7,
+        "entityScanMs": 3,
+        "lookupMs": 1,
+        "preprocessMs": 2,
+        "geometryMs": 26,
+        "facetedBrepMs": 0,
+        "totalMs": 33,
+        "allTotalsMs": [
+          36,
+          35,
+          33,
+          36,
+          34
+        ],
+        "allWallMs": [
+          37.572462,
+          36.500622,
+          35.033743,
+          38.29057,
+          35.851983
+        ],
+        "pointCacheHits": 51708,
+        "pointCacheMisses": 9076,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "7377db33331a3523",
+          "7377db33331a3523",
+          "7377db33331a3523",
+          "7377db33331a3523",
+          "7377db33331a3523"
+        ]
+      }
+    },
+    {
+      "fixture": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "side": "base",
+      "order": 0,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        10.61474609375,
+        7.73291015625,
+        6.87646484375
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "fileMb": 11.473,
+        "entities": 202661,
+        "meshes": 1402,
+        "vertices": 219404,
+        "triangles": 136377,
+        "indexBuildMs": 9.28,
+        "parseMs": 20,
+        "entityScanMs": 19,
+        "lookupMs": 0,
+        "preprocessMs": 0,
+        "geometryMs": 2303,
+        "facetedBrepMs": 0,
+        "totalMs": 2323,
+        "allTotalsMs": [
+          2342,
+          2323,
+          2356,
+          2339,
+          2391
+        ],
+        "allWallMs": [
+          2354.1156619999997,
+          2335.6324050000003,
+          2367.718839,
+          2352.17238,
+          2403.2855619999996
+        ],
+        "pointCacheHits": 223094,
+        "pointCacheMisses": 27870,
+        "csgFailures": 18,
+        "degenerateDropped": 7,
+        "meshFingerprintsFnv1a64": [
+          "19b0b1c8ca8da958",
+          "19b0b1c8ca8da958",
+          "19b0b1c8ca8da958",
+          "19b0b1c8ca8da958",
+          "19b0b1c8ca8da958"
+        ]
+      }
+    },
+    {
+      "fixture": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "side": "branch",
+      "order": 1,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        10.21875,
+        7.7421875,
+        6.88916015625
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "fileMb": 11.473,
+        "entities": 202661,
+        "meshes": 1402,
+        "vertices": 219404,
+        "triangles": 136377,
+        "indexBuildMs": 9.46,
+        "parseMs": 20,
+        "entityScanMs": 20,
+        "lookupMs": 0,
+        "preprocessMs": 0,
+        "geometryMs": 2392,
+        "facetedBrepMs": 0,
+        "totalMs": 2413,
+        "allTotalsMs": [
+          2447,
+          2472,
+          2413,
+          2425,
+          2469
+        ],
+        "allWallMs": [
+          2461.30575,
+          2486.1874080000002,
+          2426.093329,
+          2438.549551,
+          2481.725687
+        ],
+        "pointCacheHits": 223094,
+        "pointCacheMisses": 27870,
+        "csgFailures": 18,
+        "degenerateDropped": 7,
+        "meshFingerprintsFnv1a64": [
+          "19b0b1c8ca8da958",
+          "19b0b1c8ca8da958",
+          "19b0b1c8ca8da958",
+          "19b0b1c8ca8da958",
+          "19b0b1c8ca8da958"
+        ]
+      }
+    },
+    {
+      "fixture": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "side": "branch",
+      "order": 2,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        11.1298828125,
+        8.0283203125,
+        6.99267578125
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "fileMb": 11.473,
+        "entities": 202661,
+        "meshes": 1402,
+        "vertices": 219404,
+        "triangles": 136377,
+        "indexBuildMs": 9.45,
+        "parseMs": 22,
+        "entityScanMs": 21,
+        "lookupMs": 0,
+        "preprocessMs": 0,
+        "geometryMs": 2461,
+        "facetedBrepMs": 0,
+        "totalMs": 2484,
+        "allTotalsMs": [
+          2484,
+          2644,
+          2621,
+          2524,
+          2547
+        ],
+        "allWallMs": [
+          2496.068551,
+          2662.8692840000003,
+          2633.835179,
+          2537.6479249999998,
+          2560.7254890000004
+        ],
+        "pointCacheHits": 223094,
+        "pointCacheMisses": 27870,
+        "csgFailures": 18,
+        "degenerateDropped": 7,
+        "meshFingerprintsFnv1a64": [
+          "19b0b1c8ca8da958",
+          "19b0b1c8ca8da958",
+          "19b0b1c8ca8da958",
+          "19b0b1c8ca8da958",
+          "19b0b1c8ca8da958"
+        ]
+      }
+    },
+    {
+      "fixture": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "side": "base",
+      "order": 3,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        11.23095703125,
+        8.21875,
+        7.07275390625
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "fileMb": 11.473,
+        "entities": 202661,
+        "meshes": 1402,
+        "vertices": 219404,
+        "triangles": 136377,
+        "indexBuildMs": 10.67,
+        "parseMs": 20,
+        "entityScanMs": 19,
+        "lookupMs": 0,
+        "preprocessMs": 0,
+        "geometryMs": 2380,
+        "facetedBrepMs": 0,
+        "totalMs": 2400,
+        "allTotalsMs": [
+          2532,
+          2409,
+          2400,
+          2418,
+          2437
+        ],
+        "allWallMs": [
+          2544.4291209999997,
+          2421.689674,
+          2412.61586,
+          2430.059361,
+          2448.473329
+        ],
+        "pointCacheHits": 223094,
+        "pointCacheMisses": 27870,
+        "csgFailures": 18,
+        "degenerateDropped": 7,
+        "meshFingerprintsFnv1a64": [
+          "19b0b1c8ca8da958",
+          "19b0b1c8ca8da958",
+          "19b0b1c8ca8da958",
+          "19b0b1c8ca8da958",
+          "19b0b1c8ca8da958"
+        ]
+      }
+    },
+    {
+      "fixture": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "side": "base",
+      "order": 0,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        10.20703125,
+        8.14111328125,
+        7.06640625
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "fileMb": 169.244,
+        "entities": 2807815,
+        "meshes": 109514,
+        "vertices": 4515161,
+        "triangles": 2895362,
+        "indexBuildMs": 226.96,
+        "parseMs": 451,
+        "entityScanMs": 352,
+        "lookupMs": 94,
+        "preprocessMs": 3,
+        "geometryMs": 1445,
+        "facetedBrepMs": 0,
+        "totalMs": 1896,
+        "allTotalsMs": [
+          2009,
+          1938,
+          1902,
+          1912,
+          1896
+        ],
+        "allWallMs": [
+          2325.590229,
+          2206.982923,
+          2185.570436,
+          2170.235927,
+          2211.015759
+        ],
+        "pointCacheHits": 203040,
+        "pointCacheMisses": 36834,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "500e89efcdd091fa",
+          "500e89efcdd091fa",
+          "500e89efcdd091fa",
+          "500e89efcdd091fa",
+          "500e89efcdd091fa"
+        ]
+      }
+    },
+    {
+      "fixture": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "side": "branch",
+      "order": 1,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        10.11474609375,
+        8.1865234375,
+        7.0927734375
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "fileMb": 169.244,
+        "entities": 2807815,
+        "meshes": 109514,
+        "vertices": 4515161,
+        "triangles": 2895362,
+        "indexBuildMs": 192.26,
+        "parseMs": 460,
+        "entityScanMs": 359,
+        "lookupMs": 96,
+        "preprocessMs": 3,
+        "geometryMs": 1407,
+        "facetedBrepMs": 0,
+        "totalMs": 1868,
+        "allTotalsMs": [
+          2014,
+          1973,
+          1868,
+          1939,
+          1906
+        ],
+        "allWallMs": [
+          2339.975138,
+          2257.156811,
+          2138.944447,
+          2219.546041,
+          2214.547182
+        ],
+        "pointCacheHits": 203040,
+        "pointCacheMisses": 36834,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "500e89efcdd091fa",
+          "500e89efcdd091fa",
+          "500e89efcdd091fa",
+          "500e89efcdd091fa",
+          "500e89efcdd091fa"
+        ]
+      }
+    },
+    {
+      "fixture": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "side": "branch",
+      "order": 2,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        11.87841796875,
+        8.6943359375,
+        7.27734375
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "fileMb": 169.244,
+        "entities": 2807815,
+        "meshes": 109514,
+        "vertices": 4515161,
+        "triangles": 2895362,
+        "indexBuildMs": 225.96,
+        "parseMs": 420,
+        "entityScanMs": 329,
+        "lookupMs": 87,
+        "preprocessMs": 3,
+        "geometryMs": 1360,
+        "facetedBrepMs": 0,
+        "totalMs": 1781,
+        "allTotalsMs": [
+          2045,
+          1781,
+          1883,
+          1898,
+          1879
+        ],
+        "allWallMs": [
+          2309.06434,
+          2050.5908919999997,
+          2152.826043,
+          2163.6371990000002,
+          2143.960899
+        ],
+        "pointCacheHits": 203040,
+        "pointCacheMisses": 36834,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "500e89efcdd091fa",
+          "500e89efcdd091fa",
+          "500e89efcdd091fa",
+          "500e89efcdd091fa",
+          "500e89efcdd091fa"
+        ]
+      }
+    },
+    {
+      "fixture": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "side": "base",
+      "order": 3,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        12.0732421875,
+        8.85009765625,
+        7.34375
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "fileMb": 169.244,
+        "entities": 2807815,
+        "meshes": 109514,
+        "vertices": 4515161,
+        "triangles": 2895362,
+        "indexBuildMs": 232.1,
+        "parseMs": 441,
+        "entityScanMs": 343,
+        "lookupMs": 94,
+        "preprocessMs": 3,
+        "geometryMs": 1396,
+        "facetedBrepMs": 0,
+        "totalMs": 1838,
+        "allTotalsMs": [
+          1962,
+          1884,
+          1838,
+          1857,
+          1847
+        ],
+        "allWallMs": [
+          2282.854332,
+          2178.2261310000004,
+          2100.5287789999998,
+          2172.3116130000003,
+          2116.438913
+        ],
+        "pointCacheHits": 203040,
+        "pointCacheMisses": 36834,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "500e89efcdd091fa",
+          "500e89efcdd091fa",
+          "500e89efcdd091fa",
+          "500e89efcdd091fa",
+          "500e89efcdd091fa"
+        ]
+      }
+    },
+    {
+      "fixture": "buildingsmart/annex_e/advanced-geometric-shape/basin-advanced-brep.ifc",
+      "side": "base",
+      "order": 0,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/advanced-geometric-shape/basin-advanced-brep.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        10.72705078125,
+        8.7099609375,
+        7.32177734375
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/advanced-geometric-shape/basin-advanced-brep.ifc",
+        "fileMb": 0.01,
+        "entities": 152,
+        "meshes": 1,
+        "vertices": 628,
+        "triangles": 1060,
+        "indexBuildMs": 0.01,
+        "parseMs": 0,
+        "entityScanMs": 0,
+        "lookupMs": 0,
+        "preprocessMs": 0,
+        "geometryMs": 0,
+        "facetedBrepMs": 0,
+        "totalMs": 0,
+        "allTotalsMs": [
+          2,
+          0,
+          0,
+          0,
+          0
+        ],
+        "allWallMs": [
+          2.415863,
+          0.970881,
+          0.873467,
+          0.817323,
+          0.7356440000000001
+        ],
+        "pointCacheHits": 0,
+        "pointCacheMisses": 0,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "c5bc229a7e456bb6",
+          "c5bc229a7e456bb6",
+          "c5bc229a7e456bb6",
+          "c5bc229a7e456bb6",
+          "c5bc229a7e456bb6"
+        ]
+      }
+    },
+    {
+      "fixture": "buildingsmart/annex_e/advanced-geometric-shape/basin-advanced-brep.ifc",
+      "side": "branch",
+      "order": 1,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/advanced-geometric-shape/basin-advanced-brep.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        10.72705078125,
+        8.7099609375,
+        7.32177734375
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/advanced-geometric-shape/basin-advanced-brep.ifc",
+        "fileMb": 0.01,
+        "entities": 152,
+        "meshes": 1,
+        "vertices": 628,
+        "triangles": 1060,
+        "indexBuildMs": 0.01,
+        "parseMs": 0,
+        "entityScanMs": 0,
+        "lookupMs": 0,
+        "preprocessMs": 0,
+        "geometryMs": 0,
+        "facetedBrepMs": 0,
+        "totalMs": 0,
+        "allTotalsMs": [
+          2,
+          0,
+          0,
+          0,
+          1
+        ],
+        "allWallMs": [
+          2.845062,
+          0.904847,
+          0.683647,
+          0.757664,
+          1.0466920000000002
+        ],
+        "pointCacheHits": 0,
+        "pointCacheMisses": 0,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "c5bc229a7e456bb6",
+          "c5bc229a7e456bb6",
+          "c5bc229a7e456bb6",
+          "c5bc229a7e456bb6",
+          "c5bc229a7e456bb6"
+        ]
+      }
+    },
+    {
+      "fixture": "buildingsmart/annex_e/advanced-geometric-shape/basin-advanced-brep.ifc",
+      "side": "branch",
+      "order": 2,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/advanced-geometric-shape/basin-advanced-brep.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        10.72705078125,
+        8.7099609375,
+        7.32177734375
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/advanced-geometric-shape/basin-advanced-brep.ifc",
+        "fileMb": 0.01,
+        "entities": 152,
+        "meshes": 1,
+        "vertices": 628,
+        "triangles": 1060,
+        "indexBuildMs": 0.01,
+        "parseMs": 0,
+        "entityScanMs": 0,
+        "lookupMs": 0,
+        "preprocessMs": 0,
+        "geometryMs": 0,
+        "facetedBrepMs": 0,
+        "totalMs": 0,
+        "allTotalsMs": [
+          2,
+          1,
+          0,
+          0,
+          0
+        ],
+        "allWallMs": [
+          2.423723,
+          1.393735,
+          0.977938,
+          0.900086,
+          0.775401
+        ],
+        "pointCacheHits": 0,
+        "pointCacheMisses": 0,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "c5bc229a7e456bb6",
+          "c5bc229a7e456bb6",
+          "c5bc229a7e456bb6",
+          "c5bc229a7e456bb6",
+          "c5bc229a7e456bb6"
+        ]
+      }
+    },
+    {
+      "fixture": "buildingsmart/annex_e/advanced-geometric-shape/basin-advanced-brep.ifc",
+      "side": "base",
+      "order": 3,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/advanced-geometric-shape/basin-advanced-brep.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        10.72705078125,
+        8.7099609375,
+        7.32177734375
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/advanced-geometric-shape/basin-advanced-brep.ifc",
+        "fileMb": 0.01,
+        "entities": 152,
+        "meshes": 1,
+        "vertices": 628,
+        "triangles": 1060,
+        "indexBuildMs": 0.01,
+        "parseMs": 0,
+        "entityScanMs": 0,
+        "lookupMs": 0,
+        "preprocessMs": 0,
+        "geometryMs": 0,
+        "facetedBrepMs": 0,
+        "totalMs": 0,
+        "allTotalsMs": [
+          2,
+          0,
+          0,
+          0,
+          0
+        ],
+        "allWallMs": [
+          2.371242,
+          1.092989,
+          0.943509,
+          0.8052680000000001,
+          0.9918870000000001
+        ],
+        "pointCacheHits": 0,
+        "pointCacheMisses": 0,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "c5bc229a7e456bb6",
+          "c5bc229a7e456bb6",
+          "c5bc229a7e456bb6",
+          "c5bc229a7e456bb6",
+          "c5bc229a7e456bb6"
+        ]
+      }
+    },
+    {
+      "fixture": "buildingsmart/annex_e/advanced-geometric-shape/cube-advanced-brep.ifc",
+      "side": "base",
+      "order": 0,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/advanced-geometric-shape/cube-advanced-brep.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        10.72705078125,
+        8.7099609375,
+        7.32177734375
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/advanced-geometric-shape/cube-advanced-brep.ifc",
+        "fileMb": 0.01,
+        "entities": 182,
+        "meshes": 1,
+        "vertices": 372,
+        "triangles": 580,
+        "indexBuildMs": 0.01,
+        "parseMs": 0,
+        "entityScanMs": 0,
+        "lookupMs": 0,
+        "preprocessMs": 0,
+        "geometryMs": 0,
+        "facetedBrepMs": 0,
+        "totalMs": 0,
+        "allTotalsMs": [
+          2,
+          0,
+          0,
+          0,
+          0
+        ],
+        "allWallMs": [
+          2.417659,
+          0.946985,
+          0.803675,
+          0.743165,
+          0.567979
+        ],
+        "pointCacheHits": 0,
+        "pointCacheMisses": 0,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "b32f0d7f3d84effc",
+          "b32f0d7f3d84effc",
+          "b32f0d7f3d84effc",
+          "b32f0d7f3d84effc",
+          "b32f0d7f3d84effc"
+        ]
+      }
+    },
+    {
+      "fixture": "buildingsmart/annex_e/advanced-geometric-shape/cube-advanced-brep.ifc",
+      "side": "branch",
+      "order": 1,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/advanced-geometric-shape/cube-advanced-brep.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        10.72705078125,
+        8.7099609375,
+        7.32177734375
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/advanced-geometric-shape/cube-advanced-brep.ifc",
+        "fileMb": 0.01,
+        "entities": 182,
+        "meshes": 1,
+        "vertices": 372,
+        "triangles": 580,
+        "indexBuildMs": 0.01,
+        "parseMs": 0,
+        "entityScanMs": 0,
+        "lookupMs": 0,
+        "preprocessMs": 0,
+        "geometryMs": 0,
+        "facetedBrepMs": 0,
+        "totalMs": 0,
+        "allTotalsMs": [
+          2,
+          0,
+          0,
+          1,
+          1
+        ],
+        "allWallMs": [
+          2.583358,
+          0.614969,
+          0.44945199999999996,
+          1.134727,
+          1.0408590000000002
+        ],
+        "pointCacheHits": 0,
+        "pointCacheMisses": 0,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "b32f0d7f3d84effc",
+          "b32f0d7f3d84effc",
+          "b32f0d7f3d84effc",
+          "b32f0d7f3d84effc",
+          "b32f0d7f3d84effc"
+        ]
+      }
+    },
+    {
+      "fixture": "buildingsmart/annex_e/advanced-geometric-shape/cube-advanced-brep.ifc",
+      "side": "branch",
+      "order": 2,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/advanced-geometric-shape/cube-advanced-brep.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        10.72705078125,
+        8.7099609375,
+        7.32177734375
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/advanced-geometric-shape/cube-advanced-brep.ifc",
+        "fileMb": 0.01,
+        "entities": 182,
+        "meshes": 1,
+        "vertices": 372,
+        "triangles": 580,
+        "indexBuildMs": 0.01,
+        "parseMs": 0,
+        "entityScanMs": 0,
+        "lookupMs": 0,
+        "preprocessMs": 0,
+        "geometryMs": 0,
+        "facetedBrepMs": 0,
+        "totalMs": 0,
+        "allTotalsMs": [
+          2,
+          0,
+          0,
+          0,
+          0
+        ],
+        "allWallMs": [
+          2.361223,
+          0.772226,
+          0.810056,
+          0.518322,
+          0.610069
+        ],
+        "pointCacheHits": 0,
+        "pointCacheMisses": 0,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "b32f0d7f3d84effc",
+          "b32f0d7f3d84effc",
+          "b32f0d7f3d84effc",
+          "b32f0d7f3d84effc",
+          "b32f0d7f3d84effc"
+        ]
+      }
+    },
+    {
+      "fixture": "buildingsmart/annex_e/advanced-geometric-shape/cube-advanced-brep.ifc",
+      "side": "base",
+      "order": 3,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/advanced-geometric-shape/cube-advanced-brep.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        10.72705078125,
+        8.7099609375,
+        7.32177734375
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/advanced-geometric-shape/cube-advanced-brep.ifc",
+        "fileMb": 0.01,
+        "entities": 182,
+        "meshes": 1,
+        "vertices": 372,
+        "triangles": 580,
+        "indexBuildMs": 0.01,
+        "parseMs": 0,
+        "entityScanMs": 0,
+        "lookupMs": 0,
+        "preprocessMs": 0,
+        "geometryMs": 0,
+        "facetedBrepMs": 0,
+        "totalMs": 0,
+        "allTotalsMs": [
+          2,
+          0,
+          0,
+          0,
+          0
+        ],
+        "allWallMs": [
+          2.4569769999999997,
+          0.978268,
+          0.773707,
+          0.619387,
+          0.596259
+        ],
+        "pointCacheHits": 0,
+        "pointCacheMisses": 0,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "b32f0d7f3d84effc",
+          "b32f0d7f3d84effc",
+          "b32f0d7f3d84effc",
+          "b32f0d7f3d84effc",
+          "b32f0d7f3d84effc"
+        ]
+      }
+    },
+    {
+      "fixture": "ara3d/duplex.ifc",
+      "side": "base",
+      "order": 0,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/duplex.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        10.72705078125,
+        8.7099609375,
+        7.32177734375
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/duplex.ifc",
+        "fileMb": 2.27,
+        "entities": 38898,
+        "meshes": 486,
+        "vertices": 51578,
+        "triangles": 30374,
+        "indexBuildMs": 1.57,
+        "parseMs": 8,
+        "entityScanMs": 4,
+        "lookupMs": 2,
+        "preprocessMs": 1,
+        "geometryMs": 53,
+        "facetedBrepMs": 0,
+        "totalMs": 61,
+        "allTotalsMs": [
+          65,
+          62,
+          61,
+          62,
+          61
+        ],
+        "allWallMs": [
+          69.02882100000001,
+          64.71255,
+          64.945526,
+          64.34928400000001,
+          64.241571
+        ],
+        "pointCacheHits": 0,
+        "pointCacheMisses": 0,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "3362e22e16f5749a",
+          "3362e22e16f5749a",
+          "3362e22e16f5749a",
+          "3362e22e16f5749a",
+          "3362e22e16f5749a"
+        ]
+      }
+    },
+    {
+      "fixture": "ara3d/duplex.ifc",
+      "side": "branch",
+      "order": 1,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/duplex.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        10.72705078125,
+        8.7099609375,
+        7.32177734375
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/duplex.ifc",
+        "fileMb": 2.27,
+        "entities": 38898,
+        "meshes": 486,
+        "vertices": 51578,
+        "triangles": 30374,
+        "indexBuildMs": 1.68,
+        "parseMs": 9,
+        "entityScanMs": 5,
+        "lookupMs": 3,
+        "preprocessMs": 1,
+        "geometryMs": 46,
+        "facetedBrepMs": 0,
+        "totalMs": 55,
+        "allTotalsMs": [
+          66,
+          59,
+          69,
+          55,
+          59
+        ],
+        "allWallMs": [
+          69.621854,
+          62.302349,
+          72.65402399999999,
+          58.673311999999996,
+          62.567747000000004
+        ],
+        "pointCacheHits": 0,
+        "pointCacheMisses": 0,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "3362e22e16f5749a",
+          "3362e22e16f5749a",
+          "3362e22e16f5749a",
+          "3362e22e16f5749a",
+          "3362e22e16f5749a"
+        ]
+      }
+    },
+    {
+      "fixture": "ara3d/duplex.ifc",
+      "side": "branch",
+      "order": 2,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/duplex.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        10.72705078125,
+        8.7099609375,
+        7.32177734375
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/duplex.ifc",
+        "fileMb": 2.27,
+        "entities": 38898,
+        "meshes": 486,
+        "vertices": 51578,
+        "triangles": 30374,
+        "indexBuildMs": 2.1,
+        "parseMs": 8,
+        "entityScanMs": 4,
+        "lookupMs": 2,
+        "preprocessMs": 1,
+        "geometryMs": 44,
+        "facetedBrepMs": 0,
+        "totalMs": 52,
+        "allTotalsMs": [
+          61,
+          59,
+          62,
+          63,
+          52
+        ],
+        "allWallMs": [
+          65.24741,
+          62.88659200000001,
+          65.46331699999999,
+          66.72578399999999,
+          55.859856
+        ],
+        "pointCacheHits": 0,
+        "pointCacheMisses": 0,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "3362e22e16f5749a",
+          "3362e22e16f5749a",
+          "3362e22e16f5749a",
+          "3362e22e16f5749a",
+          "3362e22e16f5749a"
+        ]
+      }
+    },
+    {
+      "fixture": "ara3d/duplex.ifc",
+      "side": "base",
+      "order": 3,
+      "command": [
+        "bash",
+        "scripts/perf/probe.sh",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/duplex.ifc",
+        "--iters",
+        "5",
+        "--fingerprint",
+        "--json"
+      ],
+      "load_average": [
+        10.26806640625,
+        8.64794921875,
+        7.30908203125
+      ],
+      "probe": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/duplex.ifc",
+        "fileMb": 2.27,
+        "entities": 38898,
+        "meshes": 486,
+        "vertices": 51578,
+        "triangles": 30374,
+        "indexBuildMs": 2.69,
+        "parseMs": 8,
+        "entityScanMs": 4,
+        "lookupMs": 2,
+        "preprocessMs": 1,
+        "geometryMs": 48,
+        "facetedBrepMs": 0,
+        "totalMs": 56,
+        "allTotalsMs": [
+          68,
+          59,
+          61,
+          62,
+          56
+        ],
+        "allWallMs": [
+          71.228099,
+          62.507267000000006,
+          64.936425,
+          65.17816599999999,
+          59.681819
+        ],
+        "pointCacheHits": 0,
+        "pointCacheMisses": 0,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "3362e22e16f5749a",
+          "3362e22e16f5749a",
+          "3362e22e16f5749a",
+          "3362e22e16f5749a",
+          "3362e22e16f5749a"
+        ]
+      }
+    }
+  ]
+}

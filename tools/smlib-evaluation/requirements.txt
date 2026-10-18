@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
+# Isolated build tooling; never production dependencies.
+cmake==3.31.6
+ninja==1.11.1.4

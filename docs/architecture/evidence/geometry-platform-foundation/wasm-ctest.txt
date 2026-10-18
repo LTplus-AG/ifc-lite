@@ -1,0 +1,8 @@
+Internal ctest changing into directory: /tmp/ifclite-smlib-adapter-wasm
+Test project /tmp/ifclite-smlib-adapter-wasm
+    Start 1: smlib_owned_boundary
+1/1 Test #1: smlib_owned_boundary .............   Passed    0.56 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.56 sec

@@ -1,0 +1,22 @@
+{
+  "status": "Open integration objection; interim active-child implementation, not parent production change or final qualification.",
+  "task_id": "node:delegated-task:command%3Amcp%3A40782b11-2ce6-4f4a-b37b-2a6dbccb22b9%3Adelegate-task%3Aifclite-coherent-source-implementation-round1",
+  "compiled_probe": "cache-provenance-result.json",
+  "probe_source": "cache-provenance-probe.rs.txt",
+  "observed": "Both adoption of an externally populated decoder and inject_shared_cache after factory creation return a foreign IfcBeam for an authenticated bundle whose only entity is IfcWall; owns_decoder remains true. Earlier duplicate direct-span decode also overrides canonical last-occurrence index after adoption.",
+  "scope": "Bytes/index factory provenance is not sufficient to authenticate arbitrary imported decoded/point/placement/grid caches. Existing public mutable cache APIs and extension behavior require an explicit compatibility boundary.",
+  "required_resolution": [
+    "Define which semantic caches are part of the authenticated execution bundle and which mutations are trusted explicit external inputs. Do not describe arbitrary legacy cache imports as source-authenticated.",
+    "Canonical new source-bound consumers must only import caches proven to originate from that bundle/revision, through owned typed provenance or equivalent private factory authority. Preserve existing public legacy APIs with explicit preconditions or invalidate their factory authority before effects.",
+    "Adoption must not grant authority to preexisting foreign semantic caches. Preserve legitimate canonical prewarming through a factory-owned route rather than silently discarding performance-critical caches or changing duplicate-read behavior.",
+    "Exercise real mismatched same-ID source cache imports before adoption, after factory creation, and point/placement/grid cache transfer; validate rejection before geometry or effects. Qualify the existing compatible same-source cross-job cache path and extension contracts.",
+    "Recheck the final returned patch: this is an interim compiled probe; the child can still resolve the issue during its active task."
+  ],
+  "inspected_child_files_sha256": {
+    "rust/core/src/source_bundle.rs": "81f189066d548e8c2465d795aa8aaa59c8ad881eeaf7c6ed9101d581e53702d3",
+    "rust/core/src/decoder.rs": "99f7c209073757b2b33e575d0404848413869c29a62fabcdb25a6d6850e8c732",
+    "rust/core/src/decoder/caches.rs": "27ec3ea6cc1867deb7331d8b5a4954e3ffb82ff6009bdd66f47cc6fcc7c7a2e7",
+    "rust/core/src/decoder/schema_layout.rs": "9f54023b4399ea3d81462107fe61f52777cd2a136ca73e9d46a4b34496606774"
+  },
+  "library_lineage_limit": "Probe hashes the actual compiled child rlib before/after linking. The rlib is from a live development target; this is not a complete finalized source/build provenance receipt."
+}

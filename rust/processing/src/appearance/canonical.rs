@@ -3,12 +3,13 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use super::{source::Source, AppearanceItem, AppearanceRequest};
 use crate::element::{
-    produce_element_meshes, ElementJobKind, ElementMeshJob, MeshProductionContext,
+    produce_element_meshes_owned, ElementJobKind, ElementMeshJob, OwnedMeshProductionContext,
     MeshProductionOptions,
 };
 use crate::types::mesh::MeshData;
 use ifc_lite_geometry::{ ImageTextureRef, ResolvedTextureMap, TextureSource};
 use rustc_hash::FxHashMap;
+use std::sync::Arc;
 
 /// Raw tessellation is not the final vertex contract: placement/source welding
 /// may merge corners. Run the canonical funnel for BOTH appearances, proving
@@ -17,13 +18,13 @@ pub(super) fn align_source_corners(
     source: &mut Source<'_>,
     product_id: u32,
     items: &mut [AppearanceItem],
-    textures: &FxHashMap<u32, ResolvedTextureMap>,
+    textures: &Arc<FxHashMap<u32, ResolvedTextureMap>>,
     request: &AppearanceRequest,
 ) -> Result<(), String> {
     let before = produce(source, product_id, textures, None)?;
     // Clone only selected items' maps; direct eligibility guarantees these are
     // the product's complete Body and no mapped sibling may contribute geometry.
-    let replacements = items
+    let replacements = Arc::new(items
         .iter()
         .map(|item| {
             (
@@ -44,8 +45,9 @@ pub(super) fn align_source_corners(
                 },
             )
         })
-        .collect();
-    let after = produce(source, product_id, &replacements, None)?;
+        .collect());
+    let target = source.empty_styles.snapshot(&source.production_model, &replacements);
+    let after = produce_with_context(source, product_id, &target, false, false)?;
     // A face-masked conversion leaves one retained face set unmapped; it must
     // survive both passes with identical geometry and no texture binding.
     let retained = source.evaluated_splits.get(&product_id).map(|split| split.retained);
@@ -127,8 +129,8 @@ fn one_item(meshes: &[MeshData], id: u32) -> Result<&MeshData, String> {
 pub(super) fn produce(
     source: &mut Source<'_>,
     product_id: u32,
-    textures: &FxHashMap<u32, ResolvedTextureMap>,
-    appearance: Option<&crate::prepass::ResolvedPrepass>,
+    textures: &Arc<FxHashMap<u32, ResolvedTextureMap>>,
+    appearance: Option<&super::owned_context::Styles>,
 ) -> Result<Vec<MeshData>, String> {
     produce_with_frame(source, product_id, textures, appearance, false)
 }
@@ -139,8 +141,8 @@ pub(super) fn produce(
 pub(super) fn produce_evaluated(
     source: &mut Source<'_>,
     product_id: u32,
-    textures: &FxHashMap<u32, ResolvedTextureMap>,
-    appearance: Option<&crate::prepass::ResolvedPrepass>,
+    textures: &Arc<FxHashMap<u32, ResolvedTextureMap>>,
+    appearance: Option<&super::owned_context::Styles>,
 ) -> Result<Vec<MeshData>, String> {
     produce_with_frame(source, product_id, textures, appearance, true)
 }
@@ -148,9 +150,18 @@ pub(super) fn produce_evaluated(
 fn produce_with_frame(
     source: &mut Source<'_>,
     product_id: u32,
-    textures: &FxHashMap<u32, ResolvedTextureMap>,
-    appearance: Option<&crate::prepass::ResolvedPrepass>,
+    textures: &Arc<FxHashMap<u32, ResolvedTextureMap>>,
+    appearance: Option<&super::owned_context::Styles>,
     evaluated: bool,
+) -> Result<Vec<MeshData>, String> {
+    let styles = appearance.unwrap_or(&source.empty_styles);
+    let context = styles.context(&source.production_model, source.production_identity, textures);
+    produce_with_context(source, product_id, &context, appearance.is_some(), evaluated)
+}
+
+fn produce_with_context(
+    source: &mut Source<'_>, product_id: u32, production: &Arc<OwnedMeshProductionContext>,
+    resolve_color: bool, evaluated: bool,
 ) -> Result<Vec<MeshData>, String> {
     let product = source.entity(product_id)?;
     source.validate_world_placement(&product)?;
@@ -158,29 +169,18 @@ fn produce_with_frame(
     if !scale.is_finite() || scale <= 0. {
         return Err("Invalid model length unit scale".into());
     }
-    let element_color = appearance.and_then(|styles| {
-        product.get_ref(6).and_then(|pds| crate::processor::resolve_element_color_for_product_definition_shape(
-            pds, &styles.geometry_style_index, &mut source.decoder))
+    let styles = production.borrowed();
+    let element_color = resolve_color.then(|| {
+        product.get(ifc_lite_core::slot::IfcProduct::REPRESENTATION.index()).and_then(|a| a.as_entity_ref()).and_then(|pds| crate::processor::resolve_element_color_for_product_definition_shape(
+            pds, styles.geometry_style_index, &mut source.decoder))
             .or_else(|| styles.element_material_colors.get(&product_id).and_then(|colors| crate::style::element_material_fallback_color(colors)))
-    });
+    }).flatten();
     let context = source.context.as_ref().ok_or("Missing canonical load context")?;
     if context.layers.is_sliceable(product_id) {
         return Err("Material-layer slicing is unsupported for appearance authoring".into());
     }
     let router = if evaluated { context.evaluated_router() } else { context.router() };
-    let voids = FxHashMap::default();
-    let styles = FxHashMap::default();
-    let colours = FxHashMap::default();
-    let materials = FxHashMap::default();
-    let context = MeshProductionContext {
-        void_index: appearance.map_or(&voids, |a| &a.void_index),
-        geometry_style_index: appearance.map_or(&styles, |a| &a.geometry_style_index),
-        indexed_colour_full: appearance.map_or(&colours, |a| &a.indexed_colour_full),
-        element_material_colors: appearance.map_or(&materials, |a| &a.element_material_colors),
-        texture_index: textures,
-        site_local_rotation: None,
-    };
-    let produced = produce_element_meshes(
+    let produced = produce_element_meshes_owned(
         &ElementMeshJob {
             id: product_id,
             ifc_type: product.ifc_type.clone(),
@@ -189,13 +189,17 @@ fn produce_with_frame(
             element_color,
             metadata: None,
         },
-        &context,
+        production,
         &MeshProductionOptions::default(),
         &mut source.decoder,
         &router,
-    );
+    ).map_err(|error| error.to_string())?;
     if !produced.csg_failures.is_empty() {
         return Err("Canonical geometry reported a processing failure".into());
     }
     Ok(produced.meshes)
 }
+
+#[cfg(test)]
+#[path = "context_tests.rs"]
+mod context_tests;

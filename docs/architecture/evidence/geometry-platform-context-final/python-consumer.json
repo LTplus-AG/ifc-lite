@@ -1,0 +1,90 @@
+{
+  "source_manifest": "source-manifest.json",
+  "source_manifest_sha256": "29cb0bc3971c14c78f0557309bf6e51b6a24c415f196490dea2f5a80b34a902d",
+  "source_count": 288,
+  "all_frozen_source_hashes_match_before_and_after": true,
+  "scope": "Fresh locked dev-profile abi3 wheel build/install against final source. Actual local CPython3.12 Linuxx86_64 binding, geometry/entity golden and infrastructure tests; no all-platform/hard-resource/retained-engine qualification.",
+  "command": "bash /tmp/ifclite-context-final-nativepy-qualify.sh",
+  "exit": 0,
+  "passed": 49,
+  "failed": 0,
+  "skipped": 0,
+  "target_dir": "/tmp/ifclite-work-python-target",
+  "venv": "/tmp/ifclite-smlib-venv",
+  "wheel_local_path": "/tmp/ifclite-context-final-nativepy-wheel/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl",
+  "wheel_sha256": "a88981029e51bba8168322401276c649f9f1a69c1bc7aa88f6dd68b3ea75fee6",
+  "installed_extension_local_path": "/tmp/ifclite-smlib-venv/lib/python3.12/site-packages/ifclite_geom/ifclite_geom.abi3.so",
+  "installed_extension_sha256": "0f2d8584cf65fdc691c2161520ad16834cd92ffa95b21559240a8ea15bb18194",
+  "installed_extension_equals_wheel_member": "ifclite_geom/ifclite_geom.abi3.so",
+  "cargo_locks_unchanged": true,
+  "infrastructure_fixture": {
+    "path": "tests/models/issues/844_terrain_and_alignment.ifc",
+    "sha256": "f6124170e390ed865120985dbd0e6fd38d5c9caae97dd41082031d3246e6a096",
+    "bytes": 543228
+  },
+  "test_source_sha256": {
+    "rust/python/tests/golden/entity-data.json": "47939efd9a3abb07b186368d6692268243cef3079a8f4afa17187111f8f8626a",
+    "rust/python/tests/golden/geometry-data-json.json": "702932c13e676d52048956c2653e88c15cebbceeaf93b248f469312e7e780f70",
+    "rust/python/tests/test_alignment_axes.py": "9793100343c79e8d8d0da4aec1778e8f39b8bbdf35582e6ded0ad06be9aa7358",
+    "rust/python/tests/test_bindings.py": "e625826273a6254ab048f6550138dd8ffdc10268d0dd582bcc384545fc21d291",
+    "rust/python/tests/test_golden.py": "14dadc1acd910b296cfb8aa2058aa0e3364f8c95427545389ebe64f19a755e2b",
+    "rust/python/tests/test_golden_entity_data.py": "c1e43c51fdc22bd07f6fa3f09cfb91eee064ad9e42e3ca519e6fe9d3143720dd"
+  },
+  "artifacts": {
+    "build.log": {
+      "local_path": "/tmp/ifclite-context-final-nativepy-build.log",
+      "receipt_path": "python-consumer/build.log",
+      "sha256": "573ab1f1667af653bc8a2195c4b7c2ff0e0b541755585afce1933e7ec17b2af1",
+      "bytes": 474
+    },
+    "install.log": {
+      "local_path": "/tmp/ifclite-context-final-nativepy-install.log",
+      "receipt_path": "python-consumer/install.log",
+      "sha256": "20142836e05e2511df61f7ccd4d0a669b995b63739e3d956e33e89a486821bf7",
+      "bytes": 375
+    },
+    "tests.log": {
+      "local_path": "/tmp/ifclite-context-final-nativepy-tests.log",
+      "receipt_path": "python-consumer/tests.log",
+      "sha256": "fc576e11e1be0ce149811c98337bf76092f8dc0dc960daa4bf17fe5bfe7fd851",
+      "bytes": 99
+    },
+    "environment.log": {
+      "local_path": "/tmp/ifclite-context-final-nativepy-environment.log",
+      "receipt_path": "python-consumer/environment.log",
+      "sha256": "4adaec8cd172451d8701194ce7c911cfae7ae7edf7935a00534ba858a9fa0c6d",
+      "bytes": 166
+    },
+    "locks-before.log": {
+      "local_path": "/tmp/ifclite-context-final-nativepy-locks-before.log",
+      "receipt_path": "python-consumer/locks-before.log",
+      "sha256": "fb98e165eac9891bbf913f1ed16c47f8b00f4780339c72090b906fb7ee3df710",
+      "bytes": 166
+    },
+    "locks-after.log": {
+      "local_path": "/tmp/ifclite-context-final-nativepy-locks-after.log",
+      "receipt_path": "python-consumer/locks-after.log",
+      "sha256": "fb98e165eac9891bbf913f1ed16c47f8b00f4780339c72090b906fb7ee3df710",
+      "bytes": 166
+    },
+    "artifact.log": {
+      "local_path": "/tmp/ifclite-context-final-nativepy-artifact.log",
+      "receipt_path": "python-consumer/artifact.log",
+      "sha256": "9996f37d7ae5b85e076d47f2e79e032776bc6c89801028654880465d3973bfc1",
+      "bytes": 164
+    },
+    "results.xml": {
+      "local_path": "/tmp/ifclite-context-final-nativepy-results.xml",
+      "receipt_path": "python-consumer/results.xml",
+      "sha256": "598d7fd3f3335d225bc90fab27410e7897c53e5bc8e8108573c09aa086ff909e",
+      "bytes": 6217
+    },
+    "qualify.sh": {
+      "local_path": "/tmp/ifclite-context-final-nativepy-qualify.sh",
+      "receipt_path": "python-consumer/qualify.sh",
+      "sha256": "2e2f08e0b280dc0f9dd0267666bd8e65f7457281fdbaa1a992879fab802fcc37",
+      "bytes": 1455
+    }
+  },
+  "accessibility": "Small logs, driver, environment and JUnit persisted alongside receipt; wheel/installed extension/cached target remain local temporary artifacts. Historical restored receipts unchanged."
+}

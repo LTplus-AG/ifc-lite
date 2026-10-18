@@ -63,7 +63,7 @@ const TESSELLATION_QUALITY_MEDIUM: u8 = 2;
 /// EDGE-WASM-5, #7691). Held in [`IfcAPI`]'s per-content cache slot.
 pub(crate) struct IndexedColourCache {
     /// Geometry id → full per-triangle palette.
-    pub(crate) maps: rustc_hash::FxHashMap<u32, ifc_lite_processing::style::FullIndexedColourMap>,
+    pub(crate) maps: std::sync::Arc<rustc_hash::FxHashMap<u32, ifc_lite_processing::style::FullIndexedColourMap>>,
     /// Multi-colour face-set ids; `None` when no map paints more than one colour.
     pub(crate) split_guard_ids: Option<std::sync::Arc<rustc_hash::FxHashSet<u32>>>,
 }
@@ -72,6 +72,7 @@ pub(crate) struct IndexedColourCache {
 #[wasm_bindgen]
 pub struct IfcAPI {
     initialized: bool,
+    production_model: ifc_lite_processing::element::ProductionModel,
     /// Cached entity index from buildPrePassOnce, reused by processGeometryBatch.
     ///
     /// A compact [`ColumnarEntityIndex`] (three sorted `u32` columns +
@@ -255,17 +256,7 @@ pub struct IfcAPI {
     /// keyed by a cheap (len, first_id, last_id) signature of the wire arrays —
     /// rebuilt only when the signature changes.
     #[allow(clippy::type_complexity)]
-    cached_geometry_styles: std::sync::Mutex<
-        Option<(
-            usize,
-            u32,
-            u32,
-            std::sync::Arc<(
-                rustc_hash::FxHashMap<u32, [f32; 4]>,
-                rustc_hash::FxHashMap<u32, ifc_lite_processing::style::GeometryStyleInfo>,
-            )>,
-        )>,
-    >,
+    cached_geometry_styles: std::sync::Mutex<Option<(usize, u32, u32, gpu_meshes::StyleMaps)>>,
     /// #5582: authored metallic/roughness per style id, installed by
     /// `setStyleFinishes` from the prepass `styleFinishes` wire and stamped on
     /// each batch mesh by its representation item id. Tagged with the
@@ -307,6 +298,7 @@ impl IfcAPI {
 
         Self {
             initialized: true,
+            production_model: ifc_lite_processing::element::ProductionModel::new(),
             cached_entity_index: std::sync::Mutex::new(None),
             cached_source_bytes: std::sync::Mutex::new(None),
             cached_item_dedup: std::sync::Mutex::new(None),
@@ -348,6 +340,7 @@ impl IfcAPI {
     /// Recovers a poisoned cache Mutex instead of panicking; see `mod_tests.rs`.
     #[wasm_bindgen(js_name = clearPrePassCache)]
     pub fn clear_pre_pass_cache(&self) {
+        self.production_model.invalidate_source();
         let mut slot = self
             .cached_entity_index
             .lock()
@@ -979,7 +972,7 @@ impl IfcAPI {
 
         let arc = std::sync::Arc::new(IndexedColourCache {
             split_guard_ids: ifc_lite_processing::style::indexed_colour_split_guard_ids(&map),
-            maps: map,
+            maps: std::sync::Arc::new(map),
         });
         let mut slot = self
             .cached_indexed_colour_maps

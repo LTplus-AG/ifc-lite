@@ -8,11 +8,11 @@
 //! operand arm gained its diagnostic record (#3821).
 
 use super::brep_voids::brep_with_voids_shell_kind;
-use super::{BooleanClippingProcessor, CsgSolidProcessor};
+use super::BooleanClippingProcessor;
 use crate::diagnostics::{BoolFailureReason, BoolOp};
 use crate::router::builtin_processor;
-use crate::{Mesh, Point3, Result, TessellationQuality, Vector3};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use crate::{Error, Mesh, Point3, Result, TessellationQuality, Vector3};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType, slot};
 
 /// Boolean/CSG operand nodes one `process` call (one representation item)
 /// may ENTER, every path counted.
@@ -91,8 +91,8 @@ impl OperandPath {
 /// DIFFERENCE and defaulting would execute a subtraction the file never
 /// asked for. An `IfcBooleanClippingResult` has DIFFERENCE as its only legal
 /// operator, so there the default is what the schema says.
-pub(super) fn boolean_operator(entity: &DecodedEntity) -> std::result::Result<BoolOp, &str> {
-    let Some(keyword) = entity.get(0).and_then(|v| v.as_enum()) else {
+pub(crate) fn boolean_operator(entity: &DecodedEntity) -> std::result::Result<BoolOp, &str> {
+    let Some(keyword) = entity.attr(slot::IfcBooleanResult::OPERATOR).and_then(|v| v.as_enum()) else {
         return match entity.ifc_type {
             IfcType::IfcBooleanClippingResult => Ok(BoolOp::Difference),
             _ => Err("<unreadable>"),
@@ -117,7 +117,7 @@ impl BooleanClippingProcessor {
         node: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Option<DecodedEntity> {
-        let resolved = node.get(2).and_then(|attr| decoder.resolve_ref(attr).ok().flatten());
+        let resolved = node.get(slot::IfcBooleanResult::SECOND_OPERAND.index()).and_then(|attr| decoder.resolve_ref(attr).ok().flatten());
         if resolved.is_none() {
             self.record_failure(op, BoolFailureReason::EmptyOperand);
         }
@@ -144,99 +144,26 @@ impl BooleanClippingProcessor {
         plane
     }
 
-    /// Process a solid operand, reporting whether it meshed empty with that
-    /// loss already on record: its type had NO meshing branch here, or it is
-    /// a nested boolean or `IfcCsgSolid` whose own walk ended empty on a loss
-    /// it recorded.
-    ///
-    /// The flag exists because one dropped operand must produce ONE record. An
-    /// unsupported SECOND operand meshes empty, so the `EmptyOperand` arm at
-    /// the caller would fire straight after the `UnsupportedOperand` record
-    /// below, counting the same step twice — and since the reason breakdown
-    /// breaks ties alphabetically, the viewer's "top failure reason" would name
-    /// `EmptyOperand`, the CONSEQUENCE, over `UnsupportedOperand`, the cause.
-    /// Callers pass this to [`Self::record_empty_operand`]. A nested operand
-    /// reported only its OWN type here until #4691, so `DIFFERENCE(host,
-    /// UNION(unsupported, unsupported))` recorded `EmptyOperand` on top of the
-    /// inner records.
-    ///
-    /// `op` is the operation whose operand this is, and it goes into the
-    /// `UnsupportedOperand` record. Since that record is then the ONLY one for
-    /// the dropped step, recording `Unknown` for an operand of an authored
-    /// `.DIFFERENCE.` would render "UNKNOWN failed" as the whole story a
-    /// consumer of `take_csg_failures` ever gets for it.
-    ///
-    /// The BASE solid at the bottom of a left spine passes [`BoolOp::Unknown`]:
-    /// it is read before any node's operator is, so naming one would claim an
-    /// attribution that path does not have.
+    /// Evaluate a non-recursive operand through the canonical built-in
+    /// constructor seams. The continuation routes booleans/CSG separately;
+    /// an unsupported leaf or refused void operand reports its loss once.
     pub(super) fn process_operand_checked(
-        &self,
-        op: BoolOp,
-        operand: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        depth: u32,
-        quality: TessellationQuality,
-        visited: &mut OperandPath,
+        &self, op: BoolOp, operand: &DecodedEntity,
+        decoder: &mut EntityDecoder, quality: TessellationQuality,
     ) -> Result<(Mesh, bool)> {
-        // Only the two arms that must NOT run on a fresh processor are spelled
-        // out here: both carry `depth` and the cycle guard across the hop.
-        // Every other operand type goes to the same built-in table the router
-        // dispatches representation items from (#4560), so an operand is
-        // supported exactly when the engine can mesh it at all. This path used
-        // to keep its own six-arm copy of that table; `IfcPolygonalFaceSet`,
-        // the tessellated cutter Bonsai/IfcOpenShell emits for a wall clipped
-        // by a roof, was never in it and the wall rendered up to the ridge.
         match &operand.ifc_type {
-            // `CsgSolidProcessor::process` builds a FRESH BooleanClippingProcessor
-            // for a boolean TreeRootExpression, so routing through it used to reset
-            // both `depth` and the cycle guard. `#10 IfcBooleanResult -> FirstOperand
-            // #20 IfcCsgSolid -> TreeRootExpression #10` then recursed forever with
-            // depth never passing 1, and a Rust stack overflow ABORTS (#2866).
-            // `depth` restarts at 0 here, as it did before this guard existed
-            // (the hop built a fresh processor). Carrying it would tighten
-            // MAX_BOOLEAN_DEPTH, which #960 calibrated against a per-processor
-            // reset: 8 booleans + a CsgSolid + 8 more is valid, resolves on
-            // main, and would error as "depth 11 exceeds limit 10", dropping
-            // the element. MAX_OPERAND_PATH_NODES bounds the stack across the
-            // hop instead, counting frames of both kinds.
-            IfcType::IfcCsgSolid => {
-                // Transient, like the `ClippingProcessor`s below: it is not on
-                // any router, so its log has to come back here or it dies with
-                // it. `self` IS router-held, so this is the whole route out
-                // (#3821) — no thread-local, no cross-router leak.
-                let csg = CsgSolidProcessor::with_skip_small_cuts(self.skip_small_cuts);
-                let out = csg.process_with_boolean_cycle_guard(
-                    operand,
-                    decoder,
-                    &self.schema,
-                    0,
-                    quality,
-                    visited,
-                );
-                self.absorb_failures(csg.take_failures());
-                out
+            IfcType::IfcCsgSolid | IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
+                Err(Error::geometry("Recursive operand requires continuation dispatch"))
             }
-            IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
-                // Recursive case with depth tracking
-                self.process_with_depth(operand, decoder, &self.schema, depth + 1, quality, visited)
-            }
-            // An open swept surface bounds no volume and is not an
-            // `IfcBooleanOperand`. Main refused it here (the type had no
-            // built-in); since #7688 registered it, meshing it would cut the
-            // host open along the strip. It stays an unsupported operand.
+            // An open swept surface is not a volumetric boolean operand.
             IfcType::IfcSurfaceOfLinearExtrusion => {
-                self.record_failure(
-                    op,
-                    BoolFailureReason::UnsupportedOperand(operand.ifc_type.to_string()),
-                );
+                self.record_failure(op, BoolFailureReason::UnsupportedOperand(operand.ifc_type.to_string()));
                 Ok((Mesh::new(), true))
             }
             other => match builtin_processor(other.clone(), &self.schema) {
                 Some(processor) => {
                     let outer = processor.process(operand, decoder, &self.schema, quality)?;
-                    // A cutter is the solid IFC defines, not its Outer shell
-                    // alone (#7786). The BASE operand (`BoolOp::Unknown`) keeps
-                    // the shell: the same item meshes that way outside a boolean.
+                    // Base operands retain the standalone Outer-shell policy.
                     if op != BoolOp::Unknown {
                         if let Some(kind) = brep_with_voids_shell_kind(other) {
                             return Ok(self.without_voids(kind, op, operand, outer, decoder, quality));
@@ -244,20 +171,8 @@ impl BooleanClippingProcessor {
                     }
                     Ok((outer, false))
                 }
-                // No built-in meshes this operand type: the operand resolves to
-                // an EMPTY mesh. As a FIRST operand that empties the whole
-                // boolean result and the element's item renders nothing; as a
-                // SECOND operand it means an unsupported cutter and the host
-                // renders un-cut. Returning `Err` here would be wrong for the
-                // second case — it would delete the host as well — so the arm
-                // keeps returning an empty mesh and RECORDS the loss instead
-                // (#3821). Before this, the only base-operand drop in the whole
-                // boolean path left no trace at all, not even in a debug build.
                 None => {
-                    self.record_failure(
-                        op,
-                        BoolFailureReason::UnsupportedOperand(other.to_string()),
-                    );
+                    self.record_failure(op, BoolFailureReason::UnsupportedOperand(other.to_string()));
                     Ok((Mesh::new(), true))
                 }
             },

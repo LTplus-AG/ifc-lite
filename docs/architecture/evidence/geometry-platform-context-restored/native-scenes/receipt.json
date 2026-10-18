@@ -1,0 +1,42 @@
+{
+  "scope": "corrected288-source combined mapping-control and owned model-context candidate; original batch ABI restored; no performance claim",
+  "source_manifest": "../source-manifest.json",
+  "frozen_source_manifest_sha256": "ede5cfafab73e79657c4680398156b84cc4ce62f6fd4fb50a4ef4dba2e16207b",
+  "frozen_source_count": 288,
+  "qualified": 44,
+  "case_count": 44,
+  "tests": {
+    "collector_rust_baseline_linked": 5,
+    "comparator_python": 3,
+    "candidate_clippy_driver_exit": 0
+  },
+  "source_and_fixture_verification": "input-verification.json",
+  "harness_sha256": {
+    "tools/smlib-evaluation/scene-comparison/run.py": "1d76aae1139e114167b21df45fc825383e2ffacd42290447ec9adedadffdee43",
+    "tools/smlib-evaluation/scene-comparison/finalize.py": "c0a81253ef0bd22bafca891e1625e6ef9f67463d15fccaa84929ce154dac84be",
+    "tools/smlib-evaluation/scene-comparison/test_comparison.py": "2061411e3e6b9318d353e2e3a3dbb329e78240634f80a3ad300945b13d1e0d73",
+    "tools/smlib-evaluation/scene-comparison/src/bits.rs": "e9338fbc88728c68d23b079a7a4d904a3e91476c1869ca81718684db0db0c19b",
+    "tools/smlib-evaluation/scene-comparison/src/collector_tests.rs": "b240ebe98cb070460455f9944e39187c27afffe164a67cb9205be48bbba3d185",
+    "tools/smlib-evaluation/scene-comparison/src/main.rs": "1fd55bbf587874111a8daa6e8915206ee0a1f43ed37c799e378de3b0ba5f9f7e",
+    "tools/smlib-evaluation/scene-comparison/src/mesh.rs": "4d2dd1b530f69fb04e4fff1cd24acfb52b353b06102e03a86f48e55355782117",
+    "tools/smlib-evaluation/scene-comparison/src/records.rs": "ee554379b006fb4a61f1d84d174b704b77a5963c417fbaad3bbf67e26361e3ad",
+    "tools/smlib-evaluation/scene-comparison/src/sink.rs": "7d3ad0e8e201d01efe6812305d9bdc9266b0f0c46e823ec0405064ca9b605761"
+  },
+  "evidence_sha256": {
+    "README.md": "bb2052da566c64cc71bca4f1e53e8d117603105871c606bb2bc8fa38bf3dd6d1",
+    "clippy.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "commands.json": "bbd31ed19cf7d9431f43569d8c1770c772a9277d0fcea3077100167b57191e3f",
+    "consumer-build.json": "57900009e898b4c33e10b5700079300da856c47e5ce98ca55d525f17c7c704e6",
+    "coverage.json": "47798599c2977964691a22ad5c6fa3bccb64551c62e50b1dd9576228ac9e8576",
+    "finalize.log": "7495205e29e310eb3f61e1e5a6ed101c8cc1fb021759249af44218f5c302cabe",
+    "input-verification.json": "7c7ffec293740757d5e9ea541ab1677127fc930ff7ee98a24d3cfcc833fee28b",
+    "library-pins.json": "9519eb4e6f88598fd9a1016f5892c17da9bc220153db89010db49748c475944b",
+    "native-summary.json": "ee41d17659ec66cf0507c35f90e97f4555f3422e94c8b9ccc81345a4d21be087",
+    "python-tests.log": "921b60a7fd52e978fbb551cacd29df2d6708879400278e1fcc70fceeb0c6f8e0",
+    "rust-test-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "rust-test-receipt.json": "02d9673d9d3dd82bd4481a58437b95791f935e78e16292bee97ec97289b04c36",
+    "rust-tests.log": "ac019dbbf7dbf6313b4e1a52bd28cca4d62a8fac4ee1ca0815103c3abf887273"
+  },
+  "local_raw_accessibility": "Large raw records and linked binaries remain at recorded /tmp paths; unavailable in a clean checkout. Frozen production sources are reconstructible from the parent overlay; runtime artifacts must be rebuilt.",
+  "performance_claim": false
+}

@@ -1,0 +1,26 @@
+{
+  "source_manifest_sha256": "ede5cfafab73e79657c4680398156b84cc4ce62f6fd4fb50a4ef4dba2e16207b",
+  "scope": "Supporting checks only; full workspace, scene fidelity, resource, platform and performance qualification remain open.",
+  "checks": {
+    "clippy": {
+      "status": "passed",
+      "log": "clippy.log",
+      "sha256": "e4267a544443e35d7f18cb644314ecdb0d92a0c8017d0d696b0a96d4c75b2691"
+    },
+    "ratchets": {
+      "status": "passed",
+      "log": "ratchets.log",
+      "sha256": "0e6bf26beebc4e76d1da7505c1b2f2d7b1b77abce2b8b7c58ed9c394422f81ae"
+    },
+    "refwalk": {
+      "status": "passed",
+      "log": "refwalk.log",
+      "sha256": "dbb4a91e0d8054efbfa9e1d94a5784c18d3c629fec040c40dc4ea7956ae08749"
+    },
+    "scene_policy": {
+      "status": "passed",
+      "log": "scene_policy.log",
+      "sha256": "94175a37459b501cd53998b2cbd10b8572e4c3cfc2b021f149c30f02b9120005"
+    }
+  }
+}

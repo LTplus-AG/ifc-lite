@@ -1,0 +1,79 @@
+{
+  "source_manifest": "source-manifest.json",
+  "source_manifest_sha256": "ede5cfafab73e79657c4680398156b84cc4ce62f6fd4fb50a4ef4dba2e16207b",
+  "source_count": 288,
+  "all_frozen_source_hashes_match": true,
+  "scope": "Installed local CPython 3.12 Linux x86_64 abi3 dev-profile consumer; actual geometry/entity goldens and binding tests. No all-platform, hard-resource or retained-engine qualification.",
+  "passed": 48,
+  "failed": 0,
+  "skipped": 1,
+  "skip_reason": "Missing infrastructure model844; run pnpm fixtures.",
+  "command": "bash /tmp/ifclite-context-restored-nativepy-qualify.sh",
+  "exit": 0,
+  "target_dir": "/tmp/ifclite-work-python-target",
+  "venv": "/tmp/ifclite-smlib-venv",
+  "wheel_local_path": "/tmp/ifclite-context-restored-nativepy-wheel/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl",
+  "wheel_sha256": "e9f6f9aae50a0e212f99d689a35618bcf850be1dde0eb5e7eb48dd0cfe0bc6e6",
+  "installed_extension_local_path": "/tmp/ifclite-smlib-venv/lib/python3.12/site-packages/ifclite_geom/ifclite_geom.abi3.so",
+  "installed_extension_sha256": "0f2d8584cf65fdc691c2161520ad16834cd92ffa95b21559240a8ea15bb18194",
+  "installed_extension_equals_wheel_member": "ifclite_geom/ifclite_geom.abi3.so",
+  "cargo_locks_unchanged": true,
+  "artifacts": {
+    "build.log": {
+      "local_path": "/tmp/ifclite-context-restored-nativepy-build.log",
+      "receipt_path": "python-consumer/build.log",
+      "sha256": "b5654fae4976be1f2af41831ab0eda5d474dfdb8d60b5ad265d0ab5b262fadd0",
+      "bytes": 477
+    },
+    "install.log": {
+      "local_path": "/tmp/ifclite-context-restored-nativepy-install.log",
+      "receipt_path": "python-consumer/install.log",
+      "sha256": "3681c164892b3b7756dee68ac77c1cdadeeaf69dc8c0ab7f57e040f055257825",
+      "bytes": 378
+    },
+    "tests.log": {
+      "local_path": "/tmp/ifclite-context-restored-nativepy-tests.log",
+      "receipt_path": "python-consumer/tests.log",
+      "sha256": "65ccf7da9cf50374d47beb3201d990fe021c48696744d14d4497496a47d7f25d",
+      "bytes": 294
+    },
+    "environment.log": {
+      "local_path": "/tmp/ifclite-context-restored-nativepy-environment.log",
+      "receipt_path": "python-consumer/environment.log",
+      "sha256": "4adaec8cd172451d8701194ce7c911cfae7ae7edf7935a00534ba858a9fa0c6d",
+      "bytes": 166
+    },
+    "locks-before.log": {
+      "local_path": "/tmp/ifclite-context-restored-nativepy-locks-before.log",
+      "receipt_path": "python-consumer/locks-before.log",
+      "sha256": "fb98e165eac9891bbf913f1ed16c47f8b00f4780339c72090b906fb7ee3df710",
+      "bytes": 166
+    },
+    "locks-after.log": {
+      "local_path": "/tmp/ifclite-context-restored-nativepy-locks-after.log",
+      "receipt_path": "python-consumer/locks-after.log",
+      "sha256": "fb98e165eac9891bbf913f1ed16c47f8b00f4780339c72090b906fb7ee3df710",
+      "bytes": 166
+    },
+    "artifact.log": {
+      "local_path": "/tmp/ifclite-context-restored-nativepy-artifact.log",
+      "receipt_path": "python-consumer/artifact.log",
+      "sha256": "020cc5d51fa2cebe41927e6171ea62fba7ac1f43c65568edf6fe14f36726ff13",
+      "bytes": 167
+    },
+    "results.xml": {
+      "local_path": "/tmp/ifclite-context-restored-nativepy-results.xml",
+      "receipt_path": "python-consumer/results.xml",
+      "sha256": "091e9b0f0d1534f4d7a5fb61e44a7b0ac5b0ce23c43c4a1492a8ea390e8c2501",
+      "bytes": 6461
+    },
+    "qualify.sh": {
+      "local_path": "/tmp/ifclite-context-restored-nativepy-qualify.sh",
+      "receipt_path": "python-consumer/qualify.sh",
+      "sha256": "930503b7ceb5bb0c06dfd2c75c26715c40c0cac43daf9acb594006dd1fa8ae01",
+      "bytes": 1494
+    }
+  },
+  "discarded_attempt": "Earlier duplicate drivers shared restored-python logs/wheel/install paths; that attempt was contaminated and is excluded. This receipt uses a clean build, force reinstall and tests after both prior drivers ended, with unique nativepy paths. Historical context evidence is unchanged.",
+  "accessibility": "Small logs, exact driver and JUnit are persisted under python-consumer/. Wheel/extension/isolated target are local /tmp artifacts and may not remain accessible."
+}

@@ -87,7 +87,8 @@ END-ISO-10303-21;
     // `apply_placement`/`apply_submesh_placement`, matching probe.rs's shape.
     assert!(!mesh.welded_in_object_frame);
 
-    let _ = build_mesh_data(&job, mesh, [1.0, 1.0, 1.0, 1.0], None, None, false, 0, &ctx, None);
+    let assembly_job = AssemblyJob::from(&job);
+    let _ = build_mesh_data(&assembly_job, mesh, [1.0, 1.0, 1.0, 1.0], None, None, false, 0, &ctx, None);
 }
 
 #[test]

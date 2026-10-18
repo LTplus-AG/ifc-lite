@@ -1,0 +1,20 @@
+{
+  "final_source_manifest_sha256": "29cb0bc3971c14c78f0557309bf6e51b6a24c415f196490dea2f5a80b34a902d",
+  "prior_44_case_source_manifest_sha256": "ede5cfafab73e79657c4680398156b84cc4ce62f6fd4fb50a4ef4dba2e16207b",
+  "final_build_receipt_sha256": "68b36d0e6df4606b9acb1e3ec9d549b03cc2bde695b1ef474c3dfaa3446a8390",
+  "prior_build_receipt_sha256": "57900009e898b4c33e10b5700079300da856c47e5ce98ca55d525f17c7c704e6",
+  "identical_complete_scene_executables": {
+    "base": true,
+    "candidate": true
+  },
+  "identical_linked_candidate_libraries": {
+    "ifc_lite_core": true,
+    "ifc_lite_geometry": true,
+    "ifc_lite_processing": true,
+    "serde": true,
+    "serde_json": true,
+    "sha2": true
+  },
+  "harness_source_hashes_identical": true,
+  "scope": "Final source rebuilt native libraries and the identical shared scene consumer. Exact complete executable byte identity binds the prior44 actual runs to these native artifacts. This does not rerun tests or qualify WASM, layers, fills, performance, resources or later ProductProgram/source-bundle changes."
+}

@@ -1,0 +1,7 @@
+{
+  "archive": "support.tar.gz",
+  "archive_sha256": "8af09ce78b9d5b11393cd9a52a71f9e6ce8bf62b13b5a3840af383ce7afdd5a2",
+  "archive_bytes": 79158,
+  "receipt_sha256": "43e16250dbd3eac1436f017f74302baa05d3b62cacb7d1cf740148084d4bb76e",
+  "includes": "Exact synthetic fixture bytes/generator, invariant checker, all36 raw outputs/manifests/logs and12 base/candidate/repeat comparison results. Large native executables and libraries remain local with existing pins."
+}

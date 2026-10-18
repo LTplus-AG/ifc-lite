@@ -1,0 +1,55 @@
+{
+  "source_manifest": "source-manifest.json",
+  "scope": "Additional existing WASM contract cases after acquiring missing real fixtures; no Rust source/runtime/binding changes after the frozen-source qualification. Historical validation.json retains its original fixture scope.",
+  "command": "pnpm test:wasm-contract",
+  "exit_code": 0,
+  "passed": 212,
+  "failed": 0,
+  "skipped": 1,
+  "remaining_skip": "matched historical fingerprint requires IFC_WASM_BASE_JS and IFC_WASM_BASE_BINARY from one retained baseline build",
+  "raw_log_local_path": "/tmp/ifclite-scene-wasm-contract.log",
+  "raw_log_sha256": "97f8e8ac0144b0e7060621d66394e03369ad8f8eaed1362c8e82494b7c5adfaf",
+  "wasm_runtime_sha256": "e35e5d31656171f583e14443f46e76266da06a2b5827bf0f99e5309d344390cc",
+  "fixtures_sha256": {
+    "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc": "522788afc44ba467730e2b8b521d4baa334df299598a6595ffd430c16a0f7e5e",
+    "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc": "eeec637c7c870c289460c5eec18995ec2c2d41af0c26382f32e453a58773c0a6",
+    "buildingsmart/wall-with-opening-and-window.ifc": "73b0e45d931d5dc13bfee5fdc7bd80f796526445458b2de74c4168d209097832",
+    "various/rvt01.ifc": "a83e9aacb43c7f82955ee3ba650ec66dc24af552924ec058e1b0c49a76180ee6"
+  },
+  "newly_exercised_scope": [
+    "embedded texture getter ownership",
+    "external texture getter ownership",
+    "real Revit disjoint-opening material-layer closure",
+    "real wall/window remesh parity",
+    "real Revit remesh parity",
+    "no-target-job prepass-cache cleanup"
+  ],
+  "not_qualified": [
+    "complete scene equivalence",
+    "all-platform retained-engine activation",
+    "latency or memory improvement"
+  ],
+  "matched_baseline_followup": {
+    "command": "IFC_WASM_BASE_JS=/tmp/ifclite-smlib-base-8acd0715a/packages/wasm/pkg/ifc-lite.js IFC_WASM_BASE_BINARY=/tmp/ifclite-smlib-base-8acd0715a/packages/wasm/pkg/ifc-lite_bg.wasm pnpm test:wasm-contract",
+    "exit_code": 0,
+    "passed": 223,
+    "failed": 0,
+    "skipped": 0,
+    "base_commit": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+    "base_tracked_source_unchanged": true,
+    "base_artifacts": {
+      "ifc-lite.js": {
+        "sha256": "04c85b1449d8fee992f25f0685170ff03fb4360726fa4e4d2a2d180314c169c0",
+        "bytes": 308437
+      },
+      "ifc-lite_bg.wasm": {
+        "sha256": "b5f103a8d2992e5d0ee8128579c999c28d746b773a0e8a2c7585e1cabb88b7a9",
+        "bytes": 9787843
+      }
+    },
+    "candidate_runtime_sha256": "e35e5d31656171f583e14443f46e76266da06a2b5827bf0f99e5309d344390cc",
+    "raw_log_local_path": "/tmp/ifclite-scene-wasm-matched-base-contract.log",
+    "raw_log_sha256": "41a4fabfcdeaf2d29af903d13edd09a928ab022a9134e29ac97d1f858d53c561",
+    "scope": "All existing WASM contract cases exercised, including actual matched-baseline ownership/fingerprint cases. Not a full-scene or all-platform proof."
+  }
+}

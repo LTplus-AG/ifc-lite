@@ -45,18 +45,9 @@
    218 rust/geometry/src/kernel/retriangulate_recover.rs recover_subsegment
    185 rust/geometry/src/mesh_orient.rs orient_mesh_outward_verdict
    175 rust/geometry/src/processors/advanced_face/polyline.rs sample_curve_polyline_guarded
-   229 rust/geometry/src/processors/advanced_face/revolution.rs process_surface_of_revolution_face
-   157 rust/geometry/src/processors/advanced_face/surfaces.rs process_cylindrical_face
    300 rust/geometry/src/processors/boolean/halfspace_cap.rs cap_half_space_clip
-   192 rust/geometry/src/processors/boolean/mod.rs BooleanClippingProcessor::apply_boolean_step
-   172 rust/geometry/src/processors/boolean/mod.rs BooleanClippingProcessor::try_union_polygonal_chain
-   162 rust/geometry/src/processors/boolean/polygonal_prism.rs BooleanClippingProcessor::build_polygonal_bounded_half_space_mesh
-   174 rust/geometry/src/processors/sectioned.rs SectionedSolidHorizontalProcessor@GeometryProcessor::process
-   164 rust/geometry/src/processors/swept/revolved.rs RevolvedAreaSolidProcessor@GeometryProcessor::process
    181 rust/geometry/src/processors/tessellated/triangulate.rs PolygonalFaceSetProcessor::triangulate_polygon
    182 rust/geometry/src/profiles/simplify.rs simplify_smooth_curve_polyline
-   213 rust/geometry/src/router/mapped_item.rs GeometryRouter::process_mapped_item_cached_body
-   291 rust/geometry/src/router/processing.rs GeometryRouter::collect_submeshes_from_item_inner
    189 rust/geometry/src/router/transforms/operator.rs parse_transformation_operator
    224 rust/geometry/src/router/voids/aabb_clip.rs GeometryRouter::clip_triangle_against_box
    168 rust/geometry/src/router/voids/aabb_clip.rs GeometryRouter::triangle_intersects_box
@@ -82,14 +73,12 @@
    180 rust/processing/src/appearance/mod.rs plan_with_source
    250 rust/processing/src/appearance/pdf_fill.rs plan_pdf_fill_annotation_with_clip
    158 rust/processing/src/appearance/transfer_points.rs PointSurface::observe
-   156 rust/processing/src/element.rs emit_sub_meshes
    181 rust/processing/src/pdf_vector/interpret_ops.rs Interpreter::operation
-   259 rust/processing/src/processor/jobs.rs process_entity_job
-   749 rust/processing/src/processor/mod.rs process
+   241 rust/processing/src/processor/jobs.rs process_entity_job
+   746 rust/processing/src/processor/mod.rs process
    165 rust/processing/src/simplify_session.rs simplify_element
    312 rust/processing/src/symbolic/items.rs extract_symbolic_item_inner
    183 rust/processing/src/symbolic/mod.rs extract_symbolic_data_into_frame
    296 rust/wasm-bindings/src/api/csg_diagnostics.rs drain_and_log_csg_diagnostics
-   158 rust/wasm-bindings/src/api/gpu_meshes/batch.rs IfcAPI::process_geometry_batch_partitioned
-   589 rust/wasm-bindings/src/api/gpu_meshes/batch.rs IfcAPI::produce_batch
+   585 rust/wasm-bindings/src/api/gpu_meshes/batch.rs IfcAPI::produce_batch
    563 rust/wasm-bindings/src/api/gpu_meshes/prepass.rs IfcAPI::pre_pass_streaming_impl

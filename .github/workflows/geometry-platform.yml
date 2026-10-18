@@ -1,0 +1,63 @@
+# SPDX-License-Identifier: MPL-2.0
+name: Geometry platform integration
+
+on:
+  pull_request:
+    paths:
+      - 'native/smlib-adapter/**'
+      - 'rust/geometry-runtime/**'
+      - 'rust/geometry/src/document/**'
+      - 'rust/processing/src/authored_geometry/**'
+      - 'rust/processing/src/retained_geometry.rs'
+      - '.github/workflows/geometry-platform.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  boundary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+      - name: Checkout pinned upstream source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          repository: NVIDIA-Omniverse/usd-brep
+          ref: c9c5979f04cea8c38213004d4f04df0dcfb40d05
+          path: upstream-smlib
+          persist-credentials: false
+      - name: Native owned boundary and worker
+        run: |
+          cmake -S native/smlib-adapter -B /tmp/smlib-native -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DSMLIB_SOURCE="$GITHUB_WORKSPACE/upstream-smlib"
+          cmake --build /tmp/smlib-native --parallel 4
+          ctest --test-dir /tmp/smlib-native --output-on-failure
+      - name: Pinned Rust toolchain
+        run: rustup show
+      - name: Real Rust subprocess integration
+        env:
+          IFCLITE_SMLIB_WORKER: /tmp/smlib-native/ifclite_smlib_worker
+        run: cargo test --locked -p ifc-lite-geometry-runtime
+      - name: Checkout pinned Emscripten SDK
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          repository: emscripten-core/emsdk
+          ref: 3b3963d86a5c97adaf6eaa845cdfe0b811c2f960
+          path: emsdk
+          persist-credentials: false
+      - name: Install Emscripten 4.0.15
+        run: |
+          emsdk/emsdk install 4.0.15
+          emsdk/emsdk activate 4.0.15
+      - name: WASM owned boundary under Node
+        shell: bash
+        run: |
+          source emsdk/emsdk_env.sh
+          emcmake cmake -S native/smlib-adapter -B /tmp/smlib-wasm -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DSMLIB_SOURCE="$GITHUB_WORKSPACE/upstream-smlib"
+          cmake --build /tmp/smlib-wasm --parallel 4
+          ctest --test-dir /tmp/smlib-wasm --output-on-failure

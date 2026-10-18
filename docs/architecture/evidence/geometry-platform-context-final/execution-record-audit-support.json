@@ -1,0 +1,20 @@
+{
+  "archive": "execution-record-audit-support.tar.gz",
+  "archive_sha256": "80af6596d9380a85a5d159e0370896f38920290a58c38d1613360d2b537dbbb3",
+  "members": {
+    "execution-audit.py": {
+      "sha256": "ae68fd8addc4e6b98a22d8bf219effd3c938404ad5acc50f76ace51066304682",
+      "bytes": 3297
+    },
+    "execution-record-audit.json": {
+      "sha256": "ecace0f43c6656cc49c2b7e3e69e5ad64a9cb3bf1757e465606e382f716b3773",
+      "bytes": 76303
+    },
+    "native-summary.json": {
+      "sha256": "ee41d17659ec66cf0507c35f90e97f4555f3422e94c8b9ccc81345a4d21be087",
+      "bytes": 131766
+    }
+  },
+  "result": "44 raw-output cases audited; all recorded CSG census multisets and nonmasked statistics match both baseline repeat and candidate.",
+  "raw_record_accessibility": "Large JSONL records remain at hash-pinned local /tmp paths in execution-record-audit.json; not bundled. This archive retains the exact audit program, result and original comparison receipt."
+}

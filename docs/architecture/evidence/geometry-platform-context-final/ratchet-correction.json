@@ -1,0 +1,12 @@
+{
+  "source_manifest": "source-manifest-ratchet-corrected.json",
+  "source_manifest_sha256": "63bb222be30076a296d109eb6cc7d057ec3ab880f727313d62892df82d65ff93",
+  "archive": "source-overlay-ratchet-corrected.tar.gz",
+  "archive_sha256": "b914a04b0a0dda4206066227fc5bf55dd8e2dbf07812a37c4712575ac526a4f2",
+  "source_count": 288,
+  "changes_from_previous": [
+    "rust/processing/tests/positional_read_allowlist.txt"
+  ],
+  "production_inputs_unchanged": true,
+  "scope": "Only Rust test allowance metadata changed; prior consumer receipts retain their exact original manifests."
+}

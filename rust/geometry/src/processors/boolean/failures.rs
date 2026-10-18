@@ -76,7 +76,7 @@ impl BooleanClippingProcessor {
     /// Discard everything recorded since `mark`.
     ///
     /// Only for a SPECULATIVE attempt whose work the caller is about to redo.
-    /// `try_union_polygonal_chain` is a batched attempt at a chain the
+    /// `finish_batch` is a batched attempt at a chain the
     /// sequential walk also resolves; when it gives up, `process_with_depth`
     /// re-meshes the same base operand and the same cutters and records the
     /// same losses again. Its trial subtracts already dropped their own probe
@@ -95,7 +95,7 @@ impl BooleanClippingProcessor {
     }
 
     /// [`Self::rewind_to`] plus the deferral itself, so a guard in
-    /// `try_union_polygonal_chain` reads as one line and cannot rewind without
+    /// `finish_batch` reads as one line and cannot rewind without
     /// deferring or defer without rewinding.
     pub(super) fn defer_after<T>(&self, mark: usize) -> crate::Result<Option<T>> {
         self.rewind_to(mark);

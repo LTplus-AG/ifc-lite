@@ -1,0 +1,67 @@
+{
+  "archive": "streaming-baseline-artifacts.tar.gz",
+  "archive_sha256": "a91a4dd06f4e82ae18953ed1fdafd2b614d515463c4d87b5d738f8085d937adf",
+  "files": {
+    "base-build-command.json": {
+      "sha256": "677b4a5926709e68523e047737d0979e5b55fbbfb9ff9ef86a20220b312c8fb3",
+      "bytes": 1005
+    },
+    "base-build.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "base-output.json": {
+      "sha256": "1dc4aede5a806e08d3683d3f8f9374d1a542ec53f3d66985d29d7ac0dd21166d",
+      "bytes": 920
+    },
+    "base-run.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "candidate-build-command.json": {
+      "sha256": "bb7ce8b9fdb8cad98540976fcf777fc69cda85a0fead6e1756dd71894ce74c26",
+      "bytes": 1031
+    },
+    "candidate-build.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "candidate-output.json": {
+      "sha256": "1dc4aede5a806e08d3683d3f8f9374d1a542ec53f3d66985d29d7ac0dd21166d",
+      "bytes": 920
+    },
+    "candidate-run.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "comparison-receipt.json": {
+      "sha256": "f94c06ab96b5a1b23d680f96eaa9e6c871cc0975a8e34ad7e1aa7eea1abc7ce7",
+      "bytes": 10075
+    },
+    "derived.ifc": {
+      "sha256": "13fab7a657cb0ab159f1e8aed0ff79426ec0593b8d6ee26bc7c1634802940ae3",
+      "bytes": 1813
+    },
+    "fixture.ifc": {
+      "sha256": "dde566815a01e18584aa099692820ec315ab237857b504f9ddae8f718d56cc79",
+      "bytes": 1582
+    },
+    "main.rs": {
+      "sha256": "8a66a2405bfa8d2290576809e052322b64b310f36a6833f418f72a1fc0b2371c",
+      "bytes": 2726
+    },
+    "provenance.json": {
+      "sha256": "a61f40bd46ebff3a0bc04fc726e35825a469ca3f025c9e367b0cc80c59a4cdb2",
+      "bytes": 1214
+    },
+    "ifclite-context-streaming-test.patch": {
+      "sha256": "225750eb9ba0c37e7c56c1368ee6a972f7cb015f331eb3db6fdf34ce019ffc05",
+      "bytes": 1980
+    },
+    "ifclite-context-preserve-batch-api-docs.patch": {
+      "sha256": "ced55325b0e2b4585dd498f8824d2ba27d25b96826a65010e3ac29ef04eef91e",
+      "bytes": 3642
+    }
+  },
+  "scope": "Exact same canonical streaming consumer on pre-correction baseline and restored candidate proves five-event emission contract. Final source corrects test expectation and restores API prose only; both patches are archived."
+}

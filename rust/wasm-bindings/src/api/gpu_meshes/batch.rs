@@ -3,8 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::batch_partition::{
-    encode_shard_routing_refusals_back, is_instancing_candidate, meets_instance_threshold,
-    take_back_rejected, tallyable_rep, INSTANCE_MIN_OCCURRENCES,
+    is_instancing_candidate, INSTANCE_MIN_OCCURRENCES,
 };
 use super::partitioned_batch::PartitionedBatch;
 use super::style_finishes::{finish_at, mesh_js_with_finish, BatchFinishes};
@@ -12,18 +11,17 @@ use ifc_lite_processing::prepass::finish_to_wire;
 use super::void_index::reconstruct_void_index;
 use crate::api::IfcAPI;
 use crate::zero_copy::{GeometryFingerprint, MeshCollection};
-use wasm_bindgen::prelude::*;
 
 /// Per-element output of [`IfcAPI::produce_batch`] — the canonical producer's
 /// meshes (with `instance` metadata intact, BEFORE the MeshDataJs Z-up→Y-up
 /// swap) plus everything the element's geometry-hash pass measured. The flat
 /// path converts each to MeshDataJs; the instanced path collates them into an
 /// IFNS shard.
-struct ElementMeshOutput {
+pub(super) struct ElementMeshOutput {
     id: u32,
-    meshes: Vec<ifc_lite_processing::MeshData>,
+    pub(super) meshes: Vec<ifc_lite_processing::MeshData>,
     /// #5984: `meshes[i]`'s finish at `[i]`; empty when none are installed.
-    finishes: Vec<Option<ifc_lite_processing::style::SpecularMaterial>>,
+    pub(super) finishes: Vec<Option<ifc_lite_processing::style::SpecularMaterial>>,
     geometry_hash: Option<u64>,
     /// World AABB from the same hashing pass, `Some` exactly when
     /// `geometry_hash` is (see `ProducedElementMeshes::geometry_aabb`).
@@ -40,7 +38,7 @@ impl ElementMeshOutput {
     /// produced nothing. Built in ONE place so the two push sites (flat and
     /// partitioned) cannot drift into filling different subsets of the
     /// index-parallel arrays.
-    fn fingerprint(&self) -> Option<GeometryFingerprint> {
+    pub(super) fn fingerprint(&self) -> Option<GeometryFingerprint> {
         Some(GeometryFingerprint {
             express_id: self.id,
             hash: self.geometry_hash?,
@@ -53,9 +51,9 @@ impl ElementMeshOutput {
 
 /// Session-constant style lookups shared across batches: colour map plus
 /// per-style `GeometryStyleInfo` index (see the #1097 cache note below).
-type StyleMaps = std::sync::Arc<(
+pub(in crate::api) type StyleMaps = std::sync::Arc<(
     rustc_hash::FxHashMap<u32, [f32; 4]>,
-    rustc_hash::FxHashMap<u32, ifc_lite_processing::style::GeometryStyleInfo>,
+    std::sync::Arc<rustc_hash::FxHashMap<u32, ifc_lite_processing::style::GeometryStyleInfo>>,
 )>;
 
 impl IfcAPI {
@@ -98,17 +96,17 @@ impl IfcAPI {
         // sub-threshold recovery) passes `true`; the flat / instanced-only entry
         // points pass `false`, keeping their output byte-identical.
         arm_instancing: bool,
-    ) -> (
+    ) -> Result<(
         Vec<ElementMeshOutput>,
         ifc_lite_geometry::GeometryDiagnostics,
         Vec<super::instancing::ShardOccurrence>,
-    ) {
+    ), ifc_lite_processing::element::ProductionContextError> {
         use crate::api::styling::resolve_element_color;
         use ifc_lite_core::EntityDecoder;
         use ifc_lite_geometry::GeometryRouter;
         use ifc_lite_processing::element::{
-            plan_type_geometry, produce_element_meshes, ElementJobKind, ElementMeshJob,
-            GeometryHashConfig, MeshProductionContext, MeshProductionOptions, TypeGeometryMode,
+            plan_type_geometry, produce_element_meshes_owned, ElementJobKind, ElementMeshJob,
+            GeometryHashConfig, OwnedMeshProductionData, MeshProductionOptions, TypeGeometryMode,
         };
         use ifc_lite_processing::style::GeometryStyleInfo;
 
@@ -291,7 +289,7 @@ impl IfcAPI {
                         .iter()
                         .map(|(&id, &c)| (id, GeometryStyleInfo::from_color(c)))
                         .collect();
-                    let arc = std::sync::Arc::new((colors, index));
+                    let arc = std::sync::Arc::new((colors, std::sync::Arc::new(index)));
                     *slot = Some((sig_len, sig_first, sig_last, std::sync::Arc::clone(&arc)));
                     arc
                 }
@@ -328,7 +326,6 @@ impl IfcAPI {
         // sets per palette group so multi-coloured triangles don't collapse to
         // the single dominant colour the prepass `geometry_styles` carries.
         let indexed_colour = self.get_or_build_indexed_colour_maps(content, &mut decoder);
-        let indexed_colour_full = &indexed_colour.maps;
         // #858 / EDGE-WASM-5 (#7691): with the don't-bake plan armed, keep
         // multi-colour indexed-colour sources flat so their palette split
         // survives; an instance placeholder carries ONE colour. The same id set
@@ -342,7 +339,6 @@ impl IfcAPI {
 
         // The canonical styled-item index the shared producer consumes — built
         // once per worker alongside `geometry_styles` above (#1097).
-        let geometry_style_index = &style_maps.1;
         // Surface textures + UV maps (#961), built once per worker (cheap
         // substring bail-out for untextured files).
         let texture_index = self.get_or_build_texture_index(content, &mut decoder);
@@ -361,16 +357,14 @@ impl IfcAPI {
             _ => rustc_hash::FxHashMap::default(),
         };
 
-        let ctx = MeshProductionContext {
-            void_index: &void_index,
-            geometry_style_index,
-            indexed_colour_full,
-            element_material_colors: &element_material_colors,
-            texture_index: &texture_index,
-            // The browser's axis change (IFC Z-up → WebGL Y-up) happens at the
-            // FFI boundary in `MeshDataJs::from_mesh_data`, not here.
+        let ctx = self.production_model.snapshot(OwnedMeshProductionData {
+            void_index: std::sync::Arc::new(void_index),
+            geometry_style_index: std::sync::Arc::clone(&style_maps.1),
+            indexed_colour_full: std::sync::Arc::clone(&indexed_colour.maps),
+            element_material_colors: std::sync::Arc::new(element_material_colors),
+            texture_index: std::sync::Arc::clone(&texture_index),
             site_local_rotation: None,
-        };
+        });
         let opts = MeshProductionOptions {
             geometry_hash: hash_tolerance.map(|tolerance| GeometryHashConfig {
                 tolerance,
@@ -492,7 +486,7 @@ impl IfcAPI {
                 ElementJobKind::Product
             };
 
-            let produced = produce_element_meshes(
+            let produced = produce_element_meshes_owned(
                 &ElementMeshJob {
                     id,
                     ifc_type,
@@ -506,7 +500,7 @@ impl IfcAPI {
                 &opts,
                 &mut decoder,
                 &router,
-            );
+            )?;
 
             for (product_id, fails) in produced.csg_failures {
                 batch_csg_failures.entry(product_id).or_default().extend(fails);
@@ -655,20 +649,18 @@ impl IfcAPI {
             &csg_diag,
         );
 
-        (outputs, csg_diag, shard_occurrences)
+        Ok((outputs, csg_diag, shard_occurrences))
     }
 }
 
-#[wasm_bindgen]
 impl IfcAPI {
     /// Process geometry for a subset of pre-scanned entities → flat
     /// MeshCollection. Takes raw bytes + pre-pass data from buildPrePassOnce.
     /// Thin wrapper over [`IfcAPI::produce_batch`]; converts each produced mesh
     /// to MeshDataJs (the IFC Z-up→WebGL Y-up rotation with preserved winding happens
     /// there). Flat indices preserve source order through this proper rotation.
-    #[wasm_bindgen(js_name = processGeometryBatch)]
     #[allow(clippy::too_many_arguments)]
-    pub fn process_geometry_batch(
+    pub(crate) fn try_process_geometry_batch(
         &self,
         data: &[u8],
         jobs_flat: &[u32],
@@ -686,7 +678,7 @@ impl IfcAPI {
         material_element_ids: Option<Vec<u32>>,
         material_color_counts: Option<Vec<u32>>,
         material_colors_rgba: Option<Vec<u8>>,
-    ) -> MeshCollection {
+    ) -> Result<MeshCollection, ifc_lite_processing::element::ProductionContextError> {
         let num_jobs = jobs_flat.len() / 3;
         // arm_instancing = false: the flat path has no IFNS shard to hold don't-bake
         // occurrences, so every occurrence must materialize (byte-identical output).
@@ -694,7 +686,7 @@ impl IfcAPI {
             data, jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys,
             void_counts, void_values, style_ids, style_colors, plane_angle_to_radians,
             material_element_ids, material_color_counts, material_colors_rgba, false,
-        );
+        )?;
         let mut mesh_collection = MeshCollection::with_capacity(num_jobs);
         if needs_shift {
             mesh_collection.set_rtc_offset(rtc_x, rtc_y, rtc_z);
@@ -710,7 +702,7 @@ impl IfcAPI {
             }
         }
         mesh_collection.set_diagnostics(csg_diag);
-        mesh_collection
+        Ok(mesh_collection)
     }
 
     /// Like [`IfcAPI::process_geometry_batch`] but collates the batch's meshes
@@ -723,9 +715,8 @@ impl IfcAPI {
     /// co-locates identical geometry on one worker, so per-batch collation
     /// captures ~all the dedup and no cross-batch merge is needed. Returns empty
     /// bytes only when the batch produced zero non-empty meshes.
-    #[wasm_bindgen(js_name = processGeometryBatchInstanced)]
     #[allow(clippy::too_many_arguments)]
-    pub fn process_geometry_batch_instanced(
+    pub(crate) fn try_process_geometry_batch_instanced(
         &self,
         data: &[u8],
         jobs_flat: &[u32],
@@ -743,7 +734,7 @@ impl IfcAPI {
         material_element_ids: Option<Vec<u32>>,
         material_color_counts: Option<Vec<u32>>,
         material_colors_rgba: Option<Vec<u8>>,
-    ) -> Vec<u8> {
+    ) -> Result<Vec<u8>, ifc_lite_processing::element::ProductionContextError> {
         // NB: this instanced-only export returns raw shard bytes with no
         // MeshCollection carrier, so CSG diagnostics are intentionally dropped. It
         // is not the worker's default path (partitioned/flat carry the counts).
@@ -755,7 +746,7 @@ impl IfcAPI {
             data, jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys,
             void_counts, void_values, style_ids, style_colors, plane_angle_to_radians,
             material_element_ids, material_color_counts, material_colors_rgba, false,
-        );
+        )?;
         let (meshes, wires): (Vec<ifc_lite_processing::MeshData>, Vec<[f32; 2]>) = outputs
             .into_iter()
             .flat_map(|o| {
@@ -796,7 +787,7 @@ impl IfcAPI {
         // occurrence lands at 2× the georef offset and collapses GLB exports).
         let rtc = if needs_shift { [rtc_x, rtc_y, rtc_z] } else { [0.0, 0.0, 0.0] };
         let collated = ifc_lite_geometry::collate_refs(&refs, 2, rtc);
-        ifc_lite_geometry::encode_refs_with_finishes(&refs, &collated, &wires)
+        Ok(ifc_lite_geometry::encode_refs_with_finishes(&refs, &collated, &wires))
     }
 
     /// Produce a batch ONCE and PARTITION it (the instanced-ONLY path): opaque
@@ -813,9 +804,8 @@ impl IfcAPI {
     /// / lens overlays on instanced geometry) before the worker calls this in
     /// place of processGeometryBatch — otherwise those features break for the
     /// opaque bulk. See the instanced-only follow-ups.
-    #[wasm_bindgen(js_name = processGeometryBatchPartitioned)]
     #[allow(clippy::too_many_arguments)]
-    pub fn process_geometry_batch_partitioned(
+    pub(crate) fn try_process_geometry_batch_partitioned(
         &self,
         data: &[u8],
         jobs_flat: &[u32],
@@ -833,7 +823,7 @@ impl IfcAPI {
         material_element_ids: Option<Vec<u32>>,
         material_color_counts: Option<Vec<u32>>,
         material_colors_rgba: Option<Vec<u8>>,
-    ) -> PartitionedBatch {
+    ) -> Result<PartitionedBatch, ifc_lite_processing::element::ProductionContextError> {
         let num_jobs = jobs_flat.len() / 3;
         // arm_instancing = true (#1623 Phase 3): the partitioned path holds a flat
         // MeshCollection, so it CAN route the don't-bake sub-threshold recovery to
@@ -845,133 +835,9 @@ impl IfcAPI {
             data, jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys,
             void_counts, void_values, style_ids, style_colors, plane_angle_to_radians,
             material_element_ids, material_color_counts, material_colors_rgba, true,
-        );
-        let mut mesh_collection = MeshCollection::with_capacity(num_jobs);
-        if needs_shift {
-            mesh_collection.set_rtc_offset(rtc_x, rtc_y, rtc_z);
-        }
-        // Route opaque + untextured + class-0 occurrences by per-batch REPETITION.
-        // Instancing trades 1 consolidated, frustum-culled flat draw for 1 drawIndexed
-        // per template. That only pays off when geometry repeats enough that the saved
-        // upload/memory is real and the per-template draw is amortized over many
-        // instances. Singleton / low-count geometry encoded as 1-instance templates was
-        // the orbit-FPS regression: it replaced the flat path's ~3-15 consolidated draws
-        // with O(unique-geometry) per-frame draws (e.g. an 8 MB-geom architectural model
-        // where memory was never the constraint). So: only rep_identity groups occurring
-        // >= INSTANCE_MIN_OCCURRENCES times in this batch go to the instanced shard;
-        // everything else (singletons, low-count, non-instanceable, no-meta) joins the
-        // flat MeshCollection and is consolidated + culled exactly as before the flip.
-        //
-        // Transparent (alpha < cutoff), textured (no UV slot in the instanced pipeline),
-        // type-product (class 1/2) and class-toggled (IfcSpace, IfcOpeningElement, …,
-        // #5409) geometry are never instancing candidates — they must stay on the flat
-        // pipelines for correct blending / texturing / view-mode / class-toggle gating.
-        type Finish = Option<ifc_lite_processing::style::SpecularMaterial>;
-        let mut candidates: Vec<(ifc_lite_processing::MeshData, Finish)> = Vec::new();
-        let mut counts: rustc_hash::FxHashMap<u128, u32> = rustc_hash::FxHashMap::default();
-        for out in outputs {
-            // Taken BEFORE the meshes are moved out of `out` below.
-            let fingerprint = out.fingerprint();
-            for (i, mesh_data) in out.meshes.into_iter().enumerate() {
-                let finish = finish_at(&out.finishes, i);
-                if is_instancing_candidate(&mesh_data) {
-                    // Count only instanceable metas — mirror collate_refs's match arm:
-                    // a None meta or instanceable==false (void-cut walls, multi-item
-                    // merges) can never instance, so it must not inflate a count.
-                    if let Some(rep) = tallyable_rep(&mesh_data) {
-                        *counts.entry(rep).or_insert(0) += 1;
-                    }
-                    candidates.push((mesh_data, finish));
-                } else {
-                    mesh_collection.add(mesh_js_with_finish(mesh_data, finish));
-                }
-            }
-            // The element-level geometry-diff record is path-independent metadata;
-            // keep it on the collection regardless of which path the meshes took.
-            if let Some(fp) = fingerprint {
-                mesh_collection.push_geometry_hash(fp);
-            }
-        }
-        // #1623 Phase 3: fold the kept don't-bake occurrence counts into the per-rep
-        // tally so a batch-local template (materialized ONCE, so count 1 among the
-        // candidates) plus its N shard occurrences clears INSTANCE_MIN_OCCURRENCES
-        // and routes to the instanced shard (the finalize already applied that gate,
-        // so this only confirms it). The template's geometry rides the shard once;
-        // the occurrences ride as pose-only instances against it.
-        for occ in &shard_occurrences {
-            *counts.entry(occ.rep_identity).or_insert(0) += 1;
-        }
-        let mut instanced: Vec<(ifc_lite_processing::MeshData, Finish)> = Vec::new();
-        for (mesh_data, finish) in candidates {
-            if meets_instance_threshold(&mesh_data, &counts) {
-                instanced.push((mesh_data, finish));
-            } else {
-                mesh_collection.add(mesh_js_with_finish(mesh_data, finish));
-            }
-        }
-        // Each materialized instanced mesh is one shard instance; each kept don't-bake
-        // occurrence adds one more. Report the sum so the viewer's mesh total reflects
-        // ALL rendered geometry (flat + instanced), not just the flat MeshCollection.
-        let instanced_occurrences = instanced.len() + shard_occurrences.len();
-        // #1623 Phase 3: back the kept don't-bake occurrences with InstanceMeta storage
-        // that outlives `refs` — `collate_refs` reads each placeholder's PRE-RTC world
-        // transform (local/canonical identity) to derive its `rel_k` against the
-        // batch-local template, exactly as a materialized occurrence would. Building
-        // these EMPTY-geometry refs is the whole Phase 3 win: the occurrence vertices
-        // were never materialized.
-        let occ_metas: Vec<ifc_lite_geometry::InstanceMeta> = shard_occurrences
-            .iter()
-            .map(|o| ifc_lite_geometry::InstanceMeta {
-                transform: o.world_transform,
-                local_transform: None,
-                canonical_transform: None,
-                rep_identity: o.rep_identity,
-                instanceable: true,
-            })
-            .collect();
-        let mut refs: Vec<ifc_lite_geometry::InstanceMeshRef> = instanced
-            .iter()
-            .map(|(m, _)| ifc_lite_geometry::InstanceMeshRef {
-                positions: &m.positions,
-                normals: &m.normals,
-                indices: &m.indices,
-                origin: m.origin,
-                instance_meta: m.instance.as_ref(),
-                entity_id: m.express_id,
-                color: m.color,
-                // #2985: the TEMPLATE's own representation item — it rides the
-                // shard, not the flat MeshCollection, so this is its only route.
-                item_id: m.geometry_item_id,
-            })
-            .collect();
-        for (o, meta) in shard_occurrences.iter().zip(occ_metas.iter()) {
-            refs.push(ifc_lite_geometry::InstanceMeshRef {
-                positions: &[],
-                normals: &[],
-                indices: &[],
-                origin: [0.0, 0.0, 0.0],
-                instance_meta: Some(meta),
-                entity_id: o.entity_id,
-                color: o.color,
-                // #2985: a don't-bake occurrence has no MeshData to read it from.
-                item_id: o.geometry_item_id,
-            });
-        }
-        let rtc = if needs_shift { [rtc_x, rtc_y, rtc_z] } else { [0.0, 0.0, 0.0] };
-        // #5984: the finish rides the shard's per-instance field 2, index-parallel to `refs`.
-        let wires: Vec<[f32; 2]> = instanced.iter().map(|(_, f)| *f).chain(shard_occurrences.iter().map(|o| o.finish)).map(finish_to_wire).collect();
-        let (shard, rejected, dropped) =
-            encode_shard_routing_refusals_back(&refs, &wires, instanced.len(), rtc);
-        drop(refs);
-        // Handed back = drawn flat; DROPPED = drawn nowhere. Both leave the count.
-        let taken = take_back_rejected(instanced, &rejected, &mut mesh_collection);
-        let instanced_occurrences = instanced_occurrences - dropped - taken;
-        mesh_collection.set_diagnostics(csg_diag);
-        PartitionedBatch {
-            meshes: Some(mesh_collection),
-            shard,
-            instanced_occurrences,
-        }
+        )?;
+        Ok(super::batch_partitioned_output::partition_outputs(outputs, csg_diag,
+            shard_occurrences, num_jobs, (rtc_x, rtc_y, rtc_z), needs_shift))
     }
 }
 

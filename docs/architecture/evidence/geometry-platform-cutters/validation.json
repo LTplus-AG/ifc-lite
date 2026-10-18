@@ -1,0 +1,140 @@
+{
+  "source_manifest": "source-manifest.json",
+  "platform": "Linux-6.17.9-76061709-generic-x86_64-with-glibc2.39",
+  "scope": "owned cutter source plans, exact polygonal candidate snapshots, decoder-free grouped numerics and role-aware BRep void operands; complete continuation and product migration incomplete",
+  "workspace": {
+    "passed_invocations": 5649,
+    "failed_invocations": 0,
+    "ignored": 47,
+    "suite_reports": 373,
+    "scope_note": "Optional fixture cases can skip internally. Passed invocations do not establish complete corpus coverage. Actual native SMLib worker was supplied for runtime tests."
+  },
+  "wasm_contract": {
+    "passed": 206,
+    "failed": 0,
+    "skipped": 7,
+    "fresh_runtime_from_candidate": true,
+    "committed_types_unchanged": true,
+    "runtime_newer_than_frozen_rust": true
+  },
+  "raw_replay_comparison": {
+    "passed_tests": 7,
+    "failed": 0,
+    "fixture_skips": 0,
+    "artifact": {
+      "binary_path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/debug/deps/owned_operation_plan-c049e661d6c6cb12",
+      "binary_sha256": "8e19838c38c5923c946eda200901a8acf1be82720eea19bd3fdba82e98c28011"
+    },
+    "scope": "raw geometry/frame bits and boolean diagnostics vs shared production seams, with source disposal and report replay; no complete product/RTC/appearance equivalence claim"
+  },
+  "native_peak_memory": {
+    "receipt": "default-path-memory.json",
+    "fixtures": 3,
+    "method": "GNU time process maximum resident set, ABBA5 native whole-worker-pool, build excluded",
+    "scope_note": "Sampled native high-water marks only; no browser, retained-plan, allocator attribution, process-limit or full-corpus memory verdict."
+  },
+  "default_path_comparison": {
+    "fixtures": 6,
+    "mesh_counts_and_ordered_payload_fingerprints_identical": true,
+    "timing_qualified": false,
+    "scope_note": "Base/candidate/candidate/base, five iterations each; shared-host timing diagnostic only. Fingerprints omit UVs, textures, instances and text metadata."
+  },
+  "commands": [
+    {
+      "name": "workspace",
+      "command": "IFCLITE_SMLIB_WORKER=/tmp/ifclite-smlib-adapter-native/ifclite_smlib_worker cargo test --workspace",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-control-workspace.log",
+      "raw_log_sha256": "0ef691b1e98fb476eab1331d94543236ea0422f8535f55bb5b44734c02e7636b"
+    },
+    {
+      "name": "clippy",
+      "command": "cargo clippy --workspace --all-targets -- -D warnings",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-control-clippy-final.log",
+      "raw_log_sha256": "f2066ca264b9a8598ecd436c70919e1efe1acea4098ad2a13b5d82d67bc049ec"
+    },
+    {
+      "name": "wasm-runtime-build",
+      "command": "CI=1 pnpm build:wasm",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-control-wasm-build.log",
+      "raw_log_sha256": "66244485d7231809f22c550ee7284f8813d179a0f31aac606674006b66849718"
+    },
+    {
+      "name": "wasm-contract",
+      "command": "pnpm test:wasm-contract",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-control-wasm-contract.log",
+      "raw_log_sha256": "1afef5fe0d64d945914502ed97ded37c2e13436c61591482aadec5ab4119fdc8"
+    },
+    {
+      "name": "wasm-target",
+      "command": "cargo build --locked -p ifc-lite-processing -p ifc-lite-geometry-runtime --target wasm32-unknown-unknown --target-dir /tmp/ifclite-platform-wasm-target",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-control-wasm-target.log",
+      "raw_log_sha256": "0ecbec9ff8be41a2583833507b10e7a48048996d631e8e43ac1ee83d1679d412"
+    },
+    {
+      "name": "raw-replay",
+      "command": "cargo test -p ifc-lite-geometry --test owned_operation_plan -- --nocapture",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-control-raw-comparison.log",
+      "raw_log_sha256": "73aa58cb89fffa9b3625644604e5683a7081577ffd7c01c9623ad3b393dbfb2c"
+    },
+    {
+      "name": "consumer-example",
+      "command": "cargo run -p ifc-lite-geometry --example construction_batch -- rust/geometry/tests/fixtures/bath_csg_solid.ifc 208 207 208",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-control-real-example.log",
+      "raw_log_sha256": "e153996e93a5b94433dc21693adbc5ea050d3ef59adb0d3b7c1dab55c6969d54"
+    },
+    {
+      "name": "reference-walk-guards",
+      "command": "node scripts/check-refwalk-guards.mjs",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-control-refwalk.log",
+      "raw_log_sha256": "8babf4ceb849f12ab296db0e5f67e8f99baa68391c6584ab0ed93370edff8382"
+    },
+    {
+      "name": "source-test-guard",
+      "command": "node scripts/check-source-text-assertions.mjs",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-control-source-tests.log",
+      "raw_log_sha256": "514785c72b6ca40b67bfc36c3bf85f169801f1fc4730dc5c30f4927a0080066d"
+    },
+    {
+      "name": "module-size",
+      "command": "node scripts/check-module-size.mjs",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-control-module-size.log",
+      "raw_log_sha256": "827acc364e4315e715b25d2480dbacc388e33cd9b8a6375021ba9b09ce4cdb0e"
+    },
+    {
+      "name": "native-peak-memory",
+      "command": "python3 /tmp/ifclite-control-memory.py; ABBA5 GNU time process high-water marks",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-control-memory.log",
+      "raw_log_sha256": "d8d363362b7406e92e326e7e424f0e7aacd97aa4a9c2fcfc7b301c9917a062f9"
+    },
+    {
+      "name": "default-path-comparison",
+      "command": "python3 /tmp/ifclite-platform-cutters-perf.py; ABBA5 whole-worker-pool per fixture",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-control-perf.log",
+      "raw_log_sha256": "b762a9c6d0e1a75fa1b08a89a9eed250b1602edbe648bafb4eb2d81f48636a3a"
+    }
+  ],
+  "not_qualified": [
+    "complete product/mapped/opening/halfspace/grouped-cut execution",
+    "complete conditional BRep cutter admission",
+    "conditional source recovery and contextual budgets",
+    "sampling/admission effort of dormant branches",
+    "product occurrence attribution and full diagnostic compatibility",
+    "retained analytic BRep production execution",
+    "all-platform package/install closure",
+    "complete cross-target and consumer qualification",
+    "payload/process memory limits and retained/browser/full-consumer peak memory",
+    "latency non-regression or performance improvement"
+  ]
+}

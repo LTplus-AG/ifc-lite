@@ -1,0 +1,33 @@
+{
+  "source_manifest": "source-manifest-ratchet-corrected.json",
+  "source_manifest_sha256": "63bb222be30076a296d109eb6cc7d057ec3ab880f727313d62892df82d65ff93",
+  "source_count": 288,
+  "source_mismatches_after_run": [],
+  "workspace_exit_code": 0,
+  "full_workspace_pass": true,
+  "completed_suite_reports": 377,
+  "passed_invocations": 5753,
+  "failed_invocations": 0,
+  "ignored_invocations": 47,
+  "command": "IFCLITE_SMLIB_WORKER=/tmp/ifclite-smlib-adapter-native/ifclite_smlib_worker cargo test --workspace",
+  "clippy": {
+    "command": "cargo clippy --workspace --all-targets -- -D warnings",
+    "exit_code": 0,
+    "log": "native-clippy.log.gz",
+    "uncompressed_sha256": "4385f381fc646f2d5298916d1d1e97d8d3ffe894006f28114c9eb99b603bbd89",
+    "archive_sha256": "e7ac76ada60dde5c4dee75a2c327f5ecdc118646fea291333a81c97675eeb065"
+  },
+  "workspace_log": {
+    "archive": "native-workspace.log.gz",
+    "archive_sha256": "a34beb21c51e2708c211de136834a3a00e50a0a2f14c00002f284305527d514a",
+    "uncompressed_sha256": "96e0957545b0ed966fd79d6ebdf3d29b900394019cec548ac3fc338cdc030dc6"
+  },
+  "structural_gates": {
+    "archive": "structural-gates.log.gz",
+    "exit_code": 0,
+    "archive_sha256": "8cdbdcd56c1ec5b7135858b62fdc5dcda30a378122a34ee59e1a35806af9c8b6"
+  },
+  "native_worker_sha256": "f93ec9be4c7273491ed6bc5e05539f1efe69978bde5a91bbcef6ed30e29cf15f",
+  "streaming_test_correction_passed": true,
+  "scope": "Actual complete Linux x86_64 native workspace test invocation and all-target Clippy on corrected test metadata. Ignored tests and fixture-return skips are not positive capability witnesses; no cross-platform, hard-resource, full-corpus or complete-cutover claim."
+}

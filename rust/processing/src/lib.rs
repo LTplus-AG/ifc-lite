@@ -10,6 +10,7 @@
 pub mod appearance;
 pub mod data_model;
 pub mod analytic_export;
+pub mod authored_geometry;
 pub mod pdf_vector;
 pub mod determinism;
 mod fingerprint;
@@ -39,6 +40,7 @@ pub use shard_classes::{
 #[path = "determinism_tests.rs"]
 mod determinism_tests;
 pub mod element;
+pub mod retained_geometry;
 mod geometry_pool;
 pub use geometry_pool::{
     geometry_pool, geometry_pool_builder, run_on_geometry_pool, GEOMETRY_STACK_BYTES,
@@ -133,3 +135,5 @@ pub use types::response::{
     QuickMetadataBootstrap, QuickMetadataEntitySummary, QuickMetadataPrunedEdge,
     QuickMetadataPrunedEdgeKind, QuickMetadataSpatialNode,
 };
+
+pub use element::{OwnedMeshProductionData,OwnedMeshProductionContext,ProductionModel,ProductionContextId,ProductionContextError,produce_element_meshes_owned};

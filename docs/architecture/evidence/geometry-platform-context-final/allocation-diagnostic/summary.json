@@ -1,0 +1,349 @@
+{
+  "scope": "Same System GlobalAlloc instrumentation; process_geometry five loads per fresh process after input read and global Rayon pool initialization; FZK control then Holter, ABBA each. Not latency qualification.",
+  "candidate_metadata_manifest_sha256": "63bb222be30076a296d109eb6cc7d057ec3ab880f727313d62892df82d65ff93",
+  "instrumented_no_latency_claim": true,
+  "worker_count": [
+    2
+  ],
+  "fixtures": {
+    "fzk": {
+      "geometry_signature": {
+        "meshes": 285,
+        "vertices": 35940,
+        "triangles": 20322,
+        "mesh_fingerprint_fnv1a64": "7377db33331a3523"
+      },
+      "geometry_signature_matches_all20loads": true,
+      "measures": {
+        "base": {
+          "successful_alloc_and_zeroed_calls": {
+            "median": 163718.0,
+            "min": 163718,
+            "max": 163765,
+            "samples": 10
+          },
+          "allocation_requested_bytes": {
+            "median": 29598479.0,
+            "min": 29598479,
+            "max": 30471771,
+            "samples": 10
+          },
+          "reallocation_calls": {
+            "median": 20379.0,
+            "min": 20378,
+            "max": 20466,
+            "samples": 10
+          },
+          "reallocation_new_requested_bytes": {
+            "median": 11112314.0,
+            "min": 11111930,
+            "max": 11516138,
+            "samples": 10
+          },
+          "allocation_plus_reallocation_requested_traffic_bytes": {
+            "median": 40710793.0,
+            "min": 40710409,
+            "max": 41987909,
+            "samples": 10
+          },
+          "incremental_peak_requested_live_bytes": {
+            "median": 6416199.0,
+            "min": 6416007,
+            "max": 7507111,
+            "samples": 10
+          },
+          "incremental_retained_result_requested_bytes": {
+            "median": 1507836.0,
+            "min": 1507644,
+            "max": 2598748,
+            "samples": 10
+          },
+          "incremental_after_result_drop_requested_live_bytes": {
+            "median": 192.0,
+            "min": 0,
+            "max": 1091104,
+            "samples": 10
+          },
+          "whole_process_maximum_resident_set_kib": {
+            "median": 17040.0,
+            "min": 16888,
+            "max": 17192,
+            "samples": 2
+          },
+          "first_load_vs_later_peak_requested_live_bytes": {
+            "first_load": 7507111.0,
+            "later_loads": 6416151.0
+          }
+        },
+        "candidate": {
+          "successful_alloc_and_zeroed_calls": {
+            "median": 167776.0,
+            "min": 167776,
+            "max": 167825,
+            "samples": 10
+          },
+          "allocation_requested_bytes": {
+            "median": 29853675.0,
+            "min": 29853675,
+            "max": 30727351,
+            "samples": 10
+          },
+          "reallocation_calls": {
+            "median": 20441.0,
+            "min": 20440,
+            "max": 20528,
+            "samples": 10
+          },
+          "reallocation_new_requested_bytes": {
+            "median": 11207194.0,
+            "min": 11206810,
+            "max": 11611018,
+            "samples": 10
+          },
+          "allocation_plus_reallocation_requested_traffic_bytes": {
+            "median": 41060869.0,
+            "min": 41060485,
+            "max": 42338369,
+            "samples": 10
+          },
+          "incremental_peak_requested_live_bytes": {
+            "median": 6416335.0,
+            "min": 6416143,
+            "max": 7507631,
+            "samples": 10
+          },
+          "incremental_retained_result_requested_bytes": {
+            "median": 1507836.0,
+            "min": 1507644,
+            "max": 2599132,
+            "samples": 10
+          },
+          "incremental_after_result_drop_requested_live_bytes": {
+            "median": 192.0,
+            "min": 0,
+            "max": 1091488,
+            "samples": 10
+          },
+          "whole_process_maximum_resident_set_kib": {
+            "median": 17314.0,
+            "min": 17236,
+            "max": 17392,
+            "samples": 2
+          },
+          "first_load_vs_later_peak_requested_live_bytes": {
+            "first_load": 7507631.0,
+            "later_loads": 6416287.0
+          }
+        }
+      },
+      "median_deltas": {
+        "successful_alloc_and_zeroed_calls": {
+          "candidate_minus_base": 4058.0,
+          "percent": 2.478652316788632
+        },
+        "allocation_requested_bytes": {
+          "candidate_minus_base": 255196.0,
+          "percent": 0.8621929525500338
+        },
+        "reallocation_calls": {
+          "candidate_minus_base": 62.0,
+          "percent": 0.304234751459842
+        },
+        "reallocation_new_requested_bytes": {
+          "candidate_minus_base": 94880.0,
+          "percent": 0.8538275646278626
+        },
+        "allocation_plus_reallocation_requested_traffic_bytes": {
+          "candidate_minus_base": 350076.0,
+          "percent": 0.8599095576448335
+        },
+        "incremental_peak_requested_live_bytes": {
+          "candidate_minus_base": 136.0,
+          "percent": 0.0021196350050933788
+        },
+        "incremental_retained_result_requested_bytes": {
+          "candidate_minus_base": 0.0,
+          "percent": 0.0
+        },
+        "incremental_after_result_drop_requested_live_bytes": {
+          "candidate_minus_base": 0.0,
+          "percent": 0.0
+        },
+        "whole_process_maximum_resident_set_kib": {
+          "candidate_minus_base": 274.0,
+          "percent": 1.607981220657284
+        }
+      }
+    },
+    "holter": {
+      "geometry_signature": {
+        "meshes": 109514,
+        "vertices": 4515161,
+        "triangles": 2895362,
+        "mesh_fingerprint_fnv1a64": "500e89efcdd091fa"
+      },
+      "geometry_signature_matches_all20loads": true,
+      "measures": {
+        "base": {
+          "successful_alloc_and_zeroed_calls": {
+            "median": 13944576.5,
+            "min": 13944522,
+            "max": 13944636,
+            "samples": 10
+          },
+          "allocation_requested_bytes": {
+            "median": 2276353215.0,
+            "min": 2271845679,
+            "max": 2279180371,
+            "samples": 10
+          },
+          "reallocation_calls": {
+            "median": 991805.0,
+            "min": 991742,
+            "max": 991974,
+            "samples": 10
+          },
+          "reallocation_new_requested_bytes": {
+            "median": 930531397.0,
+            "min": 924167893,
+            "max": 936587701,
+            "samples": 10
+          },
+          "allocation_plus_reallocation_requested_traffic_bytes": {
+            "median": 3208034130.0,
+            "min": 3200587500,
+            "max": 3215715968,
+            "samples": 10
+          },
+          "incremental_peak_requested_live_bytes": {
+            "median": 662848469.0,
+            "min": 658939461,
+            "max": 666874173,
+            "samples": 10
+          },
+          "incremental_retained_result_requested_bytes": {
+            "median": 256642650.0,
+            "min": 256639578,
+            "max": 259045810,
+            "samples": 10
+          },
+          "incremental_after_result_drop_requested_live_bytes": {
+            "median": 3072.0,
+            "min": 0,
+            "max": 2406232,
+            "samples": 10
+          },
+          "whole_process_maximum_resident_set_kib": {
+            "median": 933148.0,
+            "min": 920944,
+            "max": 945352,
+            "samples": 2
+          },
+          "first_load_vs_later_peak_requested_live_bytes": {
+            "first_load": 665399873.0,
+            "later_loads": 661648285.0
+          }
+        },
+        "candidate": {
+          "successful_alloc_and_zeroed_calls": {
+            "median": 14937130.5,
+            "min": 14937062,
+            "max": 14937171,
+            "samples": 10
+          },
+          "allocation_requested_bytes": {
+            "median": 2379783662.0,
+            "min": 2375250418,
+            "max": 2382578710,
+            "samples": 10
+          },
+          "reallocation_calls": {
+            "median": 1006142.5,
+            "min": 1006083,
+            "max": 1006285,
+            "samples": 10
+          },
+          "reallocation_new_requested_bytes": {
+            "median": 1009457381.0,
+            "min": 1005348053,
+            "max": 1013622677,
+            "samples": 10
+          },
+          "allocation_plus_reallocation_requested_traffic_bytes": {
+            "median": 3388767009.0,
+            "min": 3383713391,
+            "max": 3393407935,
+            "samples": 10
+          },
+          "incremental_peak_requested_live_bytes": {
+            "median": 661021793.0,
+            "min": 658444325,
+            "max": 663241493,
+            "samples": 10
+          },
+          "incremental_retained_result_requested_bytes": {
+            "median": 256642650.0,
+            "min": 256639578,
+            "max": 259046194,
+            "samples": 10
+          },
+          "incremental_after_result_drop_requested_live_bytes": {
+            "median": 3072.0,
+            "min": 0,
+            "max": 2406616,
+            "samples": 10
+          },
+          "whole_process_maximum_resident_set_kib": {
+            "median": 976070.0,
+            "min": 964284,
+            "max": 987856,
+            "samples": 2
+          },
+          "first_load_vs_later_peak_requested_live_bytes": {
+            "first_load": 662189189.0,
+            "later_loads": 660169213.0
+          }
+        }
+      },
+      "median_deltas": {
+        "successful_alloc_and_zeroed_calls": {
+          "candidate_minus_base": 992554.0,
+          "percent": 7.117849724586467
+        },
+        "allocation_requested_bytes": {
+          "candidate_minus_base": 103430447.0,
+          "percent": 4.543690597682581
+        },
+        "reallocation_calls": {
+          "candidate_minus_base": 14337.5,
+          "percent": 1.4455966646669483
+        },
+        "reallocation_new_requested_bytes": {
+          "candidate_minus_base": 78925984.0,
+          "percent": 8.48181848075782
+        },
+        "allocation_plus_reallocation_requested_traffic_bytes": {
+          "candidate_minus_base": 180732879.0,
+          "percent": 5.6337579862344
+        },
+        "incremental_peak_requested_live_bytes": {
+          "candidate_minus_base": -1826676.0,
+          "percent": -0.2755797268047977
+        },
+        "incremental_retained_result_requested_bytes": {
+          "candidate_minus_base": 0.0,
+          "percent": 0.0
+        },
+        "incremental_after_result_drop_requested_live_bytes": {
+          "candidate_minus_base": 0.0,
+          "percent": 0.0
+        },
+        "whole_process_maximum_resident_set_kib": {
+          "candidate_minus_base": 42922.0,
+          "percent": 4.599699083103648
+        }
+      }
+    }
+  },
+  "verdict": "Holter has more successful allocation requests and requested traffic in this instrumented run, while result-retained requested bytes match and peak requested live bytes do not increase. Whole-process RSS is higher here. These observations narrow hypotheses; they do not identify allocation sites, prove allocator fragmentation/arena causation, or establish a latency verdict."
+}

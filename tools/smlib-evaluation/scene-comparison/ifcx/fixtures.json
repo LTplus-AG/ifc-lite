@@ -1,0 +1,345 @@
+{
+  "scope": "manifest-hash-verified bytes and observed declarations/assets; no license assertion",
+  "fixtures": [
+    {
+      "path": "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc",
+      "bytes": 23562,
+      "sha256": "a9984558b52629d8507f01a23aba1d62a84cc7257f8159ac4ae4ac06f71b20fd",
+      "download": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/a9984558b52629d8507f01a23aba1d62a84cc7257f8159ac4ae4ac06f71b20fd",
+      "upstream_source": "not recorded in fixture manifest",
+      "redistribution_license": "not recorded in fixture manifest",
+      "FILE_SCHEMA": "('IFC4X3_ADD2')",
+      "image_references": [],
+      "source_blob_texture_records": 1,
+      "source_pixel_texture_records": 0
+    },
+    {
+      "path": "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc",
+      "bytes": 10337,
+      "sha256": "eeec637c7c870c289460c5eec18995ec2c2d41af0c26382f32e453a58773c0a6",
+      "download": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/eeec637c7c870c289460c5eec18995ec2c2d41af0c26382f32e453a58773c0a6",
+      "upstream_source": "not recorded in fixture manifest",
+      "redistribution_license": "not recorded in fixture manifest",
+      "FILE_SCHEMA": "('IFC4X3_ADD2')",
+      "image_references": [
+        {
+          "UrlReference": "texture.png",
+          "sibling_exists": false
+        }
+      ],
+      "source_blob_texture_records": 0,
+      "source_pixel_texture_records": 0
+    },
+    {
+      "path": "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-individual-colors.ifc",
+      "bytes": 2657,
+      "sha256": "49a003e142dce4b047f6c420a804aad68e30c7e4f5af3f7e2db2f9f32560e8a5",
+      "download": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/49a003e142dce4b047f6c420a804aad68e30c7e4f5af3f7e2db2f9f32560e8a5",
+      "upstream_source": "not recorded in fixture manifest",
+      "redistribution_license": "not recorded in fixture manifest",
+      "FILE_SCHEMA": "('IFC4X3_ADD2')",
+      "image_references": [],
+      "source_blob_texture_records": 0,
+      "source_pixel_texture_records": 0
+    },
+    {
+      "path": "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc",
+      "bytes": 796767,
+      "sha256": "522788afc44ba467730e2b8b521d4baa334df299598a6595ffd430c16a0f7e5e",
+      "download": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/522788afc44ba467730e2b8b521d4baa334df299598a6595ffd430c16a0f7e5e",
+      "upstream_source": "not recorded in fixture manifest",
+      "redistribution_license": "not recorded in fixture manifest",
+      "FILE_SCHEMA": "('IFC4X3_ADD2')",
+      "image_references": [],
+      "source_blob_texture_records": 0,
+      "source_pixel_texture_records": 1
+    },
+    {
+      "path": "ifc5/Domestic_Hot_Water_domestic-hot-water-add-pbr.ifcx",
+      "bytes": 4588,
+      "sha256": "dc6faaa57d36a3412f6579fa34e67a185d9d411a759776f2c277606e4586551b",
+      "download": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/dc6faaa57d36a3412f6579fa34e67a185d9d411a759776f2c277606e4586551b",
+      "upstream_source": "not recorded in fixture manifest",
+      "redistribution_license": "not recorded in fixture manifest",
+      "header": {
+        "id": "ifc5.technical.buildingsmart.org/examples/Hello Wall/domestic-hot-water-pbr@v1.ifcx",
+        "ifcxVersion": "ifcx_alpha",
+        "dataVersion": "1.0.0",
+        "author": "@ArjoNagelhout",
+        "timestamp": "2025-06-01"
+      },
+      "imports": [
+        {
+          "uri": "https://ifcx.dev/@standards.buildingsmart.org/ifc/core/ifc@v5a.ifcx"
+        }
+      ],
+      "schemas": [
+        "gltf::material"
+      ]
+    },
+    {
+      "path": "ifc5/Domestic_Hot_Water_domestic-hot-water.ifcx",
+      "bytes": 195107,
+      "sha256": "34d2ae7e5e3137d9de50279fd815b0df819b3420b98b0c17af33e51a594f7d85",
+      "download": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/34d2ae7e5e3137d9de50279fd815b0df819b3420b98b0c17af33e51a594f7d85",
+      "upstream_source": "not recorded in fixture manifest",
+      "redistribution_license": "not recorded in fixture manifest",
+      "header": {
+        "id": "ifc5.technical.buildingsmart.org/examples/Hello Wall/domestic-hot-water@v1.ifcx",
+        "ifcxVersion": "ifcx_alpha",
+        "dataVersion": "1.0.0",
+        "author": "@steverugi",
+        "timestamp": "2025-06-01"
+      },
+      "imports": [
+        {
+          "uri": "https://ifcx.dev/@standards.buildingsmart.org/ifc/core/ifc@v5a.ifcx"
+        },
+        {
+          "uri": "https://ifcx.dev/@standards.buildingsmart.org/ifc/core/prop@v5a.ifcx"
+        },
+        {
+          "uri": "https://ifcx.dev/@standards.buildingsmart.org/ifc/ifc-mat/ifc-mat@v1.0.0.ifcx"
+        },
+        {
+          "uri": "https://ifcx.dev/@openusd.org/usd@v1.ifcx"
+        },
+        {
+          "uri": "https://ifcx.dev/@nlsfb/nlsfb@v1.ifcx"
+        }
+      ],
+      "schemas": [
+        "customdata"
+      ]
+    },
+    {
+      "path": "ifc5/Georeferencing_georeferenced-bridge-deck.ifcx",
+      "bytes": 11584,
+      "sha256": "0404e502489513a853d1bd01987b4df31ee2e6605452f1107e30c63276911743",
+      "download": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/0404e502489513a853d1bd01987b4df31ee2e6605452f1107e30c63276911743",
+      "upstream_source": "not recorded in fixture manifest",
+      "redistribution_license": "not recorded in fixture manifest",
+      "header": {
+        "id": "ifc5.technical.buildingsmart.org/examples/Georeferencing/georeferenced-bridge-deck.ifcx",
+        "ifcxVersion": "ifcx_alpha",
+        "dataVersion": "1.0.0",
+        "author": "technical@buildingsmart.org",
+        "timestamp": "time string"
+      },
+      "imports": [
+        {
+          "uri": "https://ifcx.dev/@standards.buildingsmart.org/ifc/core/ifc@v5a.ifcx"
+        },
+        {
+          "uri": "https://ifcx.dev/@openusd.org/usd@v1.ifcx"
+        },
+        {
+          "uri": "https://ifcx.dev/@openusd.org/usd@v1.ifcx"
+        }
+      ],
+      "schemas": [
+        "customdata",
+        "epsg4326",
+        "epsg5703",
+        "epsg32610",
+        "points::array"
+      ]
+    },
+    {
+      "path": "ifc5/Hello_Wall_hello-wall-add-fire-rating-30.ifcx",
+      "bytes": 631,
+      "sha256": "2e709858155ab091fb6e2784c8d0f79811722f88b9740767eb17c5d5a529a71b",
+      "download": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/2e709858155ab091fb6e2784c8d0f79811722f88b9740767eb17c5d5a529a71b",
+      "upstream_source": "not recorded in fixture manifest",
+      "redistribution_license": "not recorded in fixture manifest",
+      "header": {
+        "id": "ifc5.technical.buildingsmart.org/examples/Hello Wall/hello-wall-add-fire-rating-30.ifcx",
+        "ifcxVersion": "ifcx_alpha",
+        "dataVersion": "1.0.0",
+        "author": "technical@buildingsmart.org",
+        "timestamp": "2025-06-25"
+      },
+      "imports": [],
+      "schemas": [
+        "bsi::ifc::prop::FireRating"
+      ]
+    },
+    {
+      "path": "ifc5/Hello_Wall_hello-wall.ifcx",
+      "bytes": 42935,
+      "sha256": "4294362c0bd17f27af2c53e68c3f2bffd86f2d71f1b1b5d08b3d86fc8de6332b",
+      "download": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/4294362c0bd17f27af2c53e68c3f2bffd86f2d71f1b1b5d08b3d86fc8de6332b",
+      "upstream_source": "not recorded in fixture manifest",
+      "redistribution_license": "not recorded in fixture manifest",
+      "header": {
+        "id": "ifc5.technical.buildingsmart.org/examples/Hello Wall/hello-wall.ifcx",
+        "ifcxVersion": "ifcx_alpha",
+        "dataVersion": "1.0.0",
+        "author": "technical@buildingsmart.org",
+        "timestamp": "time string"
+      },
+      "imports": [
+        {
+          "uri": "https://ifcx.dev/@standards.buildingsmart.org/ifc/core/ifc@v5a.ifcx"
+        },
+        {
+          "uri": "https://ifcx.dev/@standards.buildingsmart.org/ifc/core/prop@v5a.ifcx"
+        },
+        {
+          "uri": "https://ifcx.dev/@standards.buildingsmart.org/ifc/ifc-mat/ifc-mat@v1.0.0.ifcx"
+        },
+        {
+          "uri": "https://ifcx.dev/@openusd.org/usd@v1.ifcx"
+        },
+        {
+          "uri": "https://ifcx.dev/@nlsfb/nlsfb@v1.ifcx"
+        }
+      ],
+      "schemas": [
+        "customdata"
+      ]
+    },
+    {
+      "path": "ifc5/PCERT-Sample-Scene_Building-Architecture.ifcx",
+      "bytes": 94827,
+      "sha256": "2e56206ee3042f37677d44d958534dbf4ec0ac2d43fca065ae80c4b4c0ef2161",
+      "download": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/2e56206ee3042f37677d44d958534dbf4ec0ac2d43fca065ae80c4b4c0ef2161",
+      "upstream_source": "not recorded in fixture manifest",
+      "redistribution_license": "not recorded in fixture manifest",
+      "header": {
+        "id": "Building-Architecture.ifcx",
+        "ifcxVersion": "ifcx_alpha",
+        "dataVersion": "1.0.0",
+        "author": "On-Track",
+        "timestamp": "2025-08-21T21:58:09"
+      },
+      "imports": [
+        {
+          "uri": "https://ifcx.dev/@standards.buildingsmart.org/ifc/core/ifc@v5a.ifcx"
+        },
+        {
+          "uri": "https://ifcx.dev/@standards.buildingsmart.org/ifc/core/prop@v5a.ifcx"
+        },
+        {
+          "uri": "https://ifcx.dev/@standards.buildingsmart.org/ifc/ifc-mat/ifc-mat@v1.0.0.ifcx"
+        },
+        {
+          "uri": "https://ifcx.dev/@openusd.org/usd@v1.ifcx"
+        },
+        {
+          "uri": "https://ifcx.dev/@nlsfb/nlsfb@v1.ifcx"
+        }
+      ],
+      "schemas": []
+    },
+    {
+      "path": "ifc5/Point_Cloud_point-cloud.ifcx",
+      "bytes": 54502,
+      "sha256": "edd2c096371af0af6f9a4b521c582c737f47f47480e9de3e184da3ef19b38977",
+      "download": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/edd2c096371af0af6f9a4b521c582c737f47f47480e9de3e184da3ef19b38977",
+      "upstream_source": "not recorded in fixture manifest",
+      "redistribution_license": "not recorded in fixture manifest",
+      "header": {
+        "id": "ifc5.technical.buildingsmart.org/examples/Point Cloud/point-cloud.ifcx",
+        "ifcxVersion": "ifcx_alpha",
+        "dataVersion": "1.0.0",
+        "author": "Arjo Nagelhout",
+        "timestamp": "2025-06-30"
+      },
+      "imports": [
+        {
+          "uri": "https://ifcx.dev/@standards.buildingsmart.org/ifc/core/ifc@v5a.ifcx"
+        },
+        {
+          "uri": "https://ifcx.dev/@standards.buildingsmart.org/ifc/core/prop@v5a.ifcx"
+        },
+        {
+          "uri": "https://ifcx.dev/@openusd.org/usd@v1.ifcx"
+        }
+      ],
+      "schemas": [
+        "pcd::base64",
+        "points::array",
+        "points::base64"
+      ]
+    },
+    {
+      "path": "textures/ifc-hbim-convento-textures.ifczip",
+      "bytes": 36711602,
+      "sha256": "ad03679f51e28162790cecc83ad89be77cbe568249a161570802dee0a7bbff80",
+      "download": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/ad03679f51e28162790cecc83ad89be77cbe568249a161570802dee0a7bbff80",
+      "upstream_source": "not recorded in fixture manifest",
+      "redistribution_license": "not recorded in fixture manifest",
+      "members": [
+        {
+          "member": "convento.ifc",
+          "bytes": 59219474,
+          "sha256": "b637e624ca9bcab2ad9c862f421ad81e5bbf065175830210437458025aad1b96",
+          "FILE_SCHEMA": "('IFC4')",
+          "image_references": [
+            {
+              "UrlReference": "glTF_Embedded_Texture1.jpg",
+              "resolved_archive_member": "glTF_Embedded_Texture1.jpg"
+            },
+            {
+              "UrlReference": "glTF_Embedded_Texture5.jpg",
+              "resolved_archive_member": "glTF_Embedded_Texture5.jpg"
+            },
+            {
+              "UrlReference": "glTF_Embedded_Texture11.jpg",
+              "resolved_archive_member": "glTF_Embedded_Texture11.jpg"
+            },
+            {
+              "UrlReference": "glTF_Embedded_Texture9.jpg",
+              "resolved_archive_member": "glTF_Embedded_Texture9.jpg"
+            },
+            {
+              "UrlReference": "glTF_Embedded_Texture7.jpg",
+              "resolved_archive_member": "glTF_Embedded_Texture7.jpg"
+            },
+            {
+              "UrlReference": "glTF_Embedded_Texture3.jpg",
+              "resolved_archive_member": "glTF_Embedded_Texture3.jpg"
+            }
+          ]
+        },
+        {
+          "member": "glTF_Embedded_Texture1.jpg",
+          "bytes": 4280558,
+          "sha256": "81510a0b0645541c705a0ecbc698b03af52b34dcf859c6379b58ff15c146e716",
+          "file_description": "JPEG image data, JFIF standard 1.01, resolution (DPI), density 0x0, segment length 16, baseline, precision 8, 4096x4096, components 3"
+        },
+        {
+          "member": "glTF_Embedded_Texture5.jpg",
+          "bytes": 3744076,
+          "sha256": "97e05170f0c33c8ced617827fb061fd4e92c5633d625529be793e1482e1f4685",
+          "file_description": "JPEG image data, JFIF standard 1.01, resolution (DPI), density 0x0, segment length 16, baseline, precision 8, 4096x4096, components 3"
+        },
+        {
+          "member": "glTF_Embedded_Texture11.jpg",
+          "bytes": 3292388,
+          "sha256": "14b9cfc9656fcdeed50f9390ba93614ec5a3ee582693854a2a4aff9eaecad459",
+          "file_description": "JPEG image data, JFIF standard 1.01, resolution (DPI), density 0x0, segment length 16, baseline, precision 8, 4096x4096, components 3"
+        },
+        {
+          "member": "glTF_Embedded_Texture9.jpg",
+          "bytes": 3543242,
+          "sha256": "3b69827acfaba5cc0ad02f6e7fff32e323050f2adfd014e112e4aed9988a8263",
+          "file_description": "JPEG image data, JFIF standard 1.01, resolution (DPI), density 0x0, segment length 16, baseline, precision 8, 4096x4096, components 3"
+        },
+        {
+          "member": "glTF_Embedded_Texture7.jpg",
+          "bytes": 3609970,
+          "sha256": "a14041f15a50b2a136dd04e969a9f709ec5e1ede357ed6649c8c5c9c8f7760d0",
+          "file_description": "JPEG image data, JFIF standard 1.01, resolution (DPI), density 0x0, segment length 16, baseline, precision 8, 4096x4096, components 3"
+        },
+        {
+          "member": "glTF_Embedded_Texture3.jpg",
+          "bytes": 3979156,
+          "sha256": "a804b03e29ce184c57ed496d189f8b0c21d4124cd5c0df087de892fa62423dbb",
+          "file_description": "JPEG image data, JFIF standard 1.01, resolution (DPI), density 0x0, segment length 16, baseline, precision 8, 4096x4096, components 3"
+        }
+      ]
+    }
+  ]
+}

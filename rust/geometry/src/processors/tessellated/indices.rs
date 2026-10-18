@@ -15,7 +15,7 @@
 
 use crate::{Error, Result};
 use ifc_lite_core::{
-    extract_face_indices_from_entity, AttributeValue, DecodedEntity, EntityDecoder, INVALID_INDEX,
+    extract_face_indices_from_entity, slot, AttributeValue, DecodedEntity, EntityDecoder, INVALID_INDEX,
 };
 
 /// `PnIndex` (attribute `attr`) as 0-based `Coordinates` positions, or
@@ -68,7 +68,7 @@ pub(super) fn read_triangle_coord_index(
         return Ok(indices);
     }
     let face_list = entity
-        .get(3)
+        .attr(slot::IfcTriangulatedFaceSet::COORD_INDEX)
         .ok_or_else(|| Error::geometry("TriangulatedFaceSet missing CoordIndex".to_string()))?
         .as_list()
         .ok_or_else(|| Error::geometry("Expected face index list".to_string()))?;

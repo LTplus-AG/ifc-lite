@@ -1,0 +1,62 @@
+{
+  "wasmSha256": "b5f103a8d2992e5d0ee8128579c999c28d746b773a0e8a2c7585e1cabb88b7a9",
+  "bindingsSha256": "04c85b1449d8fee992f25f0685170ff03fb4360726fa4e4d2a2d180314c169c0",
+  "results": [
+    {
+      "name": "hello-wall",
+      "path": "apps/landing/samples/hello-wall.ifc",
+      "sourceSha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "bytes": 31777,
+      "sha256": "805016450671591f343e58550c4a91972966fa09ddbe2bcd819621d35b1c515f",
+      "status": "exported"
+    },
+    {
+      "name": "mapped",
+      "path": "rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc",
+      "sourceSha256": "3069997f0b7d555232180c88bea27d0f6ca4d9c309a9cf4b1c3a8c68bba166ad",
+      "bytes": 69864,
+      "sha256": "4f755bfa83ca9bdd7ccc7c07e32a1e0c37736843ad1a5f27da20cfd96f906771",
+      "status": "exported"
+    },
+    {
+      "name": "georeferenced",
+      "path": "rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc",
+      "sourceSha256": "b73f7ee743824ae800e0d494a7bcd444c24cecb03aa0c5d837597b490f05b597",
+      "bytes": 245432,
+      "sha256": "fa1d2fef8ccdbda4e2217802d8eef7d56e6d933451e5b5f7edbafa609073d94f",
+      "status": "exported"
+    },
+    {
+      "name": "blob-texture",
+      "path": "tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc",
+      "sourceSha256": "a9984558b52629d8507f01a23aba1d62a84cc7257f8159ac4ae4ac06f71b20fd",
+      "bytes": 8515,
+      "sha256": "afeebc5757bb6fe3a11b8b5e80c6c05c631d933b191fe0554f1f379d65d29a45",
+      "status": "exported"
+    },
+    {
+      "name": "image-texture",
+      "path": "tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc",
+      "sourceSha256": "eeec637c7c870c289460c5eec18995ec2c2d41af0c26382f32e453a58773c0a6",
+      "bytes": 8525,
+      "sha256": "e29ae6e5529c500e43737bc3d6ff1f693c0ffb2c72524ade2c2a9428773a444b",
+      "status": "exported"
+    },
+    {
+      "name": "pixel-texture",
+      "path": "tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc",
+      "sourceSha256": "522788afc44ba467730e2b8b521d4baa334df299598a6595ffd430c16a0f7e5e",
+      "bytes": 8525,
+      "sha256": "e74de9d4a122c00efdc367cb6c1793091b508b7f9b79cd94abd1dbefeff27dc4",
+      "status": "exported"
+    },
+    {
+      "name": "individual-colors",
+      "path": "tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-individual-colors.ifc",
+      "sourceSha256": "49a003e142dce4b047f6c420a804aad68e30c7e4f5af3f7e2db2f9f32560e8a5",
+      "bytes": 6006,
+      "sha256": "d31b9560079a20c1e12ea58ac208ddc9c4479376a76711ac66876417621722bb",
+      "status": "exported"
+    }
+  ]
+}

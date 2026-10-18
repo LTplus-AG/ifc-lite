@@ -4,14 +4,12 @@
 
 //! `IfcSphere` — the UV-sphere CSG leaf primitive.
 //!
-//! Split out of `csg_primitive.rs` (module-size ratchet) when
-//! `CsgSolidProcessor` gained its boolean-failure hand-off (#3821). Moved
-//! verbatim; nothing here changed.
+//! Production lowering owns the raw radius, quality and Position; evaluation
+//! replays the same UV-sphere builder without requiring an IFC decoder.
 
-use super::helpers::parse_axis2_placement_3d;
-use crate::extrusion::apply_transform;
+use super::csg_primitive::plan;
 use crate::router::GeometryProcessor;
-use crate::{scale_segments, Error, Mesh, Result, TessellationQuality, Vector3};
+use crate::{Mesh, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Point3;
 
@@ -26,6 +24,15 @@ pub struct SphereProcessor;
 impl SphereProcessor {
     pub fn new() -> Self {
         Self
+    }
+
+    pub(crate) fn lower(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        quality: TessellationQuality,
+    ) -> Result<plan::SpherePlan> {
+        plan::lower_sphere(entity, decoder, quality)
     }
 }
 
@@ -43,33 +50,7 @@ impl GeometryProcessor for SphereProcessor {
         _schema: &IfcSchema,
         quality: TessellationQuality,
     ) -> Result<Mesh> {
-        let radius = entity
-            .get_float(1)
-            .ok_or_else(|| Error::geometry("IfcSphere missing Radius".to_string()))?;
-
-        if !radius.is_finite() || radius <= 0.0 {
-            return Err(Error::geometry(format!(
-                "IfcSphere requires finite positive radius, got {radius}",
-            )));
-        }
-
-        // 24 slices × 16 stacks at Medium; scaled by quality.
-        let slices = scale_segments(24, 8, 96, quality);
-        let stacks = scale_segments(16, 4, 64, quality);
-        let mut mesh = build_uv_sphere(radius, slices, stacks);
-
-        if let Some(pos_attr) = entity.get(0) {
-            if !pos_attr.is_null() {
-                if let Some(pos_entity) = decoder.resolve_ref(pos_attr)? {
-                    if pos_entity.ifc_type == IfcType::IfcAxis2Placement3D {
-                        let transform = parse_axis2_placement_3d(&pos_entity, decoder)?;
-                        apply_transform(&mut mesh, &transform);
-                    }
-                }
-            }
-        }
-
-        Ok(mesh)
+        Ok(self.lower(entity, decoder, quality)?.evaluate())
     }
 
     fn supported_types(&self) -> Vec<IfcType> {
@@ -80,7 +61,7 @@ impl GeometryProcessor for SphereProcessor {
 /// UV-sphere tessellation. `slices` segments around the equator, `stacks`
 /// rings from pole to pole. Pole vertices are duplicated per slice so UV
 /// seams don't share normals — sphere is closed and outward-facing.
-fn build_uv_sphere(radius: f64, slices: usize, stacks: usize) -> Mesh {
+pub(super) fn build_uv_sphere(radius: f64, slices: usize, stacks: usize) -> Mesh {
     let slices = slices.max(3);
     let stacks = stacks.max(2);
     let vert_count = (stacks + 1) * (slices + 1);

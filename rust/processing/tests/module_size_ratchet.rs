@@ -58,11 +58,11 @@ const ALLOWLIST: &str = include_str!("module_size_allowlist.txt");
 /// would rewrite the digest and fail CI for no reason.
 const ALLOWLIST_DIGESTS: &[(&str, u64)] = &[
     ("apps/server", 4104424009168246343),
-    ("rust/core", 16604054656275753038),
+    ("rust/core", 12372798877575856707),
     ("rust/export", 2156577647744325171),
-    ("rust/geometry", 1502291324689754821),
-    ("rust/processing", 15034779268071507519),
-    ("rust/wasm-bindings", 6355378406566007704),
+    ("rust/geometry", 1674152600355874594),
+    ("rust/processing", 13894717140543592832),
+    ("rust/wasm-bindings", 2522940784876655197),
 ];
 
 /// Lower bound on how many non-exempt `.rs` files the walk must reach before

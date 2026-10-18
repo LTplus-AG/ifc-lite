@@ -64,6 +64,7 @@ impl IfcAPI {
         &self,
         built: Result<ColumnarEntityIndex, ColumnLengthMismatch>,
     ) -> Result<(), ColumnLengthMismatch> {
+        self.production_model.invalidate_source();
         let (installed, outcome) = match built {
             Ok(index) => ((!index.is_empty()).then(|| std::sync::Arc::new(index)), Ok(())),
             Err(mismatch) => (None, Err(mismatch)),

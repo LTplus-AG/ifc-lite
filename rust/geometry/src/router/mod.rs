@@ -50,7 +50,14 @@ mod tests;
 use crate::material_layer_index::MaterialLayerIndex;
 use crate::processors::{BooleanClippingProcessor, CsgSolidProcessor};
 mod processor_registry;
-pub(crate) use processor_registry::builtin_processor;
+mod registration;
+mod execution_owner;
+mod dispatch_capture;
+mod dispatch_recording;
+pub use dispatch_capture::{ProcessorDispatchCapture,ProcessorEmitter,ProcessorEmitterOrigin};
+mod construction;
+pub use processor_registry::ConstructionFamily;
+pub(crate) use processor_registry::{builtin_family, builtin_processor, ProcessorOrigin};
 use processor_registry::ProcessorRegistry;
 use crate::tessellation::TessellationQuality;
 use crate::{BoolFailure, Mesh, Result};
@@ -58,7 +65,6 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex, OnceLock};
 
 /// Test/env override for [`GeometryRouter::build_dedup_extra_enabled`]:
@@ -103,6 +109,7 @@ pub type MappedInstancePlan = Arc<FxHashMap<u32, (u32, u32)>>;
 
 /// Geometry router - routes entities to processors
 pub struct GeometryRouter {
+    execution_owner: ifc_lite_core::execution_owner::ExecutionOwner,
     schema: &'static IfcSchema,
     processors: ProcessorRegistry,
     /// Cache for IfcRepresentationMap source geometry (MappedItem instancing)
@@ -252,6 +259,7 @@ impl GeometryRouter {
         static SCHEMA: OnceLock<IfcSchema> = OnceLock::new();
         let schema = SCHEMA.get_or_init(IfcSchema::new);
         Self {
+            execution_owner: Default::default(),
             schema,
             processors: ProcessorRegistry::new(),
             mapped_item_cache: RefCell::new(FxHashMap::default()),
@@ -388,6 +396,7 @@ impl GeometryRouter {
     /// byte-identical geometry is meshed once across the whole model regardless of
     /// how elements are partitioned across threads or batches.
     pub fn enable_content_dedup_shared(&mut self, cache: ItemDedupCache) {
+        self.execution_owner.changed();
         self.item_dedup_cache = Some(cache);
     }
 
@@ -407,6 +416,7 @@ impl GeometryRouter {
     /// element). Takes precedence over the per-router RefCell `mapped_item_cache`;
     /// leaving it unset keeps the per-router fallback for single-shot callers.
     pub fn enable_shared_mapped_item_cache(&mut self, cache: SharedMappedItemCache) {
+        self.execution_owner.changed();
         self.shared_mapped_item_cache = Some(cache);
     }
 
@@ -416,6 +426,7 @@ impl GeometryRouter {
     /// (the orphan-recovery template at finalize reads it). Leaving it unset keeps
     /// every occurrence materializing (byte-identical flat output).
     pub fn enable_output_instancing(&mut self, plan: MappedInstancePlan) {
+        self.execution_owner.changed();
         self.output_instancing_plan = Some(plan);
     }
 
@@ -431,6 +442,7 @@ impl GeometryRouter {
     /// collapse it to one colour). Armed alongside [`Self::enable_output_instancing`]
     /// when the model has any indexed-colour maps; unset ⇒ no exclusion.
     pub fn enable_indexed_colour_split_guard(&mut self, ids: Arc<FxHashSet<u32>>) {
+        self.execution_owner.changed();
         self.indexed_colour_split_ids = Some(ids);
     }
 
@@ -456,6 +468,7 @@ impl GeometryRouter {
     /// batch materializes its OWN first-seen template per source and stays a
     /// self-contained shard; the native path leaves it off (global min-id template).
     pub fn set_instancing_batch_local(&mut self, on: bool) {
+        self.execution_owner.changed();
         self.instancing_batch_local = on;
     }
 
@@ -478,6 +491,7 @@ impl GeometryRouter {
     /// returns `None` and meshing is never skipped). Test/bench helper for an A/B
     /// against the deduped path.
     pub fn disable_content_dedup(&mut self) {
+        self.execution_owner.changed();
         self.item_dedup_cache = None;
     }
 
@@ -566,6 +580,7 @@ impl GeometryRouter {
         if self.tessellation_quality == quality {
             return;
         }
+        self.execution_owner.changed();
         self.tessellation_quality = quality;
         self.mapped_item_cache.get_mut().clear();
         self.unsupported.get_mut().forget_sources();
@@ -609,39 +624,19 @@ impl GeometryRouter {
     /// never discard records the pipeline had not drained yet (#3821).
     fn register_skip_dependent_processors(&mut self) {
         self.drain_processor_failures();
-        self.register(Box::new(BooleanClippingProcessor::with_skip_small_cuts(
+        self.register_with_origin(Box::new(BooleanClippingProcessor::with_skip_small_cuts(
             self.skip_small_cuts,
-        )));
-        self.register(Box::new(CsgSolidProcessor::with_skip_small_cuts(
+        )), ProcessorOrigin::ConfiguredBuiltin);
+        self.register_with_origin(Box::new(CsgSolidProcessor::with_skip_small_cuts(
             self.skip_small_cuts,
-        )));
-    }
-
-    /// Set the RTC offset for large coordinate handling
-    pub fn set_rtc_offset(&mut self, offset: (f64, f64, f64)) {
-        self.rtc_offset = offset;
-    }
-
-    /// Get the current RTC offset
-    pub fn rtc_offset(&self) -> (f64, f64, f64) {
-        self.rtc_offset
-    }
-
-    /// Check if RTC offset is active (non-zero)
-    #[inline]
-    pub fn has_rtc_offset(&self) -> bool {
-        self.rtc_offset.0 != 0.0 || self.rtc_offset.1 != 0.0 || self.rtc_offset.2 != 0.0
-    }
-
-    /// Get the current unit scale factor
-    pub fn unit_scale(&self) -> f64 {
-        self.unit_scale
+        )), ProcessorOrigin::ConfiguredBuiltin);
     }
 
     /// Attach a material-layer buildup index. After this, sub-mesh processing
     /// automatically slices single-solid elements whose buildup is sliceable
     /// (walls with `IfcMaterialLayerSetUsage`, etc.) into per-layer slabs.
     pub fn set_material_layer_index(&mut self, index: Arc<MaterialLayerIndex>) {
+        self.execution_owner.changed();
         self.material_layer_index = Some(index);
     }
 
@@ -680,14 +675,6 @@ impl GeometryRouter {
             transform[(0, 3)] *= self.unit_scale;
             transform[(1, 3)] *= self.unit_scale;
             transform[(2, 3)] *= self.unit_scale;
-        }
-    }
-
-    /// Register a geometry processor
-    pub fn register(&mut self, processor: Box<dyn GeometryProcessor>) {
-        let processor_rc: Rc<dyn GeometryProcessor> = Rc::from(processor);
-        for ifc_type in processor_rc.supported_types() {
-            self.processors.insert(ifc_type, Rc::clone(&processor_rc));
         }
     }
 

@@ -1576,6 +1576,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ifc-lite-geometry-runtime"
+version = "21.4.0"
+dependencies = [
+ "ifc-lite-geometry",
+]
+
+[[package]]
 name = "ifc-lite-landxml"
 version = "21.4.0"
 dependencies = [

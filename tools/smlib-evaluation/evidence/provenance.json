@@ -1,0 +1,45 @@
+{
+  "date": "2026-10-18",
+  "platform": "Linux-6.17.9-76061709-generic-x86_64-with-glibc2.39",
+  "ifclite_commit": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+  "smlib_commit": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "upstream_tracked_diff": "",
+  "artifacts": {
+    "smlib_probe.wasm": {
+      "bytes": 4980388,
+      "sha256": "9de555407a9144e0595a2ea120ad32adf7b66e51e0d848faad7cdf9604a91581"
+    },
+    "smlib_probe.mjs": {
+      "bytes": 105793,
+      "sha256": "b08b1d61d6724939dcc15a073ed092e4fbef21a0a441da8fbad7bdc2a5f458ee"
+    },
+    "smlib_probe": {
+      "bytes": 13818488,
+      "sha256": "859af7a053a407f46f3dd7c82915f7ba74ab16069595b7421ecc245e32e7cf96"
+    }
+  },
+  "compilers": {
+    "native": "g++ 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04)",
+    "wasm": "Emscripten 4.0.15 (09f52557f0d48b65b8c724853ed8f4e8bf80e669)"
+  },
+  "native_dynamic_dependencies": [
+    "libstdc++.so.6",
+    "libm.so.6",
+    "libgcc_s.so.1",
+    "libc.so.6"
+  ],
+  "scope": "Independent native/WASM/browser primitive feasibility only. This scoped record retains original artifact metadata without rerunning experiments. Removed interchange experiments and their measurements are outside this record.",
+  "limits": [
+    "Probe size covers only symbols reachable from the smoke cases, not a full IFC adapter.",
+    "No end-to-end performance comparison was run."
+  ],
+  "checks": {
+    "minimal_native": true,
+    "wasm_node": true,
+    "native_wasm_parsed_reports_equal": true,
+    "browser_workers": 2,
+    "runs_per_worker": 3,
+    "cases_per_run": 10,
+    "cross_origin_isolation": false
+  }
+}

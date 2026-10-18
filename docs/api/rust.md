@@ -12,6 +12,7 @@ All crates live in one Cargo workspace (versioned together, MPL-2.0 licensed):
 |-------|------|---------|-------------|
 | `ifc-lite-core` | `rust/core` | [docs.rs](https://docs.rs/ifc-lite-core) | High-performance IFC/STEP parser for building data |
 | `ifc-lite-geometry` | `rust/geometry` | [docs.rs](https://docs.rs/ifc-lite-geometry) | Geometry processing and mesh generation for IFC models |
+| `ifc-lite-geometry-runtime` | `rust/geometry-runtime` | local `cargo doc` | Internal isolated geometry-worker transport (not published) |
 | `ifc-lite-processing` | `rust/processing` | [docs.rs](https://docs.rs/ifc-lite-processing) | Shared IFC processing pipeline and types used by server and FFI |
 | `ifc-lite-export` | `rust/export` | local `cargo doc` | Domain-format exporters (HBJSON, OBJ, glTF/GLB, CSV, JSON, JSON-LD, STEP/IFC, IFC5/IFCX, Merged, Parquet/.bos) |
 | `ifc-lite-clash` | `rust/clash` | [docs.rs](https://docs.rs/ifc-lite-clash) | High-performance geometry kernel for IFC clash detection |
@@ -19,6 +20,317 @@ All crates live in one Cargo workspace (versioned together, MPL-2.0 licensed):
 | `ifc-lite-wasm` | `rust/wasm-bindings` | [docs.rs](https://docs.rs/ifc-lite-wasm) | WebAssembly bindings for IFC-Lite |
 
 The Python bindings (`rust/python`, PyPI package `ifclite-geom`) are excluded from the workspace and documented on the [Python API page](python.md).
+
+## Retained geometry integration
+
+Canonical production boolean/CSG processing now uses owned continuation frames
+for spine, host, operand, batch and path state. Source admission remains
+demand-driven through the existing decoder; nested execution resumes with an
+owned mesh and loss flag. Empty/unknown-operator gates, contextual visits, CSG
+depth resets and provisional diagnostic rewinds retain their production policy.
+Shared owned constructor/cutter plans execute through the permanent exact kernel.
+This interleaved contract differs from preparing every dependency before
+numerical evaluation. Full product and retained-engine integration remains open.
+The [continuation receipts](../architecture/evidence/geometry-platform-continuations/)
+record validation of their pinned continuation-stage source and its limits;
+they do not qualify the later work-boundary corrections.
+
+The canonical `produce_element_meshes` drives a private owned synchronous
+product session through typed request, execution and acceptance stages for
+primary, voided-parts, plain-parts and type-map work. Shared native/browser entry
+points and appearance assembly remain authoritative. Planning briefly reserves
+the decoder/router; first numerical work or final publication binds exclusive
+owner reservations until completion. Reply validation checks the owner and
+configuration, session/sequence/stage, payload variant, contextual emitter and
+captured registry tokens before assembly. A rejection returns the unconsumed
+packet. The compatible borrowed producer fixes its borrowed context for the
+entire synchronous call. The additive owned producer captures one immutable
+model snapshot; its private resumable wrapper never accepts a replacement
+context on later transitions. Neither path exposes public work tickets.
+
+CSG diagnostics retain their original retry/final drains. Full router diagnostic
+and cache state remains with its leased owner, not in independently transferable
+replies. There is no public async, cancellation or executing-router-migration
+API. [Work-boundary qualification](../architecture/evidence/geometry-platform-work/)
+is pending and distinct from the historical
+[product-stage receipts](../architecture/evidence/geometry-platform-products/).
+The [product-session contract](../architecture/geometry-platform-product-session.md)
+records the current ownership and integration limits.
+
+`ifc_lite_processing::{ProductionModel, OwnedMeshProductionData,
+OwnedMeshProductionContext, ProductionContextId, ProductionContextError,
+produce_element_meshes_owned}` provides immutable context ownership. Build
+`OwnedMeshProductionData` once per effective batch from the existing model-level
+Arcs: `void_index`, `geometry_style_index`, `indexed_colour_full`,
+`element_material_colors`, `texture_index`, and optional `site_local_rotation`.
+`ProductionModel::new()` (also `Default`) creates a unique process-local load;
+`snapshot(data)` returns `Arc<OwnedMeshProductionContext>`. Snapshot construction
+moves or shares those components, and each product clones only the outer Arc.
+`context.borrowed()` supplies the compatible six-field borrowed view;
+`context.id()` identifies the load, source epoch and snapshot revision.
+
+The new synchronous `produce_element_meshes_owned(job, &context, opts, decoder,
+router)` returns `Result<ProducedElementMeshes, ProductionContextError>` and uses
+the same planning, work, assembly, nested callback and final-drain implementation
+as `produce_element_meshes`. The borrowed struct and function retain their exact
+signatures. Owned requests/replies bind their immutable context identity; foreign
+or explicitly expired packets are rejected intact before presentation acceptance.
+A newer same-source snapshot does not expire old snapshots. Dropping the model
+handle does not expire them either. `model.invalidate_source()` explicitly ends
+the preceding source/index lifecycle; `context.validate_source()` and the owned
+producer then return `ProductionContextError::StaleSource`. No automatic retry,
+context replacement or alternative geometry path is selected.
+
+This lifecycle token records the caller's actual source-installation boundary;
+it does not authenticate the bytes/index inside an arbitrary fresh decoder.
+Dormant transfer still requires a compatible source/decoder/router supplied by
+the caller. Runtime owner identity/generation remains independently validated
+after numerical admission. Source adapters must bind coherent source/index
+ownership before any future externally scheduled or transported work API can
+claim that stronger guarantee. These additive types do not enable public async
+execution, executing-router migration, transport cancellation or cache rollback.
+
+`ifc_lite_geometry::kernel::budget::ElementState` owns an element's exact-work
+counters and cap snapshots between synchronous slices. `new()` / `Default`
+initialize at the existing element boundary; `with_scope(operation)` installs the
+state, retains consumed work and restores enclosing caller counters on return or
+unwind. Normal `budget::begin()` still starts/snapshots a new operation. The state
+is `Send` and deliberately not cloned; its installed guard is thread-bound and
+must finish before the slice returns. The processing product session consumes
+this API together with analogous private degenerate accounting and scoped router
+triangle-order restoration. Moving these states does not move an executing
+router, caches, processor diagnostics or an in-flight numerical operation.
+
+`ifc_lite_core::execution_owner` provides opaque `ExecutionIdentity` and
+`ExecutionLeaseId` values, `ExecutionOwner` and exclusive `ExecutionLease`
+reservations. `EntityDecoder` and `GeometryRouter` expose `execution_identity()`
+and `try_execution_lease()`. Stable instance identity and configuration generation
+are stored inline; shared reservation state is allocated lazily on first lease
+admission. Unleased warm-owner construction retains its existing allocation
+contract. These identities are local to one process or WASM instance.
+
+A second independent live reservation fails rather than waiting. Reservations
+are owned, `Send` and not `Clone`; dropping one releases admission without
+retaining a mutex or TLS guard. Validate against the owner's freshly read
+identity. A dropped or replacement owner is always rejected, including a new
+decoder over identical source bytes.
+
+`ExecutionLease::begin_synchronous_work(current_identity)` first validates the
+owner and returns a short-lived, thread-bound `ExecutionWork`. Trusted executor
+callbacks can perform existing cache clearing, unit reseeding or configuration
+work. On normal completion, `ExecutionWork::commit(fresh_identity)` acknowledges
+the reached generation only for that same live owner. Dropping work on unwind
+never commits a generation change. Reply acceptance uses `validate`; neither a
+reply-supplied identity nor configuration changed while a reply waits may refresh
+the reservation.
+
+`ExecutionWork::child_capability()` grants ordinary same-thread synchronous
+descendants access while ancestor work is active. Canonical admission searches
+all live lexical ancestors for each actual supplied owner, innermost first.
+Matching halves inherit capability; each independent half must obtain an ordinary
+exclusive reservation. A child cannot release an ancestor's root reservation.
+Private independently resumable products remain strict, including inside callbacks.
+
+`ExecutionWork::source_borrow_scope()` additionally publishes decoder-only
+borrow authority under a short-lived, thread-bound `ExecutionSourceScope`.
+`EntityDecoder::try_source_execution_lease(&mut self)` can inherit that authority
+through the actual mutably borrowed decoder. This preserves a synchronous custom
+callback lending its decoder into `std::thread::scope`, constructing a compatible
+fresh router there, producing a canonical child and joining before the parent
+resumes. The outer Rc router stays on its thread; ordinary router capabilities
+remain thread-bound. Every source ancestor must remain live. The source scope
+restores its enclosing authority on return or unwind; child leases expire with
+ancestor work. A waiting reply has no active source-borrow authority, and an
+occupied independent child router still rejects.
+
+Source authority does not propagate budget, pending-diagnostic or census TLS to
+the worker; existing worker-local behavior remains unchanged. It is neither an
+asynchronous child protocol nor executing-router migration. Direct decoder/router
+calls still require executor discipline, and these APIs do not establish model-
+content equivalence. Trusted work commits fresh same-owner generations; reply
+acceptance cannot use source authority to refresh a stale packet.
+
+`ifc_lite_geometry::PendingDiagnosticState` owns pending curve-cap, face-refusal
+and legacy mapped-CSG TLS reports between synchronous slices. `new()` / `Default`
+start empty. `with_scope(operation)` installs only that owner's pending reports,
+retains leftovers even on error or panic, and restores the caller's ambient
+reports. `adopt_current_mapped()` deliberately adopts only the legacy mapped-CSG
+channel at first live owner admission. `publish_pending()` drains remaining
+owner reports into current TLS at an explicitly validated terminal boundary;
+dropping the state does not publish automatically. It neither drains processor
+logs nor isolates router diagnostics, global census records or nested worker
+threads by itself. Canonical processing republishes product curve/face reports
+at finish; synchronous panic handling restores ambient state, delivers pending
+reports through its owning scope and poisons the session.
+
+`ifc_lite_geometry::ProcessorDispatchCapture::capture(operation)` returns the
+operation result and an ordered unique `Vec<ProcessorEmitter>` for registry
+processors actually entered through the instrumented router calls. Capturing
+metadata lookup alone yields no entries. `origin()` distinguishes built-in,
+configured built-in and custom instances; `family()` is absent for custom
+registrations regardless of their advertised aliases. Aliases share identity;
+replacement registrations receive new process-local identities. This sparse
+trace omits direct constructors, boolean factories and contextual paths outside
+those registry entry points, and does not establish complete provenance or
+arithmetic guarantees. It performs no diagnostic drain. Owned `new()`,
+`with_scope()` and `take()` support nested scopes and retaining failed-work
+identities when the panic boundary surrounds the scope; the static convenience
+cannot return a packet while unwinding. Private work acceptance compares the
+reply trace against executor-held evidence before presentation.
+
+`ifc_lite_geometry::csg::CsgCensus` provides an optional owned CSG measurement
+sink. `new()` creates a sink; clones share its records. `with_scope(operation)`
+records reached CSG invocations in that sink while preserving the existing
+process-global census. Nested sinks restore their caller on return, an error
+value or panic. `take()` drains only this sink; join contributing work first for
+a complete measurement. Global `reset_csg_census()` / `take_csg_census()` retain
+their existing behavior and do not clear owned sinks.
+
+Worker propagation is explicit: capture `CsgCensusContext::capture()` before
+spawning and call the captured context's `with_scope(operation)` inside each
+worker that performs CSG, including nested Rayon closures. A context captured
+without a sink installs explicit absence, so unrelated work does not inherit a
+suspended caller's measurement. Records retain the existing operation and
+operand-triangle counts; concurrent insertion order is scheduling-dependent.
+No per-product sink is automatically enabled, and measurement scopes do not
+make the product session asynchronous or move its router ownership.
+
+`GeometryRouter::plan_construction_items(decoder, item_ids, max_items)` compiles
+an owned `construction::ConstructionBatch`: a flat, typed DAG of raw
+representation-item constructions and ordered solid/solid boolean/CSG operations.
+Owned leaf lowering covers nineteen registry families: extrusion, tapered extrusion,
+revolution, swept disk, swept area, block, sphere, triangulated face set, polygonal
+face set, faceted and advanced BRep, B-spline surface, face/shell surface models,
+structural face/edge, sectioned solid, alignment and linear extrusion surface,
+including their registered aliases. The existing
+production processors use these same lower/evaluate seams. Solid/solid boolean
+execution shares the canonical `SolidBooleanPlan` numerical step and exact kernel.
+
+After compilation, IFC bytes, decoder and router can be dropped. Source definitions
+share storage within their dispatch role; ordered root occurrences preserve
+repetitions. Root dispatch honors caller overrides by reporting a
+`CustomProcessor` requirement; boolean operands retain built-in-only dispatch.
+Evaluation moves an intermediate mesh to its last consumer and clones it when
+further consumers need it. `ConstructionEvaluation.definitions` and
+`occurrences` identify the evaluated unique requested roots and their ordered uses.
+
+Compilation eagerly admits every reachable source dependency. Any unresolved root
+refuses the complete batch before evaluation. A cycle, unlowered constructor,
+unimplemented operation policy or source error remains an explicit
+`ConstructionRequirement`. This eager contract does not reproduce legacy conditional
+source recovery or contextual operand budgets. `max_items` bounds requested roots
+before decoding; independent fixed limits bound the graph to 16,384 nodes and
+131,072 compiler work steps. These limits do not bound source payload allocation,
+numerical kernel effort or process memory.
+Evaluation schedules dependencies on demand in operand order. Difference and
+intersection with an empty first operand skip numerical evaluation of the second.
+Shared definitions remain available to later roots; skipped edges release their
+unused ownership iteratively. Source admission still happens eagerly.
+
+An explicitly refused router length unit also refuses construction evaluation.
+Diagnostic production and copying have a separate monotonic limit of 65,536
+records. Shared DAG edges retain semantic loss multiplicity; expansion beyond
+that limit returns an error rather than deduplicating or truncating diagnostics.
+
+This API is opt-in and does not publish final product geometry. Product/mapping
+placement, host openings, half-spaces, grouped clipping,
+appearance and canonical source-error recovery remain outside its current
+coverage. Coordinates remain in file length units with constructor Position
+applied. Revolution angles are resolved to radians. Profiles and directrices may
+already be sampled; triangle coordinates retain production f32 admission without
+RTC subtraction even when the router has an RTC offset. The graph does not restore
+lost survey-coordinate detail or provide retained analytic surfaces.
+
+BRep-with-voids operands now own their Outer and ordered inner-shell construction
+plans. Root/base uses retain Outer-only behavior; operation operands evaluate
+cavities before the enclosing boolean. Definitions distinguish these roles and
+the diagnostic operator. This eager admission contract remains subject to the
+conditional-source and contextual-budget limitations above; it does not establish
+equivalence to the complete production boolean traversal.
+The [cutter/control receipts](../architecture/evidence/geometry-platform-cutters/)
+record this stage's qualification scope and remaining cutover requirements.
+
+On successful evaluation, `ConstructionEvaluation.diagnostics` contains unattributed
+`BoolFailure` lists parallel to the unique requested root definitions. These are
+not occurrence-attributed product diagnostics. `observed_diagnostics` records fresh
+boolean failures with their source instruction IDs, independently of repeated edge
+losses. `ConstructionExecutionError` owns prior observed failures, root/item IDs
+and `ConstructionReports`; no partial geometry is returned. Reports capture face
+refusals and curve sampling caps across compilation and execution without consuming
+caller thread-local reports. Decoder refusal IDs are a cumulative snapshot, including
+reads before compilation, rather than per-root attribution. Plans and these reports
+can cross threads after source disposal. Product occurrence attribution remains open.
+`ConstructionFamily` describes registry semantics, not proof of owned lowering or
+complete input coverage. The [constructor-family receipts](../architecture/evidence/geometry-platform-families/)
+record nineteen-family seams, raw replay and demand-driven report ownership. Prior
+operation/construction receipts retain their original scope. Complete migration
+and cutover qualification remain open.
+
+Inspect raw representation-item requirements, replay the graph and report root
+diagnostic counts with:
+
+```sh
+cargo run -p ifc-lite-geometry --example construction_batch -- model.ifc ITEM_ID ...
+```
+
+The shared-platform foundation is opt-in. `ifc_lite_geometry::document::GeometryDocument`
+retains immutable local mesh definitions and f64 placed occurrences, checks revision-
+scoped results and executes `EvaluationContract::ExactPolyhedral` through the existing
+exact kernel. `RetainedBrep` requests are refused by that executor. Admission alone
+does not make an imported mesh exact or restore authored analytic surfaces.
+
+`ifc_lite_processing::retained_geometry::RetainedGeometry::try_from_processing(result)`
+admits the output of the canonical `process` pipeline. It keeps the complete original
+`ProcessingResult`, including appearance, UVs/textures, instances, source fields and
+`MeshFrame`; it copies mesh buffers for execution. The allocation cost is explicit.
+Occurrence translations reconstruct mesh-local origins in `ProcessingResult::frame`.
+Apply `MeshFrame::to_world` to return to absolute IFC coordinates. Definition-local
+boolean operands must already share a coordinate frame; different occurrence origins
+are not implicitly baked into an operation.
+
+On refusal, `RetainedGeometryError::into_processing_result()` returns the original
+result. On success, `RetainedGeometry::into_processing_result()` does the same. Admission
+preserves partial/filtered processing output; it does not certify load completion.
+
+Run the real-file admission example with:
+
+```sh
+cargo run -p ifc-lite-processing --example retained_geometry -- model.ifc
+```
+
+`ifc_lite_processing::authored_geometry::plan_authored_geometry(content, ids)`
+returns a source-bound `AuthoredGeometryPlan` using the existing analytic source
+walk. It retains raw IFC extrusion and swept-disk definitions, source status,
+occurrence identity and transforms. Definitions use file length units; recipe
+matrices are **column-major**, mapping solid-local coordinates into absolute IFC
+Z-up metres after applying definition-local placement. These differ from the
+retained document's row-major occurrence matrices.
+
+Every product reports `RepresentationCoverageUnverified`: the source walk covers
+two families and does not establish full representation coverage. Enclosing CSG,
+external `IfcRelVoidsElement` openings, unsupported sources and unavailable products
+are explicit requirements. `AuthoredSourceOnly` recipes describe operands, never
+final net product geometry. Run the real-file consumer with:
+
+```sh
+cargo run -p ifc-lite-processing --example authored_geometry -- model.ifc
+```
+
+The unpublished `ifc-lite-geometry-runtime` crate exposes a native blocking
+`SmlibWorker` and bounded `SupervisedWorker`. Supervised commands have queue-inclusive
+deadlines and cancellation; active interruption kills and reaps the process before
+completion. Restart invalidates previous handles. A pending command cancels on drop.
+This is one supervised worker, without automatic replay or OS memory limits.
+
+Its transport-neutral `protocol::{KernelCommand, encode_request, decode_response}`
+is available on native and wasm32. Payloads exclude native stdio's length prefix.
+Serialized `WireHandle` values retain u64 session IDs; execution owners must also
+check host/module affinity. Build and real subprocess test instructions are in the
+[runtime README](../../rust/geometry-runtime/README.md).
+
+No ordinary loader, WASM binding or exporter switches to SMLib through this work.
+See the [capability ledger](../architecture/geometry-platform-capabilities.md) for
+remaining qualification before activation.
 
 ## ifc-lite-core
 

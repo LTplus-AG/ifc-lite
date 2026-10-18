@@ -1,0 +1,143 @@
+// SPDX-License-Identifier: MPL-2.0
+//! Closed internal work protocol. A ticket identifies reached work, not an IFC
+//! construction definition or a promise about an emitter's arithmetic kernel.
+use super::assembly_types::TypePart;
+use super::plan::PrimaryStrategy;
+use super::session_work::{PartsOutcome, PrimaryOutcome};
+use super::*;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum WorkKind {
+    Primary { strategy: PrimaryStrategy, layer_class: u8 },
+    TypeMap { map_id: u32, class: u8 },
+    VoidedParts,
+    PlainParts,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct WorkRequest {
+    pub session: usize,
+    pub sequence: usize,
+    pub kind: WorkKind,
+    pub context:Option<ProductionContextId>,
+}
+
+/// Generated at the actual contextual dispatch site. Nested processor identity
+/// remains distinct; this tag must never be called a built-in family identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum WorkEmitter {
+    TexturedProduct,
+    VoidedProduct,
+    RepresentationMap,
+    VoidedParts,
+    PlainParts,
+}
+impl WorkKind {
+    pub fn emitter(self) -> WorkEmitter {
+        match self {
+            Self::Primary { strategy: PrimaryStrategy::TexturedSubmeshes, .. } => WorkEmitter::TexturedProduct,
+            Self::Primary { strategy: PrimaryStrategy::VoidedSubmeshes, .. } => WorkEmitter::VoidedProduct,
+            Self::TypeMap { .. } => WorkEmitter::RepresentationMap,
+            Self::VoidedParts => WorkEmitter::VoidedParts,
+            Self::PlainParts => WorkEmitter::PlainParts,
+        }
+    }
+}
+
+pub(super) enum WorkPayload {
+    Primary(PrimaryOutcome),
+    TypeMap(Option<Vec<TypePart>>),
+    VoidedParts(PartsOutcome),
+    PlainParts(Vec<Mesh>),
+}
+impl WorkPayload {
+    fn matches(&self, kind: WorkKind) -> bool {
+        matches!((self, kind),
+            (Self::Primary(_), WorkKind::Primary { .. }) |
+            (Self::TypeMap(_), WorkKind::TypeMap { .. }) |
+            (Self::VoidedParts(_), WorkKind::VoidedParts) |
+            (Self::PlainParts(_), WorkKind::PlainParts))
+    }
+}
+
+pub(super) struct WorkReply {
+    pub request: WorkRequest,
+    pub context:Option<ProductionContextId>,
+    pub owner: super::session_owner::OwnerStamp,
+    pub emitter: WorkEmitter,
+    pub registry_emitters: Vec<ifc_lite_geometry::ProcessorEmitter>,
+    pub payload: WorkPayload,
+}
+
+/// Rejection returns the unconsumed packet to its owner. It never strands a
+/// legitimate outstanding reply merely because acceptance used a wrong owner.
+pub(super) struct RejectedReply {
+    pub error: WorkError,
+    pub reply: WorkReply,
+}
+impl std::fmt::Debug for RejectedReply {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RejectedReply").field("error", &self.error)
+            .field("request", &self.reply.request).finish()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum WorkError { Outstanding, StaleTicket, AlreadyExecuted, NotExecuted, WrongEmitter, WrongPayload, WrongOwner, OwnerBusy, WrongContext, StaleSource }
+
+pub(super) struct Protocol {
+    session: usize,
+    context:Option<ProductionContextId>,
+    sequence: usize,
+    pending: Option<(WorkRequest, bool)>,
+    registry_emitters: Vec<ifc_lite_geometry::ProcessorEmitter>,
+}
+impl Protocol {
+    pub fn new() -> Self {
+        static NEXT: AtomicUsize = AtomicUsize::new(1);
+        let session = NEXT.fetch_update(Ordering::Relaxed, Ordering::Relaxed,
+            |id| id.checked_add(1)).expect("product session identity exhausted");
+        Self { session, context:None, sequence: 0, pending: None, registry_emitters: Vec::new() }
+    }
+    pub fn bind_context(&mut self,id:ProductionContextId) {
+        assert!(self.pending.is_none()&&self.sequence==0&&self.context.is_none(),"context binds before any work");
+        self.context=Some(id);
+    }
+    pub fn idle(&self) -> Result<(), WorkError> {
+        if self.pending.is_some() { Err(WorkError::Outstanding) } else { Ok(()) }
+    }
+    pub fn issue(&mut self, kind: WorkKind) -> WorkRequest {
+        self.idle().expect("one outstanding product work item");
+        self.sequence = self.sequence.checked_add(1).expect("product work sequence exhausted");
+        let request = WorkRequest { session: self.session, sequence: self.sequence, kind, context:self.context };
+        self.pending = Some((request, false));
+        request
+    }
+    pub fn before_execute(&self, request: WorkRequest) -> Result<(), WorkError> {
+        if request.context!=self.context {return Err(WorkError::WrongContext)}
+        match self.pending {
+            Some((pending, false)) if pending == request => Ok(()),
+            Some((pending, true)) if pending == request => Err(WorkError::AlreadyExecuted),
+            _ => Err(WorkError::StaleTicket),
+        }
+    }
+    pub fn executed(&mut self, request: WorkRequest, registry_emitters: &[ifc_lite_geometry::ProcessorEmitter]) {
+        self.before_execute(request).expect("validated product work");
+        self.pending = Some((request, true));
+        self.registry_emitters = registry_emitters.to_vec();
+    }
+    pub fn before_accept(&self, reply: &WorkReply) -> Result<(), WorkError> {
+        if reply.context!=self.context||reply.request.context!=self.context {return Err(WorkError::WrongContext)}
+        match self.pending {
+            Some((pending, true)) if pending == reply.request => {}
+            Some((pending, false)) if pending == reply.request => return Err(WorkError::NotExecuted),
+            _ => return Err(WorkError::StaleTicket),
+        }
+        if reply.emitter != reply.request.kind.emitter() { return Err(WorkError::WrongEmitter); }
+        if reply.registry_emitters != self.registry_emitters { return Err(WorkError::WrongEmitter); }
+        if !reply.payload.matches(reply.request.kind) { return Err(WorkError::WrongPayload); }
+        Ok(())
+    }
+    pub fn accepted(&mut self) { self.pending = None; self.registry_emitters.clear(); }
+}

@@ -1,0 +1,18 @@
+{
+  "source_manifest_sha256": "ede5cfafab73e79657c4680398156b84cc4ce62f6fd4fb50a4ef4dba2e16207b",
+  "workspace_exit_code": 101,
+  "status": "failed at new streaming test expectation; baseline comparison required before correction",
+  "completed_suite_reports": 326,
+  "passed_invocations_before_stop": 4960,
+  "failed_invocations_before_stop": 1,
+  "ignored_invocations_before_stop": 36,
+  "failure": "model_context_consumers::native_snapshots_follow_first_nonempty_chunk_and_deferred_style_replacement expected3 sink events, actual5 with meshes split into one-mesh batches",
+  "full_workspace_pass": false,
+  "log": {
+    "archive": "native-workspace.log.gz",
+    "archive_sha256": "b163a6edc03a0a8dc7e3fb536e7f5ba3c5c97e40b168cb254cd592e891b97c8a",
+    "uncompressed_sha256": "f1efcc9dd4d131fe3f5e5920ca887a6eb4c15119453d203350abefc5ba2fca50"
+  },
+  "source_changed_after_run": false,
+  "source_mismatches_after_run": []
+}

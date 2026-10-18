@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: MPL-2.0
+"""exercise real subprocess framing and geometry; no mock kernel."""
+import struct
+import subprocess
+import sys
+
+worker = sys.argv[1]
+
+def request(op, payload=b"", request_id=1):
+    body = struct.pack("<III", 1, request_id, op) + payload
+    return struct.pack("<I", len(body)) + body
+
+
+def read_exact(pipe, count):
+    result = b""
+    while len(result) < count:
+        part = pipe.read(count - len(result))
+        if not part:
+            raise AssertionError("worker response truncated")
+        result += part
+    return result
+
+
+with subprocess.Popen([worker], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                      stderr=subprocess.PIPE) as process:
+    def call(op, payload=b"", request_id=1):
+        process.stdin.write(request(op, payload, request_id))
+        process.stdin.flush()
+        size, = struct.unpack("<I", read_exact(process.stdout, 4))
+        assert 12 <= size <= 4096
+        body = read_exact(process.stdout, size)
+        version, echoed_id, status = struct.unpack("<IIi", body[:12])
+        assert version == 1 and echoed_id == request_id
+        return status, body[12:]
+
+    assert call(0) == (0, struct.pack("<I", 1))
+    status, session = call(1)
+    assert status == 0 and len(session) == 8
+    status, solid = call(3, session + struct.pack("<6d", 0, 0, 0, 2, 3, 4))
+    assert status == 0 and len(solid) == 16
+    status, value = call(6, session + solid + struct.pack("<d", 1e-8), 1234)
+    assert status == 0 and abs(struct.unpack("<d", value)[0] - 24) < 1e-6
+    status, error = call(6, session + solid + struct.pack("<d", 1e-12))
+    assert status == 1 and b"tolerance" in error
+    status, mesh = call(9, session + solid + struct.pack("<dd", 0.001, 5))
+    assert status == 0 and len(mesh) == 16
+    status, info = call(10, session + mesh)
+    vertices, triangles, faces, boundary, spine, failed = struct.unpack("<6I", info)
+    assert status == 0 and vertices and triangles and faces == 6
+    assert boundary == spine == failed == 0
+    status, positions = call(11, session + mesh + struct.pack("<3I", 1, 0, vertices*3))
+    assert status == 0 and len(positions) == vertices*3*8
+    status, error = call(11, session + mesh + struct.pack("<3I", 1, 0, 481))
+    assert status == 1 and error
+    assert call(8, session + solid) == (0, b"")
+    status, error = call(8, session + solid)
+    assert status == 3 and b"handle" in error
+    assert call(10, session + mesh) == (0, info)
+    assert call(8, session + mesh) == (0, b"")
+    assert call(2, session) == (0, b"")
+    process.stdin.close()
+    assert process.wait(timeout=10) == 0
+    assert process.stdout.read() == b""
+
+malformed = [
+    b"\x01",  # truncated prefix
+    struct.pack("<I", 4097),  # oversized before allocation
+    struct.pack("<I", 12) + b"short",  # truncated payload
+    struct.pack("<IIII", 12, 2, 1, 0),  # unsupported version
+    request(0, b"extra"),  # unexpected trailing fields
+    request(99, struct.pack("<Q", 1)),  # unknown opcode
+]
+for frame in malformed:
+    result = subprocess.run([worker], input=frame, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, timeout=10)
+    assert result.returncode == 1 and result.stdout == b"" and result.stderr
+print("SMLib worker framing and real geometry passed")

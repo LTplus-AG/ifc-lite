@@ -1,0 +1,399 @@
+{
+  "scope": "Actual final-runtime public WASM STEP-to-USD export and OpenUSD semantic/reopen roundtrip; no IFCX-to-USD API, viewer/GPU or texture-export qualification",
+  "source_manifest": "source-manifest.json",
+  "source_manifest_sha256": "29cb0bc3971c14c78f0557309bf6e51b6a24c415f196490dea2f5a80b34a902d",
+  "frozen_source_count": 288,
+  "all_frozen_sources_match": true,
+  "candidate_artifacts": {
+    "packages/wasm/pkg/ifc-lite.js": "f857f30fcb7060511f823068bb259301f0fbd588db668bb8f980f5608dd550a7",
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "72b7a11417b1ba8c2ec546bf099bd144fe755f36ea2cb5ed62b4683edbd11990"
+  },
+  "baseline_export_manifest": {
+    "local_path": "/tmp/ifclite-context-restored-usd-base/manifest.json",
+    "sha256": "114364e452e7c539baa5e6699247b9c238f44650632ffe8495d04072843317a4",
+    "data": {
+      "wasmSha256": "b5f103a8d2992e5d0ee8128579c999c28d746b773a0e8a2c7585e1cabb88b7a9",
+      "bindingsSha256": "04c85b1449d8fee992f25f0685170ff03fb4360726fa4e4d2a2d180314c169c0",
+      "results": [
+        {
+          "name": "hello-wall",
+          "path": "apps/landing/samples/hello-wall.ifc",
+          "sourceSha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+          "bytes": 31777,
+          "sha256": "805016450671591f343e58550c4a91972966fa09ddbe2bcd819621d35b1c515f",
+          "status": "exported"
+        },
+        {
+          "name": "mapped",
+          "path": "rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc",
+          "sourceSha256": "3069997f0b7d555232180c88bea27d0f6ca4d9c309a9cf4b1c3a8c68bba166ad",
+          "bytes": 69864,
+          "sha256": "4f755bfa83ca9bdd7ccc7c07e32a1e0c37736843ad1a5f27da20cfd96f906771",
+          "status": "exported"
+        },
+        {
+          "name": "georeferenced",
+          "path": "rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc",
+          "sourceSha256": "b73f7ee743824ae800e0d494a7bcd444c24cecb03aa0c5d837597b490f05b597",
+          "bytes": 245432,
+          "sha256": "fa1d2fef8ccdbda4e2217802d8eef7d56e6d933451e5b5f7edbafa609073d94f",
+          "status": "exported"
+        },
+        {
+          "name": "blob-texture",
+          "path": "tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc",
+          "sourceSha256": "a9984558b52629d8507f01a23aba1d62a84cc7257f8159ac4ae4ac06f71b20fd",
+          "bytes": 8515,
+          "sha256": "afeebc5757bb6fe3a11b8b5e80c6c05c631d933b191fe0554f1f379d65d29a45",
+          "status": "exported"
+        },
+        {
+          "name": "image-texture",
+          "path": "tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc",
+          "sourceSha256": "eeec637c7c870c289460c5eec18995ec2c2d41af0c26382f32e453a58773c0a6",
+          "bytes": 8525,
+          "sha256": "e29ae6e5529c500e43737bc3d6ff1f693c0ffb2c72524ade2c2a9428773a444b",
+          "status": "exported"
+        },
+        {
+          "name": "pixel-texture",
+          "path": "tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc",
+          "sourceSha256": "522788afc44ba467730e2b8b521d4baa334df299598a6595ffd430c16a0f7e5e",
+          "bytes": 8525,
+          "sha256": "e74de9d4a122c00efdc367cb6c1793091b508b7f9b79cd94abd1dbefeff27dc4",
+          "status": "exported"
+        },
+        {
+          "name": "individual-colors",
+          "path": "tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-individual-colors.ifc",
+          "sourceSha256": "49a003e142dce4b047f6c420a804aad68e30c7e4f5af3f7e2db2f9f32560e8a5",
+          "bytes": 6006,
+          "sha256": "d31b9560079a20c1e12ea58ac208ddc9c4479376a76711ac66876417621722bb",
+          "status": "exported"
+        }
+      ]
+    }
+  },
+  "candidate_export_manifest": {
+    "local_path": "/tmp/ifclite-context-final-usd-candidate/manifest.json",
+    "sha256": "23de40c5600686183cf927b7243e70d40e7c3b8badca3e5da93e313e29d25e61",
+    "data": {
+      "wasmSha256": "72b7a11417b1ba8c2ec546bf099bd144fe755f36ea2cb5ed62b4683edbd11990",
+      "bindingsSha256": "f857f30fcb7060511f823068bb259301f0fbd588db668bb8f980f5608dd550a7",
+      "results": [
+        {
+          "name": "hello-wall",
+          "path": "apps/landing/samples/hello-wall.ifc",
+          "sourceSha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+          "bytes": 31777,
+          "sha256": "805016450671591f343e58550c4a91972966fa09ddbe2bcd819621d35b1c515f",
+          "status": "exported"
+        },
+        {
+          "name": "mapped",
+          "path": "rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc",
+          "sourceSha256": "3069997f0b7d555232180c88bea27d0f6ca4d9c309a9cf4b1c3a8c68bba166ad",
+          "bytes": 69864,
+          "sha256": "4f755bfa83ca9bdd7ccc7c07e32a1e0c37736843ad1a5f27da20cfd96f906771",
+          "status": "exported"
+        },
+        {
+          "name": "georeferenced",
+          "path": "rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc",
+          "sourceSha256": "b73f7ee743824ae800e0d494a7bcd444c24cecb03aa0c5d837597b490f05b597",
+          "bytes": 245432,
+          "sha256": "fa1d2fef8ccdbda4e2217802d8eef7d56e6d933451e5b5f7edbafa609073d94f",
+          "status": "exported"
+        },
+        {
+          "name": "blob-texture",
+          "path": "tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc",
+          "sourceSha256": "a9984558b52629d8507f01a23aba1d62a84cc7257f8159ac4ae4ac06f71b20fd",
+          "bytes": 8515,
+          "sha256": "afeebc5757bb6fe3a11b8b5e80c6c05c631d933b191fe0554f1f379d65d29a45",
+          "status": "exported"
+        },
+        {
+          "name": "image-texture",
+          "path": "tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc",
+          "sourceSha256": "eeec637c7c870c289460c5eec18995ec2c2d41af0c26382f32e453a58773c0a6",
+          "bytes": 8525,
+          "sha256": "e29ae6e5529c500e43737bc3d6ff1f693c0ffb2c72524ade2c2a9428773a444b",
+          "status": "exported"
+        },
+        {
+          "name": "pixel-texture",
+          "path": "tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc",
+          "sourceSha256": "522788afc44ba467730e2b8b521d4baa334df299598a6595ffd430c16a0f7e5e",
+          "bytes": 8525,
+          "sha256": "e74de9d4a122c00efdc367cb6c1793091b508b7f9b79cd94abd1dbefeff27dc4",
+          "status": "exported"
+        },
+        {
+          "name": "individual-colors",
+          "path": "tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-individual-colors.ifc",
+          "sourceSha256": "49a003e142dce4b047f6c420a804aad68e30c7e4f5af3f7e2db2f9f32560e8a5",
+          "bytes": 6006,
+          "sha256": "d31b9560079a20c1e12ea58ac208ddc9c4479376a76711ac66876417621722bb",
+          "status": "exported"
+        }
+      ]
+    }
+  },
+  "raw_equal_cases": [
+    {
+      "name": "hello-wall",
+      "input": "apps/landing/samples/hello-wall.ifc",
+      "input_sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "raw_usda_equal": true,
+      "usda_sha256": "805016450671591f343e58550c4a91972966fa09ddbe2bcd819621d35b1c515f"
+    },
+    {
+      "name": "mapped",
+      "input": "rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc",
+      "input_sha256": "3069997f0b7d555232180c88bea27d0f6ca4d9c309a9cf4b1c3a8c68bba166ad",
+      "raw_usda_equal": true,
+      "usda_sha256": "4f755bfa83ca9bdd7ccc7c07e32a1e0c37736843ad1a5f27da20cfd96f906771"
+    },
+    {
+      "name": "georeferenced",
+      "input": "rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc",
+      "input_sha256": "b73f7ee743824ae800e0d494a7bcd444c24cecb03aa0c5d837597b490f05b597",
+      "raw_usda_equal": true,
+      "usda_sha256": "fa1d2fef8ccdbda4e2217802d8eef7d56e6d933451e5b5f7edbafa609073d94f"
+    },
+    {
+      "name": "blob-texture",
+      "input": "tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc",
+      "input_sha256": "a9984558b52629d8507f01a23aba1d62a84cc7257f8159ac4ae4ac06f71b20fd",
+      "raw_usda_equal": true,
+      "usda_sha256": "afeebc5757bb6fe3a11b8b5e80c6c05c631d933b191fe0554f1f379d65d29a45"
+    },
+    {
+      "name": "image-texture",
+      "input": "tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc",
+      "input_sha256": "eeec637c7c870c289460c5eec18995ec2c2d41af0c26382f32e453a58773c0a6",
+      "raw_usda_equal": true,
+      "usda_sha256": "e29ae6e5529c500e43737bc3d6ff1f693c0ffb2c72524ade2c2a9428773a444b"
+    },
+    {
+      "name": "pixel-texture",
+      "input": "tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc",
+      "input_sha256": "522788afc44ba467730e2b8b521d4baa334df299598a6595ffd430c16a0f7e5e",
+      "raw_usda_equal": true,
+      "usda_sha256": "e74de9d4a122c00efdc367cb6c1793091b508b7f9b79cd94abd1dbefeff27dc4"
+    },
+    {
+      "name": "individual-colors",
+      "input": "tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-individual-colors.ifc",
+      "input_sha256": "49a003e142dce4b047f6c420a804aad68e30c7e4f5af3f7e2db2f9f32560e8a5",
+      "raw_usda_equal": true,
+      "usda_sha256": "d31b9560079a20c1e12ea58ac208ddc9c4479376a76711ac66876417621722bb"
+    }
+  ],
+  "semantic_consumer": {
+    "consumer": "OpenUSD",
+    "version": [
+      0,
+      26,
+      8
+    ],
+    "cases": [
+      {
+        "name": "blob-texture",
+        "semanticSha256": "27cf14f8d31b66c1da8ab457d2c5d6ec35793d9a19f9809b87d3d66045a23542",
+        "witnesses": {
+          "prims": 8,
+          "meshes": 1,
+          "triangles": 64,
+          "points": 100,
+          "uvMeshes": 0,
+          "materials": 1,
+          "materialBindings": 1,
+          "textureShaders": 0,
+          "ifcAttributes": 4,
+          "instances": 0,
+          "referencedPrims": 0,
+          "abstractPrims": 0,
+          "nonidentityWorldTransforms": 0,
+          "prototypes": 0
+        },
+        "equal": true,
+        "OpenUsdLayerRoundtripEqual": true
+      },
+      {
+        "name": "georeferenced",
+        "semanticSha256": "e0fc5e4a855feaf8d4b383957543b0902dcda7b8088ef29c038a116516055359",
+        "witnesses": {
+          "prims": 95,
+          "meshes": 40,
+          "triangles": 1724,
+          "points": 2634,
+          "uvMeshes": 0,
+          "materials": 3,
+          "materialBindings": 40,
+          "textureShaders": 0,
+          "ifcAttributes": 135,
+          "instances": 0,
+          "referencedPrims": 0,
+          "abstractPrims": 0,
+          "nonidentityWorldTransforms": 88,
+          "prototypes": 0
+        },
+        "equal": true,
+        "OpenUsdLayerRoundtripEqual": true
+      },
+      {
+        "name": "hello-wall",
+        "semanticSha256": "33ea41151f500111652e56f5ec76eda308621c156ee3196648e402ff5a43581e",
+        "witnesses": {
+          "prims": 33,
+          "meshes": 9,
+          "triangles": 204,
+          "points": 320,
+          "uvMeshes": 0,
+          "materials": 5,
+          "materialBindings": 8,
+          "textureShaders": 0,
+          "ifcAttributes": 29,
+          "instances": 0,
+          "referencedPrims": 1,
+          "abstractPrims": 1,
+          "nonidentityWorldTransforms": 8,
+          "prototypes": 0
+        },
+        "equal": true,
+        "OpenUsdLayerRoundtripEqual": true
+      },
+      {
+        "name": "image-texture",
+        "semanticSha256": "11f2b88ff334e072a80cf35f15155ac04e950a00af54e390815325e6750e3308",
+        "witnesses": {
+          "prims": 8,
+          "meshes": 1,
+          "triangles": 64,
+          "points": 100,
+          "uvMeshes": 0,
+          "materials": 1,
+          "materialBindings": 1,
+          "textureShaders": 0,
+          "ifcAttributes": 4,
+          "instances": 0,
+          "referencedPrims": 0,
+          "abstractPrims": 0,
+          "nonidentityWorldTransforms": 0,
+          "prototypes": 0
+        },
+        "equal": true,
+        "OpenUsdLayerRoundtripEqual": true
+      },
+      {
+        "name": "individual-colors",
+        "semanticSha256": "00fe05ebe46e4144949455fe32f0a0dced1e015a5879bffee1f159cc07e95a73",
+        "witnesses": {
+          "prims": 14,
+          "meshes": 3,
+          "triangles": 12,
+          "points": 24,
+          "uvMeshes": 0,
+          "materials": 3,
+          "materialBindings": 3,
+          "textureShaders": 0,
+          "ifcAttributes": 7,
+          "instances": 0,
+          "referencedPrims": 0,
+          "abstractPrims": 0,
+          "nonidentityWorldTransforms": 3,
+          "prototypes": 0
+        },
+        "equal": true,
+        "OpenUsdLayerRoundtripEqual": true
+      },
+      {
+        "name": "mapped",
+        "semanticSha256": "79e5a6a8f3b7c5219d097cf6849c75482f602e1c0fda70238bce6a593a461d6d",
+        "witnesses": {
+          "prims": 138,
+          "meshes": 65,
+          "triangles": 780,
+          "points": 1560,
+          "uvMeshes": 0,
+          "materials": 1,
+          "materialBindings": 64,
+          "textureShaders": 0,
+          "ifcAttributes": 202,
+          "instances": 0,
+          "referencedPrims": 63,
+          "abstractPrims": 1,
+          "nonidentityWorldTransforms": 64,
+          "prototypes": 0
+        },
+        "equal": true,
+        "OpenUsdLayerRoundtripEqual": true
+      },
+      {
+        "name": "pixel-texture",
+        "semanticSha256": "1c4c8e713c01902405819fe5380518c4723488c3354f66e86e5cad4430862ce5",
+        "witnesses": {
+          "prims": 8,
+          "meshes": 1,
+          "triangles": 64,
+          "points": 100,
+          "uvMeshes": 0,
+          "materials": 1,
+          "materialBindings": 1,
+          "textureShaders": 0,
+          "ifcAttributes": 4,
+          "instances": 0,
+          "referencedPrims": 0,
+          "abstractPrims": 0,
+          "nonidentityWorldTransforms": 0,
+          "prototypes": 0
+        },
+        "equal": true,
+        "OpenUsdLayerRoundtripEqual": true
+      }
+    ],
+    "scope": "actual public WASM STEP-to-USD export plus OpenUSD typed semantic consumption; not IFCX-to-USD export"
+  },
+  "loaded_native_library_sha256": {
+    "/tmp/ifclite-smlib-venv/lib/python3.12/site-packages/pxr/Usd/_usd.so": "4bfe8db1eca04a4d18089b7836475f8620d8ba70b69b6e5f7ec75a0d92aa97a0",
+    "/tmp/ifclite-smlib-venv/lib/python3.12/site-packages/pxr/UsdGeom/_usdGeom.so": "dacdc2a7233abf877f69f54c88bceb44c77611dcfabdd3ee0604d736232b5d6a",
+    "/tmp/ifclite-smlib-venv/lib/python3.12/site-packages/pxr/UsdShade/_usdShade.so": "45716b5973b7529c28430aa556bf47b270e6288f0c58cd61f63047dbe844976b",
+    "/tmp/ifclite-smlib-venv/lib/python3.12/site-packages/pxr/Sdf/_sdf.so": "cb6736a12668c45f2a6b65fce067e5d8386c952f06407085475e5f71fdbda30e",
+    "/tmp/ifclite-smlib-venv/lib/python3.12/site-packages/usd_core.libs/libtbb-908b8b6c.so.2": "76f26335079669b8cee9c55f348b15a86ff0178ce9512e894dc64a502bf094a2",
+    "/tmp/ifclite-smlib-venv/lib/python3.12/site-packages/usd_core.libs/libusd_ms-222631f3.so": "4903038b384bced1e8799b31120862f665d709d9c839eca53c311bcbd23ad866"
+  },
+  "harness_sources": {
+    "tools/smlib-evaluation/scene-comparison/ifcx/usd-export.mjs": "7edd64f2af72dbe92de6e58234fb8b3199d785fb616dc63537c05f3b6c3d1c90",
+    "tools/smlib-evaluation/scene-comparison/ifcx/usd-semantic.py": "370e388d246458382076b6f1f564505288e1c348c7f4be73f3ff7ad0f35da66b"
+  },
+  "semantic_artifacts": {
+    "/tmp/ifclite-context-final-usd-semantic/blob-texture.json": "8d8864d6687dbd2cf10ebf9578c04cf73117f1b123254fde9196f57c9bd2828e",
+    "/tmp/ifclite-context-final-usd-semantic/blob-texture.roundtrip.usda": "daa389d13b901a7271b36e4b2110d9e2a8390d5b5867ac1cc87b3d789d113bbd",
+    "/tmp/ifclite-context-final-usd-semantic/georeferenced.json": "3501fe43b3f6104696d71dd14c072d8622008a966e85e03181977d75d3c738fd",
+    "/tmp/ifclite-context-final-usd-semantic/georeferenced.roundtrip.usda": "6fac7ca400d2486e8696eb9dd641c0379a70d69a9c1a30d3f3e5dc28c9af4d53",
+    "/tmp/ifclite-context-final-usd-semantic/hello-wall.json": "7d3eac8cb5bead4473c92e2ab889de8ca63614df5fd2ac7955df550abd16160a",
+    "/tmp/ifclite-context-final-usd-semantic/hello-wall.roundtrip.usda": "e3c66cf80ab113bf48785c498c42cffc3cfe007aec1f68850910c49d6ae4ea33",
+    "/tmp/ifclite-context-final-usd-semantic/image-texture.json": "11bd90266d7a33fdd4fcf4a3b7760c7f5e2ed71a2e6064349c0b427c39c4c271",
+    "/tmp/ifclite-context-final-usd-semantic/image-texture.roundtrip.usda": "1c7b7a3367205d03cf4a13938543662fbe11b1f77868dc8d7a768530b656d55c",
+    "/tmp/ifclite-context-final-usd-semantic/individual-colors.json": "c58d3711e3a548e06ebb4f1af54fdc0caa18dc825456341ca58fa877de37474f",
+    "/tmp/ifclite-context-final-usd-semantic/individual-colors.roundtrip.usda": "6dee6f2ea209272ad2f4fcde6295bd5e4ee76e701527b1c727ead05535fe49ca",
+    "/tmp/ifclite-context-final-usd-semantic/mapped.json": "297d23dc52a95e4fa01cac9d9d52aeb0eb947cb72b059a66abaf827211006135",
+    "/tmp/ifclite-context-final-usd-semantic/mapped.roundtrip.usda": "0f64e009a569013f3ff60c624be14c64f05bf5843c77b3205772bfe21df947ef",
+    "/tmp/ifclite-context-final-usd-semantic/pixel-texture.json": "b654c4115107e38551b5e7b70ad463b43a6787473eb5f3b3ef9a152ebde03d8a",
+    "/tmp/ifclite-context-final-usd-semantic/pixel-texture.roundtrip.usda": "2126c6c5e7b653077fc52455501cc662f53f2e7a79771e80278997151844a7be",
+    "/tmp/ifclite-context-final-usd-semantic/summary.json": "91bd981ff30c135dd29e7624d2b982bb04b925851d946c9225c3903d493b0e79"
+  },
+  "logs": {
+    "/tmp/ifclite-context-final-usd-candidate.log": "7d522170c1efe100bf970637c1f1ad5aad5db68351631a85ab6e8e6fbbbdc294",
+    "/tmp/ifclite-context-final-usd-semantic.log": "4b896d60f8d61e30d9747ec008509abbb05f579249c63477d44e50ea7e52b9e9"
+  },
+  "limits": [
+    "All seven cases emit zero UV primvars and texture shaders, including textured STEP input; texture export remains unqualified.",
+    "Reference-based sharing is present; native instance/prototype counts remain zero.",
+    "No viewer loadFile/store/GPU or asset display run.",
+    "Baseline exports retained from preceding qualified run and rehashed; current final candidate exports and OpenUSD consumption freshly executed.",
+    "Unchanged IFCX importer evidence remains explicitly scoped to preceding restored source; not rerun here."
+  ]
+}

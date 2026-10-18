@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! #3923: the accept-gate-rejection decision for `apply_boolean_step`'s
+//! #3923: the accept-gate-rejection decision for `begin_boolean_step`'s
 //! single-cutter `IfcPolygonalBoundedHalfSpace` branch. Split out of
 //! `mod.rs` (module-size ratchet) since it carries its own non-trivial
 //! rationale, mirroring how `polygonal_prism.rs` already isolates
@@ -27,7 +27,7 @@ pub(super) enum SingleCutterSubtract {
 }
 
 impl BooleanClippingProcessor {
-    /// Subtract `bound_mesh` from `mesh` and decide how `apply_boolean_step`'s
+    /// Subtract `bound_mesh` from `mesh` and decide how `begin_boolean_step`'s
     /// `IfcPolygonalBoundedHalfSpace` branch should react.
     ///
     /// `solo_step` is true only when this cutter truly has no sibling
@@ -38,7 +38,7 @@ impl BooleanClippingProcessor {
     /// one of several nodes from a longer authored chain that couldn't be
     /// batched at any level and is now being applied one cutter at a time
     /// (House.ifc wall #2152, issue #960), AND when this is the single
-    /// leftover spine node but a nested `try_union_polygonal_chain` batch
+    /// leftover spine node but a nested `finish_batch` batch
     /// already folded its own siblings into the mesh one level down — that
     /// lone node's cutter is not alone either, even though `spine.len() ==
     /// 1` for it (a longer chain whose top-level batch fails only because of

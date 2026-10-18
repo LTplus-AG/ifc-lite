@@ -1,0 +1,24 @@
+{
+  "observed_totals": {
+    "color_updates": 5,
+    "fills": 0,
+    "instances": 133,
+    "layer_meshes": 0,
+    "materials": 6180,
+    "meshes": 10059,
+    "pixel_textures": 8,
+    "polylines": 5436,
+    "property_sets": 16832,
+    "texts": 260,
+    "triangles": 558192,
+    "type_meshes": 12,
+    "url_textures": 4,
+    "uv_meshes": 12,
+    "vertices": 869902
+  },
+  "unwitnessed": [
+    "fills",
+    "layer_meshes"
+  ],
+  "counts_are_observations_across_modes_not_distinct_objects": true
+}

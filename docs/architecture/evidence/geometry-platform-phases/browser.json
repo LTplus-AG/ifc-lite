@@ -1,0 +1,57 @@
+{
+  "result": {
+    "passed": true,
+    "workers": 2,
+    "results": [
+      {
+        "volume": 12,
+        "triangleVolume": 12,
+        "vertices": 8,
+        "triangles": 12,
+        "session": "1"
+      },
+      {
+        "volume": 12,
+        "triangleVolume": 12,
+        "vertices": 8,
+        "triangles": 12,
+        "session": "1"
+      }
+    ],
+    "restarted": {
+      "volume": 12,
+      "triangleVolume": 12,
+      "vertices": 8,
+      "triangles": 12,
+      "session": "1"
+    },
+    "faults": [
+      {
+        "fixture": "hung-worker",
+        "elapsed": 500.40000000596046,
+        "failure": "Error: worker deadline exceeded",
+        "recovered": {
+          "volume": 12,
+          "triangleVolume": 12,
+          "vertices": 8,
+          "triangles": 12,
+          "session": "1"
+        }
+      },
+      {
+        "fixture": "missing-asset-worker",
+        "elapsed": 55.29999999701977,
+        "failure": "Error: WASM initialization failed: RuntimeError: Aborted(CompileError: WebAssembly.instantiate(): expected magic word 00 61 73 6d, found 3c 21 44 4f @+0). Build with -sASSERTIONS for more info.",
+        "recovered": {
+          "volume": 12,
+          "triangleVolume": 12,
+          "vertices": 8,
+          "triangles": 12,
+          "session": "1"
+        }
+      }
+    ],
+    "crossOriginIsolated": false
+  },
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36"
+}

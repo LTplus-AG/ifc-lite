@@ -1,0 +1,13 @@
+{
+  "base_commit": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+  "source_manifest": "source-manifest.json",
+  "files": 289,
+  "archive": "source-overlay.tar.gz",
+  "archive_bytes": 597601,
+  "archive_sha256": "4d3143cdd836c471cffb9974d3318570af9c93ff59c86a42459857533a0b1677",
+  "all_archived_source_hashes_match": true,
+  "deleted_source_paths": [
+    "rust/processing/src/element/execution.rs"
+  ],
+  "scope": "Exact initial289 source overlay, preserving the ABI-rejected candidate for reproduction. Apply over pinned base in a separate clean checkout and remove listed deletions. Not qualified corrected source; fixtures/runtime artifacts are separate."
+}

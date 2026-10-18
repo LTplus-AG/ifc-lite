@@ -70,7 +70,7 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
     let mut styles = page_source::appearance(bytes,source);
     let textures = source.texture_index(bytes);
     let mut consumers=BTreeMap::<u32,BTreeSet<u32>>::new();
-    for (&host,openings) in &styles.void_index {
+    for (&host,openings) in styles.void_index.iter() {
         for &opening in openings {consumers.entry(opening).or_default().insert(host);}
     }
     let exclusive:BTreeSet<_>=consumers.into_iter().filter_map(|(id,hosts)|(hosts.len()==1).then_some(id)).collect();
@@ -167,7 +167,7 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
             source.styled_items.insert(face,vec![styled_row]);
             let (_,style)=crate::prepass::surface_style_from_styled_item(&entities[&styled_row],&mut source.decoder)
                 .ok_or("Converted surface style failed canonical resolution")?;
-            styles.geometry_style_index.insert(face,style);
+            styles.insert_style(face,style);
         }
         if let Some((retained_item,_))=retained {
             source.evaluated_splits.insert(product_id,source::SplitBody {textured:item,retained:retained_item});
@@ -216,11 +216,11 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
 }
 impl Normalized {
     pub(super) fn request(&self)->&AppearanceRequest {&self.request}
-    pub(super) fn patch_styles(&self, source:&mut Source<'_>, styles:&mut crate::prepass::ResolvedPrepass)->Result<(),String> {
+    pub(super) fn patch_styles(&self, source:&mut Source<'_>, styles:&mut super::owned_context::Styles)->Result<(),String> {
         for conversion in &self.conversions {
             let styled=source.entity(conversion.styled_id)?;
             let (_,style)=crate::prepass::surface_style_from_styled_item(&styled,&mut source.decoder).ok_or("Missing converted style")?;
-            styles.geometry_style_index.insert(conversion.binding.geometry_item_id,style);
+            styles.insert_style(conversion.binding.geometry_item_id,style);
         }
         Ok(())
     }

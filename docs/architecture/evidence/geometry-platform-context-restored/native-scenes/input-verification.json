@@ -1,0 +1,20 @@
+{
+  "source_manifest_sha256": "ede5cfafab73e79657c4680398156b84cc4ce62f6fd4fb50a4ef4dba2e16207b",
+  "source_count": 288,
+  "source_mismatches": [],
+  "deleted_sources_present": [],
+  "fixture_count": 11,
+  "fixtures": {
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/tests/fixtures/bath_csg_solid.ifc": "950424788ef247ebde29026d3a103cd59bb971eee697175bfdd4277f61a4d2e3",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc": "3069997f0b7d555232180c88bea27d0f6ca4d9c309a9cf4b1c3a8c68bba166ad",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ifc5/Georeferencing_georeferenced-bridge-deck.ifc": "6b1de724ceb436759d9cdbe7ce7f4c71734065dfde8cc8786b6239de347de1b1",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc": "a9984558b52629d8507f01a23aba1d62a84cc7257f8159ac4ae4ac06f71b20fd",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc": "522788afc44ba467730e2b8b521d4baa334df299598a6595ffd430c16a0f7e5e",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc": "eeec637c7c870c289460c5eec18995ec2c2d41af0c26382f32e453a58773c0a6",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-individual-colors.ifc": "49a003e142dce4b047f6c420a804aad68e30c7e4f5af3f7e2db2f9f32560e8a5",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/duplex.ifc": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/various/rvt01.ifc": "a83e9aacb43c7f82955ee3ba650ec66dc24af552924ec058e1b0c49a76180ee6",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/wall-with-opening-and-window.ifc": "73b0e45d931d5dc13bfee5fdc7bd80f796526445458b2de74c4168d209097832"
+  }
+}

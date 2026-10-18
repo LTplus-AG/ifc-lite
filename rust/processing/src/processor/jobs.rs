@@ -105,17 +105,8 @@ pub(super) fn process_entity_job(
     // unit conversion never trigger a per-element full-file IFCPROJECT scan.
     seed_plane_angle_to_radians: f64,
     tessellation_quality: TessellationQuality,
-    void_index: &FxHashMap<u32, Vec<u32>>,
+    production_context: &std::sync::Arc<crate::element::OwnedMeshProductionContext>,
     skipped_entity_ids: &HashSet<u32>,
-    geometry_style_index: &FxHashMap<u32, GeometryStyleInfo>,
-    indexed_colour_full: &FxHashMap<u32, crate::style::FullIndexedColourMap>,
-    element_material_colors: &FxHashMap<u32, Vec<[f32; 4]>>,
-    // Surface textures + UV maps keyed by face-set id (#961). Empty for
-    // untextured models.
-    texture_index: &FxHashMap<u32, ifc_lite_geometry::ResolvedTextureMap>,
-    // Present only when the selected coordinate space is `site_local`; rotates
-    // mesh vertices into the site's axis frame.
-    site_local_rotation: Option<&Vec<f64>>,
     // Every request-local diagnostic sink this job feeds (CSG failures, opening
     // classification, per-host diagnostics, rect_fast, dropped representation
     // items, the degenerate backstop, refused oversized refs).
@@ -214,15 +205,6 @@ pub(super) fn process_entity_job(
         },
         None => crate::element::ElementJobKind::Product,
     };
-    let ctx = crate::element::MeshProductionContext {
-        void_index,
-        geometry_style_index,
-        indexed_colour_full,
-        element_material_colors,
-        texture_index,
-        site_local_rotation,
-    };
-
     // Per-part faceted-brep phase timing (observability only; Instant traps on
     // wasm32). Attributed below to `faceted_brep_ns_collector` for parts that
     // actually touched the point cache (i.e. faceted breps), mirroring the
@@ -230,7 +212,7 @@ pub(super) fn process_entity_job(
     #[cfg(all(feature = "observability", not(target_arch = "wasm32")))]
     let brep_timer = std::time::Instant::now();
 
-    let produced = crate::element::produce_element_meshes(
+    let produced = crate::element::produce_element_meshes_owned(
         &crate::element::ElementMeshJob {
             id: job.id,
             ifc_type: job.ifc_type.clone(),
@@ -239,13 +221,13 @@ pub(super) fn process_entity_job(
             element_color: Some(job.element_color),
             metadata: Some(&metadata),
         },
-        &ctx,
+        production_context,
         // Geometry hashing is a viewer diff feature — off on the native path.
         &crate::element::MeshProductionOptions::default(),
         // Deref-coerces &mut WorkerCacheGuard -> &mut EntityDecoder.
         &mut decoder,
         &local_router,
-    );
+    ).expect("native run owns a live, non-invalidated production model");
 
     // Fold this element's point-cache activity into the pass tallies. The warm
     // cache is moved back to the worker by `WorkerCacheGuard::drop`, on every

@@ -1,0 +1,2108 @@
+{
+  "scope": "Supplemental exact execution-record audit of the existing44 selected structured native cases; no new geometry execution, all raw records hash-verified against original finalizer receipt.",
+  "source_manifest_sha256": "ede5cfafab73e79657c4680398156b84cc4ce62f6fd4fb50a4ef4dba2e16207b",
+  "source_bridge": "native-scene-artifact-identity.json plus ratchet-correction.json; same complete executables, then test-allowance metadata only.",
+  "original_summary_sha256": "ee41d17659ec66cf0507c35f90e97f4555f3422e94c8b9ccc81345a4d21be087",
+  "cases": [
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/tests/fixtures/bath_csg_solid.ifc",
+      "mode": "full",
+      "csg_census_records": 1,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 16,
+            "base-repeat": 11
+          },
+          "total_time_ms": {
+            "base": 18,
+            "base-repeat": 13
+          }
+        },
+        "candidate": {
+          "geometry_time_ms": {
+            "base": 16,
+            "candidate": 11
+          },
+          "total_time_ms": {
+            "base": 18,
+            "candidate": 13
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-small/bath_csg_solid-950424788ef2-full/base/records.jsonl",
+          "sha256": "6eeb4e8cf377115f3058b14b57931d3a2234154718a659bf68fa92f7fd3a2c1c",
+          "bytes": 54420
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-small/bath_csg_solid-950424788ef2-full/base-repeat/records.jsonl",
+          "sha256": "004d3e5b9fd101194ca768ba79439a312da6231b347f3dca234439f6f1fb5eb1",
+          "bytes": 54420
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-small/bath_csg_solid-950424788ef2-full/candidate/records.jsonl",
+          "sha256": "004d3e5b9fd101194ca768ba79439a312da6231b347f3dca234439f6f1fb5eb1",
+          "bytes": 54420
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/tests/fixtures/bath_csg_solid.ifc",
+      "mode": "stream",
+      "csg_census_records": 1,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 15,
+            "base-repeat": 20
+          },
+          "total_time_ms": {
+            "base": 17,
+            "base-repeat": 22
+          }
+        },
+        "candidate": {
+          "geometry_time_ms": {
+            "base": 15,
+            "candidate": 12
+          },
+          "total_time_ms": {
+            "base": 17,
+            "candidate": 14
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-small/bath_csg_solid-950424788ef2-stream/base/records.jsonl",
+          "sha256": "9727ceb8d6d632941042d1235c8829db387bb9cdf999fb7920e1313a7c00aa5e",
+          "bytes": 55039
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-small/bath_csg_solid-950424788ef2-stream/base-repeat/records.jsonl",
+          "sha256": "aa4266ced9e68ad4f73c9d42e31ea228eb2a0e7bd6313d2215e9a8745faf5949",
+          "bytes": 55039
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-small/bath_csg_solid-950424788ef2-stream/candidate/records.jsonl",
+          "sha256": "aff4b57eaee5cd8e30493acb3157d43a1482a372bd154f0dbd2ec09c47c600b8",
+          "bytes": 55039
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/tests/fixtures/bath_csg_solid.ifc",
+      "mode": "instanced",
+      "csg_census_records": 1,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 13,
+            "base-repeat": 16
+          },
+          "parse_time_ms": {
+            "base": 2,
+            "base-repeat": 1
+          },
+          "total_time_ms": {
+            "base": 15,
+            "base-repeat": 18
+          }
+        },
+        "candidate": {
+          "geometry_time_ms": {
+            "base": 13,
+            "candidate": 15
+          },
+          "total_time_ms": {
+            "base": 15,
+            "candidate": 17
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-small/bath_csg_solid-950424788ef2-instanced/base/records.jsonl",
+          "sha256": "13a8b9f5b098582260b6e868b90fc3183e95074b46f4dff468b7baf073adaa4b",
+          "bytes": 55038
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-small/bath_csg_solid-950424788ef2-instanced/base-repeat/records.jsonl",
+          "sha256": "3a85a625ce3a6bb58e10caebc64e228e2fc55d4785074d09b2782ed2fd02b24a",
+          "bytes": 55038
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-small/bath_csg_solid-950424788ef2-instanced/candidate/records.jsonl",
+          "sha256": "6a44b447292547a15e79b797fa44b0bd0c48150232327e3afd91db6dd4237bd9",
+          "bytes": 55038
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/tests/fixtures/bath_csg_solid.ifc",
+      "mode": "fastfirst",
+      "csg_census_records": 1,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 20,
+            "base-repeat": 16
+          },
+          "total_time_ms": {
+            "base": 23,
+            "base-repeat": 18
+          }
+        },
+        "candidate": {
+          "geometry_time_ms": {
+            "base": 20,
+            "candidate": 16
+          },
+          "total_time_ms": {
+            "base": 23,
+            "candidate": 18
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-small/bath_csg_solid-950424788ef2-fastfirst/base/records.jsonl",
+          "sha256": "00f4cb93ee745ac9900ed04807221fc0df22b2fdc3e482cfb4d25d5cfbca636b",
+          "bytes": 55039
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-small/bath_csg_solid-950424788ef2-fastfirst/base-repeat/records.jsonl",
+          "sha256": "fc5b28140fc49d9ac2c38a10f4d86fdafe7f30769056e305a626819037707c91",
+          "bytes": 55039
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-small/bath_csg_solid-950424788ef2-fastfirst/candidate/records.jsonl",
+          "sha256": "fc5b28140fc49d9ac2c38a10f4d86fdafe7f30769056e305a626819037707c91",
+          "bytes": 55039
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc",
+      "mode": "full",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 18,
+            "base-repeat": 27
+          },
+          "parse_time_ms": {
+            "base": 1,
+            "base-repeat": 2
+          },
+          "preprocess_time_ms": {
+            "base": 0,
+            "base-repeat": 1
+          },
+          "total_time_ms": {
+            "base": 20,
+            "base-repeat": 30
+          }
+        },
+        "candidate": {
+          "geometry_time_ms": {
+            "base": 18,
+            "candidate": 17
+          },
+          "parse_time_ms": {
+            "base": 1,
+            "candidate": 2
+          },
+          "total_time_ms": {
+            "base": 20,
+            "candidate": 19
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-small/mapped_instances_synthetic-3069997f0b7d-full/base/records.jsonl",
+          "sha256": "5c1fae96fcf4ef5765b7ee6fcaf99ab0bb147b3b4845ff19fd78f581d0ac0193",
+          "bytes": 547133
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-small/mapped_instances_synthetic-3069997f0b7d-full/base-repeat/records.jsonl",
+          "sha256": "dbf8781ba645102c523b5d01a643b236b6df461b1724e6806d566d0082416322",
+          "bytes": 547133
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-small/mapped_instances_synthetic-3069997f0b7d-full/candidate/records.jsonl",
+          "sha256": "b732049c1223373ac320e3c2c2a7ce0057dfa181d657e9e8aadd7417f63a5d4e",
+          "bytes": 547133
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc",
+      "mode": "stream",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 28,
+            "base-repeat": 21
+          },
+          "total_time_ms": {
+            "base": 31,
+            "base-repeat": 24
+          }
+        },
+        "candidate": {
+          "geometry_time_ms": {
+            "base": 28,
+            "candidate": 34
+          },
+          "parse_time_ms": {
+            "base": 3,
+            "candidate": 4
+          },
+          "preprocess_time_ms": {
+            "base": 0,
+            "candidate": 1
+          },
+          "total_time_ms": {
+            "base": 31,
+            "candidate": 39
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-small/mapped_instances_synthetic-3069997f0b7d-stream/base/records.jsonl",
+          "sha256": "420acbd617ab4858b24a746de994b8298792a14415a6eff26f561ddfefa875fa",
+          "bytes": 558434
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-small/mapped_instances_synthetic-3069997f0b7d-stream/base-repeat/records.jsonl",
+          "sha256": "177b318f8911cc2c14d5b916ba41da11b20893348bcc067964d892b1aa0ed952",
+          "bytes": 558434
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-small/mapped_instances_synthetic-3069997f0b7d-stream/candidate/records.jsonl",
+          "sha256": "fd62d80bde2eecc08f3487c9317f51b3ce4013c5fb1e251d63aa2c5fd3c51592",
+          "bytes": 558434
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc",
+      "mode": "instanced",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 5,
+            "base-repeat": 4
+          },
+          "total_time_ms": {
+            "base": 9,
+            "base-repeat": 8
+          }
+        },
+        "candidate": {
+          "total_time_ms": {
+            "base": 9,
+            "candidate": 10
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-small/mapped_instances_synthetic-3069997f0b7d-instanced/base/records.jsonl",
+          "sha256": "de8b16e74c8ebba1d7ce8cb9fc7d7fe56199de5efc6c8ead6ca5b75d223c3ef2",
+          "bytes": 125554
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-small/mapped_instances_synthetic-3069997f0b7d-instanced/base-repeat/records.jsonl",
+          "sha256": "94f6ece6c0cac42fcbe382835363c82556323bff352270540e3c8b71ba3708ab",
+          "bytes": 125554
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-small/mapped_instances_synthetic-3069997f0b7d-instanced/candidate/records.jsonl",
+          "sha256": "118c414d8a160592840787ed28703567647824bddab38804329e48268e2aa811",
+          "bytes": 125555
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc",
+      "mode": "fastfirst",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 23,
+            "base-repeat": 40
+          },
+          "preprocess_time_ms": {
+            "base": 0,
+            "base-repeat": 1
+          },
+          "total_time_ms": {
+            "base": 27,
+            "base-repeat": 45
+          }
+        },
+        "candidate": {
+          "geometry_time_ms": {
+            "base": 23,
+            "candidate": 34
+          },
+          "preprocess_time_ms": {
+            "base": 0,
+            "candidate": 1
+          },
+          "total_time_ms": {
+            "base": 27,
+            "candidate": 38
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-small/mapped_instances_synthetic-3069997f0b7d-fastfirst/base/records.jsonl",
+          "sha256": "8cd1ad1ab9a98753cb215f2b48c21e9360c92a9640f9173258e95b0b8bbf1763",
+          "bytes": 558434
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-small/mapped_instances_synthetic-3069997f0b7d-fastfirst/base-repeat/records.jsonl",
+          "sha256": "36ced64c28167ed2f9b6e4a3a5031eed73ce4b359963892eef6871f823e49280",
+          "bytes": 558434
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-small/mapped_instances_synthetic-3069997f0b7d-fastfirst/candidate/records.jsonl",
+          "sha256": "20392d1cce96e99518c58858188d17aa22bfbe034a8f3782c885bb57f73fd1ee",
+          "bytes": 558434
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ifc5/Georeferencing_georeferenced-bridge-deck.ifc",
+      "mode": "full",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "total_time_ms": {
+            "base": 3,
+            "base-repeat": 2
+          }
+        },
+        "candidate": {}
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-full/base/records.jsonl",
+          "sha256": "b9e294384ccf7016b750b848d01d2440603ad69a51b4491c20297334a0161643",
+          "bytes": 16721
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-full/base-repeat/records.jsonl",
+          "sha256": "5a62ea7650838a325aae1d8a8df52f2265370901fb4fd9388442c7aa594fb53e",
+          "bytes": 16721
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-full/candidate/records.jsonl",
+          "sha256": "b9e294384ccf7016b750b848d01d2440603ad69a51b4491c20297334a0161643",
+          "bytes": 16721
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ifc5/Georeferencing_georeferenced-bridge-deck.ifc",
+      "mode": "stream",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {},
+        "candidate": {}
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-stream/base/records.jsonl",
+          "sha256": "c5752ff737a2152f9254bdc4417ccf176681ad4c4583197924e0c496524874f8",
+          "bytes": 17509
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-stream/base-repeat/records.jsonl",
+          "sha256": "c5752ff737a2152f9254bdc4417ccf176681ad4c4583197924e0c496524874f8",
+          "bytes": 17509
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-stream/candidate/records.jsonl",
+          "sha256": "c5752ff737a2152f9254bdc4417ccf176681ad4c4583197924e0c496524874f8",
+          "bytes": 17509
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ifc5/Georeferencing_georeferenced-bridge-deck.ifc",
+      "mode": "instanced",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {},
+        "candidate": {}
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-instanced/base/records.jsonl",
+          "sha256": "a2d840f3b14b978a57a62ee618a718c2bb45189f0b36132e68f50341acabe7c1",
+          "bytes": 17508
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-instanced/base-repeat/records.jsonl",
+          "sha256": "a2d840f3b14b978a57a62ee618a718c2bb45189f0b36132e68f50341acabe7c1",
+          "bytes": 17508
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-instanced/candidate/records.jsonl",
+          "sha256": "a2d840f3b14b978a57a62ee618a718c2bb45189f0b36132e68f50341acabe7c1",
+          "bytes": 17508
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ifc5/Georeferencing_georeferenced-bridge-deck.ifc",
+      "mode": "fastfirst",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "parse_time_ms": {
+            "base": 2,
+            "base-repeat": 1
+          },
+          "total_time_ms": {
+            "base": 3,
+            "base-repeat": 2
+          }
+        },
+        "candidate": {
+          "parse_time_ms": {
+            "base": 2,
+            "candidate": 1
+          },
+          "total_time_ms": {
+            "base": 3,
+            "candidate": 2
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-fastfirst/base/records.jsonl",
+          "sha256": "e72fe3f941d5f95c1f00d7d733fa1fa60d1835c713c7a6e5f41e1991a5ad341e",
+          "bytes": 17509
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-fastfirst/base-repeat/records.jsonl",
+          "sha256": "e101a052d5b13cc5dbaf6bf8ac6fe67907a835979e267ee3e86722a0a3540d01",
+          "bytes": 17509
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-small/Georeferencing_georeferenced-bridge-deck-6b1de724ceb4-fastfirst/candidate/records.jsonl",
+          "sha256": "e101a052d5b13cc5dbaf6bf8ac6fe67907a835979e267ee3e86722a0a3540d01",
+          "bytes": 17509
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc",
+      "mode": "full",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 41,
+            "base-repeat": 44
+          },
+          "parse_time_ms": {
+            "base": 2,
+            "base-repeat": 1
+          },
+          "total_time_ms": {
+            "base": 43,
+            "base-repeat": 46
+          }
+        },
+        "candidate": {
+          "parse_time_ms": {
+            "base": 2,
+            "candidate": 1
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-blob-texture-a9984558b526-full/base/records.jsonl",
+          "sha256": "4d6031a78c7f0fe7bdc141544d4bc0fd6f6d1f14c98806154f2f777da07c8f6b",
+          "bytes": 1983840
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-blob-texture-a9984558b526-full/base-repeat/records.jsonl",
+          "sha256": "70f4ed4badbd622a8915b6af60bb22f0ca337605cbf0c9e969d2651879d169c5",
+          "bytes": 1983840
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-blob-texture-a9984558b526-full/candidate/records.jsonl",
+          "sha256": "a22909e1b45cb405f47e3611cc2c9eb66522770186c9f53098b0c262216ec7e6",
+          "bytes": 1983840
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc",
+      "mode": "stream",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 41,
+            "base-repeat": 45
+          },
+          "parse_time_ms": {
+            "base": 1,
+            "base-repeat": 2
+          },
+          "total_time_ms": {
+            "base": 43,
+            "base-repeat": 47
+          }
+        },
+        "candidate": {
+          "parse_time_ms": {
+            "base": 1,
+            "candidate": 2
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-blob-texture-a9984558b526-stream/base/records.jsonl",
+          "sha256": "e84c02be44162fee42bedf7d849e44bc2ec776e437f5af42e50ac4bce86baf84",
+          "bytes": 1984119
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-blob-texture-a9984558b526-stream/base-repeat/records.jsonl",
+          "sha256": "725cb2b4320f7f9236da2dab590ef49af3ecbd33b3700059e611bf36f8b5574e",
+          "bytes": 1984119
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-blob-texture-a9984558b526-stream/candidate/records.jsonl",
+          "sha256": "895b330a4c98ef752b5455986564f97914e81e8b44bebfdfb2dab08c57ea846e",
+          "bytes": 1984119
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc",
+      "mode": "instanced",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 47,
+            "base-repeat": 52
+          },
+          "total_time_ms": {
+            "base": 49,
+            "base-repeat": 54
+          }
+        },
+        "candidate": {
+          "geometry_time_ms": {
+            "base": 47,
+            "candidate": 39
+          },
+          "parse_time_ms": {
+            "base": 2,
+            "candidate": 1
+          },
+          "total_time_ms": {
+            "base": 49,
+            "candidate": 41
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-blob-texture-a9984558b526-instanced/base/records.jsonl",
+          "sha256": "b43dca9117dab4fcebb0a46811e64c626e27ea21439ce5192e7ce9b2689824f2",
+          "bytes": 1984118
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-blob-texture-a9984558b526-instanced/base-repeat/records.jsonl",
+          "sha256": "18d4271460aba22687b06f1de3aae69578dea508e1acfa18303c261d629e8b50",
+          "bytes": 1984118
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-blob-texture-a9984558b526-instanced/candidate/records.jsonl",
+          "sha256": "01ea2741a3473434c737cfbdff5629decc6105bb2c0b3235ce0ed34074e1da60",
+          "bytes": 1984118
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc",
+      "mode": "fastfirst",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 48,
+            "base-repeat": 44
+          },
+          "total_time_ms": {
+            "base": 50,
+            "base-repeat": 46
+          }
+        },
+        "candidate": {
+          "geometry_time_ms": {
+            "base": 48,
+            "candidate": 43
+          },
+          "parse_time_ms": {
+            "base": 2,
+            "candidate": 1
+          },
+          "total_time_ms": {
+            "base": 50,
+            "candidate": 44
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-blob-texture-a9984558b526-fastfirst/base/records.jsonl",
+          "sha256": "3ced6400aa8f13429a40431a591bc04ca7f022bd135de4592eedc23ab733cf95",
+          "bytes": 1984233
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-blob-texture-a9984558b526-fastfirst/base-repeat/records.jsonl",
+          "sha256": "4a0fbaef450ddbad372cc8341fb3c497b8567fed684740506df876e9d5d5d488",
+          "bytes": 1984233
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-blob-texture-a9984558b526-fastfirst/candidate/records.jsonl",
+          "sha256": "545bc2cc7490efc311ffc75e9056c5cffb8e9cb2c8ec6dd437fb5d5ffac7e582",
+          "bytes": 1984233
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc",
+      "mode": "full",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 51,
+            "base-repeat": 50
+          },
+          "parse_time_ms": {
+            "base": 2,
+            "base-repeat": 1
+          },
+          "total_time_ms": {
+            "base": 53,
+            "base-repeat": 52
+          }
+        },
+        "candidate": {
+          "geometry_time_ms": {
+            "base": 51,
+            "candidate": 49
+          },
+          "parse_time_ms": {
+            "base": 2,
+            "candidate": 1
+          },
+          "total_time_ms": {
+            "base": 53,
+            "candidate": 51
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-pixel-texture-522788afc44b-full/base/records.jsonl",
+          "sha256": "1add864907c8cec74c198b634b4837a5ef1a577aab6d06b01031fa5ac3398223",
+          "bytes": 1983856
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-pixel-texture-522788afc44b-full/base-repeat/records.jsonl",
+          "sha256": "496c55e851981f22a4ed6eb11bd9a954ad1fe48a4e840067aa8a9847cb7588c4",
+          "bytes": 1983856
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-pixel-texture-522788afc44b-full/candidate/records.jsonl",
+          "sha256": "ecf9f6af6e28531a50fa8828b15e0104800f16da59645d7358be20e50c38582f",
+          "bytes": 1983856
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc",
+      "mode": "stream",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "entity_scan_time_ms": {
+            "base": 2,
+            "base-repeat": 1
+          },
+          "geometry_time_ms": {
+            "base": 63,
+            "base-repeat": 51
+          },
+          "parse_time_ms": {
+            "base": 3,
+            "base-repeat": 2
+          },
+          "total_time_ms": {
+            "base": 66,
+            "base-repeat": 53
+          }
+        },
+        "candidate": {
+          "geometry_time_ms": {
+            "base": 63,
+            "candidate": 83
+          },
+          "total_time_ms": {
+            "base": 66,
+            "candidate": 86
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-pixel-texture-522788afc44b-stream/base/records.jsonl",
+          "sha256": "e8bd49a92659c7eb4aef0cc63b7e230cb91092b3f895b0ac3161f443837b6239",
+          "bytes": 1984135
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-pixel-texture-522788afc44b-stream/base-repeat/records.jsonl",
+          "sha256": "de8248cbc9b3267d095f01d8289a3f7838acb60778c6b374be527ad266ee70f4",
+          "bytes": 1984135
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-pixel-texture-522788afc44b-stream/candidate/records.jsonl",
+          "sha256": "316b4e4fffaeb4932f31d28c035c9c2888f018c3b63df5b5d9fb57f40836c968",
+          "bytes": 1984135
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc",
+      "mode": "instanced",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 50,
+            "base-repeat": 51
+          }
+        },
+        "candidate": {
+          "entity_scan_time_ms": {
+            "base": 1,
+            "candidate": 2
+          },
+          "geometry_time_ms": {
+            "base": 50,
+            "candidate": 49
+          },
+          "total_time_ms": {
+            "base": 53,
+            "candidate": 52
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-pixel-texture-522788afc44b-instanced/base/records.jsonl",
+          "sha256": "3cd1c7e50f01e8b29393ae3766322e26b9418f69ea78cd9f3753166b0c1686ab",
+          "bytes": 1984134
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-pixel-texture-522788afc44b-instanced/base-repeat/records.jsonl",
+          "sha256": "b3059528f3250a9933dfbff444aa401c3a6766ff74737c1e428420af0fe32f82",
+          "bytes": 1984134
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-pixel-texture-522788afc44b-instanced/candidate/records.jsonl",
+          "sha256": "c640b2f1305a57e0cb8b2f2b0c9fb98b581bcc87e6db7e348b823a31dba79c05",
+          "bytes": 1984134
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc",
+      "mode": "fastfirst",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 58,
+            "base-repeat": 51
+          },
+          "total_time_ms": {
+            "base": 61,
+            "base-repeat": 54
+          }
+        },
+        "candidate": {}
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-pixel-texture-522788afc44b-fastfirst/base/records.jsonl",
+          "sha256": "6a156e9d4959caa28f308b841c6b1a1f26feaea95ab731c7e26dd770c280a23c",
+          "bytes": 1984249
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-pixel-texture-522788afc44b-fastfirst/base-repeat/records.jsonl",
+          "sha256": "a6d0d9d242314459d9c7425172e22afbc1dff4a46b661504d36045b2cf7403c8",
+          "bytes": 1984249
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-pixel-texture-522788afc44b-fastfirst/candidate/records.jsonl",
+          "sha256": "6a156e9d4959caa28f308b841c6b1a1f26feaea95ab731c7e26dd770c280a23c",
+          "bytes": 1984249
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc",
+      "mode": "full",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "total_time_ms": {
+            "base": 4,
+            "base-repeat": 3
+          }
+        },
+        "candidate": {}
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-image-texture-eeec637c7c87-full/base/records.jsonl",
+          "sha256": "cb5e8b67ca83ebc2a5db8e94f6a6a30b7388862f8e9e497c546952a56d4b145c",
+          "bytes": 36812
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-image-texture-eeec637c7c87-full/base-repeat/records.jsonl",
+          "sha256": "6af59cfe741a12486778e7a6bc836fb3b796bb59333119f40fca6fed14e1622a",
+          "bytes": 36812
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-image-texture-eeec637c7c87-full/candidate/records.jsonl",
+          "sha256": "cb5e8b67ca83ebc2a5db8e94f6a6a30b7388862f8e9e497c546952a56d4b145c",
+          "bytes": 36812
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc",
+      "mode": "stream",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {},
+        "candidate": {
+          "geometry_time_ms": {
+            "base": 2,
+            "candidate": 3
+          },
+          "total_time_ms": {
+            "base": 4,
+            "candidate": 5
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-image-texture-eeec637c7c87-stream/base/records.jsonl",
+          "sha256": "ceebb24ff018123bdf5b998dc3760dcf4781c6f3217d896fdff269d56f22f4ec",
+          "bytes": 37091
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-image-texture-eeec637c7c87-stream/base-repeat/records.jsonl",
+          "sha256": "ceebb24ff018123bdf5b998dc3760dcf4781c6f3217d896fdff269d56f22f4ec",
+          "bytes": 37091
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-image-texture-eeec637c7c87-stream/candidate/records.jsonl",
+          "sha256": "6281472b6451a024318936f572b5ac8f85bb67bb4792ffcc3f976971f31e3a60",
+          "bytes": 37091
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc",
+      "mode": "instanced",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {},
+        "candidate": {}
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-image-texture-eeec637c7c87-instanced/base/records.jsonl",
+          "sha256": "ec6412cc27a5fa93fd5c5b0bd3ecb32f967ea177af3c9671d503bb4a40417103",
+          "bytes": 37090
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-image-texture-eeec637c7c87-instanced/base-repeat/records.jsonl",
+          "sha256": "ec6412cc27a5fa93fd5c5b0bd3ecb32f967ea177af3c9671d503bb4a40417103",
+          "bytes": 37090
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-image-texture-eeec637c7c87-instanced/candidate/records.jsonl",
+          "sha256": "ec6412cc27a5fa93fd5c5b0bd3ecb32f967ea177af3c9671d503bb4a40417103",
+          "bytes": 37090
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc",
+      "mode": "fastfirst",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {},
+        "candidate": {}
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-image-texture-eeec637c7c87-fastfirst/base/records.jsonl",
+          "sha256": "389e1d0beb0f0f53d269bcfb97f23ba8b8f6f19d642a95a3f91551fd95598ac8",
+          "bytes": 37205
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-image-texture-eeec637c7c87-fastfirst/base-repeat/records.jsonl",
+          "sha256": "389e1d0beb0f0f53d269bcfb97f23ba8b8f6f19d642a95a3f91551fd95598ac8",
+          "bytes": 37205
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-image-texture-eeec637c7c87-fastfirst/candidate/records.jsonl",
+          "sha256": "389e1d0beb0f0f53d269bcfb97f23ba8b8f6f19d642a95a3f91551fd95598ac8",
+          "bytes": 37205
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-individual-colors.ifc",
+      "mode": "full",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {},
+        "candidate": {}
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-individual-colors-49a003e142dc-full/base/records.jsonl",
+          "sha256": "2e36b221a7b053cae75d722f62ee1a462a24a294ae5534992be98e249fa0b985",
+          "bytes": 18272
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-individual-colors-49a003e142dc-full/base-repeat/records.jsonl",
+          "sha256": "2e36b221a7b053cae75d722f62ee1a462a24a294ae5534992be98e249fa0b985",
+          "bytes": 18272
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-individual-colors-49a003e142dc-full/candidate/records.jsonl",
+          "sha256": "2e36b221a7b053cae75d722f62ee1a462a24a294ae5534992be98e249fa0b985",
+          "bytes": 18272
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-individual-colors.ifc",
+      "mode": "stream",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {},
+        "candidate": {}
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-individual-colors-49a003e142dc-stream/base/records.jsonl",
+          "sha256": "a7a92c5d1fe40d3a1a268ef1bd7a6f6a04cf6daef67ac13748e926d972e45ec3",
+          "bytes": 18951
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-individual-colors-49a003e142dc-stream/base-repeat/records.jsonl",
+          "sha256": "a7a92c5d1fe40d3a1a268ef1bd7a6f6a04cf6daef67ac13748e926d972e45ec3",
+          "bytes": 18951
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-individual-colors-49a003e142dc-stream/candidate/records.jsonl",
+          "sha256": "a7a92c5d1fe40d3a1a268ef1bd7a6f6a04cf6daef67ac13748e926d972e45ec3",
+          "bytes": 18951
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-individual-colors.ifc",
+      "mode": "instanced",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "parse_time_ms": {
+            "base": 1,
+            "base-repeat": 2
+          }
+        },
+        "candidate": {
+          "parse_time_ms": {
+            "base": 1,
+            "candidate": 2
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-individual-colors-49a003e142dc-instanced/base/records.jsonl",
+          "sha256": "599b905b5dfc62d5db8d512641ad27688dd897567f537347cd768016c14adcd3",
+          "bytes": 18950
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-individual-colors-49a003e142dc-instanced/base-repeat/records.jsonl",
+          "sha256": "e9a4ef1f8be07069fe2ca4be2540473b31609718d24ccc76833ece2451fc9ca1",
+          "bytes": 18950
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-individual-colors-49a003e142dc-instanced/candidate/records.jsonl",
+          "sha256": "e9a4ef1f8be07069fe2ca4be2540473b31609718d24ccc76833ece2451fc9ca1",
+          "bytes": 18950
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-individual-colors.ifc",
+      "mode": "fastfirst",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 0,
+            "base-repeat": 1
+          },
+          "parse_time_ms": {
+            "base": 1,
+            "base-repeat": 2
+          },
+          "total_time_ms": {
+            "base": 2,
+            "base-repeat": 3
+          }
+        },
+        "candidate": {
+          "geometry_time_ms": {
+            "base": 0,
+            "candidate": 1
+          },
+          "parse_time_ms": {
+            "base": 1,
+            "candidate": 2
+          },
+          "total_time_ms": {
+            "base": 2,
+            "candidate": 3
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-individual-colors-49a003e142dc-fastfirst/base/records.jsonl",
+          "sha256": "dd0a948fcfa1899d0ea755b632750a9edee56af39dad75187f38798aa90668c3",
+          "bytes": 18951
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-individual-colors-49a003e142dc-fastfirst/base-repeat/records.jsonl",
+          "sha256": "52b1fad21fe6b7938f0cf9000a66ca04c12bd2fd05043f9da1895b4eec2966f4",
+          "bytes": 18951
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-styles/tessellation-with-individual-colors-49a003e142dc-fastfirst/candidate/records.jsonl",
+          "sha256": "52b1fad21fe6b7938f0cf9000a66ca04c12bd2fd05043f9da1895b4eec2966f4",
+          "bytes": 18951
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "mode": "full",
+      "csg_census_records": 7,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 316,
+            "base-repeat": 337
+          },
+          "total_time_ms": {
+            "base": 340,
+            "base-repeat": 361
+          }
+        },
+        "candidate": {
+          "geometry_time_ms": {
+            "base": 316,
+            "candidate": 292
+          },
+          "total_time_ms": {
+            "base": 340,
+            "candidate": 317
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-real/AC20-FZK-Haus-d42ab0dee011-full/base/records.jsonl",
+          "sha256": "22e7c5efeac7c2295a3fca50f19c03c046f656c8ad28ca6b82ab39a819d064cc",
+          "bytes": 14276651
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-real/AC20-FZK-Haus-d42ab0dee011-full/base-repeat/records.jsonl",
+          "sha256": "fa91b83d9ad5f45234c7b30e185bba3bc35e25b3ae2af3212ee1988e38ba3099",
+          "bytes": 14276651
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-real/AC20-FZK-Haus-d42ab0dee011-full/candidate/records.jsonl",
+          "sha256": "bf13821572bb56f1a2c9a6f5b994875b186a61df7db87ad8fd4e5ca3456a3b34",
+          "bytes": 14276651
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "mode": "stream",
+      "csg_census_records": 7,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "entity_scan_time_ms": {
+            "base": 9,
+            "base-repeat": 12
+          },
+          "geometry_time_ms": {
+            "base": 357,
+            "base-repeat": 337
+          },
+          "parse_time_ms": {
+            "base": 17,
+            "base-repeat": 20
+          },
+          "total_time_ms": {
+            "base": 375,
+            "base-repeat": 357
+          }
+        },
+        "candidate": {
+          "entity_scan_time_ms": {
+            "base": 9,
+            "candidate": 14
+          },
+          "geometry_time_ms": {
+            "base": 357,
+            "candidate": 314
+          },
+          "parse_time_ms": {
+            "base": 17,
+            "candidate": 22
+          },
+          "total_time_ms": {
+            "base": 375,
+            "candidate": 336
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-real/AC20-FZK-Haus-d42ab0dee011-stream/base/records.jsonl",
+          "sha256": "5f212859486acd71509c7a666ddfd666d1efd698d6e328c173ae7e6071711030",
+          "bytes": 14296782
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-real/AC20-FZK-Haus-d42ab0dee011-stream/base-repeat/records.jsonl",
+          "sha256": "695d2f697764831a9116523c77f07ca73656cac8d0080ea8d4d9a50b81681cfc",
+          "bytes": 14296783
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-real/AC20-FZK-Haus-d42ab0dee011-stream/candidate/records.jsonl",
+          "sha256": "6b6447ee6d4c44290421809b4fd2a9b3b2a9fc7848c0ab9822c6d3a7dce83bb9",
+          "bytes": 14296783
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "mode": "instanced",
+      "csg_census_records": 7,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "entity_scan_time_ms": {
+            "base": 9,
+            "base-repeat": 16
+          },
+          "geometry_time_ms": {
+            "base": 302,
+            "base-repeat": 335
+          },
+          "lookup_time_ms": {
+            "base": 2,
+            "base-repeat": 4
+          },
+          "parse_time_ms": {
+            "base": 17,
+            "base-repeat": 29
+          },
+          "preprocess_time_ms": {
+            "base": 3,
+            "base-repeat": 6
+          },
+          "total_time_ms": {
+            "base": 320,
+            "base-repeat": 364
+          }
+        },
+        "candidate": {
+          "entity_scan_time_ms": {
+            "base": 9,
+            "candidate": 10
+          },
+          "geometry_time_ms": {
+            "base": 302,
+            "candidate": 299
+          },
+          "total_time_ms": {
+            "base": 320,
+            "candidate": 316
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-real/AC20-FZK-Haus-d42ab0dee011-instanced/base/records.jsonl",
+          "sha256": "29361c1c91b4807887b7369bd4666efc6e5d21376e85f673438c5486df3b59e3",
+          "bytes": 13995943
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-real/AC20-FZK-Haus-d42ab0dee011-instanced/base-repeat/records.jsonl",
+          "sha256": "f2f474a25308a802724d5dfe767844745bb206345954109fc6a32a975532176f",
+          "bytes": 13995944
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-real/AC20-FZK-Haus-d42ab0dee011-instanced/candidate/records.jsonl",
+          "sha256": "d316740ed6f860d32537fdbc735a544919a5f2da909c42beb818a1b5c21df324",
+          "bytes": 13995944
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "mode": "fastfirst",
+      "csg_census_records": 7,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "entity_scan_time_ms": {
+            "base": 15,
+            "base-repeat": 9
+          },
+          "geometry_time_ms": {
+            "base": 337,
+            "base-repeat": 323
+          },
+          "lookup_time_ms": {
+            "base": 4,
+            "base-repeat": 2
+          },
+          "parse_time_ms": {
+            "base": 28,
+            "base-repeat": 17
+          },
+          "preprocess_time_ms": {
+            "base": 6,
+            "base-repeat": 3
+          },
+          "total_time_ms": {
+            "base": 366,
+            "base-repeat": 340
+          }
+        },
+        "candidate": {
+          "entity_scan_time_ms": {
+            "base": 15,
+            "candidate": 16
+          },
+          "geometry_time_ms": {
+            "base": 337,
+            "candidate": 308
+          },
+          "total_time_ms": {
+            "base": 366,
+            "candidate": 337
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-real/AC20-FZK-Haus-d42ab0dee011-fastfirst/base/records.jsonl",
+          "sha256": "d5b86b06bbc63726fe7aeed9e1895f1a5fb54af47b2f59e66c66149e49170e8c",
+          "bytes": 14271862
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-real/AC20-FZK-Haus-d42ab0dee011-fastfirst/base-repeat/records.jsonl",
+          "sha256": "53b99e40531dad5c3d4f97bdc763b1830eec570b23bf3aae9b5d63c77b42afcb",
+          "bytes": 14271861
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-real/AC20-FZK-Haus-d42ab0dee011-fastfirst/candidate/records.jsonl",
+          "sha256": "54f20e3556a56c49bce791b6f3bd32bbb42bc07dce628f5a7b74c236de65c28b",
+          "bytes": 14271862
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/duplex.ifc",
+      "mode": "full",
+      "csg_census_records": 9,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "entity_scan_time_ms": {
+            "base": 13,
+            "base-repeat": 9
+          },
+          "geometry_time_ms": {
+            "base": 488,
+            "base-repeat": 516
+          },
+          "parse_time_ms": {
+            "base": 20,
+            "base-repeat": 16
+          },
+          "total_time_ms": {
+            "base": 509,
+            "base-repeat": 532
+          }
+        },
+        "candidate": {
+          "entity_scan_time_ms": {
+            "base": 13,
+            "candidate": 9
+          },
+          "geometry_time_ms": {
+            "base": 488,
+            "candidate": 478
+          },
+          "parse_time_ms": {
+            "base": 20,
+            "candidate": 16
+          },
+          "total_time_ms": {
+            "base": 509,
+            "candidate": 494
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-real/duplex-b347a2c8aa8f-full/base/records.jsonl",
+          "sha256": "604bfd0261d55b4de1116b8d0eb62bbf0f49e9990ced1dedf561edc9119bcb49",
+          "bytes": 17725462
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-real/duplex-b347a2c8aa8f-full/base-repeat/records.jsonl",
+          "sha256": "9ebe9d886b249b1cea778baacc2590bd45195923af0657b496dd08edb485b77e",
+          "bytes": 17725461
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-real/duplex-b347a2c8aa8f-full/candidate/records.jsonl",
+          "sha256": "e43d7daef5d463a383feb541c3261f2e5d9b789ac26fb45c6bb73f33c49b9519",
+          "bytes": 17725461
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/duplex.ifc",
+      "mode": "stream",
+      "csg_census_records": 9,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "entity_scan_time_ms": {
+            "base": 17,
+            "base-repeat": 10
+          },
+          "geometry_time_ms": {
+            "base": 555,
+            "base-repeat": 781
+          },
+          "parse_time_ms": {
+            "base": 27,
+            "base-repeat": 20
+          },
+          "total_time_ms": {
+            "base": 582,
+            "base-repeat": 801
+          }
+        },
+        "candidate": {
+          "entity_scan_time_ms": {
+            "base": 17,
+            "candidate": 10
+          },
+          "geometry_time_ms": {
+            "base": 555,
+            "candidate": 537
+          },
+          "parse_time_ms": {
+            "base": 27,
+            "candidate": 20
+          },
+          "total_time_ms": {
+            "base": 582,
+            "candidate": 557
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-real/duplex-b347a2c8aa8f-stream/base/records.jsonl",
+          "sha256": "5c91ee33021fc955b9e5e80848bd6486ae0db4f469aa763552585271b270e54d",
+          "bytes": 17768024
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-real/duplex-b347a2c8aa8f-stream/base-repeat/records.jsonl",
+          "sha256": "01396f57776545107de2aa311de3c1491eecc9025acc1d1865bfa5c40a2d0668",
+          "bytes": 17768024
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-real/duplex-b347a2c8aa8f-stream/candidate/records.jsonl",
+          "sha256": "de0e4ae1793a0ec01ed7220345f0edad721a4e9a5a0a7b2a0fcebe5b13fd83f3",
+          "bytes": 17768024
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/duplex.ifc",
+      "mode": "instanced",
+      "csg_census_records": 9,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "entity_scan_time_ms": {
+            "base": 10,
+            "base-repeat": 16
+          },
+          "geometry_time_ms": {
+            "base": 456,
+            "base-repeat": 495
+          },
+          "lookup_time_ms": {
+            "base": 4,
+            "base-repeat": 5
+          },
+          "parse_time_ms": {
+            "base": 20,
+            "base-repeat": 26
+          },
+          "total_time_ms": {
+            "base": 477,
+            "base-repeat": 522
+          }
+        },
+        "candidate": {
+          "geometry_time_ms": {
+            "base": 456,
+            "candidate": 460
+          },
+          "total_time_ms": {
+            "base": 477,
+            "candidate": 480
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-real/duplex-b347a2c8aa8f-instanced/base/records.jsonl",
+          "sha256": "9646a9ad2030c6d9117fbd24be2519f9ea6a507af5685a22e876527a345b2443",
+          "bytes": 14819877
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-real/duplex-b347a2c8aa8f-instanced/base-repeat/records.jsonl",
+          "sha256": "9b99c0c051e71264980ca96ce93ab17c0c5156e2dc072c990327f2958b46521f",
+          "bytes": 14819877
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-real/duplex-b347a2c8aa8f-instanced/candidate/records.jsonl",
+          "sha256": "f928dbc765df5ba7a2df6e47417734afbf705508c476c2d19073642eb3da03ab",
+          "bytes": 14819877
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/duplex.ifc",
+      "mode": "fastfirst",
+      "csg_census_records": 9,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 563,
+            "base-repeat": 530
+          },
+          "total_time_ms": {
+            "base": 582,
+            "base-repeat": 549
+          }
+        },
+        "candidate": {
+          "entity_scan_time_ms": {
+            "base": 9,
+            "candidate": 10
+          },
+          "geometry_time_ms": {
+            "base": 563,
+            "candidate": 533
+          },
+          "total_time_ms": {
+            "base": 582,
+            "candidate": 553
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-real/duplex-b347a2c8aa8f-fastfirst/base/records.jsonl",
+          "sha256": "412c2152efd783a1c6b278fa9af35387e15291bd54f2c0c15ef7976d46a64825",
+          "bytes": 17723333
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-real/duplex-b347a2c8aa8f-fastfirst/base-repeat/records.jsonl",
+          "sha256": "aba6f6140d8487ebf9ba6a6d5f0874f4f07775173364bbf6fb79b89103e73cf2",
+          "bytes": 17723333
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-real/duplex-b347a2c8aa8f-fastfirst/candidate/records.jsonl",
+          "sha256": "529af7cf0607b8147733092d3efac8dfef3468db071118466fc04499452ce9d7",
+          "bytes": 17723334
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/various/rvt01.ifc",
+      "mode": "full",
+      "csg_census_records": 150,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "entity_scan_time_ms": {
+            "base": 16,
+            "base-repeat": 19
+          },
+          "geometry_time_ms": {
+            "base": 2752,
+            "base-repeat": 2772
+          },
+          "parse_time_ms": {
+            "base": 26,
+            "base-repeat": 29
+          },
+          "total_time_ms": {
+            "base": 2779,
+            "base-repeat": 2802
+          }
+        },
+        "candidate": {
+          "entity_scan_time_ms": {
+            "base": 16,
+            "candidate": 20
+          },
+          "geometry_time_ms": {
+            "base": 2752,
+            "candidate": 2808
+          },
+          "parse_time_ms": {
+            "base": 26,
+            "candidate": 29
+          },
+          "total_time_ms": {
+            "base": 2779,
+            "candidate": 2837
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-real/rvt01-a83e9aacb43c-full/base/records.jsonl",
+          "sha256": "b5edab94d088b9c27ae88441560e6b1b10d35601624050abd2e5651b6307ae05",
+          "bytes": 38114199
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-real/rvt01-a83e9aacb43c-full/base-repeat/records.jsonl",
+          "sha256": "7417d62cfab7559cad9f539f47eaeb6c94431348c6476389a1fba62822ab802b",
+          "bytes": 38114199
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-real/rvt01-a83e9aacb43c-full/candidate/records.jsonl",
+          "sha256": "27abd2c08ccca1d92d6c8099c897769866a491bbcc4ee7883ab7792008fbfbfb",
+          "bytes": 38114199
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/various/rvt01.ifc",
+      "mode": "stream",
+      "csg_census_records": 150,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 2924,
+            "base-repeat": 2913
+          },
+          "lookup_time_ms": {
+            "base": 7,
+            "base-repeat": 8
+          },
+          "total_time_ms": {
+            "base": 2956,
+            "base-repeat": 2945
+          }
+        },
+        "candidate": {
+          "geometry_time_ms": {
+            "base": 2924,
+            "candidate": 2890
+          },
+          "total_time_ms": {
+            "base": 2956,
+            "candidate": 2922
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-real/rvt01-a83e9aacb43c-stream/base/records.jsonl",
+          "sha256": "9465893a515f45a88e20ae7eae32e115c8a085de17c97079a16dd28a0fa32586",
+          "bytes": 38220793
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-real/rvt01-a83e9aacb43c-stream/base-repeat/records.jsonl",
+          "sha256": "b8a54318fbbbd500e588f9931888278ee23868fc52aa97fbaf9c4ae1feeb8098",
+          "bytes": 38220793
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-real/rvt01-a83e9aacb43c-stream/candidate/records.jsonl",
+          "sha256": "0f0836e0d33236be344fd9b8a2f1156e420f383148b48958b7517ff1a5c79701",
+          "bytes": 38220793
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/various/rvt01.ifc",
+      "mode": "instanced",
+      "csg_census_records": 150,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 2866,
+            "base-repeat": 2917
+          },
+          "parse_time_ms": {
+            "base": 32,
+            "base-repeat": 33
+          },
+          "total_time_ms": {
+            "base": 2899,
+            "base-repeat": 2951
+          }
+        },
+        "candidate": {
+          "entity_scan_time_ms": {
+            "base": 17,
+            "candidate": 19
+          },
+          "geometry_time_ms": {
+            "base": 2866,
+            "candidate": 3194
+          },
+          "lookup_time_ms": {
+            "base": 8,
+            "candidate": 9
+          },
+          "parse_time_ms": {
+            "base": 32,
+            "candidate": 37
+          },
+          "total_time_ms": {
+            "base": 2899,
+            "candidate": 3231
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-real/rvt01-a83e9aacb43c-instanced/base/records.jsonl",
+          "sha256": "b5424ecf50db389dc0700af1fb35e28dea719904830e02abde9376b6856bd3e0",
+          "bytes": 38220792
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-real/rvt01-a83e9aacb43c-instanced/base-repeat/records.jsonl",
+          "sha256": "c01f74525f99f7551bbcbcbea7261cf53f6664e3933a0b52ae9615effc455b33",
+          "bytes": 38220792
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-real/rvt01-a83e9aacb43c-instanced/candidate/records.jsonl",
+          "sha256": "6f43c2747c3770b9842d8735b743c576652b8cb8e2924fc22c270363e236d6e3",
+          "bytes": 38220792
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/various/rvt01.ifc",
+      "mode": "fastfirst",
+      "csg_census_records": 150,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "entity_scan_time_ms": {
+            "base": 15,
+            "base-repeat": 24
+          },
+          "geometry_time_ms": {
+            "base": 3252,
+            "base-repeat": 3372
+          },
+          "lookup_time_ms": {
+            "base": 8,
+            "base-repeat": 12
+          },
+          "parse_time_ms": {
+            "base": 31,
+            "base-repeat": 44
+          },
+          "total_time_ms": {
+            "base": 3283,
+            "base-repeat": 3417
+          }
+        },
+        "candidate": {
+          "entity_scan_time_ms": {
+            "base": 15,
+            "candidate": 24
+          },
+          "geometry_time_ms": {
+            "base": 3252,
+            "candidate": 3024
+          },
+          "lookup_time_ms": {
+            "base": 8,
+            "candidate": 13
+          },
+          "parse_time_ms": {
+            "base": 31,
+            "candidate": 50
+          },
+          "preprocess_time_ms": {
+            "base": 1,
+            "candidate": 2
+          },
+          "total_time_ms": {
+            "base": 3283,
+            "candidate": 3074
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-real/rvt01-a83e9aacb43c-fastfirst/base/records.jsonl",
+          "sha256": "f6dbe775796a34c835091a55ff236dd8e071569a290749d8a9ce193ae4377d9b",
+          "bytes": 38077744
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-real/rvt01-a83e9aacb43c-fastfirst/base-repeat/records.jsonl",
+          "sha256": "1b1ea4cb896aaf3a6c8928ac3d5bb12e25d21c7fe373f7542aebe741477ab445",
+          "bytes": 38077745
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-real/rvt01-a83e9aacb43c-fastfirst/candidate/records.jsonl",
+          "sha256": "5ea19fbdca51520f6ed407898c28b67f67bb591ffa837277dc4df32f1a49db24",
+          "bytes": 38077745
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/wall-with-opening-and-window.ifc",
+      "mode": "full",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {},
+        "candidate": {
+          "geometry_time_ms": {
+            "base": 4,
+            "candidate": 3
+          },
+          "parse_time_ms": {
+            "base": 2,
+            "candidate": 1
+          },
+          "total_time_ms": {
+            "base": 6,
+            "candidate": 5
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-real/wall-with-opening-and-window-73b0e45d931d-full/base/records.jsonl",
+          "sha256": "da3ff1964b86f3c30eed5cbbb2c1022ef753068d9fcb82b03cc80898f0389512",
+          "bytes": 54798
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-real/wall-with-opening-and-window-73b0e45d931d-full/base-repeat/records.jsonl",
+          "sha256": "da3ff1964b86f3c30eed5cbbb2c1022ef753068d9fcb82b03cc80898f0389512",
+          "bytes": 54798
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-real/wall-with-opening-and-window-73b0e45d931d-full/candidate/records.jsonl",
+          "sha256": "e40a529c65ebae9054fc2da4339af85c6950f4894a3dd33666d337772e797530",
+          "bytes": 54798
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/wall-with-opening-and-window.ifc",
+      "mode": "stream",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "parse_time_ms": {
+            "base": 1,
+            "base-repeat": 2
+          },
+          "total_time_ms": {
+            "base": 5,
+            "base-repeat": 7
+          }
+        },
+        "candidate": {
+          "parse_time_ms": {
+            "base": 1,
+            "candidate": 2
+          },
+          "total_time_ms": {
+            "base": 5,
+            "candidate": 7
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-real/wall-with-opening-and-window-73b0e45d931d-stream/base/records.jsonl",
+          "sha256": "73016e6923a7c5fa31e2f875997db8b54fb09ebd8f5ce125ea423c8ae2c0f5d3",
+          "bytes": 55978
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-real/wall-with-opening-and-window-73b0e45d931d-stream/base-repeat/records.jsonl",
+          "sha256": "d5f611d22d74795fc6312a0e03cf1aa0048a5d2b8d6e3cfbda128bbbfe69bbe8",
+          "bytes": 55978
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-real/wall-with-opening-and-window-73b0e45d931d-stream/candidate/records.jsonl",
+          "sha256": "d5f611d22d74795fc6312a0e03cf1aa0048a5d2b8d6e3cfbda128bbbfe69bbe8",
+          "bytes": 55978
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/wall-with-opening-and-window.ifc",
+      "mode": "instanced",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "total_time_ms": {
+            "base": 6,
+            "base-repeat": 7
+          }
+        },
+        "candidate": {
+          "total_time_ms": {
+            "base": 6,
+            "candidate": 7
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-real/wall-with-opening-and-window-73b0e45d931d-instanced/base/records.jsonl",
+          "sha256": "0bc389cdfe300a7aa598f8433f95a28695d9675f5c03696ea3384d6e12341549",
+          "bytes": 55977
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-real/wall-with-opening-and-window-73b0e45d931d-instanced/base-repeat/records.jsonl",
+          "sha256": "bec2e3dadd2ea363484bcbde9a918840e312712b721a9a604207db09ff47904d",
+          "bytes": 55977
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-real/wall-with-opening-and-window-73b0e45d931d-instanced/candidate/records.jsonl",
+          "sha256": "bec2e3dadd2ea363484bcbde9a918840e312712b721a9a604207db09ff47904d",
+          "bytes": 55977
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/buildingsmart/wall-with-opening-and-window.ifc",
+      "mode": "fastfirst",
+      "csg_census_records": 0,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "total_time_ms": {
+            "base": 6,
+            "base-repeat": 7
+          }
+        },
+        "candidate": {
+          "entity_scan_time_ms": {
+            "base": 1,
+            "candidate": 2
+          },
+          "parse_time_ms": {
+            "base": 2,
+            "candidate": 3
+          },
+          "total_time_ms": {
+            "base": 6,
+            "candidate": 8
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-restored-scene-real/wall-with-opening-and-window-73b0e45d931d-fastfirst/base/records.jsonl",
+          "sha256": "8e4e5c5d645c95c50704d8e7a12d9fdc6e9e99b09692a65b0bdd4a2b68f77b4e",
+          "bytes": 56030
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-restored-scene-real/wall-with-opening-and-window-73b0e45d931d-fastfirst/base-repeat/records.jsonl",
+          "sha256": "2cefdb76d3a2c70c95460a02dc3929fbc3b62c95d79a296fddc5b7a3a4400dc7",
+          "bytes": 56030
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-restored-scene-real/wall-with-opening-and-window-73b0e45d931d-fastfirst/candidate/records.jsonl",
+          "sha256": "207b2656461ccbfc85e681f23ba3fcc45e6b64c8c2c093952fa51929a1c584ad",
+          "bytes": 56030
+        }
+      }
+    }
+  ],
+  "case_count": 44,
+  "csg_census_multisets_identical": true,
+  "all_unmasked_stats_identical": true,
+  "masked_stats_fields": [
+    "entity_scan_time_ms",
+    "faceted_brep_time_ms",
+    "from_cache",
+    "geometry_time_ms",
+    "lookup_time_ms",
+    "parse_time_ms",
+    "point_cache_hits",
+    "point_cache_misses",
+    "preprocess_time_ms",
+    "total_time_ms"
+  ],
+  "limitations": [
+    "Census is a sorted multiset, not execution chronology or emitter/source attribution.",
+    "Timing and point-cache/from-cache fields are intentionally reported separately; this audit establishes no performance verdict.",
+    "Original scene comparison excludes execution records from semantic equality; this supplement explicitly checks census and every nonmasked stats field.",
+    "No new ProductProgram, source-bundle, resource-policy or heavy-model qualification."
+  ]
+}

@@ -1,0 +1,574 @@
+{
+  "method": "80 actual supervision test-binary runs;4 concurrent binaries;unmodified kernel worker;per-test process ownership checks",
+  "binary_sha256": "46249b9445397495aab4a822cbc8738a78f3613e225613f8774b59431a3c6129",
+  "source_sha256": {
+    "rust/geometry-runtime/tests/supervision.rs": "9d4071ebcd385ae4ae7535bac5cb8afeccd8ee2f5e6f622be68546be640878d4",
+    "rust/geometry-runtime/tests/fixtures/partial-frame-peer.py": "502c43c5bb0befbc311e8549e9c14b75ffaa6006f62890a60b54327e66872869"
+  },
+  "runs": [
+    {
+      "run": 0,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 1,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 2,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 3,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "bbc202a38c2330c727a976d10e305cfac347feb26dea470e69e8db4dd4d5242d"
+    },
+    {
+      "run": 4,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "daf90541ce71aaa87024a522c6873f6e61d545770e05a0c243ccbd73df628d1f"
+    },
+    {
+      "run": 5,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "3a928cc563986caddced02314f0b7d02ae366aa185c22b7b1a2f85b858a8ed84"
+    },
+    {
+      "run": 6,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 7,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "daf90541ce71aaa87024a522c6873f6e61d545770e05a0c243ccbd73df628d1f"
+    },
+    {
+      "run": 8,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "56e4673f17757dae54d028273648015f43e4c5cca38d959f1877282460a131c5"
+    },
+    {
+      "run": 9,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "98a36eb2b4c141e347e4dfab4ba9cc4cdec206091866109ce53990177b18e4c7"
+    },
+    {
+      "run": 10,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "46bc8d18136e7c8264a570fcfaaa84b132613f0096108f60b4611b9c4a4071ba"
+    },
+    {
+      "run": 11,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "46bc8d18136e7c8264a570fcfaaa84b132613f0096108f60b4611b9c4a4071ba"
+    },
+    {
+      "run": 12,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "bbc202a38c2330c727a976d10e305cfac347feb26dea470e69e8db4dd4d5242d"
+    },
+    {
+      "run": 13,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "024980b15d16ba56e409762b846085941abf093a317986017a66f73373be1641"
+    },
+    {
+      "run": 14,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "46bc8d18136e7c8264a570fcfaaa84b132613f0096108f60b4611b9c4a4071ba"
+    },
+    {
+      "run": 15,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "46bc8d18136e7c8264a570fcfaaa84b132613f0096108f60b4611b9c4a4071ba"
+    },
+    {
+      "run": 16,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 17,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 18,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "daf90541ce71aaa87024a522c6873f6e61d545770e05a0c243ccbd73df628d1f"
+    },
+    {
+      "run": 19,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "bbc202a38c2330c727a976d10e305cfac347feb26dea470e69e8db4dd4d5242d"
+    },
+    {
+      "run": 20,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "940c69861d94be714bb98325310d6fb8d6e6d70f6b4cb25d8f8a647744bd8e5b"
+    },
+    {
+      "run": 21,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "81825aa216b0f375ac7a141cc5279a80d066fd4dbf5be3d7bfe89ea9bbd734bd"
+    },
+    {
+      "run": 22,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "bbc202a38c2330c727a976d10e305cfac347feb26dea470e69e8db4dd4d5242d"
+    },
+    {
+      "run": 23,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "46bc8d18136e7c8264a570fcfaaa84b132613f0096108f60b4611b9c4a4071ba"
+    },
+    {
+      "run": 24,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "15cc161c9280c1fa1ed64106a22ffd32eb69cca49fa1c159b4531479ad81bb54"
+    },
+    {
+      "run": 25,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "81825aa216b0f375ac7a141cc5279a80d066fd4dbf5be3d7bfe89ea9bbd734bd"
+    },
+    {
+      "run": 26,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 27,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 28,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 29,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "bbc202a38c2330c727a976d10e305cfac347feb26dea470e69e8db4dd4d5242d"
+    },
+    {
+      "run": 30,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "940c69861d94be714bb98325310d6fb8d6e6d70f6b4cb25d8f8a647744bd8e5b"
+    },
+    {
+      "run": 31,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "46bc8d18136e7c8264a570fcfaaa84b132613f0096108f60b4611b9c4a4071ba"
+    },
+    {
+      "run": 32,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "87c679723db23efb1417b731cbb746d08ca4a9dc688d337972d903b024dc4443"
+    },
+    {
+      "run": 33,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 34,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 35,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "bbc202a38c2330c727a976d10e305cfac347feb26dea470e69e8db4dd4d5242d"
+    },
+    {
+      "run": 36,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 37,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "bbc202a38c2330c727a976d10e305cfac347feb26dea470e69e8db4dd4d5242d"
+    },
+    {
+      "run": 38,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "bbc202a38c2330c727a976d10e305cfac347feb26dea470e69e8db4dd4d5242d"
+    },
+    {
+      "run": 39,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 40,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "940c69861d94be714bb98325310d6fb8d6e6d70f6b4cb25d8f8a647744bd8e5b"
+    },
+    {
+      "run": 41,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "f4ec03bbb12a54a46779cab387dc9712fbf1b45d46957e45b2d7daacc5686b9b"
+    },
+    {
+      "run": 42,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 43,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 44,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "daf90541ce71aaa87024a522c6873f6e61d545770e05a0c243ccbd73df628d1f"
+    },
+    {
+      "run": 45,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "81825aa216b0f375ac7a141cc5279a80d066fd4dbf5be3d7bfe89ea9bbd734bd"
+    },
+    {
+      "run": 46,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "8a07337d6e03710e29caa5ccdb57ad16415743d8126acc865da507c846e24e6c"
+    },
+    {
+      "run": 47,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "81825aa216b0f375ac7a141cc5279a80d066fd4dbf5be3d7bfe89ea9bbd734bd"
+    },
+    {
+      "run": 48,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 49,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 50,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 51,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "a41d58fac5294464a9ad4a2e182ba263a0b1481d7c5c9c37ca7f3d4e3f89dd37"
+    },
+    {
+      "run": 52,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "bbc202a38c2330c727a976d10e305cfac347feb26dea470e69e8db4dd4d5242d"
+    },
+    {
+      "run": 53,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "bbc202a38c2330c727a976d10e305cfac347feb26dea470e69e8db4dd4d5242d"
+    },
+    {
+      "run": 54,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "daf90541ce71aaa87024a522c6873f6e61d545770e05a0c243ccbd73df628d1f"
+    },
+    {
+      "run": 55,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "46bc8d18136e7c8264a570fcfaaa84b132613f0096108f60b4611b9c4a4071ba"
+    },
+    {
+      "run": 56,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "940c69861d94be714bb98325310d6fb8d6e6d70f6b4cb25d8f8a647744bd8e5b"
+    },
+    {
+      "run": 57,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 58,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "bbc202a38c2330c727a976d10e305cfac347feb26dea470e69e8db4dd4d5242d"
+    },
+    {
+      "run": 59,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "81825aa216b0f375ac7a141cc5279a80d066fd4dbf5be3d7bfe89ea9bbd734bd"
+    },
+    {
+      "run": 60,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "940c69861d94be714bb98325310d6fb8d6e6d70f6b4cb25d8f8a647744bd8e5b"
+    },
+    {
+      "run": 61,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 62,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "07d2b2990a9c14037ad32d4f5b7ac9b6bfb83dd51a0f3c2d2d98fd020a25d64c"
+    },
+    {
+      "run": 63,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "bbc202a38c2330c727a976d10e305cfac347feb26dea470e69e8db4dd4d5242d"
+    },
+    {
+      "run": 64,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "8a07337d6e03710e29caa5ccdb57ad16415743d8126acc865da507c846e24e6c"
+    },
+    {
+      "run": 65,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "bbc202a38c2330c727a976d10e305cfac347feb26dea470e69e8db4dd4d5242d"
+    },
+    {
+      "run": 66,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "bbc202a38c2330c727a976d10e305cfac347feb26dea470e69e8db4dd4d5242d"
+    },
+    {
+      "run": 67,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "6983f935732d04f0efe364f40ecd239b6967bad8d7ed559299e5fb1bc43c4431"
+    },
+    {
+      "run": 68,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "8a07337d6e03710e29caa5ccdb57ad16415743d8126acc865da507c846e24e6c"
+    },
+    {
+      "run": 69,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "8a07337d6e03710e29caa5ccdb57ad16415743d8126acc865da507c846e24e6c"
+    },
+    {
+      "run": 70,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "bbc202a38c2330c727a976d10e305cfac347feb26dea470e69e8db4dd4d5242d"
+    },
+    {
+      "run": 71,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "bbc202a38c2330c727a976d10e305cfac347feb26dea470e69e8db4dd4d5242d"
+    },
+    {
+      "run": 72,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 73,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "15cc161c9280c1fa1ed64106a22ffd32eb69cca49fa1c159b4531479ad81bb54"
+    },
+    {
+      "run": 74,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 75,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "efea639391d91d5c06f78eb1a49a282f243c4cfd51594331d557cf0c51fc8c51"
+    },
+    {
+      "run": 76,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "8a07337d6e03710e29caa5ccdb57ad16415743d8126acc865da507c846e24e6c"
+    },
+    {
+      "run": 77,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "15cc161c9280c1fa1ed64106a22ffd32eb69cca49fa1c159b4531479ad81bb54"
+    },
+    {
+      "run": 78,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "940c69861d94be714bb98325310d6fb8d6e6d70f6b4cb25d8f8a647744bd8e5b"
+    },
+    {
+      "run": 79,
+      "exit_code": 0,
+      "passed": 8,
+      "failed": 0,
+      "raw_log_sha256": "daf90541ce71aaa87024a522c6873f6e61d545770e05a0c243ccbd73df628d1f"
+    }
+  ],
+  "passed_invocations": 640,
+  "failed_runs": [],
+  "raw_log": "supervision-stress.log.gz",
+  "raw_log_sha256": "16207453be1ecb2c78d4556134a0255b896323fb1ef861c8241d9277cca2f177"
+}

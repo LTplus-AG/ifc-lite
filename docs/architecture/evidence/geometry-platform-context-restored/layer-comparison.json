@@ -1,0 +1,162 @@
+{
+  "scope": "Synthetic canonical-element material-layer invariants only; no real-exporter/whole-pass/annotation-fill claim",
+  "source_manifest_sha256": "ede5cfafab73e79657c4680398156b84cc4ce62f6fd4fb50a4ef4dba2e16207b",
+  "source_count": 288,
+  "library_pin_receipt": "/tmp/ifclite-context-restored-scene-library-pins.json",
+  "library_pin_receipt_sha256": "9519eb4e6f88598fd9a1016f5892c17da9bc220153db89010db49748c475944b",
+  "candidate_libraries": {
+    "ifc_lite_core": {
+      "path": "/tmp/ifclite-context-restored-native-target/profiling/deps/libifc_lite_core-345be4fab942851b.rlib",
+      "bytes": 13529722,
+      "mtime_ns": 1792348719129310415,
+      "sha256": "882fd9855d407a51c6a6a2fe5d69f782578775f805ab801fde5fbb4315d9e1ef"
+    },
+    "ifc_lite_geometry": {
+      "path": "/tmp/ifclite-context-restored-native-target/profiling/deps/libifc_lite_geometry-a1b48094c7fc8649.rlib",
+      "bytes": 40937624,
+      "mtime_ns": 1792354059326053403,
+      "sha256": "adbe4bbb31607612365a91f698866fbba27178b5cebc649ea1d8ecfee7bbbfb3"
+    },
+    "ifc_lite_processing": {
+      "path": "/tmp/ifclite-context-restored-native-target/profiling/deps/libifc_lite_processing-915d2910f76c184d.rlib",
+      "bytes": 36864442,
+      "mtime_ns": 1792354054557067063,
+      "sha256": "86895ecc66e7e3894d24babf575f8a041de9a000f3cb2c874cf54206cf5c2cab"
+    },
+    "serde": {
+      "path": "/tmp/ifclite-context-restored-native-target/profiling/deps/libserde-e3cc15af0a9b0193.rlib",
+      "bytes": 1018246,
+      "mtime_ns": 1792326509742079505,
+      "sha256": "d5b3ac3006edeb2f7c7414235dc3c2bd70c22f9377ed0fe247cb237b13e38cb0"
+    },
+    "serde_json": {
+      "path": "/tmp/ifclite-context-restored-native-target/profiling/deps/libserde_json-8db63b8bd7d1e60b.rlib",
+      "bytes": 2344826,
+      "mtime_ns": 1792326541263977534,
+      "sha256": "7e8525ec1d719c6ed8f8a0e1b07ec4a831f53df32c33ffdf7b70d4acda68cfd1"
+    },
+    "sha2": {
+      "path": "/tmp/ifclite-context-restored-native-target/profiling/deps/libsha2-704a646f6b16e0bb.rlib",
+      "bytes": 812600,
+      "mtime_ns": 1792326540303980639,
+      "sha256": "e91112f5d4762288c2bf5ec09bc832e67df0c03f251e081b754f3aab3209d5cc"
+    }
+  },
+  "consumer_source_files": {
+    "main.rs": "43e8aa7175322cbefa352976dd9280d2d3b9464b2e19bb490892a0d6302327f0",
+    "mesh.rs": "4d2dd1b530f69fb04e4fff1cd24acfb52b353b06102e03a86f48e55355782117",
+    "fixture.rs": "c10b7855b25ecedaa47907016f85b35b8e9dff1710439e86df799aaef07efc9f",
+    "bits.rs": "e9338fbc88728c68d23b079a7a4d904a3e91476c1869ca81718684db0db0c19b"
+  },
+  "base_receipt_sha256": "5e177688cfd6259ae35a9486564f012dc857ea557b6d808fcfb2fb21aa9a643c",
+  "candidate_build_command": [
+    "rustc",
+    "--edition=2021",
+    "-C",
+    "panic=abort",
+    "/tmp/ifclite-layer-consumer/main.rs",
+    "-L",
+    "dependency=/tmp/ifclite-context-restored-native-target/profiling/deps",
+    "-o",
+    "/tmp/ifclite-layer-consumer/layer-candidate",
+    "--extern",
+    "ifc_lite_core=/tmp/ifclite-context-restored-native-target/profiling/deps/libifc_lite_core-345be4fab942851b.rlib",
+    "--extern",
+    "ifc_lite_geometry=/tmp/ifclite-context-restored-native-target/profiling/deps/libifc_lite_geometry-a1b48094c7fc8649.rlib",
+    "--extern",
+    "ifc_lite_processing=/tmp/ifclite-context-restored-native-target/profiling/deps/libifc_lite_processing-915d2910f76c184d.rlib",
+    "--extern",
+    "serde=/tmp/ifclite-context-restored-native-target/profiling/deps/libserde-e3cc15af0a9b0193.rlib",
+    "--extern",
+    "serde_json=/tmp/ifclite-context-restored-native-target/profiling/deps/libserde_json-8db63b8bd7d1e60b.rlib",
+    "--extern",
+    "sha2=/tmp/ifclite-context-restored-native-target/profiling/deps/libsha2-704a646f6b16e0bb.rlib"
+  ],
+  "candidate_executable_sha256": "fcb6eb7c647de4f2a013ef14f44d957b166dd410083bf09e93f51554462a33d2",
+  "run_command": "cd /tmp/ifclite-layer-consumer && ./layer-candidate > candidate-output.json 2> candidate-run.log",
+  "base_reproducible": true,
+  "full_structured_mesh_fields_equal": true,
+  "serialized_output_byte_equal": true,
+  "base_output_sha256": "5a0041813d755385097d7d0643fa92f76babae6b8dd247e9cae17df7124bde8d",
+  "candidate_output_sha256": "5a0041813d755385097d7d0643fa92f76babae6b8dd247e9cae17df7124bde8d",
+  "positive_witnesses": [
+    {
+      "air_gap_without_material_sentinel": false,
+      "class_three_unsliced_control": false,
+      "geometry_item_ids": [
+        null,
+        null,
+        null
+      ],
+      "material_ids": [
+        200,
+        201,
+        200
+      ],
+      "name": "three_layers",
+      "positive_actual_material_slices": 3,
+      "sliceable_index": true
+    },
+    {
+      "air_gap_without_material_sentinel": true,
+      "class_three_unsliced_control": false,
+      "geometry_item_ids": [
+        null,
+        null,
+        null
+      ],
+      "material_ids": [
+        200,
+        null,
+        200
+      ],
+      "name": "air_gap",
+      "positive_actual_material_slices": 2,
+      "sliceable_index": true
+    },
+    {
+      "air_gap_without_material_sentinel": false,
+      "class_three_unsliced_control": true,
+      "geometry_item_ids": [
+        40,
+        48
+      ],
+      "material_ids": [
+        null,
+        null
+      ],
+      "name": "unsliceable_two_items",
+      "positive_actual_material_slices": 0,
+      "sliceable_index": true
+    }
+  ],
+  "artifacts": {
+    "candidate-build-command.json": {
+      "local_path": "/tmp/ifclite-layer-consumer/candidate-build-command.json",
+      "sha256": "62076cf10913bb650ec533af7f8417f115bd2180c9040bebe70980abcf75dc08",
+      "bytes": 1006
+    },
+    "candidate-build.log": {
+      "local_path": "/tmp/ifclite-layer-consumer/candidate-build.log",
+      "sha256": "c47097f3c0205440c77c89e9b98a408e4e9c20c6258fc7589fb53de01c5383fe",
+      "bytes": 271
+    },
+    "candidate-output.json": {
+      "local_path": "/tmp/ifclite-layer-consumer/candidate-output.json",
+      "sha256": "5a0041813d755385097d7d0643fa92f76babae6b8dd247e9cae17df7124bde8d",
+      "bytes": 51171
+    },
+    "candidate-run.log": {
+      "local_path": "/tmp/ifclite-layer-consumer/candidate-run.log",
+      "sha256": "a2de30858d446ce39a09c1f56a2a214e6a2f2d0f7f0ce4b6d1130df7503c217f",
+      "bytes": 110
+    }
+  },
+  "limitations": [
+    "Synthetic canonical-element material-layer invariants only; no real exporter/whole-pass claim.",
+    "Annotation fills not exercised.",
+    "Source and explicit sidecar helpers are exactly unchanged from baseline."
+  ],
+  "final_candidate_library_hashes_match": true,
+  "final_all_frozen_source_hashes_match": true
+}

@@ -1,0 +1,79 @@
+{
+  "recorded_utc": "2026-10-18T12:41:42.561950+00:00",
+  "platform": "Linux-6.17.9-76061709-generic-x86_64-with-glibc2.39",
+  "base_commit": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+  "candidate_source": "source-manifest.json",
+  "workspace_tests": {
+    "command": "IFCLITE_SMLIB_WORKER=/tmp/ifclite-smlib-adapter-native/ifclite_smlib_worker cargo test --workspace",
+    "exit_code": 0,
+    "suite_reports": 370,
+    "reported_test_invocations": {
+      "passed": 5504,
+      "failed": 0,
+      "ignored": 47
+    },
+    "log_sha256": "368053491f4e18b0e49c591096bd12705a1468ea81574d861aaeebeb627e63b7"
+  },
+  "clippy": {
+    "command": "cargo clippy --workspace --all-targets -- -D warnings",
+    "exit_code": 0
+  },
+  "wasm_target_build": {
+    "command": "cargo build --locked -p ifc-lite-geometry-runtime --target wasm32-unknown-unknown --target-dir /tmp/ifclite-platform-wasm-target",
+    "exit_code": 0,
+    "scope": "compile Rust geometry/runtime; no production browser transport claim"
+  },
+  "retained_tests": {
+    "command": "IFC_LITE_REQUIRE_FIXTURES=1 cargo test --locked -p ifc-lite-processing --test retained_geometry",
+    "passed": 7,
+    "failed": 0
+  },
+  "runtime_tests": {
+    "command": "IFCLITE_SMLIB_WORKER=/tmp/ifclite-smlib-adapter-native/ifclite_smlib_worker cargo test --locked -p ifc-lite-geometry-runtime --test smlib_worker",
+    "passed": 7,
+    "failed": 0,
+    "external_worker_executed": true
+  },
+  "native_ctest": {
+    "passed": 2,
+    "failed": 0
+  },
+  "emscripten_node_ctest": {
+    "passed": 1,
+    "failed": 0
+  },
+  "fixtures": {
+    "ara3d/AC20-FZK-Haus.ifc": {
+      "bytes": 2526511,
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5"
+    },
+    "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": {
+      "bytes": 12030684,
+      "sha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131"
+    }
+  },
+  "artifacts": {
+    "native_worker": {
+      "bytes": 13863384,
+      "sha256": "b8c3be5ba36fb53eb0e24c1c332c14bd6cd8ac5b21634489c597bf27fe70cf11"
+    },
+    "wasm_boundary_tests": {
+      "bytes": 5011903,
+      "sha256": "f60ced5de8868c905b55da55c01432dfce799b774d45ede2da263204cea3d84d"
+    },
+    "base_perf_probe": {
+      "bytes": 24834792,
+      "sha256": "42d65d4aa0b71e9c48af8f2719e0e9005fb1186a62b18af999de1eedab634ddd"
+    },
+    "branch_perf_probe": {
+      "bytes": 24835296,
+      "sha256": "99039ae13e2f7ce35e6feb717a15d320800803145097aacb258110c3eaf17a6c"
+    }
+  },
+  "limits": [
+    "Full platform migration and production activation are unfinished.",
+    "Existing default-path native output fingerprints match; timings on a shared host are not a qualified latency verdict.",
+    "Only recorded native/WASM targets are qualified here; browser production transport, arm64, other native packaging and BRep interchange are not established.",
+    "Retained output admission preserves discrete processing output, not authored IFC construction history."
+  ]
+}

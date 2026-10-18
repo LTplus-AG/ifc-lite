@@ -1,0 +1,19 @@
+{
+  "library": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2aec1157/target-source-owner/debug/deps/libifc_lite_core-6a3b4c6a6348d928.rlib",
+  "library_sha256": "9211f9d15ebbe34d7bcc3fbdd5ca130329665e00caf04f93869d3895c5fc019d",
+  "source_sha256": "a159b9e2b17fa05353362d6c461e4938eb97fef4ad0fc9200bc366c1d298f103",
+  "command": [
+    "rustc",
+    "--edition=2021",
+    "/tmp/ifclite-source-adoption-review.rs",
+    "-L",
+    "dependency=/home/louistrue/.t3/worktrees/ifc-lite/t3-2aec1157/target-source-owner/debug/deps",
+    "--extern",
+    "ifc_lite_core=/home/louistrue/.t3/worktrees/ifc-lite/t3-2aec1157/target-source-owner/debug/deps/libifc_lite_core-6a3b4c6a6348d928.rlib",
+    "-o",
+    "/tmp/ifclite-source-adoption-review"
+  ],
+  "exit": 0,
+  "stdout": "adopted_foreign_cache: owns=true type=IFCBEAM\nfactory_foreign_cache: owns=true type=IFCBEAM\nduplicate_adoption: adopted=IFCWALL fresh=IFCBEAM\n",
+  "stderr": ""
+}

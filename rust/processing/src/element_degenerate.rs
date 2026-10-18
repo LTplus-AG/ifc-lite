@@ -30,6 +30,43 @@ thread_local! {
     static DROPPED: Cell<u64> = const { Cell::new(0) };
 }
 
+/// Owned tally between execution slices. The state can move between workers;
+/// only its short-lived installed scope is bound to the executing thread.
+#[derive(Debug, Default)]
+pub(crate) struct ElementState {
+    dropped: u64,
+}
+
+impl ElementState {
+    pub(crate) fn new() -> Self { Self::default() }
+
+    pub(crate) fn dropped(&self) -> u64 { self.dropped }
+
+    /// Install this element for one synchronous slice, retaining its tally on
+    /// normal return, an error value, or unwinding. No TLS guard crosses a yield.
+    pub(crate) fn with_scope<T>(&mut self, operation: impl FnOnce() -> T) -> T {
+        let saved = DROPPED.with(|counter| counter.replace(self.dropped));
+        let _scope = StateScope {
+            saved,
+            state: self,
+            _thread_bound: std::marker::PhantomData,
+        };
+        operation()
+    }
+}
+
+struct StateScope<'a> {
+    saved: u64,
+    state: &'a mut ElementState,
+    _thread_bound: std::marker::PhantomData<*const ()>,
+}
+
+impl Drop for StateScope<'_> {
+    fn drop(&mut self) {
+        self.state.dropped = DROPPED.with(|counter| counter.replace(self.saved));
+    }
+}
+
 /// Whether the backstop is disabled.
 ///
 /// On by default. Set `IFC_LITE_DISABLE_DEGENERATE_BACKSTOP=1` to keep the raw
@@ -43,12 +80,14 @@ fn disabled() -> bool {
 /// One element's open tally scope; dropping it restores the enclosing
 /// element's tally.
 #[must_use = "dropping the scope immediately restores the enclosing element's tally"]
+#[cfg(test)]
 pub(crate) struct ElementTally {
     saved: u64,
     /// Not `Send`: it restores this thread's tally, so it must drop here.
     _thread_bound: std::marker::PhantomData<*const ()>,
 }
 
+#[cfg(test)]
 impl Drop for ElementTally {
     fn drop(&mut self) {
         DROPPED.with(|c| c.set(self.saved));
@@ -56,6 +95,7 @@ impl Drop for ElementTally {
 }
 
 /// Open one element's tally scope.
+#[cfg(test)]
 pub(crate) fn begin_element() -> ElementTally {
     ElementTally {
         saved: DROPPED.with(|c| c.replace(0)),
@@ -85,6 +125,11 @@ pub(crate) fn clean(mesh: &mut Mesh) {
 }
 
 /// Triangles dropped since [`begin_element`], across every mesh of this element.
+#[cfg(test)]
 pub(crate) fn dropped_this_element() -> u64 {
     DROPPED.with(|c| c.get())
 }
+
+#[cfg(test)]
+#[path = "degenerate_state_tests.rs"]
+mod state_tests;

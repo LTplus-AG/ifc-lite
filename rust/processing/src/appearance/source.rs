@@ -16,6 +16,9 @@ pub(super) struct SplitBody {
     pub retained: u32,
 }
 pub(super) struct Source<'a> {
+    pub production_model: crate::element::ProductionModel,
+    pub production_identity: usize,
+    pub empty_styles: super::owned_context::Styles,
     pub context: Option<super::context::Context>,
     pub decoder: EntityDecoder<'a>,
     pub types: BTreeMap<u32, IfcType>,
@@ -48,6 +51,9 @@ impl<'a> Source<'a> {
             return Err("Appearance source exceeds 128 MiB budget".into());
         }
         let mut source = Self {
+            production_model: crate::element::ProductionModel::new(),
+            production_identity: super::owned_context::source_identity(),
+            empty_styles: super::owned_context::Styles::default(),
             context: None,
             decoder: EntityDecoder::new(bytes),
             types: BTreeMap::new(),

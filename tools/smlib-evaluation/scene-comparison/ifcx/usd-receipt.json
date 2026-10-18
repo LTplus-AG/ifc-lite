@@ -1,0 +1,165 @@
+{
+  "consumer": "OpenUSD",
+  "version": [
+    0,
+    26,
+    8
+  ],
+  "cases": [
+    {
+      "name": "blob-texture",
+      "semanticSha256": "27cf14f8d31b66c1da8ab457d2c5d6ec35793d9a19f9809b87d3d66045a23542",
+      "witnesses": {
+        "prims": 8,
+        "meshes": 1,
+        "triangles": 64,
+        "points": 100,
+        "uvMeshes": 0,
+        "materials": 1,
+        "materialBindings": 1,
+        "textureShaders": 0,
+        "ifcAttributes": 4,
+        "instances": 0,
+        "referencedPrims": 0,
+        "abstractPrims": 0,
+        "nonidentityWorldTransforms": 0,
+        "prototypes": 0
+      },
+      "equal": true,
+      "OpenUsdLayerRoundtripEqual": true
+    },
+    {
+      "name": "georeferenced",
+      "semanticSha256": "e0fc5e4a855feaf8d4b383957543b0902dcda7b8088ef29c038a116516055359",
+      "witnesses": {
+        "prims": 95,
+        "meshes": 40,
+        "triangles": 1724,
+        "points": 2634,
+        "uvMeshes": 0,
+        "materials": 3,
+        "materialBindings": 40,
+        "textureShaders": 0,
+        "ifcAttributes": 135,
+        "instances": 0,
+        "referencedPrims": 0,
+        "abstractPrims": 0,
+        "nonidentityWorldTransforms": 88,
+        "prototypes": 0
+      },
+      "equal": true,
+      "OpenUsdLayerRoundtripEqual": true
+    },
+    {
+      "name": "hello-wall",
+      "semanticSha256": "33ea41151f500111652e56f5ec76eda308621c156ee3196648e402ff5a43581e",
+      "witnesses": {
+        "prims": 33,
+        "meshes": 9,
+        "triangles": 204,
+        "points": 320,
+        "uvMeshes": 0,
+        "materials": 5,
+        "materialBindings": 8,
+        "textureShaders": 0,
+        "ifcAttributes": 29,
+        "instances": 0,
+        "referencedPrims": 1,
+        "abstractPrims": 1,
+        "nonidentityWorldTransforms": 8,
+        "prototypes": 0
+      },
+      "equal": true,
+      "OpenUsdLayerRoundtripEqual": true
+    },
+    {
+      "name": "image-texture",
+      "semanticSha256": "11f2b88ff334e072a80cf35f15155ac04e950a00af54e390815325e6750e3308",
+      "witnesses": {
+        "prims": 8,
+        "meshes": 1,
+        "triangles": 64,
+        "points": 100,
+        "uvMeshes": 0,
+        "materials": 1,
+        "materialBindings": 1,
+        "textureShaders": 0,
+        "ifcAttributes": 4,
+        "instances": 0,
+        "referencedPrims": 0,
+        "abstractPrims": 0,
+        "nonidentityWorldTransforms": 0,
+        "prototypes": 0
+      },
+      "equal": true,
+      "OpenUsdLayerRoundtripEqual": true
+    },
+    {
+      "name": "individual-colors",
+      "semanticSha256": "00fe05ebe46e4144949455fe32f0a0dced1e015a5879bffee1f159cc07e95a73",
+      "witnesses": {
+        "prims": 14,
+        "meshes": 3,
+        "triangles": 12,
+        "points": 24,
+        "uvMeshes": 0,
+        "materials": 3,
+        "materialBindings": 3,
+        "textureShaders": 0,
+        "ifcAttributes": 7,
+        "instances": 0,
+        "referencedPrims": 0,
+        "abstractPrims": 0,
+        "nonidentityWorldTransforms": 3,
+        "prototypes": 0
+      },
+      "equal": true,
+      "OpenUsdLayerRoundtripEqual": true
+    },
+    {
+      "name": "mapped",
+      "semanticSha256": "79e5a6a8f3b7c5219d097cf6849c75482f602e1c0fda70238bce6a593a461d6d",
+      "witnesses": {
+        "prims": 138,
+        "meshes": 65,
+        "triangles": 780,
+        "points": 1560,
+        "uvMeshes": 0,
+        "materials": 1,
+        "materialBindings": 64,
+        "textureShaders": 0,
+        "ifcAttributes": 202,
+        "instances": 0,
+        "referencedPrims": 63,
+        "abstractPrims": 1,
+        "nonidentityWorldTransforms": 64,
+        "prototypes": 0
+      },
+      "equal": true,
+      "OpenUsdLayerRoundtripEqual": true
+    },
+    {
+      "name": "pixel-texture",
+      "semanticSha256": "1c4c8e713c01902405819fe5380518c4723488c3354f66e86e5cad4430862ce5",
+      "witnesses": {
+        "prims": 8,
+        "meshes": 1,
+        "triangles": 64,
+        "points": 100,
+        "uvMeshes": 0,
+        "materials": 1,
+        "materialBindings": 1,
+        "textureShaders": 0,
+        "ifcAttributes": 4,
+        "instances": 0,
+        "referencedPrims": 0,
+        "abstractPrims": 0,
+        "nonidentityWorldTransforms": 0,
+        "prototypes": 0
+      },
+      "equal": true,
+      "OpenUsdLayerRoundtripEqual": true
+    }
+  ],
+  "scope": "actual public WASM STEP-to-USD export plus OpenUSD typed semantic consumption; not IFCX-to-USD export"
+}

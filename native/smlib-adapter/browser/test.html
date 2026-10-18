@@ -1,0 +1,95 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Owned SMLib browser transport</title>
+<pre id="result">Running two isolated workers…</pre>
+<script type="module">
+import { SmlibWorkerTransport } from './client.mjs';
+import { assert, request, response, runContract } from './contract.mjs';
+const clients = [new SmlibWorkerTransport(), new SmlibWorkerTransport({ maxPending: 1 })];
+try {
+  const results = await Promise.all(clients.map((client) => {
+    const incarnation = client.incarnation;
+    return runContract((frames) => client.batch(frames, incarnation));
+  }));
+  assert(JSON.stringify(results[0]) === JSON.stringify(results[1]), 'independent worker state');
+  let foreign = false;
+  try { await clients[1].batch([request(0)], clients[0].incarnation); } catch { foreign = true; }
+  assert(foreign, 'cross-worker incarnation rejected');
+  const old = clients[0].incarnation;
+  for (const size of [0, 11, 4097]) {
+    const invalid = new ArrayBuffer(size);
+    let rejected = false;
+    try { await clients[0].batch([invalid], old); } catch { rejected = true; }
+    assert(rejected && invalid.byteLength === size, 'bad frame rejected before transfer');
+  }
+  const omitted = request(0);
+  let missingToken = false;
+  try { await clients[0].batch([omitted]); } catch { missingToken = true; }
+  assert(missingToken && omitted.byteLength === 12, 'explicit incarnation required');
+  const capacityToken = clients[1].incarnation;
+  const admitted = clients[1].batch([request(0)], capacityToken);
+  const excess = request(0);
+  let overloaded = false;
+  try { await clients[1].batch([excess], capacityToken); } catch { overloaded = true; }
+  assert(overloaded && excess.byteLength === 12, 'overload rejected without detachment');
+  response((await admitted)[0]);
+  response((await clients[1].batch([request(0)], capacityToken))[0]);
+  const frame = request(0);
+  const pending = clients[0].batch([frame], old);
+  assert(frame.byteLength === 0, 'request ownership transferred');
+  response((await pending)[0]);
+  let poisoned = false;
+  try { await clients[0].batch([request(99)], old); } catch { poisoned = true; }
+  assert(poisoned, 'malformed command poisons worker');
+  clients[0].restart();
+  let stale = false;
+  try { await clients[0].batch([request(0)], old); } catch { stale = true; }
+  assert(stale, 'restart invalidates old incarnation');
+  const restartedToken = clients[0].incarnation;
+  const restarted = await runContract((frames) => clients[0].batch(frames, restartedToken));
+  const busy = clients[1].batch([request(0)], capacityToken);
+  clients[1].dispose();
+  let disposed = false;
+  try { await busy; } catch { disposed = true; }
+  assert(disposed, 'dispose rejects in-flight request');
+  const faults = [];
+  for (const [fixture, pattern] of [
+    ['hung-worker', /deadline exceeded/],
+    ['missing-asset-worker', /WASM initialization failed/],
+  ]) {
+    const client = new SmlibWorkerTransport({
+      workerUrl: new URL(`./tests/${fixture}.mjs`, import.meta.url), timeout: 500,
+    });
+    clients.push(client);
+    const started = performance.now();
+    let failure;
+    try { await client.batch([request(0)], client.incarnation); } catch (error) { failure = String(error); }
+    const elapsed = performance.now() - started;
+    assert(failure && pattern.test(failure), `${fixture} actual failure: ${failure}`);
+    assert(elapsed < 1000, `${fixture} bounded fault response`);
+    let poisoned = false;
+    try { await client.batch([request(0)], client.incarnation); } catch { poisoned = true; }
+    assert(poisoned, `${fixture} poisoned until restart`);
+    client.workerUrl = new URL('./worker.mjs', import.meta.url);
+    client.timeout = 30000;
+    const recoveredToken = client.restart();
+    const recovered = await runContract((frames) => client.batch(frames, recoveredToken));
+    client.dispose();
+    faults.push({ fixture, elapsed, failure, recovered });
+  }
+  // Waiting past both fault deadlines also catches uncleared timers killing a
+  // recovered incarnation. The recovered clients are explicitly disposed above;
+  // keep one ordinary live client to verify completed requests cleared timers.
+  const timerClient = new SmlibWorkerTransport({ timeout: 500 });
+  clients.push(timerClient);
+  response((await timerClient.batch([request(0)], timerClient.incarnation))[0]);
+  await new Promise((resolve) => setTimeout(resolve, 550));
+  response((await timerClient.batch([request(0)], timerClient.incarnation))[0]);
+  window.probeResult = { passed: true, workers: 2, results, restarted, faults, crossOriginIsolated };
+} catch (error) {
+  window.probeResult = { passed: false, error: String(error), stack: error.stack };
+} finally {
+  clients.forEach((client) => client.dispose());
+  document.querySelector('#result').textContent = JSON.stringify(window.probeResult, null, 2);
+}
+</script>

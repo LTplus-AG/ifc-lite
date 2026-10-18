@@ -1,0 +1,21 @@
+use ifc_lite_core::{EntityDecoder, SourceBundle, EntityScanner};
+fn main() {
+    let source=SourceBundle::new(b"DATA;#1=IFCWALL();".to_vec());
+    let foreign=b"DATA;#1=IFCBEAM();";
+    let mut old=EntityDecoder::new(foreign);
+    assert_eq!(old.decode_by_id(1).unwrap().ifc_type.as_str(), "IFCBEAM");
+    let cache=old.drain_cache();
+    let mut candidate=EntityDecoder::new(source.bytes());
+    candidate.inject_shared_cache(&cache);
+    assert!(source.bind_decoder(&mut candidate));
+    println!("adopted_foreign_cache: owns={} type={}",source.owns_decoder(&candidate),candidate.decode_by_id(1).unwrap().ifc_type.as_str());
+    let mut factory=source.decoder();
+    factory.inject_shared_cache(&cache);
+    println!("factory_foreign_cache: owns={} type={}",source.owns_decoder(&factory),factory.decode_by_id(1).unwrap().ifc_type.as_str());
+    let duplicate=SourceBundle::new(b"DATA;#1=IFCWALL();#1=IFCBEAM();".to_vec());
+    let (_,_,start,end)=EntityScanner::new(duplicate.bytes()).next_entity().unwrap();
+    let mut early=EntityDecoder::new(duplicate.bytes()); early.decode_at(start,end).unwrap();
+    assert!(duplicate.bind_decoder(&mut early));
+    let mut fresh=duplicate.decoder();
+    println!("duplicate_adoption: adopted={} fresh={}",early.decode_by_id(1).unwrap().ifc_type.as_str(),fresh.decode_by_id(1).unwrap().ifc_type.as_str());
+}

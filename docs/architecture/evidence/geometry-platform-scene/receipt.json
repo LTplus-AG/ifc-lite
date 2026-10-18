@@ -1,0 +1,53 @@
+{
+  "scope": "historical ownership-layer 226-source candidate; not subsequent mapping edits",
+  "frozen_source_count": 226,
+  "frozen_source_manifest_sha256": "8b8b27dfd8c236d3a61d7bbcf2abc9f0edef55231da16382cd3b6f488e0608c8",
+  "tests": {
+    "rust": 5,
+    "python": 3,
+    "clippy_driver_warnings": "denied; exit0"
+  },
+  "harness_sha256": {
+    "tools/smlib-evaluation/scene-comparison/finalize.py": "c0a81253ef0bd22bafca891e1625e6ef9f67463d15fccaa84929ce154dac84be",
+    "tools/smlib-evaluation/scene-comparison/run.py": "1d76aae1139e114167b21df45fc825383e2ffacd42290447ec9adedadffdee43",
+    "tools/smlib-evaluation/scene-comparison/test_comparison.py": "2061411e3e6b9318d353e2e3a3dbb329e78240634f80a3ad300945b13d1e0d73",
+    "tools/smlib-evaluation/scene-comparison/src/bits.rs": "e9338fbc88728c68d23b079a7a4d904a3e91476c1869ca81718684db0db0c19b",
+    "tools/smlib-evaluation/scene-comparison/src/collector_tests.rs": "b240ebe98cb070460455f9944e39187c27afffe164a67cb9205be48bbba3d185",
+    "tools/smlib-evaluation/scene-comparison/src/main.rs": "1fd55bbf587874111a8daa6e8915206ee0a1f43ed37c799e378de3b0ba5f9f7e",
+    "tools/smlib-evaluation/scene-comparison/src/mesh.rs": "4d2dd1b530f69fb04e4fff1cd24acfb52b353b06102e03a86f48e55355782117",
+    "tools/smlib-evaluation/scene-comparison/src/records.rs": "ee554379b006fb4a61f1d84d174b704b77a5963c417fbaad3bbf67e26361e3ad",
+    "tools/smlib-evaluation/scene-comparison/src/sink.rs": "7d3ad0e8e201d01efe6812305d9bdc9266b0f0c46e823ec0405064ca9b605761"
+  },
+  "evidence_sha256": {
+    "README.md": "723417debef66f196b5f72d1aafff54b5a065ed24a832fe01e2179864758f912",
+    "clippy.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "commands.json": "4d82de6caeddb604f8c70e78f01011c772a4550ed3b9df07fab448e9cd00227b",
+    "consumer-build.json": "5659185c30e613a0c5831232b227ada7bd8f6e2bc98b77ea033a0605188d1380",
+    "coverage.json": "6f55780fc1652277cb346979393bf6d23b4ad4d9a089cffbec130852e144417e",
+    "finalize.log": "7495205e29e310eb3f61e1e5a6ed101c8cc1fb021759249af44218f5c302cabe",
+    "library-pins.json": "eec8e55ff9e9fff18778bf05ab9d27fd9d487558e7b3ecb7a9b8e389565fe642",
+    "native-summary.json": "5a16abc8e71d8e883dc2ef696300ea20507b089643ae6fd63d99b31981f47e21",
+    "ownership-source226-manifest.json": "8b8b27dfd8c236d3a61d7bbcf2abc9f0edef55231da16382cd3b6f488e0608c8",
+    "pose-and-diagnostic-witnesses.json": "a03b220a3fdc3411a898d238012900ff6785faa5fd46282c04045baa19ca9c64",
+    "python-tests.log": "921b60a7fd52e978fbb551cacd29df2d6708879400278e1fcc70fceeb0c6f8e0",
+    "rust-test-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "rust-test-receipt.json": "e6720606ac77534313664a9325921d2842381eb47693a3be6b3db4a497541c83",
+    "rust-tests.log": "7664023c5e31afde365cab60e9a23e38cd2d006e4a8d482a71d57b9443401998"
+  },
+  "local_raw_accessibility": "Raw JSONL and original rlibs/executables remain at recorded local /tmp/worktree paths and are absent in a clean checkout. Historical226 production source is reconstructible via the linked verified source overlay over pinned base plus its listed deletion; the overlay does not include runtime records/artifacts.",
+  "documentation_sha256": {
+    "tools/smlib-evaluation/scene-comparison/README.md": "b468a9bd8ee685608be9243948804f2d6b1fbb8efbd2211aa7a30a48259955dc",
+    "docs/architecture/geometry-platform-scene-qualification.md": "46268835d055482312c12a3de940eb9d28e84d41267fc643a0bb27671864de95"
+  },
+  "historical_source_overlay": {
+    "metadata": "docs/architecture/evidence/geometry-platform-work/source-overlay.json",
+    "metadata_sha256": "b22bcbf906e42e6720148501389c2ea66b398f2f21a86a82b26e7754148b92b5",
+    "archive": "docs/architecture/evidence/geometry-platform-work/source-overlay.tar.gz",
+    "archive_sha256": "8ac6de2769b386eacb8ed538a841329ed82173cd0bbde385471ca9cbbae3173d",
+    "base_commit": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+    "deleted_source_paths": [
+      "rust/processing/src/element/execution.rs"
+    ],
+    "files": 226
+  }
+}

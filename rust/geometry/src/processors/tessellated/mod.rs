@@ -15,6 +15,8 @@ mod mesh_build;
 mod polygonal;
 mod triangulate;
 mod triangulated;
+pub(crate) mod triangulated_plan;
+pub(crate) mod polygonal_plan;
 
 #[cfg(test)]
 #[path = "indices_tests.rs"]
@@ -40,8 +42,8 @@ use ifc_lite_core::{
 /// here turned such sheets face-down. A genuinely closed shell written with
 /// `$` is still oriented outward, by the topology-aware per-element pass
 /// (`orient_mesh_outward_verdict`), which leaves open components alone.
-/// IfcOpenShell reorients none of the three. Before #7689 the triangulated
-/// processor oriented `$` and the polygonal one did not.
+/// Before #7689 the triangulated processor oriented `$` and the polygonal
+/// one did not.
 fn orients_outward(closed: Option<&AttributeValue>) -> bool {
     closed.and_then(AttributeValue::as_bool) == Some(true)
 }

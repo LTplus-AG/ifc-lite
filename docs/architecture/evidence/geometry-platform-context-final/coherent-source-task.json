@@ -1,0 +1,7 @@
+{
+  "task_id": "node:delegated-task:command%3Amcp%3A40782b11-2ce6-4f4a-b37b-2a6dbccb22b9%3Adelegate-task%3Aifclite-coherent-source-implementation-round1",
+  "isolation": "managed worktree",
+  "input_manifest_sha256": "29cb0bc3971c14c78f0557309bf6e51b6a24c415f196490dea2f5a80b34a902d",
+  "status_at_creation": "running",
+  "scope": "Implement actual immutable source/index bundle and canonical consumer binding, preserving compatibility and avoiding per-product/batch rescans. Incremental patch requires review and independent qualification; no source-authentication claim from lifecycle identity alone."
+}

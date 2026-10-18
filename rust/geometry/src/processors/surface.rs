@@ -4,13 +4,15 @@
 
 //! SurfaceOfLinearExtrusion processor - surface sweep geometry.
 
-use crate::math::tol;
-use crate::{Error, Mesh, Point2, Point3, Result, TessellationQuality, Vector3};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
+use crate::{Error, Mesh, Point2, Point3, Result, TessellationQuality};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 
-use super::helpers::{get_axis2_placement_transform_by_id, get_direction_by_id};
+use super::helpers::get_axis2_placement_transform_by_id;
 use crate::router::GeometryProcessor;
+
+#[path = "surface_plan.rs"]
+pub(crate) mod plan;
 
 /// SurfaceOfLinearExtrusion processor
 /// Handles IfcSurfaceOfLinearExtrusion - surface created by sweeping a curve along a direction
@@ -25,6 +27,11 @@ use curve_walk::MAX_CURVE_NODES;
 impl SurfaceOfLinearExtrusionProcessor {
     pub fn new() -> Self {
         Self
+    }
+
+    pub(crate) fn lower(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        rtc_file_units: Option<(f64, f64, f64)>) -> Result<plan::LinearExtrusionSurfacePlan> {
+        plan::lower(entity, decoder, rtc_file_units)
     }
 }
 
@@ -66,7 +73,7 @@ impl SurfaceOfLinearExtrusionProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Option<(f64, f64, f64)> {
-        let curve_id = entity.get(0)?.as_entity_ref()?;
+        let curve_id = entity.get(slot::IfcSurfaceOfLinearExtrusion::SWEPT_CURVE.index())?.as_entity_ref()?;
         let position = Self::position_transform(entity, decoder).ok()?;
         let first = *Self::get_profile_curve_points(curve_id, decoder).ok()?.first()?;
         let p = position.transform_point(&Point3::new(first.x, first.y, 0.0));
@@ -77,7 +84,7 @@ impl SurfaceOfLinearExtrusionProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Matrix4<f64>> {
-        match entity.get(1).and_then(|attr| attr.as_entity_ref()) {
+        match entity.get(slot::IfcSurfaceOfLinearExtrusion::POSITION.index()).and_then(|attr| attr.as_entity_ref()) {
             Some(pos_id) => get_axis2_placement_transform_by_id(pos_id, decoder),
             None => Ok(Matrix4::identity()),
         }
@@ -88,94 +95,7 @@ impl SurfaceOfLinearExtrusionProcessor {
         decoder: &mut EntityDecoder,
         rtc_file_units: Option<(f64, f64, f64)>,
     ) -> Result<Mesh> {
-        // IfcSurfaceOfLinearExtrusion attributes:
-        // 0: SweptCurve (IfcProfileDef - usually IfcArbitraryOpenProfileDef)
-        // 1: Position (IfcAxis2Placement3D)
-        // 2: ExtrudedDirection (IfcDirection)
-        // 3: Depth (length)
-
-        let curve_id = entity.get(0).ok_or_else(|| {
-            Error::geometry("SurfaceOfLinearExtrusion missing SweptCurve".to_string())
-        })?;
-        let curve_id = curve_id.as_entity_ref().ok_or_else(|| {
-            Error::geometry("Expected entity reference for SweptCurve".to_string())
-        })?;
-        let position_transform = Self::position_transform(entity, decoder)?;
-        let direction_attr = entity.get(2).ok_or_else(|| {
-            Error::geometry("SurfaceOfLinearExtrusion missing ExtrudedDirection".to_string())
-        })?;
-        let direction = match direction_attr.as_entity_ref() {
-            Some(dir_id) => get_direction_by_id(dir_id, decoder)
-                .ok_or_else(|| Error::geometry("Failed to get direction".to_string()))?,
-            None => Vector3::new(0.0, 0.0, 1.0), // Default to Z-up
-        };
-        // `IfcPositiveLengthMeasure`: zero or negative is refused, not meshed
-        // as a degenerate or reversed strip (#7688 review, D3).
-        let depth = entity.get(3).and_then(|v| v.as_float()).ok_or_else(|| {
-            Error::geometry("SurfaceOfLinearExtrusion missing Depth".to_string())
-        })?;
-        if !(depth > 0.0 && depth.is_finite()) {
-            return Err(Error::geometry(format!(
-                "SurfaceOfLinearExtrusion Depth {depth} is not a positive length"
-            )));
-        }
-
-        // Fewer than two points is refused, not `Ok(empty)`: an empty mesh is
-        // dropped uncounted, where main refused (and counted) the type.
-        let curve_points = Self::get_profile_curve_points(curve_id, decoder)?;
-        if curve_points.len() < 2 {
-            return Err(Error::geometry(format!(
-                "SurfaceOfLinearExtrusion SweptCurve has {} point(s)",
-                curve_points.len()
-            )));
-        }
-
-        // A zero ExtrudedDirection has no unit vector: `normalize` divided 0/0
-        // into NaN positions (#7678, PROC-S23). The direction is in the
-        // Position frame, as for `IfcExtrudedAreaSolid`; added in the world
-        // frame, a rotated Position swept along the wrong axis (#7688 review;
-        // FM_ARC_DigitalHub's advanced faces confirm the frame).
-        let unit = direction.try_normalize(tol::NORMALIZE_NONZERO).ok_or_else(|| {
-            Error::geometry("SurfaceOfLinearExtrusion ExtrudedDirection has zero length".to_string())
-        })?;
-        let extrusion = position_transform.transform_vector(&(unit * depth));
-
-        // A strip with no area (coincident points, or a direction along a
-        // straight curve) is refused rather than published empty (D3).
-        let swept = |a: &Point2<f64>, b: &Point2<f64>| {
-            let seg = position_transform.transform_vector(&Vector3::new(b.x - a.x, b.y - a.y, 0.0));
-            seg.cross(&extrusion).norm() > f64::EPSILON * seg.norm() * extrusion.norm()
-        };
-        if !curve_points.windows(2).any(|w| swept(&w[0], &w[1])) {
-            return Err(Error::geometry("SurfaceOfLinearExtrusion sweeps no area".to_string()));
-        }
-
-        // Vertices: bottom row, then top row, rebased in f64 first.
-        let mut positions = Vec::with_capacity(curve_points.len() * 2 * 3);
-        let rtc = rtc_file_units.map_or_else(Vector3::zeros, |(x, y, z)| Vector3::new(x, y, z));
-        for offset in [Vector3::zeros(), extrusion] {
-            for point in &curve_points {
-                let p3d = position_transform.transform_point(&Point3::new(point.x, point.y, 0.0));
-                let p = p3d + offset - rtc;
-                positions.extend_from_slice(&[p.x as f32, p.y as f32, p.z as f32]);
-            }
-        }
-
-        // Quad strip: (bottom-left, bottom-right, top-left) and
-        // (bottom-right, top-right, top-left) per segment.
-        let n = curve_points.len() as u32;
-        let indices: Vec<u32> = (0..n - 1)
-            .flat_map(|i| [i, i + 1, i + n, i + 1, i + n + 1, i + n])
-            .collect();
-
-        Ok(Mesh {
-            positions,
-            normals: Vec::new(),
-            indices,
-            rtc_applied: rtc_file_units.is_some(),
-            welded_in_object_frame: false,
-            plane_tags: None,
-            origin: [0.0; 3],        instance_meta: None, local_bounds: None, local_to_world: None })
+        Ok(Self::new().lower(entity, decoder, rtc_file_units)?.evaluate())
     }
 
     /// Extract curve points from a profile definition

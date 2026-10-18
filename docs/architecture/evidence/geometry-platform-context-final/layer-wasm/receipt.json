@@ -1,0 +1,172 @@
+{
+  "scope": "Synthetic actual public compiled browser WASM batch invoked under Node; not first-party viewer loader, browser UI, GPU, or real-exporter qualification",
+  "source_manifest": "../source-manifest-ratchet-corrected.json",
+  "source_manifest_sha256": "63bb222be30076a296d109eb6cc7d057ec3ab880f727313d62892df82d65ff93",
+  "frozen_source_count": 288,
+  "all_source_hashes_match": true,
+  "baseline_commit": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+  "baseline_artifacts": {
+    "entry": "/tmp/ifclite-smlib-base-8acd0715a/packages/wasm/pkg/ifc-lite.js",
+    "bindings_sha256": "04c85b1449d8fee992f25f0685170ff03fb4360726fa4e4d2a2d180314c169c0",
+    "binary": "/tmp/ifclite-smlib-base-8acd0715a/packages/wasm/pkg/ifc-lite_bg.wasm",
+    "wasm_sha256": "b5f103a8d2992e5d0ee8128579c999c28d746b773a0e8a2c7585e1cabb88b7a9"
+  },
+  "candidate_artifacts": {
+    "entry": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/packages/wasm/pkg/ifc-lite.js",
+    "bindings_sha256": "f857f30fcb7060511f823068bb259301f0fbd588db668bb8f980f5608dd550a7",
+    "binary": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/packages/wasm/pkg/ifc-lite_bg.wasm",
+    "wasm_sha256": "72b7a11417b1ba8c2ec546bf099bd144fe755f36ea2cb5ed62b4683edbd11990"
+  },
+  "node": "24.22.0",
+  "cases": 6,
+  "matched_cases": 6,
+  "execution": "Fresh IfcAPI per fixture/configuration, actual scanEntityIndexShard -> setEntityIndex -> buildPrePassOnce -> optional setMaterialLayerIndex -> processGeometryBatch. Every MeshDataJs/MeshCollection/IfcAPI handle released in finally; clearPrePassCache in outer finally.",
+  "cases_by_fixture": {
+    "three_layers": {
+      "materialId": [
+        200,
+        201,
+        200
+      ],
+      "geometryItemId": [
+        null,
+        null,
+        null
+      ]
+    },
+    "air_gap": {
+      "materialId": [
+        200,
+        null,
+        200
+      ],
+      "geometryItemId": [
+        null,
+        null,
+        null
+      ]
+    },
+    "unsliceable_two_items": {
+      "materialId": [
+        null,
+        null
+      ],
+      "geometryItemId": [
+        40,
+        48
+      ]
+    }
+  },
+  "null_in_summary_denotes_actual_getter_undefined": true,
+  "modes": [
+    "lazy_from_content (no supplied layer index)",
+    "explicit_worker_columns (public setter, columns directly describe fixture associations)"
+  ],
+  "explicit_configuration": {
+    "element_ids": [
+      100
+    ],
+    "axis": [
+      2
+    ],
+    "layer_counts": [
+      3
+    ],
+    "direction_sense": [
+      1
+    ],
+    "offset": [
+      -0.15
+    ],
+    "layer_material_ids": "[200,201,200], or [200,0,200] for air gap",
+    "layer_thicknesses": [
+      0.05,
+      0.2,
+      0.05
+    ]
+  },
+  "comparisons": {
+    "mesh_getters": [
+      "color",
+      "expressId",
+      "geometryClass",
+      "geometryItemId",
+      "hasTexture",
+      "ifcType",
+      "indices",
+      "localBounds",
+      "localToWorld",
+      "materialId",
+      "metallic",
+      "normals",
+      "origin",
+      "positions",
+      "roughness",
+      "shadingColor",
+      "textureHeight",
+      "textureId",
+      "textureRepeatS",
+      "textureRepeatT",
+      "textureRgba",
+      "textureUrl",
+      "textureWidth",
+      "triangleCount",
+      "uvs",
+      "vertexCount"
+    ],
+    "collection_getters": [
+      "buildingRotation",
+      "diagnostics",
+      "geometryAabbValues",
+      "geometryClosureFlags",
+      "geometryHashCount",
+      "geometryHashIds",
+      "geometryHashValues",
+      "geometryVolumeValues",
+      "length",
+      "rtcOffsetX",
+      "rtcOffsetY",
+      "rtcOffsetZ",
+      "totalTriangles",
+      "totalVertices"
+    ],
+    "additional": [
+      "hasRtcOffset()",
+      "complete prepass result",
+      "complete actual scanned entity index"
+    ],
+    "encoding": "Typed-array constructor and raw bytes; number IEEE64 bits, explicit undefined, ordered vectors and sorted object keys. All channels equal without exclusions.",
+    "positive_assertions": [
+      "nonempty positions and indices on every mesh",
+      "expressId100 on every mesh",
+      "exact material and geometry-item IDs",
+      "materialId never0; air gap getter actually undefined"
+    ]
+  },
+  "fixture_provenance": {
+    "source": "rust/processing/tests/mesh_id_provenance.rs",
+    "source_sha256": "bb4ded0112d7efc2be520bde773d06fccf912fac581cf3bf6f6097101ab968c4",
+    "constructors": "three_layer_wall and three_layer_wall_with_air_gap, synthesized by existing native scratch invariant driver",
+    "raw_fixture_data": "fixtures.json"
+  },
+  "raw_records": {
+    "file": "records.json.gz",
+    "uncompressed_sha256": "c107728e3a164f6f44a9634654c734a336a603d0bc9dafb0e05845313bdec255",
+    "uncompressed_bytes": 131895
+  },
+  "limitations": [
+    "No actual geometry-worker orchestration or loadFile invoked.",
+    "Synthetic fixtures; no real-exporter claim.",
+    "These untextured fixtures positively witness layer slicing and identity, while UV/texture channels only match their actual empty/absent states.",
+    "Unsliceable case intentionally returns original two geometry items despite a sliceable material index.",
+    "No performance measurement."
+  ],
+  "evidence_sha256": {
+    "README.md": "8a5bf37d2ba71c60eaf07e4bacc47cad5376f873a2b46938908ea611c753265d",
+    "base.log": "606ee3c4e7b9cce16c3bedfd9d0491b1e906d1dca446969c4e88858e4d867950",
+    "candidate.log": "606ee3c4e7b9cce16c3bedfd9d0491b1e906d1dca446969c4e88858e4d867950",
+    "consumer.mjs.txt": "cb95480e761d782824b4e600b7fcd24739882b418c4d717b4e1018a2b803859d",
+    "fixtures.json": "518b205499708073a77545d346c526c471c1ba7de9061f8bdbcfa5da91d781a6",
+    "records.json.gz": "8ed3e8a52c9b5dcc5ef1226d43814a4e85554070b4870cfe72ddfc8167313734"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "archive": "layer-candidate-artifacts.tar.gz",
+  "archive_sha256": "5c51127465cbf26ae8cba8ebba42cd2837475b34ee325a69a15e83ea46bb4b32",
+  "files": {
+    "candidate-comparison-receipt.json": {
+      "sha256": "40479882522d267a9b16a4790aa37cf9c11d0e7ae1a3ab2f8b2043617e1ae032",
+      "bytes": 6561
+    },
+    "candidate-build-command.json": {
+      "sha256": "62076cf10913bb650ec533af7f8417f115bd2180c9040bebe70980abcf75dc08",
+      "bytes": 1006
+    },
+    "candidate-build.log": {
+      "sha256": "c47097f3c0205440c77c89e9b98a408e4e9c20c6258fc7589fb53de01c5383fe",
+      "bytes": 271
+    },
+    "candidate-run.log": {
+      "sha256": "a2de30858d446ce39a09c1f56a2a214e6a2f2d0f7f0ce4b6d1130df7503c217f",
+      "bytes": 110
+    },
+    "candidate-output.json": {
+      "sha256": "5a0041813d755385097d7d0643fa92f76babae6b8dd247e9cae17df7124bde8d",
+      "bytes": 51171
+    },
+    "ifclite-context-restored-scene-library-pins.json": {
+      "sha256": "9519eb4e6f88598fd9a1016f5892c17da9bc220153db89010db49748c475944b",
+      "bytes": 4447
+    },
+    "ifclite-context-restored-profiling-build.log": {
+      "sha256": "9a784c2555a3c2e654093fbb2947947a506025f042cce3baf1abb9c1ae113618",
+      "bytes": 397
+    },
+    "ifclite-context-scene-pins.py": {
+      "sha256": "72aa820d12c2993c5ce819e22ef53dccc23becd34e5e74fc30606578688a5694",
+      "bytes": 2500
+    }
+  },
+  "source_manifest_sha256": "ede5cfafab73e79657c4680398156b84cc4ce62f6fd4fb50a4ef4dba2e16207b",
+  "scope": "Three synthetic canonical borrowed-element layer cases; complete mesh/sidecar equality. No native orchestrator, owned-context, real exporter or browser layer proof."
+}

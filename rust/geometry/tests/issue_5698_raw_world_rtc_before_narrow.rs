@@ -592,3 +592,83 @@ fn shift_ids(entity: &str, offset: u32) -> String {
     }
     out
 }
+
+/// Platform construction extraction must preserve the combined RTC, mapping,
+/// winding and texture-index contract through the actual production router.
+#[test]
+fn textured_millimetre_rtc_keeps_pn_index_uv_pairing_and_outward_flat_normals() {
+    let frame = Frame { world_offset: SITE, rotated: true, scale: 0.001 };
+    let mut source = fixture(Shape::Triangulated, frame, false);
+    let uv_for_point = [3usize, 6, 1, 8, 2, 7, 4, 5];
+    // Reverse authored winding so Closed must flip geometry and UVs together.
+    // Reverse PnIndex as well, making coordinate, point and UV IDs distinct.
+    let authored: Vec<_> = FACES.iter()
+        .flat_map(|face| [(face[0], face[2], face[1]), (face[0], face[3], face[2])])
+        .collect();
+    let indices = authored.iter().map(|&(a, b, c)| format!("({},{},{})", 9 - a, 9 - b, 9 - c))
+        .collect::<Vec<_>>().join(",");
+    let uv_indices = authored.iter().map(|&(a, b, c)|
+        format!("({},{},{})", uv_for_point[a - 1], uv_for_point[b - 1], uv_for_point[c - 1]))
+        .collect::<Vec<_>>().join(",");
+    let start = source.find("#900=").unwrap();
+    let end = start + source[start..].find(';').unwrap() + 1;
+    source.replace_range(start..end, &format!(
+        "#900=IFCTRIANGULATEDFACESET(#700,$,.T.,({indices}),(8,7,6,5,4,3,2,1));"));
+    let uv_coordinates = (1..=8).map(|index| format!("({:.2},{:.2})", index as f64 / 10., index as f64 / 20.))
+        .collect::<Vec<_>>().join(",");
+    source.push_str(&format!(
+        "#950=IFCIMAGETEXTURE(.T.,.F.,$,$,$,'mapped-mm.png');\
+         #951=IFCTEXTUREVERTEXLIST(({uv_coordinates}));\
+         #952=IFCINDEXEDTRIANGLETEXTUREMAP((#950),#900,#951,({uv_indices}));"));
+
+    for local_frame in [false, true] {
+        let mut decoder = EntityDecoder::new(&source);
+        decoder.seed_unit_scales(frame.scale, 1.0);
+        let textures = build_texture_index(source.as_bytes(), &mut decoder);
+        let element = decoder.decode_by_id(1002).unwrap();
+        let mut router = GeometryRouter::with_scale_and_local_frame(frame.scale, local_frame);
+        router.set_rtc_offset((SITE[0], SITE[1], SITE[2]));
+        let output = router.process_element_with_submeshes_textured(&element, &mut decoder, &textures).unwrap();
+        assert_eq!(output.sub_meshes.len(), 1);
+        let sub = &output.sub_meshes[0];
+        assert_eq!(sub.texture.as_ref().expect("image remains attached").texture_id, 950);
+        let uvs = sub.uvs.as_ref().expect("explicit texture indices survive");
+        assert_textured_corner_contract(&sub.mesh, uvs, &uv_for_point);
+    }
+}
+
+fn assert_textured_corner_contract(mesh: &Mesh, uvs: &[f32], uv_for_point: &[usize; 8]) {
+    assert_eq!(mesh.indices.len(), 36, "all twelve box triangles survive");
+    assert_eq!(uvs.len(), mesh.positions.len() / 3 * 2);
+    assert_eq!(mesh.normals.len(), mesh.positions.len());
+    assert_corners(mesh, &FEATURE, "rotated millimetre textured geometry");
+    let source_points: Vec<usize> = mesh.positions.chunks_exact(3).enumerate().map(|(index, vertex)| {
+        let point = FEATURE.iter().position(|expected|
+            (0..3).all(|axis| (world(mesh, vertex, axis) - expected[axis]).abs() < 1e-6))
+            .unwrap_or_else(|| panic!("vertex {vertex:?} with origin {:?} is not an authored corner", mesh.origin));
+        let uv_id = uv_for_point[point] as f32;
+        let expected_uv = [uv_id / 10., 1. - uv_id / 20.];
+        for axis in 0..2 {
+            assert!((uvs[index * 2 + axis] - expected_uv[axis]).abs() < 1e-6,
+                "source point {point}: expected UV {expected_uv:?}, got {:?}", &uvs[index * 2..index * 2 + 2]);
+        }
+        point + 1
+    }).collect();
+    // Independent analytic normals for FEATURE's six axis-aligned outer faces.
+    let face_normals = [[0., 0., -1.], [0., 0., 1.], [0., -1., 0.],
+        [1., 0., 0.], [0., 1., 0.], [-1., 0., 0.]];
+    let mut seen_faces = [false; 6];
+    for triangle in mesh.indices.chunks_exact(3) {
+        let face = FACES.iter().position(|face|
+            triangle.iter().all(|&index| face.contains(&source_points[index as usize])))
+            .expect("every triangle belongs to one authored box face");
+        seen_faces[face] = true;
+        for &index in triangle {
+            for axis in 0..3 {
+                assert!((mesh.normals[index as usize * 3 + axis] - face_normals[face][axis]).abs() < 1e-6,
+                    "face {face}: normal must be flat and outward");
+            }
+        }
+    }
+    assert!(seen_faces.into_iter().all(|seen| seen));
+}

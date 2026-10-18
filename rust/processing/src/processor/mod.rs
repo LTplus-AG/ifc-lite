@@ -598,6 +598,8 @@ pub fn process(
         .collect();
     let element_material_colors = Arc::new(element_material_colors);
 
+    let production_model = crate::element::ProductionModel::new();
+    let shared_site_rotation = site_transform.as_ref().filter(|_| coord_space == MeshCoordinateSpace::SiteLocal).map(|v| Arc::new(v.clone()));
     let total_jobs = entity_jobs.len();
     let initial_chunk_size = req.batching.initial.max(1);
     let throughput_chunk_size = req.batching.throughput.max(initial_chunk_size);
@@ -806,12 +808,12 @@ pub fn process(
                 req.features.presentation_layers,
             );
         }
-        let site_local_rotation: Option<&Vec<f64>> =
-            if coord_space == MeshCoordinateSpace::SiteLocal {
-                site_transform.as_ref()
-            } else {
-                None
-            };
+        let chunk_context = production_model.snapshot(crate::element::OwnedMeshProductionData {
+            void_index: Arc::clone(&void_index_arc), geometry_style_index: Arc::clone(&geometry_style_index),
+            indexed_colour_full: Arc::clone(&indexed_colour_full),
+            element_material_colors: Arc::clone(&element_material_colors), texture_index: Arc::clone(&texture_index),
+            site_local_rotation: shared_site_rotation.clone(),
+        });
         // Each job borrows its worker's persistent point cache by thread index, so a
         // shared point list is parsed once per worker for the whole model, not per
         // chunk/part. `.map`/`.flatten_iter()` keeps the former `flat_map_iter` order;
@@ -859,13 +861,8 @@ pub fn process(
                     rtc_offset,
                     seed_plane_angle_to_radians,
                     req.quality,
-                    void_index_arc.as_ref(),
+                    &chunk_context,
                     skipped_entity_ids.as_ref(),
-                    geometry_style_index.as_ref(),
-                    indexed_colour_full.as_ref(),
-                    element_material_colors.as_ref(),
-                    texture_index.as_ref(),
-                    site_local_rotation,
                     &diag_collectors,
                     &item_dedup_cache,
                     &brep_signature_cache,

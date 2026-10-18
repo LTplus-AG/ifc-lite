@@ -16,7 +16,7 @@
      531 apps/server/src/services/parquet_optimized.rs
 # +8: add set_entity_index setter so the processor can install its inline-built index (perf/single-scan).
 # +50: add the per-worker placement-transform memo (field + take/set/get/cache methods), mirroring point_cache (perf/placement-cache).
-    1064 rust/core/src/decoder.rs
+     701 rust/core/src/decoder.rs
 # -35: the ePSet MapUnit label rules moved to unit_labels.rs, next to the unit
 # tables they resolve through (#3292); 793 -> 758.
      758 rust/core/src/georef.rs
@@ -94,7 +94,7 @@
 # -48: #3440 pre-flight — the four accept paths' repeated two-gate block collapsed
 # into ClippingProcessor::accept_gates_reject in csg/topology_diagnostic.rs (208
 # lines, under the house limit, no row); budget refreshed downward.
-     563 rust/geometry/src/csg/mod.rs
+     498 rust/geometry/src/csg/mod.rs
  # -73: #1806 watertight-extrude tests split out to extrusion_watertight_tests.rs (ratchet-exempt); budget refreshed downward.
 # +9: #1806 review — extrude_profile_watertight rejects < 3-vertex hole rings before
 # triangulation (triangulate_constrained drops them from the cap while create_side_walls
@@ -174,12 +174,10 @@
 # -69: #3821 split process_operand_with_depth (with its new unsupported-operand
 # record) out to the operand.rs sibling and the failure-log methods out to
 # failures.rs; 1005 -> 936.
-     936 rust/geometry/src/processors/boolean/mod.rs
 # csg_primitive.rs row REMOVED: #3821 moved IfcSphere (processor + UV-sphere
 # tessellation, verbatim) to the sphere.rs sibling to make room for the
 # CsgSolid boolean-failure hand-off; 422 -> 348, under the 400 limit. That
 # repays the #2866 loosening this row recorded.
-     476 rust/geometry/src/processors/sectioned.rs
      758 rust/geometry/src/profile_extractor.rs
      598 rust/geometry/src/profiles/curves_2d.rs
      495 rust/geometry/src/profiles/curves_3d.rs
@@ -247,7 +245,7 @@
 # than paid for by trimming unrelated doc comments: earlier rounds of this PR
 # did that and it makes an unrelated comment the currency of an unrelated
 # change, leaving no record of either.
-     727 rust/geometry/src/router/mod.rs
+     714 rust/geometry/src/router/mod.rs
 # +65: #1623 Phase 2 don't-bake — the top-level mapped-item intercept (template retag + instance placeholder) + the public/impl process_element_with_submeshes split; the two eligibility/ensure helpers were extracted to router/instancing.rs (new, 92 lines) to hold the net down.
 # +7: #858 palette guard — exclude an indexed-colour single-solid source from the don't-bake decision (one .filter on the resolved solid id + explanatory comment) so its per-triangle palette survives the flat split.
 # +16: #1623 Phase 3 — thread the batch-local vs global template decision through the mapped-item intercept (is_template match arm + retag guard).
@@ -362,28 +360,6 @@
      782 rust/geometry/src/triangulation.rs
      745 rust/geometry/src/void_index.rs
      499 rust/processing/src/determinism.rs
-# +48: #1623 Phase 2 don't-bake — ProducedElementMeshes.instance_occurrences + threading it through produce_inner (tuple returns), and emit_sub_meshes converting empty-with-InstanceMeta placeholders into RawInstanceOccurrences.
-# +19: #1781 textured occurrence sub-meshes — emit_sub_meshes attaches UVs+texture (length-guarded) and the non-void path calls the texture-aware router entry.
-# +18: #1891 follow-on — ProducedElementMeshes.geometry_aabb (the world box from the SAME hashing pass) plus the emit-together match that keeps it index-parallel with geometry_hash at the FFI boundary.
-# +35: #1891 closedness — ProducedElementMeshes.geometry_volume + .geometry_closure (the volume and the four-clause verdict that gates it), the widened emit-together match, and threading orient_mesh_outward_verdict's per-mesh verdict from BOTH orient call sites into the hasher. The verdict has to be taken exactly where the orienter already runs and handed to the hasher segment it describes, so it cannot move out of this decision tree; the gate's own 190 lines of rationale live in rust/geometry/src/geom_closure.rs (new, sub-400) rather than here.
-# -22: #1891 review (PR #1993) — the f32-collapse degenerate backstop (env switch, the drop, the per-element tally) moved to the child module element_degenerate.rs (new, 72), which is where the ordering story now belongs: the tally stopped being a diagnostic and became the input to the closure retraction. Budget refreshed downward; the retraction call site itself costs 7 lines here.
-# +38: #2863 — bound the IfcMappedItem colour chase. The chain is built from
-# file references, so a cyclic one recursed until the stack overflowed and the
-# process ABORTED (no catchable panic, no error to the caller). The bound has
-# to sit inside find_geometry_item_color, not at a call site: the type-geometry
-# path reaches the same recursion through resolve_color_for_representation_map.
-# Depth cap AND a visited set, matching router/processing.rs which walks the
-# same chain: the cap alone bounds the chain's LENGTH but not its BREADTH, and
-# k items looping back cost O(k^depth) decodes — an abort traded for a hang.
-# 4 lines of guard and a wrapper; the rest is the why, including why the
-# visited set is global here and path-scoped in the router, and why it records
-# the DEPTH of each visit: a plain set combined with the cap silently LOSES a
-# colour, because an item first reached near the limit is cut before its
-# subtree is searched yet stays marked, so a later shorter branch is skipped.
-# +5: thread the discriminator into build_mesh_data so the source id is routed to whichever of the two disjoint MeshData fields it actually is (#3199).
-# -154: colour and material-name resolution moved to element/element_color.rs -- a pure function of (geometry id, style map) with its own bounded walk (#3199 follow-up).
-# +4: #2985 — a don't-bake RawInstanceOccurrence now records the representation item its sub-mesh came from, through the same #3199 discriminator and 0-filter a materialized sub-mesh gets, so the id is not computed and dropped for GPU-instanced geometry.
-     816 rust/processing/src/element.rs
 # +9: #2019 — canonicalise each host's opening order so the world geometry
 # hash stops depending on IFCRELVOIDSELEMENT statement order (sequential void
 # cuts are not associative). Three lines of code plus the why.
@@ -397,16 +373,14 @@
 # +19: #1910 schedule a representationless spatial container (IfcBuilding et al.) for meshing when it exceptionally carries a non-null Representation, instead of silently dropping its geometry.
 # -153: the entry points moved to entry_points.rs, the request and sink types to request.rs and sink.rs (C4-1, #7782); 1661 -> 1508.
 # -423: the entity scan moved to scan.rs and the quick-metadata collector to quick_collector.rs (C4-4a, #7782); 1508 -> 1085.
-    1085 rust/processing/src/processor/mod.rs
-# +410: NEW row — #858 palette guard added the indexed_colour_split_ids param to process_entity_job (already the extracted per-job worker body from the #1623 file split), pushing this existing large module one line over 400; splitting the single job function further would fragment the tightly-coupled worker setup.
-     410 rust/processing/src/processor/jobs.rs
+    1078 rust/processing/src/processor/mod.rs
 # +6: wire per-batch point-cache hit/miss stats into record_pipeline_batch (perf/brep-point-cache-instrumentation).
 # +13: attach the per-worker shared IfcMappedItem source cache to each batch router, mirroring the item-dedup attach (#1623).
 # +155: #1623 Phase 3 browser don't-bake — produce_batch gains arm_instancing (batch-local plan arm + occurrence collection + finalize call/return-tuple change) and the partitioned path folds the kept occurrences into the IFNS shard as empty-geometry refs; the finalize + recovery bodies were extracted to gpu_meshes/instancing.rs (new, ~165 lines) to hold the net down.
 # +4: #1891 follow-on — carry ProducedElementMeshes.geometry_aabb through ElementMeshOutput to push_geometry_hash on both the flat and partitioned paths.
 # +31: #1891 closedness — ElementMeshOutput gains geometry_volume + geometry_closure_bits, and the ONE ElementMeshOutput::fingerprint() builder both push sites now call (net shorter than the two struct literals it replaces, and the flat/partitioned paths can no longer fill different subsets of the index-parallel arrays). The fingerprint is taken into a local before each loop moves `out.meshes`, with a one-line note at both sites so the ordering is not "tidied" back into a borrow error.
 # +5: #2985 — both instanced call sites populate InstanceMeshRef::item_id (from MeshData::geometry_item_id for a template, from the ShardOccurrence for a don't-bake occurrence). The shard is the ONLY route to the host for this geometry, so the field cannot live anywhere cheaper.
-     981 rust/wasm-bindings/src/api/gpu_meshes/batch.rs
+     846 rust/wasm-bindings/src/api/gpu_meshes/batch.rs
 # +108: build the referenced-repmaps + instantiated-type-id sets and the material-layer index ONCE in the streaming pre-pass (from spans this scan already collected) and emit them as a `prepass-columns` event, so every geometry worker skips its own full-file walk on the first batch (perf/single-scan #957/#563).
 # +14: #1623 Phase 3 — tally the don't-bake MappedInstancePlan from the same IfcMappedItem spans and emit it on the prepass-columns event (mirrors the referenced-repmaps ship).
 # +9: cap the entity-index up-front reservation (PREPASS_INDEX_RESERVE_CAP) so a ~4GB file does not reserve ~1GB of slots on top of the resident file and abort the wasm32 4GB address space before the scan (huge-file graceful-4gb).
@@ -429,7 +403,7 @@
 # +1: #2573 landing on main: `mod clash_solid;` was anticipated in the note
 # above but had not actually merged yet — main's 1091 only carried #2539 and
 # #2528. This is that fourth, previously-uncounted line.
-     1092 rust/wasm-bindings/src/api/mod.rs
+    1031 rust/wasm-bindings/src/api/mod.rs
 # +61: #1781 external image textures — textureId/textureUrl fields + getters, set_texture_ref, and the get/takeMesh/Clone field threading.
 # +17: #1891 follow-on — geometry_aabb_values field + geometryAabbValues getter (the doc carries the Y-up frame contract and the world-box rationale so a future reader does not re-derive them), the four constructor/Clone initializers, and the #[cfg(test)] include for mesh_tests.rs (the test file itself is ratchet-exempt). Net +17 and not +56, because the two Z-up→Y-up conversion helpers moved out to a new sibling frame_swap.rs (107 lines, under the house limit, no row): the box swap is now shared by the f32 local bounds and the f64 world AABB, so the min/max reversal lives in exactly one place.
 # -46: #1891 closedness added geometry_volume_values + geometry_closure_flags, and the whole per-entity fingerprint surface (the five index-parallel arrays' getters — including the Y-up swap on the way out — plus GeometryFingerprint and push_geometry_hash) moved OUT to the child module zero_copy/mesh_fingerprint.rs (new, 161 lines, under the house limit, no row) — net down despite two new arrays; budget refreshed downward.

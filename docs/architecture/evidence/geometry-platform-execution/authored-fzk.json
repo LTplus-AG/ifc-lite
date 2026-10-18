@@ -1,0 +1,17 @@
+{
+  "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+  "model_sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+  "plan_json_sha256": "6ffef8518886450de7116ea876d4b4e986ff2bf9bba71dd5ee3e2850a3cc54bb",
+  "schema": "IFC4",
+  "definitions": 51,
+  "recipes": 51,
+  "products": 125,
+  "requirements": {
+    "representation_coverage_unverified": 125,
+    "no_supported_authored_sources": 90,
+    "external_opening": 17,
+    "enclosing_boolean": 4
+  },
+  "diagnostics": [],
+  "meaning": "partial authored source inventory, not final net product geometry"
+}

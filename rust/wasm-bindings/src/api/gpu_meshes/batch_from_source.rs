@@ -59,6 +59,7 @@ impl IfcAPI {
     /// single JS→wasm copy directly; we wrap it in `Arc` with no second copy.
     #[wasm_bindgen(js_name = setSourceBytes)]
     pub fn set_source_bytes(&self, data: Vec<u8>) {
+        self.production_model.invalidate_source();
         let mut slot = self
             .cached_source_bytes
             .lock()
@@ -66,6 +67,10 @@ impl IfcAPI {
         *slot = Some(std::sync::Arc::new(data));
     }
 
+}
+
+#[wasm_bindgen]
+impl IfcAPI {
     /// Like [`IfcAPI::process_geometry_batch`] but reads the source bytes held by
     /// [`IfcAPI::set_source_bytes`] instead of taking `data`. Byte-for-byte
     /// identical output — it delegates to the legacy twin with the held slice.

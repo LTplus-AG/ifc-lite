@@ -1,0 +1,13 @@
+{
+  "base_commit": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+  "archive": "source-overlay.tar.gz",
+  "archive_bytes": 444723,
+  "archive_sha256": "8ac6de2769b386eacb8ed538a841329ed82173cd0bbde385471ca9cbbae3173d",
+  "source_manifest": "source-manifest.json",
+  "files": 226,
+  "all_archived_files_match_frozen_source_hashes": true,
+  "deleted_source_paths": [
+    "rust/processing/src/element/execution.rs"
+  ],
+  "scope": "Exact historical qualified-source overlay, recovered only from matching current bytes or exact pre-mapping backups. Apply to pinned base in a separate checkout, then remove listed deleted source paths. Does not replace current mapping-stage working files, include fixtures, or bundle runtime artifacts."
+}

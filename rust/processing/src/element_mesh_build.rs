@@ -8,7 +8,7 @@
 //! `welded_in_object_frame` (#4122), instancing/placement capture, style and
 //! metadata stamping, site-local rotation).
 
-use super::{degenerate, ElementMeshJob, MeshProductionContext};
+use super::{degenerate, AssemblyJob, MeshProductionContext};
 use crate::processor::{
     convert_mesh_to_site_local, site_local_rotation_invalidates_captured_transforms,
 };
@@ -22,7 +22,7 @@ use ifc_lite_geometry::Mesh;
 /// hasher has already ruled on.
 #[allow(clippy::too_many_arguments)] // distinct per-mesh funnel inputs
 pub(super) fn build_mesh_data(
-    job: &ElementMeshJob<'_>,
+    job: &AssemblyJob<'_>,
     mut mesh: Mesh,
     color: [f32; 4],
     material_name: Option<String>,

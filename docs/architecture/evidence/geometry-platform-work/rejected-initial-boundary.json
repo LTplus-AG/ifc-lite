@@ -1,0 +1,32 @@
+{
+  "status": "rejected initial boundary candidate; not current-source qualification",
+  "source_manifest_local_path": "/tmp/ifclite-work-initial-source-manifest.json",
+  "source_manifest_sha256": "f71ae0497dab9fcaf49884d9a101cf548d50df114569ead2986b51706560efa2",
+  "workspace_exit_code": 101,
+  "completed_suite_reports": 195,
+  "passed_invocations_before_stop": 3553,
+  "failed_invocations": 1,
+  "failing_test": "issue_3987_warmed_router_construction_allocates_no_unused_registry_or_schema",
+  "observed_allocations": 1,
+  "required_allocations": 0,
+  "raw_log_local_path": "/tmp/ifclite-work-workspace-initial.log",
+  "raw_log_sha256": "1b99de84bd87df6cef437263abcf4b89ecdbc6bf4be0e44dff423c881c32f8a0",
+  "correction_required": "Keep stable execution identity inline; allocate shared reservation state lazily when an owner is actually leased, preserving the existing allocation invariant.",
+  "additional_review_requirement": "Preserve trusted decoder cache/unit mutation during synchronous processor callbacks; reject external pending-reply reconfiguration and input instance replacement.",
+  "nested_canonical_extension": {
+    "status": "baseline succeeds, initial leased candidate rejects lexical child",
+    "base_commit": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+    "expected_outer_volume": 24,
+    "expected_child_volume": 4,
+    "base_callback_count": 2,
+    "initial_candidate_callback_count": 1,
+    "initial_candidate_child_meshes": 0,
+    "initial_candidate_failure": "canonical product planning owner: OwnerBusy",
+    "evidence": {
+      "/tmp/ifclite-work-nested-probe.rs": "52eb19fda636a816073f130b7a8ab4e8ef3a642d3ee12403f285cfa4aa481034",
+      "/tmp/ifclite-work-nested-base.log": "2018431fd81651084b91da8ab3913df88e901fb9e4458ca493eb3f0e96b98373",
+      "/tmp/ifclite-work-nested-branch.log": "ea856f0a3bc7a9b6a008e88cd9c9200ffaddfcaf18bcd6b14c354e7e88f7439a"
+    },
+    "required_correction": "Permit synchronous canonical lexical children under explicit live parent capabilities; keep independent sibling reservations exclusive and expired/foreign inherited work invalid."
+  }
+}

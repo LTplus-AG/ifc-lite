@@ -1,0 +1,154 @@
+{
+  "status": "Exploratory raw stacks collected before fleet policy update; no final caller attribution. Corrected sequential-consistency sampler has not built or run. New fleet admission refused before command execution.",
+  "exploratory_job_session": 12798,
+  "exploratory_job_exit": 0,
+  "exploratory_admission": "Legacy job already running at policy transition; not relabeled fleet-admitted.",
+  "known_sampler_change": "Use SeqCst for ENABLED and ACTIVE gate/drain operations before final qualification. Existing exploratory Release/Acquire gate is not claimed as a generic race-free writer-drain protocol.",
+  "raw_stats": [
+    {
+      "order": 0,
+      "side": "base",
+      "samples": 14587,
+      "dropped": 0,
+      "truncated": 0,
+      "reentrant_excluded": 0
+    },
+    {
+      "order": 1,
+      "side": "candidate",
+      "samples": 15570,
+      "dropped": 0,
+      "truncated": 0,
+      "reentrant_excluded": 0
+    },
+    {
+      "order": 2,
+      "side": "candidate",
+      "samples": 15570,
+      "dropped": 0,
+      "truncated": 0,
+      "reentrant_excluded": 0
+    },
+    {
+      "order": 3,
+      "side": "base",
+      "samples": 14587,
+      "dropped": 0,
+      "truncated": 0,
+      "reentrant_excluded": 0
+    }
+  ],
+  "geometry_signature_matches_all8loads": [
+    109514,
+    4515161,
+    2895362,
+    "500e89efcdd091fa"
+  ],
+  "next_step": "After actual fleet admission, rebuild and rerun identical corrected sampler on both pinned library sets; run symbolizer through fleet as CPU-heavy work; verify known probe, nonPIE ELF type, resolution coverage and per-run site stability before attributing any sampled site.",
+  "admission_job": "e41dee2d-7c08-4c7c-b63e-5704cd6ded32",
+  "admission_refusal_sha256": "16952037252d1d3331f24e4521df498d7ca3e6905df536fcb9026a2a3547951f",
+  "limitations": [
+    "Raw stacks are unsymbolized: no inferred function/site/cause claim.",
+    "Modulo2048 sampling can alias allocation patterns; sampled sizes are not unbiased traffic or bytes-copied estimates.",
+    "GlobalAlloc successful Rust requests only, not native allocator internals or all heap/RSS.",
+    "Instrumentation perturbs execution; no latency/RSS verdict.",
+    "Exploratory binaries/libraries remain local temporary artifacts identified by receipt hashes."
+  ],
+  "files": {
+    "admission-refusal.json": {
+      "sha256": "16952037252d1d3331f24e4521df498d7ca3e6905df536fcb9026a2a3547951f",
+      "bytes": 2146
+    },
+    "exploratory/candidate-build.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "exploratory/2-candidate.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "exploratory/main.rs": {
+      "sha256": "d8bfaa7db5d4e5870bc75184766764ba6229c6451c6678963b8de78e9a6f4275",
+      "bytes": 6393
+    },
+    "exploratory/3-base.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "exploratory/0-base.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "exploratory/2-candidate.json": {
+      "sha256": "17157e78df65bdd96591a28ef2841255f2c62c261183c1cd6b17fabac4a69c29",
+      "bytes": 4178439
+    },
+    "exploratory/1-candidate.json": {
+      "sha256": "19f85a223d372fa8b1628fae5660fa8e9ec9147e296def5bf75de8a3cab267d9",
+      "bytes": 4189327
+    },
+    "exploratory/1-candidate.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "exploratory/build-receipt.json": {
+      "sha256": "d59e26e2d75f244ae8691edb9b67da02343306150372f5e43a780322d7573a2a",
+      "bytes": 8380
+    },
+    "exploratory/base-build.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "exploratory/run.py": {
+      "sha256": "3e6107dc1a5b40c49c6b104448f9717d65a43f30bafdb2832d46b0809df597ba",
+      "bytes": 3651
+    },
+    "exploratory/0-base.json": {
+      "sha256": "22357810adaf8b4d0d2c11edd4600e30aa28d11ed6bb9d626ee109bca585281e",
+      "bytes": 3868672
+    },
+    "exploratory/driver.log": {
+      "sha256": "b03f9bfa04d0973e6282a39c1f5935192c2b5a576ff897bf78467a6ab5c55bcb",
+      "bytes": 180
+    },
+    "exploratory/fingerprint.rs": {
+      "sha256": "150056cd6fae4bc5d413a55082d507cef67796f8a087fbf11c212c92ee1a2589",
+      "bytes": 3428
+    },
+    "exploratory/3-base.json": {
+      "sha256": "4a9f3fa070628146b4bb387554e965652563ebaa431406ffb6af2924b0721d31",
+      "bytes": 3860238
+    },
+    "exploratory/symbolize.py": {
+      "sha256": "0c017947f2c2ce46f1101d2fd5d354efd398d2598a44c12a6a47792d6c7c081a",
+      "bytes": 6928
+    },
+    "exploratory/receipt.json": {
+      "sha256": "e39d5cbef7b6aeb92d797f1a87bd619b59e6f7d2a9b47703d89c3669e453ec02",
+      "bytes": 16219
+    },
+    "corrected-source/main.rs": {
+      "sha256": "db56546cab96ab96155a7fcf69d894b4500356cfdb85d264a2534c35a2ebcd03",
+      "bytes": 6384
+    },
+    "corrected-source/run.py": {
+      "sha256": "3e6107dc1a5b40c49c6b104448f9717d65a43f30bafdb2832d46b0809df597ba",
+      "bytes": 3651
+    },
+    "corrected-source/fleet.log": {
+      "sha256": "db5a5ff3de3a694bbde8956959350bb209c267c7cd7857197ebe71119bdefbf5",
+      "bytes": 353
+    },
+    "corrected-source/fingerprint.rs": {
+      "sha256": "150056cd6fae4bc5d413a55082d507cef67796f8a087fbf11c212c92ee1a2589",
+      "bytes": 3428
+    },
+    "corrected-source/symbolize.py": {
+      "sha256": "0c017947f2c2ce46f1101d2fd5d354efd398d2598a44c12a6a47792d6c7c081a",
+      "bytes": 6928
+    }
+  },
+  "sample_count_matches_ceiling_successful_events_over2048": true,
+  "correctness_review": "correctness-review.md",
+  "correctness_review_sha256": "d3d224c9853d2cb4fae1122543582e09dded999f11e983e25e0bd268c2cf6ee7"
+}

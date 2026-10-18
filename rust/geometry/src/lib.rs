@@ -104,6 +104,7 @@ mod terrain_cdt;
 mod clash_contact_axes;
 pub mod clash_solid;
 pub mod csg;
+pub mod document;
 /// Measurement-only CSG corpus capture (off-by-default `csg_capture` feature).
 #[cfg(feature = "csg_capture")]
 pub mod csg_capture;
@@ -182,6 +183,8 @@ mod scalar_adjoint;
 mod telemetry_transaction;
 pub use rect_fast::RectFastStats;
 pub(crate) mod router;
+/// Owned, explicitly partial construction batches before router publication.
+pub mod construction;
 /// Vector outlines traced from a slab of scan points (#6871). Reached through
 /// the root-level re-exports below.
 pub(crate) mod scan_outline;
@@ -223,7 +226,7 @@ pub use contour_bool2d::{
 pub use clash_solid::{intersection_solid, DegenerateReason, IntersectionSolid};
 pub use union_find::UnionFind;
 pub use csg::{calculate_normals, ClippingProcessor, GroupCut, GroupReject, Plane, Triangle};
-pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
+pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp, PendingDiagnosticState};
 pub use error::{Error, Result};
 pub use float_order::cmp_f64_nan_last;
 pub use geom_hash::{
@@ -274,6 +277,7 @@ pub use terrain_cdt::{
 pub use kernel::plane_weld::take_plane_weld_stats;
 pub use router::take_bool2d_stats;
 pub use router::{take_prism_defers, take_prism_stats};
+pub use router::{ProcessorDispatchCapture, ProcessorEmitter, ProcessorEmitterOrigin};
 pub use router::{
     aggregate_diagnostics, count_attributed_products, format_unsupported_breakdown,
     local_frame_set_enabled_override, meshed_representations, ClassificationStats, UNATTRIBUTED_PRODUCT_ID,

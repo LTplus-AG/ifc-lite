@@ -1,0 +1,263 @@
+{
+  "source_manifest_sha256": "ede5cfafab73e79657c4680398156b84cc4ce62f6fd4fb50a4ef4dba2e16207b",
+  "source_count": 288,
+  "scope": "Synthetic streaming invariant derived from committed multicolor fixture; same actual processing entry and sink consumer on base/candidate. No production test edits.",
+  "provenance": {
+    "scope": "Synthetic streaming invariant derived from committed multicolor fixture; same actual processing entry and sink consumer on base/candidate. No production test edits.",
+    "original_test": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/processing/tests/model_context_consumers.rs",
+    "original_test_sha256": "0dfd46bdb90acb6ca6c7b63ca8497a122f0da9d0c1fdca63ddeaca5b803215fc",
+    "original_fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/processing/tests/fixtures/issue_6601_multicolor_element.ifc",
+    "original_fixture_sha256": "dde566815a01e18584aa099692820ec315ab237857b504f9ddae8f718d56cc79",
+    "consumer_sha256": "8a66a2405bfa8d2290576809e052322b64b310f36a6833f418f72a1fc0b2371c",
+    "fixture_copy_sha256": "dde566815a01e18584aa099692820ec315ab237857b504f9ddae8f718d56cc79",
+    "pins_file": "/tmp/ifclite-context-restored-scene-library-pins.json",
+    "pins_file_sha256": "9519eb4e6f88598fd9a1016f5892c17da9bc220153db89010db49748c475944b",
+    "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)\nbinary: rustc\ncommit-hash: b6d7ff3aa71e48e2901b0900f8b5d98126b537ed\ncommit-date: 2025-11-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.93.0-nightly\nLLVM version: 21.1.5\n"
+  },
+  "library_pins": {
+    "base": {
+      "ifc_lite_core": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libifc_lite_core-345be4fab942851b.rlib",
+        "bytes": 13365852,
+        "mtime_ns": 1792326332309653486,
+        "sha256": "a414ffcd8475301d7704145b440ec7f7e05f9f4a9e336301c0f31208f3e801b5"
+      },
+      "ifc_lite_geometry": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libifc_lite_geometry-a1b48094c7fc8649.rlib",
+        "bytes": 38820286,
+        "mtime_ns": 1792326376619510148,
+        "sha256": "3ea2d4671bf8810b1deb7b9ba9b3f438b6437171d185db815b48d6f93b615b21"
+      },
+      "ifc_lite_processing": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libifc_lite_processing-915d2910f76c184d.rlib",
+        "bytes": 35178572,
+        "mtime_ns": 1792326389831467408,
+        "sha256": "44ff20c67bc366a3f0742c9d58a26bc0e0e51e3d79ffc2bc9ee61716aba557b3"
+      },
+      "serde": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libserde-e3cc15af0a9b0193.rlib",
+        "bytes": 1018230,
+        "mtime_ns": 1792326326987670703,
+        "sha256": "f0cab349843a98de6694f20e773728e488f02625bb4f6dc5a812bd55b937335d"
+      },
+      "serde_json": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libserde_json-8db63b8bd7d1e60b.rlib",
+        "bytes": 2344826,
+        "mtime_ns": 1792326359772564647,
+        "sha256": "2982ce89ec152e810879351d90de820370b44a97eeccf3fcd2c0322247fd3c0d"
+      },
+      "sha2": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libsha2-704a646f6b16e0bb.rlib",
+        "bytes": 812600,
+        "mtime_ns": 1792326358837567671,
+        "sha256": "e91112f5d4762288c2bf5ec09bc832e67df0c03f251e081b754f3aab3209d5cc"
+      }
+    },
+    "candidate": {
+      "ifc_lite_core": {
+        "path": "/tmp/ifclite-context-restored-native-target/profiling/deps/libifc_lite_core-345be4fab942851b.rlib",
+        "bytes": 13529722,
+        "mtime_ns": 1792348719129310415,
+        "sha256": "882fd9855d407a51c6a6a2fe5d69f782578775f805ab801fde5fbb4315d9e1ef"
+      },
+      "ifc_lite_geometry": {
+        "path": "/tmp/ifclite-context-restored-native-target/profiling/deps/libifc_lite_geometry-a1b48094c7fc8649.rlib",
+        "bytes": 40937624,
+        "mtime_ns": 1792354059326053403,
+        "sha256": "adbe4bbb31607612365a91f698866fbba27178b5cebc649ea1d8ecfee7bbbfb3"
+      },
+      "ifc_lite_processing": {
+        "path": "/tmp/ifclite-context-restored-native-target/profiling/deps/libifc_lite_processing-915d2910f76c184d.rlib",
+        "bytes": 36864442,
+        "mtime_ns": 1792354054557067063,
+        "sha256": "86895ecc66e7e3894d24babf575f8a041de9a000f3cb2c874cf54206cf5c2cab"
+      },
+      "serde": {
+        "path": "/tmp/ifclite-context-restored-native-target/profiling/deps/libserde-e3cc15af0a9b0193.rlib",
+        "bytes": 1018246,
+        "mtime_ns": 1792326509742079505,
+        "sha256": "d5b3ac3006edeb2f7c7414235dc3c2bd70c22f9377ed0fe247cb237b13e38cb0"
+      },
+      "serde_json": {
+        "path": "/tmp/ifclite-context-restored-native-target/profiling/deps/libserde_json-8db63b8bd7d1e60b.rlib",
+        "bytes": 2344826,
+        "mtime_ns": 1792326541263977534,
+        "sha256": "7e8525ec1d719c6ed8f8a0e1b07ec4a831f53df32c33ffdf7b70d4acda68cfd1"
+      },
+      "sha2": {
+        "path": "/tmp/ifclite-context-restored-native-target/profiling/deps/libsha2-704a646f6b16e0bb.rlib",
+        "bytes": 812600,
+        "mtime_ns": 1792326540303980639,
+        "sha256": "e91112f5d4762288c2bf5ec09bc832e67df0c03f251e081b754f3aab3209d5cc"
+      }
+    }
+  },
+  "same_consumer_both_builds": true,
+  "events_equal": true,
+  "events": [
+    {
+      "Batch": [
+        [
+          [
+            23,
+            [
+              0.6,
+              0.6,
+              0.6,
+              1.0
+            ],
+            12
+          ]
+        ],
+        2
+      ]
+    },
+    {
+      "Batch": [
+        [
+          [
+            23,
+            [
+              0.6,
+              0.6,
+              0.6,
+              1.0
+            ],
+            12
+          ]
+        ],
+        2
+      ]
+    },
+    {
+      "Colors": [
+        [
+          23,
+          [
+            1.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      ]
+    },
+    {
+      "Batch": [
+        [
+          [
+            200,
+            [
+              1.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            12
+          ]
+        ],
+        3
+      ]
+    },
+    {
+      "Batch": [
+        [
+          [
+            200,
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.25
+            ],
+            12
+          ]
+        ],
+        3
+      ]
+    }
+  ],
+  "event_count": 5,
+  "assertions": [
+    "Empty first input chunk emits no batch or colors",
+    "Both meshes of first nonempty input chunk emit before color update",
+    "Each mesh batch obeys requested chunk size1; first product repeats processed2",
+    "Deferred update for23 is red",
+    "Later product200 observes replacement styles red and green alpha0.25"
+  ],
+  "artifacts": {
+    "candidate-build.log": {
+      "path": "/tmp/ifclite-context-streaming-consumer/candidate-build.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "main.rs": {
+      "path": "/tmp/ifclite-context-streaming-consumer/main.rs",
+      "sha256": "8a66a2405bfa8d2290576809e052322b64b310f36a6833f418f72a1fc0b2371c",
+      "bytes": 2726
+    },
+    "candidate-output.json": {
+      "path": "/tmp/ifclite-context-streaming-consumer/candidate-output.json",
+      "sha256": "1dc4aede5a806e08d3683d3f8f9374d1a542ec53f3d66985d29d7ac0dd21166d",
+      "bytes": 920
+    },
+    "candidate-run.log": {
+      "path": "/tmp/ifclite-context-streaming-consumer/candidate-run.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "base-build-command.json": {
+      "path": "/tmp/ifclite-context-streaming-consumer/base-build-command.json",
+      "sha256": "677b4a5926709e68523e047737d0979e5b55fbbfb9ff9ef86a20220b312c8fb3",
+      "bytes": 1005
+    },
+    "stream-base": {
+      "path": "/tmp/ifclite-context-streaming-consumer/stream-base",
+      "sha256": "075d9f04f488beddd7c12c5e1b3de425558b9d735d7ba5109bb11de67135716c",
+      "bytes": 26795816
+    },
+    "candidate-build-command.json": {
+      "path": "/tmp/ifclite-context-streaming-consumer/candidate-build-command.json",
+      "sha256": "bb7ce8b9fdb8cad98540976fcf777fc69cda85a0fead6e1756dd71894ce74c26",
+      "bytes": 1031
+    },
+    "base-run.log": {
+      "path": "/tmp/ifclite-context-streaming-consumer/base-run.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "fixture.ifc": {
+      "path": "/tmp/ifclite-context-streaming-consumer/fixture.ifc",
+      "sha256": "dde566815a01e18584aa099692820ec315ab237857b504f9ddae8f718d56cc79",
+      "bytes": 1582
+    },
+    "base-build.log": {
+      "path": "/tmp/ifclite-context-streaming-consumer/base-build.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "provenance.json": {
+      "path": "/tmp/ifclite-context-streaming-consumer/provenance.json",
+      "sha256": "a61f40bd46ebff3a0bc04fc726e35825a469ca3f025c9e367b0cc80c59a4cdb2",
+      "bytes": 1214
+    },
+    "stream-candidate": {
+      "path": "/tmp/ifclite-context-streaming-consumer/stream-candidate",
+      "sha256": "83726f20adec6198a13086781bc7dcb732de7e93836aca06ae2ce9d9526b4ee5",
+      "bytes": 27527008
+    },
+    "derived.ifc": {
+      "path": "/tmp/ifclite-context-streaming-consumer/derived.ifc",
+      "sha256": "13fab7a657cb0ab159f1e8aed0ff79426ec0593b8d6ee26bc7c1634802940ae3",
+      "bytes": 1813
+    },
+    "base-output.json": {
+      "path": "/tmp/ifclite-context-streaming-consumer/base-output.json",
+      "sha256": "1dc4aede5a806e08d3683d3f8f9374d1a542ec53f3d66985d29d7ac0dd21166d",
+      "bytes": 920
+    }
+  },
+  "final_library_hashes_match": true,
+  "original_three_event_assumption_valid_for_baseline": false,
+  "baseline_failure_explanation": "The first nonempty input chunk contains one product with two meshes; output chunk size1 emits two Batch callbacks before Colors. The later product also emits two Batch callbacks. Original three-event pattern would reject this baseline trace."
+}

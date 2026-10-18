@@ -1,0 +1,105 @@
+{
+  "source_manifest": "source-manifest.json",
+  "scope": "additive opt-in integration; no production SMLib selection",
+  "workspace": {
+    "passed_invocations": 5523,
+    "failed_invocations": 0,
+    "ignored": 47,
+    "suite_reports": 372,
+    "note": "Existing absent-fixture tests can explicitly skip inside a passing invocation. This does not establish full corpus coverage."
+  },
+  "commands": [
+    {
+      "name": "workspace",
+      "command": "IFCLITE_SMLIB_WORKER=/tmp/ifclite-smlib-adapter-native/ifclite_smlib_worker cargo test --workspace",
+      "exit_code": 0,
+      "historical_log_removed": "Original raw log archived outside the delivered work; current sources are qualified in the next phase receipt."
+    },
+    {
+      "name": "clippy",
+      "command": "cargo clippy --workspace --all-targets -- -D warnings",
+      "exit_code": 0,
+      "log": "clippy.log.gz",
+      "log_uncompressed_sha256": "7492f345d5e0ecf74c52dc56a50d5a86d91a3ff8853ea3acd0ea9afc2df1229b"
+    },
+    {
+      "name": "authored-required-fixture",
+      "command": "IFC_LITE_REQUIRE_FIXTURES=1 cargo test --locked -p ifc-lite-processing --test authored_geometry",
+      "exit_code": 0,
+      "historical_log_removed": "Original raw log archived outside the delivered work; current sources are qualified in the next phase receipt."
+    },
+    {
+      "name": "authored-consumer",
+      "command": "cargo run --locked -p ifc-lite-processing --example authored_geometry -- tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "exit_code": 0,
+      "log": "authored-consumer.log.gz",
+      "log_uncompressed_sha256": "3013901e5d75c0fbbcb3af25113d4a0b6c88491852ad12898f7bf76816d2d7a0"
+    },
+    {
+      "name": "native-ctest",
+      "command": "ctest --test-dir /tmp/ifclite-smlib-adapter-native --output-on-failure",
+      "exit_code": 0,
+      "log": "native-ctest.log.gz",
+      "log_uncompressed_sha256": "170904760a53d1db091373b96c049c52e902272723a574339c4afbcba20f6f21"
+    },
+    {
+      "name": "wasm-node-ctest",
+      "command": "ctest --test-dir /tmp/ifclite-smlib-adapter-wasm --output-on-failure",
+      "exit_code": 0,
+      "log": "wasm-node-ctest.log.gz",
+      "log_uncompressed_sha256": "e06e2c19ec03e58579cddf36c8912568011bc291a612c92ed0db92d0ff944114"
+    },
+    {
+      "name": "wasm-rust",
+      "command": "cargo build --locked -p ifc-lite-geometry-runtime --target wasm32-unknown-unknown --target-dir /tmp/ifclite-platform-wasm-target",
+      "exit_code": 0,
+      "log": "wasm-rust.log.gz",
+      "log_uncompressed_sha256": "62e63c5578414b98a46f74c61c94819027d9baa53d3f75ee3bf1c1713bf47919"
+    },
+    {
+      "name": "module-size",
+      "command": "node scripts/check-module-size.mjs",
+      "exit_code": 0,
+      "log": "module-size.log.gz",
+      "log_uncompressed_sha256": "531f46046bad7e5ba657886674b8278f28215e6bfa1eb75a0031ade48390d208"
+    },
+    {
+      "name": "test-wiring",
+      "command": "node scripts/check-test-wiring.mjs",
+      "exit_code": 0,
+      "log": "test-wiring.log.gz",
+      "log_uncompressed_sha256": "534b4e17d0f58684fea51a7c2932facbe1e207c03f7f882c835917be34a0358f"
+    },
+    {
+      "name": "rust-source-assertions",
+      "command": "node scripts/check-rust-source-text-assertions.mjs",
+      "exit_code": 0,
+      "log": "rust-source-assertions.log.gz",
+      "log_uncompressed_sha256": "245b63e0d87922d28890b3ff191b11625a7b1e0e641e9220a3a2a0f645d0c451"
+    },
+    {
+      "name": "reference-walk-guards",
+      "command": "node scripts/check-refwalk-guards.mjs",
+      "exit_code": 0,
+      "log": "reference-walk-guards.log.gz",
+      "log_uncompressed_sha256": "bf0f5026ff55d146260e4a22086ec52d4c4ac7802c34c129f78a1937f286acdf"
+    }
+  ],
+  "browser": "browser.json",
+  "authored_real_model": "authored-fzk.json",
+  "not_run": [
+    "application Rust/WASM host integration",
+    "browser runner in CI",
+    "full IFC-to-SMLib corpus qualification",
+    "OS memory-limit qualification",
+    "multi-process scheduling/replay",
+    "all-platform packaging",
+    "heavy CSG model (not present)"
+  ],
+  "corrections": [
+    "Initial Clippy caught oversized authored enum; boxed extrusion storage without changing serialized output.",
+    "Initial workspace caught two numeric relationship attribute reads; replaced with generated typed IFC slots. Final full workspace and Clippy passed."
+  ],
+  "timing_claim": "No qualified latency, SMLib throughput or retained-memory improvement.",
+  "default_path_performance": "default-path-perf.json"
+}

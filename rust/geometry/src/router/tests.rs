@@ -727,7 +727,7 @@ fn router_records_and_drains_unsupported_items() {
 /// RED (pre-fix): a Body representation item of a genuinely unsupported IFC
 /// type (no registered processor, e.g. `IfcGeometricSet` used directly as a
 /// body item rather than inside a non-body `GeometricCurveSet` context) was
-/// silently skipped by `collect_submeshes_from_item_inner` with zero counter
+/// silently skipped by `collect_submeshes_from_item` with zero counter
 /// anywhere the caller could read — only a `debug_assertions`/`observability`
 /// eprintln, compiled out of every release/wasm build. GREEN (post-fix): the
 /// drop is counted and attributable by IFC type, without changing the mesh
@@ -763,8 +763,8 @@ fn unsupported_body_item_is_dropped_and_counted_not_silent() {
 
 /// RED (pre-fix): the SAME unsupported-item drop as
 /// `unsupported_body_item_is_dropped_and_counted_not_silent`, but reached
-/// through `process_mapped_item_cached_inner`'s own item loop rather than
-/// `collect_submeshes_from_item_inner`'s — a wall whose entire Body is an
+/// through `process_mapped_item_parts`'s own item loop rather than
+/// `collect_submeshes_from_item`'s — a wall whose entire Body is an
 /// `IfcMappedItem` over a source containing a SUPPORTED `IfcExtrudedAreaSolid`
 /// alongside an unsupported `IfcGeometricSet`. That sibling loop had zero
 /// signal on a `None` processor or an `Err` (not even the `debug_assertions`
@@ -832,8 +832,8 @@ fn unsupported_mapped_source_item_is_dropped_and_counted_not_silent() {
 /// Both call sites this test drives had zero counter before this fix:
 /// `textured.rs:109` discarded `process_mapped_item_cached`'s `Err` wholesale
 /// (a malformed nested `IfcMappedItem`), and the item loop around `textured.rs:129`
-/// had the same no-`else` shape as the already-fixed `collect_submeshes_from_item_inner`
-/// / `process_mapped_item_cached_inner` loops for a `None` processor or an `Err`.
+/// had the same no-`else` shape as the already-fixed `collect_submeshes_from_item`
+/// / `process_mapped_item_parts` loops for a `None` processor or an `Err`.
 /// A mixed source — a supported `IfcExtrudedAreaSolid` alongside an unsupported
 /// `IfcGeometricSet` AND a malformed `IfcMappedItem` (missing `MappingSource`,
 /// attr 0) — catches the permissive direction too: a reporter firing for the
@@ -970,7 +970,7 @@ fn the_same_unsupported_item_under_a_body_representation_is_still_counted() {
 /// `record_unsupported_item` and `GeometryDiagnostics.totalUnsupportedItems`
 /// both promise a per-SOURCE count ("counted once, not once per `IfcMappedItem`
 /// occurrence"). RED (pre-fix) on the OCCURRENCE path: 3.
-/// `collect_submeshes_from_item_inner` walks the source's items itself on every
+/// `collect_submeshes_from_item` walks the source's items itself on every
 /// occurrence — it never consults the mapped-item cache — so the drop was
 /// re-counted per occurrence and the reported number was an occurrence count
 /// wearing a source count's documentation.
@@ -1129,7 +1129,7 @@ const TOTAL_LOSS_SHARED_SOURCE: &str = r#"
 /// drives `process_element` (the mapped-item walk); this drives
 /// `process_element_with_submeshes`, which walks the source's items itself and
 /// records the drop one recursion level down, in
-/// `collect_submeshes_from_item_inner`'s plain-item arm. That arm has no
+/// `collect_submeshes_from_item`'s plain-item arm. That arm has no
 /// representation in hand and cannot gate on one, so this path counted a 2D
 /// 'FootPrint' map as lost 3D content while the other path did not — the same
 /// clean-model false positive, through the door the first fix did not cover.

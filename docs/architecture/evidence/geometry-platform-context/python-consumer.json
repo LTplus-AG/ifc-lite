@@ -1,0 +1,26 @@
+{
+  "source_manifest": "source-manifest.json",
+  "source_manifest_sha256": "fa3dcc5f5189d7129fe50156672654564c5c30ec35c9cf70bb8ca723eeceb95a",
+  "all_frozen_source_hashes_match": true,
+  "scope": "Installed local CPython3.12.14 Linuxx86_64 abi3 dev-profile consumer; actual geometry/entity goldens, no all-platform or retained-engine qualification",
+  "passed": 48,
+  "failed": 0,
+  "skipped": 1,
+  "skip_reason": "missing infrastructure model844; pnpm fixtures",
+  "wheel_local_path": "/tmp/ifclite-context-wheel/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl",
+  "wheel_sha256": "b0718dcc6492d2464cf7533a817500c9a3276b564aba60f5e172ffda1b8bafd3",
+  "cargo_locks_unchanged": true,
+  "logs": {
+    "/tmp/ifclite-context-python-artifact.log": "809bc99795001f9773b25eea542c6498609dd87e40d5fd44b131c62d37cd6fa9",
+    "/tmp/ifclite-context-python-build.log": "161e373a967ee9af8ce497cbe826bb9e124f73d44be3734a3175777936f2d2a8",
+    "/tmp/ifclite-context-python-environment.log": "4adaec8cd172451d8701194ce7c911cfae7ae7edf7935a00534ba858a9fa0c6d",
+    "/tmp/ifclite-context-python-install.log": "8092eade11b1846d1174f640a6d6e3df47c6a06b12bf47f0e61a1d16a003fe08",
+    "/tmp/ifclite-context-python-locks-after.log": "fb98e165eac9891bbf913f1ed16c47f8b00f4780339c72090b906fb7ee3df710",
+    "/tmp/ifclite-context-python-locks-before.log": "fb98e165eac9891bbf913f1ed16c47f8b00f4780339c72090b906fb7ee3df710",
+    "/tmp/ifclite-context-python-tests.log": "215fcf08a3c773c46a9eca8f5cd246959c897442c47583ae6598d550d4b90b3c"
+  },
+  "junit_local_path": "/tmp/ifclite-context-python-results.xml",
+  "junit_sha256": "64a1eb46458ca5925d1de3326fdd5eb7658055b50781b46c3421f83d019352a6",
+  "exact_driver_local_path": "/tmp/ifclite-context-python-qualify.sh",
+  "exact_driver_sha256": "0975b9c9edf094e4090681d8f2914934bacee0f5e8ff5e7bcfb99b478de9e434"
+}

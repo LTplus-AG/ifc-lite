@@ -1,0 +1,150 @@
+{
+  "source_manifest": "source-manifest.json",
+  "platform": "Linux-6.17.9-76061709-generic-x86_64-with-glibc2.39",
+  "scope": "canonical owned product orchestration and movable scoped counters; finer source/mapping/opening requests, diagnostic ownership and retained/full-consumer migration incomplete",
+  "workspace": {
+    "passed_invocations": 5678,
+    "failed_invocations": 0,
+    "ignored": 47,
+    "suite_reports": 373,
+    "scope_note": "Optional fixture cases can skip internally. Passed invocations do not establish complete corpus coverage. Actual native SMLib worker was supplied for runtime tests."
+  },
+  "wasm_contract": {
+    "passed": 206,
+    "failed": 0,
+    "skipped": 7,
+    "fresh_runtime_from_candidate": true,
+    "committed_types_unchanged": true,
+    "runtime_newer_than_frozen_rust": true
+  },
+  "raw_replay_comparison": {
+    "passed_tests": 7,
+    "failed": 0,
+    "fixture_skips": 0,
+    "artifact": {
+      "binary_path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/debug/deps/owned_operation_plan-c049e661d6c6cb12",
+      "binary_sha256": "ec6ed91fedd0bec745ebc15d20af395ec1513f929cef2240c75b555183ad8e61"
+    },
+    "scope": "raw geometry/frame bits and boolean diagnostics vs shared production seams, with source disposal and report replay; no complete product/RTC/appearance equivalence claim"
+  },
+  "production_control_flow": {
+    "owned_frames": true,
+    "recursive_boolean_csg_dispatch_deleted": true,
+    "conditional_source_admission": true,
+    "product_control_owned": true,
+    "public_async_or_reply_protocol": false,
+    "router_diagnostic_cache_lease_required": true,
+    "contextual_depth_path_and_visit_policy_retained": true,
+    "reference_walk_checker_scope_note": "The checker passes but does not analyze explicit frame queues. Runtime bounds, source-order review and dynamic cycle/depth/DAG/cleanup tests are the evidence for this continuation."
+  },
+  "native_peak_memory": {
+    "receipt": "default-path-memory.json",
+    "fixtures": 3,
+    "method": "GNU time process maximum resident set, ABBA5 native whole-worker-pool, build excluded",
+    "scope_note": "Sampled native high-water marks only; no browser, retained-plan, allocator attribution, process-limit or full-corpus memory verdict."
+  },
+  "default_path_comparison": {
+    "fixtures": 6,
+    "mesh_counts_and_ordered_payload_fingerprints_identical": true,
+    "timing_qualified": false,
+    "scope_note": "Base/candidate/candidate/base, five iterations each; shared-host timing diagnostic only. Fingerprints omit UVs, textures, instances and text metadata."
+  },
+  "commands": [
+    {
+      "name": "workspace",
+      "command": "IFCLITE_SMLIB_WORKER=/tmp/ifclite-smlib-adapter-native/ifclite_smlib_worker cargo test --workspace",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-product-workspace-final.log",
+      "raw_log_sha256": "dd9407578756ec50bb48d3d9066ebd9d658129c1c66d34add504700a7b123102"
+    },
+    {
+      "name": "clippy",
+      "command": "cargo clippy --workspace --all-targets -- -D warnings",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-product-clippy-verified.log",
+      "raw_log_sha256": "6543dda9a378809703ee26a18fa6c7d414e00d692e0295ffa21bc800418ffab6"
+    },
+    {
+      "name": "wasm-runtime-build",
+      "command": "CI=1 pnpm build:wasm",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-product-wasm-build-final.log",
+      "raw_log_sha256": "23a2d40fad7a310516a40969ccf9dd16b70242ae027bbf6b706d30e950e62cd7"
+    },
+    {
+      "name": "wasm-contract",
+      "command": "pnpm test:wasm-contract",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-product-wasm-contract-final.log",
+      "raw_log_sha256": "1afef5fe0d64d945914502ed97ded37c2e13436c61591482aadec5ab4119fdc8"
+    },
+    {
+      "name": "wasm-target",
+      "command": "cargo build --locked -p ifc-lite-processing -p ifc-lite-geometry-runtime --target wasm32-unknown-unknown --target-dir /tmp/ifclite-platform-wasm-target",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-product-wasm-target-final.log",
+      "raw_log_sha256": "c92508a29848820f033cd2ea015c85dde0953c88b07cc967ce34b7c08f610549"
+    },
+    {
+      "name": "raw-replay",
+      "command": "cargo test -p ifc-lite-geometry --test owned_operation_plan -- --nocapture",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-product-raw-comparison-final.log",
+      "raw_log_sha256": "7d34e7f69de70ccc8df172533c8e18cfb022497e0fdf751d347bf96fd116163a"
+    },
+    {
+      "name": "consumer-example",
+      "command": "cargo run -p ifc-lite-geometry --example construction_batch -- rust/geometry/tests/fixtures/bath_csg_solid.ifc 208 207 208",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-product-real-example-final.log",
+      "raw_log_sha256": "19d10c6fb83785b7f649173b5542a88330976e2175172aa3e23cdd8a9921508f"
+    },
+    {
+      "name": "reference-walk-guards",
+      "command": "node scripts/check-refwalk-guards.mjs",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-product-refwalk.log",
+      "raw_log_sha256": "c7232e8d337735c3f50f86b47ba8be072e03d2a5ea5e5cc3b428da21050845cb"
+    },
+    {
+      "name": "source-test-guard",
+      "command": "node scripts/check-source-text-assertions.mjs",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-product-source-tests.log",
+      "raw_log_sha256": "514785c72b6ca40b67bfc36c3bf85f169801f1fc4730dc5c30f4927a0080066d"
+    },
+    {
+      "name": "module-size",
+      "command": "node scripts/check-module-size.mjs",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-product-module-size.log",
+      "raw_log_sha256": "827acc364e4315e715b25d2480dbacc388e33cd9b8a6375021ba9b09ce4cdb0e"
+    },
+    {
+      "name": "native-peak-memory",
+      "command": "python3 /tmp/ifclite-product-memory.py; ABBA5 GNU time process high-water marks",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-product-memory-final.log",
+      "raw_log_sha256": "a1a87afafb7cbc5e2397dc8c92eeaa31cdcc6147ede74bf6f14a0a90d21cd907"
+    },
+    {
+      "name": "default-path-comparison",
+      "command": "python3 /tmp/ifclite-platform-products-perf.py; ABBA5 whole-worker-pool per fixture",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-product-perf-final.log",
+      "raw_log_sha256": "5d08d9d4d99b1759dbdc176bb0fb0fcb447d20296c1aae53b1eabea0d93f0e51"
+    }
+  ],
+  "not_qualified": [
+    "finer representation/mapping/opening commands and retained-engine execution",
+    "complete real-corpus BRep cavity/frame/appearance qualification",
+    "complete cross-corpus conditional-work and contextual-budget qualification",
+    "complete real-corpus conditional-work and source-payload bounds",
+    "product occurrence attribution and full diagnostic compatibility",
+    "retained analytic BRep production execution",
+    "all-platform package/install closure",
+    "complete cross-target and consumer qualification",
+    "payload/process memory limits and retained/browser/full-consumer peak memory",
+    "latency non-regression or performance improvement"
+  ]
+}

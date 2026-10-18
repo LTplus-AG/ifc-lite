@@ -203,7 +203,9 @@ const SCAN_ROOTS = [
 // non-`try` `sample_curve_polyline` wrapper: the walk is the same guarded
 // `sample_curve_polyline_guarded` self-recursion, one cycle member fewer.
 // Set to 32 to restore a margin of one.
-const CANDIDATE_FLOOR = 32;
+// Owned mapping frames replace three recursive candidates; their explicit
+// queue transitions require behavioral guard tests outside this detector.
+const CANDIDATE_FLOOR = 29;
 
 /**
  * Allowlist for candidates that are genuinely unguarded and must stay that

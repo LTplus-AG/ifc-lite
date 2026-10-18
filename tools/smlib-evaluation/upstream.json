@@ -1,0 +1,5 @@
+{
+  "repository": "https://github.com/NVIDIA-Omniverse/usd-brep",
+  "commit": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "emscripten": "4.0.15"
+}

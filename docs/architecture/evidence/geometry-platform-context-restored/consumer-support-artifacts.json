@@ -1,0 +1,274 @@
+{
+  "archive": "consumer-support-artifacts.tar.gz",
+  "archive_sha256": "9dd0dbb5ac980f582676f92bd700188496a837436c8ed3b4a65059e852a9e038",
+  "archive_bytes": 225018,
+  "files": {
+    "/tmp/ifclite-smlib-base-8acd0715a/packages/wasm/pkg/ifc-lite.js": {
+      "sha256": "04c85b1449d8fee992f25f0685170ff03fb4360726fa4e4d2a2d180314c169c0",
+      "bytes": 308437,
+      "archive_member": "local-artifacts/tmp/ifclite-smlib-base-8acd0715a/packages/wasm/pkg/ifc-lite.js"
+    },
+    "/tmp/ifclite-context-restored-wasm-build.log": {
+      "sha256": "eca7726ae15d05d0cfcc03f4022bcceefffbfa23468431eb10fa07b56ee7eb75",
+      "bytes": 1440,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-wasm-build.log"
+    },
+    "/tmp/ifclite-context-restored-wasm-package.log": {
+      "sha256": "b4e188b84eebe758a044112c81b45a91f4551c669e1553061befb29035feb6de",
+      "bytes": 7698,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-wasm-package.log"
+    },
+    "/tmp/ifclite-context-restored-wasm-contract.log": {
+      "sha256": "41a4fabfcdeaf2d29af903d13edd09a928ab022a9134e29ac97d1f858d53c561",
+      "bytes": 78141,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-wasm-contract.log"
+    },
+    "/tmp/ifclite-context-restored-wasm-type-surface.log": {
+      "sha256": "5ef719f2c8197032fbd0c3e86388d8ec27c26ce3db56bbc5adce5c1ab843e8fa",
+      "bytes": 59,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-wasm-type-surface.log"
+    },
+    "/tmp/ifclite-context-restored-js-decode.log": {
+      "sha256": "eb6f8693993b5d7eced19310f1dff033098393da921a03794bfe90eeeec10185",
+      "bytes": 369,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-js-decode.log"
+    },
+    "/tmp/ifclite-context-restored-wasm-artifacts.log": {
+      "sha256": "95885554fe7f1f50dfa373ef710dac3f5df7129bfff183e61fc810123d053925",
+      "bytes": 295,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-wasm-artifacts.log"
+    },
+    "/tmp/ifclite-context-restored-locks-before.log": {
+      "sha256": "fb98e165eac9891bbf913f1ed16c47f8b00f4780339c72090b906fb7ee3df710",
+      "bytes": 166,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-locks-before.log"
+    },
+    "/tmp/ifclite-context-restored-type-diff.mjs": {
+      "sha256": "56973d9c76264c01570506eeba63e1e851680aa387606edf332849a8eb41f622",
+      "bytes": 1554,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-type-diff.mjs"
+    },
+    "/tmp/ifclite-context-restored-js-decode.mjs": {
+      "sha256": "44575f130c47d5d768ec435f689aef76e4ca417c58dbea623af43122d935b865",
+      "bytes": 1471,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-js-decode.mjs"
+    },
+    "/tmp/ifclite-context-restored-wasm-package-complete.log": {
+      "sha256": "bd8038b554adf45a5f44e6db70a2cebd608b91feb00dc6a4126fe2d31ffe5d67",
+      "bytes": 7699,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-wasm-package-complete.log"
+    },
+    "/tmp/ifclite-context-restored-added-fixtures.log": {
+      "sha256": "79fe0e9404efadb9370deca4cc13f475863b8b99677b5a561577c352231c2f5a",
+      "bytes": 241,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-added-fixtures.log"
+    },
+    "/tmp/ifclite-context-restored-usd-base/manifest.json": {
+      "sha256": "114364e452e7c539baa5e6699247b9c238f44650632ffe8495d04072843317a4",
+      "bytes": 2722,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-usd-base/manifest.json"
+    },
+    "/tmp/ifclite-context-restored-usd-candidate/manifest.json": {
+      "sha256": "b50188248aa9e8b6b114dbebe770140d727bb0595c32ba66fbd2769d5bcd4a0d",
+      "bytes": 2722,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-usd-candidate/manifest.json"
+    },
+    "/tmp/ifclite-context-restored-usd-semantic/blob-texture.json": {
+      "sha256": "8d8864d6687dbd2cf10ebf9578c04cf73117f1b123254fde9196f57c9bd2828e",
+      "bytes": 48245,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-usd-semantic/blob-texture.json"
+    },
+    "/tmp/ifclite-context-restored-usd-semantic/blob-texture.roundtrip.usda": {
+      "sha256": "daa389d13b901a7271b36e4b2110d9e2a8390d5b5867ac1cc87b3d789d113bbd",
+      "bytes": 8238,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-usd-semantic/blob-texture.roundtrip.usda"
+    },
+    "/tmp/ifclite-context-restored-usd-semantic/georeferenced.json": {
+      "sha256": "3501fe43b3f6104696d71dd14c072d8622008a966e85e03181977d75d3c738fd",
+      "bytes": 1206165,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-usd-semantic/georeferenced.json"
+    },
+    "/tmp/ifclite-context-restored-usd-semantic/georeferenced.roundtrip.usda": {
+      "sha256": "6fac7ca400d2486e8696eb9dd641c0379a70d69a9c1a30d3f3e5dc28c9af4d53",
+      "bytes": 243606,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-usd-semantic/georeferenced.roundtrip.usda"
+    },
+    "/tmp/ifclite-context-restored-usd-semantic/hello-wall.json": {
+      "sha256": "7d3eac8cb5bead4473c92e2ab889de8ca63614df5fd2ac7955df550abd16160a",
+      "bytes": 216809,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-usd-semantic/hello-wall.json"
+    },
+    "/tmp/ifclite-context-restored-usd-semantic/hello-wall.roundtrip.usda": {
+      "sha256": "e3c66cf80ab113bf48785c498c42cffc3cfe007aec1f68850910c49d6ae4ea33",
+      "bytes": 31695,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-usd-semantic/hello-wall.roundtrip.usda"
+    },
+    "/tmp/ifclite-context-restored-usd-semantic/image-texture.json": {
+      "sha256": "11bd90266d7a33fdd4fcf4a3b7760c7f5e2ed71a2e6064349c0b427c39c4c271",
+      "bytes": 48260,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-usd-semantic/image-texture.json"
+    },
+    "/tmp/ifclite-context-restored-usd-semantic/image-texture.roundtrip.usda": {
+      "sha256": "1c7b7a3367205d03cf4a13938543662fbe11b1f77868dc8d7a768530b656d55c",
+      "bytes": 8248,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-usd-semantic/image-texture.roundtrip.usda"
+    },
+    "/tmp/ifclite-context-restored-usd-semantic/individual-colors.json": {
+      "sha256": "c58d3711e3a548e06ebb4f1af54fdc0caa18dc825456341ca58fa877de37474f",
+      "bytes": 55055,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-usd-semantic/individual-colors.json"
+    },
+    "/tmp/ifclite-context-restored-usd-semantic/individual-colors.roundtrip.usda": {
+      "sha256": "6dee6f2ea209272ad2f4fcde6295bd5e4ee76e701527b1c727ead05535fe49ca",
+      "bytes": 6008,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-usd-semantic/individual-colors.roundtrip.usda"
+    },
+    "/tmp/ifclite-context-restored-usd-semantic/mapped.json": {
+      "sha256": "297d23dc52a95e4fa01cac9d9d52aeb0eb947cb72b059a66abaf827211006135",
+      "bytes": 1238506,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-usd-semantic/mapped.json"
+    },
+    "/tmp/ifclite-context-restored-usd-semantic/mapped.roundtrip.usda": {
+      "sha256": "0f64e009a569013f3ff60c624be14c64f05bf5843c77b3205772bfe21df947ef",
+      "bytes": 69863,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-usd-semantic/mapped.roundtrip.usda"
+    },
+    "/tmp/ifclite-context-restored-usd-semantic/pixel-texture.json": {
+      "sha256": "b654c4115107e38551b5e7b70ad463b43a6787473eb5f3b3ef9a152ebde03d8a",
+      "bytes": 48260,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-usd-semantic/pixel-texture.json"
+    },
+    "/tmp/ifclite-context-restored-usd-semantic/pixel-texture.roundtrip.usda": {
+      "sha256": "2126c6c5e7b653077fc52455501cc662f53f2e7a79771e80278997151844a7be",
+      "bytes": 8248,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-usd-semantic/pixel-texture.roundtrip.usda"
+    },
+    "/tmp/ifclite-context-restored-usd-semantic/summary.json": {
+      "sha256": "91bd981ff30c135dd29e7624d2b982bb04b925851d946c9225c3903d493b0e79",
+      "bytes": 4410,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-usd-semantic/summary.json"
+    },
+    "/tmp/ifclite-context-restored-usd-base.log": {
+      "sha256": "7d522170c1efe100bf970637c1f1ad5aad5db68351631a85ab6e8e6fbbbdc294",
+      "bytes": 2420,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-usd-base.log"
+    },
+    "/tmp/ifclite-context-restored-usd-candidate.log": {
+      "sha256": "7d522170c1efe100bf970637c1f1ad5aad5db68351631a85ab6e8e6fbbbdc294",
+      "bytes": 2420,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-usd-candidate.log"
+    },
+    "/tmp/ifclite-context-restored-usd-semantic.log": {
+      "sha256": "4b896d60f8d61e30d9747ec008509abbb05f579249c63477d44e50ea7e52b9e9",
+      "bytes": 3903,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-usd-semantic.log"
+    },
+    "/tmp/ifclite-context-restored-ifcx-base.log": {
+      "sha256": "a73a4b4d4df7f19c12d13aa501a314151d88b99817997f8562ea74ac848a04dc",
+      "bytes": 2227,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-ifcx-base.log"
+    },
+    "/tmp/ifclite-context-restored-ifcx-candidate.log": {
+      "sha256": "a73a4b4d4df7f19c12d13aa501a314151d88b99817997f8562ea74ac848a04dc",
+      "bytes": 2227,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-ifcx-candidate.log"
+    },
+    "/tmp/ifclite-context-restored-ifcx-compare.log": {
+      "sha256": "4256208afe2c3757f9a93e7f4626e9a59462ed0abd56b81f9c7a346a8d83d051",
+      "bytes": 40,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-ifcx-compare.log"
+    },
+    "/tmp/ifclite-context-restored-nativepy-build.log": {
+      "sha256": "b5654fae4976be1f2af41831ab0eda5d474dfdb8d60b5ad265d0ab5b262fadd0",
+      "bytes": 477,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-nativepy-build.log"
+    },
+    "/tmp/ifclite-context-restored-nativepy-install.log": {
+      "sha256": "3681c164892b3b7756dee68ac77c1cdadeeaf69dc8c0ab7f57e040f055257825",
+      "bytes": 378,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-nativepy-install.log"
+    },
+    "/tmp/ifclite-context-restored-nativepy-tests.log": {
+      "sha256": "65ccf7da9cf50374d47beb3201d990fe021c48696744d14d4497496a47d7f25d",
+      "bytes": 294,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-nativepy-tests.log"
+    },
+    "/tmp/ifclite-context-restored-nativepy-environment.log": {
+      "sha256": "4adaec8cd172451d8701194ce7c911cfae7ae7edf7935a00534ba858a9fa0c6d",
+      "bytes": 166,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-nativepy-environment.log"
+    },
+    "/tmp/ifclite-context-restored-nativepy-locks-before.log": {
+      "sha256": "fb98e165eac9891bbf913f1ed16c47f8b00f4780339c72090b906fb7ee3df710",
+      "bytes": 166,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-nativepy-locks-before.log"
+    },
+    "/tmp/ifclite-context-restored-nativepy-locks-after.log": {
+      "sha256": "fb98e165eac9891bbf913f1ed16c47f8b00f4780339c72090b906fb7ee3df710",
+      "bytes": 166,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-nativepy-locks-after.log"
+    },
+    "/tmp/ifclite-context-restored-nativepy-artifact.log": {
+      "sha256": "020cc5d51fa2cebe41927e6171ea62fba7ac1f43c65568edf6fe14f36726ff13",
+      "bytes": 167,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-nativepy-artifact.log"
+    },
+    "/tmp/ifclite-context-restored-nativepy-results.xml": {
+      "sha256": "091e9b0f0d1534f4d7a5fb61e44a7b0ac5b0ce23c43c4a1492a8ea390e8c2501",
+      "bytes": 6461,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-nativepy-results.xml"
+    },
+    "/tmp/ifclite-context-restored-nativepy-qualify.sh": {
+      "sha256": "930503b7ceb5bb0c06dfd2c75c26715c40c0cac43daf9acb594006dd1fa8ae01",
+      "bytes": 1494,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-nativepy-qualify.sh"
+    },
+    "/tmp/ifclite-context-restored-nativepy-added-fixtures-tests.log": {
+      "sha256": "1c2dbf1a762f231dad62cb4b8ed0674bbb40f52291693f38c3c46686ef5f30ae",
+      "bytes": 99,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-nativepy-added-fixtures-tests.log"
+    },
+    "/tmp/ifclite-context-restored-nativepy-added-fixtures-results.xml": {
+      "sha256": "2c54dd2e1a589d79a90e7e0bfea0acaa67d295eb648954dc8698071a8a7949de",
+      "bytes": 6217,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-nativepy-added-fixtures-results.xml"
+    },
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/docs/architecture/evidence/geometry-platform-context-restored/clippy.log": {
+      "sha256": "e4267a544443e35d7f18cb644314ecdb0d92a0c8017d0d696b0a96d4c75b2691",
+      "bytes": 1124,
+      "archive_member": "local-artifacts/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/docs/architecture/evidence/geometry-platform-context-restored/clippy.log"
+    },
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/docs/architecture/evidence/geometry-platform-context-restored/ratchets.log": {
+      "sha256": "0e6bf26beebc4e76d1da7505c1b2f2d7b1b77abce2b8b7c58ed9c394422f81ae",
+      "bytes": 2428,
+      "archive_member": "local-artifacts/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/docs/architecture/evidence/geometry-platform-context-restored/ratchets.log"
+    },
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/docs/architecture/evidence/geometry-platform-context-restored/refwalk.log": {
+      "sha256": "dbb4a91e0d8054efbfa9e1d94a5784c18d3c629fec040c40dc4ea7956ae08749",
+      "bytes": 1128,
+      "archive_member": "local-artifacts/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/docs/architecture/evidence/geometry-platform-context-restored/refwalk.log"
+    },
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/docs/architecture/evidence/geometry-platform-context-restored/scene_policy.log": {
+      "sha256": "94175a37459b501cd53998b2cbd10b8572e4c3cfc2b021f149c30f02b9120005",
+      "bytes": 101,
+      "archive_member": "local-artifacts/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/docs/architecture/evidence/geometry-platform-context-restored/scene_policy.log"
+    },
+    "/tmp/ifclite-context-restored-wasm-type-surface.json": {
+      "sha256": "5ef719f2c8197032fbd0c3e86388d8ec27c26ce3db56bbc5adce5c1ab843e8fa",
+      "bytes": 59,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-wasm-type-surface.json"
+    },
+    "/tmp/ifclite-context-restored-js-decode.json": {
+      "sha256": "d03fe75cbbeb24e1162de02146ab28220bf5dd98b45fa763143e6c8964d32cee",
+      "bytes": 18194,
+      "archive_member": "local-artifacts/tmp/ifclite-context-restored-js-decode.json"
+    },
+    "/tmp/ifclite-context-wasm-types-before.d.ts": {
+      "sha256": "e2bf5dee93a6277acee5a814f0bab346ec3c270cbc01bc8a1d0ca75d1c2b65cb",
+      "bytes": 167397,
+      "archive_member": "local-artifacts/tmp/ifclite-context-wasm-types-before.d.ts"
+    }
+  },
+  "missing": [],
+  "scope": "Supporting logs, comparison sources and small manifests/native libraries pinned by the consumer receipts. Large runtimes, wheels, records and libraries remain local and are not bundled. Extract archive members to inspect exact pinned bytes; absolute paths describe original run locations."
+}

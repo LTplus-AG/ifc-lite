@@ -1,0 +1,14 @@
+{
+  "task_id": "node:delegated-task:command%3Amcp%3A40782b11-2ce6-4f4a-b37b-2a6dbccb22b9%3Adelegate-task%3Aifclite-resource-admission-implementation-round1",
+  "provider": "codex_hotmail",
+  "model": "gpt-6.1-sol",
+  "status_at_delegation": "running",
+  "source_manifest": "source-manifest-ratchet-corrected.json",
+  "source_manifest_sha256": "63bb222be30076a296d109eb6cc7d057ec3ab880f727313d62892df82d65ff93",
+  "scope": "Checked explicit resource admission, sticky typed terminal refusal/cancellation and real canonical accumulating mapping/owned producer integration; compatibility default preserved. Independent isolated implementation; no patch integrated or preservation qualification claimed.",
+  "dependent_parallel_work": [
+    "Common product source/numerical program",
+    "Authenticated source/index ownership"
+  ],
+  "remaining_qualification": "Full resource accounting and platform cutover remain open until actual integration and coverage evidence; opaque allocations cannot be described as bounded."
+}

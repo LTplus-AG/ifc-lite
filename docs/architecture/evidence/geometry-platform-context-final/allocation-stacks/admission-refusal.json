@@ -1,0 +1,56 @@
+{
+  "id": "e41dee2d-7c08-4c7c-b63e-5704cd6ded32",
+  "host": {
+    "host": "pop-os",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 32,
+    "availableMemoryBytes": 109824569344,
+    "totalMemoryBytes": 134644969472,
+    "python": "3.12.3",
+    "time": 1792358014.2166014
+  },
+  "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361",
+  "sourceBefore": {
+    "commit": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+    "tree": "fcbbfe6a76b89560289cb3b83b885d951d9b5212",
+    "clean": false,
+    "worktreeDigest": "f212ac5272f8006bcc2861f8b9f4069fb912f488b1269a5bc13a76f66a99cb2e",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "c8987439833b029efc8627127656e04700586f5b990657cac650a20636a5045e",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "command": [
+    "python3",
+    "/tmp/ifclite-context-allocation-stacks-sc/run.py"
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792358014.2160704,
+  "resources": [
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361",
+    "/home/louistrue/build-workers/worker-state/targets/cebc0fce81cc4790d0c2"
+  ],
+  "state": "failed",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "error": "host capacity guard refused admission",
+  "exitCode": 1,
+  "finishedAt": 1792358014.343371,
+  "sourceAfter": {
+    "commit": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+    "tree": "fcbbfe6a76b89560289cb3b83b885d951d9b5212",
+    "clean": false,
+    "worktreeDigest": "f212ac5272f8006bcc2861f8b9f4069fb912f488b1269a5bc13a76f66a99cb2e",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "c8987439833b029efc8627127656e04700586f5b990657cac650a20636a5045e",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "sourceUnchanged": false,
+  "artifacts": {}
+}

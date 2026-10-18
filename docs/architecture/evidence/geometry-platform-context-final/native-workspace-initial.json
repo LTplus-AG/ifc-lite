@@ -1,0 +1,17 @@
+{
+  "source_manifest_sha256": "29cb0bc3971c14c78f0557309bf6e51b6a24c415f196490dea2f5a80b34a902d",
+  "workspace_exit_code": 101,
+  "full_workspace_pass": false,
+  "completed_suite_reports": 330,
+  "passed_invocations_before_stop": 4992,
+  "failed_invocations_before_stop": 1,
+  "ignored_invocations_before_stop": 37,
+  "failure": "positional_read_ratchet has two stale rows for removed mapped traversal literal attribute reads; delete both allowances",
+  "streaming_test_correction_passed": true,
+  "source_mismatches_after_run": [],
+  "log": {
+    "archive": "native-workspace-initial.log.gz",
+    "archive_sha256": "2f4e58f2048c25787da42895911b610fcc95d2adf03f1815a96dfb4eee4ad0d6",
+    "uncompressed_sha256": "561d95cb083772555f90155307a521b3e992de1dd27204c72da0cf5551154e03"
+  }
+}

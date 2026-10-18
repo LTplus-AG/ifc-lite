@@ -9,9 +9,12 @@
 
 mod affinity_chunks;
 mod batch;
+mod batch_entry_points;
+pub(super) use batch::StyleMaps;
 mod partitioned_batch;
 mod batch_from_source;
 mod batch_partition;
+mod batch_partitioned_output;
 mod instancing;
 pub(crate) mod prepass;
 mod prepass_discovery;

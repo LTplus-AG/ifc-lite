@@ -1,0 +1,73 @@
+{
+  "source_manifest": "source-manifest.json",
+  "source_manifest_sha256": "29cb0bc3971c14c78f0557309bf6e51b6a24c415f196490dea2f5a80b34a902d",
+  "frozen_source_count": 288,
+  "all_frozen_source_hashes_match": true,
+  "scope": "Final owned-context candidate; actual isolated canonical wasm32 build, original full high-level and raw batch ABI, root turbo package and matched-base WASM consumers. No all-platform or GPU display qualification.",
+  "build": {
+    "command": "CI=1 CARGO_TARGET_DIR=/tmp/ifclite-context-wasm-target pnpm build:wasm",
+    "exit_code": 0,
+    "rust_compile_seconds": 39.45,
+    "isolated_target": "/tmp/ifclite-context-wasm-target",
+    "wasm_pack": "0.15.0",
+    "rust_toolchain": "nightly-2025-11-15",
+    "node": "24.22.0",
+    "pnpm": "10.8.1",
+    "optimized_profile": "release"
+  },
+  "artifacts": {
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "72b7a11417b1ba8c2ec546bf099bd144fe755f36ea2cb5ed62b4683edbd11990",
+    "packages/wasm/pkg/ifc-lite.js": "f857f30fcb7060511f823068bb259301f0fbd588db668bb8f980f5608dd550a7",
+    "packages/wasm/pkg/ifc-lite.d.ts": "09d8d25805b6d66866b65cfeb3fbc0cbd35edc8b1ef45967930c34c0bad22353"
+  },
+  "runtime_newer_than_all_frozen_source_files": true,
+  "cargo_locks": {
+    "Cargo.lock": "c8987439833b029efc8627127656e04700586f5b990657cac650a20636a5045e",
+    "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371"
+  },
+  "cargo_locks_unchanged": true,
+  "package_tests": {
+    "command": "CI=1 CARGO_TARGET_DIR=/tmp/ifclite-context-wasm-target pnpm test --filter=@ifc-lite/wasm --force",
+    "exit_code": 0,
+    "passed": 24,
+    "failed": 0,
+    "skipped": 0,
+    "suites": 8,
+    "new_owned_context_contracts_passed": 3,
+    "forced_build_and_tests_preserved_artifact_hashes": true
+  },
+  "contracts": {
+    "command": "IFC_WASM_BASE_JS=/tmp/ifclite-smlib-base-8acd0715a/packages/wasm/pkg/ifc-lite.js IFC_WASM_BASE_BINARY=/tmp/ifclite-smlib-base-8acd0715a/packages/wasm/pkg/ifc-lite_bg.wasm pnpm test:wasm-contract",
+    "exit_code": 0,
+    "passed": 223,
+    "failed": 0,
+    "skipped": 0,
+    "stable_post_package_rerun": true,
+    "initial_parallel_run_also_passed223": true,
+    "baseline_commit": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+    "baseline_artifacts": {
+      "/tmp/ifclite-smlib-base-8acd0715a/packages/wasm/pkg/ifc-lite.js": "04c85b1449d8fee992f25f0685170ff03fb4360726fa4e4d2a2d180314c169c0",
+      "/tmp/ifclite-smlib-base-8acd0715a/packages/wasm/pkg/ifc-lite_bg.wasm": "b5f103a8d2992e5d0ee8128579c999c28d746b773a0e8a2c7585e1cabb88b7a9"
+    }
+  },
+  "type_surface": {
+    "comparison": "TypeScript AST of all high-level declarations and each InitOutput member, comments removed; original pre-Result versus regenerated final output",
+    "high_level_changes": [],
+    "raw_init_output_changes": [],
+    "all_five_generated_js_batch_decoder_bodies_match_pinned_base": true,
+    "instanced_return_buffer_decode_restored": true,
+    "generated_doc_comments_restored": true
+  },
+  "logs": {
+    "/tmp/ifclite-context-final-wasm-build.log": "0bb96ffaa21d9fa2f188d5edbf23ba3b814c79c72ab67d19f68f6e234cd1ac64",
+    "/tmp/ifclite-context-final-wasm-package.log": "84a74f4f738a43ac28cb52cdb9e77e77096fe89bf9d30a0bf479e138e0484c24",
+    "/tmp/ifclite-context-final-wasm-contract.log": "41a4fabfcdeaf2d29af903d13edd09a928ab022a9134e29ac97d1f858d53c561",
+    "/tmp/ifclite-context-final-wasm-contract-stable.log": "41a4fabfcdeaf2d29af903d13edd09a928ab022a9134e29ac97d1f858d53c561",
+    "/tmp/ifclite-context-final-wasm-type-surface.log": "5ef719f2c8197032fbd0c3e86388d8ec27c26ce3db56bbc5adce5c1ab843e8fa",
+    "/tmp/ifclite-context-final-js-decode.log": "eb6f8693993b5d7eced19310f1dff033098393da921a03794bfe90eeeec10185"
+  },
+  "comparison_sources": {
+    "/tmp/ifclite-context-final-type-diff.mjs": "93768dac96ca06fd5bfeeefe7e271286128bed76e7690cbcca73d08a4ff50572",
+    "/tmp/ifclite-context-final-js-decode.mjs": "d2c7fc8bc614432954ad362181ed73c422663cc299ca1ed4176d453313c18bb6"
+  }
+}

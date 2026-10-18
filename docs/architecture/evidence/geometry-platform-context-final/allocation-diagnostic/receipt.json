@@ -1,0 +1,2955 @@
+{
+  "method": "Same System GlobalAlloc instrumentation; process_geometry five loads per fresh process after input read and global Rayon pool initialization; FZK control then Holter, ABBA each. Not latency qualification.",
+  "pins_file": "/tmp/ifclite-context-final-scene-library-pins.json",
+  "pins_file_sha256": "4901818751d1a13565b1e40f74c55df1740676c38420dd61f791bb97c0592876",
+  "libraries": {
+    "base": {
+      "ifc_lite_core": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libifc_lite_core-345be4fab942851b.rlib",
+        "bytes": 13365852,
+        "mtime_ns": 1792326332309653486,
+        "sha256": "a414ffcd8475301d7704145b440ec7f7e05f9f4a9e336301c0f31208f3e801b5"
+      },
+      "ifc_lite_geometry": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libifc_lite_geometry-a1b48094c7fc8649.rlib",
+        "bytes": 38820286,
+        "mtime_ns": 1792326376619510148,
+        "sha256": "3ea2d4671bf8810b1deb7b9ba9b3f438b6437171d185db815b48d6f93b615b21"
+      },
+      "ifc_lite_processing": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libifc_lite_processing-915d2910f76c184d.rlib",
+        "bytes": 35178572,
+        "mtime_ns": 1792326389831467408,
+        "sha256": "44ff20c67bc366a3f0742c9d58a26bc0e0e51e3d79ffc2bc9ee61716aba557b3"
+      },
+      "serde": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libserde-e3cc15af0a9b0193.rlib",
+        "bytes": 1018230,
+        "mtime_ns": 1792326326987670703,
+        "sha256": "f0cab349843a98de6694f20e773728e488f02625bb4f6dc5a812bd55b937335d"
+      },
+      "serde_json": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libserde_json-8db63b8bd7d1e60b.rlib",
+        "bytes": 2344826,
+        "mtime_ns": 1792326359772564647,
+        "sha256": "2982ce89ec152e810879351d90de820370b44a97eeccf3fcd2c0322247fd3c0d"
+      },
+      "sha2": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libsha2-704a646f6b16e0bb.rlib",
+        "bytes": 812600,
+        "mtime_ns": 1792326358837567671,
+        "sha256": "e91112f5d4762288c2bf5ec09bc832e67df0c03f251e081b754f3aab3209d5cc"
+      },
+      "rayon": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/librayon-7cf848c0d30fe261.rlib",
+        "bytes": 4526002,
+        "sha256": "1c3d98402a5c03ca38d9f3454cc347ca3801afee0f0bd3ee15430e1929ecc9b9"
+      }
+    },
+    "candidate": {
+      "ifc_lite_core": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps/libifc_lite_core-345be4fab942851b.rlib",
+        "bytes": 13529722,
+        "mtime_ns": 1792348719129310415,
+        "sha256": "882fd9855d407a51c6a6a2fe5d69f782578775f805ab801fde5fbb4315d9e1ef"
+      },
+      "ifc_lite_geometry": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps/libifc_lite_geometry-a1b48094c7fc8649.rlib",
+        "bytes": 40937624,
+        "mtime_ns": 1792354704320205968,
+        "sha256": "adbe4bbb31607612365a91f698866fbba27178b5cebc649ea1d8ecfee7bbbfb3"
+      },
+      "ifc_lite_processing": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps/libifc_lite_processing-915d2910f76c184d.rlib",
+        "bytes": 36864442,
+        "mtime_ns": 1792354697796224654,
+        "sha256": "86895ecc66e7e3894d24babf575f8a041de9a000f3cb2c874cf54206cf5c2cab"
+      },
+      "serde": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps/libserde-e3cc15af0a9b0193.rlib",
+        "bytes": 1018246,
+        "mtime_ns": 1792326509742079505,
+        "sha256": "d5b3ac3006edeb2f7c7414235dc3c2bd70c22f9377ed0fe247cb237b13e38cb0"
+      },
+      "serde_json": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps/libserde_json-8db63b8bd7d1e60b.rlib",
+        "bytes": 2344826,
+        "mtime_ns": 1792326541263977534,
+        "sha256": "7e8525ec1d719c6ed8f8a0e1b07ec4a831f53df32c33ffdf7b70d4acda68cfd1"
+      },
+      "sha2": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps/libsha2-704a646f6b16e0bb.rlib",
+        "bytes": 812600,
+        "mtime_ns": 1792326540303980639,
+        "sha256": "e91112f5d4762288c2bf5ec09bc832e67df0c03f251e081b754f3aab3209d5cc"
+      },
+      "rayon": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps/librayon-7cf848c0d30fe261.rlib",
+        "bytes": 4526002,
+        "sha256": "1c3d98402a5c03ca38d9f3454cc347ca3801afee0f0bd3ee15430e1929ecc9b9"
+      }
+    }
+  },
+  "compiler": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)\nbinary: rustc\ncommit-hash: b6d7ff3aa71e48e2901b0900f8b5d98126b537ed\ncommit-date: 2025-11-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.93.0-nightly\nLLVM version: 21.1.5\n",
+  "source_files": {
+    "main.rs": "8b219276f73b633dd1e481d0ad54b387105d32e69e8a806ef3f09626b5018144",
+    "fingerprint.rs": "150056cd6fae4bc5d413a55082d507cef67796f8a087fbf11c212c92ee1a2589"
+  },
+  "commands": {
+    "base": [
+      "rustc",
+      "--edition=2021",
+      "-C",
+      "opt-level=3",
+      "-C",
+      "panic=abort",
+      "/tmp/ifclite-context-allocation-diagnostic/main.rs",
+      "-L",
+      "dependency=/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps",
+      "-o",
+      "/tmp/ifclite-context-allocation-diagnostic/alloc-base",
+      "--extern",
+      "ifc_lite_core=/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libifc_lite_core-345be4fab942851b.rlib",
+      "--extern",
+      "ifc_lite_geometry=/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libifc_lite_geometry-a1b48094c7fc8649.rlib",
+      "--extern",
+      "ifc_lite_processing=/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libifc_lite_processing-915d2910f76c184d.rlib",
+      "--extern",
+      "serde=/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libserde-e3cc15af0a9b0193.rlib",
+      "--extern",
+      "serde_json=/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libserde_json-8db63b8bd7d1e60b.rlib",
+      "--extern",
+      "sha2=/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libsha2-704a646f6b16e0bb.rlib",
+      "--extern",
+      "rayon=/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/librayon-7cf848c0d30fe261.rlib"
+    ],
+    "candidate": [
+      "rustc",
+      "--edition=2021",
+      "-C",
+      "opt-level=3",
+      "-C",
+      "panic=abort",
+      "/tmp/ifclite-context-allocation-diagnostic/main.rs",
+      "-L",
+      "dependency=/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps",
+      "-o",
+      "/tmp/ifclite-context-allocation-diagnostic/alloc-candidate",
+      "--extern",
+      "ifc_lite_core=/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps/libifc_lite_core-345be4fab942851b.rlib",
+      "--extern",
+      "ifc_lite_geometry=/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps/libifc_lite_geometry-a1b48094c7fc8649.rlib",
+      "--extern",
+      "ifc_lite_processing=/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps/libifc_lite_processing-915d2910f76c184d.rlib",
+      "--extern",
+      "serde=/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps/libserde-e3cc15af0a9b0193.rlib",
+      "--extern",
+      "serde_json=/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps/libserde_json-8db63b8bd7d1e60b.rlib",
+      "--extern",
+      "sha2=/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps/libsha2-704a646f6b16e0bb.rlib",
+      "--extern",
+      "rayon=/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps/librayon-7cf848c0d30fe261.rlib"
+    ]
+  },
+  "env": {
+    "RAYON_NUM_THREADS": "2",
+    "IFC_LITE_CSG_BUDGET": null,
+    "IFC_LITE_CSG_ELEMENT_BUDGET": null,
+    "IFC_LITE_INSTANCING": null
+  },
+  "runs": [
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "fixture_sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "label": "base",
+      "order": 0,
+      "command": [
+        "/usr/bin/time",
+        "-f",
+        "%M",
+        "-o",
+        "/tmp/ifclite-context-allocation-diagnostic/fzk-0-base-rss.txt",
+        "/tmp/ifclite-context-allocation-diagnostic/alloc-base",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "5"
+      ],
+      "result": {
+        "allocator_self_check": true,
+        "file_bytes": 2526511,
+        "records": [
+          {
+            "after_process": {
+              "alloc_bytes": 33021628,
+              "alloc_calls": 162930,
+              "failed": 0,
+              "free_bytes": 33774284,
+              "free_calls": 159563,
+              "live": 5147172,
+              "peak": 10055535,
+              "realloc_calls": 20467,
+              "realloc_new_bytes": 11519210,
+              "realloc_old_bytes": 5619382,
+              "zeroed_calls": 881
+            },
+            "after_result_drop": {
+              "alloc_bytes": 33021644,
+              "alloc_calls": 162931,
+              "failed": 0,
+              "free_bytes": 35281944,
+              "free_calls": 163741,
+              "live": 3639528,
+              "peak": 10055535,
+              "realloc_calls": 20467,
+              "realloc_new_bytes": 11519210,
+              "realloc_old_bytes": 5619382,
+              "zeroed_calls": 881
+            },
+            "before": {
+              "alloc_bytes": 2549857,
+              "alloc_calls": 43,
+              "failed": 0,
+              "free_bytes": 3481,
+              "free_calls": 7,
+              "live": 2548424,
+              "peak": 2548424,
+              "realloc_calls": 1,
+              "realloc_new_bytes": 3072,
+              "realloc_old_bytes": 1024,
+              "zeroed_calls": 3
+            },
+            "fingerprint": 8320359849537451299,
+            "iteration": 0,
+            "mesh_count": 285,
+            "process_delta": {
+              "alloc_bytes": 30471771,
+              "alloc_calls": 162887,
+              "failed": 0,
+              "free_bytes": 33770803,
+              "free_calls": 159556,
+              "live": 5147172,
+              "peak": 10055535,
+              "realloc_calls": 20466,
+              "realloc_new_bytes": 11516138,
+              "realloc_old_bytes": 5618358,
+              "zeroed_calls": 878
+            },
+            "triangles": 20322,
+            "vertices": 35940
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 62620123,
+              "alloc_calls": 325771,
+              "failed": 0,
+              "free_bytes": 69027895,
+              "free_calls": 323282,
+              "live": 5147268,
+              "peak": 10055631,
+              "realloc_calls": 40846,
+              "realloc_new_bytes": 22631332,
+              "realloc_old_bytes": 11076292,
+              "zeroed_calls": 1759
+            },
+            "after_result_drop": {
+              "alloc_bytes": 62620139,
+              "alloc_calls": 325772,
+              "failed": 0,
+              "free_bytes": 70535555,
+              "free_calls": 327460,
+              "live": 3639624,
+              "peak": 10055631,
+              "realloc_calls": 40846,
+              "realloc_new_bytes": 22631332,
+              "realloc_old_bytes": 11076292,
+              "zeroed_calls": 1759
+            },
+            "before": {
+              "alloc_bytes": 33021644,
+              "alloc_calls": 162931,
+              "failed": 0,
+              "free_bytes": 35281944,
+              "free_calls": 163741,
+              "live": 3639528,
+              "peak": 3639528,
+              "realloc_calls": 20467,
+              "realloc_new_bytes": 11519210,
+              "realloc_old_bytes": 5619382,
+              "zeroed_calls": 881
+            },
+            "fingerprint": 8320359849537451299,
+            "iteration": 1,
+            "mesh_count": 285,
+            "process_delta": {
+              "alloc_bytes": 29598479,
+              "alloc_calls": 162840,
+              "failed": 0,
+              "free_bytes": 33745951,
+              "free_calls": 159541,
+              "live": 5147268,
+              "peak": 10055631,
+              "realloc_calls": 20379,
+              "realloc_new_bytes": 11112122,
+              "realloc_old_bytes": 5456910,
+              "zeroed_calls": 878
+            },
+            "triangles": 20322,
+            "vertices": 35940
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 92218618,
+              "alloc_calls": 488612,
+              "failed": 0,
+              "free_bytes": 104281506,
+              "free_calls": 487001,
+              "live": 5147460,
+              "peak": 10055823,
+              "realloc_calls": 61225,
+              "realloc_new_bytes": 33743646,
+              "realloc_old_bytes": 16533298,
+              "zeroed_calls": 2637
+            },
+            "after_result_drop": {
+              "alloc_bytes": 92218634,
+              "alloc_calls": 488613,
+              "failed": 0,
+              "free_bytes": 105789166,
+              "free_calls": 491179,
+              "live": 3639816,
+              "peak": 10055823,
+              "realloc_calls": 61225,
+              "realloc_new_bytes": 33743646,
+              "realloc_old_bytes": 16533298,
+              "zeroed_calls": 2637
+            },
+            "before": {
+              "alloc_bytes": 62620139,
+              "alloc_calls": 325772,
+              "failed": 0,
+              "free_bytes": 70535555,
+              "free_calls": 327460,
+              "live": 3639624,
+              "peak": 3639624,
+              "realloc_calls": 40846,
+              "realloc_new_bytes": 22631332,
+              "realloc_old_bytes": 11076292,
+              "zeroed_calls": 1759
+            },
+            "fingerprint": 8320359849537451299,
+            "iteration": 2,
+            "mesh_count": 285,
+            "process_delta": {
+              "alloc_bytes": 29598479,
+              "alloc_calls": 162840,
+              "failed": 0,
+              "free_bytes": 33745951,
+              "free_calls": 159541,
+              "live": 5147460,
+              "peak": 10055823,
+              "realloc_calls": 20379,
+              "realloc_new_bytes": 11112314,
+              "realloc_old_bytes": 5457006,
+              "zeroed_calls": 878
+            },
+            "triangles": 20322,
+            "vertices": 35940
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 121817113,
+              "alloc_calls": 651453,
+              "failed": 0,
+              "free_bytes": 139535117,
+              "free_calls": 650720,
+              "live": 5147460,
+              "peak": 10055823,
+              "realloc_calls": 81603,
+              "realloc_new_bytes": 44855576,
+              "realloc_old_bytes": 21990112,
+              "zeroed_calls": 3515
+            },
+            "after_result_drop": {
+              "alloc_bytes": 121817129,
+              "alloc_calls": 651454,
+              "failed": 0,
+              "free_bytes": 141042777,
+              "free_calls": 654898,
+              "live": 3639816,
+              "peak": 10055823,
+              "realloc_calls": 81603,
+              "realloc_new_bytes": 44855576,
+              "realloc_old_bytes": 21990112,
+              "zeroed_calls": 3515
+            },
+            "before": {
+              "alloc_bytes": 92218634,
+              "alloc_calls": 488613,
+              "failed": 0,
+              "free_bytes": 105789166,
+              "free_calls": 491179,
+              "live": 3639816,
+              "peak": 3639816,
+              "realloc_calls": 61225,
+              "realloc_new_bytes": 33743646,
+              "realloc_old_bytes": 16533298,
+              "zeroed_calls": 2637
+            },
+            "fingerprint": 8320359849537451299,
+            "iteration": 3,
+            "mesh_count": 285,
+            "process_delta": {
+              "alloc_bytes": 29598479,
+              "alloc_calls": 162840,
+              "failed": 0,
+              "free_bytes": 33745951,
+              "free_calls": 159541,
+              "live": 5147460,
+              "peak": 10055823,
+              "realloc_calls": 20378,
+              "realloc_new_bytes": 11111930,
+              "realloc_old_bytes": 5456814,
+              "zeroed_calls": 878
+            },
+            "triangles": 20322,
+            "vertices": 35940
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 151415608,
+              "alloc_calls": 814294,
+              "failed": 0,
+              "free_bytes": 174788728,
+              "free_calls": 814439,
+              "live": 5147844,
+              "peak": 10110094,
+              "realloc_calls": 101982,
+              "realloc_new_bytes": 55968274,
+              "realloc_old_bytes": 27447310,
+              "zeroed_calls": 4393
+            },
+            "after_result_drop": {
+              "alloc_bytes": 151415624,
+              "alloc_calls": 814295,
+              "failed": 0,
+              "free_bytes": 176296388,
+              "free_calls": 818617,
+              "live": 3640200,
+              "peak": 10110094,
+              "realloc_calls": 101982,
+              "realloc_new_bytes": 55968274,
+              "realloc_old_bytes": 27447310,
+              "zeroed_calls": 4393
+            },
+            "before": {
+              "alloc_bytes": 121817129,
+              "alloc_calls": 651454,
+              "failed": 0,
+              "free_bytes": 141042777,
+              "free_calls": 654898,
+              "live": 3639816,
+              "peak": 3639816,
+              "realloc_calls": 81603,
+              "realloc_new_bytes": 44855576,
+              "realloc_old_bytes": 21990112,
+              "zeroed_calls": 3515
+            },
+            "fingerprint": 8320359849537451299,
+            "iteration": 4,
+            "mesh_count": 285,
+            "process_delta": {
+              "alloc_bytes": 29598479,
+              "alloc_calls": 162840,
+              "failed": 0,
+              "free_bytes": 33745951,
+              "free_calls": 159541,
+              "live": 5147844,
+              "peak": 10110094,
+              "realloc_calls": 20379,
+              "realloc_new_bytes": 11112698,
+              "realloc_old_bytes": 5457198,
+              "zeroed_calls": 878
+            },
+            "triangles": 20322,
+            "vertices": 35940
+          }
+        ],
+        "threads": 2
+      },
+      "maximum_resident_set_kib": 17192,
+      "artifacts": {
+        "fzk-0-base.json": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/fzk-0-base.json",
+          "sha256": "923c278dbc438e94636a18ccf1ba37aa7e2bbe563b7f84cbfe4cdb09a895066b",
+          "bytes": 8225
+        },
+        "fzk-0-base.log": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/fzk-0-base.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "fzk-0-base-rss.txt": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/fzk-0-base-rss.txt",
+          "sha256": "9729f2d9bfa864ad90ddbb6e43dbeb798bbe8230a016dd52a0104323f24b2d3a",
+          "bytes": 6
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "fixture_sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "label": "candidate",
+      "order": 1,
+      "command": [
+        "/usr/bin/time",
+        "-f",
+        "%M",
+        "-o",
+        "/tmp/ifclite-context-allocation-diagnostic/fzk-1-candidate-rss.txt",
+        "/tmp/ifclite-context-allocation-diagnostic/alloc-candidate",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "5"
+      ],
+      "result": {
+        "allocator_self_check": true,
+        "file_bytes": 2526511,
+        "records": [
+          {
+            "after_process": {
+              "alloc_bytes": 33277213,
+              "alloc_calls": 166990,
+              "failed": 0,
+              "free_bytes": 34093944,
+              "free_calls": 163621,
+              "live": 5147561,
+              "peak": 10056060,
+              "realloc_calls": 20529,
+              "realloc_new_bytes": 11614090,
+              "realloc_old_bytes": 5649798,
+              "zeroed_calls": 881
+            },
+            "after_result_drop": {
+              "alloc_bytes": 33277229,
+              "alloc_calls": 166991,
+              "failed": 0,
+              "free_bytes": 35601604,
+              "free_calls": 167799,
+              "live": 3639917,
+              "peak": 10056060,
+              "realloc_calls": 20529,
+              "realloc_new_bytes": 11614090,
+              "realloc_old_bytes": 5649798,
+              "zeroed_calls": 881
+            },
+            "before": {
+              "alloc_bytes": 2549862,
+              "alloc_calls": 43,
+              "failed": 0,
+              "free_bytes": 3481,
+              "free_calls": 7,
+              "live": 2548429,
+              "peak": 2548429,
+              "realloc_calls": 1,
+              "realloc_new_bytes": 3072,
+              "realloc_old_bytes": 1024,
+              "zeroed_calls": 3
+            },
+            "fingerprint": 8320359849537451299,
+            "iteration": 0,
+            "mesh_count": 285,
+            "process_delta": {
+              "alloc_bytes": 30727351,
+              "alloc_calls": 166947,
+              "failed": 0,
+              "free_bytes": 34090463,
+              "free_calls": 163614,
+              "live": 5147561,
+              "peak": 10056060,
+              "realloc_calls": 20528,
+              "realloc_new_bytes": 11611018,
+              "realloc_old_bytes": 5648774,
+              "zeroed_calls": 878
+            },
+            "triangles": 20322,
+            "vertices": 35940
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 63130904,
+              "alloc_calls": 333889,
+              "failed": 0,
+              "free_bytes": 69667215,
+              "free_calls": 331398,
+              "live": 5147657,
+              "peak": 10056156,
+              "realloc_calls": 40970,
+              "realloc_new_bytes": 22821092,
+              "realloc_old_bytes": 11137124,
+              "zeroed_calls": 1759
+            },
+            "after_result_drop": {
+              "alloc_bytes": 63130920,
+              "alloc_calls": 333890,
+              "failed": 0,
+              "free_bytes": 71174875,
+              "free_calls": 335576,
+              "live": 3640013,
+              "peak": 10056156,
+              "realloc_calls": 40970,
+              "realloc_new_bytes": 22821092,
+              "realloc_old_bytes": 11137124,
+              "zeroed_calls": 1759
+            },
+            "before": {
+              "alloc_bytes": 33277229,
+              "alloc_calls": 166991,
+              "failed": 0,
+              "free_bytes": 35601604,
+              "free_calls": 167799,
+              "live": 3639917,
+              "peak": 3639917,
+              "realloc_calls": 20529,
+              "realloc_new_bytes": 11614090,
+              "realloc_old_bytes": 5649798,
+              "zeroed_calls": 881
+            },
+            "fingerprint": 8320359849537451299,
+            "iteration": 1,
+            "mesh_count": 285,
+            "process_delta": {
+              "alloc_bytes": 29853675,
+              "alloc_calls": 166898,
+              "failed": 0,
+              "free_bytes": 34065611,
+              "free_calls": 163599,
+              "live": 5147657,
+              "peak": 10056156,
+              "realloc_calls": 20441,
+              "realloc_new_bytes": 11207002,
+              "realloc_old_bytes": 5487326,
+              "zeroed_calls": 878
+            },
+            "triangles": 20322,
+            "vertices": 35940
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 92984595,
+              "alloc_calls": 500788,
+              "failed": 0,
+              "free_bytes": 105240486,
+              "free_calls": 499175,
+              "live": 5147849,
+              "peak": 10056348,
+              "realloc_calls": 61411,
+              "realloc_new_bytes": 34028286,
+              "realloc_old_bytes": 16624546,
+              "zeroed_calls": 2637
+            },
+            "after_result_drop": {
+              "alloc_bytes": 92984611,
+              "alloc_calls": 500789,
+              "failed": 0,
+              "free_bytes": 106748146,
+              "free_calls": 503353,
+              "live": 3640205,
+              "peak": 10056348,
+              "realloc_calls": 61411,
+              "realloc_new_bytes": 34028286,
+              "realloc_old_bytes": 16624546,
+              "zeroed_calls": 2637
+            },
+            "before": {
+              "alloc_bytes": 63130920,
+              "alloc_calls": 333890,
+              "failed": 0,
+              "free_bytes": 71174875,
+              "free_calls": 335576,
+              "live": 3640013,
+              "peak": 3640013,
+              "realloc_calls": 40970,
+              "realloc_new_bytes": 22821092,
+              "realloc_old_bytes": 11137124,
+              "zeroed_calls": 1759
+            },
+            "fingerprint": 8320359849537451299,
+            "iteration": 2,
+            "mesh_count": 285,
+            "process_delta": {
+              "alloc_bytes": 29853675,
+              "alloc_calls": 166898,
+              "failed": 0,
+              "free_bytes": 34065611,
+              "free_calls": 163599,
+              "live": 5147849,
+              "peak": 10056348,
+              "realloc_calls": 20441,
+              "realloc_new_bytes": 11207194,
+              "realloc_old_bytes": 5487422,
+              "zeroed_calls": 878
+            },
+            "triangles": 20322,
+            "vertices": 35940
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 122838286,
+              "alloc_calls": 667687,
+              "failed": 0,
+              "free_bytes": 140813757,
+              "free_calls": 666952,
+              "live": 5147849,
+              "peak": 10056348,
+              "realloc_calls": 81851,
+              "realloc_new_bytes": 45235096,
+              "realloc_old_bytes": 22111776,
+              "zeroed_calls": 3515
+            },
+            "after_result_drop": {
+              "alloc_bytes": 122838302,
+              "alloc_calls": 667688,
+              "failed": 0,
+              "free_bytes": 142321417,
+              "free_calls": 671130,
+              "live": 3640205,
+              "peak": 10056348,
+              "realloc_calls": 81851,
+              "realloc_new_bytes": 45235096,
+              "realloc_old_bytes": 22111776,
+              "zeroed_calls": 3515
+            },
+            "before": {
+              "alloc_bytes": 92984611,
+              "alloc_calls": 500789,
+              "failed": 0,
+              "free_bytes": 106748146,
+              "free_calls": 503353,
+              "live": 3640205,
+              "peak": 3640205,
+              "realloc_calls": 61411,
+              "realloc_new_bytes": 34028286,
+              "realloc_old_bytes": 16624546,
+              "zeroed_calls": 2637
+            },
+            "fingerprint": 8320359849537451299,
+            "iteration": 3,
+            "mesh_count": 285,
+            "process_delta": {
+              "alloc_bytes": 29853675,
+              "alloc_calls": 166898,
+              "failed": 0,
+              "free_bytes": 34065611,
+              "free_calls": 163599,
+              "live": 5147849,
+              "peak": 10056348,
+              "realloc_calls": 20440,
+              "realloc_new_bytes": 11206810,
+              "realloc_old_bytes": 5487230,
+              "zeroed_calls": 878
+            },
+            "triangles": 20322,
+            "vertices": 35940
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 152691977,
+              "alloc_calls": 834586,
+              "failed": 0,
+              "free_bytes": 176387028,
+              "free_calls": 834729,
+              "live": 5148233,
+              "peak": 10056732,
+              "realloc_calls": 102292,
+              "realloc_new_bytes": 56442674,
+              "realloc_old_bytes": 27599390,
+              "zeroed_calls": 4393
+            },
+            "after_result_drop": {
+              "alloc_bytes": 152691993,
+              "alloc_calls": 834587,
+              "failed": 0,
+              "free_bytes": 177894688,
+              "free_calls": 838907,
+              "live": 3640589,
+              "peak": 10056732,
+              "realloc_calls": 102292,
+              "realloc_new_bytes": 56442674,
+              "realloc_old_bytes": 27599390,
+              "zeroed_calls": 4393
+            },
+            "before": {
+              "alloc_bytes": 122838302,
+              "alloc_calls": 667688,
+              "failed": 0,
+              "free_bytes": 142321417,
+              "free_calls": 671130,
+              "live": 3640205,
+              "peak": 3640205,
+              "realloc_calls": 81851,
+              "realloc_new_bytes": 45235096,
+              "realloc_old_bytes": 22111776,
+              "zeroed_calls": 3515
+            },
+            "fingerprint": 8320359849537451299,
+            "iteration": 4,
+            "mesh_count": 285,
+            "process_delta": {
+              "alloc_bytes": 29853675,
+              "alloc_calls": 166898,
+              "failed": 0,
+              "free_bytes": 34065611,
+              "free_calls": 163599,
+              "live": 5148233,
+              "peak": 10056732,
+              "realloc_calls": 20441,
+              "realloc_new_bytes": 11207578,
+              "realloc_old_bytes": 5487614,
+              "zeroed_calls": 878
+            },
+            "triangles": 20322,
+            "vertices": 35940
+          }
+        ],
+        "threads": 2
+      },
+      "maximum_resident_set_kib": 17392,
+      "artifacts": {
+        "fzk-1-candidate.json": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/fzk-1-candidate.json",
+          "sha256": "02bca3f367792f940f73c57a03faf67ff2e341474c02de436d251dd9c6c533a3",
+          "bytes": 8225
+        },
+        "fzk-1-candidate.log": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/fzk-1-candidate.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "fzk-1-candidate-rss.txt": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/fzk-1-candidate-rss.txt",
+          "sha256": "1def5002df751ad15788dcc0629d3ec42a7b8f5f439d837af3a0b8e74c057e1b",
+          "bytes": 6
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "fixture_sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "label": "candidate",
+      "order": 2,
+      "command": [
+        "/usr/bin/time",
+        "-f",
+        "%M",
+        "-o",
+        "/tmp/ifclite-context-allocation-diagnostic/fzk-2-candidate-rss.txt",
+        "/tmp/ifclite-context-allocation-diagnostic/alloc-candidate",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "5"
+      ],
+      "result": {
+        "allocator_self_check": true,
+        "file_bytes": 2526511,
+        "records": [
+          {
+            "after_process": {
+              "alloc_bytes": 33277213,
+              "alloc_calls": 166990,
+              "failed": 0,
+              "free_bytes": 34093944,
+              "free_calls": 163621,
+              "live": 5147561,
+              "peak": 10056060,
+              "realloc_calls": 20529,
+              "realloc_new_bytes": 11614090,
+              "realloc_old_bytes": 5649798,
+              "zeroed_calls": 881
+            },
+            "after_result_drop": {
+              "alloc_bytes": 33277229,
+              "alloc_calls": 166991,
+              "failed": 0,
+              "free_bytes": 35601604,
+              "free_calls": 167799,
+              "live": 3639917,
+              "peak": 10056060,
+              "realloc_calls": 20529,
+              "realloc_new_bytes": 11614090,
+              "realloc_old_bytes": 5649798,
+              "zeroed_calls": 881
+            },
+            "before": {
+              "alloc_bytes": 2549862,
+              "alloc_calls": 43,
+              "failed": 0,
+              "free_bytes": 3481,
+              "free_calls": 7,
+              "live": 2548429,
+              "peak": 2548429,
+              "realloc_calls": 1,
+              "realloc_new_bytes": 3072,
+              "realloc_old_bytes": 1024,
+              "zeroed_calls": 3
+            },
+            "fingerprint": 8320359849537451299,
+            "iteration": 0,
+            "mesh_count": 285,
+            "process_delta": {
+              "alloc_bytes": 30727351,
+              "alloc_calls": 166947,
+              "failed": 0,
+              "free_bytes": 34090463,
+              "free_calls": 163614,
+              "live": 5147561,
+              "peak": 10056060,
+              "realloc_calls": 20528,
+              "realloc_new_bytes": 11611018,
+              "realloc_old_bytes": 5648774,
+              "zeroed_calls": 878
+            },
+            "triangles": 20322,
+            "vertices": 35940
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 63130904,
+              "alloc_calls": 333889,
+              "failed": 0,
+              "free_bytes": 69667215,
+              "free_calls": 331398,
+              "live": 5147657,
+              "peak": 10056156,
+              "realloc_calls": 40970,
+              "realloc_new_bytes": 22821092,
+              "realloc_old_bytes": 11137124,
+              "zeroed_calls": 1759
+            },
+            "after_result_drop": {
+              "alloc_bytes": 63130920,
+              "alloc_calls": 333890,
+              "failed": 0,
+              "free_bytes": 71174875,
+              "free_calls": 335576,
+              "live": 3640013,
+              "peak": 10056156,
+              "realloc_calls": 40970,
+              "realloc_new_bytes": 22821092,
+              "realloc_old_bytes": 11137124,
+              "zeroed_calls": 1759
+            },
+            "before": {
+              "alloc_bytes": 33277229,
+              "alloc_calls": 166991,
+              "failed": 0,
+              "free_bytes": 35601604,
+              "free_calls": 167799,
+              "live": 3639917,
+              "peak": 3639917,
+              "realloc_calls": 20529,
+              "realloc_new_bytes": 11614090,
+              "realloc_old_bytes": 5649798,
+              "zeroed_calls": 881
+            },
+            "fingerprint": 8320359849537451299,
+            "iteration": 1,
+            "mesh_count": 285,
+            "process_delta": {
+              "alloc_bytes": 29853675,
+              "alloc_calls": 166898,
+              "failed": 0,
+              "free_bytes": 34065611,
+              "free_calls": 163599,
+              "live": 5147657,
+              "peak": 10056156,
+              "realloc_calls": 20441,
+              "realloc_new_bytes": 11207002,
+              "realloc_old_bytes": 5487326,
+              "zeroed_calls": 878
+            },
+            "triangles": 20322,
+            "vertices": 35940
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 92984595,
+              "alloc_calls": 500788,
+              "failed": 0,
+              "free_bytes": 105240486,
+              "free_calls": 499175,
+              "live": 5147849,
+              "peak": 10056348,
+              "realloc_calls": 61411,
+              "realloc_new_bytes": 34028286,
+              "realloc_old_bytes": 16624546,
+              "zeroed_calls": 2637
+            },
+            "after_result_drop": {
+              "alloc_bytes": 92984611,
+              "alloc_calls": 500789,
+              "failed": 0,
+              "free_bytes": 106748146,
+              "free_calls": 503353,
+              "live": 3640205,
+              "peak": 10056348,
+              "realloc_calls": 61411,
+              "realloc_new_bytes": 34028286,
+              "realloc_old_bytes": 16624546,
+              "zeroed_calls": 2637
+            },
+            "before": {
+              "alloc_bytes": 63130920,
+              "alloc_calls": 333890,
+              "failed": 0,
+              "free_bytes": 71174875,
+              "free_calls": 335576,
+              "live": 3640013,
+              "peak": 3640013,
+              "realloc_calls": 40970,
+              "realloc_new_bytes": 22821092,
+              "realloc_old_bytes": 11137124,
+              "zeroed_calls": 1759
+            },
+            "fingerprint": 8320359849537451299,
+            "iteration": 2,
+            "mesh_count": 285,
+            "process_delta": {
+              "alloc_bytes": 29853675,
+              "alloc_calls": 166898,
+              "failed": 0,
+              "free_bytes": 34065611,
+              "free_calls": 163599,
+              "live": 5147849,
+              "peak": 10056348,
+              "realloc_calls": 20441,
+              "realloc_new_bytes": 11207194,
+              "realloc_old_bytes": 5487422,
+              "zeroed_calls": 878
+            },
+            "triangles": 20322,
+            "vertices": 35940
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 122838286,
+              "alloc_calls": 667687,
+              "failed": 0,
+              "free_bytes": 140813757,
+              "free_calls": 666952,
+              "live": 5147849,
+              "peak": 10056348,
+              "realloc_calls": 81851,
+              "realloc_new_bytes": 45235096,
+              "realloc_old_bytes": 22111776,
+              "zeroed_calls": 3515
+            },
+            "after_result_drop": {
+              "alloc_bytes": 122838302,
+              "alloc_calls": 667688,
+              "failed": 0,
+              "free_bytes": 142321417,
+              "free_calls": 671130,
+              "live": 3640205,
+              "peak": 10056348,
+              "realloc_calls": 81851,
+              "realloc_new_bytes": 45235096,
+              "realloc_old_bytes": 22111776,
+              "zeroed_calls": 3515
+            },
+            "before": {
+              "alloc_bytes": 92984611,
+              "alloc_calls": 500789,
+              "failed": 0,
+              "free_bytes": 106748146,
+              "free_calls": 503353,
+              "live": 3640205,
+              "peak": 3640205,
+              "realloc_calls": 61411,
+              "realloc_new_bytes": 34028286,
+              "realloc_old_bytes": 16624546,
+              "zeroed_calls": 2637
+            },
+            "fingerprint": 8320359849537451299,
+            "iteration": 3,
+            "mesh_count": 285,
+            "process_delta": {
+              "alloc_bytes": 29853675,
+              "alloc_calls": 166898,
+              "failed": 0,
+              "free_bytes": 34065611,
+              "free_calls": 163599,
+              "live": 5147849,
+              "peak": 10056348,
+              "realloc_calls": 20440,
+              "realloc_new_bytes": 11206810,
+              "realloc_old_bytes": 5487230,
+              "zeroed_calls": 878
+            },
+            "triangles": 20322,
+            "vertices": 35940
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 152691977,
+              "alloc_calls": 834586,
+              "failed": 0,
+              "free_bytes": 176387028,
+              "free_calls": 834729,
+              "live": 5148233,
+              "peak": 10056732,
+              "realloc_calls": 102292,
+              "realloc_new_bytes": 56442674,
+              "realloc_old_bytes": 27599390,
+              "zeroed_calls": 4393
+            },
+            "after_result_drop": {
+              "alloc_bytes": 152691993,
+              "alloc_calls": 834587,
+              "failed": 0,
+              "free_bytes": 177894688,
+              "free_calls": 838907,
+              "live": 3640589,
+              "peak": 10056732,
+              "realloc_calls": 102292,
+              "realloc_new_bytes": 56442674,
+              "realloc_old_bytes": 27599390,
+              "zeroed_calls": 4393
+            },
+            "before": {
+              "alloc_bytes": 122838302,
+              "alloc_calls": 667688,
+              "failed": 0,
+              "free_bytes": 142321417,
+              "free_calls": 671130,
+              "live": 3640205,
+              "peak": 3640205,
+              "realloc_calls": 81851,
+              "realloc_new_bytes": 45235096,
+              "realloc_old_bytes": 22111776,
+              "zeroed_calls": 3515
+            },
+            "fingerprint": 8320359849537451299,
+            "iteration": 4,
+            "mesh_count": 285,
+            "process_delta": {
+              "alloc_bytes": 29853675,
+              "alloc_calls": 166898,
+              "failed": 0,
+              "free_bytes": 34065611,
+              "free_calls": 163599,
+              "live": 5148233,
+              "peak": 10056732,
+              "realloc_calls": 20441,
+              "realloc_new_bytes": 11207578,
+              "realloc_old_bytes": 5487614,
+              "zeroed_calls": 878
+            },
+            "triangles": 20322,
+            "vertices": 35940
+          }
+        ],
+        "threads": 2
+      },
+      "maximum_resident_set_kib": 17236,
+      "artifacts": {
+        "fzk-2-candidate.json": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/fzk-2-candidate.json",
+          "sha256": "02bca3f367792f940f73c57a03faf67ff2e341474c02de436d251dd9c6c533a3",
+          "bytes": 8225
+        },
+        "fzk-2-candidate.log": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/fzk-2-candidate.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "fzk-2-candidate-rss.txt": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/fzk-2-candidate-rss.txt",
+          "sha256": "76bdf7428fdf2d6c3c448360b4b2f038929815a0461c05a73160a1560d95d3d0",
+          "bytes": 6
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "fixture_sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "label": "base",
+      "order": 3,
+      "command": [
+        "/usr/bin/time",
+        "-f",
+        "%M",
+        "-o",
+        "/tmp/ifclite-context-allocation-diagnostic/fzk-3-base-rss.txt",
+        "/tmp/ifclite-context-allocation-diagnostic/alloc-base",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "5"
+      ],
+      "result": {
+        "allocator_self_check": true,
+        "file_bytes": 2526511,
+        "records": [
+          {
+            "after_process": {
+              "alloc_bytes": 33021628,
+              "alloc_calls": 162930,
+              "failed": 0,
+              "free_bytes": 33774284,
+              "free_calls": 159563,
+              "live": 5147172,
+              "peak": 10055535,
+              "realloc_calls": 20467,
+              "realloc_new_bytes": 11519210,
+              "realloc_old_bytes": 5619382,
+              "zeroed_calls": 881
+            },
+            "after_result_drop": {
+              "alloc_bytes": 33021644,
+              "alloc_calls": 162931,
+              "failed": 0,
+              "free_bytes": 35281944,
+              "free_calls": 163741,
+              "live": 3639528,
+              "peak": 10055535,
+              "realloc_calls": 20467,
+              "realloc_new_bytes": 11519210,
+              "realloc_old_bytes": 5619382,
+              "zeroed_calls": 881
+            },
+            "before": {
+              "alloc_bytes": 2549857,
+              "alloc_calls": 43,
+              "failed": 0,
+              "free_bytes": 3481,
+              "free_calls": 7,
+              "live": 2548424,
+              "peak": 2548424,
+              "realloc_calls": 1,
+              "realloc_new_bytes": 3072,
+              "realloc_old_bytes": 1024,
+              "zeroed_calls": 3
+            },
+            "fingerprint": 8320359849537451299,
+            "iteration": 0,
+            "mesh_count": 285,
+            "process_delta": {
+              "alloc_bytes": 30471771,
+              "alloc_calls": 162887,
+              "failed": 0,
+              "free_bytes": 33770803,
+              "free_calls": 159556,
+              "live": 5147172,
+              "peak": 10055535,
+              "realloc_calls": 20466,
+              "realloc_new_bytes": 11516138,
+              "realloc_old_bytes": 5618358,
+              "zeroed_calls": 878
+            },
+            "triangles": 20322,
+            "vertices": 35940
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 62620123,
+              "alloc_calls": 325771,
+              "failed": 0,
+              "free_bytes": 69027895,
+              "free_calls": 323282,
+              "live": 5147268,
+              "peak": 10055631,
+              "realloc_calls": 40846,
+              "realloc_new_bytes": 22631332,
+              "realloc_old_bytes": 11076292,
+              "zeroed_calls": 1759
+            },
+            "after_result_drop": {
+              "alloc_bytes": 62620139,
+              "alloc_calls": 325772,
+              "failed": 0,
+              "free_bytes": 70535555,
+              "free_calls": 327460,
+              "live": 3639624,
+              "peak": 10055631,
+              "realloc_calls": 40846,
+              "realloc_new_bytes": 22631332,
+              "realloc_old_bytes": 11076292,
+              "zeroed_calls": 1759
+            },
+            "before": {
+              "alloc_bytes": 33021644,
+              "alloc_calls": 162931,
+              "failed": 0,
+              "free_bytes": 35281944,
+              "free_calls": 163741,
+              "live": 3639528,
+              "peak": 3639528,
+              "realloc_calls": 20467,
+              "realloc_new_bytes": 11519210,
+              "realloc_old_bytes": 5619382,
+              "zeroed_calls": 881
+            },
+            "fingerprint": 8320359849537451299,
+            "iteration": 1,
+            "mesh_count": 285,
+            "process_delta": {
+              "alloc_bytes": 29598479,
+              "alloc_calls": 162840,
+              "failed": 0,
+              "free_bytes": 33745951,
+              "free_calls": 159541,
+              "live": 5147268,
+              "peak": 10055631,
+              "realloc_calls": 20379,
+              "realloc_new_bytes": 11112122,
+              "realloc_old_bytes": 5456910,
+              "zeroed_calls": 878
+            },
+            "triangles": 20322,
+            "vertices": 35940
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 92218618,
+              "alloc_calls": 488612,
+              "failed": 0,
+              "free_bytes": 104281506,
+              "free_calls": 487001,
+              "live": 5147460,
+              "peak": 10055823,
+              "realloc_calls": 61225,
+              "realloc_new_bytes": 33743646,
+              "realloc_old_bytes": 16533298,
+              "zeroed_calls": 2637
+            },
+            "after_result_drop": {
+              "alloc_bytes": 92218634,
+              "alloc_calls": 488613,
+              "failed": 0,
+              "free_bytes": 105789166,
+              "free_calls": 491179,
+              "live": 3639816,
+              "peak": 10055823,
+              "realloc_calls": 61225,
+              "realloc_new_bytes": 33743646,
+              "realloc_old_bytes": 16533298,
+              "zeroed_calls": 2637
+            },
+            "before": {
+              "alloc_bytes": 62620139,
+              "alloc_calls": 325772,
+              "failed": 0,
+              "free_bytes": 70535555,
+              "free_calls": 327460,
+              "live": 3639624,
+              "peak": 3639624,
+              "realloc_calls": 40846,
+              "realloc_new_bytes": 22631332,
+              "realloc_old_bytes": 11076292,
+              "zeroed_calls": 1759
+            },
+            "fingerprint": 8320359849537451299,
+            "iteration": 2,
+            "mesh_count": 285,
+            "process_delta": {
+              "alloc_bytes": 29598479,
+              "alloc_calls": 162840,
+              "failed": 0,
+              "free_bytes": 33745951,
+              "free_calls": 159541,
+              "live": 5147460,
+              "peak": 10055823,
+              "realloc_calls": 20379,
+              "realloc_new_bytes": 11112314,
+              "realloc_old_bytes": 5457006,
+              "zeroed_calls": 878
+            },
+            "triangles": 20322,
+            "vertices": 35940
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 121817113,
+              "alloc_calls": 651453,
+              "failed": 0,
+              "free_bytes": 139535117,
+              "free_calls": 650720,
+              "live": 5147460,
+              "peak": 10055823,
+              "realloc_calls": 81603,
+              "realloc_new_bytes": 44855576,
+              "realloc_old_bytes": 21990112,
+              "zeroed_calls": 3515
+            },
+            "after_result_drop": {
+              "alloc_bytes": 121817129,
+              "alloc_calls": 651454,
+              "failed": 0,
+              "free_bytes": 141042777,
+              "free_calls": 654898,
+              "live": 3639816,
+              "peak": 10055823,
+              "realloc_calls": 81603,
+              "realloc_new_bytes": 44855576,
+              "realloc_old_bytes": 21990112,
+              "zeroed_calls": 3515
+            },
+            "before": {
+              "alloc_bytes": 92218634,
+              "alloc_calls": 488613,
+              "failed": 0,
+              "free_bytes": 105789166,
+              "free_calls": 491179,
+              "live": 3639816,
+              "peak": 3639816,
+              "realloc_calls": 61225,
+              "realloc_new_bytes": 33743646,
+              "realloc_old_bytes": 16533298,
+              "zeroed_calls": 2637
+            },
+            "fingerprint": 8320359849537451299,
+            "iteration": 3,
+            "mesh_count": 285,
+            "process_delta": {
+              "alloc_bytes": 29598479,
+              "alloc_calls": 162840,
+              "failed": 0,
+              "free_bytes": 33745951,
+              "free_calls": 159541,
+              "live": 5147460,
+              "peak": 10055823,
+              "realloc_calls": 20378,
+              "realloc_new_bytes": 11111930,
+              "realloc_old_bytes": 5456814,
+              "zeroed_calls": 878
+            },
+            "triangles": 20322,
+            "vertices": 35940
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 151415608,
+              "alloc_calls": 814294,
+              "failed": 0,
+              "free_bytes": 174788728,
+              "free_calls": 814439,
+              "live": 5147844,
+              "peak": 10090043,
+              "realloc_calls": 101982,
+              "realloc_new_bytes": 55968274,
+              "realloc_old_bytes": 27447310,
+              "zeroed_calls": 4393
+            },
+            "after_result_drop": {
+              "alloc_bytes": 151415624,
+              "alloc_calls": 814295,
+              "failed": 0,
+              "free_bytes": 176296388,
+              "free_calls": 818617,
+              "live": 3640200,
+              "peak": 10090043,
+              "realloc_calls": 101982,
+              "realloc_new_bytes": 55968274,
+              "realloc_old_bytes": 27447310,
+              "zeroed_calls": 4393
+            },
+            "before": {
+              "alloc_bytes": 121817129,
+              "alloc_calls": 651454,
+              "failed": 0,
+              "free_bytes": 141042777,
+              "free_calls": 654898,
+              "live": 3639816,
+              "peak": 3639816,
+              "realloc_calls": 81603,
+              "realloc_new_bytes": 44855576,
+              "realloc_old_bytes": 21990112,
+              "zeroed_calls": 3515
+            },
+            "fingerprint": 8320359849537451299,
+            "iteration": 4,
+            "mesh_count": 285,
+            "process_delta": {
+              "alloc_bytes": 29598479,
+              "alloc_calls": 162840,
+              "failed": 0,
+              "free_bytes": 33745951,
+              "free_calls": 159541,
+              "live": 5147844,
+              "peak": 10090043,
+              "realloc_calls": 20379,
+              "realloc_new_bytes": 11112698,
+              "realloc_old_bytes": 5457198,
+              "zeroed_calls": 878
+            },
+            "triangles": 20322,
+            "vertices": 35940
+          }
+        ],
+        "threads": 2
+      },
+      "maximum_resident_set_kib": 16888,
+      "artifacts": {
+        "fzk-3-base.json": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/fzk-3-base.json",
+          "sha256": "785b024e05d327818d28f35b9543fbb8b5176b35a993b83cea2c7c6adba6d97b",
+          "bytes": 8225
+        },
+        "fzk-3-base.log": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/fzk-3-base.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "fzk-3-base-rss.txt": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/fzk-3-base-rss.txt",
+          "sha256": "aaefc14e77a278fe604e76eb05e724d2ec3abac5e297a0e27a24190b6182884d",
+          "bytes": 6
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "fixture_sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+      "label": "base",
+      "order": 0,
+      "command": [
+        "/usr/bin/time",
+        "-f",
+        "%M",
+        "-o",
+        "/tmp/ifclite-context-allocation-diagnostic/holter-0-base-rss.txt",
+        "/tmp/ifclite-context-allocation-diagnostic/alloc-base",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "5"
+      ],
+      "result": {
+        "allocator_self_check": true,
+        "file_bytes": 177465622,
+        "records": [
+          {
+            "after_process": {
+              "alloc_bytes": 2456669359,
+              "alloc_calls": 13930659,
+              "failed": 0,
+              "free_bytes": 2484021419,
+              "free_calls": 13109425,
+              "live": 436533365,
+              "peak": 841413128,
+              "realloc_calls": 991975,
+              "realloc_new_bytes": 930592693,
+              "realloc_old_bytes": 466707268,
+              "zeroed_calls": 14023
+            },
+            "after_result_drop": {
+              "alloc_bytes": 2456669375,
+              "alloc_calls": 13930660,
+              "failed": 0,
+              "free_bytes": 2740661013,
+              "free_calls": 13944612,
+              "live": 179893787,
+              "peak": 841413128,
+              "realloc_calls": 991975,
+              "realloc_new_bytes": 930592693,
+              "realloc_old_bytes": 466707268,
+              "zeroed_calls": 14023
+            },
+            "before": {
+              "alloc_bytes": 177488988,
+              "alloc_calls": 43,
+              "failed": 0,
+              "free_bytes": 3481,
+              "free_calls": 7,
+              "live": 177487555,
+              "peak": 177487555,
+              "realloc_calls": 1,
+              "realloc_new_bytes": 3072,
+              "realloc_old_bytes": 1024,
+              "zeroed_calls": 3
+            },
+            "fingerprint": 5768699835751371258,
+            "iteration": 0,
+            "mesh_count": 109514,
+            "process_delta": {
+              "alloc_bytes": 2279180371,
+              "alloc_calls": 13930616,
+              "failed": 0,
+              "free_bytes": 2484017938,
+              "free_calls": 13109418,
+              "live": 436533365,
+              "peak": 841413128,
+              "realloc_calls": 991974,
+              "realloc_new_bytes": 930589621,
+              "realloc_old_bytes": 466706244,
+              "zeroed_calls": 14020
+            },
+            "triangles": 2895362,
+            "vertices": 4515161
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 4733060294,
+              "alloc_calls": 27861263,
+              "failed": 0,
+              "free_bytes": 5221692187,
+              "free_calls": 27054049,
+              "live": 436534901,
+              "peak": 839433504,
+              "realloc_calls": 1983817,
+              "realloc_new_bytes": 1856001098,
+              "realloc_old_bytes": 930834304,
+              "zeroed_calls": 28043
+            },
+            "after_result_drop": {
+              "alloc_bytes": 4733060310,
+              "alloc_calls": 27861264,
+              "failed": 0,
+              "free_bytes": 5478331781,
+              "free_calls": 27889236,
+              "live": 179895323,
+              "peak": 839433504,
+              "realloc_calls": 1983817,
+              "realloc_new_bytes": 1856001098,
+              "realloc_old_bytes": 930834304,
+              "zeroed_calls": 28043
+            },
+            "before": {
+              "alloc_bytes": 2456669375,
+              "alloc_calls": 13930660,
+              "failed": 0,
+              "free_bytes": 2740661013,
+              "free_calls": 13944612,
+              "live": 179893787,
+              "peak": 179893787,
+              "realloc_calls": 991975,
+              "realloc_new_bytes": 930592693,
+              "realloc_old_bytes": 466707268,
+              "zeroed_calls": 14023
+            },
+            "fingerprint": 5768699835751371258,
+            "iteration": 1,
+            "mesh_count": 109514,
+            "process_delta": {
+              "alloc_bytes": 2276390919,
+              "alloc_calls": 13930603,
+              "failed": 0,
+              "free_bytes": 2481031174,
+              "free_calls": 13109437,
+              "live": 436534901,
+              "peak": 839433504,
+              "realloc_calls": 991842,
+              "realloc_new_bytes": 925408405,
+              "realloc_old_bytes": 464127036,
+              "zeroed_calls": 14020
+            },
+            "triangles": 2895362,
+            "vertices": 4515161
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 7009367373,
+              "alloc_calls": 41791766,
+              "failed": 0,
+              "free_bytes": 7964286459,
+              "free_calls": 40998572,
+              "live": 436537973,
+              "peak": 844366336,
+              "realloc_calls": 2975559,
+              "realloc_new_bytes": 2791449375,
+              "realloc_old_bytes": 1399992316,
+              "zeroed_calls": 42063
+            },
+            "after_result_drop": {
+              "alloc_bytes": 7009367389,
+              "alloc_calls": 41791767,
+              "failed": 0,
+              "free_bytes": 8220926053,
+              "free_calls": 41833759,
+              "live": 179898395,
+              "peak": 844366336,
+              "realloc_calls": 2975559,
+              "realloc_new_bytes": 2791449375,
+              "realloc_old_bytes": 1399992316,
+              "zeroed_calls": 42063
+            },
+            "before": {
+              "alloc_bytes": 4733060310,
+              "alloc_calls": 27861264,
+              "failed": 0,
+              "free_bytes": 5478331781,
+              "free_calls": 27889236,
+              "live": 179895323,
+              "peak": 179895323,
+              "realloc_calls": 1983817,
+              "realloc_new_bytes": 1856001098,
+              "realloc_old_bytes": 930834304,
+              "zeroed_calls": 28043
+            },
+            "fingerprint": 5768699835751371258,
+            "iteration": 2,
+            "mesh_count": 109514,
+            "process_delta": {
+              "alloc_bytes": 2276307063,
+              "alloc_calls": 13930502,
+              "failed": 0,
+              "free_bytes": 2485954678,
+              "free_calls": 13109336,
+              "live": 436537973,
+              "peak": 844366336,
+              "realloc_calls": 991742,
+              "realloc_new_bytes": 935448277,
+              "realloc_old_bytes": 469158012,
+              "zeroed_calls": 14020
+            },
+            "triangles": 2895362,
+            "vertices": 4515161
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 9285786996,
+              "alloc_calls": 55722361,
+              "failed": 0,
+              "free_bytes": 10701356155,
+              "free_calls": 54943187,
+              "live": 436537973,
+              "peak": 838837856,
+              "realloc_calls": 3967409,
+              "realloc_new_bytes": 3715617268,
+              "realloc_old_bytes": 1863510136,
+              "zeroed_calls": 56083
+            },
+            "after_result_drop": {
+              "alloc_bytes": 9285787012,
+              "alloc_calls": 55722362,
+              "failed": 0,
+              "free_bytes": 10957995749,
+              "free_calls": 55778374,
+              "live": 179898395,
+              "peak": 838837856,
+              "realloc_calls": 3967409,
+              "realloc_new_bytes": 3715617268,
+              "realloc_old_bytes": 1863510136,
+              "zeroed_calls": 56083
+            },
+            "before": {
+              "alloc_bytes": 7009367389,
+              "alloc_calls": 41791767,
+              "failed": 0,
+              "free_bytes": 8220926053,
+              "free_calls": 41833759,
+              "live": 179898395,
+              "peak": 179898395,
+              "realloc_calls": 2975559,
+              "realloc_new_bytes": 2791449375,
+              "realloc_old_bytes": 1399992316,
+              "zeroed_calls": 42063
+            },
+            "fingerprint": 5768699835751371258,
+            "iteration": 3,
+            "mesh_count": 109514,
+            "process_delta": {
+              "alloc_bytes": 2276419607,
+              "alloc_calls": 13930594,
+              "failed": 0,
+              "free_bytes": 2480430102,
+              "free_calls": 13109428,
+              "live": 436537973,
+              "peak": 838837856,
+              "realloc_calls": 991850,
+              "realloc_new_bytes": 924167893,
+              "realloc_old_bytes": 463517820,
+              "zeroed_calls": 14020
+            },
+            "triangles": 2895362,
+            "vertices": 4515161
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 11562160459,
+              "alloc_calls": 69652939,
+              "failed": 0,
+              "free_bytes": 13441252011,
+              "free_calls": 68887785,
+              "live": 436544117,
+              "peak": 841669760,
+              "realloc_calls": 4959230,
+              "realloc_new_bytes": 4645542089,
+              "realloc_old_bytes": 2329906420,
+              "zeroed_calls": 70103
+            },
+            "after_result_drop": {
+              "alloc_bytes": 11562160475,
+              "alloc_calls": 69652940,
+              "failed": 0,
+              "free_bytes": 13697891605,
+              "free_calls": 69722972,
+              "live": 179904539,
+              "peak": 841669760,
+              "realloc_calls": 4959230,
+              "realloc_new_bytes": 4645542089,
+              "realloc_old_bytes": 2329906420,
+              "zeroed_calls": 70103
+            },
+            "before": {
+              "alloc_bytes": 9285787012,
+              "alloc_calls": 55722362,
+              "failed": 0,
+              "free_bytes": 10957995749,
+              "free_calls": 55778374,
+              "live": 179898395,
+              "peak": 179898395,
+              "realloc_calls": 3967409,
+              "realloc_new_bytes": 3715617268,
+              "realloc_old_bytes": 1863510136,
+              "zeroed_calls": 56083
+            },
+            "fingerprint": 5768699835751371258,
+            "iteration": 4,
+            "mesh_count": 109514,
+            "process_delta": {
+              "alloc_bytes": 2276373447,
+              "alloc_calls": 13930577,
+              "failed": 0,
+              "free_bytes": 2483256262,
+              "free_calls": 13109411,
+              "live": 436544117,
+              "peak": 841669760,
+              "realloc_calls": 991821,
+              "realloc_new_bytes": 929924821,
+              "realloc_old_bytes": 466396284,
+              "zeroed_calls": 14020
+            },
+            "triangles": 2895362,
+            "vertices": 4515161
+          }
+        ],
+        "threads": 2
+      },
+      "maximum_resident_set_kib": 945352,
+      "artifacts": {
+        "holter-0-base.json": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/holter-0-base.json",
+          "sha256": "ac94c8afdd047dd721eaae464feecdcd90e8bbb66656323a2ee47e098e4014d6",
+          "bytes": 8595
+        },
+        "holter-0-base.log": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/holter-0-base.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "holter-0-base-rss.txt": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/holter-0-base-rss.txt",
+          "sha256": "cc3c5526f0226088fa9f3536d6be8bc7002c1ebdfda1239717da83d8d6e5b7b5",
+          "bytes": 7
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "fixture_sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+      "label": "candidate",
+      "order": 1,
+      "command": [
+        "/usr/bin/time",
+        "-f",
+        "%M",
+        "-o",
+        "/tmp/ifclite-context-allocation-diagnostic/holter-1-candidate-rss.txt",
+        "/tmp/ifclite-context-allocation-diagnostic/alloc-candidate",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "5"
+      ],
+      "result": {
+        "allocator_self_check": true,
+        "file_bytes": 177465622,
+        "records": [
+          {
+            "after_process": {
+              "alloc_bytes": 2555560999,
+              "alloc_calls": 14923158,
+              "failed": 0,
+              "free_bytes": 2625237870,
+              "free_calls": 14101922,
+              "live": 436533754,
+              "peak": 839168765,
+              "realloc_calls": 1006272,
+              "realloc_new_bytes": 1011412085,
+              "realloc_old_bytes": 505201460,
+              "zeroed_calls": 14023
+            },
+            "after_result_drop": {
+              "alloc_bytes": 2555561015,
+              "alloc_calls": 14923159,
+              "failed": 0,
+              "free_bytes": 2881877464,
+              "free_calls": 14937109,
+              "live": 179894176,
+              "peak": 839168765,
+              "realloc_calls": 1006272,
+              "realloc_new_bytes": 1011412085,
+              "realloc_old_bytes": 505201460,
+              "zeroed_calls": 14023
+            },
+            "before": {
+              "alloc_bytes": 177488993,
+              "alloc_calls": 43,
+              "failed": 0,
+              "free_bytes": 3481,
+              "free_calls": 7,
+              "live": 177487560,
+              "peak": 177487560,
+              "realloc_calls": 1,
+              "realloc_new_bytes": 3072,
+              "realloc_old_bytes": 1024,
+              "zeroed_calls": 3
+            },
+            "fingerprint": 5768699835751371258,
+            "iteration": 0,
+            "mesh_count": 109514,
+            "process_delta": {
+              "alloc_bytes": 2378072006,
+              "alloc_calls": 14923115,
+              "failed": 0,
+              "free_bytes": 2625234389,
+              "free_calls": 14101915,
+              "live": 436533754,
+              "peak": 839168765,
+              "realloc_calls": 1006271,
+              "realloc_new_bytes": 1011409013,
+              "realloc_old_bytes": 505200436,
+              "zeroed_calls": 14020
+            },
+            "triangles": 2895362,
+            "vertices": 4515161
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 4935346273,
+              "alloc_calls": 29846251,
+              "failed": 0,
+              "free_bytes": 5512314577,
+              "free_calls": 29039035,
+              "live": 436535290,
+              "peak": 843135669,
+              "realloc_calls": 2012395,
+              "realloc_new_bytes": 2025034762,
+              "realloc_old_bytes": 1011531168,
+              "zeroed_calls": 28043
+            },
+            "after_result_drop": {
+              "alloc_bytes": 4935346289,
+              "alloc_calls": 29846252,
+              "failed": 0,
+              "free_bytes": 5768954171,
+              "free_calls": 29874222,
+              "live": 179895712,
+              "peak": 843135669,
+              "realloc_calls": 2012395,
+              "realloc_new_bytes": 2025034762,
+              "realloc_old_bytes": 1011531168,
+              "zeroed_calls": 28043
+            },
+            "before": {
+              "alloc_bytes": 2555561015,
+              "alloc_calls": 14923159,
+              "failed": 0,
+              "free_bytes": 2881877464,
+              "free_calls": 14937109,
+              "live": 179894176,
+              "peak": 179894176,
+              "realloc_calls": 1006272,
+              "realloc_new_bytes": 1011412085,
+              "realloc_old_bytes": 505201460,
+              "zeroed_calls": 14023
+            },
+            "fingerprint": 5768699835751371258,
+            "iteration": 1,
+            "mesh_count": 109514,
+            "process_delta": {
+              "alloc_bytes": 2379785258,
+              "alloc_calls": 14923092,
+              "failed": 0,
+              "free_bytes": 2630437113,
+              "free_calls": 14101926,
+              "live": 436535290,
+              "peak": 843135669,
+              "realloc_calls": 1006123,
+              "realloc_new_bytes": 1013622677,
+              "realloc_old_bytes": 506329708,
+              "zeroed_calls": 14020
+            },
+            "triangles": 2895362,
+            "vertices": 4515161
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 7315213715,
+              "alloc_calls": 44769394,
+              "failed": 0,
+              "free_bytes": 8397668652,
+              "free_calls": 43976198,
+              "live": 436538362,
+              "peak": 841415421,
+              "realloc_calls": 3018551,
+              "realloc_new_bytes": 3035028831,
+              "realloc_old_bytes": 1516035532,
+              "zeroed_calls": 42063
+            },
+            "after_result_drop": {
+              "alloc_bytes": 7315213731,
+              "alloc_calls": 44769395,
+              "failed": 0,
+              "free_bytes": 8654308246,
+              "free_calls": 44811385,
+              "live": 179898784,
+              "peak": 841415421,
+              "realloc_calls": 3018551,
+              "realloc_new_bytes": 3035028831,
+              "realloc_old_bytes": 1516035532,
+              "zeroed_calls": 42063
+            },
+            "before": {
+              "alloc_bytes": 4935346289,
+              "alloc_calls": 29846252,
+              "failed": 0,
+              "free_bytes": 5768954171,
+              "free_calls": 29874222,
+              "live": 179895712,
+              "peak": 179895712,
+              "realloc_calls": 2012395,
+              "realloc_new_bytes": 2025034762,
+              "realloc_old_bytes": 1011531168,
+              "zeroed_calls": 28043
+            },
+            "fingerprint": 5768699835751371258,
+            "iteration": 2,
+            "mesh_count": 109514,
+            "process_delta": {
+              "alloc_bytes": 2379867426,
+              "alloc_calls": 14923142,
+              "failed": 0,
+              "free_bytes": 2628714481,
+              "free_calls": 14101976,
+              "live": 436538362,
+              "peak": 841415421,
+              "realloc_calls": 1006156,
+              "realloc_new_bytes": 1009994069,
+              "realloc_old_bytes": 504504364,
+              "zeroed_calls": 14020
+            },
+            "triangles": 2895362,
+            "vertices": 4515161
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 9695015197,
+              "alloc_calls": 59692503,
+              "failed": 0,
+              "free_bytes": 11283010527,
+              "free_calls": 58913327,
+              "live": 436538362,
+              "peak": 841403221,
+              "realloc_calls": 4024678,
+              "realloc_new_bytes": 4045124276,
+              "realloc_old_bytes": 2020590584,
+              "zeroed_calls": 56083
+            },
+            "after_result_drop": {
+              "alloc_bytes": 9695015213,
+              "alloc_calls": 59692504,
+              "failed": 0,
+              "free_bytes": 11539650121,
+              "free_calls": 59748514,
+              "live": 179898784,
+              "peak": 841403221,
+              "realloc_calls": 4024678,
+              "realloc_new_bytes": 4045124276,
+              "realloc_old_bytes": 2020590584,
+              "zeroed_calls": 56083
+            },
+            "before": {
+              "alloc_bytes": 7315213731,
+              "alloc_calls": 44769395,
+              "failed": 0,
+              "free_bytes": 8654308246,
+              "free_calls": 44811385,
+              "live": 179898784,
+              "peak": 179898784,
+              "realloc_calls": 3018551,
+              "realloc_new_bytes": 3035028831,
+              "realloc_old_bytes": 1516035532,
+              "zeroed_calls": 42063
+            },
+            "fingerprint": 5768699835751371258,
+            "iteration": 3,
+            "mesh_count": 109514,
+            "process_delta": {
+              "alloc_bytes": 2379801466,
+              "alloc_calls": 14923108,
+              "failed": 0,
+              "free_bytes": 2628702281,
+              "free_calls": 14101942,
+              "live": 436538362,
+              "peak": 841403221,
+              "realloc_calls": 1006127,
+              "realloc_new_bytes": 1010095445,
+              "realloc_old_bytes": 504555052,
+              "zeroed_calls": 14020
+            },
+            "triangles": 2895362,
+            "vertices": 4515161
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 12070265631,
+              "alloc_calls": 74615546,
+              "failed": 0,
+              "free_bytes": 14163874314,
+              "free_calls": 73850390,
+              "live": 436544506,
+              "peak": 839179517,
+              "realloc_calls": 5030780,
+              "realloc_new_bytes": 5055400009,
+              "realloc_old_bytes": 2525246820,
+              "zeroed_calls": 70103
+            },
+            "after_result_drop": {
+              "alloc_bytes": 12070265647,
+              "alloc_calls": 74615547,
+              "failed": 0,
+              "free_bytes": 14420513908,
+              "free_calls": 74685577,
+              "live": 179904928,
+              "peak": 839179517,
+              "realloc_calls": 5030780,
+              "realloc_new_bytes": 5055400009,
+              "realloc_old_bytes": 2525246820,
+              "zeroed_calls": 70103
+            },
+            "before": {
+              "alloc_bytes": 9695015213,
+              "alloc_calls": 59692504,
+              "failed": 0,
+              "free_bytes": 11539650121,
+              "free_calls": 59748514,
+              "live": 179898784,
+              "peak": 179898784,
+              "realloc_calls": 4024678,
+              "realloc_new_bytes": 4045124276,
+              "realloc_old_bytes": 2020590584,
+              "zeroed_calls": 56083
+            },
+            "fingerprint": 5768699835751371258,
+            "iteration": 4,
+            "mesh_count": 109514,
+            "process_delta": {
+              "alloc_bytes": 2375250418,
+              "alloc_calls": 14923042,
+              "failed": 0,
+              "free_bytes": 2624224193,
+              "free_calls": 14101876,
+              "live": 436544506,
+              "peak": 839179517,
+              "realloc_calls": 1006102,
+              "realloc_new_bytes": 1010275733,
+              "realloc_old_bytes": 504656236,
+              "zeroed_calls": 14020
+            },
+            "triangles": 2895362,
+            "vertices": 4515161
+          }
+        ],
+        "threads": 2
+      },
+      "maximum_resident_set_kib": 987856,
+      "artifacts": {
+        "holter-1-candidate.json": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/holter-1-candidate.json",
+          "sha256": "d2088f1b7b1babc15923c45d9f1c179a7a3d73943add8cb55c626539b4cb0707",
+          "bytes": 8614
+        },
+        "holter-1-candidate.log": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/holter-1-candidate.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "holter-1-candidate-rss.txt": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/holter-1-candidate-rss.txt",
+          "sha256": "af7219dca190d661032dcddc68984454658c437effc38b408edaa1354b3482a2",
+          "bytes": 7
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "fixture_sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+      "label": "candidate",
+      "order": 2,
+      "command": [
+        "/usr/bin/time",
+        "-f",
+        "%M",
+        "-o",
+        "/tmp/ifclite-context-allocation-diagnostic/holter-2-candidate-rss.txt",
+        "/tmp/ifclite-context-allocation-diagnostic/alloc-candidate",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "5"
+      ],
+      "result": {
+        "allocator_self_check": true,
+        "file_bytes": 177465622,
+        "records": [
+          {
+            "after_process": {
+              "alloc_bytes": 2560067703,
+              "alloc_calls": 14923185,
+              "failed": 0,
+              "free_bytes": 2628500414,
+              "free_calls": 14101949,
+              "live": 436533754,
+              "peak": 840184733,
+              "realloc_calls": 1006286,
+              "realloc_new_bytes": 1008923765,
+              "realloc_old_bytes": 503957300,
+              "zeroed_calls": 14023
+            },
+            "after_result_drop": {
+              "alloc_bytes": 2560067719,
+              "alloc_calls": 14923186,
+              "failed": 0,
+              "free_bytes": 2885140008,
+              "free_calls": 14937136,
+              "live": 179894176,
+              "peak": 840184733,
+              "realloc_calls": 1006286,
+              "realloc_new_bytes": 1008923765,
+              "realloc_old_bytes": 503957300,
+              "zeroed_calls": 14023
+            },
+            "before": {
+              "alloc_bytes": 177488993,
+              "alloc_calls": 43,
+              "failed": 0,
+              "free_bytes": 3481,
+              "free_calls": 7,
+              "live": 177487560,
+              "peak": 177487560,
+              "realloc_calls": 1,
+              "realloc_new_bytes": 3072,
+              "realloc_old_bytes": 1024,
+              "zeroed_calls": 3
+            },
+            "fingerprint": 5768699835751371258,
+            "iteration": 0,
+            "mesh_count": 109514,
+            "process_delta": {
+              "alloc_bytes": 2382578710,
+              "alloc_calls": 14923142,
+              "failed": 0,
+              "free_bytes": 2628496933,
+              "free_calls": 14101942,
+              "live": 436533754,
+              "peak": 840184733,
+              "realloc_calls": 1006285,
+              "realloc_new_bytes": 1008920693,
+              "realloc_old_bytes": 503956276,
+              "zeroed_calls": 14020
+            },
+            "triangles": 2895362,
+            "vertices": 4515161
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 4935465313,
+              "alloc_calls": 29846337,
+              "failed": 0,
+              "free_bytes": 5508536017,
+              "free_calls": 29039121,
+              "live": 436535290,
+              "peak": 838338501,
+              "realloc_calls": 2012462,
+              "realloc_new_bytes": 2017239562,
+              "realloc_old_bytes": 1007633568,
+              "zeroed_calls": 28043
+            },
+            "after_result_drop": {
+              "alloc_bytes": 4935465329,
+              "alloc_calls": 29846338,
+              "failed": 0,
+              "free_bytes": 5765175611,
+              "free_calls": 29874308,
+              "live": 179895712,
+              "peak": 838338501,
+              "realloc_calls": 2012462,
+              "realloc_new_bytes": 2017239562,
+              "realloc_old_bytes": 1007633568,
+              "zeroed_calls": 28043
+            },
+            "before": {
+              "alloc_bytes": 2560067719,
+              "alloc_calls": 14923186,
+              "failed": 0,
+              "free_bytes": 2885140008,
+              "free_calls": 14937136,
+              "live": 179894176,
+              "peak": 179894176,
+              "realloc_calls": 1006286,
+              "realloc_new_bytes": 1008923765,
+              "realloc_old_bytes": 503957300,
+              "zeroed_calls": 14023
+            },
+            "fingerprint": 5768699835751371258,
+            "iteration": 1,
+            "mesh_count": 109514,
+            "process_delta": {
+              "alloc_bytes": 2375397594,
+              "alloc_calls": 14923151,
+              "failed": 0,
+              "free_bytes": 2623396009,
+              "free_calls": 14101985,
+              "live": 436535290,
+              "peak": 838338501,
+              "realloc_calls": 1006176,
+              "realloc_new_bytes": 1008315797,
+              "realloc_old_bytes": 503676268,
+              "zeroed_calls": 14020
+            },
+            "triangles": 2895362,
+            "vertices": 4515161
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 7315199459,
+              "alloc_calls": 44769396,
+              "failed": 0,
+              "free_bytes": 8392908156,
+              "free_calls": 43976200,
+              "live": 436538362,
+              "peak": 840434861,
+              "realloc_calls": 3018545,
+              "realloc_new_bytes": 3025558431,
+              "realloc_old_bytes": 1511311372,
+              "zeroed_calls": 42063
+            },
+            "after_result_drop": {
+              "alloc_bytes": 7315199475,
+              "alloc_calls": 44769397,
+              "failed": 0,
+              "free_bytes": 8649547750,
+              "free_calls": 44811387,
+              "live": 179898784,
+              "peak": 840434861,
+              "realloc_calls": 3018545,
+              "realloc_new_bytes": 3025558431,
+              "realloc_old_bytes": 1511311372,
+              "zeroed_calls": 42063
+            },
+            "before": {
+              "alloc_bytes": 4935465329,
+              "alloc_calls": 29846338,
+              "failed": 0,
+              "free_bytes": 5765175611,
+              "free_calls": 29874308,
+              "live": 179895712,
+              "peak": 179895712,
+              "realloc_calls": 2012462,
+              "realloc_new_bytes": 2017239562,
+              "realloc_old_bytes": 1007633568,
+              "zeroed_calls": 28043
+            },
+            "fingerprint": 5768699835751371258,
+            "iteration": 2,
+            "mesh_count": 109514,
+            "process_delta": {
+              "alloc_bytes": 2379734130,
+              "alloc_calls": 14923058,
+              "failed": 0,
+              "free_bytes": 2627732545,
+              "free_calls": 14101892,
+              "live": 436538362,
+              "peak": 840434861,
+              "realloc_calls": 1006083,
+              "realloc_new_bytes": 1008318869,
+              "realloc_old_bytes": 503677804,
+              "zeroed_calls": 14020
+            },
+            "triangles": 2895362,
+            "vertices": 4515161
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 9694981541,
+              "alloc_calls": 59692495,
+              "failed": 0,
+              "free_bytes": 11276544871,
+              "free_calls": 58913319,
+              "live": 436538362,
+              "peak": 839698061,
+              "realloc_calls": 4024674,
+              "realloc_new_bytes": 4032304436,
+              "realloc_old_bytes": 2014202744,
+              "zeroed_calls": 56083
+            },
+            "after_result_drop": {
+              "alloc_bytes": 9694981557,
+              "alloc_calls": 59692496,
+              "failed": 0,
+              "free_bytes": 11533184465,
+              "free_calls": 59748506,
+              "live": 179898784,
+              "peak": 839698061,
+              "realloc_calls": 4024674,
+              "realloc_new_bytes": 4032304436,
+              "realloc_old_bytes": 2014202744,
+              "zeroed_calls": 56083
+            },
+            "before": {
+              "alloc_bytes": 7315199475,
+              "alloc_calls": 44769397,
+              "failed": 0,
+              "free_bytes": 8649547750,
+              "free_calls": 44811387,
+              "live": 179898784,
+              "peak": 179898784,
+              "realloc_calls": 3018545,
+              "realloc_new_bytes": 3025558431,
+              "realloc_old_bytes": 1511311372,
+              "zeroed_calls": 42063
+            },
+            "fingerprint": 5768699835751371258,
+            "iteration": 3,
+            "mesh_count": 109514,
+            "process_delta": {
+              "alloc_bytes": 2379782066,
+              "alloc_calls": 14923098,
+              "failed": 0,
+              "free_bytes": 2626997121,
+              "free_calls": 14101932,
+              "live": 436538362,
+              "peak": 839698061,
+              "realloc_calls": 1006129,
+              "realloc_new_bytes": 1006746005,
+              "realloc_old_bytes": 502891372,
+              "zeroed_calls": 14020
+            },
+            "triangles": 2895362,
+            "vertices": 4515161
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 12074805903,
+              "alloc_calls": 74615609,
+              "failed": 0,
+              "free_bytes": 14159521146,
+              "free_calls": 73850453,
+              "live": 436544506,
+              "peak": 839044165,
+              "realloc_calls": 5030835,
+              "realloc_new_bytes": 5037652489,
+              "realloc_old_bytes": 2516392740,
+              "zeroed_calls": 70103
+            },
+            "after_result_drop": {
+              "alloc_bytes": 12074805919,
+              "alloc_calls": 74615610,
+              "failed": 0,
+              "free_bytes": 14416160740,
+              "free_calls": 74685640,
+              "live": 179904928,
+              "peak": 839044165,
+              "realloc_calls": 5030835,
+              "realloc_new_bytes": 5037652489,
+              "realloc_old_bytes": 2516392740,
+              "zeroed_calls": 70103
+            },
+            "before": {
+              "alloc_bytes": 9694981557,
+              "alloc_calls": 59692496,
+              "failed": 0,
+              "free_bytes": 11533184465,
+              "free_calls": 59748506,
+              "live": 179898784,
+              "peak": 179898784,
+              "realloc_calls": 4024674,
+              "realloc_new_bytes": 4032304436,
+              "realloc_old_bytes": 2014202744,
+              "zeroed_calls": 56083
+            },
+            "fingerprint": 5768699835751371258,
+            "iteration": 4,
+            "mesh_count": 109514,
+            "process_delta": {
+              "alloc_bytes": 2379824346,
+              "alloc_calls": 14923113,
+              "failed": 0,
+              "free_bytes": 2626336681,
+              "free_calls": 14101947,
+              "live": 436544506,
+              "peak": 839044165,
+              "realloc_calls": 1006161,
+              "realloc_new_bytes": 1005348053,
+              "realloc_old_bytes": 502189996,
+              "zeroed_calls": 14020
+            },
+            "triangles": 2895362,
+            "vertices": 4515161
+          }
+        ],
+        "threads": 2
+      },
+      "maximum_resident_set_kib": 964284,
+      "artifacts": {
+        "holter-2-candidate.json": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/holter-2-candidate.json",
+          "sha256": "5580f510b4e83300db30890d9fea971e26022acf7d25186fad3eaf4270585346",
+          "bytes": 8614
+        },
+        "holter-2-candidate.log": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/holter-2-candidate.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "holter-2-candidate-rss.txt": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/holter-2-candidate-rss.txt",
+          "sha256": "557192aedaa4e9c25721c24fc942e752746efe0916f093a9f31c613bac835509",
+          "bytes": 7
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "fixture_sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+      "label": "base",
+      "order": 3,
+      "command": [
+        "/usr/bin/time",
+        "-f",
+        "%M",
+        "-o",
+        "/tmp/ifclite-context-allocation-diagnostic/holter-3-base-rss.txt",
+        "/tmp/ifclite-context-allocation-diagnostic/alloc-base",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "5"
+      ],
+      "result": {
+        "allocator_self_check": true,
+        "file_bytes": 177465622,
+        "records": [
+          {
+            "after_process": {
+              "alloc_bytes": 2456617255,
+              "alloc_calls": 13930616,
+              "failed": 0,
+              "free_bytes": 2486968355,
+              "free_calls": 13109382,
+              "live": 436533365,
+              "peak": 844361728,
+              "realloc_calls": 991912,
+              "realloc_new_bytes": 936590773,
+              "realloc_old_bytes": 469706308,
+              "zeroed_calls": 14023
+            },
+            "after_result_drop": {
+              "alloc_bytes": 2456617271,
+              "alloc_calls": 13930617,
+              "failed": 0,
+              "free_bytes": 2743607949,
+              "free_calls": 13944569,
+              "live": 179893787,
+              "peak": 844361728,
+              "realloc_calls": 991912,
+              "realloc_new_bytes": 936590773,
+              "realloc_old_bytes": 469706308,
+              "zeroed_calls": 14023
+            },
+            "before": {
+              "alloc_bytes": 177488988,
+              "alloc_calls": 43,
+              "failed": 0,
+              "free_bytes": 3481,
+              "free_calls": 7,
+              "live": 177487555,
+              "peak": 177487555,
+              "realloc_calls": 1,
+              "realloc_new_bytes": 3072,
+              "realloc_old_bytes": 1024,
+              "zeroed_calls": 3
+            },
+            "fingerprint": 5768699835751371258,
+            "iteration": 0,
+            "mesh_count": 109514,
+            "process_delta": {
+              "alloc_bytes": 2279128267,
+              "alloc_calls": 13930573,
+              "failed": 0,
+              "free_bytes": 2486964874,
+              "free_calls": 13109375,
+              "live": 436533365,
+              "peak": 844361728,
+              "realloc_calls": 991911,
+              "realloc_new_bytes": 936587701,
+              "realloc_old_bytes": 469705284,
+              "zeroed_calls": 14020
+            },
+            "triangles": 2895362,
+            "vertices": 4515161
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 4732924334,
+              "alloc_calls": 27861119,
+              "failed": 0,
+              "free_bytes": 5229562627,
+              "free_calls": 27053905,
+              "live": 436534901,
+              "peak": 844363264,
+              "realloc_calls": 1983654,
+              "realloc_new_bytes": 1872035978,
+              "realloc_old_bytes": 938862784,
+              "zeroed_calls": 28043
+            },
+            "after_result_drop": {
+              "alloc_bytes": 4732924350,
+              "alloc_calls": 27861120,
+              "failed": 0,
+              "free_bytes": 5486202221,
+              "free_calls": 27889092,
+              "live": 179895323,
+              "peak": 844363264,
+              "realloc_calls": 1983654,
+              "realloc_new_bytes": 1872035978,
+              "realloc_old_bytes": 938862784,
+              "zeroed_calls": 28043
+            },
+            "before": {
+              "alloc_bytes": 2456617271,
+              "alloc_calls": 13930617,
+              "failed": 0,
+              "free_bytes": 2743607949,
+              "free_calls": 13944569,
+              "live": 179893787,
+              "peak": 179893787,
+              "realloc_calls": 991912,
+              "realloc_new_bytes": 936590773,
+              "realloc_old_bytes": 469706308,
+              "zeroed_calls": 14023
+            },
+            "fingerprint": 5768699835751371258,
+            "iteration": 1,
+            "mesh_count": 109514,
+            "process_delta": {
+              "alloc_bytes": 2276307063,
+              "alloc_calls": 13930502,
+              "failed": 0,
+              "free_bytes": 2485954678,
+              "free_calls": 13109336,
+              "live": 436534901,
+              "peak": 844363264,
+              "realloc_calls": 991742,
+              "realloc_new_bytes": 935445205,
+              "realloc_old_bytes": 469156476,
+              "zeroed_calls": 14020
+            },
+            "triangles": 2895362,
+            "vertices": 4515161
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 7009231413,
+              "alloc_calls": 41791622,
+              "failed": 0,
+              "free_bytes": 7972156899,
+              "free_calls": 40998428,
+              "live": 436537973,
+              "peak": 844366336,
+              "realloc_calls": 2975396,
+              "realloc_new_bytes": 2807484255,
+              "realloc_old_bytes": 1408020796,
+              "zeroed_calls": 42063
+            },
+            "after_result_drop": {
+              "alloc_bytes": 7009231429,
+              "alloc_calls": 41791623,
+              "failed": 0,
+              "free_bytes": 8228796493,
+              "free_calls": 41833615,
+              "live": 179898395,
+              "peak": 844366336,
+              "realloc_calls": 2975396,
+              "realloc_new_bytes": 2807484255,
+              "realloc_old_bytes": 1408020796,
+              "zeroed_calls": 42063
+            },
+            "before": {
+              "alloc_bytes": 4732924350,
+              "alloc_calls": 27861120,
+              "failed": 0,
+              "free_bytes": 5486202221,
+              "free_calls": 27889092,
+              "live": 179895323,
+              "peak": 179895323,
+              "realloc_calls": 1983654,
+              "realloc_new_bytes": 1872035978,
+              "realloc_old_bytes": 938862784,
+              "zeroed_calls": 28043
+            },
+            "fingerprint": 5768699835751371258,
+            "iteration": 2,
+            "mesh_count": 109514,
+            "process_delta": {
+              "alloc_bytes": 2276307063,
+              "alloc_calls": 13930502,
+              "failed": 0,
+              "free_bytes": 2485954678,
+              "free_calls": 13109336,
+              "live": 436537973,
+              "peak": 844366336,
+              "realloc_calls": 991742,
+              "realloc_new_bytes": 935448277,
+              "realloc_old_bytes": 469158012,
+              "zeroed_calls": 14020
+            },
+            "triangles": 2895362,
+            "vertices": 4515161
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 9281077108,
+              "alloc_calls": 55722146,
+              "failed": 0,
+              "free_bytes": 10707805307,
+              "free_calls": 54942972,
+              "live": 436537973,
+              "peak": 839664408,
+              "realloc_calls": 3967185,
+              "realloc_new_bytes": 3737957428,
+              "realloc_old_bytes": 1874691256,
+              "zeroed_calls": 56083
+            },
+            "after_result_drop": {
+              "alloc_bytes": 9281077124,
+              "alloc_calls": 55722147,
+              "failed": 0,
+              "free_bytes": 10964444901,
+              "free_calls": 55778159,
+              "live": 179898395,
+              "peak": 839664408,
+              "realloc_calls": 3967185,
+              "realloc_new_bytes": 3737957428,
+              "realloc_old_bytes": 1874691256,
+              "zeroed_calls": 56083
+            },
+            "before": {
+              "alloc_bytes": 7009231429,
+              "alloc_calls": 41791623,
+              "failed": 0,
+              "free_bytes": 8228796493,
+              "free_calls": 41833615,
+              "live": 179898395,
+              "peak": 179898395,
+              "realloc_calls": 2975396,
+              "realloc_new_bytes": 2807484255,
+              "realloc_old_bytes": 1408020796,
+              "zeroed_calls": 42063
+            },
+            "fingerprint": 5768699835751371258,
+            "iteration": 3,
+            "mesh_count": 109514,
+            "process_delta": {
+              "alloc_bytes": 2271845679,
+              "alloc_calls": 13930523,
+              "failed": 0,
+              "free_bytes": 2479008814,
+              "free_calls": 13109357,
+              "live": 436537973,
+              "peak": 839664408,
+              "realloc_calls": 991789,
+              "realloc_new_bytes": 930473173,
+              "realloc_old_bytes": 466670460,
+              "zeroed_calls": 14020
+            },
+            "triangles": 2895362,
+            "vertices": 4515161
+          },
+          {
+            "after_process": {
+              "alloc_bytes": 11557410107,
+              "alloc_calls": 69652687,
+              "failed": 0,
+              "free_bytes": 13447453339,
+              "free_calls": 68887533,
+              "live": 436544117,
+              "peak": 841423600,
+              "realloc_calls": 4958965,
+              "realloc_new_bytes": 4667467529,
+              "realloc_old_bytes": 2340880180,
+              "zeroed_calls": 70103
+            },
+            "after_result_drop": {
+              "alloc_bytes": 11557410123,
+              "alloc_calls": 69652688,
+              "failed": 0,
+              "free_bytes": 13704092933,
+              "free_calls": 69722720,
+              "live": 179904539,
+              "peak": 841423600,
+              "realloc_calls": 4958965,
+              "realloc_new_bytes": 4667467529,
+              "realloc_old_bytes": 2340880180,
+              "zeroed_calls": 70103
+            },
+            "before": {
+              "alloc_bytes": 9281077124,
+              "alloc_calls": 55722147,
+              "failed": 0,
+              "free_bytes": 10964444901,
+              "free_calls": 55778159,
+              "live": 179898395,
+              "peak": 179898395,
+              "realloc_calls": 3967185,
+              "realloc_new_bytes": 3737957428,
+              "realloc_old_bytes": 1874691256,
+              "zeroed_calls": 56083
+            },
+            "fingerprint": 5768699835751371258,
+            "iteration": 4,
+            "mesh_count": 109514,
+            "process_delta": {
+              "alloc_bytes": 2276332983,
+              "alloc_calls": 13930540,
+              "failed": 0,
+              "free_bytes": 2483008438,
+              "free_calls": 13109374,
+              "live": 436544117,
+              "peak": 841423600,
+              "realloc_calls": 991780,
+              "realloc_new_bytes": 929510101,
+              "realloc_old_bytes": 466188924,
+              "zeroed_calls": 14020
+            },
+            "triangles": 2895362,
+            "vertices": 4515161
+          }
+        ],
+        "threads": 2
+      },
+      "maximum_resident_set_kib": 920944,
+      "artifacts": {
+        "holter-3-base.json": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/holter-3-base.json",
+          "sha256": "26c38264f026079f5bcd49d0327a9c02673b3106c6939dc8306331b6a9bf0033",
+          "bytes": 8595
+        },
+        "holter-3-base.log": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/holter-3-base.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "holter-3-base-rss.txt": {
+          "path": "/tmp/ifclite-context-allocation-diagnostic/holter-3-base-rss.txt",
+          "sha256": "921cbbf2952d61721c569e4c56d65ee523d3e3cb634224da4a3aa1f05addbd84",
+          "bytes": 7
+        }
+      }
+    }
+  ],
+  "base_executable_sha256": "b74e96e5b79210858f011ca0c0788697e75f1375135bbca86d9881d4d2bfac35",
+  "candidate_executable_sha256": "93993ed41c5eb9d79a79bced915e954db60eb0c779592b999be57aa301a70d90",
+  "summaries": {
+    "fzk": {
+      "geometry_signature_identical_all20loads": true,
+      "signature": [
+        285,
+        35940,
+        20322,
+        8320359849537451299
+      ],
+      "by_label": {
+        "base": {
+          "alloc_bytes": 29598479.0,
+          "alloc_calls": 162840.0,
+          "failed": 0.0,
+          "free_bytes": 33745951.0,
+          "free_calls": 159541.0,
+          "live": 5147460.0,
+          "peak": 10055823.0,
+          "realloc_calls": 20379.0,
+          "realloc_new_bytes": 11112314.0,
+          "realloc_old_bytes": 5457006.0,
+          "zeroed_calls": 878.0,
+          "peak_live_minus_before": 6416199.0,
+          "retained_result_live_delta": 1507836.0,
+          "after_drop_live_delta": 192.0
+        },
+        "candidate": {
+          "alloc_bytes": 29853675.0,
+          "alloc_calls": 166898.0,
+          "failed": 0.0,
+          "free_bytes": 34065611.0,
+          "free_calls": 163599.0,
+          "live": 5147849.0,
+          "peak": 10056348.0,
+          "realloc_calls": 20441.0,
+          "realloc_new_bytes": 11207194.0,
+          "realloc_old_bytes": 5487422.0,
+          "zeroed_calls": 878.0,
+          "peak_live_minus_before": 6416335.0,
+          "retained_result_live_delta": 1507836.0,
+          "after_drop_live_delta": 192.0
+        }
+      }
+    },
+    "holter": {
+      "geometry_signature_identical_all20loads": true,
+      "signature": [
+        109514,
+        4515161,
+        2895362,
+        5768699835751371258
+      ],
+      "by_label": {
+        "base": {
+          "alloc_bytes": 2276353215.0,
+          "alloc_calls": 13930556.5,
+          "failed": 0.0,
+          "free_bytes": 2483637100.0,
+          "free_calls": 13109374.5,
+          "live": 436537973.0,
+          "peak": 841546680.0,
+          "realloc_calls": 991805.0,
+          "realloc_new_bytes": 930531397.0,
+          "realloc_old_bytes": 466688352.0,
+          "zeroed_calls": 14020.0,
+          "peak_live_minus_before": 662848469.0,
+          "retained_result_live_delta": 256642650.0,
+          "after_drop_live_delta": 3072.0
+        },
+        "candidate": {
+          "alloc_bytes": 2379783662.0,
+          "alloc_calls": 14923110.5,
+          "failed": 0.0,
+          "free_bytes": 2627364833.0,
+          "free_calls": 14101937.0,
+          "live": 436538362.0,
+          "peak": 839941397.0,
+          "realloc_calls": 1006142.5,
+          "realloc_new_bytes": 1009457381.0,
+          "realloc_old_bytes": 504230320.0,
+          "zeroed_calls": 14020.0,
+          "peak_live_minus_before": 661021793.0,
+          "retained_result_live_delta": 256642650.0,
+          "after_drop_live_delta": 3072.0
+        }
+      }
+    }
+  },
+  "final_library_and_source_pins_match": true,
+  "limitations": [
+    "GlobalAlloc/System requested bytes only: allocator arenas, metadata, fragmentation, native malloc, stacks, mmap and GPU/browser memory are outside coverage.",
+    "Concurrent atomic snapshots and peak updates are diagnostic observations, not an allocator proof or hard limit. Realloc internal transient old/new coexistence is not observable.",
+    "Process counters exclude source read/pool creation but include processing-thread TLS/cache initialization on first load. LIVE/cumulative counters never reset; only PEAK reanchors to baseline at each idle boundary.",
+    "Fingerprint runs after process snapshot and excludes text/material definitions/UV/textures/instances; existing separate full-scene correctness evidence is required.",
+    "Instrumentation perturbs execution; other shared-host work ran concurrently. RSS is whole-process GNU time high-water, not requested bytes or allocation-site attribution. No latency or causal attribution claim."
+  ],
+  "metadata_corrected_manifest": "../source-manifest-ratchet-corrected.json",
+  "metadata_corrected_manifest_sha256": "63bb222be30076a296d109eb6cc7d057ec3ab880f727313d62892df82d65ff93",
+  "source_scope": "Pinned final runtime libraries; later metadata-only ratchet correction leaves runtime inputs unchanged. No production build or source edit performed for this diagnostic.",
+  "driver_sha256": "92c50b6ed77697f891fa5c4da7c27738df02772071de3edc738cede098beaf26",
+  "fingerprint_origin": "rust/processing/examples/perf_probe/fingerprint.rs copied verbatim",
+  "summary": "summary.json",
+  "publication": "Raw small artifacts are persisted beside this receipt; local executable/library binaries are identified by hashes and may not remain accessible."
+}

@@ -83,7 +83,7 @@ impl GeometryRouter {
     /// Deciding it here rather than at each `record_unsupported_item` call is
     /// what makes it hold on the OCCURRENCE path: a mapped source's unsupported
     /// item is not recorded by the mapped-item branch at all, it is recorded by
-    /// `collect_submeshes_from_item_inner`'s own plain-item arm one recursion
+    /// `collect_submeshes_from_item`'s own plain-item arm one recursion
     /// level down. A per-site gate at the mapped-item branch would never see it.
     ///
     /// Scoped to this router, like `mapped_item_cache`: the native pool builds a
@@ -96,12 +96,33 @@ impl GeometryRouter {
         source_id: u32,
         mapped_repr: &DecodedEntity,
     ) -> UnsupportedSourceScope<'_> {
+        let record = self.claim_unsupported_source(source_id, mapped_repr);
+        self.unsupported.borrow_mut().scope.push(record);
+        UnsupportedSourceScope { router: self }
+    }
+
+    /// Own the innermost counting decision, without retaining a router guard.
+    pub(in crate::router) fn unsupported_policy(&self) -> bool {
+        self.unsupported.borrow().scope.last().copied().unwrap_or(true)
+    }
+
+    /// Claim at the same reached point as `enter_unsupported_source`. A later
+    /// step reinstalls this decision; it must never claim the source again.
+    pub(in crate::router) fn claim_unsupported_source(
+        &self, source_id: u32, mapped_repr: &DecodedEntity,
+    ) -> bool {
         let is_body = crate::router::effective_rep_type(mapped_repr)
             .is_none_or(crate::router::is_body_representation);
-        let mut state = self.unsupported.borrow_mut();
-        let record = is_body && state.sources_recorded.insert(source_id);
-        state.scope.push(record);
-        UnsupportedSourceScope { router: self }
+        is_body && self.unsupported.borrow_mut().sources_recorded.insert(source_id)
+    }
+
+    /// Install one owned continuation's policy only for its synchronous work.
+    /// Nested source scopes still override it, and panic restores the caller.
+    pub(in crate::router) fn with_unsupported_policy<T>(&self, record: bool,
+        work: impl FnOnce() -> T) -> T {
+        self.unsupported.borrow_mut().scope.push(record);
+        let _scope = UnsupportedSourceScope { router: self };
+        work()
     }
 
     /// Record one dropped representation item (unsupported type, or its

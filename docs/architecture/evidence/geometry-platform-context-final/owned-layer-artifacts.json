@@ -1,0 +1,51 @@
+{
+  "archive": "owned-layer-artifacts.tar.gz",
+  "archive_sha256": "7f02dbd99fa901a96640d0114a859c4e77cfc14adc079aa3ae63f0b426d0aeb6",
+  "files": {
+    "base-output.json": {
+      "sha256": "5a0041813d755385097d7d0643fa92f76babae6b8dd247e9cae17df7124bde8d",
+      "bytes": 51171
+    },
+    "base-receipt.json": {
+      "sha256": "5e177688cfd6259ae35a9486564f012dc857ea557b6d808fcfb2fb21aa9a643c",
+      "bytes": 4377
+    },
+    "bits.rs": {
+      "sha256": "e9338fbc88728c68d23b079a7a4d904a3e91476c1869ca81718684db0db0c19b",
+      "bytes": 7051
+    },
+    "fixture.rs": {
+      "sha256": "c10b7855b25ecedaa47907016f85b35b8e9dff1710439e86df799aaef07efc9f",
+      "bytes": 2845
+    },
+    "mesh.rs": {
+      "sha256": "4d2dd1b530f69fb04e4fff1cd24acfb52b353b06102e03a86f48e55355782117",
+      "bytes": 1963
+    },
+    "owned-candidate-build-command.json": {
+      "sha256": "ce018953fa399811f519cd1aad2bcebd9ab82546b1da2cab8ce21a40532d0dd9",
+      "bytes": 1018
+    },
+    "owned-candidate-build.log": {
+      "sha256": "c47097f3c0205440c77c89e9b98a408e4e9c20c6258fc7589fb53de01c5383fe",
+      "bytes": 271
+    },
+    "owned-candidate-comparison-receipt.json": {
+      "sha256": "6fef882d83ac23e2a3bbee6c034eafdf66beab8e8329f13472de8e59abf047fa",
+      "bytes": 7275
+    },
+    "owned-candidate-output.json": {
+      "sha256": "5a0041813d755385097d7d0643fa92f76babae6b8dd247e9cae17df7124bde8d",
+      "bytes": 51171
+    },
+    "owned-candidate-run.log": {
+      "sha256": "a2de30858d446ce39a09c1f56a2a214e6a2f2d0f7f0ce4b6d1130df7503c217f",
+      "bytes": 110
+    },
+    "owned-main.rs": {
+      "sha256": "1cbfe4c33be46cd53d1acd091946357039021dfec9c1cd97b25c7a748c484723",
+      "bytes": 2816
+    }
+  },
+  "scope": "Candidate-owned canonical element API compared with borrowed baseline on three invariant fixtures; explicit material-layer index. Separate consumer source/command, full mesh fields and provenance assertions; no native orchestrator/real-exporter claim."
+}

@@ -1,0 +1,159 @@
+{
+  "source_manifest": "source-manifest.json",
+  "platform": "Linux-6.17.9-76061709-generic-x86_64-with-glibc2.39",
+  "scope": "ten owned raw leaf families and partial ordered exact solid/solid boolean/CSG graph; full product migration incomplete",
+  "workspace": {
+    "passed_invocations": 5592,
+    "failed_invocations": 0,
+    "ignored": 47,
+    "suite_reports": 373,
+    "scope_note": "Absent optional fixture cases may skip internally; passed invocations do not certify complete corpus coverage."
+  },
+  "wasm_contract": {
+    "passed": 206,
+    "failed": 0,
+    "skipped": 7,
+    "fresh_runtime_from_candidate": true,
+    "committed_types_unchanged": true
+  },
+  "raw_replay_comparison": {
+    "passed_tests": 4,
+    "failed": 0,
+    "fixture_skips": 0,
+    "artifact": {
+      "binary_path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/debug/deps/owned_operation_plan-8c16b57c100c6df0",
+      "binary_sha256": "152758688f4b91d82b406263c433cddfe25b9625d3cd538679dffffc34aa901f",
+      "exit_code": 0
+    },
+    "cases": {
+      "wall_roof": [
+        332,
+        339,
+        424,
+        431,
+        1399,
+        1440,
+        1448,
+        1449,
+        1450
+      ],
+      "bath": [
+        206,
+        207
+      ],
+      "house_facets": [
+        17446,
+        66059,
+        13124
+      ],
+      "large_model_facets": [
+        219624,
+        233183,
+        328707
+      ]
+    },
+    "internal_committed_csg_cases": [
+      200,
+      206,
+      207,
+      208
+    ],
+    "scope": "raw production buffer/frame bits and BoolFailure comparison; source/decoder/router disposed before replay; no product/RTC/appearance equivalence claim"
+  },
+  "default_path_comparison": {
+    "fixtures": 3,
+    "mesh_counts_and_ordered_payload_fingerprints_identical": true,
+    "timing_qualified": false
+  },
+  "commands": [
+    {
+      "name": "workspace",
+      "command": "IFCLITE_SMLIB_WORKER=/tmp/ifclite-smlib-adapter-native/ifclite_smlib_worker cargo test --workspace",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-operations-workspace.log",
+      "raw_log_sha256": "2ce546845fb3ca6e7668bc8d9c70ea25982e445e2afedfe15df6e99e9e7027bc"
+    },
+    {
+      "name": "clippy",
+      "command": "cargo clippy --workspace --all-targets -- -D warnings",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-operations-clippy-final.log",
+      "raw_log_sha256": "60937bd86210e9ec81d01e0b8b451e6f2b1db496ef87399f8d2377622763533b"
+    },
+    {
+      "name": "wasm-target",
+      "command": "cargo build --locked -p ifc-lite-processing -p ifc-lite-geometry-runtime --target wasm32-unknown-unknown --target-dir /tmp/ifclite-platform-wasm-target",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-operations-wasm-target.log",
+      "raw_log_sha256": "723929df332fad78751f6fe965c92f0ad7e4f7f854da7c6998068feb3fc459d5"
+    },
+    {
+      "name": "wasm-runtime-build",
+      "command": "CI=1 pnpm build:wasm",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-operations-wasm-build.log",
+      "raw_log_sha256": "79c3551c99f1bc88f1952382d9b6564f0b22f72d18d77974ecc52effab7ce3f7"
+    },
+    {
+      "name": "wasm-contract",
+      "command": "pnpm test:wasm-contract",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-operations-wasm-contract.log",
+      "raw_log_sha256": "1afef5fe0d64d945914502ed97ded37c2e13436c61591482aadec5ab4119fdc8"
+    },
+    {
+      "name": "raw-construction-real-file",
+      "command": "target/debug/examples/construction_batch rust/geometry/tests/fixtures/bath_csg_solid.ifc 208 207 208",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-operations-real-example.log",
+      "raw_log_sha256": "c48c80809168383dcfc45bea706f240f333e14c350bb60fd9791239cf089ffdc"
+    },
+    {
+      "name": "raw-processor-versus-owned-replay",
+      "command": "target/debug/deps/owned_operation_plan-8c16b57c100c6df0 --nocapture",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-operations-raw-comparison.log",
+      "raw_log_sha256": "094af93531d67df5aaf93fc4e8e999d204eb021de0212ee8698ea9fc88dff091"
+    },
+    {
+      "name": "reference-walk-guards",
+      "command": "node scripts/check-refwalk-guards.mjs",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-operations-refwalk.log",
+      "raw_log_sha256": "735017b68a409751e1e52cbdbde8664d72b9193950470561f9b0efe8bd0cd0f3"
+    },
+    {
+      "name": "module-size",
+      "command": "node scripts/check-module-size.mjs",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-operations-module-size.log",
+      "raw_log_sha256": "98f4456fc36e781621ee1a596b7d02aac221eb12eb94b77999adf631e90d1dba"
+    },
+    {
+      "name": "source-test-guard",
+      "command": "node scripts/check-source-text-assertions.mjs",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-operations-source-tests.log",
+      "raw_log_sha256": "514785c72b6ca40b67bfc36c3bf85f169801f1fc4730dc5c30f4927a0080066d"
+    },
+    {
+      "name": "default-path-comparison",
+      "command": "scripts/perf/probe.sh <fixture> --iters 5 --fingerprint --json; base/candidate/candidate/base per fixture",
+      "exit_code": 0,
+      "raw_log_local_path": "/tmp/ifclite-operations-perf.log",
+      "raw_log_sha256": "2035e69a366bda79f938dd302c756f033b2b27d75c00d9d84f282b3ec198e6b4"
+    }
+  ],
+  "not_qualified": [
+    "remaining nine leaf families",
+    "complete product/mapped/halfspace/grouped/opening execution",
+    "BRep cutter inner-shell policy",
+    "legacy conditional source and numerical execution/budgets",
+    "owned error-path and TLS diagnostics",
+    "retained-BRep production execution",
+    "all-platform install/package closure",
+    "complete cross-target/consumer qualification",
+    "process/payload memory bounds",
+    "latency non-regression or performance improvement"
+  ]
+}

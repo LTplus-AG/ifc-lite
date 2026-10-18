@@ -1,0 +1,23 @@
+{
+  "head": "09fb29bec18adea37abd6f08f1c7083cfa089ab5",
+  "run": 39120223376,
+  "job": 117656055802,
+  "realIfCJourney": "PASS 20.5s; original IDS locator, native audit/dry-run/save/handoff and document tables intact",
+  "shard": {
+    "passed": 22,
+    "failed": 0,
+    "skipped": 6,
+    "skipsScope": "Other hosted GPU-dependent tests, not assistant check-authoring"
+  },
+  "artifactId": 12134027745,
+  "githubDigest": "sha256:0b8e8201ab5b610869d372980c9cdec73ec66e957549080bac0aad894223dca4",
+  "downloadedSha256": "0b8e8201ab5b610869d372980c9cdec73ec66e957549080bac0aad894223dca4",
+  "screenshots": [
+    "e2e-assistant-check-author-b01df-and-saved-only-after-review-viewer-e2e-ci/assistant-p07-ids-dry-run.png",
+    "e2e-assistant-check-author-b01df-and-saved-only-after-review-viewer-e2e-ci/assistant-p07-ids-native-run.png",
+    "e2e-assistant-check-author-b01df-and-saved-only-after-review-viewer-e2e-ci/assistant-p07-outline-document.png",
+    "e2e-assistant-check-author-b01df-and-saved-only-after-review-viewer-e2e-ci/assistant-p07-outline-review.png",
+    "e2e-assistant-check-author-b01df-and-saved-only-after-review-viewer-e2e-ci/assistant-p07-rules-dry-run.png",
+    "e2e-assistant-check-author-b01df-and-saved-only-after-review-viewer-e2e-ci/assistant-p07-rules-editor.png"
+  ]
+}

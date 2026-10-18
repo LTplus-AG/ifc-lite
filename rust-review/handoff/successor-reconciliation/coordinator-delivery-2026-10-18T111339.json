@@ -1,0 +1,57 @@
+{
+  "observedAt": "2026-10-18T11:13:39.490289+00:00",
+  "landedPRsThisDeliveryPhase": [
+    7916,
+    7905,
+    7909,
+    7894,
+    7912,
+    7907,
+    7898,
+    7922
+  ],
+  "completedIssuesThisDeliveryPhase": [
+    7919
+  ],
+  "openIssues": [
+    7923,
+    7920,
+    7890,
+    7782,
+    7781,
+    7779,
+    7714,
+    7711,
+    7655,
+    7635,
+    7633,
+    7631,
+    7581,
+    7292,
+    7036,
+    6940,
+    6881,
+    6729,
+    6709,
+    6516
+  ],
+  "originalIncidents7890and7655and6516": "Remain OPEN; supporting guards/diagnostic delivery do not establish root cause or performance acceptance.",
+  "activeItems": {
+    "7913": "daed4acfd490799d0b59d835384f1dc879d006ff",
+    "7911": "f04d4f621e2dd0b168ef298e116a25a827161995"
+  },
+  "programAcceptance": {
+    "pendingPrograms": 8,
+    "uncheckedConditions": 33,
+    "acceptedComplete": 0
+  },
+  "preservation": "Original622 ID rows/D1-D80/design notes and required stopline unchanged. Prior source packets and failed data retained.",
+  "receipts": {
+    "rust-review/handoff/successor-reconciliation/evidence/coordinator-2026-10-18T111339/7912-landing-merge-receipt.json": "69147fdd62cfb52546c84d42ef65858eb8435f964e92cb504387797c2664c97e",
+    "rust-review/handoff/successor-reconciliation/evidence/coordinator-2026-10-18T111339/7907-landing-merge-receipt.json": "8c98030326052784ea9299701130b4499a8290ce428b74555cf879943610eb16",
+    "rust-review/handoff/successor-reconciliation/evidence/coordinator-2026-10-18T111339/7898-landing-merge-receipt.json": "4ed2f2b9126e3bc1a0a952fe2336bf9b145033c450ff2740d0c96205cdad90ac",
+    "rust-review/handoff/successor-reconciliation/evidence/coordinator-2026-10-18T111339/7919-fresh-evidence-merge-receipt.json": "86bb94972273810c21fd698a3e2010e3aa163b748a69193b8bf051ba0caa58b3",
+    "rust-review/handoff/successor-reconciliation/evidence/coordinator-2026-10-18T111339/7919-fresh-evidence-issue-closure-receipt.json": "0a9cc76ec1f3657e8614c9883d23edba3c2331524416d2d51c04fa81da394fc7",
+    "rust-review/handoff/successor-reconciliation/evidence/coordinator-2026-10-18T111339/7919-fresh-evidence-real-journey-evidence.json": "5179164b527f66ac65ab970ef3d968c47418e98285718751759845561bcbe103"
+  }
+}

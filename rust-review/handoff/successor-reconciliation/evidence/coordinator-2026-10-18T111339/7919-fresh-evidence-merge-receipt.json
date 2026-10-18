@@ -1,0 +1,25 @@
+{
+  "autoMergeRequest": null,
+  "closingIssuesReferences": [
+    {
+      "id": "I_kwDOQ3UF-88AAAABYCNqtg",
+      "number": 7919,
+      "repository": {
+        "id": "R_kgDOQ3UF-w",
+        "name": "ifc-lite",
+        "owner": {
+          "id": "O_kgDOCfKv5Q",
+          "login": "LTplus-AG"
+        }
+      },
+      "url": "https://github.com/LTplus-AG/ifc-lite/issues/7919"
+    }
+  ],
+  "headRefOid": "09fb29bec18adea37abd6f08f1c7083cfa089ab5",
+  "mergeCommit": {
+    "oid": "1bd0505602e0d650971d5cdc590bf780c56f8d5f"
+  },
+  "mergedAt": "2026-10-18T11:06:12Z",
+  "state": "MERGED",
+  "url": "https://github.com/LTplus-AG/ifc-lite/pull/7922"
+}

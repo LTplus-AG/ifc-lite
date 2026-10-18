@@ -3152,9 +3152,9 @@ export class Renderer {
             // `getOrCreatePartialBatch`'s CPU-side geometry merge running out of
             // host memory, and that throws a `RangeError` — which is exactly why
             // the discriminator keys on the TYPE and not on "a frame threw".
+            cancelRendererColorFrame(this);
             if (deferOpaqueVisibilityFrame(error, () => this.requestRender())) return false;
-            this.containFrameThrow(error, 'encode');
-            cancelRendererColorFrame(this); return false;
+            this.containFrameThrow(error, 'encode'); return false;
         }
     }
 

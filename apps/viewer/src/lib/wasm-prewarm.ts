@@ -68,9 +68,18 @@ export function scheduleWasmPrewarm(): void {
     // already in the entry graph and this resolves from memory.)
     const startedAt = performance.now();
     void import('@ifc-lite/geometry')
-      .then(({ prewarmSharedWasmModule }) => prewarmSharedWasmModule())
-      // `viewer_boot` (#6961): when the engine binary finished compiling.
-      .then((compiled) => { const endedAt = performance.now(); onFieldTelemetry((field) => field.noteEngineCompiled(startedAt, endedAt, compiled)); })
+      .then(async ({ prewarmSharedWasmModule, prewarmGeometryWorkers, getWarmGeometryWorkerPool }) => {
+        // Reserve before compilation: a drain while its response is pending cancels this startup.
+        const generation = getWarmGeometryWorkerPool()?.prewarmGeneration();
+        const compiled = await prewarmSharedWasmModule();
+        // `viewer_boot` records compile completion before opt-in worker initialization (#7036).
+        const endedAt = performance.now();
+        onFieldTelemetry((field) => field.noteEngineCompiled(startedAt, endedAt, compiled));
+        if (compiled && generation !== undefined && !shouldSkipPrewarm(connection())) {
+          // One geometry instance plus one pre-pass instance; the canonical pool guards flag/visibility/budgets.
+          await prewarmGeometryWorkers({ workerCountOverride: 1, generation });
+        }
+      })
       .catch((err) => {
         console.warn('[wasm-prewarm] engine prewarm skipped:', err);
       });

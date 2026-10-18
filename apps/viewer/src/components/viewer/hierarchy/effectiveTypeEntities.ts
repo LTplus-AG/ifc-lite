@@ -7,6 +7,7 @@ import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/m
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { effectiveMutationRelationships } from '@/sdk/adapters/query-overlay-relations.js';
 import { effectiveTreeType } from './treeOverlay.js';
+import { entityOwnership } from '@/utils/entity-ownership';
 
 export interface EffectiveTypeEntity {
   expressId: number;
@@ -89,11 +90,12 @@ export function effectiveTypeInstanceIds(
     !assignments.rewrittenRelationIds.has(relationId)
     && effectiveTreeType(view, relationId, 'IfcRelDefinesByType') === 'IfcRelDefinesByType';
   const ids = new Set<number>();
+  const owns = entityOwnership(store, view);
   for (const edge of store.relationships.forward.getEdges(typeId, RelationshipType.DefinesByType)) {
-    if (edgeSurvives(edge, (id) => !survives(id)) && !view?.isDeleted(edge.target)) ids.add(edge.target);
+    if (edgeSurvives(edge, (id) => !survives(id)) && owns(edge.target)) ids.add(edge.target);
   }
   for (const id of assignments.byType.get(typeId) ?? []) {
-    if (!view?.isDeleted(id)) ids.add(id);
+    if (owns(id)) ids.add(id);
   }
   return [...ids];
 }

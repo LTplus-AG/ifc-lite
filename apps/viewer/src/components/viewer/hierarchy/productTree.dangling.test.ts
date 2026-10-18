@@ -238,3 +238,29 @@ test('#7890 table-backed ownership uses actual rows rather than displayed classe
     'an unknown-class real row survives and a display override cannot publish an absent row');
   assertMissingIdRemainsUnowned(model.id);
 });
+
+for (const missingIndex of ['entityIndex', 'byId'] as const) {
+  test(`#7890 deferred source membership survives a missing ${missingIndex}`, async () => {
+    const models = await installModels(1);
+    const store = [...models.values()][0].ifcDataStore;
+    assert.ok(store);
+    // A partial source facade has not published its columnar rows or primary
+    // index yet. Its deferred records and graph are genuine parser output.
+    const partial = {
+      ...store,
+      entities: entityTableFromColumns({ ...store.entities, count: 0 }, store.strings),
+      entityIndex: missingIndex === 'entityIndex'
+        ? undefined : { ...store.entityIndex, byId: undefined },
+      deferredEntityIndex: new Map(store.entityIndex.byId),
+    } as unknown as typeof store;
+    const view = new MutablePropertyView(null, 'partial');
+    const relationships = ownedAggregationRelationships(partial, view);
+    assert.deepEqual(relationships?.getRelated(1, RelationshipType.Aggregates, 'forward'), [2, 4],
+      'deferred real source records survive; the dangling source edge does not');
+    view.deleteEntity(4);
+    assert.deepEqual(relationships?.getRelated(1, RelationshipType.Aggregates, 'forward'), [2],
+      'a tombstone still takes precedence over deferred source membership');
+    assert.deepEqual(store.relationships.getRelated(1, RelationshipType.Aggregates, 'forward'),
+      [2, 4, 2035], 'the source graph remains intact');
+  });
+}

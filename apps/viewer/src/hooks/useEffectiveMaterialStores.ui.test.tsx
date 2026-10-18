@@ -160,3 +160,24 @@ it('material tree sees live delete/create while a second model stays isolated (#
   assert.equal(shown(), '', 'the previous federation snapshot is hidden while the next one loads');
   await waitForUsage(shown, [global('a', created.expressId), global('b', 10), global('b', 11)].join(','));
 });
+
+it('material tree includes a new wall and material association before save (#7890)', async () => {
+  const source = await parse();
+  const view = new MutablePropertyView(null, '__legacy__');
+  view.setExpressIdWatermark(30);
+  const wall = view.createEntity('IfcWall',
+    ['0Wall00000000000000031', null, 'Wall C', null, null, null, null, null, null]);
+  const relation = view.createEntity('IfcRelAssociatesMaterial',
+    ['0RelMat000000000000032', null, null, null, [`#${wall.expressId}`], '#20']);
+  useViewerStore.setState({ hierarchyMode: 'material',
+    mutationViews: new Map([['__legacy__', view]]), mutationVersion: 1 });
+  const ui = render(<Probe source={source} />);
+  const shown = () => ui.querySelector('[data-testid="usage"]')?.textContent;
+  await waitForUsage(shown, `10,11,${wall.expressId}`);
+  assert.deepEqual(users(source), [10, 11], 'unsaved membership does not rewrite the source');
+  act(() => {
+    view.deleteEntity(relation.expressId);
+    useViewerStore.setState({ mutationVersion: 2 });
+  });
+  await waitForUsage(shown, '10,11');
+});

@@ -9,6 +9,7 @@ import type { AggregationRelationships } from './aggregation.js';
 // Source tables are immutable across overlay edits. Reuse their row domain
 // across per-row traversals; membership must not depend on a display class.
 const tableDomains = new WeakMap<Uint32Array, { count: number; ids: ReadonlySet<number> }>();
+const emptySourceEntities = new Map<number, never>();
 
 function tableOwns(store: IfcDataStore, id: number): boolean {
   const table = store.entities;
@@ -29,11 +30,17 @@ export function entityOwnership(
   store: IfcDataStore | null | undefined,
   view?: Pick<MutablePropertyView, 'getNewEntity' | 'isDeleted'> | null,
 ): (id: number) => boolean {
+  // Table-backed/partial stores may omit the STEP index while retaining a
+  // deferred source domain. Normalize only the missing half of the union.
+  const source = {
+    entityIndex: { byId: store?.entityIndex?.byId ?? emptySourceEntities },
+    deferredEntityIndex: store?.deferredEntityIndex,
+  };
   return (id: number): boolean => {
     if (!store || !Number.isSafeInteger(id) || id <= 0 || view?.isDeleted(id)) return false;
     if (view?.getNewEntity(id)) return true;
     // @raw-entity-enumeration-ok source-index availability check before the shared membership primitive; table-backed stores may omit the byte index
-    if (store.entityIndex?.byId && storeHasSourceEntity(store, id)) return true;
+    if (storeHasSourceEntity(source, id)) return true;
     return tableOwns(store, id);
   };
 }

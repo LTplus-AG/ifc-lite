@@ -653,8 +653,9 @@ def entity_data(
     Every property kind is decoded. An ``IfcPropertySingleValue`` returns its
     nominal value as a string; an enumerated, list, bounded, table, reference
     or complex property returns its display string (``"A, B"``, ``"2 [1 – 5]"``,
-    ``"Table (2 rows)"``, the referenced object's name), with ``value_type`` set
-    to the members' shared type tag or else the property class
+    ``"Table (2 rows)"``). A reference uses the target's nonblank ``Name``, else
+    its nonblank ``Identification``, else ``#<id>``. ``value_type`` is the
+    members' shared type tag or else the property class
     (``IFCPROPERTYTABLEVALUE``, ...).
 
     ``attributes`` (on by default) returns each entity's SCHEMA-DECLARED IFC

@@ -92,11 +92,30 @@ fn run_entity_export(
 /// Every property kind is decoded (EXPORT-DATA-2, D47). An
 /// `IfcPropertySingleValue` returns its nominal value as a string; an
 /// enumerated, list, bounded, table, reference or complex property returns its
-/// display string (`"A, B"`, `"2 [1 – 5]"`, `"Table (2 rows)"`, the referenced
-/// object's name, `"Inner: a, Other: 2.5"`). `value_type` is the members' shared
-/// type tag, else the property class keyword (`IFCPROPERTYTABLEVALUE`, ...).
+/// display string (`"A, B"`, `"2 [1 – 5]"`, `"Table (2 rows)"`,
+/// `"Inner: a, Other: 2.5"`). A reference uses the target's nonblank `Name`,
+/// else its nonblank `Identification`, else `#<id>`. `value_type` is the
+/// members' shared type tag, else the property class keyword
+/// (`IFCPROPERTYTABLEVALUE`, ...).
 /// Complex properties share the model's complex-property budget (#7675).
 /// Quantity dictionaries contain `name`, a numeric `value` and `kind`.
+///
+/// For `ifc_bytes` containing property and quantity sets:
+///
+/// >>> import ifclite_geom
+/// >>> rows = ifclite_geom.entity_data(ifc_bytes)["entities"].values()
+/// >>> prop = next(p for row in rows for ps in row["property_sets"] for p in ps["properties"])
+/// >>> sorted(prop)
+/// ['name', 'value', 'value_type']
+/// >>> isinstance(prop["value"], str)
+/// True
+/// >>> "kind" in prop
+/// False
+/// >>> quantity = next(q for row in rows for qs in row["quantity_sets"] for q in qs["quantities"])
+/// >>> sorted(quantity)
+/// ['kind', 'name', 'value']
+/// >>> isinstance(quantity["value"], float)
+/// True
 ///
 /// **Schema-declared entity attributes** arrive in their own `attributes` list,
 /// on by default. These are unrelated to the `IfcTypeObject` inheritance above,

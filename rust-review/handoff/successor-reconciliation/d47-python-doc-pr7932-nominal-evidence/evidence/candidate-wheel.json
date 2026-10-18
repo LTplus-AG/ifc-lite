@@ -1,0 +1,28 @@
+{
+  "source": {
+    "head": "3d2ef521dcead88104f13e6c7f532bbce8db4cfb",
+    "tree": "7301fc09a263727d0122e7fd1ed0e4d340441595",
+    "clean": true,
+    "freeBytes": 847616802816,
+    "freeInodes": 1000000,
+    "sourceHashes": {
+      "rust/python/src/entity_data.rs": "20e82045106c1dd0a9a514602698eb7a94c85c568c9ab9441b25f6b8b3727291",
+      "rust/python/ifclite_geom.pyi": "2e1829a86cd56e8dc73d3903c512f712a456296a0d621f35c30f9993bb66926b",
+      "rust/python/tests/test_entity_data_help.py": "4acf9bfcad51d2821c719bb158e48edb3d6d7fe75897e4f9befabbd1c4e1d973",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371",
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+    },
+    "linuxInfrastructureFreeBytes": 5053845504
+  },
+  "wheel": "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v7/candidate-wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl",
+  "wheelSha256": "66474b754bb2bef13a53c6723cba9e584fe36fe70272bd12dae4efb74ed165ba",
+  "native": {
+    "ifclite_geom/ifclite_geom.abi3.so": "e5d415440aed7afffc2089776725340d498c732e3f5eac698ee41217a87bd44c"
+  },
+  "stubs": {
+    "ifclite_geom/__init__.pyi": "2e1829a86cd56e8dc73d3903c512f712a456296a0d621f35c30f9993bb66926b",
+    "ifclite_geom.pyi": "2e1829a86cd56e8dc73d3903c512f712a456296a0d621f35c30f9993bb66926b"
+  },
+  "profile": "release"
+}

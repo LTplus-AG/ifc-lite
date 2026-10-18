@@ -1,0 +1,93 @@
+diff --git a/docs/api/python.md b/docs/api/python.md
+index 58bfef53d3..107fe364ca 100644
+--- a/docs/api/python.md
++++ b/docs/api/python.md
+@@ -542,7 +542,9 @@ its own mesh bounds.
+   nominal value as a string. An enumerated, list, bounded, table, reference or
+   complex property returns its display string (`"A, B"`, `"2 [1 – 5]"`,
+   `"Table (2 rows)"`). A reference uses the target's nonblank `Name`, else its
+-  nonblank `Identification`, else `#<id>`. `value_type` is the members' shared
++  nonblank `Identification`, else `#<id>`. For `IfcPropertySingleValue`,
++  `value_type` is the nominal value's rendered type tag (for example,
++  `IFCLABEL` or `IFCREAL`). For other property kinds, it is the members' shared
+   type tag or else the property class (`IFCPROPERTYTABLEVALUE`, ...).
+ ### Entity attributes
+ 
+diff --git a/rust/python/README.md b/rust/python/README.md
+index 5f4a7931d8..2860acad13 100644
+--- a/rust/python/README.md
++++ b/rust/python/README.md
+@@ -541,7 +541,9 @@ its own mesh bounds.
+   nominal value as a string. An enumerated, list, bounded, table, reference or
+   complex property returns its display string (`"A, B"`, `"2 [1 – 5]"`,
+   `"Table (2 rows)"`). A reference uses the target's nonblank `Name`, else its
+-  nonblank `Identification`, else `#<id>`. `value_type` is the members' shared
++  nonblank `Identification`, else `#<id>`. For `IfcPropertySingleValue`,
++  `value_type` is the nominal value's rendered type tag (for example,
++  `IFCLABEL` or `IFCREAL`). For other property kinds, it is the members' shared
+   type tag or else the property class (`IFCPROPERTYTABLEVALUE`, ...).
+ ### Entity attributes
+ 
+diff --git a/rust/python/ifclite_geom.pyi b/rust/python/ifclite_geom.pyi
+index 5c43e7b179..c9abc856ff 100644
+--- a/rust/python/ifclite_geom.pyi
++++ b/rust/python/ifclite_geom.pyi
+@@ -654,8 +654,10 @@ def entity_data(
+     nominal value as a string; an enumerated, list, bounded, table, reference
+     or complex property returns its display string (``"A, B"``, ``"2 [1 – 5]"``,
+     ``"Table (2 rows)"``). A reference uses the target's nonblank ``Name``, else
+-    its nonblank ``Identification``, else ``#<id>``. ``value_type`` is the
+-    members' shared type tag or else the property class
++    its nonblank ``Identification``, else ``#<id>``. For
++    ``IfcPropertySingleValue``, ``value_type`` is the nominal value's rendered
++    type tag (for example, ``IFCLABEL`` or ``IFCREAL``). For other property
++    kinds, it is the members' shared type tag or else the property class
+     (``IFCPROPERTYTABLEVALUE``, ...).
+ 
+     ``attributes`` (on by default) returns each entity's SCHEMA-DECLARED IFC
+diff --git a/rust/python/src/entity_data.rs b/rust/python/src/entity_data.rs
+index f6c668cc3e..dbaf085c04 100644
+--- a/rust/python/src/entity_data.rs
++++ b/rust/python/src/entity_data.rs
+@@ -94,13 +94,16 @@ fn run_entity_export(
+ /// enumerated, list, bounded, table, reference or complex property returns its
+ /// display string (`"A, B"`, `"2 [1 – 5]"`, `"Table (2 rows)"`,
+ /// `"Inner: a, Other: 2.5"`). A reference uses the target's nonblank `Name`,
+-/// else its nonblank `Identification`, else `#<id>`. `value_type` is the
+-/// members' shared type tag, else the property class keyword
++/// else its nonblank `Identification`, else `#<id>`. For
++/// `IfcPropertySingleValue`, `value_type` is the nominal value's rendered type
++/// tag (for example, `IFCLABEL` or `IFCREAL`). For other property kinds, it is
++/// the members' shared type tag, else the property class keyword
+ /// (`IFCPROPERTYTABLEVALUE`, ...).
+ /// Complex properties share the model's complex-property budget (#7675).
+ /// Quantity dictionaries contain `name`, a numeric `value` and `kind`.
+ ///
+-/// For `ifc_bytes` containing property and quantity sets:
++/// For `ifc_bytes` containing property and quantity sets, including a
++/// `Text` single-value property with an `IFCLABEL` nominal value:
+ ///
+ /// >>> import ifclite_geom
+ /// >>> rows = ifclite_geom.entity_data(ifc_bytes)["entities"].values()
+@@ -111,6 +114,9 @@ fn run_entity_export(
+ /// True
+ /// >>> "kind" in prop
+ /// False
++/// >>> text = next(p for row in rows for ps in row["property_sets"] for p in ps["properties"] if p["name"] == "Text")
++/// >>> text["value_type"]
++/// 'IFCLABEL'
+ /// >>> quantity = next(q for row in rows for qs in row["quantity_sets"] for q in qs["quantities"])
+ /// >>> sorted(quantity)
+ /// ['kind', 'name', 'value']
+diff --git a/rust/python/tests/test_entity_data_help.py b/rust/python/tests/test_entity_data_help.py
+index acdb3b6c4e..79da85fcf6 100644
+--- a/rust/python/tests/test_entity_data_help.py
++++ b/rust/python/tests/test_entity_data_help.py
+@@ -14,6 +14,7 @@ FIXTURE = (Path(__file__).resolve().parents[3]
+ 
+ 
+ def test_entity_data_public_help_examples():
++    """Execute public-help examples against real C6 property and quantity rows."""
+     example = doctest.DocTestParser().get_doctest(
+         ifclite_geom.entity_data.__doc__,
+         {"ifc_bytes": FIXTURE.read_bytes()},

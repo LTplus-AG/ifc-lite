@@ -1,0 +1,9 @@
+🐍 Found CPython 3.12 at /mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/venv/bin/python
+🔗 Found pyo3 bindings with abi3-py3.9 support
+📡 Using build options features from pyproject.toml
+   Compiling pyo3 v0.29.0
+   Compiling ifc-lite-python v4.15.0 (/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source/rust/python)
+    Finished `release` profile [optimized] target(s) in 10.25s
+📦 Including files matching "ifclite_geom.pyi"
+📖 Found type stub file at ifclite_geom.pyi
+📦 Built wheel for abi3 Python ≥ 3.9 to /mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v7/candidate-wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl

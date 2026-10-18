@@ -1,0 +1,16 @@
+{"jobId": "80b52c0d-12f5-4045-8e35-61233aa0aad5", "receipt": "/home/louistrue/build-workers/worker-state/jobs/80b52c0d-12f5-4045-8e35-61233aa0aad5/receipt.json"}
+START tool-versions
+END tool-versions 0
+START candidate-source-wheel
+END candidate-source-wheel 0
+START candidate-install
+END candidate-install 0
+START candidate-runtime
+END candidate-runtime 0
+START candidate-public-help
+END candidate-public-help 0
+START final-head-exact-clippy
+END final-head-exact-clippy 0
+START pip-freeze
+END pip-freeze 0
+D47_PUBLIC_HELP_COMPLETE 3d2ef521dcead88104f13e6c7f532bbce8db4cfb

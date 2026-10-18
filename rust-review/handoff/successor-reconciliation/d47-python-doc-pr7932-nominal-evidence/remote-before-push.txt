@@ -1,0 +1,1 @@
+e02f657dd877bc6aaa5864bada3994d940edf1fd	refs/heads/t3/d47-python-property-doc

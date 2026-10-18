@@ -1,0 +1,28 @@
+{
+  "at": "2026-10-18T23:08:06.608675+00:00",
+  "pr": "https://github.com/LTplus-AG/ifc-lite/pull/7932",
+  "head": "3d2ef521dcead88104f13e6c7f532bbce8db4cfb",
+  "tree": "7301fc09a263727d0122e7fd1ed0e4d340441595",
+  "parent": "e02f657dd877bc6aaa5864bada3994d940edf1fd",
+  "worker": "80b52c0d-12f5-4045-8e35-61233aa0aad5",
+  "terminal": "COMPLETED0",
+  "sourceUnchanged": true,
+  "quiescent": true,
+  "publicHelpExamples": 11,
+  "newHeadHelpTests": 1,
+  "newHeadFailures": 0,
+  "newHeadErrors": 0,
+  "newHeadSkips": 0,
+  "exactWorkspaceClippy": 0,
+  "manifestMembersVerified": 48,
+  "manifestSha256": "3a410051d5306705147e8107ef3ae139993f3a787a033d729aeb2c69b0b35e71",
+  "evidenceDirectory": "d47-python-doc-pr7932-nominal-evidence",
+  "reviewReply": "https://github.com/LTplus-AG/ifc-lite/pull/7932#issuecomment-6256304796",
+  "priorInverseScope": "Prior actual8302 assertionRED for unchanged nonempty-examples guard; not a new-head inverse run",
+  "status": "Published, required hosted new-head CI pending, no merge",
+  "limits": [
+    "Narrow documentation/publichelp contract only",
+    "No implementation/typefield/budget change",
+    "No D47sharedbudget/fullsuite/WASM/performance/charter acceptance or issue closure"
+  ]
+}

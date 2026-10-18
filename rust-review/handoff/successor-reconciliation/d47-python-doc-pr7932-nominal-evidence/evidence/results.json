@@ -1,0 +1,335 @@
+[
+  {
+    "name": "tool-versions",
+    "command": [
+      "/home/louistrue/.cache/uv/archive-v0/nEg85VyatxAAFRki/maturin-1.15.0.data/scripts/maturin",
+      "--version"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source",
+    "exitCode": 0,
+    "expected": 0,
+    "logSha256": "971f1005e6ea40cc978deb0baba53e0a2b4a1e5f9af63ae5b2276cd93de51d00",
+    "before": {
+      "head": "3d2ef521dcead88104f13e6c7f532bbce8db4cfb",
+      "tree": "7301fc09a263727d0122e7fd1ed0e4d340441595",
+      "clean": true,
+      "freeBytes": 848523571200,
+      "freeInodes": 1000000,
+      "sourceHashes": {
+        "rust/python/src/entity_data.rs": "20e82045106c1dd0a9a514602698eb7a94c85c568c9ab9441b25f6b8b3727291",
+        "rust/python/ifclite_geom.pyi": "2e1829a86cd56e8dc73d3903c512f712a456296a0d621f35c30f9993bb66926b",
+        "rust/python/tests/test_entity_data_help.py": "4acf9bfcad51d2821c719bb158e48edb3d6d7fe75897e4f9befabbd1c4e1d973",
+        "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+        "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+      },
+      "linuxInfrastructureFreeBytes": 5053870080
+    },
+    "after": {
+      "head": "3d2ef521dcead88104f13e6c7f532bbce8db4cfb",
+      "tree": "7301fc09a263727d0122e7fd1ed0e4d340441595",
+      "clean": true,
+      "freeBytes": 848386506752,
+      "freeInodes": 1000000,
+      "sourceHashes": {
+        "rust/python/src/entity_data.rs": "20e82045106c1dd0a9a514602698eb7a94c85c568c9ab9441b25f6b8b3727291",
+        "rust/python/ifclite_geom.pyi": "2e1829a86cd56e8dc73d3903c512f712a456296a0d621f35c30f9993bb66926b",
+        "rust/python/tests/test_entity_data_help.py": "4acf9bfcad51d2821c719bb158e48edb3d6d7fe75897e4f9befabbd1c4e1d973",
+        "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+        "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+      },
+      "linuxInfrastructureFreeBytes": 5053861888
+    }
+  },
+  {
+    "name": "candidate-source-wheel",
+    "command": [
+      "/home/louistrue/.cache/uv/archive-v0/nEg85VyatxAAFRki/maturin-1.15.0.data/scripts/maturin",
+      "build",
+      "--release",
+      "--locked",
+      "--offline",
+      "--manifest-path",
+      "rust/python/Cargo.toml",
+      "--interpreter",
+      "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/venv/bin/python",
+      "--out",
+      "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v7/candidate-wheels"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source",
+    "exitCode": 0,
+    "expected": 0,
+    "logSha256": "d619de0c8924b539378776f060fc43566cb0ce488aa34d43de7e93fa34b9264e",
+    "before": {
+      "head": "3d2ef521dcead88104f13e6c7f532bbce8db4cfb",
+      "tree": "7301fc09a263727d0122e7fd1ed0e4d340441595",
+      "clean": true,
+      "freeBytes": 848201498624,
+      "freeInodes": 1000000,
+      "sourceHashes": {
+        "rust/python/src/entity_data.rs": "20e82045106c1dd0a9a514602698eb7a94c85c568c9ab9441b25f6b8b3727291",
+        "rust/python/ifclite_geom.pyi": "2e1829a86cd56e8dc73d3903c512f712a456296a0d621f35c30f9993bb66926b",
+        "rust/python/tests/test_entity_data_help.py": "4acf9bfcad51d2821c719bb158e48edb3d6d7fe75897e4f9befabbd1c4e1d973",
+        "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+        "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+      },
+      "linuxInfrastructureFreeBytes": 5053861888
+    },
+    "after": {
+      "head": "3d2ef521dcead88104f13e6c7f532bbce8db4cfb",
+      "tree": "7301fc09a263727d0122e7fd1ed0e4d340441595",
+      "clean": true,
+      "freeBytes": 847787126784,
+      "freeInodes": 1000000,
+      "sourceHashes": {
+        "rust/python/src/entity_data.rs": "20e82045106c1dd0a9a514602698eb7a94c85c568c9ab9441b25f6b8b3727291",
+        "rust/python/ifclite_geom.pyi": "2e1829a86cd56e8dc73d3903c512f712a456296a0d621f35c30f9993bb66926b",
+        "rust/python/tests/test_entity_data_help.py": "4acf9bfcad51d2821c719bb158e48edb3d6d7fe75897e4f9befabbd1c4e1d973",
+        "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+        "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+      },
+      "linuxInfrastructureFreeBytes": 5053845504
+    }
+  },
+  {
+    "name": "candidate-install",
+    "command": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/venv/bin/python",
+      "-m",
+      "pip",
+      "install",
+      "--no-index",
+      "--no-deps",
+      "--force-reinstall",
+      "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v7/candidate-wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source",
+    "exitCode": 0,
+    "expected": 0,
+    "logSha256": "4f15996612b015b53291ca705d325bb1e5c55ac4b91f05a8eb7a5b7d549b0d8e",
+    "before": {
+      "head": "3d2ef521dcead88104f13e6c7f532bbce8db4cfb",
+      "tree": "7301fc09a263727d0122e7fd1ed0e4d340441595",
+      "clean": true,
+      "freeBytes": 847473012736,
+      "freeInodes": 1000000,
+      "sourceHashes": {
+        "rust/python/src/entity_data.rs": "20e82045106c1dd0a9a514602698eb7a94c85c568c9ab9441b25f6b8b3727291",
+        "rust/python/ifclite_geom.pyi": "2e1829a86cd56e8dc73d3903c512f712a456296a0d621f35c30f9993bb66926b",
+        "rust/python/tests/test_entity_data_help.py": "4acf9bfcad51d2821c719bb158e48edb3d6d7fe75897e4f9befabbd1c4e1d973",
+        "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+        "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+      },
+      "linuxInfrastructureFreeBytes": 5044051968
+    },
+    "after": {
+      "head": "3d2ef521dcead88104f13e6c7f532bbce8db4cfb",
+      "tree": "7301fc09a263727d0122e7fd1ed0e4d340441595",
+      "clean": true,
+      "freeBytes": 847174627328,
+      "freeInodes": 1000000,
+      "sourceHashes": {
+        "rust/python/src/entity_data.rs": "20e82045106c1dd0a9a514602698eb7a94c85c568c9ab9441b25f6b8b3727291",
+        "rust/python/ifclite_geom.pyi": "2e1829a86cd56e8dc73d3903c512f712a456296a0d621f35c30f9993bb66926b",
+        "rust/python/tests/test_entity_data_help.py": "4acf9bfcad51d2821c719bb158e48edb3d6d7fe75897e4f9befabbd1c4e1d973",
+        "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+        "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+      },
+      "linuxInfrastructureFreeBytes": 4164026368
+    }
+  },
+  {
+    "name": "candidate-runtime",
+    "command": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/venv/bin/python",
+      "-c",
+      "import sys,json,pathlib,hashlib,doctest,ifclite_geom,pytest\np=pathlib.Path(ifclite_geom.__file__).resolve();doc=ifclite_geom.entity_data.__doc__\nnative={name:{\"path\":str(pathlib.Path(m.__file__).resolve()),\"sha256\":hashlib.sha256(pathlib.Path(m.__file__).read_bytes()).hexdigest()} for name,m in sys.modules.items() if name.startswith(\"ifclite_geom\") and getattr(m,\"__file__\",\"\").endswith(\".so\")}\nstubs={str(f):hashlib.sha256(f.read_bytes()).hexdigest() for f in [*p.parent.glob(\"*.pyi\"),*p.parent.parent.glob(\"ifclite_geom*.pyi\")]}\nprint(json.dumps({\"python\":sys.executable,\"pythonVersion\":sys.version,\"module\":str(p),\"native\":native,\"stubs\":stubs,\"pytest\":pytest.__version__,\"publicHelp\":doc,\"exampleCount\":len(doctest.DocTestParser().get_examples(doc))}))"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v7/evidence",
+    "exitCode": 0,
+    "expected": 0,
+    "logSha256": "9d18b4e0a3020f29809d1e2bdaf1f3aad030badab14a7b834027c241564e896d",
+    "before": {
+      "head": "3d2ef521dcead88104f13e6c7f532bbce8db4cfb",
+      "tree": "7301fc09a263727d0122e7fd1ed0e4d340441595",
+      "clean": true,
+      "freeBytes": 846962388992,
+      "freeInodes": 1000000,
+      "sourceHashes": {
+        "rust/python/src/entity_data.rs": "20e82045106c1dd0a9a514602698eb7a94c85c568c9ab9441b25f6b8b3727291",
+        "rust/python/ifclite_geom.pyi": "2e1829a86cd56e8dc73d3903c512f712a456296a0d621f35c30f9993bb66926b",
+        "rust/python/tests/test_entity_data_help.py": "4acf9bfcad51d2821c719bb158e48edb3d6d7fe75897e4f9befabbd1c4e1d973",
+        "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+        "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+      },
+      "linuxInfrastructureFreeBytes": 4164026368
+    },
+    "after": {
+      "head": "3d2ef521dcead88104f13e6c7f532bbce8db4cfb",
+      "tree": "7301fc09a263727d0122e7fd1ed0e4d340441595",
+      "clean": true,
+      "freeBytes": 846722453504,
+      "freeInodes": 1000000,
+      "sourceHashes": {
+        "rust/python/src/entity_data.rs": "20e82045106c1dd0a9a514602698eb7a94c85c568c9ab9441b25f6b8b3727291",
+        "rust/python/ifclite_geom.pyi": "2e1829a86cd56e8dc73d3903c512f712a456296a0d621f35c30f9993bb66926b",
+        "rust/python/tests/test_entity_data_help.py": "4acf9bfcad51d2821c719bb158e48edb3d6d7fe75897e4f9befabbd1c4e1d973",
+        "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+        "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+      },
+      "linuxInfrastructureFreeBytes": 4164026368
+    }
+  },
+  {
+    "name": "candidate-public-help",
+    "command": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/venv/bin/python",
+      "-m",
+      "pytest",
+      "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source/rust/python/tests/test_entity_data_help.py",
+      "-q",
+      "-rs",
+      "--capture=sys",
+      "--junitxml=/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v7/evidence/candidate-public-help.xml",
+      "-o",
+      "cache_dir=/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v7/evidence/pytest-cache"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v7/evidence",
+    "exitCode": 0,
+    "expected": 0,
+    "logSha256": "d2d744b6b2df2bbb0d73cb7a43f6675bd03881bc2a2c2a74e54ecf18667789e2",
+    "before": {
+      "head": "3d2ef521dcead88104f13e6c7f532bbce8db4cfb",
+      "tree": "7301fc09a263727d0122e7fd1ed0e4d340441595",
+      "clean": true,
+      "freeBytes": 846527033344,
+      "freeInodes": 1000000,
+      "sourceHashes": {
+        "rust/python/src/entity_data.rs": "20e82045106c1dd0a9a514602698eb7a94c85c568c9ab9441b25f6b8b3727291",
+        "rust/python/ifclite_geom.pyi": "2e1829a86cd56e8dc73d3903c512f712a456296a0d621f35c30f9993bb66926b",
+        "rust/python/tests/test_entity_data_help.py": "4acf9bfcad51d2821c719bb158e48edb3d6d7fe75897e4f9befabbd1c4e1d973",
+        "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+        "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+      },
+      "linuxInfrastructureFreeBytes": 2303594496
+    },
+    "after": {
+      "head": "3d2ef521dcead88104f13e6c7f532bbce8db4cfb",
+      "tree": "7301fc09a263727d0122e7fd1ed0e4d340441595",
+      "clean": true,
+      "freeBytes": 846291419136,
+      "freeInodes": 1000000,
+      "sourceHashes": {
+        "rust/python/src/entity_data.rs": "20e82045106c1dd0a9a514602698eb7a94c85c568c9ab9441b25f6b8b3727291",
+        "rust/python/ifclite_geom.pyi": "2e1829a86cd56e8dc73d3903c512f712a456296a0d621f35c30f9993bb66926b",
+        "rust/python/tests/test_entity_data_help.py": "4acf9bfcad51d2821c719bb158e48edb3d6d7fe75897e4f9befabbd1c4e1d973",
+        "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+        "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+      },
+      "linuxInfrastructureFreeBytes": 1823105024
+    }
+  },
+  {
+    "name": "final-head-exact-clippy",
+    "command": [
+      "cargo",
+      "clippy",
+      "--workspace",
+      "--all-targets",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source",
+    "exitCode": 0,
+    "expected": 0,
+    "logSha256": "0c6f7506a2f7fc3e64a2f2c2647d871f5bfc6b0079d7be4e0a65e80207c98823",
+    "before": {
+      "head": "3d2ef521dcead88104f13e6c7f532bbce8db4cfb",
+      "tree": "7301fc09a263727d0122e7fd1ed0e4d340441595",
+      "clean": true,
+      "freeBytes": 846110429184,
+      "freeInodes": 1000000,
+      "sourceHashes": {
+        "rust/python/src/entity_data.rs": "20e82045106c1dd0a9a514602698eb7a94c85c568c9ab9441b25f6b8b3727291",
+        "rust/python/ifclite_geom.pyi": "2e1829a86cd56e8dc73d3903c512f712a456296a0d621f35c30f9993bb66926b",
+        "rust/python/tests/test_entity_data_help.py": "4acf9bfcad51d2821c719bb158e48edb3d6d7fe75897e4f9befabbd1c4e1d973",
+        "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+        "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+      },
+      "linuxInfrastructureFreeBytes": 1639583744
+    },
+    "after": {
+      "head": "3d2ef521dcead88104f13e6c7f532bbce8db4cfb",
+      "tree": "7301fc09a263727d0122e7fd1ed0e4d340441595",
+      "clean": true,
+      "freeBytes": 843257892864,
+      "freeInodes": 1000000,
+      "sourceHashes": {
+        "rust/python/src/entity_data.rs": "20e82045106c1dd0a9a514602698eb7a94c85c568c9ab9441b25f6b8b3727291",
+        "rust/python/ifclite_geom.pyi": "2e1829a86cd56e8dc73d3903c512f712a456296a0d621f35c30f9993bb66926b",
+        "rust/python/tests/test_entity_data_help.py": "4acf9bfcad51d2821c719bb158e48edb3d6d7fe75897e4f9befabbd1c4e1d973",
+        "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+        "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+      },
+      "linuxInfrastructureFreeBytes": 249839616
+    }
+  },
+  {
+    "name": "pip-freeze",
+    "command": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/venv/bin/python",
+      "-m",
+      "pip",
+      "freeze",
+      "--all"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source",
+    "exitCode": 0,
+    "expected": 0,
+    "logSha256": "570431eaff14073e2266ea179e6df9efd9cf563a2901d3d06d626908b6ecad1d",
+    "before": {
+      "head": "3d2ef521dcead88104f13e6c7f532bbce8db4cfb",
+      "tree": "7301fc09a263727d0122e7fd1ed0e4d340441595",
+      "clean": true,
+      "freeBytes": 841204838400,
+      "freeInodes": 1000000,
+      "sourceHashes": {
+        "rust/python/src/entity_data.rs": "20e82045106c1dd0a9a514602698eb7a94c85c568c9ab9441b25f6b8b3727291",
+        "rust/python/ifclite_geom.pyi": "2e1829a86cd56e8dc73d3903c512f712a456296a0d621f35c30f9993bb66926b",
+        "rust/python/tests/test_entity_data_help.py": "4acf9bfcad51d2821c719bb158e48edb3d6d7fe75897e4f9befabbd1c4e1d973",
+        "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+        "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+      },
+      "linuxInfrastructureFreeBytes": 249839616
+    },
+    "after": {
+      "head": "3d2ef521dcead88104f13e6c7f532bbce8db4cfb",
+      "tree": "7301fc09a263727d0122e7fd1ed0e4d340441595",
+      "clean": true,
+      "freeBytes": 837549039616,
+      "freeInodes": 1000000,
+      "sourceHashes": {
+        "rust/python/src/entity_data.rs": "20e82045106c1dd0a9a514602698eb7a94c85c568c9ab9441b25f6b8b3727291",
+        "rust/python/ifclite_geom.pyi": "2e1829a86cd56e8dc73d3903c512f712a456296a0d621f35c30f9993bb66926b",
+        "rust/python/tests/test_entity_data_help.py": "4acf9bfcad51d2821c719bb158e48edb3d6d7fe75897e4f9befabbd1c4e1d973",
+        "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+        "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+      },
+      "linuxInfrastructureFreeBytes": 249839616
+    }
+  }
+]

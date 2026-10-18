@@ -1,0 +1,30 @@
+    Checking serde_core v1.0.229
+   Compiling libmimalloc-sys v0.1.49
+    Checking serde v1.0.229
+    Checking serde_json v1.0.151
+    Checking ifc-lite-geometry v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source/rust/geometry)
+    Checking mimalloc v0.1.52
+    Checking gltf-json v1.4.1
+    Checking serde-wasm-bindgen v0.6.5
+    Checking gltf v1.4.1
+    Checking ssri v9.2.0
+    Checking wasm-bindgen-test v0.3.76
+    Checking serde_urlencoded v0.7.1
+    Checking tracing-serde v0.2.0
+    Checking serde_path_to_error v0.1.20
+    Checking axum v0.8.9
+    Checking tracing-subscriber v0.3.23
+    Checking cacache v13.1.0
+    Checking ciborium v0.2.2
+    Checking tinytemplate v1.2.1
+    Checking criterion v0.8.2
+    Checking ifc-lite-cloud-import v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source/rust/cloud-import)
+    Checking ifc-lite-testkit v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source/rust/testkit)
+    Checking ifc-lite-processing v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source/rust/processing)
+    Checking ifc-lite-landxml v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source/rust/landxml)
+    Checking ifc-lite-export v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source/rust/export)
+    Checking ifc-lite-wasm v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source/rust/wasm-bindings)
+    Checking ifc-lite-server v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source/apps/server)
+    Checking ifc-lite-ffi v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source/rust/ffi)
+    Checking ifc-lite-core v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source/rust/core)
+    Finished `dev` profile [unoptimized] target(s) in 2m 12s

@@ -4060,7 +4060,8 @@ compilation or dependency installation ran inside that cohort.
 
 Qualification remains mixed: hosted viewer entry/eager bundle ceilings failed,
 and the causal-test witness, generated-table and viewer-shard checks remain
-unresolved. Current API/docs/lint qualification also awaits its existing worker.
+unresolved. Current API/docs/lint qualification remains unrun after its ordinary
+worker's admission timeout.
 The operation timings do not waive those gates or qualify browser startup.
 Lesson: charge remeshing and intersection to the requested export operation,
 measure its public path separately from ordinary loading, and preserve the eager

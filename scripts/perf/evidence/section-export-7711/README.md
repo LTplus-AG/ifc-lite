@@ -72,8 +72,10 @@ entry/eager bundle ceilings, and a skipped review with no verdict. These are not
 waived by the local export measurements. No base reproduction, repair or passing
 replacement run is claimed for those failures.
 
-Existing ordinary PC job `04fee2d7-0093-4683-9ef9-b80f1fc23806` remains queued
-at packet capture. It owns the missing leaf declaration preparation and actual
-current API/docs/root-lint gates, including the main-entry guard. The earlier
-missing-declaration environment failure is retained. Historical docs/lint passes
-are not promoted to current-source passes. No replacement job was submitted.
+Ordinary PC job `04fee2d7-0093-4683-9ef9-b80f1fc23806` reached an admission
+timeout before starting: no worker output, phase marker or phase result exists.
+Both its earlier queued snapshot and terminal receipt are retained. Missing leaf
+declaration preparation and actual current API/docs/root-lint gates, including
+the main-entry guard, remain unrun. The earlier missing-declaration environment
+failure is retained. Historical docs/lint passes are not promoted to current
+source passes. No replacement job was submitted.

@@ -5,16 +5,16 @@
   "qualifiedTree": "cd5e29e2c8ddbb2a4dc529b6096510f0b66b7cd4",
   "baseCommit": "c53cfaa3a2034638f4c4ab40f7674b29e0528fed",
   "benchmarkJobId": "67a3deb5-1847-4581-89da-0f1840eb9c6f",
-  "verdict": "Mixed/held: operation measurements completed; hosted failures and current PC metadata qualification pending",
+  "verdict": "Mixed/held: operation measurements completed; hosted failures remain and current PC metadata admission timed out before work",
   "nativeScope": "Byte-identical binary controls only; no changed export-path causal claim",
   "trimScope": "New operation cost; no equivalent base operation",
   "numericBaselineUpdated": false,
   "PCMetadataJobId": "04fee2d7-0093-4683-9ef9-b80f1fc23806",
-  "PCMetadataStateAtCapture": "queued",
+  "PCMetadataStateAtCapture": "failed",
   "archive": {
     "path": "retained-evidence.tar.gz",
-    "bytes": 928056,
-    "sha256": "5b2b96b595e884fb20d7fc82c07a4f38393b0779e9b3e437dfff460dfbcd6451"
+    "bytes": 928269,
+    "sha256": "f2f78239b526ead59405a40249b9c3b1e57c206f5995fa920a7642b1309a519c"
   },
   "members": [
     {
@@ -438,9 +438,21 @@
       "scope": "observed review identity, failure or pending gate; not a pass waiver"
     },
     {
-      "path": "qualification/current-main-pc-metadata-receipt.json",
+      "path": "qualification/current-main-metadata-cohort.log",
+      "bytes": 282,
+      "sha256": "01cde2ccae580f8df50d5eba42cf5cee34840d3afe8fc44c3d0b9daaf73ba0e6",
+      "scope": "observed review identity, failure or pending gate; not a pass waiver"
+    },
+    {
+      "path": "qualification/current-main-pc-metadata-queued-snapshot.json",
       "bytes": 1465,
       "sha256": "9638873387d2ff67fdc6c92c30e00f5dcdb81743548cf7ce1fef8429b3614d6a",
+      "scope": "observed review identity, failure or pending gate; not a pass waiver"
+    },
+    {
+      "path": "qualification/current-main-pc-metadata-receipt.json",
+      "bytes": 2274,
+      "sha256": "d3910559c51017e9ef7a07175c38fedf0a93387c973b74cd023a79fc8705ac03",
       "scope": "observed review identity, failure or pending gate; not a pass waiver"
     },
     {
@@ -457,8 +469,8 @@
     },
     {
       "path": "qualification/hosted-current-blockers.json",
-      "bytes": 4822,
-      "sha256": "405c43ad901a99f2bc97f87d31082215a4e583657760623f1a88135efbc7e3cf",
+      "bytes": 4885,
+      "sha256": "c1cf8cb1cb7e814efdea36cc879b8f1912de8041eaba787eef460034ee047128",
       "scope": "observed review identity, failure or pending gate; not a pass waiver"
     },
     {

@@ -1,0 +1,420 @@
+{
+  "recordedAt": "2026-10-18T09:12:09.847006+00:00",
+  "scope": "delivery and duty reconciliation only; original622 IDs/D1-D80/design notes/stopline preserved",
+  "landedPRs": [
+    7916,
+    7905,
+    7909,
+    7894
+  ],
+  "landedCommits": {
+    "7894": "5cee2539510dd84ed58554f9caf48a1efed0e3fd",
+    "7905": "c0f5bde4ec6794900697fbfa29be9be5a439980f",
+    "7909": "eed859c77ab2be232c13052cdbb777ee515ac725"
+  },
+  "sharedCIRepair": "9ffcc10e80f75b0645ba622e042961cd23bbc42e",
+  "activeItems": {
+    "7907": {
+      "previousQualifiedHead": "5fde154d5b04ae3ed6abcc92c5eaaba6dc401d02",
+      "state": "Existing source-qualified scanner canary updated onto repaired main; clean Claude review on f52c061c8, current-head full required CI pending. No qualification repeat.",
+      "head": "f52c061c8b476a965bc7bd0e53e8bf072d19e6e4",
+      "base": "5cee2539510dd84ed58554f9caf48a1efed0e3fd"
+    },
+    "7912": {
+      "head": "07de379ae250024169093f0522d7a8b1cc08fdf3",
+      "previousHead": "3a9e2744742b4d8a28e2841cb3af49d68b38748e",
+      "state": "PUSHED native+browser reporter same-class correction; 29CLI testsPASS, historical11browsertests byte-identical; exact browser false-green before/blocked after proof; sourceguard/lint/wiringPASS. Fresh hosted CI/review pending.",
+      "evidence": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/two-item-delivery/7912-browser-same-class",
+      "responseRounds": 2,
+      "scopeReassessment": "Both timed A/B reporters only; no harness/model/browser measurements/threshold changes; bounded concrete duplicate-site fix"
+    }
+  },
+  "openIssues": [
+    {
+      "labels": [],
+      "number": 7919,
+      "title": "Assistant check-authoring smoke waits for an unavailable IDS draft suggestion"
+    },
+    {
+      "labels": [
+        {
+          "id": "LA_kwDOQ3UF-88AAAACy6tpuQ",
+          "name": "ready",
+          "description": "Maintainer-approved: in scope, wanted now, scoped. A PR may close this.",
+          "color": "0e8a16"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAAC9u9h9g",
+          "name": "claimed:session-bc9e57fa",
+          "description": "Issue resolution campaign session bc9e57fa; see claim comments",
+          "color": "5319e7"
+        }
+      ],
+      "number": 7890,
+      "title": "Federation: unpublished local entity ID reaches viewer conversion"
+    },
+    {
+      "labels": [
+        {
+          "id": "LA_kwDOQ3UF-88AAAACy6tpuQ",
+          "name": "ready",
+          "description": "Maintainer-approved: in scope, wanted now, scoped. A PR may close this.",
+          "color": "0e8a16"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAAC9TrkbQ",
+          "name": "rust-sweep",
+          "description": "Work package of the Rust maintainability sweep charter",
+          "color": "1d76db"
+        }
+      ],
+      "number": 7782,
+      "title": "Rust sweep C4: processing orchestration (one process() entry, shared browser batch homes)"
+    },
+    {
+      "labels": [
+        {
+          "id": "LA_kwDOQ3UF-88AAAACy6tpuQ",
+          "name": "ready",
+          "description": "Maintainer-approved: in scope, wanted now, scoped. A PR may close this.",
+          "color": "0e8a16"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAAC9TrkbQ",
+          "name": "rust-sweep",
+          "description": "Work package of the Rust maintainability sweep charter",
+          "color": "1d76db"
+        }
+      ],
+      "number": 7781,
+      "title": "Rust sweep C2: router restructure (RepresentationWalk, CutStrategy, EdgeLedger, GeometryRouter split)"
+    },
+    {
+      "labels": [
+        {
+          "id": "LA_kwDOQ3UF-88AAAACy6tpuQ",
+          "name": "ready",
+          "description": "Maintainer-approved: in scope, wanted now, scoped. A PR may close this.",
+          "color": "0e8a16"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAAC9TrkbQ",
+          "name": "rust-sweep",
+          "description": "Work package of the Rust maintainability sweep charter",
+          "color": "1d76db"
+        }
+      ],
+      "number": 7779,
+      "title": "Rust sweep F3b: core entity reading (point3/direction3, axis placements, resolve_chain)"
+    },
+    {
+      "labels": [
+        {
+          "id": "LA_kwDOQ3UF-88AAAACUjlJlw",
+          "name": "enhancement",
+          "description": "New feature or request",
+          "color": "a2eeef"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAACVuVxYw",
+          "name": "geometry",
+          "description": "",
+          "color": "3a6b0d"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAACy6tpuQ",
+          "name": "ready",
+          "description": "Maintainer-approved: in scope, wanted now, scoped. A PR may close this.",
+          "color": "0e8a16"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAAC9u9h9g",
+          "name": "claimed:session-bc9e57fa",
+          "description": "Issue resolution campaign session bc9e57fa; see claim comments",
+          "color": "5319e7"
+        }
+      ],
+      "number": 7714,
+      "title": "geometry: define bounded planar carrier normalization for nearly planar FacetedBreps"
+    },
+    {
+      "labels": [
+        {
+          "id": "LA_kwDOQ3UF-88AAAACUjlJlw",
+          "name": "enhancement",
+          "description": "New feature or request",
+          "color": "a2eeef"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAACy6tpuQ",
+          "name": "ready",
+          "description": "Maintainer-approved: in scope, wanted now, scoped. A PR may close this.",
+          "color": "0e8a16"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAAC9u9h9g",
+          "name": "claimed:session-bc9e57fa",
+          "description": "Issue resolution campaign session bc9e57fa; see claim comments",
+          "color": "5319e7"
+        }
+      ],
+      "number": 7711,
+      "title": "Cut (trim) geometry at the section boundary when exporting a cropped area"
+    },
+    {
+      "labels": [
+        {
+          "id": "LA_kwDOQ3UF-88AAAACaCsyGw",
+          "name": "performance",
+          "description": "",
+          "color": "aaaaaa"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAACy6tpuQ",
+          "name": "ready",
+          "description": "Maintainer-approved: in scope, wanted now, scoped. A PR may close this.",
+          "color": "0e8a16"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAAC9u9h9g",
+          "name": "claimed:session-bc9e57fa",
+          "description": "Issue resolution campaign session bc9e57fa; see claim comments",
+          "color": "5319e7"
+        }
+      ],
+      "number": 7655,
+      "title": "SwiftShader WebGPU: renderer intermittently loses its device to Dawn \"external Instance reference no longer exists\""
+    },
+    {
+      "labels": [
+        {
+          "id": "LA_kwDOQ3UF-88AAAACy6tpuQ",
+          "name": "ready",
+          "description": "Maintainer-approved: in scope, wanted now, scoped. A PR may close this.",
+          "color": "0e8a16"
+        }
+      ],
+      "number": 7635,
+      "title": "geometry: closed opening operands produce a torn raw kernel result on MiniBIM third cut"
+    },
+    {
+      "labels": [
+        {
+          "id": "LA_kwDOQ3UF-88AAAACy6tpuQ",
+          "name": "ready",
+          "description": "Maintainer-approved: in scope, wanted now, scoped. A PR may close this.",
+          "color": "0e8a16"
+        }
+      ],
+      "number": 7633,
+      "title": "geometry: remote near-plane buckets project disconnected patches onto the wrong plane"
+    },
+    {
+      "labels": [
+        {
+          "id": "LA_kwDOQ3UF-88AAAACy6tpuQ",
+          "name": "ready",
+          "description": "Maintainer-approved: in scope, wanted now, scoped. A PR may close this.",
+          "color": "0e8a16"
+        }
+      ],
+      "number": 7631,
+      "title": "geometry: many-hole extrusion cap drops boundary constraints before opening cuts (MiniBIM slab 135923)"
+    },
+    {
+      "labels": [
+        {
+          "id": "LA_kwDOQ3UF-88AAAACXxBxAw",
+          "name": "viewer",
+          "description": "",
+          "color": "b8c7d9"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAACy6tpuQ",
+          "name": "ready",
+          "description": "Maintainer-approved: in scope, wanted now, scoped. A PR may close this.",
+          "color": "0e8a16"
+        }
+      ],
+      "number": 7581,
+      "title": "Add complete Russian (ru) localization to the viewer"
+    },
+    {
+      "labels": [
+        {
+          "id": "LA_kwDOQ3UF-88AAAACUjlJiw",
+          "name": "bug",
+          "description": "Something isn't working",
+          "color": "d73a4a"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAACVuVxYw",
+          "name": "geometry",
+          "description": "",
+          "color": "3a6b0d"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAACy6tpuQ",
+          "name": "ready",
+          "description": "Maintainer-approved: in scope, wanted now, scoped. A PR may close this.",
+          "color": "0e8a16"
+        }
+      ],
+      "number": 7292,
+      "title": "geometry: DIFFERENCE of a 2 % sloped extrusion by a coincident-sided prism leaves metres of material uncut"
+    },
+    {
+      "labels": [
+        {
+          "id": "LA_kwDOQ3UF-88AAAACaCsyGw",
+          "name": "performance",
+          "description": "",
+          "color": "aaaaaa"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAACy6tpuQ",
+          "name": "ready",
+          "description": "Maintainer-approved: in scope, wanted now, scoped. A PR may close this.",
+          "color": "0e8a16"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAAC9IEp3A",
+          "name": "claimed:session-gpu-performance-gates",
+          "description": "Session gpu-performance-gates owns this work",
+          "color": "5319e7"
+        }
+      ],
+      "number": 7036,
+      "title": "T1c: engine init + worker spawn gate cold loads \u2014 warm worker pool and init overlapping the file read"
+    },
+    {
+      "labels": [
+        {
+          "id": "LA_kwDOQ3UF-88AAAACy6tpuQ",
+          "name": "ready",
+          "description": "Maintainer-approved: in scope, wanted now, scoped. A PR may close this.",
+          "color": "0e8a16"
+        }
+      ],
+      "number": 6940,
+      "title": "geometry: an opening cut tears a watertight IfcExtrudedAreaSolid slab (9 of 11 slabs in MiniBIM-3.1-DO_01_VORM)"
+    },
+    {
+      "labels": [
+        {
+          "id": "LA_kwDOQ3UF-88AAAACy6tpuQ",
+          "name": "ready",
+          "description": "Maintainer-approved: in scope, wanted now, scoped. A PR may close this.",
+          "color": "0e8a16"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAAC8bhJKg",
+          "name": "claimed:session-b95d33a9",
+          "description": "T3 issue-drain session b95d33a9; see issue claim for owned scope",
+          "color": "0e8a16"
+        }
+      ],
+      "number": 6881,
+      "title": "perf: bound GPU point-pick depth readback to the selected texel"
+    },
+    {
+      "labels": [
+        {
+          "id": "LA_kwDOQ3UF-88AAAACUjlJiw",
+          "name": "bug",
+          "description": "Something isn't working",
+          "color": "d73a4a"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAACXxBxAw",
+          "name": "viewer",
+          "description": "",
+          "color": "b8c7d9"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAACy6tpuQ",
+          "name": "ready",
+          "description": "Maintainer-approved: in scope, wanted now, scoped. A PR may close this.",
+          "color": "0e8a16"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAAC8bhJKg",
+          "name": "claimed:session-b95d33a9",
+          "description": "T3 issue-drain session b95d33a9; see issue claim for owned scope",
+          "color": "0e8a16"
+        }
+      ],
+      "number": 6729,
+      "title": "Viewer: geometry visibility glitches in orthographic view (hidden parts show through)"
+    },
+    {
+      "labels": [
+        {
+          "id": "LA_kwDOQ3UF-88AAAACy6tpuQ",
+          "name": "ready",
+          "description": "Maintainer-approved: in scope, wanted now, scoped. A PR may close this.",
+          "color": "0e8a16"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAAC8bhJKg",
+          "name": "claimed:session-b95d33a9",
+          "description": "T3 issue-drain session b95d33a9; see issue claim for owned scope",
+          "color": "0e8a16"
+        }
+      ],
+      "number": 6709,
+      "title": "Viewer: cap HiDPI resolution during navigation and restore capture quality"
+    },
+    {
+      "labels": [
+        {
+          "id": "LA_kwDOQ3UF-88AAAACUjlJiw",
+          "name": "bug",
+          "description": "Something isn't working",
+          "color": "d73a4a"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAACUjlJqA",
+          "name": "question",
+          "description": "Further information is requested",
+          "color": "d876e3"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAACVuVxYw",
+          "name": "geometry",
+          "description": "",
+          "color": "3a6b0d"
+        },
+        {
+          "id": "LA_kwDOQ3UF-88AAAACaCsyGw",
+          "name": "performance",
+          "description": "",
+          "color": "aaaaaa"
+        }
+      ],
+      "number": 6516,
+      "title": "geometry 7.x: ~2.5x slower geometry on a model with non-rectangular wall openings (6.0.0 \u2192 7.0.0)"
+    }
+  ],
+  "acceptanceLedger": {
+    "url": "https://github.com/LTplus-AG/ifc-lite/discussions/7897",
+    "pendingPrograms": 8,
+    "uncheckedConditions": 33,
+    "acceptedPrograms": 0,
+    "checkedAt": "2026-10-18T09:12:09.847006+00:00"
+  },
+  "resolvedRetainedFinding": {
+    "F4 trivia/fold": "Fixed by7909; original regression BASE assertion failure and candidate pass retained; final hosted required checks pass before merge."
+  },
+  "remainingScope": {
+    "7890": "Original PostHog incident open; guard/reveal support landed, attribution unproven",
+    "C2_7": "P1-P5 native workspace/clippy pairs complete, full R/corpus/consumer/WASM/Python/performance/publication remain incomplete",
+    "others": "All other owners, historical FAIL/refusals, private source packets, missing bundle gap and migrated duties remain binding"
+  },
+  "fileHashes": {
+    "rust-review/handoff/successor-reconciliation/evidence/coordinator-2026-10-18T091209/pr-7894-merge.json": "aa45aa20b3107e321c3d52a3d803964935ed33c45c2ed4c719d7d1f4665b510b",
+    "rust-review/handoff/successor-reconciliation/evidence/coordinator-2026-10-18T091209/pr-7905-merge.json": "e8d69b21e643b70fbc3eb189f5bf3aff3645ec1c11986e8bba63c69f56ac6e2c",
+    "rust-review/handoff/successor-reconciliation/evidence/coordinator-2026-10-18T091209/pr-7909-merge.json": "17f8bd03c3e230789c362f86d8578e70b5cfbfc02a4f73d04b762d640b1d2abf",
+    "rust-review/handoff/successor-reconciliation/evidence/coordinator-2026-10-18T091209/c2-7-prefix-native-summary.json": "64d53d3839c29bc4592ec644e7e6b3aa0fee1efb8de7be3f9eb5b844bf64b1c9"
+  }
+}

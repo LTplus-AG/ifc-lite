@@ -1,0 +1,808 @@
+{
+  "headRefOid": "ec37015904d7ca611d1b12e4d86ac79f993dab9c",
+  "mergeCommit": {
+    "oid": "eed859c77ab2be232c13052cdbb777ee515ac725"
+  },
+  "mergedAt": "2026-10-18T08:39:01Z",
+  "state": "MERGED",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:46Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638436/job/117625850937",
+      "name": "Viewer benchmark (advisory)",
+      "startedAt": "2026-10-18T08:13:46Z",
+      "status": "COMPLETED",
+      "workflowName": "Benchmark"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:45Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110637154/job/117625848481",
+      "name": "PR-Agent review (OpenRouter)",
+      "startedAt": "2026-10-18T08:13:46Z",
+      "status": "COMPLETED",
+      "workflowName": "PR-Agent review"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:15:35Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638363/job/117625850070",
+      "name": "Claude review",
+      "startedAt": "2026-10-18T08:13:49Z",
+      "status": "COMPLETED",
+      "workflowName": "Claude review"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:14:09Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638321/job/117625849872",
+      "name": "parity (in-tree fixtures, committed reference)",
+      "startedAt": "2026-10-18T08:13:51Z",
+      "status": "COMPLETED",
+      "workflowName": "IfcOpenShell parity"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:14:13Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638308/job/117625849955",
+      "name": "Issue queue",
+      "startedAt": "2026-10-18T08:13:48Z",
+      "status": "COMPLETED",
+      "workflowName": "Issue queue"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:23:23Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638292/job/117625849873",
+      "name": "PR review signal",
+      "startedAt": "2026-10-18T08:13:48Z",
+      "status": "COMPLETED",
+      "workflowName": "PR review signal"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:14:11Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110637139/job/117625847374",
+      "name": "PR risk label",
+      "startedAt": "2026-10-18T08:13:48Z",
+      "status": "COMPLETED",
+      "workflowName": "PR risk label"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:20:27Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638350/job/117625850104",
+      "name": "Validate Server Binary (linux-x64)",
+      "startedAt": "2026-10-18T08:13:49Z",
+      "status": "COMPLETED",
+      "workflowName": "Server Binaries"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:14:13Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117625850329",
+      "name": "Detect changes",
+      "startedAt": "2026-10-18T08:13:49Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:17:55Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638510/job/117625850296",
+      "name": "wheel ubuntu-latest / x86_64",
+      "startedAt": "2026-10-18T08:13:49Z",
+      "status": "COMPLETED",
+      "workflowName": "python-wheels"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:46Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638436/job/117625876746",
+      "name": "Build isolated #6516 diagnostic bundle",
+      "startedAt": "2026-10-18T08:13:54Z",
+      "status": "COMPLETED",
+      "workflowName": "Benchmark"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:46Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638321/job/117625850660",
+      "name": "full corpus (latest stable reference engine)",
+      "startedAt": "2026-10-18T08:13:46Z",
+      "status": "COMPLETED",
+      "workflowName": "IfcOpenShell parity"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:46Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638308/job/117625851293",
+      "name": "Issue queue",
+      "startedAt": "2026-10-18T08:13:46Z",
+      "status": "COMPLETED",
+      "workflowName": "Issue queue"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:46Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638292/job/117625850658",
+      "name": "PR review signal",
+      "startedAt": "2026-10-18T08:13:46Z",
+      "status": "COMPLETED",
+      "workflowName": "PR review signal"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:46Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638350/job/117625851196",
+      "name": "Validate Server Binary (${{ matrix.target }})",
+      "startedAt": "2026-10-18T08:13:46Z",
+      "status": "COMPLETED",
+      "workflowName": "Server Binaries"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:46Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638510/job/117625851033",
+      "name": "wheel ${{ matrix.os }} / ${{ matrix.target }}",
+      "startedAt": "2026-10-18T08:13:46Z",
+      "status": "COMPLETED",
+      "workflowName": "python-wheels"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:52Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638363/job/117625850232",
+      "name": "Clear the stand-down label for this new head",
+      "startedAt": "2026-10-18T08:13:49Z",
+      "status": "COMPLETED",
+      "workflowName": "Claude review"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:52Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110637154/job/117625847507",
+      "name": "PR-Agent local model run",
+      "startedAt": "2026-10-18T08:13:48Z",
+      "status": "COMPLETED",
+      "workflowName": "PR-Agent review"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:23:01Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117625935044",
+      "name": "Build packages + WASM",
+      "startedAt": "2026-10-18T08:14:16Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:46Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638436/job/117625851433",
+      "name": "Qualify #6516 bundle on Windows",
+      "startedAt": "2026-10-18T08:13:47Z",
+      "status": "COMPLETED",
+      "workflowName": "Benchmark"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:52Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110637154/job/117625869540",
+      "name": "PR-Agent review (local model)",
+      "startedAt": "2026-10-18T08:13:52Z",
+      "status": "COMPLETED",
+      "workflowName": "PR-Agent review"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:46Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638350/job/117625851110",
+      "name": "Release Server Binary (${{ matrix.target }})",
+      "startedAt": "2026-10-18T08:13:46Z",
+      "status": "COMPLETED",
+      "workflowName": "Server Binaries"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:17:55Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638510/job/117626637221",
+      "name": "Open an issue when main is red",
+      "startedAt": "2026-10-18T08:17:56Z",
+      "status": "COMPLETED",
+      "workflowName": "python-wheels"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:16:41Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638363/job/117626199520",
+      "name": "Review posted",
+      "startedAt": "2026-10-18T08:15:38Z",
+      "status": "COMPLETED",
+      "workflowName": "Claude review"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:14:08Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638321/job/117625850065",
+      "name": "cost parity (in-tree fixture, committed reference)",
+      "startedAt": "2026-10-18T08:13:49Z",
+      "status": "COMPLETED",
+      "workflowName": "IfcOpenShell parity"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:23:58Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117625935024",
+      "name": "Rust tests",
+      "startedAt": "2026-10-18T08:14:16Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:46Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638321/job/117625850825",
+      "name": "cost full corpus (latest stable reference engine)",
+      "startedAt": "2026-10-18T08:13:46Z",
+      "status": "COMPLETED",
+      "workflowName": "IfcOpenShell parity"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:20:27Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638350/job/117627114673",
+      "name": "Open an issue when main is red",
+      "startedAt": "2026-10-18T08:20:27Z",
+      "status": "COMPLETED",
+      "workflowName": "Server Binaries"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:14:13Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117625935959",
+      "name": "Rust tests (feature builds)",
+      "startedAt": "2026-10-18T08:14:13Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:17:55Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638510/job/117626636757",
+      "name": "publish to PyPI",
+      "startedAt": "2026-10-18T08:17:56Z",
+      "status": "COMPLETED",
+      "workflowName": "python-wheels"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:46Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638321/job/117625850853",
+      "name": "report-scheduled-failure",
+      "startedAt": "2026-10-18T08:13:46Z",
+      "status": "COMPLETED",
+      "workflowName": "IfcOpenShell parity"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:46Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638350/job/117625851109",
+      "name": "Verify release assets",
+      "startedAt": "2026-10-18T08:13:46Z",
+      "status": "COMPLETED",
+      "workflowName": "Server Binaries"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:14:13Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117625936321",
+      "name": "Geometry watertightness census",
+      "startedAt": "2026-10-18T08:14:13Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:14:13Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117625936064",
+      "name": "CSG accept gates (feature builds)",
+      "startedAt": "2026-10-18T08:14:13Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:14:13Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117625936006",
+      "name": "Plato clash-math freshness",
+      "startedAt": "2026-10-18T08:14:13Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:14:13Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117625935944",
+      "name": "Docs checks (docs-only PRs)",
+      "startedAt": "2026-10-18T08:14:13Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:17:02Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117625935222",
+      "name": "Docs site build (mkdocs --strict)",
+      "startedAt": "2026-10-18T08:14:16Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:18:49Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117625935043",
+      "name": "Rust crate semver",
+      "startedAt": "2026-10-18T08:14:16Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:14:13Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117625936162",
+      "name": "AGENTS.md ratchet",
+      "startedAt": "2026-10-18T08:14:13Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:14:32Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117625935057",
+      "name": "MPL license headers",
+      "startedAt": "2026-10-18T08:14:16Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:16:52Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117625935007",
+      "name": "Native instruction counts",
+      "startedAt": "2026-10-18T08:14:16Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:26:25Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606581",
+      "name": "Changed tests observe production",
+      "startedAt": "2026-10-18T08:23:55Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:23:02Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627607249",
+      "name": "Typecheck",
+      "startedAt": "2026-10-18T08:23:02Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:23:02Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627607087",
+      "name": "Lint",
+      "startedAt": "2026-10-18T08:23:02Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:34:37Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606704",
+      "name": "Viewer tests (shard 0)",
+      "startedAt": "2026-10-18T08:23:54Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:36:54Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606742",
+      "name": "Viewer tests (shard 1)",
+      "startedAt": "2026-10-18T08:23:57Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:37:51Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606723",
+      "name": "Viewer tests (shard 2)",
+      "startedAt": "2026-10-18T08:23:56Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:33:37Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606753",
+      "name": "Viewer tests (shard 3)",
+      "startedAt": "2026-10-18T08:23:56Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:35:28Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606750",
+      "name": "Viewer tests (shard 4)",
+      "startedAt": "2026-10-18T08:23:55Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:36:36Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606748",
+      "name": "Viewer tests (shard 5)",
+      "startedAt": "2026-10-18T08:24:01Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:36:52Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606761",
+      "name": "Viewer tests (shard 6)",
+      "startedAt": "2026-10-18T08:23:56Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:33:32Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606826",
+      "name": "Viewer tests (shard 7)",
+      "startedAt": "2026-10-18T08:24:18Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:33:26Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606804",
+      "name": "Viewer tests (shard 8)",
+      "startedAt": "2026-10-18T08:24:30Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:38:13Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606820",
+      "name": "Viewer tests (shard 9)",
+      "startedAt": "2026-10-18T08:24:15Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:37:32Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606765",
+      "name": "Viewer tests (shard 10)",
+      "startedAt": "2026-10-18T08:23:56Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:32:05Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606770",
+      "name": "Viewer tests (shard 11)",
+      "startedAt": "2026-10-18T08:23:56Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:36:49Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606797",
+      "name": "Viewer tests (shard 12)",
+      "startedAt": "2026-10-18T08:24:15Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:34:00Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606811",
+      "name": "Viewer tests (shard 13)",
+      "startedAt": "2026-10-18T08:23:56Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:36:34Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606782",
+      "name": "Viewer tests (shard 14)",
+      "startedAt": "2026-10-18T08:24:20Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:32:24Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606785",
+      "name": "Viewer tests (shard 15)",
+      "startedAt": "2026-10-18T08:24:45Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:35:06Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606543",
+      "name": "Node guards",
+      "startedAt": "2026-10-18T08:23:54Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:29:45Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606632",
+      "name": "Node tests (shard 1/4)",
+      "startedAt": "2026-10-18T08:23:59Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:29:13Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606564",
+      "name": "Node tests (shard 2/4)",
+      "startedAt": "2026-10-18T08:23:54Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:29:08Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606576",
+      "name": "Node tests (shard 3/4)",
+      "startedAt": "2026-10-18T08:23:54Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:29:06Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606698",
+      "name": "Node tests (shard 4/4)",
+      "startedAt": "2026-10-18T08:24:49Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:27:20Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606573",
+      "name": "Provenance tests",
+      "startedAt": "2026-10-18T08:23:54Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:31:25Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606570",
+      "name": "Viewer E2E smoke (1/4)",
+      "startedAt": "2026-10-18T08:23:54Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:28:56Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606614",
+      "name": "Viewer E2E smoke (2/4)",
+      "startedAt": "2026-10-18T08:23:54Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:30:06Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606622",
+      "name": "Viewer E2E smoke (3/4)",
+      "startedAt": "2026-10-18T08:23:55Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:32:07Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606590",
+      "name": "Viewer E2E smoke (4/4)",
+      "startedAt": "2026-10-18T08:23:54Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:24:27Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117627606615",
+      "name": "Perf ratchet ceilings",
+      "startedAt": "2026-10-18T08:23:56Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:38:20Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39110638371/job/117630553452",
+      "name": "Build + WASM + Rust + Node",
+      "startedAt": "2026-10-18T08:38:16Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:56Z",
+      "conclusion": "NEUTRAL",
+      "detailsUrl": "https://cursor.com/docs/bugbot",
+      "name": "Cursor Bugbot",
+      "startedAt": "2026-10-18T08:13:55Z",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:46Z",
+      "conclusion": "NEUTRAL",
+      "detailsUrl": "https://vercel.com/github",
+      "name": "Vercel Agent Review",
+      "startedAt": "2026-10-18T08:13:45Z",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:45Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/pull/7909/checks?check_run_id=117625843265",
+      "name": "Macroscope - Approvability Check",
+      "startedAt": "2026-10-18T08:13:44Z",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:45Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/pull/7909/checks?check_run_id=117625841467",
+      "name": "Macroscope - Correctness Check",
+      "startedAt": "2026-10-18T08:13:43Z",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "__typename": "StatusContext",
+      "context": "CodeRabbit",
+      "startedAt": "2026-10-18T08:13:54Z",
+      "state": "SUCCESS",
+      "targetUrl": ""
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T08:13:49Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://vercel.com/github",
+      "name": "Vercel Preview Comments",
+      "startedAt": "2026-10-18T08:13:49Z",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "__typename": "StatusContext",
+      "context": "Vercel \u2013 ifc-lite",
+      "startedAt": "2026-10-18T08:13:46Z",
+      "state": "SUCCESS",
+      "targetUrl": "https://vercel.com/ltplus/ifc-lite/DXNsj4Dv999qzJmqyXxqev89u6W2"
+    },
+    {
+      "__typename": "StatusContext",
+      "context": "Vercel \u2013 ifc-lite-dev",
+      "startedAt": "2026-10-18T08:13:46Z",
+      "state": "SUCCESS",
+      "targetUrl": "https://vercel.com/ltplus/ifc-lite-dev/46pNzwQ77ipXWDtQUaFL3itg5Eyn"
+    },
+    {
+      "__typename": "StatusContext",
+      "context": "Vercel \u2013 ifc-lite-viewer-embed",
+      "startedAt": "2026-10-18T08:13:46Z",
+      "state": "SUCCESS",
+      "targetUrl": "https://vercel.com/ltplus/ifc-lite-viewer-embed/9NgWrtobSfQ9m4t6pAixMuJ7N7jM"
+    }
+  ]
+}

@@ -1,0 +1,307 @@
+{
+  "scope": "Actual P1-P5 native publication workspace/clippy only; not full C2-7 required R acceptance or publication approval",
+  "verdict": "PASS for all five exact native publication gate pairs",
+  "worker": "befe98cc-09e9-455d-b4a4-0ee3d43ac8df",
+  "session": 66448,
+  "workerState": "completed",
+  "exitCode": 0,
+  "commands": 10,
+  "prefixes": [
+    {
+      "n": 1,
+      "head": "11d4490e64db08c7073bbbe4f9b87b7c67a775e6",
+      "tree": "fbd9c86e993051fdb14a97e749c7b507fc012583",
+      "workspaceExit": 0,
+      "workspaceTotals": {
+        "passed": 5492,
+        "failed": 0,
+        "ignored": 47,
+        "measured": 0,
+        "filtered_out": 0
+      },
+      "harnessSummaries": 366,
+      "ignoredNames": 47,
+      "ratchets": {
+        "module_size_ratchet": [
+          {
+            "target": "tests/module_size_ratchet.rs (/mnt/c/Users/louistrue/ifc-private/c2-7-prefix-workspace-v1/target/debug/deps/module_size_ratchet-13a446b0680b63cc)",
+            "status": "ok",
+            "passed": 8,
+            "failed": 0,
+            "ignored": 0,
+            "measured": 0,
+            "filtered_out": 0
+          }
+        ],
+        "function_length_ratchet": [
+          {
+            "target": "tests/function_length_ratchet.rs (/mnt/c/Users/louistrue/ifc-private/c2-7-prefix-workspace-v1/target/debug/deps/function_length_ratchet-d393a114897b9d08)",
+            "status": "ok",
+            "passed": 17,
+            "failed": 0,
+            "ignored": 1,
+            "measured": 0,
+            "filtered_out": 0
+          }
+        ],
+        "positional_read_ratchet": [
+          {
+            "target": "tests/positional_read_ratchet.rs (/mnt/c/Users/louistrue/ifc-private/c2-7-prefix-workspace-v1/target/debug/deps/positional_read_ratchet-3ff45bb9680d7fad)",
+            "status": "ok",
+            "passed": 16,
+            "failed": 0,
+            "ignored": 1,
+            "measured": 0,
+            "filtered_out": 0
+          }
+        ]
+      },
+      "clippyExit": 0,
+      "workspaceLogSHA256": "c18d961616ed521f83fcf6f51ce2c5fd2e991c7ecc4b38b806773b15a40f2802",
+      "clippyLogSHA256": "117bc78a68a1b9f35be05255df21571e413c8eaec6d9e65680d30b08be987c30"
+    },
+    {
+      "n": 2,
+      "head": "3493b937f0c12b36f02f9a987ccccce1446e8cb3",
+      "tree": "a64f0f9a875e338ea48601077ed9a5278653eedc",
+      "workspaceExit": 0,
+      "workspaceTotals": {
+        "passed": 5492,
+        "failed": 0,
+        "ignored": 47,
+        "measured": 0,
+        "filtered_out": 0
+      },
+      "harnessSummaries": 366,
+      "ignoredNames": 47,
+      "ratchets": {
+        "module_size_ratchet": [
+          {
+            "target": "tests/module_size_ratchet.rs (/mnt/c/Users/louistrue/ifc-private/c2-7-prefix-workspace-v1/target/debug/deps/module_size_ratchet-13a446b0680b63cc)",
+            "status": "ok",
+            "passed": 8,
+            "failed": 0,
+            "ignored": 0,
+            "measured": 0,
+            "filtered_out": 0
+          }
+        ],
+        "function_length_ratchet": [
+          {
+            "target": "tests/function_length_ratchet.rs (/mnt/c/Users/louistrue/ifc-private/c2-7-prefix-workspace-v1/target/debug/deps/function_length_ratchet-d393a114897b9d08)",
+            "status": "ok",
+            "passed": 17,
+            "failed": 0,
+            "ignored": 1,
+            "measured": 0,
+            "filtered_out": 0
+          }
+        ],
+        "positional_read_ratchet": [
+          {
+            "target": "tests/positional_read_ratchet.rs (/mnt/c/Users/louistrue/ifc-private/c2-7-prefix-workspace-v1/target/debug/deps/positional_read_ratchet-3ff45bb9680d7fad)",
+            "status": "ok",
+            "passed": 16,
+            "failed": 0,
+            "ignored": 1,
+            "measured": 0,
+            "filtered_out": 0
+          }
+        ]
+      },
+      "clippyExit": 0,
+      "workspaceLogSHA256": "2b1d66e1443cd4cef5e3bbd25968450961054633a801607ab870b7b10cd8fc4b",
+      "clippyLogSHA256": "8df89ef333fc8875216971431fd6ef0cb093b3e596c719d1e706de6eaa9860b1"
+    },
+    {
+      "n": 3,
+      "head": "827d69749ae3f061b70a3030f659779320c638a1",
+      "tree": "02dba2efe600fc729071d49b9cb1534f8022783a",
+      "workspaceExit": 0,
+      "workspaceTotals": {
+        "passed": 5492,
+        "failed": 0,
+        "ignored": 47,
+        "measured": 0,
+        "filtered_out": 0
+      },
+      "harnessSummaries": 366,
+      "ignoredNames": 47,
+      "ratchets": {
+        "module_size_ratchet": [
+          {
+            "target": "tests/module_size_ratchet.rs (/mnt/c/Users/louistrue/ifc-private/c2-7-prefix-workspace-v1/target/debug/deps/module_size_ratchet-13a446b0680b63cc)",
+            "status": "ok",
+            "passed": 8,
+            "failed": 0,
+            "ignored": 0,
+            "measured": 0,
+            "filtered_out": 0
+          }
+        ],
+        "function_length_ratchet": [
+          {
+            "target": "tests/function_length_ratchet.rs (/mnt/c/Users/louistrue/ifc-private/c2-7-prefix-workspace-v1/target/debug/deps/function_length_ratchet-d393a114897b9d08)",
+            "status": "ok",
+            "passed": 17,
+            "failed": 0,
+            "ignored": 1,
+            "measured": 0,
+            "filtered_out": 0
+          }
+        ],
+        "positional_read_ratchet": [
+          {
+            "target": "tests/positional_read_ratchet.rs (/mnt/c/Users/louistrue/ifc-private/c2-7-prefix-workspace-v1/target/debug/deps/positional_read_ratchet-3ff45bb9680d7fad)",
+            "status": "ok",
+            "passed": 16,
+            "failed": 0,
+            "ignored": 1,
+            "measured": 0,
+            "filtered_out": 0
+          }
+        ]
+      },
+      "clippyExit": 0,
+      "workspaceLogSHA256": "6f90af15923f4593127d3ee084003cc4882f8edad0e3194788edfcabf9a93a3e",
+      "clippyLogSHA256": "65a4e8c3c24a3eafef275ad75d13dac3532ddb081aee411d653ef5101f3e62a7"
+    },
+    {
+      "n": 4,
+      "head": "a0dc6f27f1abcb8f42182873668f1ab852e57434",
+      "tree": "7471ed7b4b9a5ab5d5badc80bf760a495b452f20",
+      "workspaceExit": 0,
+      "workspaceTotals": {
+        "passed": 5492,
+        "failed": 0,
+        "ignored": 47,
+        "measured": 0,
+        "filtered_out": 0
+      },
+      "harnessSummaries": 366,
+      "ignoredNames": 47,
+      "ratchets": {
+        "module_size_ratchet": [
+          {
+            "target": "tests/module_size_ratchet.rs (/mnt/c/Users/louistrue/ifc-private/c2-7-prefix-workspace-v1/target/debug/deps/module_size_ratchet-13a446b0680b63cc)",
+            "status": "ok",
+            "passed": 8,
+            "failed": 0,
+            "ignored": 0,
+            "measured": 0,
+            "filtered_out": 0
+          }
+        ],
+        "function_length_ratchet": [
+          {
+            "target": "tests/function_length_ratchet.rs (/mnt/c/Users/louistrue/ifc-private/c2-7-prefix-workspace-v1/target/debug/deps/function_length_ratchet-d393a114897b9d08)",
+            "status": "ok",
+            "passed": 17,
+            "failed": 0,
+            "ignored": 1,
+            "measured": 0,
+            "filtered_out": 0
+          }
+        ],
+        "positional_read_ratchet": [
+          {
+            "target": "tests/positional_read_ratchet.rs (/mnt/c/Users/louistrue/ifc-private/c2-7-prefix-workspace-v1/target/debug/deps/positional_read_ratchet-3ff45bb9680d7fad)",
+            "status": "ok",
+            "passed": 16,
+            "failed": 0,
+            "ignored": 1,
+            "measured": 0,
+            "filtered_out": 0
+          }
+        ]
+      },
+      "clippyExit": 0,
+      "workspaceLogSHA256": "845dab43cfc1805cdca1328b8952981c32076e70fa9ae43132a87651498d1708",
+      "clippyLogSHA256": "be8b265c8cc9a223954ddf9b499ffc2b806664083953265bc8ff37e886ccb123"
+    },
+    {
+      "n": 5,
+      "head": "2647938db41234304a030766e3afe4eebb55bb6d",
+      "tree": "8f0e064942cecd70986606de753bd82fbe34db2c",
+      "workspaceExit": 0,
+      "workspaceTotals": {
+        "passed": 5492,
+        "failed": 0,
+        "ignored": 47,
+        "measured": 0,
+        "filtered_out": 0
+      },
+      "harnessSummaries": 366,
+      "ignoredNames": 47,
+      "ratchets": {
+        "module_size_ratchet": [
+          {
+            "target": "tests/module_size_ratchet.rs (/mnt/c/Users/louistrue/ifc-private/c2-7-prefix-workspace-v1/target/debug/deps/module_size_ratchet-13a446b0680b63cc)",
+            "status": "ok",
+            "passed": 8,
+            "failed": 0,
+            "ignored": 0,
+            "measured": 0,
+            "filtered_out": 0
+          }
+        ],
+        "function_length_ratchet": [
+          {
+            "target": "tests/function_length_ratchet.rs (/mnt/c/Users/louistrue/ifc-private/c2-7-prefix-workspace-v1/target/debug/deps/function_length_ratchet-d393a114897b9d08)",
+            "status": "ok",
+            "passed": 17,
+            "failed": 0,
+            "ignored": 1,
+            "measured": 0,
+            "filtered_out": 0
+          }
+        ],
+        "positional_read_ratchet": [
+          {
+            "target": "tests/positional_read_ratchet.rs (/mnt/c/Users/louistrue/ifc-private/c2-7-prefix-workspace-v1/target/debug/deps/positional_read_ratchet-3ff45bb9680d7fad)",
+            "status": "ok",
+            "passed": 16,
+            "failed": 0,
+            "ignored": 1,
+            "measured": 0,
+            "filtered_out": 0
+          }
+        ]
+      },
+      "clippyExit": 0,
+      "workspaceLogSHA256": "2c2aa618c1b15996996bc4c09660c0b991b424e3a69f97c149f37046fbcff9b8",
+      "clippyLogSHA256": "4b6c3cbdae9c62a3ec97d1a7fac8abd89aa641b740e50b525035db7ab745956a"
+    }
+  ],
+  "guardChecks": 20,
+  "capacityObservations": 140,
+  "minimumObservedFreeBytes": 807507492864,
+  "byteGuard": ">60 GiB, unchanged",
+  "inodeDisclosure": "DrvFS provider-reported synthetic available=1,000,000, total=999; not physical inode/ext4 fraction proof",
+  "fixtureWitnesses": 10,
+  "filesPerFixtureWitness": 182,
+  "allFixtureWitnessesMatch": true,
+  "sourceRestoredCleanP1": true,
+  "workerSourceUnchanged": true,
+  "ownedCargoGroupsQuiescent": true,
+  "primaryError": null,
+  "cleanupErrors": [],
+  "noP6Rerun": true,
+  "noSourceRepairOrRetry": true,
+  "independentVerificationErrors": [],
+  "verifiedResultsSHA256": "05baf07016e38d43bc1b2fe84ca4dfe2f89e5a5f097a561f1598753db94957fb",
+  "terminalReceiptSHA256": "a63d48ee72802a3fb4239df683c53c3cce418c15336139bbf9214b68de7ee3cc",
+  "driverSHA256": "7df46942f6af83d4d3478d836c02fa34f12e377ef7930ed4781b87582e176602",
+  "tools": {
+    "cargo": {
+      "path": "/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/bin/cargo",
+      "sha256": "094ca6ad7b2f42fe32f08f93d89b27f075d675102e2eeb6e235fee7c318acfae",
+      "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)\n"
+    },
+    "rustc": {
+      "path": "/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/bin/rustc",
+      "sha256": "56ae45b0d36c8cf3c5c5f1a7a602f5fde12782e9d4b48a78e60bda3a3b11048c",
+      "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)\nbinary: rustc\ncommit-hash: b6d7ff3aa71e48e2901b0900f8b5d98126b537ed\ncommit-date: 2025-11-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.93.0-nightly\nLLVM version: 21.1.5\n"
+    }
+  }
+}

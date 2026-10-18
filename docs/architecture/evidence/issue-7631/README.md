@@ -23,10 +23,14 @@ collection, pre-pass cache and API handle is released. Canonical RTC-frame
 triangle counts differ from the census frame; neither count is substituted
 for the other.
 
-The new combined source separately passed the official build, consumer checks
+The earlier `f21b4861` combined source separately passed the official build, consumer checks
 and all 27 canonical WASM cases. Their complete payloads equal the historical
 case records; the new source, artifact and receipt identities are recorded in
 `combinedQualification`. The original engine-size failure is retained.
+
+The current lower base `99622674` additionally preserves distinct coaxial
+opening depths. This changes production inputs again. Qualification of that
+source remains pending; earlier receipts retain their recorded source scope.
 
 The committed behavioral regressions are
 `rust/processing/tests/issue_6940_profile_cap_boundaries.rs`,

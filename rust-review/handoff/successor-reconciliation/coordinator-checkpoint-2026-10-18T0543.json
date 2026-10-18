@@ -1,0 +1,420 @@
+{
+  "updatedAt": "2026-10-18T05:43:05.465478+00:00",
+  "observationScope": "Reconciled actual terminal receipts and source reviews; no new global host/queue checkpoint. Live GitHub count/main last verified 2026-10-18T05:11:22Z.",
+  "main": "c53cfaa3a2034638f4c4ab40f7674b29e0528fed",
+  "openIssues": [
+    7890,
+    7782,
+    7781,
+    7779,
+    7714,
+    7711,
+    7655,
+    7635,
+    7633,
+    7631,
+    7581,
+    7292,
+    7036,
+    6940,
+    6881,
+    6729,
+    6709,
+    6516
+  ],
+  "openIssueCount": 18,
+  "readFirst": "This checkpoint supersedes older live/queued/pending fields. Historical receipts/dispositions remain archived verbatim.",
+  "rules": [
+    "Parallel ordinary work with owned separate targets; no artificial global serialization",
+    "No benchmark queued until all exact binaries/runtime ready and host actually idle/cool",
+    "Preserve source-pinned evidence; completed older-tree gates never qualify a new tree",
+    "No duplicated agent allocation or foreign cleanup"
+  ],
+  "lanes": {
+    "C2": {
+      "state": "PERFORMANCE/PUBLICATION BLOCKED",
+      "pins": [
+        "c53cfaa3a2034638f4c4ab40f7674b29e0528fed",
+        "224fc5632bb20ae97687ea19f8535e7c3fc2c002",
+        "b907d6065cbe73d46c8b017b705c92f743346836",
+        "61f9cb64803b37270fcc0603d97f5f47808212bf",
+        "337538adb04be1b42f21b60d4ab4a029c4245182"
+      ],
+      "originalWorker": {
+        "id": "08dc8295-0488-483f-82eb-571dcb66ce71",
+        "session": 85922,
+        "terminal": "FAILED -15 / original exec143",
+        "nativeCommandsRetained": 25,
+        "nativeRecords": 75,
+        "protocol": "iters1; five external BEST-of-1 observations per revision/fixture",
+        "browser": "FAILED/INCOMPLETE; SwiftShader/device loss/timeouts",
+        "extractor": "UNRUN"
+      },
+      "instructionContinuation": {
+        "id": "434512fc-cf1b-4ea3-879e-3344ca3426e4",
+        "session": 2739,
+        "exitCode": 0,
+        "sourceUnchanged": true,
+        "ownedQuiescent": true,
+        "phaseBands": 90,
+        "pass": 84,
+        "fail": 6,
+        "failures": [
+          "Haus224->b907 entityScan",
+          "ISSUE129c53->224 geometry",
+          "ISSUE129c53->224 total",
+          "ISSUE129224->b907 parse",
+          "ISSUE129224->b907 entityScan",
+          "ISSUE129224->b907 preprocess"
+        ],
+        "processIr": "UNVALIDATED raw metadata outside six gates"
+      },
+      "diagnostic": "Complete V2 independent review HOLD seven source findings; new V3 source/fake-test response only authorized, no runtime",
+      "publication": "No corrected public FF or performance waiver"
+    },
+    "C4": {
+      "state": "ACTUAL FULL COLLECTION; ACCEPTANCE BLOCKED",
+      "revisions": [
+        "61",
+        "45be",
+        "ca2",
+        "166f",
+        "b437"
+      ],
+      "worker": {
+        "id": "c419aa22-fab1-4fb6-9897-668e1cafe4de",
+        "session": 58135,
+        "exitCode": 1,
+        "sourceUnchanged": true,
+        "ownedQuiescent": true,
+        "finishedUtc": "2026-10-18T05:14:58Z",
+        "receiptSha256": "8537b2757e7c00e8bb34cdfa4b16a0eaf8534cf9b2051d3953ea7bf8c068cf96"
+      },
+      "nativeRows": 75,
+      "nativeProtocol": "iters1; five external observations per cell",
+      "irReports": 15,
+      "phaseInputs": 90,
+      "adjacentPhaseChecks": 72,
+      "adjacentFailures": 6,
+      "failedPair": "45be->ca2 parseIr/entityScanIr on Haus/ISSUE129/duplex",
+      "browserRows": 175,
+      "browserRuntimeFailures": 0,
+      "browserTotalFailedCells": 7,
+      "browserIdentityAndMemoryPanelsPass": 28,
+      "native": "all four pairs zero-baseline inconclusive; canonical tooNoisy all four; realChange pairs1/3/4",
+      "guards": {
+        "records": 14144,
+        "errors": 0,
+        "beforeAfterEqual": true
+      },
+      "scope": "aggregate ordered mesh FNV/counts and declared public getter diagnostics, CPU browser only; no full viewer/GPU/RSS claim",
+      "independentActualEvidenceReview": "recomputed manifests/coverage/thresholds confirms BLOCKED",
+      "sourceRetention": "Independent pinned source review confirms three unmatched ResolvedPrepass maps dropped before EntityScanEnd in r2 instead of outer process scope. Not proven cause of dominant scan selfIr or wall/browser failures. NEW private r2 correction plus new r3/r4 descendants SOURCE ONLY authorized; no build/measurement",
+      "C4_5": "PARTIAL only: ScanClass/PrepassSpans/wire exist; is_geometry_job/ScanCollector/geometry_entity_spans/ShardScan absent at d600 and c53. Required remainder not waived. Minimal core predicate/collector proposed for6b, full prerequisite publication stopline remains",
+      "C4_0": "six alternative source observer/capture patches; no compile/runtime/EXPECTED_DIFF acceptance; fresh independent source review active",
+      "C4_6a": "actual six managed captures pass scoped same-consumer Site default/disabled; overwritten old metadata exactbytes unrecoverable documented; no blanket all-old-files-preserved claim",
+      "C4_6b": "four external source layers on exactd600, proposed/uncompiled; fresh independent source review active; combined buildPrePassOnce actual-capture dependency incomplete"
+    },
+    "F3bMemo": {
+      "source": "863e8bae6fa4dc418c27c73fb36bb0cfb48fbfa5",
+      "tree": "f9990b99cab0a84091dd5abff343153c017198c8",
+      "native": {
+        "job": "6b8d12cf-0cc9-4fea-b279-a5b5d0dc0c65",
+        "session": 98157,
+        "passed": 5404,
+        "failed": 0,
+        "ignored": 46,
+        "clippyExit": 0,
+        "fiveAssertionInversesRestored": true,
+        "newMainPositionalGate": "absent at source; integration gap"
+      },
+      "cost": {
+        "worker": "a7f897db-44f1-4b4d-a68b-942cca660a1f",
+        "session": 39659,
+        "exit": 0,
+        "quiescent": true,
+        "poolCommands": 45,
+        "itersPerCommand": 5,
+        "loads": 225,
+        "freshIR": 9,
+        "independentBands": 36,
+        "pass": 36,
+        "aggregatePayloadIdentity": "PASS scoped ordered meshes only",
+        "oldDuplexFailure": "historical2773->5c remains HARDFAIL; no retrospective waiver",
+        "caveats": "slower parse retained; ISSUE129 total flat vs negative wall; hitrate UNKNOWN; not overall no-regression/ship/WASM proof"
+      },
+      "consumers": {
+        "ArmA": {
+          "job": "5e6c7ffe-e357-401f-8d73-b96493e96c90",
+          "session": 77708,
+          "terminal": 1,
+          "reason": "post-success Linux >60GiB capacity guard failed",
+          "rustFullCommandsPass": 10,
+          "additionalCICommandsPass": 4,
+          "unrun": [
+            "triang",
+            "detached csg",
+            "fresh wheel",
+            "49 pytest",
+            "quick parity"
+          ]
+        },
+        "ArmB": {
+          "job": "cab08e18-1687-4be5-8b1a-265e495d554c",
+          "session": 94814,
+          "terminal": 1,
+          "reason": "post-install Linux >60GiB guard failed before Turbo/WASM",
+          "frozenOfflineInstallExit": 0,
+          "wasm": "ALL UNRUN"
+        },
+        "sourceUnchanged": true,
+        "ownedQuiescent": true,
+        "freeLinuxBytes": [
+          63115677696,
+          63115776000
+        ],
+        "capacitySafeRemainingOnlyPlan": "SOURCE/ARTIFACT preparation authorized; no retry/migration/guard reduction/foreign cleanup"
+      },
+      "publishedTail": "7cdd67bc3e5b5998ba6d6f048665f94a3451fd31; historical feature a2cc admission timeout unrun, not qualified by memo"
+    },
+    "7714": {
+      "published": [
+        "4be23c0dd8ab52a6b3779ff697f901fbe0cca8a1",
+        "724d44e97a0ffa3efb9aef9729ce01520ca77618",
+        "302319482fd4224dafa6e02a8024e88cf7e766a3"
+      ],
+      "candidate": "599b154f4edd349a3361bd32ec74fb0490bb8396",
+      "tree": "3b73b1cee6b867d5a6b23b0344ead45bf38b0833",
+      "candidateQualification": "workspace5491/0/47 exact clippy, actual assertion RED/restored, four full product/census JSON identical; fresh wheel/parity and WASM213/0/1 scoped PASS",
+      "originalPerformance": "measured f66 Haus/Holter/SOffice regressions remain barriers",
+      "sixLoadAttempt": {
+        "worker": "a923105e-01d2-4844-bf4a-7ad01d13531a",
+        "session": 5366,
+        "terminal": 1,
+        "completedLoads": 1,
+        "unrun": 5,
+        "cause": "parser rejected zero-byte aggregate placeholder despite three populated per-thread files",
+        "historicalHausBaseIr": 495114875,
+        "label": "permanently FAILED/INCOMPLETE; historical row only cross-session diagnostics reuse; never fresh-six/performance acceptance"
+      },
+      "V5Controller": "source/input clear; 85 pure tests; live Linux lifecycle/actual new worker guards UNRUN",
+      "checkpointAttempts": [
+        {
+          "time": "2026-10-18T05:27:51Z",
+          "state": "REFUSED BEFORE SUBMISSION; overly broad shared T3/remoteSSH filter"
+        },
+        {
+          "session": 71646,
+          "state": "REFUSED BEFORE SUBMISSION; exact seven T3 nodes zero jiffies; new D47 remote-only SSH not covered by job-specific exemption"
+        }
+      ],
+      "next": "Saved-evidence-only general authenticated remote-PC transport classification response authorized; NO checkpoint/admission currently authorized or submitted",
+      "noNewWorker": true
+    },
+    "7711": {
+      "source": "d23bdd08cc0869ace66e468c3befe39a59e96fe6",
+      "tree": "d631443fe42baee9e5484a0074d3fc68d99fd259",
+      "qualified": "normal root build56/TLA/graph/unchanged bundle ceilings; ROOTtypecheck4248files67programs; retained compatible2742 runtime99de40 verified",
+      "entry": {
+        "bytes": 3091182,
+        "allowed": 3119506,
+        "pass": true
+      },
+      "behavior": "13-file mounted positive/F1 assertion RED/restored ALL UNRUN",
+      "failedDriverJobs": [
+        {
+          "job": "5014c4bc-f315-445a-87cb-448ef74d98e8",
+          "session": 22408,
+          "reason": "restore manifest raw order/mtime guard"
+        },
+        {
+          "job": "d0c8edee-a0df-4796-bd26-ce10b7c3732d",
+          "session": 22485,
+          "reason": "warm AI build log compared to not-yet-replayed archive"
+        }
+      ],
+      "bothSourceUnchangedAndQuiescent": true,
+      "guardV3": "66 pure saved-failure/tamper cases PASS; fresh independent external-driver review active; no further job yet",
+      "protectedPublicPRs": [
+        7900,
+        7908
+      ]
+    },
+    "C2_7": {
+      "source": "f18b9260a9abd3ece6a210f6fea313800252ab05",
+      "tree": "8a9b17c468e497db9f7cce2aa5a9199880a68158",
+      "nativeWorker": "9ed9efce-2f77-4679-ac0a-4981e6be1ad3",
+      "session": 21625,
+      "exit": 0,
+      "passed": 5492,
+      "failed": 0,
+      "ignored": 47,
+      "workspaceClippy": 0,
+      "ratchets": "module8/function17+1ignored/positional16+1ignored PASS",
+      "V7Delta": "two-line guide placement only; all runtime bytes unchanged from V6",
+      "nextPlan": "V2 corrected PC-vs-Pop/single seven revision dataset/no repeated final workspace; independent source plan review active; JSON syntax defect reported preliminary, no execution",
+      "reuse": "febe and94f actual whole tree6366 equality preserved, genuine executed febe source not relabelled; capture/HEAD/input witnesses under review",
+      "remaining": "full R corpus/diagnostics/B1 real route retryrollback/Fallback635/host/features/failing-set parity/Python+publicWASM/per-adjacent perf/nativewasmarmdet/required PR reference remain"
+    },
+    "D47": {
+      "private": "71436f4ca6b39881dfb2211498731bef76f247d3",
+      "qualification": "private exact clippy/parquet/PythonRust PASS; BASE19 7PASS12assertRED vs CAND68pytest0skip; previous897 workspace only LF-equivalence reuse",
+      "rawBase": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "rawTree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+      "mapping": "fresh source review clear bounded14files985lines/no65context import; surrounding tokenizer differs so raw qualification required",
+      "newRawSource": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db reported in authenticated remotePC transport; actual job result not yet collected",
+      "rawQualification": "ONE PC ordinary authorized; no current PASS inferred",
+      "memory": "canonical full prepass + O(source complex memberships) retained; not memory/RSS/first-delivery neutral"
+    },
+    "F3bRecovered": {
+      "private": "0e725faaf4ee825b5fe7dac67c2b35b1f3bd887d",
+      "tree": "4ce24e4d2ba78d58bf545d421cc51144fd8398b6",
+      "rawPRs": [
+        7914,
+        7915
+      ],
+      "rawHeads": [
+        "05ae74bda805fe7a206071fd0841a8b16df75045",
+        "2ed15338c6f1440141de931d7796def84f97f279"
+      ],
+      "state": "draft MIXED/HOLD, exact Rust/feature/Python/native acceptance scopes retained",
+      "rootJob": "b79b3cbd-c5c2-44ed-a176-24b019b33515 session33046 ACTUAL FAILED1; install/typecheck PASS root139/140 viewer18670/1/14 over256storey bound assertion. Same blob c53/private; independent7901 class repair dependency, no duplicate new fix",
+      "WASM": "FROZEN UNSUBMITTED; no auto launcher",
+      "performance": "Haus/planner/symbolic timing regressions remain explicit; native IR does not measure symbolic"
+    },
+    "7655": {
+      "state": "A1 FAILED1/INCOMPLETE cleanup context.close; first device loss observed before teardown; rootcause not proven",
+      "notClaims": [
+        "quantized shader absent",
+        "healthy device from old console flag",
+        "physical GPU acceptance"
+      ],
+      "next": "no new arm or run authorized"
+    },
+    "6516": {
+      "PR": 7913,
+      "publicHead": "9d1f8759",
+      "run": 39090374300,
+      "artifact": 12121843799,
+      "public": "Linux/Windows bundle qualification succeeded",
+      "private": "reporter cause NOT established; Oct24 followup",
+      "expiryUtc": "2026-10-25T02:31:09Z"
+    },
+    "SharedCI": {
+      "PRs": [
+        7901,
+        7910
+      ],
+      "privateCombined": "8877850759c428e54b2d488232e155cd7f12a675",
+      "state": "local qualification PASS but combined publication awaits user one-class/one-issue-per-PR exception; no answer inferred; no combined push/merge"
+    },
+    "ExternalOwnership": {
+      "7581": "human andhxl retains localization; no duplicate",
+      "geometry": "6940/7631/7633/7635 existing owner",
+      "other": "7292/7036/6881/6729/6709 retain existing owners; no closure inferred"
+    }
+  },
+  "parentRuntime": {
+    "jsonld7905": {
+      "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "pr": 7905,
+      "stage1": "4 focused PASS; constant-label inverse3assertFAIL + flat controlPASS; ratchets PASS; all182 SHA/size verified; exact workspace clippy PASS; only intended c6 JSONLD golden changed",
+      "finalJob": "25d0f439-c1f0-444e-905a-78abb78eb1f8",
+      "session": 40818,
+      "artifact": "/tmp/ifc-jsonld-property-classes-51hjg4zu",
+      "state": "FULL LOCAL QUALIFICATION COMPLETE; PR7905 ready for review, hosted checks pending",
+      "sourceReview": "no concrete finding",
+      "performanceScope": "Independent source-pinned review: bounded linear JSONLD labeling cost; no added parser/reference walk/geometryworker path; defaultstream capturedisabled. No zerooverhead/RSS/speedup/numericalneutrality claim; workerpool campaign would not execute changedpath.",
+      "workspace": {
+        "passed": 5443,
+        "failed": 0,
+        "ignored": 47,
+        "summaries": 365,
+        "logSha256": "2866575c40c074f9afb76ebf11edd166f6b45207335b233c110716021022e04a",
+        "artifact": "jsonld-property-classes/qualification-final/ after collection; raw /tmp/ifc-jsonld-property-classes-51hjg4zu/workspace.log currently complete"
+      },
+      "collector": {
+        "agent": "/root/storey_frame_ci_update",
+        "scope": "wait for existing worker terminal, copy+hash-verify qualification-final only, no new workload",
+        "parentSession": 40818,
+        "state": "COMPLETE; copied and hash-verified qualification-final; no new workload"
+      },
+      "finalExitCode": 0,
+      "fullFeature": {
+        "passed": 819,
+        "failed": 0,
+        "ignored": 0,
+        "summaries": 34,
+        "logSha256": "c92cc4cc91cc260f8c01042324734c64a6f6cc993e3f50ea582a79f86ed5f9f1"
+      },
+      "qualificationArtifact": "jsonld-property-classes/qualification-final/qualification.json",
+      "fixtureVerification": "182 manifest entries AND actual files independently rehashed by collector",
+      "draft": false,
+      "watching": true
+    },
+    "canary7907": {
+      "head": "5fde154d5b04ae3ed6abcc92c5eaaba6dc401d02",
+      "pr": 7907,
+      "state": "source qualified/pushed/ready; hosted checks pending",
+      "results": "20 scanner tests PASS; scanner-zero and binary_at-blind inverses assertionFAIL; restored positive PASS; exact workspace clippy PASS",
+      "job": "5baabdc8-6015-4c8c-8caa-7526cff54e1c",
+      "artifact": "positional-scanner-canary/qualification/",
+      "watching": true
+    }
+  },
+  "evidence": [
+    {
+      "path": "open-issue-checkpoint-20261018T0515.json",
+      "sha256": "f62576fcfbee8d482702b815ae15a2e6550dc0341326bd70c80424b2354618a6",
+      "size": 691
+    },
+    {
+      "path": "c4-4b-recovery/integration-c24-fresh/execution-v7-attempt1/RESULT.json",
+      "sha256": "9beea2cdb9c9502b499ad62013d1f4275ca0ecfb565cd9397c18082ff591c754",
+      "size": 45345
+    },
+    {
+      "path": "c4-4b-recovery/integration-c24-fresh/execution-v7-attempt1-manifest.json",
+      "sha256": "a5e31394c8d4dcc63a2ca823ce0bac4d9037d96df08077ba6e53818ee21ae83b",
+      "size": 277926
+    },
+    {
+      "path": "c4-4b-recovery/integration-c24-fresh/offline-ir-attribution-v7/packet-complete-manifest.json",
+      "sha256": "5b0863518ebf25f46193b505d64fd04b46d7bde601be188a5a56ef6a4ea6bf10",
+      "size": 8846
+    },
+    {
+      "path": "c4-4b-recovery/integration-c24-fresh/prepass-lifetime-independent-review-v1/REVIEW.md",
+      "sha256": "f18b4892331e3ca07933c03790cf3817edca9c993c81a9888a40b9bd7d3e28d4",
+      "size": 2092
+    },
+    {
+      "path": "f3b-canonical-leaf-cache-source/raw-success-memo/consumer-qualification-863-v1/CONSUMER_QUALIFICATION.md",
+      "sha256": "8276180fb588cb9b3cdfe24410e5e1c83a9158e0239130a1f2528c99bee599ba",
+      "size": 10290
+    },
+    {
+      "path": "c4-0-parity-harness-source-v1/packet-manifest.json",
+      "sha256": "5611d482af2bf80cd9129cc00e2451b3d327c8b58b3af1f5344eb176be7d4df9",
+      "size": 25362
+    },
+    {
+      "path": "c4-6b-scancollector-source-v1/packet-manifest.json",
+      "state": "not collected by coordinator at checkpoint"
+    },
+    {
+      "path": "7711-section-export/phase6-d23-qualification/guard-response-v3/RESPONSE.md",
+      "sha256": "be7a9cbd83f715ff814b38061e37ecc266110961481ee1d49f61c1464d39111a",
+      "size": 5662
+    },
+    {
+      "path": "c2-published-stack-takeover/five-revision-extension/memcmp-branch-diagnostic-independent-review-v2/REVIEW.md",
+      "sha256": "4597bc68bd30760a868a850f1c41ec0e306e910185494f3dc012ccda8f64041a",
+      "size": 13865
+    }
+  ],
+  "priorState": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/state-before-2026-10-18T0543-reconciliation.json",
+  "priorStateSha256": "b57d8d7990cf5bb39f8bf6cece63b061190a34412b024cc49e62a044a5c0b2dd",
+  "goal": "ACTIVE; no merge/closure/all-18 completion; meaningful parallel source/review work continues",
+  "currentPopAdmission": "NONE claimed; previous checkpoints historical; no queued EX or reservation authorized by this checkpoint"
+}

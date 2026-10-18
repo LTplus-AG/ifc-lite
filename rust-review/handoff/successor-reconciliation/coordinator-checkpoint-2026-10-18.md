@@ -57,3 +57,8 @@ The separate storey-frame and entry-literal PRs (#7901 and #7910) remain preserv
 - [#7912](https://github.com/LTplus-AG/ifc-lite/pull/7912): Empty and malformed performance-report rejection. CLI negative/positive evidence retained; reporter correctness is not a performance measurement.
 
 These obligations remain explicit even where an older sweep tracker is closed. This checkpoint does not reopen, waive, or silently disposition them.
+
+
+## Later reconciliation
+
+The [2026-10-18T0543 UTC reconciliation](coordinator-checkpoint-2026-10-18T0543.md) supersedes the live-state snapshot above while preserving its historical text and dispositions.

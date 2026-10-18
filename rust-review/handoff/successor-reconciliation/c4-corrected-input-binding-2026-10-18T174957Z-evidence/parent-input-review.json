@@ -1,0 +1,90 @@
+{
+  "reviewedAt": "2026-10-18T17:47:34.157089+00:00",
+  "scope": "Parent review of actual five-arm data and current admission runner drift; no measurement/host/admission/source-code change",
+  "previousMapping": {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v1/result-manifest.json",
+    "resolved": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v1/result-manifest.json",
+    "kind": "input",
+    "size": 6674,
+    "sha256": "4a0f0e50a97494b1496bd70a919048e1edd2e6f3f81307472ec348bae2c87dec"
+  },
+  "reviewedRunnerChanges": [
+    {
+      "before": {
+        "path": "/home/louistrue/build-workers/run-heavy",
+        "resolved": "/home/louistrue/build-workers/run-heavy",
+        "kind": "literal-admission-runner-source",
+        "size": 2109,
+        "sha256": "e26c916e1c85edf32b0228e70bfee0bda408a43795b1d841064bb72e9ebbb804"
+      },
+      "after": {
+        "path": "/home/louistrue/build-workers/run-heavy",
+        "resolved": "/home/louistrue/build-workers/run-heavy",
+        "kind": "literal-admission-runner-source",
+        "size": 2116,
+        "sha256": "afd6d7ce0f2b99daf8112d0ae26e2932787efdb95a7d8e51d45a499717956103"
+      }
+    },
+    {
+      "before": {
+        "path": "/home/louistrue/build-workers/worker-current/worker.py",
+        "resolved": "/home/louistrue/build-workers/worker-releases/89a4848bb77cbebf/worker.py",
+        "kind": "literal-admission-runner-source",
+        "size": 13536,
+        "sha256": "3a6be059f6c965acec6e3fa8799da53f0c7e578d71e2305eaec59ac204ff8094"
+      },
+      "after": {
+        "path": "/home/louistrue/build-workers/worker-current/worker.py",
+        "resolved": "/home/louistrue/build-workers/worker-releases/e2d45ad6890410a6/worker.py",
+        "kind": "literal-admission-runner-source",
+        "size": 15379,
+        "sha256": "5ddb5b867d31aae64d78d78e4e7d1407b28df4f06b0ab7db9ad40d0020df2657"
+      }
+    },
+    {
+      "before": {
+        "path": "/home/louistrue/build-workers/worker-current/admission.py",
+        "resolved": "/home/louistrue/build-workers/worker-releases/89a4848bb77cbebf/admission.py",
+        "kind": "literal-admission-runner-source",
+        "size": 6219,
+        "sha256": "d3e68d2c439344d5a1aae29dbbeb8bf7d24c6bc3f637b557829f0447d1cad46b"
+      },
+      "after": {
+        "path": "/home/louistrue/build-workers/worker-current/admission.py",
+        "resolved": "/home/louistrue/build-workers/worker-releases/e2d45ad6890410a6/admission.py",
+        "kind": "literal-admission-runner-source",
+        "size": 6219,
+        "sha256": "d3e68d2c439344d5a1aae29dbbeb8bf7d24c6bc3f637b557829f0447d1cad46b"
+      }
+    }
+  ],
+  "runnerDisposition": "Wrapper only adds --pool parsing. Worker adds optional pool/request tracking and source/task CLI handlers; cohort has neither pool nor request-id. execute timing, admission.acquire, legacy ownership, host guard, process lifecycle and output guards unchanged. task_state imports are pure definitions and identifier validates pool IDs; new dependency and unchanged identity.py are now hash-bound. admission.py exact bytes unchanged, resolved release updated.",
+  "historicalCompilerDisposition": {
+    "availableCompatibility": "All recorded Rust/Cargo/cc13.3/glibc2.39 context strings, rustc/profile/target/config/features/rustflags/compile-kind selectors, five lock/toolchain/Cargo/profiling/build-script identities match. Existing native and runtime producers/source pins retained.",
+    "fullHistoricalNativeToolBytes": "UNKNOWN; explicitly not proven equivalent",
+    "decision": "Known recorded producer compatibility is sufficient to collect the existing comparative experiment. This does not establish whole historical tool-byte equality or causal attribution solely to Q1. Unknown provenance cannot excuse failed thresholds or produce final acceptance. No lower rebuild or new stronger proof claim."
+  },
+  "methodologyCodeDelta": "NONE; all copied py/mjs/canonical files byte-identical; only own data paths and reviewed admission records change",
+  "measurementPermission": false,
+  "remaining": [
+    "fresh genuine idle/cool/ownership checkpoint",
+    "separate one-cohort execution decision;7911 first timed delivery"
+  ],
+  "oldV7FailuresRemainBinding": true,
+  "actualGuard": {
+    "command": "Original byte-identical guard_cli.py; file/source checks plus Node builtins-only module-resolution and full Playwright census; no Playwright/model/browser imports or measurements",
+    "exitCode": 0,
+    "files": 15123,
+    "sources": 5,
+    "nodeRuntimeClosures": 1,
+    "errors": [],
+    "receipt": {
+      "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v2/parent-actual-guard.json",
+      "resolved": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v2/parent-actual-guard.json",
+      "kind": "parent-review-evidence",
+      "size": 7796098,
+      "sha256": "e16b20c7356ee478db23a45a59cd7f6dbb7b8f72367fb199e1d38b85a3aaa2b8"
+    }
+  },
+  "phaseMarkerDisposition": "Known lower/upper phase_marks.rs source difference is the retained cfg Clock helper (native Instant alias / wasm zero diagnostics); phase marker bodies unchanged except blank line, corrected files equal their corresponding original changed-prefix sources. Retained IR thresholds continue to bind; no marker overhead waiver."
+}

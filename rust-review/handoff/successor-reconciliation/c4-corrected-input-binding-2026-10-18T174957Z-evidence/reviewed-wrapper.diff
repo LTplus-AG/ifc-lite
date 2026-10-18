@@ -1,0 +1,11 @@
+--- /home/louistrue/build-workers/setup/worker-admission-backup-1792324681447881609/0-run-heavy
++++ /home/louistrue/build-workers/run-heavy
+@@ -12,7 +12,7 @@
+   case "$1" in
+     --cwd) worker_checkout=$2; shift 2 ;;
+     --kind) worker_kind=$2; shift 2 ;;
+-    --cpu|--memory|--queue-timeout|--timeout|--resource|--artifact|--fixture)
++    --cpu|--memory|--queue-timeout|--timeout|--resource|--pool|--artifact|--fixture)
+       worker_options+=("$1" "$2"); shift 2 ;;
+     --) shift; break ;;
+     *) break ;;

@@ -1,0 +1,95 @@
+{
+  "recordedAt": "2026-10-18T17:49:57.481154+00:00",
+  "scope": "Existing five-arm experiment inputs accepted; no measurement/performance/closure acceptance;949 originalV7files unchanged",
+  "status": {
+    "taskId": "node:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Athread-send%3Ac4-corrected-five-input-map-existing-v7-only-20261018-v16",
+    "state": "child complete; parent inspected and corrected three runner bindings in own V2; actual guardPASS; measurement pending",
+    "scope": "Wire sealed corrected3 artifacts into existing five-arm V7 method, preserve unchangedlower/thresholds/old failures, no measurement/host/READY/queue",
+    "unresolved": "Parent input disposition and genuine idle/cool benchmark admission remain pending",
+    "sourceMapping": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v2/five-arms.json",
+    "parentInspection": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v2/parent-input-review.json",
+    "guard": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v2/parent-actual-guard.json",
+    "guardFileRecords": 15123,
+    "guardSources": 5,
+    "guardNodeRuntimeClosures": 1,
+    "guardErrors": 0,
+    "measurementCodeChanges": 0,
+    "runnerBindingsRefreshed": 3,
+    "inputBindingAccepted": true,
+    "allReady": false,
+    "measurementAuthorized": false,
+    "historicalNativeFullByteClosure": "UNKNOWN; recorded compiler/profile/tool/context compatibility accepted for comparative experiment only, not historical byte equality or Q1-only causal attribution",
+    "cohortSubmitted": false,
+    "remaining": "Genuine cool/idle/ownership checkpoint then separate one-cohort decision;7911 first timed delivery"
+  },
+  "capacityObservation": {
+    "observedAt": "2026-10-18T17:49:57.481154+00:00",
+    "kind": "read-only capacity observation; not idle-host proof",
+    "managedJobs": [
+      {
+        "id": "ea175d8c-182b-447f-b05b-3f9a6ec6dd89",
+        "pid": 3772261,
+        "kind": "ordinary",
+        "cpu": 4,
+        "memory": 12,
+        "state": "running"
+      }
+    ],
+    "packageMilliC": [
+      67000
+    ],
+    "benchmarkSubmitted": false,
+    "benchmarkQueued": false,
+    "foreignActions": []
+  },
+  "evidence": [
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-corrected-input-binding-2026-10-18T174957Z-evidence/five-arms.json",
+      "size": 28102,
+      "sha256": "d1d0e8bbd8489e8cba918d759b75b3be199ee11d54aa4f4e05a2b027f5038c60"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-corrected-input-binding-2026-10-18T174957Z-evidence/inputs-manifest.json",
+      "size": 7823668,
+      "sha256": "f6467a70dee357589476257c372488cb0a8ada9d36cc0e68cb9f1d1a8de39e7d"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-corrected-input-binding-2026-10-18T174957Z-evidence/inspection-registry.json",
+      "size": 599,
+      "sha256": "6572d8a69a51d0f5dcb322e2a2aabe30fe8c7c02a5b8145c68189f13c3abcb88"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-corrected-input-binding-2026-10-18T174957Z-evidence/packet-manifest.json",
+      "size": 3955,
+      "sha256": "d546c4c74e0e1503ad7a40304963cf60a90b336fc938d0a839de58dd2c8fc376"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-corrected-input-binding-2026-10-18T174957Z-evidence/parent-actual-guard.json",
+      "size": 7796098,
+      "sha256": "e16b20c7356ee478db23a45a59cd7f6dbb7b8f72367fb199e1d38b85a3aaa2b8"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-corrected-input-binding-2026-10-18T174957Z-evidence/parent-input-review.json",
+      "size": 5552,
+      "sha256": "05719a9bcedaae60ee1d40b2eb11e949f4d20455110129eb2ba2159911e926f3"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-corrected-input-binding-2026-10-18T174957Z-evidence/result-manifest.json",
+      "size": 6147,
+      "sha256": "66f17f705314027e0b22dfb250a347f7ed727b2e0814beae181c74a43c68c661"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-corrected-input-binding-2026-10-18T174957Z-evidence/reviewed-worker.diff",
+      "size": 3804,
+      "sha256": "cbae6ef86f95aaa1274002578fb8ab26620ae007733e41247ab10478a9ac8e52"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-corrected-input-binding-2026-10-18T174957Z-evidence/reviewed-wrapper.diff",
+      "size": 511,
+      "sha256": "b8429d9ad760725fda21ae7edf04df53dee53c6bf49d21b15f6b0bbed430c981"
+    }
+  ],
+  "pendingAcceptancePrograms": 8,
+  "uncheckedConditions": 33,
+  "acceptedPrograms": 0
+}

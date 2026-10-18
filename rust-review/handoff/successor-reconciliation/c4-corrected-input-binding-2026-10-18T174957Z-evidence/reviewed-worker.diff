@@ -1,0 +1,68 @@
+--- /home/louistrue/build-workers/worker-releases/89a4848bb77cbebf/worker.py
++++ /home/louistrue/build-workers/worker-current/worker.py
+@@ -57,6 +57,8 @@
+     artifact.mkdir(parents=True)
+     start = time.time()
+     resources = [str(cwd)] + [str((cwd / p).resolve()) for p in args.resource]
++    from task_state import identifier
++    resources.extend('pool:' + identifier(pool) for pool in getattr(args, 'pool', []))
+     env = os.environ.copy()
+     env['IFC_WORKER_STATE'] = state_path
+     env['IFC_WORKER_ACTIVE_STATE'] = state_path
+@@ -76,6 +78,12 @@
+                'command': args.command, 'kind': args.kind, 'requestedAt': start,
+                'resources': resources, 'state': 'queued', 'cpu': args.cpu, 'memoryGiB': args.memory}
+     write_json(artifact / 'receipt.json', receipt)
++    request_id = getattr(args, 'request_id', None)
++    if request_id:
++        claim_path = Path(args.state) / 'requests' / (identifier(request_id) + '.json')
++        claim = json.loads(claim_path.read_text())
++        write_json(claim_path, claim | {'jobId': job, 'receipt': str(artifact / 'receipt.json'),
++                                      'state': 'queued'})
+     print(json.dumps({'jobId': job, 'receipt': str(artifact / 'receipt.json')}), file=sys.stderr, flush=True)
+     handles = None
+     child = None
+@@ -220,6 +228,15 @@
+     sub.add_parser('inventory')
+     sub.add_parser('status')
+     sub.add_parser('receive')
++    source_status = sub.add_parser('source-status')
++    source_status.add_argument('--commit', required=True)
++    source_import = sub.add_parser('import-source')
++    source_import.add_argument('--commit', required=True)
++    source_import.add_argument('--sha256', required=True)
++    request_status = sub.add_parser('request-status')
++    request_status.add_argument('--id', required=True)
++    from task_state import task_parser
++    task_parser(sub)
+     run = sub.add_parser('run')
+     run.add_argument('--cwd', required=True)
+     run.add_argument('--kind', choices=['ordinary', 'benchmark', 'service'], default='ordinary')
+@@ -231,6 +248,7 @@
+     run.add_argument('--strict-wasm', action='store_true')
+     run.add_argument('--commit')
+     run.add_argument('--resource', action='append', default=[])
++    run.add_argument('--pool', action='append', default=[], help='named exclusive resource; ordinary jobs outside it may overlap')
+     run.add_argument('--artifact', action='append', default=[])
+     run.add_argument('--fixture', action='append', default=[])
+     run.add_argument('command', nargs=argparse.REMAINDER)
+@@ -263,6 +281,19 @@
+             print(json.dumps(inventory() | {'capacity': configuration(args.state)}))
+         elif args.action == 'status':
+             print(json.dumps(Admission(args.state, configuration(args.state)).status(), indent=2))
++        elif args.action == 'source-status':
++            from source_transfer import source_status
++            print(json.dumps(source_status(configuration(args.state)['repository'], args.commit)))
++        elif args.action == 'import-source':
++            from source_transfer import import_bundle
++            print(json.dumps(import_bundle(configuration(args.state)['repository'], args.state,
++                                           args.commit, args.sha256, sys.stdin.buffer)))
++        elif args.action == 'request-status':
++            from job_query import request_status
++            print(json.dumps(request_status(args.state, args.id), indent=2))
++        elif args.action == 'task':
++            from task_state import task_command
++            return task_command(args)
+         else:
+             from transport import dispatch, install, qualify, receive
+             return {'dispatch': dispatch, 'install': install, 'qualify': qualify, 'receive': receive}[args.action](args)

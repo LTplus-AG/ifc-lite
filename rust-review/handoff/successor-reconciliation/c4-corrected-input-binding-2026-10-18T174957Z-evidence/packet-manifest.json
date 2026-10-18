@@ -1,0 +1,62 @@
+{
+  "version": 7,
+  "status": "PARENT_INPUT_REVIEW_AND_ACTUAL_GUARD_PASS_NO_EXECUTION",
+  "previousMappingPacket": {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v1/packet-manifest.json",
+    "resolved": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v1/packet-manifest.json",
+    "kind": "input",
+    "size": 42790,
+    "sha256": "b7e86f209183e2953b1e0bdb9b093c29bbd56c87c1a60ed86f165f40cb07596f"
+  },
+  "inputs": {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v2/inputs-manifest.json",
+    "resolved": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v2/inputs-manifest.json",
+    "kind": "input",
+    "size": 7823668,
+    "sha256": "f6467a70dee357589476257c372488cb0a8ada9d36cc0e68cb9f1d1a8de39e7d"
+  },
+  "runnerParentReview": {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v2/parent-input-review.json",
+    "resolved": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v2/parent-input-review.json",
+    "kind": "parent-review-evidence",
+    "size": 5552,
+    "sha256": "05719a9bcedaae60ee1d40b2eb11e949f4d20455110129eb2ba2159911e926f3"
+  },
+  "admissionPlan": {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v2/admission-plan.json",
+    "resolved": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v2/admission-plan.json",
+    "kind": "input",
+    "size": 15312,
+    "sha256": "2c271703a2847404acf2cac84ab68adb001e5a3492ea4ad6921519143aba1544"
+  },
+  "fiveArms": {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v2/five-arms.json",
+    "resolved": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v2/five-arms.json",
+    "kind": "input",
+    "size": 28102,
+    "sha256": "d1d0e8bbd8489e8cba918d759b75b3be199ee11d54aa4f4e05a2b027f5038c60"
+  },
+  "consumerProof": {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v2/consumer-evidence.json",
+    "resolved": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v2/consumer-evidence.json",
+    "kind": "input",
+    "size": 5432,
+    "sha256": "172f22905a6a1872e40fb26b8181300971202ba13074e15cf5ab22fa226bbba9"
+  },
+  "producerCompatibility": {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v2/producer-compatibility.json",
+    "resolved": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v2/producer-compatibility.json",
+    "kind": "input",
+    "size": 53463,
+    "sha256": "5c638ae23b4ecd96c638c2925fff47b657158e003571f4c781dccc351bcbc2f7"
+  },
+  "noExecutionPermission": true,
+  "methodologyCodeDelta": "NONE",
+  "actualGuard": {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v2/parent-actual-guard.json",
+    "resolved": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-five-inputs-v2/parent-actual-guard.json",
+    "kind": "parent-review-evidence",
+    "size": 7796098,
+    "sha256": "e16b20c7356ee478db23a45a59cd7f6dbb7b8f72367fb199e1d38b85a3aaa2b8"
+  }
+}

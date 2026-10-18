@@ -1,0 +1,11 @@
+{
+  "accepted": true,
+  "execution_permission": false,
+  "cohort_ready": false,
+  "inputs_sha256": "f6467a70dee357589476257c372488cb0a8ada9d36cc0e68cb9f1d1a8de39e7d",
+  "packet_sha256": "d546c4c74e0e1503ad7a40304963cf60a90b336fc938d0a839de58dd2c8fc376",
+  "state": "PARENT_CONCRETE_INPUT_BINDING_ACCEPTED_ONLY;HOST_AND_EXECUTION_PENDING",
+  "historicalNativeFullByteClosure": "UNKNOWN; known recorded compiler/context compatibility inspected; not a causal or full-equivalence claim",
+  "all_ready": false,
+  "guardReceiptSha256": "e16b20c7356ee478db23a45a59cd7f6dbb7b8f72367fb199e1d38b85a3aaa2b8"
+}

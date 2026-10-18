@@ -108,9 +108,13 @@ fn remove_ranges(line: &str, mut ranges: Vec<Range<usize>>) -> String {
     out
 }
 
-/// Core has trimmed the value's surrounding STEP trivia.
+/// Core has trimmed the value's surrounding STEP trivia. Its tolerant list
+/// iterator can close before the end of an attribute (`(#2) (#3)`), so require
+/// the canonical whole-value grammar before treating any references as editable
+/// list elements. Otherwise classification must retain every reference as nested.
 fn is_list(arg: &[u8]) -> bool {
     arg.len() >= 2 && arg.starts_with(b"(") && arg.ends_with(b")")
+        && ifc_lite_core::parser::is_step_value(arg)
 }
 
 /// Classify every reference in `line` by the argument slot it occupies, or

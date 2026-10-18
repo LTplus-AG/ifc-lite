@@ -1,0 +1,538 @@
+{
+  "checkout": "/home/louistrue/.t3/worktrees/ifc-lite/t3-106818eb",
+  "branch": "t3/boolean-program-preservation-fixes",
+  "parent_commit": "288932a2474c2e78692a8403c345bb1d273b7c71",
+  "original_boolean_plus_parent_layers_baseline": "840ae6c70f45972287543a6327ed0f16c67b4b20",
+  "candidate_commit": "a3cefb1b61dc51ca5ae227c381f0fdd063231f1b",
+  "candidate_tree": "17c4a740b249392f311ed3e8b190d0a51830962a",
+  "patches": {
+    "corrections.patch": "8306737c2386c9b74790c4a063ee444fef1bb3cfbbac2cbff46cead51fecb243",
+    "combined-boolean-program.patch": "15fdb51a9a7d21d640dbcbbb8f34c8034e93586aa76aa7774f89dcc94f34aacf"
+  },
+  "full_tracked_tree_file": "source-tree.txt",
+  "full_tracked_tree_sha256": "d57a8d3d23a3ee0b8b164ac0b07426ddfd8bf2de9c9cd23c53177f12277a6a3a",
+  "changed_and_deleted": [
+    {
+      "status": "A",
+      "path": "docs/architecture/geometry-platform-common-boolean-program.md",
+      "parent": null,
+      "original_boolean_baseline": {
+        "sha256": "5017c8696bf10ffe7057184145caa8e2470b675be46096663a6a21efb5d8388a",
+        "bytes": 3726
+      },
+      "candidate": {
+        "sha256": "8d931b1c56242fe36909e903450e41754aff5e5651978a327dbe261c845e4857",
+        "bytes": 4466
+      }
+    },
+    {
+      "status": "M",
+      "path": "rust/geometry/src/diagnostics.rs",
+      "parent": {
+        "sha256": "a3a24c5b5800129d95e964caf6bea58dd854e7c1c72612c6ee6501f157af5ad9",
+        "bytes": 16545
+      },
+      "original_boolean_baseline": {
+        "sha256": "b3be733ef0418d36120c2212f1bac458bf57d9fad9e83c720c783817c7a293d1",
+        "bytes": 16528
+      },
+      "candidate": {
+        "sha256": "b3be733ef0418d36120c2212f1bac458bf57d9fad9e83c720c783817c7a293d1",
+        "bytes": 16528
+      }
+    },
+    {
+      "status": "M",
+      "path": "rust/geometry/src/processors/boolean/brep_void_plan.rs",
+      "parent": {
+        "sha256": "6eeb58e6cdcdd6ec59b82eec2c076a5f1bbbab807110e450a958a8c69569d0e0",
+        "bytes": 6023
+      },
+      "original_boolean_baseline": {
+        "sha256": "bcb51ded3b78719f1e15cda6c5fdbc94c95286b27f7e5f03faff776f1414e93d",
+        "bytes": 6044
+      },
+      "candidate": {
+        "sha256": "4fe36139f6c3488033c46ee9e598de1b0f3372e8e24ae8c202fbcccf1683fd79",
+        "bytes": 6051
+      }
+    },
+    {
+      "status": "M",
+      "path": "rust/geometry/src/processors/boolean/brep_void_plan_tests.rs",
+      "parent": {
+        "sha256": "99696e1739573d79b58399188314287c3fcfc47f698906b986a330e843d1768e",
+        "bytes": 10284
+      },
+      "original_boolean_baseline": {
+        "sha256": "99696e1739573d79b58399188314287c3fcfc47f698906b986a330e843d1768e",
+        "bytes": 10284
+      },
+      "candidate": {
+        "sha256": "3bc521fe8f1d5468b84d8ca8d0e5f2959ed2e33c02aea508858abe99c230cf69",
+        "bytes": 10300
+      }
+    },
+    {
+      "status": "M",
+      "path": "rust/geometry/src/processors/boolean/brep_voids.rs",
+      "parent": {
+        "sha256": "11ba555fa3748dda9c2924a3d3694bad5dd1327613f0513bfa58c95d95d89bbe",
+        "bytes": 3500
+      },
+      "original_boolean_baseline": {
+        "sha256": "6f8a6d1c9ad4d94cd0babd57bd355a406f683e1ae28ffaf1c518de8800e9c19f",
+        "bytes": 1204
+      },
+      "candidate": {
+        "sha256": "6f8a6d1c9ad4d94cd0babd57bd355a406f683e1ae28ffaf1c518de8800e9c19f",
+        "bytes": 1204
+      }
+    },
+    {
+      "status": "D",
+      "path": "rust/geometry/src/processors/boolean/continuation.rs",
+      "parent": {
+        "sha256": "80ddeba6623761d3a62d162beeab6d6549bf527a6f590a5a504d22b4b2d82712",
+        "bytes": 7780
+      },
+      "original_boolean_baseline": null,
+      "candidate": null
+    },
+    {
+      "status": "D",
+      "path": "rust/geometry/src/processors/boolean/continuation_batch.rs",
+      "parent": {
+        "sha256": "23b9dfb3adbffa668f5abc7537b9f06da925cc9fa241719b37b6e89fc94a7c4f",
+        "bytes": 3830
+      },
+      "original_boolean_baseline": null,
+      "candidate": null
+    },
+    {
+      "status": "D",
+      "path": "rust/geometry/src/processors/boolean/continuation_state.rs",
+      "parent": {
+        "sha256": "978ed3cf350cb8a3428a9d5449957653b00192f3a490f7d6fa3868ffcd54889a",
+        "bytes": 1510
+      },
+      "original_boolean_baseline": null,
+      "candidate": null
+    },
+    {
+      "status": "M",
+      "path": "rust/geometry/src/processors/boolean/cut_heuristics.rs",
+      "parent": {
+        "sha256": "b4946aca7d37b655026278f2563680ded1b24c99addce8e7bb7ea43079c780a0",
+        "bytes": 5930
+      },
+      "original_boolean_baseline": {
+        "sha256": "13f75e47a2d0694804f6d1829440b37a3a0bee4a5a14fcb1fbb08bf9bf57478e",
+        "bytes": 5930
+      },
+      "candidate": {
+        "sha256": "b1c43c3901a2f379947782d421d2b525c3bf9ed962968e792d00c75bbea0072d",
+        "bytes": 5914
+      }
+    },
+    {
+      "status": "A",
+      "path": "rust/geometry/src/processors/boolean/effects.rs",
+      "parent": null,
+      "original_boolean_baseline": null,
+      "candidate": {
+        "sha256": "a5aabbb4b0d82e40e840958752bf586b0190472ec766d39b58dbea73712fcf09",
+        "bytes": 3314
+      }
+    },
+    {
+      "status": "M",
+      "path": "rust/geometry/src/processors/boolean/failures.rs",
+      "parent": {
+        "sha256": "5d4441890e0263d1eda9713b109fb1857c7913311fa256b300e38e12f7957e6f",
+        "bytes": 4936
+      },
+      "original_boolean_baseline": {
+        "sha256": "08ac30d08cbed8c20e739454c33982c7436dd3f5e83c482e67f861c46f54d42d",
+        "bytes": 4922
+      },
+      "candidate": {
+        "sha256": "22ea0d44fff0f8ed589d7589868b2a515d1f0fac3f945485df5350e91c9d3bf9",
+        "bytes": 2677
+      }
+    },
+    {
+      "status": "M",
+      "path": "rust/geometry/src/processors/boolean/half_space_plan.rs",
+      "parent": {
+        "sha256": "0b8787bcbb4c54a23ae5bb6fa0a157abf718626819fd801eabcb64f73ee86e00",
+        "bytes": 3610
+      },
+      "original_boolean_baseline": {
+        "sha256": "c450033083987ddc41bee9988b011925e7463594087b26b4a81b56f7d6cfc137",
+        "bytes": 3326
+      },
+      "candidate": {
+        "sha256": "c450033083987ddc41bee9988b011925e7463594087b26b4a81b56f7d6cfc137",
+        "bytes": 3326
+      }
+    },
+    {
+      "status": "M",
+      "path": "rust/geometry/src/processors/boolean/mod.rs",
+      "parent": {
+        "sha256": "db9e0ac4d61d8ffea345cbeb40319d43b45f74c664feafc649b3b477f6bb087e",
+        "bytes": 4617
+      },
+      "original_boolean_baseline": {
+        "sha256": "af9858676a44c24b79228ffb88e7d7c5b51f023dbca3e26c19d40065a36bd22b",
+        "bytes": 4666
+      },
+      "candidate": {
+        "sha256": "7b7e0e196471d06306fc741e2a5c99b577bf4a241c270879ba754894270cfaab",
+        "bytes": 4663
+      }
+    },
+    {
+      "status": "M",
+      "path": "rust/geometry/src/processors/boolean/operand.rs",
+      "parent": {
+        "sha256": "150712d7f885b8dd2a523c7e7ffca1dc0f6222d44c46b1e8cbc0550bb93aa089",
+        "bytes": 8345
+      },
+      "original_boolean_baseline": {
+        "sha256": "c6af644a3baeb0653bd1b83bce1c4860f85b838e6408e30bb9effb5cef8834c7",
+        "bytes": 6422
+      },
+      "candidate": {
+        "sha256": "c6af644a3baeb0653bd1b83bce1c4860f85b838e6408e30bb9effb5cef8834c7",
+        "bytes": 6422
+      }
+    },
+    {
+      "status": "M",
+      "path": "rust/geometry/src/processors/boolean/polygonal_candidate.rs",
+      "parent": {
+        "sha256": "5fef53dfca6d09720d9e63f43406485785925b37bf0e4788fffbb2cd431ba1a6",
+        "bytes": 3148
+      },
+      "original_boolean_baseline": {
+        "sha256": "b59b610d537af41940377952e165ab4e775d0dbc8f9f616077731e5f95c5e266",
+        "bytes": 3148
+      },
+      "candidate": {
+        "sha256": "b59b610d537af41940377952e165ab4e775d0dbc8f9f616077731e5f95c5e266",
+        "bytes": 3148
+      }
+    },
+    {
+      "status": "M",
+      "path": "rust/geometry/src/processors/boolean/polygonal_group_execution.rs",
+      "parent": {
+        "sha256": "77d62a11b24a3d4b63c4a215d831f6d59926ce0ea36c3b5970776e6bf7059946",
+        "bytes": 7425
+      },
+      "original_boolean_baseline": {
+        "sha256": "8ccf6c69f28ae62eab96183cbb08bd121f09cad37234bd2ae66eac9adfaf5e0d",
+        "bytes": 7425
+      },
+      "candidate": {
+        "sha256": "373f6898f4e81bd0b4e0cf49da77e5a3b3f2446a60146475c0c9acf0d8a3e52d",
+        "bytes": 7409
+      }
+    },
+    {
+      "status": "M",
+      "path": "rust/geometry/src/processors/boolean/polygonal_group_execution_tests.rs",
+      "parent": {
+        "sha256": "863892f6938e01ac07322c0f4470b45536b6b0f323c442e6dbef07f32192218f",
+        "bytes": 2875
+      },
+      "original_boolean_baseline": {
+        "sha256": "863892f6938e01ac07322c0f4470b45536b6b0f323c442e6dbef07f32192218f",
+        "bytes": 2875
+      },
+      "candidate": {
+        "sha256": "96b7746f8122765b959aa7e386ed7fe6fc877ac672e51e2b0469e6ccf8a1095b",
+        "bytes": 2863
+      }
+    },
+    {
+      "status": "M",
+      "path": "rust/geometry/src/processors/boolean/polygonal_prism.rs",
+      "parent": {
+        "sha256": "c5c44b380364cf273e5b7717a7167b020e361a0e751185797580d582d0ccdb89",
+        "bytes": 4097
+      },
+      "original_boolean_baseline": {
+        "sha256": "399251308d6910057c64757f693597895489f0197b1eb55f1afa4aad0c9ec3e4",
+        "bytes": 3664
+      },
+      "candidate": {
+        "sha256": "dd7a95a242fce08ac7a205db0af16b9915726eb03d83caee2bdbfced428bdf38",
+        "bytes": 3698
+      }
+    },
+    {
+      "status": "M",
+      "path": "rust/geometry/src/processors/boolean/polygonal_union.rs",
+      "parent": {
+        "sha256": "0397a9de70cae0c12fc11b883a335be7734a3b5b8ef4e0f73db4a13145c1bfaf",
+        "bytes": 3479
+      },
+      "original_boolean_baseline": {
+        "sha256": "0397a9de70cae0c12fc11b883a335be7734a3b5b8ef4e0f73db4a13145c1bfaf",
+        "bytes": 3479
+      },
+      "candidate": {
+        "sha256": "9e11c1f40e154a0e827ca4dbdf54698844c778594aab164661594dbc47de1f1a",
+        "bytes": 3463
+      }
+    },
+    {
+      "status": "M",
+      "path": "rust/geometry/src/processors/boolean/single_cutter_gate.rs",
+      "parent": {
+        "sha256": "a1484999ecae8c0ad63eed74f9be0e8a79895a34d355072071bc636837316c2f",
+        "bytes": 5331
+      },
+      "original_boolean_baseline": {
+        "sha256": "60da8c972c63875cbbfd1903f204e870c905bc63efb937fef8f7a134fc90ecb6",
+        "bytes": 5339
+      },
+      "candidate": {
+        "sha256": "a1228901358e6aaebb7201889a3505aa58202e912494b000606225c1df5ac411",
+        "bytes": 5315
+      }
+    },
+    {
+      "status": "M",
+      "path": "rust/geometry/src/processors/boolean/solid_execution.rs",
+      "parent": {
+        "sha256": "b1174316e16a1790805c75fbc7c03ad9e786211442eaadd6c5daf7b461f5b106",
+        "bytes": 3668
+      },
+      "original_boolean_baseline": {
+        "sha256": "32ca3a772c2a9c42e646531b52a43fbedbcf7dc1c240f0fb6bc77ebeb3c32525",
+        "bytes": 3668
+      },
+      "candidate": {
+        "sha256": "9bdb39361f6b7b636c92779e11f8e40ffae6d916b1ee750849f43f6a0fad7f78",
+        "bytes": 3687
+      }
+    },
+    {
+      "status": "D",
+      "path": "rust/geometry/src/processors/boolean/step.rs",
+      "parent": {
+        "sha256": "0ce41b2e3b79a147e485551023ad9d25d0a13152306313b66be9c6f676ca92f8",
+        "bytes": 6827
+      },
+      "original_boolean_baseline": null,
+      "candidate": null
+    },
+    {
+      "status": "D",
+      "path": "rust/geometry/src/processors/boolean/step_tests.rs",
+      "parent": {
+        "sha256": "683cf08981dcdbbdb7ba27a2a398ae37e2a8a8ea71942c0b13a0092bd8913543",
+        "bytes": 5742
+      },
+      "original_boolean_baseline": null,
+      "candidate": null
+    },
+    {
+      "status": "M",
+      "path": "rust/geometry/src/processors/boolean/void_evaluation.rs",
+      "parent": {
+        "sha256": "a03d71658d8580edc71b621882478ad51f4428da8a4fbddca20e707236093e94",
+        "bytes": 2044
+      },
+      "original_boolean_baseline": {
+        "sha256": "5c833a9824eb0917a4f0758871ccf71003eb533159faf0849d030e82d0dcce5a",
+        "bytes": 2065
+      },
+      "candidate": {
+        "sha256": "6b0826845a8b0ca3fa6a3564ea8c827888db202c33621aecfd753e052b89d56e",
+        "bytes": 2336
+      }
+    },
+    {
+      "status": "A",
+      "path": "rust/geometry/src/program/boolean/batch.rs",
+      "parent": null,
+      "original_boolean_baseline": {
+        "sha256": "98f250d435b11649a2618267a7a979d1c2e7a380d02ea9dabc9955531d9ded9f",
+        "bytes": 4619
+      },
+      "candidate": {
+        "sha256": "98f250d435b11649a2618267a7a979d1c2e7a380d02ea9dabc9955531d9ded9f",
+        "bytes": 4619
+      }
+    },
+    {
+      "status": "A",
+      "path": "rust/geometry/src/program/boolean/dispatch_tests.rs",
+      "parent": null,
+      "original_boolean_baseline": {
+        "sha256": "0005cf533c83f6766673fa8cd28f075764b0087c5c905db10af33ce6f8540619",
+        "bytes": 3604
+      },
+      "candidate": {
+        "sha256": "0005cf533c83f6766673fa8cd28f075764b0087c5c905db10af33ce6f8540619",
+        "bytes": 3604
+      }
+    },
+    {
+      "status": "A",
+      "path": "rust/geometry/src/program/boolean/mod.rs",
+      "parent": null,
+      "original_boolean_baseline": {
+        "sha256": "227f6240298f4b1bcf73d397507f0d59e60cd93c8abd930398f53f9d408d1822",
+        "bytes": 8463
+      },
+      "candidate": {
+        "sha256": "26ee767000ec9ec4e99ce8b14f0dc4f0c02a652fd61cce1c701002b6db90575c",
+        "bytes": 9070
+      }
+    },
+    {
+      "status": "A",
+      "path": "rust/geometry/src/program/boolean/operand.rs",
+      "parent": null,
+      "original_boolean_baseline": {
+        "sha256": "776c672323f5819c746af3c50726c1a62db7529846230e4f48abc7e322d73fd6",
+        "bytes": 4294
+      },
+      "candidate": {
+        "sha256": "373d376e1813cfd37af684270face239f24913cb69a7cbcec7e53e7b9e031ef3",
+        "bytes": 4315
+      }
+    },
+    {
+      "status": "A",
+      "path": "rust/geometry/src/program/boolean/state.rs",
+      "parent": null,
+      "original_boolean_baseline": {
+        "sha256": "978ed3cf350cb8a3428a9d5449957653b00192f3a490f7d6fa3868ffcd54889a",
+        "bytes": 1510
+      },
+      "candidate": {
+        "sha256": "978ed3cf350cb8a3428a9d5449957653b00192f3a490f7d6fa3868ffcd54889a",
+        "bytes": 1510
+      }
+    },
+    {
+      "status": "A",
+      "path": "rust/geometry/src/program/boolean/step.rs",
+      "parent": null,
+      "original_boolean_baseline": {
+        "sha256": "320a0928505cc570217688051ee1328daed9ba07ab67f229a83239a7e27370f2",
+        "bytes": 5441
+      },
+      "candidate": {
+        "sha256": "320a0928505cc570217688051ee1328daed9ba07ab67f229a83239a7e27370f2",
+        "bytes": 5441
+      }
+    },
+    {
+      "status": "A",
+      "path": "rust/geometry/src/program/boolean/step_tests.rs",
+      "parent": null,
+      "original_boolean_baseline": {
+        "sha256": "683cf08981dcdbbdb7ba27a2a398ae37e2a8a8ea71942c0b13a0092bd8913543",
+        "bytes": 5742
+      },
+      "candidate": {
+        "sha256": "683cf08981dcdbbdb7ba27a2a398ae37e2a8a8ea71942c0b13a0092bd8913543",
+        "bytes": 5742
+      }
+    },
+    {
+      "status": "A",
+      "path": "rust/geometry/src/program/boolean/unwind_tests.rs",
+      "parent": null,
+      "original_boolean_baseline": null,
+      "candidate": {
+        "sha256": "db320c5ae81009cb7edf7ae74b5465e3d0a1419cfd4bf169577ff7244ee6fbad",
+        "bytes": 3660
+      }
+    },
+    {
+      "status": "A",
+      "path": "rust/geometry/src/program/boolean/work.rs",
+      "parent": null,
+      "original_boolean_baseline": {
+        "sha256": "7c39e690317d885b9c6d3047a089befab3942e8870a4c0ae9549ed6a14b6ad1c",
+        "bytes": 5551
+      },
+      "candidate": {
+        "sha256": "ee2e6cdb93d755175073697ffe760adbadc6c33f7a162ca7971f760f8b6e474e",
+        "bytes": 5550
+      }
+    },
+    {
+      "status": "A",
+      "path": "rust/geometry/src/program/boolean/work_tests.rs",
+      "parent": null,
+      "original_boolean_baseline": {
+        "sha256": "6f3cf31d7281a57a92e429f31194b38718e4da656c0af5fa249b7918cb3623f9",
+        "bytes": 5236
+      },
+      "candidate": {
+        "sha256": "491989bc888ab897f109f4be0633d7c2707d375fc19ef92e782eea812aa4d6af",
+        "bytes": 6296
+      }
+    },
+    {
+      "status": "M",
+      "path": "rust/geometry/src/program/mod.rs",
+      "parent": {
+        "sha256": "d23f1de905ba9de950cb58eb9503df7a28bff1d3ecd5493fa0ddde75fc274e1d",
+        "bytes": 2383
+      },
+      "original_boolean_baseline": {
+        "sha256": "8716cd86cf3bf2d330d0814c319fada5fe52d4f22cbec0d43f806199a19bcee7",
+        "bytes": 2396
+      },
+      "candidate": {
+        "sha256": "8716cd86cf3bf2d330d0814c319fada5fe52d4f22cbec0d43f806199a19bcee7",
+        "bytes": 2396
+      }
+    }
+  ],
+  "inherited_program_context": {
+    "rust/geometry/src/program/layers/geometry_tests.rs": {
+      "sha256": "8c0c52df56f48ef2e894a5218e66f8487db950e66e89377042ffc987f7786661",
+      "bytes": 5242
+    },
+    "rust/geometry/src/program/layers/mod.rs": {
+      "sha256": "15aeb3f7963bb21a775e73da25227d7c2edb53cc61bb1d2963077a97c262ef3c",
+      "bytes": 4984
+    },
+    "rust/geometry/src/program/layers/planes.rs": {
+      "sha256": "8e6fd9faf00f0a14baba69ce6b8bf9907850a3305c0c5e71d4b06ac341017952",
+      "bytes": 1810
+    },
+    "rust/geometry/src/program/layers/slice.rs": {
+      "sha256": "961dedcb694c48e97abee534fe9443501804e58e15c6256dddcf8e8e2b689d41",
+      "bytes": 4033
+    },
+    "rust/geometry/src/program/layers/source.rs": {
+      "sha256": "3f2c5d879c237914bff71dc016c6ad098f8dc7486d5201b07506c5900d2e08a0",
+      "bytes": 7650
+    },
+    "rust/geometry/src/program/layers/source_tests.rs": {
+      "sha256": "084a0a7c99747b619a354f124cf00d24ca986f7f87f90f01c3f27fe24803f2ae",
+      "bytes": 5756
+    },
+    "rust/geometry/src/program/layers/stack.rs": {
+      "sha256": "df348423647c6c390f346c3934034fc17b94c1612e5d55c6f64affea7108984d",
+      "bytes": 2910
+    },
+    "rust/geometry/src/program/layers/stack_tests.rs": {
+      "sha256": "f6596d4ce53c7322da3607bca3f7ec57f18d7aa04b6b9509863c1e9530797a0c",
+      "bytes": 2200
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "command": [
+    "node",
+    "scripts/check-refwalk-guards.mjs"
+  ],
+  "exit_code": 0,
+  "stdout": "check-refwalk-guards: OK (1351 .rs files scanned, 29 candidate walks, all guarded, 12 fan-out budget review(s), 0 unguarded)\n",
+  "stderr": "\nFan-out walks with no detected work budget (review required):\n  rust/geometry/src/profile_extractor.rs::extract_mapped_item_profiles::recursion\n  rust/geometry/src/profiles/mod.rs::process_curve_with_depth::recursion\n  rust/geometry/src/profiles/mod.rs::get_curve_points_with_depth::recursion\n  rust/geometry/src/profiles/mod.rs::process_composite_curve_3d_with_depth::recursion\n  rust/geometry/src/profiles/mod.rs::process_trimmed_curve_with_depth::recursion\n  rust/geometry/src/profiles/mod.rs::process_composite_curve_with_depth::recursion\n  rust/geometry/src/representation/walk.rs::items::recursion\n  rust/geometry/src/representation/walk.rs::enter::recursion\n  rust/processing/src/data_model/property_value.rs::resolve_complex::recursion\n  rust/processing/src/element/element_color.rs::find_geometry_item_style_source_at::recursion\n  rust/processing/src/style/material.rs::resolve_material_ids_inner::recursion\n  rust/wasm-bindings/src/api/styling/color.rs::find_color_for_geometry_at::recursion\n",
+  "limitation": "Guard presence only; twelve fan-out walks still require budget review."
+}

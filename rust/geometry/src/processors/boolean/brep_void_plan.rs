@@ -2,7 +2,7 @@
 //! Ordered owned void-shell source inputs. Eager graph lowering is distinct
 //! from production's conditional shell-by-shell admission.
 use super::super::super::{advanced_plan, brep::faceted_plan, diagnostic_capture};
-use super::BooleanClippingProcessor;
+use crate::processors::boolean::BooleanClippingProcessor;
 use crate::{construction::ConstructionReports, BoolOp, Mesh, Result, TessellationQuality};
 use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
@@ -62,7 +62,7 @@ pub(crate) enum VoidFault {
     ShellDidNotMesh,
 }
 impl VoidFault {
-    pub(super) fn message(self) -> &'static str {
+    pub(crate) fn message(self) -> &'static str {
         match self {
             Self::NoProcessor => "no shell processor",
             Self::NotReference => "void is not a shell reference",
@@ -153,7 +153,7 @@ impl VoidShellPlan {
                 Ok(mesh) if !mesh.is_empty() => meshes.push(mesh),
                 result => {
                     let fault = result.err().unwrap_or(VoidFault::ShellDidNotMesh);
-                    super::void_evaluation::refuse(
+                    super::void_evaluation::refuse_source(
                         recorder,
                         op,
                         &self.operand_type,
@@ -167,7 +167,7 @@ impl VoidShellPlan {
     }
 }
 
-pub(super) fn void_refs(operand: &DecodedEntity) -> Option<&[AttributeValue]> {
+pub(crate) fn void_refs(operand: &DecodedEntity) -> Option<&[AttributeValue]> {
     operand
         .get(slot::IfcFacetedBrepWithVoids::VOIDS.index())
         .and_then(|attr| attr.as_list())

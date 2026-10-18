@@ -1,0 +1,232 @@
+{
+  "base_commit": "e26527d79c34ed98160c8104e2def7edf9e8dd32",
+  "delivery_candidate": "a3cefb1b61dc51ca5ae227c381f0fdd063231f1b",
+  "status": "INTEGRATED_UNCOMPILED_UNQUALIFIED",
+  "source": [
+    {
+      "path": "docs/architecture/geometry-platform-common-boolean-program.md",
+      "sha256": "2395917bbb0527c64b0123dcb742c3f09600511c35a819cbb2d09bb7a770de28",
+      "delivery_match": false,
+      "delivered_sha256": "8d931b1c56242fe36909e903450e41754aff5e5651978a327dbe261c845e4857",
+      "integration_correction": "Numerical-only unwind forwarding preserves reached diagnostic records; normal completion retains consuming assembly."
+    },
+    {
+      "path": "rust/geometry/src/diagnostics.rs",
+      "sha256": "b3be733ef0418d36120c2212f1bac458bf57d9fad9e83c720c783817c7a293d1",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/brep_void_plan.rs",
+      "sha256": "4fe36139f6c3488033c46ee9e598de1b0f3372e8e24ae8c202fbcccf1683fd79",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/brep_void_plan_tests.rs",
+      "sha256": "3bc521fe8f1d5468b84d8ca8d0e5f2959ed2e33c02aea508858abe99c230cf69",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/brep_voids.rs",
+      "sha256": "6f8a6d1c9ad4d94cd0babd57bd355a406f683e1ae28ffaf1c518de8800e9c19f",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/continuation.rs",
+      "sha256": null,
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/continuation_batch.rs",
+      "sha256": null,
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/continuation_state.rs",
+      "sha256": null,
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/cut_heuristics.rs",
+      "sha256": "b1c43c3901a2f379947782d421d2b525c3bf9ed962968e792d00c75bbea0072d",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/effects.rs",
+      "sha256": "a5aabbb4b0d82e40e840958752bf586b0190472ec766d39b58dbea73712fcf09",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/failures.rs",
+      "sha256": "22ea0d44fff0f8ed589d7589868b2a515d1f0fac3f945485df5350e91c9d3bf9",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/half_space_plan.rs",
+      "sha256": "c450033083987ddc41bee9988b011925e7463594087b26b4a81b56f7d6cfc137",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/mod.rs",
+      "sha256": "7b7e0e196471d06306fc741e2a5c99b577bf4a241c270879ba754894270cfaab",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/operand.rs",
+      "sha256": "c6af644a3baeb0653bd1b83bce1c4860f85b838e6408e30bb9effb5cef8834c7",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/polygonal_candidate.rs",
+      "sha256": "b59b610d537af41940377952e165ab4e775d0dbc8f9f616077731e5f95c5e266",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/polygonal_group_execution.rs",
+      "sha256": "373f6898f4e81bd0b4e0cf49da77e5a3b3f2446a60146475c0c9acf0d8a3e52d",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/polygonal_group_execution_tests.rs",
+      "sha256": "96b7746f8122765b959aa7e386ed7fe6fc877ac672e51e2b0469e6ccf8a1095b",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/polygonal_prism.rs",
+      "sha256": "dd7a95a242fce08ac7a205db0af16b9915726eb03d83caee2bdbfced428bdf38",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/polygonal_union.rs",
+      "sha256": "9e11c1f40e154a0e827ca4dbdf54698844c778594aab164661594dbc47de1f1a",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/single_cutter_gate.rs",
+      "sha256": "a1228901358e6aaebb7201889a3505aa58202e912494b000606225c1df5ac411",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/solid_execution.rs",
+      "sha256": "9bdb39361f6b7b636c92779e11f8e40ffae6d916b1ee750849f43f6a0fad7f78",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/step.rs",
+      "sha256": null,
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/step_tests.rs",
+      "sha256": null,
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/void_evaluation.rs",
+      "sha256": "6b0826845a8b0ca3fa6a3564ea8c827888db202c33621aecfd753e052b89d56e",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/batch.rs",
+      "sha256": "8922a08cd3765485e99666eac56a76eb7453a63635940f4204806d1893a5f895",
+      "delivery_match": false,
+      "delivered_sha256": "98f250d435b11649a2618267a7a979d1c2e7a380d02ea9dabc9955531d9ded9f",
+      "integration_correction": "Numerical-only unwind forwarding preserves reached diagnostic records; normal completion retains consuming assembly."
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/dispatch_tests.rs",
+      "sha256": "0005cf533c83f6766673fa8cd28f075764b0087c5c905db10af33ce6f8540619",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/mod.rs",
+      "sha256": "26ee767000ec9ec4e99ce8b14f0dc4f0c02a652fd61cce1c701002b6db90575c",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/operand.rs",
+      "sha256": "145e09ecf986db846abfc653ee1fcd137df8982b664d0a2069d18b1c46fbfdb7",
+      "delivery_match": false,
+      "delivered_sha256": "373d376e1813cfd37af684270face239f24913cb69a7cbcec7e53e7b9e031ef3",
+      "integration_correction": "Numerical-only unwind forwarding preserves reached diagnostic records; normal completion retains consuming assembly."
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/state.rs",
+      "sha256": "978ed3cf350cb8a3428a9d5449957653b00192f3a490f7d6fa3868ffcd54889a",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/step.rs",
+      "sha256": "8f321de0bfa05179dacc7b10a943848ec67b47d0355c3af8ba3613e2e3d998c8",
+      "delivery_match": false,
+      "delivered_sha256": "320a0928505cc570217688051ee1328daed9ba07ab67f229a83239a7e27370f2",
+      "integration_correction": "Numerical-only unwind forwarding preserves reached diagnostic records; normal completion retains consuming assembly."
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/step_tests.rs",
+      "sha256": "683cf08981dcdbbdb7ba27a2a398ae37e2a8a8ea71942c0b13a0092bd8913543",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/unwind_tests.rs",
+      "sha256": "db320c5ae81009cb7edf7ae74b5465e3d0a1419cfd4bf169577ff7244ee6fbad",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/work.rs",
+      "sha256": "eb5f88d6642516dadd7a49cbf8ff140ae3ac3eccb1b3bfe2daac9ddfcbab6d1f",
+      "delivery_match": false,
+      "delivered_sha256": "ee2e6cdb93d755175073697ffe760adbadc6c33f7a162ca7971f760f8b6e474e",
+      "integration_correction": "Numerical-only unwind forwarding preserves reached diagnostic records; normal completion retains consuming assembly."
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/work_tests.rs",
+      "sha256": "64e8369d525e09d80367aa46ed0ed10b4a40ef63b47b047b95a2f3594f6c2f68",
+      "delivery_match": false,
+      "delivered_sha256": "491989bc888ab897f109f4be0633d7c2707d375fc19ef92e782eea812aa4d6af",
+      "integration_correction": "Numerical-only unwind forwarding preserves reached diagnostic records; normal completion retains consuming assembly."
+    },
+    {
+      "path": "rust/geometry/src/program/mod.rs",
+      "sha256": "179ecbc859960ab3366a52c4acb4989ba270c6ea830157e2f4a80a215657a6a2",
+      "delivery_match": false,
+      "delivered_sha256": "8716cd86cf3bf2d330d0814c319fada5fe52d4f22cbec0d43f806199a19bcee7",
+      "integration_correction": "Update ownership overview and obsolete continuation references."
+    },
+    {
+      "path": "rust/geometry/src/construction/brep_operand.rs",
+      "sha256": "459ecf759b9c9358664a099d411893f0eeb3313e88ab452fd49e1fd4d346ee3d",
+      "integration_correction": "Pass contained NumericalEffects to ReadyVoids::subtract, preserving actual processor for source evaluation."
+    },
+    {
+      "path": "docs/architecture/geometry-platform-capabilities.md",
+      "sha256": "eab33ec24535f795ecef4c349485dc9bf219089ed3aef3bb767617cb540f8168",
+      "integration_correction": "Update current architecture coverage or obsolete internal symbol reference."
+    },
+    {
+      "path": "docs/architecture/geometry-platform-next-steps.md",
+      "sha256": "88467a56dd8056628a1189c44f8b68d501b6d3f44443762e939ed9d0443a7247",
+      "integration_correction": "Update current architecture coverage or obsolete internal symbol reference."
+    },
+    {
+      "path": "docs/architecture/geometry-platform-product-program.md",
+      "sha256": "589a9ec6fe834fb19a6250b95ec60023c92776034d9a1ff5114172fea4fdc946",
+      "integration_correction": "Update current architecture coverage or obsolete internal symbol reference."
+    },
+    {
+      "path": "docs/architecture/geometry-platform-source-execution.md",
+      "sha256": "bfe54ef4acf741fd87b8c3ef38de0575582184bc616ccf473c661132014362a0",
+      "integration_correction": "Update current architecture coverage or obsolete internal symbol reference."
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/chain_cycle_tests.rs",
+      "sha256": "dfad4f2a86001c287c12d4fb5490d26516e3566f82256ea0980beb7c21e601c1",
+      "integration_correction": "Update current architecture coverage or obsolete internal symbol reference."
+    }
+  ],
+  "compiled_results": null,
+  "perf_verdict": "UNQUALIFIED. No end-to-end latency, allocation or memory claim.",
+  "cutover": "blocked pending preservation qualification",
+  "added_unrun_invariants": [
+    "numerical_unwind_keeps_prior_and_reached_plane_losses_in_order"
+  ]
+}

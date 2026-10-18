@@ -19,7 +19,7 @@ fn inputs() -> (Mesh, Vec<Mesh>) {
 #[test]
 fn decoder_free_group_cut_removes_overlapping_cutters_union_once() {
     let (host, prisms) = inputs();
-    let recorder = BooleanClippingProcessor::new();
+    let recorder = NumericalEffects::default();
     let result = recorder.evaluate_polygonal_group(host, prisms, 1., 0).unwrap()
         .expect("two valid overlapping partial cuts form a usable group").0;
     // Host volume8; two volume2 cuts overlap by volume1, leaving volume5.
@@ -30,7 +30,7 @@ fn decoder_free_group_cut_removes_overlapping_cutters_union_once() {
 #[test]
 fn unavailable_union_rewinds_provisional_records_and_retains_its_unique_failure() {
     let (host, _) = inputs();
-    let recorder = BooleanClippingProcessor::new();
+    let recorder = NumericalEffects::default();
     recorder.record_failure(BoolOp::Unknown, BoolFailureReason::EmptyOperand);
     let prior = recorder.failure_mark();
     recorder.record_failure(BoolOp::Difference, BoolFailureReason::EmptyOperand);
@@ -46,7 +46,7 @@ fn unavailable_union_rewinds_provisional_records_and_retains_its_unique_failure(
 fn full_host_trial_defers_and_rewinds_only_the_provisional_range() {
     let (host, _) = inputs();
     let cutter = host.clone();
-    let recorder = BooleanClippingProcessor::new();
+    let recorder = NumericalEffects::default();
     recorder.record_failure(BoolOp::Unknown, BoolFailureReason::EmptyOperand);
     let mark = recorder.failure_mark();
     recorder.record_failure(BoolOp::Difference, BoolFailureReason::EmptyOperand);

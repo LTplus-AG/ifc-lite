@@ -18,7 +18,7 @@ or a claim that unrelated old traversals have been replaced.
   attempts, ordered type maps, work/reply identity, assembly and retry boundaries.
   `session_work.rs::primary`, `voided_parts`, and `type_map` still delegate entire source walks to a
   live router/decoder. Its borrowed `MeshProductionContext` is not a transported context snapshot.
-* `rust/geometry/src/processors/boolean/continuation{,_state,_batch}.rs` is the model for
+* `rust/geometry/src/program/boolean/{mod,state,batch}.rs` is the model for
   demand-driven execution: owned frames, one returned value slot, path-local admission, monotonic
   visit charges, delayed second operands, exact batch failure marks and cleanup. It still reads
   source at reached frames. Preserve that distinction: an owned continuation is not yet a

@@ -201,8 +201,8 @@ graph and cutover qualification remain pending.
 ## Implemented canonical boolean/CSG continuations
 
 Canonical boolean and CSG entry points now execute one demand-driven owned
-continuation machine in `rust/geometry/src/processors/boolean/continuation.rs`,
-`continuation_state.rs` and `continuation_batch.rs`. `process_with_depth` and the
+continuation machine in `rust/geometry/src/program/boolean/{mod,state,batch}.rs`.
+`process_with_depth` and the
 CSG entry point enter this driver. The superseded recursive boolean/CSG operand
 walk is deleted; `operand.rs` handles non-recursive built-in leaves and refuses
 recursive entities that bypass continuation dispatch.
@@ -210,8 +210,9 @@ recursive entities that bypass continuation dispatch.
 Frames own the current host mesh, ordered FirstOperand spine, pending operands,
 boolean depth, `solo_step`, empty-loss state and provisional failure marks. The
 driver owns its admitted active path, while the caller's `OperandPath` carries
-path membership and monotonic visits. Error unwinding removes only admissions
-made by this driver; caller ancestors and consumed work survive. CSG wrappers
+path membership and monotonic visits. Returned errors remove only admissions
+made by this driver; caller ancestors and consumed work survive. A panic restores
+the actual entered path and spent visits to the caller through a lexical guard. CSG wrappers
 reset boolean depth while retaining the shared active path and visit count.
 
 Source admission interleaves with numerical decisions through the canonical

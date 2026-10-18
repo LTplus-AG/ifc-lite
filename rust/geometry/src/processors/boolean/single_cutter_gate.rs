@@ -8,13 +8,13 @@
 //! rationale, mirroring how `polygonal_prism.rs` already isolates
 //! `subtract_checked`'s #3919 sibling logic.
 
-use super::BooleanClippingProcessor;
+use super::NumericalEffects;
 use crate::csg::ClippingProcessor;
 use crate::Mesh;
 
 /// Outcome of the bounded-prism subtract for a single `IfcPolygonalBoundedHalfSpace`
-/// cutter, as decided by [`BooleanClippingProcessor::resolve_single_cutter_subtract`].
-pub(super) enum SingleCutterSubtract {
+/// cutter, as decided by [`NumericalEffects::resolve_single_cutter_subtract`].
+pub(crate) enum SingleCutterSubtract {
     /// The subtract succeeded and passed every check: use it (still subject
     /// to the caller's `guard_against_full_host_removal`).
     Clipped(Mesh),
@@ -22,11 +22,11 @@ pub(super) enum SingleCutterSubtract {
     /// this one step's host un-cut rather than risk the unbounded fallback.
     KeepUncut,
     /// No usable bounded result: fall through to the caller's unbounded
-    /// `clip_mesh_with_half_space`.
+    /// the common plane-clip operation.
     FallThrough,
 }
 
-impl BooleanClippingProcessor {
+impl NumericalEffects {
     /// Subtract `bound_mesh` from `mesh` and decide how `begin_boolean_step`'s
     /// `IfcPolygonalBoundedHalfSpace` branch should react.
     ///
@@ -51,7 +51,7 @@ impl BooleanClippingProcessor {
     /// `difference_result_looks_degenerate` cannot tell apart (an unchanged
     /// mesh is trivially non-degenerate relative to itself). Pre-#3923 this
     /// branch accepted that un-cut host as the final clip result instead of
-    /// falling through to its own more-robust `clip_mesh_with_half_space`
+    /// falling through to its own more-robust the common plane-clip operation
     /// fallback.
     ///
     /// But that fallback is only a strict SUPERSET of the bounded cut — it
@@ -71,7 +71,7 @@ impl BooleanClippingProcessor {
     /// to [`SingleCutterSubtract::FallThrough`]. The pre-existing
     /// empty/kernel-error/degenerate triggers are unaffected by `solo_step`
     /// and always fall through, exactly as before #3923.
-    pub(super) fn resolve_single_cutter_subtract(
+    pub(crate) fn resolve_single_cutter_subtract(
         &self,
         mesh: &Mesh,
         bound_mesh: &Mesh,

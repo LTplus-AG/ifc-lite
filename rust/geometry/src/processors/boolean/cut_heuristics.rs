@@ -7,11 +7,11 @@
 //! half-space plane clips, and the full-host-removal guard built on it
 //! (moved here from `boolean/mod.rs` under the module-size ratchet).
 
-use super::BooleanClippingProcessor;
+use super::NumericalEffects;
 use crate::diagnostics::{BoolFailureReason, BoolOp};
 use crate::{Mesh, Point3, TessellationQuality, Vector3};
 
-impl BooleanClippingProcessor {
+impl NumericalEffects {
     /// If a DIFFERENCE clip emptied a non-empty host **and** the cutter's
     /// plane is coincident with one of the host's bounding-box faces,
     /// revert to the host and record the loss. The coincidence test is
@@ -23,7 +23,7 @@ impl BooleanClippingProcessor {
     /// — issue #821 TallBuilding.ifc walls #615, #1297, #2401 and similar
     /// Revit exports where the spec-correct cut would erase the wall —
     /// hits the fallback.
-    pub(super) fn guard_against_full_host_removal(
+    pub(crate) fn guard_against_full_host_removal(
         &self,
         host: Mesh,
         result: Mesh,
@@ -45,7 +45,7 @@ impl BooleanClippingProcessor {
 /// Whether this tessellation tier drops sub-threshold boolean cuts (preview
 /// tiers only). `Medium` (the default) and finer keep every cut, so their
 /// geometry is byte-identical to before this optimization.
-pub(super) fn quality_skips_small_cuts(quality: TessellationQuality) -> bool {
+pub(crate) fn quality_skips_small_cuts(quality: TessellationQuality) -> bool {
     matches!(quality, TessellationQuality::Lowest | TessellationQuality::Low)
 }
 
@@ -53,7 +53,7 @@ pub(super) fn quality_skips_small_cuts(quality: TessellationQuality) -> bool {
 /// fraction of host max-dimension. Default 0.10 (≈ Manifold-era load times on
 /// the steel corpus with no visible change to members). Native callers can tune
 /// it via `IFC_LITE_FAST_CUT_RATIO`; in wasm (no env) the default applies.
-pub(super) fn fast_cut_skip_ratio() -> f64 {
+pub(crate) fn fast_cut_skip_ratio() -> f64 {
     use std::sync::OnceLock;
     static R: OnceLock<f64> = OnceLock::new();
     *R.get_or_init(|| {
@@ -68,7 +68,7 @@ pub(super) fn fast_cut_skip_ratio() -> f64 {
 /// True when `cutter`'s largest bounding-box dimension is below
 /// [`fast_cut_skip_ratio`] of `host`'s — i.e. a small local cut worth skipping in
 /// the preview tiers. Degenerate (zero-extent) hosts never skip.
-pub(super) fn cutter_below_skip_ratio(host: &Mesh, cutter: &Mesh) -> bool {
+pub(crate) fn cutter_below_skip_ratio(host: &Mesh, cutter: &Mesh) -> bool {
     let max_dim = |m: &Mesh| -> f64 {
         let (mn, mx) = m.bounds();
         (((mx.x - mn.x) as f64).max((mx.y - mn.y) as f64)).max((mx.z - mn.z) as f64)
@@ -84,7 +84,7 @@ pub(super) fn cutter_below_skip_ratio(host: &Mesh, cutter: &Mesh) -> bool {
 /// of the host mesh's axis-aligned bounding-box faces. The check tolerates
 /// numerical noise scaled to the host's diagonal so it works for both
 /// metre-scale residential walls and millimetre-scale connector hardware.
-pub(super) fn plane_is_coincident_with_host_face(
+pub(crate) fn plane_is_coincident_with_host_face(
     host: &Mesh,
     plane_point: Point3<f64>,
     plane_normal: Vector3<f64>,

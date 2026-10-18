@@ -7,11 +7,9 @@
 //! Split out of `boolean/mod.rs` (module-size ratchet) when the unsupported-
 //! operand arm gained its diagnostic record (#3821).
 
-use super::brep_voids::brep_with_voids_shell_kind;
 use super::BooleanClippingProcessor;
 use crate::diagnostics::{BoolFailureReason, BoolOp};
-use crate::router::builtin_processor;
-use crate::{Error, Mesh, Point3, Result, TessellationQuality, Vector3};
+use crate::{Point3, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType, slot};
 
 /// Boolean/CSG operand nodes one `process` call (one representation item)
@@ -111,7 +109,7 @@ impl BooleanClippingProcessor {
     /// record when the reference does not resolve. A `?` here returned `Err`
     /// and deleted the HOST with its unreadable cutter (#7688, the PROC-S17
     /// shape): the caller keeps the mesh it has, like any dropped operand.
-    pub(super) fn second_operand_or_record(
+    pub(crate) fn second_operand_or_record(
         &self,
         op: BoolOp,
         node: &DecodedEntity,
@@ -128,8 +126,8 @@ impl BooleanClippingProcessor {
     /// (#7688 PROC-S17). `parse_half_space_solid` refuses a base surface that
     /// is not an `IfcPlane` or a plane without a usable Position; through `?`
     /// that refusal deleted the host. Now the host stays uncut, exactly as for
-    /// every other unreadable cutter (see `process_operand_checked`).
-    pub(super) fn half_space_plane_or_record(
+    /// every other unreadable cutter in the common operand program.
+    pub(crate) fn half_space_plane_or_record(
         &self,
         half_space: &DecodedEntity,
         decoder: &mut EntityDecoder,
@@ -144,38 +142,4 @@ impl BooleanClippingProcessor {
         plane
     }
 
-    /// Evaluate a non-recursive operand through the canonical built-in
-    /// constructor seams. The continuation routes booleans/CSG separately;
-    /// an unsupported leaf or refused void operand reports its loss once.
-    pub(super) fn process_operand_checked(
-        &self, op: BoolOp, operand: &DecodedEntity,
-        decoder: &mut EntityDecoder, quality: TessellationQuality,
-    ) -> Result<(Mesh, bool)> {
-        match &operand.ifc_type {
-            IfcType::IfcCsgSolid | IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
-                Err(Error::geometry("Recursive operand requires continuation dispatch"))
-            }
-            // An open swept surface is not a volumetric boolean operand.
-            IfcType::IfcSurfaceOfLinearExtrusion => {
-                self.record_failure(op, BoolFailureReason::UnsupportedOperand(operand.ifc_type.to_string()));
-                Ok((Mesh::new(), true))
-            }
-            other => match builtin_processor(other.clone(), &self.schema) {
-                Some(processor) => {
-                    let outer = processor.process(operand, decoder, &self.schema, quality)?;
-                    // Base operands retain the standalone Outer-shell policy.
-                    if op != BoolOp::Unknown {
-                        if let Some(kind) = brep_with_voids_shell_kind(other) {
-                            return Ok(self.without_voids(kind, op, operand, outer, decoder, quality));
-                        }
-                    }
-                    Ok((outer, false))
-                }
-                None => {
-                    self.record_failure(op, BoolFailureReason::UnsupportedOperand(other.to_string()));
-                    Ok((Mesh::new(), true))
-                }
-            },
-        }
-    }
 }

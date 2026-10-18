@@ -135,7 +135,7 @@ pub enum BoolFailureReason {
     /// diagnostics rather than as a silently missing element.
     DifferenceEmptiedHost,
     /// A boolean operand's `IfcRepresentationItem` type has no meshing branch
-    /// in `BooleanClippingProcessor::process_operand_checked`, so the operand
+    /// in the common boolean operand program, so the operand
     /// resolved to an EMPTY mesh. Carries the operand's IFC type name.
     ///
     /// As a FIRST operand this is a real element-geometry loss: the base solid

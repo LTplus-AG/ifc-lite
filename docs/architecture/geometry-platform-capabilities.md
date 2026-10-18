@@ -123,8 +123,7 @@ receipts do not qualify complete migrated execution; every family row below stay
 
 ### Canonical continuation implementation; complete qualification remains open
 
-`processors/boolean/continuation.rs`, `continuation_state.rs` and
-`continuation_batch.rs` now own canonical boolean/CSG execution. Owned frames
+`program/boolean/{mod,state,batch}.rs` now own canonical boolean/CSG execution. Owned frames
 retain hosts, ordered spines, pending operands, depth, `solo_step`, empty-loss
 flags and provisional marks. Decoder reads occur at reached transitions;
 `step.rs` splits admission from shared owned numerical execution. Recursive

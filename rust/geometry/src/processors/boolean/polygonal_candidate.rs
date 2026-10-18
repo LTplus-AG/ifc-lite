@@ -17,7 +17,7 @@ impl BooleanClippingProcessor {
     /// batching) and subtracts once. See that method for why a single unioned
     /// subtract beats sequential subtraction here (issue #960: seam slivers +
     /// deep-chain depth-limit drops).
-    pub(super) fn collect_polygonal_chain(
+    pub(crate) fn collect_polygonal_chain(
         &self,
         entity: DecodedEntity,
         decoder: &mut EntityDecoder,

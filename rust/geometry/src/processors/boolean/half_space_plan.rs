@@ -55,20 +55,13 @@ impl HalfSpacePlan {
 }
 
 impl super::BooleanClippingProcessor {
-    pub(super) fn parse_half_space_solid(
+    pub(crate) fn parse_half_space_solid(
         &self, half_space: &DecodedEntity, decoder: &mut EntityDecoder,
     ) -> Result<(Point3<f64>, Vector3<f64>, bool)> {
         HalfSpacePlan::lower(half_space, decoder)
             .map(HalfSpacePlan::components)
     }
 
-    pub(super) fn clip_mesh_with_half_space(
-        &self, mesh: &Mesh, plane_point: Point3<f64>,
-        plane_normal: Vector3<f64>, agreement: bool,
-    ) -> Result<Mesh> {
-        HalfSpacePlan { point: plane_point, normal: plane_normal, agreement }
-            .clip(mesh)
-    }
 
 }
 

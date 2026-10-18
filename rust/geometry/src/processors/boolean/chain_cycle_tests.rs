@@ -975,7 +975,7 @@ fn solo_step_accounts_for_a_batched_suffix_not_just_spine_length() {
 /// Applying `E`'s own step then re-hits the SAME bowtie-cutter accept-gate
 /// rejection, this time via `begin_boolean_step`'s single-cutter
 /// `IfcPolygonalBoundedHalfSpace` branch
-/// (`BooleanClippingProcessor::resolve_single_cutter_subtract`). Pre-fix,
+/// (`NumericalEffects::resolve_single_cutter_subtract`). Pre-fix,
 /// `solo_step` is wrongly `true` there, so the rejection escalates to
 /// `SingleCutterSubtract::FallThrough` — the unbounded plane clip at
 /// `cutterE`'s plane (z = 2, agreement removes z > 2) — collapsing the

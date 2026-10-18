@@ -1,37 +1,41 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Canonical demand-driven control. Source admission happens only at the
 //! reached continuation; no recursive boolean/CSG operand evaluation remains.
-use super::{BooleanClippingProcessor, OperandPath, MAX_BOOLEAN_DEPTH,
+use crate::processors::boolean::{BooleanClippingProcessor, OperandPath, MAX_BOOLEAN_DEPTH,
     MAX_OPERAND_PATH_NODES, MAX_OPERAND_VISITS, boolean_operator};
-use super::step::StepAdmission;
+use step::StepAdmission;
 use crate::{BoolFailureReason, BoolOp, Error, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
-#[path = "continuation_state.rs"]
 mod state;
-#[path = "continuation_batch.rs"]
 mod batch;
+mod step;
+mod work;
+mod operand;
 use state::{Frame, Steps, Value, Walk};
 
-struct Driver<'a, 'source> {
+/// Ephemeral services borrowed only while driving a reached transition.
+struct Services<'a, 'source> {
     recorder: &'a BooleanClippingProcessor,
     decoder: &'a mut EntityDecoder<'source>,
-    visited: &'a mut OperandPath,
+}
+
+/// Owned common-program child. No source service or runtime guard is retained.
+struct BooleanProgram {
+    visited: OperandPath,
     quality: TessellationQuality,
     frames: Vec<Frame>,
     active: Vec<u32>,
     value: Option<Value>,
 }
-impl<'a, 'source> Driver<'a, 'source> {
-    fn new(recorder: &'a BooleanClippingProcessor, decoder: &'a mut EntityDecoder<'source>,
-        visited: &'a mut OperandPath, quality: TessellationQuality, first: Frame) -> Self {
-        Self { recorder, decoder, visited, quality, frames: vec![first],
-            active: Vec::new(), value: None }
+impl BooleanProgram {
+    fn new(visited: OperandPath, quality: TessellationQuality, first: Frame) -> Self {
+        Self { visited, quality, frames: vec![first], active: Vec::new(), value: None }
     }
-    fn run(mut self) -> Result<Value> {
-        let result = self.drive();
-        // An error skips queued ExitPath frames. Pop only our own admissions;
-        // ancestors supplied by a caller retain their membership and budget.
-        for id in self.active { self.visited.remove(id); }
+    fn run(&mut self, services: &mut Services<'_, '_>) -> Result<Value> {
+        let result = self.drive(services);
+        // Error skips queued exits. Release our admissions, preserving ancestors
+        // and the monotonic budget supplied by the enclosing caller.
+        for id in self.active.drain(..) { self.visited.remove(id); }
         result
     }
     fn enter_path(&mut self, id: u32) -> Result<()> {
@@ -42,13 +46,13 @@ impl<'a, 'source> Driver<'a, 'source> {
         self.frames.push(Frame::ExitPath(id));
         Ok(())
     }
-    fn enter_boolean(&mut self, entity: DecodedEntity, depth: u32) -> Result<()> {
+    fn enter_boolean(&mut self, entity: DecodedEntity, depth: u32, services: &mut Services<'_, '_>) -> Result<()> {
         if self.visited.len() >= MAX_OPERAND_PATH_NODES {
             return Err(Error::geometry(format!(
                 "Boolean/CSG operand chain exceeds {MAX_OPERAND_PATH_NODES} nested nodes at #{}", entity.id)));
         }
         if !self.visited.charge() {
-            self.recorder.record_failure(BoolOp::Unknown, BoolFailureReason::OperandBudgetExhausted);
+            services.recorder.record_failure(BoolOp::Unknown, BoolFailureReason::OperandBudgetExhausted);
             return Err(Error::geometry(format!(
                 "Boolean/CSG operand walk exceeds {MAX_OPERAND_VISITS} node visits at #{}", entity.id)));
         }
@@ -60,20 +64,19 @@ impl<'a, 'source> Driver<'a, 'source> {
         self.frames.push(Frame::Walk(Walk::new(entity, depth)));
         Ok(())
     }
-    fn enter_csg(&mut self, entity: DecodedEntity, depth: u32, guarded: bool) -> Result<()> {
+    fn enter_csg(&mut self, entity: DecodedEntity, depth: u32, guarded: bool, services: &mut Services<'_, '_>) -> Result<()> {
         if guarded { self.enter_path(entity.id)?; }
-        let root = super::super::csg_primitive::resolve_tree_root(&entity, self.decoder)?;
+        let root = crate::processors::csg_primitive::resolve_tree_root(&entity, services.decoder)?;
         match root.ifc_type {
             IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
                 self.frames.push(Frame::Boolean(root, depth));
             }
             // Root validation admits only these primitive constructors.
-            _ => self.value = Some(self.recorder.process_operand_checked(
-                BoolOp::Unknown, &root, self.decoder, self.quality)?),
+            _ => self.value = Some(operand::evaluate(services.recorder, BoolOp::Unknown, &root, services.decoder, self.quality)?),
         }
         Ok(())
     }
-    fn operand(&mut self, entity: DecodedEntity, operator: BoolOp, depth: u32) -> Result<()> {
+    fn operand(&mut self, entity: DecodedEntity, operator: BoolOp, depth: u32, services: &mut Services<'_, '_>) -> Result<()> {
         match entity.ifc_type {
             // CSG starts a fresh boolean depth, but retains the current path
             // and monotonic visit count. CSG membership itself is uncharged.
@@ -81,33 +84,34 @@ impl<'a, 'source> Driver<'a, 'source> {
             IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
                 self.frames.push(Frame::Boolean(entity, depth + 1));
             }
-            _ => self.value = Some(self.recorder.process_operand_checked(
-                operator, &entity, self.decoder, self.quality)?),
+            _ => self.value = Some(operand::evaluate(services.recorder, operator, &entity, services.decoder, self.quality)?),
         }
         Ok(())
     }
-    fn drive(&mut self) -> Result<Value> {
+    fn drive(&mut self, services: &mut Services<'_, '_>) -> Result<Value> {
         while let Some(frame) = self.frames.pop() {
             match frame {
-                Frame::Boolean(entity, depth) => self.enter_boolean(entity, depth)?,
-                Frame::Csg { entity, depth, guarded } => self.enter_csg(entity, depth, guarded)?,
-                Frame::Operand { entity, operator, depth } => self.operand(entity, operator, depth)?,
+                Frame::Boolean(entity, depth) => self.enter_boolean(entity, depth, services)?,
+                Frame::Csg { entity, depth, guarded } => self.enter_csg(entity, depth, guarded, services)?,
+                Frame::Operand { entity, operator, depth } => self.operand(entity, operator, depth, services)?,
                 Frame::ExitPath(id) => {
                     self.visited.remove(id);
                     let exited = self.active.pop();
                     debug_assert_eq!(exited, Some(id));
                 }
-                Frame::Walk(walk) => self.walk(walk)?,
+                Frame::Walk(walk) => self.walk(walk, services)?,
                 Frame::AfterBase(walk) => {
                     let value = self.value.take().expect("base continuation result");
+                    #[cfg(test)]
+                    unwind_tests::after_base(&value);
                     self.frames.push(Frame::Steps(walk.steps(value, false)));
                 }
-                Frame::AfterBatch { walk, cutters, mark } => self.finish_batch(walk, cutters, mark)?,
-                Frame::Steps(steps) => self.steps(steps)?,
+                Frame::AfterBatch { walk, cutters, mark } => self.finish_batch(walk, cutters, mark, services)?,
+                Frame::Steps(steps) => self.steps(steps, services)?,
                 Frame::AfterStep { mut steps, operator, host } => {
                     let second = self.value.take().expect("operand continuation result");
-                    let result = self.recorder.finish_solid_step(
-                        operator, host, second, self.decoder, self.quality)?;
+                    let result = services.recorder.finish_solid_step(
+                        operator, host, second, services.decoder, self.quality)?;
                     steps.accept(result);
                     self.frames.push(Frame::Steps(steps));
                 }
@@ -115,7 +119,7 @@ impl<'a, 'source> Driver<'a, 'source> {
         }
         Ok(self.value.take().expect("completed operation result"))
     }
-    fn steps(&mut self, mut steps: Steps) -> Result<()> {
+    fn steps(&mut self, mut steps: Steps, services: &mut Services<'_, '_>) -> Result<()> {
         let Some(node) = steps.nodes.pop() else {
             self.value = Some((steps.mesh, steps.empty_recorded));
             return Ok(());
@@ -127,15 +131,15 @@ impl<'a, 'source> Driver<'a, 'source> {
                     return Ok(());
                 }
                 Ok(BoolOp::Union) => {
-                    self.recorder.record_empty_operand(BoolOp::Union, steps.empty_recorded);
+                    services.recorder.record_empty_operand(BoolOp::Union, steps.empty_recorded);
                     steps.empty_recorded = true;
                 }
                 _ => {}
             }
         }
         let host = std::mem::take(&mut steps.mesh);
-        match self.recorder.begin_boolean_step(
-            &node, host, self.decoder, self.quality, steps.solo_step)? {
+        match services.recorder.begin_boolean_step(
+            &node, host, services.decoder, self.quality, steps.solo_step)? {
             StepAdmission::Done(result) => {
                 steps.accept(result);
                 self.frames.push(Frame::Steps(steps));
@@ -154,12 +158,42 @@ impl BooleanClippingProcessor {
     pub(crate) fn execute_boolean(&self, entity: &DecodedEntity,
         decoder: &mut EntityDecoder, depth: u32, quality: TessellationQuality,
         visited: &mut OperandPath) -> Result<Value> {
-        Driver::new(self, decoder, visited, quality, Frame::Boolean(entity.clone(), depth)).run()
+        run(self, decoder, visited, quality, Frame::Boolean(entity.clone(), depth))
     }
     pub(crate) fn execute_csg(&self, entity: &DecodedEntity,
         decoder: &mut EntityDecoder, depth: u32, quality: TessellationQuality,
         visited: &mut OperandPath, guarded: bool) -> Result<Value> {
-        Driver::new(self, decoder, visited, quality,
-            Frame::Csg { entity: entity.clone(), depth, guarded }).run()
+        run(self, decoder, visited, quality,
+            Frame::Csg { entity: entity.clone(), depth, guarded })
     }
 }
+
+fn run(recorder: &BooleanClippingProcessor, decoder: &mut EntityDecoder,
+    visited: &mut OperandPath, quality: TessellationQuality, first: Frame) -> Result<Value> {
+    let mut restoring = RestoringProgram {
+        program: BooleanProgram::new(std::mem::take(visited), quality, first),
+        caller: visited,
+    };
+    restoring.program.run(&mut Services { recorder, decoder })
+}
+
+#[cfg(test)]
+mod work_tests;
+#[cfg(test)]
+mod dispatch_tests;
+
+/// Return the actual owned path even when numerical/source work unwinds. Normal
+/// Result cleanup is performed by `BooleanProgram::run`; on panic the baseline
+/// borrowed path retained both active memberships and all spent visits.
+struct RestoringProgram<'a> {
+    program: BooleanProgram,
+    caller: &'a mut OperandPath,
+}
+impl Drop for RestoringProgram<'_> {
+    fn drop(&mut self) {
+        *self.caller = std::mem::take(&mut self.program.visited);
+    }
+}
+
+#[cfg(test)]
+mod unwind_tests;

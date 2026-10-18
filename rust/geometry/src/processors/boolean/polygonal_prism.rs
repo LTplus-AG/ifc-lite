@@ -14,15 +14,6 @@ mod plan;
 pub(crate) use plan::BoundedPrismPlan;
 
 impl BooleanClippingProcessor {
-    pub(super) fn build_polygonal_bounded_half_space_mesh(
-        &self, half_space: &DecodedEntity, decoder: &mut EntityDecoder,
-        host_mesh: &Mesh, plane: (Point3<f64>, Vector3<f64>, bool),
-        quality: TessellationQuality,
-    ) -> Result<Option<Mesh>> {
-        let Some(plan) = self.lower_bounded_prism(half_space, decoder, quality)? else { return Ok(None) };
-        plan.evaluate(host_mesh, plane).map(Some)
-    }
-
     /// Resolve Position before reading/capping the contour, preserving source
     /// error precedence and the already-recorded over-cap None outcome.
     pub(crate) fn lower_bounded_prism(
@@ -40,12 +31,15 @@ impl BooleanClippingProcessor {
         Ok(Some(BoundedPrismPlan { transform, contour_2d }))
     }
 
+}
+
+impl super::NumericalEffects {
     /// Subtract `cutter` from `base`; an accept-gate rejection (#3919) is `None`
     /// like an empty or degenerate result, and any other rejection hands `base`
     /// back un-cut. Used by `finish_batch`'s per-cutter trials and
     /// final subtract so a rejected gate always defers to the sequential path.
     /// Leaves any failures in `clipper` for the caller to drain.
-    pub(super) fn subtract_checked(
+    pub(crate) fn subtract_checked(
         clipper: &ClippingProcessor,
         base: &Mesh,
         cutter: &Mesh,
@@ -66,7 +60,7 @@ impl BooleanClippingProcessor {
 /// own top) only hands the kernel a coplanar cut that tears it (census #63466,
 /// #7762) (within a relative `1e-6` of the host's extent). `agreement` puts the
 /// removed material on the negative normal side, as in the prism builder.
-pub(super) fn host_stays_on_kept_side(
+pub(crate) fn host_stays_on_kept_side(
     mesh: &Mesh,
     plane_point: Point3<f64>,
     plane_normal: Vector3<f64>,

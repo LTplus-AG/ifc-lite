@@ -1,0 +1,233 @@
+{
+  "checkout": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361",
+  "head": "e26527d79c34ed98160c8104e2def7edf9e8dd32",
+  "observed_utc": "2026-10-18T22:25:28.358845+00:00",
+  "scope": "Dirty integrated Boolean round2 plus graph recorder fix and PendingEffects unwind forwarding",
+  "files": [
+    {
+      "path": "docs/architecture/geometry-platform-capabilities.md",
+      "sha256": "86ba0ef2a7f93f656489c0ac2e35da16c9077544c3c74d7a0bbfabf2924e161a",
+      "lines": 369
+    },
+    {
+      "path": "docs/architecture/geometry-platform-next-steps.md",
+      "sha256": "754998a76ca2d8d5742b091d7bae222784ea705fc10907c912b3c05e08ec889e",
+      "lines": 329
+    },
+    {
+      "path": "docs/architecture/geometry-platform-product-program.md",
+      "sha256": "589a9ec6fe834fb19a6250b95ec60023c92776034d9a1ff5114172fea4fdc946",
+      "lines": 417
+    },
+    {
+      "path": "rust/geometry/src/construction/brep_operand.rs",
+      "sha256": "459ecf759b9c9358664a099d411893f0eeb3313e88ab452fd49e1fd4d346ee3d",
+      "lines": 155
+    },
+    {
+      "path": "rust/geometry/src/construction/mod.rs",
+      "sha256": "9385d30eb3be8ceb1ee6bc0af9b31bd91a7c94b41d6f59e95822eb32ce6e84b4",
+      "lines": 139
+    },
+    {
+      "path": "rust/geometry/src/construction/program.rs",
+      "sha256": "7e64db50f00d190c611642c949bf38f3034e602353b03fe721c13fbab94da530",
+      "lines": 192
+    },
+    {
+      "path": "rust/geometry/src/diagnostics.rs",
+      "sha256": "b3be733ef0418d36120c2212f1bac458bf57d9fad9e83c720c783817c7a293d1",
+      "lines": 347
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/brep_void_plan.rs",
+      "sha256": "4fe36139f6c3488033c46ee9e598de1b0f3372e8e24ae8c202fbcccf1683fd79",
+      "lines": 178
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/brep_void_plan_tests.rs",
+      "sha256": "3bc521fe8f1d5468b84d8ca8d0e5f2959ed2e33c02aea508858abe99c230cf69",
+      "lines": 293
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/brep_voids.rs",
+      "sha256": "6f8a6d1c9ad4d94cd0babd57bd355a406f683e1ae28ffaf1c518de8800e9c19f",
+      "lines": 27
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/continuation.rs",
+      "sha256": null,
+      "lines": null
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/continuation_batch.rs",
+      "sha256": null,
+      "lines": null
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/continuation_state.rs",
+      "sha256": null,
+      "lines": null
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/cut_heuristics.rs",
+      "sha256": "b1c43c3901a2f379947782d421d2b525c3bf9ed962968e792d00c75bbea0072d",
+      "lines": 132
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/effects.rs",
+      "sha256": "a5aabbb4b0d82e40e840958752bf586b0190472ec766d39b58dbea73712fcf09",
+      "lines": 72
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/failures.rs",
+      "sha256": "22ea0d44fff0f8ed589d7589868b2a515d1f0fac3f945485df5350e91c9d3bf9",
+      "lines": 69
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/half_space_plan.rs",
+      "sha256": "c450033083987ddc41bee9988b011925e7463594087b26b4a81b56f7d6cfc137",
+      "lines": 70
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/mod.rs",
+      "sha256": "7b7e0e196471d06306fc741e2a5c99b577bf4a241c270879ba754894270cfaab",
+      "lines": 123
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/operand.rs",
+      "sha256": "c6af644a3baeb0653bd1b83bce1c4860f85b838e6408e30bb9effb5cef8834c7",
+      "lines": 145
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/polygonal_candidate.rs",
+      "sha256": "b59b610d537af41940377952e165ab4e775d0dbc8f9f616077731e5f95c5e266",
+      "lines": 58
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/polygonal_group_execution.rs",
+      "sha256": "373f6898f4e81bd0b4e0cf49da77e5a3b3f2446a60146475c0c9acf0d8a3e52d",
+      "lines": 138
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/polygonal_group_execution_tests.rs",
+      "sha256": "96b7746f8122765b959aa7e386ed7fe6fc877ac672e51e2b0469e6ccf8a1095b",
+      "lines": 57
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/polygonal_prism.rs",
+      "sha256": "dd7a95a242fce08ac7a205db0af16b9915726eb03d83caee2bdbfced428bdf38",
+      "lines": 79
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/polygonal_union.rs",
+      "sha256": "9e11c1f40e154a0e827ca4dbdf54698844c778594aab164661594dbc47de1f1a",
+      "lines": 69
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/single_cutter_gate.rs",
+      "sha256": "a1228901358e6aaebb7201889a3505aa58202e912494b000606225c1df5ac411",
+      "lines": 97
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/solid_execution.rs",
+      "sha256": "9bdb39361f6b7b636c92779e11f8e40ffae6d916b1ee750849f43f6a0fad7f78",
+      "lines": 83
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/step.rs",
+      "sha256": null,
+      "lines": null
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/step_tests.rs",
+      "sha256": null,
+      "lines": null
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/void_evaluation.rs",
+      "sha256": "6b0826845a8b0ca3fa6a3564ea8c827888db202c33621aecfd753e052b89d56e",
+      "lines": 66
+    },
+    {
+      "path": "rust/geometry/src/processors/csg_primitive.rs",
+      "sha256": "67f7a3914fba967770f47a74d69b7d1e5625e56a30fad35a6c7f3a4eab085152",
+      "lines": 244
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/batch.rs",
+      "sha256": "8922a08cd3765485e99666eac56a76eb7453a63635940f4204806d1893a5f895",
+      "lines": 89
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/dispatch_tests.rs",
+      "sha256": "0005cf533c83f6766673fa8cd28f075764b0087c5c905db10af33ce6f8540619",
+      "lines": 71
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/mod.rs",
+      "sha256": "26ee767000ec9ec4e99ce8b14f0dc4f0c02a652fd61cce1c701002b6db90575c",
+      "lines": 199
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/operand.rs",
+      "sha256": "145e09ecf986db846abfc653ee1fcd137df8982b664d0a2069d18b1c46fbfdb7",
+      "lines": 82
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/state.rs",
+      "sha256": "978ed3cf350cb8a3428a9d5449957653b00192f3a490f7d6fa3868ffcd54889a",
+      "lines": 49
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/step.rs",
+      "sha256": "8f321de0bfa05179dacc7b10a943848ec67b47d0355c3af8ba3613e2e3d998c8",
+      "lines": 108
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/step_tests.rs",
+      "sha256": "683cf08981dcdbbdb7ba27a2a398ae37e2a8a8ea71942c0b13a0092bd8913543",
+      "lines": 117
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/unwind_tests.rs",
+      "sha256": "db320c5ae81009cb7edf7ae74b5465e3d0a1419cfd4bf169577ff7244ee6fbad",
+      "lines": 88
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/work.rs",
+      "sha256": "eb5f88d6642516dadd7a49cbf8ff140ae3ac3eccb1b3bfe2daac9ddfcbab6d1f",
+      "lines": 164
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/work_tests.rs",
+      "sha256": "64e8369d525e09d80367aa46ed0ed10b4a40ef63b47b047b95a2f3594f6c2f68",
+      "lines": 155
+    },
+    {
+      "path": "rust/geometry/src/program/mod.rs",
+      "sha256": "8716cd86cf3bf2d330d0814c319fada5fe52d4f22cbec0d43f806199a19bcee7",
+      "lines": 65
+    },
+    {
+      "path": "rust/geometry/src/router/processor_registry.rs",
+      "sha256": "46bd835c22d91fe92855f25f0f3070f7e6e9e3681fefb4296752eacbd4c60bb9",
+      "lines": 232
+    },
+    {
+      "path": "rust/processing/tests/function_length_allowlist.txt",
+      "sha256": "97cc21c0b83ee8df243235a2a98a042431e75701c7c2e2706398e4bcf71a6a2f",
+      "lines": 83
+    },
+    {
+      "path": "rust/processing/tests/module_size_allowlist.txt",
+      "sha256": "04d4459732f58fbe40a3389077019fb0aaf779eb8d2fa9369de2ca35bda56341",
+      "lines": 408
+    },
+    {
+      "path": "rust/processing/tests/positional_read_allowlist.txt",
+      "sha256": "0963907d0afaaf580de14ec4a4cb6d410e4873209b139b6b8ac13ce98077aa1f",
+      "lines": 142
+    }
+  ]
+}

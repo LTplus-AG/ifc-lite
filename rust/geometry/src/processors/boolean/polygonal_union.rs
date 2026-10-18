@@ -4,10 +4,10 @@
 
 //! Original cutter union for the bounded roof-chain subtraction (#3925).
 
-use super::BooleanClippingProcessor;
+use super::NumericalEffects;
 use crate::{ClippingProcessor, Mesh};
 
-impl BooleanClippingProcessor {
+impl NumericalEffects {
     /// Union the chained-clip cutter prisms into ONE solid.
     ///
     /// The segmented-roof cutters are prisms that ABUT along shared, exactly-

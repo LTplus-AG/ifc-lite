@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Decoder-free grouped-cut numerics after the host and prisms are prepared.
 //! These meshes are numerical intermediates, not source construction plans.
-use super::{BooleanClippingProcessor, polygonal_removal};
+use super::{NumericalEffects, polygonal_removal};
 use crate::{BoolOp, BoolFailureReason, ClippingProcessor, Mesh, Point3, Result};
 
-impl BooleanClippingProcessor {
-    pub(super) fn evaluate_polygonal_group(
+impl NumericalEffects {
+    pub(crate) fn evaluate_polygonal_group(
         &self, base_mesh: Mesh, prisms: Vec<Mesh>, length_unit_scale: f64, mark: usize,
     ) -> Result<Option<(Mesh, bool)>> {
         let clipper = ClippingProcessor::with_unit_scale(length_unit_scale);

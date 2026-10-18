@@ -1,0 +1,73 @@
+{
+  "status": "IMPLEMENTED_UNQUALIFIED_CAPACITY_BLOCKED",
+  "candidate_commit": "a3cefb1b61dc51ca5ae227c381f0fdd063231f1b",
+  "candidate_tree": "17c4a740b249392f311ed3e8b190d0a51830962a",
+  "checkout": "/home/louistrue/.t3/worktrees/ifc-lite/t3-106818eb",
+  "baseline_commit": "840ae6c70f45972287543a6327ed0f16c67b4b20",
+  "parent_commit": "288932a2474c2e78692a8403c345bb1d273b7c71",
+  "compiled_source_receipts": [],
+  "runtime_test_results": null,
+  "heavy_jobs_submitted_this_round": [],
+  "reason": "Pop admission remains refused (disk); PC remains full. No unchanged refused submission or unknown-outcome retry was made. Prior dirty 1531-test iteration does not qualify this source.",
+  "source_checks": [
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check",
+        "840ae6c70f45972287543a6327ed0f16c67b4b20",
+        "a3cefb1b61dc51ca5ae227c381f0fdd063231f1b"
+      ],
+      "exit_code": 0,
+      "receipt": "diff-check.txt"
+    },
+    {
+      "command": [
+        "git",
+        "status",
+        "--short"
+      ],
+      "output": "",
+      "note": "clean checkpoint"
+    }
+  ],
+  "added_tests": [
+    "round_two_unwind_after_real_base_restores_ancestors_active_path_and_spent_visits",
+    "round_two_normal_result_exits_only_child_memberships_and_never_refunds_visits",
+    "round_two_common_path_preserves_ordered_losses_and_host_geometry"
+  ],
+  "retained_test_domains": [
+    "shared DAG occurrence and visit charging",
+    "Boolean/CSG cycles and path bound",
+    "CSG depth reset",
+    "group deferral/rollback and volume",
+    "half-space/prism/single cut",
+    "BRep void shells",
+    "configured root and fresh builtin operand dispatch"
+  ],
+  "mandatory_checks_not_run": [
+    "cargo test -p ifc-lite-geometry --lib --no-fail-fast",
+    "cargo test --workspace --no-fail-fast",
+    "cargo clippy --workspace --all-targets -- -D warnings",
+    "reference-walk/module/function ratchet gates",
+    "native actual corpus scene comparisons",
+    "canonical WASM build and pnpm test:wasm-contract",
+    "base-versus-branch whole-worker-pool perf probes and output identity"
+  ],
+  "perf_verdict": "UNQUALIFIED. The per-work IfcSchema construction mechanism is removed by source factoring; no allocation, latency, RSS, or neutrality measurement is claimed.",
+  "integration": "For a parent that already has round one, use corrections.patch only. For supplied 288932a247 parent including ProductProgram/layers, use combined-boolean-program.patch only. Both include only the Boolean work; do not apply both. program/mod.rs in combined adds mod boolean alongside existing parent layers. Do not cherry-pick inherited original-child overlay.",
+  "remaining_objections": [
+    "No final source compiled or runtime-qualified; mandatory native/Clippy/WASM/corpus checks remain blocked.",
+    "Whole-worker-pool allocation/performance qualification is still required, particularly Holter.",
+    "Private numerical completion still publishes Boolean records on returned Result, not on numerical unwind; no input-driven numerical panic reproduction or broader panic-diagnostic preservation claim.",
+    "Source coherence, resource propagation, presentation and separate parent integration remain outside this correction. Existing broad catches need resource integration audit.",
+    "Private synchronous work packets do not provide detached scheduling authentication."
+  ],
+  "fleet_safety": [
+    "No nested admission",
+    "No foreign cleanup",
+    "No changes to parent or immutable original child",
+    "No resubmission of auto-626ea2ed322a45ceab10baf716ac74fc",
+    "No old passing result relabeled as final-source evidence"
+  ]
+}

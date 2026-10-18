@@ -63,7 +63,7 @@ impl BrepOperandPlan {
             VoidPreparation::Bypass => (outer, false),
             VoidPreparation::Refused => (Mesh::new(), true),
             VoidPreparation::Ready(ready) => ready.subtract(outer, self.length_unit_scale,
-                recorder, self.operator, &self.operand_type),
+                &recorder.effects, self.operator, &self.operand_type),
         })
     }
 }

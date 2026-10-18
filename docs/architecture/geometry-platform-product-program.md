@@ -10,9 +10,28 @@ coverage. The types below describe the target architecture. The
 [representation and constructor phase](geometry-platform-product-program-phase-one.md)
 is now integrated, including owned mapping control and opening-item probe policies.
 Its [delivery and integration evidence](evidence/geometry-platform-program/) keeps
-child qualification separate from current assembled-source checks. Complete
-source-independent execution remains unqualified; boolean, opening classification,
-layer and late presentation control still require migration.
+child qualification separate from current assembled-source checks. The integrated
+layers now include the owned boolean child, layer admission/slicing and late
+presentation packets. They are private synchronous seams; complete detached
+execution and production cutover remain unqualified.
+
+| Capability | Current assembled implementation | Remaining evidence or integration |
+| --- | --- | --- |
+| Representation, mapping and constructors | Common item policies, owned constructor payloads, mapped occurrence control | Qualify final combined source, selected extensions and all consumers |
+| Boolean and CSG | Owned continuation, numerical payloads, consuming effects and unwind preservation | Compile and run final source; corpus, WASM, exact determinism and whole-pool performance |
+| Material layers | Owned eligibility, late frame admission and decoder-free slicing | Run real layer/opening/RTC invariants and model comparisons |
+| Appearance and presentation | Late source admission and source-free packets retaining derived palette/rotation Arcs | Run interleaving, mutation, context-release and complete output comparisons |
+| Opening classification and application | Item probe policies integrated; full opening child under implementation | Integrate classifier/capture/application with original rollback and diagnostic contracts |
+| Source coherence | Separate source-bundle implementation under preservation correction | Integrate duplicate-ID prepass compatibility and authenticated cache transfer |
+| Resource admission | Separate implementation being ported to the current program | Preserve terminal ancestor stops across scoped workers; no complete heap envelope claim |
+| Retained execution | Explicit evaluation contracts and limited primitive worker operations | Connect genuine authored curves/sweeps and provenance; qualify shipping and reader interoperability |
+
+The older successful native, browser, Python and scene receipts qualify only
+their recorded predecessor source. The integrated layer and presentation sources,
+and the corrected boolean program, have no final compiled qualification yet.
+Storage admission refusals are retained as refusals, never passing test results.
+The current task records and integration manifests live beside each layer's
+architecture evidence. Source review and syntax parsing do not authorize cutover.
 
 Implementation proceeds in reviewable phases. Whole-platform completion requires
 the complete source, control, consumer and fidelity gates below. Historical
@@ -41,11 +60,12 @@ qualification receipts describe their recorded source and remain unchanged.
   `mapping/{merged,submeshes,occurrence}.rs` frames under one architecture, with distinct consumer
   policies. No decoder/router guard is stored. These already implement real mapping control, but
   their `advance` methods still both admit source and execute numerics in the same synchronous step.
-* [boolean/CSG continuations](../../rust/geometry/src/processors/boolean/continuation.rs) own
-  boolean/CSG control frames, path membership, visit counts, host meshes, empty flags, recovery and
-  diagnostic marks. Driver currently borrows decoder/recorder for the run. Convert this into an
-  owned child program plus a short-lived adapter; do not replace it with the eager ConstructionBatch
-  graph.
+* [The boolean/CSG child](../../rust/geometry/src/program/boolean/mod.rs) owns
+  control frames, path membership, visit counts, host meshes, empty flags, recovery and diagnostic
+  marks. A short-lived driver borrows decoder/recorder; the owned child retains neither. Its
+  numerical payloads use a schema-free effects log and consuming assembly. Caller path state and
+  already-produced records survive unwind. The eager ConstructionBatch graph remains a distinct
+  optional consumer and does not replace canonical boolean control.
 * Production constructors already use owned lower/evaluate payloads across the admitted families.
   Lowering sometimes samples curves/profiles or emits source diagnostics. A source admission is
   therefore not promised to be zero-cost or purely symbolic. Evaluation must retain the exact

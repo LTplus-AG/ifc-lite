@@ -114,7 +114,7 @@ fn owned_faceted_and_advanced_voids_replay_cavity_after_source_disposal_and_keep
             let (hollow, recorded) = ready.subtract(
                 outer.clone(),
                 1.,
-                &recorder,
+                &recorder.effects,
                 BoolOp::Difference,
                 &if advanced {
                     IfcType::IfcAdvancedBrepWithVoids
@@ -157,7 +157,7 @@ fn no_overlap_void_keeps_outer_bytes_and_engulfing_void_refuses_once() {
         let (result, recorded) = ready.subtract(
             outer.clone(),
             1.,
-            &recorder,
+            &recorder.effects,
             BoolOp::Difference,
             &operand.ifc_type,
         );

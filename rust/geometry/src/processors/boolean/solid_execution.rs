@@ -2,7 +2,7 @@
 //! Decoder-free numerical execution for the existing solid/solid boolean policy.
 //! Inputs are explicit polyhedral meshes; this is not authored-surface lowering.
 
-use super::{BooleanClippingProcessor, cut_heuristics::{cutter_below_skip_ratio,
+use super::{BooleanClippingProcessor, NumericalEffects, cut_heuristics::{cutter_below_skip_ratio,
     quality_skips_small_cuts}};
 use crate::{BoolOp, ClippingProcessor, Error, Mesh, Result, TessellationQuality};
 
@@ -17,10 +17,10 @@ pub(crate) struct SolidBooleanPlan {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum SolidAdmission { Unknown, EmptySecond, SkippedSmallCut, Kernel }
+pub(crate) enum SolidAdmission { Unknown, EmptySecond, SkippedSmallCut, Kernel }
 
 impl SolidBooleanPlan {
-    pub(super) fn admit(self, first: &Mesh, second: &Mesh) -> SolidAdmission {
+    pub(crate) fn admit(self, first: &Mesh, second: &Mesh) -> SolidAdmission {
         if self.operator == BoolOp::Unknown { return SolidAdmission::Unknown; }
         if second.is_empty() { return SolidAdmission::EmptySecond; }
         if self.operator == BoolOp::Difference
@@ -41,10 +41,10 @@ impl SolidBooleanPlan {
         second_loss_recorded: bool,
     ) -> Result<(Mesh, bool)> {
         let admission = self.admit(&first, &second);
-        self.evaluate_admitted(recorder, first, second, second_loss_recorded, admission)
+        self.evaluate_admitted(&recorder.effects, first, second, second_loss_recorded, admission)
     }
 
-    pub(super) fn evaluate_admitted(self, recorder: &BooleanClippingProcessor,
+    pub(crate) fn evaluate_admitted(self, recorder: &NumericalEffects,
         first: Mesh, second: Mesh, second_loss_recorded: bool,
         admission: SolidAdmission) -> Result<(Mesh, bool)> {
         if admission == SolidAdmission::Unknown {

@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Reached product representation control and owned numerical operations.
 //!
-//! Owns the five reached representation/item policies and mapping child frames.
-//! Boolean continuation and opening classification retain their
-//! existing owners. This synchronous module claims no transport or resource safety.
+//! Owns the five reached representation/item policies, mapping child frames,
+//! boolean continuations and material-layer admission/slicing. Opening
+//! classification retains its existing owner. These synchronous seams claim
+//! no transport authentication or complete resource envelope.
 
 mod traversal;
+mod boolean;
 pub(crate) mod layers;
 mod product;
 pub(crate) mod opening;

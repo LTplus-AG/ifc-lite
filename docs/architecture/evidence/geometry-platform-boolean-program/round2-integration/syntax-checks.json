@@ -1,0 +1,160 @@
+{
+  "kind": "Rustfmt syntax parsing only; not compilation, formatting mutation or runtime validation",
+  "files": [
+    {
+      "path": "rust/geometry/src/diagnostics.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/brep_void_plan.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/brep_void_plan_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/brep_voids.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/cut_heuristics.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/effects.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/failures.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/half_space_plan.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/mod.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/operand.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/polygonal_candidate.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/polygonal_group_execution.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/polygonal_group_execution_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/polygonal_prism.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/polygonal_union.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/single_cutter_gate.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/solid_execution.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/void_evaluation.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/batch.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/dispatch_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/mod.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/operand.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/state.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/step.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/step_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/unwind_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/work.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/work_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/mod.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/construction/brep_operand.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/chain_cycle_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    }
+  ]
+}

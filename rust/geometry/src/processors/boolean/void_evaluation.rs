@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Numerical intermediates produced from owned shell definitions, never stored
 //! in a source plan. Unit discovery remains the caller's final admission step.
-use super::BooleanClippingProcessor;
+use crate::processors::boolean::{BooleanClippingProcessor, NumericalEffects};
 use crate::{BoolFailureReason, BoolOp, GroupCut, GroupReject, Mesh};
 use ifc_lite_core::IfcType;
 
@@ -9,14 +9,14 @@ pub(crate) struct ReadyVoids {
     meshes: Vec<Mesh>,
 }
 impl ReadyVoids {
-    pub(super) fn new(meshes: Vec<Mesh>) -> Self {
+    pub(crate) fn new(meshes: Vec<Mesh>) -> Self {
         Self { meshes }
     }
     pub(crate) fn subtract(
         self,
         outer: Mesh,
         length_unit_scale: f64,
-        recorder: &BooleanClippingProcessor,
+        recorder: &NumericalEffects,
         op: BoolOp,
         operand_type: &IfcType,
     ) -> (Mesh, bool) {
@@ -45,8 +45,8 @@ impl ReadyVoids {
     }
 }
 
-pub(super) fn refuse(
-    recorder: &BooleanClippingProcessor,
+pub(crate) fn refuse(
+    recorder: &NumericalEffects,
     op: BoolOp,
     operand_type: &IfcType,
     why: &str,
@@ -56,4 +56,11 @@ pub(super) fn refuse(
         BoolFailureReason::KernelError(format!("{operand_type} cutter voids: {why}")),
     );
     (Mesh::new(), true)
+}
+
+/// Source admission refusals publish directly to the selected processor.
+pub(crate) fn refuse_source(
+    recorder: &BooleanClippingProcessor, op: BoolOp, operand_type: &IfcType, why: &str,
+) -> (Mesh, bool) {
+    refuse(&recorder.effects, op, operand_type, why)
 }

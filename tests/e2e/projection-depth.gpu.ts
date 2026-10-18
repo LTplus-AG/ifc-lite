@@ -104,6 +104,7 @@ export async function runProjectionDepthWitness(): Promise<ProjectionDepthReport
           multisample: { count: samples },
         };
         const pipeline = mode === 'production' ? await visibility.createAsync(descriptor, source) : await device.createRenderPipelineAsync(descriptor);
+        if (mode === 'production') await visibility.prepare(pipeline);
         try {
         for (const gap of DEPTH_GAPS) for (const angle of ORBIT_ANGLES)
           for (const projection of ['perspective', 'orthographic'] as const)

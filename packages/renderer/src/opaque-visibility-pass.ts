@@ -58,11 +58,11 @@ export class OpaqueVisibilityPass {
   }
 
   async createAsync(descriptor: GPURenderPipelineDescriptor, source = mainShaderSource): Promise<GPURenderPipeline> {
-    const base = this.register(await this.device.createRenderPipelineAsync(descriptor), descriptor, source);
-    await this.prepare(base); return base;
+    return this.register(await this.device.createRenderPipelineAsync(descriptor), descriptor, source);
   }
 
   register(pipeline: GPURenderPipeline, descriptor: GPURenderPipelineDescriptor, source: string): GPURenderPipeline {
+    if (this.destroyed) throw new Error('Visibility pass was destroyed during compilation');
     this.registrations.set(pipeline, { descriptor, source }); return pipeline;
   }
 

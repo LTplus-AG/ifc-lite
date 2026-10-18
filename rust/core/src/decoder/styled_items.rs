@@ -17,10 +17,14 @@ impl EntityDecoder<'_> {
         if self.content.len() <= 256 * 1024 * 1024 {
             self.build_index();
         }
-        let cache = match self.entity_index.as_ref() {
-            Some(crate::columnar_index::EntityIndexStore::Columnar(index)) => {
-                &index.styled_item_index
-            }
+        // A delivered table can have correct spans for a different source but
+        // already-populated inverse caches. Coherent decoders use their actual
+        // immutable source owner; legacy columnar sharing keeps its precondition.
+        let cache = match (self.source_bundle.as_ref(),self.entity_index.as_ref()) {
+            (Some(source),Some(crate::columnar_index::EntityIndexStore::Columnar(_))) => &source.styled_items,
+            (_,Some(crate::columnar_index::EntityIndexStore::Columnar(index))) => &index.styled_item_index,
+            // Preserve the existing decoder-local hash/dense cache domain and
+            // refusal attribution rather than silently hoisting it model-wide.
             _ => &self.styled_item_index,
         };
         match cache.get_or_init(|| self.build_styled_item_index()) {

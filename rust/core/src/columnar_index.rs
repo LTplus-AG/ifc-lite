@@ -389,6 +389,7 @@ impl<'a> crate::EntityDecoder<'a> {
     /// but for the compact representation; afterwards `build_index` no-ops.
     pub fn set_columnar_index(&mut self, index: Arc<ColumnarEntityIndex>) {
         self.execution_owner.changed();
+        self.source_bundle = None;
         self.set_grid_axis_index(index.grid_axis_index.clone());
         self.entity_index = Some(EntityIndexStore::Columnar(index));
     }

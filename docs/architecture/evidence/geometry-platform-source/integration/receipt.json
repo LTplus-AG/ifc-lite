@@ -1,0 +1,25 @@
+{
+  "at": 1792363193.7602916,
+  "state": "source port complete; final shared source uncompiled",
+  "baseline": "b3a441ec17e1619066ee14e15bdcc915975d42bd",
+  "incoming_patch_sha256": "58608fbabe290e751185a2be246fcc24a8e2152dbbc86d825a8721c7dececbfc",
+  "recorded_owned_paths": 56,
+  "exact_child_paths": 46,
+  "deliberate_child_deviations": [
+    "docs/api/rust.md",
+    "rust/core/src/lib.rs",
+    "rust/processing/src/element.rs",
+    "rust/processing/src/element/model_context.rs",
+    "rust/processing/src/element/owned_session.rs",
+    "rust/processing/src/element/session_protocol.rs",
+    "scripts/perf/README.md"
+  ],
+  "syntax_checks": 47,
+  "syntax_failures": 0,
+  "diff_check": "passed",
+  "cargo_or_tests_run": false,
+  "commits_created": false,
+  "notes": "preservation-notes.md",
+  "manifest": "after-manifest.json",
+  "new_regression": "rust/processing/src/element/source_accounted_tests.rs"
+}

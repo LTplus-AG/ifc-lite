@@ -155,7 +155,7 @@ fn produce_with_frame(
     evaluated: bool,
 ) -> Result<Vec<MeshData>, String> {
     let styles = appearance.unwrap_or(&source.empty_styles);
-    let context = styles.context(&source.production_model, source.production_identity, textures);
+    let context = styles.context(&source.production_model, textures);
     produce_with_context(source, product_id, &context, appearance.is_some(), evaluated)
 }
 

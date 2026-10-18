@@ -55,7 +55,7 @@ fn face_set(plan: &mut AppearancePlan, entities: &mut FxHashMap<u32, Arc<Decoded
     (item,styled)
 }
 
-pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut Source<'_>) -> Result<Normalized,String> {
+pub(super) fn prepare(request: &AppearanceRequest, source: &mut Source<'_>) -> Result<Normalized,String> {
     if !matches!(request.schema.as_str(),"IFC4"|"IFC4X3") || request.product_ids.is_empty()
         || request.product_ids.len()>10_000 || request.source_revision.len()>4096 {
         return Err("Evaluated appearance requires a bounded IFC4/IFC4X3 scope".into());
@@ -67,8 +67,8 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
     if request.next_express_id <= source.types.last_key_value().map_or(0,|(id,_)|*id) {
         return Err("Stale allocator watermark overlaps effective IFC source".into());
     }
-    let mut styles = page_source::appearance(bytes,source);
-    let textures = source.texture_index(bytes);
+    let mut styles = page_source::appearance(source);
+    let textures = source.texture_index();
     let mut consumers=BTreeMap::<u32,BTreeSet<u32>>::new();
     for (&host,openings) in styles.void_index.iter() {
         for &opening in openings {consumers.entry(opening).or_default().insert(host);}
@@ -158,7 +158,7 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
         }
         let body_id=body.id;
         entities.insert(body.id,Arc::new(body));
-        source.decoder.inject_shared_cache(&entities);
+        source.install_authored_entities(&entities);
         for entity in &plan.created { source.types.insert(entity.express_id,entities[&entity.express_id].ifc_type.clone()); }
         for old in old_items { if let Some(parents)=source.incoming.get_mut(&old) {parents.remove(&body_id);} }
         source.incoming.insert(coordinates,items.iter().copied().collect());

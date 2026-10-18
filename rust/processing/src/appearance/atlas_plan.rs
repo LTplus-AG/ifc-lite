@@ -33,15 +33,16 @@ pub(super) fn plan_sampled_appearance(bytes: &[u8], spec: &AppearanceRequest, so
             return Err("Source rasters need distinct bounded IFC image URIs".into());
         }
     }
-    let mut source = Source::new(bytes)?;
+    let source_bundle=Source::bundle(bytes)?;
+    let mut source=Source::from_bundle(&source_bundle)?;
     let normalization=if spec.representation_policy==RepresentationPolicy::EvaluatedOccurrence {
-        Some(evaluated::prepare(bytes,spec,&mut source)?)
+        Some(evaluated::prepare(spec,&mut source)?)
     } else { None };
     let spec=normalization.as_ref().map_or(spec,|n|n.request());
-    let mut plan = plan_with_source(bytes,spec,&mut source)?;
+    let mut plan = plan_with_source(spec,&mut source)?;
     texture_budget::preflight(&mut source)?;
-    let textures = source.texture_index(bytes);
-    let mut styles = page_source::appearance(bytes, &mut source);
+    let textures = source.texture_index();
+    let mut styles = page_source::appearance( &mut source);
     if let Some(normalized)=&normalization { normalized.patch_styles(&mut source,&mut styles)?; }
     let scale = source.decoder.length_unit_scale();
     let extra = plan.items.len().checked_mul(4).ok_or("Page entity capacity overflow")?;

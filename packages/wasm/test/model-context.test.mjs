@@ -30,10 +30,12 @@ async function apiFor(t, fixture, run) {
 
 function batch(api, bytes, pre, { ids = pre.styleIds, colors = pre.styleColors,
   voidKeys = pre.voidKeys, voidCounts = pre.voidCounts, voidValues = pre.voidValues,
-  materialIds, materialCounts, materialColors } = {}) {
-  const collection = api.processGeometryBatch(bytes, pre.jobs, pre.unitScale,
+  materialIds, materialCounts, materialColors } = {}, fromSource = false) {
+  const args = [pre.jobs, pre.unitScale,
     ...pre.rtcOffset, pre.needsShift, voidKeys, voidCounts, voidValues,
-    ids, colors, undefined, materialIds, materialCounts, materialColors);
+    ids, colors, undefined, materialIds, materialCounts, materialColors];
+  const collection = fromSource ? api.processGeometryBatchFromSource(...args)
+    : api.processGeometryBatch(bytes, ...args);
   try {
     return Array.from({ length: collection.length }, (_, i) => {
       const mesh = collection.get(i);
@@ -119,5 +121,53 @@ test('new snapshots use the current opening wire instead of freezing the first b
     assert.ok(cut.length > 0 && cut.reduce((sum, mesh) => sum + volume(mesh), 0) < 2.3);
     const again = host(batch(api, bytes, pre));
     assert.deepEqual(again, cut, 'later batches must recover the original actual cut and buffers');
+  });
+});
+
+test('coherent worker source has exact style revisions and keeps later material and opening inputs live', async t => {
+  await apiFor(t, styled, (api, bytes, pre) => {
+    api.setSourceBytes(bytes);
+    api.bindSourceModel();
+    const first=batch(api, bytes, pre, {}, true);
+    assert.equal(first.length,2);
+    closeColor(first[0].color,[1,0,0,1]);
+    const blue=new Uint8Array(pre.styleColors.length);
+    for(let i=0;i<blue.length;i+=4) {blue[i+2]=255;blue[i+3]=255;}
+    const next=batch(api, bytes, pre, {colors:blue}, true);
+    next.forEach(mesh=>closeColor(mesh.color,[0,0,1,1]));
+    assert.deepEqual(next.map(m=>[m.positions,m.indices]),first.map(m=>[m.positions,m.indices]));
+    assert.deepEqual(batch(api,bytes,pre,{},true),first);
+    const material={ids:new Uint32Array(),colors:new Uint8Array(),
+      materialIds:new Uint32Array([23]),materialCounts:new Uint32Array([2]),
+      materialColors:new Uint8Array([0,255,0,102,255,255,0,255])};
+    const overridden=batch(api,bytes,pre,material,true);
+    closeColor(overridden[0].color,[0,1,0,0.4]);
+    closeColor(overridden[1].color,[1,1,0,1]);
+    batch(api,bytes,pre,{ids:material.ids,colors:material.colors},true)
+      .forEach(mesh=>closeColor(mesh.color,[0.6,0.6,0.6,1]));
+  });
+  await apiFor(t,wall,(api,bytes,pre)=>{
+    api.setSourceBytes(bytes);api.bindSourceModel();
+    const host=meshes=>meshes.filter(m=>m.id===30);
+    const cut=host(batch(api,bytes,pre,{},true));
+    const solid=host(batch(api,bytes,pre,{voidKeys:new Uint32Array(),
+      voidCounts:new Uint32Array(),voidValues:new Uint32Array()},true));
+    assert.ok(Math.abs(volume(solid[0])-2.4)<1e-5);
+    assert.ok(cut.reduce((sum,m)=>sum+volume(m),0)<2.3);
+    assert.deepEqual(host(batch(api,bytes,pre,{},true)),cut);
+  });
+});
+
+test('one API admits repeated source loads and rejects mismatched delivered spans', async t => {
+  await apiFor(t,styled,(api,bytes,pre)=>{
+    for(let load=0;load<2;load++) {
+      if(load) pre=api.buildPrePassOnce(bytes);
+      api.setSourceBytes(bytes);api.bindSourceModel();
+      assert.equal(batch(api,bytes,pre,{},true).length,2);
+      api.clearPrePassCache();
+    }
+    api.setEntityIndex(new Uint32Array([23]),new Uint32Array([0]),new Uint32Array([1]));
+    api.setSourceBytes(bytes);
+    assert.throws(()=>api.bindSourceModel(),/entity index does not match source bytes/);
   });
 });

@@ -1,0 +1,285 @@
+{
+  "head": "b3a441ec17e1619066ee14e15bdcc915975d42bd",
+  "files": [
+    {
+      "path": ".changeset/coherent-source-context.md",
+      "exists": false,
+      "sha256": null
+    },
+    {
+      "path": "docs/api/rust.md",
+      "exists": true,
+      "sha256": "994cc3ee8a82ff5d4458ce923b523c9f508c6c025f335834f09fad8a4e034e33"
+    },
+    {
+      "path": "docs/api/wasm.md",
+      "exists": true,
+      "sha256": "f2e39b190e0b9fbad9b65e2b7275de6499e7cd33b9febce9f14e4aac4835c6a9"
+    },
+    {
+      "path": "docs/architecture/coherent-source-ownership.md",
+      "exists": false,
+      "sha256": null
+    },
+    {
+      "path": "packages/geometry/src/geometry.worker.ts",
+      "exists": true,
+      "sha256": "11cc12ed026ac2f2981f249447c537d567690a5ded08d780c1923221021e1629"
+    },
+    {
+      "path": "packages/wasm/pkg/ifc-lite.d.ts",
+      "exists": true,
+      "sha256": "09d8d25805b6d66866b65cfeb3fbc0cbd35edc8b1ef45967930c34c0bad22353"
+    },
+    {
+      "path": "packages/wasm/test/model-context.test.mjs",
+      "exists": true,
+      "sha256": "b917ba479f9352dd92f4bb7f5dcc3817db0d86d3930ccbdd5d0b99cfea0b5888"
+    },
+    {
+      "path": "rust/core/src/columnar_index.rs",
+      "exists": true,
+      "sha256": "4f86d61628b12742a9afb38e330aa7b4ccd633ad070bd0497c71c47f9364b471"
+    },
+    {
+      "path": "rust/core/src/decoder.rs",
+      "exists": true,
+      "sha256": "64878961c54c7e658c3b17ce42f9cb77a2cb237993322ac40ef9cc938c63582d"
+    },
+    {
+      "path": "rust/core/src/decoder/caches.rs",
+      "exists": true,
+      "sha256": "27ec3ea6cc1867deb7331d8b5a4954e3ffb82ff6009bdd66f47cc6fcc7c7a2e7"
+    },
+    {
+      "path": "rust/core/src/decoder/schema_layout.rs",
+      "exists": true,
+      "sha256": "9f54023b4399ea3d81462107fe61f52777cd2a136ca73e9d46a4b34496606774"
+    },
+    {
+      "path": "rust/core/src/decoder/source_caches.rs",
+      "exists": false,
+      "sha256": null
+    },
+    {
+      "path": "rust/core/src/decoder/source_caches_tests.rs",
+      "exists": false,
+      "sha256": null
+    },
+    {
+      "path": "rust/core/src/decoder/styled_items.rs",
+      "exists": true,
+      "sha256": "4930ac5f25753ad9c9aea2c27e04a1455a92d3776d5b9e053727cea00dc99683"
+    },
+    {
+      "path": "rust/core/src/dense_index.rs",
+      "exists": true,
+      "sha256": "363727a6c2bcde010e1e369b5bc82b7ecfdd95026959b040c9a60aee189e43c2"
+    },
+    {
+      "path": "rust/core/src/lib.rs",
+      "exists": true,
+      "sha256": "8278bb9e51eb4106cacd5ff897f445af540bb4550193ed5eecc67be545b52821"
+    },
+    {
+      "path": "rust/core/src/source_bundle.rs",
+      "exists": false,
+      "sha256": null
+    },
+    {
+      "path": "rust/core/src/source_bundle_tests.rs",
+      "exists": false,
+      "sha256": null
+    },
+    {
+      "path": "rust/core/src/source_index.rs",
+      "exists": false,
+      "sha256": null
+    },
+    {
+      "path": "rust/core/src/source_index_tests.rs",
+      "exists": false,
+      "sha256": null
+    },
+    {
+      "path": "rust/processing/src/appearance/annotation.rs",
+      "exists": true,
+      "sha256": "ace7e7d4ac688d31229a853d9985bb0c82bfe57c97c9fab674a9511f9fd82053"
+    },
+    {
+      "path": "rust/processing/src/appearance/atlas_plan.rs",
+      "exists": true,
+      "sha256": "ad1af34b33f9bf8ec47a5d631e26256e5909005c2e812cdeeeeac3618f93f9ae"
+    },
+    {
+      "path": "rust/processing/src/appearance/authored.rs",
+      "exists": true,
+      "sha256": "704c981406070b5b12bc0928501262fc0e3ae11e2cf17853dad367e71f2112d4"
+    },
+    {
+      "path": "rust/processing/src/appearance/canonical.rs",
+      "exists": true,
+      "sha256": "ab6b7d78f22d052daef83425b6b58b1484430fe0b595cf5d697ab5d36a14de9b"
+    },
+    {
+      "path": "rust/processing/src/appearance/catalog.rs",
+      "exists": true,
+      "sha256": "d5b61eafc14f02ce54e2d05ee2c331d113cd7fcb1242320f26601b3db0d869bc"
+    },
+    {
+      "path": "rust/processing/src/appearance/context_tests.rs",
+      "exists": true,
+      "sha256": "5770e00cbf7d87a1c44c96e705baa0408e29380a1ed3c65736a1cd56b8cc3622"
+    },
+    {
+      "path": "rust/processing/src/appearance/evaluated.rs",
+      "exists": true,
+      "sha256": "6eedf7400dd73e833c6c80ad0788d041a9027e4dbcfbee91bd87a875ca5d090f"
+    },
+    {
+      "path": "rust/processing/src/appearance/evaluated_tests.rs",
+      "exists": true,
+      "sha256": "2ac8331f4a58c58ed13618f4a7f2be0902faa43d011e67ce93b8d41d1868891c"
+    },
+    {
+      "path": "rust/processing/src/appearance/mod.rs",
+      "exists": true,
+      "sha256": "f8583c6ab8b92bbf23d4ee22a241c8d0390988a280e30b6316d0728137a69791"
+    },
+    {
+      "path": "rust/processing/src/appearance/owned_context.rs",
+      "exists": true,
+      "sha256": "7cd8e7a6b785505d25e24a4c50f4af09d3a01fd17382f84aea8a7505660d6357"
+    },
+    {
+      "path": "rust/processing/src/appearance/page_source.rs",
+      "exists": true,
+      "sha256": "7466f2f30add795bfa7abfa668ab66be46245c6dfc4355552e8af79a483b706c"
+    },
+    {
+      "path": "rust/processing/src/appearance/pdf_fill.rs",
+      "exists": true,
+      "sha256": "f293044f12dd1962a8090f6bb2647d18537c21e2beb437e5861667cc95db6df5"
+    },
+    {
+      "path": "rust/processing/src/appearance/source.rs",
+      "exists": true,
+      "sha256": "bdc1be70ae2453b4e12778eb950dbfbc2db948aa962d7871f99d98d58b9704dd"
+    },
+    {
+      "path": "rust/processing/src/element.rs",
+      "exists": true,
+      "sha256": "f734ab1db7389831e7e87ff012de9517ea8bc679d43fc1c14489e2a2511e8e86"
+    },
+    {
+      "path": "rust/processing/src/element/accounted_session.rs",
+      "exists": true,
+      "sha256": "47183ec80b8a7970b215fbc89438380e469c740b142cb0426e015a5b1e9e86a2"
+    },
+    {
+      "path": "rust/processing/src/element/model_context.rs",
+      "exists": true,
+      "sha256": "5228555bf80a924d739246cc1c47610c63298a193bee35cb30d14e6e375b0cf5"
+    },
+    {
+      "path": "rust/processing/src/element/owned_callback_tests.rs",
+      "exists": true,
+      "sha256": "1bcb7eb168b60cdd7ae807a0ee9835ea9dd49ff9b2be4b8b91b4b685f5784820"
+    },
+    {
+      "path": "rust/processing/src/element/owned_session.rs",
+      "exists": true,
+      "sha256": "4c6dcfaa742fea5e812f41a51882e3e77b540fa3e02a83531613fa502a2b3f73"
+    },
+    {
+      "path": "rust/processing/src/element/session_protocol.rs",
+      "exists": true,
+      "sha256": "6cde3eaa6b44878b95a16e9d48436298d226b55349160c1e1f753e93657cff4d"
+    },
+    {
+      "path": "rust/processing/src/element/source_accounted_tests.rs",
+      "exists": false,
+      "sha256": null
+    },
+    {
+      "path": "rust/processing/src/element/source_context_tests.rs",
+      "exists": false,
+      "sha256": null
+    },
+    {
+      "path": "rust/processing/src/processor/entity_index.rs",
+      "exists": true,
+      "sha256": "10e1f44d25e3883546db4edb6c9ec883b4a591b62aff497ace4180b93ef8e529"
+    },
+    {
+      "path": "rust/processing/src/processor/entity_index_tests.rs",
+      "exists": true,
+      "sha256": "f753a8bb86dc0d8163b9a5e74e38b6299c3a5e332b1b6a329c9bfd7799dca385"
+    },
+    {
+      "path": "rust/processing/src/processor/jobs.rs",
+      "exists": true,
+      "sha256": "d26164bea20da7cdef2c4ee021298a2ca96730f6a0ff9c46898d496b0a44cae0"
+    },
+    {
+      "path": "rust/processing/src/processor/mod.rs",
+      "exists": true,
+      "sha256": "fa72a700e8e95dc25581b2883da20c33ec9b341ed85501e25516c66ece665116"
+    },
+    {
+      "path": "rust/processing/src/processor/scan.rs",
+      "exists": true,
+      "sha256": "0bde87fef798e0b13ea2425f95c39c5e55ccc6ccfef45db4abd5b37a259408ca"
+    },
+    {
+      "path": "rust/processing/src/processor/scan_preservation_tests.rs",
+      "exists": false,
+      "sha256": null
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/coherent_source.rs",
+      "exists": false,
+      "sha256": null
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/entity_index.rs",
+      "exists": true,
+      "sha256": "cdb208dde5cc4a4a7cb58ce87be14fad9f775bbb769e4d7a8f95903d87eb09eb"
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/gpu_meshes/batch.rs",
+      "exists": true,
+      "sha256": "676cf985c64199c5017a77073064ed9d4bdd44754af9433045e73c27718389d2"
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/gpu_meshes/batch_from_source.rs",
+      "exists": true,
+      "sha256": "a9d2b30bc45df49ff755c465992d8333cbc01e8fbcbfe720bff52a4e1b6f8176"
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/gpu_meshes/batch_partition.rs",
+      "exists": true,
+      "sha256": "4ac280a1abfafbcc012a68baca70a7a600f46fe3a84b75cc678c5b57d2081466"
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/gpu_meshes/mod.rs",
+      "exists": true,
+      "sha256": "f78cc5166daa4cc0e65bab5127d1a887fca95d59e2f30601cd05ba65f895e903"
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/gpu_meshes/prepass.rs",
+      "exists": true,
+      "sha256": "2c23d0e2c39e2a871cdec8b300ddedd5141f64cb1620e1bc46f7b8b22f5af86e"
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/mod.rs",
+      "exists": true,
+      "sha256": "00b07854b7239f1df9b67c871db2b27896791819b9acb940f21e4c1a77fbe2c4"
+    },
+    {
+      "path": "scripts/perf/README.md",
+      "exists": true,
+      "sha256": "6fbd06cd15cb49579d254ca62636b32d3ad18eb366fb473606a22734c9cbbea0"
+    }
+  ]
+}

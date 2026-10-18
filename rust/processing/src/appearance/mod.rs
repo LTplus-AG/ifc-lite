@@ -112,16 +112,17 @@ pub fn plan_appearance(
     request: &AppearanceRequest,
 ) -> Result<AppearancePlan, String> {
     if request.product_ids.is_empty() { return Err("Appearance scope must contain 1..10000 products".into()); }
-    let mut source=Source::new(bytes)?;
+    let source_bundle=Source::bundle(bytes)?;
+    let mut source=Source::from_bundle(&source_bundle)?;
     if request.representation_policy==RepresentationPolicy::EvaluatedOccurrence {
-        let normalized=evaluated::prepare(bytes,request,&mut source)?;
-        let plan=plan_with_source(bytes,normalized.request(),&mut source)?;
+        let normalized=evaluated::prepare(request,&mut source)?;
+        let plan=plan_with_source(normalized.request(),&mut source)?;
         return Ok(normalized.compose(plan,&source)?.0);
     }
-    plan_with_source(bytes,request,&mut source)
+    plan_with_source(request,&mut source)
 }
 
-fn plan_with_source(bytes:&[u8], request:&AppearanceRequest, source:&mut Source<'_>) -> Result<AppearancePlan,String> {
+fn plan_with_source(request:&AppearanceRequest, source:&mut Source<'_>) -> Result<AppearancePlan,String> {
     if request.schema != "IFC4" && request.schema != "IFC4X3" {
         return Err("Appearance authoring requires IFC4 or IFC4X3".into());
     }
@@ -137,7 +138,7 @@ fn plan_with_source(bytes:&[u8], request:&AppearanceRequest, source:&mut Source<
     validate_image_uri(uri)?;
     mapping::validate(&request.mapping)?;
     texture_budget::preflight(source)?;
-    let textures = source.texture_index(bytes);
+    let textures = source.texture_index();
     let max_id = source
         .types
         .last_key_value()

@@ -102,7 +102,6 @@ impl IfcAPI {
         Vec<super::instancing::ShardOccurrence>,
     ), ifc_lite_processing::element::ProductionContextError> {
         use crate::api::styling::resolve_element_color;
-        use ifc_lite_core::EntityDecoder;
         use ifc_lite_geometry::GeometryRouter;
         use ifc_lite_processing::element::{
             plan_type_geometry, produce_element_meshes_owned, ElementJobKind, ElementMeshJob,
@@ -116,6 +115,7 @@ impl IfcAPI {
         let batch_started_ms = js_sys::Date::now();
 
         let content = data;
+        let coherent_load=self.coherent_source_for(content);
 
         // Geometry fingerprinting for the viewer's revision-diff feature.
         // When enabled we hash each entity's meshes *before* MeshDataJs::new
@@ -129,35 +129,7 @@ impl IfcAPI {
             [0.0, 0.0, 0.0]
         };
 
-        // Reuse the cached Arc<EntityIndex> across calls so we don't
-        // re-clone the 14 M-entry HashMap on every batch. On streaming
-        // paths this turns ~36 calls/worker into 1 build + 35 Arc::clone()
-        // (a single refcount bump) instead of 36 full HashMap clones.
-        //
-        // If the cache is empty (which happens on every process worker
-        // because they're separate WASM realms from the pre-pass worker),
-        // build once here and store under Arc so subsequent calls hit
-        // the fast path.
-        let entity_index_arc: std::sync::Arc<ifc_lite_core::ColumnarEntityIndex> = {
-            // Mutex briefly held: peek at cache, build-if-empty, clone Arc.
-            // The clone is what gets handed to rayon — no lock contention
-            // on the per-job hot path that follows. Poison panics here
-            // (an earlier panic-with-lock-held has corrupted the cache).
-            let mut slot = self
-                .cached_entity_index
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if let Some(existing) = slot.as_ref() {
-                std::sync::Arc::clone(existing)
-            } else {
-                // No setEntityIndex was delivered (non-streaming path): scan the
-                // file straight into sorted columns, skipping the FxHashMap.
-                let built = std::sync::Arc::new(super::scan_columnar_index(content));
-                *slot = Some(std::sync::Arc::clone(&built));
-                built
-            }
-        };
-        let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index_arc).with_strict_reals(); // #7678
+        let mut decoder=self.decoder_for_batch(content,coherent_load.as_ref());
         // Seed the unit-scale caches so curve/arc tessellation never re-pays the
         // O(file) IFCPROJECT scan: this decoder is fresh on every batch call,
         // and `plane_angle_to_radians()` would otherwise walk the whole DATA
@@ -268,7 +240,9 @@ impl IfcAPI {
         // AND the GeometryStyleInfo index the producer consumes ONCE per worker
         // and reuse across batches (was ~18 M HashMap inserts each on a 140 K-
         // styled model). Keyed by a cheap (len, first_id, last_id) signature.
-        let style_maps: StyleMaps = {
+        let style_maps: StyleMaps = if let Some(load)=coherent_load.as_ref() {
+            load.styles(style_ids,style_colors)
+        } else {
             let sig_len = style_ids.len();
             let sig_first = style_ids.first().copied().unwrap_or(0);
             let sig_last = style_ids.last().copied().unwrap_or(0);
@@ -357,7 +331,8 @@ impl IfcAPI {
             _ => rustc_hash::FxHashMap::default(),
         };
 
-        let ctx = self.production_model.snapshot(OwnedMeshProductionData {
+        let model=coherent_load.as_ref().map_or(&self.production_model, |load|&load.model);
+        let ctx = model.snapshot(OwnedMeshProductionData {
             void_index: std::sync::Arc::new(void_index),
             geometry_style_index: std::sync::Arc::clone(&style_maps.1),
             indexed_colour_full: std::sync::Arc::clone(&indexed_colour.maps),

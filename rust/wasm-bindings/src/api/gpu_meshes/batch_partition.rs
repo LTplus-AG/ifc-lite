@@ -203,7 +203,7 @@ pub(super) fn meets_instance_threshold(mesh: &MeshData, counts: &FxHashMap<u128,
 /// older or truncated producer); a style whose four bytes are not all present
 /// is dropped rather than read past the end or filled with garbage, so a short
 /// tail costs those styles their colour and nothing else.
-pub(super) fn style_colors_from_wire(
+pub(in crate::api) fn style_colors_from_wire(
     style_ids: &[u32],
     style_colors: &[u8],
 ) -> FxHashMap<u32, [f32; 4]> {

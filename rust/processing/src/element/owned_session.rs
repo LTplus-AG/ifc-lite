@@ -15,13 +15,13 @@ impl OwnedProductExecution {
     /// Independent resumable sessions always use strict owner admission.
     pub fn new(job:&ElementMeshJob<'_>,context:&Arc<OwnedMeshProductionContext>,
         opts:&MeshProductionOptions,decoder:&mut EntityDecoder,router:&GeometryRouter)->Result<Self,WorkError> {
-        context.validate_source().map_err(|_|WorkError::StaleSource)?;
+        context.validate_decoder(decoder).map_err(work_error)?;
         let state=ProductState::new(job,&context.borrowed(),opts,decoder,router);
         Ok(Self::bind(state,context))
     }
     pub(super) fn canonical(job:&ElementMeshJob<'_>,context:&Arc<OwnedMeshProductionContext>,
         opts:&MeshProductionOptions,decoder:&mut EntityDecoder,router:&GeometryRouter)->Result<Self,WorkError> {
-        context.validate_source().map_err(|_|WorkError::StaleSource)?;
+        context.validate_decoder(decoder).map_err(work_error)?;
         match session_canonical::inherited_owner(decoder,router).expect("canonical synchronous ancestor owner") {
             Some(owner)=> {
                 let state=ProductState::new_with_owner(job,&context.borrowed(),opts,decoder,router,Some(owner));
@@ -42,10 +42,14 @@ impl OwnedProductExecution {
     }
     pub fn execute(&mut self,request:WorkRequest,decoder:&mut EntityDecoder,router:&GeometryRouter)->Result<WorkReply,WorkError> {
         self.validate()?;
+        self.context.validate_decoder(decoder).map_err(work_error)?;
         self.state.execute(request,&self.context.borrowed(),decoder,router)
     }
     pub fn accept(&mut self,reply:WorkReply,decoder:&mut EntityDecoder,router:&GeometryRouter)->Result<(),Box<RejectedReply>> {
         if let Err(error)=self.validate() {return Err(Box::new(RejectedReply {error,reply}))}
+        if let Err(error)=self.context.validate_decoder(decoder) {
+            return Err(Box::new(RejectedReply {error:work_error(error),reply}));
+        }
         self.state.accept(reply,&self.context.borrowed(),decoder,router)
     }
     pub fn advance(&mut self,decoder:&mut EntityDecoder,router:&GeometryRouter)->Result<bool,WorkError> {
@@ -56,9 +60,10 @@ impl OwnedProductExecution {
     }
     pub fn finish(self,decoder:&EntityDecoder,router:&GeometryRouter)->Result<ProducedElementMeshes,WorkError> {
         self.validate()?;
+        self.context.validate_decoder(decoder).map_err(work_error)?;
         let result=self.state.finish(decoder,router);
         // A final diagnostic callback may explicitly invalidate the model.
-        self.context.validate_source().map_err(|_|WorkError::StaleSource)?;
+        self.context.validate_decoder(decoder).map_err(work_error)?;
         Ok(result)
     }
 }
@@ -77,7 +82,12 @@ pub fn produce_element_meshes_owned(job:&ElementMeshJob<'_>,context:&Arc<OwnedMe
     execution.finish(decoder,router).map_err(public_error)
     })
 }
+fn work_error(error:ProductionContextError)->WorkError {
+    match error {ProductionContextError::StaleSource=>WorkError::StaleSource,
+        ProductionContextError::MismatchedSource=>WorkError::MismatchedSource}
+}
 fn public_error(error:WorkError)->ProductionContextError {
     match error {WorkError::StaleSource=>ProductionContextError::StaleSource,
+        WorkError::MismatchedSource=>ProductionContextError::MismatchedSource,
         _=>panic!("canonical owned production invariant: {error:?}")}
 }

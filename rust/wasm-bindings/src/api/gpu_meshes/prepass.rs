@@ -25,7 +25,7 @@ impl IfcAPI {
         // Load START on the serial/main-thread path: the previous load's
         // pipeline diagnostics must not accumulate into this one. (The worker
         // path resets via setEntityIndex; every load-start entry point resets.)
-        self.reset_pipeline_diagnostics();
+        self.begin_source_load();
 
         let content = data;
 
@@ -196,7 +196,7 @@ impl IfcAPI {
         let have_columns = columns.is_some();
         let mut prebuilt_arc: Option<std::sync::Arc<ifc_lite_core::ColumnarEntityIndex>> = None;
         // Load START on the streaming pre-pass path (see build_pre_pass_once).
-        self.reset_pipeline_diagnostics();
+        self.begin_source_load();
         use ifc_lite_core::{has_geometry_by_name, keyword_eq, EntityDecoder, EntityScanner, IfcType};
         use ifc_lite_geometry::GeometryRouter;
         use ifc_lite_processing::stream_meta::{resolve_stream_meta, MetaMode};

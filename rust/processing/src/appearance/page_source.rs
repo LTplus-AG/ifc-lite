@@ -7,7 +7,8 @@ use ifc_lite_core::EntityScanner;
 
 /// Reuse the ordinary style/material/type resolver, including first-wins
 /// precedence. Source::new has already bounded every source row/reference.
-pub(super) fn appearance(bytes: &[u8], source: &mut Source<'_>) -> super::owned_context::Styles {
+pub(super) fn appearance(source: &mut Source<'_>) -> super::owned_context::Styles {
+    let bytes=source.bytes();
     let mut spans = PrepassSpans::default();
     let mut scan = EntityScanner::new(bytes);
     while let Some((id, name, start, end)) = scan.next_entity() {

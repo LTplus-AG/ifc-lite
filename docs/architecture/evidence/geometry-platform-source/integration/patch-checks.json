@@ -1,0 +1,267 @@
+[
+  {
+    "path": ".changeset/coherent-source-context.md",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "docs/api/rust.md",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "docs/api/wasm.md",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "docs/architecture/coherent-source-ownership.md",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "packages/geometry/src/geometry.worker.ts",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "packages/wasm/pkg/ifc-lite.d.ts",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "packages/wasm/test/model-context.test.mjs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/columnar_index.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/decoder.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/decoder/caches.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/decoder/schema_layout.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/decoder/source_caches.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/decoder/source_caches_tests.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/decoder/styled_items.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/dense_index.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/lib.rs",
+    "clean_apply": false,
+    "stderr": "error: patch failed: rust/core/src/lib.rs:142\nerror: rust/core/src/lib.rs: patch does not apply\n"
+  },
+  {
+    "path": "rust/core/src/source_bundle.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/source_bundle_tests.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/source_index.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/source_index_tests.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/annotation.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/atlas_plan.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/authored.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/canonical.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/catalog.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/context_tests.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/evaluated.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/evaluated_tests.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/mod.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/owned_context.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/page_source.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/pdf_fill.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/source.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/element.rs",
+    "clean_apply": false,
+    "stderr": "error: patch failed: rust/processing/src/element.rs:141\nerror: rust/processing/src/element.rs: patch does not apply\n"
+  },
+  {
+    "path": "rust/processing/src/element/model_context.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/element/owned_callback_tests.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/element/owned_session.rs",
+    "clean_apply": false,
+    "stderr": "error: patch failed: rust/processing/src/element/owned_session.rs:15\nerror: rust/processing/src/element/owned_session.rs: patch does not apply\n"
+  },
+  {
+    "path": "rust/processing/src/element/session_protocol.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/element/source_context_tests.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/processor/entity_index.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/processor/jobs.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/processor/mod.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/processor/scan.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/processor/scan_preservation_tests.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/wasm-bindings/src/api/coherent_source.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/wasm-bindings/src/api/entity_index.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/wasm-bindings/src/api/gpu_meshes/batch.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/wasm-bindings/src/api/gpu_meshes/batch_from_source.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/wasm-bindings/src/api/gpu_meshes/batch_partition.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/wasm-bindings/src/api/gpu_meshes/mod.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/wasm-bindings/src/api/gpu_meshes/prepass.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "rust/wasm-bindings/src/api/mod.rs",
+    "clean_apply": true,
+    "stderr": ""
+  },
+  {
+    "path": "scripts/perf/README.md",
+    "clean_apply": true,
+    "stderr": ""
+  }
+]

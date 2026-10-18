@@ -7,7 +7,6 @@
 //! later phase resolves.
 
 use super::color_layer::collect_presentation_layer_assignments;
-use super::entity_index::IndexBuilder;
 use super::quick_collector::QuickCollector;
 use super::quick_metadata::{record_ref_at, record_refs_at};
 use super::{EntityJob, ProcessingRequest};
@@ -103,26 +102,23 @@ impl TypeScan {
     }
 }
 
-/// The scan loop's state: what it reads, what it fills, and the inline index.
+/// The scan loop's classification state; core owns canonical index construction.
 struct Scan<'a, 'd> {
     content: &'a [u8],
     req: &'a ProcessingRequest,
     decoder: &'a mut EntityDecoder<'d>,
-    inline_index: &'a mut IndexBuilder,
-    building_index: bool,
     out: ScanOutput,
     types: TypeScan,
 }
 
-/// Walk `content` once. `building_index` says whether `inline_index` is being
-/// filled (no index was injected); `decoder` only needs local bytes here.
+/// Walk original bytes once, fusing the canonical index builder with native
+/// classification when this load owns its source. Supplied indexes stay borrowed.
 pub(super) fn scan_entities(
     content: &[u8],
     req: &ProcessingRequest,
     decoder: &mut EntityDecoder,
-    inline_index: &mut IndexBuilder,
-    building_index: bool,
-) -> ScanOutput {
+    owned_bytes: Option<std::sync::Arc<Vec<u8>>>,
+) -> (ScanOutput, Option<std::sync::Arc<ifc_lite_core::SourceBundle>>) {
     let out = ScanOutput {
         entity_jobs: Vec::with_capacity(2000),
         // Styled items / indexed colour maps / material chain / voids / fills /
@@ -149,21 +145,21 @@ pub(super) fn scan_entities(
         content,
         req,
         decoder,
-        inline_index,
-        building_index,
         out,
         types: TypeScan::default(),
     };
 
-    let mut scanner = EntityScanner::new(content);
-    while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        scan.visit(id, type_name, start, end);
-    }
-    // The whole-file scan: refused ids (#3395) + a malformed stop (#3695).
-    ifc_lite_core::report_scan_diagnostics(scanner.skipped_oversized_ids(), scanner.malformed_record_start().is_some());
+    let source = if let Some(bytes)=owned_bytes {
+        Some(ifc_lite_core::SourceBundle::scan_with(bytes, |id,name,start,end| scan.visit(id,name,start,end)))
+    } else {
+        let mut scanner=EntityScanner::new(content);
+        while let Some((id,name,start,end))=scanner.next_entity() {scan.visit(id,name,start,end);}
+        ifc_lite_core::report_scan_diagnostics(scanner.skipped_oversized_ids(),scanner.malformed_record_start().is_some());
+        None
+    };
 
     scan.types.append_orphan_jobs(&mut scan.out.entity_jobs);
-    scan.out
+    (scan.out,source)
 }
 
 impl Scan<'_, '_> {
@@ -174,9 +170,6 @@ impl Scan<'_, '_> {
         self.out.total_entities += 1;
         if let Some(ifc_type) = crate::georeferencing::georeferencing_candidate_type(type_name) {
             self.out.georeferencing_candidates.push((id, ifc_type));
-        }
-        if self.building_index {
-            self.inline_index.insert(id, (start, end));
         }
         if let Some(quick) = self.out.quick.as_mut() {
             quick.observe(self.content, id, type_name, start, end);
@@ -340,3 +333,7 @@ impl Scan<'_, '_> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "scan_preservation_tests.rs"]
+mod preservation_tests;

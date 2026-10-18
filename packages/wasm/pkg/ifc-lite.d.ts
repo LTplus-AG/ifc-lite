@@ -526,6 +526,12 @@ export class IfcAPI {
     free(): void;
     [Symbol.dispose](): void;
     /**
+     * Admit this worker's installed bytes/index pair once before geometry.
+     * Full canonical span validation is required across worker realms. This
+     * does not authenticate arbitrary later data-taking compatibility calls.
+     */
+    bindSourceModel(): void;
+    /**
      * Run the pre-pass ONCE and return serialized results for worker distribution.
      * Takes raw bytes (&[u8]) to avoid TextDecoder overhead.
      */
@@ -2677,6 +2683,7 @@ export interface InitOutput {
     readonly gridaxisjs_gridId: (a: number) => number;
     readonly gridaxisjs_start: (a: number) => number;
     readonly gridaxisjs_tag: (a: number, b: number) => void;
+    readonly ifcapi_bindSourceModel: (a: number, b: number) => void;
     readonly ifcapi_buildPrePassOnce: (a: number, b: number, c: number) => number;
     readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
     readonly ifcapi_buildPrePassStreamingSharded: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number) => void;

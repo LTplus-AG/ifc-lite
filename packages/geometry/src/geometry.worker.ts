@@ -558,6 +558,7 @@ type IfcAPIWithMerge = IfcAPI & {
   /** Cold-load lever 1c: store the source file ONCE per load (see
    *  `applySourceBytesToApi`). Absent on wasm builds predating the setter. */
   setSourceBytes?: (data: Uint8Array) => void;
+  bindSourceModel?: () => void;
 };
 
 /**
@@ -717,6 +718,7 @@ function applyPrepassColumnsToApi(): void {
  * consumes that preparation instead of discarding it. */
 let cachedSourceBytes: Uint8Array | null = null;
 let sourceBytesApplied: boolean = false;
+let sourceBindingAttempted = false;
 let sourcePreparedForStream = false;
 let installedSourceSessionId: string | undefined;
 
@@ -725,6 +727,7 @@ function applySourceBytesToApi(): void {
   const ifcApi = api as IfcAPIWithMerge | null;
   if (!ifcApi || sourceBytesApplied || !cachedSourceBytes) return;
   if (typeof ifcApi.setSourceBytes !== 'function') return;
+  sourceBindingAttempted = false;
   ifcApi.setSourceBytes(cachedSourceBytes);
   sourceBytesApplied = true;
 }
@@ -1170,6 +1173,10 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
     // re-installs the copy from the materialised buffer.
     cachedSourceBytes = session.localBytes;
     applySourceBytesToApi();
+    if (sourceBytesApplied && !sourceBindingAttempted) {
+      (ifcApi as IfcAPIWithMerge).bindSourceModel?.();
+      sourceBindingAttempted = true;
+    }
     applyStyleFinishes(ifcApi, session.styleIds, session.styleFinishes);
 
     // Instanced-only path: produce geometry ONCE via a partitioned batch, which
@@ -1667,6 +1674,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       cachedEntityIndex = null;
       cachedPrepassColumns = null;
       prepassColumnsApplied = false;
+      sourceBindingAttempted = false;
       ifcApi.setEntityIndex(e.data.ids, e.data.starts, e.data.lengths);
       cachedEntityIndex = { ids: e.data.ids, starts: e.data.starts, lengths: e.data.lengths };
       entityIndexApplied = true;

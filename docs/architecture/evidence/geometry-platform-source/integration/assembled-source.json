@@ -1,0 +1,584 @@
+{
+  "base_commit": "de0c50b3f4de0ab22eab2c2d16554c2159fc0041",
+  "status": "INTEGRATED_UNCOMPILED_UNQUALIFIED",
+  "files": [
+    {
+      "path": ".changeset/coherent-source-context.md",
+      "sha256": "3375e70c99c2720a335d0f13353772a97b166be77024d7469a4a441b094969c3",
+      "port_recorded_sha256": "3375e70c99c2720a335d0f13353772a97b166be77024d7469a4a441b094969c3",
+      "port_match": true
+    },
+    {
+      "path": "docs/api/rust.md",
+      "sha256": "f73c9a7aa89d75dab924946f595360220d622939150aa2e1ca41104912f6536f",
+      "port_recorded_sha256": "f73c9a7aa89d75dab924946f595360220d622939150aa2e1ca41104912f6536f",
+      "port_match": true
+    },
+    {
+      "path": "docs/api/wasm.md",
+      "sha256": "4d8543ef0e0daa1ce9cefd07a74b3a685800b895784b28dfc13c95b35118d501",
+      "port_recorded_sha256": "4d8543ef0e0daa1ce9cefd07a74b3a685800b895784b28dfc13c95b35118d501",
+      "port_match": true
+    },
+    {
+      "path": "docs/architecture/coherent-source-ownership.md",
+      "sha256": "1902d4f4b827bb9fb59f2cf3e61919dc71fa57abcd70e7fdb8fe55c6a5a3d6ab",
+      "port_recorded_sha256": "1902d4f4b827bb9fb59f2cf3e61919dc71fa57abcd70e7fdb8fe55c6a5a3d6ab",
+      "port_match": true
+    },
+    {
+      "path": "packages/geometry/src/geometry.worker.ts",
+      "sha256": "719dc117dfc7c9a86bd8f64413fbca5d31aeb5870997bea3e2f27fa277222681",
+      "port_recorded_sha256": "719dc117dfc7c9a86bd8f64413fbca5d31aeb5870997bea3e2f27fa277222681",
+      "port_match": true
+    },
+    {
+      "path": "packages/wasm/pkg/ifc-lite.d.ts",
+      "sha256": "67c465620f0906c7ff33582e19f38cdd2fe835586b2fd08fba2495f1633a5ad8",
+      "port_recorded_sha256": "67c465620f0906c7ff33582e19f38cdd2fe835586b2fd08fba2495f1633a5ad8",
+      "port_match": true
+    },
+    {
+      "path": "packages/wasm/test/model-context.test.mjs",
+      "sha256": "a3cf85984391d01bc6be139c8f9b2385305e315db2213285722a9dccc22d6e55",
+      "port_recorded_sha256": "a3cf85984391d01bc6be139c8f9b2385305e315db2213285722a9dccc22d6e55",
+      "port_match": true
+    },
+    {
+      "path": "rust/core/src/columnar_index.rs",
+      "sha256": "ac4f93c8c0d7cdb2e7aa38102cb80eec822eb64ff6c0693633fd88abf70e306d",
+      "port_recorded_sha256": "ac4f93c8c0d7cdb2e7aa38102cb80eec822eb64ff6c0693633fd88abf70e306d",
+      "port_match": true
+    },
+    {
+      "path": "rust/core/src/decoder.rs",
+      "sha256": "90e96ca30bd72f0daa86e7aa5eacb81aef84a0c47c3222fd14417417b0aa66ee",
+      "port_recorded_sha256": "90e96ca30bd72f0daa86e7aa5eacb81aef84a0c47c3222fd14417417b0aa66ee",
+      "port_match": true
+    },
+    {
+      "path": "rust/core/src/decoder/caches.rs",
+      "sha256": "81ac177a8e0da46503399893f0872e7cec964ba028f6b86d7199f48d1e1144ed",
+      "port_recorded_sha256": "81ac177a8e0da46503399893f0872e7cec964ba028f6b86d7199f48d1e1144ed",
+      "port_match": true
+    },
+    {
+      "path": "rust/core/src/decoder/schema_layout.rs",
+      "sha256": "012d72845deec3479f0b6bdce2476393b7f38a900fbdfa0aeebb329bc74ba475",
+      "port_recorded_sha256": "012d72845deec3479f0b6bdce2476393b7f38a900fbdfa0aeebb329bc74ba475",
+      "port_match": true
+    },
+    {
+      "path": "rust/core/src/decoder/source_caches.rs",
+      "sha256": "5690daa4d42cfe1199f958d58159d1d40eb1ff881992ed4a6e2c476488036c9e",
+      "port_recorded_sha256": "5690daa4d42cfe1199f958d58159d1d40eb1ff881992ed4a6e2c476488036c9e",
+      "port_match": true
+    },
+    {
+      "path": "rust/core/src/decoder/source_caches_tests.rs",
+      "sha256": "9559d83811ef8f517284b561f8fe872824e69d8831ac6e5108902e6e64f8e2c6",
+      "port_recorded_sha256": "9559d83811ef8f517284b561f8fe872824e69d8831ac6e5108902e6e64f8e2c6",
+      "port_match": true
+    },
+    {
+      "path": "rust/core/src/decoder/styled_items.rs",
+      "sha256": "5aa00fa5e26ccf342de2881f86ccbcd9e9aa0e8c42ee0e71099996dabe8acf59",
+      "port_recorded_sha256": "5aa00fa5e26ccf342de2881f86ccbcd9e9aa0e8c42ee0e71099996dabe8acf59",
+      "port_match": true
+    },
+    {
+      "path": "rust/core/src/dense_index.rs",
+      "sha256": "b4b3f62260e2c1bac1a9841c23e3871f651638e09822d9d35b1d4fabceca5829",
+      "port_recorded_sha256": "b4b3f62260e2c1bac1a9841c23e3871f651638e09822d9d35b1d4fabceca5829",
+      "port_match": true
+    },
+    {
+      "path": "rust/core/src/lib.rs",
+      "sha256": "ba0287dde720a1f97334e5e63f9d05f4add48fc9e712f8732754cf1799bf4a99",
+      "port_recorded_sha256": "ba0287dde720a1f97334e5e63f9d05f4add48fc9e712f8732754cf1799bf4a99",
+      "port_match": true
+    },
+    {
+      "path": "rust/core/src/source_bundle.rs",
+      "sha256": "ed174aa07af14f1647302f44095be34a2d3f6760e35d9a204e6a3524ca5518ad",
+      "port_recorded_sha256": "ed174aa07af14f1647302f44095be34a2d3f6760e35d9a204e6a3524ca5518ad",
+      "port_match": true
+    },
+    {
+      "path": "rust/core/src/source_bundle_tests.rs",
+      "sha256": "6e4ed7d2c85a947a7aff31347ddf063055a2df9eef6207f2a00892477f10338c",
+      "port_recorded_sha256": "6e4ed7d2c85a947a7aff31347ddf063055a2df9eef6207f2a00892477f10338c",
+      "port_match": true
+    },
+    {
+      "path": "rust/core/src/source_index.rs",
+      "sha256": "03a55b573067cb260dd8378bb72ac976e900c2ade1acb717ea3ee47ef5d34f6d",
+      "port_recorded_sha256": "03a55b573067cb260dd8378bb72ac976e900c2ade1acb717ea3ee47ef5d34f6d",
+      "port_match": true
+    },
+    {
+      "path": "rust/core/src/source_index_tests.rs",
+      "sha256": "47848f460f63f583c81e5cff5f6332e67ce924dc16f2de3a2a69fc3e84b3d45c",
+      "port_recorded_sha256": "47848f460f63f583c81e5cff5f6332e67ce924dc16f2de3a2a69fc3e84b3d45c",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/appearance/annotation.rs",
+      "sha256": "25f3942bc524584dcb91430b0867c32045292efb894902735c7af44846898754",
+      "port_recorded_sha256": "25f3942bc524584dcb91430b0867c32045292efb894902735c7af44846898754",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/appearance/atlas_plan.rs",
+      "sha256": "808f01d193e6ae5068db2678e01b4b05d74a570570cb01326e8031c373ebbd3e",
+      "port_recorded_sha256": "808f01d193e6ae5068db2678e01b4b05d74a570570cb01326e8031c373ebbd3e",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/appearance/authored.rs",
+      "sha256": "10867be60267423356f54901d604a33297c1dcbc22e55bd17f64a96f41699c34",
+      "port_recorded_sha256": "10867be60267423356f54901d604a33297c1dcbc22e55bd17f64a96f41699c34",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/appearance/canonical.rs",
+      "sha256": "3466eba2878ae6939e30bde75b3f9051a3e263757d2638c3769603ea34324eda",
+      "port_recorded_sha256": "3466eba2878ae6939e30bde75b3f9051a3e263757d2638c3769603ea34324eda",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/appearance/catalog.rs",
+      "sha256": "091d00ee5bf4957f31cf33d83907456d912a1d417c85c25e6697abaa4b8d7ead",
+      "port_recorded_sha256": "091d00ee5bf4957f31cf33d83907456d912a1d417c85c25e6697abaa4b8d7ead",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/appearance/context_tests.rs",
+      "sha256": "67e4deadda5d8f6173bf39538ee8f7020e48e3e901dcfeb4f677a013b980356c",
+      "port_recorded_sha256": "67e4deadda5d8f6173bf39538ee8f7020e48e3e901dcfeb4f677a013b980356c",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/appearance/evaluated.rs",
+      "sha256": "218b3a3e8c1f58ca3b48e14127e77924b73358021b72e49459c73adfd083ca35",
+      "port_recorded_sha256": "218b3a3e8c1f58ca3b48e14127e77924b73358021b72e49459c73adfd083ca35",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/appearance/evaluated_tests.rs",
+      "sha256": "0d2a5804571685b07730fcd32bd08cf7f09f1a977d979659ce2bafb4207f2a46",
+      "port_recorded_sha256": "0d2a5804571685b07730fcd32bd08cf7f09f1a977d979659ce2bafb4207f2a46",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/appearance/mod.rs",
+      "sha256": "c6e7195af66782df6901794ebf2c67c7cc987271ef4fcbde1cef00622b5edc45",
+      "port_recorded_sha256": "c6e7195af66782df6901794ebf2c67c7cc987271ef4fcbde1cef00622b5edc45",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/appearance/owned_context.rs",
+      "sha256": "bfaafb44a032f50a5d729284fdcfcae04fc86a755901616ac5741e5740c68ef7",
+      "port_recorded_sha256": "bfaafb44a032f50a5d729284fdcfcae04fc86a755901616ac5741e5740c68ef7",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/appearance/page_source.rs",
+      "sha256": "e9e455714e607d2762f3e984053d7d451a24358634cd23e2af1e4791e076443f",
+      "port_recorded_sha256": "e9e455714e607d2762f3e984053d7d451a24358634cd23e2af1e4791e076443f",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/appearance/pdf_fill.rs",
+      "sha256": "eeb42ff844628cee7ecfc2e6501e98a309c60874c3d3ace4e8dc091e810630a4",
+      "port_recorded_sha256": "eeb42ff844628cee7ecfc2e6501e98a309c60874c3d3ace4e8dc091e810630a4",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/appearance/source.rs",
+      "sha256": "8eca9e5dc7982a7b43fecd73283c54ac8247cc934476f7ea4cd5e1be84008af0",
+      "port_recorded_sha256": "8eca9e5dc7982a7b43fecd73283c54ac8247cc934476f7ea4cd5e1be84008af0",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/element.rs",
+      "sha256": "e144d676113ca21297467bb5b7f45688c41fd42badc49548803dc43522f9ce33",
+      "port_recorded_sha256": "e144d676113ca21297467bb5b7f45688c41fd42badc49548803dc43522f9ce33",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/element/accounted_session.rs",
+      "sha256": "837297dfe4e0581c92bf97b0b1ab0065155b8bd2072abdc2c9ff83db70d65dfc",
+      "port_recorded_sha256": "837297dfe4e0581c92bf97b0b1ab0065155b8bd2072abdc2c9ff83db70d65dfc",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/element/model_context.rs",
+      "sha256": "34dcf79098542050e19b3e377d634253135f62e67525164c801bc02ea30a51c1",
+      "port_recorded_sha256": "34dcf79098542050e19b3e377d634253135f62e67525164c801bc02ea30a51c1",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/element/owned_callback_tests.rs",
+      "sha256": "5448379c87daa864d2d3a71be4782b344178ea34d06f86310d1567229aaa8d68",
+      "port_recorded_sha256": "5448379c87daa864d2d3a71be4782b344178ea34d06f86310d1567229aaa8d68",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/element/owned_session.rs",
+      "sha256": "3e1348d29e5772211c7c37d9c4c931f19ad2ef76498d73bf13e1b310aed3d3b1",
+      "port_recorded_sha256": "3e1348d29e5772211c7c37d9c4c931f19ad2ef76498d73bf13e1b310aed3d3b1",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/element/session_protocol.rs",
+      "sha256": "0adabf1f0fa994efba9f327ad7941c0da57aa407963143e0e989fa4e7b3dcd29",
+      "port_recorded_sha256": "0adabf1f0fa994efba9f327ad7941c0da57aa407963143e0e989fa4e7b3dcd29",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/element/source_accounted_tests.rs",
+      "sha256": "8521abb1b21546c1d6be05316a8ed62c10e17925b18bd5f7e21a796dbda94ff0",
+      "port_recorded_sha256": "8521abb1b21546c1d6be05316a8ed62c10e17925b18bd5f7e21a796dbda94ff0",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/element/source_context_tests.rs",
+      "sha256": "14045654200568947945dd0f0362f8ebb84d231c2740b9fef5f3591ea8edd7de",
+      "port_recorded_sha256": "14045654200568947945dd0f0362f8ebb84d231c2740b9fef5f3591ea8edd7de",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/processor/entity_index.rs",
+      "sha256": "77bbb3d48cb08d52b1bba89396b895b790eb7f96b82fa81d2b542e2d04131b41",
+      "port_recorded_sha256": "77bbb3d48cb08d52b1bba89396b895b790eb7f96b82fa81d2b542e2d04131b41",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/processor/entity_index_tests.rs",
+      "sha256": null,
+      "port_recorded_sha256": null,
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/processor/jobs.rs",
+      "sha256": "1427649fd50fe0ee62151bc72aac6fe521a970f531f215f275e2664f042a2131",
+      "port_recorded_sha256": "1427649fd50fe0ee62151bc72aac6fe521a970f531f215f275e2664f042a2131",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/processor/mod.rs",
+      "sha256": "74016db8f139bf653cc60f69b7007c4bd822e480675b965d4e01b9eec0682d4b",
+      "port_recorded_sha256": "74016db8f139bf653cc60f69b7007c4bd822e480675b965d4e01b9eec0682d4b",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/processor/scan.rs",
+      "sha256": "d0c00ce2eeed1bb673f16a9fc5ab58e8c3869c0f22606941e75f241067af88dd",
+      "port_recorded_sha256": "d0c00ce2eeed1bb673f16a9fc5ab58e8c3869c0f22606941e75f241067af88dd",
+      "port_match": true
+    },
+    {
+      "path": "rust/processing/src/processor/scan_preservation_tests.rs",
+      "sha256": "6688aa71b2740e81eb4774e524fbc279ff6afac04b21166fde2c47430b566a3b",
+      "port_recorded_sha256": "6688aa71b2740e81eb4774e524fbc279ff6afac04b21166fde2c47430b566a3b",
+      "port_match": true
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/coherent_source.rs",
+      "sha256": "0f74ae57d511122d5e3ec05ba17c10c6355e88351da31e6e310c5b3d526d7833",
+      "port_recorded_sha256": "0f74ae57d511122d5e3ec05ba17c10c6355e88351da31e6e310c5b3d526d7833",
+      "port_match": true
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/entity_index.rs",
+      "sha256": "2cb6cbb39a2a6bee92025bf8834e11b96ba87c8e6d7065f3297bb777a65f1fa1",
+      "port_recorded_sha256": "2cb6cbb39a2a6bee92025bf8834e11b96ba87c8e6d7065f3297bb777a65f1fa1",
+      "port_match": true
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/gpu_meshes/batch.rs",
+      "sha256": "c020e932e64510f8d2d46c57549591566119f653369a9c1a8c6fc8e5f3a067f2",
+      "port_recorded_sha256": "c020e932e64510f8d2d46c57549591566119f653369a9c1a8c6fc8e5f3a067f2",
+      "port_match": true
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/gpu_meshes/batch_from_source.rs",
+      "sha256": "2a33406e99defbe48383af3c20822c82a3939e7bd25ee47f872e98a6e842cc43",
+      "port_recorded_sha256": "2a33406e99defbe48383af3c20822c82a3939e7bd25ee47f872e98a6e842cc43",
+      "port_match": true
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/gpu_meshes/batch_partition.rs",
+      "sha256": "98c219fe394bc166a5ff93408d0545767ea76546c682af91c089a2e415b2c4b7",
+      "port_recorded_sha256": "98c219fe394bc166a5ff93408d0545767ea76546c682af91c089a2e415b2c4b7",
+      "port_match": true
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/gpu_meshes/mod.rs",
+      "sha256": "e4ff470752e5b86a9e2f4f23363d1851aa6c9499274f0a2ce53b21697bc3c1db",
+      "port_recorded_sha256": "e4ff470752e5b86a9e2f4f23363d1851aa6c9499274f0a2ce53b21697bc3c1db",
+      "port_match": true
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/gpu_meshes/prepass.rs",
+      "sha256": "c7673adbe1063001a4c338bd5398582e883942469f29cc34531b019dde577674",
+      "port_recorded_sha256": "c7673adbe1063001a4c338bd5398582e883942469f29cc34531b019dde577674",
+      "port_match": true
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/mod.rs",
+      "sha256": "e58bf18419d5b70d4ff7bbefbde3bb328d75067fbbccb5312f91e7bc0fd89470",
+      "port_recorded_sha256": "e58bf18419d5b70d4ff7bbefbde3bb328d75067fbbccb5312f91e7bc0fd89470",
+      "port_match": true
+    },
+    {
+      "path": "scripts/perf/README.md",
+      "sha256": "007a38a79eac74f0728e9dec0944f240d770c5e70e324c63a6f6c42cdd726026",
+      "port_recorded_sha256": "007a38a79eac74f0728e9dec0944f240d770c5e70e324c63a6f6c42cdd726026",
+      "port_match": true
+    }
+  ],
+  "syntax_only": [
+    {
+      "path": "rust/core/src/columnar_index.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/core/src/decoder.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/core/src/decoder/caches.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/core/src/decoder/schema_layout.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/core/src/decoder/source_caches.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/core/src/decoder/source_caches_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/core/src/decoder/styled_items.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/core/src/dense_index.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/core/src/lib.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/core/src/source_bundle.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/core/src/source_bundle_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/core/src/source_index.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/core/src/source_index_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/appearance/annotation.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/appearance/atlas_plan.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/appearance/authored.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/appearance/canonical.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/appearance/catalog.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/appearance/context_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/appearance/evaluated.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/appearance/evaluated_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/appearance/mod.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/appearance/owned_context.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/appearance/page_source.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/appearance/pdf_fill.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/appearance/source.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element/accounted_session.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element/model_context.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element/owned_callback_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element/owned_session.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element/session_protocol.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element/source_accounted_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element/source_context_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/processor/entity_index.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/processor/jobs.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/processor/mod.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/processor/scan.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/processor/scan_preservation_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/coherent_source.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/entity_index.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/gpu_meshes/batch.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/gpu_meshes/batch_from_source.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/gpu_meshes/batch_partition.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/gpu_meshes/mod.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/gpu_meshes/prepass.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/mod.rs",
+      "exit_code": 0,
+      "stderr": ""
+    }
+  ],
+  "tests_added_unrun": [
+    "source_accounted_tests rejects foreign source and raw imported cache authority before processor invocation then proves correct factory extrusion parity"
+  ],
+  "qualification": "Child predecessor307c receipts are not final assembled-source results. Final source child fixture rerun and current root Cargo/Clippy/WASM/TS/Python/corpus/determinism/performance remain pending.",
+  "resource_checked_drain_api": "Checked-drain API paragraph from resource integration is retained. All56 current paths match the recorded source-port snapshot."
+}

@@ -62,6 +62,32 @@ fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
 A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
 
 
+## Immutable source/index ownership
+
+The canonical native scan now constructs an immutable source/index bundle while
+classifying entities, retaining adaptive index selection. Borrowed native load
+bytes are copied once into owned storage. Browser geometry workers retain their
+installed byte/index allocations and validate all delivered spans against the
+canonical scanner once per load. Products and batches never clone or hash the
+source or walk the whole index. Validated span reuse keeps source-bound inverse
+lookups separate from a delivered table's old caches, preserving the existing
+hash/dense decoder-local lookup and refusal domain. Same-source configuration revisions retain old
+immutable snapshots; source-derived cache clearing has one shared implementation.
+
+Native base/candidate controls preserve ordered mesh fingerprints on the normal
+and CSG fixtures. The recorded probe timings ran beside compiler/test workloads
+and do not establish a throughput verdict. Browser worker-pool admission cost
+remains unqualified; the delivered-index validation adds a real load-time scan.
+See `docs/architecture/evidence/coherent-source-owner/` for source-matched receipts
+and their explicit scope. No speedup, no-regression or retained-engine activation
+claim follows from this ownership change.
+
+Lesson: lifecycle identity cannot authenticate independent bytes and span tables.
+Either construct the pair in the canonical scan or validate the delivered table
+against original bytes once. A cheap signature or a caller-asserted token cannot
+replace that work. Preserve legacy cache behavior explicitly while qualifying a
+new coherent path's actual output independently.
+
 ## Accepted eager viewer JS growth (#7759)
 
 The maintainer approved resetting only the eager viewer JS ceiling to the

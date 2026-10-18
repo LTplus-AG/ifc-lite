@@ -52,7 +52,8 @@ pub fn catalog_appearance(bytes: &[u8], request: &AppearanceCatalogRequest) -> R
     }
     // Shared canonical parse and its 128MiB/200k-entity/8m-value bounds. No
     // geometry jobs, texture decode, or second source/overlay parser is added.
-    let mut source = Source::new(bytes)?;
+    let source_bundle=Source::bundle(bytes)?;
+    let mut source=Source::from_bundle(&source_bundle)?;
     let mut products = BTreeMap::<u32, (IfcType, BTreeSet<u32>)>::new();
     let mut missing = BTreeSet::new();
     for &id in &request.product_ids {

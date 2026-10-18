@@ -1,0 +1,237 @@
+[
+  {
+    "path": "rust/core/src/columnar_index.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/decoder.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/decoder/caches.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/decoder/schema_layout.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/decoder/source_caches.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/decoder/source_caches_tests.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/decoder/styled_items.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/dense_index.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/lib.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/source_bundle.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/source_bundle_tests.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/source_index.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/core/src/source_index_tests.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/annotation.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/atlas_plan.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/authored.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/canonical.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/catalog.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/context_tests.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/evaluated.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/evaluated_tests.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/mod.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/owned_context.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/page_source.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/pdf_fill.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/appearance/source.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/element.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/element/accounted_session.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/element/model_context.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/element/owned_callback_tests.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/element/owned_session.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/element/session_protocol.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/element/source_accounted_tests.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/element/source_context_tests.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/processor/entity_index.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/processor/jobs.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/processor/mod.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/processor/scan.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/processing/src/processor/scan_preservation_tests.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/wasm-bindings/src/api/coherent_source.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/wasm-bindings/src/api/entity_index.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/wasm-bindings/src/api/gpu_meshes/batch.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/wasm-bindings/src/api/gpu_meshes/batch_from_source.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/wasm-bindings/src/api/gpu_meshes/batch_partition.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/wasm-bindings/src/api/gpu_meshes/mod.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/wasm-bindings/src/api/gpu_meshes/prepass.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "path": "rust/wasm-bindings/src/api/mod.rs",
+    "exitCode": 0,
+    "stderr": ""
+  }
+]

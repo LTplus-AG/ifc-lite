@@ -361,6 +361,29 @@ pub mod units;           // Unit conversion helpers
 pub mod error;           // Error types
 ```
 
+### Owned source bundles
+
+`SourceBundle::new(Vec<u8>)` owns original IFC bytes and builds their index with
+the canonical byte scanner. `scan_with(Arc<Vec<u8>>, visitor)` fuses that work
+with an existing classification pass. `columnar` builds the browser index;
+`with_columnar_index` validates every delivered span and completeness once
+before retaining the supplied compact allocation.
+
+A bundle's `decoder()` borrows its owned bytes and carries private factory
+provenance. It keeps custom mutable decoder behavior and scoped-worker use.
+Independent index setters remove that provenance. No source clone, digest or
+whole-index scan occurs when making a fresh decoder or producing a product.
+
+`ifc_lite_processing::ProductionModel::from_source(bundle)` retains the source
+in immutable snapshots. `produce_element_meshes_owned` returns
+`ProductionContextError::MismatchedSource` for an unbound/foreign decoder and
+`StaleSource` after explicit lifecycle invalidation. Fresh decoders from the
+same bundle are compatible with dormant work. Configuration revisions preserve
+earlier source snapshots. The borrowed six-field context and
+`ProductionModel::new` remain explicit compatibility APIs whose callers pair
+bytes/indexes themselves. See [source ownership](../architecture/coherent-source-ownership.md)
+for native, browser and appearance integration and the remaining boundaries.
+
 ### Parser Module
 
 `ifc_lite_core::declared_schema_bounded(ifc_bytes)` reads the first actual
@@ -1891,3 +1914,11 @@ very large profiles may be unavailable for analytic quantities; they are never
 silently certified or substituted with an approximation. Rendering is
 unaffected. This change makes no performance claim; an end-to-end base/branch
 performance verdict is required before merge.
+
+For coherent decoders, use opaque `drain_source_cache` / `inject_source_cache`
+and `take_source_point_cache` / `set_source_point_cache` or
+`take_source_placement_cache` / `set_source_placement_cache` for checked reuse.
+The raw cache setters remain trusted-input APIs and revoke bundle authority.
+`ProductionModel::from_trusted_inputs(decoder.trusted_inputs().unwrap())` explicitly
+accepts an authored/extension input revision; it does not authenticate those rows
+as parsed source. Later raw imports require a new trusted revision.

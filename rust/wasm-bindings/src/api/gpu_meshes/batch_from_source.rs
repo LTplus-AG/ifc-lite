@@ -60,6 +60,10 @@ impl IfcAPI {
     #[wasm_bindgen(js_name = setSourceBytes)]
     pub fn set_source_bytes(&self, data: Vec<u8>) {
         self.production_model.invalidate_source();
+        if self.invalidate_coherent_source() {
+            self.clear_source_caches();
+            self.clear_style_finishes();
+        }
         let mut slot = self
             .cached_source_bytes
             .lock()

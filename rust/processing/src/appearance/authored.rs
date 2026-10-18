@@ -110,7 +110,7 @@ pub(super) fn validate_metadata(r: &Metadata<'_>) -> Result<(),String> {
 }
 
 pub(super) fn prepare<'a>(
-    bytes: &'a [u8],
+    source_bundle: &'a std::sync::Arc<ifc_lite_core::SourceBundle>,
     request: &Metadata<'_>,
     frame: &AnnotationPlaneFrame,
     reserve: usize,
@@ -131,7 +131,7 @@ pub(super) fn prepare<'a>(
     {
         return Err("Annotation image frame must have orthonormal axes".into());
     }
-    let mut source = Source::new(bytes)?;
+    let mut source=Source::from_bundle(source_bundle)?;
     if source
         .types
         .len()

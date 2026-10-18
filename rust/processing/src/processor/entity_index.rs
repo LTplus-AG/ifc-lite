@@ -1,146 +1,33 @@
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at https://mozilla.org/MPL/2.0/.
-
-//! Native scan indexes. Keep the public supplied-hash-index contract while
-//! avoiding hash bucket padding for large sources with 32-bit byte offsets.
-
+// SPDX-License-Identifier: MPL-2.0
+//! A coherent canonical load or the explicit legacy supplied-index contract.
 use std::sync::Arc;
-use ifc_lite_core::{ColumnarEntityIndex, DenseEntityIndex, EntityDecoder, EntityIndex, GridAxisIndex};
-use rustc_hash::FxHashMap;
-
+use ifc_lite_core::{EntityDecoder,EntityIndex,GridAxisIndex,SourceBundle};
 #[derive(Clone)]
 pub(super) enum ProcessingIndex {
-    Hash(HashIndex),
-    Columnar(Arc<ColumnarEntityIndex>),
-    Dense(Arc<DenseEntityIndex>),
+    Owned(Arc<SourceBundle>),
+    Borrowed { spans:Arc<EntityIndex>, grid_axes:Arc<GridAxisIndex> },
 }
-
-/// A bare hash map has nowhere to keep source-scoped lookups, so it travels
-/// with its own; the compact indexes carry theirs (#6232 F2).
-#[derive(Clone)]
-pub(super) struct HashIndex {
-    spans: Arc<EntityIndex>,
-    grid_axes: Arc<GridAxisIndex>,
-}
-
-impl std::ops::Deref for HashIndex {
-    type Target = EntityIndex;
-    fn deref(&self) -> &EntityIndex {
-        &self.spans
-    }
-}
-
 impl ProcessingIndex {
-    pub(super) fn hash(spans: Arc<EntityIndex>) -> Self {
-        Self::Hash(HashIndex { spans, grid_axes: Arc::default() })
+    pub(super) fn hash(spans:Arc<EntityIndex>)->Self {
+        Self::Borrowed {spans,grid_axes:Arc::default()}
     }
-
-    pub(super) fn decoder<'a>(&self, content: &'a [u8]) -> EntityDecoder<'a> {
-        let mut decoder = EntityDecoder::new(content);
-        self.install(&mut decoder);
-        decoder
-    }
-
-    pub(super) fn install(&self, decoder: &mut EntityDecoder<'_>) {
+    pub(super) fn decoder<'a>(&'a self,content:&'a [u8])->EntityDecoder<'a> {
         match self {
-            Self::Hash(index) => {
-                decoder.set_entity_index(index.spans.clone());
-                decoder.set_grid_axis_index(index.grid_axes.clone());
-            }
-            Self::Columnar(index) => decoder.set_columnar_index(index.clone()),
-            Self::Dense(index) => decoder.set_dense_index(index.clone()),
-        }
-    }
-}
-
-type Row = (u32, u32, u32);
-const PAGE_ROWS: usize = 4096;
-
-pub(super) enum IndexBuilder {
-    Hash(EntityIndex),
-    Compact { pages: Vec<Vec<Row>>, len: usize, max_rows: usize },
-}
-
-fn compact_eligible(content_len: usize) -> bool {
-    cfg!(not(target_arch = "wasm32"))
-        && content_len >= 32 * 1024 * 1024 && u32::try_from(content_len).is_ok()
-}
-
-impl IndexBuilder {
-    pub(super) fn new(content_len: usize, build: bool) -> Self {
-        if build && compact_eligible(content_len) {
-            // Reuse the old hash path's source-based capacity estimate as a
-            // hard staging budget. Short duplicate-heavy records must not
-            // retain one compact row per record indefinitely (#3921).
-            Self::Compact { pages: Vec::new(), len: 0, max_rows: content_len / 50 }
-        } else {
-            Self::Hash(FxHashMap::with_capacity_and_hasher(
-                if build { content_len / 50 } else { 0 }, Default::default()))
-        }
-    }
-
-    pub(super) fn insert(&mut self, id: u32, span: (usize, usize)) {
-        if matches!(self, Self::Compact { len, max_rows, .. } if *len == *max_rows) {
-            let Self::Compact { pages, .. } = std::mem::replace(self, Self::Hash(FxHashMap::default())) else {
-                unreachable!("only the compact builder exhausts a row budget");
-            };
-            let Self::Hash(index) = self else { unreachable!("installed hash builder") };
-            for page in pages {
-                for (id, start, length) in page {
-                    index.insert(id, (start as usize, start as usize + length as usize));
-                }
+            Self::Owned(source)=>source.decoder(),
+            Self::Borrowed {..}=> {
+                let mut decoder=EntityDecoder::new(content);
+                self.install(&mut decoder);
+                decoder
             }
         }
+    }
+    pub(super) fn install(&self,decoder:&mut EntityDecoder<'_>) {
         match self {
-            Self::Hash(index) => { index.insert(id, span); }
-            Self::Compact { pages, len, .. } => {
-                debug_assert!(span.0 <= span.1 && u32::try_from(span.1).is_ok());
-                if pages.last().is_none_or(|page| page.len() == PAGE_ROWS) {
-                    pages.push(Vec::with_capacity(PAGE_ROWS));
-                }
-                pages.last_mut().expect("a page was allocated")
-                    .push((id, span.0 as u32, (span.1 - span.0) as u32));
-                *len += 1;
-            }
-        }
-    }
-
-    pub(super) fn finish(self) -> ProcessingIndex {
-        match self {
-            Self::Hash(index) => ProcessingIndex::hash(Arc::new(index)),
-            Self::Compact { pages, len, .. } => {
-                // Fixed pages avoid geometric Vec over-allocation. At most
-                // two 12-byte representations overlap; release each consumed
-                // page as the contiguous sort input fills.
-                let mut rows = Vec::with_capacity(len);
-                for page in pages { rows.extend(page); }
-                // Scanner spans increase in file order. Sorting ties by start
-                // retains the last authored occurrence without a permutation
-                // array or a stable-sort scratch allocation.
-                rows.sort_unstable_by_key(|row| (row.0, row.1));
-                rows.dedup_by(|later, earlier| {
-                    if later.0 != earlier.0 { return false; }
-                    *earlier = *later;
-                    true
-                });
-                let mut ids = Vec::with_capacity(rows.len());
-                let mut starts = Vec::with_capacity(rows.len());
-                let mut lengths = Vec::with_capacity(rows.len());
-                for (id, start, length) in rows {
-                    ids.push(id); starts.push(start); lengths.push(length);
-                }
-                match DenseEntityIndex::try_from_columns(&ids, &starts, &lengths) {
-                    Some(index) => ProcessingIndex::Dense(Arc::new(index)),
-                    None => ProcessingIndex::Columnar(Arc::new(
-                        ColumnarEntityIndex::from_columns(&ids, &starts, &lengths)
-                            .expect("the three columns are pushed together above"))),
-                }
+            Self::Owned(source)=>source.install_compatibility_index(decoder),
+            Self::Borrowed {spans,grid_axes}=> {
+                decoder.set_entity_index(spans.clone());
+                decoder.set_grid_axis_index(grid_axes.clone());
             }
         }
     }
 }
-
-#[cfg(test)]
-#[path = "entity_index_tests.rs"]
-mod tests;

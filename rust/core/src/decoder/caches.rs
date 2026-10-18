@@ -93,10 +93,12 @@ impl EntityDecoder<'_> {
         std::mem::take(&mut self.point_cache)
     }
 
+    /// Trusted-input compatibility API; revokes coherent source authority.
     /// Install a previously-accumulated point cache (see [`Self::take_point_cache`]).
     /// Does not reset the hit/miss counters, which stay per-decoder so each job's
     /// [`Self::point_cache_stats`] reflect only that job's activity.
     pub fn set_point_cache(&mut self, cache: FxHashMap<u32, (f64, f64, f64)>) {
+        self.revoke_cache_authority();
         self.execution_owner.changed();
         self.point_cache = cache;
     }
@@ -121,9 +123,11 @@ impl EntityDecoder<'_> {
         std::mem::take(&mut self.placement_transform_cache)
     }
 
+    /// Trusted-input compatibility API; revokes coherent source authority.
     /// Install a previously-accumulated placement-transform memo (see
     /// [`Self::take_placement_transform_cache`]).
     pub fn set_placement_transform_cache(&mut self, cache: FxHashMap<u32, [f64; 16]>) {
+        self.revoke_cache_authority();
         self.execution_owner.changed();
         self.placement_transform_cache = cache;
     }

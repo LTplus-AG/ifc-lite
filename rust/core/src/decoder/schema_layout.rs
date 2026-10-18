@@ -99,6 +99,7 @@ impl EntityDecoder<'_> {
     /// entity index installs that index's own.
     pub fn set_grid_axis_index(&mut self, index: Arc<GridAxisIndex>) {
         self.execution_owner.changed();
+        self.revoke_cache_authority();
         self.grid_axis_index = index;
     }
 

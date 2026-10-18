@@ -145,3 +145,9 @@ pub use units::{
 
 /// Fixed resource terminal signals shared by scoped execution owners.
 pub mod resource_stop;
+
+mod source_index;
+pub mod source_bundle;
+pub use source_bundle::SourceBundle;
+
+pub use decoder::source_caches::{SourceCache, TrustedDecoderInputs};

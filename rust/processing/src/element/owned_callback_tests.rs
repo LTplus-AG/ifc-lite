@@ -25,8 +25,9 @@ impl GeometryProcessor for Nested {
 }
 #[test]
 fn owned_public_driver_preserves_lexical_nested_product_with_same_snapshot_and_runtime_owners() {
-    let model=ProductionModel::new();let context=model.snapshot(OwnedMeshProductionData::default());
-    let mut decoder=EntityDecoder::new(SOURCE);let mut geometry_router=router(&mut decoder);
+    let source=ifc_lite_core::SourceBundle::new(SOURCE.as_bytes().to_vec());
+    let model=ProductionModel::from_source(source.clone());let context=model.snapshot(OwnedMeshProductionData::default());
+    let mut decoder=source.decoder();let mut geometry_router=router(&mut decoder);
     let child=Rc::new(RefCell::new(None));
     let router=Rc::new_cyclic(|router| {
         geometry_router.register(Box::new(Nested {router:router.clone(),context:context.clone(),child:child.clone()}));
@@ -51,8 +52,9 @@ impl GeometryProcessor for Invalidate {
 }
 #[test]
 fn invalidation_inside_actual_geometry_callback_returns_typed_error_and_fresh_snapshot_can_retry() {
-    let model=ProductionModel::new();let context=model.snapshot(OwnedMeshProductionData::default());
-    let mut decoder=EntityDecoder::new(SOURCE);let mut router=router(&mut decoder);
+    let source=ifc_lite_core::SourceBundle::new(SOURCE.as_bytes().to_vec());
+    let model=ProductionModel::from_source(source.clone());let context=model.snapshot(OwnedMeshProductionData::default());
+    let mut decoder=source.decoder();let mut router=router(&mut decoder);
     let calls=Rc::new(Cell::new(0));
     router.register(Box::new(Invalidate {model:model.clone(),once:Rc::new(Cell::new(true)),calls:calls.clone()}));
     let entity=decoder.decode_by_id(10).unwrap();

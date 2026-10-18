@@ -4,13 +4,14 @@ use crate::appearance::{page_source, source::Source, tests::CONTROLLED_IFC};
 
 #[test]
 fn appearance_passes_share_owned_maps_but_replacement_textures_have_a_new_revision() {
-    let mut source = Source::new(CONTROLLED_IFC.as_bytes()).unwrap();
-    let styles = page_source::appearance(CONTROLLED_IFC.as_bytes(), &mut source);
-    let textures = source.texture_index(CONTROLLED_IFC.as_bytes());
-    let original = styles.context(&source.production_model, source.production_identity, &textures);
+    let bundle=Source::bundle(CONTROLLED_IFC.as_bytes()).unwrap();
+    let mut source = Source::from_bundle(&bundle).unwrap();
+    let styles = page_source::appearance( &mut source);
+    let textures = source.texture_index();
+    let original = styles.context(&source.production_model, &textures);
     let before = produce(&mut source, 10, &textures, Some(&styles)).unwrap();
     let other = produce(&mut source, 30, &textures, Some(&styles)).unwrap();
-    let same = styles.context(&source.production_model, source.production_identity, &textures);
+    let same = styles.context(&source.production_model, &textures);
     assert_eq!(original.id(), same.id());
     assert_eq!((before.len(), other.len()), (1, 1));
     assert_eq!((before[0].indices.len(), other[0].indices.len()), (12, 3));
@@ -48,14 +49,15 @@ fn appearance_passes_share_owned_maps_but_replacement_textures_have_a_new_revisi
 
 #[test]
 fn appearance_style_edits_rebuild_the_snapshot_after_completed_geometry_without_map_copy() {
-    let mut source = Source::new(CONTROLLED_IFC.as_bytes()).unwrap();
-    let mut styles = page_source::appearance(CONTROLLED_IFC.as_bytes(), &mut source);
-    let textures = source.texture_index(CONTROLLED_IFC.as_bytes());
+    let bundle=Source::bundle(CONTROLLED_IFC.as_bytes()).unwrap();
+    let mut source = Source::from_bundle(&bundle).unwrap();
+    let mut styles = page_source::appearance( &mut source);
+    let textures = source.texture_index();
     let before = produce(&mut source, 10, &textures, Some(&styles)).unwrap();
-    let old = styles.context(&source.production_model, source.production_identity, &textures).id();
+    let old = styles.context(&source.production_model, &textures).id();
     styles.insert_style(14, crate::style::GeometryStyleInfo::from_color([0., 0., 1., 1.]));
     let after = produce(&mut source, 10, &textures, Some(&styles)).unwrap();
-    let new = styles.context(&source.production_model, source.production_identity, &textures).id();
+    let new = styles.context(&source.production_model, &textures).id();
     assert_ne!(old, new);
     assert_ne!(before[0].color, after[0].color);
     assert_eq!(after[0].color, [0., 0., 1., 1.]);

@@ -86,7 +86,7 @@ impl std::fmt::Debug for RejectedReply {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum WorkError { Outstanding, StaleTicket, AlreadyExecuted, NotExecuted, WrongEmitter, WrongPayload, WrongOwner, OwnerBusy, WrongContext, StaleSource }
+pub(super) enum WorkError { Outstanding, StaleTicket, AlreadyExecuted, NotExecuted, WrongEmitter, WrongPayload, WrongOwner, OwnerBusy, WrongContext, StaleSource, MismatchedSource }
 
 pub(super) struct Protocol {
     session: usize,

@@ -27,14 +27,25 @@ struct ModelState {load:u64,source_epoch:AtomicU64,revision:AtomicU64}
 
 /// Explicit source lifecycle. Dropping this handle does not invalidate snapshots.
 #[derive(Clone)]
-pub struct ProductionModel {state:Arc<ModelState>}
+pub struct ProductionModel {state:Arc<ModelState>,source:Option<Arc<ifc_lite_core::SourceBundle>>,trusted:Option<ifc_lite_core::TrustedDecoderInputs>}
 impl Default for ProductionModel {fn default()->Self {Self::new()}}
 impl ProductionModel {
+    /// Explicit compatibility mode for callers that retain borrowed bytes and
+    /// independently supplied indexes. No source authentication is promised.
     pub fn new()->Self {
         static NEXT:AtomicU64=AtomicU64::new(1);
         let load=NEXT.fetch_update(Ordering::Relaxed,Ordering::Relaxed,|n|n.checked_add(1))
             .expect("production model identity exhausted");
-        Self {state:Arc::new(ModelState {load,source_epoch:AtomicU64::new(0),revision:AtomicU64::new(0)})}
+        Self {state:Arc::new(ModelState {load,source_epoch:AtomicU64::new(0),revision:AtomicU64::new(0)}),source:None,trusted:None}
+    }
+    /// Bind a model to immutable bytes and their canonically constructed index.
+    pub fn from_source(source:Arc<ifc_lite_core::SourceBundle>)->Self {
+        Self {source:Some(source),..Self::new()}
+    }
+    /// Explicit authoring/extension mode: authenticate the immutable base source,
+    /// and accept this decoder's external input revision as trusted configuration.
+    pub fn from_trusted_inputs(inputs:ifc_lite_core::TrustedDecoderInputs)->Self {
+        Self {source:Some(inputs.source().clone()),trusted:Some(inputs),..Self::new()}
     }
     /// Capture the actual selected components. A later same-source snapshot
     /// never changes or expires this snapshot.
@@ -43,7 +54,12 @@ impl ProductionModel {
         let revision=self.state.revision.fetch_update(Ordering::Relaxed,Ordering::Relaxed,|n|n.checked_add(1))
             .expect("production context revision exhausted")+1;
         Arc::new(OwnedMeshProductionContext {id:ProductionContextId {load:self.state.load,source_epoch,revision},
-            data,state:self.state.clone()})
+            data,state:self.state.clone(),source:self.source.clone(),trusted:self.trusted.clone()})
+    }
+    /// Whether a snapshot was created by this model load, independent of its
+    /// immutable configuration revision. This grants no decoder authority.
+    pub fn owns_snapshot(&self,context:&OwnedMeshProductionContext)->bool {
+        self.state.load==context.id.load
     }
     /// Expire all snapshots tied to the preceding source/index bundle. Call at
     /// explicit source replacement; never infer an epoch from map addresses.
@@ -58,6 +74,8 @@ pub struct OwnedMeshProductionContext {
     id:ProductionContextId,
     data:OwnedMeshProductionData,
     state:Arc<ModelState>,
+    source:Option<Arc<ifc_lite_core::SourceBundle>>,
+    trusted:Option<ifc_lite_core::TrustedDecoderInputs>,
 }
 impl OwnedMeshProductionContext {
     pub fn id(&self)->ProductionContextId {self.id}
@@ -73,6 +91,16 @@ impl OwnedMeshProductionContext {
         if self.id.source_epoch==self.state.source_epoch.load(Ordering::Acquire) {Ok(())}
         else {Err(ProductionContextError::StaleSource)}
     }
+    /// None denotes the explicit borrowed compatibility contract: the caller
+    /// must pair bytes/index itself. Lifecycle validity is not authentication.
+    pub fn source(&self)->Option<&Arc<ifc_lite_core::SourceBundle>> {self.source.as_ref()}
+    pub fn validate_decoder(&self,decoder:&EntityDecoder<'_>)->Result<(),ProductionContextError> {
+        self.validate_source()?;
+        if self.trusted.as_ref().map_or_else(|| self.source.as_ref().is_some_and(|source| !source.owns_decoder(decoder)), |inputs| !inputs.matches(decoder)) {
+            return Err(ProductionContextError::MismatchedSource);
+        }
+        Ok(())
+    }
     pub fn borrowed(&self)->MeshProductionContext<'_> {
         MeshProductionContext {void_index:&self.data.void_index,geometry_style_index:&self.data.geometry_style_index,
             indexed_colour_full:&self.data.indexed_colour_full,element_material_colors:&self.data.element_material_colors,
@@ -80,8 +108,8 @@ impl OwnedMeshProductionContext {
     }
 }
 #[derive(Debug,Clone,Copy,PartialEq,Eq)]
-pub enum ProductionContextError {StaleSource}
+pub enum ProductionContextError {StaleSource,MismatchedSource}
 impl fmt::Display for ProductionContextError {
-    fn fmt(&self,f:&mut fmt::Formatter<'_>)->fmt::Result {f.write_str("production model source was invalidated")}
+    fn fmt(&self,f:&mut fmt::Formatter<'_>)->fmt::Result {f.write_str(match self {Self::StaleSource=>"production model source was invalidated", Self::MismatchedSource=>"decoder does not belong to the production source bundle"})}
 }
 impl std::error::Error for ProductionContextError {}

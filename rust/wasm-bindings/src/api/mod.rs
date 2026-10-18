@@ -71,6 +71,7 @@ pub(crate) struct IndexedColourCache {
 /// Main IFC-Lite API
 #[wasm_bindgen]
 pub struct IfcAPI {
+    coherent_source: std::sync::Mutex<Option<std::sync::Arc<coherent_source::CoherentLoad>>>,
     initialized: bool,
     production_model: ifc_lite_processing::element::ProductionModel,
     /// Cached entity index from buildPrePassOnce, reused by processGeometryBatch.
@@ -298,6 +299,7 @@ impl IfcAPI {
 
         Self {
             initialized: true,
+            coherent_source: std::sync::Mutex::new(None),
             production_model: ifc_lite_processing::element::ProductionModel::new(),
             cached_entity_index: std::sync::Mutex::new(None),
             cached_source_bytes: std::sync::Mutex::new(None),
@@ -341,91 +343,15 @@ impl IfcAPI {
     #[wasm_bindgen(js_name = clearPrePassCache)]
     pub fn clear_pre_pass_cache(&self) {
         self.production_model.invalidate_source();
+        self.invalidate_coherent_source();
         let mut slot = self
             .cached_entity_index
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         slot.take();
-        // The parts-to-skip set is keyed off the content scanned during
-        // the previous load; drop it together with the entity index so the
-        // next file's first batch call rebuilds against fresh content.
-        let mut parts_slot = self
-            .cached_parts_to_skip
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        parts_slot.take();
-        // The material-layer index is keyed off the previous load's content.
-        self.cached_material_layer_index
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take();
-        // The referenced-RepresentationMap set is keyed off the previous load's
-        // content; drop it so the next file rebuilds against fresh content.
-        let mut repmap_slot = self
-            .cached_referenced_repmaps
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        repmap_slot.take();
-        // The instantiated-type-ids set is keyed off the previous load's content.
-        let mut inst_slot = self
-            .cached_instantiated_type_ids
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        inst_slot.take();
-        // The don't-bake mapped-instance plan is keyed off the previous load's
-        // IfcMappedItem scan (#1623 Phase 3); drop it so the next file rebuilds it.
-        self.cached_mapped_instance_plan
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take();
-        // The texture index is keyed off the previous load's content; drop it.
-        let mut texture_slot = self
-            .cached_texture_index
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        texture_slot.take();
-        // The indexed-colour-map index is also keyed off the previous load's
-        // content; drop it so the next file rebuilds against fresh content.
-        let mut icm_slot = self
-            .cached_indexed_colour_maps
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        icm_slot.take();
-        // The plane-angle scale belongs to the previous load's content.
-        self.cached_plane_angle_to_radians
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take();
-        // The geometry-style maps belong to the previous load's wire styles.
-        self.cached_geometry_styles
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take();
-        // So do the #5582 style finishes, and any unconsumed sharded stash.
+        self.clear_source_caches();
         self.clear_style_finishes();
-        // The content-dedup cache holds the previous model's item meshes, keyed by
-        // a content hash of that model's entities. Drop it so a new file on the
-        // same reused IfcAPI starts with an empty cache (bounds memory across
-        // loads; defensive even though the key is content- not id-based).
-        self.cached_item_dedup
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take();
-        // The session source bytes are the previous load's whole file; drop them
-        // at end-of-load cleanup so a reused IfcAPI doesn't retain a ~100s-of-MB
-        // copy between loads (the next load's setSourceBytes re-installs its own).
-        self.cached_source_bytes
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take();
-        // The mapped-item source cache holds the previous model's source meshes,
-        // keyed by RepresentationMap id (baking in that load's unit scale /
-        // tessellation quality). Drop it so a new file on the same reused IfcAPI
-        // starts empty (#1623).
-        self.cached_mapped_item
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take();
+        self.cached_source_bytes.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
         // NB: do NOT reset pipeline_diagnostics here. clearPrePassCache runs in
         // the JS load wrapper's `finally` AFTER the last processGeometryBatch
         // (packages/geometry/src/index.ts), i.e. end-of-load cleanup; resetting
@@ -1029,3 +955,5 @@ fn set_js_prop(obj: &JsValue, key: &str, value: &JsValue) -> bool {
 }
 
 #[cfg(test)] mod mod_tests;
+
+mod coherent_source;

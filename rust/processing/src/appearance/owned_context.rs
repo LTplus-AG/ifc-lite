@@ -6,10 +6,10 @@ use crate::prepass::ResolvedPrepass;
 use crate::style::{FullIndexedColourMap, GeometryStyleInfo};
 use ifc_lite_geometry::ResolvedTextureMap;
 use rustc_hash::FxHashMap;
-use std::{cell::RefCell, sync::{Arc, atomic::{AtomicUsize, Ordering}}};
+use std::{cell::RefCell, sync::Arc};
 
 type TextureIndex = FxHashMap<u32, ResolvedTextureMap>;
-type Cached = (usize, Arc<TextureIndex>, Arc<OwnedMeshProductionContext>);
+type Cached = (Arc<TextureIndex>, Arc<OwnedMeshProductionContext>);
 
 #[derive(Default)]
 pub(super) struct Styles {
@@ -47,23 +47,17 @@ impl Styles {
             texture_index: Arc::clone(textures), site_local_rotation: None,
         })
     }
-    pub(super) fn context(&self, model: &ProductionModel, source: usize,
+    pub(super) fn context(&self, model: &ProductionModel,
         textures: &Arc<TextureIndex>) -> Arc<OwnedMeshProductionContext> {
         let mut cached = self.cached.borrow_mut();
-        if let Some((owner, existing_textures, context)) = cached.as_ref() {
+        if let Some((existing_textures, context)) = cached.as_ref() {
             // Arc equality is only a cache reuse check. Source authority and
             // snapshot identity come from the actual model, never an address.
-            if *owner == source && Arc::ptr_eq(existing_textures, textures)
+            if model.owns_snapshot(context) && Arc::ptr_eq(existing_textures, textures)
                 && context.validate_source().is_ok() { return Arc::clone(context); }
         }
         let context = self.snapshot(model, textures);
-        *cached = Some((source, Arc::clone(textures), Arc::clone(&context)));
+        *cached = Some((Arc::clone(textures), Arc::clone(&context)));
         context
     }
-}
-
-pub(super) fn source_identity() -> usize {
-    static NEXT: AtomicUsize = AtomicUsize::new(1);
-    NEXT.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-        .expect("appearance source identity exhausted")
 }

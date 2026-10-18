@@ -65,6 +65,7 @@ fn check() -> Result<(), AccountedProductionError> {
 fn context_error(error: WorkError) -> AccountedProductionError {
     match error {
         WorkError::StaleSource => AccountedProductionError::Context(ProductionContextError::StaleSource),
+        WorkError::MismatchedSource => AccountedProductionError::Context(ProductionContextError::MismatchedSource),
         _ => panic!("canonical accounted production invariant: {error:?}"),
     }
 }

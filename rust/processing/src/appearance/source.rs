@@ -16,8 +16,8 @@ pub(super) struct SplitBody {
     pub retained: u32,
 }
 pub(super) struct Source<'a> {
+    bytes: &'a [u8],
     pub production_model: crate::element::ProductionModel,
-    pub production_identity: usize,
     pub empty_styles: super::owned_context::Styles,
     pub context: Option<super::context::Context>,
     pub decoder: EntityDecoder<'a>,
@@ -34,28 +34,52 @@ pub(super) struct Source<'a> {
     texture_index: Option<Arc<FxHashMap<u32, ResolvedTextureMap>>>,
 }
 impl<'a> Source<'a> {
+    /// Authored rows are explicit trusted configuration, not source-parsed cache.
+    /// Every edit expires the preceding revision before a canonical product runs.
+    pub(super) fn install_authored_entities(&mut self, entities: &FxHashMap<u32, Arc<DecodedEntity>>) {
+        self.decoder.inject_shared_cache(entities);
+        self.production_model.invalidate_source();
+        self.production_model = crate::element::ProductionModel::from_trusted_inputs(
+            self.decoder.trusted_inputs().expect("appearance owns its base source"));
+    }
+
     /// The model's surface-texture index, built on first use and shared by
     /// every later caller of this session. Each build decodes every texture
     /// and counts each refused binary, so building it per planning stage
     /// decoded a shared image up to three times and counted one bad texture
     /// as many (F4-1 follow-up, #7776).
-    pub fn texture_index(&mut self, bytes: &[u8]) -> Arc<FxHashMap<u32, ResolvedTextureMap>> {
+    pub fn texture_index(&mut self) -> Arc<FxHashMap<u32, ResolvedTextureMap>> {
+        let bytes=self.bytes;
         let decoder = &mut self.decoder;
         Arc::clone(self.texture_index.get_or_insert_with(|| {
             Arc::new(ifc_lite_geometry::build_texture_index(bytes, decoder))
         }))
     }
 
-    pub fn new(bytes: &'a [u8]) -> Result<Self, String> {
+    pub fn bundle(bytes:&[u8])->Result<Arc<ifc_lite_core::SourceBundle>,String> {
+        if bytes.len()>128*1024*1024 {return Err("Appearance source exceeds 128 MiB budget".into())}
+        Ok(ifc_lite_core::SourceBundle::new(bytes.to_vec()))
+    }
+
+    pub fn from_bundle(bundle:&'a Arc<ifc_lite_core::SourceBundle>)->Result<Self,String> {
+        Self::scan(bundle.bytes(),bundle.decoder(),crate::element::ProductionModel::from_source(Arc::clone(bundle)))
+    }
+
+    #[cfg(test)]
+    pub fn new(bytes:&'a [u8])->Result<Self,String> {
+        Self::scan(bytes,EntityDecoder::new(bytes),crate::element::ProductionModel::new())
+    }
+
+    fn scan(bytes:&'a [u8],decoder:EntityDecoder<'a>,production_model:crate::element::ProductionModel)->Result<Self,String> {
         if bytes.len() > 128 * 1024 * 1024 {
             return Err("Appearance source exceeds 128 MiB budget".into());
         }
         let mut source = Self {
-            production_model: crate::element::ProductionModel::new(),
-            production_identity: super::owned_context::source_identity(),
+            bytes,
+            production_model,
             empty_styles: super::owned_context::Styles::default(),
             context: None,
-            decoder: EntityDecoder::new(bytes),
+            decoder,
             types: BTreeMap::new(),
             incoming: BTreeMap::new(),
             texture_maps: BTreeMap::new(),
@@ -117,6 +141,7 @@ impl<'a> Source<'a> {
         source.context = Some(super::context::Context::new(bytes, &mut source.decoder));
         Ok(source)
     }
+    pub fn bytes(&self)->&'a [u8] {self.bytes}
     pub fn entity(&mut self, id: u32) -> Result<DecodedEntity, String> {
         self.decoder.decode_by_id(id).map_err(|e| e.to_string())
     }
@@ -314,8 +339,8 @@ mod texture_index_tests {
     #[test]
     fn a_session_builds_the_texture_index_once_7776() {
         let mut source = Source::new(MODEL.as_bytes()).unwrap();
-        let first = source.texture_index(MODEL.as_bytes());
-        let second = source.texture_index(MODEL.as_bytes());
+        let first = source.texture_index();
+        let second = source.texture_index();
         assert!(Arc::ptr_eq(&first, &second));
     }
 }

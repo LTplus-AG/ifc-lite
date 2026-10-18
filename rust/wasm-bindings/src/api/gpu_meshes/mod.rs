@@ -13,7 +13,7 @@ mod batch_entry_points;
 pub(super) use batch::StyleMaps;
 mod partitioned_batch;
 mod batch_from_source;
-mod batch_partition;
+pub(super) mod batch_partition;
 mod batch_partitioned_output;
 mod instancing;
 pub(crate) mod prepass;
@@ -31,7 +31,7 @@ mod source_fingerprint_prepass;
 /// past `u32::MAX` (#7675, CORE-24), which a wasm32 `&[u8]` cannot reach: the
 /// linear memory it lives in is itself 32-bit addressed. These entry points
 /// have no `Result` to return it through, so the bound is stated here instead.
-fn scan_columnar_index(content: &[u8]) -> ifc_lite_core::ColumnarEntityIndex {
+pub(super) fn scan_columnar_index(content: &[u8]) -> ifc_lite_core::ColumnarEntityIndex {
     ifc_lite_core::ColumnarEntityIndex::from_scan(content)
         .expect("a wasm32 source is below 4 GiB, so every span fits u32")
 }

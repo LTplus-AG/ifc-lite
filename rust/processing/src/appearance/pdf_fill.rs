@@ -42,16 +42,7 @@ pub fn plan_pdf_fill_annotation_with_clip(
     let accept_partial = r.accepted_fidelity_sha256.is_some();
     let geometry = crate::pdf_vector::fills::compose(&prepared, r.page.model_metres_from_pdf, accept_partial)?;
     let extra_global_ids = [r.property_set_global_id.as_str(), r.property_relation_global_id.as_str()];
-    let metadata = Metadata {
-        schema: &r.schema,
-        source_revision: &r.source_revision,
-        next_express_id: r.next_express_id,
-        container_id: r.container_id,
-        global_id: &r.global_id,
-        containment_global_id: &r.containment_global_id,
-        extra_global_ids: &extra_global_ids,
-        name: &r.name,
-    };
+    let metadata=annotation_metadata(r,&extra_global_ids);
     let provenance = Provenance {
         request: r,
         prepared: &prepared,
@@ -64,6 +55,7 @@ pub fn plan_pdf_fill_annotation_with_clip(
             .checked_add(4 + shape.rings.len() + shape.rings.iter().map(Vec::len).sum::<usize>())
             .ok_or("PDF annotation entity budget overflow")?;
     }
+    let source_bundle=super::source::Source::bundle(bytes)?;
     let authored::Authoring {
         mut author,
         mut source,
@@ -72,7 +64,7 @@ pub fn plan_pdf_fill_annotation_with_clip(
         owner,
         scale,
         rtc_offset,
-    } = authored::prepare(bytes, &metadata, &r.frame, reserve)?;
+    } = authored::prepare(&source_bundle, &metadata, &r.frame, reserve)?;
     let mut items = Vec::new();
     let mut styled = Vec::new();
     let mut regions = Vec::new();
@@ -173,7 +165,7 @@ pub fn plan_pdf_fill_annotation_with_clip(
     if author.plan.created.len() != reserve {
         return Err("PDF annotation allocation preflight disagrees with authored rows".into());
     }
-    source.decoder.inject_shared_cache(&author.entities);
+    source.install_authored_entities(&author.entities);
     let mut styles = super::owned_context::Styles::default();
     for (item, styled) in styled {
         let info = crate::style::fill::fill_style_from_styled_item(
@@ -280,3 +272,16 @@ pub fn plan_pdf_fill_annotation_with_clip(
 #[cfg(test)]
 #[path = "pdf_fill_tests.rs"]
 mod tests;
+
+fn annotation_metadata<'a>(r:&'a PdfFillAnnotationRequest,extra_global_ids:&'a [&'a str])->Metadata<'a> {
+    Metadata {
+        schema: &r.schema,
+        source_revision: &r.source_revision,
+        next_express_id: r.next_express_id,
+        container_id: r.container_id,
+        global_id: &r.global_id,
+        containment_global_id: &r.containment_global_id,
+        extra_global_ids,
+        name: &r.name,
+    }
+}

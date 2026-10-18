@@ -1,0 +1,11 @@
+{
+  "artifact": "packages/wasm/pkg/ifc-lite.d.ts",
+  "root_sha256": "67c465620f0906c7ff33582e19f38cdd2fe835586b2fd08fba2495f1633a5ad8",
+  "delivery_child": "b676f94f4a67ca99d29efd43ca691eb746046c37",
+  "origin": "combined-source.patch includes generated-declarations.patch from child canonical bash scripts/build-wasm.sh run; no declaration edits by integration agent",
+  "generated_patch_sha256": "caae75051f10ee039416fa115f7c7b22e624c59287858d4eabee13e307f49f8a",
+  "canonical_child_build_log_sha256": "730f6a83be6b24b9488ddcc8aadb554d824397728183bf1ca1363ed544fa04a6",
+  "canonical_child_verification_sha256": "9918f9c7366d94c2e8d8aa9dae3f8a23624eb05f175c163ccab458c32436065a",
+  "integration_rebuild": false,
+  "qualification": "Child build provenance only; final shared source and browser boundary remain uncompiled/unqualified."
+}

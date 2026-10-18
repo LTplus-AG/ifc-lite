@@ -23,7 +23,7 @@ mod csg_summary;
 mod csg_summary_tests;
 mod diagnostics;
 mod entity_index;
-use entity_index::{IndexBuilder, ProcessingIndex};
+use entity_index::ProcessingIndex;
 mod entry_points;
 #[allow(deprecated)] // the deprecated delegates stay exported until the next major
 pub use entry_points::{
@@ -359,22 +359,20 @@ pub fn process(
     );
     let scan_guard = scan_span.clone().entered();
 
-    // The entity index (expressId -> byte span) is built INLINE in the scan loop
-    // below rather than in a separate `build_entity_index` pass, so the file is
-    // walked once instead of twice. A caller that injected an index reuses it and
-    // skips the inline build. `decode_at` during the scan needs no index (it parses
-    // local bytes), so the scan-phase decoder starts index-less; the completed
-    // index is installed before the first ref-resolving call (`resolve_prepass`).
+    // The canonical scan constructs the immutable source/index pair inline.
+    // Supplied legacy indexes retain their explicit same-source precondition.
     let provided_index = req.entity_index.clone();
-    let building_index = provided_index.is_none();
-    let mut inline_index = IndexBuilder::new(content.len(), building_index);
+    // Borrowed public input is copied once at load, never per job. The legacy
+    // supplied-index option retains its documented same-source precondition.
+    let owned_bytes=provided_index.is_none().then(||Arc::new(content.to_vec()));
+    let content=owned_bytes.as_deref().map_or(content, |bytes|bytes.as_slice());
     let mut decoder = match &provided_index { // geometry pre-pass: strict reals (#7678)
         Some(idx) => EntityDecoder::with_arc_index(content, idx.clone()).with_strict_reals(),
         None => EntityDecoder::new(content).with_strict_reals(),
     };
     tracing::debug!("Entity index will be built inline during the scan");
 
-    let scan::ScanOutput {
+    let (scan::ScanOutput {
         mut entity_jobs,
         prepass_spans,
         project_id,
@@ -386,20 +384,16 @@ pub fn process(
         total_entities,
         site_entity_pos,
         building_entity_pos,
-    } = scan::scan_entities(content, req, &mut decoder, &mut inline_index, building_index);
+    }, source) = scan::scan_entities(content, req, &mut decoder, owned_bytes.clone());
 
     let defer_style_updates = req.batching.fast_first
         && req.opening_filter == OpeningFilterMode::Default
         && !req.features.presentation_layers;
 
 
-    // The inline index is now complete — identical to `build_entity_index` over
-    // the same scanner. Install it into the decoder so `resolve_prepass` and the
-    // downstream phases resolve refs against it, and expose it (as before) to the
-    // geometry workers further down.
     let entity_index = match provided_index {
         Some(idx) => ProcessingIndex::hash(idx),
-        None => inline_index.finish(),
+        None => ProcessingIndex::Owned(source.clone().expect("canonical scan owns its source")),
     };
     entity_index.install(&mut decoder);
 
@@ -598,7 +592,7 @@ pub fn process(
         .collect();
     let element_material_colors = Arc::new(element_material_colors);
 
-    let production_model = crate::element::ProductionModel::new();
+    let production_model = source.map_or_else(crate::element::ProductionModel::new, crate::element::ProductionModel::from_source);
     let shared_site_rotation = site_transform.as_ref().filter(|_| coord_space == MeshCoordinateSpace::SiteLocal).map(|v| Arc::new(v.clone()));
     let total_jobs = entity_jobs.len();
     let initial_chunk_size = req.batching.initial.max(1);
@@ -831,9 +825,9 @@ pub fn process(
                 // fails on that re-entrant steal; that rare job uses a throwaway
                 // cache instead. Output is byte-identical: the cache is pure
                 // memoization of deterministic coordinates, so a miss just re-decodes.
-                let mut fallback_cache = FxHashMap::default();
+                let mut fallback_cache = Default::default();
                 let mut slot_guard = worker_point_caches[widx].try_lock().ok();
-                let worker_point_cache: &mut FxHashMap<u32, (f64, f64, f64)> =
+                let worker_point_cache: &mut ifc_lite_core::SourceCache<(f64, f64, f64)> =
                     match slot_guard.as_deref_mut() {
                         Some(cache) => cache,
                         None => &mut fallback_cache,
@@ -846,9 +840,9 @@ pub fn process(
                 // self-deadlock (#1587). On that rare re-entrant steal we fall
                 // back to a throwaway cache; output stays byte-identical since
                 // the cache is pure memoization of a deterministic composition.
-                let mut fallback_placement_cache = FxHashMap::default();
+                let mut fallback_placement_cache = Default::default();
                 let mut placement_slot_guard = worker_placement_caches[widx].try_lock().ok();
-                let worker_placement_cache: &mut FxHashMap<u32, [f64; 16]> =
+                let worker_placement_cache: &mut ifc_lite_core::SourceCache<[f64; 16]> =
                     match placement_slot_guard.as_deref_mut() {
                         Some(cache) => cache,
                         None => &mut fallback_placement_cache,

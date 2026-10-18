@@ -177,6 +177,22 @@ processGeometryBatchFromSource(jobsFlat, unitScale, /* same trailing args */): M
 processGeometryBatchPartitionedFromSource(jobsFlat, unitScale, /* ... */): PartitionedBatch;
 ```
 
+After installing the source and entity index, `bindSourceModel(): void` admits
+one coherent immutable load for the `FromSource` geometry calls. The geometry
+worker calls it once before its first batch; repeated calls reuse the handle.
+Admission checks every delivered span and index completeness against the existing
+canonical byte scanner once per worker. It reuses the installed source and index
+allocations, with no source hash, clone or index scan per batch. A mismatched pair
+throws before geometry. This adds a load-time scan cost that requires performance
+qualification on the intended worker pool.
+
+Coherent batches select current opening/material/finish arguments and cache styles
+by exact wire revision. Changed style colors with unchanged IDs therefore take
+effect. Earlier immutable Rust snapshots retain their selected maps. Independent
+`setSourceBytes`/`setEntityIndex` setters and data-taking batch signatures remain
+compatible; legacy calls retain their explicit same-source precondition and cheap
+style-cache predicate. A lifecycle token alone never authenticates those inputs.
+
 The sharded pre-pass can reuse the same installed source before geometry batches:
 
 ```typescript

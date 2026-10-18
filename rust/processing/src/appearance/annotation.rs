@@ -23,8 +23,9 @@ pub(super) fn plan_textured_product(bytes:&[u8], request:&AnnotationPlaneRequest
         containment_global_id:&r.containment_global_id,extra_global_ids:&[],name:&r.name};
     super::authored::validate_metadata(&metadata)?;
     validate_image_uri(&r.image_uri)?;
+    let source_bundle=super::source::Source::bundle(bytes)?;
     let super::authored::Authoring {mut author,mut source,placement,context_id,owner,scale,rtc_offset} =
-        super::authored::prepare(bytes,&metadata,f,32)?;
+        super::authored::prepare(&source_bundle,&metadata,f,32)?;
     let size=f.size_metres.map(|v|v/scale);
     let vertices = captured.map_or_else(|| vec![[0.,0.,0.],[size[0],0.,0.],[size[0],size[1],0.],[0.,size[1],0.]], |m| m.positions.iter().map(|p| std::array::from_fn(|i| (p[i]-f.origin[i])/scale)).collect());
     let mut point_attributes=vec![A::List(vertices.into_iter().map(vector).collect())];
@@ -51,7 +52,7 @@ pub(super) fn plan_textured_product(bytes:&[u8], request:&AnnotationPlaneRequest
     else if r.schema=="IFC4X3" { annotation_attributes.push(A::Enum("USERDEFINED".into())); }
     let annotation=author.add(if captured.is_some() {IfcType::IfcBuildingElementProxy} else {IfcType::IfcAnnotation},annotation_attributes);
     author.add(IfcType::IfcRelContainedInSpatialStructure,vec![A::String(r.containment_global_id.clone()),owner,A::Null,A::Null,refs(&[annotation]),A::EntityRef(r.container_id)]);
-    source.decoder.inject_shared_cache(&author.entities);
+    source.install_authored_entities(&author.entities);
     let mut styles=crate::prepass::ResolvedPrepass::default();
     let (_,info)=crate::prepass::surface_style_from_styled_item(&author.entities[&styled],&mut source.decoder).ok_or("Generated style failed canonical resolution")?;
     styles.geometry_style_index.insert(item,info);

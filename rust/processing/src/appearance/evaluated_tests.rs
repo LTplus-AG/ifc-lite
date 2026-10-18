@@ -142,13 +142,19 @@ fn issue_4404_material_layer_slicing_refusal_precedes_mapped_evaluation() {
 fn issue_4404_filtered_private_conversion_prefix_compacts_to_host_allocation_order() {
     let Some(text)=real_source() else{return};
     let mut request=request(); request.product_ids=vec![35169,35304];
-    let mut source=Source::new(text.as_bytes()).unwrap();
-    let mut normalized=prepare(text.as_bytes(),&request,&mut source).unwrap();
+    // Use the production source factory: authored conversions require an
+    // explicit trusted revision of a real bundle, not the read-only test helper.
+    let bundle=Source::bundle(text.as_bytes()).unwrap();
+    let mut source=Source::from_bundle(&bundle).unwrap();
+    assert!(bundle.owns_decoder(&source.decoder));
+    let mut normalized=prepare(&request,&mut source).unwrap();
     assert_eq!(normalized.conversions.len(),2);
+    assert!(!bundle.owns_decoder(&source.decoder));
+    assert!(source.decoder.trusted_inputs().unwrap().matches(&source.decoder));
     // The final appearance pass can exclude a normalized occurrence. Its unused
     // private IDs must not leave a gap before the accepted occurrence's rows.
     normalized.request.product_ids.retain(|id|*id==35304);
-    let mapped=super::super::plan_with_source(text.as_bytes(),&normalized.request,&mut source).unwrap();
+    let mapped=super::super::plan_with_source(&normalized.request,&mut source).unwrap();
     let (plan,ids)=normalized.compose(mapped,&source).unwrap();
     assert_eq!(plan.conversions.len(),1);
     assert_eq!(plan.conversions[0].product_id,35304);
@@ -214,7 +220,7 @@ fn issue_4404_materialization_payload_restores_georeferenced_native_frame_once()
     let mut effective=source::Source::new(source.as_bytes()).unwrap();
     let context=context::Context::new(source.as_bytes(),&mut effective.decoder);
     effective.context=Some(context);
-    let styles=page_source::appearance(source.as_bytes(),&mut effective);
+    let styles=page_source::appearance(&mut effective);
     let textures=std::sync::Arc::new(ifc_lite_geometry::build_texture_index(source.as_bytes(),&mut effective.decoder));
     let meshes=canonical::produce(&mut effective,35169,&textures,Some(&styles)).unwrap();
     let mesh=&meshes[0];
@@ -244,7 +250,7 @@ fn issue_4404_post_opening_source_matches_canonical_load() {
     let Some(bytes)=real_source() else{return};
     let mut source=super::super::source::Source::new(bytes.as_bytes()).unwrap();
     assert!(!source.context.as_ref().unwrap().layers.is_sliceable(59290), "real slab requires unsupported material slicing");
-    let appearance=super::super::page_source::appearance(bytes.as_bytes(), &mut source);
+    let appearance=super::super::page_source::appearance( &mut source);
     assert_eq!(appearance.void_index.get(&59290),Some(&vec![59365]));
     let produced=super::super::canonical::produce(&mut source,59290,&std::sync::Arc::default(),Some(&appearance)).unwrap();
     let loaded=crate::process_geometry(bytes.as_bytes());
@@ -353,7 +359,7 @@ fn issue_4404_real_cut_slab_preserves_type_semantics_and_accepts_second_appearan
 fn issue_4404_opening_companions_share_the_aggregate_geometry_budget() {
     let Some(bytes)=real_source() else{return};
     let mut source=Source::new(bytes.as_bytes()).unwrap();
-    let styles=page_source::appearance(bytes.as_bytes(),&mut source);
+    let styles=page_source::appearance(&mut source);
     let textures=std::sync::Arc::new(ifc_lite_geometry::build_texture_index(bytes.as_bytes(),&mut source.decoder));
     let edits=super::super::evaluated_openings::prepare(&mut source,59290,&[59365],&BTreeSet::from([59365])).unwrap();
     let mut budget=budget::PlanBudget::default();

@@ -815,6 +815,26 @@
         }
     }
 
+    /// Review of #7921 / #7920: translating perpendicular to the extrusion
+    /// must not turn a genuinely interior opening into a flush recess.
+    #[test]
+    fn review_7921_perpendicular_translation_preserves_interior_opening() {
+        let router = crate::router::GeometryRouter::new();
+        for x in [0.0, 100.0] {
+            let wall_min = Point3::new(x, 0.0, 0.0);
+            let wall_max = Point3::new(x + 10.0, 1.0, 3.0);
+            let open_min = Point3::new(x, 1.1e-5, 1.0);
+            let open_max = Point3::new(x + 2.0, 0.5, 1.1);
+            for dir in [Vector3::new(0.0, 1.0, 0.0), Vector3::new(0.0, -1.0, 0.0)] {
+                let (new_min, new_max) = router.extend_opening_along_direction(
+                    open_min, open_max, wall_min, wall_max, dir,
+                );
+                assert!(new_min.y < wall_min.y && new_max.y > wall_max.y,
+                    "interior opening must extend through the wall at x={x}, dir={dir:?}; got {new_min:?}..{new_max:?}");
+            }
+        }
+    }
+
     /// DETERMINISM (CI-safe, no fixture): the parametric cut on a rotated, building-scale
     /// wall must FIRE, be watertight, emit a local-frame mesh (small positions + origin),
     /// and produce BIT-IDENTICAL output across runs. Bit-identical-across-runs + the

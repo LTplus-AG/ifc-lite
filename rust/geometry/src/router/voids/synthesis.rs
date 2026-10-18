@@ -11,7 +11,7 @@ mod membrane;
 use super::super::processing::SourceHygiene;
 use super::geom::*;
 use super::{GeometryRouter, OpeningType, NORMALIZE_EPSILON};
-use crate::math::tol::F32_ULP_SCALE;
+use crate::csg::plane_eps::PlaneEps;
 use crate::{Mesh, Point3, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
@@ -573,19 +573,8 @@ impl GeometryRouter {
         // and geometry alone disambiguates the case: in a true "opening too
         // short" pattern the opening floats inside the wall (neither end on
         // a face); in a recess one end is on a face and the other is inside.
-        // Use coplanarity-pad tolerance so a tiny float-error offset doesn't
-        // mask the alignment.
-        //
-        // The host bounds come from f32-stored vertices, so a face authored
-        // flush with the opening can read back a few ULPs off at building
-        // scale (4.3 um at 51 m), more than `thickness * 1e-5` for a 250 mm
-        // wall. Floor the tolerance at the f32 noise of the coordinates (#7920).
-        let coord_magnitude = [wall_min, wall_max, open_min, open_max]
-            .iter()
-            .flat_map(|p| [p.x.abs(), p.y.abs(), p.z.abs()])
-            .fold(0.0, f64::max);
-        let face_align_tol = ((wall_max_proj - wall_min_proj).abs() * 1e-5)
-            .max(coord_magnitude * F32_ULP_SCALE);
+        let bounds = [wall_min, wall_max, open_min, open_max];
+        let face_align_tol = recess_face_tol(&bounds, &extrusion_direction, wall_proj_extent);
         let near_at_min_face = (open_min_proj - wall_min_proj).abs() < face_align_tol;
         let near_at_max_face = (open_max_proj - wall_max_proj).abs() < face_align_tol;
         let far_inside_min = open_min_proj > wall_min_proj + face_align_tol;
@@ -815,6 +804,19 @@ impl GeometryRouter {
         }
         out
     }
+}
+
+/// Face-alignment tolerance of the RECESS check (#853) along the unit `dir`.
+///
+/// The relative `wall_proj_extent * 1e-5` pad keeps a tiny float-error offset
+/// from masking a flush face. The bounds are read back from f32-stored
+/// vertices, so at building scale a flush face can also sit a few ULPs off
+/// (4.3 um at 51 m, above the 2.5 um pad of a 250 mm wall, #7920). The pad is
+/// therefore floored at that f32 noise, projected onto `dir` as in
+/// [`PlaneEps::for_normal`], so a coordinate perpendicular to the extrusion
+/// cannot widen it.
+fn recess_face_tol(bounds: &[Point3<f64>], dir: &Vector3<f64>, wall_proj_extent: f64) -> f64 {
+    PlaneEps::from_points(bounds, wall_proj_extent * 1e-5).for_normal(dir)
 }
 
 #[cfg(test)]

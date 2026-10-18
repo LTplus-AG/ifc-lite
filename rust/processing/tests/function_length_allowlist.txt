@@ -68,7 +68,7 @@
    193 rust/geometry/src/router/voids/prism_cut.rs detect_prism
    155 rust/geometry/src/router/voids/probe.rs GeometryRouter::get_opening_item_bounds_with_direction
    247 rust/geometry/src/router/voids/synthesis.rs GeometryRouter::classify_openings_impl
-   215 rust/geometry/src/router/voids/synthesis.rs GeometryRouter::extend_opening_along_direction
+   214 rust/geometry/src/router/voids/synthesis.rs GeometryRouter::extend_opening_along_direction
    168 rust/geometry/src/router/voids/synthesis/membrane.rs GeometryRouter::remove_internal_membrane
    269 rust/geometry/src/simplify/cavities.rs drop_enclosed_cavities
    159 rust/geometry/src/space_dcel/arrangement.rs Arrangement::resolve

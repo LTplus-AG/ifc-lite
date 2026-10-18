@@ -14,6 +14,7 @@ FIXTURE = (Path(__file__).resolve().parents[3]
 
 
 def test_entity_data_public_help_examples():
+    """Execute public-help examples against real C6 property and quantity rows."""
     example = doctest.DocTestParser().get_doctest(
         ifclite_geom.entity_data.__doc__,
         {"ifc_bytes": FIXTURE.read_bytes()},

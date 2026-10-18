@@ -654,8 +654,10 @@ def entity_data(
     nominal value as a string; an enumerated, list, bounded, table, reference
     or complex property returns its display string (``"A, B"``, ``"2 [1 – 5]"``,
     ``"Table (2 rows)"``). A reference uses the target's nonblank ``Name``, else
-    its nonblank ``Identification``, else ``#<id>``. ``value_type`` is the
-    members' shared type tag or else the property class
+    its nonblank ``Identification``, else ``#<id>``. For
+    ``IfcPropertySingleValue``, ``value_type`` is the nominal value's rendered
+    type tag (for example, ``IFCLABEL`` or ``IFCREAL``). For other property
+    kinds, it is the members' shared type tag or else the property class
     (``IFCPROPERTYTABLEVALUE``, ...).
 
     ``attributes`` (on by default) returns each entity's SCHEMA-DECLARED IFC

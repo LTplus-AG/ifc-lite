@@ -94,13 +94,16 @@ fn run_entity_export(
 /// enumerated, list, bounded, table, reference or complex property returns its
 /// display string (`"A, B"`, `"2 [1 – 5]"`, `"Table (2 rows)"`,
 /// `"Inner: a, Other: 2.5"`). A reference uses the target's nonblank `Name`,
-/// else its nonblank `Identification`, else `#<id>`. `value_type` is the
-/// members' shared type tag, else the property class keyword
+/// else its nonblank `Identification`, else `#<id>`. For
+/// `IfcPropertySingleValue`, `value_type` is the nominal value's rendered type
+/// tag (for example, `IFCLABEL` or `IFCREAL`). For other property kinds, it is
+/// the members' shared type tag, else the property class keyword
 /// (`IFCPROPERTYTABLEVALUE`, ...).
 /// Complex properties share the model's complex-property budget (#7675).
 /// Quantity dictionaries contain `name`, a numeric `value` and `kind`.
 ///
-/// For `ifc_bytes` containing property and quantity sets:
+/// For `ifc_bytes` containing property and quantity sets, including a
+/// `Text` single-value property with an `IFCLABEL` nominal value:
 ///
 /// >>> import ifclite_geom
 /// >>> rows = ifclite_geom.entity_data(ifc_bytes)["entities"].values()
@@ -111,6 +114,9 @@ fn run_entity_export(
 /// True
 /// >>> "kind" in prop
 /// False
+/// >>> text = next(p for row in rows for ps in row["property_sets"] for p in ps["properties"] if p["name"] == "Text")
+/// >>> text["value_type"]
+/// 'IFCLABEL'
 /// >>> quantity = next(q for row in rows for qs in row["quantity_sets"] for q in qs["quantities"])
 /// >>> sorted(quantity)
 /// ['kind', 'name', 'value']

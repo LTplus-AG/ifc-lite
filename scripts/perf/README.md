@@ -4038,3 +4038,33 @@ now uses the reviewed first-frame clock contract in both cadence and markers,
 and reads finalized sidecars at their actual case paths. Lesson: verify final
 checker contracts and receipt discovery against retained real captures before
 spending another capture window. This integration fix grants no timing verdict.
+
+
+## Recovered frame and placement validation: mixed, held (#7779)
+
+**Acceptance and supporting publication remain held.** The single admitted,
+matched idle cohort compared the ordered tail/currentmain base with the recovered
+private integration using already-built source-pinned binaries. Haus wall time,
+public Viadotto planner time and public Duplex symbolic extraction time increased;
+the symbolic increase and the Haus increase are acceptance barriers, not dismissed
+as noise. Other worker-pool fixtures improved in that cohort; Holter is only a
+sanity sample. This is neither a blanket win nor an accepted correctness cost.
+
+All four worker-pool fixture mesh payload hashes and counts matched, and the
+complete Viadotto planner payload matched. Symbolic Duplex output has the separately
+qualified, sampling-order-only pair of near-zero float changes; its full JSON is
+not identical. Mesh hashing does not cover every exported appearance or auxiliary
+payload. Native single-thread phase instruction counts were flat or lower and both
+arms passed the unchanged canonical ceilings. Those phases do not execute the
+public symbolic API and cannot explain its measured slowdown.
+
+The [source identities and lossless reports](evidence/f3b-recovered-7779/README.md)
+retain the balanced order, raw samples, CLI, fixture and manifest identities,
+all binary/tool/source checks before and after, numerical deltas and limits.
+Private integrated measurements do not substitute for raw support qualification.
+Root Turbo, source-matched Python wheel/parity and fresh WASM consumers have
+separate states and must not be called ready from native instruction results.
+Lesson: preserve full frames for correctness, retain every negative measurement,
+and attribute public API work separately before any performance acceptance.
+No new profile, rerun, optimization, repin, publication, merge or issue closure is
+authorized by this evidence.

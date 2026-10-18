@@ -1,0 +1,27 @@
+{
+  "at": "2026-10-18T23:34:16.072099+00:00",
+  "pullRequest": {
+    "autoMergeRequest": null,
+    "baseRefName": "main",
+    "headRefOid": "3d2ef521dcead88104f13e6c7f532bbce8db4cfb",
+    "mergeCommit": {
+      "oid": "a2eaa95404108763263b5047c8ddc519a26dfe96"
+    },
+    "mergedAt": "2026-10-18T23:33:51Z",
+    "state": "MERGED",
+    "url": "https://github.com/LTplus-AG/ifc-lite/pull/7932"
+  },
+  "mergeTree": "7301fc09a263727d0122e7fd1ed0e4d340441595",
+  "qualifiedHeadTree": "7301fc09a263727d0122e7fd1ed0e4d340441595",
+  "wholeTreeExactlyQualifiedHead": true,
+  "method": "authorized admin squash; no auto merge",
+  "requiredChecks": "all4contextsPASS verified before merge; fulltest39175137424 successful including changedtestsobserveproduction",
+  "scope": "Python documentation/publichelp contract correction only",
+  "acceptedIssueClosures": 0,
+  "doesNotAccept": [
+    "D47sharedsetbudget",
+    "Rustcharter",
+    "broaderPythonWASMperf"
+  ],
+  "localEvidence": "python-doc-runtime-7932-nominal-v7/FINAL-HANDOFF.md"
+}

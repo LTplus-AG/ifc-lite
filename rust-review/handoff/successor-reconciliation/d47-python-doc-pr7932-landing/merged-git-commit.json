@@ -1,0 +1,35 @@
+{
+  "sha": "a2eaa95404108763263b5047c8ddc519a26dfe96",
+  "node_id": "C_kwDOQ3UF-9oAKGEyZWFhOTU0MDQxMDg3NjMyNjNiNTA0N2M4ZGRjNTE5YTI2ZGZlOTY",
+  "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/commits/a2eaa95404108763263b5047c8ddc519a26dfe96",
+  "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/a2eaa95404108763263b5047c8ddc519a26dfe96",
+  "author": {
+    "name": "Louis Tr\u00fcmpler",
+    "email": "78563314+louistrue@users.noreply.github.com",
+    "date": "2026-10-18T23:33:50Z"
+  },
+  "committer": {
+    "name": "GitHub",
+    "email": "noreply@github.com",
+    "date": "2026-10-18T23:33:50Z"
+  },
+  "tree": {
+    "sha": "7301fc09a263727d0122e7fd1ed0e4d340441595",
+    "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/trees/7301fc09a263727d0122e7fd1ed0e4d340441595"
+  },
+  "message": "docs(python): correct entity_data property dictionary contract (#7932)\n\n* docs(python): correct entity_data property dictionary contract\n\n* test(python): execute entity_data public help examples\n\n* docs(python): distinguish nominal property value type tags",
+  "parents": [
+    {
+      "sha": "779a431a28abac6da3e55ff536d74aee13ddce02",
+      "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/commits/779a431a28abac6da3e55ff536d74aee13ddce02",
+      "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/779a431a28abac6da3e55ff536d74aee13ddce02"
+    }
+  ],
+  "verification": {
+    "verified": true,
+    "reason": "valid",
+    "signature": "-----BEGIN PGP SIGNATURE-----\n\nwsFcBAABCAAQBQJq1VdeCRC1aQ7uu5UhlAAAsWQQABvMgOjX3Tz456lNh/as6I+U\nFLbc8/OofE6uYjemt2cq3AXk0xOpm2F1KroAxIiXhjORU2U8YwDJ/pnLgEG+eXat\nPNzEAftfC0UEGoG6kJVZKm2BN4jvnbx/1FchgPB2ArH9cGT0bJRDZgT9N5X45A8/\nRWLz2ukkMfa1f47Xg0SDwgp0eczR2FppFJ10vVxEMVp8S7mNEYPuFm8g+MG6VZLh\nSTlzivwhQQQnh7aNMLTXSJaV/ENZjfaknyOOwde0cI3Ptka/DxdBPSKDioWDdnGD\ncWGyAllwIZ6a/5uJQiOvXm31diYgZQHU4mAfK+exDQxBzY329+adqHYsxXF3CiBE\nUIqkkSaTCt14TcpdGbqiD+z9ZiqMvItUBwqA9aCXkMHQFoCXnxqKahmRCbKXF8xq\ncVY21RH/LfAU4j/cTVrK+7D0qPMh2sDK6fH0RNl5J6Lib+e0yufBxFxpiWrTPf/d\nXWU4ZuKBUcy46Mv+nrxj794xi0Olfv6cKxSfFjDZM6CE7SrttOJfNkFTLn0czBKn\n4m4QwoqRb8PM8e9HIXOeDhGytdzktVXGdf3IoSMcfx2gk/kMPwmJUm2Nyz/ZiMP9\n5Tx8BwFqdF5RRjGcadU5IHDdjSrfA9fBtWvvqsEIIIZxNR4jxk4ir1J0FXwTT5mL\nH1APxJGLE3Bdse16qq6t\n=r1ks\n-----END PGP SIGNATURE-----\n",
+    "payload": "tree 7301fc09a263727d0122e7fd1ed0e4d340441595\nparent 779a431a28abac6da3e55ff536d74aee13ddce02\nauthor Louis Tr\u00fcmpler <78563314+louistrue@users.noreply.github.com> 1792366430 +0200\ncommitter GitHub <noreply@github.com> 1792366430 +0200\n\ndocs(python): correct entity_data property dictionary contract (#7932)\n\n* docs(python): correct entity_data property dictionary contract\n\n* test(python): execute entity_data public help examples\n\n* docs(python): distinguish nominal property value type tags",
+    "verified_at": "2026-10-18T23:33:51Z"
+  }
+}

@@ -54,8 +54,12 @@ Parent review restored standalone duplicate-record behavior within the same
 walker and inventory collector. Standalone extraction retains all scanned source
 definitions and relationship facts, with the historical last successful instance
 per product; model-bound analysis follows its actual decoder/cache once per ID.
-Three fixture invariants cover fresh and genuinely prewarmed source decoders,
-including earlier malformed duplicate relationship evidence. They remain unrun.
+The standalone and malformed-relationship invariants remain meaningful. Parent
+review subsequently found that the duplicate-prewarm test assumed a cache state
+the authenticated decoder forbids. Its first-record expectations are withdrawn;
+see the [witness correction](curved-parent-f7d-review/witness-correction.md).
+The corrected candidate tests canonical duplicate admission and actual supported
+decoder configuration changes. They remain unrun and await integration.
 
 An additional per-object lifetime defect remains open in this checkpoint:
 releasing a copied raw solid handle can leave its process alive, so process

@@ -1,0 +1,131 @@
+{
+  "regression-classification.json": {
+    "issue": 7714,
+    "scratch_regression": {
+      "test": "issue_3988_brep_signature_reuses_scratch_without_stale_faces_or_points",
+      "exact_base": "b7507ec1c81853c76ed69ec2c42fbdf2bcd19c06",
+      "failing_revision": "b5c607db0",
+      "corrected_revision": "96d018a666dd0df471c2ca70ea6b73177b0c99c1",
+      "classification": "Overbroad new carrier source-ID salt; two-face multi-bound source is outside normalization admission and must preserve structural equivalence under STEP-id renumbering. This is a semantic content-hash assertion, not an output golden pin. Existing assertion unchanged.",
+      "exact_base_result": "pass",
+      "corrected_geometry_library": "1367 passed; 0 failed; 1 ignored",
+      "further_cache_scope_revision": "c60ccdef5f3a61d3d25275f6d23f4280da18f6c6; necessary adjacent-carrier selection shared with normalization; pending new checks"
+    },
+    "logs": {
+      "workspace-tests.log": {
+        "sha256": "3b097f2c8e9265faad680149861f5501bd1c1a02f13947a8fc3a0f27d76e7070",
+        "bytes": 261089
+      },
+      "workspace-validation.log": {
+        "sha256": "32dd0cf3f5ac3a6c7a4ee3ae0121bdd96f0b30e9b24d7c44ff9a6a957ab6c905",
+        "bytes": 252
+      },
+      "clippy.log": {
+        "sha256": "206ace2f497c06f57ae56d7351057428bf4f692eea47984311f843f356cb8bbb",
+        "bytes": 9983
+      },
+      "content-hash-exact-base.log": {
+        "sha256": "de28f065def206e8636131e99cc85ae5a18c16eb5eb3e7a28116015ccaece3e3",
+        "bytes": 1620
+      },
+      "geometry-final-preflight.log": {
+        "sha256": "ff00a153a9b18d6463d1e0276ae90ee67eca9ccbaee09e0867bd6bbd9adddd90",
+        "bytes": 121845
+      },
+      "public-native-base-red.log": {
+        "sha256": "3dfbd2c01c0275e8530ae13a204b326f3262b877ae1b021a4ad0f207f5558abf",
+        "bytes": 5357
+      },
+      "certificate-malformed-red.log": {
+        "sha256": "93db0c3bc37691ce4bc0e0c891eb024c6e35da9cc39176f064013b405a822e08",
+        "bytes": 1398
+      }
+    }
+  },
+  "canonical-record-regression-classification.json": {
+    "old_production_source": "72439cd533c631c8de189ca1e87264d3a81e2884",
+    "private_probe_commit": "fc7fa44d8fb8916218a45c0c634d912a43f8f57b",
+    "probe_changes": "Only current parsed regression test copied onto old production source",
+    "old_source_actual_result": "test exit101;0passed1failed; shadowed declaration #83",
+    "final_source": "e04e7db35fa634d3c2223ef04f437cc34065db51",
+    "final_actual_result": "new regression passed in10/10 core preflight",
+    "classification": "Earlier relevant declaration was certified despite canonical reference lookup resolving a later unrelated CartesianPoint with same STEP id. Require canonical indexed record span to match scanner declaration before admission. No new STEP grammar or global duplicate-ID policy.",
+    "initial_control_confounder": "Separate worktrees used same Cargo target serially; Cargo reused newest executable without recompiling old source. Initial green invalid as old-source proof. Final isolated control has source-owned target and actual compilation.",
+    "log_sha256": "582b8bb440bd8d354d6359f0260330481c29b79495cd37f6e0e76f64e68357be"
+  },
+  "span-negative-initial-result.json": {
+    "old_source": "72439cd533c631c8de189ca1e87264d3a81e2884",
+    "observed_exit": 0,
+    "result": "unexpected green; not a demonstrated red",
+    "suspected_confounder": "Cargo reused same target/test executable immediately after different worktree no-share mutant; reported up-to-date in0.06s. Independent forced old-source compilation required before classifying.",
+    "production_source_unchanged": "e04e7db35fa634d3c2223ef04f437cc34065db51"
+  },
+  "source-cache-response-e04-latest.json": {
+    "source_commit": "e04e7db35fa634d3c2223ef04f437cc34065db51",
+    "checkout_clean_before": true,
+    "job_id": "661f54f3-0efe-43d7-8515-1979a91a81f2",
+    "session_id": 35513,
+    "kind": "ordinary",
+    "timing": false,
+    "previous_job": "18da37fe-7239-49c0-b231-48e5feb4cb3b",
+    "previous_disposition": "sealed; terminal failed/cancelled while queued; no phase started",
+    "p2": "Source-scoped strict/permissive OnceLock caches Some and None; unchanged from reviewed724. Runtime proof pending current job.",
+    "additional_fix": "Require relevant context/project scanner records to match canonical source index span. Parsed shadowing regression and old-source negative control pending current job.",
+    "preflight_job_disposition": "terminal exit1: expected no-share mutant failed three tests; next old-source span control unexpectedly green without compilation; driver stopped before workspace. No source change.",
+    "finished_positive_checks": {
+      "core": 10,
+      "geometry_passed": 1368,
+      "geometry_ignored": 1,
+      "public_native": 2,
+      "function_ratchet_passed": 17,
+      "module_ratchet_passed": 8,
+      "positional_ratchet_passed": 16
+    },
+    "no_share_negative_control": "7passed,3failed with actual8vs1 scans; expected failure observed",
+    "continuation_job": "da16e75d-f457-4f5c-ab86-cec9262949bc",
+    "forced_span_control_job": "90462956-35a5-44d3-bfab-c54a190eb591",
+    "context_build_job": "4ca1eca0-f7e3-4c79-b255-654fecd3a2df completed0; executable SHA retained"
+  },
+  "benchmark-bf72-terminal-cleanup-proof.json": {
+    "job": "07ba51f7-6985-44ca-91e5-ef92c8a48830",
+    "terminal_state": "failed",
+    "error": "cancelled while queued",
+    "exit": 1,
+    "startedAt": null,
+    "original_session": 74380,
+    "original_session_terminal_exit": 1,
+    "registry_row_present": false,
+    "old_pid_exists": false,
+    "cohort_output_directory_exists": false,
+    "source_before": "bf72ee4330fe797e99284eddc17d92478caed5d3",
+    "source_after": "bf72ee4330fe797e99284eddc17d92478caed5d3",
+    "peer_jobs_touched": false,
+    "replacement_benchmark_submitted": false
+  },
+  "styling-floor-classification.json": {
+    "classification": "Feature adds9 Rust files to1709-file exact base. Both unchanged styling absence guards reject1718>2*855; required floor calibration, no duplicate color/extractor finding.",
+    "counts": {
+      "b7507ec1c81853c76ed69ec2c42fbdf2bcd19c06": 1709,
+      "929c920328c46c6c567059f9da3d503cdd6f5c81": 1711,
+      "4a0e1e1b69d2dcfb252ab7ecc7ebd705dc2c9311": 1717,
+      "e04e7db35fa634d3c2223ef04f437cc34065db51": 1718
+    },
+    "new_floor": 1145,
+    "mechanism": "Same lower+upper assertions; raise lower bound to roughly2/3 measured1718. No gate removal, skip, allowlist or styling semantics change.",
+    "clippy_e04_exit": 0,
+    "workspace_e04_exit": 101
+  },
+  "current_upstream_integration": {
+    "base": "c53cfaa3a2034638f4c4ab40f7674b29e0528fed",
+    "head": "f66a8d07648e354b8d488f760fce712257ff2759",
+    "unchanged_upstream_grammar_helpers_sha256": {
+      "type_token_is": "f305cf25f50c944a8321ee164603c5c30247ddd3e4aa54050e860071cfea7378",
+      "parse_first_ref": "6e03837560d3f8713d070af3537a7a8e335b0d2bb12027ce34f297053ceb75cd",
+      "is_faceted_brep": "03bc8e65140e6822ab33db8021532a44a2c9893de2c9aeb7e1b36c4cd07bca3a",
+      "sig_walk_bytes": "8c94f007ace924f4bb67edf77b51f4192c021c6f5c1db9862f2e8570a4365a16"
+    },
+    "obsolete_local_scan_floor_commit_dropped": true,
+    "styling_parity_identical_to_main": true,
+    "scope": "Focused restack integration inspection; not a runtime test or independent review."
+  }
+}

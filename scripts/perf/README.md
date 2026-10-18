@@ -4038,3 +4038,29 @@ now uses the reviewed first-frame clock contract in both cadence and markers,
 and reads finalized sidecars at their actual case paths. Lesson: verify final
 checker contracts and receipt discovery against retained real captures before
 spending another capture window. This integration fix grants no timing verdict.
+
+## Bounded FacetedBrep adjacent carriers (#7714)
+
+**Unmerged correctness stack: measured CPU regressions remain; acceptance open.**
+The [retained evidence](../../docs/architecture/evidence/planar-carrier-7714/README.md)
+contains the original SOffice witness, independent oracle counterexamples,
+functional qualification and both the initial and final worker-pool cohorts.
+The initial prototype materially regressed SOffice. Narrowing source-identity
+hash admission preserved ordinary structural mesh reuse; a file-index-owned
+certificate now caches both success and decline across fresh native decoders
+and browser batches. Neither mechanism alone establishes a speed improvement.
+
+The final source-matched, balanced native CPU cohort still regresses Haus and
+Holter in phase total and wall time. SOffice phase total decreases while wall
+time increases; ISSUE_129 decreases in both. Keep both statistics and all raw
+iterations rather than substituting the best phase total for consumer wall
+time. No overall speed or neutral-performance claim is supported. Control
+fixture mesh counts and payload hashes remain identical; the SOffice delta is
+isolated to the intended product. No physical-GPU or Callgrind result is claimed.
+
+Lesson: source-global certification must survive fresh per-product decoders,
+including cached refusal, and topology-aware hashing must stay inside its
+admission domain. Build and hash binaries before exclusive measurement: invoke
+the frozen canonical probe executable directly, because its shell wrapper
+unconditionally invokes Cargo. A successful functional or geometry verdict
+does not accept the remaining measured performance cost.

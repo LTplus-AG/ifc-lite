@@ -348,7 +348,7 @@ impl DecodedEntity {
         self.get(slot.into().at(self)).and_then(AttributeValue::as_int)
     }
 
-    /// A STRING, undecoded.
+    /// A STRING, its STEP escapes already decoded (as [`DecodedEntity::get_string`]).
     #[inline]
     pub fn string_at(&self, slot: impl Into<SlotIx<Text>>) -> Option<&str> {
         self.get_string(slot.into().at(self))

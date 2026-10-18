@@ -52,3 +52,15 @@ fn readers_keep_a_page_operand_inside_its_string_7589() {
     assert_eq!(element_quantity_name(r"#5=IFCELEMENTQUANTITY('g',#2,'Art \S\' 7',$,$,(#7));").as_deref(), Some(r"Art \S\' 7"));
     assert_eq!(owner_history_ref(r"#1=IFCWALL('Para \S\' 5',#42,$);"), Some(42));
 }
+
+/// F4 M-export-a (CORE-1): JavaScript's `\s` includes the vertical tab, which
+/// `u8::is_ascii_whitespace` left out, so a VT before the list or the
+/// reference ended a match the TypeScript regex continued.
+#[test]
+fn readers_treat_a_vertical_tab_as_whitespace_like_js() {
+    let rel = "#30=IFCRELDEFINESBYPROPERTIES('g',#5,$,$,(#21,#22)\u{b},\u{b}#29\u{b});";
+    assert_eq!(related_entities(rel), vec![21, 22]);
+    assert_eq!(related_property_set(rel), Some(29));
+    assert_eq!(owner_history_ref("#21=IFCWALL(\u{b}'g'\u{b},\u{b}#5,$);"), Some(5));
+    assert_eq!(property_set_name("#1=IFCPROPERTYSET\u{b}('g',#5,'P',$,(#2));").as_deref(), Some("P"));
+}

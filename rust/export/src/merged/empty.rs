@@ -367,19 +367,20 @@ fn record_blocks(
     }
 }
 
-/// Parse a single `#N` reference attribute (`"#4"` → `4`).
+/// Parse a single `#N` reference token (`"#4"` is `4`): `#` and digits, nothing
+/// else (core's `parse_ref`; `#+5` and `#12abc` are not references).
 fn single_ref(arg: &str) -> Option<u32> {
-    arg.trim().strip_prefix('#')?.parse().ok()
+    ifc_lite_core::parser::parse_ref(arg.trim().as_bytes())
 }
 
-/// Parse a `(#a,#b,…)` list attribute into ids.
+/// Parse a `(#a,#b,...)` list of references into ids, skipping an item that is
+/// not exactly one reference. Items are core's `StepListItems`, so a comment is
+/// trivia (`#5 /* c */` is `5`).
 fn ref_list(arg: &str) -> Vec<u32> {
-    arg.trim()
-        .trim_start_matches('(')
-        .trim_end_matches(')')
-        .split(',')
-        .filter_map(single_ref)
-        .collect()
+    match ifc_lite_core::StepListItems::of_list(arg.as_bytes()) {
+        Some(items) => items.filter_map(ifc_lite_core::parser::parse_ref).collect(),
+        None => Vec::new(),
+    }
 }
 
 #[cfg(test)]

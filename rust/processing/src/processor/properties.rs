@@ -20,13 +20,7 @@ pub(super) struct RelDefinesByPropertiesLink {
 }
 
 fn normalize_ifc_property_name(raw: Option<&str>) -> Option<String> {
-    let name = normalize_optional_string(raw)?;
-    let cleaned = name.trim();
-    if cleaned.is_empty() {
-        return None;
-    }
-
-    Some(cleaned.to_string())
+    normalize_optional_string(raw)
 }
 
 fn is_space_or_zone_type(ifc_type: &IfcType) -> bool {

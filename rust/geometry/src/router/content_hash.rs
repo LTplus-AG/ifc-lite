@@ -21,7 +21,7 @@
 
 use crate::geom_hash::mix64;
 use ifc_lite_core::{
-    express_id::parse_express_id, step_encoding::step_string_literal_end, EntityDecoder,
+    express_id::parse_express_id, parser::StepRecord, step_encoding::step_string_literal_end, EntityDecoder,
 };
 use rustc_hash::FxHashMap;
 
@@ -70,69 +70,70 @@ fn fold_bytes(mut state: u128, bytes: &[u8]) -> u128 {
     state
 }
 
-/// Whether the raw STEP record `bytes` (`#<id>=IFCTYPE(...)`, possibly with a
-/// leading id or whitespace) names IFC type `name`, compared case-insensitively
-/// up to the opening `(`. Cheap: a byte-prefix scan, no attribute decode.
+/// Whether the raw STEP record `bytes` (`#<id>=IFCTYPE(...)`) names IFC type
+/// `name` (upper case), compared case-insensitively as a whole identifier.
+/// Cheap, with no attribute decode: this runs once per entity of every item
+/// subtree the dedup hashes, so the head every exporter writes
+/// (`#<digits>=KEYWORD(`, no trivia) is settled by a forward scan, and only a
+/// head with trivia in it (`#1= /*c*/ KEYWORD (`) goes to core's
+/// [`StepRecord`] (F4 M-geom, CORE-10).
 #[inline]
 fn type_token_is(bytes: &[u8], name: &[u8]) -> bool {
-    let len = bytes.len();
-    let mut i = 0;
-    while i < len && matches!(bytes[i], b' ' | b'\r' | b'\n' | b'\t') {
-        i += 1;
+    let mut i = 1;
+    if bytes.first() == Some(&b'#') {
+        while bytes.get(i).is_some_and(u8::is_ascii_digit) {
+            i += 1;
+        }
+        if bytes.get(i) == Some(&b'=') {
+            i += 1;
+            // ArchiCAD writes `#1= IFCPERSON(`: plain blanks are not trivia
+            // worth the slow path.
+            while bytes.get(i).is_some_and(|&b| ifc_lite_core::parser::is_step_space(b)) {
+                i += 1;
+            }
+            let keyword = &bytes[i..];
+            // Anything but a keyword byte now (a `/*` comment) goes the slow way.
+            if keyword.first().is_some_and(|&b| b.is_ascii_alphabetic()) {
+                let Some(head) = keyword.get(..name.len()) else { return false };
+                if !head.eq_ignore_ascii_case(name) {
+                    return false;
+                }
+                match keyword.get(name.len()) {
+                    Some(b'(') => return true,
+                    Some(b) if b.is_ascii_alphanumeric() || *b == b'_' => return false,
+                    _ => {}
+                }
+            }
+        }
     }
-    // Skip an optional leading "#<digits>" entity id and its '=' separator.
-    if i < len && bytes[i] == b'#' {
-        i += 1;
-        while i < len && bytes[i].is_ascii_digit() {
-            i += 1;
-        }
-        while i < len && bytes[i] != b'=' && bytes[i] != b'(' {
-            i += 1;
-        }
-        if i < len && bytes[i] == b'=' {
-            i += 1;
-        }
-        while i < len && matches!(bytes[i], b' ' | b'\r' | b'\n' | b'\t') {
-            i += 1;
-        }
-    }
-    let ty = &bytes[i..];
-    ty.len() >= name.len()
-        && ty[..name.len()].eq_ignore_ascii_case(name)
-        // The type token must END here (next byte is '(' or whitespace), so
-        // "IFCFACETEDBREP" never matches a longer "IFCFACETEDBREPX".
-        && ty.get(name.len()).is_none_or(|&c| matches!(c, b'(' | b' ' | b'\r' | b'\n' | b'\t'))
+    // `keyword_bytes`, not `keyword_is`: a second call site makes the compiler
+    // stop inlining `keyword_is` into the per-bound reader, which costs more
+    // than this whole slow path.
+    StepRecord::parse(bytes)
+        .and_then(|record| record.keyword_bytes())
+        .is_some_and(|keyword| keyword.eq_ignore_ascii_case(name))
 }
 
-/// Parse the first `#<digits>` entity reference inside a STEP record's attribute
-/// list — e.g. the single shell ref of `#5=IFCFACETEDBREP(#137924)`. Skips past
-/// the opening `(` first so the record's own `#id` prefix is never matched.
+/// The record's first attribute when it is exactly one `#<digits>` reference
+/// — e.g. the single shell ref of `#5=IFCFACETEDBREP(#137924)`. Read through
+/// [`StepRecord::ref_at`], so a `#` in a comment (`(/*#9*/#5)`) is not the
+/// reference, and a ref above `u32::MAX` refuses (`None`) rather than wrapping
+/// onto a real low-numbered entity (issue #3421).
 #[inline]
 fn parse_first_ref(bytes: &[u8]) -> Option<u32> {
-    let len = bytes.len();
-    let mut i = 0;
-    while i < len && bytes[i] != b'(' {
-        i += 1;
+    // The shape every exporter writes, `...(#<digits>)` with no trivia before
+    // the reference, is settled in place; anything else (a comment ahead of
+    // the `(`, a space or comment inside it, a list) is core's to read.
+    if let Some(open) = bytes.iter().take(64).position(|&b| b == b'(' || b == b'/') {
+        if bytes[open] == b'(' && bytes.get(open + 1) == Some(&b'#') {
+            let digits = &bytes[open + 2..];
+            let len = digits.iter().take_while(|b| b.is_ascii_digit()).count();
+            if len > 0 && matches!(digits.get(len), Some(b')' | b',')) {
+                return parse_express_id(&digits[..len]);
+            }
+        }
     }
-    while i < len && bytes[i] != b'#' {
-        i += 1;
-    }
-    if i >= len {
-        return None;
-    }
-    i += 1; // skip '#'
-    let start = i;
-    while i < len && bytes[i].is_ascii_digit() {
-        i += 1;
-    }
-    if i > start {
-        // A ref above `u32::MAX` refuses (`None`) rather than wrapping onto a
-        // real low-numbered entity — the same policy `parse_express_id`
-        // establishes for every other reference reader (issue #3421).
-        parse_express_id(&bytes[start..i])
-    } else {
-        None
-    }
+    StepRecord::parse(bytes)?.ref_at(ifc_lite_core::slot::IfcFacetedBrep::OUTER.index())
 }
 
 /// `true` when the entity at `id` is an `IfcFacetedBrep`, peeked from its raw STEP

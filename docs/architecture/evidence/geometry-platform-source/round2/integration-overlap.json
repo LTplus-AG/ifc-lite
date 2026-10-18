@@ -1,0 +1,18 @@
+{
+  "parent_update": "fb913d3a5c",
+  "own_parent": "772522f9",
+  "rebased": false,
+  "combined_source_path_overlaps": [
+    "docs/api/rust.md",
+    "rust/processing/src/element.rs",
+    "rust/processing/src/element/model_context.rs",
+    "rust/processing/src/element/owned_session.rs"
+  ],
+  "correction_path_overlaps": [],
+  "integration_notes": [
+    "Parent BooleanProgram changes were inspected read-only and were not incorporated.",
+    "Parent Execute::execute now requires &NumericalEffects; any relevant source-layer numerical call must be ported against that signature.",
+    "Parent deleted old processor continuation files; do not revive them when applying source layer.",
+    "Parent requests terminal audit of broad catches in new program/boolean/{batch,step,operand}.rs when ported. This delivery does not qualify that parent code."
+  ]
+}

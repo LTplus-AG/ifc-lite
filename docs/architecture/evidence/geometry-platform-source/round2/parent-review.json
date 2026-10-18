@@ -1,0 +1,15 @@
+{
+  "status": "DELIVERED_NOT_YET_INTEGRATED",
+  "child_final_commit": "b676f94f4a67ca99d29efd43ca691eb746046c37",
+  "delivery_artifact_hashes_verified": 19,
+  "source_paths_independently_checked": 53,
+  "runtime_qualification": "Earlier307c source only; full workspace one failure, final setup fix rerun refused. No final assembled qualification.",
+  "merge_obligations": [
+    "Preserve resource source-scope wrapper and public sibling canonical visibility",
+    "Preserve narrow derived presentation palette and rotation getters and state.presentation_context binding",
+    "Map MismatchedSource to typed AccountedProductionError::Context rather than invariant panic",
+    "Preserve WorkPayload::Stopped and new mismatch rejection before any work or publication",
+    "Preserve both resource/presentation and source tests and ratchet reductions",
+    "Use actual canonical generated declarations; no manual declaration edit"
+  ]
+}

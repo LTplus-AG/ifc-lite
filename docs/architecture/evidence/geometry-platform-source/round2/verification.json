@@ -1,0 +1,108 @@
+{
+  "commands": [
+    {
+      "name": "core-caches",
+      "exit_code": 0,
+      "start": "2026-10-18T21:48:46Z",
+      "end": "2026-10-18T21:50:33Z",
+      "command": "cargo test -p ifc-lite-core source_caches",
+      "log": "/tmp/ifclite-source-owner-preservation-round2/core-caches.log"
+    },
+    {
+      "name": "fixtures",
+      "exit_code": 0,
+      "start": "2026-10-18T21:50:33Z",
+      "end": "2026-10-18T21:51:06Z",
+      "command": "pnpm fixtures",
+      "log": "/tmp/ifclite-source-owner-preservation-round2/fixtures.log"
+    },
+    {
+      "name": "workspace",
+      "exit_code": 101,
+      "start": "2026-10-18T21:51:06Z",
+      "end": "2026-10-18T22:23:03Z",
+      "command": "cargo test --workspace --no-fail-fast -- --nocapture",
+      "log": "/tmp/ifclite-source-owner-preservation-round2/workspace.log"
+    },
+    {
+      "name": "clippy",
+      "exit_code": 0,
+      "start": "2026-10-18T22:23:03Z",
+      "end": "2026-10-18T22:25:06Z",
+      "command": "cargo clippy --workspace --all-targets -- -D warnings",
+      "log": "/tmp/ifclite-source-owner-preservation-round2/clippy.log"
+    },
+    {
+      "name": "dependencies",
+      "exit_code": 0,
+      "start": "2026-10-18T22:25:06Z",
+      "end": "2026-10-18T22:25:11Z",
+      "command": "pnpm install --frozen-lockfile --prefer-offline",
+      "log": "/tmp/ifclite-source-owner-preservation-round2/dependencies.log"
+    },
+    {
+      "name": "wasm-build",
+      "exit_code": 0,
+      "start": "2026-10-18T22:25:11Z",
+      "end": "2026-10-18T22:28:29Z",
+      "command": "bash scripts/build-wasm.sh",
+      "log": "/tmp/ifclite-source-owner-preservation-round2/wasm-build.log"
+    },
+    {
+      "name": "wasm-contract",
+      "exit_code": 1,
+      "start": "2026-10-18T22:28:29Z",
+      "end": "2026-10-18T22:28:29Z",
+      "command": "pnpm test:wasm-contract",
+      "log": "/tmp/ifclite-source-owner-preservation-round2/wasm-contract.log"
+    }
+  ],
+  "receipts": [
+    {
+      "original": "/home/louistrue/build-workers/worker-state/jobs/80fdd95f-4b5a-49ba-84a4-93ac7cba4dcd/receipt.json",
+      "copy": "/tmp/ifclite-source-owner-preservation-round2/80fdd95f-4b5a-49ba-84a4-93ac7cba4dcd-receipt.json",
+      "sha256": "0dc71defa9065a4a1b1045266588695ef08df241ab71c59393cddec8acd7d8b6"
+    },
+    {
+      "original": "/home/louistrue/build-workers/worker-state/jobs/11e07922-4aca-4eb5-bfba-2d3bf8053d83/receipt.json",
+      "copy": "/tmp/ifclite-source-owner-preservation-round2/11e07922-4aca-4eb5-bfba-2d3bf8053d83-receipt.json",
+      "sha256": "964260616ffa84eec37b6e62b5a0e80c5d0d97df22ea465175eb258e62dfb587"
+    },
+    {
+      "original": "/home/louistrue/build-workers/worker-state/jobs/7ef8d1c4-6891-4465-a485-fb9384450d14/receipt.json",
+      "copy": "/tmp/ifclite-source-owner-preservation-round2/7ef8d1c4-6891-4465-a485-fb9384450d14-receipt.json",
+      "sha256": "94110e400a000aadad3a6f90aa0b0d1d1e7c353b1aa9ad3a184fc582cefc2696"
+    }
+  ],
+  "verification_script_sha256": "b103f810582915f7212e17b16f0e45f716885ba89aa6d2cd8f9dacdc0cdc16e3",
+  "focused_processing": {
+    "exit_code": 0,
+    "passed": 3,
+    "command": "cargo test -p ifc-lite-processing --lib preservation_tests"
+  },
+  "focused_core": {
+    "exit_code": 0,
+    "passed": 8
+  },
+  "workspace_summaries": {
+    "groups": 377,
+    "passed": 5773,
+    "failed": 1,
+    "ignored": 47
+  },
+  "qualified_source_commit": "307c7c60ee5a9674d25dd5a485b9c31e3f7a505b",
+  "final_test_setup_delta_unverified": true,
+  "final_admission_refused": "disk 204.3 GiB free; require 316 GiB (reserve plus scratch; existing jobs continue)",
+  "limitations": {
+    "performance": "No performance claim or benchmark run. Worker-pool performance qualification remains outstanding.",
+    "unchanged_graphs": "Unchanged root TypeScript graphs were not rerun. The old child session 62616 and the two unknown parent requests were neither touched nor retried; their outcomes are not claimed here.",
+    "integration": "Only this app-managed worktree was edited. No parent edits, ProductProgram integration, engine activation, or issue workflow was performed.",
+    "declarations": "The inherited generated declaration was excluded when applying round 1; any final declaration delta must come from scripts/build-wasm.sh.",
+    "browser": "No physical-browser or heavy-scene runtime qualification claimed.",
+    "final_qualification": "Final admission refused before executing: disk 204.3 GiB free; require 316 GiB. No retry or guard bypass. Appearance fixture setup migration at c1ce97c1ac is unverified; all-target Clippy passed at 307c7c60ee before that test-only change.",
+    "workspace": "Full workspace first run: 5773 passed, 1 failed, 47 ignored. Sole failure: an appearance conversion fixture used unbound Source::new instead of production Source::from_bundle. Test now uses the factory and retains geometry assertions, with added authority/revision checks. Affected-library rerun is prepared but refused admission.",
+    "wasm": "Canonical build passed, runtime rebuilt, additive bindSourceModel declaration regenerated. Contract command failed before tests: missing packages/renderer/dist/scene.js. Required root Turbo dependency build and WASM package tests prepared in verify-boundary.sh but not admitted.",
+    "skips": "All 182 manifest fixtures fetched successfully. See workspace-skips.log for 47 ignored tests and optional external assets/unconfigured adapter early-return skips. No optional engine activation.",
+    "parent_integration": "No rebase. Parent fb913d3a5c was inspected read-only. Four combined-layer path overlaps; correction-only layer has none. See integration-overlap.json."
+  }
+}

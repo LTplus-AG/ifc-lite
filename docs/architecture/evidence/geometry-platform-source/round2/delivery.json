@@ -1,0 +1,108 @@
+{
+  "checkout": "/home/louistrue/.t3/worktrees/ifc-lite/t3-a360cbd1",
+  "parent_commit": "772522f9df7a06d5287c1e9934055206fd464866",
+  "source_layer_baseline": "17d120a3e898dbc2eb2046716b04afcca5ae46a2",
+  "correction_commit": "c1ce97c1ac4942040a38f7c244ce32629e42d4ab",
+  "final_commit": "b676f94f4a67ca99d29efd43ca691eb746046c37",
+  "source_layer_input": {
+    "original_patch_sha256": "d7094616225a0291a9168949f1a73150a56e0618cc3ad6785341c57538c1c8f2",
+    "excluded_path": "packages/wasm/pkg/ifc-lite.d.ts",
+    "applied_patch_sha256": "c3ee1489eff54ad356f9cfe38cce393c1196e5a9aa1a184df82185ea31e1e2f8"
+  },
+  "source_files": 53,
+  "artifacts": {
+    "correction.patch": {
+      "path": "/tmp/ifclite-source-owner-preservation-round2/correction.patch",
+      "sha256": "12a7b9e3e80d1e2134577ab78e4a4f896430ced83db78bf7573235858ba51afe"
+    },
+    "combined-source.patch": {
+      "path": "/tmp/ifclite-source-owner-preservation-round2/combined-source.patch",
+      "sha256": "58608fbabe290e751185a2be246fcc24a8e2152dbbc86d825a8721c7dececbfc"
+    },
+    "combined-source-manifest.json": {
+      "path": "/tmp/ifclite-source-owner-preservation-round2/combined-source-manifest.json",
+      "sha256": "bf623db426037bac0fc320d2cb4a0ddfe946188c07ff9b42ce50f5f5f22ace61"
+    },
+    "source-layer-baseline.json": {
+      "path": "/tmp/ifclite-source-owner-preservation-round2/source-layer-baseline.json",
+      "sha256": "bde1bd80a44fb9d1966d780b720e024e4af9c1f1eef829699e25f6bc3bc8dd79"
+    },
+    "generated-declarations.patch": {
+      "path": "/tmp/ifclite-source-owner-preservation-round2/generated-declarations.patch",
+      "sha256": "caae75051f10ee039416fa115f7c7b22e624c59287858d4eabee13e307f49f8a"
+    },
+    "verification.json": {
+      "path": "/tmp/ifclite-source-owner-preservation-round2/verification.json",
+      "sha256": "9918f9c7366d94c2e8d8aa9dae3f8a23624eb05f175c163ccab458c32436065a"
+    },
+    "limitations.json": {
+      "path": "/tmp/ifclite-source-owner-preservation-round2/limitations.json",
+      "sha256": "c3fe6348c3a4fb5e84ba847d54de05d66647f2602c84abbb98b0ef295142bf80"
+    },
+    "verify.sh": {
+      "path": "/tmp/ifclite-source-owner-preservation-round2/verify.sh",
+      "sha256": "b103f810582915f7212e17b16f0e45f716885ba89aa6d2cd8f9dacdc0cdc16e3"
+    },
+    "verify-final.sh": {
+      "path": "/tmp/ifclite-source-owner-preservation-round2/verify-final.sh",
+      "sha256": "6c5f4987ad07965039a53f9f49deae3335fb882c407c16a7c29cd0f71befb7cb"
+    },
+    "verify-boundary.sh": {
+      "path": "/tmp/ifclite-source-owner-preservation-round2/verify-boundary.sh",
+      "sha256": "1ec8d286261685c27864c6c55a3bfb9ac1509bc4897697f50ea56477ee6476dc"
+    },
+    "integration-overlap.json": {
+      "path": "/tmp/ifclite-source-owner-preservation-round2/integration-overlap.json",
+      "sha256": "46fb5bb80d1e7e96a1a0927914af7af3704f2c08f130d129321c59afe31c367f"
+    },
+    "workspace-skips.log": {
+      "path": "/tmp/ifclite-source-owner-preservation-round2/workspace-skips.log",
+      "sha256": "376552b651fb11f7c99d1324887fa3f4c35e21e1606fa81847fbd14bb7e84865"
+    },
+    "workspace-first-run-summary.json": {
+      "path": "/tmp/ifclite-source-owner-preservation-round2/workspace-first-run-summary.json",
+      "sha256": "73a291042bc805b6278ea5f6c0182186f23e2d151de0c116cf3662728789a078"
+    },
+    "fleet-after-build.json": {
+      "path": "/tmp/ifclite-source-owner-preservation-round2/fleet-after-build.json",
+      "sha256": "620869b3b3fc861ac844b4c00afb8660f9ab1505a5dbb23482067499dfbcc3ef"
+    },
+    "final-admission.log": {
+      "path": "/tmp/ifclite-source-owner-preservation-round2/final-admission.log",
+      "sha256": "1bd666f52ed8615fd79e3d02a1f07931e6f54eb76c5810e4983234660c8ff779"
+    },
+    "parent-application-check.json": {
+      "path": "/tmp/ifclite-source-owner-preservation-round2/parent-application-check.json",
+      "sha256": "7c5bb88612d37256791fb757db7195b076239a3920dd3710363c25db78c4a52a"
+    },
+    "applied-source.patch": {
+      "path": "/tmp/ifclite-source-owner-preservation-round2/applied-source.patch",
+      "sha256": "c3ee1489eff54ad356f9cfe38cce393c1196e5a9aa1a184df82185ea31e1e2f8"
+    },
+    "correction-application.json": {
+      "path": "/tmp/ifclite-source-owner-preservation-round2/correction-application.json",
+      "sha256": "a99c71a199cd4b1852d513bd2f7f66a3b397b0e3c3ea9609fd1f43946f857771"
+    },
+    "combined-application.json": {
+      "path": "/tmp/ifclite-source-owner-preservation-round2/combined-application.json",
+      "sha256": "514edf6887afbb8a6e7306e3035aa4391bf68db6f6f4fac6665cae819ad5c9b5"
+    }
+  },
+  "receipts": [
+    {
+      "original": "/home/louistrue/build-workers/worker-state/jobs/80fdd95f-4b5a-49ba-84a4-93ac7cba4dcd/receipt.json",
+      "copy": "/tmp/ifclite-source-owner-preservation-round2/80fdd95f-4b5a-49ba-84a4-93ac7cba4dcd-receipt.json",
+      "sha256": "0dc71defa9065a4a1b1045266588695ef08df241ab71c59393cddec8acd7d8b6"
+    },
+    {
+      "original": "/home/louistrue/build-workers/worker-state/jobs/11e07922-4aca-4eb5-bfba-2d3bf8053d83/receipt.json",
+      "copy": "/tmp/ifclite-source-owner-preservation-round2/11e07922-4aca-4eb5-bfba-2d3bf8053d83-receipt.json",
+      "sha256": "964260616ffa84eec37b6e62b5a0e80c5d0d97df22ea465175eb258e62dfb587"
+    },
+    {
+      "original": "/home/louistrue/build-workers/worker-state/jobs/7ef8d1c4-6891-4465-a485-fb9384450d14/receipt.json",
+      "copy": "/tmp/ifclite-source-owner-preservation-round2/7ef8d1c4-6891-4465-a485-fb9384450d14-receipt.json",
+      "sha256": "94110e400a000aadad3a6f90aa0b0d1d1e7c353b1aa9ad3a184fc582cefc2696"
+    }
+  ]
+}

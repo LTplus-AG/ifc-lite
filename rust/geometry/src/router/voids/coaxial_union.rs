@@ -338,14 +338,16 @@ impl GeometryRouter {
             return None;
         }
 
-        // Keep every distinct authored depth boundary. Merging nearby limits
-        // stretches a shallow cutter across a larger slab (#6940, ISSUE_126).
-        // Only exact duplicates disappear; complex clusters use the 3D path.
+        // Preserve distinct source depths at the exact kernel's resolution.
+        // A model-span tolerance can swallow a real recess (#6940, ISSUE_126),
+        // while distinct f32 copies of one face can differ by nanometres (dental
+        // #167/#207). Those same-cell limits must not create a degenerate slab.
+        let depth_cell = |z: f64| (z / crate::kernel::mesh_bridge::SNAP_GRID).round();
         let mut breaks: Vec<f64> = fps.iter().flat_map(|f| [f.z_lo, f.z_hi]).collect();
         breaks.sort_by(f64::total_cmp);
         let mut coalesced: Vec<f64> = Vec::with_capacity(breaks.len());
         for b in breaks {
-            if coalesced.last().is_none_or(|&p| b != p) {
+            if coalesced.last().is_none_or(|&p| depth_cell(b) != depth_cell(p)) {
                 coalesced.push(b);
             }
         }
@@ -374,11 +376,11 @@ impl GeometryRouter {
             if slab_depth <= NORMALIZE_EPSILON {
                 continue;
             }
-            // Cutters that FULLY span this slab; record each as a contributor so only
-            // cutters this pass actually removed are consumed by the caller.
+            // Cutters must fully span this slab in the same kernel cells used
+            // above; record only cutters that actually contribute to a slab.
             let mut contours: Vec<Vec<Point2<f64>>> = Vec::new();
             for (i, f) in fps.iter().enumerate() {
-                if f.z_lo <= slab_lo && f.z_hi >= slab_hi {
+                if depth_cell(f.z_lo) <= depth_cell(slab_lo) && depth_cell(f.z_hi) >= depth_cell(slab_hi) {
                     contours.extend(f.contours.iter().cloned());
                     contributed[i] = true;
                 }

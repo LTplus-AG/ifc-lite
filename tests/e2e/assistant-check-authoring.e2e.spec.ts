@@ -96,6 +96,7 @@ test('assistant check drafts are dry-run natively and saved only after review', 
   const refreshEvidence = async () => {
     await assistant.getByRole('button', { name: 'Refresh evidence and start a new conversation', exact: true }).click();
     await expect(assistant.getByLabel('Ask about these results')).toBeEnabled();
+    await expect(assistant.locator('[data-message-index]')).toHaveCount(0);
   };
   const ask = async (prompt: string) => {
     await assistant.getByLabel('Ask about these results').fill(prompt);

@@ -176,7 +176,11 @@ class IfcScene {
   }
 }
 
-async function loadScene(page: Page, gpu: GpuDeviceLossWatch, ifc: string, url = '/'): Promise<void> {
+let server: ViewerDevServer;
+test.beforeAll(async () => { server = await startViewerDevServer('ortho-depth'); });
+test.afterAll(async () => { await server?.close(); });
+
+async function loadScene(page: Page, gpu: GpuDeviceLossWatch, ifc: string, url = server.url): Promise<void> {
   await page.addInitScript(() => localStorage.setItem('ifc-lite-theme', 'light'));
   await page.goto(url);
   await page.locator('#file-input-open').setInputFiles({
@@ -435,9 +439,6 @@ for (const site of [{ name: '40 m', size: 40 }, { name: '1 km', size: 1000 }] as
 }
 
 test.describe('clip planes', () => {
-  let server: ViewerDevServer | undefined;
-  test.beforeAll(async () => { server = await startViewerDevServer('ortho-depth-clip'); });
-  test.afterAll(async () => { await server?.close(); });
 
   test('orthographic: the nudge never moves a vertex across the near or far plane (#6729)', async ({ page }) => {
     // Narrowed scene bounds, a 2 m viewer-space cube at the origin. From an eye

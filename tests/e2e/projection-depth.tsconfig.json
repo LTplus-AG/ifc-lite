@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "rootDir": "../..",
+    "types": ["node", "@webgpu/types"],
+    "typeRoots": ["../../node_modules/@types", "../../packages/renderer/node_modules"]
+  },
+  "include": [],
+  "exclude": [],
+  "files": [
+    "projection-depth.config.ts",
+    "projection-depth.e2e.spec.ts",
+    "projection-depth.fixture.ts",
+    "projection-depth.gpu.ts"
+  ]
+}

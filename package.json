@@ -89,7 +89,7 @@
     "collab:demo:3d": "pnpm turbo build --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server && node scripts/collab-demo-3d.mjs",
     "typecheck": "turbo typecheck && pnpm run typecheck:tail",
     "typecheck:ci": "turbo typecheck --only && pnpm run typecheck:tail",
-    "typecheck:tail": "node scripts/typecheck-tests.mjs --audit && tsc --project scripts/perf/tsconfig.frames.json",
+    "typecheck:tail": "node scripts/typecheck-tests.mjs --audit && tsc --project scripts/perf/tsconfig.frames.json && tsc --project tests/e2e/projection-depth.tsconfig.json",
     "check:test-typecheck": "node scripts/typecheck-tests.mjs --audit",
     "lint": "node scripts/check-changesets.mjs && node scripts/check-test-glob-coverage.mjs && node scripts/check-main-entry-guards.mjs && node scripts/check-unused-locals.mjs && node scripts/check-i18n-literals.mjs && node scripts/check-jsx-a11y.mjs && node scripts/check-type-scale.mjs && node scripts/check-lint-ran.mjs",
     "lint:baseline": "node scripts/check-unused-locals.mjs --update",

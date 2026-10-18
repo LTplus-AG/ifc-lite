@@ -86,3 +86,45 @@ and does not establish identity with the full 23.74 MB `OUT.IFC`.
 These observations provide no physical-display GPU or performance acceptance
 for #6709/#6975 and do not automatically close #6729. No deployment, user
 report admission or model-upload system is activated by this workflow.
+
+## Paired projection depth isolation
+
+`tests/e2e/projection-depth.e2e.spec.ts` supplies a separate synthetic invariant
+for the residual ordering defect. Run it without a shared preview or IFC/WASM
+runtime:
+
+```sh
+pnpm exec playwright test --config=tests/e2e/projection-depth.config.ts
+```
+
+The dedicated config requests software WebGPU on full Chrome. An existing full
+Chromium binary can be selected with `DEPTH_WITNESS_CHROME=/absolute/path/to/chrome`.
+An unavailable adapter or lost device is a failure, never a skip or acceptance.
+The spec is also included in both regular viewer E2E project matchers.
+Root `pnpm typecheck` checks the witness's browser, fixture, spec and config
+through `projection-depth.tsconfig.json` in the existing typecheck tail.
+`DEPTH_WITNESS_GPU=native` requests the normal native ANGLE path instead;
+only the returned adapter identity establishes whether physical hardware ran.
+
+The same two opaque squares and eye/target/up are rendered in perspective and
+orthographic projection with matched center-plane scale. The foreground square
+must hide the background square across five orbit angles, both draw orders,
+4/30mm separations, three scene depth ranges, MSAA 1/4, and the actual flat,
+quantized and instanced colour vertex stages. A diagnostic fragment reports
+front/rear sample ownership as red/green, excluding lighting and selection.
+An independent f64 ray/plane oracle establishes front-first visibility and
+silhouette clearance over the entire central probe, including all possible
+hardware sample positions. It never uses the depth-nudge formula as an oracle.
+
+The control shader replaces only the composed nudge helper with identity.
+It does not modify production files or geometry. The report retains shader
+digests, actual packed IDs/lanes, matrices, geometric clearance, pixel counts,
+adapter/browser identity, source revision, dirty-tree status and source hashes.
+Perspective and zero-nudge controls must pass; the orthographic 4mm invariant
+is expected to expose the current bug and remains a failing assertion until
+production is fixed. The test does not require orthographic failure: it asserts
+correct visibility, so a fix can pass without rewriting the witness.
+
+This isolates the renderer's ordering mechanism. It is not an authentic
+nut/bolt or plate topology check, selection acceptance, continuous viewer-motion
+test, native-GPU verdict or claim that the reporter's exact model is repaired.

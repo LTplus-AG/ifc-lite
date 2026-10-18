@@ -131,7 +131,7 @@ pub use schema_helpers::{
     geometry_flags_by_name, has_geometry_by_name, is_representationless_spatial_container_by_name,
     ifc_type_from_keyword, ifc_type_from_record, is_simple_geometry_type, type_product_ifc_type,
 };
-pub use step_encoding::{decode_ifc_string, decode_step_binary};
+pub use step_encoding::{decode_ifc_string, decode_step_binary, optional_text};
 pub use streaming::{parse_stream, ParseEvent, StreamConfig};
 pub use unit_labels::{
     is_us_survey_foot_key, is_us_survey_foot_tokens, si_prefix, SiPrefix, SI_PREFIXES, US_SURVEY_FOOT_M,

@@ -148,3 +148,16 @@ fn unterminated_x2_openers_do_not_rescan_the_input_28() {
     // that pairs with it, and the openers before it stay text.
     assert_eq!(decode_ifc_string("\\X2\\zz\\X2\\00FC\\X0\\"), "\\X2\\zz\u{FC}");
 }
+
+#[test]
+fn optional_text_is_the_one_no_value_rule_processing_15() {
+    for none in [None, Some(""), Some("   "), Some("$"), Some(" $ "), Some("\t\u{b}\u{c}\r\n")] {
+        assert_eq!(optional_text(none), None, "{none:?}");
+    }
+    assert_eq!(optional_text(Some("  Wall \u{b}")), Some("Wall"));
+    assert_eq!(optional_text(Some("a b")), Some("a b"));
+    // STEP whitespace only: a no-break space is part of the value.
+    assert_eq!(optional_text(Some("\u{a0}")), Some("\u{a0}"));
+    // A multi-byte first or last character survives the byte trim.
+    assert_eq!(optional_text(Some(" \u{e9}\u{4e2d} ")), Some("\u{e9}\u{4e2d}"));
+}

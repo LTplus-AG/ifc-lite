@@ -301,11 +301,7 @@ fn populate_entity_job_metadata(
 use crate::style::GeometryStyleInfo;
 
 pub(super) fn normalize_optional_string(raw: Option<&str>) -> Option<String> {
-    let value = raw?.trim();
-    if value.is_empty() || value == "$" {
-        return None;
-    }
-    Some(value.to_string())
+    ifc_lite_core::optional_text(raw).map(str::to_owned)
 }
 
 fn geometry_priority_score(ifc_type: &IfcType) -> u8 {

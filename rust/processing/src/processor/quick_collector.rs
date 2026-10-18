@@ -10,8 +10,7 @@
 //! rules themselves live in `quick_metadata.rs`.
 
 use super::quick_metadata::{
-    build_quick_spatial_tree_node, extract_name_from_args, is_quick_spatial_type_ci,
-    parse_step_arguments, parse_step_ref, parse_step_ref_list, read_storey_elevation,
+    build_quick_spatial_tree_node, is_quick_spatial_type_ci, rel_links, spatial_node_entry,
     QuickSpatialNodeEntry,
 };
 use crate::types::response::{QuickMetadataBootstrap, QuickMetadataEntitySummary};
@@ -49,48 +48,20 @@ impl QuickCollector {
     pub(super) fn observe(&mut self, content: &[u8], id: u32, type_name: &str, start: usize, end: usize) {
         // Case-insensitive check without allocating a new uppercase string.
         if is_quick_spatial_type_ci(type_name) {
-            let args = parse_step_arguments(&content[start..end]);
-            let fallback = format!("{type_name} #{id}");
-            self.nodes.entry(id).or_insert(QuickSpatialNodeEntry {
-                express_id: id,
-                type_name: type_name.to_string(),
-                name: extract_name_from_args(&args, &fallback),
-                elevation: None,
-                raw_elevation: keyword_eq(type_name, "IFCBUILDINGSTOREY").then(|| read_storey_elevation(&args)),
-                children: Vec::new(),
-                contained: Vec::new(),
-                elements: Vec::new(),
-                named_as_child: false,
-            });
+            self.nodes
+                .entry(id)
+                .or_insert_with(|| spatial_node_entry(&content[start..end], type_name, id));
         } else if keyword_eq(type_name, "IFCRELAGGREGATES") {
-            let args = parse_step_arguments(&content[start..end]);
-            if let Some(parent_id) = args.get(4).and_then(|token| parse_step_ref(token)) {
-                self.aggregate_links.push((
-                    parent_id,
-                    args.get(5)
-                        .map(|token| parse_step_ref_list(token))
-                        .unwrap_or_default(),
-                ));
+            if let Some(link) = rel_links(&content[start..end], 4, 5) {
+                self.aggregate_links.push(link);
             }
         } else if keyword_eq(type_name, "IFCRELCONTAINEDINSPATIALSTRUCTURE") {
-            let args = parse_step_arguments(&content[start..end]);
-            if let Some(parent_id) = args.get(5).and_then(|token| parse_step_ref(token)) {
-                self.containment_links.push((
-                    parent_id,
-                    args.get(4)
-                        .map(|token| parse_step_ref_list(token))
-                        .unwrap_or_default(),
-                ));
+            if let Some(link) = rel_links(&content[start..end], 5, 4) {
+                self.containment_links.push(link);
             }
         } else if keyword_eq(type_name, "IFCRELREFERENCEDINSPATIALSTRUCTURE") {
-            let args = parse_step_arguments(&content[start..end]);
-            if let Some(parent_id) = args.get(5).and_then(|token| parse_step_ref(token)) {
-                self.referenced_links.push((
-                    parent_id,
-                    args.get(4)
-                        .map(|token| parse_step_ref_list(token))
-                        .unwrap_or_default(),
-                ));
+            if let Some(link) = rel_links(&content[start..end], 5, 4) {
+                self.referenced_links.push(link);
             }
         }
     }

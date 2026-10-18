@@ -1,0 +1,235 @@
+{
+  "schemaVersion": 1,
+  "checkpointAt": "2026-10-18T03:38:02.400463+00:00",
+  "issueSnapshotAt": "2026-10-18T03:32:49.774579+00:00",
+  "mainLastVerified": "c53cfaa3a2034638f4c4ab40f7674b29e0528fed",
+  "openIssueCount": 18,
+  "goalComplete": false,
+  "issues": [
+    {
+      "number": 7890,
+      "title": "Federation: unpublished local entity ID reaches viewer conversion",
+      "url": "https://github.com/LTplus-AG/ifc-lite/issues/7890",
+      "githubUpdatedAt": "2026-10-17T20:27:49Z",
+      "githubState": "OPEN",
+      "evidence": "PR #7894 contains the local fix and regression evidence.",
+      "remaining": "Hosted required checks and merge remain pending; issue stays open.",
+      "closureProven": false
+    },
+    {
+      "number": 7782,
+      "title": "Rust sweep C4: processing orchestration (one process() entry, shared browser batch homes)",
+      "url": "https://github.com/LTplus-AG/ifc-lite/issues/7782",
+      "githubUpdatedAt": "2026-10-17T21:45:25Z",
+      "githubState": "OPEN",
+      "evidence": "C4-4b source/prefix gates and artifact builds complete. C4-6a full-fixture native and WASM contract checks passed.",
+      "remaining": "Five-revision measurement methodology still under review. C4-6a output checks and the remaining required C4 phases are incomplete.",
+      "closureProven": false
+    },
+    {
+      "number": 7781,
+      "title": "Rust sweep C2: router restructure (RepresentationWalk, CutStrategy, EdgeLedger, GeometryRouter split)",
+      "url": "https://github.com/LTplus-AG/ifc-lite/issues/7781",
+      "githubUpdatedAt": "2026-10-17T21:27:45Z",
+      "githubState": "OPEN",
+      "evidence": "Corrected C2-4 and published-stack top have local Rust/API/WASM evidence. C2-5 corpus and source-equivalence evidence is retained.",
+      "remaining": "Browser cohort failed/incomplete; instruction continuation is separate. C2-7 is uncompiled; C2-6 and C2-8 remain outstanding.",
+      "closureProven": false
+    },
+    {
+      "number": 7779,
+      "title": "Rust sweep F3b: core entity reading (point3/direction3, axis placements, resolve_chain)",
+      "url": "https://github.com/LTplus-AG/ifc-lite/issues/7779",
+      "githubUpdatedAt": "2026-10-17T21:29:06Z",
+      "githubState": "OPEN",
+      "evidence": "Drafts #7906, #7914 and #7915 preserve canonical-reader and recovered symbolic/validation work. Native tests and oracle evidence are retained.",
+      "remaining": "Measured instruction/timing failures remain acceptance barriers. Memo candidate 863 is built but cost is unknown; broader consumers, CI and required residual findings remain incomplete.",
+      "closureProven": false
+    },
+    {
+      "number": 7714,
+      "title": "geometry: define bounded planar carrier normalization for nearly planar FacetedBreps",
+      "url": "https://github.com/LTplus-AG/ifc-lite/issues/7714",
+      "githubUpdatedAt": "2026-10-17T20:04:42Z",
+      "githubState": "OPEN",
+      "evidence": "Published drafts #7902, #7903 and #7904 preserve the implementation and measured evidence. Corrective private source 599b passed native, WASM and Python checks.",
+      "remaining": "Original measured regressions remain unaccepted. Corrective six-load attribution has reviewed inputs but has not executed; current-head hosted and final performance acceptance remain pending.",
+      "closureProven": false
+    },
+    {
+      "number": 7711,
+      "title": "Cut (trim) geometry at the section boundary when exporting a cropped area",
+      "url": "https://github.com/LTplus-AG/ifc-lite/issues/7711",
+      "githubUpdatedAt": "2026-10-17T20:04:15Z",
+      "githubState": "OPEN",
+      "evidence": "Drafts #7900 and #7908 are preserved. Private 239c gate-repair evidence includes scoped Rust, root typecheck, API/docs/lint, mutation/restored and independent IFC checks.",
+      "remaining": "Viewer entry size still fails, including after the parent literal change. Private repairs have not been published; hosted checks, review and performance acceptance remain pending.",
+      "closureProven": false
+    },
+    {
+      "number": 7655,
+      "title": "SwiftShader WebGPU: renderer intermittently loses its device to Dawn \"external Instance reference no longer exists\"",
+      "url": "https://github.com/LTplus-AG/ifc-lite/issues/7655",
+      "githubUpdatedAt": "2026-10-17T20:35:23Z",
+      "githubState": "OPEN",
+      "evidence": "PR #7898 fixes a separate lifecycle hazard with regression/inverse evidence. Historical-family browser bytes and a bounded diagnostic protocol are prepared.",
+      "remaining": "The historical first device-loss root cause is not proven. New owner-driver review is separate from GPU execution; no new browser reproduction or post-fix acceptance is claimed.",
+      "closureProven": false
+    },
+    {
+      "number": 7635,
+      "title": "geometry: closed opening operands produce a torn raw kernel result on MiniBIM third cut",
+      "url": "https://github.com/LTplus-AG/ifc-lite/issues/7635",
+      "githubUpdatedAt": "2026-10-15T19:36:44Z",
+      "githubState": "OPEN",
+      "evidence": "External geometry owner remains active.",
+      "remaining": "Required closed-operand/kernel-result acceptance is not complete; do not duplicate or close from this checkpoint.",
+      "closureProven": false
+    },
+    {
+      "number": 7633,
+      "title": "geometry: remote near-plane buckets project disconnected patches onto the wrong plane",
+      "url": "https://github.com/LTplus-AG/ifc-lite/issues/7633",
+      "githubUpdatedAt": "2026-10-15T19:36:39Z",
+      "githubState": "OPEN",
+      "evidence": "External geometry owner remains active.",
+      "remaining": "Required disconnected-patch/plane-projection acceptance is not complete; do not duplicate or close from this checkpoint.",
+      "closureProven": false
+    },
+    {
+      "number": 7631,
+      "title": "geometry: many-hole extrusion cap drops boundary constraints before opening cuts (MiniBIM slab 135923)",
+      "url": "https://github.com/LTplus-AG/ifc-lite/issues/7631",
+      "githubUpdatedAt": "2026-10-15T19:36:34Z",
+      "githubState": "OPEN",
+      "evidence": "External geometry owner remains active.",
+      "remaining": "Required cap-constraint/opening-cut acceptance is not complete; do not duplicate or close from this checkpoint.",
+      "closureProven": false
+    },
+    {
+      "number": 7581,
+      "title": "Add complete Russian (ru) localization to the viewer",
+      "url": "https://github.com/LTplus-AG/ifc-lite/issues/7581",
+      "githubUpdatedAt": "2026-10-18T01:21:33Z",
+      "githubState": "OPEN",
+      "evidence": "Human assignee andhxl publicly reported starting the Russian translation on 2026-10-18.",
+      "remaining": "Preserve ownership; complete localization and review remain pending. No duplicate translation was allocated.",
+      "closureProven": false
+    },
+    {
+      "number": 7292,
+      "title": "geometry: DIFFERENCE of a 2 % sloped extrusion by a coincident-sided prism leaves metres of material uncut",
+      "url": "https://github.com/LTplus-AG/ifc-lite/issues/7292",
+      "githubUpdatedAt": "2026-10-17T20:55:28Z",
+      "githubState": "OPEN",
+      "evidence": "External owner and PR #7802 retain the current correction work.",
+      "remaining": "Final source-matched geometry/runtime/performance acceptance remains pending; no waiver is inferred.",
+      "closureProven": false
+    },
+    {
+      "number": 7036,
+      "title": "T1c: engine init + worker spawn gate cold loads \u2014 warm worker pool and init overlapping the file read",
+      "url": "https://github.com/LTplus-AG/ifc-lite/issues/7036",
+      "githubUpdatedAt": "2026-10-14T19:50:55Z",
+      "githubState": "OPEN",
+      "evidence": "Existing engine/worker-pool owner retains the lane.",
+      "remaining": "Cold-load, worker/default, browser, payload and memory acceptance remain pending.",
+      "closureProven": false
+    },
+    {
+      "number": 6940,
+      "title": "geometry: an opening cut tears a watertight IfcExtrudedAreaSolid slab (9 of 11 slabs in MiniBIM-3.1-DO_01_VORM)",
+      "url": "https://github.com/LTplus-AG/ifc-lite/issues/6940",
+      "githubUpdatedAt": "2026-10-15T08:12:57Z",
+      "githubState": "OPEN",
+      "evidence": "External geometry owner retains the MiniBIM opening-cut lane.",
+      "remaining": "Final source-matched geometry and performance acceptance remains pending.",
+      "closureProven": false
+    },
+    {
+      "number": 6881,
+      "title": "perf: bound GPU point-pick depth readback to the selected texel",
+      "url": "https://github.com/LTplus-AG/ifc-lite/issues/6881",
+      "githubUpdatedAt": "2026-10-12T14:52:39Z",
+      "githubState": "OPEN",
+      "evidence": "Existing GPU/picking owner retains the lane.",
+      "remaining": "Selected-texel readback and physical-GPU acceptance remain pending.",
+      "closureProven": false
+    },
+    {
+      "number": 6729,
+      "title": "Viewer: geometry visibility glitches in orthographic view (hidden parts show through)",
+      "url": "https://github.com/LTplus-AG/ifc-lite/issues/6729",
+      "githubUpdatedAt": "2026-10-18T01:07:07Z",
+      "githubState": "OPEN",
+      "evidence": "Existing visibility owner retains the lane.",
+      "remaining": "Capture evidence is not a geometry oracle; required visibility acceptance remains pending.",
+      "closureProven": false
+    },
+    {
+      "number": 6709,
+      "title": "Viewer: cap HiDPI resolution during navigation and restore capture quality",
+      "url": "https://github.com/LTplus-AG/ifc-lite/issues/6709",
+      "githubUpdatedAt": "2026-10-13T01:07:59Z",
+      "githubState": "OPEN",
+      "evidence": "Existing navigation/HiDPI owner retains the lane.",
+      "remaining": "Gesture, restoration and quality acceptance remain pending.",
+      "closureProven": false
+    },
+    {
+      "number": 6516,
+      "title": "geometry 7.x: ~2.5x slower geometry on a model with non-rectangular wall openings (6.0.0 \u2192 7.0.0)",
+      "url": "https://github.com/LTplus-AG/ifc-lite/issues/6516",
+      "githubUpdatedAt": "2026-10-10T17:15:43Z",
+      "githubState": "OPEN",
+      "evidence": "PR #7913 repairs offline diagnostic-bundle preparation. Actions run 39090374300 succeeded on Linux and Windows; the replacement bundle and both qualification archives were downloaded and hash-verified.",
+      "remaining": "Private reporter-model diagnosis remains pending through the requested 2026-10-24 follow-up. Public controls do not prove the private cause; bundle expiry is 2026-10-25T02:31:09Z.",
+      "closureProven": false
+    }
+  ],
+  "tracking": {
+    "longPrograms": "https://github.com/LTplus-AG/ifc-lite/discussions/7897",
+    "historicalFindings": "../ledger.csv",
+    "decisions": "../ledger.md",
+    "warning": "Historical ledger dispositions and migrated long-program closures are not a claim that current acceptance is complete. No issue is closed by this checkpoint."
+  },
+  "runtime": {
+    "memoBuild": {
+      "source": "863e8bae6fa4dc418c27c73fb36bb0cfb48fbfa5",
+      "tree": "f9990b99cab0a84091dd5abff343153c017198c8",
+      "worker": "c38b92e3-822a-4574-87a8-f98c46253220",
+      "result": "completed0/sourceUnchanged; two candidate profiling builds only",
+      "costMeasured": false
+    },
+    "c2Original": {
+      "worker": "08dc8295-0488-483f-82eb-571dcb66ce71",
+      "result": "controlled stop, worker -15/session143, sourceUnchanged; all after-hashes match",
+      "retained": "25 completed native commands; failed/partial browser samples; remaining browser unrun",
+      "acceptance": "FAILED/INCOMPLETE, no retry or silent replacement"
+    },
+    "c2InstructionContinuation": {
+      "worker": "434512fc-cf1b-4ea3-879e-3344ca3426e4",
+      "session": 2739,
+      "stateAtCheckpoint": "admitted/running; only 15 frozen phase-instruction commands; no native/browser/build repeat",
+      "verdict": "pending; collection is not acceptance"
+    }
+  },
+  "diagnostic6516": {
+    "run": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39090374300",
+    "bundle": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39090374300/artifacts/12121843799",
+    "bundleZipSha256": "725ff58e4539d1f307ab7cc4fa28d2b591e6be8aa0feedd32bfc6c917fc356ed",
+    "manifestSha256": "dd686ca763076d36046aac434e5b673d13897635b587b630f3b036e63ba68513",
+    "scope": "Public controls on Linux and Windows only; not private-model diagnosis."
+  },
+  "sharedCI": {
+    "separatePullRequests": [
+      7901,
+      7910
+    ],
+    "combinedLocalCandidate": "8877850759c428e54b2d488232e155cd7f12a675",
+    "combinedTree": "323c7c47be86076c438da04d3a7c0f28b4b32b02",
+    "localQualification": "Actual root Turbo build, focused storey tests, viewer typecheck and existing bundle gates passed.",
+    "publication": "Combined replacement remains unpublished pending explicit one-defect-class-per-PR policy exception. Required checks are not bypassed or weakened."
+  },
+  "rawEvidence": "Large lossless raw receipts/bundles/logs are retained under the coordinator artifact directory and linked from published PR evidence where available. This checkpoint does not publish private proposals or substitute for exact-head execution."
+}

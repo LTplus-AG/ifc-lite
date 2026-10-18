@@ -138,3 +138,63 @@ fn commented_aggregation_prunes_only_empty_storey_7891() {
     assert!(out.contains("/* empty */ "), "list trivia retained: {out}");
     assert!(stats.warnings.iter().all(|w| !w.contains("lost that relationship")), "{:?}", stats.warnings);
 }
+
+fn suffix_pruning_model(head_trivia: &str, members: &str) -> (String, String) {
+    let relation = format!("#10={head_trivia}IFCRELAGGREGATES('{OWNER}',$,$,$,#1,{members});");
+    let source = file("IFC4", &[
+        "#1=IFCPROJECT('0000000000000000000010',$,'P',$,$,$,$,$,$);".into(),
+        "#2=IFCBUILDING('0000000000000000000040',$,'Used',$,$,$,$,$,$,$,$,$);".into(),
+        "#3=IFCBUILDINGSTOREY('0000000000000000000060',$,'Empty',$,$,$,$,$,$,3.);".into(),
+        format!("#4=IFCBUILDINGELEMENTPROXY('{WALL}',$,'Wall',$,$,$,$,$,$);"),
+        relation.clone(),
+        "#11=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000080',$,$,$,(#4),#2);".into(),
+    ]);
+    (source, relation)
+}
+
+/// Review blocker at a3e55ee3d: the first list names a populated building;
+/// the second names an empty storey. Pruning must not remove that storey
+/// while preserving the unreadable relationship's reference to it. We do not
+/// promise semantic repair or valid IFC output for this malformed attribute.
+#[test]
+fn malformed_list_suffix_blocks_destructive_public_pruning_7891() {
+    for head in ["", "/* ( */"] {
+        for members in ["(#2) (#3)", "(#2) /* ) , ' */ (#3)"] {
+            let (source, relation) = suffix_pruning_model(head, members);
+            let opts = MergedOptions { drop_empty_containers: true, ..Default::default() };
+            let (out, stats) = export_merged_with_stats(&[source.as_bytes()], &opts);
+            assert_eq!(stats.dropped_container_count, 0, "unreadable references block pruning:\n{out}");
+            let mut scanner = EntityScanner::new(&out);
+            let mut ids = Vec::new();
+            let mut written_relation = None;
+            while let Some((id, _, start, end)) = scanner.next_entity() {
+                ids.push(id);
+                if id == 10 {
+                    written_relation = Some(&out[start..end]);
+                }
+            }
+            assert_eq!(written_relation, Some(relation.as_str()), "no partial list rewrite");
+            for referenced in [1, 2, 3, 4] {
+                assert_eq!(ids.iter().filter(|&&id| id == referenced).count(), 1, "reference #{referenced} retains its record:\n{out}");
+            }
+            let mut decoder = EntityDecoder::new(&out);
+            assert_eq!(decoder.decode_by_id(3).unwrap().get_string(0), Some("0000000000000000000060"));
+            assert!(decoder.decode_by_id(10).is_err(), "malformed relationship remains refused, not certified as valid");
+        }
+    }
+}
+
+#[test]
+fn legal_list_suffix_trivia_allows_public_pruning_7891() {
+    for head in ["", "/* ( */"] {
+        let members = " /* before */ (#2,#3) /* ) , ' #99 */ \x0b\x0c";
+        let (source, relation) = suffix_pruning_model(head, members);
+        let opts = MergedOptions { drop_empty_containers: true, ..Default::default() };
+        let (out, stats) = export_merged_with_stats(&[source.as_bytes()], &opts);
+        assert_eq!(stats.dropped_container_count, 1, "{out}");
+        let entities = decoded(&out);
+        assert!(!entities.iter().any(|e| e.id == 3));
+        assert_eq!(rooted(&entities, OWNER).get_refs(5), Some(vec![2]));
+        assert!(out.contains(&relation.replace("(#2,#3)", "(#2)")), "all unrelated trivia retained:\n{out}");
+    }
+}

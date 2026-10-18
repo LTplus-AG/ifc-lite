@@ -285,3 +285,33 @@ fn trivia_in_every_head_gap_uses_the_same_edit_boundaries_7891() {
         assert!(matches!(decide_line(line, &dropped(&[2])), LineDecision::Skip));
     }
 }
+
+/// Independent review of a3e55ee3d (#7891): closing the first list does not
+/// consume an attribute with a second list after it. Both references must
+/// block pruning, and neither edit helper may act on the first list alone.
+#[test]
+fn list_shaped_suffixes_are_conservatively_nested_7891() {
+    for members in ["(#2) (#3)", "(#2) /* ) , ' */ (#3)"] {
+        let line = format!("#10=IFCRELAGGREGATES('g',$,$,$,#1,{members});");
+        assert_eq!(classify_refs(&line), Some(vec![
+            (1, RefSlot::Single), (2, RefSlot::Nested), (3, RefSlot::Nested),
+        ]));
+        assert!(append_to_list_attr(&line, 5, &[4]).is_none());
+        for id in [2, 3] {
+            assert!(matches!(decide_line(&line, &dropped(&[id])), LineDecision::Keep));
+        }
+    }
+}
+
+#[test]
+fn complete_list_with_legal_trailing_trivia_remains_editable_7891() {
+    let line = "#10=/* ( */IFCRELAGGREGATES('g',$,$,$,#1, /* before */ (#2,#3) /* ) , ' #99 */ \x0b\x0c);";
+    assert_eq!(classify_refs(line), Some(vec![
+        (1, RefSlot::Single), (2, RefSlot::ListElement), (3, RefSlot::ListElement),
+    ]));
+    assert_eq!(append_to_list_attr(line, 5, &[4]), Some(line.replace("(#2,#3)", "(#2,#3,#4)")));
+    let LineDecision::Rewrite(out) = decide_line(line, &dropped(&[3])) else {
+        panic!("the complete list is editable");
+    };
+    assert_eq!(out, line.replace("(#2,#3)", "(#2)"));
+}

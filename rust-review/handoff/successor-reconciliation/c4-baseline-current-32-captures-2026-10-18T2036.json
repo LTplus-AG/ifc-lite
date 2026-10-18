@@ -1,0 +1,324 @@
+{
+  "at": "2026-10-18T20:36:56.643980+00:00",
+  "base": "61f9cb64803b37270fcc0603d97f5f47808212bf",
+  "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+  "worker": "ae0b4677-38a7-46ee-a97b-e72bb9607e29",
+  "session": 89435,
+  "workerTerminal": "FAILED1 solely strict timing differences, unchanged",
+  "result": {
+    "capturesPassed": 32,
+    "strictMatches": 17,
+    "nonTimingUnknownLeaves": 0,
+    "orderedMeshPayloadsExact": 32,
+    "publicJobsCallbacksExact": 24,
+    "unwaivedTimingPairs": 15,
+    "unwaivedTimingLeaves": 35
+  },
+  "guards": "182regular private fixtures and original baseline links preserved; source/runtime/helper/tool/input and native binary before/finally pass; owned quiescent",
+  "scope": "Ordinary eight-fixture same-consumer behavior preservation only. Known cross-API differences are present at baseline61; not waived or accepted. No performance, historic compiler-byte closure, broader C4 or current-main/publication acceptance. Raw captures retained locally and original PC; full hash manifest included.",
+  "next": "No runtime/review repetition. Keep35 actual cross-revision timing leaves unwaived pending actual performance qualification; publication/current-main and remaining C4 phases remain.",
+  "files": [
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/parent-saved-result-verification.json",
+      "size": 5892,
+      "sha256": "1dd450481b2f15a5fed84eb2176b2e46a36d095659f9cb86716ddf10db165ae2"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/delta.json",
+      "size": 1683,
+      "sha256": "87d1b66069e7e1535418d137ba1a21568ae4ed2121e777adc0ff7d4aab38b07c"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/terminal-quiescence-and-remote-manifest.json",
+      "size": 29762,
+      "sha256": "6982efe3c349ecb95c1590404a236c34f7439d0970c1b049fd093fc81fc0ab83"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/original-live-ownership.json",
+      "size": 5830,
+      "sha256": "155e279aea8240d3ee57ab92ce21a90f7b003d019af6765360bf67f5257b1413"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/fixture-provider-and-paths.diff",
+      "size": 11145,
+      "sha256": "e1e525fcb03c30f6dd32e68efa748eb7cbc66717a5fcccceb2bf22b2acd35414"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/launch-remote.sh",
+      "size": 1701,
+      "sha256": "eddb9c8cfe33c44dbac54566a80b23121e5b31fa881f5c5da5296ee6866f6286"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/unresolved-timing-batch.json",
+      "size": 12199,
+      "sha256": "9f320ed26572084f8d7b4879cc8f047ed921470764fd1d80b68d0e874f86874b"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/v21-preservation.json",
+      "size": 238,
+      "sha256": "a2271161a8fbf89724afaac5f74f59b1d7fd2a79c2b9a4d79484fc8fdfd5a442"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/original-launch.log",
+      "size": 6113,
+      "sha256": "02ab1cd62fbdba37b4e6db63d4ddd04d1676d8d43394e8a240d13aa76376bc94"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/RESULT.md",
+      "size": 4990,
+      "sha256": "5b0499391dd4a185db0dc1a64c1784357a0d79d829483d2b53c08fcd723e30c3"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/launch.py",
+      "size": 575,
+      "sha256": "d6fb62d99050c1e6f3829bcebe51dee9e7ac0117cebca11f587ff170d587a07f"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/matrix-index.json",
+      "size": 36747,
+      "sha256": "409f0e4ea14ff541cea9538fa874b81ec9e9d1524e16eefc3f50848d5413b48b"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/assembly-note.json",
+      "size": 437,
+      "sha256": "af44627cacd8bc6c5dd8d1ead9fa97710136c0abf9322185c3e88544f19b041a"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/result-manifest.json",
+      "size": 35300,
+      "sha256": "c0dd43331706cd80c650cc4cb09f468f876367f2e24ec40ebd01521ada9f9cce"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/original-exec-terminal.json",
+      "size": 56,
+      "sha256": "4826f8e7bc6de2e09efe5d55b349e18d703f3add22d40196aa1b37b9f4830bfa"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/original-handles.json",
+      "size": 431,
+      "sha256": "8ccbeba869241e44642de6cde931b634d58eefe84ed7608083999a617e412b03"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/worker-original/output.log",
+      "size": 5951,
+      "sha256": "ac7d8dd5d82060b52ec8123d50e2cb4ee8df20650f165ac611fd1b30a18cb445"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/worker-original/receipt.json",
+      "size": 3983,
+      "sha256": "0022a8b8954314d60ab42b5fbdf83ad50d3a891f9c4d8e6c0e4fc80d0f95205a"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-haus--once--plain.log",
+      "size": 291,
+      "sha256": "2a5989ce23c0177af3f7555337041ae625a0927404e2bebeb10f837ebf8fd88f"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-orphan-type--columns--plain.log",
+      "size": 97,
+      "sha256": "7edf9ca525e49a4629043cfa9773445cb74b84d346be630492519708fb48d315"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-haus--columns--plain.log",
+      "size": 490,
+      "sha256": "20d47a46a913ffb8b54058ff4ff8c802acf56d5d126c2f75e3c7d960dd56a9a5"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-mapped-instances--once--plain.log",
+      "size": 97,
+      "sha256": "7edf9ca525e49a4629043cfa9773445cb74b84d346be630492519708fb48d315"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-voided-wall--columns--plain.log",
+      "size": 291,
+      "sha256": "08bb09a8202dd0d9bd86eeaa225793f5962f1e6b53c1d1d8e8d61cbb7e4286a4"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-multicolor--once--plain.log",
+      "size": 287,
+      "sha256": "c112c7416709a332bc59aa41b3aa0df373cd3004d25b0eb9f88f2fc955033d3e"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-nonfinite-depth-neighbor--once--plain.log",
+      "size": 97,
+      "sha256": "7edf9ca525e49a4629043cfa9773445cb74b84d346be630492519708fb48d315"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-nonfinite-depth-neighbor--serial--plain.log",
+      "size": 97,
+      "sha256": "7edf9ca525e49a4629043cfa9773445cb74b84d346be630492519708fb48d315"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-revit-wall--once--plain.log",
+      "size": 291,
+      "sha256": "4aa95d3b8ac0accb7c93c357675daf34238229c07f6654a81933809e12b3cba7"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-mapped-instances--serial--plain.log",
+      "size": 97,
+      "sha256": "7edf9ca525e49a4629043cfa9773445cb74b84d346be630492519708fb48d315"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-bare-type-map--columns--plain.log",
+      "size": 97,
+      "sha256": "7edf9ca525e49a4629043cfa9773445cb74b84d346be630492519708fb48d315"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-bare-type-map--once--plain.log",
+      "size": 287,
+      "sha256": "bc60d584af574e8016e290f813486bea9e2b2d2646d05f8906c6521013030ff8"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-voided-wall--once--plain.log",
+      "size": 97,
+      "sha256": "7edf9ca525e49a4629043cfa9773445cb74b84d346be630492519708fb48d315"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-mapped-instances--columns--plain.log",
+      "size": 97,
+      "sha256": "7edf9ca525e49a4629043cfa9773445cb74b84d346be630492519708fb48d315"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-mapped-instances--native--plain.log",
+      "size": 97,
+      "sha256": "7edf9ca525e49a4629043cfa9773445cb74b84d346be630492519708fb48d315"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-bare-type-map--serial--plain.log",
+      "size": 97,
+      "sha256": "7edf9ca525e49a4629043cfa9773445cb74b84d346be630492519708fb48d315"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-bare-type-map--native--plain.log",
+      "size": 97,
+      "sha256": "7edf9ca525e49a4629043cfa9773445cb74b84d346be630492519708fb48d315"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-orphan-type--once--plain.log",
+      "size": 97,
+      "sha256": "7edf9ca525e49a4629043cfa9773445cb74b84d346be630492519708fb48d315"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-haus--serial--plain.log",
+      "size": 488,
+      "sha256": "04d5dfd4c4cfaa0628b9e8bc57c89da70c542fcc8ee7135a44b6fd9b596b0933"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-voided-wall--serial--plain.log",
+      "size": 291,
+      "sha256": "df9c6ab2c4f2b7d0b133972634882378cd611d903fdf1d473915cf92979fc0f9"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-haus--native--plain.log",
+      "size": 362,
+      "sha256": "9d80759a558ddcf0966ecb9348225bce66080c2caaeb660e9a5e93c970f81aef"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-multicolor--native--plain.log",
+      "size": 97,
+      "sha256": "7edf9ca525e49a4629043cfa9773445cb74b84d346be630492519708fb48d315"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-nonfinite-depth-neighbor--native--plain.log",
+      "size": 97,
+      "sha256": "7edf9ca525e49a4629043cfa9773445cb74b84d346be630492519708fb48d315"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-voided-wall--native--plain.log",
+      "size": 271,
+      "sha256": "23dd6aa1e419a0214bc47b90c7be6d17bf2cd67baa92a1c56741654fa0c7d1d6"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-revit-wall--columns--plain.log",
+      "size": 291,
+      "sha256": "4aa95d3b8ac0accb7c93c357675daf34238229c07f6654a81933809e12b3cba7"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-nonfinite-depth-neighbor--columns--plain.log",
+      "size": 97,
+      "sha256": "7edf9ca525e49a4629043cfa9773445cb74b84d346be630492519708fb48d315"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-revit-wall--serial--plain.log",
+      "size": 291,
+      "sha256": "66cd08e82c97e7995c8c765ba575418b33cbb97f6de0c23966be3f85497ddac9"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-multicolor--serial--plain.log",
+      "size": 287,
+      "sha256": "c112c7416709a332bc59aa41b3aa0df373cd3004d25b0eb9f88f2fc955033d3e"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-multicolor--columns--plain.log",
+      "size": 287,
+      "sha256": "844b90dbf20e2ca39e64d97862e4024a7c85e5d11f5343a9d36ef79999be65c6"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-revit-wall--native--plain.log",
+      "size": 275,
+      "sha256": "fba014c95a692319c15bb9cb5575f13791cb0572225ee51076b0115003adff52"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-orphan-type--serial--plain.log",
+      "size": 97,
+      "sha256": "7edf9ca525e49a4629043cfa9773445cb74b84d346be630492519708fb48d315"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/pc-results/compare-orphan-type--native--plain.log",
+      "size": 97,
+      "sha256": "7edf9ca525e49a4629043cfa9773445cb74b84d346be630492519708fb48d315"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/inputs/INPUTS.json",
+      "size": 3292,
+      "sha256": "73413e1c0f7a4e3d29e95dea3748eb84bf3af2980a10e0bbd4cd9d624f861928"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/inputs/baseline61-native-capture-only.patch",
+      "size": 9773,
+      "sha256": "737a8d6a6ee1b3ea243d9b2d230088e45519072b2e7fd6521661827ad36b9240"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/inputs/baseline-runtime-producer.json",
+      "size": 3629,
+      "sha256": "4135972642c889517120a0c62ed12476f139e297e7c6e17303e4c2f071925d3b"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/inputs/run-baseline.py",
+      "size": 16532,
+      "sha256": "713c1fc600cb375f8de83301dd3aa57b44dacc8f2668feb061b7a7fa3cd9b4e7"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/inputs/helper-reuse.json",
+      "size": 2794,
+      "sha256": "18e2af3b381bd07b6532f55442da1a0cad05e583c517d2a4fe91cb0ec8898159"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/inputs/head-ordinary.json",
+      "size": 11492,
+      "sha256": "3e34d050690b4e562ee0a06618b3fe4b5e5f7779304206cbf41629fe62dd17c9"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/inputs/compare-saved.mjs",
+      "size": 996,
+      "sha256": "92a12d4bb12b825c7f8a6b2266ad947a7a1f3aedbd2b52deea2f336ef71918a6"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/inputs/sealed-fixture-manifest.json",
+      "size": 7816,
+      "sha256": "b558d1803e50f7361b308de8b059341591481e1dc2aa8169258d009b7d63dea4"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/inputs/head-matrix-index.json",
+      "size": 276857,
+      "sha256": "846bfdc17fa7f68217c009247240f98bd3f6927809eca58bea5e5956125c5f9e"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-current-32-captures-2026-10-18T2036/inputs/EXPECTED_DIFF.json",
+      "size": 4551,
+      "sha256": "7bbbb5045ff3c62b8af6e233d56e19b045ce5eaf53bd0e501a8ca029fcfbb448"
+    }
+  ],
+  "newProductionMerges": 0,
+  "newIssueClosures": 0
+}

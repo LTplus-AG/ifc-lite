@@ -1,0 +1,22 @@
+{
+  "result": "INCOMPLETE_UNKNOWN_DIFF",
+  "expected": [],
+  "unknown": [
+    {
+      "path": "/stats/entity_scan_time_ms",
+      "left": 3,
+      "right": 4
+    },
+    {
+      "path": "/stats/geometry_time_ms",
+      "left": 14,
+      "right": 15
+    },
+    {
+      "path": "/stats/total_time_ms",
+      "left": 20,
+      "right": 22
+    }
+  ],
+  "stale": []
+}

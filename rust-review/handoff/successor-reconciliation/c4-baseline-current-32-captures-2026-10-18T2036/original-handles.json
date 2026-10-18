@@ -1,0 +1,9 @@
+{
+  "worker": "ae0b4677-38a7-46ee-a97b-e72bb9607e29",
+  "originalSession": 89435,
+  "source": "61f9cb64803b37270fcc0603d97f5f47808212bf",
+  "host": "ifc-pc-worker",
+  "driverSha256": "713c1fc600cb375f8de83301dd3aa57b44dacc8f2668feb061b7a7fa3cd9b4e7",
+  "inputManifestSha256": "73413e1c0f7a4e3d29e95dea3748eb84bf3af2980a10e0bbd4cd9d624f861928",
+  "launchSha256": "eddb9c8cfe33c44dbac54566a80b23121e5b31fa881f5c5da5296ee6866f6286"
+}

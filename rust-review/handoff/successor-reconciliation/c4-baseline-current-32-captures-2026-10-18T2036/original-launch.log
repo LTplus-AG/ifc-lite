@@ -1,0 +1,152 @@
+{"jobId": "ae0b4677-38a7-46ee-a97b-e72bb9607e29", "receipt": "/home/louistrue/build-workers/worker-state/jobs/ae0b4677-38a7-46ee-a97b-e72bb9607e29/receipt.json"}
+START revit-wall--serial--plain
+END revit-wall--serial--plain 0
+START revit-wall--columns--plain
+END revit-wall--columns--plain 0
+START revit-wall--once--plain
+END revit-wall--once--plain 0
+START multicolor--serial--plain
+END multicolor--serial--plain 0
+START multicolor--columns--plain
+END multicolor--columns--plain 0
+START multicolor--once--plain
+END multicolor--once--plain 0
+START voided-wall--serial--plain
+END voided-wall--serial--plain 0
+START voided-wall--columns--plain
+END voided-wall--columns--plain 0
+START voided-wall--once--plain
+END voided-wall--once--plain 0
+START mapped-instances--serial--plain
+END mapped-instances--serial--plain 0
+START mapped-instances--columns--plain
+END mapped-instances--columns--plain 0
+START mapped-instances--once--plain
+END mapped-instances--once--plain 0
+START orphan-type--serial--plain
+END orphan-type--serial--plain 0
+START orphan-type--columns--plain
+END orphan-type--columns--plain 0
+START orphan-type--once--plain
+END orphan-type--once--plain 0
+START bare-type-map--serial--plain
+END bare-type-map--serial--plain 0
+START bare-type-map--columns--plain
+END bare-type-map--columns--plain 0
+START bare-type-map--once--plain
+END bare-type-map--once--plain 0
+START nonfinite-depth-neighbor--serial--plain
+END nonfinite-depth-neighbor--serial--plain 0
+START nonfinite-depth-neighbor--columns--plain
+END nonfinite-depth-neighbor--columns--plain 0
+START nonfinite-depth-neighbor--once--plain
+END nonfinite-depth-neighbor--once--plain 0
+START haus--serial--plain
+END haus--serial--plain 0
+START haus--columns--plain
+END haus--columns--plain 0
+START haus--once--plain
+END haus--once--plain 0
+START native-source
+END native-source 0
+START native-capture-helper
+END native-capture-helper 0
+START native-support-build
+END native-support-build 0
+START revit-wall--native--plain
+END revit-wall--native--plain 0
+START revit-wall--native--plain-validate
+END revit-wall--native--plain-validate 0
+START multicolor--native--plain
+END multicolor--native--plain 0
+START multicolor--native--plain-validate
+END multicolor--native--plain-validate 0
+START voided-wall--native--plain
+END voided-wall--native--plain 0
+START voided-wall--native--plain-validate
+END voided-wall--native--plain-validate 0
+START mapped-instances--native--plain
+END mapped-instances--native--plain 0
+START mapped-instances--native--plain-validate
+END mapped-instances--native--plain-validate 0
+START orphan-type--native--plain
+END orphan-type--native--plain 0
+START orphan-type--native--plain-validate
+END orphan-type--native--plain-validate 0
+START bare-type-map--native--plain
+END bare-type-map--native--plain 0
+START bare-type-map--native--plain-validate
+END bare-type-map--native--plain-validate 0
+START nonfinite-depth-neighbor--native--plain
+END nonfinite-depth-neighbor--native--plain 0
+START nonfinite-depth-neighbor--native--plain-validate
+END nonfinite-depth-neighbor--native--plain-validate 0
+START haus--native--plain
+END haus--native--plain 0
+START haus--native--plain-validate
+END haus--native--plain-validate 0
+START compare-revit-wall--serial--plain
+END compare-revit-wall--serial--plain 1
+START compare-revit-wall--columns--plain
+END compare-revit-wall--columns--plain 1
+START compare-revit-wall--once--plain
+END compare-revit-wall--once--plain 1
+START compare-revit-wall--native--plain
+END compare-revit-wall--native--plain 1
+START compare-multicolor--serial--plain
+END compare-multicolor--serial--plain 1
+START compare-multicolor--columns--plain
+END compare-multicolor--columns--plain 1
+START compare-multicolor--once--plain
+END compare-multicolor--once--plain 1
+START compare-multicolor--native--plain
+END compare-multicolor--native--plain 0
+START compare-voided-wall--serial--plain
+END compare-voided-wall--serial--plain 1
+START compare-voided-wall--columns--plain
+END compare-voided-wall--columns--plain 1
+START compare-voided-wall--once--plain
+END compare-voided-wall--once--plain 0
+START compare-voided-wall--native--plain
+END compare-voided-wall--native--plain 1
+START compare-mapped-instances--serial--plain
+END compare-mapped-instances--serial--plain 0
+START compare-mapped-instances--columns--plain
+END compare-mapped-instances--columns--plain 0
+START compare-mapped-instances--once--plain
+END compare-mapped-instances--once--plain 0
+START compare-mapped-instances--native--plain
+END compare-mapped-instances--native--plain 0
+START compare-orphan-type--serial--plain
+END compare-orphan-type--serial--plain 0
+START compare-orphan-type--columns--plain
+END compare-orphan-type--columns--plain 0
+START compare-orphan-type--once--plain
+END compare-orphan-type--once--plain 0
+START compare-orphan-type--native--plain
+END compare-orphan-type--native--plain 0
+START compare-bare-type-map--serial--plain
+END compare-bare-type-map--serial--plain 0
+START compare-bare-type-map--columns--plain
+END compare-bare-type-map--columns--plain 0
+START compare-bare-type-map--once--plain
+END compare-bare-type-map--once--plain 1
+START compare-bare-type-map--native--plain
+END compare-bare-type-map--native--plain 0
+START compare-nonfinite-depth-neighbor--serial--plain
+END compare-nonfinite-depth-neighbor--serial--plain 0
+START compare-nonfinite-depth-neighbor--columns--plain
+END compare-nonfinite-depth-neighbor--columns--plain 0
+START compare-nonfinite-depth-neighbor--once--plain
+END compare-nonfinite-depth-neighbor--once--plain 0
+START compare-nonfinite-depth-neighbor--native--plain
+END compare-nonfinite-depth-neighbor--native--plain 0
+START compare-haus--serial--plain
+END compare-haus--serial--plain 1
+START compare-haus--columns--plain
+END compare-haus--columns--plain 1
+START compare-haus--once--plain
+END compare-haus--once--plain 1
+START compare-haus--native--plain
+END compare-haus--native--plain 1
+{"report": "/home/louistrue/build-workers/worker-state/targets/c4-0-baseline61-counterparts-v2/results/report.json", "collectionComplete": true, "complete": false, "failedCell": null, "primaryError": null, "finallyErrors": []}

@@ -1,0 +1,102 @@
+{
+  "source_before": {
+    "head": "61f9cb64803b37270fcc0603d97f5f47808212bf",
+    "tree": "6c3b87a4fe38cbf7170deca3d39ca3885b630e7c",
+    "status": ""
+  },
+  "commands": [
+    {
+      "name": "siblings",
+      "argv": [
+        "pnpm",
+        "build",
+        "--filter=@ifc-lite/renderer...",
+        "--filter=@ifc-lite/export..."
+      ],
+      "env_overrides": {
+        "TURBO_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/turbo-current-main-cache"
+      },
+      "exit_code": 0
+    },
+    {
+      "name": "source-wasm",
+      "argv": [
+        "bash",
+        "scripts/build-wasm.sh"
+      ],
+      "env_overrides": {
+        "CI": "1"
+      },
+      "exit_code": 0
+    },
+    {
+      "name": "contract",
+      "argv": [
+        "pnpm",
+        "test:wasm-contract"
+      ],
+      "env_overrides": {},
+      "exit_code": 0
+    },
+    {
+      "name": "corpus0",
+      "argv": [
+        "node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-tools/wasm-corpus.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-base61",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/runtime-base/corpus0.json"
+      ],
+      "env_overrides": {},
+      "exit_code": 0
+    },
+    {
+      "name": "corpus1",
+      "argv": [
+        "node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-tools/wasm-corpus.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-base61",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/runtime-base/corpus1.json"
+      ],
+      "env_overrides": {},
+      "exit_code": 0
+    },
+    {
+      "name": "repeatability",
+      "argv": [
+        "python3",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-tools/compare-wasm-corpus.py",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/runtime-base/corpus0.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/runtime-base/corpus1.json"
+      ],
+      "env_overrides": {},
+      "exit_code": 0
+    }
+  ],
+  "scope": "root Turbo sibling builds + source WASM/contract + direct WASM byte corpus only; no timing/memory/worker-pool verdict",
+  "source_after": {
+    "head": "61f9cb64803b37270fcc0603d97f5f47808212bf",
+    "tree": "6c3b87a4fe38cbf7170deca3d39ca3885b630e7c",
+    "status": ""
+  },
+  "artifacts": [
+    {
+      "kind": "wasm-runtime",
+      "source": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-base61/packages/wasm/pkg/ifc-lite_bg.wasm",
+      "sha256": "cb15170c3177f6016df72572653d096a8def0100f08d71407760358992ec2ffa",
+      "size": 9767500
+    },
+    {
+      "kind": "wasm-glue-or-types",
+      "source": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-base61/packages/wasm/pkg/ifc-lite.js",
+      "sha256": "04c85b1449d8fee992f25f0685170ff03fb4360726fa4e4d2a2d180314c169c0",
+      "size": 308437
+    },
+    {
+      "kind": "wasm-glue-or-types",
+      "source": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-base61/packages/wasm/pkg/ifc-lite.d.ts",
+      "sha256": "e2bf5dee93a6277acee5a814f0bab346ec3c270cbc01bc8a1d0ca75d1c2b65cb",
+      "size": 167397
+    }
+  ],
+  "source_unchanged": true
+}

@@ -1,0 +1,226 @@
+{
+  "revit-wall--serial--plain": {
+    "fixture": "revit-wall",
+    "route": "serial",
+    "key": "revit-wall--serial--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/revit-wall--serial--plain.json",
+    "sha256": "aff70d3ef8702fa5201c9d0a275849c9c492304676dc7c194cb268767a2ffa58"
+  },
+  "revit-wall--columns--plain": {
+    "fixture": "revit-wall",
+    "route": "columns",
+    "key": "revit-wall--columns--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/revit-wall--columns--plain.json",
+    "sha256": "226f3630e04a5a9a09ed4e5e49462ff834535a0354ca5dcdbc9687501c27d834"
+  },
+  "revit-wall--once--plain": {
+    "fixture": "revit-wall",
+    "route": "once",
+    "key": "revit-wall--once--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/c4-0-current-fc-matrix-inputs-v1/reused-revit-once-plain.json",
+    "sha256": "097f9c2fb717a6dfb306f664f8ec87da853df88c5abe13d41e2e85205080dc54"
+  },
+  "revit-wall--native--plain": {
+    "fixture": "revit-wall",
+    "route": "native",
+    "key": "revit-wall--native--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/revit-wall--native--plain.json",
+    "sha256": "9205bc3613b3cb28617512c337aa441057f2b752749728a0754c38ff5e460605"
+  },
+  "multicolor--serial--plain": {
+    "fixture": "multicolor",
+    "route": "serial",
+    "key": "multicolor--serial--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/multicolor--serial--plain.json",
+    "sha256": "5b60f7db3a5dfe4b28086d80aa9c9d24111979c33136b1350aaf9931268f9d42"
+  },
+  "multicolor--columns--plain": {
+    "fixture": "multicolor",
+    "route": "columns",
+    "key": "multicolor--columns--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/multicolor--columns--plain.json",
+    "sha256": "6b702e5195d6fc8f2e78c3bb255b2423b32efc9fb08add1de32d382b9e2e0ab1"
+  },
+  "multicolor--once--plain": {
+    "fixture": "multicolor",
+    "route": "once",
+    "key": "multicolor--once--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/multicolor--once--plain.json",
+    "sha256": "74521d8f0a362f26be85971e220911eb11e9891851794681d70bc3b247bafecd"
+  },
+  "multicolor--native--plain": {
+    "fixture": "multicolor",
+    "route": "native",
+    "key": "multicolor--native--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/multicolor--native--plain.json",
+    "sha256": "8c75cb5aeafecfb3f315399f81d2e3515dd59c36c9c2a997be42b7fba122b707"
+  },
+  "voided-wall--serial--plain": {
+    "fixture": "voided-wall",
+    "route": "serial",
+    "key": "voided-wall--serial--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/voided-wall--serial--plain.json",
+    "sha256": "5b2fd76eb988682bce357eb14ccb86cfc042487eacecfa4a0d4ed18c4fcea181"
+  },
+  "voided-wall--columns--plain": {
+    "fixture": "voided-wall",
+    "route": "columns",
+    "key": "voided-wall--columns--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/voided-wall--columns--plain.json",
+    "sha256": "a00b1c4afe683012139afb7d1c3d8188d6fc9e11f2dc827c6367841aaf2e6845"
+  },
+  "voided-wall--once--plain": {
+    "fixture": "voided-wall",
+    "route": "once",
+    "key": "voided-wall--once--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/voided-wall--once--plain.json",
+    "sha256": "c589fa60cdf5d42d5ea19f0da804361db120cdd32efff6c6a478f44f5cfa5533"
+  },
+  "voided-wall--native--plain": {
+    "fixture": "voided-wall",
+    "route": "native",
+    "key": "voided-wall--native--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/voided-wall--native--plain.json",
+    "sha256": "68bc5b1ab54876a2e051cff6368624e8d145fdc87790972e3d8a881d30955681"
+  },
+  "mapped-instances--serial--plain": {
+    "fixture": "mapped-instances",
+    "route": "serial",
+    "key": "mapped-instances--serial--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/mapped-instances--serial--plain.json",
+    "sha256": "99861563f83556690c309e9a05391f6f170dae95c0de9debefadb19a09c5ab74"
+  },
+  "mapped-instances--columns--plain": {
+    "fixture": "mapped-instances",
+    "route": "columns",
+    "key": "mapped-instances--columns--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/mapped-instances--columns--plain.json",
+    "sha256": "e07ff66aeb8251da7bf7b60832a2969a365d7e026a4b275434af821d4c937cdf"
+  },
+  "mapped-instances--once--plain": {
+    "fixture": "mapped-instances",
+    "route": "once",
+    "key": "mapped-instances--once--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/mapped-instances--once--plain.json",
+    "sha256": "29c451417cd77dee4a1c9875412d571a44158324f293c556134427ab8cd38d48"
+  },
+  "mapped-instances--native--plain": {
+    "fixture": "mapped-instances",
+    "route": "native",
+    "key": "mapped-instances--native--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/mapped-instances--native--plain.json",
+    "sha256": "dcee3102c57c310640d91751c64e1114e4ad8abe80a1fb180aceefc197f260a8"
+  },
+  "orphan-type--serial--plain": {
+    "fixture": "orphan-type",
+    "route": "serial",
+    "key": "orphan-type--serial--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/orphan-type--serial--plain.json",
+    "sha256": "c92d90d2e91b3dd306756bac830b349644e02b727709ef98ccd840f9dbb44fc5"
+  },
+  "orphan-type--columns--plain": {
+    "fixture": "orphan-type",
+    "route": "columns",
+    "key": "orphan-type--columns--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/orphan-type--columns--plain.json",
+    "sha256": "1f0dd3112fc3e3483a2a0e86ccd38422e321eb51000db21c0a2a4ac33591d54f"
+  },
+  "orphan-type--once--plain": {
+    "fixture": "orphan-type",
+    "route": "once",
+    "key": "orphan-type--once--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/orphan-type--once--plain.json",
+    "sha256": "cf7c72c22f77d8b77d50c3d99a7d518f13aa631c68e0b168c1c493e0a310990f"
+  },
+  "orphan-type--native--plain": {
+    "fixture": "orphan-type",
+    "route": "native",
+    "key": "orphan-type--native--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/orphan-type--native--plain.json",
+    "sha256": "afbbc963ad31ef09f00b0f8eb582f9f0bfed35ce29dd4ff6534b2e7a1e5c37d6"
+  },
+  "bare-type-map--serial--plain": {
+    "fixture": "bare-type-map",
+    "route": "serial",
+    "key": "bare-type-map--serial--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/bare-type-map--serial--plain.json",
+    "sha256": "b92c9afe0b9e44f45f6e34cc8d65d716258070b413fd149d4fb952152b29152e"
+  },
+  "bare-type-map--columns--plain": {
+    "fixture": "bare-type-map",
+    "route": "columns",
+    "key": "bare-type-map--columns--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/bare-type-map--columns--plain.json",
+    "sha256": "c00c4ae109450080f466eb0655c08c7b31b1c59f804a76ea2a33d2bd2c8a0c5b"
+  },
+  "bare-type-map--once--plain": {
+    "fixture": "bare-type-map",
+    "route": "once",
+    "key": "bare-type-map--once--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/bare-type-map--once--plain.json",
+    "sha256": "8115f67b72cd4b4b81d87b2b910b7e1c83caabb2eee008ee9792445fdf495712"
+  },
+  "bare-type-map--native--plain": {
+    "fixture": "bare-type-map",
+    "route": "native",
+    "key": "bare-type-map--native--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/bare-type-map--native--plain.json",
+    "sha256": "84624226bbd6bf30f9b7f17861192e15fe56082bf2556cd6453c4afae446cc64"
+  },
+  "nonfinite-depth-neighbor--serial--plain": {
+    "fixture": "nonfinite-depth-neighbor",
+    "route": "serial",
+    "key": "nonfinite-depth-neighbor--serial--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/nonfinite-depth-neighbor--serial--plain.json",
+    "sha256": "d5140f735bd282e71d21274842782d502083f94db569b308ea726f65c2541a02"
+  },
+  "nonfinite-depth-neighbor--columns--plain": {
+    "fixture": "nonfinite-depth-neighbor",
+    "route": "columns",
+    "key": "nonfinite-depth-neighbor--columns--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/nonfinite-depth-neighbor--columns--plain.json",
+    "sha256": "45f86f4fae52710e56d6d939e8b2c54cba66d6ef01cfa54624819fb22f60ec3a"
+  },
+  "nonfinite-depth-neighbor--once--plain": {
+    "fixture": "nonfinite-depth-neighbor",
+    "route": "once",
+    "key": "nonfinite-depth-neighbor--once--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/nonfinite-depth-neighbor--once--plain.json",
+    "sha256": "c6304a60e53802e3efe6d22ce9d82041d2f9fdc85d6efa393ba964c5b55ac4ba"
+  },
+  "nonfinite-depth-neighbor--native--plain": {
+    "fixture": "nonfinite-depth-neighbor",
+    "route": "native",
+    "key": "nonfinite-depth-neighbor--native--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/nonfinite-depth-neighbor--native--plain.json",
+    "sha256": "9f9e264792e1aead1cc16e7548668e9dd20911f08af36707247f87b089023454"
+  },
+  "haus--serial--plain": {
+    "fixture": "haus",
+    "route": "serial",
+    "key": "haus--serial--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/haus--serial--plain.json",
+    "sha256": "928eea083d67c09e2cf82d48eba43ea07641425a73c7a8bc4262c693999f1c2f"
+  },
+  "haus--columns--plain": {
+    "fixture": "haus",
+    "route": "columns",
+    "key": "haus--columns--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/haus--columns--plain.json",
+    "sha256": "3a3db781c0b288f37fd07fa2f03df61c08a69256d181d1696502aa69dfc9b244"
+  },
+  "haus--once--plain": {
+    "fixture": "haus",
+    "route": "once",
+    "key": "haus--once--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/haus--once--plain.json",
+    "sha256": "3493849069053b66dc661eb5758c9c9f038dd9c004f577e268143d2bcd578d9b"
+  },
+  "haus--native--plain": {
+    "fixture": "haus",
+    "route": "native",
+    "key": "haus--native--plain",
+    "receipt": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/results/cases/haus--native--plain.json",
+    "sha256": "3f68cca69089bf9ad85947b9af6e338821079481f508743f46d32379a2670c0c"
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "schema": "c4-0-expected-diff-v1",
+  "state": "UNBOUND_SOURCE_PROPOSAL_NOT_ACCEPTANCE",
+  "entries": [],
+  "bindingPolicy": "Independent review must bind concrete leaf path, exact fixture SHA, exact same-source commit, arm, both value SHA256, source authority, precise condition and removal trigger. Unknown/missing values remain INCOMPLETE; no wildcard, whole-object/array, broad stats/diagnostics/cache exclusions.",
+  "templates": [
+    {
+      "id": "YUP_WIRE_BASIS",
+      "state": "NEEDS_REAL_BOUND_VALUES",
+      "authority": "MeshDataJs constructor converts IFC Z-up to viewer Y-up; C4.md \u00a72.2 session JS conversion; exact snapshots/source-manifest.json",
+      "condition": "Only exact position/normal/origin/local-frame leaf wires demonstrably explained by the shipped conversion; preserve original bytes. No newly authored coordinate transform in comparator.",
+      "removeWhen": "Target wire basis contract changes or a reviewed common writer supersedes it"
+    },
+    {
+      "id": "NATIVE_SITE_LOCAL_BROWSER_MODEL_RTC",
+      "state": "NEEDS_REAL_BOUND_VALUES",
+      "authority": "C4.md \u00a75.3 row4 and frozen MeshFrame/native pass vs prepass metadata; inventory source pins",
+      "condition": "Exact fixture/source/frame mode; site rotation matrices and RTC leaves must explain exact observed coordinate payloads. Equal-mode ordinary real fixture still required.",
+      "removeWhen": "Frame policy deliberately reconciled"
+    },
+    {
+      "id": "TYPE_REF_BARE_C47A",
+      "state": "NEEDS_REAL_BOUND_VALUES",
+      "authority": "C4.md \u00a75.2 row2/D63; native parser accepts bare ref; browser as_list branch remains",
+      "condition": "bare-type-map fixture only, job43/map44; actual native job/maps/output and actual browser discovery+batch-skip empty-rep-map-refs required. Color NotEvaluated only at that observed early branch.",
+      "removeWhen": "C4-7a adopts bare-tolerant get_refs"
+    },
+    {
+      "id": "TYPE_EMIT_TAGGED_VS_SUPPRESS_INSTANCED",
+      "state": "NEEDS_REAL_BOUND_VALUES",
+      "authority": "C4.md \u00a72/\u00a75.2 row3 and frozen TypeGeometryMode callers",
+      "condition": "Only actual type/map/class2 jobs explained by caller policy and recorded occurrence plan. No blanket loss of type meshes.",
+      "removeWhen": "Caller mode policies deliberately converge"
+    },
+    {
+      "id": "NATIVE_UNSLICED_BROWSER_LAYERS_D66",
+      "state": "NEEDS_REAL_BOUND_VALUES",
+      "authority": "C4.md \u00a75.2 row6/D66 pending maintainer",
+      "condition": "Only proven layered fixture/material slices with actual map/material/color metadata and complete outputs; D66 is not authorization to change native behavior.",
+      "removeWhen": "Maintainer selects an explicit native slicing X"
+    },
+    {
+      "id": "BROWSER_REFUSAL_COUNTER_ABSENCE_C410A",
+      "state": "NEEDS_REAL_BOUND_VALUES",
+      "authority": "C4.md \u00a75.2 row11/D67",
+      "condition": "Missing public counter is an explicit unavailable status, never zero. Exact native refused counts and actual browser skip/control outcomes must be retained; public schema must still be checked.",
+      "removeWhen": "C4-10a exports actual refusal counters"
+    },
+    {
+      "id": "PER_JOB_VS_BATCH_DIAGNOSTIC_BOUNDARY",
+      "state": "NEEDS_REAL_BOUND_VALUES",
+      "authority": "C4.md \u00a75.2 row12",
+      "condition": "Exact named diagnostic collection path and actual recorded boundaries only. Totals and unrelated diagnostics must remain compared; no dropping diagnostic rows.",
+      "removeWhen": "Shared drain reconciles field/occurrence contract"
+    },
+    {
+      "id": "SITE_DISABLED_C46A_SEPARATE",
+      "state": "NEEDS_REAL_BOUND_VALUES",
+      "authority": "d60027b C4-6a site helper and separately executed V2 Revit capture receipts",
+      "condition": "Separate d600 candidate default-vs-disabledIFCSITE arm only; omit actual Site job and its outputs/counter attribution, retain all non-Site/placement metadata. Existing recorded Site emits zero meshes on the real Revit fixture.",
+      "removeWhen": "Disabled-set contract changes"
+    },
+    {
+      "id": "EXACT_TIMING_LEAF_NONDETERMINISM",
+      "state": "NEEDS_REAL_BOUND_VALUES",
+      "authority": "Exact producer timing field definition must be supplied per rule",
+      "condition": "Only separately named exact timing leaf on this pair, both actual values pinned. No performance verdict or per-run auto exception generation. Cache counters are not timing.",
+      "removeWhen": "This exact witness comparison is retired"
+    }
+  ]
+}

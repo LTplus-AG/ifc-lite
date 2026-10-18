@@ -1,0 +1,97 @@
+--- immutable-v21/run-baseline.py
++++ v22/run-baseline.py
+@@ -1,7 +1,8 @@
+ """Missing baseline61 ordinary counterparts only; retained V5/V18 adapters."""
+ from pathlib import Path
+-import os,json,hashlib,subprocess,shutil,time,traceback,resource,signal
+-S=Path.cwd();T=Path(os.environ['CARGO_TARGET_DIR']);I=Path('/home/louistrue/build-workers/worker-state/c4-0-baseline61-counterparts-inputs-v1');O=T/'results';B=Path('/home/louistrue/build-workers/worker-state/checkouts/c4-0-baseline61-native-capture-v1');H=Path('/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/helpers');PKG=S/'packages/wasm/pkg'
++import os,json,hashlib,subprocess,shutil,time,traceback,resource,signal,stat
++S=Path.cwd();T=Path(os.environ['CARGO_TARGET_DIR']);I=Path('/home/louistrue/build-workers/worker-state/c4-0-baseline61-counterparts-inputs-v2');O=T/'results';B=Path('/home/louistrue/build-workers/worker-state/checkouts/c4-0-baseline61-native-capture-v2');H=Path('/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/helpers');PKG=S/'packages/wasm/pkg'
++PRODUCER=Path('/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2');Q=Path('/home/louistrue/build-workers/worker-state/c4-0-baseline61-regular-fixtures-v2');fixture_owner=None
+ BASE='61f9cb64803b37270fcc0603d97f5f47808212bf';TREE='6c3b87a4fe38cbf7170deca3d39ca3885b630e7c'
+ R={'scope':'32 missing baseline61 ordinary native/serial/columns/once captures; compare only same-route existing fc captures; no observed/performance/acceptance','commands':[],'cells':[],'comparisons':[],'primaryError':None,'finallyErrors':[],'collectionComplete':False,'startedAt':time.time(),'outputLimits':{'perFileBytes':512*2**20,'aggregateBytes':8*2**30}}
+ F=json.loads((I/'sealed-fixture-manifest.json').read_text())['fixtures'];heads=json.loads((I/'head-ordinary.json').read_text());tools=[];immutable=[];native_source=None;active_cell=None
+@@ -18,19 +19,46 @@
+  for n,r in m.items():
+   p=I/n;assert not p.is_symlink() and p.stat().st_size==r['bytes'] and sha(p)==r['sha256'],str(p)
+  return {'files':len(m),'manifestSha256':sha(I/'INPUTS.json')}
++def baseline_fixture_links():
++ return {r['path']:{'link':os.readlink(S/'tests/models'/r['path']),'inode':(S/'tests/models'/r['path']).lstat().st_ino,'uid':(S/'tests/models'/r['path']).lstat().st_uid} for r in json.loads((S/'tests/models/manifest.json').read_text())['files']}
++def fixture_census(root):
++ assert root.is_dir() and not root.is_symlink() and root.resolve()==root and root.stat().st_uid==os.getuid(),'owned regular fixture root required'
++ m=json.loads((S/'tests/models/manifest.json').read_text())['files'];assert len(m)==182
++ rows={}
++ for r in m:
++  relative=Path(r['path']);assert not relative.is_absolute() and '..' not in relative.parts and str(relative) not in rows
++  p=root
++  for index,part in enumerate(relative.parts):
++   p=p/part;st=p.lstat();assert st.st_uid==os.getuid() and not stat.S_ISLNK(st.st_mode),str(p)
++   assert stat.S_ISREG(st.st_mode) if index==len(relative.parts)-1 else stat.S_ISDIR(st.st_mode),str(p)
++  assert st.st_size==r['size'] and sha(p)==r['sha256'],str(p)
++  rows[str(relative)]={'bytes':st.st_size,'sha256':r['sha256']}
++ return {'count':182,'manifestSha256':sha(S/'tests/models/manifest.json'),'files':rows,'allSizeShaMatch':True}
+ def fixtures():
+- m=json.loads((S/'tests/models/manifest.json').read_text())['files'];assert len(m)==182
+- for r in m:
+-  p=S/'tests/models'/r['path'];assert p.is_file() and not p.is_symlink() and p.stat().st_size==r['size'] and sha(p)==r['sha256'],str(p)
+- return {'count':182,'manifestSha256':sha(S/'tests/models/manifest.json'),'allSizeShaMatch':True}
++ assert fixture_owner is not None and (Q.stat().st_dev,Q.stat().st_ino,Q.stat().st_uid)==fixture_owner,'private fixture ownership changed'
++ return {'root':str(Q),'ownership':list(fixture_owner),**fixture_census(Q)}
++def seed_fixtures():
++ global fixture_owner
++ assert not Q.exists() and not Q.is_symlink(),'fresh fixture root required'
++ assert sha(PRODUCER/'tests/models/manifest.json')==sha(S/'tests/models/manifest.json'),'producer182 must match baseline manifest'
++ R['producerFixturesBefore']=fixture_census(PRODUCER/'tests/models');R['fixtureSeedStorageBefore']=storage();save()
++ Q.mkdir(mode=0o700);st=Q.stat();fixture_owner=(st.st_dev,st.st_ino,st.st_uid)
++ for name,row in R['producerFixturesBefore']['files'].items():
++  src=PRODUCER/'tests/models'/name;dest=Q/name;dest.parent.mkdir(parents=True,exist_ok=True)
++  with src.open('rb') as source,dest.open('xb') as output:
++   assert stat.S_ISREG(os.fstat(source.fileno()).st_mode) and os.fstat(source.fileno()).st_uid==os.getuid()
++   shutil.copyfileobj(source,output)
++  assert not dest.is_symlink() and dest.stat().st_uid==os.getuid() and dest.stat().st_size==row['bytes'] and sha(dest)==row['sha256']
++ R['copiedFixtures']=fixtures();R['producerFixturesAfterCopy']=fixture_census(PRODUCER/'tests/models')
++ assert R['producerFixturesBefore']==R['producerFixturesAfterCopy'];assert R['copiedFixtures']['files']==R['producerFixturesBefore']['files'];R['fixtureSeedStorageAfter']=storage();save()
+ def storage():
+  rows=[]
+- for p in [S,T,O,I,B,T/'native-plain',Path(os.environ.get('CARGO_HOME',str(Path.home()/'.cargo'))),Path(os.environ['TMPDIR'])]:
++ for p in [S,PRODUCER,Q,T,O,I,B,T/'native-plain',Path(os.environ.get('CARGO_HOME',str(Path.home()/'.cargo'))),Path(os.environ['TMPDIR'])]:
+   while not p.exists():p=p.parent
+   st=os.statvfs(p);v={'path':str(p),'freeBytes':st.f_bavail*st.f_frsize,'freeInodes':st.f_favail};rows.append(v);assert v['freeBytes']>60*2**30 and v['freeInodes']>1000000,v
+  total=sum(p.stat().st_size for p in O.rglob('*') if p.is_file());assert total<=R['outputLimits']['aggregateBytes'];return {'volumes':rows,'outputBytes':total}
+ def guard(name):
+- assert identity(S)==R['sourceBefore'];assert pins(tools)==R['toolsBefore'];assert pins(immutable)==R['immutableBefore'];assert inputs()==R['inputsBefore']
++ assert identity(S)==R['sourceBefore'];assert baseline_fixture_links()==R['baselineFixtureLinksBefore'];assert identity(PRODUCER)==R['producerSourceBefore'];assert fixture_census(PRODUCER/'tests/models')==R['producerFixturesBefore'];assert pins(tools)==R['toolsBefore'];assert pins(immutable)==R['immutableBefore'];assert inputs()==R['inputsBefore']
+  if native_source is not None:assert patched_identity(B)==native_source,'capture helper source changed'
+  R.setdefault('guards',[]).append({'name':name,'storage':storage(),'fixtures':fixtures()});save()
+ def limits():resource.setrlimit(resource.RLIMIT_FSIZE,(512*2**20,512*2**20))
+@@ -48,7 +76,8 @@
+ lookup={r['key']:r for r in R['cells']}
+ try:
+  R['sourceBefore']=identity(S);assert R['sourceBefore']=={'head':BASE,'tree':TREE,'status':''}
+- R['inputsBefore']=inputs();R['fixturesBefore']=fixtures();R['storageBefore']=storage();tools=[Path(shutil.which(n)) for n in ['cargo','rustc','node','git','python3']];R['toolsBefore']=pins(tools)
++ R['producerSourceBefore']=identity(PRODUCER);assert R['producerSourceBefore']=={'head':'fc3635ae78665e95ea72328b88fc7b28ead148d2','tree':'4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5','status':''}
++ R['baselineFixtureLinksBefore']=baseline_fixture_links();R['inputsBefore']=inputs();R['storageBefore']=storage();seed_fixtures();R['fixturesBefore']=fixtures();tools=[Path(shutil.which(n)) for n in ['cargo','rustc','node','git','python3']];R['toolsBefore']=pins(tools)
+  for n in ['cargo','rustc']:tools.append(Path(subprocess.check_output(['rustup','which',n],cwd=S,text=True).strip()))
+  R['toolsBefore']=pins(tools)
+  immutable=[*[PKG/n for n in ['ifc-lite.js','ifc-lite_bg.wasm','ifc-lite.d.ts']],S/'packages/wasm/package.json',S/'package.json',S/'Cargo.lock',S/'rust-toolchain.toml',*[H/n for n in ['prepass-routing.js','shard-style-merge.js','style-finishes.js','package.json']],*[Path(r['receipt']) for r in heads.values()]]
+@@ -57,6 +86,7 @@
+  assert json.loads((S/'packages/wasm/package.json').read_text())['type']=='module'
+  for r in heads.values():assert sha(Path(r['receipt']))==r['sha256']
+  for row in json.loads((I/'helper-reuse.json').read_text()):assert sha(S/row['sourcePath'])==row['sha256'] and sha(H/Path(row['producerJavaScript']).name)==row['javaScriptSha256']
++ R['fixtureContext']={'root':str(Q),'baselineManifest':str(S/'tests/models/manifest.json'),'producer':str(PRODUCER/'tests/models'),'captureFixtures':'separate sealed8 fixtures, unchanged from V21/V20; private182 census contextual guard only'}
+  R['contextLimits']='Baseline WASM equals retained actual source-build61 producer; three helper TS sources match61/121/fc. Current PC capture compiler/tool bytes pinned; historic native full-byte compiler/linker closure UNKNOWN. No performance/ABI/acceptance claim.'
+  base_inputs=[*tools,*immutable,*[p for p in I.rglob('*') if p.is_file()]]
+  for fixture in F:
+@@ -95,10 +125,10 @@
+  R['primaryError']=repr(error);R['traceback']=traceback.format_exc()
+  if active_cell is not None:active_cell.update(state='FAILED',error=repr(error));R['failedCell']=active_cell['key']
+ finally:
+- for name,action in [('sourceAfter',lambda:identity(S)),('fixturesAfter',fixtures),('toolsAfter',lambda:pins(tools)),('immutableAfter',lambda:pins(immutable)),('inputsAfter',inputs),('storageAfter',storage),('nativeSourceAfter',lambda:patched_identity(B) if native_source else None)]:
++ for name,action in [('sourceAfter',lambda:identity(S)),('baselineFixtureLinksAfter',baseline_fixture_links),('producerSourceAfter',lambda:identity(PRODUCER)),('producerFixturesAfter',lambda:fixture_census(PRODUCER/'tests/models')),('fixturesAfter',fixtures),('toolsAfter',lambda:pins(tools)),('immutableAfter',lambda:pins(immutable)),('inputsAfter',inputs),('storageAfter',storage),('nativeSourceAfter',lambda:patched_identity(B) if native_source else None)]:
+   try:R[name]=action()
+   except BaseException as error:R['finallyErrors'].append({'check':name,'error':repr(error)})
+- for a,b in [('sourceBefore','sourceAfter'),('fixturesBefore','fixturesAfter'),('toolsBefore','toolsAfter'),('immutableBefore','immutableAfter'),('inputsBefore','inputsAfter'),('nativeSourceProvenance','nativeSourceAfter')]:
++ for a,b in [('sourceBefore','sourceAfter'),('baselineFixtureLinksBefore','baselineFixtureLinksAfter'),('producerSourceBefore','producerSourceAfter'),('producerFixturesBefore','producerFixturesAfter'),('fixturesBefore','fixturesAfter'),('toolsBefore','toolsAfter'),('immutableBefore','immutableAfter'),('inputsBefore','inputsAfter'),('nativeSourceProvenance','nativeSourceAfter')]:
+   if a in R and R.get(a)!=R.get(b):R['finallyErrors'].append({'check':a+'=='+b,'error':'changed or missing'})
+  R['complete']=R['collectionComplete'] and not R['primaryError'] and not R['finallyErrors'] and not any(x['exitCode'] for x in R['comparisons']);R['finishedAt']=time.time();save();print(json.dumps({'report':str(O/'report.json'),'collectionComplete':R['collectionComplete'],'complete':R['complete'],'failedCell':R.get('failedCell'),'primaryError':R['primaryError'],'finallyErrors':R['finallyErrors']}),flush=True)
+ raise SystemExit(0 if R['complete'] else 1)

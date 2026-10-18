@@ -1,0 +1,6 @@
+{
+  "step": "Offline summary assertion only",
+  "originalFailure": "AssertionError comparing nativeBinary full pin record against after census lacking realpath field",
+  "cause": "Supplemental after census has bytes/SHA only; original driver immutableBefore==After already binds bytes/SHA/realpath",
+  "correction": "Verify supplemental bytes/SHA explicitly without inventing missing metadata; no runtime rerun/source/driver/raw edit"
+}

@@ -1,0 +1,334 @@
+{
+  "status": "UNWAIVED_SAVED_DATA_ONLY",
+  "pairs": 15,
+  "leaves": 35,
+  "entries": [
+    {
+      "fixture": "revit-wall",
+      "route": "serial",
+      "baseSha256": "c7ffe2aa02269f36f495df704a009ac000a4486dba672da4be7930dc357ad167",
+      "headSha256": "aff70d3ef8702fa5201c9d0a275849c9c492304676dc7c194cb268767a2ffa58",
+      "rawComparison": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-baseline61-counterparts-v2/pc-results/compare-revit-wall--serial--plain.log",
+      "rawComparisonSha256": "66cd08e82c97e7995c8c765ba575418b33cbb97f6de0c23966be3f85497ddac9",
+      "leaves": [
+        {
+          "path": "/diagnostics/0/phaseMs/geometryMs",
+          "left": 40,
+          "right": 42
+        },
+        {
+          "path": "/diagnostics/0/phaseMs/totalMs",
+          "left": 40,
+          "right": 42
+        }
+      ]
+    },
+    {
+      "fixture": "revit-wall",
+      "route": "columns",
+      "baseSha256": "89b6cecbb1c97e7120a962bc07487e7479f1f452405de8c8646f2fa674682ac5",
+      "headSha256": "226f3630e04a5a9a09ed4e5e49462ff834535a0354ca5dcdbc9687501c27d834",
+      "rawComparison": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-baseline61-counterparts-v2/pc-results/compare-revit-wall--columns--plain.log",
+      "rawComparisonSha256": "4aa95d3b8ac0accb7c93c357675daf34238229c07f6654a81933809e12b3cba7",
+      "leaves": [
+        {
+          "path": "/diagnostics/0/phaseMs/geometryMs",
+          "left": 40,
+          "right": 41
+        },
+        {
+          "path": "/diagnostics/0/phaseMs/totalMs",
+          "left": 40,
+          "right": 41
+        }
+      ]
+    },
+    {
+      "fixture": "revit-wall",
+      "route": "once",
+      "baseSha256": "faa8c4b06d2190dbeed196c32f865f84b5cc2c1a157272d40f5fd8e1ef264232",
+      "headSha256": "097f9c2fb717a6dfb306f664f8ec87da853df88c5abe13d41e2e85205080dc54",
+      "rawComparison": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-baseline61-counterparts-v2/pc-results/compare-revit-wall--once--plain.log",
+      "rawComparisonSha256": "4aa95d3b8ac0accb7c93c357675daf34238229c07f6654a81933809e12b3cba7",
+      "leaves": [
+        {
+          "path": "/diagnostics/0/phaseMs/geometryMs",
+          "left": 40,
+          "right": 41
+        },
+        {
+          "path": "/diagnostics/0/phaseMs/totalMs",
+          "left": 40,
+          "right": 41
+        }
+      ]
+    },
+    {
+      "fixture": "revit-wall",
+      "route": "native",
+      "baseSha256": "4890be9a44d7690377e32e442eb7aa1ae8b7a673c9e21a9a1342d6dd1690bffe",
+      "headSha256": "9205bc3613b3cb28617512c337aa441057f2b752749728a0754c38ff5e460605",
+      "rawComparison": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-baseline61-counterparts-v2/pc-results/compare-revit-wall--native--plain.log",
+      "rawComparisonSha256": "fba014c95a692319c15bb9cb5575f13791cb0572225ee51076b0115003adff52",
+      "leaves": [
+        {
+          "path": "/stats/geometry_time_ms",
+          "left": 119,
+          "right": 125
+        },
+        {
+          "path": "/stats/total_time_ms",
+          "left": 119,
+          "right": 126
+        }
+      ]
+    },
+    {
+      "fixture": "multicolor",
+      "route": "serial",
+      "baseSha256": "1306f98bf0eb7ad1b8a115c3f836261ac7762646cb207a9d95e0072719f6f1c7",
+      "headSha256": "5b60f7db3a5dfe4b28086d80aa9c9d24111979c33136b1350aaf9931268f9d42",
+      "rawComparison": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-baseline61-counterparts-v2/pc-results/compare-multicolor--serial--plain.log",
+      "rawComparisonSha256": "c112c7416709a332bc59aa41b3aa0df373cd3004d25b0eb9f88f2fc955033d3e",
+      "leaves": [
+        {
+          "path": "/diagnostics/0/phaseMs/geometryMs",
+          "left": 5,
+          "right": 4
+        },
+        {
+          "path": "/diagnostics/0/phaseMs/totalMs",
+          "left": 5,
+          "right": 4
+        }
+      ]
+    },
+    {
+      "fixture": "multicolor",
+      "route": "columns",
+      "baseSha256": "e185aa1c4d10c5a3fe75c12331e95f220c7bdb98cad970de291cf2aa97d5c165",
+      "headSha256": "6b702e5195d6fc8f2e78c3bb255b2423b32efc9fb08add1de32d382b9e2e0ab1",
+      "rawComparison": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-baseline61-counterparts-v2/pc-results/compare-multicolor--columns--plain.log",
+      "rawComparisonSha256": "844b90dbf20e2ca39e64d97862e4024a7c85e5d11f5343a9d36ef79999be65c6",
+      "leaves": [
+        {
+          "path": "/diagnostics/0/phaseMs/geometryMs",
+          "left": 4,
+          "right": 5
+        },
+        {
+          "path": "/diagnostics/0/phaseMs/totalMs",
+          "left": 4,
+          "right": 5
+        }
+      ]
+    },
+    {
+      "fixture": "multicolor",
+      "route": "once",
+      "baseSha256": "b227f18c889006f7ed7391a33786f831ccd0c3b25c2187b1fb2d106627318764",
+      "headSha256": "74521d8f0a362f26be85971e220911eb11e9891851794681d70bc3b247bafecd",
+      "rawComparison": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-baseline61-counterparts-v2/pc-results/compare-multicolor--once--plain.log",
+      "rawComparisonSha256": "c112c7416709a332bc59aa41b3aa0df373cd3004d25b0eb9f88f2fc955033d3e",
+      "leaves": [
+        {
+          "path": "/diagnostics/0/phaseMs/geometryMs",
+          "left": 5,
+          "right": 4
+        },
+        {
+          "path": "/diagnostics/0/phaseMs/totalMs",
+          "left": 5,
+          "right": 4
+        }
+      ]
+    },
+    {
+      "fixture": "voided-wall",
+      "route": "serial",
+      "baseSha256": "3905c407eea7c1916a7c8b8986a2af7b6d24329e061918019e616f314cdd3750",
+      "headSha256": "5b2fd76eb988682bce357eb14ccb86cfc042487eacecfa4a0d4ed18c4fcea181",
+      "rawComparison": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-baseline61-counterparts-v2/pc-results/compare-voided-wall--serial--plain.log",
+      "rawComparisonSha256": "df9c6ab2c4f2b7d0b133972634882378cd611d903fdf1d473915cf92979fc0f9",
+      "leaves": [
+        {
+          "path": "/diagnostics/0/phaseMs/geometryMs",
+          "left": 66,
+          "right": 65
+        },
+        {
+          "path": "/diagnostics/0/phaseMs/totalMs",
+          "left": 66,
+          "right": 65
+        }
+      ]
+    },
+    {
+      "fixture": "voided-wall",
+      "route": "columns",
+      "baseSha256": "f293c2137aa696d014a39a87ac85162012eccc0054db032bfff832621bf556e3",
+      "headSha256": "a00b1c4afe683012139afb7d1c3d8188d6fc9e11f2dc827c6367841aaf2e6845",
+      "rawComparison": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-baseline61-counterparts-v2/pc-results/compare-voided-wall--columns--plain.log",
+      "rawComparisonSha256": "08bb09a8202dd0d9bd86eeaa225793f5962f1e6b53c1d1d8e8d61cbb7e4286a4",
+      "leaves": [
+        {
+          "path": "/diagnostics/0/phaseMs/geometryMs",
+          "left": 65,
+          "right": 73
+        },
+        {
+          "path": "/diagnostics/0/phaseMs/totalMs",
+          "left": 65,
+          "right": 73
+        }
+      ]
+    },
+    {
+      "fixture": "voided-wall",
+      "route": "native",
+      "baseSha256": "9d8e21a7e3ca29bdcb07616a9093de023c393c769966c0c1d8c7a94d60693646",
+      "headSha256": "68bc5b1ab54876a2e051cff6368624e8d145fdc87790972e3d8a881d30955681",
+      "rawComparison": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-baseline61-counterparts-v2/pc-results/compare-voided-wall--native--plain.log",
+      "rawComparisonSha256": "23dd6aa1e419a0214bc47b90c7be6d17bf2cd67baa92a1c56741654fa0c7d1d6",
+      "leaves": [
+        {
+          "path": "/stats/geometry_time_ms",
+          "left": 21,
+          "right": 23
+        },
+        {
+          "path": "/stats/total_time_ms",
+          "left": 22,
+          "right": 23
+        }
+      ]
+    },
+    {
+      "fixture": "bare-type-map",
+      "route": "once",
+      "baseSha256": "5f2249d4394211fcd5b69f4aad4742f7a50a7eca37061f89ffa03aea3bdb2093",
+      "headSha256": "8115f67b72cd4b4b81d87b2b910b7e1c83caabb2eee008ee9792445fdf495712",
+      "rawComparison": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-baseline61-counterparts-v2/pc-results/compare-bare-type-map--once--plain.log",
+      "rawComparisonSha256": "bc60d584af574e8016e290f813486bea9e2b2d2646d05f8906c6521013030ff8",
+      "leaves": [
+        {
+          "path": "/diagnostics/0/phaseMs/geometryMs",
+          "left": 0,
+          "right": 1
+        },
+        {
+          "path": "/diagnostics/0/phaseMs/totalMs",
+          "left": 0,
+          "right": 1
+        }
+      ]
+    },
+    {
+      "fixture": "haus",
+      "route": "serial",
+      "baseSha256": "152df68e1e34f3adc7d02624fe71676ed56c4286caa6077dd9586b03e3d29c3f",
+      "headSha256": "928eea083d67c09e2cf82d48eba43ea07641425a73c7a8bc4262c693999f1c2f",
+      "rawComparison": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-baseline61-counterparts-v2/pc-results/compare-haus--serial--plain.log",
+      "rawComparisonSha256": "04d5dfd4c4cfaa0628b9e8bc57c89da70c542fcc8ee7135a44b6fd9b596b0933",
+      "leaves": [
+        {
+          "path": "/diagnostics/0/phaseMs/geometryMs",
+          "left": 75,
+          "right": 79
+        },
+        {
+          "path": "/diagnostics/0/phaseMs/totalMs",
+          "left": 75,
+          "right": 79
+        },
+        {
+          "path": "/diagnostics/1/phaseMs/geometryMs",
+          "left": 91,
+          "right": 96
+        },
+        {
+          "path": "/diagnostics/1/phaseMs/totalMs",
+          "left": 91,
+          "right": 96
+        }
+      ]
+    },
+    {
+      "fixture": "haus",
+      "route": "columns",
+      "baseSha256": "c4764b725b3a974efd394ff86d1d6f704d7c8ef893613202a562848a71012119",
+      "headSha256": "3a3db781c0b288f37fd07fa2f03df61c08a69256d181d1696502aa69dfc9b244",
+      "rawComparison": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-baseline61-counterparts-v2/pc-results/compare-haus--columns--plain.log",
+      "rawComparisonSha256": "20d47a46a913ffb8b54058ff4ff8c802acf56d5d126c2f75e3c7d960dd56a9a5",
+      "leaves": [
+        {
+          "path": "/diagnostics/0/phaseMs/geometryMs",
+          "left": 84,
+          "right": 80
+        },
+        {
+          "path": "/diagnostics/0/phaseMs/totalMs",
+          "left": 84,
+          "right": 80
+        },
+        {
+          "path": "/diagnostics/1/phaseMs/geometryMs",
+          "left": 100,
+          "right": 96
+        },
+        {
+          "path": "/diagnostics/1/phaseMs/totalMs",
+          "left": 100,
+          "right": 96
+        }
+      ]
+    },
+    {
+      "fixture": "haus",
+      "route": "once",
+      "baseSha256": "ec758d056da0b9f5ec25fd12bc5d629620edf0f58838b6459d5f11f9eb300a0b",
+      "headSha256": "3493849069053b66dc661eb5758c9c9f038dd9c004f577e268143d2bcd578d9b",
+      "rawComparison": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-baseline61-counterparts-v2/pc-results/compare-haus--once--plain.log",
+      "rawComparisonSha256": "2a5989ce23c0177af3f7555337041ae625a0927404e2bebeb10f837ebf8fd88f",
+      "leaves": [
+        {
+          "path": "/diagnostics/0/phaseMs/geometryMs",
+          "left": 93,
+          "right": 95
+        },
+        {
+          "path": "/diagnostics/0/phaseMs/totalMs",
+          "left": 93,
+          "right": 95
+        }
+      ]
+    },
+    {
+      "fixture": "haus",
+      "route": "native",
+      "baseSha256": "8dfae5dc835e5aa8f067a3f4a0e9276bd187cec2b6719488daba556782d8391e",
+      "headSha256": "3f68cca69089bf9ad85947b9af6e338821079481f508743f46d32379a2670c0c",
+      "rawComparison": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-baseline61-counterparts-v2/pc-results/compare-haus--native--plain.log",
+      "rawComparisonSha256": "9d80759a558ddcf0966ecb9348225bce66080c2caaeb660e9a5e93c970f81aef",
+      "leaves": [
+        {
+          "path": "/stats/entity_scan_time_ms",
+          "left": 3,
+          "right": 4
+        },
+        {
+          "path": "/stats/geometry_time_ms",
+          "left": 14,
+          "right": 15
+        },
+        {
+          "path": "/stats/total_time_ms",
+          "left": 20,
+          "right": 22
+        }
+      ]
+    }
+  ],
+  "policyGenerated": false,
+  "priorParent21PairPoliciesUsed": false
+}

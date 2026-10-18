@@ -1,0 +1,214 @@
+{
+  "state": "SOURCE_PINNED_NOT_HARNESS_PARSED",
+  "fixtures": [
+    {
+      "id": "revit-wall",
+      "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-parity-harness-source-v1/fixtures/revit-wall.ifc",
+      "bytes": 64373,
+      "sha256": "65b04e28e8f2d06ac8bcf3bf0d57264f168456d09865c3353fb802a5e66ee0c0",
+      "source": {
+        "commit": "b437a0f918cdf8c58a46f6abb50b5fb346f96848",
+        "path": "rust/geometry/tests/fixtures/issue_098_wall_W.ifc",
+        "blob": "a29bfe69957e153074ff387ce99a5eb8dd6d13ad"
+      },
+      "realAuthored": true,
+      "publicConsumerInThisPacket": "UNRUN",
+      "contract": {
+        "minMeshes": 1,
+        "minTriangles": 1,
+        "requiredMeshIds": [
+          928204
+        ],
+        "allowEmpty": false,
+        "id": "revit-wall",
+        "forbiddenMeshIds": []
+      }
+    },
+    {
+      "id": "multicolor",
+      "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-parity-harness-source-v1/fixtures/multicolor.ifc",
+      "bytes": 1582,
+      "sha256": "dde566815a01e18584aa099692820ec315ab237857b504f9ddae8f718d56cc79",
+      "source": {
+        "commit": "b437a0f918cdf8c58a46f6abb50b5fb346f96848",
+        "path": "rust/processing/tests/fixtures/issue_6601_multicolor_element.ifc",
+        "blob": "5076b06bac6ec06c939a880b4285c867ad192d46"
+      },
+      "realAuthored": false,
+      "publicConsumerInThisPacket": "UNRUN",
+      "contract": {
+        "minMeshes": 1,
+        "minTriangles": 1,
+        "requiredMeshIds": [],
+        "allowEmpty": false,
+        "id": "multicolor",
+        "forbiddenMeshIds": []
+      }
+    },
+    {
+      "id": "voided-wall",
+      "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-parity-harness-source-v1/fixtures/voided-wall.ifc",
+      "bytes": 3867,
+      "sha256": "21625ddf0c241cd7562cc2b2fa0ab49a0d2218ba32da37b2ef4d34f1143c146f",
+      "source": {
+        "commit": "b437a0f918cdf8c58a46f6abb50b5fb346f96848",
+        "path": "rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc",
+        "blob": "2426183a0c76408325690fe3823ad393426f8df0"
+      },
+      "realAuthored": false,
+      "publicConsumerInThisPacket": "UNRUN",
+      "contract": {
+        "minMeshes": 1,
+        "minTriangles": 1,
+        "requiredMeshIds": [],
+        "allowEmpty": false,
+        "id": "voided-wall",
+        "forbiddenMeshIds": []
+      }
+    },
+    {
+      "id": "mapped-instances",
+      "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-parity-harness-source-v1/fixtures/mapped-instances.ifc",
+      "bytes": 23440,
+      "sha256": "3069997f0b7d555232180c88bea27d0f6ca4d9c309a9cf4b1c3a8c68bba166ad",
+      "source": {
+        "commit": "b437a0f918cdf8c58a46f6abb50b5fb346f96848",
+        "path": "rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc",
+        "blob": "642d24a6b364c8ae34b1bb9ef81b2ebeece1fb78"
+      },
+      "realAuthored": false,
+      "publicConsumerInThisPacket": "UNRUN",
+      "contract": {
+        "minMeshes": 1,
+        "minTriangles": 1,
+        "requiredMeshIds": [],
+        "allowEmpty": false,
+        "id": "mapped-instances",
+        "forbiddenMeshIds": []
+      }
+    },
+    {
+      "id": "orphan-type",
+      "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-parity-harness-source-v1/fixtures/orphan-type.ifc",
+      "bytes": 993,
+      "sha256": "b0de96d6d113d8eed0745b439aec3c1f544a44429f60b592545f2f90774bd4ee",
+      "source": {
+        "commit": "b437a0f918cdf8c58a46f6abb50b5fb346f96848",
+        "path": "rust/processing/tests/issue_957_type_only_geometry.rs",
+        "sourceSha256": "6cf09d0559c6044c326757c1728dcf99df2a5a30b039286b91f7b4b0f743f174",
+        "literal": "TYPE_ONLY_IFC",
+        "derivation": "unchanged raw literal"
+      },
+      "realAuthored": false,
+      "publicConsumerInThisPacket": "UNRUN",
+      "contract": {
+        "minMeshes": 1,
+        "minTriangles": 4,
+        "requiredMeshIds": [
+          43
+        ],
+        "allowEmpty": false,
+        "id": "orphan-type",
+        "forbiddenMeshIds": []
+      }
+    },
+    {
+      "id": "bare-type-map",
+      "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-parity-harness-source-v1/fixtures/bare-type-map.ifc",
+      "bytes": 991,
+      "sha256": "1497da63927b93a0a67d93b696c02786e7c13ef1aebe5389d7c0805f97d70c4e",
+      "source": {
+        "commit": "b437a0f918cdf8c58a46f6abb50b5fb346f96848",
+        "path": "rust/processing/tests/issue_957_type_only_geometry.rs",
+        "sourceSha256": "6cf09d0559c6044c326757c1728dcf99df2a5a30b039286b91f7b4b0f743f174",
+        "literal": "TYPE_ONLY_IFC",
+        "derivation": "ONE exact RepresentationMaps list -> bare ref, source-required C4-7a tolerance control"
+      },
+      "realAuthored": false,
+      "publicConsumerInThisPacket": "UNRUN",
+      "contract": {
+        "minMeshes": 0,
+        "minTriangles": 0,
+        "requiredMeshIds": [],
+        "allowEmpty": true,
+        "id": "bare-type-map",
+        "forbiddenMeshIds": []
+      },
+      "contractByConsumer": {
+        "native": {
+          "minMeshes": 1,
+          "minTriangles": 4,
+          "requiredMeshIds": [
+            43
+          ],
+          "allowEmpty": false,
+          "id": "bare-type-map",
+          "forbiddenMeshIds": []
+        },
+        "publicWasm": {
+          "minMeshes": 0,
+          "minTriangles": 0,
+          "requiredMeshIds": [],
+          "allowEmpty": true,
+          "id": "bare-type-map",
+          "forbiddenMeshIds": []
+        }
+      },
+      "contractQualification": "Source-derived expected C4-7a discrepancy; zero WASM is NOT accepted until observed jobs/skips and exact EXPECTED_DIFF reviewed."
+    },
+    {
+      "id": "nonfinite-depth-neighbor",
+      "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-parity-harness-source-v1/fixtures/nonfinite-depth-neighbor.ifc",
+      "bytes": 1426,
+      "sha256": "961ac6967d559896bb14dd3488d6d697a07bdc4eaa132f9787a9aa60c555960f",
+      "source": {
+        "commit": "b437a0f918cdf8c58a46f6abb50b5fb346f96848",
+        "path": "rust/processing/tests/issue_7678_nonfinite_input.rs",
+        "sourceSha256": "ec60ea21febf7e978db9946929ed5a92adf7a4874de06d5bd0b9ba9c1e78c72f",
+        "recipe": "EXACT HEAD+wall(100,4.,3.,0.,0.,1.,1.,2.,0.)+wall(200,4.,1.E400,0.,0.,1.,1.,2.,0.)+TAIL; source-translation byte recipe only, harness parse UNRUN"
+      },
+      "realAuthored": false,
+      "publicConsumerInThisPacket": "UNRUN",
+      "contract": {
+        "minMeshes": 1,
+        "minTriangles": 1,
+        "requiredMeshIds": [
+          100
+        ],
+        "forbiddenMeshIds": [
+          200
+        ],
+        "allowEmpty": false,
+        "id": "nonfinite-depth-neighbor"
+      }
+    },
+    {
+      "id": "haus",
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "bytes": 2526511,
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "source": {
+        "manifest": "tests/models/manifest.json",
+        "classification": "real ArchiCAD model; external input hash must be reverified on chosen later producer, no download now"
+      },
+      "realAuthored": true,
+      "payloadCopied": false,
+      "publicConsumerInThisPacket": "UNRUN",
+      "contract": {
+        "minMeshes": 1,
+        "minTriangles": 1,
+        "requiredMeshIds": [],
+        "allowEmpty": false,
+        "id": "haus",
+        "forbiddenMeshIds": []
+      }
+    }
+  ],
+  "unavailableScope": [
+    "automatic 4-worker threshold/concurrency",
+    "C4-6b changes (owned separately)",
+    "complete full corpus and perf",
+    "unit-refused-whole-model case (not in initial8 inputs)",
+    "all post-C4-7a/10a/11a corrective behaviour"
+  ]
+}

@@ -1,0 +1,32 @@
+[
+  {
+    "sourcePath": "packages/geometry/src/prepass-routing.ts",
+    "sha256": "a6c834431a9e6349ad7ed1683f91ff946b01c0bd94cbebf83fde6af0210913f9",
+    "producerSource": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/packages/geometry/src/prepass-routing.ts",
+    "producerJavaScript": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/packages/geometry/dist/prepass-routing.js",
+    "javaScriptSha256": "0091d4621929752a09923fb3bd73b6281fa135246d128194fea3e33d030421ff",
+    "currentSource": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-required-qualification-v1/source/packages/geometry/src/prepass-routing.ts",
+    "sourceBytesIdentical": true,
+    "reuse": "platform-neutral compiled JS; no native/WASM proof transferred"
+  },
+  {
+    "sourcePath": "packages/geometry/src/shard-style-merge.ts",
+    "sha256": "abe06d6e077eaca3f7c6cb0d2630ab007d40988923970096c3d57328f35e59db",
+    "producerSource": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/packages/geometry/src/shard-style-merge.ts",
+    "producerJavaScript": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/packages/geometry/dist/shard-style-merge.js",
+    "javaScriptSha256": "fe3052140e33d589ac2623aa4dfa3baf6d1e2ea02f864d0c416afbea9020535d",
+    "currentSource": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-required-qualification-v1/source/packages/geometry/src/shard-style-merge.ts",
+    "sourceBytesIdentical": true,
+    "reuse": "platform-neutral compiled JS; no native/WASM proof transferred"
+  },
+  {
+    "sourcePath": "packages/geometry/src/style-finishes.ts",
+    "sha256": "c777ab8aa4e788dd67e26bd78df9bca55c905cc2d970a1f5b41c6e8885a3750b",
+    "producerSource": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/packages/geometry/src/style-finishes.ts",
+    "producerJavaScript": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/packages/geometry/dist/style-finishes.js",
+    "javaScriptSha256": "01ffe4969f473942548ecbde6ecba7f09b902eb21ffe3f01f1a80a4e06044f80",
+    "currentSource": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-required-qualification-v1/source/packages/geometry/src/style-finishes.ts",
+    "sourceBytesIdentical": true,
+    "reuse": "platform-neutral compiled JS; no native/WASM proof transferred"
+  }
+]

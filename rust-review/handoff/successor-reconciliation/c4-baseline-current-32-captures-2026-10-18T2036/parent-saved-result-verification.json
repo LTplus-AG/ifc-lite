@@ -1,0 +1,237 @@
+{
+  "at": "2026-10-18T20:36:15.132944+00:00",
+  "matrixSha256": "409f0e4ea14ff541cea9538fa874b81ec9e9d1524e16eefc3f50848d5413b48b",
+  "hashBoundPairsVerified": 32,
+  "orderedMeshPayloadExact": 32,
+  "publicJobCallbackArraysExact": 24,
+  "strictMatches": 17,
+  "unwaivedTimingPairs": 15,
+  "unwaivedTimingLeaves": 35,
+  "observations": [
+    {
+      "fixture": "revit-wall",
+      "route": "serial",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 2
+    },
+    {
+      "fixture": "revit-wall",
+      "route": "columns",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 2
+    },
+    {
+      "fixture": "revit-wall",
+      "route": "once",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 2
+    },
+    {
+      "fixture": "revit-wall",
+      "route": "native",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": null,
+      "unknownTimingLeaves": 2
+    },
+    {
+      "fixture": "multicolor",
+      "route": "serial",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 2
+    },
+    {
+      "fixture": "multicolor",
+      "route": "columns",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 2
+    },
+    {
+      "fixture": "multicolor",
+      "route": "once",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 2
+    },
+    {
+      "fixture": "multicolor",
+      "route": "native",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": null,
+      "unknownTimingLeaves": 0
+    },
+    {
+      "fixture": "voided-wall",
+      "route": "serial",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 2
+    },
+    {
+      "fixture": "voided-wall",
+      "route": "columns",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 2
+    },
+    {
+      "fixture": "voided-wall",
+      "route": "once",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 0
+    },
+    {
+      "fixture": "voided-wall",
+      "route": "native",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": null,
+      "unknownTimingLeaves": 2
+    },
+    {
+      "fixture": "mapped-instances",
+      "route": "serial",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 0
+    },
+    {
+      "fixture": "mapped-instances",
+      "route": "columns",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 0
+    },
+    {
+      "fixture": "mapped-instances",
+      "route": "once",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 0
+    },
+    {
+      "fixture": "mapped-instances",
+      "route": "native",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": null,
+      "unknownTimingLeaves": 0
+    },
+    {
+      "fixture": "orphan-type",
+      "route": "serial",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 0
+    },
+    {
+      "fixture": "orphan-type",
+      "route": "columns",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 0
+    },
+    {
+      "fixture": "orphan-type",
+      "route": "once",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 0
+    },
+    {
+      "fixture": "orphan-type",
+      "route": "native",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": null,
+      "unknownTimingLeaves": 0
+    },
+    {
+      "fixture": "bare-type-map",
+      "route": "serial",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 0
+    },
+    {
+      "fixture": "bare-type-map",
+      "route": "columns",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 0
+    },
+    {
+      "fixture": "bare-type-map",
+      "route": "once",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 2
+    },
+    {
+      "fixture": "bare-type-map",
+      "route": "native",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": null,
+      "unknownTimingLeaves": 0
+    },
+    {
+      "fixture": "nonfinite-depth-neighbor",
+      "route": "serial",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 0
+    },
+    {
+      "fixture": "nonfinite-depth-neighbor",
+      "route": "columns",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 0
+    },
+    {
+      "fixture": "nonfinite-depth-neighbor",
+      "route": "once",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 0
+    },
+    {
+      "fixture": "nonfinite-depth-neighbor",
+      "route": "native",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": null,
+      "unknownTimingLeaves": 0
+    },
+    {
+      "fixture": "haus",
+      "route": "serial",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 4
+    },
+    {
+      "fixture": "haus",
+      "route": "columns",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 4
+    },
+    {
+      "fixture": "haus",
+      "route": "once",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": true,
+      "unknownTimingLeaves": 2
+    },
+    {
+      "fixture": "haus",
+      "route": "native",
+      "meshPayloadExact": true,
+      "callbacksJobsExact": null,
+      "unknownTimingLeaves": 3
+    }
+  ],
+  "scope": "Saved-file parent verification only; no timing normalization, runtime rerun, performance acceptance or cross-API waiver. Original worker FAILED1 unchanged."
+}

@@ -1,0 +1,17 @@
+{
+  "result": "INCOMPLETE_UNKNOWN_DIFF",
+  "expected": [],
+  "unknown": [
+    {
+      "path": "/diagnostics/0/phaseMs/geometryMs",
+      "left": 66,
+      "right": 65
+    },
+    {
+      "path": "/diagnostics/0/phaseMs/totalMs",
+      "left": 66,
+      "right": 65
+    }
+  ],
+  "stale": []
+}

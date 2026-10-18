@@ -1,0 +1,17 @@
+{
+  "result": "INCOMPLETE_UNKNOWN_DIFF",
+  "expected": [],
+  "unknown": [
+    {
+      "path": "/stats/geometry_time_ms",
+      "left": 119,
+      "right": 125
+    },
+    {
+      "path": "/stats/total_time_ms",
+      "left": 119,
+      "right": 126
+    }
+  ],
+  "stale": []
+}

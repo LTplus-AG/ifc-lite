@@ -173,3 +173,7 @@ impl Execution {
 #[cfg(test)]
 #[path = "execute_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "unwind_tests.rs"]
+mod unwind_tests;

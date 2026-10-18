@@ -1,0 +1,55 @@
+{
+  "base": "0446a34f13",
+  "status": "UNCOMPILED_UNRUN",
+  "files": [
+    {
+      "path": "rust/geometry/src/telemetry_transaction.rs",
+      "sha256": "eaad2b15ca6fb0e329b59566f36929805cb1ef90d1e7fed5ad078dfbb212f302",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/telemetry_transaction_tests.rs",
+      "sha256": "4adb4d589ecaccf1384e0ac1688b4ddcc4ce79edd79488a2678ad9d3940aa03d",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/rect_fast.rs",
+      "sha256": "021b235a146cd50b74c07def1489b6d2835a75a39be6178fea29444fe8fb4601",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/rect_fast/param_stats.rs",
+      "sha256": "f0be00a4850da20c76b028c4c35544c65fab31a77f771270c04978cfad27522c",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/bool2d_path.rs",
+      "sha256": "7537372c74df68db3f27ebd911236fc5570542c043bbf0a8355f2197e9f63e8f",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/prism_cut.rs",
+      "sha256": "13d4f482c3c5371815631ea196ca88cca618fcead32179d485cf864e63b38ae5",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/openings/execute.rs",
+      "sha256": "e830ff8e9d2776a0a08bd9e05263a00562ab80344f72aa2b25b924b718530ab9",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/openings/unwind_tests.rs",
+      "sha256": "6921fdc19c46c4b82e282dd3f0c09e07c16b3e8d196fd8723aeb81a9b124605e",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    }
+  ],
+  "performance": "UNQUALIFIED; no allocation, timing or memory claim"
+}

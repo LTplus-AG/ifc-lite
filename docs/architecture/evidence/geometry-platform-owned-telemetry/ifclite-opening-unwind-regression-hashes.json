@@ -1,0 +1,18 @@
+{
+  "base": "0446a34f13",
+  "status": "uncommitted; syntax/whitespace only; no build/test",
+  "files": [
+    {
+      "path": "rust/geometry/src/program/openings/execute.rs",
+      "sha256": "e830ff8e9d2776a0a08bd9e05263a00562ab80344f72aa2b25b924b718530ab9",
+      "bytes": 6160,
+      "lines": 179
+    },
+    {
+      "path": "rust/geometry/src/program/openings/unwind_tests.rs",
+      "sha256": "6921fdc19c46c4b82e282dd3f0c09e07c16b3e8d196fd8723aeb81a9b124605e",
+      "bytes": 5607,
+      "lines": 103
+    }
+  ]
+}

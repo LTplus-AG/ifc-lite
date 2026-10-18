@@ -121,6 +121,7 @@ pub fn param_set_enabled_override(v: Option<bool>) {
 #[path = "rect_fast/param_stats.rs"]
 mod param_stats;
 pub use param_stats::{param_record_fire, take_param_fires};
+pub(crate) use param_stats::publish_param_fire;
 
 // rect_fast engagement counters are now REQUEST-LOCAL: each cut records into its
 // router via `GeometryRouter::record_rect_fast` (drained by `take_rect_fast_stats`),

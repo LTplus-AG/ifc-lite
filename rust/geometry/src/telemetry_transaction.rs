@@ -12,20 +12,44 @@ use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-type Event = Box<dyn FnOnce()>;
+/// Plain owned route facts; detached effects contain no executable callbacks.
+#[derive(Clone, Copy)]
+pub(crate) enum Event {
+    ParametricCut,
+    PlanarCut { footprints: u64 },
+    #[cfg(any(feature = "observability", feature = "csg_capture", feature = "debug_geometry"))]
+    PrismDefer { reason: usize },
+    #[cfg(any(feature = "observability", feature = "csg_capture", feature = "debug_geometry"))]
+    PrismCut { committed: u64, residual: u64 },
+}
+impl Event {
+    fn publish(self) {
+        match self {
+            Self::ParametricCut => crate::rect_fast::publish_param_fire(),
+            Self::PlanarCut { footprints } =>
+                crate::router::voids::bool2d_path::publish_cut(footprints),
+            #[cfg(any(feature = "observability", feature = "csg_capture", feature = "debug_geometry"))]
+            Self::PrismDefer { reason } =>
+                crate::router::voids::prism_cut::publish_defer(reason),
+            #[cfg(any(feature = "observability", feature = "csg_capture", feature = "debug_geometry"))]
+            Self::PrismCut { committed, residual } =>
+                crate::router::voids::prism_cut::publish_cut(committed, residual),
+        }
+    }
+}
 thread_local! {
     static PENDING: RefCell<Vec<Vec<Event>>> = const { RefCell::new(Vec::new()) };
 }
 
-pub(crate) fn record(event: impl FnOnce() + 'static) {
+pub(crate) fn record(event: Event) {
     let mut event = Some(event);
     PENDING.with(|pending| {
         if let Some(buffer) = pending.borrow_mut().last_mut() {
-            buffer.push(Box::new(event.take().unwrap()));
+            buffer.push(event.take().unwrap());
         }
     });
     if let Some(event) = event {
-        event();
+        event.publish();
     }
 }
 
@@ -86,3 +110,7 @@ impl Transaction {
         EffectSet(events)
     }
 }
+
+#[cfg(test)]
+#[path = "telemetry_transaction_tests.rs"]
+mod tests;

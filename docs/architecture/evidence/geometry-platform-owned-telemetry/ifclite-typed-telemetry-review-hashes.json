@@ -1,0 +1,42 @@
+{
+  "head": "0446a34f139ca587903b47de2571f65240c7fefd",
+  "scope": "read-only static review, uncommitted typed telemetry candidate, no build/test",
+  "files": [
+    {
+      "path": "rust/geometry/src/telemetry_transaction.rs",
+      "sha256": "eaad2b15ca6fb0e329b59566f36929805cb1ef90d1e7fed5ad078dfbb212f302"
+    },
+    {
+      "path": "rust/geometry/src/telemetry_transaction_tests.rs",
+      "sha256": "4adb4d589ecaccf1384e0ac1688b4ddcc4ce79edd79488a2678ad9d3940aa03d"
+    },
+    {
+      "path": "rust/geometry/src/rect_fast.rs",
+      "sha256": "021b235a146cd50b74c07def1489b6d2835a75a39be6178fea29444fe8fb4601"
+    },
+    {
+      "path": "rust/geometry/src/rect_fast/param_stats.rs",
+      "sha256": "f0be00a4850da20c76b028c4c35544c65fab31a77f771270c04978cfad27522c"
+    },
+    {
+      "path": "rust/geometry/src/router/voids/bool2d_path.rs",
+      "sha256": "7537372c74df68db3f27ebd911236fc5570542c043bbf0a8355f2197e9f63e8f"
+    },
+    {
+      "path": "rust/geometry/src/router/voids/prism_cut.rs",
+      "sha256": "13d4f482c3c5371815631ea196ca88cca618fcead32179d485cf864e63b38ae5"
+    },
+    {
+      "path": "rust/geometry/src/router/mod.rs",
+      "sha256": "3f8027b726a35f39098761c11e43c83604b179681bc481216e685e1b4b673adf"
+    },
+    {
+      "path": "rust/geometry/src/lib.rs",
+      "sha256": "0956827eab796c2a3f1ac6098ed5aeb067222b0abdcd68452e5d15f9e0cdb7c4"
+    },
+    {
+      "path": "rust/geometry/Cargo.toml",
+      "sha256": "898be314e2c126faa964d0d20536ce4e35dbac361c3690d0bc4bb939b26d19e5"
+    }
+  ]
+}

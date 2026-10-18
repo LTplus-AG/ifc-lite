@@ -282,3 +282,31 @@ fn issue_7779_mapped_target_canonical_defaults_reflection_signed_and_nonuniform_
         assert!(data.circles.is_empty() && data.polylines.is_empty() && data.fills.is_empty(), "malformed canonical operator must drop: {target}");
     }
 }
+
+#[test]
+fn issue_7779_mapped_target_untilted_single_tilt_and_edge_on_controls() {
+    let source = OPPOSED_TILTS.replace("#22=IFCLOCALPLACEMENT($,#21)", "#22=IFCLOCALPLACEMENT($,#11)")
+        .replace("IFCCIRCLE(#30,1.)", "IFCCIRCLE(#11,1.)");
+    for (y, z, half_y) in [
+        ("0.,1.,0.", "0.,0.,1.", 1.),
+        ("0.,0.5,-0.8660254037844386", "0.,0.8660254037844386,0.5", 0.5),
+        ("0.,0.,-1.", "0.,1.,0.", 0.),
+    ] {
+        let target = format!("IFCCARTESIANTRANSFORMATIONOPERATOR3D(#91,#97,#90,1.,#98);#97=IFCDIRECTION(({y}));#98=IFCDIRECTION(({z}))");
+        let data = extract_symbolic_data(&mapped(&source, "#11", &target));
+        assert_bounds(&data, [-1., -half_y, 1., half_y]);
+        assert_eq!(data.circles.len(), usize::from(half_y == 1.));
+        assert_eq!(data.polylines.len(), usize::from(half_y != 1.));
+    }
+}
+
+#[test]
+fn issue_7779_mapped_origin_below_identity_tolerance_keeps_large_z_coupling() {
+    // The router's optional identity shortcut uses 1e-12. The symbolic origin
+    // must retain this smaller rotation: 1e-13 * 1e14 still shifts plan Y 10m.
+    let source = SOURCE.replace("#22=IFCLOCALPLACEMENT($,#21)", "#22=IFCLOCALPLACEMENT($,#11)")
+        .replace("0.,-0.8660254037844386,0.5", "0.,-0.0000000000001,1.")
+        .replace("#30=IFCAXIS2PLACEMENT2D(#31,$)", "#30=IFCAXIS2PLACEMENT3D(#34,$,$);#34=IFCCARTESIANPOINT((0.,0.,100000000000000.))");
+    let source = mapped(&source, "#21", "IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#90,$,$)");
+    assert_bounds(&extract_symbolic_data(&source), [-1., 9., 1., 11.]);
+}

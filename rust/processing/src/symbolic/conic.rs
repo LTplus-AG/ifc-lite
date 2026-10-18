@@ -10,8 +10,8 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use super::transform::{parse_axis2_placement_2d, Transform2D};
 
 /// Resolve an `IfcConic` `Position` (attribute 0) into the curve's own basis:
-/// translation = the centre in metres, linear block = the `RefDirection`
-/// rotation, `tz` = the centre's elevation.
+/// translation = the centre in metres, linear block = the full 3D authored
+/// frame. Compose with the ambient frame before projecting X/Y.
 ///
 /// `Position` is MANDATORY on `IfcConic`, so an absent attribute, a dangling
 /// reference or a non-placement entity is malformed data and comes back as

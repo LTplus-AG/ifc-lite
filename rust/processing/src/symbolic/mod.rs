@@ -15,7 +15,7 @@
 //! Primitive coverage matches the wasm pipeline that ships to production:
 //!
 //! - `IfcPolyline`, `IfcIndexedPolyCurve` → [`SymbolicPolyline`].
-//! - `IfcCircle` → [`SymbolicCircle`] (full circle).
+//! - `IfcCircle` → [`SymbolicCircle`] for XY similarities, otherwise a sampled [`SymbolicPolyline`].
 //! - `IfcEllipse` → [`SymbolicPolyline`] (64-segment tessellation).
 //! - `IfcTrimmedCurve` on `IfcCircle` → [`SymbolicPolyline`] (arc with
 //!   `PLANEANGLEUNIT` scaling, sense agreement, wrap-around). Near-

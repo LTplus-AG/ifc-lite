@@ -1,0 +1,133 @@
+{
+  "observedAt": "2026-10-18T125244Z",
+  "landedPRsThisDeliveryPhase": [
+    7916,
+    7905,
+    7909,
+    7894,
+    7912,
+    7907,
+    7898,
+    7922,
+    7913
+  ],
+  "completedIssuesThisDeliveryPhase": [
+    7919
+  ],
+  "externalOwnerClosure": "7292 via7607, not counted as coordinator closure",
+  "activeItems": [
+    7911,
+    "C4 native prefixes"
+  ],
+  "C4": {
+    "state": "r2 native workspace5479/0/47 plus exact clippy COMPLETE0; r3/r4 newly admitted ordinary2CPU8GiB after actual cooldown, separate sources and targets, no duplicate work",
+    "plan": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/original-allocation-plan.json",
+    "pins": {
+      "r2": "d3e281e1a234f8bca23cd59fb8ddf85926264a2f",
+      "r3": "c7cf41e902c20a99a828e952151e981f3cc2d048",
+      "r4": "12157693a84d9495fafd14a0ade6a5939bf3e0b8"
+    },
+    "driverSha256": "05a3cbc3d18bdef586ac850abcc3719dbf641e76910a50e3498199c0ec91e87c",
+    "commandsPerPrefix": [
+      "cargo test --workspace",
+      "cargo clippy --workspace --all-targets -- -D warnings"
+    ],
+    "oldFailuresPreserved": true,
+    "firstLaunchFailure": {
+      "workers": {
+        "r2": "d5603e84-6c1b-4226-8194-81c83fc89061",
+        "r3": "3693350e-faff-4f28-836b-c4275f7b5319",
+        "r4": "87cdfa4c-8d54-40a0-9735-c3edccaf87f0"
+      },
+      "cause": "Compatibility wrapper does not accept --require-clean and treated it as executable; worker parser does accept it",
+      "nativeCommands": 0,
+      "driverExecuted": false,
+      "sourceUnchangedAll": true,
+      "terminalsRetained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6",
+      "correctedInvocation": "Direct supported worker.py parser with worker-env sourced; clean-source guard retained"
+    },
+    "jobs": {
+      "r2": {
+        "worker": "d6066e60-b56e-4851-94ee-2b8662699981",
+        "receipt": "/home/louistrue/build-workers/worker-state/jobs/d6066e60-b56e-4851-94ee-2b8662699981/receipt.json",
+        "state": "completed",
+        "exitCode": 0,
+        "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/r2-supported-controller.log",
+        "commandsStarted": 2,
+        "cause": null,
+        "originalSession": 42441,
+        "sourceUnchanged": true,
+        "commandsCompleted": 2,
+        "summary": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/r2-qualified-summary.json"
+      },
+      "r3": {
+        "worker": "6778bf08-c313-42df-adb3-b288fa064894",
+        "originalSession": 13240,
+        "state": "running",
+        "receipt": "/home/louistrue/build-workers/worker-state/jobs/6778bf08-c313-42df-adb3-b288fa064894/receipt.json",
+        "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/r3-cool-admission-controller.log",
+        "commandsStarted": 1,
+        "scope": "Only previously unrun workspace and exact all-target clippy; own independent source and target; no benchmark"
+      },
+      "r4": {
+        "worker": "de3ed15c-fd6d-41b1-811a-539c75bafc0e",
+        "originalSession": 85079,
+        "state": "running",
+        "receipt": "/home/louistrue/build-workers/worker-state/jobs/de3ed15c-fd6d-41b1-811a-539c75bafc0e/receipt.json",
+        "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/r4-cool-admission-controller.log",
+        "commandsStarted": 1,
+        "scope": "Only previously unrun workspace and exact all-target clippy; own independent source and target; no benchmark"
+      }
+    },
+    "pcAlternative": {
+      "observation": "single read-only SSH stdout from this turn; no PC job/source/target created",
+      "linuxFreeBytes": 21742227456,
+      "linuxFreeGiB": 20.249027252197266,
+      "checkedVolumes": [
+        "/home/louistrue",
+        "/home/louistrue/build-workers/worker-state",
+        "/tmp"
+      ],
+      "requiredFreeGiB": 60,
+      "disposition": "Cannot route remaining native prefixes to default PC volumes; no guard bypass, C-backed migration or foreign cleanup",
+      "alternativeFilesystemQualification": "UNRUN"
+    },
+    "next": "Collect original r3 session13240/6778bf08 and r4 session85079/de3ed15c. Do not resubmit after timeout/disconnect; retain original receipts. No r2 repeat. Remaining controls/oracles/consumer/performance obligations pending.",
+    "sourceChanges": false,
+    "phase2OrPerfCommands": 0,
+    "historicalRefusals": {
+      "r3": {
+        "worker": "fa960a8c-cf28-40fd-984c-cc118d7bf243",
+        "receipt": "/home/louistrue/build-workers/worker-state/jobs/fa960a8c-cf28-40fd-984c-cc118d7bf243/receipt.json",
+        "state": "failed",
+        "exitCode": 1,
+        "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/r3-supported-controller.log",
+        "commandsStarted": 0,
+        "cause": "CPU package >90C admission refusal before driver/native command",
+        "originalSession": null
+      },
+      "r4": {
+        "worker": "0a8da302-6f26-4d60-ab40-9e62bbe1b7a0",
+        "receipt": "/home/louistrue/build-workers/worker-state/jobs/0a8da302-6f26-4d60-ab40-9e62bbe1b7a0/receipt.json",
+        "state": "failed",
+        "exitCode": 1,
+        "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/r4-supported-controller.log",
+        "commandsStarted": 0,
+        "cause": "CPU package >90C admission refusal before driver/native command",
+        "originalSession": null
+      }
+    }
+  },
+  "programAcceptance": {
+    "pendingPrograms": 8,
+    "uncheckedConditions": 33,
+    "acceptedComplete": 0
+  },
+  "receipts": {
+    "rust-review/handoff/successor-reconciliation/evidence/coordinator-2026-10-18T125244Z/7913-landing-merge-receipt.json": "88341fa0bfa79a713e763f40678996be36b55a2a1bd5ed4726dfa413fb6b9956",
+    "rust-review/handoff/successor-reconciliation/evidence/coordinator-2026-10-18T125244Z/native-workspace-prefixes-v6-r2-qualified-summary.json": "0dc7b648abf2229fe64d5f6197bd3ac8fd2f202d06a4b343a632d79ea84aa701",
+    "rust-review/handoff/successor-reconciliation/evidence/coordinator-2026-10-18T125244Z/native-workspace-prefixes-v6-r2-original-terminal.json": "07642dd775cfe1be4bf4e4a7159e3ee3423ecdb16b0aaf93d701150f1b542d5c",
+    "rust-review/handoff/successor-reconciliation/evidence/coordinator-2026-10-18T125244Z/r2-run-report.json": "0a5858fd6d7500f9b66a947cf453afb5dc5db8e9f0a0966ef96951c9debc05aa"
+  },
+  "preservation": "Original622 IDs, all charter duties, failures and stoplines remain binding; no aggregate acceptance claim."
+}

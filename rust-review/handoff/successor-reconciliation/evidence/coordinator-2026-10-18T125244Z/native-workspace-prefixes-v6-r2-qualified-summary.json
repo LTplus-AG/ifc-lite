@@ -1,0 +1,23 @@
+{
+  "pin": "d3e281e1a234f8bca23cd59fb8ddf85926264a2f",
+  "worker": "d6066e60-b56e-4851-94ee-2b8662699981",
+  "state": "completed",
+  "exitCode": 0,
+  "sourceUnchanged": true,
+  "workspace": {
+    "passed": 5479,
+    "failed": 0,
+    "ignored": 47,
+    "measured": 0,
+    "filteredOut": 0
+  },
+  "harnessSummaries": 365,
+  "exactClippyExitCode": 0,
+  "fixturesBeforeAfter": {
+    "entries": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3"
+  },
+  "rawWorkspaceSha256": "027ef48d0ca012a69a02fdb51db2e065ef713891c27ce048c1a0673801ca8401",
+  "rawClippySha256": "b11a8578f643ff37b30280b1a370af8b938d56033b4a62d56715b6000d71a8a2",
+  "scope": "r2 native workspace and exact all-target clippy only; r3/r4 unrun, nine individual controls/output/revert/oracles/consumer/performance still separately required"
+}

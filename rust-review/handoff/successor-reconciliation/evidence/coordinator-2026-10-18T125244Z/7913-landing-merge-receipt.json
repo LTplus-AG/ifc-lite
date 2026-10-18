@@ -1,0 +1,11 @@
+{
+  "autoMergeRequest": null,
+  "closingIssuesReferences": [],
+  "headRefOid": "daed4acfd490799d0b59d835384f1dc879d006ff",
+  "mergeCommit": {
+    "oid": "0daa2b5a3509cdc0812033a2ca2fe7183fce6915"
+  },
+  "mergedAt": "2026-10-18T11:29:46Z",
+  "state": "MERGED",
+  "url": "https://github.com/LTplus-AG/ifc-lite/pull/7913"
+}

@@ -1,0 +1,58 @@
+{
+  "pin": "d3e281e1a234f8bca23cd59fb8ddf85926264a2f",
+  "stages": [
+    {
+      "label": "workspace",
+      "argv": [
+        "cargo",
+        "test",
+        "--workspace"
+      ],
+      "startedAt": 1792325767.6050057,
+      "exitCode": 0,
+      "finishedAt": 1792327596.1986134
+    },
+    {
+      "label": "exact-clippy",
+      "argv": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "startedAt": 1792327596.200182,
+      "exitCode": 0,
+      "finishedAt": 1792327730.225015
+    }
+  ],
+  "primaryError": null,
+  "finallyErrors": [],
+  "sourceBefore": {
+    "head": "d3e281e1a234f8bca23cd59fb8ddf85926264a2f",
+    "tree": "676d937b8b03f65f1aa2ab23f43e49f015ebe9bf"
+  },
+  "fixtureProducerBefore": {
+    "entries": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3"
+  },
+  "fixturesBefore": {
+    "entries": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3"
+  },
+  "sourceAfter": {
+    "head": "d3e281e1a234f8bca23cd59fb8ddf85926264a2f",
+    "tree": "676d937b8b03f65f1aa2ab23f43e49f015ebe9bf"
+  },
+  "fixturesAfter": {
+    "entries": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3"
+  },
+  "fixtureProducerAfter": {
+    "entries": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3"
+  },
+  "complete": true
+}

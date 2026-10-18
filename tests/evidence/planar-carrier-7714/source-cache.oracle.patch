@@ -1,0 +1,11 @@
+--- a/rust/core/src/decoder/precision_certificate.rs
++++ b/rust/core/src/decoder/precision_certificate.rs
+@@ -58,7 +58,7 @@
+                 } else {
+                     &shared.permissive
+                 };
+-                { let _ = cell; self.scan_uniform_precision() }
++                cell.get_or_init(|| self.scan_uniform_precision()).clone()
+             } else {
+                 self.scan_uniform_precision()
+             };

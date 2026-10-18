@@ -318,8 +318,8 @@ The JSON supplies original receipt, log, raw-input, fixture and helper SHA-256
 references. These identify locally retained evidence; this addition does not
 publish those originals, add a new archive, or extend any historical archive.
 Unpublished originals cannot be independently retrieved or replayed from hashes
-alone. No new screenshots or raw bundles are included. Required hosted CI,
-cross-platform determinism and merge readiness are outside this summary.
+alone. No new screenshots or raw bundles are included. This historical summary does not qualify
+the current required hosted CI checks, cross-platform determinism or merge readiness.
 
 The initial-publication CI oracle uses `signed-zero.oracle.patch` because a
 whole-production revert removes new Rust APIs and cannot compile the changed
@@ -402,3 +402,5 @@ End-to-end O3 performance qualification remains pending. One opportunistic timin
 
 Historical hosted CI witnesses do not qualify current required CI. The archived review-only PRs #7730, #7731 and #7802 are closed unmerged; #7607 is the sole landing PR, and #7292 remains open until that fix lands. The test-only conflict follow-up retains both main's independent deep-chain/cycle regressions and the analytic every-link translation assertion; it changes no product source.
 
+
+[The test-only follow-up and actual cross-platform run](./final-43ec-follow-up.json) record all 15 storey tests passing without skips, viewer typecheck passing, and both arm64 and wasm32 determinism jobs passing on the qualified `43ec` source. The complete tree diff lists the documentation and single test-file changes after that source; product code and build configuration are identical. This does not turn the incomplete O3 timing attempt into a performance verdict.

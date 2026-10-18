@@ -70,8 +70,7 @@ fn issue_7292_raw_key_rejection_is_coherent_and_admitted_paths_are_exempt() {
 #[test]
 fn issue_7292_budget_exhaustion_never_certifies_a_new_veto() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap();
-    struct Reset(Option<u64>);impl Drop for Reset{fn drop(&mut self){budget::set_cap(self.0);budget::begin();}}
-    let _reset=Reset(budget::cap());budget::set_cap(Some(1));budget::begin();budget::note_escalation();
+    let profile=budget::TestProfile::new();profile.set_cap(Some(1));budget::begin();budget::note_escalation();
     let(s,h,q)=actual();let band=NearBand::from_operands(&[s],&[h]);let f=Face::new(h,&band).unwrap();
     assert!(budget::tripped());assert!(!certificate(&s,q,&f,&band));
 }

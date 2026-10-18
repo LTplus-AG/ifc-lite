@@ -323,7 +323,27 @@ impl ClippingProcessor {
     /// the same closure predicate but, ONLY when the crate is built with the
     /// `csg_topology_gate` feature (off by default; no downstream crate turns
     /// it on), rejects a torn result the same way `KernelOutputInvalid` does.
+    ///
+    /// Weld policy (#6940): this entry point welds the cutter with the
+    /// opening-only policy (the incidence-retaining weld), the one the void
+    /// router needs. That is a change for external callers of this exported
+    /// method, which used to get the plain weld; on some hosts the two
+    /// policies produce different meshes. [`Self::subtract_operand`] keeps
+    /// the plain weld for `IfcBooleanResult` operands, and the kernel-level
+    /// `mesh_bridge::subtract` is unchanged.
     pub fn subtract_mesh(&self, host_mesh: &Mesh, opening_mesh: &Mesh) -> GroupCut {
+        self.subtract_single(host_mesh, opening_mesh, true)
+    }
+
+    /// Boolean DIFFERENCE operand: the same cut, validation, gates and failure records
+    /// as [`Self::subtract_mesh`], preserving pre-#6940 welding. The extended-opening
+    /// guard changed 21 elements in two of 121 models: 11 improved, 7 worsened, 3 unchanged.
+    /// Twenty had no openings and escaped that census. Keep operand semantics unchanged.
+    pub fn subtract_operand(&self, base_mesh: &Mesh, operand_mesh: &Mesh) -> GroupCut {
+        self.subtract_single(base_mesh, operand_mesh, false)
+    }
+
+    fn subtract_single(&self, host_mesh: &Mesh, opening_mesh: &Mesh, opening: bool) -> GroupCut {
         #[cfg(feature = "opening-perf-trace")]
         crate::opening_perf_trace::record(|c| c.single_subtract_calls = c.single_subtract_calls.saturating_add(1));
         record_csg_op(0, host_mesh.triangle_count(), opening_mesh.triangle_count());
@@ -353,7 +373,7 @@ impl ClippingProcessor {
         // seam-preserving consolidation is the remaining follow-up.
         crate::kernel::budget::begin();
         let (raw, changed, conforming) =
-            crate::kernel::mesh_bridge::subtract_with_change(host_mesh, opening_mesh);
+            crate::kernel::mesh_bridge::subtract_with_change(host_mesh, opening_mesh, opening);
         // Deterministic escalation guardrail (#1109): if the exact predicate
         // cascade escalated past the per-boolean budget, the cut bailed mid-
         // arrangement. Discard the partial result (its `changed` bit too) and

@@ -61,7 +61,7 @@ impl Face {
         w: [f64; 3],
         d: f64,
         band: &NearBand,
-        host_vertices: &HashSet<[u64; 3]>,
+        host_vertices: &HashSet<[u64; 3], impl std::hash::BuildHasher>,
     ) -> bool {
         let scale = d / self.nn;
         let drift = [0, 1, 2].map(|k| w[k] - (original[k] - scale * self.n[k]));
@@ -114,7 +114,7 @@ pub(super) fn select<'a>(
     point: [f64; 3],
     faces: &'a [Face],
     band: &NearBand,
-    host_vertices: &HashSet<[u64; 3]>,
+    host_vertices: &HashSet<[u64; 3], impl std::hash::BuildHasher>,
 ) -> Option<(f64, &'a Face)> {
     let mut nearest: Option<(f64, f64, &Face)> = None;
     for face in faces {

@@ -113,8 +113,7 @@ fn issue_7292_projected_support_boundary_and_pretripped_budget_decline() {
     assert!(!endpoint_escapes(&v([10.0,0.0,0.0]),&p,&b));
     assert!(endpoint_escapes(&v([f64::from_bits(10.0_f64.to_bits()+1),0.0,0.0]),&p,&b));
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap();
-    struct Reset(Option<u64>);impl Drop for Reset {fn drop(&mut self){budget::set_cap(self.0);budget::begin();}}
-    let _reset=Reset(budget::cap());budget::set_cap(Some(1));let _element=budget::enter_element();budget::begin();budget::note_escalation();
+    let profile=budget::TestProfile::new();profile.set_cap(Some(1));let _element=budget::enter_element();budget::begin();budget::note_escalation();
     let(s,h,foot)=actual946();let band=NearBand::from_operands(&[s],&[h]);let face=Face::new(h,&band).unwrap();
     assert!(budget::tripped());assert!(!escapes_original_contact(&s,s[0],foot,&face,&band));
     budget::begin();assert!(!budget::tripped());

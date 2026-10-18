@@ -220,6 +220,7 @@ import type { DeviationDistances } from './deviation/deviation-statistics.js';
 export { computeDeviationStatistics, computeDeviationStatisticsAsync, countWithinToleranceAsync, deviationHistogramAsync, summarizeDeviationAssetsAsync } from './deviation/deviation-statistics.js';
 export type { DeviationAssetRange, DeviationAssetSummary, DeviationAsyncOptions, DeviationDistances, DeviationHistogram, DeviationHistogramRange, DeviationStatistics, DeviationStatisticsOptions, DeviationToleranceShare } from './deviation/deviation-statistics.js';
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
+import { enableRendererQuantizedBatches } from './quantized-lifecycle.js';
 import { recoverRendererDevice, rendererDeviceLostError, type DeviceRecoveryOmission, type DeviceRecoveryResult, type RendererRecoveryHost } from './device-recovery.js';
 
 
@@ -578,6 +579,7 @@ export class Renderer {
         // init there is nothing to invalidate and this is a no-op.
         const generation = ++this.initGeneration;
         this.ready = false;
+        this.scene.setQuantizedBatches(false); // #7655: admission belongs to the retired GPU lifetime.
         // Re-arm `whenReady()`: this instance is being brought back up, so a
         // wait requested from here on is "not ready yet" again, not "destroyed".
         this.destroyed = false;
@@ -1531,11 +1533,7 @@ export class Renderer {
      * rejecting pipeline creation) batches stay on the f32 path.
      */
     async enableQuantizedBatches(): Promise<boolean> {
-        this.recovery.quantizedBatchesRequested = true;
-        if (!this.pipeline) return false;
-        const ok = await this.pipeline.ensureQuantizedPipelines();
-        if (ok) this.scene.setQuantizedBatches(true);
-        return ok;
+        return enableRendererQuantizedBatches(this as unknown as RendererRecoveryHost);
     }
 
     /** Draw a frame through the shared submission path, preserving the void API. */
@@ -3644,6 +3642,7 @@ export class Renderer {
         // Render pipelines (textures + uniform buffers)
         this.pipeline?.destroy();
         this.pipeline = null;
+        this.scene.setQuantizedBatches(false);
 
         // Picker GPU resources. The manager holds its own reference, so clear
         // that too — otherwise its `if (!this.picker) return null` guard keeps

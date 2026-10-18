@@ -9,13 +9,12 @@ export const OPAQUE_VISIBILITY_GROUP = 2;
 /** Numerical coincidence allowance, independent of the entity's hash rank. */
 export const OPAQUE_VISIBILITY_ULPS = 4;
 
+/** depth32float permits interpolation roundoff, independent of the hash rank. */
 export function opaqueVisibilityWgsl(samples: number): string {
   return `
     @group(${OPAQUE_VISIBILITY_GROUP}) @binding(0) var geometricDepth: ${samples > 1 ? 'texture_depth_multisampled_2d' : 'texture_depth_2d'};
     fn geometricallyOccluded(pixel: vec2<f32>, depth: f32, sampleIndex: u32) -> bool {
       let nearest = textureLoad(geometricDepth, vec2<i32>(pixel), ${samples > 1 ? 'i32(sampleIndex)' : '0'});
-      // depth32float prepass: allow only raster interpolation roundoff. Unlike
-      // the old 256-rank nudge, this tolerance never grows with the hash.
       let bits = bitcast<u32>(nearest);
       let lower = bitcast<f32>(bits - min(bits, ${OPAQUE_VISIBILITY_ULPS}u));
       return depth < lower;

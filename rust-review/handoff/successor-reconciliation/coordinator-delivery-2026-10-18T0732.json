@@ -1,0 +1,73 @@
+{
+  "recordedAt": "2026-10-18T07:32:03.481228+00:00",
+  "purpose": "Actual delivery and user ownership transfer; no new acceptance claims for held lanes",
+  "merged": {
+    "headRefOid": "8877850759c428e54b2d488232e155cd7f12a675",
+    "mergeCommit": {
+      "oid": "9ffcc10e80f75b0645ba622e042961cd23bbc42e"
+    },
+    "mergedAt": "2026-10-18T07:22:08Z",
+    "number": 7916,
+    "state": "MERGED",
+    "url": "https://github.com/LTplus-AG/ifc-lite/pull/7916"
+  },
+  "supersededPRClosures": [
+    {
+      "headRefOid": "5da6bb4d147ba520a807ac7e3a57a23fa712264f",
+      "mergeCommit": null,
+      "mergedAt": null,
+      "number": 7901,
+      "state": "CLOSED",
+      "url": "https://github.com/LTplus-AG/ifc-lite/pull/7901"
+    },
+    {
+      "headRefOid": "4d7ebbe4e21450dd9604480562d20d0499d8cf66",
+      "mergeCommit": null,
+      "mergedAt": null,
+      "number": 7910,
+      "state": "CLOSED",
+      "url": "https://github.com/LTplus-AG/ifc-lite/pull/7910"
+    }
+  ],
+  "deliveryControl": {
+    "activeItems": [
+      7894,
+      7905
+    ],
+    "maxIndependentItems": 2,
+    "reason": "user correction after overnight workflow churn",
+    "noNewReviewPreparationCycles": true,
+    "otherNewAllocations": "held; admitted pre-existing PC finitejob may finish, no additional runs",
+    "infrastructure": "disk reservation/thermal backoff/harness improvements after actual issue work is landed, per latest user instruction",
+    "measurement": "landed accepted changes/elapsedtime/token; packets not counted asdelivery",
+    "actualLandedPRsThisPhase": [
+      7916
+    ],
+    "actualIssueClosuresThisPhase": []
+  },
+  "selectedPRDelivery": {
+    "updatedAt": "2026-10-18T07:30:56.369983+00:00",
+    "7894": {
+      "head": "be96c2b34",
+      "state": "review finding fixed; six new parsed behavior regressions; hosted required checks pending",
+      "oldHead": "c0b42c3ee6e2c53179b34d4fb20e5b61eb12bca3"
+    },
+    "7905": {
+      "head": "22742477c8ec0e699c323f87087a75fb4fa920c7",
+      "state": "current Claude review clean; required build and Rust checks live"
+    },
+    "mergePolicy": "no auto merge; admin squash only with required checks and assessed review evidence"
+  },
+  "issue6729": {
+    "status": "released",
+    "handoff": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/6729-TAKEOVER.md",
+    "verification": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/6729-handoff-verification.json",
+    "noSourceChange": true,
+    "noNewJobs": true,
+    "otherSessionClaimPreserved": true
+  },
+  "actualIssueClosures": [],
+  "sourceRoot": "d35a1ef2eb144b4d86553342cb6c5c72d2a0a02c clean; unchanged by isolated #7894 follow-up",
+  "heldWork": "No new qualification/review/preparation lanes. Earlier admitted C2-7 finite PC cohort may finish. Native/perf/source-output blockers in prior evidence remain binding.",
+  "harnessOrder": "User requests harness setup/settings improvements after delivery work, not another infrastructure detour."
+}

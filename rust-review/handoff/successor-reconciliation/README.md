@@ -65,4 +65,4 @@ The first-pass classification column and counts above remain historical context.
 The separate [merged-C6 disposition review](merged-c6-review/REVIEW.md) confirms that the previously reported TypeAssignments membership and IFCX first-parent consumer findings survive the inspected merges. Source identity and test coverage were checked; no new runtime or performance result is claimed. C6 acceptance also retains open D47 #7895 despite #7783's automatic closure.
 
 
-Latest operational reconciliation: [2026-10-18T0628 UTC](coordinator-checkpoint-2026-10-18T0628.md), with [exact machine evidence](coordinator-checkpoint-2026-10-18T0628.json). Prior snapshots remain historical and unchanged.
+Latest operational reconciliation: [2026-10-18T0732 UTC](coordinator-delivery-2026-10-18T0732.md), with [exact machine evidence](coordinator-delivery-2026-10-18T0732.json). Prior snapshots remain historical and unchanged.

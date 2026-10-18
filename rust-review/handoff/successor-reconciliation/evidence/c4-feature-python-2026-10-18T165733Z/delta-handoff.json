@@ -1,0 +1,126 @@
+{
+  "parentMergesCanonicalState": true,
+  "worker": "2fae89ce-8575-40b6-bfd1-5a0d5caf39f7",
+  "originalSession": 94526,
+  "state": "FAILED1/sourceUnchanged/ownedQuiescent;31 prior commandsPASS, final schema launcher failed before test collection",
+  "index": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/result-index.json",
+  "indexSha256": "56443ae18a338175a3539ff1d3c0951bd11c2dd1e44717fcf7f837289a2d4fcc",
+  "source": {
+    "head": "12157693a84d9495fafd14a0ade6a5939bf3e0b8",
+    "tree": "4c512c747f2aa6f364200f2415a609c1ce425248",
+    "status": ""
+  },
+  "passedRustCounts": {
+    "parquet-tests": {
+      "passed": 826,
+      "failed": 0,
+      "ignored": 0,
+      "resultSummaries": 33,
+      "positiveTestSummaries": 33,
+      "zeroSelectedSummaries": 0,
+      "allIgnoredSummaries": 0,
+      "namedIgnoredObservations": 0,
+      "zeroIsNotBehaviorProof": true
+    },
+    "excluded-python-rust-tests": {
+      "passed": 6,
+      "failed": 0,
+      "ignored": 0,
+      "resultSummaries": 1,
+      "positiveTestSummaries": 1,
+      "zeroSelectedSummaries": 0,
+      "allIgnoredSummaries": 0,
+      "namedIgnoredObservations": 0,
+      "zeroIsNotBehaviorProof": true
+    },
+    "capture-tests": {
+      "passed": 2038,
+      "failed": 0,
+      "ignored": 34,
+      "resultSummaries": 153,
+      "positiveTestSummaries": 142,
+      "zeroSelectedSummaries": 2,
+      "allIgnoredSummaries": 9,
+      "namedIgnoredObservations": 34,
+      "zeroIsNotBehaviorProof": true
+    },
+    "opening-ring-tests": {
+      "passed": 6,
+      "failed": 0,
+      "ignored": 0,
+      "resultSummaries": 1,
+      "positiveTestSummaries": 1,
+      "zeroSelectedSummaries": 0,
+      "allIgnoredSummaries": 0,
+      "namedIgnoredObservations": 0,
+      "zeroIsNotBehaviorProof": true
+    },
+    "opening-diagnostic-tests": {
+      "passed": 5,
+      "failed": 0,
+      "ignored": 0,
+      "resultSummaries": 1,
+      "positiveTestSummaries": 1,
+      "zeroSelectedSummaries": 0,
+      "allIgnoredSummaries": 0,
+      "namedIgnoredObservations": 0,
+      "zeroIsNotBehaviorProof": true
+    },
+    "triangulation-tests": {
+      "passed": 68,
+      "failed": 0,
+      "ignored": 3,
+      "resultSummaries": 1,
+      "positiveTestSummaries": 1,
+      "zeroSelectedSummaries": 0,
+      "allIgnoredSummaries": 0,
+      "namedIgnoredObservations": 3,
+      "zeroIsNotBehaviorProof": true
+    },
+    "manifold-tests": {
+      "passed": 2034,
+      "failed": 0,
+      "ignored": 35,
+      "resultSummaries": 153,
+      "positiveTestSummaries": 142,
+      "zeroSelectedSummaries": 1,
+      "allIgnoredSummaries": 10,
+      "namedIgnoredObservations": 35,
+      "zeroIsNotBehaviorProof": true
+    },
+    "topology-tests": {
+      "passed": 2033,
+      "failed": 0,
+      "ignored": 34,
+      "resultSummaries": 153,
+      "positiveTestSummaries": 143,
+      "zeroSelectedSummaries": 1,
+      "allIgnoredSummaries": 9,
+      "namedIgnoredObservations": 34,
+      "zeroIsNotBehaviorProof": true
+    },
+    "combined-gates-tests": {
+      "passed": 2035,
+      "failed": 0,
+      "ignored": 35,
+      "resultSummaries": 153,
+      "positiveTestSummaries": 143,
+      "zeroSelectedSummaries": 0,
+      "allIgnoredSummaries": 10,
+      "namedIgnoredObservations": 35,
+      "zeroIsNotBehaviorProof": true
+    }
+  },
+  "wheelPytestPassed": 49,
+  "parityUnitsPassed": 35,
+  "committedReferenceMatches": 4,
+  "comparisonAdvisories": {
+    "issue_1155_halfspace_flyaway": [
+      "tri_count",
+      "volume-one-sided"
+    ]
+  },
+  "missingInThisAllocation": "Only13 previously skipped export schema cases remain UNRUN after Corepack offline cache refusal; no automatic retry or source edit.",
+  "allPriorPerformanceBarriersPreserved": true,
+  "noNewAllocation": true
+}

@@ -1,0 +1,23 @@
+{
+  "observedAt": "2026-10-18T165733Z",
+  "actualAllocation": "FAILED1,31commandsPASS; finalschema launcher failedbeforetests, sourceUnchanged/ownedQuiescent",
+  "evidence": {
+    "rust-review/handoff/successor-reconciliation/evidence/c4-feature-python-2026-10-18T165733Z/delta-handoff.json": "8f096b85f9ecc5ecc78a156e6e63aeea5015853db2a3c67f3f33dbb78fcf3d54",
+    "rust-review/handoff/successor-reconciliation/evidence/c4-feature-python-2026-10-18T165733Z/result-index.json": "56443ae18a338175a3539ff1d3c0951bd11c2dd1e44717fcf7f837289a2d4fcc",
+    "rust-review/handoff/successor-reconciliation/evidence/c4-feature-python-2026-10-18T165733Z/result-manifest.json": "37ad82751fecc22395213f7e4678167ec7093fff505837156cf87909a7df9329",
+    "rust-review/handoff/successor-reconciliation/evidence/c4-feature-python-2026-10-18T165733Z/schema-launcher-failure-attribution.json": "ec1e0925fda13c6ab607aa7cdf76f93ff44df0612ce942f0a0c09dcba096300e",
+    "rust-review/handoff/successor-reconciliation/evidence/c4-feature-python-2026-10-18T165733Z/lower-dependency-source-reconciliation-20261018.json": "b7dbbc453740f7abb2035330b171b3e92f8867c01cc165a14725ab1abf38a9bf",
+    "rust-review/handoff/successor-reconciliation/evidence/c4-feature-python-2026-10-18T165733Z/current-lower61-terminal-receipt.json": "9396cc1af9cdccb39d9da351f2fa41a846fb11664ee444f117f31070bc99beb5"
+  },
+  "wheelPytest": "49PASS/0FAIL/0SKIP",
+  "parityUnits": "35PASS/0SKIP",
+  "committedReferenceMatches": 4,
+  "skippedSchemaStillUnrun": 13,
+  "existingLower61NativeReceiptReconciled": true,
+  "nextOnly13Tests": {
+    "taskId": "node:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Athread-send%3Ac4-only13-schema-direct-existing-pnpm-entry-20261018-v13",
+    "state": "started",
+    "scope": "ONE13test rootTurbo group only, same actualinstalledpnpm10.8.1 viaabsoluteNodeentry, old31PASS immutable, no network/provisioning"
+  },
+  "acceptance": "No performance/crossplatform/currentmain/overallacceptance; exact allpriorfaileddata/charter duties preserved"
+}

@@ -1,0 +1,95 @@
+{
+  "receipt": {
+    "id": "5cfe484f-f663-45f1-bb06-71ffcb0aab34",
+    "host": {
+      "host": "louistrue-pc",
+      "os": "Linux",
+      "arch": "x86_64",
+      "cpus": 24,
+      "availableMemoryBytes": 59205173248,
+      "totalMemoryBytes": 67423592448,
+      "python": "3.14.4",
+      "time": 1792280511.22513
+    },
+    "cwd": "/home/louistrue/build-workers/worker-state/checkouts/61f9cb64803b37270fcc0603d97f5f47808212bf",
+    "sourceBefore": {
+      "commit": "61f9cb64803b37270fcc0603d97f5f47808212bf",
+      "tree": "6c3b87a4fe38cbf7170deca3d39ca3885b630e7c",
+      "clean": true,
+      "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "toolchainInputs": {
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+        "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+        "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+      }
+    },
+    "command": [
+      "bash",
+      "-c",
+      "set -euo pipefail\nexport CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0\npython3 - <<'C2_PREFLIGHT'\nimport os,json,pathlib,subprocess,hashlib,sqlite3\nroot=pathlib.Path.cwd();v=os.statvfs(root);target=pathlib.Path(os.environ[\"CARGO_TARGET_DIR\"])\nr={\"head\":subprocess.check_output([\"git\",\"rev-parse\",\"HEAD\"],text=True).strip(),\"freeBytes\":v.f_bavail*v.f_frsize,\"freeInodes\":v.f_favail,\"target\":str(target),\"incremental\":os.environ[\"CARGO_INCREMENTAL\"],\"devDebug\":os.environ[\"CARGO_PROFILE_DEV_DEBUG\"],\"testDebug\":os.environ[\"CARGO_PROFILE_TEST_DEBUG\"]}\nprint(json.dumps(r),flush=True);assert r[\"head\"]==\"61f9cb64803b37270fcc0603d97f5f47808212bf\";assert str(target)==\"/home/louistrue/build-workers/worker-state/targets/0e2d21676e9a23351c1c\";assert r[\"freeBytes\"]>60000000000 and r[\"freeInodes\"]>100000\nstate=pathlib.Path(\"/home/louistrue/build-workers/worker-state\");cache=state/\"targets/232a221121afc297f93d\"\nreceipt=json.loads((state/\"jobs/28796b82-f344-49c6-97c1-69525869a9df/receipt.json\").read_text());assert receipt[\"state\"]==\"completed\" and receipt[\"exitCode\"]==0 and receipt[\"sourceAfter\"][\"commit\"]==\"5952f62dadaad032d575703f17265a15abd4569d\"\ndb=sqlite3.connect(\"file:\"+str(state/\"queue.sqlite\")+\"?mode=ro\",uri=True);active=[row[0] for row in db.execute(\"select id,resources from jobs where state in ('running','queued')\") if str(cache) in json.loads(row[1])];assert not active,active\nassert cache.is_dir() and cache!=target\nfor proc in pathlib.Path(\"/proc\").iterdir():\n if not proc.name.isdigit():continue\n try:env=(proc/\"environ\").read_bytes().split(b\"\\0\")\n except (OSError,PermissionError):continue\n assert (\"CARGO_TARGET_DIR=\"+str(cache)).encode() not in env,proc.name\nif not target.exists() or not any(target.iterdir()):\n target.mkdir(parents=True,exist_ok=True);subprocess.run([\"cp\",\"-a\",\"--reflink=auto\",str(cache)+\"/.\",str(target)],check=True);print(json.dumps({\"cacheSeed\":\"read-only copy/reflink of own inactive595lean cache\",\"cache\":str(cache),\"target\":str(target),\"sourceRebuild\":\"Cargo fingerprints exactcurrent source; no inheritedruntimeverdict\"}),flush=True)\nv=os.statvfs(root);assert v.f_bavail*v.f_frsize>60000000000 and v.f_favail>100000\nsource=state/\"checkouts/5952f62dadaad032d575703f17265a15abd4569d/tests/models\";m=root/\"tests/models/manifest.json\";assert m.read_bytes()==(source/\"manifest.json\").read_bytes();files=json.loads(m.read_text())[\"files\"];linked=0\nfor row in files:\n dst=root/\"tests/models\"/row[\"path\"];src=source/row[\"path\"];assert src.is_file(),str(src)\n if not dst.exists():\n  assert not dst.is_symlink(),str(dst)\n  dst.parent.mkdir(parents=True,exist_ok=True);dst.symlink_to(src.resolve());linked+=1\nprint(json.dumps({\"fixtureManifestSha256\":hashlib.sha256(m.read_bytes()).hexdigest(),\"manifestCount\":len(files),\"linkedExisting\":linked,\"missing\":sum(not (root/\"tests/models\"/f[\"path\"]).is_file() for f in files),\"freeBytesAfterSeed\":v.f_bavail*v.f_frsize,\"scope\":\"reuse existingfixtures only; no fetch or repeated83causal proof\"}),flush=True)\nC2_PREFLIGHT\ncargo test --workspace\ncargo clippy --workspace --all-targets -- -D warnings\n"
+    ],
+    "kind": "ordinary",
+    "requestedAt": 1792280511.224979,
+    "resources": [
+      "/home/louistrue/build-workers/worker-state/checkouts/61f9cb64803b37270fcc0603d97f5f47808212bf",
+      "/home/louistrue/build-workers/worker-state/targets/0e2d21676e9a23351c1c"
+    ],
+    "state": "completed",
+    "cpu": 2,
+    "memoryGiB": 8,
+    "fixtures": {},
+    "tools": {
+      "git": {
+        "path": "/usr/local/bin/git",
+        "exitCode": 0,
+        "version": "git version 2.53.0"
+      },
+      "rustc": {
+        "path": "/home/louistrue/.cargo/bin/rustc",
+        "exitCode": 0,
+        "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+      },
+      "cargo": {
+        "path": "/home/louistrue/.cargo/bin/cargo",
+        "exitCode": 0,
+        "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+      },
+      "node": {
+        "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node",
+        "exitCode": 0,
+        "version": "v24.21.0"
+      },
+      "pnpm": {
+        "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/pnpm",
+        "exitCode": 0,
+        "version": "10.8.1"
+      }
+    },
+    "runnerSha256": "3a6be059f6c965acec6e3fa8799da53f0c7e578d71e2305eaec59ac204ff8094",
+    "startedAt": 1792280569.5747583,
+    "queueSeconds": 58.34977984428406,
+    "resourceScope": false,
+    "exitCode": 0,
+    "finishedAt": 1792281495.5390022,
+    "sourceAfter": {
+      "commit": "61f9cb64803b37270fcc0603d97f5f47808212bf",
+      "tree": "6c3b87a4fe38cbf7170deca3d39ca3885b630e7c",
+      "clean": true,
+      "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "toolchainInputs": {
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+        "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+        "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+      }
+    },
+    "sourceUnchanged": true,
+    "artifacts": {},
+    "outputSha256": "2938ee4f9a898504e4060ccf6538cc63f413716332135099940213c54f06db9b"
+  },
+  "fixtureCount": 182,
+  "missingFixtures": [],
+  "freeBytes": 176861716480,
+  "freeInodes": 50497691
+}

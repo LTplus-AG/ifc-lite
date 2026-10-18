@@ -1,0 +1,1575 @@
+{
+  "scope": "Final corrected r4 missing feature/excluded-Python/fresh-wheel/parity correctness; one ordinary allocation, partial successful evidence from a FAILED terminal",
+  "source": {
+    "head": "12157693a84d9495fafd14a0ade6a5939bf3e0b8",
+    "tree": "4c512c747f2aa6f364200f2415a609c1ce425248",
+    "status": ""
+  },
+  "workerId": "2fae89ce-8575-40b6-bfd1-5a0d5caf39f7",
+  "originalSession": 94526,
+  "terminalState": "failed",
+  "terminalExitCode": 1,
+  "sourceUnchanged": true,
+  "ownedQuiescent": true,
+  "completedCommands0": 31,
+  "failedCommands1": 1,
+  "actualCommands": [
+    {
+      "name": "fresh-owned-venv",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/tools/python-reviewed-v1/runtime/bin/python3.12",
+        "-m",
+        "venv",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": null,
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/fresh-owned-venv.log",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "python-toolchain-import",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "-c",
+        "import sys,ssl,sqlite3,ctypes,zlib,pytest;print(sys.version,sys.prefix,sys.base_prefix,pytest.__version__,ssl.OPENSSL_VERSION);assert sys.version_info[:3]==(3,12,14);assert pytest.__version__==\"9.1.1\""
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/python-toolchain-import.log",
+      "logSha256": "dff822f5565177976ddf6a4c8b753f6d782f8677a71e9c1bdb1261c23861433a"
+    },
+    {
+      "name": "parquet-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-export",
+        "--features",
+        "parquet-bos"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/parquet-tests.log",
+      "logSha256": "6d333c5e4776eda22d050e63320c974824878446c973deab17179e13861b8bb7",
+      "testCounts": {
+        "passed": 826,
+        "failed": 0,
+        "ignored": 0,
+        "summaries": 33
+      }
+    },
+    {
+      "name": "excluded-python-rust-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "rust/python/Cargo.toml"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/python-target",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/excluded-python-rust-tests.log",
+      "logSha256": "a3b29dc05a2ae2efcc6e51ad5a59f4e6c25a3d43406d1c720c09a83f4fdf7261",
+      "testCounts": {
+        "passed": 6,
+        "failed": 0,
+        "ignored": 0,
+        "summaries": 1
+      }
+    },
+    {
+      "name": "parquet-clippy",
+      "argv": [
+        "cargo",
+        "clippy",
+        "-p",
+        "ifc-lite-export",
+        "--features",
+        "parquet-bos",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/parquet-clippy.log",
+      "logSha256": "17166d2a85f82f1d3250973e1887ff20916e77051435209ef88e7b11ccd98445"
+    },
+    {
+      "name": "manifold-clippy",
+      "argv": [
+        "cargo",
+        "clippy",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "csg_manifold_gate",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/manifold-clippy.log",
+      "logSha256": "9a6f7f9fb8a4d4e667d5c8dcf99b42bee1e4c358c21fed28952e97393d9c98e0"
+    },
+    {
+      "name": "geometry-all-features-clippy",
+      "argv": [
+        "cargo",
+        "clippy",
+        "-p",
+        "ifc-lite-geometry",
+        "--all-features",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/geometry-all-features-clippy.log",
+      "logSha256": "11a4e64773d8d4a0759a15600339a3638bf767a80e2486bcfda61b1719bce958"
+    },
+    {
+      "name": "capture-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "csg_capture"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/capture-tests.log",
+      "logSha256": "95a87aa0c318082a5cc4f55b6c3c74c0427e5bc805391be5e5363b835c42fdba",
+      "testCounts": {
+        "passed": 2038,
+        "failed": 0,
+        "ignored": 34,
+        "summaries": 153
+      }
+    },
+    {
+      "name": "opening-ring-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "opening-perf-trace",
+        "--lib",
+        "csg::consolidate::ring_ops::tests"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/opening-ring-tests.log",
+      "logSha256": "31e978943bef7479534c27aacc76315b2709968f8f7c796b53d9d3485e23d121",
+      "testCounts": {
+        "passed": 6,
+        "failed": 0,
+        "ignored": 0,
+        "summaries": 1
+      }
+    },
+    {
+      "name": "opening-diagnostic-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-processing",
+        "--features",
+        "opening-perf-trace",
+        "--example",
+        "opening_work_probe"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/opening-diagnostic-tests.log",
+      "logSha256": "6e0dd57b61657f5b97efb61f6d3a3cb5d24e4d63ebab37fedd79aff24a4792ed",
+      "testCounts": {
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0,
+        "summaries": 1
+      }
+    },
+    {
+      "name": "opening-diagnostic-clippy",
+      "argv": [
+        "cargo",
+        "clippy",
+        "-p",
+        "ifc-lite-processing",
+        "--features",
+        "opening-perf-trace",
+        "--example",
+        "opening_work_probe",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/opening-diagnostic-clippy.log",
+      "logSha256": "6c378a3dc42df5990fc12548eca4a29c066ec4f3842ddc62095a99cf25d3827c"
+    },
+    {
+      "name": "triangulation-runnable",
+      "argv": [
+        "node",
+        "scripts/ci-assert-runnable-cargo-tests.mjs",
+        "--package",
+        "ifc-lite-geometry",
+        "--features",
+        "triangulation-alt",
+        "--test",
+        "triangulation_invariance"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/triangulation-runnable.log",
+      "logSha256": "e48f80abe78209fa87253d072f51a103d9d702b047a397c60042c6a2ba29065e"
+    },
+    {
+      "name": "triangulation-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "triangulation-alt",
+        "--test",
+        "triangulation_invariance",
+        "--",
+        "--nocapture"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/triangulation-tests.log",
+      "logSha256": "658cc23ef7a96671d249f1d822f1b7fdcf1562bea041b5894269c60d7a093dff",
+      "testCounts": {
+        "passed": 68,
+        "failed": 0,
+        "ignored": 3,
+        "summaries": 1
+      }
+    },
+    {
+      "name": "topology-clippy",
+      "argv": [
+        "cargo",
+        "clippy",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "csg_topology_gate",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/topology-clippy.log",
+      "logSha256": "c92724e369aa713e15eab53cabf185b39d67e37285cb99b3801609f2a1ef24c4"
+    },
+    {
+      "name": "combined-gates-clippy",
+      "argv": [
+        "cargo",
+        "clippy",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "csg_manifold_gate,csg_topology_gate",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/combined-gates-clippy.log",
+      "logSha256": "4bb63e01e39694939b19484c8811da7cbb8ecbe54fcb30d226cae1bba0885e69"
+    },
+    {
+      "name": "manifold-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "csg_manifold_gate",
+        "--no-fail-fast"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/manifold-tests.log",
+      "logSha256": "aed0ed5758b1c276f8120aa93bf303d0f79ddd734b5b03181ec35f93d730ead0",
+      "testCounts": {
+        "passed": 2034,
+        "failed": 0,
+        "ignored": 35,
+        "summaries": 153
+      }
+    },
+    {
+      "name": "topology-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "csg_topology_gate",
+        "--no-fail-fast"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/topology-tests.log",
+      "logSha256": "84aef8c71af70179870da30ed2227091afd910059f8023d1d8f103ffd3d6537b",
+      "testCounts": {
+        "passed": 2033,
+        "failed": 0,
+        "ignored": 34,
+        "summaries": 153
+      }
+    },
+    {
+      "name": "combined-gates-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "csg_manifold_gate,csg_topology_gate",
+        "--no-fail-fast"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/combined-gates-tests.log",
+      "logSha256": "dcdd0c3d2bc17a59ad524dfe5222c9bbc92dbcd6a0b7ab3b0061391b4fb62cfd",
+      "testCounts": {
+        "passed": 2035,
+        "failed": 0,
+        "ignored": 35,
+        "summaries": 153
+      }
+    },
+    {
+      "name": "fresh-source-wheel",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c2-published-stack-takeover/python-venv/bin/maturin",
+        "build",
+        "--release",
+        "--locked",
+        "--offline",
+        "-m",
+        "rust/python/Cargo.toml",
+        "-o",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/wheels",
+        "--interpreter",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/python-target",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": "std,panic_abort",
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/fresh-source-wheel.log",
+      "logSha256": "363d8038436bdf867abcfb852067d6d9bea4f83ccda7c3e9e8b4aa83c2e7385a"
+    },
+    {
+      "name": "install-own-wheel",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "-m",
+        "pip",
+        "install",
+        "--no-index",
+        "--no-deps",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/install-own-wheel.log",
+      "logSha256": "1929e5e2104f17b80b5dbff99ab8695a0f02554107b8261a6adbef833a2e945a"
+    },
+    {
+      "name": "import-own-wheel",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "-c",
+        "import ifclite_geom,pathlib,sys; p=pathlib.Path(ifclite_geom.__file__).resolve();print(p);assert p.is_relative_to(pathlib.Path(sys.prefix))"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/import-own-wheel.log",
+      "logSha256": "21f464db996f5cfc7bc9fcb488fbe46b54ba87958cdbd18254c4167b468d4b36"
+    },
+    {
+      "name": "wheel-pytest",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "-m",
+        "pytest",
+        "rust/python/tests",
+        "-q",
+        "-rs",
+        "--junitxml=/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/pytest.xml",
+        "-o",
+        "cache_dir=/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pytest"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/wheel-pytest.log",
+      "logSha256": "716d72aa6032cb543dbeada05a64c85705a1984de32a6cc4859857146ba9eadd"
+    },
+    {
+      "name": "resolve-reference-binaries",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "-m",
+        "pip",
+        "install",
+        "--dry-run",
+        "--ignore-installed",
+        "--only-binary=:all:",
+        "--retries",
+        "0",
+        "--timeout",
+        "20",
+        "--index-url",
+        "https://pypi.org/simple",
+        "--report",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/reference-resolution.json",
+        "-r",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/tools/ifcopenshell_reference/requirements.lock"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/resolve-reference-binaries.log",
+      "logSha256": "45e63a9b9717c237e96756436fe5ae293490d4e22ed8a781c2b99a6e4ef2915c"
+    },
+    {
+      "name": "install-reference-binaries",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "-m",
+        "pip",
+        "install",
+        "--no-index",
+        "--find-links",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/wheelhouse",
+        "--only-binary=:all:",
+        "--require-hashes",
+        "-r",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/reference-resolved-hashes.txt"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/install-reference-binaries.log",
+      "logSha256": "47b2df37f131c8d4352cf8b99e3b4c02e4d4803eb21c673cb7128189aba29877"
+    },
+    {
+      "name": "reference-engine-import",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "-c",
+        "import ifcopenshell,ifcopenshell.validate,numpy,shapely,pytest;print(ifcopenshell.__version__,numpy.__version__,shapely.__version__,pytest.__version__);assert numpy.__version__==\"2.0.2\" and shapely.__version__==\"2.0.7\" and pytest.__version__==\"9.1.1\""
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/reference-engine-import.log",
+      "logSha256": "81ff52f672dcaf1c7bd02e422ae2c34e3c3b92bf3ce8ab2ebd3771af0d42b8fa"
+    },
+    {
+      "name": "parity-unit-tests",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "-m",
+        "unittest",
+        "test_harness",
+        "test_reference_validation",
+        "-v"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/tools/ifcopenshell_reference",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/parity-unit-tests.log",
+      "logSha256": "10eb8524eb2f95adc555e092367ab145857bef288ab4bfea6de964bd12c55942"
+    },
+    {
+      "name": "dump-corrected-parity",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "dump_ifclite.py",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/rust/geometry/tests/fixtures/bath_csg_solid.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/rust/geometry/tests/fixtures/swept_disk_composite_arc_crankbar.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc",
+        "--out-dir",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/reference"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/tools/ifcopenshell_reference",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/dump-corrected-parity.log",
+      "logSha256": "7a32f6cd47f6cb679c162b66a639d2d9cc9e1f8c22ebe1e8aafcd31f158a08a8"
+    },
+    {
+      "name": "compare-bath_csg_solid",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "compare.py",
+        "--reference",
+        "reference/bath_csg_solid.reference.json",
+        "--ifclite",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/reference/bath_csg_solid.ifclite.json",
+        "--allowlist",
+        "allowlist.json",
+        "--report",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/reference/bath_csg_solid.comparison.json"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/tools/ifcopenshell_reference",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/compare-bath_csg_solid.log",
+      "logSha256": "79515b03f6477a78970a7821b9b723e05148b3b1ac203e04b7b9d714ff8db86b"
+    },
+    {
+      "name": "compare-issue_1155_halfspace_flyaway",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "compare.py",
+        "--reference",
+        "reference/issue_1155_halfspace_flyaway.reference.json",
+        "--ifclite",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/reference/issue_1155_halfspace_flyaway.ifclite.json",
+        "--allowlist",
+        "allowlist.json",
+        "--report",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/reference/issue_1155_halfspace_flyaway.comparison.json"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/tools/ifcopenshell_reference",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/compare-issue_1155_halfspace_flyaway.log",
+      "logSha256": "78a981c09288c44d59cb65ef1d0c30ae00cdfc95579a0637ed25ffbdeeae205a"
+    },
+    {
+      "name": "compare-swept_disk_composite_arc_crankbar",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "compare.py",
+        "--reference",
+        "reference/swept_disk_composite_arc_crankbar.reference.json",
+        "--ifclite",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/reference/swept_disk_composite_arc_crankbar.ifclite.json",
+        "--allowlist",
+        "allowlist.json",
+        "--report",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/reference/swept_disk_composite_arc_crankbar.comparison.json"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/tools/ifcopenshell_reference",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/compare-swept_disk_composite_arc_crankbar.log",
+      "logSha256": "431b250a62f73bd283344cfd420d49eb5103229ec5ae393b9de2717ecbe18431"
+    },
+    {
+      "name": "compare-swept_disk_trimmed_line",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "compare.py",
+        "--reference",
+        "reference/swept_disk_trimmed_line.reference.json",
+        "--ifclite",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/reference/swept_disk_trimmed_line.ifclite.json",
+        "--allowlist",
+        "allowlist.json",
+        "--report",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/reference/swept_disk_trimmed_line.comparison.json"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/tools/ifcopenshell_reference",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": null,
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/compare-swept_disk_trimmed_line.log",
+      "logSha256": "172a37e6a0f40790326af522a0495795059ff7c1c3a16413192eccf8a425b2af"
+    },
+    {
+      "name": "previously-skipped-export-schema-tests",
+      "argv": [
+        "pnpm",
+        "test",
+        "--only",
+        "--filter=@ifc-lite/export",
+        "--concurrency=1",
+        "--env-mode=loose",
+        "--",
+        "src/ifcopenshell-schema-conformance.test.ts"
+      ],
+      "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_UNSTABLE_BUILD_STD": null,
+        "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null,
+        "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+        "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+        "IFCOPENSHELL_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+        "NODE_OPTIONS": "--max-old-space-size=6144"
+      },
+      "exitCode": 1,
+      "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/previously-skipped-export-schema-tests.log",
+      "logSha256": "361d9a98dcb8b7b55cf07fd717834ebb9f16380c863a85f3ced66e67203cb8d6"
+    }
+  ],
+  "rustCountsByConfiguration": {
+    "parquet-tests": {
+      "passed": 826,
+      "failed": 0,
+      "ignored": 0,
+      "resultSummaries": 33,
+      "positiveTestSummaries": 33,
+      "zeroSelectedSummaries": 0,
+      "allIgnoredSummaries": 0,
+      "namedIgnoredObservations": 0,
+      "zeroIsNotBehaviorProof": true
+    },
+    "excluded-python-rust-tests": {
+      "passed": 6,
+      "failed": 0,
+      "ignored": 0,
+      "resultSummaries": 1,
+      "positiveTestSummaries": 1,
+      "zeroSelectedSummaries": 0,
+      "allIgnoredSummaries": 0,
+      "namedIgnoredObservations": 0,
+      "zeroIsNotBehaviorProof": true
+    },
+    "capture-tests": {
+      "passed": 2038,
+      "failed": 0,
+      "ignored": 34,
+      "resultSummaries": 153,
+      "positiveTestSummaries": 142,
+      "zeroSelectedSummaries": 2,
+      "allIgnoredSummaries": 9,
+      "namedIgnoredObservations": 34,
+      "zeroIsNotBehaviorProof": true
+    },
+    "opening-ring-tests": {
+      "passed": 6,
+      "failed": 0,
+      "ignored": 0,
+      "resultSummaries": 1,
+      "positiveTestSummaries": 1,
+      "zeroSelectedSummaries": 0,
+      "allIgnoredSummaries": 0,
+      "namedIgnoredObservations": 0,
+      "zeroIsNotBehaviorProof": true
+    },
+    "opening-diagnostic-tests": {
+      "passed": 5,
+      "failed": 0,
+      "ignored": 0,
+      "resultSummaries": 1,
+      "positiveTestSummaries": 1,
+      "zeroSelectedSummaries": 0,
+      "allIgnoredSummaries": 0,
+      "namedIgnoredObservations": 0,
+      "zeroIsNotBehaviorProof": true
+    },
+    "triangulation-tests": {
+      "passed": 68,
+      "failed": 0,
+      "ignored": 3,
+      "resultSummaries": 1,
+      "positiveTestSummaries": 1,
+      "zeroSelectedSummaries": 0,
+      "allIgnoredSummaries": 0,
+      "namedIgnoredObservations": 3,
+      "zeroIsNotBehaviorProof": true
+    },
+    "manifold-tests": {
+      "passed": 2034,
+      "failed": 0,
+      "ignored": 35,
+      "resultSummaries": 153,
+      "positiveTestSummaries": 142,
+      "zeroSelectedSummaries": 1,
+      "allIgnoredSummaries": 10,
+      "namedIgnoredObservations": 35,
+      "zeroIsNotBehaviorProof": true
+    },
+    "topology-tests": {
+      "passed": 2033,
+      "failed": 0,
+      "ignored": 34,
+      "resultSummaries": 153,
+      "positiveTestSummaries": 143,
+      "zeroSelectedSummaries": 1,
+      "allIgnoredSummaries": 9,
+      "namedIgnoredObservations": 34,
+      "zeroIsNotBehaviorProof": true
+    },
+    "combined-gates-tests": {
+      "passed": 2035,
+      "failed": 0,
+      "ignored": 35,
+      "resultSummaries": 153,
+      "positiveTestSummaries": 143,
+      "zeroSelectedSummaries": 0,
+      "allIgnoredSummaries": 10,
+      "namedIgnoredObservations": 35,
+      "zeroIsNotBehaviorProof": true
+    }
+  },
+  "rustClippyCommandsPassed": [
+    "parquet-clippy",
+    "manifold-clippy",
+    "geometry-all-features-clippy",
+    "opening-diagnostic-clippy",
+    "topology-clippy",
+    "combined-gates-clippy"
+  ],
+  "runnableCensus": "68 actual runnable tests; actual census separately passed68/0/3",
+  "wheel": {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl",
+    "sha256": "9aedf47d9f0294e52474c289e375d3949437f751784f257615d9e1de9d810bae",
+    "size": 3868749,
+    "source": "12157693a84d9495fafd14a0ade6a5939bf3e0b8"
+  },
+  "wheelPytest": {
+    "tests": 49,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "parityUnits": {
+    "testsRun": 35,
+    "failures": 0,
+    "skipped": 0,
+    "rawLog": "logs/parity-unit-tests.log"
+  },
+  "committedReferenceComparisons": {
+    "bath_csg_solid": {
+      "allowlisted": [],
+      "counts": {
+        "MATCH": 1
+      },
+      "elements": [
+        {
+          "advisory": [],
+          "class": "MATCH",
+          "express_id": 225,
+          "failing": [],
+          "ifc_type": "IfcSanitaryTerminal"
+        }
+      ],
+      "failures": [],
+      "fixture": "bath_csg_solid.ifc"
+    },
+    "issue_1155_halfspace_flyaway": {
+      "allowlisted": [],
+      "counts": {
+        "MATCH": 1,
+        "advisory": 1
+      },
+      "elements": [
+        {
+          "advisory": [
+            "tri_count",
+            "volume-one-sided"
+          ],
+          "class": "MATCH",
+          "express_id": 113218,
+          "failing": [],
+          "ifc_type": "IfcColumn"
+        }
+      ],
+      "failures": [],
+      "fixture": "issue_1155_halfspace_flyaway.ifc"
+    },
+    "swept_disk_composite_arc_crankbar": {
+      "allowlisted": [],
+      "counts": {
+        "MATCH": 1
+      },
+      "elements": [
+        {
+          "advisory": [],
+          "class": "MATCH",
+          "express_id": 79,
+          "failing": [],
+          "ifc_type": "IfcReinforcingBar"
+        }
+      ],
+      "failures": [],
+      "fixture": "swept_disk_composite_arc_crankbar.ifc"
+    },
+    "swept_disk_trimmed_line": {
+      "allowlisted": [],
+      "counts": {
+        "MATCH": 1
+      },
+      "elements": [
+        {
+          "advisory": [],
+          "class": "MATCH",
+          "express_id": 50,
+          "failing": [],
+          "ifc_type": "IfcReinforcingBar"
+        }
+      ],
+      "failures": [],
+      "fixture": "swept_disk_trimmed_line.ifc"
+    }
+  },
+  "engine": {
+    "version": "0.9.0.post1",
+    "numpy": "2.0.2",
+    "shapely": "2.0.7",
+    "pytest": "9.1.1",
+    "sourceRequirementsNote": "ifcopenshell intentionally unversioned in frozen file; this records actual binary-only resolution, not an original pinned-version/hash lock",
+    "frozenRequirementsSha256": "201e4a61a0260c223e8efa830c8d35f530862f2b7ee185989b08a34d821269a5",
+    "resolvedHashLockSha256": "6e9f5efee0f1cc6cdf100d9073aaa2272fd4d1d12cb3b7c6926e54acfd07eb57",
+    "resolutionReportSha256": "7956a74c88aeb1be1f17f8f8721fbe13d1b3bf32427c9e77a8c3bb5524717fa0",
+    "binaryProvenance": [
+      {
+        "url": "https://files.pythonhosted.org/packages/39/68/e9f1126d757653496dbc096cb429014347a36b228f5a991dae2c6b6cfd40/numpy-2.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+        "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/wheelhouse/numpy-2.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+        "sha256": "0123ffdaa88fa4ab64835dcbde75dcdf89c453c922f18dced6e27c90d1d0ec5a",
+        "size": 19236173,
+        "version": "2.0.2",
+        "package": "numpy"
+      },
+      {
+        "url": "https://files.pythonhosted.org/packages/62/de/8dbd7df60eb23cb983bb698aac982944b3d602ef0ce877a940c269eae34e/shapely-2.0.7-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+        "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/wheelhouse/shapely-2.0.7-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+        "sha256": "a9469f49ff873ef566864cb3516091881f217b5d231c8164f7883990eec88b73",
+        "size": 2525741,
+        "version": "2.0.7",
+        "package": "shapely"
+      },
+      {
+        "url": "https://files.pythonhosted.org/packages/24/25/1de2678b631f5a49215c6c96fff41ba892b0a34df68d6d80292b1b48aa7f/pytest-9.1.1-py3-none-any.whl",
+        "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/wheelhouse/pytest-9.1.1-py3-none-any.whl",
+        "sha256": "37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c",
+        "size": 386536,
+        "version": "9.1.1",
+        "package": "pytest"
+      },
+      {
+        "url": "https://files.pythonhosted.org/packages/2d/fb/db3a8a84905d455e4da0cbbe1e79044662a84d308341fc3d23fa72b324ce/ifcopenshell-0.9.0.post1-py312-none-manylinux_2_31_x86_64.whl",
+        "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/wheelhouse/ifcopenshell-0.9.0.post1-py312-none-manylinux_2_31_x86_64.whl",
+        "sha256": "39fb69217fca787264ada575e10b46b2c038c96f85810bc5275b6b505fa91f7e",
+        "size": 54947812,
+        "version": "0.9.0.post1",
+        "package": "ifcopenshell"
+      },
+      {
+        "url": "https://files.pythonhosted.org/packages/56/43/4ca9e49d27a1fcf6bece6f6aec0ea46bb9112489b93d4b688fb415457bdb/iniconfig-2.3.1-py3-none-any.whl",
+        "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/wheelhouse/iniconfig-2.3.1-py3-none-any.whl",
+        "sha256": "9121e2c1fdb355232495be3194c8dfe87ccc2d5dee45947b78e68f499790d7a7",
+        "size": 7552,
+        "version": "2.3.1",
+        "package": "iniconfig"
+      },
+      {
+        "url": "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl",
+        "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/wheelhouse/packaging-26.3-py3-none-any.whl",
+        "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
+        "size": 129956,
+        "version": "26.3",
+        "package": "packaging"
+      },
+      {
+        "url": "https://files.pythonhosted.org/packages/40/9e/2b38731e0fc536806f16490e1a12d7f0dc2a1235aa8cc07bcc75416a7daa/pluggy-1.7.0-py3-none-any.whl",
+        "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/wheelhouse/pluggy-1.7.0-py3-none-any.whl",
+        "sha256": "7dd7b0d8832ba3cb632c306926ded123429211b83641b35dc5c41ad2d34f9bec",
+        "size": 27082,
+        "version": "1.7.0",
+        "package": "pluggy"
+      },
+      {
+        "url": "https://files.pythonhosted.org/packages/71/46/17f022dd3e953bf20a04a028a21ec746d942f8d2af30fa0f124fa0e6a684/pygments-2.21.0-py3-none-any.whl",
+        "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/wheelhouse/pygments-2.21.0-py3-none-any.whl",
+        "sha256": "2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9",
+        "size": 1250147,
+        "version": "2.21.0",
+        "package": "Pygments"
+      },
+      {
+        "url": "https://files.pythonhosted.org/packages/15/aa/0aca39a37d3c7eb941ba736ede56d689e7be91cab5d9ca846bde3999eba6/isodate-0.7.2-py3-none-any.whl",
+        "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/wheelhouse/isodate-0.7.2-py3-none-any.whl",
+        "sha256": "28009937d8031054830160fce6d409ed342816b543597cece116d966c6d99e15",
+        "size": 22320,
+        "version": "0.7.2",
+        "package": "isodate"
+      },
+      {
+        "url": "https://files.pythonhosted.org/packages/82/3d/14ce75ef66813643812f3093ab17e46d3a206942ce7376d31ec2d36229e7/lark-1.3.1-py3-none-any.whl",
+        "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/wheelhouse/lark-1.3.1-py3-none-any.whl",
+        "sha256": "c629b661023a014c37da873b4ff58a817398d12635d3bbb2c5a03be7fe5d1e12",
+        "size": 113151,
+        "version": "1.3.1",
+        "package": "lark"
+      },
+      {
+        "url": "https://files.pythonhosted.org/packages/38/bb/d215ee7c73b61497b28a5503f9f53523f294fcc936762b7caf90e0c1c2b5/pyparsing-3.3.3-py3-none-any.whl",
+        "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/wheelhouse/pyparsing-3.3.3-py3-none-any.whl",
+        "sha256": "ece8c00a69cf01b45d0b1dedabb469c90d8caf996d4fda40f147627a122849a4",
+        "size": 126420,
+        "version": "3.3.3",
+        "package": "pyparsing"
+      },
+      {
+        "url": "https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
+        "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/wheelhouse/python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
+        "sha256": "a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427",
+        "size": 229892,
+        "version": "2.9.0.post0",
+        "package": "python-dateutil"
+      },
+      {
+        "url": "https://files.pythonhosted.org/packages/49/d3/b8441a820a491ddfc024b0b0cf0393375b75ea13866d9c66727e54c2fc80/typing_extensions-4.16.0-py3-none-any.whl",
+        "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/wheelhouse/typing_extensions-4.16.0-py3-none-any.whl",
+        "sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8",
+        "size": 45571,
+        "version": "4.16.0",
+        "package": "typing_extensions"
+      },
+      {
+        "url": "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl",
+        "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/wheelhouse/six-1.17.0-py2.py3-none-any.whl",
+        "sha256": "4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274",
+        "size": 11050,
+        "version": "1.17.0",
+        "package": "six"
+      }
+    ]
+  },
+  "guards": {
+    "beforeAfterEqual": {
+      "source": true,
+      "fixtures": true,
+      "toolBytes": true,
+      "protected": true,
+      "python": true,
+      "pytestSeed": true
+    },
+    "fixtures": 182,
+    "pythonRuntimeEntries": 5382,
+    "stageGuards": 46,
+    "minimumFreeBytes": 416922587136,
+    "minimumFreeInodes": 115412936,
+    "protectedManifests": [
+      {
+        "manifest": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-artifacts-stage5-v1/result-manifest.json",
+        "sha256": "5dc92b2b635bfc724b429d3015fc33def156cc7b6255da3be3d209a05cc9b993",
+        "files": 81
+      },
+      {
+        "manifest": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-stage6-v1/result-manifest.json",
+        "sha256": "2c2bfe3b732ff7eee2bf896550b3fce65593bfc1e806b16b1d65568723c7a6fc",
+        "files": 17
+      },
+      {
+        "manifest": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-stage6-v1/after-cool-result-manifest.json",
+        "sha256": "90e4518b90f8136e1322c1a7eeb85bf75fb2bdedaba9d2a1ae6162362ca975de",
+        "files": 58
+      }
+    ],
+    "finallyErrors": []
+  },
+  "warnings": {},
+  "failedRemainingGroup": {
+    "name": "13 previously skipped export schema-conformance tests",
+    "testsCollected": 0,
+    "status": "UNRUN; Corepack pnpm cache/network refusal before Turbo",
+    "launcherAttribution": "schema-launcher-failure-attribution.json",
+    "retry": false
+  },
+  "remainingScopeLimits": [
+    "Original six IR/seven browser TOTAL failures/native zero-noise INCONCLUSIVE and historical native compiler/linker byte-history UNKNOWN remain binding. No profiling/timing/performance acceptance.",
+    "Named Rust ignored cases are not passed; zero-selected/all-ignored binaries establish no behavior. Existing optional Convento, heavy-vertex and real-WebGPU skips remain separate.",
+    "This source wheel is a local Pop x86_64 / Python3.12.14 correctness artifact; Python3.9, manylinux-container matrix, arm64/other-platform parity are not established.",
+    "Current-main/corrected lower publication mapping, integration, performance, C4 later phases and all publication/merge/closure remain parent-owned. No lower61 proof repeated."
+  ],
+  "canonicalStateWritten": false,
+  "driverSha256": "ab5f760f99e9aa3b0011eb6c5bf1eddd2225e27b15cebb82074a3f1e02931808",
+  "receiptSha256": "cf36def222b75a3ceac778750b4f6f125a19d6f29e389cb253f6afdc128b9b57",
+  "terminalReceiptSha256": "e3c1bbd0b836c1443c778a914832dd59a299bf89e24acae4779ee96d7538c974",
+  "quiescenceSha256": "0ff55ee9a5b15f4322c406f7a168a32d902fb2d2d7db03c9bf9c58b89a655a16"
+}

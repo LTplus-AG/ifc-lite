@@ -1,0 +1,63 @@
+{
+  "classification": "Driver/tool prerequisite failure before Turbo/Vitest collection, not a Rust/engine/schema assertion failure",
+  "failedCommand": {
+    "name": "previously-skipped-export-schema-tests",
+    "argv": [
+      "pnpm",
+      "test",
+      "--only",
+      "--filter=@ifc-lite/export",
+      "--concurrency=1",
+      "--env-mode=loose",
+      "--",
+      "src/ifcopenshell-schema-conformance.test.ts"
+    ],
+    "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+    "environment": {
+      "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "CARGO_NET_OFFLINE": "true",
+      "CARGO_UNSTABLE_BUILD_STD": null,
+      "PYO3_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONNOUSERSITE": "1",
+      "CARGO_BUILD_JOBS": "2",
+      "RAYON_NUM_THREADS": "2",
+      "RUST_TEST_THREADS": "2",
+      "CARGO_PROFILE_DEV_DEBUG": null,
+      "CARGO_PROFILE_TEST_DEBUG": null,
+      "CARGO_INCREMENTAL": null,
+      "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/tmp",
+      "PIP_CACHE_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache/pip",
+      "IFCOPENSHELL_PYTHON": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/venv/bin/python",
+      "NODE_OPTIONS": "--max-old-space-size=6144"
+    },
+    "exitCode": 1,
+    "log": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/logs/previously-skipped-export-schema-tests.log",
+    "logSha256": "361d9a98dcb8b7b55cf07fd717834ebb9f16380c863a85f3ced66e67203cb8d6"
+  },
+  "rawLog": "logs/previously-skipped-export-schema-tests.log",
+  "rawLogText": "! Corepack is about to download https://registry.npmjs.org/pnpm/-/pnpm-10.8.1.tgz\nNetwork access disabled by the environment; can't reach https://registry.npmjs.org/pnpm/-/pnpm-10.8.1.tgz\n",
+  "workerStartupPnpmVersion": {
+    "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/pnpm",
+    "exitCode": 0,
+    "version": "10.8.1"
+  },
+  "driverCacheSetting": {
+    "XDG_CACHE_HOME": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/cache",
+    "COREPACK_ENABLE_NETWORK": "0",
+    "COREPACK_HOME": "Not explicitly assigned by driver; inherited value not captured. No exact inherited-value claim."
+  },
+  "staticCorepackEvidence": {
+    "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/lib/node_modules/corepack/dist/lib/corepack.cjs",
+    "sha256": "abd6f0e7b4e2af310243e202fd908ea64cda545786222f0a3d3f62426e8ad66e",
+    "cacheSelectionFirstLine": 13017,
+    "cacheSelectionSource": "function getCorepackHomeFolder() {\n  return import_process.default.env.COREPACK_HOME ?? (0, import_path.join)(\n    import_process.default.env.XDG_CACHE_HOME ?? import_process.default.env.LOCALAPPDATA ?? (0, import_path.join)((0, import_os.homedir)(), import_process.default.platform === `win32` ? `AppData/Local` : `.cache`),\n    `node/corepack`\n  );\n}\nfunction getInstallFolder() {",
+    "networkRefusalLocations": [
+      13066,
+      13142
+    ]
+  },
+  "boundedAttribution": "The worker startup pnpm --version succeeded, but the later workload shim could not find its selected local pnpm10.8.1 installation. Driver cache isolation sets XDG_CACHE_HOME; Corepack falls back to XDG_CACHE_HOME/node/corepack absent explicit COREPACK_HOME. The raw request/refusal proves the selected tool cache was unavailable; the precise inherited COREPACK_HOME was not recorded. No source or fixture failure is evidenced.",
+  "missingPrerequisite": "Authenticated offline pnpm10.8.1 runtime/cache made available to the isolated command environment; then ONLY the already-unrun 13-case root Turbo export schema filter remains in this finite allocation.",
+  "noRecoveryPerformed": true
+}

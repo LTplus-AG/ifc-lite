@@ -1,0 +1,39 @@
+{
+  "observedAt": "2026-10-18T16:12:54.392155+00:00",
+  "prep5952": "5952f62dadaad032d575703f17265a15abd4569d",
+  "successorLower61": "61f9cb64803b37270fcc0603d97f5f47808212bf",
+  "lower61Parents": [
+    "5952f62dadaad032d575703f17265a15abd4569d",
+    "b907d6065cbe73d46c8b017b705c92f743346836"
+  ],
+  "C4CorrectedR2": "d3e281e1a234f8bca23cd59fb8ddf85926264a2f",
+  "C4AlreadyDescendsFromCorrected5952Via61": true,
+  "equalSelectedCorrectionBlobs": {
+    "rust/geometry/src/router/config.rs": "81364d98423d836af7d34eda541e52cf8b177791",
+    "rust/geometry/src/representation/walk.rs": "b72204d6fb861ba66ed29d643a839bb68226595e",
+    "rust/geometry/src/router/mapped_sink.rs": "538b7fa985c5723dcc842bde60c2c9964df8dba2",
+    "rust/processing/tests/issue_7781_profile_mesh_depth.rs": "6d4e5d5361ba182b1e50ff7fad5f2256a5672d54"
+  },
+  "allChanges5952To61": " .changeset/export-every-property-kind.md           |   5 +\n .changeset/step-refs-skip-comments.md              |   5 +\n .changeset/step-slot-one-grammar.md                |   6 +\n docs/api/python.md                                 |   9 +-\n docs/api/rust.md                                   |  12 +\n docs/guide/exporting.md                            |  14 +-\n packages/cli/src/commands/step-args.test.ts        |  23 ++\n packages/cli/src/commands/step-args.ts             |  43 ++-\n packages/export/src/reference-collector.ts         |   7 +\n .../export/src/schema-converter-attr-remap.test.ts |   4 +-\n packages/export/src/step-argument-parser.test.ts   |  10 +-\n packages/export/src/step-argument-parser.ts        |  23 +-\n packages/export/src/step-refs-comment.test.ts      |  26 ++\n packages/export/src/step-serialization.test.ts     |  24 ++\n packages/export/src/step-serialization.ts          |   7 +-\n packages/export/src/step-slot-grammar.ts           | 357 +++++++++---------\n .../export/src/step-slot-vectors.parity.test.ts    |  67 ++++\n rust/core/src/lib.rs                               |   2 +-\n rust/core/src/parser/mod.rs                        |   4 +-\n rust/core/src/parser/slots.rs                      | 198 ++++++++++\n rust/core/src/parser/slots_tests.rs                |  64 ++++\n rust/core/src/parser/tokenizer.rs                  |   2 +-\n rust/core/src/slot.rs                              |   2 +-\n rust/core/src/step_encoding.rs                     |  14 +\n rust/core/src/step_encoding_tests.rs               |  13 +\n rust/core/tests/fixtures/step_slot_vectors.json    |  91 +++++\n rust/export/examples/merge_ifc.rs                  |  30 +-\n rust/export/src/landxml_terrain_georef.rs          |  22 +-\n rust/export/src/merged/empty.rs                    |  19 +-\n rust/export/src/merged/guid.rs                     |  16 +-\n rust/export/src/merged/guid_tests.rs               |  18 +\n rust/export/src/merged/line_edit.rs                |  59 +--\n rust/export/src/merged/line_edit_tests.rs          |  17 +\n rust/export/src/merged/plan.rs                     |  19 +-\n rust/export/src/merged/plan_tests.rs               |  12 +-\n rust/export/src/merged/single_parents.rs           |   2 +-\n rust/export/src/merged/spatial.rs                  |  71 +---\n rust/export/src/rooted_type.rs                     |   6 +-\n rust/export/src/step_log/attrs.rs                  |  56 +--\n rust/export/src/step_log/attrs_tests.rs            |  28 ++\n rust/export/src/step_log/extract.rs                | 115 ++----\n rust/export/src/step_log/lines.rs                  | 144 +-------\n rust/export/src/step_log/readers.rs                |   9 +-\n rust/export/src/step_log/readers_tests.rs          |  12 +\n rust/export/src/step_log/refilter.rs               |  61 ++-\n rust/export/src/step_slot.rs                       | 410 +++------------------\n rust/export/src/step_slot_tests.rs                 |  64 +++-\n rust/export/src/step_text.rs                       | 112 +++---\n rust/export/tests/c6_data_model_pins.rs            |   4 +-\n rust/export/tests/golden/csv.json                  |   8 +-\n rust/export/tests/golden/export-model.json         |  12 +-\n rust/export/tests/golden/json.json                 |   4 +-\n rust/export/tests/golden/jsonld.json               |   4 +-\n rust/export/tests/golden/parquet-bos.json          |   4 +-\n rust/export/tests/golden/usd.json                  |   4 +-\n rust/geometry/src/alignment_sampling.rs            |  12 +-\n rust/geometry/src/router/brep_signatures_tests.rs  |  34 +-\n rust/geometry/src/router/content_hash.rs           | 105 +++---\n rust/geometry/src/router/content_hash_tests.rs     |  24 ++\n rust/geometry/tests/alignment_sampling_bytes.rs    |  19 +\n rust/processing/src/data_model/property.rs         |  12 +-\n rust/processing/src/data_model/render/flat.rs      |  21 +-\n .../processing/src/data_model/render/flat_tests.rs |  21 +-\n rust/processing/src/prepass.rs                     |   5 +-\n rust/processing/src/processor/mod.rs               |   6 +-\n rust/processing/src/processor/properties.rs        |   8 +-\n rust/processing/src/processor/quick_collector.rs   |  49 +--\n rust/processing/src/processor/quick_metadata.rs    |  98 +++--\n .../src/processor/quick_metadata_tests.rs          |  52 ++-\n rust/processing/src/processor/scan.rs              |  14 +-\n rust/processing/src/style/fill.rs                  |   5 +-\n rust/processing/tests/annotation_fills_4406.rs     |  14 +\n .../tests/issue_1910_shard_class_ci_coverage.rs    |  19 +-\n .../tests/issue_2053_shard_scan_parity.rs          |  21 +-\n .../processing/tests/positional_read_allowlist.txt |   3 +-\n rust/python/README.md                              |   9 +-\n rust/python/ifclite_geom.pyi                       |  10 +-\n rust/python/src/entity_data.rs                     |  15 +-\n rust/python/tests/golden/entity-data.json          |  16 +-\n .../src/api/gpu_meshes/prepass_discovery.rs        |  25 +-\n .../src/api/gpu_meshes/prepass_discovery_tests.rs  |  21 ++\n scripts/rust-api-surface.json                      |   1 +\n 82 files changed, 1644 insertions(+), 1369 deletions(-)\n",
+  "retainedTop337Receipt": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c2-published-stack-takeover/current-top337-terminal-receipt.json",
+  "retainedTop337ReceiptSha256": "6dbbcfbcf82b6f91e4a7f352e47f0955b6e203e0d74da34f0af5cbdc203e5e10",
+  "limits": "Source-chain+retained exact lower61 native workspace/clippy proof. Does not relabel5952 runtime qualification, waive original C2/C4 performance bands, accept current-main/public mapping or imply all consumers. C4alreadydescends corrected5952 via exact61; do not recreate that source chain or rerun retained passed lower61 gates merely to insert5952.",
+  "retainedTop337ActualTerminal": {
+    "id": "b722e23f-c1cc-4cae-987e-f636a0510f86",
+    "state": "completed",
+    "exitCode": 0,
+    "sourceUnchanged": true,
+    "finishedAt": 1792281595.0491588
+  },
+  "retainedTop337PreflightAlsoReferences": "PC5952 job28796b82-f344-49c6-97c1-69525869a9df asserted completed0 in preserved top337 command; exact historical5952 receipt/commands not yet independently collected here, no5952runtimeacceptance upgrade",
+  "retainedExactLower61Receipt": {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c2-published-stack-takeover/current-lower61-terminal-receipt.json",
+    "sha256": "9396cc1af9cdccb39d9da351f2fa41a846fb11664ee444f117f31070bc99beb5",
+    "worker": "5cfe484f-f663-45f1-bb06-71ffcb0aab34",
+    "state": "completed",
+    "exitCode": 0,
+    "sourceUnchanged": true,
+    "exactSourceAfter": "61f9cb64803b37270fcc0603d97f5f47808212bf",
+    "commands": "cargo test --workspace and exact cargo clippy --workspace --all-targets -- -D warnings; full original command retained"
+  }
+}

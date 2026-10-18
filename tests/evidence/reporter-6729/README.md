@@ -141,3 +141,7 @@ acceptance. This uses the same isolated browser and private source servers.
 This isolates the renderer's ordering mechanism. It is not an authentic
 nut/bolt or plate topology check, selection acceptance, continuous viewer-motion
 test, native-GPU verdict or claim that the reporter's exact model is repaired.
+
+The implementation, final coverage and explicit acceptance limits are recorded
+in [orthographic-fix.md](./orthographic-fix.md). The synthetic command also
+executes the real textured fragment with cutout and partial-index witnesses.

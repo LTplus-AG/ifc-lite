@@ -1,0 +1,74 @@
+{
+  "observedAt": "2026-10-18T152702Z",
+  "scopedRuntime": {
+    "taskId": "node:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Athread-send%3Ac4-source-runtime-checks-actual-cooldown-missing-only-20261018-v11",
+    "state": "completed",
+    "reason": "Actual15:10UTC package58C and no managed ordinaryjobs, allpreviousrefusals terminal",
+    "scope": "Completed scoped runtime groups all3; final r4 selected root Turbo typecheck and tests completed with explicit skips",
+    "exitCodes": [
+      0,
+      0,
+      0
+    ],
+    "jobs": [
+      {
+        "label": "r2",
+        "id": "602e566b-f5b5-4b0a-a1dd-152ef49c4eee",
+        "originalSession": 19489,
+        "state": "completed",
+        "exitCode": 0,
+        "sourceUnchanged": true,
+        "ownedQuiescent": true
+      },
+      {
+        "label": "r3",
+        "id": "a40bb344-cdfc-4f86-9ea6-155d8cc6be2f",
+        "originalSession": 18336,
+        "state": "completed",
+        "exitCode": 0,
+        "sourceUnchanged": true,
+        "ownedQuiescent": true
+      },
+      {
+        "label": "r4",
+        "id": "4ef392b9-98d8-4993-bf11-254e2bc4b1cd",
+        "originalSession": 84374,
+        "state": "completed",
+        "exitCode": 0,
+        "sourceUnchanged": true,
+        "ownedQuiescent": true
+      }
+    ],
+    "index": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-stage6-v1/after-cool-result-index.json",
+    "manifestSha256": "90e4518b90f8136e1322c1a7eeb85bf75fb2bdedaba9d2a1ae6162362ca975de",
+    "manifestFilesVerified": 58,
+    "eachPrefix": {
+      "wasmContractPassed": 212,
+      "wasmContractSkipped": 1,
+      "snapPassed": 7,
+      "fourFixtureIdentity": true,
+      "wasm32ManifestPassed": 1,
+      "CPUOneWorkerSmokePassed": true
+    },
+    "r4": {
+      "rootTurboTypecheckTasks": 15,
+      "testFilesTypechecked": 738,
+      "testsPassed": 8781,
+      "testsFailed": 0,
+      "testsSkipped": 16
+    },
+    "namedSkips": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-stage6-v1/after-cool-named-skips.json"
+  },
+  "nextMissingConsumerAllocation": {
+    "taskId": "node:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Athread-send%3Ac4-final-r4-missing-feature-python-parity-consumers-only-20261018-v12",
+    "state": "started",
+    "scope": "Missing actual CI feature/excludedPyO3/freshwheel/pytest/committedrefs and13 previouslyskipped schema cases with genuine pinnedengine; no passeddefault/TS/WASM/native qualification repetition"
+  },
+  "evidence": {
+    "rust-review/handoff/successor-reconciliation/evidence/c4-runtime-2026-10-18T152702Z/after-cool-delta-handoff.json": "2c3fa4918fc47928b2cd4c332964f03a99b8a1de11765d202f3df63867c6253f",
+    "rust-review/handoff/successor-reconciliation/evidence/c4-runtime-2026-10-18T152702Z/after-cool-result-index.json": "f8da1e307ae9e15ada598cb89068ff41cbb6254e5087ae16e0f90278abfa5cec",
+    "rust-review/handoff/successor-reconciliation/evidence/c4-runtime-2026-10-18T152702Z/after-cool-result-manifest.json": "90e4518b90f8136e1322c1a7eeb85bf75fb2bdedaba9d2a1ae6162362ca975de",
+    "rust-review/handoff/successor-reconciliation/evidence/c4-runtime-2026-10-18T152702Z/after-cool-named-skips.json": "9927d608fb017d831b297687e2bce6b497ea0c25e1e0e1943c7b9baeeb2a17b1"
+  },
+  "acceptance": "No performance/current-main/publication/aggregate acceptance; exact named skips and original failed data preserved"
+}

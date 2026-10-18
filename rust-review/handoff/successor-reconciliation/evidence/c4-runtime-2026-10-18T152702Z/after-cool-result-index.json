@@ -1,0 +1,675 @@
+{
+  "scope": "Corrected r2/r3/r4 missing untimed correctness groups, one after-cool ordinary attempt each; no performance or publication acceptance",
+  "createdAt": 1792337053.2882824,
+  "driverSha256": "ec78c37564d652126040ada86847fb5b1aca57bbbea5b3e427444be91f278a8b",
+  "browserSmokeSha256": "b4815ae1d7dba0fad94119d976279412aeebdf021a2e7f28dae83b4c144edd50",
+  "prefixes": {
+    "r2": {
+      "pin": "d3e281e1a234f8bca23cd59fb8ddf85926264a2f",
+      "source": {
+        "head": "d3e281e1a234f8bca23cd59fb8ddf85926264a2f",
+        "tree": "676d937b8b03f65f1aa2ab23f43e49f015ebe9bf",
+        "status": ""
+      },
+      "jobId": "602e566b-f5b5-4b0a-a1dd-152ef49c4eee",
+      "originalSession": 19489,
+      "workerExitCode": 0,
+      "sourceUnchanged": true,
+      "quiescent": true,
+      "cpu": 2,
+      "memoryGiB": 8,
+      "queueSeconds": 0.3580305576324463,
+      "commands": [
+        {
+          "name": "official-wasm-contract",
+          "argv": [
+            "pnpm",
+            "test:wasm-contract"
+          ],
+          "exitCode": 0,
+          "logSha256": "a532bceea0c6aa7975ffadc0720d4caf64c616f74286a722af4d1f89409f140d",
+          "counts": {
+            "passed": 212,
+            "failed": 0,
+            "skipped": 1
+          },
+          "namedSkips": [
+            "\u23ed\ufe0f  SKIP matched historical fingerprint fallback"
+          ]
+        },
+        {
+          "name": "official-snap-edges",
+          "argv": [
+            "pnpm",
+            "test:snap-edges"
+          ],
+          "exitCode": 0,
+          "logSha256": "9e3cb79fb244f036c785e74d3551377851f6310bb7fa94d40b40d64c11ada049",
+          "checksPassed": 7,
+          "observations": [
+            "ok hello-wall.ifc: 8 meshes, 144 reconstructed edges, 0 split runs within any single MeshData piece",
+            "ok building-architecture.ifc: 14 meshes, 938 reconstructed edges, 0 split runs within any single MeshData piece",
+            "ok infra-bridge.ifc: 78 meshes, 10289 reconstructed edges, 0 split runs within any single MeshData piece",
+            "ok slab #52: the x=5.6 line carries only its two 0.2000 m notch creases",
+            "ok slab #52: a cursor on either notch crease snaps to that crease",
+            "ok slab #52: the cache is invariant under triangle emission order",
+            "ok infra-bridge #723: the 3.617 degree deck crease is a 3.500 m snap edge"
+          ]
+        },
+        {
+          "name": "preserved-four-fixture-corpus",
+          "argv": [
+            "node",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-tools/wasm-corpus.mjs",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r2",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-stage6-v1/r2/corpus.json"
+          ],
+          "exitCode": 0,
+          "logSha256": "b548c3f618b8f2b5de8c2529c7197eb72edb21a0777b58ddd6c0696f2209b27c"
+        },
+        {
+          "name": "compare-preserved-corpus",
+          "argv": [
+            "python3",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-tools/compare-wasm-corpus.py",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/runtime-base/corpus0.json",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-stage6-v1/r2/corpus.json"
+          ],
+          "exitCode": 0,
+          "logSha256": "e3301b31637267af3b5e130353cfa6d9e44958fedb852d233915848000be8f61"
+        },
+        {
+          "name": "official-wasm32-manifest",
+          "argv": [
+            "wasm-pack",
+            "test",
+            "--node",
+            "rust/wasm-bindings",
+            "--test",
+            "mesh_determinism"
+          ],
+          "exitCode": 0,
+          "logSha256": "9ddf443a574197f4671c0f884b40b6a9e90c61cd8b20e186ac1cf36276c53e29",
+          "testsPassed": 1
+        },
+        {
+          "name": "browser-import-worker-smoke",
+          "argv": [
+            "node",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-stage6-v1/browser-import-smoke.mjs",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r2",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-artifacts-stage5-v1/r2/browser",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-artifacts-stage5-v1/r2/ifc-lite_bg.wasm",
+            "/home/louistrue/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-stage6-v1/r2/browser-smoke.json"
+          ],
+          "exitCode": 0,
+          "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "runtimeSha256": "017a71d67ba37fe7378aefc3614b183ac3df23800e25b0a5be68f3ed43672a78",
+      "fixturesBeforeAfter": {
+        "count": 182,
+        "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3"
+      },
+      "perStageGuardCount": 6,
+      "minimumFreeBytes": 654841176064,
+      "minimumFreeInodes": 115659064,
+      "fullFixtureToolSourceSealedGuardsPassed": true,
+      "corpusComparison": {
+        "base_receipt_sha256": "1ad7e4ed784e2fa7c2eee2b9027595159fc540aeeceec1be35e89c6c8a71f5ef",
+        "branch_receipt_sha256": "e3e5a01cb073a609bbdc8377b2faa27afcee6e5285d60888e7a09ea80c36b335",
+        "base_runtime": "cb15170c3177f6016df72572653d096a8def0100f08d71407760358992ec2ffa",
+        "branch_runtime": "017a71d67ba37fe7378aefc3614b183ac3df23800e25b0a5be68f3ed43672a78",
+        "fixtures": 4,
+        "identity": true,
+        "differences": [],
+        "normalization": "diagnostic phaseMs/facetedBrepMs timers and pointCacheHits/Misses only; raw receipts preserved. Map keys sorted; array/event/mesh order retained. Typed-array payloads SHA256 over raw bytes."
+      },
+      "corpusFixtures": [
+        "tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "tests/models/ara3d/duplex.ifc",
+        "tests/models/ara3d/IfcOpenHouse_IFC4.ifc"
+      ],
+      "browserScope": "CPU module/COOP+COEP/import + one production worker init/ready; no models/timing/memory/pool/GPU verdict",
+      "browserWarnings": [
+        {
+          "type": "warning",
+          "text": "using deprecated parameters for the initialization function; pass a single object instead"
+        }
+      ],
+      "playwrightBeforeAfterEqual": true,
+      "playwrightCensusFiles": 232,
+      "receipt": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-stage6-v1/r2/receipt.json",
+      "receiptSha256": "1e203aba7930aeb2b81ddca9083caad5dcedd149fe7488c640ad407ce0457453",
+      "workerTerminalSha256": "fd03c7058d2aee9a725cf201e0fcc37f57ecbca34937dd169594eccb52a5bf20",
+      "quiescenceSha256": "063c8d6e4a1a367feae7bf24e6981fabe46c8ed40f3df1c0a65145e49ac39898",
+      "environmentWitness": "r2-after-cool-actual-test-environment.json"
+    },
+    "r3": {
+      "pin": "c7cf41e902c20a99a828e952151e981f3cc2d048",
+      "source": {
+        "head": "c7cf41e902c20a99a828e952151e981f3cc2d048",
+        "tree": "672ea8c55c8ae5426a1d1b833981f56489bae290",
+        "status": ""
+      },
+      "jobId": "a40bb344-cdfc-4f86-9ea6-155d8cc6be2f",
+      "originalSession": 18336,
+      "workerExitCode": 0,
+      "sourceUnchanged": true,
+      "quiescent": true,
+      "cpu": 2,
+      "memoryGiB": 8,
+      "queueSeconds": 0.3501472473144531,
+      "commands": [
+        {
+          "name": "official-wasm-contract",
+          "argv": [
+            "pnpm",
+            "test:wasm-contract"
+          ],
+          "exitCode": 0,
+          "logSha256": "6b79e51e7fc6a648eed68852227b2a51f2fc1cd8cf1aa0391a462c67fb9fe8d0",
+          "counts": {
+            "passed": 212,
+            "failed": 0,
+            "skipped": 1
+          },
+          "namedSkips": [
+            "\u23ed\ufe0f  SKIP matched historical fingerprint fallback"
+          ]
+        },
+        {
+          "name": "official-snap-edges",
+          "argv": [
+            "pnpm",
+            "test:snap-edges"
+          ],
+          "exitCode": 0,
+          "logSha256": "dbe6b9b19fee18c85007368bbaae0fa7da8892f18bbc14759650acdb301679c3",
+          "checksPassed": 7,
+          "observations": [
+            "ok hello-wall.ifc: 8 meshes, 144 reconstructed edges, 0 split runs within any single MeshData piece",
+            "ok building-architecture.ifc: 14 meshes, 938 reconstructed edges, 0 split runs within any single MeshData piece",
+            "ok infra-bridge.ifc: 78 meshes, 10289 reconstructed edges, 0 split runs within any single MeshData piece",
+            "ok slab #52: the x=5.6 line carries only its two 0.2000 m notch creases",
+            "ok slab #52: a cursor on either notch crease snaps to that crease",
+            "ok slab #52: the cache is invariant under triangle emission order",
+            "ok infra-bridge #723: the 3.617 degree deck crease is a 3.500 m snap edge"
+          ]
+        },
+        {
+          "name": "preserved-four-fixture-corpus",
+          "argv": [
+            "node",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-tools/wasm-corpus.mjs",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r3",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-stage6-v1/r3/corpus.json"
+          ],
+          "exitCode": 0,
+          "logSha256": "b548c3f618b8f2b5de8c2529c7197eb72edb21a0777b58ddd6c0696f2209b27c"
+        },
+        {
+          "name": "compare-preserved-corpus",
+          "argv": [
+            "python3",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-tools/compare-wasm-corpus.py",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/runtime-base/corpus0.json",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-stage6-v1/r3/corpus.json"
+          ],
+          "exitCode": 0,
+          "logSha256": "dcc0e7e840206f5ef91c9110b084b81a8fdb5b49d12f5f210436d3b18ef8b613"
+        },
+        {
+          "name": "official-wasm32-manifest",
+          "argv": [
+            "wasm-pack",
+            "test",
+            "--node",
+            "rust/wasm-bindings",
+            "--test",
+            "mesh_determinism"
+          ],
+          "exitCode": 0,
+          "logSha256": "a1d2e36f327cf03bd94a79cbbb8bef96924327cf675f7973dd9a97b80a31deb9",
+          "testsPassed": 1
+        },
+        {
+          "name": "browser-import-worker-smoke",
+          "argv": [
+            "node",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-stage6-v1/browser-import-smoke.mjs",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r3",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-artifacts-stage5-v1/r3/browser",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-artifacts-stage5-v1/r3/ifc-lite_bg.wasm",
+            "/home/louistrue/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-stage6-v1/r3/browser-smoke.json"
+          ],
+          "exitCode": 0,
+          "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "runtimeSha256": "76945a7cb65c3ea46c37be5f075e710558e9688adad1b3da7fbeaa096a1c11fb",
+      "fixturesBeforeAfter": {
+        "count": 182,
+        "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3"
+      },
+      "perStageGuardCount": 6,
+      "minimumFreeBytes": 654840782848,
+      "minimumFreeInodes": 115659061,
+      "fullFixtureToolSourceSealedGuardsPassed": true,
+      "corpusComparison": {
+        "base_receipt_sha256": "1ad7e4ed784e2fa7c2eee2b9027595159fc540aeeceec1be35e89c6c8a71f5ef",
+        "branch_receipt_sha256": "5c57122da8c8f7d35c5f270368b1704ae932624e9eb39b6435473ef5907f5a72",
+        "base_runtime": "cb15170c3177f6016df72572653d096a8def0100f08d71407760358992ec2ffa",
+        "branch_runtime": "76945a7cb65c3ea46c37be5f075e710558e9688adad1b3da7fbeaa096a1c11fb",
+        "fixtures": 4,
+        "identity": true,
+        "differences": [],
+        "normalization": "diagnostic phaseMs/facetedBrepMs timers and pointCacheHits/Misses only; raw receipts preserved. Map keys sorted; array/event/mesh order retained. Typed-array payloads SHA256 over raw bytes."
+      },
+      "corpusFixtures": [
+        "tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "tests/models/ara3d/duplex.ifc",
+        "tests/models/ara3d/IfcOpenHouse_IFC4.ifc"
+      ],
+      "browserScope": "CPU module/COOP+COEP/import + one production worker init/ready; no models/timing/memory/pool/GPU verdict",
+      "browserWarnings": [
+        {
+          "type": "warning",
+          "text": "using deprecated parameters for the initialization function; pass a single object instead"
+        }
+      ],
+      "playwrightBeforeAfterEqual": true,
+      "playwrightCensusFiles": 232,
+      "receipt": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-stage6-v1/r3/receipt.json",
+      "receiptSha256": "9bfaeab38c45b77e2350420be3e9f52362927695f834ca159b401aee2e53f946",
+      "workerTerminalSha256": "3e9f4d5405c6204451b8ebf0a35e320f0e67161b0393acbec18ae1464c64199c",
+      "quiescenceSha256": "4dca855a760dec358bacf20f76b916372cecbea356cb4ebb6b8c21f2e774fef7",
+      "environmentWitness": "r3-after-cool-actual-test-environment.json"
+    },
+    "r4": {
+      "pin": "12157693a84d9495fafd14a0ade6a5939bf3e0b8",
+      "source": {
+        "head": "12157693a84d9495fafd14a0ade6a5939bf3e0b8",
+        "tree": "4c512c747f2aa6f364200f2415a609c1ce425248",
+        "status": ""
+      },
+      "jobId": "4ef392b9-98d8-4993-bf11-254e2bc4b1cd",
+      "originalSession": 84374,
+      "workerExitCode": 0,
+      "sourceUnchanged": true,
+      "quiescent": true,
+      "cpu": 2,
+      "memoryGiB": 8,
+      "queueSeconds": 0.33680129051208496,
+      "commands": [
+        {
+          "name": "official-wasm-contract",
+          "argv": [
+            "pnpm",
+            "test:wasm-contract"
+          ],
+          "exitCode": 0,
+          "logSha256": "c5b7829983b5c02d19d3edf0ad49957b84ceba349dd44351ea1ae844e6ef4e6e",
+          "counts": {
+            "passed": 212,
+            "failed": 0,
+            "skipped": 1
+          },
+          "namedSkips": [
+            "\u23ed\ufe0f  SKIP matched historical fingerprint fallback"
+          ]
+        },
+        {
+          "name": "official-snap-edges",
+          "argv": [
+            "pnpm",
+            "test:snap-edges"
+          ],
+          "exitCode": 0,
+          "logSha256": "645cefe8e679875a9f9bfeb0535783a19fb454111fd6373b12a5f9e5eed3948e",
+          "checksPassed": 7,
+          "observations": [
+            "ok hello-wall.ifc: 8 meshes, 144 reconstructed edges, 0 split runs within any single MeshData piece",
+            "ok building-architecture.ifc: 14 meshes, 938 reconstructed edges, 0 split runs within any single MeshData piece",
+            "ok infra-bridge.ifc: 78 meshes, 10289 reconstructed edges, 0 split runs within any single MeshData piece",
+            "ok slab #52: the x=5.6 line carries only its two 0.2000 m notch creases",
+            "ok slab #52: a cursor on either notch crease snaps to that crease",
+            "ok slab #52: the cache is invariant under triangle emission order",
+            "ok infra-bridge #723: the 3.617 degree deck crease is a 3.500 m snap edge"
+          ]
+        },
+        {
+          "name": "preserved-four-fixture-corpus",
+          "argv": [
+            "node",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-tools/wasm-corpus.mjs",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-stage6-v1/r4/corpus.json"
+          ],
+          "exitCode": 0,
+          "logSha256": "b548c3f618b8f2b5de8c2529c7197eb72edb21a0777b58ddd6c0696f2209b27c"
+        },
+        {
+          "name": "compare-preserved-corpus",
+          "argv": [
+            "python3",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-tools/compare-wasm-corpus.py",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/runtime-base/corpus0.json",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-stage6-v1/r4/corpus.json"
+          ],
+          "exitCode": 0,
+          "logSha256": "1be9b36417a49ae80e7b1b158ca7347ee5591a43146e99b2d2f3ca0d98d1e86f"
+        },
+        {
+          "name": "official-wasm32-manifest",
+          "argv": [
+            "wasm-pack",
+            "test",
+            "--node",
+            "rust/wasm-bindings",
+            "--test",
+            "mesh_determinism"
+          ],
+          "exitCode": 0,
+          "logSha256": "39a88acc292d3a086f0acc9b647759f25b175cd96d114cb423351ce12c5579b1",
+          "testsPassed": 1
+        },
+        {
+          "name": "browser-import-worker-smoke",
+          "argv": [
+            "node",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-stage6-v1/browser-import-smoke.mjs",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-artifacts-stage5-v1/r4/browser",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/corrected-artifacts-stage5-v1/r4/ifc-lite_bg.wasm",
+            "/home/louistrue/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome",
+            "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-stage6-v1/r4/browser-smoke.json"
+          ],
+          "exitCode": 0,
+          "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "root-turbo-typecheck-including-tests",
+          "argv": [
+            "pnpm",
+            "exec",
+            "turbo",
+            "typecheck",
+            "--only",
+            "--concurrency=1",
+            "--filter=@ifc-lite/geometry...",
+            "--filter=@ifc-lite/renderer...",
+            "--filter=@ifc-lite/export..."
+          ],
+          "exitCode": 0,
+          "logSha256": "5cb275e2518c5aa39bae1729f36ed212c4ef86bd60eda5918d265d7c8c15eb1e"
+        },
+        {
+          "name": "root-turbo-tests",
+          "argv": [
+            "pnpm",
+            "test",
+            "--only",
+            "--concurrency=1",
+            "--filter=@ifc-lite/geometry...",
+            "--filter=@ifc-lite/renderer...",
+            "--filter=@ifc-lite/export..."
+          ],
+          "exitCode": 0,
+          "logSha256": "f392731a9f0dd8d404038c832f79b51798e683cd733380fa6e8e9539ed4bbeb9"
+        }
+      ],
+      "runtimeSha256": "4d3243322dc2019a72180f31b282447c27caf9022ff54b873e00eb63f1f8a10d",
+      "fixturesBeforeAfter": {
+        "count": 182,
+        "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3"
+      },
+      "perStageGuardCount": 8,
+      "minimumFreeBytes": 652694548480,
+      "minimumFreeInodes": 115643305,
+      "fullFixtureToolSourceSealedGuardsPassed": true,
+      "corpusComparison": {
+        "base_receipt_sha256": "1ad7e4ed784e2fa7c2eee2b9027595159fc540aeeceec1be35e89c6c8a71f5ef",
+        "branch_receipt_sha256": "b3dab7bf80bb342555174144ef4866826a278286695a4f1c8097ba7477f12e14",
+        "base_runtime": "cb15170c3177f6016df72572653d096a8def0100f08d71407760358992ec2ffa",
+        "branch_runtime": "4d3243322dc2019a72180f31b282447c27caf9022ff54b873e00eb63f1f8a10d",
+        "fixtures": 4,
+        "identity": true,
+        "differences": [],
+        "normalization": "diagnostic phaseMs/facetedBrepMs timers and pointCacheHits/Misses only; raw receipts preserved. Map keys sorted; array/event/mesh order retained. Typed-array payloads SHA256 over raw bytes."
+      },
+      "corpusFixtures": [
+        "tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "tests/models/ara3d/duplex.ifc",
+        "tests/models/ara3d/IfcOpenHouse_IFC4.ifc"
+      ],
+      "browserScope": "CPU module/COOP+COEP/import + one production worker init/ready; no models/timing/memory/pool/GPU verdict",
+      "browserWarnings": [
+        {
+          "type": "warning",
+          "text": "using deprecated parameters for the initialization function; pass a single object instead"
+        }
+      ],
+      "playwrightBeforeAfterEqual": true,
+      "playwrightCensusFiles": 232,
+      "receipt": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-stage6-v1/r4/receipt.json",
+      "receiptSha256": "041a465f9fb01d85043311367b82a368d0af2fc041bee7ea278f18dfd81bac4e",
+      "workerTerminalSha256": "cfb5b47e6d4e333d7da86b652edc189cf212a1b1ca0e4a59dd5708d4e8508cc4",
+      "quiescenceSha256": "d101d0a4a5f830d7375ca9dc1139ec0bb9a0d56593b33802f4c74e51966638f6",
+      "environmentWitness": "r4-after-cool-actual-test-environment.json"
+    }
+  },
+  "protectedPreservation": "after-cool-protected-preservation.json",
+  "rootTurboFinalR4": {
+    "typecheck": {
+      "tasksPassed": 15,
+      "testFilesTypechecked": 738,
+      "programs": [
+        {
+          "package": "packages/pointcloud",
+          "testFiles": 30
+        },
+        {
+          "package": "packages/parser",
+          "testFiles": 175
+        },
+        {
+          "package": "packages/load-trace",
+          "testFiles": 6
+        },
+        {
+          "package": "packages/encoding",
+          "testFiles": 9
+        },
+        {
+          "package": "packages/codegen",
+          "testFiles": 13
+        },
+        {
+          "package": "packages/timing-ladder",
+          "testFiles": 1
+        },
+        {
+          "package": "packages/regex-guard",
+          "testFiles": 2
+        },
+        {
+          "package": "packages/mutations",
+          "testFiles": 23
+        },
+        {
+          "package": "packages/wasm-lifecycle",
+          "testFiles": 2
+        },
+        {
+          "package": "packages/data",
+          "testFiles": 35
+        },
+        {
+          "package": "packages/export",
+          "testFiles": 156
+        },
+        {
+          "package": "packages/renderer",
+          "testFiles": 179
+        },
+        {
+          "package": "packages/spatial",
+          "testFiles": 5
+        },
+        {
+          "package": "packages/geometry",
+          "testFiles": 79
+        },
+        {
+          "package": "packages/ifcx",
+          "testFiles": 23
+        }
+      ],
+      "scope": "Selected geometry/renderer/export transitive dependency graph via root Turbo --only; production plus test sources. Root typecheck:tail and unrelated graphs not executed."
+    },
+    "tests": {
+      "tasksPassed": 16,
+      "packages": {
+        "@ifc-lite/pointcloud": {
+          "runner": "vitest",
+          "passed": 343,
+          "failed": 0,
+          "skipped": 0,
+          "summary": "343 passed (343)"
+        },
+        "@ifc-lite/codegen": {
+          "runner": "vitest",
+          "passed": 185,
+          "failed": 0,
+          "skipped": 0,
+          "summary": "185 passed (185)"
+        },
+        "@ifc-lite/data": {
+          "runner": "vitest",
+          "passed": 445,
+          "failed": 0,
+          "skipped": 0,
+          "summary": "445 passed (445)"
+        },
+        "@ifc-lite/regex-guard": {
+          "runner": "vitest",
+          "passed": 12,
+          "failed": 0,
+          "skipped": 0,
+          "summary": "12 passed (12)"
+        },
+        "@ifc-lite/wasm-lifecycle": {
+          "runner": "vitest",
+          "passed": 23,
+          "failed": 0,
+          "skipped": 0,
+          "summary": "23 passed (23)"
+        },
+        "@ifc-lite/mutations": {
+          "runner": "vitest",
+          "passed": 370,
+          "failed": 0,
+          "skipped": 0,
+          "summary": "370 passed (370)"
+        },
+        "@ifc-lite/export": {
+          "runner": "vitest",
+          "passed": 1985,
+          "failed": 0,
+          "skipped": 14,
+          "summary": "1985 passed | 14 skipped (1999)"
+        },
+        "@ifc-lite/timing-ladder": {
+          "runner": "vitest",
+          "passed": 6,
+          "failed": 0,
+          "skipped": 0,
+          "summary": "6 passed (6)"
+        },
+        "@ifc-lite/encoding": {
+          "runner": "vitest",
+          "passed": 132,
+          "failed": 0,
+          "skipped": 0,
+          "summary": "132 passed (132)"
+        },
+        "@ifc-lite/geometry": {
+          "runner": "vitest",
+          "passed": 648,
+          "failed": 0,
+          "skipped": 0,
+          "summary": "648 passed (648)"
+        },
+        "@ifc-lite/parser": {
+          "runner": "vitest",
+          "passed": 2127,
+          "failed": 0,
+          "skipped": 0,
+          "summary": "2127 passed (2127)"
+        },
+        "@ifc-lite/load-trace": {
+          "runner": "vitest",
+          "passed": 32,
+          "failed": 0,
+          "skipped": 0,
+          "summary": "32 passed (32)"
+        },
+        "@ifc-lite/spatial": {
+          "runner": "vitest",
+          "passed": 70,
+          "failed": 0,
+          "skipped": 0,
+          "summary": "70 passed (70)"
+        },
+        "@ifc-lite/wasm": {
+          "runner": "node:test",
+          "tests": 21,
+          "passed": 21,
+          "failed": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        "@ifc-lite/ifcx": {
+          "runner": "node:test",
+          "tests": 213,
+          "passed": 213,
+          "failed": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        "@ifc-lite/renderer": {
+          "runner": "node:test",
+          "tests": 2171,
+          "passed": 2169,
+          "failed": 0,
+          "cancelled": 0,
+          "skipped": 2,
+          "todo": 0
+        }
+      },
+      "totalCounts": {
+        "passed": 8781,
+        "failed": 0,
+        "skipped": 16
+      },
+      "cachedTasks": 0
+    },
+    "sharedTypeScriptInputIdentity": "shared-typescript-input-identity.json",
+    "runtimeProjection": "No r4 runtime test result projected to r2/r3; each ran its own six runtime stages."
+  },
+  "remainingGaps": [
+    "Historical six IR failures and seven browser TOTAL failures, native zero/noise INCONCLUSIVE remain binding; no corrected-source performance cohort or acceptance run in this allocation.",
+    "Full historical native compiler/linker byte closure for unchanged lower producers remains UNKNOWN; version/fingerprint correspondence alone does not waive it.",
+    "13 IfcOpenShell schema-conformance export tests, optional Convento appearance-corpus test, renderer >2^24-vertex heavy test, and real-WebGPU packed-origin test were skipped; no pass claim.",
+    "Root global typecheck:tail/unrelated consumer graphs, final Python/feature/parity/arm decisions and current-main/corrected lower integration/publication remain separate parent-owned scope.",
+    "CPU browser smoke covers import/isolation plus one real production-worker init/ready only; no models, four-worker pool, timing/memory, GPU or full viewer acceptance."
+  ]
+}

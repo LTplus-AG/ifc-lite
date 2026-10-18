@@ -1,0 +1,42 @@
+{
+  "wasmContractEachPrefix": [
+    "matched historical fingerprint fallback"
+  ],
+  "rootTurboFinalR4": {
+    "exportSchemaConformance": {
+      "file": "packages/export/src/ifcopenshell-schema-conformance.test.ts",
+      "sourceSha256": "799e39a8a48b1ebd15ce3fcab2dc7bafce63ff9be6de8bf5580a6259db22c6ff",
+      "count": 13,
+      "namesFromExactSkippedSuiteSource": [
+        "validates the ORIGINAL fixtures as a control (a non-conformant input must not masquerade as a writer defect)",
+        "validates the full-fidelity StepExporter re-export of both fixtures",
+        "validates an IFC2X3 MergedExporter output that unifies a nested object (#5726)",
+        "validates an IFC2X3 MergedExporter output that unifies a property set by GlobalId (#5774)",
+        "validates a IFC2X3 MergedExporter output where later models repeat a wall's containment and a property set's definer (#5923, #5774)",
+        "validates a IFC4 MergedExporter output where later models repeat a wall's containment and a property set's definer (#5923, #5774)",
+        "validates the ORIGINAL IFC4X3 fixtures as a control",
+        "validates IFC4 fixtures converted to IFC4X3, declared as IFC4X3_ADD2",
+        "control: the same converted bytes declared as bare IFC4X3 fail, so the identifier is what makes the difference",
+        "validates the MergedExporter output of the two converted fixtures, as IFC4 and IFC4X3 (#5471)",
+        "validates a dropEmptyContainers merge that unifies an IfcBridge by GlobalId alone (#5937)",
+        "validates the round-trip re-export of IFC4X3_ADD2 fixtures",
+        "writes the (\\'\\') default, and the re-export validates with 0 issues"
+      ],
+      "observedRuntimeReason": "ifcopenshell not importable via python3; actual log retained; no install performed"
+    },
+    "exportAppearance": {
+      "file": "packages/export/src/appearance-dependencies.test.ts",
+      "sourceSha256": "10ca84b57d01333f89fa8c1dd730cd314b6e038639a9fbae5b9e546bc6b4df95",
+      "count": 1,
+      "name": "accepts actual Convento wall dependencies within the byte budget (#4243; pnpm fixtures)",
+      "condition": "!IFCLITE_APPEARANCE_CORPUS_IFC or that supplied path does not exist; ordinary environment did not supply the optional corpus"
+    },
+    "renderer": {
+      "count": 2,
+      "namedRuntimeObservations": [
+        "@ifc-lite/renderer:test:   \ufe63 memoizes past 2^24 vertices without throwing RangeError (0.12296ms) # set IFC_LITE_HEAVY_TESTS=1 (allocates ~340MB)",
+        "@ifc-lite/renderer:test:   \ufe63 executes packed origins through WGSL and reads the relative position back on WebGPU (0.059461ms) # requires a real WebGPU adapter; Node test environment has none"
+      ]
+    }
+  }
+}

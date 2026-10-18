@@ -1,0 +1,38 @@
+{
+  "canonicalStateWrite": false,
+  "scope": "Parent merges only this bounded completed correctness delta",
+  "resultIndex": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-stage6-v1/after-cool-result-index.json",
+  "resultIndexSha256": "f8da1e307ae9e15ada598cb89068ff41cbb6254e5087ae16e0f90278abfa5cec",
+  "jobs": [
+    {
+      "label": "r2",
+      "id": "602e566b-f5b5-4b0a-a1dd-152ef49c4eee",
+      "originalSession": 19489,
+      "state": "completed",
+      "exitCode": 0,
+      "sourceUnchanged": true,
+      "ownedQuiescent": true
+    },
+    {
+      "label": "r3",
+      "id": "a40bb344-cdfc-4f86-9ea6-155d8cc6be2f",
+      "originalSession": 18336,
+      "state": "completed",
+      "exitCode": 0,
+      "sourceUnchanged": true,
+      "ownedQuiescent": true
+    },
+    {
+      "label": "r4",
+      "id": "4ef392b9-98d8-4993-bf11-254e2bc4b1cd",
+      "originalSession": 84374,
+      "state": "completed",
+      "exitCode": 0,
+      "sourceUnchanged": true,
+      "ownedQuiescent": true
+    }
+  ],
+  "stage6MissingGroups": "Completed scoped runtime groups all3; final r4 selected root Turbo typecheck and tests completed with explicit skips",
+  "noPerformanceAcceptance": true,
+  "priorFailuresUnchanged": true
+}

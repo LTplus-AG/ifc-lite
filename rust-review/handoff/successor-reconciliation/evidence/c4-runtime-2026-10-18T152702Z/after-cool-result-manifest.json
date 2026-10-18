@@ -1,0 +1,295 @@
+{
+  "scope": "New actual after-cool runtime correctness results/raws/guards/terminals only; protected original manifest retained separately",
+  "files": [
+    {
+      "path": "AFTER-COOL-RESULT.md",
+      "size": 4375,
+      "sha256": "2e9a4b4848ba98fb7d7208bdd741462e7ea3c2bb520a0e118b0302133ee7bf3d"
+    },
+    {
+      "path": "after-cool-delta-handoff.json",
+      "size": 1279,
+      "sha256": "2c3fa4918fc47928b2cd4c332964f03a99b8a1de11765d202f3df63867c6253f"
+    },
+    {
+      "path": "after-cool-named-skips.json",
+      "size": 2718,
+      "sha256": "9927d608fb017d831b297687e2bce6b497ea0c25e1e0e1943c7b9baeeb2a17b1"
+    },
+    {
+      "path": "after-cool-protected-preservation.json",
+      "size": 665,
+      "sha256": "f3a10f89ab6b7df47808a21a0e0810bb32b352dd42288bf9ba4dc78c3eefa236"
+    },
+    {
+      "path": "after-cool-result-index.json",
+      "size": 28959,
+      "sha256": "f8da1e307ae9e15ada598cb89068ff41cbb6254e5087ae16e0f90278abfa5cec"
+    },
+    {
+      "path": "r2/browser-import-worker-smoke.log",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "r2/browser-smoke.json",
+      "size": 2045,
+      "sha256": "1dadba898b8d1b3808aaba6950fe5304c3d98f44306065b5559709f01ee5a115"
+    },
+    {
+      "path": "r2/compare-preserved-corpus.log",
+      "size": 635,
+      "sha256": "e3301b31637267af3b5e130353cfa6d9e44958fedb852d233915848000be8f61"
+    },
+    {
+      "path": "r2/corpus.json",
+      "size": 5846194,
+      "sha256": "e3e5a01cb073a609bbdc8377b2faa27afcee6e5285d60888e7a09ea80c36b335"
+    },
+    {
+      "path": "r2/official-snap-edges.log",
+      "size": 1243,
+      "sha256": "9e3cb79fb244f036c785e74d3551377851f6310bb7fa94d40b40d64c11ada049"
+    },
+    {
+      "path": "r2/official-wasm-contract.log",
+      "size": 71529,
+      "sha256": "a532bceea0c6aa7975ffadc0720d4caf64c616f74286a722af4d1f89409f140d"
+    },
+    {
+      "path": "r2/official-wasm32-manifest.log",
+      "size": 5179,
+      "sha256": "9ddf443a574197f4671c0f884b40b6a9e90c61cd8b20e186ac1cf36276c53e29"
+    },
+    {
+      "path": "r2/playwright-runtime-after.json",
+      "size": 154093,
+      "sha256": "4b0ef3bf82754b184f363d4f48f1b245b320840d955744a5522e8755fdce8289"
+    },
+    {
+      "path": "r2/playwright-runtime-before.json",
+      "size": 154093,
+      "sha256": "4b0ef3bf82754b184f363d4f48f1b245b320840d955744a5522e8755fdce8289"
+    },
+    {
+      "path": "r2/preserved-four-fixture-corpus.log",
+      "size": 4034,
+      "sha256": "b548c3f618b8f2b5de8c2529c7197eb72edb21a0777b58ddd6c0696f2209b27c"
+    },
+    {
+      "path": "r2/receipt.json",
+      "size": 47431,
+      "sha256": "1e203aba7930aeb2b81ddca9083caad5dcedd149fe7488c640ad407ce0457453"
+    },
+    {
+      "path": "r2-after-cool-actual-test-environment.json",
+      "size": 12072,
+      "sha256": "12d5f9349964d2e6e1fd3c699c2ba9a09b7a4be66b063d2492daa4db78a8b667"
+    },
+    {
+      "path": "r2-after-cool-controller.log",
+      "size": 805,
+      "sha256": "42feb791ca4ade700551e56a7eabf006b5ddb08b2dd43eaa80244269d2087f22"
+    },
+    {
+      "path": "r2-after-cool-launch.json",
+      "size": 726,
+      "sha256": "dcbc34b3bfdce526acb4d80d31a35dac35e3638e386008259231f9f8c54a73c3"
+    },
+    {
+      "path": "r2-after-cool-owned-processes.json",
+      "size": 1129,
+      "sha256": "7571e69003a863618924b452148ad844f68a798202a94ed857076239a4d4905a"
+    },
+    {
+      "path": "r2-after-cool-quiescence.json",
+      "size": 1239,
+      "sha256": "063c8d6e4a1a367feae7bf24e6981fabe46c8ed40f3df1c0a65145e49ac39898"
+    },
+    {
+      "path": "r2-after-cool-worker-terminal.json",
+      "size": 4230,
+      "sha256": "fd03c7058d2aee9a725cf201e0fcc37f57ecbca34937dd169594eccb52a5bf20"
+    },
+    {
+      "path": "r3/browser-import-worker-smoke.log",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "r3/browser-smoke.json",
+      "size": 2045,
+      "sha256": "c6591eef6ed2e3db43af7c2f1d5c92055088706b89a008643dcc1939f715f734"
+    },
+    {
+      "path": "r3/compare-preserved-corpus.log",
+      "size": 635,
+      "sha256": "dcc0e7e840206f5ef91c9110b084b81a8fdb5b49d12f5f210436d3b18ef8b613"
+    },
+    {
+      "path": "r3/corpus.json",
+      "size": 5846194,
+      "sha256": "5c57122da8c8f7d35c5f270368b1704ae932624e9eb39b6435473ef5907f5a72"
+    },
+    {
+      "path": "r3/official-snap-edges.log",
+      "size": 1243,
+      "sha256": "dbe6b9b19fee18c85007368bbaae0fa7da8892f18bbc14759650acdb301679c3"
+    },
+    {
+      "path": "r3/official-wasm-contract.log",
+      "size": 71529,
+      "sha256": "6b79e51e7fc6a648eed68852227b2a51f2fc1cd8cf1aa0391a462c67fb9fe8d0"
+    },
+    {
+      "path": "r3/official-wasm32-manifest.log",
+      "size": 5231,
+      "sha256": "a1d2e36f327cf03bd94a79cbbb8bef96924327cf675f7973dd9a97b80a31deb9"
+    },
+    {
+      "path": "r3/playwright-runtime-after.json",
+      "size": 154093,
+      "sha256": "36028f9e74cbc9616e0a44b392546d8ecf652ec6aaa0c656e31863f4910764cf"
+    },
+    {
+      "path": "r3/playwright-runtime-before.json",
+      "size": 154093,
+      "sha256": "36028f9e74cbc9616e0a44b392546d8ecf652ec6aaa0c656e31863f4910764cf"
+    },
+    {
+      "path": "r3/preserved-four-fixture-corpus.log",
+      "size": 4034,
+      "sha256": "b548c3f618b8f2b5de8c2529c7197eb72edb21a0777b58ddd6c0696f2209b27c"
+    },
+    {
+      "path": "r3/receipt.json",
+      "size": 47431,
+      "sha256": "9bfaeab38c45b77e2350420be3e9f52362927695f834ca159b401aee2e53f946"
+    },
+    {
+      "path": "r3-after-cool-actual-test-environment.json",
+      "size": 12071,
+      "sha256": "7616b14716514d651ddc122e8b6e57b131335a6b915c3fe88a7fb1b64ebc78ea"
+    },
+    {
+      "path": "r3-after-cool-controller.log",
+      "size": 805,
+      "sha256": "5a86703f9874ffe40c84332b912f5a732ff7c7e28c4a9191d3bdcbadb5f0e161"
+    },
+    {
+      "path": "r3-after-cool-launch.json",
+      "size": 726,
+      "sha256": "41c11bb5d03f0d67392508f84484a8fba8dd908bfaaf5e88cee99e1b18b2d85c"
+    },
+    {
+      "path": "r3-after-cool-owned-processes.json",
+      "size": 1129,
+      "sha256": "f6c4bebc304ab1cf20102b5a604f71339c7d2b9c5ad085014c953a9e4d14b22b"
+    },
+    {
+      "path": "r3-after-cool-quiescence.json",
+      "size": 1240,
+      "sha256": "4dca855a760dec358bacf20f76b916372cecbea356cb4ebb6b8c21f2e774fef7"
+    },
+    {
+      "path": "r3-after-cool-worker-terminal.json",
+      "size": 4231,
+      "sha256": "3e9f4d5405c6204451b8ebf0a35e320f0e67161b0393acbec18ae1464c64199c"
+    },
+    {
+      "path": "r4/browser-import-worker-smoke.log",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "r4/browser-smoke.json",
+      "size": 2045,
+      "sha256": "07dc75b4845012de9acf7f82094a00bbf137b97de1f38877e12e58ec7ef58bf4"
+    },
+    {
+      "path": "r4/compare-preserved-corpus.log",
+      "size": 635,
+      "sha256": "1be9b36417a49ae80e7b1b158ca7347ee5591a43146e99b2d2f3ca0d98d1e86f"
+    },
+    {
+      "path": "r4/corpus.json",
+      "size": 5846192,
+      "sha256": "b3dab7bf80bb342555174144ef4866826a278286695a4f1c8097ba7477f12e14"
+    },
+    {
+      "path": "r4/official-snap-edges.log",
+      "size": 1243,
+      "sha256": "645cefe8e679875a9f9bfeb0535783a19fb454111fd6373b12a5f9e5eed3948e"
+    },
+    {
+      "path": "r4/official-wasm-contract.log",
+      "size": 71529,
+      "sha256": "c5b7829983b5c02d19d3edf0ad49957b84ceba349dd44351ea1ae844e6ef4e6e"
+    },
+    {
+      "path": "r4/official-wasm32-manifest.log",
+      "size": 5179,
+      "sha256": "39a88acc292d3a086f0acc9b647759f25b175cd96d114cb423351ce12c5579b1"
+    },
+    {
+      "path": "r4/playwright-runtime-after.json",
+      "size": 154093,
+      "sha256": "6bd9907d0b6a5168cfd62a09f12a119ec9f653684cbce87f609cf9b5e7c11586"
+    },
+    {
+      "path": "r4/playwright-runtime-before.json",
+      "size": 154093,
+      "sha256": "6bd9907d0b6a5168cfd62a09f12a119ec9f653684cbce87f609cf9b5e7c11586"
+    },
+    {
+      "path": "r4/preserved-four-fixture-corpus.log",
+      "size": 4034,
+      "sha256": "b548c3f618b8f2b5de8c2529c7197eb72edb21a0777b58ddd6c0696f2209b27c"
+    },
+    {
+      "path": "r4/receipt.json",
+      "size": 56651,
+      "sha256": "041a465f9fb01d85043311367b82a368d0af2fc041bee7ea278f18dfd81bac4e"
+    },
+    {
+      "path": "r4/root-turbo-tests.log",
+      "size": 1781786,
+      "sha256": "f392731a9f0dd8d404038c832f79b51798e683cd733380fa6e8e9539ed4bbeb9"
+    },
+    {
+      "path": "r4/root-turbo-typecheck-including-tests.log",
+      "size": 8157,
+      "sha256": "5cb275e2518c5aa39bae1729f36ed212c4ef86bd60eda5918d265d7c8c15eb1e"
+    },
+    {
+      "path": "r4-after-cool-actual-test-environment.json",
+      "size": 8201,
+      "sha256": "138f3c27d19be86fae7299f0e80cf12240a6b3d74a95f165063de3becc63112e"
+    },
+    {
+      "path": "r4-after-cool-controller.log",
+      "size": 949,
+      "sha256": "5bfe11d4cba15d4447901573a5515643a4849c77165e8d24447b5f5c1e816d8e"
+    },
+    {
+      "path": "r4-after-cool-launch.json",
+      "size": 726,
+      "sha256": "edb0d66f31df7f7b8d7288271ebd3dffee21b8edaa947a47345f3527d6c24b89"
+    },
+    {
+      "path": "r4-after-cool-owned-processes.json",
+      "size": 1129,
+      "sha256": "a56e7b7c1c26484959a9ffae0daef49ffe8e031d436cd7c345332cb2db413f27"
+    },
+    {
+      "path": "r4-after-cool-quiescence.json",
+      "size": 1139,
+      "sha256": "d101d0a4a5f830d7375ca9dc1139ec0bb9a0d56593b33802f4c74e51966638f6"
+    },
+    {
+      "path": "r4-after-cool-worker-terminal.json",
+      "size": 4232,
+      "sha256": "cfb5b47e6d4e333d7da86b652edc189cf212a1b1ca0e4a59dd5708d4e8508cc4"
+    }
+  ]
+}

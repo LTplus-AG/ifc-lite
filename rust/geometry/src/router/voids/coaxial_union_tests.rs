@@ -240,7 +240,8 @@ fn mixed_depth_bands_slice_into_multiple_prisms() {
     // A through-cut (Y∈[-0.4,0.4]) plus a shallower cutter (Y∈[-0.4,0.0]) sharing
     // a face. Depth-slicing splits the axis at 0.0 → 2 slabs → ≥ 2 prisms, and the
     // shallow cutter is NEVER stretched past its authored Y=0.0.
-    let router = GeometryRouter::new();
+    let execution = crate::program::openings::execute::Execution::new(
+        crate::TessellationQuality::default(), super::super::numerical_configuration());
     let a = box_mesh([-0.6, -0.4, -0.6], [0.6, 0.4, 0.6]);
     let b = box_mesh([-0.6, -0.4, -0.6], [0.6, 0.0, 0.6]);
     let mk = |m: Mesh| super::UnionCand {
@@ -252,7 +253,7 @@ fn mixed_depth_bands_slice_into_multiple_prisms() {
     };
     let cands = vec![mk(a), mk(b)];
     let host = host_wall();
-    let (prisms, multi_slab, contributors, max_removed) = router
+    let (prisms, multi_slab, contributors, max_removed) = execution
         .build_coaxial_prisms(&host, &cands, &[0, 1], &Vector3::new(0.0, 1.0, 0.0))
         .expect("depth-slicing handles mixed bands");
     assert!(

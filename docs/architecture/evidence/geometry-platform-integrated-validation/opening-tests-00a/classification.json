@@ -1,0 +1,18 @@
+{
+  "source": "00a6923bab0c8d8642188e0002dd1a475740af16",
+  "state": "TERMINAL_FAILED_TEST_COMPILATION",
+  "exit_code": 101,
+  "diagnostics": [
+    "E0599 stale GeometryRouter::build_coaxial_prisms test caller",
+    "E0282 two dependent tuple inference errors"
+  ],
+  "runtime_tests_executed": false,
+  "source_unchanged": true,
+  "output_hash_verified": true,
+  "correction": {
+    "path": "rust/geometry/src/router/voids/coaxial_union_tests.rs",
+    "sha256": "6d7fd32b358773d6b2d00372080cbff8b2bf7e7519687439661e1f55bde2ddc5",
+    "behavior": "Same depth-band fixture/assertions now call the actual owned Execution helper. No production numerical change, API restoration, or weakened assertion.",
+    "syntax_only": "pinned rustfmt parse passed; runtime unrun"
+  }
+}

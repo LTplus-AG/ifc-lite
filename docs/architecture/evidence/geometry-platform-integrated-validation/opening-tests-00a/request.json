@@ -1,0 +1,19 @@
+{
+  "id": "auto-cbb0ceeed8024145af93b4fc3330813b",
+  "commit": "00a6923bab0c8d8642188e0002dd1a475740af16",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "/home/louistrue/build-workers/setup/projects-20261017/ifc-lite/env-exec.sh",
+    "bash",
+    "-c",
+    "pnpm fixtures && cargo test --workspace --no-fail-fast"
+  ],
+  "pools": [],
+  "requestedHost": "pop-os"
+}

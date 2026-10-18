@@ -35,11 +35,6 @@ if (!jsonlPath) {
   process.exit(2);
 }
 
-const rows = readFileSync(jsonlPath, 'utf-8')
-  .split('\n')
-  .filter(Boolean)
-  .map((l) => JSON.parse(l));
-
 // Phases to report, in pipeline order. `parseMs` is the gate on
 // time-to-first-geometry; keep it first.
 const PHASES = [
@@ -56,6 +51,77 @@ const PHASES = [
 // matched", never "byte-identical"; a real byte-identity gate is the
 // mesh_determinism manifest, not this harness.
 const FINGERPRINT = ['meshes', 'vertices', 'triangles'];
+const REQUIRED_PHASES = ['parseMs', 'geometryMs', 'totalMs'];
+
+function invalidInput(message) {
+  console.error(`ab-report: invalid comparison input: ${message}`);
+  process.exit(2);
+}
+
+let rows;
+try {
+  rows = readFileSync(jsonlPath, 'utf-8')
+    .split('\n')
+    .filter((line) => line.trim().length > 0)
+    .map((line, index) => {
+      try {
+        return JSON.parse(line);
+      } catch (error) {
+        invalidInput(`line ${index + 1} is not valid JSON (${error.message})`);
+      }
+    });
+} catch (error) {
+  invalidInput(`cannot read runs JSONL (${error.message})`);
+}
+
+if (rows.length === 0) invalidInput('runs JSONL is empty');
+
+const byFixture = new Map();
+for (const [index, row] of rows.entries()) {
+  const line = index + 1;
+  if (!row || typeof row !== 'object' || Array.isArray(row)) {
+    invalidInput(`line ${line} must contain a JSON object`);
+  }
+  if (typeof row.path !== 'string' || row.path.trim().length === 0 || row.path.trim().split(/[\\/]/).pop().length === 0) {
+    invalidInput(`line ${line} is missing a usable fixture path`);
+  }
+  if (row.side !== 'base' && row.side !== 'branch') {
+    invalidInput(`line ${line} has side ${JSON.stringify(row.side)}; input sides must be literal "base" or "branch"`);
+  }
+  for (const field of REQUIRED_PHASES) {
+    if (!Number.isFinite(row[field]) || row[field] < 0) {
+      invalidInput(`line ${line} requires a finite nonnegative ${field}`);
+    }
+  }
+  for (const [field] of PHASES) {
+    if (Object.hasOwn(row, field) && (!Number.isFinite(row[field]) || row[field] < 0)) {
+      invalidInput(`line ${line} has invalid ${field}; present phase values must be finite and nonnegative`);
+    }
+  }
+  for (const field of FINGERPRINT) {
+    if (!Number.isInteger(row[field]) || row[field] < 0) {
+      invalidInput(`line ${line} requires a nonnegative integer ${field} count`);
+    }
+  }
+  if (!byFixture.has(row.path)) byFixture.set(row.path, { base: [], branch: [] });
+  byFixture.get(row.path)[row.side].push(row);
+}
+
+for (const [path, sides] of byFixture) {
+  if (sides.base.length === 0 || sides.branch.length === 0) {
+    invalidInput(`fixture ${path} needs at least one base and one branch sample`);
+  }
+  if (sides.base.length !== sides.branch.length) {
+    invalidInput(`fixture ${path} has unequal paired sample counts (base ${sides.base.length}, branch ${sides.branch.length})`);
+  }
+  const samples = [...sides.base, ...sides.branch];
+  for (const [field] of PHASES) {
+    const supplied = samples.filter((row) => Object.hasOwn(row, field)).length;
+    if (supplied > 0 && supplied !== samples.length) {
+      invalidInput(`fixture ${path} requires ${field} in every base and branch sample once supplied`);
+    }
+  }
+}
 
 const median = (xs) => {
   const s = [...xs].sort((a, b) => a - b);
@@ -72,17 +138,12 @@ const pct = (cur, base) => (base > 0 ? ((cur - base) / base) * 100 : null);
 const fmt = (n) => (n == null ? '—' : n.toFixed(1));
 const sign = (n) => (n == null ? '' : n >= 0 ? '+' : '');
 
-// Group by fixture path, then by side.
-const byFixture = new Map();
-for (const r of rows) {
-  if (!byFixture.has(r.path)) byFixture.set(r.path, { base: [], branch: [] });
-  byFixture.get(r.path)[r.side]?.push(r);
-}
-
 const report = { base: baseLabel, branch: branchLabel, fixtures: [] };
 let anyRealChange = false;
 let anyFingerprintDrift = false;
 let anyTooNoisy = false;
+let anyBelowResolution = false;
+let anyZeroBaselineIncrease = false;
 
 const lines = [];
 lines.push(`\nperf A/B  base=${baseLabel}  branch=${branchLabel}`);
@@ -117,27 +178,37 @@ for (const [path, sides] of byFixture) {
   lines.push(`    ${'phase'.padEnd(14)} ${baseLabel.padStart(9)} ${branchLabel.padStart(9)}   delta    noise`);
 
   for (const [key, label] of PHASES) {
-    const baseVals = sides.base.map((r) => r[key]).filter((x) => typeof x === 'number');
-    const branchVals = sides.branch.map((r) => r[key]).filter((x) => typeof x === 'number');
-    if (!baseVals.length || !branchVals.length) continue;
+    // Coverage validation above permits absence only across this entire fixture.
+    if (!Object.hasOwn(sides.base[0], key)) continue;
+    const baseVals = sides.base.map((r) => r[key]);
+    const branchVals = sides.branch.map((r) => r[key]);
     const bMed = median(baseVals);
     const brMed = median(branchVals);
     const d = pct(brMed, bMed);
-    const noise = spreadPct(baseVals); // machine noise floor for this phase
+    const noise = bMed === 0 ? null : spreadPct(baseVals); // no relative noise floor at zero
+    const belowResolution = bMed === 0 && brMed === 0;
+    const zeroBaselineIncrease = bMed === 0 && brMed > 0;
+    if (belowResolution) anyBelowResolution = true;
+    if (zeroBaselineIncrease) anyZeroBaselineIncrease = true;
     // A change is only "real" if it exceeds the base's own spread AND a small
     // absolute floor (sub-ms phases are all noise).
-    const real = d != null && Math.abs(d) > Math.max(noise, 3) && Math.abs(brMed - bMed) >= 1;
+    const real = d != null && noise != null && Math.abs(d) > Math.max(noise, 3) && Math.abs(brMed - bMed) >= 1;
+    const direction = d == null ? null : d < 0 ? 'faster' : d > 0 ? 'slower' : 'unchanged';
     // TOTAL participates in the verdict too: a regression can be spread across
     // sub-phases that each stay under the per-phase floor while the TOTAL clears
     // it (or land in unaccounted overhead). Excluding TOTAL would let that show
     // ⛔ in the table yet still print "within noise" — a false no-regression.
     if (real) anyRealChange = true;
     if (key === 'totalMs' && noise > 15) anyTooNoisy = true;
-    const tag = real ? (d < 0 ? '  ✅' : '  ⛔') : '  ·';
+    const tag = zeroBaselineIncrease ? '  ⛔ zero baseline'
+      : belowResolution ? '  ? below resolution'
+        : real ? (direction === 'faster' ? '  ✅' : '  ⛔') : '  ·';
+    const noiseLabel = noise == null ? '—' : '±' + noise.toFixed(0) + '%';
+    const deltaLabel = d == null ? '—' : sign(d) + fmt(d) + '%';
     lines.push(
-      `    ${label.padEnd(14)} ${fmt(bMed).padStart(9)} ${fmt(brMed).padStart(9)}  ${(sign(d) + fmt(d) + '%').padStart(7)}  ${('±' + noise.toFixed(0) + '%').padStart(6)}${tag}`
+      `    ${label.padEnd(14)} ${fmt(bMed).padStart(9)} ${fmt(brMed).padStart(9)}  ${deltaLabel.padStart(7)}  ${noiseLabel.padStart(6)}${tag}`
     );
-    fx.phases.push({ phase: label, baseMedianMs: bMed, branchMedianMs: brMed, deltaPct: d, noisePct: noise, real });
+    fx.phases.push({ phase: label, baseMedianMs: bMed, branchMedianMs: brMed, deltaPct: d, noisePct: noise, real, direction });
   }
   report.fixtures.push(fx);
 }
@@ -146,8 +217,12 @@ for (const [path, sides] of byFixture) {
 lines.push('');
 if (anyFingerprintDrift) {
   lines.push('VERDICT: ⚠️  output fingerprint changed — re-pin determinism manifests and state the output change; the timing delta is not like-for-like.');
+} else if (anyZeroBaselineIncrease) {
+  lines.push('VERDICT: ⛔ blocked — a phase increased from a zero baseline; its relative delta and noise floor are undefined. This cannot certify no regression.');
 } else if (anyTooNoisy) {
   lines.push('VERDICT: ⚠️  machine too noisy (base TOTAL spread >15%) — close other load and re-run with more --iters before trusting any delta.');
+} else if (anyBelowResolution) {
+  lines.push('VERDICT: ? inconclusive — a phase is zero on both sides, below timer resolution. This cannot certify no change.');
 } else if (anyRealChange) {
   lines.push('VERDICT: a phase moved beyond the noise floor (✅ faster / ⛔ slower). Output counts matched across all rounds (mesh/vertex/triangle — NOT a byte hash; confirm byte-identity via the mesh_determinism manifest if the change could alter geometry). Cite the ✅/⛔ phases + these numbers in the PR.');
 } else {
@@ -157,7 +232,8 @@ if (anyFingerprintDrift) {
 const out = lines.join('\n');
 console.log(out);
 if (jsonOut) {
-  report.verdict = { fingerprintDrift: anyFingerprintDrift, tooNoisy: anyTooNoisy, realChange: anyRealChange };
+  report.verdict = { fingerprintDrift: anyFingerprintDrift, tooNoisy: anyTooNoisy, realChange: anyRealChange,
+    inconclusive: anyBelowResolution, zeroBaselineIncrease: anyZeroBaselineIncrease };
   writeFileSync(jsonOut, JSON.stringify(report, null, 2));
   console.log(`\n(machine-readable report → ${jsonOut})`);
 }

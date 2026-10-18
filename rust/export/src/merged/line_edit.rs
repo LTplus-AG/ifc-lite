@@ -12,7 +12,9 @@
 
 use std::collections::HashSet;
 
-use ifc_lite_core::step_encoding::step_string_literal_end;
+use ifc_lite_core::parser::{skip_step_trivia, StepRecord};
+use ifc_lite_core::StepListItems;
+use std::ops::Range;
 
 /// Rewrite every `#N` reference in a STEP entity line. `remap(n)` returns
 /// `Some(absolute_id)` to redirect a reference (no offset), or `None` to apply
@@ -68,91 +70,51 @@ pub(super) enum LineDecision {
 /// Collect every `#N` reference in a line's ARGUMENT list, skipping the leading
 /// `#id=` (which is the line's own id, not an outgoing reference).
 pub(super) fn arg_refs(line: &[u8], out: &mut Vec<u32>) {
-    let start = line.iter().position(|&b| b == b'=').map_or(0, |i| i + 1);
-    crate::step_text::refs_in_line(&line[start..], out);
+    // A complete entity record starts with its own #id. Scan from that
+    // boundary so an equals sign inside head trivia cannot cut a comment in
+    // half. Keep collecting references even from an unreadable body: the drop
+    // planner must conservatively block the containers it names.
+    out.extend(crate::step_text::ref_spans(line).skip(1).filter_map(|span| span.id));
 }
 
-/// Byte offsets of the opening and closing parenthesis of the top-level argument
-/// list of `#id=TYPE(…);`, honouring quoted strings and nested parentheses.
-fn arg_span(line: &str) -> Option<(usize, usize)> {
-    let bytes = line.as_bytes();
-    let from = bytes.iter().position(|&b| b == b'=').map_or(0, |i| i + 1);
-    let open = from + bytes[from..].iter().position(|&b| b == b'(')?;
-    let mut depth = 0i32;
-    let mut i = open;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'\'' => {
-                i = step_string_literal_end(bytes, i)?;
-                continue;
-            }
-            b'/' if bytes.get(i + 1) == Some(&b'*') => {
-                i = ifc_lite_core::skip_step_comment(bytes, i)?;
-                continue;
-            }
-            b'(' => depth += 1,
-            b')' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some((open, i));
-                }
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    None
+/// Collect canonical borrowed values only when their enclosing list closes.
+/// The slices retain their source addresses, so writers can edit value bytes
+/// without rebuilding (and losing) the trivia between them. #7891 follow-up.
+fn closed_items<'a>(mut items: StepListItems<'a>) -> Option<Vec<&'a [u8]>> {
+    let values = items.by_ref().collect();
+    items.closed().then_some(values)
 }
 
-/// Split a STEP argument list body into its top-level arguments, as slices of
-/// the input (quotes and nested parentheses aware). `""` yields one empty arg.
-fn split_args(args: &str) -> Vec<&str> {
-    let bytes = args.as_bytes();
-    let mut out = Vec::new();
-    let mut depth = 0i32;
-    let mut start = 0usize;
-    let mut i = 0usize;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'\'' => {
-                i = step_string_literal_end(bytes, i).unwrap_or(bytes.len());
-                continue;
-            }
-            b'/' if bytes.get(i + 1) == Some(&b'*') => {
-                i = ifc_lite_core::skip_step_comment(bytes, i).unwrap_or(bytes.len());
-                continue;
-            }
-            b'(' => depth += 1,
-            b')' => depth = (depth - 1).max(0),
-            b',' if depth == 0 => {
-                out.push(&args[start..i]);
-                start = i + 1;
-            }
-            _ => {}
-        }
-        i += 1;
+fn attributes(line: &str) -> Option<Vec<&[u8]>> {
+    closed_items(StepRecord::parse(line.as_bytes())?.attrs())
+}
+
+/// `value` is a borrowed subslice returned by core for this exact `line`.
+fn value_range(line: &str, value: &[u8]) -> Range<usize> {
+    let start = value.as_ptr() as usize - line.as_ptr() as usize;
+    start..start + value.len()
+}
+
+/// Remove only selected values and structural commas; every trivia byte stays.
+fn remove_ranges(line: &str, mut ranges: Vec<Range<usize>>) -> String {
+    ranges.sort_unstable_by_key(|r| r.start);
+    let mut out = String::with_capacity(line.len());
+    let mut copied = 0;
+    for range in ranges {
+        out.push_str(&line[copied..range.start]);
+        copied = range.end;
     }
-    out.push(&args[start..]);
+    out.push_str(&line[copied..]);
     out
 }
 
-/// Parse an argument that is exactly one reference (`"#7"` → `7`).
-///
-/// The digit run goes to the workspace's one express-id home rather than to a
-/// local `str::parse` (#3421). Both refuse above `u32::MAX` today, so this is
-/// not a behaviour fix; it is here so this file states the bound once, in
-/// `rewrite_refs` and in the drop analysis that has to agree with it.
-///
-/// `empty::single_ref` and `plan::parse_single_ref` are the same three lines
-/// against `str::parse` and are deliberately left alone: they are correct at
-/// the bound, so folding them in would be a pure refactor riding on a fix.
-fn parse_ref(arg: &str) -> Option<u32> {
-    ifc_lite_core::parser::parse_ref(arg.trim().as_bytes())
-}
-
-/// True when `arg` is a list literal (`(…)`).
-fn is_list(arg: &str) -> bool {
-    arg.len() >= 2 && arg.starts_with('(') && arg.ends_with(')')
+/// Core has trimmed the value's surrounding STEP trivia. Its tolerant list
+/// iterator can close before the end of an attribute (`(#2) (#3)`), so require
+/// the canonical whole-value grammar before treating any references as editable
+/// list elements. Otherwise classification must retain every reference as nested.
+fn is_list(arg: &[u8]) -> bool {
+    arg.len() >= 2 && arg.starts_with(b"(") && arg.ends_with(b")")
+        && ifc_lite_core::parser::is_step_value(arg)
 }
 
 /// Classify every reference in `line` by the argument slot it occupies, or
@@ -161,31 +123,27 @@ fn is_list(arg: &str) -> bool {
 /// than as "names nothing".
 pub(super) fn classify_refs(line: &str) -> Option<Vec<(u32, RefSlot)>> {
     let mut out = Vec::new();
-    let (open, close) = arg_span(line)?;
-    for arg in split_args(&line[open + 1..close]) {
-        let trimmed = arg.trim();
-        if let Some(n) = parse_ref(trimmed) {
+    for arg in attributes(line)? {
+        if let Some(n) = ifc_lite_core::parser::parse_ref(arg) {
             out.push((n, RefSlot::Single));
-            continue;
-        }
-        if is_list(trimmed) {
-            for element in split_args(&trimmed[1..trimmed.len() - 1]) {
-                match parse_ref(element) {
+        } else if is_list(arg) {
+            for element in closed_items(StepListItems::of_list(arg)?)? {
+                match ifc_lite_core::parser::parse_ref(element) {
                     Some(n) => out.push((n, RefSlot::ListElement)),
                     None => push_nested(element, &mut out),
                 }
             }
-            continue;
+        } else {
+            push_nested(arg, &mut out);
         }
-        push_nested(trimmed, &mut out);
     }
     Some(out)
 }
 
 /// Record every reference inside `text` as [`RefSlot::Nested`].
-fn push_nested(text: &str, out: &mut Vec<(u32, RefSlot)>) {
+fn push_nested(text: &[u8], out: &mut Vec<(u32, RefSlot)>) {
     let mut refs = Vec::new();
-    crate::step_text::refs_in_line(text.as_bytes(), &mut refs);
+    crate::step_text::refs_in_line(text, &mut refs);
     out.extend(refs.into_iter().map(|n| (n, RefSlot::Nested)));
 }
 
@@ -197,76 +155,68 @@ fn push_nested(text: &str, out: &mut Vec<(u32, RefSlot)>) {
 /// only reach this with lines the drop analysis already cleared as prunable —
 /// [`classify_refs`] is what it clears them with, so the two cannot disagree.
 pub(super) fn decide_line(line: &str, dropped: &HashSet<u32>) -> LineDecision {
-    let mut refs = Vec::new();
-    arg_refs(line.as_bytes(), &mut refs);
-    if !refs.iter().any(|r| dropped.contains(r)) {
-        return LineDecision::Keep;
-    }
-    let Some((open, close)) = arg_span(line) else { return LineDecision::Keep };
-    let args = split_args(&line[open + 1..close]);
-    let mut rebuilt = String::with_capacity(line.len());
-    rebuilt.push_str(&line[..=open]);
-    for (i, arg) in args.iter().enumerate() {
-        if i > 0 {
-            rebuilt.push(',');
-        }
-        let trimmed = arg.trim();
-        if parse_ref(trimmed).is_some_and(|n| dropped.contains(&n)) {
+    let Some(args) = attributes(line) else { return LineDecision::Keep };
+    let mut removed = Vec::new();
+    for arg in args {
+        if ifc_lite_core::parser::parse_ref(arg).is_some_and(|n| dropped.contains(&n)) {
             return LineDecision::Skip;
         }
-        if !is_list(trimmed) {
-            rebuilt.push_str(arg);
+        if !is_list(arg) {
             continue;
         }
-        let elements = split_args(&trimmed[1..trimmed.len() - 1]);
-        let kept: Vec<&str> = elements
-            .iter()
-            .copied()
-            .filter(|e| !parse_ref(e).is_some_and(|n| dropped.contains(&n)))
-            .collect();
-        if kept.len() == elements.len() {
-            rebuilt.push_str(arg);
+        let Some(elements) = StepListItems::of_list(arg).and_then(closed_items) else {
+            return LineDecision::Keep;
+        };
+        let dropping: Vec<bool> = elements.iter().map(|e| {
+            ifc_lite_core::parser::parse_ref(e).is_some_and(|n| dropped.contains(&n))
+        }).collect();
+        if !dropping.iter().any(|&drop| drop) {
             continue;
         }
-        if kept.iter().all(|e| e.trim().is_empty()) {
+        let Some(last_kept) = dropping.iter().rposition(|&drop| !drop) else {
             return LineDecision::Skip;
+        };
+        for (i, element) in elements.iter().enumerate().filter(|(i, _)| dropping[*i]) {
+            removed.push(value_range(line, element));
+            // Before the final survivor, remove the following comma. After
+            // it, remove the preceding comma. Consecutive removals therefore
+            // never select the same separator, and comments stay in place.
+            let before_comma = if i < last_kept { *element } else { elements[i - 1] };
+            let Some(comma) = skip_step_trivia(line.as_bytes(), value_range(line, before_comma).end) else {
+                return LineDecision::Keep;
+            };
+            if line.as_bytes().get(comma) != Some(&b',') {
+                return LineDecision::Keep;
+            }
+            removed.push(comma..comma + 1);
         }
-        rebuilt.push('(');
-        rebuilt.push_str(&kept.join(","));
-        rebuilt.push(')');
     }
-    rebuilt.push_str(&line[close..]);
-    LineDecision::Rewrite(rebuilt)
+    if removed.is_empty() { LineDecision::Keep } else { LineDecision::Rewrite(remove_ranges(line, removed)) }
 }
 
 /// Append `ids` to the list attribute `n` of `line`, or `None` when that
 /// attribute is not a list (or the line cannot be parsed). Used to fold a later
 /// model's relationship into the one an earlier model wrote (#5774).
 pub(super) fn append_to_list_attr(line: &str, n: usize, ids: &[u32]) -> Option<String> {
-    let (open, close) = arg_span(line)?;
-    let args = split_args(&line[open + 1..close]);
-    let list = args.get(n)?.trim();
+    let args = attributes(line)?;
+    let list = *args.get(n)?;
     if !is_list(list) {
         return None;
     }
-    let inner = list[1..list.len() - 1].trim();
-    let added: Vec<String> = ids.iter().map(|id| format!("#{id}")).collect();
-    let joined = if inner.is_empty() { added.join(",") } else { format!("{inner},{}", added.join(",")) };
-    let mut rebuilt = String::with_capacity(line.len() + joined.len());
-    rebuilt.push_str(&line[..=open]);
-    for (i, arg) in args.iter().enumerate() {
-        if i > 0 {
+    let elements = closed_items(StepListItems::of_list(list)?)?;
+    if ids.is_empty() {
+        return Some(line.to_string());
+    }
+    let insert = value_range(line, list).end - 1;
+    let mut rebuilt = String::with_capacity(line.len() + ids.len() * 12);
+    rebuilt.push_str(&line[..insert]);
+    for (i, id) in ids.iter().enumerate() {
+        if i > 0 || !elements.is_empty() {
             rebuilt.push(',');
         }
-        if i == n {
-            rebuilt.push('(');
-            rebuilt.push_str(&joined);
-            rebuilt.push(')');
-        } else {
-            rebuilt.push_str(arg);
-        }
+        rebuilt.push_str(&format!("#{id}"));
     }
-    rebuilt.push_str(&line[close..]);
+    rebuilt.push_str(&line[insert..]);
     Some(rebuilt)
 }
 

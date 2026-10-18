@@ -112,7 +112,7 @@ impl PolygonalFaceSetProcessor {
                     note_face_refused(&IfcType::IfcIndexedPolygonalFace);
                     continue;
                 }
-                Err(error) => return Err(error),
+                Err(error) => return Err(error.into()),
             };
 
             // IfcIndexedPolygonalFace has CoordIndex at attribute 0

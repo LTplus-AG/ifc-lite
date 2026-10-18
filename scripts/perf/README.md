@@ -12,6 +12,110 @@ that also dominate in the browser; the WASM-only concerns (per-worker file
 re-decode, no threads, memory bandwidth) are orchestration-level and are read
 off the viewer's own telemetry (below).
 
+## Sloped coincident-sided differences (#7292)
+
+**Restored-O3 frozen-pair qualification complete; workload-dependent cost.**
+The [completed evidence](../../docs/architecture/evidence/issue-7292/final-43ec-qualified-runtime.json)
+binds fresh interleaved worker-pool comparisons on the small model, the void-heavy
+regression fixture and the larger tower. Exact flat typed fingerprints and
+canonical instanced metadata match on the small model and tower. The void-heavy
+fixture changes cut outputs and has a measurable runtime cost; passing the
+existing coarse regression gate does not establish neutrality. Current-main
+native, Clippy, root consumer, actual viewer/WASM and approved size checks retain
+their separate execution source and command scopes.
+
+Fixed inherited affinity for owned native Chrome, recorded physical-processor
+counters, a user-approved integrated CPU budget and stable same-source controls
+made a reproducible comparison possible without stopping other work. This is
+not an OS-exclusive reservation or whole-host idle claim. Large-model uploads
+use the same canonical file input through native CDP, with the whole staged IFC
+verified and cleaned. Complete raw output is exported in bounded chunks after
+timing; transmitting JSON text avoids Playwright recursively wrapping every
+number. Every actual JS/WASM response and every flat geometry buffer still
+requires full verification. Failed attempts remain separate and unused. Lesson:
+separate setup/collection cost from the authored worker-pool interval, keep
+actual byte coverage, and report correctness costs honestly. The approved engine
+ceiling keeps its original relative tolerance; its restored-O3 runtime condition
+is now fulfilled for the measured pair.
+
+The following measured Os disposition and attribution limits are historical.
+The independent native attribution campaign was incomplete after host admission
+refused a later sample. Earlier failed browser attempts and cleanup failures
+remain preserved.
+
+The measured branch ships LLVM `Os`, while matched main ships `O3`. The
+comparison therefore combines geometry/output changes and build policy. The
+trace identifies geometry work and overlapping consumer/frame waiting, but
+does not isolate a kernel cause or quantify the optimization-flag effect. Passing
+the compressed-transfer gate did not protect runtime cost. Lesson: evaluate size
+and end-to-end runtime together; a smaller shipping engine is not evidence of
+performance neutrality. The original one-file `O3` restoration fails its original transfer gate and
+original generated-types source guard. The generated declaration order is now
+committed, and the user conditionally approved a measured engine ceiling with
+the same relative tolerance. The fresh restored-O3 official build, types, approved size and root consumers
+pass. Fresh functional captures and scoped reporter proof transfers also pass. That historical fresh
+end-to-end runtime qualification ended without a verdict: canonical host admission
+refuses the campaign after a base-only sample, with no branch sample or completed
+pair. The window is released and its authorities revoked. At that stage the performance
+condition remained unfulfilled; approval did not erase either original
+failure or the measured shipping regression. Native proofs retain their actual
+qualification head and only their demonstrated source applicability.
+
+Historical native instruction comparisons improved after short-circuiting proper
+crossing tests when an exact zero or same-side orientation proves rejection.
+Lookup-only maps and shared projected containment retained emitted ordering.
+Those results compared instruction work and mesh counts, not worker-pool time
+or full byte identity.
+
+Replacing supported-cell hash collections with wide sorted records increased
+the actual compressed engine despite removing hash specializations: new sort
+specializations outweighed the removed code. That replacement was reverted.
+Do not repeat it on other wide keys without a different mechanism and a real
+source-built transfer measurement. Lazy support validation retains conservative
+candidate bounds and validates support before constructing an exact point.
+
+Reusing already-read triangle coordinates preserves the classifier's arithmetic
+and ordering, but that subsequent historical engine exceeded the transfer
+gate. Final artifacts lack usable function names, so a read-only inspection did
+not establish that consolidation replay clones large functions. Do not repeat
+that attribution or add outlining attributes without evidence. Those historical
+finite reporter comparisons passed independently of the preserved browser cleanup
+failure; neither proof nor instruction counts supplied a fresh
+end-to-end timing verdict.
+
+Replacing paired boundary direction counters with a mask increased the
+source-built engine; the prior counters were restored. An isolated build proved
+the determinant refactor produced byte-identical WASM, JavaScript and types:
+its explicit determinant oracle is called only by tests. Its shared arithmetic
+and analytic sign regression are retained without a production-size claim.
+Bypassing general-point dispatch at known-explicit plane-weld calls also grew
+the engine and was reverted. Fewer source lines, a reused map value type or
+simpler dispatch do not establish a compressed-transfer saving.
+
+Earlier coordinated idle windows and safe consumer cleanup did not qualify a complete
+interleaved worker-pool cohort under the unchanged host checks. An earlier capture
+also exposed a response observer retaining handles across the canonical cold
+reload; its correction preserves both navigations and captures setup bytes before
+invalidation. Refused campaigns remain separate and provide no timing verdict. On the historical
+`80bc1bff69` source, the first browser sample completed its load but could not
+complete delivered worker-script byte coverage afterward because a response
+handle was unavailable. Installed Playwright code shows worker-session teardown
+can invalidate that handle; the failed response URL was not recorded. That
+cohort accepts no rows. The separate
+native cohort stopped before its first sample when host admission failed. No
+retry, missing-body exemption or cached-file substitution qualified either
+attempt. That failure required worker-response retention before another accepted
+timing campaign; setup-navigation retention alone was insufficient. The historical
+completed Os campaign satisfies byte coverage and still records a runtime regression.
+
+Historical untimed native mesh counts and fingerprints match the base for Haus and Holter;
+ISSUE_129 changes geometry and reports fewer CSG failures. These fingerprints
+exclude instancing, text, material definitions, UVs and textures. Lesson: retain
+healthy neighbors in ordinary seam conformance, preserve the baseline replay's
+closure checks and budget-failure signals before opening oracle scopes, and
+qualify actual worker-pool cost before claiming neutrality.
+See the [correctness evidence and performance disposition](../../docs/architecture/evidence/issue-7292/README.md).
+
 ## TL;DR
 
 ```bash

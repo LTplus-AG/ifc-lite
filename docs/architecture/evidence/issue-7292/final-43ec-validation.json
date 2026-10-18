@@ -1,0 +1,225 @@
+{
+  "status": "FUNCTIONAL_QUALIFICATION_COMPLETE_PERFORMANCE_NOT_RUN_NOT_MERGE_READY",
+  "candidate": "43ecf3aa3e240e1a7c41c5c799212b60df010ebd",
+  "base": "b0b670f0cfd704ceb7c78a622f5730d0cd9510de",
+  "native": {
+    "historicalFullCoverageHead": "54d224331af165d2db7a1c71d3419aa5f74c34dd",
+    "passed": 5604,
+    "ignored": 47,
+    "originalFullCommandTimedOut": true,
+    "coverageAcrossOriginalAnd19TargetContinuation": true,
+    "noFreshFullWorkspace43ecRun": true,
+    "historical6caChangedMainTargetPasses": 144,
+    "probeFixRegressionBase": "6ca1db0b4046d2a3a0942b3c862af1bc1c325836",
+    "probeFixCommit": "1ab58341985497dde2f9f6e36e30118814c8318c",
+    "probeRedFailed": 2,
+    "probeGreenAndRelatedTestsPassed": 21,
+    "probeGreenExecutedAsExactDirtyPatchThenTransferredByFinalCommitBlobIdentity": true,
+    "exact1abClippyPass": true,
+    "final43ecChangedMainTestsPassed": 127,
+    "exact43ecClippyPass": true
+  },
+  "pythonParity": {
+    "actualSourceHead": "43ecf3aa3e240e1a7c41c5c799212b60df010ebd",
+    "actualLocalLinuxWheelBuiltAndInstalled": true,
+    "pytestPassed": 49,
+    "surfaceReferenceUnitPassed": 44,
+    "statsComparatorUnitPassed": 35,
+    "quickFixtureMatches": 4,
+    "triCountDensityAdvisories": 1,
+    "referenceEngineVersion": "0.9.0.post1",
+    "noGoldenRepin": true,
+    "notHostedCiPolicyClaim": true
+  },
+  "officialArtifacts": {
+    "candidate": {
+      "status": "ACTUAL_COMPLETED_BUILD_PROOF_NOT_BROWSER_OR_PERFORMANCE_VERDICT",
+      "head": "43ecf3aa3e240e1a7c41c5c799212b60df010ebd",
+      "rawReceiptSHA256": "bc3e2eb2bced0f6c928320094eff502ac8bbd5a010c2e1d0a50b8dc2fd06f474",
+      "canonicalReceiptSHA256": "f8c7c0e6f422ddaf035f9cb36d633a2c2b6ae583e6222b0e498376994918d2fd",
+      "officialO3": true,
+      "engineBrotliBytes": 2300876,
+      "ceiling": 2299706,
+      "allowedBytes": 2311204,
+      "sizeGate": "PASS",
+      "artifacts": {
+        "ifc-lite_bg.wasm": {
+          "bytes": 9989671,
+          "sha256": "079deb33760a091ff0df25970e12f087eb3d8c4c15f3e88ce854b63f6809f73f",
+          "mtimeNs": 1792278025302611741
+        },
+        "ifc-lite.js": {
+          "bytes": 308669,
+          "sha256": "941031903a209b8ece2bee739ff5b73f4340d001f068c5efeb5c46863cedda23",
+          "mtimeNs": 1792278025310611827
+        },
+        "ifc-lite.d.ts": {
+          "bytes": 167629,
+          "sha256": "4b2799a5c8670c65620afb3b368bbab57da0bfbd53621c2ecf10b86d5c0bc7c9",
+          "mtimeNs": 1792278025466613504
+        }
+      },
+      "completeConsumerPass": true,
+      "candidatePrefixAndFreshContinuationKeptDistinct": true
+    },
+    "base": {
+      "status": "ACTUAL_COMPLETED_BUILD_PROOF_NOT_BROWSER_OR_PERFORMANCE_VERDICT",
+      "head": "b0b670f0cfd704ceb7c78a622f5730d0cd9510de",
+      "rawReceiptSHA256": "14e253eafb74ee12fddc117228f8d2b5697982ee10d2972ffdb77a397a9563f5",
+      "canonicalReceiptSHA256": "ddd9f4b09da2c8deb25040de20d3ae446c3c2ae25e811f08e370cd2f77c3e9c2",
+      "officialO3": true,
+      "engineBrotliBytes": 2248392,
+      "ceiling": 2247626,
+      "allowedBytes": 2258864,
+      "sizeGate": "PASS",
+      "artifacts": {
+        "ifc-lite_bg.wasm": {
+          "bytes": 9766002,
+          "sha256": "a8c6f4d21788d2d0f2c3c6962b5a955549dd4937a3d12dadc402aeb64f622781",
+          "mtimeNs": 1792278133496939816
+        },
+        "ifc-lite.js": {
+          "bytes": 308437,
+          "sha256": "04c85b1449d8fee992f25f0685170ff03fb4360726fa4e4d2a2d180314c169c0",
+          "mtimeNs": 1792278133508940347
+        },
+        "ifc-lite.d.ts": {
+          "bytes": 167397,
+          "sha256": "e2bf5dee93a6277acee5a814f0bab346ec3c270cbc01bc8a1d0ca75d1c2b65cb",
+          "mtimeNs": 1792278133692948501
+        }
+      },
+      "completeConsumerPass": false,
+      "candidatePrefixAndFreshContinuationKeptDistinct": false
+    },
+    "old6caACABinaryOrReceiptRelabeling": false
+  },
+  "browserFunctional": {
+    "status": "ALL_CURRENT_SOURCE_FZK_AND_FUNCTIONAL_CAPTURE_GATES_PASS_SCOPED_GEOMETRY_ATTESTED_PERFORMANCE_PENDING",
+    "noOldCapturePassTransferClaim": true,
+    "baseFzk": {
+      "status": "ACTUAL_BASE_V3_COMPOSITE_PASS_ONLY_NOT_CANDIDATE_OR_PERF_VERDICT",
+      "sourceHead": "b0b670f0cfd704ceb7c78a622f5730d0cd9510de",
+      "compositePath": "/tmp/7292-finalb0-base-fzk-passive-qualification-v3/composite-receipt.json",
+      "compositeSHA256": "c6374b04f3bc27652a546b72532f24a808524536cb9c0cbd54c6bf47dc47dfa6",
+      "allSixGatesPass": true,
+      "nativeExit": 0
+    },
+    "candidateFzk": {
+      "status": "ACTUAL_COMPLETED_CURRENT_SOURCE_NATIVE_CAPTURE_NOT_GEOMETRY_OR_PERFORMANCE_VERDICT",
+      "sourceHead": "43ecf3aa3e240e1a7c41c5c799212b60df010ebd",
+      "compositePath": "/tmp/7292-final43ec-candidate-fzk-passive-qualification-v1/composite-receipt.json",
+      "compositeSHA256": "33e3f7102fcc089cb95f27eea124c2c618162fb317c116da8dabc9e3ca7aea6e",
+      "nativeReceiptSHA256": "97fad61ec7d2e9d06f738fc38228f4f6b7a77dadfa5952eb77a1d46361e867df",
+      "allSixGatesPass": true,
+      "nativeExit": 0,
+      "actualNativeStartedUTC": "2026-10-17T23:14:50.174370+00:00",
+      "actualNativeFinishedUTC": "2026-10-17T23:15:09.919541+00:00",
+      "caseCount": 1
+    },
+    "functionalFiveCases": {
+      "status": "ACTUAL_COMPLETED_CURRENT_SOURCE_NATIVE_CAPTURE_NOT_GEOMETRY_OR_PERFORMANCE_VERDICT",
+      "sourceHead": "43ecf3aa3e240e1a7c41c5c799212b60df010ebd",
+      "compositePath": "/tmp/7292-final43ec-functional-capture-v1/composite-receipt.json",
+      "compositeSHA256": "1a8ae9f5ca705af18e575b411d6eba037d82b46c0f527b35f3ce122c8eff3444",
+      "nativeReceiptSHA256": "46752be54bae60eba0c7007ea39b825c9edaefe9d890a65d052b7c7e713cec06",
+      "allSixGatesPass": true,
+      "nativeExit": 0,
+      "actualNativeStartedUTC": "2026-10-17T23:15:46.166057+00:00",
+      "actualNativeFinishedUTC": "2026-10-17T23:16:44.280799+00:00",
+      "caseCount": 5
+    }
+  },
+  "geometry": {
+    "status": "ACTUAL_V3_SCOPED_EXACT_INPUT_TRANSFERS_PASS_SOFFICE_STRUCTURAL_RENDER_ONLY",
+    "actualSourceHead": "43ecf3aa3e240e1a7c41c5c799212b60df010ebd",
+    "attestationPath": "/tmp/7292-final43ec-geometry-attestation-v3/attestation.json",
+    "attestationSHA256": "9bbb0f717067afd4a39395a39bef67f8f41a1b3ade54400f271dc6bf82b4e5ce",
+    "inputPinsSHA256": "bfdaae852c5822d32d0a6a818f4db1b6e18634255bbb6b3046e4c59c72fab87c",
+    "reportersPassed": 4,
+    "exactWholeRawAndOrderedComparatorInputTransfers": 4,
+    "freshOracleRuns": 0,
+    "comparatorToleranceMetres": 0.0001,
+    "comparatorMaximumWorkUnits": 2000000,
+    "finiteProofScope": "Four actual prior finite-surface PASS receipts transfer only through exact entire RAW plus exact ordered comparator-consumed inputs. No fresh oracle run or general geometry claim.",
+    "soffice": {
+      "ownerCount": 6,
+      "actualArrivalOrder": [
+        94664,
+        473458,
+        489647,
+        794361,
+        798142,
+        437170
+      ],
+      "priorArrivalOrder": [
+        94664,
+        473458,
+        489647,
+        798142,
+        794361,
+        437170
+      ],
+      "sameExactUniqueOwners": true,
+      "entirePerOwnerPayloadIncludingTypedBitsAndIndicesIdentical": true,
+      "nonMeshMetadataIdentical": true,
+      "scope": "Selected payload identity plus actual structural/render readiness; no full-solid oracle."
+    },
+    "v2FailurePreserved": "Root-observed ordered-arrival assertion failure remains explicitly labelled observation, not fabricated original completed receipt; v2 code/raw bytes unchanged. V3 matches exact unique owners and entire owner payloads, not weakened payload coverage.",
+    "correctionIndependentReviewSHA256": "a987955ee247d42d5ee19e0229b608937f51fb4424d5d0669546ae74eb5de95b",
+    "screenshotsAloneNotSolidProof": true
+  },
+  "budgetApproval": {
+    "ceilingBytes": 2299706,
+    "toleranceRelative": 0.005,
+    "humanApprovalConditionalOnCorrectedO3RuntimeQualification": true,
+    "conditionSatisfied": false,
+    "sizeGatePassAloneDoesNotSatisfyApproval": true
+  },
+  "performance": {
+    "status": "NO_VERDICT",
+    "measuredVerdict": null,
+    "mergeReady": false,
+    "timedRows": 0,
+    "timedPairs": 0,
+    "attemptedCohorts": 1,
+    "reason": "Actual first preflight refused before Chrome or accepted rows. Later canonical observations also refused; ordinary peer jobs remain unrestricted. Functional captures do not establish runtime performance.",
+    "firstAttemptReceiptSHA256": "81a9721eb2ffed02057f1e255675b94b7b419830112ebcc17e3500ad1a0e796d",
+    "latestObservation": {
+      "sha256": "ef2806511da50b976fd10be4591a32c819cb02f7e46e6824fada65402305620b",
+      "cpuPercent": [
+        15,
+        16,
+        6
+      ],
+      "activeGraphs": 1,
+      "MemAvailableKiB": 62209392
+    },
+    "userQueueVsMeasurementClarificationPending": false,
+    "noQueueOrDrainRequested": true,
+    "noResourceGateRelaxed": true
+  },
+  "publication": {
+    "draftOnly": false,
+    "archiveCreated": true,
+    "selectedCompletedFunctionalEvidence": true,
+    "notFinalMergeApproval": true
+  },
+  "screenshots": {
+    "rootViewedActualBothFzkAndAllFiveFunctionalScreenshots": true,
+    "actualRootFiveCaseReviewPath": "/tmp/7292-final43ec-root-functional-screenshot-review-v1.json",
+    "actualRootReviewSHA256": "6c7a3201d07bb9bbd806beb9ecfd69acd89c2ff1ba4ff0e0cac996444d393cf8",
+    "thisCollectorDidNotExecuteScreenshotView": true,
+    "screenshotAloneNotGeometryProof": true
+  },
+  "reviewContexts": {
+    "primary": 7607,
+    "closedSupersededUnmerged": [
+      7730,
+      7731,
+      7802
+    ],
+    "branchHistoryRetained": true,
+    "noIssueClosureClaim": true
+  }
+}

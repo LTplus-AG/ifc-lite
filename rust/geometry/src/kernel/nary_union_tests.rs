@@ -83,18 +83,16 @@ fn open_edges_3917(m: &Mesh) -> usize {
     edges.values().filter(|&&(f, r)| f != 1 || r != 1).count()
 }
 
-/// #3917: the exact discriminating configuration traced in the issue's
-/// diagnosis comment — `three_boxes_at(0.5, 0.5, +SNAP_GRID)` (the
-/// #3913/#3916 sweep's own fixture shape) presented in `CAB` order, which
-/// measured 53 unmatched directed edges pre-fix while `BCA` measured 0 for
-/// the identical physical operand set. RED before #3917's fix (fails with
-/// `open_edges_3917 > 0`); GREEN after, because `arrange` now retries the
-/// other 5 orderings of this exact 3-operand union when the caller's own
-/// order (`CAB` here) comes back open, and one of them (verified to still be
-/// `BCA` in the trace) closes.
+/// #3917's historical three-box union: +SNAP_GRID in CAB order formerly
+/// needed a different ordering to close. Exact overlapping-face preservation
+/// (#7292) now closes the first candidate. Keep this case as the all-order
+/// positive control; the -SNAP_GRID BAC case below still exercises recovery.
 fn issue_3917_boxes() -> [Mesh; 3] {
-    const SG: f64 = 1.0 / 65536.0;
-    let (bx, by, dz) = (0.5, 0.5, SG);
+    issue_3917_boxes_at_height(1.0 / 65_536.0)
+}
+
+fn issue_3917_boxes_at_height(dz: f64) -> [Mesh; 3] {
+    let (bx, by) = (0.5, 0.5);
     let a = boxed_3917([0.0, 0.0, 0.0], [1.0, 1.0, 1.0], None);
     let b = boxed_3917(
         [bx, by, dz],
@@ -121,20 +119,20 @@ fn issue_3917_boxes() -> [Mesh; 3] {
 fn issue_3917_a_torn_caller_order_is_repaired_without_the_caller_reordering_anything() {
     let [a, b, c] = issue_3917_boxes();
 
-    // CAB: the ordering the issue measured at 53 unmatched directed edges.
+    // Historical CAB ordering: now closed without retry after #7292.
     let cab: [&Mesh; 3] = [&c, &a, &b];
     #[cfg(feature = "opening-perf-trace")]
     crate::opening_perf_trace::take();
     let out = ClippingProcessor::consolidate_coplanar(union_many(&cab));
-    // #6516: observe the actual recovery through a known torn three-solid
-    // fixture, while the independent closure invariant below still holds.
+    // #7292 exact overlapping-face preservation now heals this historical
+    // torn caller order before any retry; retain all six closure invariants.
     #[cfg(feature = "opening-perf-trace")]
     {
         let work = crate::opening_perf_trace::take();
         assert_eq!(work.union_calls_by_arity, [0, 0, 0, 1, 0]);
         assert_eq!(work.union_retry_eligible, 1);
-        assert!(work.union_retries > 0);
-        assert_eq!(work.union_retry_successes, 1);
+        assert_eq!(work.union_retries, 0);
+        assert_eq!(work.union_retry_successes, 0);
         assert_eq!(work.union_arrangements, work.union_retries + 1);
         assert_eq!(work.union_closure_checks, work.union_arrangements);
         assert_eq!(work.union_closure_passes, 1);
@@ -143,9 +141,7 @@ fn issue_3917_a_torn_caller_order_is_repaired_without_the_caller_reordering_anyt
     assert_eq!(
         open_edges_3917(&out),
         0,
-        "CAB must come back closed: #3917's fix retries the other 5 orderings \
-         of this exact 3-operand union when the caller's own order tears, and \
-         a closed alternative (traced as BCA) exists for this configuration"
+        "the historical CAB union must remain closed after exact face preservation"
     );
 
     // The other 5 orderings of the SAME physical operands must also close —
@@ -168,21 +164,53 @@ fn issue_3917_a_torn_caller_order_is_repaired_without_the_caller_reordering_anyt
 /// spend up to six times the configured exact-predicate cap (#1109).
 #[test]
 fn issue_3917_retries_share_one_boolean_budget() {
-    // The fixed fixture consumes 1,058 escalations across its retry candidates,
-    // while no individual candidate reaches 1,000. Reading the thread-local
-    // counter therefore distinguishes one shared operation from a reset inside
-    // every retry without mutating the process-global cap (and racing other
-    // parallel geometry tests).
-    let boxes = issue_3917_boxes();
-    let input = [&boxes[2], &boxes[0], &boxes[1]]; // CAB: known torn first candidate
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _element = budget::enter_element();
+    // Prove that this fixture still needs recovery, then compare the operation
+    // counter with the independent element accumulator. A reset between retry
+    // candidates loses work only from the former. This checks the shared-budget
+    // contract without pinning an incidental predicate count (#7292).
+    // #7292: the original +SNAP_GRID CAB case now closes immediately.
+    // This nearby real union places B/C one snap step BELOW A and presents
+    // BAC: its first candidate remains nonconforming, but another order closes.
+    let boxes = issue_3917_boxes_at_height(-1.0 / 65_536.0);
+    let input = [&boxes[1], &boxes[0], &boxes[2]];
+    budget::begin();
+    let first = arrange_once(&input, true);
+    assert!(!budget::tripped());
+    assert!(!first.is_empty());
+    assert!(budget::count() > 0, "the discarded candidate must consume budget");
+    assert!(
+        !survives_consolidation_closed(&first),
+        "the caller's first candidate must need a retry"
+    );
+    #[cfg(feature = "opening-perf-trace")]
+    crate::opening_perf_trace::take();
+    let before = budget::element_count();
     let out = union_many(&input);
     let count = budget::count();
+    #[cfg(feature = "opening-perf-trace")]
+    {
+        let work = crate::opening_perf_trace::take();
+        assert_eq!(work.union_calls_by_arity, [0, 0, 0, 1, 0]);
+        assert_eq!(work.union_retry_eligible, 1);
+        assert!(work.union_retries > 0);
+        assert_eq!(work.union_retry_successes, 1);
+        assert_eq!(work.union_arrangements, work.union_retries + 1);
+        assert_eq!(work.union_closure_checks, work.union_arrangements);
+        assert_eq!(work.union_closure_passes, 1);
+        assert_eq!(work.union_retries_exhausted, 0);
+    }
 
     assert!(!out.is_empty());
-    assert!(
-        count >= 1_000,
-        "the public union must retain the retry candidates' accumulated count; got {count}"
+    assert!(!budget::tripped(), "recovery must complete within the real budget");
+    assert!(count > 0, "the real retry must perform exact predicate work");
+    assert_eq!(
+        count,
+        budget::element_count() - before,
+        "the public union must retain all retry candidates' accumulated work"
     );
+    assert!(survives_consolidation_closed(&out));
 }
 
 fn tetrahedron(offset: [f32; 3]) -> Mesh {

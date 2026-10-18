@@ -13,6 +13,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 #[path = "worker_mesh.rs"]
 mod mesh;
+#[path = "worker_sweep.rs"]
+mod sweep;
+pub use sweep::RetainedRealization;
 pub use mesh::{MeshLimits, TessellatedMesh};
 
 static NEXT_WORKER: AtomicU64 = AtomicU64::new(1);
@@ -30,6 +33,7 @@ pub enum WorkerError {
     Protocol(&'static str),
     Kernel { status: i32, message: String },
     WrongWorker,
+    Authored(String),
     ResourceLimit(&'static str),
 }
 
@@ -41,6 +45,7 @@ impl std::fmt::Display for WorkerError {
             Self::Kernel { status, message } => {
                 write!(f, "geometry worker status {status}: {message}")
             }
+            Self::Authored(message) => write!(f,"authored extrusion refused: {message}"),
             Self::WrongWorker => write!(f, "BRep handle belongs to another worker"),
             Self::ResourceLimit(message) => write!(f, "geometry worker resource limit: {message}"),
         }
@@ -101,11 +106,18 @@ impl SmlibWorker {
         })
     }
 
+    pub(crate) fn is_live(&self) -> bool {
+        self.healthy && self.process.is_live()
+    }
+
     pub(crate) fn process_control(&self) -> ProcessControl {
         self.process.clone()
     }
 
     pub(crate) fn initialize(&mut self) -> Result<(), WorkerError> {
+        if !self.is_live() {
+            return Err(WorkerError::Protocol("worker requires restart"));
+        }
         if self.session != 0 {
             return Ok(());
         }
@@ -252,7 +264,7 @@ impl SmlibWorker {
     }
 
     fn call(&mut self, command: KernelCommand) -> Result<Vec<u8>, WorkerError> {
-        if !self.healthy {
+        if !self.is_live() {
             return Err(WorkerError::Protocol("worker requires restart"));
         }
         let result = self.exchange(&command);

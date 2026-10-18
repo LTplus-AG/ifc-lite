@@ -68,6 +68,12 @@ impl MeshStream {
 #[derive(Debug, Clone)]
 pub enum KernelCommand {
     AbiVersion,
+    /// Additive recipe version/capability negotiation; v1 commands stay unchanged.
+    Capabilities,
+    SweepBegin { session: u64, length: u32, loops: u32, segments: u32 },
+    SweepChunk { session: u64, upload: u64, offset: u32, bytes: Vec<u8> },
+    SweepCommit { session: u64, upload: u64 },
+    SweepAbort { session: u64, upload: u64 },
     CreateSession,
     DestroySession {
         session: u64,
@@ -164,6 +170,11 @@ pub fn encode_request(request_id: u32, command: &KernelCommand) -> Result<Vec<u8
     out.extend(request_id.to_le_bytes());
     let opcode: u32 = match command {
         KernelCommand::AbiVersion => 0,
+        KernelCommand::Capabilities => 12,
+        KernelCommand::SweepBegin { .. } => 13,
+        KernelCommand::SweepChunk { .. } => 14,
+        KernelCommand::SweepCommit { .. } => 15,
+        KernelCommand::SweepAbort { .. } => 16,
         KernelCommand::CreateSession => 1,
         KernelCommand::DestroySession { .. } => 2,
         KernelCommand::Box { .. } => 3,
@@ -187,7 +198,23 @@ pub fn encode_request(request_id: u32, command: &KernelCommand) -> Result<Vec<u8
 fn encode_arguments(command: &KernelCommand, out: &mut Vec<u8>) -> Result<(), ProtocolError> {
     use KernelCommand::*;
     match command {
-        AbiVersion | CreateSession => {}
+        AbiVersion | Capabilities | CreateSession => {}
+        SweepBegin { session, length, loops, segments } => {
+            out.extend(session.to_le_bytes()); out.extend(1u32.to_le_bytes());
+            for value in [length, loops, segments] { out.extend(value.to_le_bytes()); }
+        }
+        SweepChunk { session, upload, offset, bytes } => {
+            if bytes.is_empty() || bytes.len() > 3840 ||
+                offset.checked_add(bytes.len() as u32).is_none() {
+                return Err(ProtocolError::PayloadSize);
+            }
+            out.extend(session.to_le_bytes()); out.extend(upload.to_le_bytes());
+            out.extend(offset.to_le_bytes()); out.extend((bytes.len() as u32).to_le_bytes());
+            out.extend(bytes);
+        }
+        SweepCommit { session, upload } | SweepAbort { session, upload } => {
+            out.extend(session.to_le_bytes()); out.extend(upload.to_le_bytes());
+        }
         DestroySession { session } => out.extend(session.to_le_bytes()),
         Box {
             session,

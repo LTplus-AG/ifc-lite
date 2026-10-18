@@ -100,7 +100,7 @@ fn issue_6442_analytic_cache_process_measurement() {
             }
         });
         let started = Instant::now();
-        let result = extract_with_source_cache(&content, None, true, true, true, &mut cache);
+        let result = extract_standalone_with_source_cache(&content, None, true, true, true, &mut cache);
         let elapsed_ns = started.elapsed().as_nanos();
         (result, elapsed_ns)
     });

@@ -130,3 +130,16 @@ pub fn extract_swept_disk_views(
     let result = walk::extract(content, ids, true, true, false);
     (result.descriptions, result.definitions.expect("definition collection requested"))
 }
+
+/// Internal model admission reuses the actual factory decoder and its caches.
+pub(crate) fn extract_analytic_quantity_sources_from_decoder(
+    decoder: &mut ifc_lite_core::EntityDecoder<'_>,
+) -> AnalyticQuantitySources {
+    let result = walk::extract_with_source_cache(decoder, None, true, true, true,
+        &mut mapped::MappedSourceCache::new());
+    AnalyticQuantitySources {
+        swept_disk_descriptions: result.descriptions,
+        swept_disk_definitions: result.definitions.expect("definition collection requested"),
+        extrusion_definitions: result.extrusions.expect("extrusion collection requested"),
+    }
+}

@@ -204,3 +204,37 @@ has `passed: true`, two matching worker results and a successful restarted-worke
 result. These bounded primitive/boolean tests establish transport feasibility;
 they do not qualify full IFC coverage, durable face identity, shading quality,
 editing, retained BRep export or an end-to-end performance improvement.
+
+The staged authored-sweep extension negotiates recipe format 1 with opcode 12;
+it does not change ABI version 1 or any existing primitive/boolean opcode.
+The C header specifies the little-endian numerical layout, sequential chunks,
+declared count/length agreement, limits and transaction cleanup. Rust owns IFC
+interpretation and replay recipes. The adapter creates temporary SDK curves with
+RAII, calls actual `SmApiCreateLinearSweep(..., TRUE, ...)`, and publishes only
+a nonempty manifold solid with matching analytic volume. Source inspection found
+unchecked internal SDK cap/face statuses, so SDK success alone is insufficient.
+Coefficients must lie within the explicit local numerical domain ±1e9; world
+survey placement remains outside the worker in f64. Source-face indices remain
+revision-local and normals flat per triangle corner.
+
+`tests/sweep_tests.cpp` and browser `sweep-contract.mjs` add real SDK rectangle
+and circle construction, a >4096-byte staged recipe, independent mesh volume,
+operand immutability and cleanup/refusal witnesses. They have not been run on
+this source revision. The numerical adapter now implements ordered outer/inner
+loops and analytic circular arcs (derived radians converted once to SDK degrees),
+with owned temporary curves and a signed analytic region-area check. Actual SDK
+witness sources cover both traversal directions, negative normals, mixed arc/line
+regions, rectangular/circular/multiple holes and oblique sweeps. They query tight
+bounds, planar/curved surface counts, and midplane section length as independent
+checks in addition to volume. These extended regions remain **unqualified** until
+recorded actual execution passes; Rust source admission gates must stay in place.
+Ellipse/spline/nonplanar profiles remain unsupported. Analytic surface identity is
+checked only as planar versus curved here, not as durable source-face provenance.
+`browser/sweep-transport.test.mjs` is a small protocol-only fault-injection suite;
+its success establishes no SDK geometry behavior. It is wired through CTest.
+
+For reproducible fleet qualification, `bash native/smlib-adapter/qualify.sh native`
+(or `wasm`) acquires the public SDK at the exact pin into a dedicated temporary
+cache and verifies its commit. It bootstraps pinned public CMake/Ninja wheels
+when necessary; WASM uses Emscripten 4.0.15. Run this script through `ifc-fleet run
+--route fleet --cwd ABSOLUTE_CHECKOUT -- ...`. No OpenUSD/TBB dependency is needed.

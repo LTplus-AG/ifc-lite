@@ -64,7 +64,7 @@
    164 rust/landxml/src/parser/capture.rs TinHandler::finish_capture
    154 rust/landxml/src/parser/finalize.rs TinHandler::finish_surface
    263 rust/landxml/src/terrain.rs adapt_faceless_tin
-   331 rust/processing/src/analytic_export/walk.rs extract_with_source_cache
+   329 rust/processing/src/analytic_export/walk.rs extract_with_admission
    150 rust/processing/src/appearance/authored.rs prepare
    159 rust/processing/src/appearance/evaluated.rs prepare
    163 rust/processing/src/appearance/mapping.rs map_item

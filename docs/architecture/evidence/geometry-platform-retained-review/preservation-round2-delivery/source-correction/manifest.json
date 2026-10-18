@@ -1,0 +1,30 @@
+{
+  "status": "UNCOMPILED_UNRUN",
+  "files": [
+    {
+      "path": "rust/processing/src/analytic_export/walk.rs",
+      "before_sha256": "70d3182eedca6c059b7fb19a968c35209cada2829b0a2628cce6fc9b6d35d986",
+      "sha256": "fed31bd94a8c380a546c2b8b21f9ce9992fc8678145dae4320395acc0925caff",
+      "lines": 385
+    },
+    {
+      "path": "rust/processing/src/analytic_export/walk/entry.rs",
+      "before_sha256": "1ab5d08da140055a87f72cc19c49b634030382b5e152df9afc2877aab0a8925c",
+      "sha256": "aaa8790b7ca46b70f82a451aa07f2af12ccea96a69e874701a592d134733f5d8",
+      "lines": 66
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/inventory.rs",
+      "before_sha256": "eed1130c45020451b19cebb98589c348dd1c17a6dfb45986df32bbdd135892b0",
+      "sha256": "a906a9648a01234a5017bdd7970f2d3f37a2ab5299c02a495aa3a4fa8a666efc",
+      "lines": 68
+    },
+    {
+      "path": "rust/processing/tests/retained_admission_policy.rs",
+      "before_sha256": null,
+      "sha256": "d052f0bac34f1438124f264c38181471fd4c88d31a6d5032ea939f96a7b33811",
+      "lines": 110
+    }
+  ],
+  "function_ratchet": "Rekey walk.rs extract_with_source_cache budget331 to extract_with_admission measured329; no allowance increase"
+}

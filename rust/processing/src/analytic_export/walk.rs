@@ -5,7 +5,7 @@
 //! One bounded body-representation walk for flattened and reusable analytics.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use ifc_lite_core::{build_entity_index, has_geometry_by_name, DecodedEntity, EntityDecoder,
+use ifc_lite_core::{has_geometry_by_name, DecodedEntity, EntityDecoder,
     EntityScanner, IfcType, MAX_MAPPED_ITEM_DEPTH};
 use ifc_lite_geometry::{analytic::{extract_analytic_extrusion, extract_swept_disk,
     AnalyticExtrusion, AnalyticStatus, AnalyticSweptDisk},
@@ -43,39 +43,23 @@ pub(super) struct ExtractResult {
 const MAX_CACHED_SEGMENTS: usize = 100_000;
 const MAX_TOTAL_INSTANCES: usize = 100_000;
 
-/// Extract exact swept-disk definitions for product occurrences, optionally
-/// restricted to a set of product STEP IDs. An empty set returns no products.
-/// Unsupported directrices are reported in each record's `status`; malformed
-/// representation walks are reported in `diagnostics` and omitted atomically
-/// for the affected product.
-pub(super) fn extract(
-    content: &[u8],
-    ids: Option<&HashSet<u32>>,
-    collect_definitions: bool,
-    collect_descriptions: bool,
-    collect_extrusions: bool,
-) -> ExtractResult {
-    let mut mapped_sources = MappedSourceCache::new();
-    extract_with_source_cache(
-        content, ids, collect_definitions, collect_descriptions,
-        collect_extrusions, &mut mapped_sources,
-    )
-}
+mod entry;
+pub(super) use entry::{extract, extract_with_source_cache};
+use entry::ProductAdmission;
+#[cfg(test)]
+use entry::extract_standalone_with_source_cache;
 
-fn extract_with_source_cache(
-    content: &[u8],
-    ids: Option<&HashSet<u32>>,
-    collect_definitions: bool,
-    collect_descriptions: bool,
-    collect_extrusions: bool,
-    mapped_sources: &mut MappedSourceCache,
+/// One geometry walk; entry policy preserves standalone scanned-record admission.
+fn extract_with_admission(
+    decoder: &mut EntityDecoder<'_>, ids: Option<&HashSet<u32>>,
+    collect_definitions: bool, collect_descriptions: bool, collect_extrusions: bool,
+    mapped_sources: &mut MappedSourceCache, admission: ProductAdmission,
 ) -> ExtractResult {
+    let content = decoder.content;
     let mut result = SweptDiskDescriptions::default();
     if !collect_definitions && !collect_extrusions && ids.is_some_and(HashSet::is_empty) {
         return ExtractResult { descriptions: result, definitions: None, extrusions: None };
     }
-    let index = build_entity_index(content);
-    let mut decoder = EntityDecoder::with_index(content, index);
     let unit_scale = decoder.length_unit_scale();
     let mut definitions = collect_definitions.then(|| SweptDiskDefinitions::new(content, unit_scale));
     let mut extrusions = collect_extrusions.then(|| ExtrusionDefinitions::new(content, unit_scale));
@@ -84,6 +68,7 @@ fn extract_with_source_cache(
     }
     let router = GeometryRouter::with_scale(unit_scale);
     let mut scanner = EntityScanner::new(content);
+    let mut products_seen = HashSet::new();
     let mut cache = HashMap::<u32, AnalyticSweptDisk>::new();
     let mut cached_segments = 0usize;
     let mut known_sources = BTreeSet::<SweptDiskSourceKey>::new();
@@ -99,7 +84,8 @@ fn extract_with_source_cache(
         if !has_geometry_by_name(type_name) || ids.is_some_and(|wanted| !wanted.contains(&id)) {
             continue;
         }
-        let element = match decoder.decode_at_uncached(start, end) {
+        let Some(decoded) = admission.decode(decoder, id, start, end, &mut products_seen) else { continue };
+        let element = match decoded {
             Ok(element) if element.ifc_type.is_subtype_of(IfcType::IfcProduct) => element,
             Ok(_) => continue,
             Err(error) => {
@@ -109,7 +95,7 @@ fn extract_with_source_cache(
                 continue;
             }
         };
-        let mut stack = match seed_product(&element, &mut decoder, &router) {
+        let mut stack = match seed_product(&element, decoder, &router) {
             Ok(Some(stack)) => stack,
             Ok(None) => continue,
             Err(message) => {
@@ -148,7 +134,7 @@ fn extract_with_source_cache(
                     let raw = if let Some(disk) = cache.get(&item_id) {
                         Ok(disk.clone())
                     } else {
-                        extract_swept_disk(&node.item, &mut decoder).inspect(|disk| {
+                        extract_swept_disk(&node.item, decoder).inspect(|disk| {
                             if cache.len() < MAX_VISITED_ITEMS
                                 && disk.segments.len() <= MAX_CACHED_SEGMENTS.saturating_sub(cached_segments) {
                                 cached_segments += disk.segments.len();
@@ -212,7 +198,7 @@ fn extract_with_source_cache(
                     let raw = if let Some(source) = extrusion_cache.get(&item_id) {
                         source.clone()
                     } else {
-                        let source = extract_analytic_extrusion(&node.item, &mut decoder);
+                        let source = extract_analytic_extrusion(&node.item, decoder);
                         let segments = profile_segment_count(&source);
                         if extrusion_cache.len() < MAX_VISITED_ITEMS
                             && segments <= MAX_CACHED_SEGMENTS.saturating_sub(cached_profile_segments) {
@@ -261,7 +247,7 @@ fn extract_with_source_cache(
                         failed = true;
                         break;
                     }
-                    match resolve_mapped_item(&node.item, &router, &mut decoder, mapped_sources) {
+                    match resolve_mapped_item(&node.item, &router, decoder, mapped_sources) {
                         Ok(mapped) => {
                             let transform = mapped.transform.map_or(node.transform, |m| node.transform * Matrix4::from_column_slice(&m));
                             let mut path = node.path;

@@ -29,6 +29,9 @@ pub struct AnalyticProfileLoop {
     pub signed_area: f64,
     /// Exact boundary length in raw IFC file units.
     pub perimeter: f64,
+    /// Original source convention, separate from interpreted segment geometry.
+    /// Parameterized profiles retain their original dimensions and placement here too.
+    pub source: Option<super::AnalyticBoundarySource>,
 }
 
 /// `IfcProfileDef` geometry before `IfcExtrudedAreaSolid.Position` and mapping.
@@ -107,6 +110,12 @@ fn parse_profile(
         }
         _ => return Err(format!("unsupported profile {}", profile.ifc_type.name())),
     };
+    if matches!(profile.ifc_type, IfcType::IfcRectangleProfileDef | IfcType::IfcCircleProfileDef) {
+        let mut capture = super::source::SourceCapture::enabled();
+        capture.record(profile, decoder).map_err(|error| error.to_string())?;
+        result.loops[0].source = Some(capture.finish(profile.id, decoder.plane_angle_to_radians())
+            .map_err(|error| error.to_string())?);
+    }
     Ok(())
 }
 
@@ -164,10 +173,15 @@ fn curve_loop(
     id: u32, kind: ProfileLoopKind, decoder: &mut EntityDecoder,
 ) -> Result<AnalyticProfileLoop, String> {
     let curve = decoder.decode_by_id(id).map_err(|error| format!("curve #{id}: {error}"))?;
-    let segments = CurveWalk::default().extract(&curve, decoder)
+    let mut walk = CurveWalk::with_source();
+    let segments = walk.extract(&curve, decoder)
         .map_err(|error| format!("curve #{id}: {error}"))?
         .ok_or_else(|| format!("curve #{id} is not exact line/arc geometry"))?;
-    loop_from_segments(kind, segments).map_err(|reason| format!("curve #{id}: {reason}"))
+    let mut boundary = loop_from_segments(kind, segments)
+        .map_err(|reason| format!("curve #{id}: {reason}"))?;
+    boundary.source = Some(walk.source.finish(id, decoder.plane_angle_to_radians())
+        .map_err(|error| format!("curve #{id}: {error}"))?);
+    Ok(boundary)
 }
 
 fn loop_from_segments(
@@ -199,7 +213,7 @@ fn loop_from_segments(
     if !area.is_finite() || area == 0.0 || !perimeter.is_finite() || perimeter <= 0.0 {
         return Err("profile loop has zero or invalid enclosed area".into());
     }
-    Ok(AnalyticProfileLoop { kind, segments, signed_area: area, perimeter })
+    Ok(AnalyticProfileLoop { kind, segments, signed_area: area, perimeter, source: None })
 }
 
 fn relative_extent(a: AnalyticPoint, b: AnalyticPoint) -> f64 {

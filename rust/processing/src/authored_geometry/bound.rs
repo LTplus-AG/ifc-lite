@@ -1,0 +1,77 @@
+// SPDX-License-Identifier: MPL-2.0
+//! Model-owned authored admission. Standalone public plans never acquire this
+//! authority by supplying matching bytes, keys, epochs or revision integers.
+use super::{evaluator::AuthoredRetainedDocument, AuthoredGeometryPlan};
+use crate::{element::{OwnedMeshProductionContext, ProductionLifecycle}, AnalyticSourceKey};
+use ifc_lite_core::EntityDecoder;
+use ifc_lite_geometry::document::{EvaluationContract, RetainedRefusal, RetainedRequest};
+use std::sync::Arc;
+
+/// Cached immutable source analysis under one actual production snapshot.
+/// There is no public constructor from a caller-editable plan.
+pub struct BoundAuthoredPlan {
+    plan: AuthoredGeometryPlan,
+    lifecycle: ProductionLifecycle,
+}
+
+impl OwnedMeshProductionContext {
+    /// Validate the actual source owner before touching IFC. The canonical
+    /// source index, trusted input policy and warm decoder caches are reused.
+    /// Extraction runs once per snapshot, rather than once per product.
+    pub fn admit_authored_plan(&self, decoder: &mut EntityDecoder<'_>)
+        -> Result<Arc<BoundAuthoredPlan>, RetainedRefusal>
+    {
+        self.validate_decoder(decoder).map_err(source_error)?;
+        if self.source().is_none() {
+            return Err(RetainedRefusal::InvalidSource("authenticated source bundle required"));
+        }
+        let _lease = decoder.try_execution_lease()
+            .map_err(|_| RetainedRefusal::InvalidSource("authored source decoder busy"))?;
+        let plan = self.authored_cache().get_or_init(|| Arc::new(BoundAuthoredPlan {
+            plan: super::planning::plan_decoder(decoder), lifecycle: self.lifecycle(),
+        }));
+        self.validate_decoder(decoder).map_err(source_error)?;
+        Ok(Arc::clone(plan))
+    }
+}
+
+impl BoundAuthoredPlan {
+    /// Read-only inspection is not a transferable admission capability.
+    pub fn plan(&self) -> &AuthoredGeometryPlan { &self.plan }
+
+    pub fn admit_source(&self, key: &AnalyticSourceKey)
+        -> Result<ModelBoundRetainedDocument, RetainedRefusal>
+    {
+        self.lifecycle.validate().map_err(source_error)?;
+        let (epoch, revision) = self.lifecycle.epoch_revision();
+        let document = AuthoredRetainedDocument::admit_source(&self.plan, key, epoch, revision)?;
+        self.lifecycle.validate().map_err(source_error)?;
+        Ok(ModelBoundRetainedDocument { document, lifecycle: self.lifecycle.clone(), #[cfg(not(target_arch = "wasm32"))] pending: None })
+    }
+}
+
+/// Numerical recipe/document ownership retains only the small revision state.
+/// No SourceBundle, decoder, bytes or appearance maps survive in this owner.
+pub struct ModelBoundRetainedDocument {
+    pub(super) document: AuthoredRetainedDocument,
+    pub(super) lifecycle: ProductionLifecycle,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(super) pending: Option<std::sync::Weak<()>>,
+}
+impl ModelBoundRetainedDocument {
+    /// This request remains decoder-free. Runtime acceptance additionally needs
+    /// an executor-issued receipt; host-created completions are not accepted here.
+    pub fn prepare(&self, key: &AnalyticSourceKey, contract: EvaluationContract, incarnation: u64)
+        -> Result<RetainedRequest, RetainedRefusal>
+    {
+        self.lifecycle.validate().map_err(source_error)?;
+        self.document.prepare(key, contract, incarnation)
+    }
+    pub fn document(&self) -> &ifc_lite_geometry::document::GeometryDocument {
+        self.document.document()
+    }
+}
+
+pub(super) fn source_error(_: crate::element::ProductionContextError) -> RetainedRefusal {
+    RetainedRefusal::InvalidSource("production source expired or decoder mismatched")
+}

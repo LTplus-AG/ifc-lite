@@ -1,0 +1,244 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Owned EXPRESS values beside interpreted geometry. No sampling or unit conversion.
+use crate::{Error, Result};
+use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
+use serde::Serialize;
+use std::collections::BTreeMap;
+
+/// Original selector types, typed wrappers and source references survive intact.
+/// Reals are decoded f64 values, not original STEP lexical spellings.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+pub enum SourceValue {
+    EntityRef(u32),
+    String(String),
+    Integer(i64),
+    Real(f64),
+    Binary(String),
+    Enum(String),
+    List(Vec<SourceValue>),
+    Typed {
+        name: String,
+        value: Box<SourceValue>,
+    },
+    Null,
+    Derived,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SourceRecord {
+    pub id: u32,
+    pub ifc_type_name: String,
+    /// Exact EXPRESS attribute names; original values, never interpreted radians.
+    pub attributes: BTreeMap<String, SourceValue>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AnalyticBoundarySource {
+    pub root_entity_id: u32,
+    /// File plane-angle units -> radians. Length coefficients remain file units.
+    pub plane_angle_to_radians: f64,
+    /// Reached profile/curve/composite/basis/placement/point records, indexed by source ID.
+    /// Composite Segments order, SameSense and Transition define source traversal;
+    /// the matching loop's segments contain the separate interpreted traversal.
+    pub records: BTreeMap<u32, SourceRecord>,
+}
+
+#[derive(Default)]
+pub(super) struct SourceCapture {
+    records: BTreeMap<u32, SourceRecord>,
+    values: usize,
+    enabled: bool,
+}
+impl SourceCapture {
+    pub fn enabled() -> Self {
+        Self {
+            enabled: true,
+            ..Self::default()
+        }
+    }
+    pub fn finish(self, root_entity_id: u32, scale: f64) -> Result<AnalyticBoundarySource> {
+        if !scale.is_finite() || scale <= 0.0 {
+            return Err(invalid("invalid source plane-angle unit scale"));
+        }
+        Ok(AnalyticBoundarySource {
+            root_entity_id,
+            plane_angle_to_radians: scale,
+            records: self.records,
+        })
+    }
+
+    /// Called by the existing curve interpreter when it reaches each record.
+    /// Only fixed-depth coefficient dependencies are captured here; composite
+    /// and trimmed curve traversal remains exclusively in CurveWalk.
+    pub fn record(&mut self, entity: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {
+        if !self.enabled {
+            return Ok(());
+        }
+        let mut pending = vec![entity.clone()];
+        let mut visited = std::collections::HashSet::new();
+        let mut work = 0;
+        while let Some(entity) = pending.pop() {
+            work += 1;
+            if work > 1_000_000 {
+                return Err(invalid("source coefficient work budget exceeded"));
+            }
+            if !visited.insert(entity.id) || self.records.contains_key(&entity.id) {
+                continue;
+            }
+            self.record_values(&entity)?;
+            pending.extend(Self::coefficients(&entity, decoder)?);
+        }
+        Ok(())
+    }
+
+    fn record_values(&mut self, entity: &DecodedEntity) -> Result<()> {
+        let names: &[&str] = match entity.ifc_type {
+            IfcType::IfcRectangleProfileDef => {
+                &["ProfileType", "ProfileName", "Position", "XDim", "YDim"]
+            }
+            IfcType::IfcCircleProfileDef => &["ProfileType", "ProfileName", "Position", "Radius"],
+            IfcType::IfcPolyline => &["Points"],
+            IfcType::IfcIndexedPolyCurve => &["Points", "Segments", "SelfIntersect"],
+            IfcType::IfcCompositeCurve | IfcType::IfcCompositeCurveOnSurface => {
+                &["Segments", "SelfIntersect"]
+            }
+            IfcType::IfcCompositeCurveSegment => &["Transition", "SameSense", "ParentCurve"],
+            IfcType::IfcTrimmedCurve => &[
+                "BasisCurve",
+                "Trim1",
+                "Trim2",
+                "SenseAgreement",
+                "MasterRepresentation",
+            ],
+            IfcType::IfcLine => &["Pnt", "Dir"],
+            IfcType::IfcCircle => &["Position", "Radius"],
+            IfcType::IfcAxis2Placement2D => &["Location", "RefDirection"],
+            IfcType::IfcAxis2Placement3D => &["Location", "Axis", "RefDirection"],
+            IfcType::IfcCartesianPoint => &["Coordinates"],
+            IfcType::IfcDirection => &["DirectionRatios"],
+            IfcType::IfcVector => &["Orientation", "Magnitude"],
+            IfcType::IfcCartesianPointList2D | IfcType::IfcCartesianPointList3D => &["CoordList"],
+            _ => return Ok(()),
+        };
+        if self.records.len() >= 100_000 {
+            return Err(invalid("source records exceed work budget"));
+        }
+        let attributes = names
+            .iter()
+            .enumerate()
+            .filter_map(|(i, name)| entity.get(i).map(|v| (name, v)))
+            .map(|(name, v)| Ok(((*name).to_owned(), self.value(v, 0)?)))
+            .collect::<Result<_>>()?;
+        self.records.insert(
+            entity.id,
+            SourceRecord {
+                id: entity.id,
+                ifc_type_name: entity.ifc_type.name().to_owned(),
+                attributes,
+            },
+        );
+        Ok(())
+    }
+
+    fn coefficients(
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Vec<DecodedEntity>> {
+        let mut dependencies = Vec::new();
+        use IfcType::*;
+        // Finite EXPRESS dependency ranks: curve -> placement/vector -> point/direction.
+        // Never follow ParentCurve/BasisCurve here (CurveWalk owns those edges).
+        let slots: &[(usize, &[IfcType])] = match entity.ifc_type {
+            IfcRectangleProfileDef | IfcCircleProfileDef => &[(2, &[IfcAxis2Placement2D])],
+            IfcLine => &[(0, &[IfcCartesianPoint]), (1, &[IfcVector])],
+            IfcCircle => &[(0, &[IfcAxis2Placement2D, IfcAxis2Placement3D])],
+            IfcIndexedPolyCurve => &[(0, &[IfcCartesianPointList2D, IfcCartesianPointList3D])],
+            IfcAxis2Placement2D => &[(0, &[IfcCartesianPoint]), (1, &[IfcDirection])],
+            IfcAxis2Placement3D => &[
+                (0, &[IfcCartesianPoint]),
+                (1, &[IfcDirection]),
+                (2, &[IfcDirection]),
+            ],
+            IfcVector => &[(0, &[IfcDirection])],
+            _ => &[],
+        };
+        for &(slot, expected) in slots {
+            if let Some(id) = entity.get_ref(slot) {
+                dependencies.push(Self::coefficient(id, expected, decoder)?);
+            }
+        }
+        if entity.ifc_type == IfcPolyline {
+            if let Some(points) = entity.get_list(0) {
+                for point in points {
+                    if let Some(id) = point.as_entity_ref() {
+                        dependencies.push(Self::coefficient(id, &[IfcCartesianPoint], decoder)?);
+                    }
+                }
+            }
+        }
+        if entity.ifc_type == IfcTrimmedCurve {
+            for slot in [1, 2] {
+                if let Some(selectors) = entity.get_list(slot) {
+                    for selector in selectors {
+                        if let Some(id) = selector.as_entity_ref() {
+                            dependencies.push(Self::coefficient(
+                                id,
+                                &[IfcCartesianPoint],
+                                decoder,
+                            )?);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(dependencies)
+    }
+
+    fn coefficient(
+        id: u32,
+        expected: &[IfcType],
+        decoder: &mut EntityDecoder,
+    ) -> Result<DecodedEntity> {
+        let entity = decoder.decode_by_id(id)?;
+        // Refuse a malformed coefficient edge before following it. Rank strictly
+        // decreases on every valid edge; the global record set bounds revisits.
+        if !expected.contains(&entity.ifc_type) {
+            return Err(invalid("invalid source coefficient dependency"));
+        }
+        Ok(entity)
+    }
+
+    fn value(&mut self, value: &AttributeValue, depth: usize) -> Result<SourceValue> {
+        self.values += 1;
+        if depth >= 32 || self.values > 1_000_000 {
+            return Err(invalid("source values exceed work budget"));
+        }
+        Ok(match value {
+            AttributeValue::EntityRef(v) => SourceValue::EntityRef(*v),
+            AttributeValue::String(v) => SourceValue::String(v.clone()),
+            AttributeValue::Binary(v) => SourceValue::Binary(v.clone()),
+            AttributeValue::Integer(v) => SourceValue::Integer(*v),
+            AttributeValue::Float(v) if v.is_finite() => SourceValue::Real(*v),
+            AttributeValue::Float(_) => return Err(invalid("nonfinite source coefficient")),
+            AttributeValue::Enum(v) => SourceValue::Enum(v.clone()),
+            AttributeValue::List(v) => SourceValue::List(
+                v.iter()
+                    .map(|x| self.value(x, depth + 1))
+                    .collect::<Result<_>>()?,
+            ),
+            AttributeValue::Typed { name, value } => SourceValue::Typed {
+                name: name.to_string(),
+                value: Box::new(self.value(value, depth + 1)?),
+            },
+            AttributeValue::Null => SourceValue::Null,
+            AttributeValue::Derived => SourceValue::Derived,
+        })
+    }
+}
+fn invalid(message: &str) -> Error {
+    Error::geometry(message.to_owned())
+}

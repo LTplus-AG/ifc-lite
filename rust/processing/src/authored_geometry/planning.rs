@@ -14,6 +14,17 @@ use super::{AuthoredConstruction, AuthoredDefinition, AuthoredEvaluationContract
 pub fn plan_authored_geometry(content: &[u8], ids: Option<&HashSet<u32>>) -> AuthoredGeometryPlan {
     let views = extract_analytic_quantity_sources(content, ids);
     let inventory = super::inventory::inventory(content, ids);
+    assemble(views, inventory, ids)
+}
+
+pub(super) fn plan_decoder(decoder: &mut ifc_lite_core::EntityDecoder<'_>) -> AuthoredGeometryPlan {
+    let views = crate::analytic_export::extract_analytic_quantity_sources_from_decoder(decoder);
+    let inventory = super::inventory::inventory_decoder(decoder, None);
+    assemble(views, inventory, None)
+}
+
+fn assemble(views: crate::AnalyticQuantitySources, inventory: super::inventory::Inventory,
+    ids: Option<&HashSet<u32>>) -> AuthoredGeometryPlan {
     let mut products = BTreeMap::new();
     for id in inventory.products.iter().copied().chain(ids.into_iter().flatten().copied()) {
         products.entry(id).or_insert_with(|| AuthoredProductPlan {

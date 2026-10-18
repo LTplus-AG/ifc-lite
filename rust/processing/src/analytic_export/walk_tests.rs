@@ -10,10 +10,10 @@ fn issue_5786_mapped_extrusion_source_cache_preserves_quantities_and_instances()
     let content = include_bytes!("../../../geometry/tests/fixtures/mapped_instances_synthetic.ifc");
     let ids = HashSet::from([31, 38]);
     let mut cached = MappedSourceCache::new();
-    let actual = extract_with_source_cache(content, Some(&ids), false, false, true, &mut cached);
+    let actual = extract_standalone_with_source_cache(content, Some(&ids), false, false, true, &mut cached);
     let mut uncached = MappedSourceCache::new();
     uncached.enabled = false;
-    let expected = extract_with_source_cache(content, Some(&ids), false, false, true, &mut uncached);
+    let expected = extract_standalone_with_source_cache(content, Some(&ids), false, false, true, &mut uncached);
 
     assert_eq!((cached.loads, cached.hits, uncached.loads), (1, 1, 2));
     assert_eq!(serde_json::to_value(&actual.extrusions).unwrap(),
@@ -35,12 +35,12 @@ fn issue_5786_revit_mapped_sources_are_loaded_once_without_changing_analytic_ord
         [(false, true, false), (true, true, false), (false, false, true)]
     {
         let mut cached = MappedSourceCache::new();
-        let actual = extract_with_source_cache(
+        let actual = extract_standalone_with_source_cache(
             &content, None, definitions, descriptions, extrusions, &mut cached,
         );
         let mut uncached = MappedSourceCache::new();
         uncached.enabled = false;
-        let expected = extract_with_source_cache(
+        let expected = extract_standalone_with_source_cache(
             &content, None, definitions, descriptions, extrusions, &mut uncached,
         );
 
@@ -72,12 +72,12 @@ fn issue_5786_shared_source_cache_preserves_distinct_target_transforms() {
     );
     for definitions in [false, true] {
         let mut cached = MappedSourceCache::new();
-        let actual = extract_with_source_cache(
+        let actual = extract_standalone_with_source_cache(
             model.as_bytes(), None, definitions, true, false, &mut cached,
         );
         let mut uncached = MappedSourceCache::new();
         uncached.enabled = false;
-        let expected = extract_with_source_cache(
+        let expected = extract_standalone_with_source_cache(
             model.as_bytes(), None, definitions, true, false, &mut uncached,
         );
         assert_eq!((cached.loads, cached.hits, uncached.loads), (1, 1, 2));
@@ -122,12 +122,12 @@ fn issue_5786_many_mapped_occurrences_decode_one_source_and_keep_each_target() {
     );
     for (definitions, descriptions) in [(false, true), (true, false)] {
         let mut cached = MappedSourceCache::new();
-        let actual = extract_with_source_cache(
+        let actual = extract_standalone_with_source_cache(
             model.as_bytes(), None, definitions, descriptions, false, &mut cached,
         );
         let mut uncached = MappedSourceCache::new();
         uncached.enabled = false;
-        let expected = extract_with_source_cache(
+        let expected = extract_standalone_with_source_cache(
             model.as_bytes(), None, definitions, descriptions, false, &mut uncached,
         );
 
@@ -180,12 +180,12 @@ fn issue_5786_nested_mirrored_scaled_maps_keep_order_and_world_frames() {
 
     for (definitions, descriptions) in [(false, true), (true, false)] {
         let mut cached = MappedSourceCache::new();
-        let actual = extract_with_source_cache(
+        let actual = extract_standalone_with_source_cache(
             model.as_bytes(), None, definitions, descriptions, false, &mut cached,
         );
         let mut uncached = MappedSourceCache::new();
         uncached.enabled = false;
-        let expected = extract_with_source_cache(
+        let expected = extract_standalone_with_source_cache(
             model.as_bytes(), None, definitions, descriptions, false, &mut uncached,
         );
         assert_eq!((cached.loads, cached.hits, uncached.loads), (2, 4, 6));
@@ -235,7 +235,7 @@ fn issue_5786_invalid_shared_source_reports_each_product() {
     ).replace("ENDSEC;\nEND-ISO-10303-21;",
         "#51=IFCREINFORCINGBAR('0000000000000000000003',$,'Bar copy',$,$,#30,#49,'BAR-2',$,29.,0.,$,.NOTDEFINED.,$);\nENDSEC;\nEND-ISO-10303-21;");
     let mut cache = MappedSourceCache::new();
-    let result = extract_with_source_cache(model.as_bytes(), None, true, true, false, &mut cache);
+    let result = extract_standalone_with_source_cache(model.as_bytes(), None, true, true, false, &mut cache);
     assert_eq!((cache.loads, cache.hits), (2, 0),
         "malformed shared sources must be validated for each occurrence");
     assert!(result.descriptions.elements.is_empty());
@@ -259,7 +259,7 @@ fn issue_5786_target_parse_error_precedes_origin_parse_error() {
         "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#1001,$,#10,$,$);",
     );
     let mut cache = MappedSourceCache::new();
-    let result = extract_with_source_cache(model.as_bytes(), None, false, true, false, &mut cache);
+    let result = extract_standalone_with_source_cache(model.as_bytes(), None, false, true, false, &mut cache);
     assert!(result.descriptions.elements.is_empty());
     assert!(result.descriptions.diagnostics.iter().any(|message|
         message.contains("product #50: mapped item #47: mapped transform: ")

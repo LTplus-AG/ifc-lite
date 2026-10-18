@@ -51,3 +51,37 @@ Mesh normals are per triangle corner; positions remain f64 until a display consu
 chooses to narrow them. Host transfer limits do not bound upstream tessellation
 memory; process-level resource supervision remains required before production activation. It does not accept an exact-polyhedral request. The wire contract
 is [versioned here](../../native/smlib-adapter/README.md).
+
+The additive staged-sweep extension keeps ABI and message envelopes at version 1.
+`Capabilities` (opcode 12) returns recipe version 1 and a staged-upload bit;
+13/14/15/16 begin, append, commit and abort a bounded numerical recipe. Frames
+remain at most 4096 bytes; chunks hold at most 3840 recipe bytes. One session
+owns at most one incomplete input, bounded to 1 MiB and 8192 curves. Malformed
+chunks discard it; every commit attempt consumes it. These are transfer bounds,
+not SDK heap or process limits.
+
+`evaluate_retained_extrusion` consumes a geometry-document request for the
+explicit worker incarnation, constructs an immutable capped sweep, and returns
+an owned f64 tessellation plus a separate worker-affine solid handle. The caller
+must release the handle. `WorkerCommand::RetainedExtrusion` runs the whole upload,
+construction and tessellation under one supervisor deadline. Restart never
+silently replays the document recipe or chooses another backend.
+
+The authored processing consumer is
+`ifc_lite_processing::authored_geometry::evaluator::AuthoredRetainedDocument`.
+Its current admitted IFC family is source-only `IfcRectangleProfileDef` extrusion.
+Circle, holed, arbitrary/trimmed and mixed curved profile admission stays refused
+pending positive SDK qualification and original trim-convention preservation.
+The numerical adapter's circle construction is exercised by qualification tests;
+that test producer is not qualified IFC circle coverage. Publication preserves
+the f64 packet, deliberately expands flat corners for display, and shares one
+mesh definition across mapped occurrences. Persistent IFC faces, analytic smooth
+normals and IFC appearance contracts are typed refusals. Existing canonical
+appearance, mesh/default exact, USD and IFCX paths are unchanged.
+
+This source layer has not been compiled or qualified against the SDK in its
+current revision: fleet admission is blocked. Transport fault peers are not
+geometry evidence. Outstanding integration includes transformed-copy boolean
+operands, full source/trim metadata, surface-type/section witnesses, application
+asset delivery, memory limits and supervisor undeliverable-result cleanup. Do
+not activate it as a replacement production geometry path.

@@ -6,7 +6,11 @@
 //! certify that every item in a product representation has been lowered.
 
 mod inventory;
+pub mod bound;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod bound_native;
 mod planning;
+pub mod evaluator;
 
 use std::collections::BTreeMap;
 use serde::Serialize;

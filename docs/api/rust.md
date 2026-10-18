@@ -323,6 +323,28 @@ final net product geometry. Run the real-file consumer with:
 cargo run -p ifc-lite-processing --example authored_geometry -- model.ifc
 ```
 
+For explicit model-bound evaluation, an `OwnedMeshProductionContext` created
+from a `SourceBundle` exposes `admit_authored_plan(&mut decoder)`. It validates
+and leases that source's existing decoder, then caches immutable source analysis
+per snapshot. `BoundAuthoredPlan::admit_source` creates a numerical document
+carrying a small lifecycle token. Explicit source invalidation expires it;
+dropping the model alone does not invalidate the snapshot. Standalone
+`plan_authored_geometry` retains scanned-record compatibility semantics;
+model-bound admission follows the authenticated decoder's selected records and
+existing cache, including duplicate IDs.
+
+On native targets, `ModelBoundRetainedDocument::issue`, `execute` and `accept`
+use a private pending ticket and an immutable receipt from the actual worker.
+Caller-created `RetainedCompletion` values cannot enter that acceptance barrier.
+Rejected packets return intact; dropping a completed or published bound receipt
+retires its captured worker domain, including other handles in that domain.
+`AuthoredRetainedDocument` is a separate explicitly host-trusted adapter.
+The consumed source slice currently admits rectangles; curved and holed source
+admission remains gated. Display admission is explicitly unstyled source geometry,
+without final-net, persistent IFC face, smooth-normal or appearance guarantees.
+The assembled implementation remains uncompiled and geometry-unqualified; see
+the [preservation status](../architecture/evidence/geometry-platform-retained-review/preservation-round2.md).
+
 The unpublished `ifc-lite-geometry-runtime` crate exposes a native blocking
 `SmlibWorker` and bounded `SupervisedWorker`. Supervised commands have queue-inclusive
 deadlines and cancellation; active interruption kills and reaps the process before

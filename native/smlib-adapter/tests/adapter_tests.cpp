@@ -7,6 +7,7 @@
 #include <limits>
 extern "C" uint32_t header_works_in_c(void);
 void run_mesh_tests();
+void run_sweep_tests();
 namespace {
 void expect(bool value, const char* label) {
     if (!value) {
@@ -24,6 +25,7 @@ void near(double actual, double expected) {
 }
 int main() {
     run_mesh_tests();
+    run_sweep_tests();
     expect(header_works_in_c() == 1, "version from pure C translation unit");
     uint64_t session, other;
     ok(ifclite_smlib_session_create(&session)); ok(ifclite_smlib_session_create(&other));

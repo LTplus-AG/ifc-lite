@@ -53,6 +53,9 @@ impl SmlibWorker {
         let mesh = self.handle(bytes)?;
         let result = self.read_mesh(mesh, limits);
         let released = self.release(mesh);
+        if released.is_err() {
+            self.retire();
+        }
         match (result, released) {
             (Ok(mesh), Ok(())) => Ok(mesh),
             (Err(error), _) | (Ok(_), Err(error)) => Err(error),

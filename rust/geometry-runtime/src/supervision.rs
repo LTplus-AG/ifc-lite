@@ -5,16 +5,25 @@
 use crate::{BrepHandle, MeshLimits, SmlibWorker, TessellatedMesh, WorkerError};
 use ifc_lite_geometry::document::BooleanOperation;
 use std::ffi::OsString;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 mod controller;
+mod delivery;
+use delivery::{Claim, Envelope};
 
 /// Owned operations only: callers cannot run arbitrary code on the IO thread.
 #[derive(Debug, Clone)]
 pub enum WorkerCommand {
+    Incarnation,
+    RetainedExtrusion {
+        request: Box<ifc_lite_geometry::document::RetainedRequest>,
+        chord_metres: f64,
+        angle_degrees: f64,
+        limits: MeshLimits,
+    },
     CreateBox {
         origin: [f64; 3],
         size: [f64; 3],
@@ -49,6 +58,8 @@ pub enum WorkerCommand {
 
 #[derive(Debug)]
 pub enum WorkerResult {
+    Incarnation(u64),
+    Retained(Box<crate::RetainedRealization>),
     Solid(BrepHandle),
     Volume(f64),
     Manifold(bool),
@@ -91,25 +102,27 @@ struct Request {
     _admission: Admission,
     command: WorkerCommand,
     deadline: Instant,
-    cancelled: Arc<AtomicBool>,
-    response: mpsc::Sender<Result<WorkerResult, SupervisionError>>,
+    claim: Arc<Claim>,
+    response: mpsc::Sender<Envelope>,
 }
 
 /// Cancelling or dropping a pending request retires an executing session. Its
 /// completion is sent only after the process has been killed and reaped.
 pub struct PendingCommand {
-    cancelled: Arc<AtomicBool>,
-    response: mpsc::Receiver<Result<WorkerResult, SupervisionError>>,
+    claim: Arc<Claim>,
+    response: mpsc::Receiver<Envelope>,
 }
 impl PendingCommand {
     pub fn cancel(&self) {
-        self.cancelled.store(true, Ordering::Release);
+        self.claim.cancel();
     }
 
     pub fn wait(self) -> Result<WorkerResult, SupervisionError> {
-        self.response
+        let envelope = self
+            .response
             .recv()
-            .unwrap_or(Err(SupervisionError::Stopped))
+            .map_err(|_| SupervisionError::Stopped)?;
+        envelope.claim(&self.claim)
     }
 }
 impl Drop for PendingCommand {
@@ -127,7 +140,7 @@ pub struct SupervisedWorker {
     admitted: Arc<AtomicUsize>,
     capacity: usize,
     stopping: Arc<AtomicBool>,
-    process_id: Arc<AtomicU32>,
+    process_id: Arc<Mutex<Option<crate::process_control::ProcessControl>>>,
     controller: Option<JoinHandle<()>>,
 }
 impl SupervisedWorker {
@@ -138,7 +151,7 @@ impl SupervisedWorker {
         let (sender, receiver) = mpsc::sync_channel(capacity);
         let admitted = Arc::new(AtomicUsize::new(0));
         let stopping = Arc::new(AtomicBool::new(false));
-        let process_id = Arc::new(AtomicU32::new(0));
+        let process_id = Arc::new(Mutex::new(None));
         let stop = Arc::clone(&stopping);
         let pid = Arc::clone(&process_id);
         let executable = executable.into();
@@ -170,13 +183,13 @@ impl SupervisedWorker {
             })
             .map_err(|_| SupervisionError::QueueFull)?;
         let admission = Admission(Arc::clone(&self.admitted));
-        let cancelled = Arc::new(AtomicBool::new(false));
+        let claim = Arc::new(Claim::new(deadline));
         let (response, receiver) = mpsc::channel();
         let request = Request {
             _admission: admission,
             command,
             deadline,
-            cancelled: Arc::clone(&cancelled),
+            claim: Arc::clone(&claim),
             response,
         };
         self.sender
@@ -188,17 +201,19 @@ impl SupervisedWorker {
                 mpsc::TrySendError::Disconnected(_) => SupervisionError::Stopped,
             })?;
         Ok(PendingCommand {
-            cancelled,
+            claim,
             response: receiver,
         })
     }
 
     /// Diagnostic identity only. Cancellation uses the owned Child, never a PID.
     pub fn process_id(&self) -> Option<u32> {
-        match self.process_id.load(Ordering::Acquire) {
-            0 => None,
-            id => Some(id),
-        }
+        self.process_id
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .filter(|control| control.is_live())
+            .map(|control| control.id())
     }
 }
 impl Drop for SupervisedWorker {
@@ -216,6 +231,20 @@ impl Drop for SupervisedWorker {
 fn execute(worker: &mut SmlibWorker, command: WorkerCommand) -> Result<WorkerResult, WorkerError> {
     worker.initialize()?;
     match command {
+        WorkerCommand::Incarnation => match worker.incarnation() {
+            0 => Err(WorkerError::Protocol(
+                "worker exited before identity publication",
+            )),
+            identity => Ok(WorkerResult::Incarnation(identity)),
+        },
+        WorkerCommand::RetainedExtrusion {
+            request,
+            chord_metres,
+            angle_degrees,
+            limits,
+        } => worker
+            .evaluate_retained_extrusion(*request, chord_metres, angle_degrees, limits)
+            .map(|result| WorkerResult::Retained(Box::new(result))),
         WorkerCommand::CreateBox { origin, size } => {
             worker.create_box(origin, size).map(WorkerResult::Solid)
         }

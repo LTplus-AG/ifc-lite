@@ -7,7 +7,7 @@ struct Controller {
     executable: OsString,
     receiver: mpsc::Receiver<Request>,
     stopping: Arc<AtomicBool>,
-    pid: Arc<AtomicU32>,
+    pid: Arc<Mutex<Option<crate::process_control::ProcessControl>>>,
     queued: VecDeque<Request>,
     available: Option<SmlibWorker>,
 }
@@ -16,7 +16,7 @@ pub(super) fn run(
     executable: OsString,
     receiver: mpsc::Receiver<Request>,
     stopping: Arc<AtomicBool>,
-    pid: Arc<AtomicU32>,
+    pid: Arc<Mutex<Option<crate::process_control::ProcessControl>>>,
 ) {
     let mut controller = Controller {
         executable,
@@ -42,13 +42,13 @@ impl Controller {
                 },
             };
             let result = match interrupted(&request, &self.stopping) {
-                Some(error) => Err(error),
+                Some(error) => Envelope::new(Err(error), None),
                 None => self.perform(&request),
             };
             respond(request, result);
         }
         drop(self.available.take());
-        self.pid.store(0, Ordering::Release);
+        *self.pid.lock().unwrap_or_else(|e| e.into_inner()) = None;
         self.maintain_queue();
     }
 
@@ -57,21 +57,36 @@ impl Controller {
         for _ in 0..self.queued.len() {
             let request = self.queued.pop_front().expect("fixed queue length");
             if let Some(error) = interrupted(&request, &self.stopping) {
-                respond(request, Err(error));
+                respond(request, Envelope::new(Err(error), None));
             } else {
                 self.queued.push_back(request);
             }
         }
     }
 
-    fn perform(&mut self, request: &Request) -> Result<WorkerResult, SupervisionError> {
+    fn perform(&mut self, request: &Request) -> Envelope {
+        // Drop retired/observably exited cached sessions before lazy spawn.
+        if self
+            .available
+            .as_ref()
+            .is_some_and(|worker| !worker.is_live())
+        {
+            drop(self.available.take());
+        }
+        match self.perform_inner(request) {
+            Ok(envelope) => envelope,
+            Err(error) => Envelope::new(Err(error), None),
+        }
+    }
+
+    fn perform_inner(&mut self, request: &Request) -> Result<Envelope, SupervisionError> {
         let mut worker = match self.available.take() {
             Some(worker) => worker,
             None => SmlibWorker::spawn_uninitialized(&self.executable)
                 .map_err(SupervisionError::Worker)?,
         };
         let control = worker.process_control();
-        self.pid.store(control.id(), Ordering::Release);
+        *self.pid.lock().unwrap_or_else(|e| e.into_inner()) = Some(control.clone());
         let (finished, completion) = mpsc::channel();
         // Commands contain small owned values; caller closures cannot execute.
         let command = request.command.clone();
@@ -82,7 +97,7 @@ impl Controller {
                 let _ = finished.send((worker, result));
             })
             .map_err(|error| {
-                self.pid.store(0, Ordering::Release);
+                *self.pid.lock().unwrap_or_else(|e| e.into_inner()) = None;
                 SupervisionError::Worker(WorkerError::Io(error))
             })?;
         loop {
@@ -90,7 +105,7 @@ impl Controller {
             if let Some(error) = interrupted(request, &self.stopping) {
                 let terminated = control.terminate();
                 let joined = transport.join();
-                self.pid.store(0, Ordering::Release);
+                *self.pid.lock().unwrap_or_else(|e| e.into_inner()) = None;
                 terminated.map_err(|error| SupervisionError::Worker(WorkerError::Io(error)))?;
                 joined.map_err(|_| SupervisionError::TransportPanicked)?;
                 return Err(error);
@@ -104,24 +119,34 @@ impl Controller {
                     if let Some(error) = interrupted(request, &self.stopping) {
                         let terminated = control.terminate();
                         drop(worker);
-                        self.pid.store(0, Ordering::Release);
+                        *self.pid.lock().unwrap_or_else(|e| e.into_inner()) = None;
                         terminated
                             .map_err(|error| SupervisionError::Worker(WorkerError::Io(error)))?;
                         return Err(error);
                     }
-                    if matches!(result, Err(WorkerError::Io(_) | WorkerError::Protocol(_))) {
+                    if !worker.is_live()
+                        || matches!(result, Err(WorkerError::Io(_) | WorkerError::Protocol(_)))
+                    {
                         drop(worker);
-                        self.pid.store(0, Ordering::Release);
+                        *self.pid.lock().unwrap_or_else(|e| e.into_inner()) = None;
                     } else {
                         self.available = Some(worker);
                     }
-                    return result.map_err(SupervisionError::Worker);
+                    let owned = matches!(
+                        result,
+                        Ok(WorkerResult::Solid(_) | WorkerResult::Retained(_))
+                    )
+                    .then_some(control);
+                    return Ok(Envelope::new(
+                        result.map_err(SupervisionError::Worker),
+                        owned,
+                    ));
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => (),
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
                     let terminated = control.terminate();
                     let joined = transport.join();
-                    self.pid.store(0, Ordering::Release);
+                    *self.pid.lock().unwrap_or_else(|e| e.into_inner()) = None;
                     terminated.map_err(|error| SupervisionError::Worker(WorkerError::Io(error)))?;
                     joined.map_err(|_| SupervisionError::TransportPanicked)?;
                     return Err(SupervisionError::Stopped);
@@ -134,7 +159,7 @@ impl Controller {
 fn interrupted(request: &Request, stopping: &AtomicBool) -> Option<SupervisionError> {
     if stopping.load(Ordering::Acquire) {
         Some(SupervisionError::Stopped)
-    } else if request.cancelled.load(Ordering::Acquire) {
+    } else if request.claim.is_cancelled() {
         Some(SupervisionError::Cancelled)
     } else if Instant::now() >= request.deadline {
         Some(SupervisionError::Deadline)
@@ -143,7 +168,7 @@ fn interrupted(request: &Request, stopping: &AtomicBool) -> Option<SupervisionEr
     }
 }
 
-fn respond(request: Request, result: Result<WorkerResult, SupervisionError>) {
+fn respond(request: Request, result: Envelope) {
     let Request {
         _admission,
         response,
@@ -153,3 +178,7 @@ fn respond(request: Request, result: Result<WorkerResult, SupervisionError>) {
     drop(_admission);
     let _ = response.send(result);
 }
+
+#[cfg(test)]
+#[path = "controller_tests.rs"]
+mod tests;

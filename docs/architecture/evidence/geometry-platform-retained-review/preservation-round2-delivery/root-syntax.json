@@ -1,0 +1,287 @@
+{
+  "status": "SYNTAX_ONLY_NOT_TYPE_VALIDATION",
+  "checks": [
+    {
+      "path": "rust/geometry-runtime/src/lib.rs",
+      "sha256": "8575a84552a5f6b0f6e5f14484b9c7cb463e2e6bef3ff9dee0a0d7954e642da8",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry-runtime/src/process_control.rs",
+      "sha256": "8a601065565601e9424708803bfc7604cacc6216d3881f49a4d20d7ec3c6c06a",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry-runtime/src/process_control_tests.rs",
+      "sha256": "e54a99d969e8106bd20c5485b5cf37ab447b31cf2327d5dd5624d4d7d214e7f6",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry-runtime/src/protocol.rs",
+      "sha256": "8670ee16ca8b6049041e2bec8b5a6822aea92c5cdfe0df8455ed2d76edecd3ed",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry-runtime/src/protocol_tests.rs",
+      "sha256": "39e62396add83a661f3e15eb4182eda93f3668167dc1c6c84fd0b4af4d2cea6a",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry-runtime/src/runtime_owner.rs",
+      "sha256": "c171a55edd5324c8e117b0e1aa60d221bb3b478ae0bbbe991d0ff166aff15e87",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry-runtime/src/supervision.rs",
+      "sha256": "96386e63f016adffa6836951d7abd18d46252edfd5958d2b0a2b9fdf875058b5",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry-runtime/src/supervision/controller.rs",
+      "sha256": "7e1b599f70170e3121ec92949fbc7896ad6b46a54e7eb734ad75e92270aa1348",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry-runtime/src/supervision/controller_tests.rs",
+      "sha256": "f8f366c16d3e704394c9f36d9126e1f81f52c92b88455d8fe3d552b68c394e0b",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry-runtime/src/supervision/delivery.rs",
+      "sha256": "5ec11d4467f8b3934851adaf650298208fa7b70c70afea9ef3fb6a73aff9dcfd",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker.rs",
+      "sha256": "ce3f58e7f2e64c6211890e0b63d601a6434ab131753cc9cca23a25fb3de2f55d",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_mesh.rs",
+      "sha256": "042051f7e3cfc6fc86b7dd8b903ac4f807f506be3b28b69ebe08a2cd1971a595",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_sweep.rs",
+      "sha256": "c207b7a76f0c72009ae61ba133130d12bae920164903954547e43929ad7518a0",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry-runtime/tests/cleanup.rs",
+      "sha256": "d27479bf2c4837eb54f2db5db8656afcef790300ec167191afbe40eb165a548d",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry-runtime/tests/retained_receipt.rs",
+      "sha256": "96db8e3d5b0d3458b5690e9fcbfe2ff5f223a145bcdbf98c37d90bdd5b3a1d2b",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry-runtime/tests/smlib_worker.rs",
+      "sha256": "12b46f8387731cf0995b438cfa834f79bd2766edc83e1dc849ba0c40bd7428d6",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/analytic/curve.rs",
+      "sha256": "aabd862ae0633c36eead064c13ccfb06a472f549cbb7a3c7bd58e746b61b2f65",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/analytic/mod.rs",
+      "sha256": "a2aab90b34dce71bea18991790241ddfed2fe5d598ad73056e8bad32eb7b6f8c",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/analytic/profile.rs",
+      "sha256": "cb8133a28ced3d5c2888eb84d6a25d2ee9a23c4d47efa11e59d90ea802e1449b",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/analytic/profile_topology_tests.rs",
+      "sha256": "901e4b1166481323fd34fd9af9392fe2e3c7d0b3307101c51a0a4fe851c680f3",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/analytic/source.rs",
+      "sha256": "f40ae7b08488b37cb0805f0156b5b318023bd0082262fdd336786dd89a67717c",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/analytic/source_tests.rs",
+      "sha256": "cdb8bbfd6f843f85cadc7f6a3c1b8a578695507850e18b8bbef1e4fe1272ce5b",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/document/mod.rs",
+      "sha256": "831eff5202bc0609c5d00f3c87ceaddc01f21468fe62e9cbeae38d43e0ddcc60",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/document/retained.rs",
+      "sha256": "e6dcbb62bccc0a117d9f74275628dac9e4c653b6b722d204c3036f9d7acb8ede",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/document/retained_display.rs",
+      "sha256": "fe7cb670939c135b6b450b38cab36f63419c4a9b0ad18a83b561d1f326e70265",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/document/retained_sweep.rs",
+      "sha256": "b898c16f104948a43aa5d51a7e8550960724b9ba289f62c8228936f9b1308f40",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/document/retained_sweep_tests.rs",
+      "sha256": "71293a79f5cde5e4820d4600892ac05c60e3f5728e2e823d56e6f8acc630b9b9",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/chain_cycle_tests.rs",
+      "sha256": "e4ba42d89916bdbeb807184d6e44871ad2d83a1f8dce4b95b667ef502497d660",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/dispatch_tests.rs",
+      "sha256": "7bcfe3334a5bb5b302a35621c9847fce66d636597f071ee6bb2181221e1f4135",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/resource_tests.rs",
+      "sha256": "ac250ab0f90a8ecb0b6aed85d83a14e7aafd8372a35deb1a7f991eb23965e520",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/processing.rs",
+      "sha256": "4348039e0918cd0a484e3bdbbfc9d574e3996fb46fe8e028e5683f40579f26e3",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/analytic_export.rs",
+      "sha256": "3f9f6208d925200d87fc6b1561ef77b1b066db15d43bcf59b1b301aaa816d789",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/analytic_export/walk.rs",
+      "sha256": "fed31bd94a8c380a546c2b8b21f9ce9992fc8678145dae4320395acc0925caff",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/analytic_export/walk/entry.rs",
+      "sha256": "aaa8790b7ca46b70f82a451aa07f2af12ccea96a69e874701a592d134733f5d8",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/analytic_export/walk_bench_tests.rs",
+      "sha256": "b8981755d2bbe30180e388db3a6f5f1f58542a5c8b2d7a49cac409c3edcfe0dc",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/analytic_export/walk_tests.rs",
+      "sha256": "a5959bc2ff4c66818277bd6a597283a7d086e0af6cbd2c024dcfbc9138742411",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/bound.rs",
+      "sha256": "416a684abd2c5d76c4ba4b386f6c71e6198a00ef5cffe06f337312def135c053",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/bound_native.rs",
+      "sha256": "35463a0ae82c992ad1a755a2d98ed995882e24d9fe265b1b93215ddf7b3665b0",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/evaluator.rs",
+      "sha256": "be566b9733cc501f748772f6ed4200174f01af504796c463c835d816f6956151",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/inventory.rs",
+      "sha256": "a906a9648a01234a5017bdd7970f2d3f37a2ab5299c02a495aa3a4fa8a666efc",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/mod.rs",
+      "sha256": "a6fc3355f7269521cf53b6877cc7537be2022afe73504d9bc726cb02b133890e",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/planning.rs",
+      "sha256": "594750e343b10c970729883393f14c2fe68a457bbd77043f46e237e485294245",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element.rs",
+      "sha256": "029693ff73d4ebf1f737d9825b6d19dd458e2ddfbf56c79f3f891d5b22d520e8",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element/model_context.rs",
+      "sha256": "c24899defcdacb8e2aa435577c4c7d35c8558d3f22c97b4d6d37872be5f93619",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/tests/retained_authored_evaluator.rs",
+      "sha256": "e25dd4bcc94bd385309dfee1b4677e4020f74448b0f6427094e923bbf624c196",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/tests/retained_model_admission.rs",
+      "sha256": "47e9bfff1177789972abf62303c96c961f3190d2cff15047a424facbd7034bef",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/tests/retained_admission_policy.rs",
+      "sha256": "d052f0bac34f1438124f264c38181471fd4c88d31a6d5032ea939f96a7b33811",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    }
+  ]
+}

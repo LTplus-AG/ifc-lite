@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Immutable model inputs shared once per effective batch, never copied per product.
 use super::*;
-use std::{fmt,sync::{Arc,atomic::{AtomicU64,Ordering}}};
+use std::{fmt,sync::{Arc,OnceLock,atomic::{AtomicU64,Ordering}}};
 
 /// Shared components selected by the existing consumer for one effective batch.
 /// Construct by moving maps into Arcs or cloning existing model-level Arcs.
@@ -54,7 +54,7 @@ impl ProductionModel {
         let revision=self.state.revision.fetch_update(Ordering::Relaxed,Ordering::Relaxed,|n|n.checked_add(1))
             .expect("production context revision exhausted")+1;
         Arc::new(OwnedMeshProductionContext {id:ProductionContextId {load:self.state.load,source_epoch,revision},
-            data,state:self.state.clone(),source:self.source.clone(),trusted:self.trusted.clone()})
+            data,state:self.state.clone(),source:self.source.clone(),trusted:self.trusted.clone(),authored_plan:OnceLock::new()})
     }
     /// Whether a snapshot was created by this model load, independent of its
     /// immutable configuration revision. This grants no decoder authority.
@@ -76,9 +76,17 @@ pub struct OwnedMeshProductionContext {
     state:Arc<ModelState>,
     source:Option<Arc<ifc_lite_core::SourceBundle>>,
     trusted:Option<ifc_lite_core::TrustedDecoderInputs>,
+    authored_plan:OnceLock<Arc<crate::authored_geometry::bound::BoundAuthoredPlan>>,
 }
 impl OwnedMeshProductionContext {
     pub fn id(&self)->ProductionContextId {self.id}
+    /// A small source-lifecycle capability, with no source allocation or maps.
+    pub(crate) fn lifecycle(&self)->ProductionLifecycle {
+        ProductionLifecycle {id:self.id,state:Arc::clone(&self.state)}
+    }
+    pub(crate) fn authored_cache(&self)->&OnceLock<Arc<crate::authored_geometry::bound::BoundAuthoredPlan>> {
+        &self.authored_plan
+    }
     /// Numerical presentation retains only its immutable derived inputs, never
     /// the model/context authority or a future source bundle attached to it.
     pub(super) fn presentation_palettes(&self)->Arc<FxHashMap<u32,FullIndexedColourMap>> {
@@ -113,3 +121,16 @@ impl fmt::Display for ProductionContextError {
     fn fmt(&self,f:&mut fmt::Formatter<'_>)->fmt::Result {f.write_str(match self {Self::StaleSource=>"production model source was invalidated", Self::MismatchedSource=>"decoder does not belong to the production source bundle"})}
 }
 impl std::error::Error for ProductionContextError {}
+
+/// Opaque model/load authority for decoder-free numerical work. Explicit source
+/// invalidation expires it; dropping a model or creating another snapshot does not.
+#[derive(Clone)]
+pub(crate) struct ProductionLifecycle {id:ProductionContextId,state:Arc<ModelState>}
+impl ProductionLifecycle {
+    pub(crate) fn validate(&self)->Result<(),ProductionContextError> {
+        if self.id.load==self.state.load && self.id.source_epoch==self.state.source_epoch.load(Ordering::Acquire) {
+            Ok(())
+        } else {Err(ProductionContextError::StaleSource)}
+    }
+    pub(crate) fn epoch_revision(&self)->(u64,u64) {(self.id.source_epoch,self.id.revision)}
+}

@@ -38,6 +38,8 @@ Writer dispatch(Reader& reader) {
     int32_t status = IFCLITE_SMLIB_OK;
     if (operation == 0) {
         reader.end(); payload.u32(ifclite_smlib_abi_version());
+    } else if (operation == 12) {
+        reader.end(); payload.u32(1); payload.u32(ifclite_smlib_capabilities());
     } else if (operation == 1) {
         reader.end(); uint64_t session = 0;
         status = ifclite_smlib_session_create(&session); payload.u64(session);
@@ -104,6 +106,29 @@ Writer dispatch(Reader& reader) {
                 }
             }
             break;
+        }
+        case 13: {
+            const uint32_t format=reader.u32(), length=reader.u32();
+            const uint32_t loops=reader.u32(), segments=reader.u32(); reader.end();
+            uint64_t upload=0;
+            status=ifclite_smlib_sweep_begin(session,format,length,loops,segments,&upload);
+            payload.u64(upload); break;
+        }
+        case 14: {
+            const uint64_t upload=reader.u64(); const uint32_t offset=reader.u32();
+            const uint32_t length=reader.u32();
+            if (length>3840 || reader.bytes.size()-reader.offset!=length)
+                throw std::runtime_error("invalid upload chunk frame");
+            status=ifclite_smlib_sweep_chunk(session,upload,offset,
+                reader.bytes.data()+reader.offset,length); break;
+        }
+        case 15: {
+            const uint64_t upload=reader.u64(); reader.end(); ifclite_smlib_handle solid{};
+            status=ifclite_smlib_sweep_commit(session,upload,&solid); payload.handle(solid); break;
+        }
+        case 16: {
+            const uint64_t upload=reader.u64(); reader.end();
+            status=ifclite_smlib_sweep_abort(session,upload); break;
         }
         default: throw std::runtime_error("unknown opcode");
         }

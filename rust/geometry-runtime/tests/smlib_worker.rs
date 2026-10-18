@@ -118,7 +118,7 @@ fn real_worker_death_poisons_transport_and_drop_reaps() {
     assert!(status.success());
     assert!(matches!(
         worker.volume(solid, 1e-8),
-        Err(WorkerError::Io(_))
+        Err(WorkerError::Io(_) | WorkerError::Protocol(_))
     ));
     assert!(matches!(
         worker.volume(solid, 1e-8),

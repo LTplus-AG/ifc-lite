@@ -9,7 +9,7 @@ use ifc_lite_core::{build_entity_index, EntityDecoder};
 use std::f64::consts::{PI, TAU};
 
 fn boundary(segments: Vec<AnalyticCurveSegment>) -> AnalyticProfileLoop {
-    AnalyticProfileLoop { kind: ProfileLoopKind::Outer, segments, signed_area: 1.0, perimeter: 1.0 }
+    AnalyticProfileLoop { kind: ProfileLoopKind::Outer, segments, signed_area: 1.0, perimeter: 1.0, source: None }
 }
 fn polygon(points: &[[f64; 2]]) -> AnalyticProfileLoop {
     let mut result = boundary((0..points.len()).map(|i| {

@@ -7,6 +7,11 @@
 
 mod types;
 mod validation;
+mod retained;
+mod retained_display;
+pub mod retained_sweep;
+pub use retained::{RetainedCompletion, RetainedDefinitionHandle, RetainedExtrusion,
+    RetainedRefusal, RetainedRequest, RetainedTessellation};
 
 pub use types::{
     BooleanOperation, BooleanRequest, DefinitionHandle, DocumentError, DocumentId, EvaluatedMesh,
@@ -37,6 +42,7 @@ pub struct GeometryDocument {
     revision: u64,
     definitions: Vec<Option<Definition>>,
     occurrences: Vec<Option<Occurrence>>,
+    retained: Vec<Option<retained::RetainedDefinition>>,
 }
 
 impl Default for GeometryDocument {
@@ -57,6 +63,7 @@ impl GeometryDocument {
             revision: 0,
             definitions: Vec::new(),
             occurrences: Vec::new(),
+            retained: Vec::new(),
         }
     }
 

@@ -62,6 +62,7 @@ mod plan;
 mod assembly_job;
 use assembly_job::AssemblyJob;
 mod model_context;
+pub(crate) use model_context::ProductionLifecycle;
 pub use model_context::{OwnedMeshProductionData,OwnedMeshProductionContext,ProductionModel,ProductionContextId,ProductionContextError};
 mod session;
 mod owned_session;

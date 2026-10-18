@@ -1,0 +1,25 @@
+{
+  "base": "390c218c6f",
+  "delivery_commit": "b05253d676dbd24329520497d45a70ac4d9d2608",
+  "delivery_source_files_verified_against_child_filesystem_and_git": 72,
+  "delivery_checksums_verified": 59,
+  "deleted": [],
+  "applied_patch_exclusions": [
+    "rust/geometry/src/processors/boolean/chain_cycle_tests.rs",
+    "rust/geometry/src/program/boolean/dispatch_tests.rs",
+    "rust/geometry/src/program/mapping/resource_tests.rs",
+    "rust/geometry/src/router/processing.rs"
+  ],
+  "reason": "Three already identical compiler corrections and integrated opening caller in processing.rs preserved. Root source-preservation corrections being reviewed separately.",
+  "actual_root_lightweight_checks": {
+    "protocol_fixture_tests": {
+      "passed": 10,
+      "failed": 0,
+      "geometry_evidence": false
+    },
+    "locked_offline_cargo_metadata": "pass --no-deps; metadata only",
+    "shell_python_javascript_syntax": "pass; no SDK build"
+  },
+  "qualification": "UNCOMPILED_UNQUALIFIED",
+  "archive_sha256": "bc01fcd378955f6aaec99630885e52cb482507ea0478a5761d6767d23ff66a06"
+}

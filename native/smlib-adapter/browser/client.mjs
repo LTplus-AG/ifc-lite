@@ -19,8 +19,9 @@ export class SmlibWorkerTransport {
   #start() {
     this.#generation++;
     // Object identity distinguishes both different clients and restarts.
-    this.#incarnation = Object.freeze({ generation: this.#generation });
+    const incarnation = Object.freeze({ generation: this.#generation });
     const worker = new Worker(this.workerUrl, { type: 'module' });
+    this.#incarnation = incarnation;
     this.#worker = worker;
     worker.onmessage = ({ data }) => {
       if (this.#worker !== worker) return;
@@ -45,11 +46,18 @@ export class SmlibWorkerTransport {
   #poison(error) {
     this.#worker?.terminate();
     this.#worker = undefined;
+    this.#incarnation = undefined;
     for (const pending of this.#pending.values()) {
       clearTimeout(pending.timer);
       pending.reject(error);
     }
     this.#pending.clear();
+  }
+  // Retire only the captured owner; stale cleanup cannot kill a replacement.
+  retire(incarnation) {
+    if (incarnation !== undefined && incarnation === this.#incarnation) {
+      this.#poison(new Error('worker incarnation retired'));
+    }
   }
   // Ownership transfers immediately; successful responses own their copied bytes.
   batch(frames, incarnation) {
@@ -59,7 +67,7 @@ export class SmlibWorkerTransport {
         new Set(frames).size !== frames.length || frames.some((frame) => !(frame instanceof ArrayBuffer) || frame.byteLength < 12 || frame.byteLength > 4096)) {
       return Promise.reject(new Error('invalid frame batch'));
     }
-    if (this.#pending.size >= this.maxPending) return Promise.reject(new Error('pending batch limit exceeded'));
+    if (this.#pending.size >= this.maxPending) return Promise.reject(Object.assign(new Error('pending batch limit exceeded'), { submitted: false }));
     const id = ++this.#next;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => this.#poison(new Error('worker deadline exceeded')), this.timeout);

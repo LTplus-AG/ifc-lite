@@ -1,0 +1,243 @@
+--- a/rust/processing/src/analytic_export/walk.rs
++++ b/rust/processing/src/analytic_export/walk.rs
+@@ -5,7 +5,7 @@
+ //! One bounded body-representation walk for flattened and reusable analytics.
+ 
+ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+-use ifc_lite_core::{ has_geometry_by_name, DecodedEntity, EntityDecoder,
++use ifc_lite_core::{has_geometry_by_name, DecodedEntity, EntityDecoder,
+     EntityScanner, IfcType, MAX_MAPPED_ITEM_DEPTH};
+ use ifc_lite_geometry::{analytic::{extract_analytic_extrusion, extract_swept_disk,
+     AnalyticExtrusion, AnalyticStatus, AnalyticSweptDisk},
+@@ -44,15 +44,16 @@
+ const MAX_TOTAL_INSTANCES: usize = 100_000;
+ 
+ mod entry;
+-pub(super) use entry::extract;
++pub(super) use entry::{extract, extract_with_source_cache};
++use entry::ProductAdmission;
+ #[cfg(test)]
+ use entry::extract_standalone_with_source_cache;
+ 
+-/// Shared canonical walk over the caller's authenticated, leased decoder.
+-pub(super) fn extract_with_source_cache(
++/// One geometry walk; entry policy preserves standalone scanned-record admission.
++fn extract_with_admission(
+     decoder: &mut EntityDecoder<'_>, ids: Option<&HashSet<u32>>,
+     collect_definitions: bool, collect_descriptions: bool, collect_extrusions: bool,
+-    mapped_sources: &mut MappedSourceCache,
++    mapped_sources: &mut MappedSourceCache, admission: ProductAdmission,
+ ) -> ExtractResult {
+     let content = decoder.content;
+     let mut result = SweptDiskDescriptions::default();
+@@ -79,12 +80,12 @@
+     let mut total_extrusion_instances = 0usize;
+     let mut total_profile_segments = 0usize;
+ 
+-    while let Some((id, type_name, _start, _end)) = scanner.next_entity() {
+-        if !has_geometry_by_name(type_name) || ids.is_some_and(|wanted| !wanted.contains(&id))
+-            || !products_seen.insert(id) {
++    while let Some((id, type_name, start, end)) = scanner.next_entity() {
++        if !has_geometry_by_name(type_name) || ids.is_some_and(|wanted| !wanted.contains(&id)) {
+             continue;
+         }
+-        let element = match decoder.decode_by_id(id) {
++        let Some(decoded) = admission.decode(decoder, id, start, end, &mut products_seen) else { continue };
++        let element = match decoded {
+             Ok(element) if element.ifc_type.is_subtype_of(IfcType::IfcProduct) => element,
+             Ok(_) => continue,
+             Err(error) => {
+--- a/rust/processing/src/analytic_export/walk/entry.rs
++++ b/rust/processing/src/analytic_export/walk/entry.rs
+@@ -30,9 +30,37 @@
+     collect_extrusions: bool,
+     mapped_sources: &mut MappedSourceCache,
+ ) -> ExtractResult {
++    if !collect_definitions && !collect_extrusions && ids.is_some_and(HashSet::is_empty) {
++        return ExtractResult { descriptions: SweptDiskDescriptions::default(), definitions: None, extrusions: None };
++    }
+     let index = build_entity_index(content);
+     let mut decoder = EntityDecoder::with_index(content, index);
+-    extract_with_source_cache(&mut decoder, ids, collect_definitions, collect_descriptions,
+-        collect_extrusions, mapped_sources)
++    extract_with_admission(&mut decoder, ids, collect_definitions, collect_descriptions,
++        collect_extrusions, mapped_sources, ProductAdmission::ScannedRecord)
+ }
+ 
++/// Product source policy is distinct from the shared representation geometry walk.
++#[derive(Clone, Copy)]
++pub(super) enum ProductAdmission { ScannedRecord, CanonicalDecoder }
++impl ProductAdmission {
++    pub(super) fn decode(self, decoder: &mut EntityDecoder<'_>, id: u32,
++        start: usize, end: usize, seen: &mut HashSet<u32>)
++        -> Option<ifc_lite_core::Result<DecodedEntity>>
++    {
++        match self {
++            Self::ScannedRecord => Some(decoder.decode_at_uncached(start, end)),
++            Self::CanonicalDecoder if seen.insert(id) => Some(decoder.decode_by_id(id)),
++            Self::CanonicalDecoder => None,
++        }
++    }
++}
++
++/// Model admission reuses the actual leased decoder, including its warm caches.
++pub(in crate::analytic_export) fn extract_with_source_cache(
++    decoder: &mut EntityDecoder<'_>, ids: Option<&HashSet<u32>>,
++    definitions: bool, descriptions: bool, extrusions: bool,
++    mapped_sources: &mut MappedSourceCache,
++) -> ExtractResult {
++    extract_with_admission(decoder, ids, definitions, descriptions, extrusions,
++        mapped_sources, ProductAdmission::CanonicalDecoder)
++}
+--- a/rust/processing/src/authored_geometry/inventory.rs
++++ b/rust/processing/src/authored_geometry/inventory.rs
+@@ -14,21 +14,32 @@
+ 
+ pub(super) fn inventory(content: &[u8], ids: Option<&HashSet<u32>>) -> Inventory {
+     let mut decoder = EntityDecoder::with_index(content, build_entity_index(content));
+-    inventory_decoder(&mut decoder, ids)
++    collect(&mut decoder, ids, Admission::ScannedRecord)
+ }
+ 
+ pub(super) fn inventory_decoder(decoder: &mut EntityDecoder<'_>, ids: Option<&HashSet<u32>>) -> Inventory {
++    collect(decoder, ids, Admission::CanonicalDecoder)
++}
++
++#[derive(Clone, Copy)]
++enum Admission { ScannedRecord, CanonicalDecoder }
++fn collect(decoder: &mut EntityDecoder<'_>, ids: Option<&HashSet<u32>>, admission: Admission) -> Inventory {
+     let content = decoder.content;
+     let mut result = Inventory { products: BTreeSet::new(), openings: BTreeMap::new(),
+         opening_relationships_verified: true, diagnostics: Vec::new() };
+     let mut scanner = EntityScanner::new(content);
+     let mut visited = BTreeSet::new();
+-    while let Some((id, type_name, _start, _end)) = scanner.next_entity() {
++    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+         let relationship = type_name.eq_ignore_ascii_case("IFCRELVOIDSELEMENT");
+         let product = has_geometry_by_name(type_name)
+             && ids.is_none_or(|wanted| wanted.contains(&id));
+-        if (!relationship && !product) || !visited.insert(id) { continue; }
+-        match decoder.decode_by_id(id) {
++        if !relationship && !product { continue; }
++        let decoded = match admission {
++            Admission::ScannedRecord => decoder.decode_at_uncached(start, end),
++            Admission::CanonicalDecoder if visited.insert(id) => decoder.decode_by_id(id),
++            Admission::CanonicalDecoder => continue,
++        };
++        match decoded {
+             Ok(entity) if relationship => {
+                 match (entity.ref_at(slot::IfcRelVoidsElement::RELATING_BUILDING_ELEMENT),
+                     entity.ref_at(slot::IfcRelVoidsElement::RELATED_OPENING_ELEMENT)) {
+--- /dev/null
++++ b/rust/processing/tests/retained_admission_policy.rs
+@@ -0,0 +1,110 @@
++// SPDX-License-Identifier: MPL-2.0
++//! Standalone scanned records and model-bound source selection are distinct contracts.
++use ifc_lite_core::{EntityDecoder, EntityScanner, SourceBundle};
++use ifc_lite_processing::{
++    authored_geometry::{plan_authored_geometry, AuthoredGeometryPlan, EvaluationRequirement},
++    element::{OwnedMeshProductionData, ProductionModel},
++    extract_extrusion_definitions,
++};
++use std::collections::HashSet;
++
++fn duplicate_source() -> String {
++    // Derived invariant input: one product is authored twice with different
++    // real extrusion sources; one relationship is authored twice with different openings.
++    let original = include_str!("../../geometry/tests/fixtures/mapped_instances_synthetic.ifc");
++    original.replace("ENDSEC;\nEND-ISO-10303-21;", "\
++#900=IFCEXTRUDEDAREASOLID(#8,#11,#9,7.0);
++#901=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#900));
++#902=IFCPRODUCTDEFINITIONSHAPE($,$,(#901));
++#31=IFCBUILDINGELEMENTPROXY('duplicate',$,$,$,$,#30,#902,$,$);
++#920=IFCOPENINGELEMENT('first-opening',$,$,$,$,#30,#902,$);
++#921=IFCOPENINGELEMENT('last-opening',$,$,$,$,#30,#902,$);
++#910=IFCRELVOIDSELEMENT('first-link',$,$,$,#31,#920);
++#910=IFCRELVOIDSELEMENT('last-link',$,$,$,#31,#921);
++ENDSEC;
++END-ISO-10303-21;")
++}
++
++fn openings(plan: &AuthoredGeometryPlan) -> Vec<(u32, u32)> {
++    plan.products[&31].requirements.iter().filter_map(|requirement| match requirement {
++        EvaluationRequirement::ExternalOpening { relationship_id, opening_id } =>
++            Some((*relationship_id, *opening_id)),
++        _ => None,
++    }).collect()
++}
++fn solids(plan: &AuthoredGeometryPlan) -> Vec<u32> {
++    plan.recipes.iter().filter(|recipe| recipe.product_id == 31)
++        .map(|recipe| recipe.source.solid_id).collect()
++}
++
++#[test]
++fn standalone_duplicate_products_keep_scanned_definitions_and_last_instance() {
++    let input = duplicate_source();
++    let ids = HashSet::from([31]);
++    let definitions = extract_extrusion_definitions(input.as_bytes(), Some(&ids));
++    assert_eq!(definitions.sources.iter().map(|source| source.source.solid_id).collect::<Vec<_>>(), [12, 900]);
++    assert_eq!(definitions.sources.iter().map(|source| source.source.depth).collect::<Vec<_>>(), [Some(1.), Some(7.)]);
++    // Historical per-product output is replaced by the last successful scanned
++    // record, while both definitions and relationship facts survive analysis.
++    assert_eq!(definitions.instances[&31].len(), 1);
++    assert_eq!(definitions.instances[&31][0].solid_id, 900);
++    let plan = plan_authored_geometry(input.as_bytes(), Some(&ids));
++    assert_eq!(solids(&plan), [900]);
++    assert_eq!(openings(&plan), [(910, 920), (910, 921)]);
++}
++
++fn prewarm_first(decoder: &mut EntityDecoder<'_>, id: u32) {
++    let mut scanner = EntityScanner::new(decoder.content);
++    while let Some((candidate, _, start, end)) = scanner.next_entity() {
++        if candidate == id {
++            decoder.decode_at_with_id(id, start, end).unwrap();
++            return;
++        }
++    }
++    panic!("missing stated prewarm record #{id}");
++}
++
++#[test]
++fn bound_duplicate_products_and_links_use_actual_factory_cache_without_replaying_records() {
++    let source = SourceBundle::new(duplicate_source().into_bytes());
++    let model = ProductionModel::from_source(source.clone());
++    let fresh_context = model.snapshot(OwnedMeshProductionData::default());
++    let mut fresh = source.decoder();
++    let fresh_plan = fresh_context.admit_authored_plan(&mut fresh).unwrap();
++    assert_eq!(solids(fresh_plan.plan()), [900]);
++    assert_eq!(openings(fresh_plan.plan()), [(910, 921)]);
++
++    // A real scanner/prepass can warm the first original record. Its cache is
++    // authoritative for this source decoder and must not be cleared or replaced
++    // by the fresh-worker last-record policy during bound admission.
++    let warm_context = model.snapshot(OwnedMeshProductionData::default());
++    let mut warm = source.decoder();
++    prewarm_first(&mut warm, 31);
++    prewarm_first(&mut warm, 910);
++    let warm_plan = warm_context.admit_authored_plan(&mut warm).unwrap();
++    assert_eq!(solids(warm_plan.plan()), [12]);
++    assert_eq!(openings(warm_plan.plan()), [(910, 920)]);
++    assert_eq!(warm.decode_by_id(31).unwrap().get_ref(6), Some(27));
++    assert_eq!(warm.decode_by_id(910).unwrap().get_ref(5), Some(920));
++}
++
++#[test]
++fn standalone_duplicate_relationship_keeps_earlier_fault_while_bound_uses_selected_record() {
++    let input = duplicate_source().replace(
++        "#910=IFCRELVOIDSELEMENT('first-link',$,$,$,#31,#920);",
++        "#910=IFCRELVOIDSELEMENT('first-link',$,$,$,$,#920);");
++    let standalone = plan_authored_geometry(input.as_bytes(), Some(&HashSet::from([31])));
++    assert!(standalone.products[&31].requirements.iter().any(|requirement|
++        matches!(requirement, EvaluationRequirement::OpeningRelationshipsUnverified)));
++    assert!(standalone.diagnostics.iter().any(|message| message.contains("IfcRelVoidsElement #910")));
++    assert_eq!(openings(&standalone), [(910, 921)]);
++
++    let source = SourceBundle::new(input.into_bytes());
++    let model = ProductionModel::from_source(source.clone());
++    let context = model.snapshot(OwnedMeshProductionData::default());
++    let mut decoder = source.decoder();
++    let bound = context.admit_authored_plan(&mut decoder).unwrap();
++    assert!(!bound.plan().products[&31].requirements.iter().any(|requirement|
++        matches!(requirement, EvaluationRequirement::OpeningRelationshipsUnverified)));
++    assert_eq!(openings(bound.plan()), [(910, 921)]);
++}

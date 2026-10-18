@@ -13,16 +13,33 @@ pub(super) struct Inventory {
 }
 
 pub(super) fn inventory(content: &[u8], ids: Option<&HashSet<u32>>) -> Inventory {
+    let mut decoder = EntityDecoder::with_index(content, build_entity_index(content));
+    collect(&mut decoder, ids, Admission::ScannedRecord)
+}
+
+pub(super) fn inventory_decoder(decoder: &mut EntityDecoder<'_>, ids: Option<&HashSet<u32>>) -> Inventory {
+    collect(decoder, ids, Admission::CanonicalDecoder)
+}
+
+#[derive(Clone, Copy)]
+enum Admission { ScannedRecord, CanonicalDecoder }
+fn collect(decoder: &mut EntityDecoder<'_>, ids: Option<&HashSet<u32>>, admission: Admission) -> Inventory {
+    let content = decoder.content;
     let mut result = Inventory { products: BTreeSet::new(), openings: BTreeMap::new(),
         opening_relationships_verified: true, diagnostics: Vec::new() };
-    let decoder = EntityDecoder::with_index(content, build_entity_index(content));
     let mut scanner = EntityScanner::new(content);
+    let mut visited = BTreeSet::new();
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
         let relationship = type_name.eq_ignore_ascii_case("IFCRELVOIDSELEMENT");
         let product = has_geometry_by_name(type_name)
             && ids.is_none_or(|wanted| wanted.contains(&id));
         if !relationship && !product { continue; }
-        match decoder.decode_at_uncached(start, end) {
+        let decoded = match admission {
+            Admission::ScannedRecord => decoder.decode_at_uncached(start, end),
+            Admission::CanonicalDecoder if visited.insert(id) => decoder.decode_by_id(id),
+            Admission::CanonicalDecoder => continue,
+        };
+        match decoded {
             Ok(entity) if relationship => {
                 match (entity.ref_at(slot::IfcRelVoidsElement::RELATING_BUILDING_ELEMENT),
                     entity.ref_at(slot::IfcRelVoidsElement::RELATED_OPENING_ELEMENT)) {

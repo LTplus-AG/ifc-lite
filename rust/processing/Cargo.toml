@@ -51,6 +51,9 @@ tracing = { workspace = true, features = ["std", "attributes"] }
 sha2.workspace = true
 nalgebra.workspace = true
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ifc-lite-geometry-runtime = { path = "../geometry-runtime" }
+
 [dev-dependencies]
 # Test-only (publish = false). Path-only: cargo strips it when packaging.
 ifc-lite-testkit = { path = "../testkit" }

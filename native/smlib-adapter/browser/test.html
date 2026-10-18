@@ -3,6 +3,8 @@
 <title>Owned SMLib browser transport</title>
 <pre id="result">Running two isolated workers…</pre>
 <script type="module">
+import { runUploadLifecycleContract } from './lifecycle-contract.mjs';
+import { runSweepContract } from './sweep-contract.mjs';
 import { SmlibWorkerTransport } from './client.mjs';
 import { assert, request, response, runContract } from './contract.mjs';
 const clients = [new SmlibWorkerTransport(), new SmlibWorkerTransport({ maxPending: 1 })];
@@ -11,6 +13,8 @@ try {
     const incarnation = client.incarnation;
     return runContract((frames) => client.batch(frames, incarnation));
   }));
+  await Promise.all(clients.map((client) => runSweepContract(client, client.incarnation)));
+  const uploadLifecycle = await runUploadLifecycleContract(clients[1]);
   assert(JSON.stringify(results[0]) === JSON.stringify(results[1]), 'independent worker state');
   let foreign = false;
   try { await clients[1].batch([request(0)], clients[0].incarnation); } catch { foreign = true; }
@@ -85,7 +89,7 @@ try {
   response((await timerClient.batch([request(0)], timerClient.incarnation))[0]);
   await new Promise((resolve) => setTimeout(resolve, 550));
   response((await timerClient.batch([request(0)], timerClient.incarnation))[0]);
-  window.probeResult = { passed: true, workers: 2, results, restarted, faults, crossOriginIsolated };
+  window.probeResult = { passed: true, workers: 2, results, restarted, faults, uploadLifecycle, crossOriginIsolated };
 } catch (error) {
   window.probeResult = { passed: false, error: String(error), stack: error.stack };
 } finally {

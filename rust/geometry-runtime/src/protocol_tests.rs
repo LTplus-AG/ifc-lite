@@ -138,3 +138,18 @@ fn all_commands_stay_bounded_and_mesh_chunks_cannot_wrap() {
         );
     }
 }
+
+#[test]
+fn retained_round1_staged_chunks_preserve_v1_envelopes_and_bound_arithmetic() {
+    let session=0xfedcba9876543210;
+    let bytes=encode_request(99,&KernelCommand::SweepChunk {
+        session,upload:123,offset:3840,bytes:vec![17;3840] }).unwrap();
+    assert_eq!(bytes.len(),3876);
+    assert_eq!(&bytes[..4],&1u32.to_le_bytes());
+    assert_eq!(&bytes[12..20],&session.to_le_bytes());
+    assert_eq!(&bytes[36..],vec![17;3840]);
+    for (offset,chunk) in [(u32::MAX,vec![1]),(0,vec![]),(0,vec![0;3841])] {
+        assert_eq!(encode_request(1,&KernelCommand::SweepChunk {session,upload:123,offset,bytes:chunk}),
+            Err(ProtocolError::PayloadSize));
+    }
+}

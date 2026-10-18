@@ -1601,6 +1601,7 @@ version = "21.4.0"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
+ "ifc-lite-geometry-runtime",
  "ifc-lite-testkit",
  "nalgebra",
  "png",

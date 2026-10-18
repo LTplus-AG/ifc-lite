@@ -13,4 +13,8 @@ mod supervision;
 #[cfg(not(target_arch = "wasm32"))]
 pub use supervision::{PendingCommand, SupervisedWorker, SupervisionError, WorkerCommand, WorkerResult};
 #[cfg(not(target_arch = "wasm32"))]
-pub use worker::{BrepHandle, MeshLimits, SmlibWorker, TessellatedMesh, WorkerError};
+pub use worker::{BrepHandle, MeshLimits, RetainedRealization, SmlibWorker, TessellatedMesh, WorkerError};
+#[cfg(not(target_arch = "wasm32"))]
+mod runtime_owner;
+#[cfg(not(target_arch = "wasm32"))]
+pub use runtime_owner::RuntimeOwner;

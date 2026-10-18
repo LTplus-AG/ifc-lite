@@ -1,0 +1,470 @@
+{
+  "base": "390c218c6f",
+  "status": "INTEGRATED_UNCOMPILED_UNQUALIFIED",
+  "source": [
+    {
+      "path": "Cargo.lock",
+      "sha256": "f52385dc435b1addd5560d94e7576d38647d0551aa89f3330ac5c4391a738a0c",
+      "delivery_sha256": "f52385dc435b1addd5560d94e7576d38647d0551aa89f3330ac5c4391a738a0c",
+      "delivery_match": true
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-retained-review/authored-evaluator-round1.md",
+      "sha256": "8757094293b7145280b3460e9e23b6afb99ce04d4debc5801af91b9293dac6be",
+      "delivery_sha256": "8757094293b7145280b3460e9e23b6afb99ce04d4debc5801af91b9293dac6be",
+      "delivery_match": true
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-retained-review/preservation-round2.md",
+      "sha256": "ff00e498c57e1b15fe16be36892b8d103eaa7d87c0cfda7d66454fbc4d046807",
+      "delivery_sha256": "5786bdd406c944749249a04cfb65835f0475aa2ab60377b27b3f9d765a208ff6",
+      "delivery_match": false
+    },
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "sha256": "ac4c45c1b404c5e7b02682688fb4eb0986b9709a9f39af45dc602d01cab33cf7",
+      "delivery_sha256": "ac4c45c1b404c5e7b02682688fb4eb0986b9709a9f39af45dc602d01cab33cf7",
+      "delivery_match": true
+    },
+    {
+      "path": "native/smlib-adapter/README.md",
+      "sha256": "5d5a1097d563c9a91a6a7738bd1f40121ca1cc66360b84b981c7c2fef8d87169",
+      "delivery_sha256": "5d5a1097d563c9a91a6a7738bd1f40121ca1cc66360b84b981c7c2fef8d87169",
+      "delivery_match": true
+    },
+    {
+      "path": "native/smlib-adapter/acquire-tools.py",
+      "sha256": "e27bf91f5d13e09fd4fd606d993b2ff92f69d99230f5cf9231708e8b52974e14",
+      "delivery_sha256": "e27bf91f5d13e09fd4fd606d993b2ff92f69d99230f5cf9231708e8b52974e14",
+      "delivery_match": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/client.mjs",
+      "sha256": "66ed0d7b8c7f463bcab09e59d6633d2c359bc33e06b239f2115f696510f3da4c",
+      "delivery_sha256": "66ed0d7b8c7f463bcab09e59d6633d2c359bc33e06b239f2115f696510f3da4c",
+      "delivery_match": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/client.test.mjs",
+      "sha256": "379b4534391d4225f55c11e8b8ed742d87206ac077db94176c40940337a6deff",
+      "delivery_sha256": "379b4534391d4225f55c11e8b8ed742d87206ac077db94176c40940337a6deff",
+      "delivery_match": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/lifecycle-contract.mjs",
+      "sha256": "2b4df44e63b013e96d002c88150433e6c33c5162032ec86771c6e3ed8332df8b",
+      "delivery_sha256": "2b4df44e63b013e96d002c88150433e6c33c5162032ec86771c6e3ed8332df8b",
+      "delivery_match": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/node-tests.mjs",
+      "sha256": "0b44cb0ac2b209b303e215e2a087287d064ef668c71f65ebaa4592049c2d4f2d",
+      "delivery_sha256": "0b44cb0ac2b209b303e215e2a087287d064ef668c71f65ebaa4592049c2d4f2d",
+      "delivery_match": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep-contract.mjs",
+      "sha256": "b8cb00e0d724fedc8105426fb0562b63a334a666503cf0b4aff15d10cf1d9a19",
+      "delivery_sha256": "b8cb00e0d724fedc8105426fb0562b63a334a666503cf0b4aff15d10cf1d9a19",
+      "delivery_match": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep-transport.test.mjs",
+      "sha256": "1de0cfec9dfc8402af2ca9a563cf97c9a6f1a3cbbec47ccd6d9ab99405470f29",
+      "delivery_sha256": "1de0cfec9dfc8402af2ca9a563cf97c9a6f1a3cbbec47ccd6d9ab99405470f29",
+      "delivery_match": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep.mjs",
+      "sha256": "bb6a360db139048e47ea3b68c4b3d1aacb45d01a3fbf010ebad8aac6434be85e",
+      "delivery_sha256": "bb6a360db139048e47ea3b68c4b3d1aacb45d01a3fbf010ebad8aac6434be85e",
+      "delivery_match": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/test.html",
+      "sha256": "af18b6b61b7a98bb305ff455c5b13c15bad9a6dd3a380f01656d31bf2abc33e4",
+      "delivery_sha256": "af18b6b61b7a98bb305ff455c5b13c15bad9a6dd3a380f01656d31bf2abc33e4",
+      "delivery_match": true
+    },
+    {
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "sha256": "7e4de0a189ff7b71c4cce1c2ee6a596cdad37db6c71d25414f111a9e793c84ae",
+      "delivery_sha256": "7e4de0a189ff7b71c4cce1c2ee6a596cdad37db6c71d25414f111a9e793c84ae",
+      "delivery_match": true
+    },
+    {
+      "path": "native/smlib-adapter/qualify.sh",
+      "sha256": "187dc0629a52827b82e3b904ee6e196ae392dcc2133dc0ac81a59385e5fe7393",
+      "delivery_sha256": "187dc0629a52827b82e3b904ee6e196ae392dcc2133dc0ac81a59385e5fe7393",
+      "delivery_match": true
+    },
+    {
+      "path": "native/smlib-adapter/src/adapter.cpp",
+      "sha256": "cbd6f23824816030b6498c892653ca750181b321b13234abe5deceed28c74d9b",
+      "delivery_sha256": "cbd6f23824816030b6498c892653ca750181b321b13234abe5deceed28c74d9b",
+      "delivery_match": true
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "sha256": "e27d03533d9a4af4d8f866a17725629a3c936d27e97fa701519a0deaae6f973f",
+      "delivery_sha256": "e27d03533d9a4af4d8f866a17725629a3c936d27e97fa701519a0deaae6f973f",
+      "delivery_match": true
+    },
+    {
+      "path": "native/smlib-adapter/src/sweep.cpp",
+      "sha256": "bab0f3ba560cfd297347c77d566aed30d76b94b80ed6002f4cada2efa7436dac",
+      "delivery_sha256": "bab0f3ba560cfd297347c77d566aed30d76b94b80ed6002f4cada2efa7436dac",
+      "delivery_match": true
+    },
+    {
+      "path": "native/smlib-adapter/src/sweep.hpp",
+      "sha256": "b550162e4c1ef8681daa04c5aa934db481f51bc874b4aaeab052e85e2ad0d7f8",
+      "delivery_sha256": "b550162e4c1ef8681daa04c5aa934db481f51bc874b4aaeab052e85e2ad0d7f8",
+      "delivery_match": true
+    },
+    {
+      "path": "native/smlib-adapter/tests/adapter_tests.cpp",
+      "sha256": "875fa795f30bb157464f4101f182adcf44a3728897ec44e9c7a275328007f25b",
+      "delivery_sha256": "875fa795f30bb157464f4101f182adcf44a3728897ec44e9c7a275328007f25b",
+      "delivery_match": true
+    },
+    {
+      "path": "native/smlib-adapter/tests/sweep_region_tests.cpp",
+      "sha256": "e3d38e8b5de42024ec46736f65ff84c806877a9ae7070fae5df962a320590fb4",
+      "delivery_sha256": "e3d38e8b5de42024ec46736f65ff84c806877a9ae7070fae5df962a320590fb4",
+      "delivery_match": true
+    },
+    {
+      "path": "native/smlib-adapter/tests/sweep_tests.cpp",
+      "sha256": "f049f5fad84d00cc1f4f0cd83191c04ef7afefabe90b5fb4c3fea282b38931ca",
+      "delivery_sha256": "f049f5fad84d00cc1f4f0cd83191c04ef7afefabe90b5fb4c3fea282b38931ca",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry-runtime/README.md",
+      "sha256": "8dc91b3d86ac417bdd62c1da5e37a9dc848f6ff210c2b52ccdda90add3f946a8",
+      "delivery_sha256": "8dc91b3d86ac417bdd62c1da5e37a9dc848f6ff210c2b52ccdda90add3f946a8",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/lib.rs",
+      "sha256": "8575a84552a5f6b0f6e5f14484b9c7cb463e2e6bef3ff9dee0a0d7954e642da8",
+      "delivery_sha256": "8575a84552a5f6b0f6e5f14484b9c7cb463e2e6bef3ff9dee0a0d7954e642da8",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/process_control.rs",
+      "sha256": "8a601065565601e9424708803bfc7604cacc6216d3881f49a4d20d7ec3c6c06a",
+      "delivery_sha256": "8a601065565601e9424708803bfc7604cacc6216d3881f49a4d20d7ec3c6c06a",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/process_control_tests.rs",
+      "sha256": "e54a99d969e8106bd20c5485b5cf37ab447b31cf2327d5dd5624d4d7d214e7f6",
+      "delivery_sha256": "e54a99d969e8106bd20c5485b5cf37ab447b31cf2327d5dd5624d4d7d214e7f6",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/protocol.rs",
+      "sha256": "8670ee16ca8b6049041e2bec8b5a6822aea92c5cdfe0df8455ed2d76edecd3ed",
+      "delivery_sha256": "8670ee16ca8b6049041e2bec8b5a6822aea92c5cdfe0df8455ed2d76edecd3ed",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/protocol_tests.rs",
+      "sha256": "39e62396add83a661f3e15eb4182eda93f3668167dc1c6c84fd0b4af4d2cea6a",
+      "delivery_sha256": "39e62396add83a661f3e15eb4182eda93f3668167dc1c6c84fd0b4af4d2cea6a",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/runtime_owner.rs",
+      "sha256": "c171a55edd5324c8e117b0e1aa60d221bb3b478ae0bbbe991d0ff166aff15e87",
+      "delivery_sha256": "c171a55edd5324c8e117b0e1aa60d221bb3b478ae0bbbe991d0ff166aff15e87",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/supervision.rs",
+      "sha256": "96386e63f016adffa6836951d7abd18d46252edfd5958d2b0a2b9fdf875058b5",
+      "delivery_sha256": "96386e63f016adffa6836951d7abd18d46252edfd5958d2b0a2b9fdf875058b5",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/supervision/controller.rs",
+      "sha256": "7e1b599f70170e3121ec92949fbc7896ad6b46a54e7eb734ad75e92270aa1348",
+      "delivery_sha256": "7e1b599f70170e3121ec92949fbc7896ad6b46a54e7eb734ad75e92270aa1348",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/supervision/controller_tests.rs",
+      "sha256": "f8f366c16d3e704394c9f36d9126e1f81f52c92b88455d8fe3d552b68c394e0b",
+      "delivery_sha256": "f8f366c16d3e704394c9f36d9126e1f81f52c92b88455d8fe3d552b68c394e0b",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/supervision/delivery.rs",
+      "sha256": "5ec11d4467f8b3934851adaf650298208fa7b70c70afea9ef3fb6a73aff9dcfd",
+      "delivery_sha256": "5ec11d4467f8b3934851adaf650298208fa7b70c70afea9ef3fb6a73aff9dcfd",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker.rs",
+      "sha256": "ce3f58e7f2e64c6211890e0b63d601a6434ab131753cc9cca23a25fb3de2f55d",
+      "delivery_sha256": "ce3f58e7f2e64c6211890e0b63d601a6434ab131753cc9cca23a25fb3de2f55d",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_mesh.rs",
+      "sha256": "042051f7e3cfc6fc86b7dd8b903ac4f807f506be3b28b69ebe08a2cd1971a595",
+      "delivery_sha256": "042051f7e3cfc6fc86b7dd8b903ac4f807f506be3b28b69ebe08a2cd1971a595",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_sweep.rs",
+      "sha256": "c207b7a76f0c72009ae61ba133130d12bae920164903954547e43929ad7518a0",
+      "delivery_sha256": "c207b7a76f0c72009ae61ba133130d12bae920164903954547e43929ad7518a0",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry-runtime/tests/cleanup.rs",
+      "sha256": "d27479bf2c4837eb54f2db5db8656afcef790300ec167191afbe40eb165a548d",
+      "delivery_sha256": "d27479bf2c4837eb54f2db5db8656afcef790300ec167191afbe40eb165a548d",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry-runtime/tests/fixtures/mesh-release-peer.py",
+      "sha256": "6620c9b5e7422b02230573969d8262e916a995fe57916259786693ec51f7fcdb",
+      "delivery_sha256": "6620c9b5e7422b02230573969d8262e916a995fe57916259786693ec51f7fcdb",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry-runtime/tests/retained_receipt.rs",
+      "sha256": "96db8e3d5b0d3458b5690e9fcbfe2ff5f223a145bcdbf98c37d90bdd5b3a1d2b",
+      "delivery_sha256": "96db8e3d5b0d3458b5690e9fcbfe2ff5f223a145bcdbf98c37d90bdd5b3a1d2b",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry-runtime/tests/smlib_worker.rs",
+      "sha256": "12b46f8387731cf0995b438cfa834f79bd2766edc83e1dc849ba0c40bd7428d6",
+      "delivery_sha256": "12b46f8387731cf0995b438cfa834f79bd2766edc83e1dc849ba0c40bd7428d6",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/curve.rs",
+      "sha256": "aabd862ae0633c36eead064c13ccfb06a472f549cbb7a3c7bd58e746b61b2f65",
+      "delivery_sha256": "aabd862ae0633c36eead064c13ccfb06a472f549cbb7a3c7bd58e746b61b2f65",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/mod.rs",
+      "sha256": "a2aab90b34dce71bea18991790241ddfed2fe5d598ad73056e8bad32eb7b6f8c",
+      "delivery_sha256": "a2aab90b34dce71bea18991790241ddfed2fe5d598ad73056e8bad32eb7b6f8c",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/profile.rs",
+      "sha256": "cb8133a28ced3d5c2888eb84d6a25d2ee9a23c4d47efa11e59d90ea802e1449b",
+      "delivery_sha256": "cb8133a28ced3d5c2888eb84d6a25d2ee9a23c4d47efa11e59d90ea802e1449b",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/profile_topology_tests.rs",
+      "sha256": "901e4b1166481323fd34fd9af9392fe2e3c7d0b3307101c51a0a4fe851c680f3",
+      "delivery_sha256": "901e4b1166481323fd34fd9af9392fe2e3c7d0b3307101c51a0a4fe851c680f3",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/source.rs",
+      "sha256": "f40ae7b08488b37cb0805f0156b5b318023bd0082262fdd336786dd89a67717c",
+      "delivery_sha256": "f40ae7b08488b37cb0805f0156b5b318023bd0082262fdd336786dd89a67717c",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/source_tests.rs",
+      "sha256": "cdb8bbfd6f843f85cadc7f6a3c1b8a578695507850e18b8bbef1e4fe1272ce5b",
+      "delivery_sha256": "cdb8bbfd6f843f85cadc7f6a3c1b8a578695507850e18b8bbef1e4fe1272ce5b",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/document/mod.rs",
+      "sha256": "831eff5202bc0609c5d00f3c87ceaddc01f21468fe62e9cbeae38d43e0ddcc60",
+      "delivery_sha256": "831eff5202bc0609c5d00f3c87ceaddc01f21468fe62e9cbeae38d43e0ddcc60",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained.rs",
+      "sha256": "e6dcbb62bccc0a117d9f74275628dac9e4c653b6b722d204c3036f9d7acb8ede",
+      "delivery_sha256": "e6dcbb62bccc0a117d9f74275628dac9e4c653b6b722d204c3036f9d7acb8ede",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained_display.rs",
+      "sha256": "fe7cb670939c135b6b450b38cab36f63419c4a9b0ad18a83b561d1f326e70265",
+      "delivery_sha256": "fe7cb670939c135b6b450b38cab36f63419c4a9b0ad18a83b561d1f326e70265",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained_sweep.rs",
+      "sha256": "b898c16f104948a43aa5d51a7e8550960724b9ba289f62c8228936f9b1308f40",
+      "delivery_sha256": "b898c16f104948a43aa5d51a7e8550960724b9ba289f62c8228936f9b1308f40",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained_sweep_tests.rs",
+      "sha256": "71293a79f5cde5e4820d4600892ac05c60e3f5728e2e823d56e6f8acc630b9b9",
+      "delivery_sha256": "71293a79f5cde5e4820d4600892ac05c60e3f5728e2e823d56e6f8acc630b9b9",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/chain_cycle_tests.rs",
+      "sha256": "e4ba42d89916bdbeb807184d6e44871ad2d83a1f8dce4b95b667ef502497d660",
+      "delivery_sha256": "e4ba42d89916bdbeb807184d6e44871ad2d83a1f8dce4b95b667ef502497d660",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/dispatch_tests.rs",
+      "sha256": "7bcfe3334a5bb5b302a35621c9847fce66d636597f071ee6bb2181221e1f4135",
+      "delivery_sha256": "7bcfe3334a5bb5b302a35621c9847fce66d636597f071ee6bb2181221e1f4135",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/resource_tests.rs",
+      "sha256": "ac250ab0f90a8ecb0b6aed85d83a14e7aafd8372a35deb1a7f991eb23965e520",
+      "delivery_sha256": "ac250ab0f90a8ecb0b6aed85d83a14e7aafd8372a35deb1a7f991eb23965e520",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/geometry/src/router/processing.rs",
+      "sha256": "4348039e0918cd0a484e3bdbbfc9d574e3996fb46fe8e028e5683f40579f26e3",
+      "delivery_sha256": "a73fa22df356288239a76bb8dc9255006e898dbbaaea11e98f9cb3717102d2e1",
+      "delivery_match": false
+    },
+    {
+      "path": "rust/processing/Cargo.toml",
+      "sha256": "f7a26d5dcf095681fedcc6cfe8217ba56afa1ee8281464d74f8af47e22a77349",
+      "delivery_sha256": "f7a26d5dcf095681fedcc6cfe8217ba56afa1ee8281464d74f8af47e22a77349",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/processing/src/analytic_export.rs",
+      "sha256": "3f9f6208d925200d87fc6b1561ef77b1b066db15d43bcf59b1b301aaa816d789",
+      "delivery_sha256": "3f9f6208d925200d87fc6b1561ef77b1b066db15d43bcf59b1b301aaa816d789",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/processing/src/analytic_export/walk.rs",
+      "sha256": "fed31bd94a8c380a546c2b8b21f9ce9992fc8678145dae4320395acc0925caff",
+      "delivery_sha256": "70d3182eedca6c059b7fb19a968c35209cada2829b0a2628cce6fc9b6d35d986",
+      "delivery_match": false
+    },
+    {
+      "path": "rust/processing/src/analytic_export/walk/entry.rs",
+      "sha256": "aaa8790b7ca46b70f82a451aa07f2af12ccea96a69e874701a592d134733f5d8",
+      "delivery_sha256": "1ab5d08da140055a87f72cc19c49b634030382b5e152df9afc2877aab0a8925c",
+      "delivery_match": false
+    },
+    {
+      "path": "rust/processing/src/analytic_export/walk_bench_tests.rs",
+      "sha256": "b8981755d2bbe30180e388db3a6f5f1f58542a5c8b2d7a49cac409c3edcfe0dc",
+      "delivery_sha256": "b8981755d2bbe30180e388db3a6f5f1f58542a5c8b2d7a49cac409c3edcfe0dc",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/processing/src/analytic_export/walk_tests.rs",
+      "sha256": "a5959bc2ff4c66818277bd6a597283a7d086e0af6cbd2c024dcfbc9138742411",
+      "delivery_sha256": "a5959bc2ff4c66818277bd6a597283a7d086e0af6cbd2c024dcfbc9138742411",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/bound.rs",
+      "sha256": "416a684abd2c5d76c4ba4b386f6c71e6198a00ef5cffe06f337312def135c053",
+      "delivery_sha256": "416a684abd2c5d76c4ba4b386f6c71e6198a00ef5cffe06f337312def135c053",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/bound_native.rs",
+      "sha256": "35463a0ae82c992ad1a755a2d98ed995882e24d9fe265b1b93215ddf7b3665b0",
+      "delivery_sha256": "35463a0ae82c992ad1a755a2d98ed995882e24d9fe265b1b93215ddf7b3665b0",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/evaluator.rs",
+      "sha256": "be566b9733cc501f748772f6ed4200174f01af504796c463c835d816f6956151",
+      "delivery_sha256": "be566b9733cc501f748772f6ed4200174f01af504796c463c835d816f6956151",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/inventory.rs",
+      "sha256": "a906a9648a01234a5017bdd7970f2d3f37a2ab5299c02a495aa3a4fa8a666efc",
+      "delivery_sha256": "eed1130c45020451b19cebb98589c348dd1c17a6dfb45986df32bbdd135892b0",
+      "delivery_match": false
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/mod.rs",
+      "sha256": "a6fc3355f7269521cf53b6877cc7537be2022afe73504d9bc726cb02b133890e",
+      "delivery_sha256": "a6fc3355f7269521cf53b6877cc7537be2022afe73504d9bc726cb02b133890e",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/planning.rs",
+      "sha256": "594750e343b10c970729883393f14c2fe68a457bbd77043f46e237e485294245",
+      "delivery_sha256": "594750e343b10c970729883393f14c2fe68a457bbd77043f46e237e485294245",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/processing/src/element.rs",
+      "sha256": "029693ff73d4ebf1f737d9825b6d19dd458e2ddfbf56c79f3f891d5b22d520e8",
+      "delivery_sha256": "029693ff73d4ebf1f737d9825b6d19dd458e2ddfbf56c79f3f891d5b22d520e8",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/processing/src/element/model_context.rs",
+      "sha256": "c24899defcdacb8e2aa435577c4c7d35c8558d3f22c97b4d6d37872be5f93619",
+      "delivery_sha256": "c24899defcdacb8e2aa435577c4c7d35c8558d3f22c97b4d6d37872be5f93619",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/processing/tests/retained_authored_evaluator.rs",
+      "sha256": "e25dd4bcc94bd385309dfee1b4677e4020f74448b0f6427094e923bbf624c196",
+      "delivery_sha256": "e25dd4bcc94bd385309dfee1b4677e4020f74448b0f6427094e923bbf624c196",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/processing/tests/retained_model_admission.rs",
+      "sha256": "47e9bfff1177789972abf62303c96c961f3190d2cff15047a424facbd7034bef",
+      "delivery_sha256": "47e9bfff1177789972abf62303c96c961f3190d2cff15047a424facbd7034bef",
+      "delivery_match": true
+    },
+    {
+      "path": "rust/processing/tests/retained_admission_policy.rs",
+      "sha256": "d052f0bac34f1438124f264c38181471fd4c88d31a6d5032ea939f96a7b33811",
+      "delivery_sha256": null,
+      "delivery_match": false
+    },
+    {
+      "path": "rust/processing/tests/function_length_allowlist.txt",
+      "sha256": "f22f74f780c4841290d4ae4e4a33c76464b528925113130a43d879628b7b6a8b",
+      "delivery_sha256": null,
+      "delivery_match": false
+    },
+    {
+      "path": "docs/api/rust.md",
+      "sha256": "a454463cabe93705b33125f50165dd0db2eb60c9b75be572b02c5ebea0d0c239",
+      "delivery_sha256": null,
+      "delivery_match": false
+    }
+  ],
+  "deviations": "Preserve root opening caller; distinguish standalone and bound record admissions; add actual duplicate/cache/fault invariants; ratchet rekey with lowered budget; Rust API guide and corrected review narrative. Original delivery unchanged in archive.",
+  "open_findings": [
+    "Per-object lease liveness under copied raw handle release",
+    "Provenance capture limits must not reject previously supported analytic geometry",
+    "Full consumed curve/profile, dependency and target qualification coverage"
+  ],
+  "checks": {
+    "protocol_fixtures": "10 passed, 0 failed; not SDK geometry",
+    "locked_offline_no_deps_cargo_metadata": "passed metadata only",
+    "rust_syntax_files": 47,
+    "refwalk": "1409 files,29 guarded candidates,0 unguarded,12 existing fanout reviews",
+    "runtime": "NOT RUN; disk admission refused"
+  },
+  "performance": "UNQUALIFIED"
+}

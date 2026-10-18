@@ -1,0 +1,167 @@
+{
+  "status": "INCOMPLETE_IMPLEMENTED_CORRECTION_SOURCE_UNCOMPILED_AND_UNQUALIFIED",
+  "complete": false,
+  "source": "b05253d676dbd24329520497d45a70ac4d9d2608",
+  "base": "0c0e5734569b19f48eedc21703cdbf75d241a313",
+  "exact_default_permanent": true,
+  "retained_opt_in_only": true,
+  "hidden_fallback": false,
+  "second_loader": false,
+  "original_delivery_verified": {
+    "source_hashes": 31,
+    "sdk_hashes": 13,
+    "delivery_SHA256SUMS": true
+  },
+  "independent_review": {
+    "round1": "reviews/ifclite-retained-preservation-round2-independent-review.md",
+    "round2": "reviews/ifclite-retained-preservation-round2-review-followup.md",
+    "round3": "reviews/ifclite-retained-preservation-round2-review-final.md",
+    "final_verdict": "No concrete source blocker remains in narrow corrected ownership ordering/weak-ticket scope; no execution verdict"
+  },
+  "implemented_not_runtime_qualified": [
+    "actual-Child claim-owned undelivered result envelope, failed-send and unread queue cleanup",
+    "claim/cancel linearization and live owner authority",
+    "retired worker cache exclusion independent of error class",
+    "mesh release failure retirement preserving primary error",
+    "browser commit unsent/ambiguous cleanup, captured incarnation retirement and poison invalidation",
+    "unconditional contract cleanup and null-output commit documentation/test",
+    "canonical leased SourceBundle decoder admission with immutable snapshot plan cache",
+    "small model lifecycle token without source bytes/maps/context backreference",
+    "private pending weak ticket + immutable runtime realization canonical acceptance, foreign-before-expiry ordering",
+    "original typed trim/basis/composite/placement/angle source records separate from derived geometry",
+    "bounded C++ ordered line/arc/circle regions with RAII and actual SDK witness source"
+  ],
+  "actual_final_checks": {
+    "protocol_fixture_tests": {
+      "passed": 10,
+      "failed": 0,
+      "receipt": "checks/final-lightweight-receipts.json",
+      "geometry_evidence": false
+    },
+    "syntax": {
+      "passed": 54,
+      "failed": 0,
+      "receipt": "checks/final-syntax-receipts.json",
+      "compile_evidence": false
+    },
+    "cargo_metadata": "PASS metadata only --locked --offline --no-deps",
+    "module_size": "PASS source-only",
+    "diff_check": "PASS",
+    "reference_walk_guard": "PASS 0 unguarded, existing 12 fan-out review notes",
+    "float_sort_guard": "PASS source-only"
+  },
+  "actual_nonfinal_compilation_receipts": [
+    {
+      "receipt": "receipts/5d2e0bac-55c4-4ced-a378-72588a040b29-receipt.json",
+      "source": "4927e78f180263b3b931d75e6ca7a41b7c869bec",
+      "host": {
+        "host": "louistrue-pc",
+        "os": "Linux",
+        "arch": "x86_64",
+        "cpus": 24,
+        "availableMemoryBytes": 64802725888,
+        "totalMemoryBytes": 67423580160,
+        "python": "3.14.4",
+        "time": 1792364515.9087095
+      },
+      "command": [
+        "bash",
+        "native/smlib-adapter/qualify.sh",
+        "native"
+      ],
+      "exitCode": 1,
+      "state": "failed",
+      "sourceUnchanged": true,
+      "output_hash_matches": true
+    },
+    {
+      "receipt": "receipts/a7c05d69-ce9b-4f27-a5ad-aaee6895721d-receipt.json",
+      "source": "19f6d0837414a69721ab272b958c96b12b336fe8",
+      "host": {
+        "host": "louistrue-pc",
+        "os": "Linux",
+        "arch": "x86_64",
+        "cpus": 24,
+        "availableMemoryBytes": 65262297088,
+        "totalMemoryBytes": 67423580160,
+        "python": "3.14.4",
+        "time": 1792364470.250811
+      },
+      "command": [
+        "bash",
+        "native/smlib-adapter/qualify.sh",
+        "native"
+      ],
+      "exitCode": 127,
+      "state": "failed",
+      "sourceUnchanged": true,
+      "output_hash_matches": true
+    },
+    {
+      "receipt": "receipts/ad478fc1-55b8-48c7-ae12-c810e1b20c00-receipt.json",
+      "source": "e6ae5561dc78e84aa99fc1a36da44e27b9d89d49",
+      "host": {
+        "host": "louistrue-pc",
+        "os": "Linux",
+        "arch": "x86_64",
+        "cpus": 24,
+        "availableMemoryBytes": 65253695488,
+        "totalMemoryBytes": 67423580160,
+        "python": "3.14.4",
+        "time": 1792364508.4849596
+      },
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-geometry",
+        "--lib",
+        "analytic"
+      ],
+      "exitCode": 101,
+      "state": "failed",
+      "sourceUnchanged": true,
+      "output_hash_matches": true
+    }
+  ],
+  "combined_request": {
+    "id": "auto-5049ad4327104721832dd92ea474724d",
+    "source": "d4446f7a30948e11bf599dd3556104d0b8d10260",
+    "state": "UNKNOWN",
+    "dispatchExitCode": 1,
+    "error": "Errno28 no space; remote request zero bytes; status JSON parse failure",
+    "retried": false,
+    "receipt": "receipts/combined-request-observation.json"
+  },
+  "unrun_required": [
+    "current native CMake build and CTest",
+    "cargo test --workspace with real freshly built IFCLITE_SMLIB_WORKER",
+    "cargo clippy --workspace --all-targets -- -D warnings",
+    "actual Emscripten/Node/browser SDK contracts and actual restart/capacity witnesses",
+    "real WASM boundary, borrowed/custom/default/Python consumer regressions",
+    "root pnpm typecheck / pnpm test through Turbo",
+    "USD mesh/IFCX and full presentation/instance/layer/metadata preservation execution",
+    "base-v-branch end-to-end worker-pool timing/geometry identity and memory"
+  ],
+  "remaining_incomplete_or_refused": [
+    "Rust source circles/holes/general line-arc regions remain gated; consumed lower remains rectangle-only",
+    "full canonical common ProductProgram integration and native-browser/app binding",
+    "copied transforms/common local frames for final-net retained booleans/openings",
+    "authored general rational coefficients/knots/weights/degree/range evaluator",
+    "swept disk evaluator",
+    "pre-existing nonunit IfcLine DirectionRatios interpretation limitation",
+    "source face provenance, smooth normals, materials/UV and retained USD reader oracle",
+    "real process/kernel heap limits and retained residency measurement"
+  ],
+  "perf_verdict": "UNQUALIFIED",
+  "memory_verdict": "UNQUALIFIED",
+  "machine": {
+    "pop": "admission refused guard78",
+    "pc": "100% disk,239MiB free observed; original unknown request preserved",
+    "mac": "disabled"
+  },
+  "workflow_deviation": "helpers created manual validation-only checkouts before steering; preserved without further creation or cleanup; see ASSEMBLY and implementation responses",
+  "no_pr_push_publication": true,
+  "original_evidence_preserved": true,
+  "parent_and_original_child_edited": false
+}

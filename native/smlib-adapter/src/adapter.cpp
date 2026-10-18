@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "ifclite_smlib.h"
 #include "mesh.hpp"
+#include "sweep.hpp"
 #include <SmApiBrep.h>
 #include <SmApiGeneral.h>
 #include <SmApiPrimitives.h>
@@ -20,7 +21,9 @@ namespace {
 using Solid = std::unique_ptr<SmBrep>;
 struct Failure { int32_t status; const char* message; };
 struct Slot { Solid solid; uint32_t generation = 1; std::unique_ptr<AdapterMesh> mesh; };
-struct Session { std::vector<Slot> slots; };
+struct Upload { uint64_t id; uint32_t length, loops, segments; std::vector<uint8_t> bytes; };
+struct Session { std::vector<Slot> slots; std::unique_ptr<Upload> upload; };
+uint64_t next_upload = 1;
 std::unordered_map<uint64_t, Session> sessions;
 uint64_t next_session = 1;
 char last_error[512] = {};
@@ -39,6 +42,9 @@ template<class Action> int32_t boundary(Action action) noexcept {
     try { action(); return IFCLITE_SMLIB_OK; }
     catch (const Failure& error) {
         if (error.message) std::snprintf(last_error, sizeof(last_error), "%s", error.message);
+        return error.status;
+    } catch (const SweepFailure& error) {
+        std::snprintf(last_error,sizeof(last_error),"%s",error.message);
         return error.status;
     } catch (const AdapterMeshFailure& error) {
         std::snprintf(last_error,sizeof(last_error),"%s",error.message);
@@ -248,6 +254,55 @@ int32_t ifclite_smlib_mesh_copy(uint64_t session, ifclite_smlib_handle handle,
             capacity >= count*width && (out || count == 0),
             IFCLITE_SMLIB_INVALID_ARGUMENT,"invalid mesh copy range or buffer capacity");
         if (count) std::memcpy(out,static_cast<const uint8_t*>(source)+size_t(offset)*width,count*width);
+    });
+}
+uint32_t ifclite_smlib_capabilities(void) { return 1u; }
+int32_t ifclite_smlib_sweep_begin(uint64_t session, uint32_t format,
+    uint32_t length, uint32_t loops, uint32_t segments, uint64_t* out) {
+    return boundary([&] {
+        require(out != nullptr,IFCLITE_SMLIB_INVALID_ARGUMENT,"null upload output"); *out=0;
+        auto& owner=lookup(session);
+        require(!owner.upload,IFCLITE_SMLIB_RESOURCE_LIMIT,"upload already active");
+        require(loops>0 && loops<=128 && loops<=segments,IFCLITE_SMLIB_INVALID_ARGUMENT,"invalid loop count");
+        require(format==1 && segments>0 && segments<=8192 &&
+            length==48u+8u*loops+104u*segments && length<=1048576u,
+            IFCLITE_SMLIB_INVALID_ARGUMENT,"invalid/unqualified sweep declaration");
+        require(next_upload!=UINT64_MAX,IFCLITE_SMLIB_RESOURCE_LIMIT,"upload IDs exhausted");
+        auto upload=std::make_unique<Upload>();
+        upload->id=next_upload++; upload->length=length; upload->loops=loops;
+        upload->segments=segments; upload->bytes.reserve(length);
+        *out=upload->id; owner.upload=std::move(upload);
+    });
+}
+int32_t ifclite_smlib_sweep_chunk(uint64_t session, uint64_t id, uint32_t offset,
+    const uint8_t* bytes, uint32_t length) {
+    return boundary([&] {
+        auto& upload=lookup(session).upload;
+        require(upload && upload->id==id,IFCLITE_SMLIB_INVALID_HANDLE,"unknown upload");
+        if (!bytes || length==0 || length>3840 || offset!=upload->bytes.size() ||
+            offset>upload->length || length>upload->length-offset) {
+            upload.reset();
+            throw Failure{IFCLITE_SMLIB_INVALID_ARGUMENT,"invalid chunk; upload discarded"};
+        }
+        upload->bytes.insert(upload->bytes.end(),bytes,bytes+length);
+    });
+}
+int32_t ifclite_smlib_sweep_abort(uint64_t session, uint64_t id) {
+    return boundary([&] {
+        auto& upload=lookup(session).upload;
+        require(upload && upload->id==id,IFCLITE_SMLIB_INVALID_HANDLE,"unknown upload");
+        upload.reset();
+    });
+}
+int32_t ifclite_smlib_sweep_commit(uint64_t session, uint64_t id, ifclite_smlib_handle* out) {
+    return boundary([&] {
+        output(out); auto& active=lookup(session).upload;
+        require(active && active->id==id,IFCLITE_SMLIB_INVALID_HANDLE,"unknown upload");
+        auto upload=std::move(active); // Every commit attempt consumes the transaction.
+        require(upload->bytes.size()==upload->length,IFCLITE_SMLIB_INVALID_ARGUMENT,
+            "incomplete sweep upload discarded");
+        auto result=create_authored_sweep(upload->bytes,upload->loops,upload->segments);
+        *out=store(session,std::move(result));
     });
 }
 uint32_t ifclite_smlib_error_copy(char* buffer, uint32_t capacity) {

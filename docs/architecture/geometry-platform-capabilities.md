@@ -236,7 +236,11 @@ cover both public Rust producers and actual WASM batches. Six interleaved
 worker-pool model comparisons preserve geometry fingerprints; shared-host
 timing is unqualified and the heavy model's slower execution and higher peak
 memory require controlled profiling. Full performance qualification remains
-open. Mapped control now owns
+open. Separate heavy-model comparisons match all four native modes, including
+instances and deferred colors; final rehash and execution-record audit remain
+pending after fleet refusal. Synthetic annotation cases add positive fill,
+hole-area and placement invariants, without claiming exporter fill coverage.
+Mapped control now owns
 its traversal frames; reached admission and numerical execution still share
 synchronous steps. Complete product/opening source commands, diagnostic/cache
 effects, authenticated source bundles, frame acceptance, external lifecycle

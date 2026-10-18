@@ -1,0 +1,6 @@
+{
+  "source_manifest_sha256": "63bb222be30076a296d109eb6cc7d057ec3ab880f727313d62892df82d65ff93",
+  "source_count": 288,
+  "source_mismatches": [],
+  "verification_scope": "Frozen source bytes only; no post-run raw-record or library/executable rehash performed after refused finalizer admission."
+}

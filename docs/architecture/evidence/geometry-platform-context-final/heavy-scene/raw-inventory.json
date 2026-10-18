@@ -1,0 +1,126 @@
+{
+  "scope": "Stat-only local retained output inventory, no post-run content-hash assertion",
+  "files": [
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-pilot/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-full/base/manifest.json",
+      "bytes": 37479430,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-pilot/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-full/base/records.jsonl",
+      "bytes": 1691615820,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-pilot/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-full/base-repeat/manifest.json",
+      "bytes": 37479430,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-pilot/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-full/base-repeat/records.jsonl",
+      "bytes": 1691615819,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-pilot/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-full/candidate/manifest.json",
+      "bytes": 37479430,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-pilot/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-full/candidate/records.jsonl",
+      "bytes": 1691615819,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-stream/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-stream/base/manifest.json",
+      "bytes": 43641362,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-stream/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-stream/base/records.jsonl",
+      "bytes": 1696674208,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-stream/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-stream/base-repeat/manifest.json",
+      "bytes": 43641362,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-stream/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-stream/base-repeat/records.jsonl",
+      "bytes": 1696674208,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-stream/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-stream/candidate/manifest.json",
+      "bytes": 43641362,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-stream/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-stream/candidate/records.jsonl",
+      "bytes": 1696674208,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-instanced/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-instanced/base/manifest.json",
+      "bytes": 42379969,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-instanced/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-instanced/base/records.jsonl",
+      "bytes": 1512826487,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-instanced/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-instanced/base-repeat/manifest.json",
+      "bytes": 42379969,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-instanced/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-instanced/base-repeat/records.jsonl",
+      "bytes": 1512826487,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-instanced/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-instanced/candidate/manifest.json",
+      "bytes": 42379969,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-instanced/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-instanced/candidate/records.jsonl",
+      "bytes": 1512826487,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-fastfirst/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-fastfirst/base/manifest.json",
+      "bytes": 43626460,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-fastfirst/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-fastfirst/base/records.jsonl",
+      "bytes": 1684273808,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-fastfirst/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-fastfirst/base-repeat/manifest.json",
+      "bytes": 43626460,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-fastfirst/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-fastfirst/base-repeat/records.jsonl",
+      "bytes": 1684273808,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-fastfirst/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-fastfirst/candidate/manifest.json",
+      "bytes": 43626460,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    },
+    {
+      "path": "/tmp/ifclite-context-final-scene-heavy-fastfirst/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-fastfirst/candidate/records.jsonl",
+      "bytes": 1684273808,
+      "hash_status": "not independently rehashed after execution; post-run finalizer refused"
+    }
+  ],
+  "total_bytes": 20257552630
+}

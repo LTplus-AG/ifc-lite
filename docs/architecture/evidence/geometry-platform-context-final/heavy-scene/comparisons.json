@@ -1,0 +1,266 @@
+[
+  {
+    "group": "/tmp/ifclite-context-final-scene-heavy-pilot",
+    "summary_sha256": "b8c04285bdd80a07a089c4b4de01bff7f463e00c486e1c9ec9412c3bc5621702",
+    "result": {
+      "input_sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+      "mode": "full",
+      "equal": true,
+      "base_scene_sha256": "121ee75d0d383bacbd3c6cea9c25ba4719b24ba32ed68e88a7e4ae6cc6127acd",
+      "candidate_scene_sha256": "121ee75d0d383bacbd3c6cea9c25ba4719b24ba32ed68e88a7e4ae6cc6127acd",
+      "base_witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 69819,
+        "meshes": 109514,
+        "pixel_textures": 0,
+        "polylines": 3568,
+        "property_sets": 80155,
+        "texts": 11760,
+        "triangles": 2895362,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 4515161
+      },
+      "candidate_witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 69819,
+        "meshes": 109514,
+        "pixel_textures": 0,
+        "polylines": 3568,
+        "property_sets": 80155,
+        "texts": 11760,
+        "triangles": 2895362,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 4515161
+      },
+      "semantic_differences": [],
+      "execution_differences": [
+        {
+          "ordinal": 219037,
+          "channel": "execution",
+          "key": "stats",
+          "difference": {
+            "path": "$.value.entity_scan_time_ms",
+            "base": 755,
+            "candidate": 743
+          }
+        }
+      ],
+      "capability_difference": null,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc"
+    }
+  },
+  {
+    "group": "/tmp/ifclite-context-final-scene-heavy-stream",
+    "summary_sha256": "ae10eb0124ff2a5d3d79609c715eb260a8b2750165e582628ad5149294a7a14c",
+    "result": {
+      "input_sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+      "mode": "stream",
+      "equal": true,
+      "base_scene_sha256": "620c5f0ef909901d74ffe2feba1e2872e936bd1dc65db835983b7311be4071b9",
+      "candidate_scene_sha256": "620c5f0ef909901d74ffe2feba1e2872e936bd1dc65db835983b7311be4071b9",
+      "base_witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 69819,
+        "meshes": 109514,
+        "pixel_textures": 0,
+        "polylines": 3568,
+        "property_sets": 80155,
+        "texts": 11760,
+        "triangles": 2895362,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 4515161
+      },
+      "candidate_witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 69819,
+        "meshes": 109514,
+        "pixel_textures": 0,
+        "polylines": 3568,
+        "property_sets": 80155,
+        "texts": 11760,
+        "triangles": 2895362,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 4515161
+      },
+      "semantic_differences": [],
+      "execution_differences": [
+        {
+          "ordinal": 255751,
+          "channel": "execution",
+          "key": "stats",
+          "difference": {
+            "path": "$.value.entity_scan_time_ms",
+            "base": 759,
+            "candidate": 787
+          }
+        }
+      ],
+      "capability_difference": null,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc"
+    }
+  },
+  {
+    "group": "/tmp/ifclite-context-final-scene-heavy-instanced",
+    "summary_sha256": "0830050babd8d222bf241bcca56e4f81c86cefd2d99630724f5ec5c03e8dddb1",
+    "result": {
+      "input_sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+      "mode": "instanced",
+      "equal": true,
+      "base_scene_sha256": "f328037cfcd453717931594411b3648b2fd3c95f708a67c835c3180fd7fc3862",
+      "candidate_scene_sha256": "f328037cfcd453717931594411b3648b2fd3c95f708a67c835c3180fd7fc3862",
+      "base_witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 5629,
+        "layer_meshes": 0,
+        "materials": 69819,
+        "meshes": 103885,
+        "pixel_textures": 0,
+        "polylines": 3568,
+        "property_sets": 80155,
+        "texts": 11760,
+        "triangles": 2308246,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 3642769
+      },
+      "candidate_witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 5629,
+        "layer_meshes": 0,
+        "materials": 69819,
+        "meshes": 103885,
+        "pixel_textures": 0,
+        "polylines": 3568,
+        "property_sets": 80155,
+        "texts": 11760,
+        "triangles": 2308246,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 3642769
+      },
+      "semantic_differences": [],
+      "execution_differences": [
+        {
+          "ordinal": 248382,
+          "channel": "execution",
+          "key": "stats",
+          "difference": {
+            "path": "$.value.entity_scan_time_ms",
+            "base": 763,
+            "candidate": 788
+          }
+        }
+      ],
+      "capability_difference": null,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc"
+    }
+  },
+  {
+    "group": "/tmp/ifclite-context-final-scene-heavy-fastfirst",
+    "summary_sha256": "6ec4fe7fbbf11eae096ce2bf2f32a1cc544d9408a055b1063b74291fbfea6e63",
+    "result": {
+      "input_sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+      "mode": "fastfirst",
+      "equal": true,
+      "base_scene_sha256": "8f3d93f71f02032cf6c648e57d1a0caba08f8bcb6cd014537e2f7be9da91663a",
+      "candidate_scene_sha256": "8f3d93f71f02032cf6c648e57d1a0caba08f8bcb6cd014537e2f7be9da91663a",
+      "base_witnesses": {
+        "color_updates": 1,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 69819,
+        "meshes": 109514,
+        "pixel_textures": 0,
+        "polylines": 3568,
+        "property_sets": 80155,
+        "texts": 11760,
+        "triangles": 2895362,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 4515161
+      },
+      "candidate_witnesses": {
+        "color_updates": 1,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 69819,
+        "meshes": 109514,
+        "pixel_textures": 0,
+        "polylines": 3568,
+        "property_sets": 80155,
+        "texts": 11760,
+        "triangles": 2895362,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 4515161
+      },
+      "semantic_differences": [],
+      "execution_differences": [
+        {
+          "ordinal": 255663,
+          "channel": "execution",
+          "key": "stats",
+          "difference": {
+            "path": "$.value.entity_scan_time_ms",
+            "base": 694,
+            "candidate": 690
+          }
+        }
+      ],
+      "capability_difference": null,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc"
+    }
+  }
+]

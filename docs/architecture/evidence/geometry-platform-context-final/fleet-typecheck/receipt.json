@@ -1,0 +1,37 @@
+{
+  "source_commit": "c9ec56087577b7dbe6ecd9ac9f6810089cd1e38a",
+  "source_tree": "f668e120b172ef02cc6c0ece3483e8f42757e8df",
+  "source_manifest": "../source-manifest-ratchet-corrected.json",
+  "source_manifest_sha256": "63bb222be30076a296d109eb6cc7d057ec3ab880f727313d62892df82d65ff93",
+  "all_288_manifest_files_match_committed_tree": true,
+  "request_id": "auto-366c396a594147a9a52d38f2b4e8ea8f",
+  "job_id": "c4086b6e-8736-43b0-8119-b4587b2912b1",
+  "host": "pc-wsl",
+  "execution_host": {
+    "host": "louistrue-pc",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 24,
+    "availableMemoryBytes": 63845421056,
+    "totalMemoryBytes": 67423592448,
+    "python": "3.14.4",
+    "time": 1792358274.9652996
+  },
+  "command": "pnpm typecheck",
+  "fleet_preparation": "Frozen-lockfile pnpm install and root command share the actual fleet admission.",
+  "exit_code": 0,
+  "source_clean_before_and_after": true,
+  "source_unchanged": true,
+  "turbo_tasks_successful": 127,
+  "turbo_tasks_total": 127,
+  "test_files_in_typecheck_program": 4248,
+  "audited_packages": 67,
+  "scope": "Full root TypeScript typecheck, including tests and typecheck:tail, on committed context-layer source. Not TS runtime tests, viewer rendering, real-WASM execution or qualification of later source/program/resource implementations.",
+  "output_log": {
+    "archive": "output.log.gz",
+    "uncompressed_sha256": "0f430b1740ad16a2d94653cf48f3ef4e9eacfa39cdee023259dee74d1256caf8",
+    "archive_sha256": "75bf422738b395c5ec25989d9701c55530ecdc6dddd32a116017972096542f41"
+  },
+  "fleet_job_receipt_sha256": "ad46c32e00fa8365786daa29ef7977ce79a723c66cac6c4dfec25cf1c80d1d7d",
+  "request_sha256": "05b646fb1e765d0ec10cbf8bc872ea1e9d586d99c276ec0b7b47eb97e2f89eda"
+}

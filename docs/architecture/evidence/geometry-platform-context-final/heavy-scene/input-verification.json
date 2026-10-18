@@ -1,0 +1,13 @@
+{
+  "source_manifest_sha256": "63bb222be30076a296d109eb6cc7d057ec3ab880f727313d62892df82d65ff93",
+  "source_count": 288,
+  "source_mismatches": [],
+  "fixture": "tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+  "fixture_sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+  "fixture_bytes": 177465622,
+  "executables": {
+    "base": "6d0eea4a113c70c3b71ecfb91a262e2222e73731b6e2bbb97723c9d44c1a322e",
+    "candidate": "2482013a348c2b58e9942473d8fc18284b633f95394e49f37101446196aa01f8"
+  },
+  "all_libraries_match": true
+}

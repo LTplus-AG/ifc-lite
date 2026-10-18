@@ -9,6 +9,12 @@ Numerical production code is unchanged. The corrected snapshot's
 [full native run](native-workspace.json) passes the workspace and all-target
 Clippy checks. Earlier failed attempts remain recorded below.
 
+The [fleet root typecheck](fleet-typecheck/receipt.json) also passes on PC against
+clean committed checkpoint `c9ec560875`, with source unchanged before and after.
+All 127 Turbo tasks succeed, and the audit includes all 4,248 test files across
+67 packages. The exact fleet receipt and hash-verified output are retained;
+this is type checking, not runtime or rendering qualification.
+
 The [initial native attempt](native-workspace-initial.json) passes the corrected
 streaming test, then stops at two obsolete positional-read allowances. The
 [test-metadata correction](ratchet-correction.json) removes those entries and
@@ -61,6 +67,13 @@ holes, millimetre units, horizontal/vertical placement, style wrappers and mixed
 symbolic items. Fast-first appearance is asserted through its actual later
 color-update event. These do not turn the real-model corpus's empty fill channel
 into exporter evidence.
+
+The [heavy Holter comparisons](heavy-scene/) separately match all four native
+modes against candidate and independent baseline repeat, including actual
+instances and deferred color output. This remains partial qualification: the
+post-run raw/artifact rehash and supplemental execution-record audit were
+refused by fleet admission and remain unrun. Its empty texture, layer and fill
+channels provide no positive witnesses, and it establishes no performance verdict.
 
 [Whole-worker-pool measurements](measurement-support.json) retain the actual
 interleaved base/candidate timings, geometry fingerprints and native process

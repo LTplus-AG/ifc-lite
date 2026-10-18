@@ -1,0 +1,22 @@
+{
+  "request_id": "auto-366c396a594147a9a52d38f2b4e8ea8f",
+  "job_id": "c4086b6e-8736-43b0-8119-b4587b2912b1",
+  "host": "pc-wsl",
+  "execution_host": "louistrue-pc",
+  "source_commit": "c9ec56087577b7dbe6ecd9ac9f6810089cd1e38a",
+  "source_tree": "f668e120b172ef02cc6c0ece3483e8f42757e8df",
+  "source_clean_before_execution": true,
+  "command": "pnpm typecheck",
+  "launcher": "/home/louistrue/build-workers/ifc-fleet run --cwd /home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361 -- pnpm typecheck",
+  "execution_preparation": "Fleet wraps the root command with frozen-lockfile pnpm installation in the same admission.",
+  "receipt_on_execution_host": "/home/louistrue/build-workers/worker-state/jobs/c4086b6e-8736-43b0-8119-b4587b2912b1/receipt.json",
+  "recovery": "ifc-fleet job --id auto-366c396a594147a9a52d38f2b4e8ea8f",
+  "safe_to_resubmit_automatically": false,
+  "qualification": "Root full typecheck and test-source audit pass on the stated committed tree. This does not qualify runtime behavior, later child implementations or cutover.",
+  "initial_state_at_observation": "running",
+  "terminal_state": "completed",
+  "exit_code": 0,
+  "source_clean_after_execution": true,
+  "source_unchanged": true,
+  "result_receipt": "fleet-typecheck/receipt.json"
+}

@@ -1,0 +1,89 @@
+{
+  "frozen_manifest": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/docs/architecture/evidence/geometry-platform-context-final/source-manifest-ratchet-corrected.json",
+  "frozen_manifest_sha256": "63bb222be30076a296d109eb6cc7d057ec3ab880f727313d62892df82d65ff93",
+  "source_count": 288,
+  "source_mismatches": [],
+  "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)\nbinary: rustc\ncommit-hash: b6d7ff3aa71e48e2901b0900f8b5d98126b537ed\ncommit-date: 2025-11-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.93.0-nightly\nLLVM version: 21.1.5\n",
+  "base_pin_receipt": "/tmp/ifclite-scene-library-pins.json",
+  "base_pin_receipt_sha256": "eec8e55ff9e9fff18778bf05ab9d27fd9d487558e7b3ecb7a9b8e389565fe642",
+  "libraries": {
+    "base": {
+      "ifc_lite_core": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libifc_lite_core-345be4fab942851b.rlib",
+        "bytes": 13365852,
+        "mtime_ns": 1792326332309653486,
+        "sha256": "a414ffcd8475301d7704145b440ec7f7e05f9f4a9e336301c0f31208f3e801b5"
+      },
+      "ifc_lite_geometry": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libifc_lite_geometry-a1b48094c7fc8649.rlib",
+        "bytes": 38820286,
+        "mtime_ns": 1792326376619510148,
+        "sha256": "3ea2d4671bf8810b1deb7b9ba9b3f438b6437171d185db815b48d6f93b615b21"
+      },
+      "ifc_lite_processing": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libifc_lite_processing-915d2910f76c184d.rlib",
+        "bytes": 35178572,
+        "mtime_ns": 1792326389831467408,
+        "sha256": "44ff20c67bc366a3f0742c9d58a26bc0e0e51e3d79ffc2bc9ee61716aba557b3"
+      },
+      "serde": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libserde-e3cc15af0a9b0193.rlib",
+        "bytes": 1018230,
+        "mtime_ns": 1792326326987670703,
+        "sha256": "f0cab349843a98de6694f20e773728e488f02625bb4f6dc5a812bd55b937335d"
+      },
+      "serde_json": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libserde_json-8db63b8bd7d1e60b.rlib",
+        "bytes": 2344826,
+        "mtime_ns": 1792326359772564647,
+        "sha256": "2982ce89ec152e810879351d90de820370b44a97eeccf3fcd2c0322247fd3c0d"
+      },
+      "sha2": {
+        "path": "/tmp/ifclite-smlib-base-8acd0715a/target/profiling/deps/libsha2-704a646f6b16e0bb.rlib",
+        "bytes": 812600,
+        "mtime_ns": 1792326358837567671,
+        "sha256": "e91112f5d4762288c2bf5ec09bc832e67df0c03f251e081b754f3aab3209d5cc"
+      }
+    },
+    "candidate": {
+      "ifc_lite_core": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps/libifc_lite_core-345be4fab942851b.rlib",
+        "bytes": 13529722,
+        "mtime_ns": 1792348719129310415,
+        "sha256": "882fd9855d407a51c6a6a2fe5d69f782578775f805ab801fde5fbb4315d9e1ef"
+      },
+      "ifc_lite_geometry": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps/libifc_lite_geometry-a1b48094c7fc8649.rlib",
+        "bytes": 40937624,
+        "mtime_ns": 1792354704320205968,
+        "sha256": "adbe4bbb31607612365a91f698866fbba27178b5cebc649ea1d8ecfee7bbbfb3"
+      },
+      "ifc_lite_processing": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps/libifc_lite_processing-915d2910f76c184d.rlib",
+        "bytes": 36864442,
+        "mtime_ns": 1792354697796224654,
+        "sha256": "86895ecc66e7e3894d24babf575f8a041de9a000f3cb2c874cf54206cf5c2cab"
+      },
+      "serde": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps/libserde-e3cc15af0a9b0193.rlib",
+        "bytes": 1018246,
+        "mtime_ns": 1792326509742079505,
+        "sha256": "d5b3ac3006edeb2f7c7414235dc3c2bd70c22f9377ed0fe247cb237b13e38cb0"
+      },
+      "serde_json": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps/libserde_json-8db63b8bd7d1e60b.rlib",
+        "bytes": 2344826,
+        "mtime_ns": 1792326541263977534,
+        "sha256": "7e8525ec1d719c6ed8f8a0e1b07ec4a831f53df32c33ffdf7b70d4acda68cfd1"
+      },
+      "sha2": {
+        "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/target/profiling/deps/libsha2-704a646f6b16e0bb.rlib",
+        "bytes": 812600,
+        "mtime_ns": 1792326540303980639,
+        "sha256": "e91112f5d4762288c2bf5ec09bc832e67df0c03f251e081b754f3aab3209d5cc"
+      }
+    }
+  },
+  "scope": "Heavy actual scene run after test-only ratchet metadata correction; identical rehashed linked libraries/executables from final profiling build",
+  "prior_frozen_manifest_sha256": "29cb0bc3971c14c78f0557309bf6e51b6a24c415f196490dea2f5a80b34a902d"
+}

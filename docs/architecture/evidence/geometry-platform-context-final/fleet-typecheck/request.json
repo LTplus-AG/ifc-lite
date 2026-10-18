@@ -1,0 +1,19 @@
+{
+  "id": "auto-366c396a594147a9a52d38f2b4e8ea8f",
+  "commit": "c9ec56087577b7dbe6ecd9ac9f6810089cd1e38a",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "-c",
+    "pnpm install --frozen-lockfile --prefer-offline && exec \"$@\"",
+    "ifc-fleet",
+    "pnpm",
+    "typecheck"
+  ],
+  "pools": []
+}

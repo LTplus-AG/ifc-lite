@@ -1,0 +1,65 @@
+{
+  "status": "partial qualification; post-run finalizer and supplemental execution audit refused, not run",
+  "source_manifest": "../source-manifest-ratchet-corrected.json",
+  "source_manifest_sha256": "63bb222be30076a296d109eb6cc7d057ec3ab880f727313d62892df82d65ff93",
+  "source_count": 288,
+  "source_bytes_unchanged_before_after": true,
+  "baseline_commit": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+  "checkpoint_after_runs": "c9ec56087577b7dbe6ecd9ac9f6810089cd1e38a",
+  "checkpoint_does_not_relabel_source_scope": true,
+  "actual_cases": 4,
+  "semantic_equal_cases": 4,
+  "independent_baseline_repeat_equal_cases": 4,
+  "admission_history": {
+    "numerical_comparison_runs": "Started before fleet policy update; completed as existing legacy work, not fleet-admitted",
+    "post_run_finalizer": "fleet submission refused",
+    "fleet_job_id": "c7afa020-d92b-48f8-ab19-722e9aec9682",
+    "refusal": "111.3GiB free disk; require266GiB reserve plus scratch",
+    "no_bypass_or_retry": true
+  },
+  "pending": [
+    "independent final raw/library/executable rehash",
+    "supplemental CSG census multiset and nonmasked statistics audit"
+  ],
+  "resources": {
+    "pilot": {
+      "Elapsed (wall clock) time (h:mm:ss or m:ss)": "11:58.28",
+      "Maximum resident set size (kbytes)": "9130600",
+      "Swaps": "0",
+      "Exit status": "0"
+    },
+    "stream": {
+      "Elapsed (wall clock) time (h:mm:ss or m:ss)": "10:31.09",
+      "Maximum resident set size (kbytes)": "9165644",
+      "Swaps": "0",
+      "Exit status": "0"
+    },
+    "instanced": {
+      "Elapsed (wall clock) time (h:mm:ss or m:ss)": "9:38.67",
+      "Maximum resident set size (kbytes)": "9131576",
+      "Swaps": "0",
+      "Exit status": "0"
+    },
+    "fastfirst": {
+      "Elapsed (wall clock) time (h:mm:ss or m:ss)": "10:21.82",
+      "Maximum resident set size (kbytes)": "9161392",
+      "Swaps": "0",
+      "Exit status": "0"
+    }
+  },
+  "raw_inventory_total_bytes": 20257552630,
+  "performance_claim": false,
+  "evidence_sha256": {
+    "README.md": "0b179b02c95f46890b48138d5f9f1814b1d0be09c3654a95aa42dd7aa9286d09",
+    "commands.json": "11d82b18317af7c0532cf92f661411cc7d1c1acf211c29bba152b667acc236fc",
+    "comparisons.json": "892ccbb8c5b583f4415c8d1d8667fcbb49b22f76adcb48688bbd5dd1b5710376",
+    "fleet-refusal.json": "ce5560b1579b7edaf55e42a370ac892585783cff5ae39fac5f94c18b27448d0c",
+    "fleet-refusal.log": "0395abbd4941811a7c58e4c98994aa1a112b36acdfc2472b17189e2871b90a87",
+    "input-verification.json": "85e6a4a661d178415ec8f6baf2b35cb4df1493a9f1486ccc54843bb68ee88441",
+    "library-pins.json": "47140769a150278ec0603246eab9e91f667fbb6bcded084b9799c2cf4dabd92f",
+    "raw-inventory.json": "3df8b1e783095a44bdb4186c0a5344057d334b07fd1797b71bb285c48bb9d058",
+    "source-after.json": "1839a917b051e0f6605e52bcdb78277e1d12dfcb5eccb7820085c8a142dd1988",
+    "support.json": "eda642b16a43e427555cff3c1e00ed61fccf00730dc96f1ec5812ffaa25a05d7",
+    "support.tar.gz": "e2e7ceebd29c4e49737ed442f6ae70f2c1726bf7fe1f6314f4108fd037ab6ec1"
+  }
+}

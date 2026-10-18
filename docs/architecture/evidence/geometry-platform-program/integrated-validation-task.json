@@ -1,0 +1,44 @@
+{
+  "source_commit": "e2e42bbfb8bd087a386450a0ab643bcb061c133c",
+  "state_at_recording": "Original PC preparation failures recovered; original Pop launcher failure and queued cancellation preserved; clean-checkout corrected validation next",
+  "checks": [
+    {
+      "command": "cargo test --workspace --no-fail-fast",
+      "request": "auto-1e81c74bcf804125a2ef516e53222376",
+      "session_id": 59506,
+      "transport_exit": 1,
+      "observed_error": "Git fetch fatal out of disk during source preparation, before worker execute/Cargo",
+      "execution": "did not start Cargo; receive() fetch failure occurs before execute()",
+      "recovery_state": "accepted, dispatcher returned1, no jobId"
+    },
+    {
+      "command": "cargo clippy --workspace --all-targets -- -D warnings",
+      "request": "auto-76805795562a4a2d968690c482f70ed0",
+      "session_id": 6085,
+      "transport_exit": 1,
+      "observed_error": "Errno28 no space left on device",
+      "execution": "Recovered: failed exclusive claim write before prepare/execute; no Cargo execution",
+      "recovery_evidence": "pc-preparation-recovery/receipt.json"
+    }
+  ],
+  "launcher": "/home/louistrue/build-workers/ifc-fleet run --cwd parent-checkout -- COMMAND",
+  "recovery": "Use original session/request; never retry after uncertain transport outcome",
+  "pop_workspace": {
+    "job": "6cff4c36-03ef-4e82-9ea4-a24afdc8e6eb",
+    "session_id": 25453,
+    "command": "ifc-fleet run --cwd parent -- /home/louistrue/build-workers/setup/projects-20261017/ifc-lite/env-exec.sh cargo test --workspace --no-fail-fast",
+    "state": "cancelled while queued by verified own wrapper SIGTERM; no Cargo execution",
+    "source": "checkpointe2e42bbfb8 plus evidence-only metadata; exact runtime unchanged",
+    "reason": "Original workspace request failed source fetch before Cargo; standing policy authorizes local admitted host-bound prepared work",
+    "reason_for_cancellation": "Direct environment script is not executable; prepare clean-checkout Pop commands instead. Wrapper PID/token and queued/no-child state verified before signal.",
+    "receipt": "pop_workspace-original-receipt.json"
+  },
+  "pop_clippy": {
+    "job": "166261df-50a2-4e06-88c6-da94c84bffac",
+    "session_id": 76984,
+    "state": "failed before Cargo: environment script execution permission denied",
+    "reason": "Original PC request proved failed before execution; original canonical safeToResubmitAutomatically=false retained; explicit policy-authorized local prepared admission decision",
+    "command": "ifc-fleet run --cwd parent -- prepared-env-exec cargo clippy --workspace --all-targets -- -D warnings",
+    "receipt": "pop_clippy-original-receipt.json"
+  }
+}

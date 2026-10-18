@@ -237,8 +237,10 @@ worker-pool model comparisons preserve geometry fingerprints; shared-host
 timing is unqualified and the heavy model's slower execution and higher peak
 memory require controlled profiling. Full performance qualification remains
 open. Separate heavy-model comparisons match all four native modes, including
-instances and deferred colors; final rehash and execution-record audit remain
-pending after fleet refusal. Synthetic annotation cases add positive fill,
+instances and deferred colors. The later
+[admitted audit](evidence/geometry-platform-context-final/heavy-scene/admitted-audit/)
+completed final artifact rehash, CSG census and unmasked statistics checks; the
+original refusal is preserved. Synthetic annotation cases add positive fill,
 hole-area and placement invariants, without claiming exporter fill coverage.
 Mapped control now owns
 its traversal frames; reached admission and numerical execution still share
@@ -247,6 +249,16 @@ effects, authenticated source bundles, frame acceptance, external lifecycle
 handling, retained integration and complete consumer migration remain open. All capability
 rows below retain their preservation evidence requirements. See the
 [current product-session contract](geometry-platform-product-session.md).
+
+The [common program phase](geometry-platform-product-program-phase-one.md) is
+integrated at checkpoint `e2e42bbfb8`. Representation/item selection, mapping
+frames, type-map and opening-item probe policies now share that owner, and the
+selected constructor hook supplies the same owned payload to canonical and
+optional batch callers. The [integration record](evidence/geometry-platform-program/integration.json)
+verifies its delivery hashes. Its child tests and the frozen predecessor's scene
+comparisons do not qualify the changed assembled source. Boolean control, opening
+classification/application, layer slicing, late presentation admission, complete
+effect ownership and explicit retained integration remain open.
 
 | Contract | Current owner and available evidence | Target owner and remaining proof |
 | --- | --- | --- |

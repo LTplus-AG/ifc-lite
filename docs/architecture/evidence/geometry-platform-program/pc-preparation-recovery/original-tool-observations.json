@@ -1,0 +1,14 @@
+{
+  "at": 1792360379.5149925,
+  "source": "parent original tool-output observations; no durable original log/traceback existed",
+  "cargoTest": {
+    "toolSession": 59506,
+    "exitCode": 1,
+    "output": "fatal: sha1 file 'objects/pack/tmp_pack_WyrKKv' write error. Out of diskspace\nfatal: fetch-pack: invalid index-pack output\nCommand '['git', '-C', '/home/louistrue/build-workers/ifc-lite.git', 'fetch', 'origin', 'e2e42bbfb8bd087a386450a0ab643bcb061c133c']' returned non-zero exit status 128."
+  },
+  "clippy": {
+    "toolSession": 6085,
+    "exitCode": 1,
+    "output": "[Errno 28] No space left on device"
+  }
+}

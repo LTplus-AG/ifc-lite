@@ -1,0 +1,10 @@
+{
+  "mode": "read-only provisional source review, no executed reproduction",
+  "inspected_path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-fe080b7e/rust/processing/src/element/session_canonical.rs",
+  "sha256": "d1779b8f0d26afe0e70d999973bbbf8080919733e5983345536ac08366e60058",
+  "observed_edge": "with_source_resources early return on resource::is_active before actual decoder source-context/stop-handle transport",
+  "still_present_at_receipt": true,
+  "scenario": "Scoped worker enters distinct bounded ExecutionAccount before nested canonical production using actual parent decoder borrow; early return can bypass parent account and sticky terminal propagation",
+  "required_invariant": "Actual source authority and stop propagation survive unrelated active worker account; no parent quota reset; preserve compatibility worker callbacks",
+  "sent_to_original_active_task": true
+}

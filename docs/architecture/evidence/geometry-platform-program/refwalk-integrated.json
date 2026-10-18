@@ -1,0 +1,12 @@
+{
+  "command": "node scripts/check-refwalk-guards.mjs",
+  "exit_code": 0,
+  "source_checkpoint": "e2e42bbfb8bd087a386450a0ab643bcb061c133c",
+  "live_changes": "documentation/evidence only; production source unchanged from checkpoint",
+  "files_scanned": 1335,
+  "candidate_walks": 29,
+  "unguarded": 0,
+  "fanout_budget_reviews": 12,
+  "scope": "Lexical guard-presence gate only, not proof of guard choice, complete fanout bounds, runtime behavior or assembled platform preservation",
+  "gate_sha256": "d5fad61381f798e61da778ec61500d718c1652974c468449afe60424df690c31"
+}

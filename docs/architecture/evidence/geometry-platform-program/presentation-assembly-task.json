@@ -1,0 +1,15 @@
+{
+  "task_id": "node:delegated-task:command%3Amcp%3A40782b11-2ce6-4f4a-b37b-2a6dbccb22b9%3Adelegate-task%3Aifclite-owned-presentation-assembly-round1",
+  "state_at_recording": "running",
+  "baseline": "e2e42bbfb8bd087a386450a0ab643bcb061c133c",
+  "scope": "Real late source admission and decoder-free final presentation assembly in canonical per-element producer",
+  "ordering_constraints": [
+    "instance-only and materialized parts share original material cursor",
+    "nonempty submesh winding/normal work precedes late mapped-style lookup",
+    "fallback winding precedes indexed-colour representation lookup",
+    "type-map ancestry colour lookup remains once before part filtering",
+    "texture UV guard and palette/hash fallback ordering unchanged",
+    "late extension mutations remain visible"
+  ],
+  "qualification": "Task acceptance is not evidence of implemented or passing behavior"
+}

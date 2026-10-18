@@ -1,0 +1,7 @@
+{
+  "transport": "configured fleet pc-wsl address/python with existing strict SSH options",
+  "exitCode": 0,
+  "stdout": "{\"at\": 1792360338.3787782, \"requests\": {\"auto-76805795562a4a2d968690c482f70ed0\": {\"exists\": true, \"size\": 0, \"sha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\", \"rawBase64\": \"\", \"parseError\": \"Expecting value: line 1 column 1 (char 0)\"}, \"auto-1e81c74bcf804125a2ef516e53222376\": {\"exists\": true, \"size\": 311, \"sha256\": \"c670e3a5bd69ce677bf2b8a649024aecffa710bd896d87c0db6513e3530f8659\", \"rawBase64\": \"eyJyZXF1ZXN0IjogeyJpZCI6ICJhdXRvLTFlODFjNzRiY2Y4MDQxMjVhMmVmNTE2ZTUzMjIyMzc2IiwgImNvbW1pdCI6ICJlMmU0MmJiZmI4YmQwODdhMzg2NDUwYTBhYjY0M2JjYjA2MWMxMzNjIiwgImtpbmQiOiAib3JkaW5hcnkiLCAiY3B1IjogNCwgIm1lbW9yeUdpQiI6IDEyLCAiY2FwYWJpbGl0aWVzIjogWyJsaW51eCJdLCAiY29tbWFuZCI6IFsiY2FyZ28iLCAidGVzdCIsICItLXdvcmtzcGFjZSIsICItLW5vLWZhaWwtZmFzdCJdLCAicG9vbHMiOiBbXX0sICJzdGF0ZSI6ICJhY2NlcHRlZCIsICJhdCI6IDE3OTIzNjAwMTYuNzQ0NzYxN30=\", \"parsed\": {\"request\": {\"id\": \"auto-1e81c74bcf804125a2ef516e53222376\", \"commit\": \"e2e42bbfb8bd087a386450a0ab643bcb061c133c\", \"kind\": \"ordinary\", \"cpu\": 4, \"memoryGiB\": 12, \"capabilities\": [\"linux\"], \"command\": [\"cargo\", \"test\", \"--workspace\", \"--no-fail-fast\"], \"pools\": []}, \"state\": \"accepted\", \"at\": 1792360016.7447617}}}, \"matchingReceipts\": [], \"matchingQueue\": [], \"matchingProcesses\": [], \"checkoutExists\": false}\n",
+  "stderr": "",
+  "at": 1792360339.4862325
+}

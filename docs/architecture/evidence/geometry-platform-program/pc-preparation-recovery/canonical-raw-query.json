@@ -1,0 +1,14 @@
+[
+  {
+    "id": "auto-76805795562a4a2d968690c482f70ed0",
+    "exitCode": 1,
+    "stdout": "",
+    "stderr": "Expecting value: line 1 column 1 (char 0)\n"
+  },
+  {
+    "id": "auto-1e81c74bcf804125a2ef516e53222376",
+    "exitCode": 0,
+    "stdout": "{\n  \"id\": \"auto-1e81c74bcf804125a2ef516e53222376\",\n  \"claim\": {\n    \"request\": {\n      \"id\": \"auto-1e81c74bcf804125a2ef516e53222376\",\n      \"commit\": \"e2e42bbfb8bd087a386450a0ab643bcb061c133c\",\n      \"kind\": \"ordinary\",\n      \"cpu\": 4,\n      \"memoryGiB\": 12,\n      \"capabilities\": [\n        \"linux\"\n      ],\n      \"command\": [\n        \"cargo\",\n        \"test\",\n        \"--workspace\",\n        \"--no-fail-fast\"\n      ],\n      \"pools\": []\n    },\n    \"state\": \"accepted\",\n    \"at\": 1792360016.7447617\n  },\n  \"state\": \"accepted\",\n  \"safeToResubmitAutomatically\": false\n}\n",
+    "stderr": ""
+  }
+]

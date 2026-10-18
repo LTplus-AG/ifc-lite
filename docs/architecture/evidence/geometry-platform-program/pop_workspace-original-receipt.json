@@ -1,0 +1,59 @@
+{
+  "id": "6cff4c36-03ef-4e82-9ea4-a24afdc8e6eb",
+  "host": {
+    "host": "pop-os",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 32,
+    "availableMemoryBytes": 110213976064,
+    "totalMemoryBytes": 134644969472,
+    "python": "3.12.3",
+    "time": 1792360082.5784883
+  },
+  "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361",
+  "sourceBefore": {
+    "commit": "e2e42bbfb8bd087a386450a0ab643bcb061c133c",
+    "tree": "73a2021471c41e53ad8316f9f8bca9cd53072799",
+    "clean": false,
+    "worktreeDigest": "514c75e8b65fce5e6e3f0d0bc2db1c6b45671d1667d9f812a38f09363be0ae7a",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "c8987439833b029efc8627127656e04700586f5b990657cac650a20636a5045e",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "command": [
+    "/home/louistrue/build-workers/setup/projects-20261017/ifc-lite/env-exec.sh",
+    "cargo",
+    "test",
+    "--workspace",
+    "--no-fail-fast"
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792360082.578003,
+  "resources": [
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361",
+    "/home/louistrue/build-workers/worker-state/targets/cebc0fce81cc4790d0c2"
+  ],
+  "state": "failed",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "error": "cancelled while queued",
+  "exitCode": 1,
+  "finishedAt": 1792360507.1633356,
+  "sourceAfter": {
+    "commit": "e2e42bbfb8bd087a386450a0ab643bcb061c133c",
+    "tree": "73a2021471c41e53ad8316f9f8bca9cd53072799",
+    "clean": false,
+    "worktreeDigest": "8f9332d656f0037999021d6e13f978c93b4f21131d7ad9e4c0d23d9c6bcda45e",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "c8987439833b029efc8627127656e04700586f5b990657cac650a20636a5045e",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "sourceUnchanged": false,
+  "artifacts": {}
+}

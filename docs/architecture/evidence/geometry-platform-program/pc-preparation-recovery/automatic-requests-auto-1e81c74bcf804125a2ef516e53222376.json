@@ -1,0 +1,17 @@
+{
+  "id": "auto-1e81c74bcf804125a2ef516e53222376",
+  "commit": "e2e42bbfb8bd087a386450a0ab643bcb061c133c",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "cargo",
+    "test",
+    "--workspace",
+    "--no-fail-fast"
+  ],
+  "pools": []
+}

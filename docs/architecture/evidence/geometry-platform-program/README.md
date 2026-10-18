@@ -1,4 +1,4 @@
-# Product program delivery awaiting integration
+# Integrated product program delivery
 
 The incremental patch and its original evidence archive are preserved here.
 The parent verified both artifact hashes and independently summed the native
@@ -15,5 +15,9 @@ patch followed by the coherent-source patch, excluding the generated WASM type
 file. It did not alter the checkout or qualify runtime behavior. The canonical
 WASM build must regenerate that file after integration.
 
-Parent production source remains frozen until the previously admitted heavy
-scene audit completes its source checks. There is no production engine cutover.
+The admitted heavy-scene audit completed and released the predecessor source
+freeze. The incremental program is integrated at local checkpoint `e2e42bbfb8`;
+`integration.json` records the exact checked hashes and preserved parent API
+documentation. `integrated-validation-task.json` tracks fresh parent validation,
+including original PC failures and the admitted Pop request. Child results are
+not relabeled as parent test results. There is no production engine cutover.

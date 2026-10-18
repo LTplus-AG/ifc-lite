@@ -1,0 +1,46 @@
+{
+  "status": "original requests recovered: both failed before worker execution",
+  "sourceCommit": "e2e42bbfb8bd087a386450a0ab643bcb061c133c",
+  "executionHost": "pc-wsl",
+  "originalRequests": {
+    "auto-76805795562a4a2d968690c482f70ed0": {
+      "state": "claim-write failure before prepare/execute",
+      "remoteClaimBytes": 0,
+      "originalWrapperExitCode": 1,
+      "originalObservedError": "[Errno 28] No space left on device",
+      "canonicalQueryFailure": "remote empty-JSON parse failure mislabeled by controller as execution-host-unavailable"
+    },
+    "auto-1e81c74bcf804125a2ef516e53222376": {
+      "state": "accepted claim; source-fetch failure before execute",
+      "remoteClaimBytes": 311,
+      "jobId": null,
+      "originalWrapperExitCode": 1,
+      "originalObservedGitFetchExitCode": 128
+    }
+  },
+  "commonEvidence": {
+    "preparedCheckoutExists": false,
+    "matchingReceipts": 0,
+    "matchingQueueRows": 0,
+    "matchingLiveProcesses": 0,
+    "remoteReadExitCode": 0,
+    "receiveOrdering": "exclusive claim file creation and json.dump -> prepare/fetch/worktree -> worker.execute",
+    "remoteTransportSha256": "bd576da2b0ad9c01d731db2937234f88046d37f1d4b34aaf29fdb1ddea4b6e21",
+    "originalToolOutputIsParentSuppliedObservation": true
+  },
+  "interpretation": "Neither original Cargo command entered worker.execute. Accepted is a durable pre-execution claim, not a running job. No test/lint result exists from either request. No job was retried, resubmitted, cancelled or cleaned. Foreign artifacts and the existing Pop workspace job were untouched.",
+  "safeToResubmitAutomatically": false,
+  "limits": "This recovery does not itself submit replacement work. Canonical request-status retains safeToResubmitAutomatically=false. No fabricated traceback or missing receipt is treated as a command result.",
+  "evidenceFiles": [
+    "dispatch-auto-76805795562a4a2d968690c482f70ed0.json",
+    "dispatch-auto-1e81c74bcf804125a2ef516e53222376.json",
+    "controller-code.json",
+    "canonical-raw-query.json",
+    "remote-read.json",
+    "original-tool-observations.json",
+    "remote-receive-source.json",
+    "automatic-requests-auto-76805795562a4a2d968690c482f70ed0.json",
+    "automatic-requests-auto-1e81c74bcf804125a2ef516e53222376.json",
+    "receive-order.txt"
+  ]
+}

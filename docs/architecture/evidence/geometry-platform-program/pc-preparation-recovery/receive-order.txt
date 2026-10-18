@@ -1,0 +1,44 @@
+def receive(args):
+    from worker import configuration, parser, execute
+    request = json.load(sys.stdin)
+    commit = request['commit']
+    if not re.fullmatch('[0-9a-f]{40}', commit) or not re.fullmatch('[A-Za-z0-9_-]{1,100}', request['id']):
+        raise ValueError('invalid commit or request id')
+    config = configuration(args.state)
+    repository = Path(config['repository']).resolve()
+    state = Path(args.state)
+    claims = state / 'requests'
+    claims.mkdir(parents=True, exist_ok=True)
+    claim = claims / (request['id'] + '.json')
+    with claim.open('x') as stream:
+        json.dump({'request': request, 'state': 'accepted', 'at': time.time()}, stream)
+    checkout = state / 'checkouts' / commit
+    checkout.parent.mkdir(parents=True, exist_ok=True)
+    with (state / 'prepare.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        present = subprocess.run(['git', '-C', str(repository), 'cat-file', '-e', commit], capture_output=True)
+        if present.returncode and config.get('fetch', False):
+            subprocess.run(['git', '-C', str(repository), 'fetch', 'origin', commit], check=True)
+        if not checkout.exists():
+            subprocess.run(['git', '-C', str(repository), 'worktree', 'add', '--detach', str(checkout), commit], check=True)
+    argv = ['--state', str(state), 'run', '--cwd', str(checkout), '--require-clean', '--commit', commit,
+            '--kind', request.get('kind', 'ordinary'), '--cpu', str(request.get('cpu', 8)),
+            '--memory', str(request.get('memoryGiB', 24))]
+    for path in request.get('artifacts', []):
+        argv.extend(['--artifact', path])
+    for pool in request.get('pools', []):
+        argv.extend(['--pool', pool])
+    for path, digest in request.get('fixtures', {}).items():
+        argv.extend(['--fixture', path + '=' + digest])
+    if request.get('strictWasm'):
+        argv.append('--strict-wasm')
+    argv.extend(['--', *request['command']])
+    parsed = parser().parse_args(argv)
+    parsed.request_id = request['id']
+    if parsed.command[:1] == ['--']:
+        parsed.command.pop(0)
+    code = execute(parsed)
+    final_claim = json.loads(claim.read_text())
+    write_json(claim, final_claim | {'state': 'returned', 'exitCode': code, 'at': time.time()})
+    return code
+

@@ -6,6 +6,15 @@ The [foundation](geometry-platform-foundation.md) is implemented. Continue the
 through the following dependency order. Exact arithmetic, supported formats,
 existing behavior and cross-target contracts remain hard preservation constraints.
 
+The [representation/constructor program phase](geometry-platform-product-program-phase-one.md)
+is integrated. Its [evidence index](evidence/geometry-platform-program/) separates
+child checks, parent integration and pending assembled-source validation. The
+[next dependent layers](evidence/geometry-platform-program/next-layer-plan.md)
+cover actual reached boolean control, opening classification/application, layer
+slicing and decoder-free presentation assembly. Parallel source/cache preservation
+and checked-resource work must join those same canonical boundaries. No cutover
+or whole-platform non-regression verdict follows from the integrated first phase.
+
 ## Implemented execution layer
 
 1. **Authored planning.** Reuse the existing bounded analytic source walk to

@@ -6,8 +6,13 @@ design](geometry-platform-source-execution.md),
 [canonical product session](geometry-platform-product-session.md), and
 [synchronous work boundary](geometry-platform-work-boundary.md). The current
 [capability inventory](geometry-platform-capabilities.md) describes implemented
-coverage. The types below are proposals; the common program is not implemented
-or qualified as complete source-independent execution.
+coverage. The types below describe the target architecture. The
+[representation and constructor phase](geometry-platform-product-program-phase-one.md)
+is now integrated, including owned mapping control and opening-item probe policies.
+Its [delivery and integration evidence](evidence/geometry-platform-program/) keeps
+child qualification separate from current assembled-source checks. Complete
+source-independent execution remains unqualified; boolean, opening classification,
+layer and late presentation control still require migration.
 
 Implementation proceeds in reviewable phases. Whole-platform completion requires
 the complete source, control, consumer and fidelity gates below. Historical

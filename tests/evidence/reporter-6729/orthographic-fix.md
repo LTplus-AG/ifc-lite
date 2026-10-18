@@ -92,5 +92,9 @@ Perspective uses the actual infinite-far matrix and records no finite range.
 Review follow-ups compile visibility variants asynchronously before drawing,
 defer frames while compilation is pending, reject failed variants without an
 unconstrained fallback, and release the depth texture on perspective frames.
-These production follow-ups require fresh root checks and real viewer captures;
-the initial implementation's measurements above are retained with their scope.
+Fresh qualification on PC source `6f7da8e22` passed root `pnpm typecheck`,
+2,172 renderer tests (zero failures, two existing skips), all six GPU witness
+tests, and all five full viewer tests including the 36 reporter frames. The
+matrix now executes 1,440 distinct cases; no extra range coverage is claimed
+for perspective. PC receipt: `3e25f5b3-23a5-4867-a161-69c07989dcec`.
+The initial implementation's measurements above are retained with their scope.

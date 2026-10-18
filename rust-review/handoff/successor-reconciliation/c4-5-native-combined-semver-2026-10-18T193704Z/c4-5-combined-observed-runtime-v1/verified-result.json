@@ -1,0 +1,76 @@
+{
+  "source": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "worker": "0b8d0c8b-d6bd-4065-90bf-3e941963d378",
+  "originalSession": 63233,
+  "workerState": "failed",
+  "exitCode": 1,
+  "sourceUnchanged": true,
+  "ownedQuiescent": true,
+  "resourcesReleased": true,
+  "observedBuildExitCode": 0,
+  "observedCaptureExitCode": 0,
+  "observedCapture": {
+    "receiptSha256": "918b7a760c5e520e0b70a2337e8712730c92fee7a996b1d233c40bde3229c1a4",
+    "jobs": 17,
+    "meshes": 40,
+    "observations": {
+      "prepass": 0,
+      "geometry": 69
+    }
+  },
+  "observationKinds": {
+    "batch-input": 1,
+    "batch-job": 17,
+    "element_job": 17,
+    "representation-gate": 2,
+    "element-result": 17,
+    "effective-element-color": 15
+  },
+  "instrumentedSource": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "indexTree": "5157e4080c774195bfc08d359ad49b8d32500721",
+    "stagedDiffSha256": "0d4b47ed71d19230bfa75921c41c5868de0f0a4b48e4e59ba5c9d8a2e3a0bae4",
+    "unstagedDiff": "",
+    "newUntracked": ""
+  },
+  "adaptedPatchSha256": "ca697f59286651e6dddd257723ed016d92485159a759fc2d62e63f6f45716b94",
+  "strictNoninterference": {
+    "result": "INCOMPLETE_UNKNOWN_DIFF",
+    "expected": [],
+    "unknown": [
+      {
+        "path": "/diagnostics/0/phaseMs/geometryMs",
+        "left": 41,
+        "right": 43
+      },
+      {
+        "path": "/diagnostics/0/phaseMs/totalMs",
+        "left": 41,
+        "right": 43
+      }
+    ],
+    "stale": []
+  },
+  "primaryError": "AssertionError('strict-observation-noninterference failed')",
+  "finallyErrors": [],
+  "beforeFinallySourceFixturesToolsInputsProductionRuntimeUnchanged": true,
+  "observedRuntimeCopyMatches": true,
+  "proofs": {
+    "worker-terminal.json": "7858ee43873133b0b92934874318b18faf53990df5263eba3b711ec7c7341a96",
+    "terminal-quiescence.json": "6e944c5f61e645933a954433328364c09eb36e14642b92aa2e753a04c8f25475",
+    "original-exec-terminal.json": "758cdba90daca5590f5a1caa4dacb2c131e134463e8eb26215480d1c3ccea04b",
+    "pc-results/report.json": "beaa35b59fa987450c4b45491de4e96feb96655da46edc850172842c2ad03cce",
+    "pc-results/build-observed-wasm.log": "05bf43f1ae26b4351b8b45862e734c3feb57c14b25255133b0943394945f6436",
+    "pc-results/actual-instrumentation.patch": "0d4b47ed71d19230bfa75921c41c5868de0f0a4b48e4e59ba5c9d8a2e3a0bae4",
+    "pc-results/observed-plan.json": "1e59dc98cc09c3f0c3eb133ab0d7e7edd2db1d41200d58a8bb80485076e5a38d",
+    "pc-results/observed-revit-wall.json": "918b7a760c5e520e0b70a2337e8712730c92fee7a996b1d233c40bde3229c1a4",
+    "pc-results/strict-observation-noninterference.log": "d46395f7a9334f9652e17b653b0e31ea293169ddbd3edd2d0119cf660ae789a4"
+  },
+  "accepted": false,
+  "performance": false,
+  "next": "STOPPED at exact two unknown timing leaves; no EXPECTED_DIFF binding, normalization, retry, source fix or further worker. Parent owns disposition."
+}

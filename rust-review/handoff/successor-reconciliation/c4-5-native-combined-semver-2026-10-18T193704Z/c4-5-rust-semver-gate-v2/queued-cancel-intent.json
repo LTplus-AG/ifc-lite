@@ -1,0 +1,26 @@
+{
+  "at": "2026-10-18T19:30:20.084927+00:00",
+  "action": "SIGTERM exact owned stillqueued worker under queue transaction; no workload/PGID/startedAt",
+  "worker": "8645dc93-0be7-4586-8a02-d8765b4b02f4",
+  "row": {
+    "id": "8645dc93-0be7-4586-8a02-d8765b4b02f4",
+    "pid": 102443,
+    "token": "12212308",
+    "pgid": null,
+    "kind": "ordinary",
+    "cpu": 4,
+    "memory": 12,
+    "resources": "[\"/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2\", \"/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98\"]",
+    "created": 1792351713.7473605,
+    "started": null,
+    "state": "queued"
+  },
+  "receiptBefore": {
+    "state": "queued",
+    "startedAt": null,
+    "exitCode": null,
+    "cwd": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "requestedAt": 1792351713.7461078
+  },
+  "reason": "Real Pop48GiB fully occupied by foreign jobs. PC has existing COMPLETE stable/Cargo; reroute missing gate after authoritative cancellation only."
+}

@@ -1,0 +1,79 @@
+{
+  "at": "2026-10-18T19:41:41.004521+00:00",
+  "openCount": 18,
+  "issues": [
+    {
+      "number": 7929,
+      "title": "Audit: disabled Rust tests whose stated reason no longer holds, and two product defects with no open issue"
+    },
+    {
+      "number": 7928,
+      "title": "Tests that cannot fail: results for the unconfirmed candidates of #7925"
+    },
+    {
+      "number": 7890,
+      "title": "Federation: unpublished local entity ID reaches viewer conversion"
+    },
+    {
+      "number": 7782,
+      "title": "Rust sweep C4: processing orchestration (one process() entry, shared browser batch homes)"
+    },
+    {
+      "number": 7781,
+      "title": "Rust sweep C2: router restructure (RepresentationWalk, CutStrategy, EdgeLedger, GeometryRouter split)"
+    },
+    {
+      "number": 7779,
+      "title": "Rust sweep F3b: core entity reading (point3/direction3, axis placements, resolve_chain)"
+    },
+    {
+      "number": 7714,
+      "title": "geometry: define bounded planar carrier normalization for nearly planar FacetedBreps"
+    },
+    {
+      "number": 7711,
+      "title": "Cut (trim) geometry at the section boundary when exporting a cropped area"
+    },
+    {
+      "number": 7655,
+      "title": "SwiftShader WebGPU: renderer intermittently loses its device to Dawn \"external Instance reference no longer exists\""
+    },
+    {
+      "number": 7635,
+      "title": "geometry: closed opening operands produce a torn raw kernel result on MiniBIM third cut"
+    },
+    {
+      "number": 7633,
+      "title": "geometry: remote near-plane buckets project disconnected patches onto the wrong plane"
+    },
+    {
+      "number": 7631,
+      "title": "geometry: many-hole extrusion cap drops boundary constraints before opening cuts (MiniBIM slab 135923)"
+    },
+    {
+      "number": 7581,
+      "title": "Add complete Russian (ru) localization to the viewer"
+    },
+    {
+      "number": 7036,
+      "title": "T1c: engine init + worker spawn gate cold loads \u2014 warm worker pool and init overlapping the file read"
+    },
+    {
+      "number": 6940,
+      "title": "geometry: an opening cut tears a watertight IfcExtrudedAreaSolid slab (9 of 11 slabs in MiniBIM-3.1-DO_01_VORM)"
+    },
+    {
+      "number": 6881,
+      "title": "perf: bound GPU point-pick depth readback to the selected texel"
+    },
+    {
+      "number": 6709,
+      "title": "Viewer: cap HiDPI resolution during navigation and restore capture quality"
+    },
+    {
+      "number": 6516,
+      "title": "geometry 7.x: ~2.5x slower geometry on a model with non-rectangular wall openings (6.0.0 \u2192 7.0.0)"
+    }
+  ],
+  "scope": "Actual live snapshot, no closures by this read"
+}

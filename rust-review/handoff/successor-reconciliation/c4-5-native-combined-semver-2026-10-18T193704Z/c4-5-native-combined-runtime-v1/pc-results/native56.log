@@ -1,0 +1,299 @@
+   Compiling ifc-lite-geometry v21.4.0 (/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/rust/geometry)
+   Compiling ifc-lite-testkit v21.4.0 (/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/rust/testkit)
+   Compiling ifc-lite-processing v21.4.0 (/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/rust/processing)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 54.99s
+     Running tests/c4_phase_corpus_receipt.rs (/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/debug/deps/c4_phase_corpus_receipt-b9c049187ade6756)
+
+running 1 test
+[ifc-lite] Skipping unsupported representation-map item #357 (IfcGeometricCurveSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported representation-map item #453 (IfcGeometricCurveSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #1403 (IfcBoundingBox): Geometry processing error: Unsupported representation type: IfcBoundingBox
+[ifc-lite] Skipping unsupported representation-map item #1212 (IfcGeometricCurveSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #1403 (IfcBoundingBox): Geometry processing error: Unsupported representation type: IfcBoundingBox
+[ifc-lite] Skipping unsupported representation-map item #357 (IfcGeometricCurveSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported representation-map item #453 (IfcGeometricCurveSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported representation-map item #1212 (IfcGeometricCurveSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #1403 (IfcBoundingBox): Geometry processing error: Unsupported representation type: IfcBoundingBox
+[ifc-lite] Skipping unsupported representation-map item #357 (IfcGeometricCurveSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported representation-map item #453 (IfcGeometricCurveSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported representation-map item #1212 (IfcGeometricCurveSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported representation-map item #357 (IfcGeometricCurveSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported representation-map item #453 (IfcGeometricCurveSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #1403 (IfcBoundingBox): Geometry processing error: Unsupported representation type: IfcBoundingBox
+[ifc-lite] Skipping unsupported representation-map item #1212 (IfcGeometricCurveSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #17697 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #19256 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #20638 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #20638 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #19256 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #21802 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #21802 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7171 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7620 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7171 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7620 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6407 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6407 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6902 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6633 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6633 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6902 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6902 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7171 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7620 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6902 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #23142 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #23142 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7171 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7620 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #8047 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #8047 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #26922 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #8264 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #8264 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #29079 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #29079 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #31222 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #26922 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #29079 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #29079 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #31222 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #35299 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #35299 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #15943 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #15943 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #8264 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #8264 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #16242 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #16392 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #16783 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17322 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17697 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17322 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17322 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #16392 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17322 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6407 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6407 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6633 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6633 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6902 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6902 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7620 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7171 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7171 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #8047 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7620 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #8264 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #8264 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #8047 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #15943 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #15943 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #8264 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #21802 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #8264 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7171 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #21802 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7620 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7620 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7171 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6902 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6902 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #35299 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #35299 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #23142 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #23142 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #16242 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #16392 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #16783 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #16392 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17322 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17697 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17322 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17322 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17322 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17697 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #19256 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #20638 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #20638 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #19256 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #26922 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #31222 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #26922 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #29079 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #29079 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #29079 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #29079 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #31222 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6407 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6407 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6633 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6633 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6902 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6902 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7620 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7171 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7171 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7620 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #8047 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #8047 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #8264 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #8264 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #15943 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #15943 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #8264 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #21802 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #8264 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7171 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #21802 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7620 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7620 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7171 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6902 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #6902 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #35299 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #35299 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #23142 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #23142 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #16242 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #16392 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #16783 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #16392 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17322 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17697 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17322 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17322 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17322 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17697 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #19256 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #20638 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #20638 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #19256 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #26922 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #31222 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #29079 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #26922 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #29079 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #29079 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #29079 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #31222 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported shared-source item #17697 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #19256 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #20638 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported shared-source item #20638 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #19256 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #21802 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported shared-source item #21802 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #7171 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #7388 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #7388 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #7620 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #7171 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #7388 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #7620 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #7388 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #6407 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported shared-source item #6407 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #6902 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #6633 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported shared-source item #6633 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #6902 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported shared-source item #6902 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #7171 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7388 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #7620 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported shared-source item #6902 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #23142 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported shared-source item #23142 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #7388 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #7171 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #7388 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #7620 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #7388 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #8047 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported shared-source item #8047 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #26922 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #8264 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported shared-source item #8264 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #29079 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported shared-source item #29079 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #31222 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported shared-source item #26922 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #29079 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #29079 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #31222 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #35299 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported shared-source item #35299 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #17513 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #17513 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #17513 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #17513 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #8264 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #8264 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #16242 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #16392 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #16783 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported geometry #15943 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported shared-source item #15943 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #17322 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #17513 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported shared-source item #17513 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #17697 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported shared-source item #17322 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #17322 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #17513 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported shared-source item #17513 (IfcGeometricSet): Geometry processing error: no processor
+[ifc-lite] Skipping unsupported geometry #17322 (IfcGeometricSet): Geometry processing error: Unsupported representation type: IfcGeometricSet
+[ifc-lite] Skipping unsupported shared-source item #16392 (IfcGeometricSet): Geometry processing error: no processor
+test issue_7782_phase_corpus_receipt ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.03s
+

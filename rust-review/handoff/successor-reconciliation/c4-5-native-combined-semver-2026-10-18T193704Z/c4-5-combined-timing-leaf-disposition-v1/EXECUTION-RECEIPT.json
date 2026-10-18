@@ -1,0 +1,122 @@
+{
+  "at": "2026-10-18T19:38:05.101849+00:00",
+  "argv": [
+    "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-native-combined-runtime-v1/pc-results/combined-plain-revit-wall.json",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/pc-results/observed-revit-wall.json",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-timing-leaf-disposition-v1/ACCEPTED-SINGLE-WITNESS-EXPECTED-DIFF.json",
+    "pair:wasm"
+  ],
+  "exitCode": 0,
+  "policySha256": "37393ccdb6ec736ad454c38fdc5a3f8cb207b3a17e47ab586a3345ea0e65a2b7",
+  "bindingsSha256": "ed4bd1a8bca588614520652949cebbb8840ae2b3ba8cc49c6d09ead56f422847",
+  "reviewSha256": "82ed13bdf5a7c65f504feb8e90c5500000c6e3c90279acb4811172f74457a786",
+  "outputSha256": "d4e4ecf6e8b64cc2b2319a865bb78cb396440a9ef28ff965944987c834dd629a",
+  "result": {
+    "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+    "expected": [
+      {
+        "path": "/diagnostics/0/phaseMs/geometryMs",
+        "left": 41,
+        "right": 43,
+        "rule": "FC_Q0_REViT_ONCE_GEOMETRYMS_41_TO_43"
+      },
+      {
+        "path": "/diagnostics/0/phaseMs/totalMs",
+        "left": 41,
+        "right": 43,
+        "rule": "FC_Q0_REViT_ONCE_TOTALMS_41_TO_43"
+      }
+    ],
+    "unknown": [],
+    "stale": []
+  },
+  "before": {
+    "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node": {
+      "size": 126816376,
+      "sha256": "67ca5783febb8bf85736c79fcdd92c8d6d465a0eb2a082672bcdfa76a506751c"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/capture-wasm.mjs": {
+      "size": 19825,
+      "sha256": "2223eb6fc6f1b0ed627fa8b6f2c524a8e5a78004f5aa721e4dbb03bc7dffe219"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs": {
+      "size": 11670,
+      "sha256": "5e660df5173fc211ee3b9ed677a29299f9902fbacdd49e3562ebb3164ab81f65"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/exact-wire.mjs": {
+      "size": 3804,
+      "sha256": "b96c196a81f7b7ec3506edae7a4cbb4c8e058f3a3fbe2eccf3fc2d6cd5c7ad11"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/output-reservation.mjs": {
+      "size": 423,
+      "sha256": "5f4fddfe16ce22cae5288161da5397162bc2bcd36211007fb756b8c402d23ad7"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/public-contract.mjs": {
+      "size": 3663,
+      "sha256": "75836e62b87a3b5025cef82c9bed6e647335d72bdbef27ed640ac4831b9871a8"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/schema.mjs": {
+      "size": 16084,
+      "sha256": "090d5429704d98605aa5db5d990d3d3adaf40caeb8af08c94e9be7306c7a4b43"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-timing-leaf-disposition-v1/independent-review/REVIEW.md": {
+      "size": 7816,
+      "sha256": "82ed13bdf5a7c65f504feb8e90c5500000c6e3c90279acb4811172f74457a786"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-timing-leaf-disposition-v1/BINDINGS.json": {
+      "size": 5887,
+      "sha256": "ed4bd1a8bca588614520652949cebbb8840ae2b3ba8cc49c6d09ead56f422847"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-timing-leaf-disposition-v1/PROPOSED-EXPECTED-DIFF.json": {
+      "size": 3550,
+      "sha256": "b6c3bdd6aa0a99a9695ad252f1adfd834bacf2a036d0ddcbac26af4ecda2e0d4"
+    }
+  },
+  "after": {
+    "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node": {
+      "size": 126816376,
+      "sha256": "67ca5783febb8bf85736c79fcdd92c8d6d465a0eb2a082672bcdfa76a506751c"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/capture-wasm.mjs": {
+      "size": 19825,
+      "sha256": "2223eb6fc6f1b0ed627fa8b6f2c524a8e5a78004f5aa721e4dbb03bc7dffe219"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs": {
+      "size": 11670,
+      "sha256": "5e660df5173fc211ee3b9ed677a29299f9902fbacdd49e3562ebb3164ab81f65"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/exact-wire.mjs": {
+      "size": 3804,
+      "sha256": "b96c196a81f7b7ec3506edae7a4cbb4c8e058f3a3fbe2eccf3fc2d6cd5c7ad11"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/output-reservation.mjs": {
+      "size": 423,
+      "sha256": "5f4fddfe16ce22cae5288161da5397162bc2bcd36211007fb756b8c402d23ad7"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/public-contract.mjs": {
+      "size": 3663,
+      "sha256": "75836e62b87a3b5025cef82c9bed6e647335d72bdbef27ed640ac4831b9871a8"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/schema.mjs": {
+      "size": 16084,
+      "sha256": "090d5429704d98605aa5db5d990d3d3adaf40caeb8af08c94e9be7306c7a4b43"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-timing-leaf-disposition-v1/independent-review/REVIEW.md": {
+      "size": 7816,
+      "sha256": "82ed13bdf5a7c65f504feb8e90c5500000c6e3c90279acb4811172f74457a786"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-timing-leaf-disposition-v1/BINDINGS.json": {
+      "size": 5887,
+      "sha256": "ed4bd1a8bca588614520652949cebbb8840ae2b3ba8cc49c6d09ead56f422847"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-timing-leaf-disposition-v1/PROPOSED-EXPECTED-DIFF.json": {
+      "size": 3550,
+      "sha256": "b6c3bdd6aa0a99a9695ad252f1adfd834bacf2a036d0ddcbac26af4ecda2e0d4"
+    }
+  },
+  "allBoundInputsUnchanged": true,
+  "originalObservedWorkerRemains": "FAILED1, originalstrictcomparison INCOMPLETE_UNKNOWN_DIFF",
+  "scope": "Pure re-comparison of exact saved JSON only; independently reviewed two scalar timing differences. No runtime rerun, no performance, broader parity/publication or closure acceptance."
+}

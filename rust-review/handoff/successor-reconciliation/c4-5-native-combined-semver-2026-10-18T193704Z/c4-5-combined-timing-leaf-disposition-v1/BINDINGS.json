@@ -1,0 +1,120 @@
+{
+  "proposalSha256": "b6c3bdd6aa0a99a9695ad252f1adfd834bacf2a036d0ddcbac26af4ecda2e0d4",
+  "plainProvenance": {
+    "source": {
+      "commit": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5"
+    },
+    "revision": "c45-final",
+    "consumer": "once",
+    "mode": "default",
+    "wasmSha256": "321891e446518440821ec081d3e36b0ac911c08018205ce593a062f1754559ee",
+    "glueSha256": "04c85b1449d8fee992f25f0685170ff03fb4360726fa4e4d2a2d180314c169c0",
+    "helperHashes": {
+      "prepass-routing.js": "0091d4621929752a09923fb3bd73b6281fa135246d128194fea3e33d030421ff",
+      "shard-style-merge.js": "fe3052140e33d589ac2623aa4dfa3baf6d1e2ea02f864d0c416afbea9020535d",
+      "style-finishes.js": "01ffe4969f473942548ecbde6ecba7f09b902eb21ffe3f01f1a80a4e06044f80"
+    },
+    "fixtureSha256": "65b04e28e8f2d06ac8bcf3bf0d57264f168456d09865c3353fb802a5e66ee0c0",
+    "fixtureBytes": 64373,
+    "byteOrder": "LE",
+    "settings": {
+      "entry": "processGeometryBatch",
+      "quality": "frozen constructor default Medium",
+      "mergeLayers": "frozen constructor default false",
+      "skipSmallCuts": "frozen constructor default false",
+      "computeGeometryHashes": "frozen constructor default false",
+      "instancing": false,
+      "opening": "ordinary batch defaults",
+      "disabledSiteRequested": false,
+      "prepassEntry": "buildPrePassOnce"
+    },
+    "observation": {
+      "enabled": false,
+      "token": null
+    },
+    "casePlanSha256": "f4b94d5c6913bb8d128b06fa8a32573c7c1a2d9ebf1edbee982ef129275efdb0"
+  },
+  "observedProvenance": {
+    "source": {
+      "commit": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+      "instrumentationPatchSha256": "ca697f59286651e6dddd257723ed016d92485159a759fc2d62e63f6f45716b94",
+      "instrumentedIndexTree": "5157e4080c774195bfc08d359ad49b8d32500721"
+    },
+    "revision": "c45-final",
+    "consumer": "once",
+    "mode": "default",
+    "wasmSha256": "9ad3563f351a7928439496aae5b5357529964c1eb76d346ad7327e9e184be4fe",
+    "glueSha256": "f2937cfdda7a94c8e0c2bec01642c0836f23e5b8080e9642d6deb11916cbd2ec",
+    "helperHashes": {
+      "prepass-routing.js": "0091d4621929752a09923fb3bd73b6281fa135246d128194fea3e33d030421ff",
+      "shard-style-merge.js": "fe3052140e33d589ac2623aa4dfa3baf6d1e2ea02f864d0c416afbea9020535d",
+      "style-finishes.js": "01ffe4969f473942548ecbde6ecba7f09b902eb21ffe3f01f1a80a4e06044f80"
+    },
+    "fixtureSha256": "65b04e28e8f2d06ac8bcf3bf0d57264f168456d09865c3353fb802a5e66ee0c0",
+    "fixtureBytes": 64373,
+    "byteOrder": "LE",
+    "settings": {
+      "entry": "processGeometryBatch",
+      "quality": "frozen constructor default Medium",
+      "mergeLayers": "frozen constructor default false",
+      "skipSmallCuts": "frozen constructor default false",
+      "computeGeometryHashes": "frozen constructor default false",
+      "instancing": false,
+      "opening": "ordinary batch defaults",
+      "disabledSiteRequested": false,
+      "prepassEntry": "buildPrePassOnce"
+    },
+    "observation": {
+      "enabled": true,
+      "token": "C4_CURRENT_FC_Q0_ONCE_REVI\u0422_OWNED_V1"
+    },
+    "casePlanSha256": "1e59dc98cc09c3f0c3eb133ab0d7e7edd2db1d41200d58a8bb80485076e5a38d"
+  },
+  "files": {
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-native-combined-runtime-v1/pc-results/combined-plain-revit-wall.json": {
+      "size": 937258,
+      "sha256": "097f9c2fb717a6dfb306f664f8ec87da853df88c5abe13d41e2e85205080dc54"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/pc-results/observed-revit-wall.json": {
+      "size": 950879,
+      "sha256": "918b7a760c5e520e0b70a2337e8712730c92fee7a996b1d233c40bde3229c1a4"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-parity-harness-source-v5/EXPECTED_DIFF.json": {
+      "size": 4551,
+      "sha256": "7bbbb5045ff3c62b8af6e233d56e19b045ce5eaf53bd0e501a8ca029fcfbb448"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/verified-result.json": {
+      "size": 2958,
+      "sha256": "31042d4cd1cdcc2d375d5c5da188e1d18407789dca786385f995c05bce600173"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-native-combined-runtime-v1/verified-result.json": {
+      "size": 2339,
+      "sha256": "a9c9c19e0d630d3f8a7d225286db70c45453a2d33cef17c6d9dce9ffe09ad662"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/current-fc-observed.patch": {
+      "size": 22700,
+      "sha256": "ca697f59286651e6dddd257723ed016d92485159a759fc2d62e63f6f45716b94"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/pc-results/strict-observation-noninterference.log": {
+      "size": 291,
+      "sha256": "d46395f7a9334f9652e17b653b0e31ea293169ddbd3edd2d0119cf660ae789a4"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-required-qualification-v1/source/rust/wasm-bindings/src/api/gpu_meshes/batch.rs": {
+      "size": 50166,
+      "sha256": "ecf7ba5d2bc0ff0647cb80b7cb5291abd0b91f30b6d7fadabc641f4e99867ee4"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-required-qualification-v1/source/rust/wasm-bindings/src/api/pipeline_diagnostics.rs": {
+      "size": 3376,
+      "sha256": "9c995f826e411808428234138dc7f6725028ab88182cba5448eadfe0d63ecac2"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-required-qualification-v1/source/rust/processing/src/pipeline_diagnostics.rs": {
+      "size": 14315,
+      "sha256": "44634eae23e66c23a32996c7ce5eeaed082c28f1a7da3b8dbf5cac45952358a5"
+    }
+  },
+  "performanceAccepted": false,
+  "broaderC4Accepted": false,
+  "workerRetainedFailed": true
+}

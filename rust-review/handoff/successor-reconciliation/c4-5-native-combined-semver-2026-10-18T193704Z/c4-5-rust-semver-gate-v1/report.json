@@ -1,0 +1,160 @@
+{
+  "scope": "Actual repository Rust semver release-policy gate on currentfc; one private prebuilt tool only, existing stable toolchain; no system install or source edit",
+  "commands": [
+    {
+      "name": "private-tool-version",
+      "argv": [
+        "cargo",
+        "+stable",
+        "semver-checks",
+        "--version"
+      ],
+      "startedAt": 1792351580.646488,
+      "exitCode": 1,
+      "finishedAt": 1792351580.7609437,
+      "logSha256": "53932abdd9732bea90111ab5dfebc2d6d9d95f013db4a0940b7ef8f4dd450a05"
+    }
+  ],
+  "primaryError": "AssertionError('private-tool-version failed')",
+  "finallyErrors": [],
+  "startedAt": 1792351578.1704686,
+  "toolRelease": {
+    "tag": "v0.51.0",
+    "url": "https://github.com/obi1kenobi/cargo-semver-checks/releases/download/v0.51.0/cargo-semver-checks-x86_64-unknown-linux-gnu.tar.gz",
+    "size": 8397378,
+    "sha256": "cacadafaa5cd27ae6d05a74a103266917ebab4c5e43c898360e177d4fbf06a65"
+  },
+  "before": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "storageGuards": [
+    {
+      "at": 1792351578.2226431,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 307782610944,
+          "freeInodes": 115201958
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 307782610944,
+          "freeInodes": 115201958
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 307782610944,
+          "freeInodes": 115201958
+        }
+      ]
+    },
+    {
+      "at": 1792351580.638342,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 307836116992,
+          "freeInodes": 115202141
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 307836116992,
+          "freeInodes": 115202141
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 307836116992,
+          "freeInodes": 115202141
+        }
+      ]
+    },
+    {
+      "at": 1792351582.3124514,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 307808653312,
+          "freeInodes": 115202140
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 307808653312,
+          "freeInodes": 115202140
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 307808653312,
+          "freeInodes": 115202140
+        }
+      ]
+    }
+  ],
+  "fixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "producerFixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "toolsBefore": {
+    "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node": {
+      "sha256": "67ca5783febb8bf85736c79fcdd92c8d6d465a0eb2a082672bcdfa76a506751c",
+      "size": 126816376
+    },
+    "/home/louistrue/build-workers/toolchains/cargo/bin/cargo": {
+      "sha256": "dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71",
+      "size": 21113232
+    },
+    "/home/louistrue/build-workers/toolchains/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc": {
+      "sha256": "b53b780f77f952062f8ca8a3b70aef2390b1e45ad91939be94afdc9543026853",
+      "size": 648536
+    }
+  },
+  "privateTool": {
+    "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-rust-semver-gate-v1/tools/cargo-semver-checks",
+    "sha256": "bc9eb06ce04e97d6160c875ffdee1f6e56793e423dea025f344826be03e66829",
+    "size": 24190976
+  },
+  "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 47, in <module>\n  File \"<string>\", line 24, in run\nAssertionError: private-tool-version failed\n",
+  "sourceAfter": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "fixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "producerFixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "toolsAfter": {
+    "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node": {
+      "sha256": "67ca5783febb8bf85736c79fcdd92c8d6d465a0eb2a082672bcdfa76a506751c",
+      "size": 126816376
+    },
+    "/home/louistrue/build-workers/toolchains/cargo/bin/cargo": {
+      "sha256": "dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71",
+      "size": 21113232
+    },
+    "/home/louistrue/build-workers/toolchains/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc": {
+      "sha256": "b53b780f77f952062f8ca8a3b70aef2390b1e45ad91939be94afdc9543026853",
+      "size": 648536
+    }
+  },
+  "storageFinal": null,
+  "complete": false,
+  "finishedAt": 1792351582.3279588
+}

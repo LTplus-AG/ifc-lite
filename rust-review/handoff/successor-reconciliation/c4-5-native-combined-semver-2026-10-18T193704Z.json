@@ -1,0 +1,262 @@
+{
+  "at": "2026-10-18T19:42:21.738871+00:00",
+  "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+  "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+  "actualResult": {
+    "native56": "PASS exact savedbaseline61 JSONSHA1ac321...; original normalized timer/pointcache contract retained",
+    "combinedOnceQ0": "Actual ordinary+observed captures0,17jobs/40meshes/1771triangles and69observed events",
+    "strictRawComparison": "Original workerFAILED1 solely2phaseMs41to43 leaves; evidence immutable",
+    "exactLeafDisposition": "Independent review approved ONLY exact savedpair two timerleaves under existingtemplate; separately hash-guarded purecomparison0/unknown0/stale0, no runtime rerun or future reuse",
+    "semver": "Actual gate8of8 crates compared versuspublished20.4, required changes fit21.4major; no same-major/no-breakageclaim"
+  },
+  "remaining": [
+    "C4 current eight-fixture remaining route matrix onexistingchildv20 (reuseartifacts/omitpassedwitness)",
+    "Broader C4-0 baseline/current native/public characterization and later C4phases",
+    "Actual timing/current-main integration/publication stoplines; no globalacceptance"
+  ],
+  "files": [
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-native-combined-runtime-v1/verified-result.json",
+      "size": 2339,
+      "sha256": "a9c9c19e0d630d3f8a7d225286db70c45453a2d33cef17c6d9dce9ffe09ad662"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-native-combined-runtime-v1/worker-terminal.json",
+      "size": 3708,
+      "sha256": "0c87613294c7240024dad61b1ba5d4a154f8eee854ac007a4151ab435e45983e"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-native-combined-runtime-v1/terminal-quiescence.json",
+      "size": 109,
+      "sha256": "ca7ce74eec93771588dd5316f114aadd226ba89c39c5de5a66aa5bf71dac8443"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-native-combined-runtime-v1/RESULT.md",
+      "size": 2188,
+      "sha256": "f00eea5043f110a9761bda08f1f28ed1b7be631994e23544bdf3d9f9a76bc79d"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-native-combined-runtime-v1/pc-results/native-corpus.json",
+      "size": 1002127,
+      "sha256": "1ac321114af134ab7b19f6ca4e73c2aceb727546df5aa0b9ef2acbce1db829bf"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-native-combined-runtime-v1/pc-results/native56.log",
+      "size": 40522,
+      "sha256": "31f3062a61740d071a225fb542c7fe7bbcb111ccca6cff6431e5ec4bec222a53"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-native-combined-runtime-v1/pc-results/compare-native56.log",
+      "size": 399,
+      "sha256": "f767e33fb6a0e81d07c7286eec28d05a1d1e66eb926a293ba327f0de530c96a4"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-native-combined-runtime-v1/pc-results/combined-plain-plan.json",
+      "size": 7644,
+      "sha256": "f4b94d5c6913bb8d128b06fa8a32573c7c1a2d9ebf1edbee982ef129275efdb0"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-native-combined-runtime-v1/pc-results/combined-plain-revit-wall.json",
+      "size": 937258,
+      "sha256": "097f9c2fb717a6dfb306f664f8ec87da853df88c5abe13d41e2e85205080dc54"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-native-combined-runtime-v1/pc-results/report.json",
+      "size": 19510,
+      "sha256": "48f31d17d56ec1ef4640160e4bdcf76dab4d04e2ac8eb0647b1e5d6fa37c4e18"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-observed-runtime-v1/verified-result.json",
+      "size": 2958,
+      "sha256": "31042d4cd1cdcc2d375d5c5da188e1d18407789dca786385f995c05bce600173"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-observed-runtime-v1/worker-terminal.json",
+      "size": 3799,
+      "sha256": "7858ee43873133b0b92934874318b18faf53990df5263eba3b711ec7c7341a96"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-observed-runtime-v1/terminal-quiescence.json",
+      "size": 109,
+      "sha256": "6e944c5f61e645933a954433328364c09eb36e14642b92aa2e753a04c8f25475"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-observed-runtime-v1/RESULT.md",
+      "size": 3478,
+      "sha256": "e6526ef59c576d84c65a5a95664df52949820e4bea84ef941708f71aba93eaf0"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-observed-runtime-v1/current-fc-observed.patch",
+      "size": 22700,
+      "sha256": "ca697f59286651e6dddd257723ed016d92485159a759fc2d62e63f6f45716b94"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-observed-runtime-v1/pc-results/strict-observation-noninterference.log",
+      "size": 291,
+      "sha256": "d46395f7a9334f9652e17b653b0e31ea293169ddbd3edd2d0119cf660ae789a4"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-observed-runtime-v1/pc-results/observed-revit-wall.json",
+      "size": 950879,
+      "sha256": "918b7a760c5e520e0b70a2337e8712730c92fee7a996b1d233c40bde3229c1a4"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-observed-runtime-v1/pc-results/observed-plan.json",
+      "size": 11874,
+      "sha256": "1e59dc98cc09c3f0c3eb133ab0d7e7edd2db1d41200d58a8bb80485076e5a38d"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-observed-runtime-v1/pc-results/report.json",
+      "size": 26334,
+      "sha256": "beaa35b59fa987450c4b45491de4e96feb96655da46edc850172842c2ad03cce"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-rust-semver-gate-v1/report.json",
+      "size": 5576,
+      "sha256": "712b16702a3a35e2184f59003f20878198d17ed41727cb892d36fc0c14c65ad3"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-rust-semver-gate-v1/worker-terminal.json",
+      "size": 8927,
+      "sha256": "2a17b51365f200d53cb274a4c481dd85b6d8fe788c51cfa8b344fac2d0e52741"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-rust-semver-gate-v1/private-tool-version.log",
+      "size": 140,
+      "sha256": "53932abdd9732bea90111ab5dfebc2d6d9d95f013db4a0940b7ef8f4dd450a05"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-rust-semver-gate-v2/queued-cancel-intent.json",
+      "size": 1064,
+      "sha256": "8de4748384463d10db0063c0918475700b5108b24b0e707375d7408ee2b0eb7a"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-rust-semver-gate-v2/cancelled-before-workload-terminal.json",
+      "size": 8591,
+      "sha256": "e441065709f614d43affaf0ec255b910bb63e5df951bbe5690aab2fe0942bcdc"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-rust-semver-pc-v1/verified-result.json",
+      "size": 2777,
+      "sha256": "f1730cb25b62d5ce1d47800bc5684f611b4d39c972edcea0605cd20b9b086209"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-rust-semver-pc-v1/worker-terminal.json",
+      "size": 8737,
+      "sha256": "5a2aab017c0f9939704f78bec5400b41a4d173193f5ea2b81ab15cdba962fd03"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-rust-semver-pc-v1/stable-cargo-version.log",
+      "size": 36,
+      "sha256": "9950bbb2d5c3417b1a068f0e81f6d3cac991a363193bdf2a22d447f5acf8b503"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-rust-semver-pc-v1/private-tool-version.log",
+      "size": 27,
+      "sha256": "3f1811cd396eb203e0e50c40e211aa48dc82f6784db64cb780cad93d7f57faa6"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-rust-semver-pc-v1/rust-semver-gate.log",
+      "size": 561,
+      "sha256": "196e3b8970a267064a21c888c491d67e066dc875b7127a3c9f942d6188e07b65"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-rust-semver-pc-v1/report.json",
+      "size": 30120190,
+      "sha256": "6551398ed817e7e1a5acb0ad498bca17d09ecde93b044c0cb20eafc497df0dd0"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-timing-leaf-disposition-v1/PROPOSED-EXPECTED-DIFF.json",
+      "size": 3550,
+      "sha256": "b6c3bdd6aa0a99a9695ad252f1adfd834bacf2a036d0ddcbac26af4ecda2e0d4"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-timing-leaf-disposition-v1/BINDINGS.json",
+      "size": 5887,
+      "sha256": "ed4bd1a8bca588614520652949cebbb8840ae2b3ba8cc49c6d09ead56f422847"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-timing-leaf-disposition-v1/independent-review/REVIEW.md",
+      "size": 7816,
+      "sha256": "82ed13bdf5a7c65f504feb8e90c5500000c6e3c90279acb4811172f74457a786"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-timing-leaf-disposition-v1/ACCEPTED-SINGLE-WITNESS-EXPECTED-DIFF.json",
+      "size": 4357,
+      "sha256": "37393ccdb6ec736ad454c38fdc5a3f8cb207b3a17e47ab586a3345ea0e65a2b7"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-timing-leaf-disposition-v1/EXECUTION-RECEIPT.json",
+      "size": 6688,
+      "sha256": "b3a762283a6c15a3ecbee3c70cb6cd53ed4cdcdb8de952115af7bf273b57970e"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-timing-leaf-disposition-v1/pure-recomparison.json",
+      "size": 401,
+      "sha256": "d4e4ecf6e8b64cc2b2319a865bb78cb396440a9ef28ff965944987c834dd629a"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-timing-leaf-disposition-v1/run-exact-recomparison.py",
+      "size": 3270,
+      "sha256": "4e4cf4696289097f72e7d244b14d07c3d6d9e7985a0c39ac2c6233b0125af254"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/latest-live-open-issues.json",
+      "size": 2674,
+      "sha256": "00efcd68649133203466dca8f7de8f701ad22690f403622ccbfc91587efefca6"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-observed-runtime-v1/inputs/adapter/capture-wasm.mjs",
+      "size": 19825,
+      "sha256": "2223eb6fc6f1b0ed627fa8b6f2c524a8e5a78004f5aa721e4dbb03bc7dffe219"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+      "size": 11670,
+      "sha256": "5e660df5173fc211ee3b9ed677a29299f9902fbacdd49e3562ebb3164ab81f65"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-observed-runtime-v1/inputs/adapter/exact-wire.mjs",
+      "size": 3804,
+      "sha256": "b96c196a81f7b7ec3506edae7a4cbb4c8e058f3a3fbe2eccf3fc2d6cd5c7ad11"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-observed-runtime-v1/inputs/adapter/output-reservation.mjs",
+      "size": 423,
+      "sha256": "5f4fddfe16ce22cae5288161da5397162bc2bcd36211007fb756b8c402d23ad7"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-observed-runtime-v1/inputs/adapter/public-contract.mjs",
+      "size": 3663,
+      "sha256": "75836e62b87a3b5025cef82c9bed6e647335d72bdbef27ed640ac4831b9871a8"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/c4-5-combined-observed-runtime-v1/inputs/adapter/schema.mjs",
+      "size": 16084,
+      "sha256": "090d5429704d98605aa5db5d990d3d3adaf40caeb8af08c94e9be7306c7a4b43"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/source-authority/rust/wasm-bindings/src/api/gpu_meshes/batch.rs",
+      "size": 50166,
+      "sha256": "ecf7ba5d2bc0ff0647cb80b7cb5291abd0b91f30b6d7fadabc641f4e99867ee4"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/source-authority/rust/wasm-bindings/src/api/pipeline_diagnostics.rs",
+      "size": 3376,
+      "sha256": "9c995f826e411808428234138dc7f6725028ab88182cba5448eadfe0d63ecac2"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-native-combined-semver-2026-10-18T193704Z/source-authority/rust/processing/src/pipeline_diagnostics.rs",
+      "size": 14315,
+      "sha256": "44634eae23e66c23a32996c7ce5eeaed082c28f1a7da3b8dbf5cac45952358a5"
+    }
+  ],
+  "acceptedPrograms": 0,
+  "uncheckedAcceptanceConditions": 33,
+  "closuresThisUpdate": 0,
+  "newProductionMergesThisUpdate": 0,
+  "latestOpenSnapshot": 18,
+  "externalClosureScope": "Fresh issue state only; otherowner closures not attributed to this update",
+  "7911": "f04head unchanged/draft; source3paths stillsame atmain779a; Pop82C/twoforeignbuilds so no benchmarksubmitted/queued",
+  "activeC4Task": "node:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Athread-send%3Ac4-current-fc-existing-eight-fixture-current-route-matrix-missing-only-20261018-v20"
+}

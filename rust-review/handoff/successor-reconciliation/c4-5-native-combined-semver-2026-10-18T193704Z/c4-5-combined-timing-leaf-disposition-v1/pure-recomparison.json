@@ -1,0 +1,19 @@
+{
+  "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+  "expected": [
+    {
+      "path": "/diagnostics/0/phaseMs/geometryMs",
+      "left": 41,
+      "right": 43,
+      "rule": "FC_Q0_REViT_ONCE_GEOMETRYMS_41_TO_43"
+    },
+    {
+      "path": "/diagnostics/0/phaseMs/totalMs",
+      "left": 41,
+      "right": 43,
+      "rule": "FC_Q0_REViT_ONCE_TOTALMS_41_TO_43"
+    }
+  ],
+  "unknown": [],
+  "stale": []
+}

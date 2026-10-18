@@ -1,0 +1,34 @@
+{
+  "schema": "c4-0-expected-diff-v1",
+  "state": "PROPOSED_PENDING_INDEPENDENT_REVIEW_NOT_APPLIED",
+  "entries": [
+    {
+      "id": "FC_Q0_REViT_ONCE_GEOMETRYMS_41_TO_43",
+      "state": "BOUND_EXACT_VALUES",
+      "fixtureSha256": "65b04e28e8f2d06ac8bcf3bf0d57264f168456d09865c3353fb802a5e66ee0c0",
+      "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "arm": "observation-noninterference-wasm",
+      "path": "/diagnostics/0/phaseMs/geometryMs",
+      "leftSha256": "3d914f9348c9cc0ff8a79716700b9fcd4d2f3e711608004eb8f138bcba7f14d9",
+      "rightSha256": "44cb730c420480a0477b505ae68af508fb90f96cf0ec54c6ad16949dd427f13a",
+      "authority": "Existing EXACT_TIMING_LEAF_NONDETERMINISM template; currentfc rust/wasm-bindings/src/api/gpu_meshes/batch.rs:produce_batch Date::now() difference -> api/pipeline_diagnostics.rs:record_pipeline_batch -> rust/processing/src/pipeline_diagnostics.rs:PipelineDiagnostics::record_batch assigns same elapsed batch_ms to geometry_ms and total_ms. Exact source files and this witness bound in BINDINGS.json.",
+      "condition": "Only this saved plain/observed once-route Revit-wall witness, exact capture hashes and actual scalar41->43. Recognizes elapsed-clock nondeterminism, not causal overhead, speed, regression, noise or performance acceptance. No other field/diagnostic/counter/order/geometry exclusion.",
+      "removeWhen": "Retire on any listed capture, fixture, source, runtime, instrumentation or settings/binding change; no future-run reuse or automatic regeneration."
+    },
+    {
+      "id": "FC_Q0_REViT_ONCE_TOTALMS_41_TO_43",
+      "state": "BOUND_EXACT_VALUES",
+      "fixtureSha256": "65b04e28e8f2d06ac8bcf3bf0d57264f168456d09865c3353fb802a5e66ee0c0",
+      "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "arm": "observation-noninterference-wasm",
+      "path": "/diagnostics/0/phaseMs/totalMs",
+      "leftSha256": "3d914f9348c9cc0ff8a79716700b9fcd4d2f3e711608004eb8f138bcba7f14d9",
+      "rightSha256": "44cb730c420480a0477b505ae68af508fb90f96cf0ec54c6ad16949dd427f13a",
+      "authority": "Existing EXACT_TIMING_LEAF_NONDETERMINISM template; currentfc rust/wasm-bindings/src/api/gpu_meshes/batch.rs:produce_batch Date::now() difference -> api/pipeline_diagnostics.rs:record_pipeline_batch -> rust/processing/src/pipeline_diagnostics.rs:PipelineDiagnostics::record_batch assigns same elapsed batch_ms to geometry_ms and total_ms. Exact source files and this witness bound in BINDINGS.json.",
+      "condition": "Only this saved plain/observed once-route Revit-wall witness, exact capture hashes and actual scalar41->43. Recognizes elapsed-clock nondeterminism, not causal overhead, speed, regression, noise or performance acceptance. No other field/diagnostic/counter/order/geometry exclusion.",
+      "removeWhen": "Retire on any listed capture, fixture, source, runtime, instrumentation or settings/binding change; no future-run reuse or automatic regeneration."
+    }
+  ],
+  "bindingPolicy": "Independent review must bind concrete leaf path, exact fixture SHA, exact same-source commit, arm, both value SHA256, source authority, precise condition and removal trigger. Unknown/missing values remain INCOMPLETE; no wildcard, whole-object/array, broad stats/diagnostics/cache exclusions.",
+  "scope": "Two exact saved timing scalar differences only. Original failed worker/rawcomparison stayFAILED/INCOMPLETE; only an explicitly separately reviewed pure re-comparison may use this proposal. All broader C4-0/performance/publication requirements remain pending."
+}

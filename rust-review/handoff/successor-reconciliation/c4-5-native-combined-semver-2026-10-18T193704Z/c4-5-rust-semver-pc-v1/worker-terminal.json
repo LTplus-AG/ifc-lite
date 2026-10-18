@@ -1,0 +1,89 @@
+{
+  "id": "f92f7206-9b6f-409a-bded-e18c00e7f017",
+  "host": {
+    "host": "louistrue-pc",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 24,
+    "availableMemoryBytes": 63443394560,
+    "totalMemoryBytes": 67423592448,
+    "python": "3.14.4",
+    "time": 1792351883.0459878
+  },
+  "cwd": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+  "sourceBefore": {
+    "commit": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "command": [
+    "python3",
+    "-c",
+    "from pathlib import Path\nimport os,json,hashlib,subprocess,shutil,time,traceback\nS=Path.cwd();T=Path(os.environ['CARGO_TARGET_DIR']);O=T/'c4-5-rust-semver-pc-v1';P=Path('/home/louistrue/build-workers/worker-state/checkouts/b437a0f918cdf8c58a46f6abb50b5fb346f96848/tests/models');I=json.loads((S/'tests/models/manifest.json').read_text())['files'];R={'scope':'Missing PC sourceWASM prerequisite, fourfixture identity and official wasm32 manifest only; no previous default/features/contracts or performance repeat','commands':[],'primaryError':None,'finallyErrors':[],'startedAt':time.time()}\nassert os.environ.get('IFC_WORKER_ACTIVE_STATE') and len(I)==182\nO.mkdir(parents=True,exist_ok=False)\ndef sha(p):\n with p.open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()\ndef save():(O/'report.json').write_text(json.dumps(R,indent=2)+'\\n')\ndef source():\n return {k:subprocess.check_output(['git',*a],cwd=S,text=True).strip() for k,a in {'head':['rev-parse','HEAD'],'tree':['rev-parse','HEAD^{tree}'],'status':['status','--porcelain']}.items()}\ndef guard_storage():\n rows=[]\n for p in [S,T,Path(os.environ.get('TMPDIR','/tmp'))]:\n  while not p.exists():p=p.parent\n  x=os.statvfs(p);row={'path':str(p),'freeBytes':x.f_bavail*x.f_frsize,'freeInodes':x.f_favail};assert row['freeBytes']>60*2**30 and row['freeInodes']>1000000,row;rows.append(row)\n R.setdefault('storageGuards',[]).append({'at':time.time(),'volumes':rows});save()\ndef fixtures(root):\n for x in I:\n  q=root/x['path'];assert not q.is_symlink() and q.is_file() and q.stat().st_size==x['size'] and sha(q)==x['sha256'],str(q)\n return {'count':len(I),'manifestSha256':sha(S/'tests/models/manifest.json'),'totalBytes':sum(x['size'] for x in I),'allSizeShaMatch':True}\ndef run(name,argv):\n guard_storage();row={'name':name,'argv':argv,'startedAt':time.time()};R['commands'].append(row);save();print('START',name,flush=True)\n with (O/(name+'.log')).open('xb') as f:r=subprocess.run(argv,cwd=S,env=os.environ,stdout=f,stderr=subprocess.STDOUT)\n row.update(exitCode=r.returncode,finishedAt=time.time(),logSha256=sha(O/(name+'.log')));save();print('END',name,r.returncode,flush=True);assert r.returncode==0,name+' failed'\nimport tarfile,stat\nARCHIVE=Path('/home/louistrue/build-workers/worker-state/c4-5-semver-inputs-v1/checker.tar.gz');TOOLS=O/'tools';BIN=TOOLS/'cargo-semver-checks';STABLE=Path(os.environ.get('RUSTUP_HOME',str(Path.home()/'.rustup')))/'toolchains/stable-x86_64-unknown-linux-gnu'\nR['scope']='Actual repository Rust semver release-policy gate on currentfc; existing COMPLETE PC stable/Cargo, verified original checker0.51 archive staged; no compiler install or shared edits'\ndef census():\n rows={}\n for p in [STABLE,*sorted(STABLE.rglob('*'))]:\n  st=p.lstat();row={'mode':stat.S_IMODE(st.st_mode)}\n  if p.is_symlink():row.update(kind='link',target=os.readlink(p))\n  elif p.is_dir():row['kind']='dir'\n  else:assert p.is_file();row.update(kind='file',size=st.st_size,sha256=sha(p))\n  rows[str(p.relative_to(STABLE))]=row\n return rows\ntry:\n R['before']=source();assert R['before']=={'head':'fc3635ae78665e95ea72328b88fc7b28ead148d2','tree':'4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5','status':''};guard_storage();R['fixturesBefore']=fixtures(S/'tests/models');R['producerFixturesBefore']=fixtures(P)\n assert sha(ARCHIVE)=='cacadafaa5cd27ae6d05a74a103266917ebab4c5e43c898360e177d4fbf06a65'\n assert (STABLE/'bin/cargo').is_file();R['sharedStableBefore']=census();save();TOOLS.mkdir()\n with tarfile.open(ARCHIVE,'r:gz') as archive:\n  found=[m for m in archive.getmembers() if m.name.split('/')[-1]=='cargo-semver-checks'];assert len(found)==1 and found[0].isfile()\n  with archive.extractfile(found[0]) as src,BIN.open('xb') as dest:shutil.copyfileobj(src,dest)\n BIN.chmod(0o755);assert sha(BIN)=='bc9eb06ce04e97d6160c875ffdee1f6e56793e423dea025f344826be03e66829';R['checker']={'path':str(BIN),'sha256':sha(BIN)};save()\n os.environ.update(PATH=str(TOOLS)+os.pathsep+os.environ['PATH'],CARGO_TARGET_DIR=str(O/'stable-target'),CARGO_NET_OFFLINE='false')\n run('stable-cargo-version',['cargo','+stable','--version'])\n run('private-tool-version',['cargo','+stable','semver-checks','--version'])\n run('rust-semver-gate',['node','scripts/check-rust-semver.mjs'])\nexcept BaseException as e:R['primaryError']=repr(e);R['traceback']=traceback.format_exc()\nfinally:\n for name,action in [('sourceAfter',source),('fixturesAfter',lambda:fixtures(S/'tests/models')),('producerFixturesAfter',lambda:fixtures(P)),('sharedStableAfter',census),('storageFinal',guard_storage)]:\n  try:R[name]=action()\n  except BaseException as e:R['finallyErrors'].append({'check':name,'error':repr(e)})\n if 'before' in R and R.get('sourceAfter')!=R['before']:R['finallyErrors'].append({'check':'sourceIdentity','error':'changed'})\n if 'sharedStableBefore' in R and R.get('sharedStableAfter')!=R['sharedStableBefore']:R['finallyErrors'].append({'check':'sharedStableIdentity','error':'changed'})\n if 'checker' in R and sha(BIN)!=R['checker']['sha256']:R['finallyErrors'].append({'check':'checkerIdentity','error':'changed'})\n if sha(ARCHIVE)!='cacadafaa5cd27ae6d05a74a103266917ebab4c5e43c898360e177d4fbf06a65':R['finallyErrors'].append({'check':'archiveIdentity','error':'changed'})\n R['complete']=R['primaryError'] is None and not R['finallyErrors'];R['finishedAt']=time.time();save();print(json.dumps({'report':str(O/'report.json'),'complete':R['complete'],'primaryError':R['primaryError'],'finallyErrors':R['finallyErrors']}),flush=True)\nraise SystemExit(0 if R['complete'] else 1)\n"
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792351883.0458708,
+  "resources": [
+    "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98"
+  ],
+  "state": "completed",
+  "cpu": 2,
+  "memoryGiB": 8,
+  "fixtures": {},
+  "tools": {
+    "git": {
+      "path": "/usr/local/bin/git",
+      "exitCode": 0,
+      "version": "git version 2.53.0"
+    },
+    "rustc": {
+      "path": "/home/louistrue/.cargo/bin/rustc",
+      "exitCode": 0,
+      "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+    },
+    "cargo": {
+      "path": "/home/louistrue/.cargo/bin/cargo",
+      "exitCode": 0,
+      "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+    },
+    "node": {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node",
+      "exitCode": 0,
+      "version": "v24.21.0"
+    },
+    "pnpm": {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/pnpm",
+      "exitCode": 0,
+      "version": "10.8.1"
+    }
+  },
+  "runnerSha256": "5ddb5b867d31aae64d78d78e4e7d1407b28df4f06b0ab7db9ad40d0020df2657",
+  "startedAt": 1792351883.3161561,
+  "queueSeconds": 0.27028584480285645,
+  "resourceScope": false,
+  "exitCode": 0,
+  "finishedAt": 1792352029.1551125,
+  "sourceAfter": {
+    "commit": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {},
+  "outputSha256": "9512659db4aa4f122a7d9b196a043aa63c933bef29883d45fb18d8bf1c93dbcb"
+}

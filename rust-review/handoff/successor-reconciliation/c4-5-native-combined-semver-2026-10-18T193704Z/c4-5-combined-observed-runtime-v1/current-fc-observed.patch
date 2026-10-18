@@ -1,0 +1,394 @@
+--- a/rust/processing/Cargo.toml
++++ b/rust/processing/Cargo.toml
+@@ -15,6 +15,8 @@
+ readme = "../../README.md"
+ 
+ [features]
++# External C4-0 observation builds ONLY; never enable for publication/perf.
++c4-parity-harness = []
+ # Fixed-size work counters for the diagnostic example, never enabled by default.
+ opening-perf-trace = ["ifc-lite-geometry/opening-perf-trace"]
+ # Measurement-only: enable the geometry crate's CSG corpus capture so the
+--- /dev/null
++++ b/rust/processing/src/c4_parity_observer.rs
+@@ -0,0 +1,66 @@
++// SPDX-License-Identifier: MPL-2.0
++//! Harness-only primitive observations. Never compiled in ordinary release.
++//! One armed invocation per dedicated process/wasm realm; no re-resolution.
++use serde_json::{json, Value};
++use std::sync::{Mutex, OnceLock};
++#[derive(Default)]
++struct State { token: String, events: Vec<Value> }
++fn slot() -> &'static Mutex<Option<State>> {
++    static SLOT: OnceLock<Mutex<Option<State>>> = OnceLock::new();
++    SLOT.get_or_init(|| Mutex::new(None))
++}
++pub fn begin(token: &str) -> Result<(), String> {
++    let mut s = slot().lock().map_err(|e| e.to_string())?;
++    if s.is_some() { return Err("C4 observer already armed; no nested/replacement capture".into()); }
++    *s = Some(State { token: token.into(), events: Vec::new() }); Ok(())
++}
++pub fn take(token: &str) -> Result<Vec<Value>, String> {
++    let mut s = slot().lock().map_err(|e| e.to_string())?;
++    if s.as_ref().map(|v| v.token.as_str()) != Some(token) {
++        return Err("C4 observer token/ownership mismatch".into());
++    }
++    Ok(s.take().expect("checked owned state").events)
++}
++pub fn record(event: Value) {
++    // Poison is an incomplete capture, never silently repaired or accepted.
++    let mut s = slot().lock().expect("C4 observer poisoned");
++    if let Some(s) = s.as_mut() { s.events.push(event); }
++}
++fn wire(kind: &str, length: usize, bytes: Vec<u8>) -> Value {
++    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
++    json!({"typedArray":kind,"length":length,"byteLength":bytes.len(),"bytesHex":hex})
++}
++pub fn f32s(v: &[f32]) -> Value {
++    wire("Float32Array", v.len(), v.iter().flat_map(|x| x.to_bits().to_le_bytes()).collect())
++}
++pub fn f64s(v: &[f64]) -> Value {
++    wire("Float64Array", v.len(), v.iter().flat_map(|x| x.to_bits().to_le_bytes()).collect())
++}
++pub fn u32s(v: &[u32]) -> Value {
++    wire("Uint32Array", v.len(), v.iter().flat_map(|x| x.to_le_bytes()).collect())
++}
++pub fn u8s(v: &[u8]) -> Value { wire("Uint8Array",v.len(),v.to_vec()) }
++pub fn element_job(job: &crate::element::ElementMeshJob<'_>) {
++    let maps = match &job.kind {
++        crate::element::ElementJobKind::Product => Vec::new(),
++        crate::element::ElementJobKind::TypeProduct { rep_maps } => rep_maps.clone(),
++    };
++    record(json!({"event":"element_job","id":job.id,"ifcType":job.ifc_type.to_string(),
++      "kind":if maps.is_empty(){"product"}else{"type"},"repMaps":maps,
++      "suppliedElementColor":job.element_color.map(|v| f32s(&v))}));
++}
++pub fn mesh(m: &crate::MeshData) -> Value {
++    // Preserve every Rust field plus exact binary arrays skipped by serde.
++    // serde text is supplementary; float identity comes from explicit wires.
++    json!({"id":m.express_id,"ifcType":m.ifc_type,"geometryClass":m.geometry_class,
++      "geometryItemId":m.geometry_item_id,"materialId":m.material_id,
++      "positions":f32s(&m.positions),"normals":f32s(&m.normals),"indices":u32s(&m.indices),
++      "color":f32s(&m.color),"origin":f64s(&m.origin),
++      "localBounds":m.local_bounds.map(|v|f32s(&v)),
++      "localToWorld":m.local_to_world.map(|v|f64s(&v)),
++      "uvs":m.uvs.as_ref().map(|v|f32s(v)),
++      "texture":m.texture.as_ref().map(|t|json!({"id":t.texture_id,"width":t.width,"height":t.height,
++        "repeatS":t.repeat_s,"repeatT":t.repeat_t,"url":t.url,
++        "rgba":t.rgba.as_ref().map(|v|u8s(v))})),
++      "nativeFields":m})
++}
+--- a/rust/processing/src/element.rs
++++ b/rust/processing/src/element.rs
+@@ -243,6 +243,8 @@
+     decoder: &mut EntityDecoder,
+     router: &GeometryRouter,
+ ) -> ProducedElementMeshes {
++    #[cfg(any(test, feature = "c4-parity-harness"))]
++    crate::c4_parity_observer::element_job(job);
+     // Open a per-element CSG escalation scope (#1109). Every boolean this element
+     // issues (one per opening, plus clip cuts) accumulates into ONE deterministic
+     // budget, so a boolean-heavy element (a slab cut by 24+ openings, a Tekla
+@@ -312,6 +314,9 @@
+         }
+         _ => (None, None, None, None),
+     };
++
++    #[cfg(any(test, feature = "c4-parity-harness"))]
++    crate::c4_parity_observer::record(serde_json::json!({"event":"element-result","id":job.id,"meshCount":meshes.len(),"instanceCount":instance_occurrences.len(),"backstop":degenerate_triangles_dropped}));
+ 
+     ProducedElementMeshes {
+         meshes,
+@@ -337,12 +342,17 @@
+     // Representation attribute does not mean "nothing to render".
+     let has_representation = job.entity.get(6).is_some_and(|a| !a.is_null());
+     if !has_representation && job.ifc_type != IfcType::IfcAlignment {
++        #[cfg(any(test, feature = "c4-parity-harness"))]
++        crate::c4_parity_observer::record(serde_json::json!({"event":"representation-gate","id":job.id,"effectiveColor":{"state":"NotEvaluated","reason":"representation-gate","stage":"produce_inner/before-element-color","sourceBranch":"rust/processing/src/element.rs:has_representation"}}));
+         return (Vec::new(), Vec::new());
+     }
+ 
+     let element_color = job
+         .element_color
+         .unwrap_or_else(|| crate::style::default_color_for_type(job.ifc_type.clone()).to_array());
++
++    #[cfg(any(test, feature = "c4-parity-harness"))]
++    crate::c4_parity_observer::record(serde_json::json!({"event":"effective-element-color","id":job.id,"color":crate::c4_parity_observer::f32s(&element_color)}));
+ 
+     if let ElementJobKind::TypeProduct { rep_maps } = &job.kind {
+         // Type-product geometry (orphan/instanced RepresentationMaps) never rides the
+@@ -454,6 +464,8 @@
+     decoder: &mut EntityDecoder,
+     hasher: &mut Option<GeometryHasher>,
+ ) -> Vec<MeshData> {
++    #[cfg(any(test, feature = "c4-parity-harness"))]
++    crate::c4_parity_observer::record(serde_json::json!({"event":"fallback-mesh","id":job.id,"color":crate::c4_parity_observer::f32s(&element_color)}));
+     // Make the assembled body consistently outward-wound. A faceted brep (IFC
+     // face loops are not reliably outward) or a merged multi-item body (extrusion
+     // unioned with a boolean cut) can carry MIXED winding that corrupts signed
+--- a/rust/processing/src/lib.rs
++++ b/rust/processing/src/lib.rs
+@@ -133,3 +133,7 @@
+     QuickMetadataBootstrap, QuickMetadataEntitySummary, QuickMetadataPrunedEdge,
+     QuickMetadataPrunedEdgeKind, QuickMetadataSpatialNode,
+ };
++
++#[cfg(any(test, feature = "c4-parity-harness"))]
++#[doc(hidden)]
++pub mod c4_parity_observer;
+--- /dev/null
++++ b/rust/processing/src/processor/c4_parity_native.rs
+@@ -0,0 +1,74 @@
++// SPDX-License-Identifier: MPL-2.0
++//! Dedicated ignored test adapter; SOURCE ONLY, never run by preparation.
++//!
++//! Baseline61 source notes relocated from processor/mod.rs; original ordinary
++//! construction/handoff logic remains there and in final resolve.rs.
++//!
++//! C — entity-index construction
++//! The entity index (expressId -> byte span) is built INLINE in the scan loop
++//! below rather than in a separate `build_entity_index` pass, so the file is
++//! walked once instead of twice. A caller that injected an index reuses it and
++//! skips the inline build. `decode_at` during the scan needs no index (it parses
++//! local bytes), so the scan-phase decoder starts index-less; the completed
++//! index is installed before the first ref-resolving call (`resolve_prepass`).
++//!
++//! D — completed-index handoff
++//! The inline index is now complete — identical to `build_entity_index` over
++//! the same scanner. Install it into the decoder so `resolve_prepass` and the
++//! downstream phases resolve refs against it, and expose it (as before) to the
++//! geometry workers further down.
++use super::{EntityJob, process_geometry};
++use crate::c4_parity_observer as obs;
++use serde_json::{json, Value};
++use sha2::{Digest, Sha256};
++use std::io::Write;
++// Used by the observed alternative; capture-only intentionally has no hooks.
++#[allow(dead_code)]
++pub(super) fn jobs(stage: &str, jobs: &[EntityJob]) {
++    obs::record(json!({"event":"native_jobs","stage":stage,"jobs":jobs.iter().map(|j|json!({
++      "id":j.id,"ifcType":j.ifc_type.to_string(),"start":j.start,"end":j.end,
++      "representationMapId":j.representation_map_id,"shapeId":j.product_definition_shape_id,
++      "elementColor":obs::f32s(&j.element_color),"globalId":j.global_id,"name":j.name,
++      "presentationLayer":j.presentation_layer,"properties":j.space_zone_properties,
++    })).collect::<Vec<_>>()}));
++}
++#[test]
++#[ignore = "C4-0 explicit one-case harness; requires later approved owned execution"]
++fn capture_one() {
++    let required = |n| std::env::var(n).unwrap_or_else(|_|panic!("required {n}"));
++    let input = required("C4_PARITY_INPUT"); let output = required("C4_PARITY_OUTPUT");
++    let token = required("C4_PARITY_TOKEN"); let source = required("C4_PARITY_SOURCE");
++    let observer = required("C4_PARITY_OBSERVE") == "on";
++    let contract: Value = serde_json::from_str(&required("C4_PARITY_CONTRACT")).expect("explicit reviewed work contract");
++    let content = std::fs::read(input).expect("read exact immutable input");
++    let digest = format!("{:x}",Sha256::digest(&content));
++    assert_eq!(digest,required("C4_PARITY_INPUT_SHA256"));
++    // Dedicated process only: same setting as the shipped wasm path. It is
++    // explicitly recorded; no attempt to restore a process-global flag mid-load.
++    ifc_lite_geometry::local_frame_set_enabled_override(Some(true));
++    if observer { obs::begin(&token).expect("arm own observer"); }
++    // Exactly ONE actual public invocation; do not call resolve separately.
++    let result = std::panic::catch_unwind(||process_geometry(&content));
++    let observations = if observer {obs::take(&token)} else {Ok(Vec::new())};
++    let receipt: Value = match result {
++      Ok(r) => json!({"schema":"c4-0-native-v1","status":"captured_unvalidated",
++        "source":source,"contract":contract,"input":{"sha256":digest,"bytes":content.len()},
++        "mode":{"entry":"process_geometry","localFrame":true,"quality":"Medium","opening":"Default","instancing":false},
++        "observationEnabled":observer,"observations":observations.as_ref().ok(),
++        "observationError":observations.as_ref().err(),
++        "raw":{"meshes":r.meshes.iter().map(obs::mesh).collect::<Vec<_>>(),"stats":r.stats,
++          "metadata":r.metadata,"metadataFloatBits":{"originShift":obs::f64s(&r.metadata.coordinate_info.origin_shift),"lengthUnitScale":r.metadata.length_unit_scale.map(|v|obs::f64s(&[v]))},"refusals":{"input":r.stats.refused_input_elements,"prepass":r.stats.refused_prepass_records},"frameDebug":format!("{:?}",r.frame),
++          "frameToWorld":obs::f64s(&r.frame.world_matrix()),
++          "rtcOffset":obs::f64s(&[r.frame.rtc_offset().0,r.frame.rtc_offset().1,r.frame.rtc_offset().2]),
++          "coordinateSpace":r.mesh_coordinate_space,"siteTransform":r.site_transform.as_ref().map(|v|obs::f64s(v)),
++          "buildingTransform":r.building_transform.as_ref().map(|v|obs::f64s(v)),
++          "instancesDebug":format!("{:?}",r.instances)}}),
++      Err(_) => json!({"schema":"c4-0-native-v1","status":"incomplete","source":source,
++        "input":{"sha256":digest,"bytes":content.len()},"error":"public native invocation panicked",
++        "observations":observations.ok()}),
++    };
++    let mut f=std::fs::OpenOptions::new().write(true).create_new(true).open(output).expect("exclusive receipt");
++    f.write_all(serde_json::to_string_pretty(&receipt).expect("serialize receipt").as_bytes()).expect("write receipt");
++    assert_eq!(receipt["status"],"captured_unvalidated");
++    assert!(receipt["observationError"].is_null());
++}
+--- a/rust/processing/src/processor/mod.rs
++++ b/rust/processing/src/processor/mod.rs
+@@ -154,3 +154,7 @@
+     let passed = pass::run(content, req, sink, resolved);
+     finalize::finish(content, passed, total_start, &pipeline_span)
+ }
++
++#[cfg(all(test, not(target_arch = "wasm32")))]
++#[path = "c4_parity_native.rs"]
++mod c4_parity_native;
+--- a/rust/processing/src/processor/pass.rs
++++ b/rust/processing/src/processor/pass.rs
+@@ -156,6 +156,8 @@
+         let jobs_chunk = &mut entity_jobs[chunk_start..chunk_end];
+         populate_metadata(jobs_chunk, ctx.content, &ctx.entity_index,
+             &ctx.geometry_style_index, &mut appearance, &mut decoder);
++        #[cfg(all(test, not(target_arch = "wasm32")))]
++        super::c4_parity_native::jobs("appearance-resolved", jobs_chunk);
+         let chunk_meshes: Vec<MeshData> = jobs_chunk
+             .par_iter()
+             .map(|job| run_job(job, &ctx))
+--- a/rust/processing/src/processor/resolve.rs
++++ b/rust/processing/src/processor/resolve.rs
+@@ -84,7 +84,13 @@
+     let preprocess_start = mark(Mark::PreprocessStart, Clock::now());
+     let preprocess_span =
+         tracing::debug_span!("preprocess", phase_ms = tracing::field::Empty).entered();
++    #[cfg(all(test, not(target_arch = "wasm32")))]
++    super::c4_parity_native::jobs("before-unit-refusal", &scanned.jobs);
++    #[cfg(all(test, not(target_arch = "wasm32")))]
++    crate::c4_parity_observer::record(serde_json::json!({"event":"native-units","length":crate::c4_parity_observer::f64s(&[unit_scales.geometry_length_scale()]),"angle":crate::c4_parity_observer::f64s(&[unit_scales.plane_angle_to_radians]),"unitRefused":unit_scales.length_unit_refused}));
+     let refused_unit_jobs = diagnostics::refuse_jobs_for_unit(&unit_scales, &mut scanned.jobs);
++    #[cfg(all(test, not(target_arch = "wasm32")))]
++    super::c4_parity_native::jobs("resolved-jobs", &scanned.jobs);
+     let (router, site_transform, building_transform, frame) =
+         placement_phase(content, req, sink, &mut scanned, &unit_scales);
+     let preprocess_time = mark(Mark::PreprocessEnd, preprocess_start.elapsed());
+--- a/rust/processing/src/processor/scan.rs
++++ b/rust/processing/src/processor/scan.rs
+@@ -165,6 +165,8 @@
+     ifc_lite_core::report_scan_diagnostics(scanner.skipped_oversized_ids(), scanner.malformed_record_start().is_some());
+ 
+     scan.types.append_orphan_jobs(&mut scan.out.entity_jobs);
++    #[cfg(all(test, not(target_arch = "wasm32")))]
++    super::c4_parity_native::jobs("scanned-defaults", &scan.out.entity_jobs);
+     // Output shape remains private and unchanged; move the common discovery
+     // only after the scan so no extra span or entity clone is needed.
+     scan.out.prepass_spans = scan.discovery.prepass_spans;
+--- a/rust/wasm-bindings/Cargo.toml
++++ b/rust/wasm-bindings/Cargo.toml
+@@ -22,6 +22,8 @@
+ crate-type = ["cdylib", "rlib"]
+ 
+ [features]
++# HARNESS ONLY: emits two extra bindings to external output, never normal pkg.
++c4-parity-harness = ["ifc-lite-processing/c4-parity-harness"]
+ # Opt-in #6516 route-work diagnostic; absent from shipping builds.
+ opening-perf-trace = ["ifc-lite-geometry/opening-perf-trace"]
+ default = ["console_error_panic_hook"]
+--- a/rust/wasm-bindings/src/api/gpu_meshes/batch.rs
++++ b/rust/wasm-bindings/src/api/gpu_meshes/batch.rs
+@@ -118,12 +118,10 @@
+         let batch_started_ms = js_sys::Date::now();
+ 
+         let content = data;
+-
+-        // Geometry fingerprinting for the viewer's revision-diff feature.
+-        // When enabled we hash each entity's meshes *before* MeshDataJs::new
+-        // applies the Z-up→Y-up swap, in the native IFC frame, reconstructing
+-        // world coordinates as `local + rtc` so the file's RTC choice never
+-        // registers as a change. Disabled (None) => zero overhead.
++        #[cfg(feature = "c4-parity-harness")]
++        ifc_lite_processing::c4_parity_observer::record(serde_json::json!({"event":"batch-input","schema":ifc_lite_processing::detect_schema_version(data),"sourceBytes":data.len(),"jobs":ifc_lite_processing::c4_parity_observer::u32s(jobs_flat),"unitScale":ifc_lite_processing::c4_parity_observer::f64s(&[unit_scale]),"rtc":ifc_lite_processing::c4_parity_observer::f64s(&[rtc_x,rtc_y,rtc_z]),"needsShift":needs_shift}));
++
++        // Fingerprint frame/overhead notes: crate source c4_parity_wasm.rs, note A.
+         let hash_tolerance = self.geometry_hash_tolerance();
+         let hash_world_rtc: [f64; 3] = if needs_shift {
+             [rtc_x, rtc_y, rtc_z]
+@@ -131,15 +129,7 @@
+             [0.0, 0.0, 0.0]
+         };
+ 
+-        // Reuse the cached Arc<EntityIndex> across calls so we don't
+-        // re-clone the 14 M-entry HashMap on every batch. On streaming
+-        // paths this turns ~36 calls/worker into 1 build + 35 Arc::clone()
+-        // (a single refcount bump) instead of 36 full HashMap clones.
+-        //
+-        // If the cache is empty (which happens on every process worker
+-        // because they're separate WASM realms from the pre-pass worker),
+-        // build once here and store under Arc so subsequent calls hit
+-        // the fast path.
++        // Entity-index cache/realm notes: crate source c4_parity_wasm.rs, note B.
+         let entity_index_arc: std::sync::Arc<ifc_lite_core::ColumnarEntityIndex> = {
+             // Mutex briefly held: peek at cache, build-if-empty, clone Arc.
+             // The clone is what gets handed to rayon — no lock contention
+@@ -408,7 +398,11 @@
+             let start = chunk[1] as usize;
+             let end = chunk[2] as usize;
+ 
++            #[cfg(feature = "c4-parity-harness")]
++            ifc_lite_processing::c4_parity_observer::record(serde_json::json!({"event":"batch-job","id":id,"start":start,"end":end}));
+             if parts_to_skip.contains(&id) {
++                #[cfg(feature = "c4-parity-harness")]
++                ifc_lite_processing::c4_parity_observer::record(serde_json::json!({"event":"batch-skip","id":id,"reason":"parts-to-skip","start":start,"end":end,"effectiveColor":{"state":"NotEvaluated","reason":"parts-to-skip","stage":"produce_batch/before-produce_element_meshes","sourceBranch":"rust/wasm-bindings/src/api/gpu_meshes/batch.rs:parts-to-skip"}}));
+                 continue;
+             }
+ 
+@@ -417,6 +411,8 @@
+             // marshalling cost across ~60-110 K jobs. produce_element_meshes
+             // takes `&DecodedEntity`, so we deref the Arc at the call site.
+             let Ok(entity) = decoder.decode_and_cache(id, start, end) else {
++                #[cfg(feature = "c4-parity-harness")]
++                ifc_lite_processing::c4_parity_observer::record(serde_json::json!({"event":"batch-skip","id":id,"reason":"decode-refusal","start":start,"end":end,"effectiveColor":{"state":"NotEvaluated","reason":"decode-refusal","stage":"produce_batch/before-produce_element_meshes","sourceBranch":"rust/wasm-bindings/src/api/gpu_meshes/batch.rs:decode-refusal"}}));
+                 continue;
+             };
+             // Schema-resolved, like the native pre-pass at
+@@ -474,6 +470,8 @@
+                     .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
+                     .unwrap_or_default();
+                 if rep_map_ids.is_empty() {
++                    #[cfg(feature = "c4-parity-harness")]
++                    ifc_lite_processing::c4_parity_observer::record(serde_json::json!({"event":"batch-skip","id":id,"reason":"empty-rep-map-refs","start":start,"end":end,"effectiveColor":{"state":"NotEvaluated","reason":"empty-rep-map-refs","stage":"produce_batch/before-produce_element_meshes","sourceBranch":"rust/wasm-bindings/src/api/gpu_meshes/batch.rs:empty-rep-map-refs"}}));
+                     continue;
+                 }
+                 let referenced = self.get_or_build_referenced_repmaps(content, &mut decoder);
+@@ -485,6 +483,8 @@
+                     TypeGeometryMode::EmitTagged,
+                 );
+                 if rep_maps.is_empty() {
++                    #[cfg(feature = "c4-parity-harness")]
++                    ifc_lite_processing::c4_parity_observer::record(serde_json::json!({"event":"batch-skip","id":id,"reason":"no-planned-type-maps","start":start,"end":end,"effectiveColor":{"state":"NotEvaluated","reason":"no-planned-type-maps","stage":"produce_batch/before-produce_element_meshes","sourceBranch":"rust/wasm-bindings/src/api/gpu_meshes/batch.rs:no-planned-type-maps"}}));
+                     continue;
+                 }
+                 ElementJobKind::TypeProduct { rep_maps }
+--- /dev/null
++++ b/rust/wasm-bindings/src/c4_parity_wasm.rs
+@@ -0,0 +1,33 @@
++// SPDX-License-Identifier: MPL-2.0
++//! DEDICATED HARNESS FEATURE ONLY; augmented bindings live outside normal pkg.
++//!
++//! Source notes relocated intact from api/gpu_meshes/batch.rs; the behavior
++//! remains in that function. These notes also describe the ordinary build.
++//!
++//! A — geometry fingerprinting
++//! Geometry fingerprinting for the viewer's revision-diff feature.
++//! When enabled we hash each entity's meshes *before* MeshDataJs::new
++//! applies the Z-up→Y-up swap, in the native IFC frame, reconstructing
++//! world coordinates as `local + rtc` so the file's RTC choice never
++//! registers as a change. Disabled (None) => zero overhead.
++//!
++//! B — entity-index cache
++//! Reuse the cached Arc<EntityIndex> across calls so we don't
++//! re-clone the 14 M-entry HashMap on every batch. On streaming
++//! paths this turns ~36 calls/worker into 1 build + 35 Arc::clone()
++//! (a single refcount bump) instead of 36 full HashMap clones.
++//!
++//! If the cache is empty (which happens on every process worker
++//! because they're separate WASM realms from the pre-pass worker),
++//! build once here and store under Arc so subsequent calls hit
++//! the fast path.
++use wasm_bindgen::prelude::*;
++#[wasm_bindgen(js_name=c4ParityBegin)]
++pub fn begin(token: &str) -> Result<(),JsValue> {
++    ifc_lite_processing::c4_parity_observer::begin(token).map_err(|e|JsValue::from_str(&e))
++}
++#[wasm_bindgen(js_name=c4ParityTake)]
++pub fn take(token: &str) -> Result<String,JsValue> {
++    let events=ifc_lite_processing::c4_parity_observer::take(token).map_err(|e|JsValue::from_str(&e))?;
++    serde_json::to_string(&events).map_err(|e|JsValue::from_str(&e.to_string()))
++}
+--- a/rust/wasm-bindings/src/lib.rs
++++ b/rust/wasm-bindings/src/lib.rs
+@@ -118,3 +118,6 @@
+ pub fn version() -> String {
+     env!("CARGO_PKG_VERSION").to_string()
+ }
++
++#[cfg(all(feature = "c4-parity-harness", target_arch = "wasm32"))]
++mod c4_parity_wasm;

@@ -1,0 +1,44 @@
+{
+  "source": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "worker": "89c9873e-5bc2-484d-a7d5-75be24f2640f",
+  "originalSession": 92091,
+  "exitCode": 0,
+  "sourceUnchanged": true,
+  "ownedQuiescent": true,
+  "resourcesReleased": true,
+  "nativeCases": 56,
+  "nativeOutputSha256": "1ac321114af134ab7b19f6ca4e73c2aceb727546df5aa0b9ef2acbce1db829bf",
+  "baselineSha256": "1ac321114af134ab7b19f6ca4e73c2aceb727546df5aa0b9ef2acbce1db829bf",
+  "identity": true,
+  "ordinaryCombined": {
+    "status": "ok",
+    "receiptSha256": "097f9c2fb717a6dfb306f664f8ec87da853df88c5abe13d41e2e85205080dc54",
+    "jobs": 17,
+    "meshes": 40,
+    "triangles": 1771,
+    "scope": "one source, one actual public once arm, one real Revit Q0 fixture; no baseline/cross-route/observer noninterference inference"
+  },
+  "all182BeforeAfterMatch": true,
+  "toolsBeforeAfterMatch": true,
+  "runtimeBeforeAfterMatch": true,
+  "inputsBeforeAfterMatch": true,
+  "proofs": {
+    "worker-terminal.json": "0c87613294c7240024dad61b1ba5d4a154f8eee854ac007a4151ab435e45983e",
+    "terminal-quiescence.json": "ca7ce74eec93771588dd5316f114aadd226ba89c39c5de5a66aa5bf71dac8443",
+    "original-exec-terminal.json": "b76cc37dd62e8f04e9d125673019faccea370832abbeeee83c9666a9607a2b49",
+    "pc-results/report.json": "48f31d17d56ec1ef4640160e4bdcf76dab4d04e2ac8eb0647b1e5d6fa37c4e18",
+    "pc-results/native56.log": "31f3062a61740d071a225fb542c7fe7bbcb111ccca6cff6431e5ec4bec222a53",
+    "pc-results/native-corpus.json": "1ac321114af134ab7b19f6ca4e73c2aceb727546df5aa0b9ef2acbce1db829bf",
+    "pc-results/compare-native56.log": "f767e33fb6a0e81d07c7286eec28d05a1d1e66eb926a293ba327f0de530c96a4",
+    "pc-results/combined-plain-plan.json": "f4b94d5c6913bb8d128b06fa8a32573c7c1a2d9ebf1edbee982ef129275efdb0",
+    "pc-results/combined-plain-revit-wall.json": "097f9c2fb717a6dfb306f664f8ec87da853df88c5abe13d41e2e85205080dc54",
+    "pc-results/combined-plain-q0.log": "705d8bfd3622e2f17e5fda732fc1aac5ae608acbe9a47eb35551c4f93656bdc9"
+  },
+  "limits": "PC vs Pop git/node paths/versions differ; pinned Rust version and source toolchain/lock inputs equal. No historical compiler-byte closure, same-host timing or performance equivalence claimed.",
+  "acceptance": false,
+  "performance": false
+}

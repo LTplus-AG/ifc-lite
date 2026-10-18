@@ -1,0 +1,70 @@
+{
+  "state": "COMPLETED0",
+  "host": "pc-wsl",
+  "worker": "f92f7206-9b6f-409a-bded-e18c00e7f017",
+  "originalSession": 66354,
+  "source": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "commands": [
+    {
+      "name": "stable-cargo-version",
+      "argv": [
+        "cargo",
+        "+stable",
+        "--version"
+      ],
+      "startedAt": 1792351904.297363,
+      "exitCode": 0,
+      "finishedAt": 1792351904.3426056,
+      "logSha256": "9950bbb2d5c3417b1a068f0e81f6d3cac991a363193bdf2a22d447f5acf8b503"
+    },
+    {
+      "name": "private-tool-version",
+      "argv": [
+        "cargo",
+        "+stable",
+        "semver-checks",
+        "--version"
+      ],
+      "startedAt": 1792351904.4218135,
+      "exitCode": 0,
+      "finishedAt": 1792351904.4704673,
+      "logSha256": "3f1811cd396eb203e0e50c40e211aa48dc82f6784db64cb780cad93d7f57faa6"
+    },
+    {
+      "name": "rust-semver-gate",
+      "argv": [
+        "node",
+        "scripts/check-rust-semver.mjs"
+      ],
+      "startedAt": 1792351904.549518,
+      "exitCode": 0,
+      "finishedAt": 1792352024.8554065,
+      "logSha256": "196e3b8970a267064a21c888c491d67e066dc875b7127a3c9f942d6188e07b65"
+    }
+  ],
+  "actualGateOutput": "   ifc-lite-core 20.4.0 -> 21.4.0 (major; requires major)\n   ifc-lite-clash 20.4.0 -> 21.4.0 (major; requires patch)\n   ifc-lite-geometry 20.4.0 -> 21.4.0 (major; requires major)\n   ifc-lite-processing 20.4.0 -> 21.4.0 (major; requires major)\n   ifc-lite-landxml 20.4.0 -> 21.4.0 (major; requires major)\n   ifc-lite-export 20.4.0 -> 21.4.0 (major; requires major)\n   ifc-lite-ffi 20.4.0 -> 21.4.0 (major; requires patch)\n   ifc-lite-wasm 20.4.0 -> 21.4.0 (major; requires major)\n\u2705 8 of 8 crate(s) compared against crates.io; every Rust API change fits 21.4.0\n",
+  "actualCratesCompared": 8,
+  "scope": "Actual repository release-policy gate versus published20.4 baselines admits sourceversion21.4 majors. Not a same-major/no-breakage claim; no broader C4/performance/publication acceptance.",
+  "finallyErrors": [],
+  "sharedStableUnchanged": true,
+  "fixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "fixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "checker": {
+    "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-rust-semver-pc-v1/tools/cargo-semver-checks",
+    "sha256": "bc9eb06ce04e97d6160c875ffdee1f6e56793e423dea025f344826be03e66829"
+  }
+}

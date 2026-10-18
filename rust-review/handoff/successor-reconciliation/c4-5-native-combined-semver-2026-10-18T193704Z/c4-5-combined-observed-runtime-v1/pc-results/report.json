@@ -1,0 +1,633 @@
+{
+  "scope": "one current-fc observed WASM build/Q0 once capture and original strict observation noninterference comparer; no native/browser/performance qualification",
+  "commands": [
+    {
+      "name": "prepare-owned-observed-source",
+      "argv": [
+        "git",
+        "worktree",
+        "add",
+        "--detach",
+        "/home/louistrue/build-workers/worker-state/checkouts/c4-5-observed-fc-v1",
+        "fc3635ae78665e95ea72328b88fc7b28ead148d2"
+      ],
+      "cwd": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "startedAt": 1792351669.3029306,
+      "exitCode": 0,
+      "finishedAt": 1792351671.5732212,
+      "logSha256": "28d98acd495e1c13e1ced7a92be56bc09a26c56c0c958751cc743642cec499f5"
+    },
+    {
+      "name": "apply-original-observers-with-scan-context",
+      "argv": [
+        "git",
+        "apply",
+        "--index",
+        "/home/louistrue/build-workers/worker-state/c4-5-combined-observed-inputs-v1/current-fc-observed.patch"
+      ],
+      "cwd": "/home/louistrue/build-workers/worker-state/checkouts/c4-5-observed-fc-v1",
+      "startedAt": 1792351672.814597,
+      "exitCode": 0,
+      "finishedAt": 1792351672.846969,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "build-observed-wasm",
+      "argv": [
+        "rustup",
+        "run",
+        "nightly-2025-11-15",
+        "wasm-pack",
+        "build",
+        "rust/wasm-bindings",
+        "--target",
+        "web",
+        "--out-dir",
+        "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1/results/pkg",
+        "--out-name",
+        "ifc-lite",
+        "--release",
+        "--features",
+        "c4-parity-harness"
+      ],
+      "cwd": "/home/louistrue/build-workers/worker-state/checkouts/c4-5-observed-fc-v1",
+      "startedAt": 1792351673.5733309,
+      "exitCode": 0,
+      "finishedAt": 1792351804.6342998,
+      "logSha256": "05bf43f1ae26b4351b8b45862e734c3feb57c14b25255133b0943394945f6436"
+    },
+    {
+      "name": "combined-observed-q0",
+      "argv": [
+        "node",
+        "/home/louistrue/build-workers/worker-state/c4-5-combined-observed-inputs-v1/adapter/capture-wasm.mjs",
+        "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1/results/observed-plan.json",
+        "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1/results/observed-revit-wall.json"
+      ],
+      "cwd": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "startedAt": 1792351805.4324381,
+      "exitCode": 0,
+      "finishedAt": 1792351805.8981886,
+      "logSha256": "705d8bfd3622e2f17e5fda732fc1aac5ae608acbe9a47eb35551c4f93656bdc9"
+    },
+    {
+      "name": "strict-observation-noninterference",
+      "argv": [
+        "node",
+        "/home/louistrue/build-workers/worker-state/c4-5-combined-observed-inputs-v1/adapter/compare.mjs",
+        "/home/louistrue/build-workers/worker-state/c4-5-combined-observed-inputs-v1/plain-revit-wall.json",
+        "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1/results/observed-revit-wall.json",
+        "/home/louistrue/build-workers/worker-state/c4-5-combined-observed-inputs-v1/EXPECTED_DIFF.json",
+        "pair:wasm"
+      ],
+      "cwd": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "startedAt": 1792351806.597692,
+      "exitCode": 1,
+      "finishedAt": 1792351806.6620717,
+      "logSha256": "d46395f7a9334f9652e17b653b0e31ea293169ddbd3edd2d0119cf660ae789a4"
+    }
+  ],
+  "primaryError": "AssertionError('strict-observation-noninterference failed')",
+  "finallyErrors": [],
+  "startedAt": 1792351667.0855246,
+  "sourceBefore": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "inputsBefore": {
+    "/home/louistrue/build-workers/worker-state/c4-5-combined-observed-inputs-v1": "d3c41e327cf0257e2332d234faad8e46d786065fd63cadc95002060e6a7bc0be",
+    "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1": "a4a02798eefa582eef833d098387b8ff42de6ec3fed4b188bc6d23b8613112da"
+  },
+  "fixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "allSizeShaMatch": true
+  },
+  "storageBefore": [
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "freeBytes": 140100026368,
+      "freeInodes": 50736326
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts",
+      "freeBytes": 140100026368,
+      "freeInodes": 50736326
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1",
+      "freeBytes": 140100026368,
+      "freeInodes": 50736326
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1/results",
+      "freeBytes": 140100026368,
+      "freeInodes": 50736326
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-combined-observed-inputs-v1",
+      "freeBytes": 140100026368,
+      "freeInodes": 50736326
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1",
+      "freeBytes": 140100026368,
+      "freeInodes": 50736326
+    },
+    {
+      "path": "/home/louistrue/.cargo",
+      "freeBytes": 140100026368,
+      "freeInodes": 50736326
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-observed-preexec-v1",
+      "freeBytes": 140100026368,
+      "freeInodes": 50736326
+    }
+  ],
+  "toolsBefore": {
+    "/home/louistrue/.cargo/bin/cargo": {
+      "sha256": "dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71",
+      "bytes": 21113232,
+      "realpath": "/home/louistrue/.cargo/bin/rustup"
+    },
+    "/home/louistrue/.cargo/bin/rustc": {
+      "sha256": "dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71",
+      "bytes": 21113232,
+      "realpath": "/home/louistrue/.cargo/bin/rustup"
+    },
+    "/home/louistrue/.cargo/bin/rustup": {
+      "sha256": "dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71",
+      "bytes": 21113232,
+      "realpath": "/home/louistrue/.cargo/bin/rustup"
+    },
+    "/home/louistrue/.nvm/versions/node/v24.21.0/bin/wasm-pack": {
+      "sha256": "e9610d00ff9d60723833b42a5716d2768e9481defccd0a3ca0b4d1a198ef81eb",
+      "bytes": 135,
+      "realpath": "/home/louistrue/.nvm/versions/node/v24.21.0/lib/node_modules/wasm-pack/run.js"
+    },
+    "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node": {
+      "sha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c",
+      "bytes": 126595440,
+      "realpath": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node"
+    },
+    "/usr/local/bin/git": {
+      "sha256": "a8802bec227b3d962ecbc78a02fec5959e56c909cc225e75222bc731e7b434d1",
+      "bytes": 1120,
+      "realpath": "/usr/local/bin/git"
+    },
+    "/usr/bin/python3": {
+      "sha256": "fa9796cd3a30878e11a2f40372f773d3fcd913fff35e5bee8dd9a036e22e93ab",
+      "bytes": 7477096,
+      "realpath": "/usr/bin/python3.14"
+    }
+  },
+  "productionRuntimeBefore": {
+    "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite.js": {
+      "sha256": "04c85b1449d8fee992f25f0685170ff03fb4360726fa4e4d2a2d180314c169c0",
+      "bytes": 308437,
+      "realpath": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite.js"
+    },
+    "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite_bg.wasm": {
+      "sha256": "321891e446518440821ec081d3e36b0ac911c08018205ce593a062f1754559ee",
+      "bytes": 9769084,
+      "realpath": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite_bg.wasm"
+    },
+    "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite.d.ts": {
+      "sha256": "e2bf5dee93a6277acee5a814f0bab346ec3c270cbc01bc8a1d0ca75d1c2b65cb",
+      "bytes": 167397,
+      "realpath": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite.d.ts"
+    },
+    "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/package.json": {
+      "sha256": "9232de40962f329d8cc52bdee826ea878789839176dd446e4db30e2b6f1c381f",
+      "bytes": 559,
+      "realpath": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/package.json"
+    }
+  },
+  "buildEnvironment": {
+    "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1",
+    "CARGO_HOME": null,
+    "RUSTUP_HOME": null,
+    "CARGO_BUILD_JOBS": "2",
+    "RAYON_NUM_THREADS": "2",
+    "RUST_TEST_THREADS": "2"
+  },
+  "guards": [
+    {
+      "name": "prepare-owned-observed-source",
+      "storage": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 140100018176,
+          "freeInodes": 50736325
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts",
+          "freeBytes": 140100018176,
+          "freeInodes": 50736325
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1",
+          "freeBytes": 140100018176,
+          "freeInodes": 50736325
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1/results",
+          "freeBytes": 140100018176,
+          "freeInodes": 50736325
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-combined-observed-inputs-v1",
+          "freeBytes": 140100018176,
+          "freeInodes": 50736325
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1",
+          "freeBytes": 140100018176,
+          "freeInodes": 50736325
+        },
+        {
+          "path": "/home/louistrue/.cargo",
+          "freeBytes": 140100018176,
+          "freeInodes": 50736325
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-observed-preexec-v1",
+          "freeBytes": 140100018176,
+          "freeInodes": 50736325
+        }
+      ],
+      "fixtures": {
+        "count": 182,
+        "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+        "allSizeShaMatch": true
+      }
+    },
+    {
+      "name": "apply-original-observers-with-scan-context",
+      "storage": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 139346227200,
+          "freeInodes": 50715260
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/c4-5-observed-fc-v1",
+          "freeBytes": 139346227200,
+          "freeInodes": 50715260
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1",
+          "freeBytes": 139346227200,
+          "freeInodes": 50715260
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1/results",
+          "freeBytes": 139346227200,
+          "freeInodes": 50715260
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-combined-observed-inputs-v1",
+          "freeBytes": 139346227200,
+          "freeInodes": 50715260
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1",
+          "freeBytes": 139346227200,
+          "freeInodes": 50715260
+        },
+        {
+          "path": "/home/louistrue/.cargo",
+          "freeBytes": 139346227200,
+          "freeInodes": 50715260
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-observed-preexec-v1",
+          "freeBytes": 139346227200,
+          "freeInodes": 50715260
+        }
+      ],
+      "fixtures": {
+        "count": 182,
+        "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+        "allSizeShaMatch": true
+      }
+    },
+    {
+      "name": "build-observed-wasm",
+      "storage": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 139345981440,
+          "freeInodes": 50715223
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/c4-5-observed-fc-v1",
+          "freeBytes": 139345981440,
+          "freeInodes": 50715223
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1",
+          "freeBytes": 139345981440,
+          "freeInodes": 50715223
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1/results",
+          "freeBytes": 139345981440,
+          "freeInodes": 50715223
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-combined-observed-inputs-v1",
+          "freeBytes": 139345981440,
+          "freeInodes": 50715223
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1",
+          "freeBytes": 139345981440,
+          "freeInodes": 50715223
+        },
+        {
+          "path": "/home/louistrue/.cargo",
+          "freeBytes": 139345981440,
+          "freeInodes": 50715223
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-observed-preexec-v1",
+          "freeBytes": 139345981440,
+          "freeInodes": 50715223
+        }
+      ],
+      "fixtures": {
+        "count": 182,
+        "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+        "allSizeShaMatch": true
+      }
+    },
+    {
+      "name": "combined-observed-q0",
+      "storage": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 137570181120,
+          "freeInodes": 50671592
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/c4-5-observed-fc-v1",
+          "freeBytes": 137570181120,
+          "freeInodes": 50671592
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1",
+          "freeBytes": 137570181120,
+          "freeInodes": 50671592
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1/results",
+          "freeBytes": 137570181120,
+          "freeInodes": 50671592
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-combined-observed-inputs-v1",
+          "freeBytes": 137570181120,
+          "freeInodes": 50671592
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1",
+          "freeBytes": 137570181120,
+          "freeInodes": 50671592
+        },
+        {
+          "path": "/home/louistrue/.cargo",
+          "freeBytes": 137570181120,
+          "freeInodes": 50671592
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-observed-preexec-v1",
+          "freeBytes": 137570181120,
+          "freeInodes": 50671592
+        }
+      ],
+      "fixtures": {
+        "count": 182,
+        "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+        "allSizeShaMatch": true
+      }
+    },
+    {
+      "name": "strict-observation-noninterference",
+      "storage": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 137567129600,
+          "freeInodes": 50671543
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/c4-5-observed-fc-v1",
+          "freeBytes": 137567129600,
+          "freeInodes": 50671543
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1",
+          "freeBytes": 137567129600,
+          "freeInodes": 50671543
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1/results",
+          "freeBytes": 137567129600,
+          "freeInodes": 50671543
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-combined-observed-inputs-v1",
+          "freeBytes": 137567129600,
+          "freeInodes": 50671543
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1",
+          "freeBytes": 137567129600,
+          "freeInodes": 50671543
+        },
+        {
+          "path": "/home/louistrue/.cargo",
+          "freeBytes": 137567129600,
+          "freeInodes": 50671543
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-observed-preexec-v1",
+          "freeBytes": 137567129600,
+          "freeInodes": 50671543
+        }
+      ],
+      "fixtures": {
+        "count": 182,
+        "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+        "allSizeShaMatch": true
+      }
+    }
+  ],
+  "observedSourceBefore": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "indexTree": "5157e4080c774195bfc08d359ad49b8d32500721",
+    "stagedDiffSha256": "0d4b47ed71d19230bfa75921c41c5868de0f0a4b48e4e59ba5c9d8a2e3a0bae4",
+    "unstagedDiff": "",
+    "newUntracked": ""
+  },
+  "adaptedInputPatchSha256": "ca697f59286651e6dddd257723ed016d92485159a759fc2d62e63f6f45716b94",
+  "observedRuntime": {
+    "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1/results/pkg/ifc-lite.js": {
+      "sha256": "f2937cfdda7a94c8e0c2bec01642c0836f23e5b8080e9642d6deb11916cbd2ec",
+      "bytes": 310095,
+      "realpath": "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1/results/pkg/ifc-lite.js"
+    },
+    "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1/results/pkg/ifc-lite_bg.wasm": {
+      "sha256": "9ad3563f351a7928439496aae5b5357529964c1eb76d346ad7327e9e184be4fe",
+      "bytes": 9792188,
+      "realpath": "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1/results/pkg/ifc-lite_bg.wasm"
+    },
+    "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1/results/pkg/ifc-lite.d.ts": {
+      "sha256": "11bdd644cdcda18994c8689cc511eae9670b3d75b2ac7363aab5e25080c98691",
+      "bytes": 167645,
+      "realpath": "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1/results/pkg/ifc-lite.d.ts"
+    },
+    "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1/results/pkg/package.json": {
+      "sha256": "9232de40962f329d8cc52bdee826ea878789839176dd446e4db30e2b6f1c381f",
+      "bytes": 559,
+      "realpath": "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1/results/pkg/package.json"
+    }
+  },
+  "observedPlanSha256": "1e59dc98cc09c3f0c3eb133ab0d7e7edd2db1d41200d58a8bb80485076e5a38d",
+  "observedCapture": {
+    "receiptSha256": "918b7a760c5e520e0b70a2337e8712730c92fee7a996b1d233c40bde3229c1a4",
+    "jobs": 17,
+    "meshes": 40,
+    "observations": {
+      "prepass": 0,
+      "geometry": 69
+    }
+  },
+  "traceback": "Traceback (most recent call last):\n  File \"/home/louistrue/build-workers/worker-state/c4-5-combined-observed-inputs-v1/run-observed.py\", line 58, in <module>\n    run('strict-observation-noninterference',['node',str(I/'adapter/compare.mjs'),str(I/'plain-revit-wall.json'),str(O/'observed-revit-wall.json'),str(I/'EXPECTED_DIFF.json'),'pair:wasm'])\n    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/louistrue/build-workers/worker-state/c4-5-combined-observed-inputs-v1/run-observed.py\", line 40, in run\n    r.update(exitCode=p.returncode,finishedAt=time.time(),logSha256=sha(O/(name+'.log')));save();print('END',name,p.returncode,flush=True);assert p.returncode==0,name+' failed'\n                                                                                                                                                  ^^^^^^^^^^^^^^^\nAssertionError: strict-observation-noninterference failed\n",
+  "sourceAfter": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "fixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "allSizeShaMatch": true
+  },
+  "toolsAfter": {
+    "/home/louistrue/.cargo/bin/cargo": {
+      "sha256": "dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71",
+      "bytes": 21113232,
+      "realpath": "/home/louistrue/.cargo/bin/rustup"
+    },
+    "/home/louistrue/.cargo/bin/rustc": {
+      "sha256": "dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71",
+      "bytes": 21113232,
+      "realpath": "/home/louistrue/.cargo/bin/rustup"
+    },
+    "/home/louistrue/.cargo/bin/rustup": {
+      "sha256": "dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71",
+      "bytes": 21113232,
+      "realpath": "/home/louistrue/.cargo/bin/rustup"
+    },
+    "/home/louistrue/.nvm/versions/node/v24.21.0/bin/wasm-pack": {
+      "sha256": "e9610d00ff9d60723833b42a5716d2768e9481defccd0a3ca0b4d1a198ef81eb",
+      "bytes": 135,
+      "realpath": "/home/louistrue/.nvm/versions/node/v24.21.0/lib/node_modules/wasm-pack/run.js"
+    },
+    "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node": {
+      "sha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c",
+      "bytes": 126595440,
+      "realpath": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node"
+    },
+    "/usr/local/bin/git": {
+      "sha256": "a8802bec227b3d962ecbc78a02fec5959e56c909cc225e75222bc731e7b434d1",
+      "bytes": 1120,
+      "realpath": "/usr/local/bin/git"
+    },
+    "/usr/bin/python3": {
+      "sha256": "fa9796cd3a30878e11a2f40372f773d3fcd913fff35e5bee8dd9a036e22e93ab",
+      "bytes": 7477096,
+      "realpath": "/usr/bin/python3.14"
+    }
+  },
+  "productionRuntimeAfter": {
+    "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite.js": {
+      "sha256": "04c85b1449d8fee992f25f0685170ff03fb4360726fa4e4d2a2d180314c169c0",
+      "bytes": 308437,
+      "realpath": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite.js"
+    },
+    "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite_bg.wasm": {
+      "sha256": "321891e446518440821ec081d3e36b0ac911c08018205ce593a062f1754559ee",
+      "bytes": 9769084,
+      "realpath": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite_bg.wasm"
+    },
+    "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite.d.ts": {
+      "sha256": "e2bf5dee93a6277acee5a814f0bab346ec3c270cbc01bc8a1d0ca75d1c2b65cb",
+      "bytes": 167397,
+      "realpath": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite.d.ts"
+    },
+    "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/package.json": {
+      "sha256": "9232de40962f329d8cc52bdee826ea878789839176dd446e4db30e2b6f1c381f",
+      "bytes": 559,
+      "realpath": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/package.json"
+    }
+  },
+  "inputsAfter": {
+    "/home/louistrue/build-workers/worker-state/c4-5-combined-observed-inputs-v1": "d3c41e327cf0257e2332d234faad8e46d786065fd63cadc95002060e6a7bc0be",
+    "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1": "a4a02798eefa582eef833d098387b8ff42de6ec3fed4b188bc6d23b8613112da"
+  },
+  "storageAfter": [
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "freeBytes": 137565646848,
+      "freeInodes": 50671537
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/c4-5-observed-fc-v1",
+      "freeBytes": 137565646848,
+      "freeInodes": 50671537
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1",
+      "freeBytes": 137565646848,
+      "freeInodes": 50671537
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/c4-5-observed-fc-v1/results",
+      "freeBytes": 137565646848,
+      "freeInodes": 50671537
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-combined-observed-inputs-v1",
+      "freeBytes": 137565646848,
+      "freeInodes": 50671537
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1",
+      "freeBytes": 137565646848,
+      "freeInodes": 50671537
+    },
+    {
+      "path": "/home/louistrue/.cargo",
+      "freeBytes": 137565646848,
+      "freeInodes": 50671537
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-observed-preexec-v1",
+      "freeBytes": 137565646848,
+      "freeInodes": 50671537
+    }
+  ],
+  "observedSourceAfter": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "indexTree": "5157e4080c774195bfc08d359ad49b8d32500721",
+    "stagedDiffSha256": "0d4b47ed71d19230bfa75921c41c5868de0f0a4b48e4e59ba5c9d8a2e3a0bae4",
+    "unstagedDiff": "",
+    "newUntracked": ""
+  },
+  "complete": false,
+  "finishedAt": 1792351807.3474429
+}

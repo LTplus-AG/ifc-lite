@@ -1,0 +1,8 @@
+{
+  "base_output_sha256": "1ac321114af134ab7b19f6ca4e73c2aceb727546df5aa0b9ef2acbce1db829bf",
+  "branch_output_sha256": "1ac321114af134ab7b19f6ca4e73c2aceb727546df5aa0b9ef2acbce1db829bf",
+  "cases": 56,
+  "identity": true,
+  "differences": [],
+  "normalization": "C4-0 result_digest normalizes timers and scheduling-dependent point-cache counters only; emitted mesh fields and bootstrap included"
+}

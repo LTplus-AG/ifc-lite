@@ -1,0 +1,42 @@
+{
+  "schema": "c4-0-expected-diff-v1",
+  "state": "INDEPENDENTLY_REVIEWED_TWO_LEAVES_THIS_SAVED_WITNESS_ONLY",
+  "entries": [
+    {
+      "id": "FC_Q0_REViT_ONCE_GEOMETRYMS_41_TO_43",
+      "state": "BOUND_EXACT_VALUES",
+      "fixtureSha256": "65b04e28e8f2d06ac8bcf3bf0d57264f168456d09865c3353fb802a5e66ee0c0",
+      "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "arm": "observation-noninterference-wasm",
+      "path": "/diagnostics/0/phaseMs/geometryMs",
+      "leftSha256": "3d914f9348c9cc0ff8a79716700b9fcd4d2f3e711608004eb8f138bcba7f14d9",
+      "rightSha256": "44cb730c420480a0477b505ae68af508fb90f96cf0ec54c6ad16949dd427f13a",
+      "authority": "Existing EXACT_TIMING_LEAF_NONDETERMINISM template; currentfc rust/wasm-bindings/src/api/gpu_meshes/batch.rs:produce_batch Date::now() difference -> api/pipeline_diagnostics.rs:record_pipeline_batch -> rust/processing/src/pipeline_diagnostics.rs:PipelineDiagnostics::record_batch assigns same elapsed batch_ms to geometry_ms and total_ms. Exact source files and this witness bound in BINDINGS.json.",
+      "condition": "Only this saved plain/observed once-route Revit-wall witness, exact capture hashes and actual scalar41->43. Recognizes elapsed-clock nondeterminism, not causal overhead, speed, regression, noise or performance acceptance. No other field/diagnostic/counter/order/geometry exclusion.",
+      "removeWhen": "Retire on any listed capture, fixture, source, runtime, instrumentation or settings/binding change; no future-run reuse or automatic regeneration."
+    },
+    {
+      "id": "FC_Q0_REViT_ONCE_TOTALMS_41_TO_43",
+      "state": "BOUND_EXACT_VALUES",
+      "fixtureSha256": "65b04e28e8f2d06ac8bcf3bf0d57264f168456d09865c3353fb802a5e66ee0c0",
+      "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "arm": "observation-noninterference-wasm",
+      "path": "/diagnostics/0/phaseMs/totalMs",
+      "leftSha256": "3d914f9348c9cc0ff8a79716700b9fcd4d2f3e711608004eb8f138bcba7f14d9",
+      "rightSha256": "44cb730c420480a0477b505ae68af508fb90f96cf0ec54c6ad16949dd427f13a",
+      "authority": "Existing EXACT_TIMING_LEAF_NONDETERMINISM template; currentfc rust/wasm-bindings/src/api/gpu_meshes/batch.rs:produce_batch Date::now() difference -> api/pipeline_diagnostics.rs:record_pipeline_batch -> rust/processing/src/pipeline_diagnostics.rs:PipelineDiagnostics::record_batch assigns same elapsed batch_ms to geometry_ms and total_ms. Exact source files and this witness bound in BINDINGS.json.",
+      "condition": "Only this saved plain/observed once-route Revit-wall witness, exact capture hashes and actual scalar41->43. Recognizes elapsed-clock nondeterminism, not causal overhead, speed, regression, noise or performance acceptance. No other field/diagnostic/counter/order/geometry exclusion.",
+      "removeWhen": "Retire on any listed capture, fixture, source, runtime, instrumentation or settings/binding change; no future-run reuse or automatic regeneration."
+    }
+  ],
+  "bindingPolicy": "Independent review must bind concrete leaf path, exact fixture SHA, exact same-source commit, arm, both value SHA256, source authority, precise condition and removal trigger. Unknown/missing values remain INCOMPLETE; no wildcard, whole-object/array, broad stats/diagnostics/cache exclusions.",
+  "scope": "Two exact saved timing scalar differences only. Original failed worker/rawcomparison stayFAILED/INCOMPLETE; only an explicitly separately reviewed pure re-comparison may use this proposal. All broader C4-0/performance/publication requirements remain pending.",
+  "independentReviewSha256": "82ed13bdf5a7c65f504feb8e90c5500000c6e3c90279acb4811172f74457a786",
+  "independentReviewTask": "node:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Adelegate-task%3Ac4-fc-q0-two-exact-timing-leaves-independent-disposition-review-20261018-v1",
+  "captureFilePins": {
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-native-combined-runtime-v1/pc-results/combined-plain-revit-wall.json": "097f9c2fb717a6dfb306f664f8ec87da853df88c5abe13d41e2e85205080dc54",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/pc-results/observed-revit-wall.json": "918b7a760c5e520e0b70a2337e8712730c92fee7a996b1d233c40bde3229c1a4"
+  },
+  "performanceAccepted": false,
+  "broaderC4Accepted": false
+}

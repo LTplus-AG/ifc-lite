@@ -1,0 +1,175 @@
+{
+  "schema": "c4-0-case-v1",
+  "state": "BOUND_REVIEWED",
+  "revision": "c45-final",
+  "route": "once",
+  "source": {
+    "commit": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5"
+  },
+  "disabledSite": false,
+  "wasmPath": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite_bg.wasm",
+  "wasmSha256": "321891e446518440821ec081d3e36b0ac911c08018205ce593a062f1754559ee",
+  "gluePath": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite.js",
+  "glueSha256": "04c85b1449d8fee992f25f0685170ff03fb4360726fa4e4d2a2d180314c169c0",
+  "fixturePath": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/revit-wall.ifc",
+  "fixtureSha256": "65b04e28e8f2d06ac8bcf3bf0d57264f168456d09865c3353fb802a5e66ee0c0",
+  "fixtureBytes": 64373,
+  "contract": {
+    "minMeshes": 1,
+    "minTriangles": 1,
+    "requiredMeshIds": [
+      928204
+    ],
+    "allowEmpty": false,
+    "id": "revit-wall",
+    "forbiddenMeshIds": []
+  },
+  "helpersRoot": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/helpers",
+  "helperHashes": {
+    "prepass-routing.js": "0091d4621929752a09923fb3bd73b6281fa135246d128194fea3e33d030421ff",
+    "shard-style-merge.js": "fe3052140e33d589ac2623aa4dfa3baf6d1e2ea02f864d0c416afbea9020535d",
+    "style-finishes.js": "01ffe4969f473942548ecbde6ecba7f09b902eb21ffe3f01f1a80a4e06044f80"
+  },
+  "observation": {
+    "enabled": false,
+    "token": null
+  },
+  "inputs": [
+    {
+      "path": "/home/louistrue/.cargo/bin/cargo",
+      "bytes": 21113232,
+      "sha256": "dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71"
+    },
+    {
+      "path": "/home/louistrue/.cargo/bin/rustc",
+      "bytes": 21113232,
+      "sha256": "dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71"
+    },
+    {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node",
+      "bytes": 126595440,
+      "sha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c"
+    },
+    {
+      "path": "/usr/local/bin/git",
+      "bytes": 1120,
+      "sha256": "a8802bec227b3d962ecbc78a02fec5959e56c909cc225e75222bc731e7b434d1"
+    },
+    {
+      "path": "/usr/bin/python3",
+      "bytes": 7477096,
+      "sha256": "fa9796cd3a30878e11a2f40372f773d3fcd913fff35e5bee8dd9a036e22e93ab"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite.js",
+      "bytes": 308437,
+      "sha256": "04c85b1449d8fee992f25f0685170ff03fb4360726fa4e4d2a2d180314c169c0"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite_bg.wasm",
+      "bytes": 9769084,
+      "sha256": "321891e446518440821ec081d3e36b0ac911c08018205ce593a062f1754559ee"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite.d.ts",
+      "bytes": 167397,
+      "sha256": "e2bf5dee93a6277acee5a814f0bab346ec3c270cbc01bc8a1d0ca75d1c2b65cb"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/package.json",
+      "bytes": 559,
+      "sha256": "9232de40962f329d8cc52bdee826ea878789839176dd446e4db30e2b6f1c381f"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/compare-corpus.py",
+      "bytes": 1389,
+      "sha256": "432df77ecfd129610c1bf371b750ca75957a5245bab9455a9454c64e3d8aa7f0"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/revit-wall.ifc",
+      "bytes": 64373,
+      "sha256": "65b04e28e8f2d06ac8bcf3bf0d57264f168456d09865c3353fb802a5e66ee0c0"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/baseline-native.json",
+      "bytes": 1002127,
+      "sha256": "1ac321114af134ab7b19f6ca4e73c2aceb727546df5aa0b9ef2acbce1db829bf"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/harness.rs",
+      "bytes": 6021,
+      "sha256": "e684299b918efcd87d914759e1aef59fbb5a1e301805db54ae378134bf620af9"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/run-missing-current.py",
+      "bytes": 10229,
+      "sha256": "01cf962c655f0625986f69d03aabf0a99683a09b14d88631492d2f9cae1249e4"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/baseline-receipt.json",
+      "bytes": 2234,
+      "sha256": "07f070bfae5802b4f64f626cc813081e109b3f5592b1f4741dbcbaf07c1529d6"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/INPUTS.json",
+      "bytes": 2293,
+      "sha256": "a4a02798eefa582eef833d098387b8ff42de6ec3fed4b188bc6d23b8613112da"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/baseline-worker.json",
+      "bytes": 3611,
+      "sha256": "6a5fbef8c3c9cacbd82f76276f259d101a1813f9cd83f11daaec8b43d27422a0"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/combined-contract.json",
+      "bytes": 152,
+      "sha256": "d3e577adb9bd947ca91ad67282669643f129257026aee5cbd8f7dde62e4a1d60"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/helpers/style-finishes.js",
+      "bytes": 1487,
+      "sha256": "01ffe4969f473942548ecbde6ecba7f09b902eb21ffe3f01f1a80a4e06044f80"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/helpers/shard-style-merge.js",
+      "bytes": 2370,
+      "sha256": "fe3052140e33d589ac2623aa4dfa3baf6d1e2ea02f864d0c416afbea9020535d"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/helpers/package.json",
+      "bytes": 18,
+      "sha256": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/helpers/prepass-routing.js",
+      "bytes": 4522,
+      "sha256": "0091d4621929752a09923fb3bd73b6281fa135246d128194fea3e33d030421ff"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/adapter/exact-wire.mjs",
+      "bytes": 3804,
+      "sha256": "b96c196a81f7b7ec3506edae7a4cbb4c8e058f3a3fbe2eccf3fc2d6cd5c7ad11"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/adapter/output-reservation.mjs",
+      "bytes": 423,
+      "sha256": "5f4fddfe16ce22cae5288161da5397162bc2bcd36211007fb756b8c402d23ad7"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/adapter/schema.mjs",
+      "bytes": 16084,
+      "sha256": "090d5429704d98605aa5db5d990d3d3adaf40caeb8af08c94e9be7306c7a4b43"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/adapter/public-contract.mjs",
+      "bytes": 3663,
+      "sha256": "75836e62b87a3b5025cef82c9bed6e647335d72bdbef27ed640ac4831b9871a8"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/adapter/capture-wasm.mjs",
+      "bytes": 19825,
+      "sha256": "2223eb6fc6f1b0ed627fa8b6f2c524a8e5a78004f5aa721e4dbb03bc7dffe219"
+    }
+  ]
+}

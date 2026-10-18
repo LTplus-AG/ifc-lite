@@ -1,0 +1,9 @@
+   ifc-lite-core 20.4.0 -> 21.4.0 (major; requires major)
+   ifc-lite-clash 20.4.0 -> 21.4.0 (major; requires patch)
+   ifc-lite-geometry 20.4.0 -> 21.4.0 (major; requires major)
+   ifc-lite-processing 20.4.0 -> 21.4.0 (major; requires major)
+   ifc-lite-landxml 20.4.0 -> 21.4.0 (major; requires major)
+   ifc-lite-export 20.4.0 -> 21.4.0 (major; requires major)
+   ifc-lite-ffi 20.4.0 -> 21.4.0 (major; requires patch)
+   ifc-lite-wasm 20.4.0 -> 21.4.0 (major; requires major)
+✅ 8 of 8 crate(s) compared against crates.io; every Rust API change fits 21.4.0

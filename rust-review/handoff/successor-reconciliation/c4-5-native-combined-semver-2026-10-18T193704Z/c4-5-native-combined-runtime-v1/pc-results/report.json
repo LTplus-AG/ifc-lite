@@ -1,0 +1,503 @@
+{
+  "scope": "current-fc native56 plus ordinary combined Q0 capture only; no performance/observed parity acceptance",
+  "commands": [
+    {
+      "name": "native56",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-processing",
+        "--test",
+        "c4_phase_corpus_receipt",
+        "--",
+        "--nocapture"
+      ],
+      "startedAt": 1792351351.1908221,
+      "exitCode": 0,
+      "logSha256": "31f3062a61740d071a225fb542c7fe7bbcb111ccca6cff6431e5ec4bec222a53",
+      "finishedAt": 1792351418.2696235
+    },
+    {
+      "name": "compare-native56",
+      "argv": [
+        "python3",
+        "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/compare-corpus.py",
+        "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/baseline-native.json",
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-native-combined-runtime-v1/native-corpus.json"
+      ],
+      "startedAt": 1792351418.8629017,
+      "exitCode": 0,
+      "logSha256": "f767e33fb6a0e81d07c7286eec28d05a1d1e66eb926a293ba327f0de530c96a4",
+      "finishedAt": 1792351418.8956099
+    },
+    {
+      "name": "combined-plain-q0",
+      "argv": [
+        "node",
+        "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1/adapter/capture-wasm.mjs",
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-native-combined-runtime-v1/combined-plain-plan.json",
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-native-combined-runtime-v1/combined-plain-revit-wall.json"
+      ],
+      "startedAt": 1792351419.580533,
+      "exitCode": 0,
+      "logSha256": "705d8bfd3622e2f17e5fda732fc1aac5ae608acbe9a47eb35551c4f93656bdc9",
+      "finishedAt": 1792351419.9964168
+    }
+  ],
+  "primaryError": null,
+  "finallyErrors": [],
+  "startedAt": 1792351349.257552,
+  "sourceBefore": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "inputsBefore": {
+    "manifestSha256": "a4a02798eefa582eef833d098387b8ff42de6ec3fed4b188bc6d23b8613112da",
+    "files": 17
+  },
+  "fixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "allSizeShaMatch": true
+  },
+  "storageBefore": [
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "freeBytes": 141409611776,
+      "freeInodes": 50737367
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+      "freeBytes": 141409611776,
+      "freeInodes": 50737367
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-native-combined-runtime-v1",
+      "freeBytes": 141409611776,
+      "freeInodes": 50737367
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1",
+      "freeBytes": 141409611776,
+      "freeInodes": 50737367
+    },
+    {
+      "path": "/home/louistrue/.cargo",
+      "freeBytes": 141409611776,
+      "freeInodes": 50737367
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-preexec-v1",
+      "freeBytes": 141409611776,
+      "freeInodes": 50737367
+    }
+  ],
+  "environment": {
+    "CARGO_HOME": null,
+    "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+    "RUSTUP_HOME": null,
+    "CARGO_BUILD_JOBS": "2",
+    "RAYON_NUM_THREADS": "2",
+    "RUST_TEST_THREADS": "2",
+    "CARGO_PROFILE_DEV_DEBUG": null,
+    "CARGO_PROFILE_TEST_DEBUG": null,
+    "CARGO_INCREMENTAL": null
+  },
+  "toolsBefore": {
+    "/home/louistrue/.cargo/bin/cargo": {
+      "bytes": 21113232,
+      "sha256": "dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71",
+      "realpath": "/home/louistrue/.cargo/bin/rustup"
+    },
+    "/home/louistrue/.cargo/bin/rustc": {
+      "bytes": 21113232,
+      "sha256": "dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71",
+      "realpath": "/home/louistrue/.cargo/bin/rustup"
+    },
+    "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node": {
+      "bytes": 126595440,
+      "sha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c",
+      "realpath": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node"
+    },
+    "/usr/local/bin/git": {
+      "bytes": 1120,
+      "sha256": "a8802bec227b3d962ecbc78a02fec5959e56c909cc225e75222bc731e7b434d1",
+      "realpath": "/usr/local/bin/git"
+    },
+    "/usr/bin/python3": {
+      "bytes": 7477096,
+      "sha256": "fa9796cd3a30878e11a2f40372f773d3fcd913fff35e5bee8dd9a036e22e93ab",
+      "realpath": "/usr/bin/python3.14"
+    }
+  },
+  "runtimeBefore": {
+    "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite.js": {
+      "bytes": 308437,
+      "sha256": "04c85b1449d8fee992f25f0685170ff03fb4360726fa4e4d2a2d180314c169c0",
+      "realpath": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite.js"
+    },
+    "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite_bg.wasm": {
+      "bytes": 9769084,
+      "sha256": "321891e446518440821ec081d3e36b0ac911c08018205ce593a062f1754559ee",
+      "realpath": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite_bg.wasm"
+    },
+    "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite.d.ts": {
+      "bytes": 167397,
+      "sha256": "e2bf5dee93a6277acee5a814f0bab346ec3c270cbc01bc8a1d0ca75d1c2b65cb",
+      "realpath": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite.d.ts"
+    },
+    "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/package.json": {
+      "bytes": 559,
+      "sha256": "9232de40962f329d8cc52bdee826ea878789839176dd446e4db30e2b6f1c381f",
+      "realpath": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/package.json"
+    }
+  },
+  "baselineContext": {
+    "baselineWorkerSha256": "6a5fbef8c3c9cacbd82f76276f259d101a1813f9cd83f11daaec8b43d27422a0",
+    "baselineSource": {
+      "commit": "61f9cb64803b37270fcc0603d97f5f47808212bf",
+      "tree": "6c3b87a4fe38cbf7170deca3d39ca3885b630e7c",
+      "clean": true,
+      "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "toolchainInputs": {
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+        "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+        "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+      }
+    },
+    "currentProducerWorkerSha256": "39e63e7b5dbd08e5d6b612fce3d36e5721dadeb2507a58618789f634cf8dedc6",
+    "baseTools": {
+      "git": {
+        "path": "/usr/bin/git",
+        "exitCode": 0,
+        "version": "git version 2.43.0"
+      },
+      "rustc": {
+        "path": "/home/louistrue/build-workers/toolchains/cargo/bin/rustc",
+        "exitCode": 0,
+        "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+      },
+      "cargo": {
+        "path": "/home/louistrue/build-workers/toolchains/cargo/bin/cargo",
+        "exitCode": 0,
+        "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+      },
+      "node": {
+        "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "exitCode": 0,
+        "version": "v24.22.0"
+      },
+      "pnpm": {
+        "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/pnpm",
+        "exitCode": 0,
+        "version": "10.8.1"
+      }
+    },
+    "currentTools": {
+      "git": {
+        "path": "/usr/local/bin/git",
+        "exitCode": 0,
+        "version": "git version 2.53.0"
+      },
+      "rustc": {
+        "path": "/home/louistrue/.cargo/bin/rustc",
+        "exitCode": 0,
+        "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+      },
+      "cargo": {
+        "path": "/home/louistrue/.cargo/bin/cargo",
+        "exitCode": 0,
+        "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+      },
+      "node": {
+        "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node",
+        "exitCode": 0,
+        "version": "v24.21.0"
+      },
+      "pnpm": {
+        "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/pnpm",
+        "exitCode": 0,
+        "version": "10.8.1"
+      }
+    },
+    "toolchainInputsEqual": true,
+    "limits": "PC vs Pop git/node paths/versions differ; pinned Rust version and source toolchain/lock inputs equal. No historical compiler-byte closure, same-host timing or performance equivalence claimed."
+  },
+  "guards": [
+    {
+      "stage": "before-native",
+      "storage": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 141409599488,
+          "freeInodes": 50737367
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 141409599488,
+          "freeInodes": 50737367
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-native-combined-runtime-v1",
+          "freeBytes": 141409599488,
+          "freeInodes": 50737367
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1",
+          "freeBytes": 141409599488,
+          "freeInodes": 50737367
+        },
+        {
+          "path": "/home/louistrue/.cargo",
+          "freeBytes": 141409599488,
+          "freeInodes": 50737367
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-preexec-v1",
+          "freeBytes": 141409599488,
+          "freeInodes": 50737367
+        }
+      ],
+      "fixtures": {
+        "count": 182,
+        "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+        "allSizeShaMatch": true
+      }
+    },
+    {
+      "stage": "native56",
+      "storage": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 141409579008,
+          "freeInodes": 50737365
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 141409579008,
+          "freeInodes": 50737365
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-native-combined-runtime-v1",
+          "freeBytes": 141409579008,
+          "freeInodes": 50737365
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1",
+          "freeBytes": 141409579008,
+          "freeInodes": 50737365
+        },
+        {
+          "path": "/home/louistrue/.cargo",
+          "freeBytes": 141409579008,
+          "freeInodes": 50737365
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-preexec-v1",
+          "freeBytes": 141409579008,
+          "freeInodes": 50737365
+        }
+      ],
+      "fixtures": {
+        "count": 182,
+        "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+        "allSizeShaMatch": true
+      }
+    },
+    {
+      "stage": "compare-native56",
+      "storage": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 140122423296,
+          "freeInodes": 50736541
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 140122423296,
+          "freeInodes": 50736541
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-native-combined-runtime-v1",
+          "freeBytes": 140122423296,
+          "freeInodes": 50736541
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1",
+          "freeBytes": 140122423296,
+          "freeInodes": 50736541
+        },
+        {
+          "path": "/home/louistrue/.cargo",
+          "freeBytes": 140122423296,
+          "freeInodes": 50736541
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-preexec-v1",
+          "freeBytes": 140122423296,
+          "freeInodes": 50736541
+        }
+      ],
+      "fixtures": {
+        "count": 182,
+        "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+        "allSizeShaMatch": true
+      }
+    },
+    {
+      "stage": "combined-plain-q0",
+      "storage": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 140122398720,
+          "freeInodes": 50736539
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 140122398720,
+          "freeInodes": 50736539
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-native-combined-runtime-v1",
+          "freeBytes": 140122398720,
+          "freeInodes": 50736539
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1",
+          "freeBytes": 140122398720,
+          "freeInodes": 50736539
+        },
+        {
+          "path": "/home/louistrue/.cargo",
+          "freeBytes": 140122398720,
+          "freeInodes": 50736539
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-preexec-v1",
+          "freeBytes": 140122398720,
+          "freeInodes": 50736539
+        }
+      ],
+      "fixtures": {
+        "count": 182,
+        "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+        "allSizeShaMatch": true
+      }
+    }
+  ],
+  "nativeCorpus": {
+    "cases": 56,
+    "sha256": "1ac321114af134ab7b19f6ca4e73c2aceb727546df5aa0b9ef2acbce1db829bf",
+    "baseSha256": "1ac321114af134ab7b19f6ca4e73c2aceb727546df5aa0b9ef2acbce1db829bf",
+    "identity": true
+  },
+  "combinedPlanSha256": "f4b94d5c6913bb8d128b06fa8a32573c7c1a2d9ebf1edbee982ef129275efdb0",
+  "combinedPlain": {
+    "status": "ok",
+    "receiptSha256": "097f9c2fb717a6dfb306f664f8ec87da853df88c5abe13d41e2e85205080dc54",
+    "jobs": 17,
+    "meshes": 40,
+    "triangles": 1771,
+    "scope": "one source, one actual public once arm, one real Revit Q0 fixture; no baseline/cross-route/observer noninterference inference"
+  },
+  "sourceAfter": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "fixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "allSizeShaMatch": true
+  },
+  "toolsAfter": {
+    "/home/louistrue/.cargo/bin/cargo": {
+      "bytes": 21113232,
+      "sha256": "dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71",
+      "realpath": "/home/louistrue/.cargo/bin/rustup"
+    },
+    "/home/louistrue/.cargo/bin/rustc": {
+      "bytes": 21113232,
+      "sha256": "dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71",
+      "realpath": "/home/louistrue/.cargo/bin/rustup"
+    },
+    "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node": {
+      "bytes": 126595440,
+      "sha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c",
+      "realpath": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node"
+    },
+    "/usr/local/bin/git": {
+      "bytes": 1120,
+      "sha256": "a8802bec227b3d962ecbc78a02fec5959e56c909cc225e75222bc731e7b434d1",
+      "realpath": "/usr/local/bin/git"
+    },
+    "/usr/bin/python3": {
+      "bytes": 7477096,
+      "sha256": "fa9796cd3a30878e11a2f40372f773d3fcd913fff35e5bee8dd9a036e22e93ab",
+      "realpath": "/usr/bin/python3.14"
+    }
+  },
+  "runtimeAfter": {
+    "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite.js": {
+      "bytes": 308437,
+      "sha256": "04c85b1449d8fee992f25f0685170ff03fb4360726fa4e4d2a2d180314c169c0",
+      "realpath": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite.js"
+    },
+    "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite_bg.wasm": {
+      "bytes": 9769084,
+      "sha256": "321891e446518440821ec081d3e36b0ac911c08018205ce593a062f1754559ee",
+      "realpath": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite_bg.wasm"
+    },
+    "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite.d.ts": {
+      "bytes": 167397,
+      "sha256": "e2bf5dee93a6277acee5a814f0bab346ec3c270cbc01bc8a1d0ca75d1c2b65cb",
+      "realpath": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite.d.ts"
+    },
+    "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/package.json": {
+      "bytes": 559,
+      "sha256": "9232de40962f329d8cc52bdee826ea878789839176dd446e4db30e2b6f1c381f",
+      "realpath": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/package.json"
+    }
+  },
+  "inputsAfter": {
+    "manifestSha256": "a4a02798eefa582eef833d098387b8ff42de6ec3fed4b188bc6d23b8613112da",
+    "files": 17
+  },
+  "storageAfter": [
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "freeBytes": 140121333760,
+      "freeInodes": 50736528
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+      "freeBytes": 140121333760,
+      "freeInodes": 50736528
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-native-combined-runtime-v1",
+      "freeBytes": 140121333760,
+      "freeInodes": 50736528
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-inputs-v1",
+      "freeBytes": 140121333760,
+      "freeInodes": 50736528
+    },
+    {
+      "path": "/home/louistrue/.cargo",
+      "freeBytes": 140121333760,
+      "freeInodes": 50736528
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/c4-5-native-combined-preexec-v1",
+      "freeBytes": 140121333760,
+      "freeInodes": 50736528
+    }
+  ],
+  "complete": true,
+  "finishedAt": 1792351420.5913794
+}

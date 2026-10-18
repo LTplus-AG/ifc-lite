@@ -1,0 +1,57 @@
+{
+  "id": "8645dc93-0be7-4586-8a02-d8765b4b02f4",
+  "host": {
+    "host": "pop-os",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 32,
+    "availableMemoryBytes": 108587208704,
+    "totalMemoryBytes": 134644969472,
+    "python": "3.12.3",
+    "time": 1792351713.7463603
+  },
+  "cwd": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+  "sourceBefore": {
+    "commit": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "command": [
+    "python3",
+    "-c",
+    "from pathlib import Path\nimport os,json,hashlib,subprocess,shutil,time,traceback\nS=Path.cwd();T=Path(os.environ['CARGO_TARGET_DIR']);O=T/'c4-5-rust-semver-gate-v2';P=Path('/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/tests/models');I=json.loads((S/'tests/models/manifest.json').read_text())['files'];R={'scope':'Missing PC sourceWASM prerequisite, fourfixture identity and official wasm32 manifest only; no previous default/features/contracts or performance repeat','commands':[],'primaryError':None,'finallyErrors':[],'startedAt':time.time()}\nassert os.environ.get('IFC_WORKER_ACTIVE_STATE') and len(I)==182\nO.mkdir(parents=True,exist_ok=False)\ndef sha(p):\n with p.open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()\ndef save():(O/'report.json').write_text(json.dumps(R,indent=2)+'\\n')\ndef source():\n return {k:subprocess.check_output(['git',*a],cwd=S,text=True).strip() for k,a in {'head':['rev-parse','HEAD'],'tree':['rev-parse','HEAD^{tree}'],'status':['status','--porcelain']}.items()}\ndef guard_storage():\n rows=[]\n for p in [S,T,Path(os.environ.get('TMPDIR','/tmp'))]:\n  while not p.exists():p=p.parent\n  x=os.statvfs(p);row={'path':str(p),'freeBytes':x.f_bavail*x.f_frsize,'freeInodes':x.f_favail};assert row['freeBytes']>60*2**30 and row['freeInodes']>1000000,row;rows.append(row)\n R.setdefault('storageGuards',[]).append({'at':time.time(),'volumes':rows});save()\ndef fixtures(root):\n for x in I:\n  q=root/x['path'];assert not q.is_symlink() and q.is_file() and q.stat().st_size==x['size'] and sha(q)==x['sha256'],str(q)\n return {'count':len(I),'manifestSha256':sha(S/'tests/models/manifest.json'),'totalBytes':sum(x['size'] for x in I),'allSizeShaMatch':True}\ndef run(name,argv):\n guard_storage();row={'name':name,'argv':argv,'startedAt':time.time()};R['commands'].append(row);save();print('START',name,flush=True)\n with (O/(name+'.log')).open('xb') as f:r=subprocess.run(argv,cwd=S,env=os.environ,stdout=f,stderr=subprocess.STDOUT)\n row.update(exitCode=r.returncode,finishedAt=time.time(),logSha256=sha(O/(name+'.log')));save();print('END',name,r.returncode,flush=True);assert r.returncode==0,name+' failed'\nimport urllib.request,tarfile,stat\nOLD=Path('/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-rust-semver-gate-v1/tools/cargo-semver-checks')\nSTABLE=Path(os.environ['RUSTUP_HOME'])/'toolchains/stable-x86_64-unknown-linux-gnu'\nPRIVATE=O/'rustup';VIEW=PRIVATE/'toolchains/stable-x86_64-unknown-linux-gnu';TOOLS=O/'tools';CARGO=VIEW/'bin/cargo';ARCHIVE=O/'cargo-1.99.1-x86_64-unknown-linux-gnu.tar.xz'\nR['scope']='Actual repository semver gate; private Cargo1.99.1 over existing stable1.99.1 read-only compiler/library view; retained private checker0.51.0. No system install/changes.'\nR['cargoRelease']={'url':'https://static.rust-lang.org/dist/cargo-1.99.1-x86_64-unknown-linux-gnu.tar.xz','sha256':'53f3521949404d595efb06a55c12c5658d4ed1c75566f33d3d514eaebe70bd8a'}\ndef census():\n rows={}\n for p in [STABLE,*sorted(STABLE.rglob('*'))]:\n  st=p.lstat();row={'mode':stat.S_IMODE(st.st_mode)}\n  if p.is_symlink():row.update(kind='link',target=os.readlink(p))\n  elif p.is_dir():row['kind']='dir'\n  else:assert p.is_file();row.update(kind='file',size=st.st_size,sha256=sha(p))\n  rows[str(p.relative_to(STABLE))]=row\n return rows\ntry:\n R['before']=source();assert R['before']=={'head':'fc3635ae78665e95ea72328b88fc7b28ead148d2','tree':'4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5','status':''};guard_storage();R['fixturesBefore']=fixtures(S/'tests/models');R['producerFixturesBefore']=fixtures(P)\n assert sha(OLD)=='bc9eb06ce04e97d6160c875ffdee1f6e56793e423dea025f344826be03e66829'\n R['sharedStableBefore']=census();save();TOOLS.mkdir();(TOOLS/'cargo-semver-checks').symlink_to(OLD)\n VIEW.mkdir(parents=True);(VIEW/'bin').mkdir()\n for p in STABLE.iterdir():\n  if p.name=='bin':\n   for q in p.iterdir():(VIEW/'bin'/q.name).symlink_to(q)\n  else:(VIEW/p.name).symlink_to(p)\n assert not CARGO.exists()\n with urllib.request.urlopen(R['cargoRelease']['url'],timeout=60) as response,ARCHIVE.open('xb') as f:shutil.copyfileobj(response,f)\n assert sha(ARCHIVE)==R['cargoRelease']['sha256'],'official cargo archive mismatch'\n with tarfile.open(ARCHIVE,'r:xz') as archive:\n  found=[m for m in archive.getmembers() if m.name.endswith('/cargo/bin/cargo')];assert len(found)==1 and found[0].isfile()\n  with archive.extractfile(found[0]) as src,CARGO.open('xb') as dest:shutil.copyfileobj(src,dest)\n CARGO.chmod(0o755);R['privateCargo']={'path':str(CARGO),'sha256':sha(CARGO),'size':CARGO.stat().st_size};R['privateChecker']={'path':str(OLD),'sha256':sha(OLD)};save()\n os.environ.update(RUSTUP_HOME=str(PRIVATE),PATH=str(TOOLS)+os.pathsep+os.environ['PATH'],CARGO_TARGET_DIR=str(O/'stable-target'),CARGO_NET_OFFLINE='false')\n run('stable-cargo-version',['cargo','+stable','--version'])\n run('private-tool-version',['cargo','+stable','semver-checks','--version'])\n run('rust-semver-gate',['node','scripts/check-rust-semver.mjs'])\nexcept BaseException as e:R['primaryError']=repr(e);R['traceback']=traceback.format_exc()\nfinally:\n for name,action in [('sourceAfter',source),('fixturesAfter',lambda:fixtures(S/'tests/models')),('producerFixturesAfter',lambda:fixtures(P)),('sharedStableAfter',census),('storageFinal',guard_storage)]:\n  try:R[name]=action()\n  except BaseException as e:R['finallyErrors'].append({'check':name,'error':repr(e)})\n if 'before' in R and R.get('sourceAfter')!=R['before']:R['finallyErrors'].append({'check':'sourceIdentity','error':'changed'})\n if 'sharedStableBefore' in R and R.get('sharedStableAfter')!=R['sharedStableBefore']:R['finallyErrors'].append({'check':'sharedStableIdentity','error':'changed'})\n if 'privateCargo' in R and sha(CARGO)!=R['privateCargo']['sha256']:R['finallyErrors'].append({'check':'cargoIdentity','error':'changed'})\n if 'privateChecker' in R and sha(OLD)!=R['privateChecker']['sha256']:R['finallyErrors'].append({'check':'checkerIdentity','error':'changed'})\n R['complete']=R['primaryError'] is None and not R['finallyErrors'];R['finishedAt']=time.time();save();print(json.dumps({'report':str(O/'report.json'),'complete':R['complete'],'primaryError':R['primaryError'],'finallyErrors':R['finallyErrors']}),flush=True)\nraise SystemExit(0 if R['complete'] else 1)\n"
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792351713.7461078,
+  "resources": [
+    "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98"
+  ],
+  "state": "failed",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "error": "cancelled while queued",
+  "exitCode": 1,
+  "finishedAt": 1792351820.0993874,
+  "sourceAfter": {
+    "commit": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {}
+}

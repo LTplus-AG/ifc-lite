@@ -1,0 +1,54 @@
+🐍 Found CPython 3.12 at /mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/venv/bin/python
+🔗 Found pyo3 bindings with abi3-py3.9 support
+📡 Using build options features from pyproject.toml
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.46
+   Compiling num-traits v0.2.19
+   Compiling syn v2.0.118
+   Compiling libm v0.2.16
+   Compiling generic-array v0.14.7
+   Compiling target-lexicon v0.13.5
+   Compiling num-integer v0.1.46
+   Compiling crc32fast v1.5.0
+   Compiling serde_core v1.0.228
+   Compiling pyo3-build-config v0.29.0
+   Compiling thiserror v2.0.18
+   Compiling thiserror-impl v2.0.18
+   Compiling futures-macro v0.3.32
+   Compiling i_float v4.1.0
+   Compiling num-bigint v0.4.6
+   Compiling approx v0.5.1
+   Compiling num-complex v0.4.6
+   Compiling futures-util v0.3.32
+   Compiling bnum v0.14.4
+   Compiling serde v1.0.228
+   Compiling simba v0.10.0
+   Compiling num-rational v0.4.2
+   Compiling flate2 v1.1.9
+   Compiling i_shape v4.0.0
+   Compiling serde_derive v1.0.228
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling pyo3-ffi v0.29.0
+   Compiling serde_json v1.0.150
+   Compiling ifc-lite-core v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source/rust/core)
+   Compiling libc v0.2.186
+   Compiling i_overlay v8.1.1
+   Compiling png v0.18.1
+   Compiling digest v0.10.7
+   Compiling nalgebra v0.35.0
+   Compiling earcutr v0.5.0
+   Compiling tracing-attributes v0.1.31
+   Compiling ifc-lite-geometry v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source/rust/geometry)
+   Compiling sha2 v0.10.9
+   Compiling pyo3-macros-backend v0.29.0
+   Compiling tracing v0.1.44
+   Compiling pyo3 v0.29.0
+   Compiling ifc-lite-processing v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source/rust/processing)
+   Compiling pyo3-macros v0.29.0
+   Compiling ifc-lite-export v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source/rust/export)
+   Compiling ifc-lite-python v4.15.0 (/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source/rust/python)
+    Finished `release` profile [optimized] target(s) in 1m 34s
+📦 Including files matching "ifclite_geom.pyi"
+📖 Found type stub file at ifclite_geom.pyi
+📦 Built wheel for abi3 Python ≥ 3.9 to /mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v6/inverse-wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl

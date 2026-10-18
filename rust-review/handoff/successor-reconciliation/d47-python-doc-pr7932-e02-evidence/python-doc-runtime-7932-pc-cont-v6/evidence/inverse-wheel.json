@@ -1,0 +1,28 @@
+{
+  "source": {
+    "head": "8302a20023ffdc14ace79cd95ea620e726551f74",
+    "tree": "79333f1f81fcb93a0766219023f69fe5e6fbc71a",
+    "clean": true,
+    "freeBytes": 855120363520,
+    "freeInodes": 1000000,
+    "sourceHashes": {
+      "rust/python/src/entity_data.rs": "779011e4184bd3b02fe99b031d589ce13358c80bc2212440ffbf1287e668d5b2",
+      "rust/python/ifclite_geom.pyi": "c1c678a6affaf1edb4c24a96760064c07cc3396bca42571a86707f118b9ffd5b",
+      "rust/python/tests/test_entity_data_help.py": "6c95bb098ab73a215fc0683a934e0de4e5481c1f5ce5e5084692781d5b833659",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371",
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+    },
+    "linuxInfrastructureFreeBytes": 5614333952
+  },
+  "wheel": "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v6/inverse-wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl",
+  "wheelSha256": "84da9829ef7604646d02f9fdd019d827b8f97c05aac099211c70ca2d21b7a0b5",
+  "native": {
+    "ifclite_geom/ifclite_geom.abi3.so": "9286494877faf7627e2fd36c49a2d2b7b5bda513f5f8c7f4c869d778e3067ff1"
+  },
+  "stubs": {
+    "ifclite_geom/__init__.pyi": "c1c678a6affaf1edb4c24a96760064c07cc3396bca42571a86707f118b9ffd5b",
+    "ifclite_geom.pyi": "c1c678a6affaf1edb4c24a96760064c07cc3396bca42571a86707f118b9ffd5b"
+  },
+  "profile": "release"
+}

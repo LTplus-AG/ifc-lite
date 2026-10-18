@@ -1,0 +1,15 @@
+{"jobId": "c20dc56b-45e5-4ed1-b35d-bfde058b1666", "receipt": "/home/louistrue/build-workers/worker-state/jobs/c20dc56b-45e5-4ed1-b35d-bfde058b1666/receipt.json"}
+START private-venv
+END private-venv 0
+START tool-versions
+END tool-versions 0
+START no-old-extension
+END no-old-extension 1
+Traceback (most recent call last):
+  File "/home/louistrue/build-workers/incoming/d47-python-doc-runtime-7932-v2/qualify.py", line 88, in <module>
+    phase('no-old-extension',[str(PY),'-c','import importlib.util,sys,pytest;assert importlib.util.find_spec("ifclite_geom") is None;print(sys.executable,sys.version,pytest.__version__)'],cwd=O)
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/louistrue/build-workers/incoming/d47-python-doc-runtime-7932-v2/qualify.py", line 38, in phase
+    assert r.returncode==expected,(name,r.returncode,'expected',expected,str(log))
+           ^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ('no-old-extension', 1, 'expected', 0, '/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v2/evidence/no-old-extension.log')

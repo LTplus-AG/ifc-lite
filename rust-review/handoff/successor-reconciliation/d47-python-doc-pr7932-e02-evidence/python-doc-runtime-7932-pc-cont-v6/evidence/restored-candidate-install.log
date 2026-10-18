@@ -1,0 +1,7 @@
+Processing /mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/candidate-wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl
+Installing collected packages: ifclite-geom
+  Attempting uninstall: ifclite-geom
+    Found existing installation: ifclite-geom 4.15.0
+    Uninstalling ifclite-geom-4.15.0:
+      Successfully uninstalled ifclite-geom-4.15.0
+Successfully installed ifclite-geom-4.15.0

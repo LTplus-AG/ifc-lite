@@ -1,0 +1,30 @@
+{
+  "at": "2026-10-18T22:49:23.225173+00:00",
+  "pr": "https://github.com/LTplus-AG/ifc-lite/pull/7932",
+  "head": "e02f657dd877bc6aaa5864bada3994d940edf1fd",
+  "tree": "ddd69bb2c7b199b00bf573cd9b67091472b1b9cb",
+  "state": "Published, independently checked local evidence; exact-head required CI pending; NOT merged",
+  "worker": "7c01311c-ece3-4f6f-bfae-61da2d36ddc0",
+  "terminal": "COMPLETED0",
+  "sourceUnchanged": true,
+  "quiescent": true,
+  "publicHelpExamples": 9,
+  "positiveTests": 1,
+  "positiveSkips": 0,
+  "inverseAssertionFailures": 1,
+  "inverseErrors": 0,
+  "restoredPositiveTests": 1,
+  "exactWorkspaceClippy": 0,
+  "evidenceManifestFiles": 119,
+  "evidenceManifestSha256": "e0da3f74b0c16327c89143ce4881e7937045977f95532353025d5f657ee67a8f",
+  "evidenceDirectory": "d47-python-doc-pr7932-e02-evidence",
+  "reviewThreadResolved": true,
+  "reviewThread": "https://github.com/LTplus-AG/ifc-lite/pull/7932#discussion_r4309100168",
+  "limits": [
+    "Python documentation/public help correction only",
+    "No projection, field, type declaration or budget implementation changes",
+    "No broader Python suite, WASM or performance qualification",
+    "Not acceptance of D47 shared-set budget or Rust charter; no issue closure"
+  ],
+  "next": "Watch exact-head hosted CI; resolve concrete failure if any; admin squash only once truly ready; no auto merge"
+}

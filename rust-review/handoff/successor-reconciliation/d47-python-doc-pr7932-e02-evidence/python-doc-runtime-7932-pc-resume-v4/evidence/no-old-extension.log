@@ -1,0 +1,15 @@
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v2/venv/lib/python3.12/site-packages/pytest/__init__.py", line 8, in <module>
+    from _pytest._code import ExceptionInfo
+  File "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v2/venv/lib/python3.12/site-packages/_pytest/_code/__init__.py", line 5, in <module>
+    from .code import Code
+  File "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v2/venv/lib/python3.12/site-packages/_pytest/_code/code.py", line 41, in <module>
+    from _pytest._io import TerminalWriter
+  File "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v2/venv/lib/python3.12/site-packages/_pytest/_io/__init__.py", line 3, in <module>
+    from .terminalwriter import get_terminal_width
+  File "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v2/venv/lib/python3.12/site-packages/_pytest/_io/terminalwriter.py", line 19, in <module>
+    from ..compat import assert_never
+  File "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v2/venv/lib/python3.12/site-packages/_pytest/compat.py", line 20, in <module>
+    import py
+ModuleNotFoundError: No module named 'py'

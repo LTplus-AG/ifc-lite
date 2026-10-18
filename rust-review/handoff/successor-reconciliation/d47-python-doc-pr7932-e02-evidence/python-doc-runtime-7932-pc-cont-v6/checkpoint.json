@@ -1,0 +1,15 @@
+{
+  "head": "e02f657dd877bc6aaa5864bada3994d940edf1fd",
+  "tree": "ddd69bb2c7b199b00bf573cd9b67091472b1b9cb",
+  "parent": "58460fe102dc70159601602a1a3b043592dee88f",
+  "publicBase": "779a431a28abac6da3e55ff536d74aee13ddce02",
+  "inverse": "8302a20023ffdc14ace79cd95ea620e726551f74",
+  "inverseTree": "79333f1f81fcb93a0766219023f69fe5e6fbc71a",
+  "inverseProductionExactlyPublicBase": true,
+  "testBytesIdentical": true,
+  "testSha256": "6c95bb098ab73a215fc0683a934e0de4e5481c1f5ce5e5084692781d5b833659",
+  "fixtureSha256": "c1dd98cf2899deaf33c7dc33554c5e8b4d4a9f4a3707785c5da802b1bb4adea2",
+  "bundleSha256": "ab6a2dc9148e2913cc93eeddb9454cbbd1fd602881906eeec9e0909a22d37c76",
+  "referenceFallback": "nonblank Name, then nonblank Identification, then #<id>; source property_value.rs23-35",
+  "scope": "#7932 public compiledhelp doctest; no projection/type/budget implementation change"
+}

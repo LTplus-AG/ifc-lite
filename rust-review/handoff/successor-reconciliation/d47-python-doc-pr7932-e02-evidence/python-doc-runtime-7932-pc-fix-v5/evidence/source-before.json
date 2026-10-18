@@ -1,0 +1,16 @@
+{
+  "head": "e02f657dd877bc6aaa5864bada3994d940edf1fd",
+  "tree": "ddd69bb2c7b199b00bf573cd9b67091472b1b9cb",
+  "clean": true,
+  "freeBytes": 856605409280,
+  "freeInodes": 1000000,
+  "sourceHashes": {
+    "rust/python/src/entity_data.rs": "970bcb67a5bce0ff016975246bdef88d893951e46eab63b30b0f07e5d4f4d64f",
+    "rust/python/ifclite_geom.pyi": "6ff6e7d16276d553b9cc6599ec947e0d45938a3c635bc38263e3532a40d464a0",
+    "rust/python/tests/test_entity_data_help.py": "6c95bb098ab73a215fc0683a934e0de4e5481c1f5ce5e5084692781d5b833659",
+    "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+    "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371",
+    "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+  },
+  "linuxInfrastructureFreeBytes": 7053590528
+}

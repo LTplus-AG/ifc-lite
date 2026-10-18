@@ -1,0 +1,7 @@
+ifclite-geom @ file:///mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/candidate-wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl#sha256=49b70af3c37327c54e4632ba4e838a3f9b0305be2738b491635c928a607af973
+iniconfig==2.3.1
+packaging==26.3
+pip==25.0.1
+pluggy==1.7.0
+Pygments==2.21.0
+pytest==9.1.1

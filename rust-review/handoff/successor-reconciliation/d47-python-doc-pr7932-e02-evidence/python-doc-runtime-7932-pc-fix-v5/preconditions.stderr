@@ -1,0 +1,3 @@
+Traceback (most recent call last):
+  File "<stdin>", line 3, in <module>
+ImportError: cannot import name 'guarded_capacity' from 'worker' (/home/louistrue/build-workers/worker-current/worker.py)

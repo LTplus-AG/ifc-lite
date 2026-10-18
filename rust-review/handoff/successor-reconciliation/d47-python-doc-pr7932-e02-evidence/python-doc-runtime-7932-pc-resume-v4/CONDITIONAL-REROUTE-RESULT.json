@@ -1,0 +1,14 @@
+{
+  "originalPop": "ae2514e1-273f-4dc8-9561-50891ad5edcf",
+  "firstInspection": "queued PID819553 token13082663; no start/pgid/output",
+  "raceOutcome": "original Pop reached terminal failed1 via host disk guard while PC prerequisite reads ran; no cancellation transaction or signal issued",
+  "sourceUnchanged": true,
+  "originalPIDGone": true,
+  "originalRowGone": true,
+  "qualificationCommandsRun": 0,
+  "PCPreconditions": "PASS actual nativeworker guard, source/test/fixture/runtime/tool/Cwritevolume/statewritability",
+  "PCstateFreeBytes": 7775031296,
+  "PCpayloadFreeBytes": 856639434752,
+  "PCnewJobSubmitted": false,
+  "reasonNoReplacement": "Latest conditional switch explicitly requires authoritative cancelled-before-workload terminal; actual terminal is spontaneous guard failure, not cancelled. Preserve it honestly; no inferred retry/cleanup/guard change."
+}

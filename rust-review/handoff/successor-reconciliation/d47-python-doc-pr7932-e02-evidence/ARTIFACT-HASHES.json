@@ -1,0 +1,478 @@
+{
+  "python-doc-runtime-7932-pc-cont-v6/remote-before-push.txt": {
+    "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+    "size": 1
+  },
+  "python-doc-runtime-7932-pc-cont-v6/terminal-quiescence.stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0
+  },
+  "python-doc-runtime-7932-pc-cont-v6/preconditions.stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0
+  },
+  "python-doc-runtime-7932-pc-cont-v6/pr-edit.log": {
+    "sha256": "ebdeda943542b1b8226518521f29ffdc1268a42437073311af4a4b72b74e1183",
+    "size": 48
+  },
+  "python-doc-runtime-7932-pc-cont-v6/FINAL-RESULT.json": {
+    "sha256": "deda7b32246f1323119afefff97203886cb30a2641273acec809f428fe21bf5b",
+    "size": 4476
+  },
+  "python-doc-runtime-7932-pc-cont-v6/request.json": {
+    "sha256": "199f4a378a9fb07da079b5b5d0f3a482ee4a6e8b77cd25422e0c661bd91c196d",
+    "size": 3386
+  },
+  "python-doc-runtime-7932-pc-cont-v6/qualify.py": {
+    "sha256": "f3d79459001a41ca435a97950183aea0bda6614d0d1f43c976cfdd9d7bca6e38",
+    "size": 8558
+  },
+  "python-doc-runtime-7932-pc-cont-v6/resume-controller-output.log": {
+    "sha256": "e2fc3a53700852493e8dd933bc2afd579f6fd179f18f8e27d5d2d99765d52616",
+    "size": 826
+  },
+  "python-doc-runtime-7932-pc-cont-v6/pr-fresh-before.json": {
+    "sha256": "dac9da24246c817348e8a0d0bd5e207d870bf0e27f77c2a937026bebf00b7ffb",
+    "size": 1429
+  },
+  "python-doc-runtime-7932-pc-cont-v6/checkpoint.json": {
+    "sha256": "b65982d225e2dcaf036d585b69b8a802d209d4471ed8740a7475f220cf2f1b24",
+    "size": 888
+  },
+  "python-doc-runtime-7932-pc-cont-v6/FINAL-HANDOFF.md": {
+    "sha256": "6cc36627a794bf3f7d584025c76fc54ed8a53e617c6ce90d0ee40347c1fd7564",
+    "size": 4056
+  },
+  "python-doc-runtime-7932-pc-cont-v6/public-remote-before-push.txt": {
+    "sha256": "98d7b6131bca9d2cdbc68896a425077f88bee673a72d5d417fe71f3e86a27572",
+    "size": 79
+  },
+  "python-doc-runtime-7932-pc-cont-v6/controller.py": {
+    "sha256": "3ddfd845773bdfe985705bc794fc426747e1bbac8bc79ad0146554d28278fc14",
+    "size": 575
+  },
+  "python-doc-runtime-7932-pc-cont-v6/publication-attempt-local-remote.py": {
+    "sha256": "eaf5e1dd4fd2f19ea4c2c65ad5b83572f50e9a8120e05ff890d2a18e2456cc07",
+    "size": 1668
+  },
+  "python-doc-runtime-7932-pc-cont-v6/push.log": {
+    "sha256": "2dbf85ba6cae443d282f02314b53139cc35a6e2abd236c3b95986ad4a8fa9dca",
+    "size": 349
+  },
+  "python-doc-runtime-7932-pc-cont-v6/pr-after-publication.json": {
+    "sha256": "073ff72be7540460a2497b27abdbfb5d4fac086b7642a4d643b10441b57fef06",
+    "size": 2744
+  },
+  "python-doc-runtime-7932-pc-cont-v6/worker-terminal.json": {
+    "sha256": "f47bfed5c80ca91356c5602dbdb62cf0287ee93321aa2ba28af0122fdb977f7b",
+    "size": 3974
+  },
+  "python-doc-runtime-7932-pc-cont-v6/original-worker-output.log": {
+    "sha256": "214d9e264e4768f207954c596b11a86da94c282ed2c6e9d51d7495474f595925",
+    "size": 664
+  },
+  "python-doc-runtime-7932-pc-cont-v6/resume-controller-terminal.json": {
+    "sha256": "fc49aee21b70f7425bedc548a765c7d56e28bd7506263f5800e04c8c040b72b6",
+    "size": 188
+  },
+  "python-doc-runtime-7932-pc-cont-v6/coderabbit-reply-response.json": {
+    "sha256": "5306689759ee906bbd9eb4919f81bd9fb80f1caee66b80acf5513867b77dc9e8",
+    "size": 4171
+  },
+  "python-doc-runtime-7932-pc-cont-v6/pr-body.md": {
+    "sha256": "79d532d9b8e6a1f402beb005876fd06bf3d40c7b5b4c85466d70f2ccf8c4ed00",
+    "size": 2572
+  },
+  "python-doc-runtime-7932-pc-cont-v6/terminal-quiescence.json": {
+    "sha256": "8146c25d19d0c7a65d57a944d4d93a951ba5d82d42514cb479732fc2c3198243",
+    "size": 229
+  },
+  "python-doc-runtime-7932-pc-cont-v6/coderabbit-reply.json": {
+    "sha256": "af286f279486057513527b3e917711d9b5dcd76c2b4e2bb2be8e85d7dca3abec",
+    "size": 591
+  },
+  "python-doc-runtime-7932-pc-cont-v6/preconditions.stdout": {
+    "sha256": "fcf18edc0aea8e54fb9f61710fddb7a8bea984f336576fc5ce960ef4e7672e67",
+    "size": 151
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/candidate-public-help-assertions.json": {
+    "sha256": "5ed7364dc4c8e9b2de9699230160e9bc4da4c35993856b6f4eec7802058b8d7e",
+    "size": 167
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/candidate-runtime.json": {
+    "sha256": "71316278acc7c8defe56ef42d07196a363844e206e78ec1db046c3d1bbb36408",
+    "size": 6616
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/candidate-runtime.log": {
+    "sha256": "e2debf244c1f3e006ec1e0df4e62bdc8aa2beae1899ce7235ab6e625d61bee6b",
+    "size": 6560
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/inverse-public-help.log": {
+    "sha256": "429814e8cfd6bfd295c68ab47255df1d455767e9e126ed378406b40d564185d8",
+    "size": 981
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/inverse-public-help-assertions.json": {
+    "sha256": "38c7e6fc348a715c0b0a3f78f774a0e97dff96f0f9a643f47ae25f31723e3f78",
+    "size": 910
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/candidate-public-help.xml": {
+    "sha256": "326f58738288a4003a6aa15a9c27c2bdeb128e668899dfb0c4626e3fbecaa52c",
+    "size": 358
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/restored-candidate-runtime.json": {
+    "sha256": "71316278acc7c8defe56ef42d07196a363844e206e78ec1db046c3d1bbb36408",
+    "size": 6616
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/candidate-public-help.log": {
+    "sha256": "016a4093788648644b08006f7d1d171ca7639313677f5aa929f004d4a3e52465",
+    "size": 98
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/complete.json": {
+    "sha256": "9cd7c32f51f58fef630afab0372538365d562c4aecf1305fd90ffc90207a02d2",
+    "size": 1171
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/inverse-source-wheel.log": {
+    "sha256": "117e8b27aa59f4aea53875bc4d75fd132878379f71a6ab056298e45aa6946ecb",
+    "size": 2437
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/source-before.json": {
+    "sha256": "270f0b3326ab5ea69ef5ec217af09771bf62903399aa8e149361d46128e8d599",
+    "size": 859
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/restore-candidate.json": {
+    "sha256": "8bb851141875e373f4c9964c2791c636abf4b4b423f66351e8478e73e0c3fb17",
+    "size": 1010
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/final-head-exact-clippy.log": {
+    "sha256": "3420b39b6a840198ad0ba3fd9d12c1f0c448d3b1141dd07b812ac8d43d915f4a",
+    "size": 5963
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/inverse-transition.json": {
+    "sha256": "4dc5b4f8916f1e3154a65da941420b52ffe631db27f8c88c97abddab6fdc9a43",
+    "size": 1010
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/restored-candidate-install.log": {
+    "sha256": "96cb91947ec295afc7aa1e3bb8913cd3ccf579cf747b2ce637eea9cc09235660",
+    "size": 416
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/restored-candidate-runtime.log": {
+    "sha256": "e2debf244c1f3e006ec1e0df4e62bdc8aa2beae1899ce7235ab6e625d61bee6b",
+    "size": 6560
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/inverse-runtime.log": {
+    "sha256": "8f2b28ca76963779cd1b3f2294af43e3774f1cbcafb3197386730c171302096c",
+    "size": 5802
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/tool-inputs.json": {
+    "sha256": "858790c5a0fd1eeb6e6915d507500f6b7fec65c19d70889a9119b7928079a089",
+    "size": 2061
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/source-final.json": {
+    "sha256": "e5663870a4c297daf1a5ec363503fde43f4b071c06bc94669a2d3a4f17bd4a33",
+    "size": 859
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/pip-freeze.log": {
+    "sha256": "2f79ce8c65972653b765e38fd1a0842ffe7be833b4f7dba1bc3255c9de0a2cce",
+    "size": 323
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/restored-candidate-public-help.log": {
+    "sha256": "8989a153a4f265bdf8bf8abfcbf7ce96cf91c69ee66d543244ebf0fc2c9d041d",
+    "size": 98
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/inverse-wheel.json": {
+    "sha256": "c5fbcfc0c770ebf36f34de471a83781bcb7503990626f3851fba850038824a5e",
+    "size": 1502
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/restored-candidate-public-help-assertions.json": {
+    "sha256": "46f0892b54a00bc51e878fd1f818b44ae5f1e7fd287da61eec9318f824b0136d",
+    "size": 167
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/inverse-install.log": {
+    "sha256": "6784db1eaa2de6702787d46294c491999e34a519d4c2010b4d330e2e8e6fcb2f",
+    "size": 414
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/reused-candidate-wheel.json": {
+    "sha256": "6fda15deb15e44e512daf92acd28f6b2a75d9b9d638890185d01c055ab54bf7d",
+    "size": 1504
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/results.json": {
+    "sha256": "692a3c0809235bd0e4c8781f1bc053a765ec916c2ec5d98fd5236a7b1fadfcee",
+    "size": 29255
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/inverse-runtime.json": {
+    "sha256": "5830bfb0f76d97c042af15a44b79fd44c2fcfe63c6b9798b9e0e3492ee3cc0e1",
+    "size": 5858
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/inverse-public-help.xml": {
+    "sha256": "97794a1c6836cb4b96f938ea4f1487b71f8a5d693725b47e4731ae1fe65e558d",
+    "size": 1302
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/restored-candidate-public-help.xml": {
+    "sha256": "98818ff7d8a63cf20e536d7293d05f5293759299440be28d1c2cef3e0340bea9",
+    "size": 358
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/pytest-cache/.gitignore": {
+    "sha256": "3ed731b65d06150c138e2dadb0be0697550888a6b47eb8c45ecc9adba8b8e9bd",
+    "size": 37
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/pytest-cache/CACHEDIR.TAG": {
+    "sha256": "37dc88ef9a0abeddbe81053a6dd8fdfb13afb613045ea1eb4a5c815a74a3bde4",
+    "size": 191
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/pytest-cache/README.md": {
+    "sha256": "73fd6fccdd802c419a6b2d983d6c3173b7da97558ac4b589edec2dfe443db9ad",
+    "size": 302
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/pytest-cache/v/cache/nodeids": {
+    "sha256": "836cdc0f0b236ec62c661a3e9274b5053a569d20958c36e7c6accbfb23c65951",
+    "size": 77
+  },
+  "python-doc-runtime-7932-pc-cont-v6/evidence/pytest-cache/v/cache/lastfailed": {
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+    "size": 2
+  },
+  "python-doc-runtime-7932-pc-fix-v5/preconditions.stderr": {
+    "sha256": "09eae1edff5eb5633c691a50d5d9441c0e8d693f472c4f7d1a20e7d4b93569db",
+    "size": 195
+  },
+  "python-doc-runtime-7932-pc-fix-v5/request.json": {
+    "sha256": "7bc549a4a7c73338729257eae3722c19a55cb18b4ca67e7d01ac8c5d2019892c",
+    "size": 3201
+  },
+  "python-doc-runtime-7932-pc-fix-v5/preconditions-2.stdout": {
+    "sha256": "b551c7f0336d0484817402dbb84543a62917c1a8ef2948db1241c15783f7d506",
+    "size": 740
+  },
+  "python-doc-runtime-7932-pc-fix-v5/preconditions-2.stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0
+  },
+  "python-doc-runtime-7932-pc-fix-v5/qualify.py": {
+    "sha256": "f50342c30bdfb709c6efd900a3611a6365904d666a596cdf79c5e44592f786cc",
+    "size": 9579
+  },
+  "python-doc-runtime-7932-pc-fix-v5/resume-controller-output.log": {
+    "sha256": "f8224513626b15877c3f5de74a043e885e5896647503629932a90745aa126d93",
+    "size": 1424
+  },
+  "python-doc-runtime-7932-pc-fix-v5/task.json": {
+    "sha256": "86a77e0922f1f2b036ac05a3c145aa552ca28753b289350528501c7b8108177d",
+    "size": 284
+  },
+  "python-doc-runtime-7932-pc-fix-v5/checkpoint.json": {
+    "sha256": "b65982d225e2dcaf036d585b69b8a802d209d4471ed8740a7475f220cf2f1b24",
+    "size": 888
+  },
+  "python-doc-runtime-7932-pc-fix-v5/controller.py": {
+    "sha256": "3ddfd845773bdfe985705bc794fc426747e1bbac8bc79ad0146554d28278fc14",
+    "size": 575
+  },
+  "python-doc-runtime-7932-pc-fix-v5/authentic-pytest-closure.json": {
+    "sha256": "a133f90eaddda06cba427874b6990f07f301af034d6eb695b231f668f0011f00",
+    "size": 2254
+  },
+  "python-doc-runtime-7932-pc-fix-v5/closure.stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0
+  },
+  "python-doc-runtime-7932-pc-fix-v5/worker-terminal.json": {
+    "sha256": "61b2baa4bd4138da3936d35fcf851a10c475840082833d84cd7e9bda3b75e40a",
+    "size": 3899
+  },
+  "python-doc-runtime-7932-pc-fix-v5/resume-controller-terminal.json": {
+    "sha256": "21c62f16a00363c6d3330ff384547db2ff533e194711b0c55c163432a39ca9d6",
+    "size": 187
+  },
+  "python-doc-runtime-7932-pc-fix-v5/preconditions.stdout": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0
+  },
+  "python-doc-runtime-7932-pc-fix-v5/evidence/candidate-install.log": {
+    "sha256": "14ad0ba04f57117b51dacee120667c2a5b696d796effa0f34aa1fe3fafa0acc5",
+    "size": 237
+  },
+  "python-doc-runtime-7932-pc-fix-v5/evidence/candidate-runtime.json": {
+    "sha256": "71316278acc7c8defe56ef42d07196a363844e206e78ec1db046c3d1bbb36408",
+    "size": 6616
+  },
+  "python-doc-runtime-7932-pc-fix-v5/evidence/candidate-runtime.log": {
+    "sha256": "e2debf244c1f3e006ec1e0df4e62bdc8aa2beae1899ce7235ab6e625d61bee6b",
+    "size": 6560
+  },
+  "python-doc-runtime-7932-pc-fix-v5/evidence/candidate-wheel.json": {
+    "sha256": "6fda15deb15e44e512daf92acd28f6b2a75d9b9d638890185d01c055ab54bf7d",
+    "size": 1504
+  },
+  "python-doc-runtime-7932-pc-fix-v5/evidence/private-venv.log": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0
+  },
+  "python-doc-runtime-7932-pc-fix-v5/evidence/candidate-source-wheel.log": {
+    "sha256": "aceaa04470f8f1cc99301ef2663583b4f8757f3feeaaa303f95d09e2d3c874d2",
+    "size": 3773
+  },
+  "python-doc-runtime-7932-pc-fix-v5/evidence/readonly-pytest-copy.json": {
+    "sha256": "fcba0c59a9814ec081dc656eb6fd0167948be2808df01f4e07fa211284145867",
+    "size": 46856
+  },
+  "python-doc-runtime-7932-pc-fix-v5/evidence/no-old-extension.log": {
+    "sha256": "f8e5a46ff02b1783c6c1646e328383d1f5648065c8ddee4f3c48d4aba5b5df63",
+    "size": 142
+  },
+  "python-doc-runtime-7932-pc-fix-v5/evidence/candidate-public-help.xml": {
+    "sha256": "89de0baecebd0f0ef232e01f171eece8c68ac103fff4159fc4b3b64a999a454d",
+    "size": 238
+  },
+  "python-doc-runtime-7932-pc-fix-v5/evidence/candidate-public-help.log": {
+    "sha256": "36ce400537f9055b4e7c901fe07b512c32a3eac00fcf20695071901e1e10a158",
+    "size": 4044
+  },
+  "python-doc-runtime-7932-pc-fix-v5/evidence/tool-versions.log": {
+    "sha256": "971f1005e6ea40cc978deb0baba53e0a2b4a1e5f9af63ae5b2276cd93de51d00",
+    "size": 15
+  },
+  "python-doc-runtime-7932-pc-fix-v5/evidence/source-before.json": {
+    "sha256": "4567a463a1231d78cee54d3b537912f8f44034179bd71c7f7b28d70062781e9a",
+    "size": 859
+  },
+  "python-doc-runtime-7932-pc-fix-v5/evidence/tool-inputs.json": {
+    "sha256": "858790c5a0fd1eeb6e6915d507500f6b7fec65c19d70889a9119b7928079a089",
+    "size": 2061
+  },
+  "python-doc-runtime-7932-pc-fix-v5/evidence/source-final.json": {
+    "sha256": "9aef028e42f9b1de4e2331301306f650b5cb310539fd2c095bf99e59ee28d883",
+    "size": 859
+  },
+  "python-doc-runtime-7932-pc-fix-v5/evidence/results.json": {
+    "sha256": "3fb33aa8357a3b3cb32d3fbf49a751319a16f026d5030f9d2c54edd14fc1ce9c",
+    "size": 17737
+  },
+  "python-doc-runtime-7932-pc-fix-v5/evidence/pytest-cache/.gitignore": {
+    "sha256": "3ed731b65d06150c138e2dadb0be0697550888a6b47eb8c45ecc9adba8b8e9bd",
+    "size": 37
+  },
+  "python-doc-runtime-7932-pc-fix-v5/evidence/pytest-cache/CACHEDIR.TAG": {
+    "sha256": "37dc88ef9a0abeddbe81053a6dd8fdfb13afb613045ea1eb4a5c815a74a3bde4",
+    "size": 191
+  },
+  "python-doc-runtime-7932-pc-fix-v5/evidence/pytest-cache/README.md": {
+    "sha256": "73fd6fccdd802c419a6b2d983d6c3173b7da97558ac4b589edec2dfe443db9ad",
+    "size": 302
+  },
+  "python-doc-runtime-7932-pc-fix-v5/evidence/pytest-cache/v/cache/nodeids": {
+    "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "size": 2
+  },
+  "python-doc-runtime-7932-pc-resume-v4/terminal-quiescence.stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0
+  },
+  "python-doc-runtime-7932-pc-resume-v4/pr-before-publication.json": {
+    "sha256": "df1efbfd7c695119e8d36d12c7c6266e66109d0c5d7f21cc326a62ab2a4e8034",
+    "size": 1507
+  },
+  "python-doc-runtime-7932-pc-resume-v4/FINAL-RESULT.json": {
+    "sha256": "1f84cc2a22326014a6fe09555db031af311a028c9c2beb3197eac5a9a95d72bd",
+    "size": 1914
+  },
+  "python-doc-runtime-7932-pc-resume-v4/resume-controller-output.log": {
+    "sha256": "c6e1f37f98579fdcefad74d9666f02c6c693dbecf4f97cf62e2040c4c0eaa8c9",
+    "size": 1203
+  },
+  "python-doc-runtime-7932-pc-resume-v4/resume-session97549-terminal.json": {
+    "sha256": "e2692765222af3ea0b54c1d0beccbc34e2cb64f07a9da09c003aaf2e4afb799f",
+    "size": 147
+  },
+  "python-doc-runtime-7932-pc-resume-v4/FINAL-HANDOFF.md": {
+    "sha256": "1dca78c2bea423799de4d39998bb2d86eb2bd3310f641cdaf0035840e3216fa3",
+    "size": 3018
+  },
+  "python-doc-runtime-7932-pc-resume-v4/worker-receipt-initial.json": {
+    "sha256": "c9c6979544fe345b6bb9faaf26eee9b61f4769a111fb4fce2e4b6c12fee18253",
+    "size": 2144
+  },
+  "python-doc-runtime-7932-pc-resume-v4/pc-reroute-preconditions.stdout": {
+    "sha256": "21de131d2fb024af6fc97dce761c23b541ba81a88019dd898ca34b42cdb00ef4",
+    "size": 1171
+  },
+  "python-doc-runtime-7932-pc-resume-v4/fresh-authorized-preconditions.stderr": {
+    "sha256": "781d42103129c227afb538b4eff48f67b048636877d9a18778cf0bab9deb9ccf",
+    "size": 196
+  },
+  "python-doc-runtime-7932-pc-resume-v4/actual-private-resource-preconditions.stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0
+  },
+  "python-doc-runtime-7932-pc-resume-v4/original-worker-output.log": {
+    "sha256": "9660158b1535dca88489cacac13dafac71873763035834a7a0195e84b10a3dd9",
+    "size": 1041
+  },
+  "python-doc-runtime-7932-pc-resume-v4/resume-task.json": {
+    "sha256": "989d18a09d0b1a9df3b1dea14520df74b31134255f4399862f4d14c94bece8f3",
+    "size": 666
+  },
+  "python-doc-runtime-7932-pc-resume-v4/resume-controller-terminal.json": {
+    "sha256": "501253390a86cdffbbba4a13af490f858f20b2e6c57877b690e75721a5e1f7cc",
+    "size": 180
+  },
+  "python-doc-runtime-7932-pc-resume-v4/fresh-authorized-preconditions.stdout": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0
+  },
+  "python-doc-runtime-7932-pc-resume-v4/terminal-quiescence.json": {
+    "sha256": "e8bfa3ca6a5ecbfe9ed29f24dec7029449562e7e019eddba298ad705959abb0c",
+    "size": 1170
+  },
+  "python-doc-runtime-7932-pc-resume-v4/actual-private-resource-preconditions.stdout": {
+    "sha256": "3232bd0afa6743d7855b32d020121e66271e9ec1ed197da328e7b66e145fc7dd",
+    "size": 917
+  },
+  "python-doc-runtime-7932-pc-resume-v4/CONDITIONAL-REROUTE-RESULT.json": {
+    "sha256": "3ac1318e41034816f08d68cf0f47c41fbc8856332dcd2b1f39ee1636d510c563",
+    "size": 875
+  },
+  "python-doc-runtime-7932-pc-resume-v4/resume-controller.py": {
+    "sha256": "529b30d1ad3ff201d39b28b994e063b5a03164a92f266466e4ebc8f27e8d141b",
+    "size": 609
+  },
+  "python-doc-runtime-7932-pc-resume-v4/pc-reroute-preconditions.stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0
+  },
+  "python-doc-runtime-7932-pc-resume-v4/worker-receipt-terminal.json": {
+    "sha256": "cee8ae98c9feb2a07921f62c410f0329ec79f904a29d235a1c4afa4b624d98d1",
+    "size": 3897
+  },
+  "python-doc-runtime-7932-pc-resume-v4/evidence/private-venv.log": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0
+  },
+  "python-doc-runtime-7932-pc-resume-v4/evidence/readonly-pytest-copy.json": {
+    "sha256": "0f8006c7615992d0fdafb2f6537a775a02563648f5b08035c118141a038de659",
+    "size": 46740
+  },
+  "python-doc-runtime-7932-pc-resume-v4/evidence/no-old-extension.log": {
+    "sha256": "5ca53476e357fc023c5064d6b12d2ceb54e7151d26b23d670ab85884c0fb81a6",
+    "size": 1255
+  },
+  "python-doc-runtime-7932-pc-resume-v4/evidence/tool-versions.log": {
+    "sha256": "971f1005e6ea40cc978deb0baba53e0a2b4a1e5f9af63ae5b2276cd93de51d00",
+    "size": 15
+  },
+  "python-doc-runtime-7932-pc-resume-v4/evidence/source-before.json": {
+    "sha256": "535fb9b90cc069254715a5ee27957249485af8a0cd734789ef80f8d492271888",
+    "size": 859
+  },
+  "python-doc-runtime-7932-pc-resume-v4/evidence/tool-inputs.json": {
+    "sha256": "858790c5a0fd1eeb6e6915d507500f6b7fec65c19d70889a9119b7928079a089",
+    "size": 2061
+  },
+  "python-doc-runtime-7932-pc-resume-v4/evidence/source-final.json": {
+    "sha256": "c43c606f349f3b5cb899a2a1495ed1a5f7dedbfa3afb2fa2666acfa1242c434c",
+    "size": 859
+  },
+  "python-doc-runtime-7932-pc-resume-v4/evidence/results.json": {
+    "sha256": "d0e8766816041e00ac4761d16bc968cd80332b2dc901ef33e1c397726b98afaf",
+    "size": 6976
+  }
+}

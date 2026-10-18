@@ -1,0 +1,48 @@
+{
+  "id": "c20dc56b-45e5-4ed1-b35d-bfde058b1666",
+  "host": {
+    "host": "louistrue-pc",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 24,
+    "availableMemoryBytes": 65199611904,
+    "totalMemoryBytes": 67423580160,
+    "python": "3.14.4",
+    "time": 1792362006.506774
+  },
+  "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source",
+  "sourceBefore": {
+    "commit": "e02f657dd877bc6aaa5864bada3994d940edf1fd",
+    "tree": "ddd69bb2c7b199b00bf573cd9b67091472b1b9cb",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "2e66a76b1f156a98db8ed64088735af2ff66a12a7357b0e977afe08ad2b5c169"
+    }
+  },
+  "command": [
+    "/home/louistrue/build-workers/worker-python",
+    "/home/louistrue/build-workers/incoming/d47-python-doc-runtime-7932-v2/qualify.py"
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792362006.4447868,
+  "resources": [
+    "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source",
+    "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source",
+    "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/target",
+    "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v2",
+    "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v2/tmp",
+    "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v2/evidence",
+    "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v2/venv",
+    "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v2/candidate-wheels",
+    "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v2/inverse-wheels",
+    "/home/louistrue/build-workers/incoming/d47-python-doc-runtime-7932-v2",
+    "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/target"
+  ],
+  "state": "queued",
+  "cpu": 2,
+  "memoryGiB": 8
+}

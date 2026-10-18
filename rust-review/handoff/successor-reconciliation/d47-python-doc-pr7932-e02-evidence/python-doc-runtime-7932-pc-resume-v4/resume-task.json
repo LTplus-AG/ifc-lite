@@ -1,0 +1,12 @@
+{
+  "taskId": "d47-7932-e02-pc-authorized-resume-v4",
+  "requestPath": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/python-doc-runtime-7932-v2/request.json",
+  "requestSha256": "e69da78b73ede634972b19568ed428005e719b3ef92bc6d8cbde40dfbce04ce6",
+  "head": "e02f657dd877bc6aaa5864bada3994d940edf1fd",
+  "sourceRecipeUnchanged": true,
+  "initialOverstrictIdleCheck": "failed before submission, corrected to private resource conflict guard only; old stderr preserved",
+  "originalPCandPopFailuresPreserved": true,
+  "job": "c20dc56b-45e5-4ed1-b35d-bfde058b1666",
+  "originalSession": 97549,
+  "status": "original backend pending"
+}

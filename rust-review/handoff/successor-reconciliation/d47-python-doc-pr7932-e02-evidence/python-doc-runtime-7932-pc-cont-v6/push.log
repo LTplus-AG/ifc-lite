@@ -1,0 +1,6 @@
+remote: 
+remote: GitHub found 11 vulnerabilities on LTplus-AG/ifc-lite's default branch (1 critical, 1 high, 6 moderate, 3 low). To find out more, visit:        
+remote:      https://github.com/LTplus-AG/ifc-lite/security/dependabot        
+remote: 
+To github.com:LTplus-AG/ifc-lite.git
+   58460fe102..e02f657dd8  HEAD -> t3/d47-python-property-doc

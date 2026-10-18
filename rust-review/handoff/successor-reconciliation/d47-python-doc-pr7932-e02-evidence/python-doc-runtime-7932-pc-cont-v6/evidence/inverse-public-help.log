@@ -1,0 +1,18 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+____________________ test_entity_data_public_help_examples _____________________
+
+    def test_entity_data_public_help_examples():
+        example = doctest.DocTestParser().get_doctest(
+            ifclite_geom.entity_data.__doc__,
+            {"ifc_bytes": FIXTURE.read_bytes()},
+            "ifclite_geom.entity_data", None, 0,
+        )
+        # Old compiled help has no examples: it must fail rather than pass 0/0.
+>       assert example.examples, "#7932: public entity_data help needs executable examples"
+E       AssertionError: #7932: public entity_data help needs executable examples
+E       assert []
+E        +  where [] = <DocTest ifclite_geom.entity_data from None:0 (no examples)>.examples
+
+../../d47-python-doc-584-v1/source/rust/python/tests/test_entity_data_help.py:23: AssertionError
+1 failed in 0.79s

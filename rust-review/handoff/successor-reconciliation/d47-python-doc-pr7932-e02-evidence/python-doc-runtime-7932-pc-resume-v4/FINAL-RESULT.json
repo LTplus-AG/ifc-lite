@@ -1,0 +1,49 @@
+{
+  "taskId": "d47-7932-e02-pc-authorized-resume-v4",
+  "job": "c20dc56b-45e5-4ed1-b35d-bfde058b1666",
+  "originalSession": 97549,
+  "state": "FAILED1 setup import; sourceUnchanged/quiescent",
+  "head": "e02f657dd877bc6aaa5864bada3994d940edf1fd",
+  "tree": "ddd69bb2c7b199b00bf573cd9b67091472b1b9cb",
+  "actualStages": [
+    {
+      "name": "private-venv",
+      "command": [
+        "/home/louistrue/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12",
+        "-m",
+        "venv",
+        "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v2/venv"
+      ],
+      "exitCode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "tool-versions",
+      "command": [
+        "/home/louistrue/.cache/uv/archive-v0/nEg85VyatxAAFRki/maturin-1.15.0.data/scripts/maturin",
+        "--version"
+      ],
+      "exitCode": 0,
+      "logSha256": "971f1005e6ea40cc978deb0baba53e0a2b4a1e5f9af63ae5b2276cd93de51d00"
+    },
+    {
+      "name": "no-old-extension",
+      "command": [
+        "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v2/venv/bin/python",
+        "-c",
+        "import importlib.util,sys,pytest;assert importlib.util.find_spec(\"ifclite_geom\") is None;print(sys.executable,sys.version,pytest.__version__)"
+      ],
+      "exitCode": 1,
+      "logSha256": "5ca53476e357fc023c5064d6b12d2ceb54e7151d26b23d670ab85884c0fb81a6"
+    }
+  ],
+  "specificFailure": "ModuleNotFoundError: No module named py while importing pytest; cached py.py exists but was not copied by unchanged prepared recipe",
+  "staleExtensionAssertionReached": false,
+  "candidateWheel": "UNRUN",
+  "positiveDoctest": "UNRUN",
+  "finalHeadClippy": "UNRUN",
+  "inverseWheelAssertionRED": "UNRUN",
+  "candidateSourceFinal": "clean exacte02, inverse never entered",
+  "noAutomaticRepairRetry": true,
+  "noPushOrPRMutation": true
+}

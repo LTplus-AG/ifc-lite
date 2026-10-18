@@ -1,0 +1,25 @@
+{"jobId": "9636d339-c566-4813-9cc6-64d2c7fa3b0d", "receipt": "/home/louistrue/build-workers/worker-state/jobs/9636d339-c566-4813-9cc6-64d2c7fa3b0d/receipt.json"}
+START private-venv
+END private-venv 0
+START tool-versions
+END tool-versions 0
+START no-old-extension
+END no-old-extension 0
+START candidate-source-wheel
+END candidate-source-wheel 0
+START candidate-install
+END candidate-install 0
+START candidate-runtime
+END candidate-runtime 0
+START candidate-public-help
+END candidate-public-help 1
+Traceback (most recent call last):
+  File "/home/louistrue/build-workers/incoming/d47-python-doc-runtime-7932-v5/qualify.py", line 94, in <module>
+    test('candidate-public-help',C['head'],0)
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/louistrue/build-workers/incoming/d47-python-doc-runtime-7932-v5/qualify.py", line 65, in test
+    log=phase(label,[str(PY),'-m','pytest',str(S/'rust/python/tests/test_entity_data_help.py'),'-q','-rs','--junitxml='+str(xml),'-o','cache_dir='+str(O/'pytest-cache')],head,expected,cwd=O)
+  File "/home/louistrue/build-workers/incoming/d47-python-doc-runtime-7932-v5/qualify.py", line 38, in phase
+    assert r.returncode==expected,(name,r.returncode,'expected',expected,str(log))
+           ^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ('candidate-public-help', 1, 'expected', 0, '/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/evidence/candidate-public-help.log')

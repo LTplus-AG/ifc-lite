@@ -1,0 +1,9 @@
+{
+  "taskId": "d47-7932-e02-py-shim-v5",
+  "jobId": "9636d339-c566-4813-9cc6-64d2c7fa3b0d",
+  "session": 5704,
+  "cpu": 2,
+  "memoryGiB": 8,
+  "source": "e02f657dd877bc6aaa5864bada3994d940edf1fd",
+  "driverSha256": "f50342c30bdfb709c6efd900a3611a6365904d666a596cdf79c5e44592f786cc"
+}

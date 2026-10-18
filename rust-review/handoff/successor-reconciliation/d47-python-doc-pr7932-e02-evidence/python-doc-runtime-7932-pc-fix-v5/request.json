@@ -1,0 +1,35 @@
+{
+  "command": [
+    "ssh",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "StrictHostKeyChecking=yes",
+    "-o",
+    "ConnectTimeout=10",
+    "-o",
+    "ForwardAgent=no",
+    "ifc-pc-worker",
+    "env CARGO_TARGET_DIR=/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/target TMPDIR=/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/tmp TMP=/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/tmp TEMP=/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/tmp /home/louistrue/build-workers/worker-python /home/louistrue/build-workers/worker-current/worker.py --state /home/louistrue/build-workers/worker-state run --cwd /mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source --kind ordinary --cpu 2 --memory 8 --queue-timeout 3600 --timeout 10800 --require-clean --commit e02f657dd877bc6aaa5864bada3994d940edf1fd --resource /mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source --resource /mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/target --resource /mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5 --resource /mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/tmp --resource /mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/evidence --resource /mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/venv --resource /mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/candidate-wheels --resource /mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/inverse-wheels --resource /home/louistrue/build-workers/incoming/d47-python-doc-runtime-7932-v5 -- /home/louistrue/build-workers/worker-python /home/louistrue/build-workers/incoming/d47-python-doc-runtime-7932-v5/qualify.py"
+  ],
+  "head": "e02f657dd877bc6aaa5864bada3994d940edf1fd",
+  "inverse": "8302a20023ffdc14ace79cd95ea620e726551f74",
+  "cpu": 2,
+  "memoryGiB": 8,
+  "kind": "ordinary",
+  "resources": [
+    "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/source",
+    "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-584-v1/target",
+    "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5",
+    "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/tmp",
+    "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/evidence",
+    "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/venv",
+    "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/candidate-wheels",
+    "/mnt/c/Users/louistrue/ifc-private/d47-python-doc-runtime-7932-v5/inverse-wheels",
+    "/home/louistrue/build-workers/incoming/d47-python-doc-runtime-7932-v5"
+  ],
+  "driverSha256": "f50342c30bdfb709c6efd900a3611a6365904d666a596cdf79c5e44592f786cc",
+  "scope": "ONE fresh candidate wheel, cache-reused exact-production inverse wheel for causal public-help assertionRED, final-head exactworkspaceclippy; no fullsuite/old68/WASM/perf; restorecandidate",
+  "sourceTransition": "candidate -> declared exact779 production inverse with same test -> candidate restored; original job beforeafter source identity unchanged",
+  "repair": "Copy authentic pytest RECORD regular file py.py; new own venv/evidence; final restored positive"
+}

@@ -1,0 +1,186 @@
+{
+  "head": "86adb595c0c6429e1a0c423b962f9b153a1d2d0a",
+  "inspection_only": true,
+  "files": [
+    {
+      "path": "docs/architecture/geometry-platform-scene-qualification.md",
+      "sha256": "46268835d055482312c12a3de940eb9d28e84d41267fc643a0bb27671864de95"
+    },
+    {
+      "path": "packages/ifcx/src/index.ts",
+      "sha256": "692c128c935c550a0e36303e6d4ea0c20920b4585ad1dc2b337d0445cece2730"
+    },
+    {
+      "path": "packages/ifcx/src/geometry-extractor.ts",
+      "sha256": "05d92f767feb1cf7da69d09fd715f70c30ad32cc241d99d6cc3bbba4417bea16"
+    },
+    {
+      "path": "packages/ifcx/src/geometry-normals.ts",
+      "sha256": "3df8fb95542ef9fca8eb7a1865a7b326f0d792db231448001ae0b13ecb27cd52"
+    },
+    {
+      "path": "packages/ifcx/src/pointcloud-extractor.ts",
+      "sha256": "4edabb5b455eb3403c7e55c2f8098e0f9174e26b6a3e69279056381db492a20f"
+    },
+    {
+      "path": "packages/ifcx/src/traversal.ts",
+      "sha256": "a64c90bd7f01f6ae82bda3a9a2e11da8a333b9edc6a9fe0d1d4a0725690bbe30"
+    },
+    {
+      "path": "packages/ifcx/src/types.ts",
+      "sha256": "b7c208d7c83749576078a85ef1fac464718fc9ab7ea8a54486d05044d2e35247"
+    },
+    {
+      "path": "packages/ifcx/src/parse-result.ts",
+      "sha256": "794657c427fc2b5a38795b327cb32ca43973806da261bc3992833d7840cfe7e4"
+    },
+    {
+      "path": "packages/ifcx/src/composition.ts",
+      "sha256": "204c6ba6db652d690231f2f4bd59b6f447d200c2c0664411158c142d68ba3df7"
+    },
+    {
+      "path": "packages/ifcx/src/federated-composition.ts",
+      "sha256": "845a92ef29b6dd8b8b1551c4705876075eb9d1b1f3b2772c15d18bd562240d2f"
+    },
+    {
+      "path": "packages/ifcx/src/appearance-wire.ts",
+      "sha256": "7e6a4dbf3f3d51bd39985dc732d370707d99ac57a3544189458c73ae68166ce4"
+    },
+    {
+      "path": "packages/ifcx/src/georeference.ts",
+      "sha256": "a8567fd780523d594555a92e686eb72e1968119cfaa4a5650efd326834f077b0"
+    },
+    {
+      "path": "packages/ifcx/package.json",
+      "sha256": "c249a1c1c8a54ee786fcdb4d536ae21e9e6b2a3f34c997f59ea44d3581875ceb"
+    },
+    {
+      "path": "packages/pointcloud/src/from-ifcx-attributes.ts",
+      "sha256": "4a432e4b5d40d024f0416978e123bc96432c8d647d7fa8727a4a85454b6b4782"
+    },
+    {
+      "path": "packages/pointcloud/src/formats/ifcx-points.ts",
+      "sha256": "cf49df18dd90889984824423280305860593d9c6951103b7ac06dafd3fec7d59"
+    },
+    {
+      "path": "apps/viewer/src/hooks/useIfcLoader.ts",
+      "sha256": "7e7c3f44c63edb95618f90d6252af5af51633ae22c64a98d55158eac6b6cc0de"
+    },
+    {
+      "path": "apps/viewer/src/hooks/useIfcFederation.ts",
+      "sha256": "77aeb34f1b301739bf368ba2c970b6aa341341dc075bdf8a56ec00f3c1e0d870"
+    },
+    {
+      "path": "apps/viewer/src/hooks/ingest/viewerModelIngest.ts",
+      "sha256": "a0fb3e814926999de822d5f21abd55269c3cb938436243b7260410575d958db7"
+    },
+    {
+      "path": "packages/parser/src/index.ts",
+      "sha256": "db1ed72ceeafceca7d99b610e0068b2aaabfc42e6475d324d1082f0cf823e065"
+    },
+    {
+      "path": "packages/geometry/src/ifc-lite-bridge.ts",
+      "sha256": "5736bb8164b47ed540e72cd91d24a731c6c3035946d8a67066d962c5f4841bd2"
+    },
+    {
+      "path": "rust/geometry/src/document/mod.rs",
+      "sha256": "831eff5202bc0609c5d00f3c87ceaddc01f21468fe62e9cbeae38d43e0ddcc60"
+    },
+    {
+      "path": "rust/geometry/src/document/types.rs",
+      "sha256": "d2d80917800ecae70e789b88d692bb8c84e567e0cc00269e6316ba94b714eea4"
+    },
+    {
+      "path": "rust/geometry/src/document/validation.rs",
+      "sha256": "f88204766a12aa180621ac3dfeb820d7f0ca3bf95089dd34ccdf5ef2b5bfced9"
+    },
+    {
+      "path": "rust/export/src/usd.rs",
+      "sha256": "4f80456a40511ad068d2ba1c72b18fde8be168394310ad0f5abba33b384a375e"
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/export_data.rs",
+      "sha256": "045fe7e15d075f32cf764a2c86b3b24e25992a1627f3871da5cc6262770da2e3"
+    },
+    {
+      "path": "tools/smlib-evaluation/scene-comparison/ifcx/README.md",
+      "sha256": "3f527cccd178697ac647d4cf295738ab3eac77c36073b58e7c89befebc9b90b3"
+    },
+    {
+      "path": "tools/smlib-evaluation/scene-comparison/ifcx/importer.mjs",
+      "sha256": "f8c77e9f0137ae4c3da05306fdd61fc3df7fd2cd9d2db8b6f1e4329512c771c7"
+    },
+    {
+      "path": "tools/smlib-evaluation/scene-comparison/ifcx/importer-receipt.json",
+      "sha256": "42410892769bf11c329518f1f398441a9809fbc6f08d1134660fc251db3a97fa"
+    },
+    {
+      "path": "tools/smlib-evaluation/scene-comparison/ifcx/fixtures.json",
+      "sha256": "f142b02eba742df4d3c7287faf08edb07181851ee2656c0115a0f8feba14e0c5"
+    }
+  ],
+  "ifcx_fixture_presence": [
+    {
+      "path": "ifc5/Domestic_Hot_Water_domestic-hot-water-add-pbr.ifcx",
+      "present": true,
+      "catalogued_sha256": "dc6faaa57d36a3412f6579fa34e67a185d9d411a759776f2c277606e4586551b"
+    },
+    {
+      "path": "ifc5/Domestic_Hot_Water_domestic-hot-water.ifcx",
+      "present": true,
+      "catalogued_sha256": "34d2ae7e5e3137d9de50279fd815b0df819b3420b98b0c17af33e51a594f7d85"
+    },
+    {
+      "path": "ifc5/Georeferencing_georeferenced-bridge-deck.ifcx",
+      "present": true,
+      "catalogued_sha256": "0404e502489513a853d1bd01987b4df31ee2e6605452f1107e30c63276911743"
+    },
+    {
+      "path": "ifc5/Hello_Wall_hello-wall-add-fire-rating-30.ifcx",
+      "present": true,
+      "catalogued_sha256": "2e709858155ab091fb6e2784c8d0f79811722f88b9740767eb17c5d5a529a71b"
+    },
+    {
+      "path": "ifc5/Hello_Wall_hello-wall.ifcx",
+      "present": true,
+      "catalogued_sha256": "4294362c0bd17f27af2c53e68c3f2bffd86f2d71f1b1b5d08b3d86fc8de6332b"
+    },
+    {
+      "path": "ifc5/PCERT-Sample-Scene_Building-Architecture.ifcx",
+      "present": true,
+      "catalogued_sha256": "2e56206ee3042f37677d44d958534dbf4ec0ac2d43fca065ae80c4b4c0ef2161"
+    },
+    {
+      "path": "ifc5/Point_Cloud_point-cloud.ifcx",
+      "present": true,
+      "catalogued_sha256": "edd2c096371af0af6f9a4b521c582c737f47f47480e9de3e184da3ef19b38977"
+    }
+  ],
+  "additional_inspected_files": [
+    {
+      "path": "packages/ifcx/src/entity-extractor.ts",
+      "sha256": "05eeda73aebb2cdbffebb759ada4ee533b55fd3084b259ea85c6a68cd4027475"
+    },
+    {
+      "path": "packages/ifcx/src/georeference.test.ts",
+      "sha256": "e0374a4ef6766cd0f60dfa711245eae32be7f23c15a198750e050d37e9d6b1d7"
+    },
+    {
+      "path": "packages/ifcx/src/appearance-wire.test.ts",
+      "sha256": "f0102b845e2cda18b682c87e0a7648f2dc7dfcd54ceee42cc759bfa8ca5dc9c8"
+    },
+    {
+      "path": "packages/ifcx/scripts/verify-dist-hello-wall.mjs",
+      "sha256": "127a0bf868b70bc80228461cd0e0b0a3a7e5b289d8815975c1d70c1d359433ac"
+    },
+    {
+      "path": "packages/pointcloud/src/formats/pcd.ts",
+      "sha256": "8c50220d97e27c83bd68d4c08e7161a709e0bb5c4ecc1b01b34368794d41bae1"
+    },
+    {
+      "path": "packages/geometry/package.json",
+      "sha256": "3e06e9283fd844ecca350620775239080726a48365d6d483346eaf4b5d8bd747"
+    }
+  ],
+  "report_sha256": "6b5aabe47d9ed0646f1ed0f58e1ef4e6b8724a145c7f41b238a0df662e0c8eed"
+}

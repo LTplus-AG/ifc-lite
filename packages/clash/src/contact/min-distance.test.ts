@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest';
 import { PairHeap, minDistanceBetweenMeshes } from './min-distance.js';
 import { triangleAt, triangleCount } from './triangle.js';
-import { triTriDistance } from '../math/triangle-distance.js';
+import { closestPtPointTriangle, triTriDistance } from '../math/triangle-distance.js';
 import { triTriIntersect } from '../math/triangle-intersect.js';
 import type { Mesh } from './types.js';
 
@@ -262,13 +262,42 @@ describe('minDistanceBetweenMeshes', () => {
   });
 
   it('names the triangles the witness points lie on', () => {
-    const a = box('a', [0, 0, 0], [1, 1, 1]);
-    const b = box('b', [3, 0, 0], [1, 1, 1]);
-    const r = minDistanceBetweenMeshes(a, b);
-    expect(r!.triangleA).toBeGreaterThanOrEqual(0);
-    expect(r!.triangleA).toBeLessThan(triangleCount(a));
-    expect(r!.triangleB).toBeGreaterThanOrEqual(0);
-    expect(r!.triangleB).toBeLessThan(triangleCount(b));
+    // A range check on the indices passes for a constant 0, so require that
+    // each named triangle actually contains its witness point.
+    //
+    // A small box faces the middle of a large box's +X (or -X) face, clear of
+    // the large face's diagonal. The witness point on the LARGE mesh is then
+    // interior to one triangle, so its index is unambiguous; the witness on
+    // the small mesh may sit on an edge it shares with other triangles. Run
+    // both ways round so each mesh is the large one once.
+    const big = (origin: [number, number, number]) => box('big', origin, [1, 1, 1]);
+    const small = (origin: [number, number, number]) => box('small', origin, [1, 0.2, 0.2]);
+    const distanceToTriangle = (mesh: Mesh, index: number, p: readonly [number, number, number]) => {
+      const t = triangleAt(mesh, index);
+      const mutable = (v: readonly [number, number, number]): [number, number, number] => [v[0], v[1], v[2]];
+      const q = closestPtPointTriangle(mutable(p), mutable(t.v0), mutable(t.v1), mutable(t.v2));
+      return Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]);
+    };
+
+    const bigFirst = minDistanceBetweenMeshes(big([0, 0, 0]), small([3, 0.1, 0.4]))!;
+    const a1 = big([0, 0, 0]);
+    const b1 = small([3, 0.1, 0.4]);
+    expect(bigFirst.distance).toBeCloseTo(2, 9);
+    expect(bigFirst.triangleA).toBeLessThan(triangleCount(a1));
+    expect(bigFirst.triangleB).toBeLessThan(triangleCount(b1));
+    expect(distanceToTriangle(a1, bigFirst.triangleA, bigFirst.pointA)).toBeCloseTo(0, 9);
+    expect(distanceToTriangle(b1, bigFirst.triangleB, bigFirst.pointB)).toBeCloseTo(0, 9);
+    for (const v of Object.values(triangleAt(a1, bigFirst.triangleA))) expect(v[0]).toBe(1); // big +X face
+
+    const smallFirst = minDistanceBetweenMeshes(small([0, 0.1, 0.4]), big([3, 0, 0]))!;
+    const a2 = small([0, 0.1, 0.4]);
+    const b2 = big([3, 0, 0]);
+    expect(smallFirst.distance).toBeCloseTo(2, 9);
+    expect(smallFirst.triangleA).toBeLessThan(triangleCount(a2));
+    expect(smallFirst.triangleB).toBeLessThan(triangleCount(b2));
+    expect(distanceToTriangle(a2, smallFirst.triangleA, smallFirst.pointA)).toBeCloseTo(0, 9);
+    expect(distanceToTriangle(b2, smallFirst.triangleB, smallFirst.pointB)).toBeCloseTo(0, 9);
+    for (const v of Object.values(triangleAt(b2, smallFirst.triangleB))) expect(v[0]).toBe(3); // big -X face
   });
 
   it('returns null for a mesh with no triangles, rather than 0', () => {

@@ -1,0 +1,65 @@
+{
+  "source": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "state": "COMPLETED0",
+  "worker": "a0104415-1795-47e6-923d-84007ba2eab3",
+  "sourceUnchanged": true,
+  "commands": [
+    {
+      "name": "topology-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "csg_topology_gate",
+        "--no-fail-fast"
+      ],
+      "startedAt": 1792350165.1895604,
+      "exitCode": 0,
+      "finishedAt": 1792350406.078915,
+      "logSha256": "cb8ab6687936eb137ede7222daa47e81ce6c99234c209ad8eda1fd6bca3850bc"
+    },
+    {
+      "name": "combined-gates-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "csg_manifold_gate,csg_topology_gate",
+        "--no-fail-fast"
+      ],
+      "startedAt": 1792350406.079569,
+      "exitCode": 0,
+      "finishedAt": 1792350648.32872,
+      "logSha256": "0ad20423f4fcfb5c5485bb4162ad6b6146c4b22d7b48913f7d82ea2682593676"
+    }
+  ],
+  "countsByConfiguration": {
+    "topology-tests": {
+      "passed": 2033,
+      "failed": 0,
+      "ignored": 34
+    },
+    "combined-gates-tests": {
+      "passed": 2035,
+      "failed": 0,
+      "ignored": 35
+    }
+  },
+  "finallyErrors": [],
+  "fixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "originalProfileUnchanged": true,
+  "scope": "Only final2 configs; prior13 original failed-capacity receipt preserved, no fullC4/benchmark acceptance"
+}

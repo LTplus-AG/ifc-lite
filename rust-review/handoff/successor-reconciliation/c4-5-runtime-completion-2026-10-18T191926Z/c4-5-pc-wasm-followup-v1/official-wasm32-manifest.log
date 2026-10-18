@@ -1,0 +1,138 @@
+[INFO]: 🎯  Checking for the Wasm target...
+   Compiling compiler_builtins v0.1.160 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins)
+   Compiling core v0.0.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+   Compiling libc v0.2.177
+   Compiling object v0.37.3
+   Compiling std v0.0.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std)
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.45
+   Compiling wasm-bindgen-shared v0.2.126
+   Compiling libm v0.2.16
+   Compiling autocfg v1.5.0
+   Compiling rustversion v1.0.22
+   Compiling crossbeam-utils v0.8.21
+   Compiling serde_core v1.0.229
+   Compiling num-traits v0.2.19
+   Compiling syn v2.0.117
+   Compiling syn v3.0.2
+   Compiling serde v1.0.229
+   Compiling version_check v0.9.5
+   Compiling wasm-bindgen v0.2.126
+   Compiling crc32fast v1.5.0
+   Compiling matrixmultiply v0.3.10
+   Compiling generic-array v0.14.7
+   Compiling rayon-core v1.13.0
+   Compiling thiserror v2.0.21
+   Compiling zmij v1.0.21
+   Compiling bnum v0.14.4
+   Compiling serde_json v1.0.151
+   Compiling futures-macro v0.3.34
+   Compiling serde_derive v1.0.229
+   Compiling thiserror-impl v2.0.21
+   Compiling wasm-bindgen-macro-support v0.2.126
+   Compiling tracing-attributes v0.1.31
+   Compiling wasm-bindgen-test-macro v0.3.76
+   Compiling async-trait v0.1.89
+   Compiling wasm-bindgen-macro v0.2.126
+   Compiling rustc-std-workspace-core v1.99.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/rustc-std-workspace-core)
+   Compiling alloc v0.0.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc)
+   Compiling unwind v0.0.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/unwind)
+   Compiling memchr v2.7.6
+   Compiling adler2 v2.0.1
+   Compiling cfg-if v1.0.1
+   Compiling dlmalloc v0.2.10
+   Compiling panic_abort v0.0.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/panic_abort)
+   Compiling rustc-demangle v0.1.26
+   Compiling rustc-std-workspace-alloc v1.99.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/rustc-std-workspace-alloc)
+   Compiling panic_unwind v0.0.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/panic_unwind)
+   Compiling gimli v0.32.0
+   Compiling std_detect v0.1.5 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std_detect)
+   Compiling hashbrown v0.15.5
+   Compiling miniz_oxide v0.8.9
+   Compiling addr2line v0.25.0
+   Compiling rustc-std-workspace-std v1.99.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/rustc-std-workspace-std)
+   Compiling rustc-literal-escaper v0.0.5
+   Compiling getopts v0.2.24
+   Compiling proc_macro v0.0.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/proc_macro)
+   Compiling test v0.0.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/test)
+   Compiling cfg-if v1.0.4
+   Compiling once_cell v1.21.4
+   Compiling unicode-ident v1.0.24
+   Compiling pin-project-lite v0.2.17
+   Compiling futures-core v0.3.34
+   Compiling slab v0.4.12
+   Compiling futures-task v0.3.34
+   Compiling typenum v1.20.0
+   Compiling futures-util v0.3.34
+   Compiling simd-adler32 v0.3.9
+   Compiling memchr v2.8.3
+   Compiling bytemuck v1.25.2
+   Compiling either v1.15.0
+   Compiling miniz_oxide v0.9.1
+   Compiling num-integer v0.1.46
+   Compiling crossbeam-epoch v0.9.18
+   Compiling approx v0.5.1
+   Compiling num-complex v0.4.6
+   Compiling crossbeam-deque v0.8.6
+   Compiling num-bigint v0.4.6
+   Compiling wide v1.4.0
+   Compiling js-sys v0.3.103
+   Compiling i_float v4.1.0
+   Compiling rawpointer v0.2.1
+   Compiling minimal-lexical v0.2.1
+   Compiling i_shape v4.0.0
+   Compiling nom v7.1.3
+   Compiling flate2 v1.1.10
+   Compiling itertools v0.14.0
+   Compiling simba v0.10.0
+   Compiling num-rational v0.4.2
+   Compiling fdeflate v0.3.7
+   Compiling bitflags v2.11.1
+   Compiling i_key_sort v0.11.0
+   Compiling twox-hash v2.1.5
+   Compiling fast-float2 v0.2.4
+   Compiling i_tree v0.19.0
+   Compiling rustc-hash v2.1.3
+   Compiling png v0.18.1
+   Compiling ifc-lite-core v21.4.0 (/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/rust/core)
+   Compiling i_overlay v8.1.2
+   Compiling earcutr v0.5.0
+   Compiling itoa v1.0.18
+   Compiling geometry-predicates v0.3.0
+   Compiling nalgebra v0.35.0
+   Compiling jpeg-decoder v0.3.2
+   Compiling smallvec v1.16.2
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling digest v0.10.7
+   Compiling tracing-core v0.1.36
+   Compiling sha2 v0.10.9
+   Compiling tracing v0.1.44
+   Compiling quick-xml v0.42.0
+   Compiling console_error_panic_hook v0.1.7
+   Compiling cast v0.3.0
+   Compiling ifc-lite-clash v21.4.0 (/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/rust/clash)
+   Compiling wasm-bindgen-test-shared v0.2.126
+   Compiling nu-ansi-term v0.50.3
+   Compiling oorandom v11.1.5
+   Compiling web-sys v0.3.103
+   Compiling wasm-bindgen-futures v0.4.76
+   Compiling serde-wasm-bindgen v0.6.5
+   Compiling wasm-bindgen-test v0.3.76
+   Compiling wasm_sync v0.1.2
+   Compiling rayon v1.12.0
+   Compiling ifc-lite-geometry v21.4.0 (/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/rust/geometry)
+   Compiling ifc-lite-processing v21.4.0 (/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/rust/processing)
+   Compiling ifc-lite-landxml v21.4.0 (/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/rust/landxml)
+   Compiling ifc-lite-testkit v21.4.0 (/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/rust/testkit)
+   Compiling ifc-lite-export v21.4.0 (/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/rust/export)
+   Compiling ifc-lite-wasm v21.4.0 (/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/rust/wasm-bindings)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 51.69s
+[INFO]: ⬇️  Installing wasm-bindgen...
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.07s
+     Running tests/mesh_determinism.rs (/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/wasm32-unknown-unknown/debug/deps/mesh_determinism-fe99917f904dd531.wasm)
+running 1 test
+test mesh_output_matches_pinned_manifest_on_wasm32 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 filtered out; finished in 0.11s
+

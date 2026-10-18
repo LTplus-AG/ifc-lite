@@ -1,0 +1,131 @@
+{
+  "at": "2026-10-18T19:19:26.148926+00:00",
+  "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+  "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+  "scope": "Actual final two original-profile native configurations, PC source-WASM/fourfixtureidentity/pinned WASM determinism, Pop current-runtime CPU productionworker smoke; prior default5485/clippy/PyRust6/wheel49/fourrefs retained in prior checkpoint. No full C4-0 or performance acceptance.",
+  "actualResult": {
+    "nativeFeatureMatrix": "All15configured commands0 across retained original runs; failed capacity prefix remainsFAILED1",
+    "topologyOnly": "2033PASS/34ignored",
+    "combinedGates": "2035PASS/35ignored",
+    "pcWasm": "All6commands0;4fixtureidentity,1wasm32manifesttest",
+    "popBrowser": "All2commands0;actual worker init/ready, runtime-bound, no models/GPU/timing"
+  },
+  "remaining": [
+    "Currentfc56native corpus executing existingC4agent",
+    "C4-0 actualcombined/observed comparisons",
+    "published release semver compatibility gate/tool prerequisite",
+    "final integration/performance/publication gates"
+  ],
+  "files": [
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-5-pc-final-two-v1/verified-result.json",
+      "size": 1703,
+      "sha256": "e8169e9a3815d001543bf8fdce094c60b7932a1461df2eea566fef2e3e4bfaed"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-5-pc-final-two-v1/report.json",
+      "size": 4593,
+      "sha256": "e92d846dbfae775ec6acdfe32f1dd2d0a96a2868b9ef808d3931150d36b536a5"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-5-pc-final-two-v1/original-worker-terminal.json",
+      "size": 7093,
+      "sha256": "adcd4b9ca028e5c68a5b0d18f89a2228bae90e2179ffb81603991c000923fb36"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-5-pc-final-two-v1/topology-tests.log",
+      "size": 217924,
+      "sha256": "cb8ab6687936eb137ede7222daa47e81ce6c99234c209ad8eda1fd6bca3850bc"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-5-pc-final-two-v1/combined-gates-tests.log",
+      "size": 218251,
+      "sha256": "0ad20423f4fcfb5c5485bb4162ad6b6146c4b22d7b48913f7d82ea2682593676"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-5-pc-wasm-followup-v1/verified-result.json",
+      "size": 3836,
+      "sha256": "477cce869888a266d67a924d26d7fe595128c255d5d03280cf3c41e366f4677c"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-5-pc-wasm-followup-v1/report.json",
+      "size": 10125,
+      "sha256": "731bd0f11cf0b725c29d7073628a645869ccc858a0564b2f60cd17e781cf32a5"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-5-pc-wasm-followup-v1/worker-terminal.json",
+      "size": 7965,
+      "sha256": "39e63e7b5dbd08e5d6b612fce3d36e5721dadeb2507a58618789f634cf8dedc6"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-5-pc-wasm-followup-v1/official-source-wasm.log",
+      "size": 7002,
+      "sha256": "154a1f1c743aee634c049e7e2e4b04acb79df5e477d953efae9f7ccb3301d8b9"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-5-pc-wasm-followup-v1/committed-types-equal.log",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-5-pc-wasm-followup-v1/compare-current-corpus.log",
+      "size": 635,
+      "sha256": "ff96ee8c34218d992c5f5fb1ba27d65736134802d7307748d23240463f66f0f5"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-5-pc-wasm-followup-v1/official-wasm32-manifest.log",
+      "size": 7208,
+      "sha256": "0407afa9fe666126eac627f23e21d8d769571f34e080c372cdab8a29b5c5c718"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-5-production-worker-smoke-v1/verified-result.json",
+      "size": 4575,
+      "sha256": "bd7ed1689916f3a5ad84626f76b446cfe5b0e2a973d1d3688afe366cb36df1ce"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-5-production-worker-smoke-v1/worker-terminal.json",
+      "size": 8673,
+      "sha256": "546bf64fa3e7196fe5849228000b69739976575b79c17612d1d2e673e394f02b"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-5-production-worker-smoke-v1/browser-smoke.json",
+      "size": 1949,
+      "sha256": "54b3a4def5f47816d0d2bca614d491a25e5ebe302c7e27c0a3dfb9629872c842"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-5-production-worker-smoke-v1/build-current-browser-harness.log",
+      "size": 743,
+      "sha256": "529f6f5d33709094fcfa029828f372522010d3ab5dc694d6f07eb0edf64de01d"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-5-production-worker-smoke-v1/production-worker-smoke.log",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-owned-incremental-archive-v3/verified-result.json",
+      "size": 1061,
+      "sha256": "ff74261d5a5ab7a5129aaf08f913f2f653dcd38c86325ec4e5e0200b2f472b6b"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-owned-failed-build-cache-retirement-v1/verified-result.json",
+      "size": 1442,
+      "sha256": "096faf05df044f66208d256214ca05b6cf3442b22d7c91054f60917170be19a0"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-owned-failed-build-cache-retirement-v2/verified-result.json",
+      "size": 1640,
+      "sha256": "08426a87e7ef87f9c6ba7bbbd2eb84846c595cafaac70d87ca3e4162882c012a"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-completion-2026-10-18T191926Z/c4-5-runtime-context-comparison.json",
+      "size": 889,
+      "sha256": "f507ea5ac760a033eac408f143eadf8818a75a63be27619d5132830594c50824"
+    }
+  ],
+  "acceptedPrograms": 0,
+  "uncheckedAcceptanceConditions": 33,
+  "closuresThisUpdate": 0,
+  "benchmark": "7911 remainsunrun; freshPop80C/84.4%idle/foreignordinaryjob refusedprecondition, noqueue",
+  "runtimeContext": "PC/Pop wasm binary SHA differ; eachproof binds actualruntime,glue/types exact; no crosshost byteidentityclaim"
+}

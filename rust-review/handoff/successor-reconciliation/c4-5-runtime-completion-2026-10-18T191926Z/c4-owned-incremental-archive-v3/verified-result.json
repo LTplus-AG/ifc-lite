@@ -1,0 +1,25 @@
+{
+  "scope": "Only own stopped incremental caches; binaries/logs/source/models untouched; archive storage only, no execution on DrvFS",
+  "rows": [
+    {
+      "target": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+      "source": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/debug/incremental",
+      "originalJob": "61f55986-6ed9-4b08-9f05-dd776a43089b",
+      "uid": 1000,
+      "dev": 2096,
+      "inode": 2647643,
+      "nativeFreeBefore": 67794108416,
+      "windowsFreeBefore": 835834544128,
+      "archive": "/mnt/c/ifc-lite-bc9e57fa-owned-incremental-archives-v3/78b11116ea7b14ab1d98-incremental.tar.gz",
+      "archiveBytes": 7451182355,
+      "archiveSha256": "4c92385770bc7ee80b26b76ed697e50e85fc62636c8d9b7c4ba9e5c6bc11040d",
+      "gnuTarFullCompare": 0,
+      "nativeCacheRemovedAfterVerifiedArchive": true,
+      "nativeFreeAfter": 85622566912,
+      "windowsFreeAfter": 828970450944
+    }
+  ],
+  "startedAt": 1792349673.0052524,
+  "complete": true,
+  "finishedAt": 1792349995.6136692
+}

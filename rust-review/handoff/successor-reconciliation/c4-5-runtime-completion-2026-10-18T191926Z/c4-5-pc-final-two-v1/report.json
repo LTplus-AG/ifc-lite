@@ -1,0 +1,159 @@
+{
+  "scope": "Remaining topology and combined gate configurations only; original compiler/profile flags; no previous test repetition or performance",
+  "commands": [
+    {
+      "name": "topology-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "csg_topology_gate",
+        "--no-fail-fast"
+      ],
+      "startedAt": 1792350165.1895604,
+      "exitCode": 0,
+      "finishedAt": 1792350406.078915,
+      "logSha256": "cb8ab6687936eb137ede7222daa47e81ce6c99234c209ad8eda1fd6bca3850bc"
+    },
+    {
+      "name": "combined-gates-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "csg_manifold_gate,csg_topology_gate",
+        "--no-fail-fast"
+      ],
+      "startedAt": 1792350406.079569,
+      "exitCode": 0,
+      "finishedAt": 1792350648.32872,
+      "logSha256": "0ad20423f4fcfb5c5485bb4162ad6b6146c4b22d7b48913f7d82ea2682593676"
+    }
+  ],
+  "primaryError": null,
+  "finallyErrors": [],
+  "startedAt": 1792350162.0302155,
+  "before": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "storageGuards": [
+    {
+      "at": 1792350162.0556405,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 134883848192,
+          "freeInodes": 50763047
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 134883848192,
+          "freeInodes": 50763047
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 134883848192,
+          "freeInodes": 50763047
+        }
+      ]
+    },
+    {
+      "at": 1792350165.1894495,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 134883528704,
+          "freeInodes": 50763045
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 134883528704,
+          "freeInodes": 50763045
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 134883524608,
+          "freeInodes": 50763045
+        }
+      ]
+    },
+    {
+      "at": 1792350406.0793529,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 165276086272,
+          "freeInodes": 50757683
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 165276086272,
+          "freeInodes": 50757683
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 165276086272,
+          "freeInodes": 50757683
+        }
+      ]
+    },
+    {
+      "at": 1792350649.4767132,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 145782603776,
+          "freeInodes": 50742812
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 145782603776,
+          "freeInodes": 50742812
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 145782603776,
+          "freeInodes": 50742812
+        }
+      ]
+    }
+  ],
+  "producerFixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "fixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "sourceAfter": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "fixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "producerFixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "storageFinal": null,
+  "complete": true,
+  "finishedAt": 1792350649.4769068
+}

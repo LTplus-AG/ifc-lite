@@ -1,0 +1,10 @@
+{
+  "base_receipt_sha256": "1ad7e4ed784e2fa7c2eee2b9027595159fc540aeeceec1be35e89c6c8a71f5ef",
+  "branch_receipt_sha256": "d7075f2c576c75939919653f336b2ed75d71155f12eb09e29163955cdcfefe82",
+  "base_runtime": "cb15170c3177f6016df72572653d096a8def0100f08d71407760358992ec2ffa",
+  "branch_runtime": "321891e446518440821ec081d3e36b0ac911c08018205ce593a062f1754559ee",
+  "fixtures": 4,
+  "identity": true,
+  "differences": [],
+  "normalization": "diagnostic phaseMs/facetedBrepMs timers and pointCacheHits/Misses only; raw receipts preserved. Map keys sorted; array/event/mesh order retained. Typed-array payloads SHA256 over raw bytes."
+}

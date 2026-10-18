@@ -1,0 +1,29 @@
+{
+  "scope": "Rebuildable DEBUG Cargo output of own failed292 workspace only; no source/fixture/log/receipt/qualifiedperf artifact removal",
+  "priorJob": "65185739-4372-4adf-984c-98c36e101ed7",
+  "target": "/home/louistrue/build-workers/worker-state/targets/d24eceff42b85f011062",
+  "source": {
+    "commit": "292b4b61f629a0e1efe188686a1496bda0c2aefe",
+    "tree": "66c940df8558453f78f602134c31934f64c80420",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "nativeFreeBefore": 85603471360,
+  "evidenceBefore": {
+    "report.json": "1c29b53210f0005dfa21cce4c33955ee5379b71582f885265f6b6d4113f519ff",
+    "workspace.log": "61712c38b0434f95f8b997d675e8faf6fa53dc99660fc0f09596f4540177e29e"
+  },
+  "at": 1792350073.283971,
+  "evidenceAfter": {
+    "report.json": "1c29b53210f0005dfa21cce4c33955ee5379b71582f885265f6b6d4113f519ff",
+    "workspace.log": "61712c38b0434f95f8b997d675e8faf6fa53dc99660fc0f09596f4540177e29e"
+  },
+  "nativeFreeAfter": 134970826752,
+  "complete": true
+}

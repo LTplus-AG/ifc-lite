@@ -1,0 +1,47 @@
+{
+  "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+  "runtimeSHA256": "15231c83a183b0de59de4f5896dddc52824ce2db9aa8cc3e43232087f610f14b",
+  "scope": "CPU module/COOP+COEP/import + one production worker init/ready; no models/timing/memory/pool/GPU verdict",
+  "primaryError": null,
+  "cleanupErrors": [],
+  "pageErrors": [],
+  "console": [
+    {
+      "type": "warning",
+      "text": "using deprecated parameters for the initialization function; pass a single object instead"
+    }
+  ],
+  "browserVersion": "156.0.8078.4",
+  "chromiumSHA256": "377a9fc07b495c3b8d0ab8ec1fdfd153641759f9756fea34d8dfce4de82f5025",
+  "modulesReady": true,
+  "worker": {
+    "readyMessage": {
+      "type": "ready"
+    },
+    "workerCount": 1,
+    "terminatedInFinally": true
+  },
+  "served": [
+    {
+      "url": "/",
+      "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-production-worker-smoke-v1/browser/dist/index.html",
+      "sha256": "25a226feb9c01f210cbc4ed978d5c4ccd7658e441ff3e21e250f946335f7ff80"
+    },
+    {
+      "url": "/assets/index-B6PGjUFG.js",
+      "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-production-worker-smoke-v1/browser/dist/assets/index-B6PGjUFG.js",
+      "sha256": "2c74ab2dbdef7a854fbf73edc813554bf4c491eed759cec2163d209de13dc835"
+    },
+    {
+      "url": "/assets/geometry.worker-BPBmD6SN.js",
+      "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-production-worker-smoke-v1/browser/dist/assets/geometry.worker-BPBmD6SN.js",
+      "sha256": "417106de115789f38701cb5fd4586839985e0c44a3332ce2c05a85ac43e6fffa"
+    },
+    {
+      "url": "/engine.wasm",
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/packages/wasm/pkg/ifc-lite_bg.wasm",
+      "sha256": "15231c83a183b0de59de4f5896dddc52824ce2db9aa8cc3e43232087f610f14b"
+    }
+  ],
+  "complete": true
+}

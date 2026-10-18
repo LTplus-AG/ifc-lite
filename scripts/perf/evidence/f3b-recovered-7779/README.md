@@ -1,6 +1,6 @@
 # Recovered F3b measurement evidence (#7779)
 
-Verdict: **mixed; acceptance and publication held**. These results measure the
+Verdict: **mixed; performance acceptance and merging held**. These results measure the
 private ordered stack/currentmain integration, not the raw support heads.
 
 - BASE: `a24eb895f577b3047141080b9f40cc87b1f41dad`, tree `72e55b7527020361d0452caa5c064c424d987234`.

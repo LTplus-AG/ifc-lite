@@ -14,6 +14,9 @@ import { DEVICE_LOST_SIGNAL, watchGpuDeviceLoss } from './gpu-device-loss.js';
 import type * as Probe from './reporter-6729.browser.js';
 import type { CameraViewpoint } from '../../apps/viewer/src/store/types.js';
 
+// Retain the reporter recorder's established framing in combined suites.
+test.use({ viewport: { width: 1600, height: 1000 } });
+
 const FIXTURE_SHA = 'cc6fbbf632c2779891e485c3297d437b1d8555448934b8c8b5a3cce5326553a2';
 const FIXTURE_BYTES = 22701;
 const fixture = resolve(process.env.REPORTER_6729_IFC ?? 'test-results/reporter-6729-fixture/out_visible.ifc');

@@ -15,7 +15,7 @@ export default defineConfig({
   reporter: [['list'], ['json', { outputFile: '../../test-results/projection-depth-results.json' }]],
   use: {
     channel: process.env.DEPTH_WITNESS_CHROME ? undefined : 'chrome', headless: true,
-    viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1, locale: 'en-US',
+    viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1, locale: 'en-US',
     launchOptions: {
       executablePath: process.env.DEPTH_WITNESS_CHROME,
       args: process.env.DEPTH_WITNESS_GPU === 'native'

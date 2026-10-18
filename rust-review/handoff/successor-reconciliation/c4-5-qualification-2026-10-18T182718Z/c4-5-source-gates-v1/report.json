@@ -1,0 +1,72 @@
+{
+  "commands": [
+    {
+      "name": "check-rust-api-surface.mjs",
+      "argv": [
+        "node",
+        "scripts/check-rust-api-surface.mjs"
+      ],
+      "startedAt": 1792347179.8588395,
+      "exitCode": 0,
+      "finishedAt": 1792347180.552175,
+      "logSha256": "3f25e44a7650a4ae57030d0f0ac5cf2e571e689674b3f2ae37ce0aca3b1d0987"
+    },
+    {
+      "name": "check-refwalk-guards.mjs",
+      "argv": [
+        "node",
+        "scripts/check-refwalk-guards.mjs"
+      ],
+      "startedAt": 1792347180.552527,
+      "exitCode": 0,
+      "finishedAt": 1792347181.682141,
+      "logSha256": "7be1a42bff43b274e4ab896ff4c3553ae8795074cafd230a60d68b62a59a1687"
+    },
+    {
+      "name": "check-test-wiring.mjs",
+      "argv": [
+        "node",
+        "scripts/check-test-wiring.mjs"
+      ],
+      "startedAt": 1792347181.6823854,
+      "exitCode": 0,
+      "finishedAt": 1792347182.1890826,
+      "logSha256": "3370f2fdc0825a60c44251b747df1ac3754ceb180d2b87a8e669e76b682388c1"
+    },
+    {
+      "name": "check-rust-source-text-assertions.mjs",
+      "argv": [
+        "node",
+        "scripts/check-rust-source-text-assertions.mjs"
+      ],
+      "startedAt": 1792347182.189439,
+      "exitCode": 0,
+      "finishedAt": 1792347182.651026,
+      "logSha256": "c49fd60721e40bbe27a124b8f97df9dc4e621137429567327068f95269c96fbf"
+    },
+    {
+      "name": "check-float-sort-comparators.mjs",
+      "argv": [
+        "node",
+        "scripts/check-float-sort-comparators.mjs"
+      ],
+      "startedAt": 1792347182.6513953,
+      "exitCode": 0,
+      "finishedAt": 1792347183.172848,
+      "logSha256": "b263f3bb5fa923d154d7b5585be5093da0e232602ee991abf5cf34e80443d458"
+    }
+  ],
+  "primaryError": null,
+  "finallyErrors": [],
+  "before": {
+    "head": "475bebb830ad3a1c06409755bab640c122a5f9e6",
+    "tree": "0d22d5051a9d4187cacc3fd119e78fd7032c057d",
+    "status": ""
+  },
+  "after": {
+    "head": "475bebb830ad3a1c06409755bab640c122a5f9e6",
+    "tree": "0d22d5051a9d4187cacc3fd119e78fd7032c057d",
+    "status": ""
+  },
+  "complete": true
+}

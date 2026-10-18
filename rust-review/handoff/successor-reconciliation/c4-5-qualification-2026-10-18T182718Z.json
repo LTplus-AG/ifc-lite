@@ -1,0 +1,106 @@
+{
+  "at": "2026-10-18T18:27:18.745505+00:00",
+  "scope": "C4-5 actual source fixes and qualification in progress; full issue7782 and charter obligations remain open",
+  "source": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5"
+  },
+  "actualResults": {
+    "source889Workspace": "5485PASS/0FAIL/47ignored; ClippyFAILdeadcode",
+    "source865Wasm": "16rootTurbo build0cache;212PASS/0FAIL/1namedSKIP +7snapPASS",
+    "finalSourceFc": "PC exactClippy0/workspaceRUNNING; Pop consumerjobsubmitted"
+  },
+  "activeJobs": {
+    "C4_5_runtimeQualification_v5": {
+      "state": "RUNNING: exactClippy0, workspaceactive on finalfc",
+      "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+      "host": "pc-wsl",
+      "cpu": 6,
+      "memoryGiB": 16,
+      "originalSession": 82654,
+      "request": "auto-511e0de87b1143afb32ba33134b29270",
+      "evidence": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-required-qualification-v5",
+      "actualCorrection": "Remove duplicate deprecation attribute, trim extra EOF blank. No API/algorithm/assertion change versus d1c.",
+      "worker": "cc3c5f75-72f8-43e9-9a64-f66da852d4ac",
+      "remoteTarget": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98"
+    },
+    "C4_5_finalConsumers": {
+      "state": "SUBMITTED once; finalfc exact source, no producer edits",
+      "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+      "host": "pop-os",
+      "cpu": 4,
+      "memoryGiB": 12,
+      "originalSession": 49589,
+      "request": "auto-90d32f1b39644bb6bb3e5aa60b78b397",
+      "scope": "Actual CI=1 sourceWASM/rootTurbo contracts/snap/gates then excludedPyO3/detachedCSG/own new wheel49pytest; reused authenticated runtime/read-only seed recipes",
+      "evidence": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-final-consumers-v1",
+      "old865ResultsPreserved": true
+    }
+  },
+  "files": [
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-qualification-2026-10-18T182718Z/c4-5-required-qualification-v2/failed-run-summary.json",
+      "sha256": "16bf616b4bed67eb402cc74395510927062fb163ec0558311c0ec3a7f7581a43",
+      "size": 1520
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-qualification-2026-10-18T182718Z/c4-5-required-qualification-v2/report.json",
+      "sha256": "a2bc66f766b6f76436592fa74499852bbf82697d14cde47a645e178560be96d3",
+      "size": 5152
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-qualification-2026-10-18T182718Z/c4-5-required-qualification-v3/report.json",
+      "sha256": "2c9338db603b9fea4ee33a99ed50735c946090ec4be76167159b1f3bcd13cd32",
+      "size": 4271
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-qualification-2026-10-18T182718Z/c4-5-required-qualification-v4/report.json",
+      "sha256": "6145dda305e34f65dcf15ace3fdb4727e89182039936d3514ff3e05b42c6165b",
+      "size": 4268
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-qualification-2026-10-18T182718Z/c4-5-wasm-contract-v1/original-worker-terminal.json",
+      "sha256": "2f8f84af2862fe4dba081ee561569489e19f914d444b52f699b2c5c16ff283b1",
+      "size": 3442
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-qualification-2026-10-18T182718Z/c4-5-wasm-contract-v2/verified-result.json",
+      "sha256": "a9196e87dce092898931c6c07ba57c7d76f9526e7acce96928f88b4db7b72530",
+      "size": 2606
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-qualification-2026-10-18T182718Z/c4-5-wasm-contract-v2/report.json",
+      "sha256": "bdbdb3714283dc7aa0f9a5046ec5c0a6ba50a0a7f44b4af4314fcf0a5d99bb40",
+      "size": 6381
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-qualification-2026-10-18T182718Z/c4-5-wasm-contract-v2/original-worker-terminal.json",
+      "sha256": "20e0260e34b95f43742982353c32080b4548abf949ef5c2eb6d69bce9b1726d5",
+      "size": 7254
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-qualification-2026-10-18T182718Z/c4-5-source-gates-v1/report.json",
+      "sha256": "80ce3ea94ae4e56585f74b8d1de10b72c7d652cfa82bd66bd7d32d349018520e",
+      "size": 2044
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-qualification-2026-10-18T182718Z/c4-5-required-qualification-v5/parent-authorization.json",
+      "sha256": "8da6416be127863b908b6a2bce6df9d243c059fab7a96e2676d3c7513387ef5b",
+      "size": 4415
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-qualification-2026-10-18T182718Z/c4-5-final-consumers-v1/parent-authorization.json",
+      "sha256": "f09c780ae3f6d9c812f6372e0c8787aec91871ffc7421c041b554ef1bbe7f980",
+      "size": 8790
+    }
+  ],
+  "acceptance": {
+    "acceptedPrograms": 0,
+    "uncheckedConditions": 33,
+    "newIssueClosure": false,
+    "performance": "UNRUN, no timing request queued",
+    "publication": "No production PR/push/merge; archive evidence only"
+  }
+}

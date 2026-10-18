@@ -1,0 +1,27 @@
+{
+  "at": 1792347804.7544188,
+  "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+  "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+  "scope": "Remove one duplicated allow(deprecated) attribute discovered by all-target Clippy; no assertion/API/algorithm change",
+  "driverSha256": "7c03d1e08f6f37ce0d0273a1e0a49ba9750eab4c07b5a8b98ac53628be7f35f1",
+  "argv": [
+    "/home/louistrue/build-workers/ifc-fleet",
+    "run",
+    "--host",
+    "pc-wsl",
+    "--route",
+    "fleet",
+    "--kind",
+    "ordinary",
+    "--cpu",
+    "6",
+    "--memory",
+    "16",
+    "--cwd",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-required-qualification-v1/source",
+    "--",
+    "python3",
+    "-c",
+    "from pathlib import Path\nimport os,json,hashlib,subprocess,shutil,time,traceback\nS=Path.cwd();T=Path(os.environ['CARGO_TARGET_DIR']);O=T/'c4-5-required-qualification-v5';P=Path('/home/louistrue/build-workers/worker-state/checkouts/b437a0f918cdf8c58a46f6abb50b5fb346f96848/tests/models');I=json.loads((S/'tests/models/manifest.json').read_text())['files'];R={'scope':'Existing C4-5 exact reviewed source; PC ordinary workspace and exactClippy only; no performance','commands':[],'primaryError':None,'finallyErrors':[],'startedAt':time.time()}\nassert os.environ.get('IFC_WORKER_ACTIVE_STATE') and len(I)==182\nO.mkdir(parents=True,exist_ok=False)\ndef sha(p):\n with p.open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()\ndef save():(O/'report.json').write_text(json.dumps(R,indent=2)+'\\n')\ndef source():\n return {k:subprocess.check_output(['git',*a],cwd=S,text=True).strip() for k,a in {'head':['rev-parse','HEAD'],'tree':['rev-parse','HEAD^{tree}'],'status':['status','--porcelain']}.items()}\ndef guard_storage():\n rows=[]\n for p in [S,T,Path(os.environ.get('TMPDIR','/tmp'))]:\n  while not p.exists():p=p.parent\n  x=os.statvfs(p);row={'path':str(p),'freeBytes':x.f_bavail*x.f_frsize,'freeInodes':x.f_favail};assert row['freeBytes']>60*2**30 and row['freeInodes']>1000000,row;rows.append(row)\n R.setdefault('storageGuards',[]).append({'at':time.time(),'volumes':rows});save()\ndef fixtures(root):\n for x in I:\n  q=root/x['path'];assert not q.is_symlink() and q.is_file() and q.stat().st_size==x['size'] and sha(q)==x['sha256'],str(q)\n return {'count':len(I),'manifestSha256':sha(S/'tests/models/manifest.json'),'totalBytes':sum(x['size'] for x in I),'allSizeShaMatch':True}\ndef run(name,argv):\n guard_storage();row={'name':name,'argv':argv,'startedAt':time.time()};R['commands'].append(row);save();print('START',name,flush=True)\n with (O/(name+'.log')).open('xb') as f:r=subprocess.run(argv,cwd=S,env=os.environ|{'CARGO_NET_OFFLINE':'true'},stdout=f,stderr=subprocess.STDOUT)\n row.update(exitCode=r.returncode,finishedAt=time.time(),logSha256=sha(O/(name+'.log')));save();print('END',name,r.returncode,flush=True);assert r.returncode==0,name+' failed'\ntry:\n R['before']=source();assert R['before']=={'head':'fc3635ae78665e95ea72328b88fc7b28ead148d2','tree':'4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5','status':''};guard_storage();R['producerFixturesBefore']=fixtures(P)\n for x in I:\n  src=P/x['path'];dst=S/'tests/models'/x['path']\n  if dst.exists():assert dst.stat().st_size==x['size'] and sha(dst)==x['sha256']\n  else:dst.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(src,dst)\n R['fixturesBefore']=fixtures(S/'tests/models');save();print('FIXTURES182 VERIFIED',flush=True)\n run('exact-clippy',['cargo','clippy','--workspace','--all-targets','--','-D','warnings'])\n run('workspace',['cargo','test','--workspace'])\nexcept BaseException as e:R['primaryError']=repr(e);R['traceback']=traceback.format_exc()\nfinally:\n for name,action in [('sourceAfter',source),('fixturesAfter',lambda:fixtures(S/'tests/models')),('producerFixturesAfter',lambda:fixtures(P)),('storageFinal',guard_storage)]:\n  try:R[name]=action()\n  except BaseException as e:R['finallyErrors'].append({'check':name,'error':repr(e)})\n if 'before' in R and R.get('sourceAfter')!=R['before']:R['finallyErrors'].append({'check':'sourceIdentity','error':'changed'})\n R['complete']=R['primaryError'] is None and not R['finallyErrors'];R['finishedAt']=time.time();save();print(json.dumps({'report':str(O/'report.json'),'complete':R['complete'],'primaryError':R['primaryError'],'finallyErrors':R['finallyErrors']}),flush=True)\nraise SystemExit(0 if R['complete'] else 1)\n"
+  ]
+}

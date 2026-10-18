@@ -1,0 +1,156 @@
+{
+  "scope": "Existing C4-5 exact reviewed source; PC ordinary workspace and exactClippy only; no performance",
+  "commands": [
+    {
+      "name": "workspace",
+      "argv": [
+        "cargo",
+        "test",
+        "--workspace"
+      ],
+      "startedAt": 1792346742.9368768,
+      "exitCode": 0,
+      "finishedAt": 1792347317.025332,
+      "logSha256": "ae68d93ebc5496e798476338e3d1b2ddf8c8e4005c64f8e5ea146c673d694720"
+    },
+    {
+      "name": "exact-clippy",
+      "argv": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "startedAt": 1792347317.0266712,
+      "exitCode": 101,
+      "finishedAt": 1792347344.0078073,
+      "logSha256": "69535569a1009392e07ae968173324204178cdf0d07e29100cc5f25cdd5eff82"
+    }
+  ],
+  "primaryError": "AssertionError('exact-clippy failed')",
+  "finallyErrors": [],
+  "startedAt": 1792346741.5004625,
+  "before": {
+    "head": "88922883cf013711276ff2b943f6e65a063691b4",
+    "tree": "51ba052dcb3189787db8d3c479b2ff878f42aa8e",
+    "status": ""
+  },
+  "storageGuards": [
+    {
+      "at": 1792346741.526334,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/88922883cf013711276ff2b943f6e65a063691b4",
+          "freeBytes": 242192146432,
+          "freeInodes": 50932034
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/a143a9485c501e80c5b2",
+          "freeBytes": 242192146432,
+          "freeInodes": 50932034
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 242192146432,
+          "freeInodes": 50932034
+        }
+      ]
+    },
+    {
+      "at": 1792346742.9363432,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/88922883cf013711276ff2b943f6e65a063691b4",
+          "freeBytes": 241055301632,
+          "freeInodes": 50931831
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/a143a9485c501e80c5b2",
+          "freeBytes": 241055301632,
+          "freeInodes": 50931831
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 241055301632,
+          "freeInodes": 50931831
+        }
+      ]
+    },
+    {
+      "at": 1792347317.026567,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/88922883cf013711276ff2b943f6e65a063691b4",
+          "freeBytes": 184488357888,
+          "freeInodes": 50871460
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/a143a9485c501e80c5b2",
+          "freeBytes": 184488357888,
+          "freeInodes": 50871460
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 184488357888,
+          "freeInodes": 50871460
+        }
+      ]
+    },
+    {
+      "at": 1792347345.6367602,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/88922883cf013711276ff2b943f6e65a063691b4",
+          "freeBytes": 183505719296,
+          "freeInodes": 50866445
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/a143a9485c501e80c5b2",
+          "freeBytes": 183505719296,
+          "freeInodes": 50866445
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 183505719296,
+          "freeInodes": 50866445
+        }
+      ]
+    }
+  ],
+  "producerFixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "fixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 33, in <module>\n    run('exact-clippy',['cargo','clippy','--workspace','--all-targets','--','-D','warnings'])\n    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<string>\", line 24, in run\n    row.update(exitCode=r.returncode,finishedAt=time.time(),logSha256=sha(O/(name+'.log')));save();print('END',name,r.returncode,flush=True);assert r.returncode==0,name+' failed'\n                                                                                                                                                    ^^^^^^^^^^^^^^^\nAssertionError: exact-clippy failed\n",
+  "sourceAfter": {
+    "head": "88922883cf013711276ff2b943f6e65a063691b4",
+    "tree": "51ba052dcb3189787db8d3c479b2ff878f42aa8e",
+    "status": ""
+  },
+  "fixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "producerFixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "storageFinal": null,
+  "complete": false,
+  "finishedAt": 1792347345.6370242
+}

@@ -1,0 +1,218 @@
+{
+  "scope": "Final C4-5 sourceWASM and actual renderer/export consumer closure plus real contracts; no performance",
+  "commands": [
+    {
+      "name": "install",
+      "argv": [
+        "pnpm",
+        "install",
+        "--frozen-lockfile",
+        "--prefer-offline"
+      ],
+      "startedAt": 1792347658.9425483,
+      "exitCode": 0,
+      "finishedAt": 1792347662.8377757,
+      "logSha256": "2aff7d95a35bacc60bb6714c2e79aa270cc8cea7fc1bbe223fba4477ba2d1b35"
+    },
+    {
+      "name": "source-wasm-and-consumer-build",
+      "argv": [
+        "pnpm",
+        "exec",
+        "env",
+        "IFC_STRICT_WASM=1",
+        "bash",
+        "-euc",
+        "pnpm exec turbo run build --filter=@ifc-lite/renderer... --filter=@ifc-lite/export... --env-mode=loose\ngit diff --exit-code -- packages/wasm/pkg/ifc-lite.d.ts"
+      ],
+      "startedAt": 1792347662.8408878,
+      "exitCode": 0,
+      "finishedAt": 1792347827.3453634,
+      "logSha256": "7533fc0fffd03cd8f74b27bbc1c7667e4756de59e8faa2564db438285caf81b6"
+    },
+    {
+      "name": "wasm-contract",
+      "argv": [
+        "pnpm",
+        "test:wasm-contract"
+      ],
+      "startedAt": 1792347827.3462029,
+      "exitCode": 0,
+      "finishedAt": 1792347837.353568,
+      "logSha256": "cd4a7286d89b91262464ba5c3047975ff25fb9969fada4f4e56da8d2589c2da7"
+    },
+    {
+      "name": "snap-edges",
+      "argv": [
+        "pnpm",
+        "test:snap-edges"
+      ],
+      "startedAt": 1792347837.3553896,
+      "exitCode": 0,
+      "finishedAt": 1792347838.0358858,
+      "logSha256": "71f4b053471ded91de3bd2758acb129767264362c3c4f0dbee6ce1dfbf27d2d1"
+    }
+  ],
+  "primaryError": null,
+  "finallyErrors": [],
+  "startedAt": 1792347655.7109902,
+  "before": {
+    "head": "8657c2326e8974d3cc8fbb842b92c7a8f0af60ff",
+    "tree": "22f0bdb63639d0acecf271f858a09963ba3d9fa5",
+    "status": ""
+  },
+  "storageGuards": [
+    {
+      "at": 1792347655.7436829,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/8657c2326e8974d3cc8fbb842b92c7a8f0af60ff",
+          "freeBytes": 263884906496,
+          "freeInodes": 115266309
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/e42f09d8e9c85147092a",
+          "freeBytes": 263884906496,
+          "freeInodes": 115266309
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 263884906496,
+          "freeInodes": 115266309
+        }
+      ]
+    },
+    {
+      "at": 1792347658.9422202,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/8657c2326e8974d3cc8fbb842b92c7a8f0af60ff",
+          "freeBytes": 262834749440,
+          "freeInodes": 115266057
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/e42f09d8e9c85147092a",
+          "freeBytes": 262834712576,
+          "freeInodes": 115266057
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 262834642944,
+          "freeInodes": 115266057
+        }
+      ]
+    },
+    {
+      "at": 1792347662.838285,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/8657c2326e8974d3cc8fbb842b92c7a8f0af60ff",
+          "freeBytes": 262834540544,
+          "freeInodes": 115246105
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/e42f09d8e9c85147092a",
+          "freeBytes": 262834540544,
+          "freeInodes": 115246105
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 262834540544,
+          "freeInodes": 115246105
+        }
+      ]
+    },
+    {
+      "at": 1792347827.3459907,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/8657c2326e8974d3cc8fbb842b92c7a8f0af60ff",
+          "freeBytes": 261823250432,
+          "freeInodes": 115241418
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/e42f09d8e9c85147092a",
+          "freeBytes": 261823250432,
+          "freeInodes": 115241418
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 261823250432,
+          "freeInodes": 115241418
+        }
+      ]
+    },
+    {
+      "at": 1792347837.3540661,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/8657c2326e8974d3cc8fbb842b92c7a8f0af60ff",
+          "freeBytes": 261821521920,
+          "freeInodes": 115241296
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/e42f09d8e9c85147092a",
+          "freeBytes": 261821521920,
+          "freeInodes": 115241296
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 261821521920,
+          "freeInodes": 115241296
+        }
+      ]
+    },
+    {
+      "at": 1792347839.6733735,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/8657c2326e8974d3cc8fbb842b92c7a8f0af60ff",
+          "freeBytes": 261820432384,
+          "freeInodes": 115241295
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/e42f09d8e9c85147092a",
+          "freeBytes": 261820432384,
+          "freeInodes": 115241295
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 261820432384,
+          "freeInodes": 115241295
+        }
+      ]
+    }
+  ],
+  "producerFixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "fixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "sourceAfter": {
+    "head": "8657c2326e8974d3cc8fbb842b92c7a8f0af60ff",
+    "tree": "22f0bdb63639d0acecf271f858a09963ba3d9fa5",
+    "status": ""
+  },
+  "fixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "producerFixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "storageFinal": null,
+  "complete": true,
+  "finishedAt": 1792347839.6736479
+}

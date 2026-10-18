@@ -1,0 +1,53 @@
+{
+  "source": {
+    "head": "88922883cf013711276ff2b943f6e65a063691b4",
+    "tree": "51ba052dcb3189787db8d3c479b2ff878f42aa8e",
+    "status": ""
+  },
+  "commands": [
+    {
+      "name": "workspace",
+      "argv": [
+        "cargo",
+        "test",
+        "--workspace"
+      ],
+      "startedAt": 1792346742.9368768,
+      "exitCode": 0,
+      "finishedAt": 1792347317.025332,
+      "logSha256": "ae68d93ebc5496e798476338e3d1b2ddf8c8e4005c64f8e5ea146c673d694720"
+    },
+    {
+      "name": "exact-clippy",
+      "argv": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "startedAt": 1792347317.0266712,
+      "exitCode": 101,
+      "finishedAt": 1792347344.0078073,
+      "logSha256": "69535569a1009392e07ae968173324204178cdf0d07e29100cc5f25cdd5eff82"
+    }
+  ],
+  "workspace": {
+    "passed": 5485,
+    "failed": 0,
+    "ignored": 47,
+    "summaries": 367
+  },
+  "primaryError": "AssertionError('exact-clippy failed')",
+  "finallyErrors": [],
+  "complete": false,
+  "exactClippyFailure": "scan_shard_with_diagnostics dead_code",
+  "hashes": {
+    "original-worker-terminal.json": "f10d666170ae8c585eb7fef572e4f5ea3e5549b993630e1d1caf60ee0eb1efa9",
+    "report.json": "a2bc66f766b6f76436592fa74499852bbf82697d14cde47a645e178560be96d3",
+    "workspace.log": "ae68d93ebc5496e798476338e3d1b2ddf8c8e4005c64f8e5ea146c673d694720",
+    "exact-clippy.log": "69535569a1009392e07ae968173324204178cdf0d07e29100cc5f25cdd5eff82"
+  }
+}

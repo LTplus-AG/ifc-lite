@@ -1,0 +1,90 @@
+{
+  "source": {
+    "head": "8657c2326e8974d3cc8fbb842b92c7a8f0af60ff",
+    "tree": "22f0bdb63639d0acecf271f858a09963ba3d9fa5",
+    "status": ""
+  },
+  "actualCommands": [
+    {
+      "name": "install",
+      "argv": [
+        "pnpm",
+        "install",
+        "--frozen-lockfile",
+        "--prefer-offline"
+      ],
+      "startedAt": 1792347658.9425483,
+      "exitCode": 0,
+      "finishedAt": 1792347662.8377757,
+      "logSha256": "2aff7d95a35bacc60bb6714c2e79aa270cc8cea7fc1bbe223fba4477ba2d1b35"
+    },
+    {
+      "name": "source-wasm-and-consumer-build",
+      "argv": [
+        "pnpm",
+        "exec",
+        "env",
+        "IFC_STRICT_WASM=1",
+        "bash",
+        "-euc",
+        "pnpm exec turbo run build --filter=@ifc-lite/renderer... --filter=@ifc-lite/export... --env-mode=loose\ngit diff --exit-code -- packages/wasm/pkg/ifc-lite.d.ts"
+      ],
+      "startedAt": 1792347662.8408878,
+      "exitCode": 0,
+      "finishedAt": 1792347827.3453634,
+      "logSha256": "7533fc0fffd03cd8f74b27bbc1c7667e4756de59e8faa2564db438285caf81b6"
+    },
+    {
+      "name": "wasm-contract",
+      "argv": [
+        "pnpm",
+        "test:wasm-contract"
+      ],
+      "startedAt": 1792347827.3462029,
+      "exitCode": 0,
+      "finishedAt": 1792347837.353568,
+      "logSha256": "cd4a7286d89b91262464ba5c3047975ff25fb9969fada4f4e56da8d2589c2da7"
+    },
+    {
+      "name": "snap-edges",
+      "argv": [
+        "pnpm",
+        "test:snap-edges"
+      ],
+      "startedAt": 1792347837.3553896,
+      "exitCode": 0,
+      "finishedAt": 1792347838.0358858,
+      "logSha256": "71f4b053471ded91de3bd2758acb129767264362c3c4f0dbee6ce1dfbf27d2d1"
+    }
+  ],
+  "wasmContracts": {
+    "passed": 212,
+    "failed": 0,
+    "skipped": 1,
+    "namedSkip": "matched historical fingerprint fallback"
+  },
+  "snap": {
+    "passed": 7,
+    "failed": 0
+  },
+  "rootTurboBuild": {
+    "tasks": 16,
+    "cacheHits": 0
+  },
+  "dtsExactCommitted": true,
+  "fixturesBeforeAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "producerBeforeAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "worker": "64192cd9-89c2-4cf5-ab12-ed11e00da8a0",
+  "sourceUnchanged": true,
+  "scope": "Actual865 compiled source, not finalfc qualification. Finalfc delta is deprecation attribute, removed duplicate test attribute, EOF whitespace. No perf/acceptance/merge claim."
+}

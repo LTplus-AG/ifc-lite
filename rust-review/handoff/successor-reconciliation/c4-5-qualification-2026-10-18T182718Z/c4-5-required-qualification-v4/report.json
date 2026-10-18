@@ -1,0 +1,124 @@
+{
+  "scope": "Existing C4-5 exact reviewed source; PC ordinary workspace and exactClippy only; no performance",
+  "commands": [
+    {
+      "name": "exact-clippy",
+      "argv": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "startedAt": 1792347722.985637,
+      "exitCode": 101,
+      "finishedAt": 1792347750.9373493,
+      "logSha256": "2f8e3307a41351438ffd3cf8fa40bdd8eac4cdfb12b0ed7306d6a8d3660660c1"
+    }
+  ],
+  "primaryError": "AssertionError('exact-clippy failed')",
+  "finallyErrors": [],
+  "startedAt": 1792347721.310876,
+  "before": {
+    "head": "d1c10054831253305db513bd50ec9171f36e540a",
+    "tree": "41b6e0735cb5099353e09314ccf486cf0e78ec01",
+    "status": ""
+  },
+  "storageGuards": [
+    {
+      "at": 1792347721.3368168,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/d1c10054831253305db513bd50ec9171f36e540a",
+          "freeBytes": 179735789568,
+          "freeInodes": 50818932
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/30cf3846459e1cf84eaf",
+          "freeBytes": 179735789568,
+          "freeInodes": 50818932
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 179735789568,
+          "freeInodes": 50818932
+        }
+      ]
+    },
+    {
+      "at": 1792347722.9847424,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/d1c10054831253305db513bd50ec9171f36e540a",
+          "freeBytes": 178598940672,
+          "freeInodes": 50818729
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/30cf3846459e1cf84eaf",
+          "freeBytes": 178598940672,
+          "freeInodes": 50818729
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 178598940672,
+          "freeInodes": 50818729
+        }
+      ]
+    },
+    {
+      "at": 1792347751.951095,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/d1c10054831253305db513bd50ec9171f36e540a",
+          "freeBytes": 176900927488,
+          "freeInodes": 50810206
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/30cf3846459e1cf84eaf",
+          "freeBytes": 176900927488,
+          "freeInodes": 50810206
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 176900927488,
+          "freeInodes": 50810206
+        }
+      ]
+    }
+  ],
+  "producerFixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "fixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 32, in <module>\n    run('exact-clippy',['cargo','clippy','--workspace','--all-targets','--','-D','warnings'])\n    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<string>\", line 24, in run\n    row.update(exitCode=r.returncode,finishedAt=time.time(),logSha256=sha(O/(name+'.log')));save();print('END',name,r.returncode,flush=True);assert r.returncode==0,name+' failed'\n                                                                                                                                                    ^^^^^^^^^^^^^^^\nAssertionError: exact-clippy failed\n",
+  "sourceAfter": {
+    "head": "d1c10054831253305db513bd50ec9171f36e540a",
+    "tree": "41b6e0735cb5099353e09314ccf486cf0e78ec01",
+    "status": ""
+  },
+  "fixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "producerFixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "storageFinal": null,
+  "complete": false,
+  "finishedAt": 1792347751.9512918
+}

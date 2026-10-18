@@ -11,7 +11,7 @@ unaffected diagonals: a whole-cap retriangulation changed its opening result.
 lower base `e80d0925`. The cap patch has been combined with the finite local
 jamb repair on `40ea21c2`; that changes production inputs. These native, WASM
 and consumer receipts retain their original source identities and do not
-qualify the combined source. Combined execution and runtime remain pending.
+qualify the combined source. Combined native execution and runtime remain pending.
 The extra scalar derivative test has its own historical execution record.
 The engine budget and runtime condition remain separate from build and
 correctness results.
@@ -22,6 +22,11 @@ directed edges and no collapsed triangles at the kernel grid. Every mesh,
 collection, pre-pass cache and API handle is released. Canonical RTC-frame
 triangle counts differ from the census frame; neither count is substituted
 for the other.
+
+The new combined source separately passed the official build, consumer checks
+and all 27 canonical WASM cases. Their complete payloads equal the historical
+case records; the new source, artifact and receipt identities are recorded in
+`combinedQualification`. The original engine-size failure is retained.
 
 The committed behavioral regressions are
 `rust/processing/tests/issue_6940_profile_cap_boundaries.rs`,

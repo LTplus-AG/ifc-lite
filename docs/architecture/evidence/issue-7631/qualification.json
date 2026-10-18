@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "issue": 7631,
-  "status": "HISTORICAL_PRE_REBASE_QUALIFICATION_COMBINED_SOURCE_PENDING",
+  "status": "PARTIAL_COMBINED_CONSUMERS_WASM_PASS_NATIVE_RUNTIME_PENDING",
   "reviewedCodeHead": "296fcf3dc5d8920ed873c423ca9e9bf85df5fe61",
   "sourceBuiltHead": "7539404d002f4db1735227b16c7c81c0351d6c48",
   "nativeWorkspaceSourceHead": "08730730df6c587b358b58ca44d872915ce2e976",
@@ -352,5 +352,30 @@
     "capProductionChange": "Unchanged cap patch, combined with finite local jamb contact repair.",
     "qualificationTransfer": false,
     "required": "Requalify combined native workspace, actual WASM geometry and consumer builds; collect fresh runtime evidence before landing."
+  },
+  "combinedQualification": {
+    "sourceHead": "f21b4861631c178c47c01cc031843d915bc0ff9f",
+    "lowerBase": "40ea21c26cecbbca8fadb69b72b2afdb313de337",
+    "status": "CONSUMERS_AND_CANONICAL_WASM_PASS_NATIVE_RUNTIME_PENDING",
+    "officialWasmSHA256": "397f93102d0fc42b89dfe09c1c7ef9ce2fad7f0aa0ae59e5b440f49a1bd2c449",
+    "officialWasmBytes": 10142251,
+    "engineBrotliBytes": 2330940,
+    "originalEngineCeiling": "FAIL_RETAINED",
+    "conditionalCeilingApplied": false,
+    "rootBuild": "PASS_FORCED",
+    "rootTypecheck": "PASS",
+    "wasmContracts": {
+      "passed": 212,
+      "failed": 0,
+      "historicalOptionalSkipped": 1
+    },
+    "canonicalWasmReceiptSHA256": "e8b01c54fd30ab8b396366ce8a27c6e0dc2492767ab3df3670c764537f0fd6ca",
+    "actualCanonicalCalls": 27,
+    "strictGridUnmatchedEdgesAllCalls": 0,
+    "collapsedTrianglesAllCalls": 0,
+    "actualCasePayloads": "All 27 complete payload hashes and triangle counts equal the historically recorded canonicalWasm.cases; independently recaptured on this new source and artifact.",
+    "cleanup": "Every handle, prepass cache and API released",
+    "nativeWorkspace": "PENDING",
+    "runtime": "NOT_QUALIFIED"
   }
 }

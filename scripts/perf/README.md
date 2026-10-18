@@ -33,7 +33,9 @@ Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 `ab-report.mjs` accepts input rows only with literal `side` values `base` and
 `branch`; `--base` and `--branch` set display labels and do not select rows.
 It refuses empty, incomplete, or unpaired comparisons before printing a
-verdict. Equal mesh/vertex/triangle counts remain a count check, not proof of
+verdict. Optional phases may be absent for a whole fixture; once supplied in
+any sample, they must be present in every base and branch sample for that
+fixture. Equal mesh/vertex/triangle counts remain a count check, not proof of
 byte identity.
 
 A zero baseline has no defined relative delta or noise floor. The reporter

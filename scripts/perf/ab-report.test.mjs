@@ -79,6 +79,33 @@ test('refuses missing required timings and fingerprint counts (#7781)', () => {
   }
 });
 
+test('refuses optional phases missing from either side or a later round (#7912)', () => {
+  for (const field of ['entityScanMs', 'lookupMs', 'preprocessMs']) {
+    for (const value of [0, 2]) {
+      assertRefused([sample('base', { [field]: value }), sample('branch')], `${field}: branch absent`);
+      assertRefused([sample('base'), sample('branch', { [field]: value })], `${field}: base absent`);
+      for (let missing = 0; missing < 4; missing++) {
+        const rows = ['base', 'branch', 'base', 'branch'].map((side, index) =>
+          sample(side, index === missing ? {} : { [field]: value }));
+        assertRefused(rows, `${field}: missing round ${missing}`);
+      }
+    }
+  }
+});
+
+test('optional phase coverage is complete within each fixture, not global (#7912)', () => {
+  const result = runReport([
+    sample('base', { entityScanMs: 2 }), sample('branch', { entityScanMs: 2 }),
+    sample('base', { path: '/synthetic/test-data/legacy.ifc' }),
+    sample('branch', { path: '/synthetic/test-data/legacy.ifc' }),
+  ]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(result.report.fixtures[0].phases.map(({ phase }) => phase),
+    ['parse', 'entity-scan', 'geometry', 'TOTAL']);
+  assert.deepEqual(result.report.fixtures[1].phases.map(({ phase }) => phase),
+    ['parse', 'geometry', 'TOTAL']);
+});
+
 test('refuses invalid numeric values rather than silently dropping phases (#7781)', () => {
   for (const [field, value] of [
     ['parseMs', Number.POSITIVE_INFINITY], ['geometryMs', -1], ['totalMs', '20'], ['entityScanMs', 'invalid'],

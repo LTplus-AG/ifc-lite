@@ -114,6 +114,13 @@ for (const [path, sides] of byFixture) {
   if (sides.base.length !== sides.branch.length) {
     invalidInput(`fixture ${path} has unequal paired sample counts (base ${sides.base.length}, branch ${sides.branch.length})`);
   }
+  const samples = [...sides.base, ...sides.branch];
+  for (const [field] of PHASES) {
+    const supplied = samples.filter((row) => Object.hasOwn(row, field)).length;
+    if (supplied > 0 && supplied !== samples.length) {
+      invalidInput(`fixture ${path} requires ${field} in every base and branch sample once supplied`);
+    }
+  }
 }
 
 const median = (xs) => {
@@ -171,9 +178,10 @@ for (const [path, sides] of byFixture) {
   lines.push(`    ${'phase'.padEnd(14)} ${baseLabel.padStart(9)} ${branchLabel.padStart(9)}   delta    noise`);
 
   for (const [key, label] of PHASES) {
-    const baseVals = sides.base.map((r) => r[key]).filter((x) => x !== undefined);
-    const branchVals = sides.branch.map((r) => r[key]).filter((x) => x !== undefined);
-    if (!baseVals.length || !branchVals.length) continue;
+    // Coverage validation above permits absence only across this entire fixture.
+    if (!Object.hasOwn(sides.base[0], key)) continue;
+    const baseVals = sides.base.map((r) => r[key]);
+    const branchVals = sides.branch.map((r) => r[key]);
     const bMed = median(baseVals);
     const brMed = median(branchVals);
     const d = pct(brMed, bMed);

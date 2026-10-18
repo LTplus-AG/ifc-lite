@@ -30,14 +30,14 @@ fn position(
     field: slot::SchemaSlot<slot::kind::Ref>,
     decoder: &mut EntityDecoder,
 ) -> PlacementResult<Option<DecodedEntity>> {
-    // This support-stack base predates EntityDecoder::slot_or. These two
-    // schemas predate IfcLinearPlacement; preserve its IFC4X3 compatibility
-    // layout. Declared IFC4X1/4X2 positions remain schema-specific.
-    let declared = decoder.schema_version().unwrap_or(SchemaVersion::Ifc4x3);
-    let schema = if matches!(declared, SchemaVersion::Ifc2x3 | SchemaVersion::Ifc4) {
-        SchemaVersion::Ifc4x3
-    } else { declared };
-    let Some(at) = field.at(schema) else { return Ok(None) };
+    // This support base predates slot_or and keeps schema_version private.
+    // Probe the entity's inherited attribute through the public canonical
+    // registry: an absent entity keeps the IFC4X3 compatibility layout, while
+    // an absent RelativePlacement on declared IFC4X1/4X2 must remain absent.
+    let at = if decoder.attribute_index("IfcLinearPlacement", "PlacementRelTo").is_none() {
+        field.at(SchemaVersion::Ifc4x3)
+    } else { decoder.slot(field) };
+    let Some(at) = at else { return Ok(None) };
     Ok(decoder.resolve_optional(placement, at.index())?)
 }
 

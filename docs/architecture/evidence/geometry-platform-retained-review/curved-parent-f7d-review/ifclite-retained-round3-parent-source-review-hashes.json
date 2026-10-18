@@ -1,0 +1,422 @@
+{
+  "source": "f7d8f4ed44d2208ca0722717e5ba84fc633829dc",
+  "files": [
+    {
+      "path": "Cargo.lock",
+      "filesystem": "8f1e27526ac5ba876035bdb9731bcf830cdc7ee574a26f6037895da4b2dae8ac",
+      "git_blob": "8f1e27526ac5ba876035bdb9731bcf830cdc7ee574a26f6037895da4b2dae8ac",
+      "expected": "8f1e27526ac5ba876035bdb9731bcf830cdc7ee574a26f6037895da4b2dae8ac",
+      "matches": true
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-retained-review/consumption-round3.md",
+      "filesystem": "70358dfdd0242e6e29740fecbee6b4b4b6ece790da5f564f3945a1babde6b196",
+      "git_blob": "70358dfdd0242e6e29740fecbee6b4b4b6ece790da5f564f3945a1babde6b196",
+      "expected": "70358dfdd0242e6e29740fecbee6b4b4b6ece790da5f564f3945a1babde6b196",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "filesystem": "037d9b26cb2766db01a17eb3acc699fad506dd061eeb8f10b340cc2d4499a9ee",
+      "git_blob": "037d9b26cb2766db01a17eb3acc699fad506dd061eeb8f10b340cc2d4499a9ee",
+      "expected": "037d9b26cb2766db01a17eb3acc699fad506dd061eeb8f10b340cc2d4499a9ee",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/NUMERICAL_ROUND3.md",
+      "filesystem": "1fc6110382c3b1759a2bbad0737c78db822c284471c3856594b05b116a908dda",
+      "git_blob": "1fc6110382c3b1759a2bbad0737c78db822c284471c3856594b05b116a908dda",
+      "expected": "1fc6110382c3b1759a2bbad0737c78db822c284471c3856594b05b116a908dda",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/README.md",
+      "filesystem": "b44857d5627fb5e5bb01ce7cc752843145984465fa0a0f4422dee1009451c6fa",
+      "git_blob": "b44857d5627fb5e5bb01ce7cc752843145984465fa0a0f4422dee1009451c6fa",
+      "expected": "b44857d5627fb5e5bb01ce7cc752843145984465fa0a0f4422dee1009451c6fa",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/acquire-tools.py",
+      "filesystem": "7aa90c84bcfe73140c6274e0854c4f52ca1aa5baa1ffc5e8e4eb3bfebfddd4de",
+      "git_blob": "7aa90c84bcfe73140c6274e0854c4f52ca1aa5baa1ffc5e8e4eb3bfebfddd4de",
+      "expected": "7aa90c84bcfe73140c6274e0854c4f52ca1aa5baa1ffc5e8e4eb3bfebfddd4de",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/mesh-witness.mjs",
+      "filesystem": "25e3da13ff227e372106b37dc96e9cb0d8d0231f86500faa5e0b779713f8ec9a",
+      "git_blob": "25e3da13ff227e372106b37dc96e9cb0d8d0231f86500faa5e0b779713f8ec9a",
+      "expected": "25e3da13ff227e372106b37dc96e9cb0d8d0231f86500faa5e0b779713f8ec9a",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/mesh-witness.test.mjs",
+      "filesystem": "e7c5ab2b137da515dd4162566a1adcb5c9ee149fbfceac9b362ab84afa540e27",
+      "git_blob": "e7c5ab2b137da515dd4162566a1adcb5c9ee149fbfceac9b362ab84afa540e27",
+      "expected": "e7c5ab2b137da515dd4162566a1adcb5c9ee149fbfceac9b362ab84afa540e27",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/node-tests.mjs",
+      "filesystem": "c841c07d708fbd3e08a5dc7bcbd83e778b6dfb64c75459f5f3ad92dbdbea236d",
+      "git_blob": "c841c07d708fbd3e08a5dc7bcbd83e778b6dfb64c75459f5f3ad92dbdbea236d",
+      "expected": "c841c07d708fbd3e08a5dc7bcbd83e778b6dfb64c75459f5f3ad92dbdbea236d",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/region-recipes.mjs",
+      "filesystem": "b6b876ed8a4a7271ee49c4b86e4336255f806437006f01c2364734534b0ceee7",
+      "git_blob": "b6b876ed8a4a7271ee49c4b86e4336255f806437006f01c2364734534b0ceee7",
+      "expected": "b6b876ed8a4a7271ee49c4b86e4336255f806437006f01c2364734534b0ceee7",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/region-recipes.test.mjs",
+      "filesystem": "ecd9c8d44d8c6d78b39fec00502fa594399202be6c17d3e1dc6d7841b437ca0d",
+      "git_blob": "ecd9c8d44d8c6d78b39fec00502fa594399202be6c17d3e1dc6d7841b437ca0d",
+      "expected": "ecd9c8d44d8c6d78b39fec00502fa594399202be6c17d3e1dc6d7841b437ca0d",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep-contract.mjs",
+      "filesystem": "58351e3ac44472032ce679a28f47117c45963da998c841bed56801a923cf81d5",
+      "git_blob": "58351e3ac44472032ce679a28f47117c45963da998c841bed56801a923cf81d5",
+      "expected": "58351e3ac44472032ce679a28f47117c45963da998c841bed56801a923cf81d5",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep-transport.test.mjs",
+      "filesystem": "843dde4d48ebdbd76478d22c9d9da6e3a86af6dc9e522fd0f0b7dcc52ef1f6c5",
+      "git_blob": "843dde4d48ebdbd76478d22c9d9da6e3a86af6dc9e522fd0f0b7dcc52ef1f6c5",
+      "expected": "843dde4d48ebdbd76478d22c9d9da6e3a86af6dc9e522fd0f0b7dcc52ef1f6c5",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep.mjs",
+      "filesystem": "94ee1485970fd42faa2844a7b5e96cd551f3fe4c3e5100be05b72a1048436eb8",
+      "git_blob": "94ee1485970fd42faa2844a7b5e96cd551f3fe4c3e5100be05b72a1048436eb8",
+      "expected": "94ee1485970fd42faa2844a7b5e96cd551f3fe4c3e5100be05b72a1048436eb8",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/test.html",
+      "filesystem": "d123e8e513a1200c0078499e7c74a21966a335eb268145f4db548e3722476b42",
+      "git_blob": "d123e8e513a1200c0078499e7c74a21966a335eb268145f4db548e3722476b42",
+      "expected": "d123e8e513a1200c0078499e7c74a21966a335eb268145f4db548e3722476b42",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "filesystem": "56ca3f2c200a3afa9ae5773400d9023b6b2330dec4e2145f6c60e56ef2eb05a5",
+      "git_blob": "56ca3f2c200a3afa9ae5773400d9023b6b2330dec4e2145f6c60e56ef2eb05a5",
+      "expected": "56ca3f2c200a3afa9ae5773400d9023b6b2330dec4e2145f6c60e56ef2eb05a5",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/qualify.sh",
+      "filesystem": "b4161be67f284c9f350cf7205c93f431992bc8626df64516272b274922109402",
+      "git_blob": "b4161be67f284c9f350cf7205c93f431992bc8626df64516272b274922109402",
+      "expected": "b4161be67f284c9f350cf7205c93f431992bc8626df64516272b274922109402",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/src/adapter.cpp",
+      "filesystem": "4ad408ff7d4688a74adc41a92a79f8be9dd5ffafd4856472af6bb08d14f742c9",
+      "git_blob": "4ad408ff7d4688a74adc41a92a79f8be9dd5ffafd4856472af6bb08d14f742c9",
+      "expected": "4ad408ff7d4688a74adc41a92a79f8be9dd5ffafd4856472af6bb08d14f742c9",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/src/disk.cpp",
+      "filesystem": "58b84e51b07744002d9284122f5fda4ff172fa62877ef8da623bf9293dcd211d",
+      "git_blob": "58b84e51b07744002d9284122f5fda4ff172fa62877ef8da623bf9293dcd211d",
+      "expected": "58b84e51b07744002d9284122f5fda4ff172fa62877ef8da623bf9293dcd211d",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "filesystem": "1413e52f1a0f52947f11afa43eca9c4dcab7c7b57ffb1b7f13ba33ba2730b97c",
+      "git_blob": "1413e52f1a0f52947f11afa43eca9c4dcab7c7b57ffb1b7f13ba33ba2730b97c",
+      "expected": "1413e52f1a0f52947f11afa43eca9c4dcab7c7b57ffb1b7f13ba33ba2730b97c",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/src/rigid.hpp",
+      "filesystem": "2622bae5ee598a90ee827fbc12f3339d3e4d4ee162909e09e302bd067335bb6a",
+      "git_blob": "2622bae5ee598a90ee827fbc12f3339d3e4d4ee162909e09e302bd067335bb6a",
+      "expected": "2622bae5ee598a90ee827fbc12f3339d3e4d4ee162909e09e302bd067335bb6a",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/src/sweep.hpp",
+      "filesystem": "e62a309bf3cb2064e5620e671f793f292f265b2b23ef7e256c16dcfed5e29d2f",
+      "git_blob": "e62a309bf3cb2064e5620e671f793f292f265b2b23ef7e256c16dcfed5e29d2f",
+      "expected": "e62a309bf3cb2064e5620e671f793f292f265b2b23ef7e256c16dcfed5e29d2f",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/tests/disk_tests.cpp",
+      "filesystem": "3f1d6dc1d664cd883230174d52b055126d77635f834b1ec82a157157e9ac3beb",
+      "git_blob": "3f1d6dc1d664cd883230174d52b055126d77635f834b1ec82a157157e9ac3beb",
+      "expected": "3f1d6dc1d664cd883230174d52b055126d77635f834b1ec82a157157e9ac3beb",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/tests/sweep_tests.cpp",
+      "filesystem": "5979300716ed0c6f7165ccfa3be23a8593b9717db39ad812839d4babc393e8e4",
+      "git_blob": "5979300716ed0c6f7165ccfa3be23a8593b9717db39ad812839d4babc393e8e4",
+      "expected": "5979300716ed0c6f7165ccfa3be23a8593b9717db39ad812839d4babc393e8e4",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/tests/worker_tests.py",
+      "filesystem": "93d1a597cdb288ad39ce6309ac86adcb54660af89749fdac4444c00b6d543f13",
+      "git_blob": "93d1a597cdb288ad39ce6309ac86adcb54660af89749fdac4444c00b6d543f13",
+      "expected": "93d1a597cdb288ad39ce6309ac86adcb54660af89749fdac4444c00b6d543f13",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry-runtime/Cargo.toml",
+      "filesystem": "a19beb3b097abf54a33fc428df2ffcca37f6e268319946daab7fd70e126350c6",
+      "git_blob": "a19beb3b097abf54a33fc428df2ffcca37f6e268319946daab7fd70e126350c6",
+      "expected": "a19beb3b097abf54a33fc428df2ffcca37f6e268319946daab7fd70e126350c6",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/lib.rs",
+      "filesystem": "8318145850960f56c9b3774cae06050af59fa32f3a9840ea520f91fb83e16b67",
+      "git_blob": "8318145850960f56c9b3774cae06050af59fa32f3a9840ea520f91fb83e16b67",
+      "expected": "8318145850960f56c9b3774cae06050af59fa32f3a9840ea520f91fb83e16b67",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/protocol.rs",
+      "filesystem": "59a1ec576db112dba52b343a8be46cd1414f6473f1e1316371cfe14efa70f8bf",
+      "git_blob": "59a1ec576db112dba52b343a8be46cd1414f6473f1e1316371cfe14efa70f8bf",
+      "expected": "59a1ec576db112dba52b343a8be46cd1414f6473f1e1316371cfe14efa70f8bf",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker.rs",
+      "filesystem": "70b8c2bb0c5a7b7306737e61dff0e3c3b3beebfcbedda648bd3e3e5971f13fe7",
+      "git_blob": "70b8c2bb0c5a7b7306737e61dff0e3c3b3beebfcbedda648bd3e3e5971f13fe7",
+      "expected": "70b8c2bb0c5a7b7306737e61dff0e3c3b3beebfcbedda648bd3e3e5971f13fe7",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_dependencies.rs",
+      "filesystem": "e82c5c6c8f38da59ad6c7673a6793593a2f64f9ed0d5b96afb6abe82cf032cd9",
+      "git_blob": "e82c5c6c8f38da59ad6c7673a6793593a2f64f9ed0d5b96afb6abe82cf032cd9",
+      "expected": "e82c5c6c8f38da59ad6c7673a6793593a2f64f9ed0d5b96afb6abe82cf032cd9",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_dependencies_tests.rs",
+      "filesystem": "f3beff8152be2804a34528be37cb52cb6211b580d084fd1bbe01019a97f15579",
+      "git_blob": "f3beff8152be2804a34528be37cb52cb6211b580d084fd1bbe01019a97f15579",
+      "expected": "f3beff8152be2804a34528be37cb52cb6211b580d084fd1bbe01019a97f15579",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_disk_qualification.rs",
+      "filesystem": "3e0e71302f7fc3e888b086c2d7c11b3a38be9135c7fbcdfa1ad0bfd184ffe90d",
+      "git_blob": "3e0e71302f7fc3e888b086c2d7c11b3a38be9135c7fbcdfa1ad0bfd184ffe90d",
+      "expected": "3e0e71302f7fc3e888b086c2d7c11b3a38be9135c7fbcdfa1ad0bfd184ffe90d",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_qualification.rs",
+      "filesystem": "78e19622a91c3894d5e502664f9a093c1bb4019b130e02fc4b3aa4e7acb315ca",
+      "git_blob": "78e19622a91c3894d5e502664f9a093c1bb4019b130e02fc4b3aa4e7acb315ca",
+      "expected": "78e19622a91c3894d5e502664f9a093c1bb4019b130e02fc4b3aa4e7acb315ca",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_sweep.rs",
+      "filesystem": "2be5e2cb8762f12babb02cc0f7e4753ee82a820f9e5c6cc10e2b19da71a4d70f",
+      "git_blob": "2be5e2cb8762f12babb02cc0f7e4753ee82a820f9e5c6cc10e2b19da71a4d70f",
+      "expected": "2be5e2cb8762f12babb02cc0f7e4753ee82a820f9e5c6cc10e2b19da71a4d70f",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_upload.rs",
+      "filesystem": "7d62ea2986ccb42568f64db01cadfaa1cd540d92a1b916f04e0afd7c468e5ec2",
+      "git_blob": "7d62ea2986ccb42568f64db01cadfaa1cd540d92a1b916f04e0afd7c468e5ec2",
+      "expected": "7d62ea2986ccb42568f64db01cadfaa1cd540d92a1b916f04e0afd7c468e5ec2",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry-runtime/tests/retained_receipt.rs",
+      "filesystem": "005e0ec621382e509b6bbf0a6e37f7be6177a5bb78b47b4f2ae3df56b41e0429",
+      "git_blob": "005e0ec621382e509b6bbf0a6e37f7be6177a5bb78b47b4f2ae3df56b41e0429",
+      "expected": "005e0ec621382e509b6bbf0a6e37f7be6177a5bb78b47b4f2ae3df56b41e0429",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/curve.rs",
+      "filesystem": "637cfbe024ef4f0b2c957fa0493dee59e755df88310e796c7e46a7a908607bf9",
+      "git_blob": "637cfbe024ef4f0b2c957fa0493dee59e755df88310e796c7e46a7a908607bf9",
+      "expected": "637cfbe024ef4f0b2c957fa0493dee59e755df88310e796c7e46a7a908607bf9",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/mod.rs",
+      "filesystem": "7b8bc13c3bdfadbef43208f1b252ada4af356ad202868b91de319e678570435d",
+      "git_blob": "7b8bc13c3bdfadbef43208f1b252ada4af356ad202868b91de319e678570435d",
+      "expected": "7b8bc13c3bdfadbef43208f1b252ada4af356ad202868b91de319e678570435d",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/owned_directrix.rs",
+      "filesystem": "d245ccae9096696ae309bc7ed545ceec19736faf18fa70bfd90d90fbf2dfaa68",
+      "git_blob": "d245ccae9096696ae309bc7ed545ceec19736faf18fa70bfd90d90fbf2dfaa68",
+      "expected": "d245ccae9096696ae309bc7ed545ceec19736faf18fa70bfd90d90fbf2dfaa68",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/owned_directrix_tests.rs",
+      "filesystem": "6a29137fff4f58fc98c228f4693699d342937e3e7618c2b78a538c1b9be0e9c5",
+      "git_blob": "6a29137fff4f58fc98c228f4693699d342937e3e7618c2b78a538c1b9be0e9c5",
+      "expected": "6a29137fff4f58fc98c228f4693699d342937e3e7618c2b78a538c1b9be0e9c5",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/profile.rs",
+      "filesystem": "f10ac9e7a83038048144900b35eef0b6ba0d1f0b9dcd0c2d51bfe7b166d5e3b8",
+      "git_blob": "f10ac9e7a83038048144900b35eef0b6ba0d1f0b9dcd0c2d51bfe7b166d5e3b8",
+      "expected": "f10ac9e7a83038048144900b35eef0b6ba0d1f0b9dcd0c2d51bfe7b166d5e3b8",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/source.rs",
+      "filesystem": "8a75f84452f061f18b80152d63802a88aad7b719b5b8a0c498496083e41bcde5",
+      "git_blob": "8a75f84452f061f18b80152d63802a88aad7b719b5b8a0c498496083e41bcde5",
+      "expected": "8a75f84452f061f18b80152d63802a88aad7b719b5b8a0c498496083e41bcde5",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/swept_disk.rs",
+      "filesystem": "09c1f988e6a44df1b02a2d3748126c2d25e8ff1357b361f33e1be8c2021bf6da",
+      "git_blob": "09c1f988e6a44df1b02a2d3748126c2d25e8ff1357b361f33e1be8c2021bf6da",
+      "expected": "09c1f988e6a44df1b02a2d3748126c2d25e8ff1357b361f33e1be8c2021bf6da",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/document/mod.rs",
+      "filesystem": "964772f8aecc401aa87b0983c4202f78f31fb88f5ffad461c6587b63767f7c28",
+      "git_blob": "964772f8aecc401aa87b0983c4202f78f31fb88f5ffad461c6587b63767f7c28",
+      "expected": "964772f8aecc401aa87b0983c4202f78f31fb88f5ffad461c6587b63767f7c28",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained.rs",
+      "filesystem": "a77dc46ff23d25a66677e2ca0eb8304fb0817e94c770bcdb96641dcc9eb95eb8",
+      "git_blob": "a77dc46ff23d25a66677e2ca0eb8304fb0817e94c770bcdb96641dcc9eb95eb8",
+      "expected": "a77dc46ff23d25a66677e2ca0eb8304fb0817e94c770bcdb96641dcc9eb95eb8",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained_construction.rs",
+      "filesystem": "4bb4f000b64528fe3073329dab91b46e547b4c4890af65639491129936428286",
+      "git_blob": "4bb4f000b64528fe3073329dab91b46e547b4c4890af65639491129936428286",
+      "expected": "4bb4f000b64528fe3073329dab91b46e547b4c4890af65639491129936428286",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained_disk.rs",
+      "filesystem": "90bb03e5bc6e1b6a325afd47657412b48ae540839db1508c322eb875e32100a6",
+      "git_blob": "90bb03e5bc6e1b6a325afd47657412b48ae540839db1508c322eb875e32100a6",
+      "expected": "90bb03e5bc6e1b6a325afd47657412b48ae540839db1508c322eb875e32100a6",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained_disk_tests.rs",
+      "filesystem": "70f67e426dc39ee53a663630d6c780984608b8efa04625658df8420adfff0d78",
+      "git_blob": "70f67e426dc39ee53a663630d6c780984608b8efa04625658df8420adfff0d78",
+      "expected": "70f67e426dc39ee53a663630d6c780984608b8efa04625658df8420adfff0d78",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained_display.rs",
+      "filesystem": "6fef78f47bd04285ac5dd22224ceea5bcbbe720389535d3b10826903557a77ba",
+      "git_blob": "6fef78f47bd04285ac5dd22224ceea5bcbbe720389535d3b10826903557a77ba",
+      "expected": "6fef78f47bd04285ac5dd22224ceea5bcbbe720389535d3b10826903557a77ba",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained_region.rs",
+      "filesystem": "d91439314aafbc52d295aa5d6cc270c3e57ba4739688fe5801ef92dfa433d4de",
+      "git_blob": "d91439314aafbc52d295aa5d6cc270c3e57ba4739688fe5801ef92dfa433d4de",
+      "expected": "d91439314aafbc52d295aa5d6cc270c3e57ba4739688fe5801ef92dfa433d4de",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained_region_tests.rs",
+      "filesystem": "ea86862cf6da55e0dce055a74ef6644f919fa910c2c1a9c2bc9dcb6ad0691da1",
+      "git_blob": "ea86862cf6da55e0dce055a74ef6644f919fa910c2c1a9c2bc9dcb6ad0691da1",
+      "expected": "ea86862cf6da55e0dce055a74ef6644f919fa910c2c1a9c2bc9dcb6ad0691da1",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained_sweep.rs",
+      "filesystem": "e4890f23df49d76cdad5e0f62e896cba0539ce83a0787853c4f9d1795f716c79",
+      "git_blob": "e4890f23df49d76cdad5e0f62e896cba0539ce83a0787853c4f9d1795f716c79",
+      "expected": "e4890f23df49d76cdad5e0f62e896cba0539ce83a0787853c4f9d1795f716c79",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained_sweep_tests.rs",
+      "filesystem": "9d6ff6e8ef7031017b7053584003ffed4c420ae9baebae052b12cb70b7fcf32e",
+      "git_blob": "9d6ff6e8ef7031017b7053584003ffed4c420ae9baebae052b12cb70b7fcf32e",
+      "expected": "9d6ff6e8ef7031017b7053584003ffed4c420ae9baebae052b12cb70b7fcf32e",
+      "matches": true
+    },
+    {
+      "path": "rust/processing/src/analytic_export/definitions.rs",
+      "filesystem": "9b135d13e069b8fb4c94e84b78adf33f6c4316d3f7b6d8f78600f8ae2436ea9c",
+      "git_blob": "9b135d13e069b8fb4c94e84b78adf33f6c4316d3f7b6d8f78600f8ae2436ea9c",
+      "expected": "9b135d13e069b8fb4c94e84b78adf33f6c4316d3f7b6d8f78600f8ae2436ea9c",
+      "matches": true
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/evaluator.rs",
+      "filesystem": "6db76c83541a525de63f1c9ab2b614936217cd5e0acb84bdba927ac783690389",
+      "git_blob": "6db76c83541a525de63f1c9ab2b614936217cd5e0acb84bdba927ac783690389",
+      "expected": "6db76c83541a525de63f1c9ab2b614936217cd5e0acb84bdba927ac783690389",
+      "matches": true
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/planning.rs",
+      "filesystem": "16e42b915f826ed7530330f6c1051fc6db56553529d9943d58c5e98f94070208",
+      "git_blob": "16e42b915f826ed7530330f6c1051fc6db56553529d9943d58c5e98f94070208",
+      "expected": "16e42b915f826ed7530330f6c1051fc6db56553529d9943d58c5e98f94070208",
+      "matches": true
+    },
+    {
+      "path": "rust/processing/tests/retained_authored_evaluator.rs",
+      "filesystem": "d0b817db1cec533d84ff801398b852769acbe719a9084d9aa89ca2c53a85e8f3",
+      "git_blob": "d0b817db1cec533d84ff801398b852769acbe719a9084d9aa89ca2c53a85e8f3",
+      "expected": "d0b817db1cec533d84ff801398b852769acbe719a9084d9aa89ca2c53a85e8f3",
+      "matches": true
+    },
+    {
+      "path": "rust/processing/tests/retained_curved_consumption.rs",
+      "filesystem": "ce5ec5530afdd86ebc436c0bb99dd76d9bb57918e448cc22cf7d5fa25405355c",
+      "git_blob": "ce5ec5530afdd86ebc436c0bb99dd76d9bb57918e448cc22cf7d5fa25405355c",
+      "expected": "ce5ec5530afdd86ebc436c0bb99dd76d9bb57918e448cc22cf7d5fa25405355c",
+      "matches": true
+    },
+    {
+      "path": "rust/processing/tests/retained_model_admission.rs",
+      "filesystem": "8efa36249805b29a91198eddd134a9c765a95884e340ebbf6b9c2c4463998c31",
+      "git_blob": "8efa36249805b29a91198eddd134a9c765a95884e340ebbf6b9c2c4463998c31",
+      "expected": "8efa36249805b29a91198eddd134a9c765a95884e340ebbf6b9c2c4463998c31",
+      "matches": true
+    }
+  ],
+  "patch_sha256": "998f35716f4cce0b26c53b3bf837c39c36d1b2ab1e1fc800a25bba4a9826fc3d",
+  "clean": true,
+  "review_sha256": "56f2436763c4a9fd86f99b1db59056ae86f71c9e822c5fc506ae8a6d972b9536",
+  "later_source_excluded": "48feec5a32 and subsequent revisions"
+}

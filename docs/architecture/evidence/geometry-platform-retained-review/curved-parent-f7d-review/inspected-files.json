@@ -1,0 +1,364 @@
+{
+  "patch_base": "00a6923bab0c8d8642188e0002dd1a475740af16",
+  "source_head": "f7d8f4ed44d2208ca0722717e5ba84fc633829dc",
+  "restricted_paths_preserve_other_parent_changes": true,
+  "parent_owned_adaptations_excluded": [
+    "rust/geometry/src/router/voids/coaxial_union_tests.rs"
+  ],
+  "files": [
+    {
+      "path": "Cargo.lock",
+      "base_sha256": "f52385dc435b1addd5560d94e7576d38647d0551aa89f3330ac5c4391a738a0c",
+      "head_sha256": "8f1e27526ac5ba876035bdb9731bcf830cdc7ee574a26f6037895da4b2dae8ac",
+      "deleted": false
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-retained-review/consumption-round3.md",
+      "base_sha256": null,
+      "head_sha256": "70358dfdd0242e6e29740fecbee6b4b4b6ece790da5f564f3945a1babde6b196",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "base_sha256": "ac4c45c1b404c5e7b02682688fb4eb0986b9709a9f39af45dc602d01cab33cf7",
+      "head_sha256": "037d9b26cb2766db01a17eb3acc699fad506dd061eeb8f10b340cc2d4499a9ee",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/NUMERICAL_ROUND3.md",
+      "base_sha256": null,
+      "head_sha256": "1fc6110382c3b1759a2bbad0737c78db822c284471c3856594b05b116a908dda",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/README.md",
+      "base_sha256": "5d5a1097d563c9a91a6a7738bd1f40121ca1cc66360b84b981c7c2fef8d87169",
+      "head_sha256": "b44857d5627fb5e5bb01ce7cc752843145984465fa0a0f4422dee1009451c6fa",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/acquire-tools.py",
+      "base_sha256": "e27bf91f5d13e09fd4fd606d993b2ff92f69d99230f5cf9231708e8b52974e14",
+      "head_sha256": "7aa90c84bcfe73140c6274e0854c4f52ca1aa5baa1ffc5e8e4eb3bfebfddd4de",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/browser/mesh-witness.mjs",
+      "base_sha256": null,
+      "head_sha256": "25e3da13ff227e372106b37dc96e9cb0d8d0231f86500faa5e0b779713f8ec9a",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/browser/mesh-witness.test.mjs",
+      "base_sha256": null,
+      "head_sha256": "e7c5ab2b137da515dd4162566a1adcb5c9ee149fbfceac9b362ab84afa540e27",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/browser/node-tests.mjs",
+      "base_sha256": "0b44cb0ac2b209b303e215e2a087287d064ef668c71f65ebaa4592049c2d4f2d",
+      "head_sha256": "c841c07d708fbd3e08a5dc7bcbd83e778b6dfb64c75459f5f3ad92dbdbea236d",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/browser/region-recipes.mjs",
+      "base_sha256": null,
+      "head_sha256": "b6b876ed8a4a7271ee49c4b86e4336255f806437006f01c2364734534b0ceee7",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/browser/region-recipes.test.mjs",
+      "base_sha256": null,
+      "head_sha256": "ecd9c8d44d8c6d78b39fec00502fa594399202be6c17d3e1dc6d7841b437ca0d",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep-contract.mjs",
+      "base_sha256": "b8cb00e0d724fedc8105426fb0562b63a334a666503cf0b4aff15d10cf1d9a19",
+      "head_sha256": "58351e3ac44472032ce679a28f47117c45963da998c841bed56801a923cf81d5",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep-transport.test.mjs",
+      "base_sha256": "1de0cfec9dfc8402af2ca9a563cf97c9a6f1a3cbbec47ccd6d9ab99405470f29",
+      "head_sha256": "843dde4d48ebdbd76478d22c9d9da6e3a86af6dc9e522fd0f0b7dcc52ef1f6c5",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep.mjs",
+      "base_sha256": "bb6a360db139048e47ea3b68c4b3d1aacb45d01a3fbf010ebad8aac6434be85e",
+      "head_sha256": "94ee1485970fd42faa2844a7b5e96cd551f3fe4c3e5100be05b72a1048436eb8",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/browser/test.html",
+      "base_sha256": "af18b6b61b7a98bb305ff455c5b13c15bad9a6dd3a380f01656d31bf2abc33e4",
+      "head_sha256": "d123e8e513a1200c0078499e7c74a21966a335eb268145f4db548e3722476b42",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "base_sha256": "7e4de0a189ff7b71c4cce1c2ee6a596cdad37db6c71d25414f111a9e793c84ae",
+      "head_sha256": "56ca3f2c200a3afa9ae5773400d9023b6b2330dec4e2145f6c60e56ef2eb05a5",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/qualify.sh",
+      "base_sha256": "187dc0629a52827b82e3b904ee6e196ae392dcc2133dc0ac81a59385e5fe7393",
+      "head_sha256": "b4161be67f284c9f350cf7205c93f431992bc8626df64516272b274922109402",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/src/adapter.cpp",
+      "base_sha256": "cbd6f23824816030b6498c892653ca750181b321b13234abe5deceed28c74d9b",
+      "head_sha256": "4ad408ff7d4688a74adc41a92a79f8be9dd5ffafd4856472af6bb08d14f742c9",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/src/disk.cpp",
+      "base_sha256": null,
+      "head_sha256": "58b84e51b07744002d9284122f5fda4ff172fa62877ef8da623bf9293dcd211d",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "base_sha256": "e27d03533d9a4af4d8f866a17725629a3c936d27e97fa701519a0deaae6f973f",
+      "head_sha256": "1413e52f1a0f52947f11afa43eca9c4dcab7c7b57ffb1b7f13ba33ba2730b97c",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/src/rigid.hpp",
+      "base_sha256": null,
+      "head_sha256": "2622bae5ee598a90ee827fbc12f3339d3e4d4ee162909e09e302bd067335bb6a",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/src/sweep.hpp",
+      "base_sha256": "b550162e4c1ef8681daa04c5aa934db481f51bc874b4aaeab052e85e2ad0d7f8",
+      "head_sha256": "e62a309bf3cb2064e5620e671f793f292f265b2b23ef7e256c16dcfed5e29d2f",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/tests/disk_tests.cpp",
+      "base_sha256": null,
+      "head_sha256": "3f1d6dc1d664cd883230174d52b055126d77635f834b1ec82a157157e9ac3beb",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/tests/sweep_tests.cpp",
+      "base_sha256": "f049f5fad84d00cc1f4f0cd83191c04ef7afefabe90b5fb4c3fea282b38931ca",
+      "head_sha256": "5979300716ed0c6f7165ccfa3be23a8593b9717db39ad812839d4babc393e8e4",
+      "deleted": false
+    },
+    {
+      "path": "native/smlib-adapter/tests/worker_tests.py",
+      "base_sha256": "96da17911743d3aa49c7396c3979b088aaee3b1d4c1fb3ce3cee3be3fa6b85af",
+      "head_sha256": "93d1a597cdb288ad39ce6309ac86adcb54660af89749fdac4444c00b6d543f13",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry-runtime/Cargo.toml",
+      "base_sha256": "43216b8e1c3e3bedd9f4e25b2523ea30bc701fef37862d352df5e6ace43a4dd2",
+      "head_sha256": "a19beb3b097abf54a33fc428df2ffcca37f6e268319946daab7fd70e126350c6",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry-runtime/src/lib.rs",
+      "base_sha256": "8575a84552a5f6b0f6e5f14484b9c7cb463e2e6bef3ff9dee0a0d7954e642da8",
+      "head_sha256": "8318145850960f56c9b3774cae06050af59fa32f3a9840ea520f91fb83e16b67",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry-runtime/src/protocol.rs",
+      "base_sha256": "8670ee16ca8b6049041e2bec8b5a6822aea92c5cdfe0df8455ed2d76edecd3ed",
+      "head_sha256": "59a1ec576db112dba52b343a8be46cd1414f6473f1e1316371cfe14efa70f8bf",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker.rs",
+      "base_sha256": "ce3f58e7f2e64c6211890e0b63d601a6434ab131753cc9cca23a25fb3de2f55d",
+      "head_sha256": "70b8c2bb0c5a7b7306737e61dff0e3c3b3beebfcbedda648bd3e3e5971f13fe7",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_dependencies.rs",
+      "base_sha256": null,
+      "head_sha256": "e82c5c6c8f38da59ad6c7673a6793593a2f64f9ed0d5b96afb6abe82cf032cd9",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_dependencies_tests.rs",
+      "base_sha256": null,
+      "head_sha256": "f3beff8152be2804a34528be37cb52cb6211b580d084fd1bbe01019a97f15579",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_disk_qualification.rs",
+      "base_sha256": null,
+      "head_sha256": "3e0e71302f7fc3e888b086c2d7c11b3a38be9135c7fbcdfa1ad0bfd184ffe90d",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_qualification.rs",
+      "base_sha256": null,
+      "head_sha256": "78e19622a91c3894d5e502664f9a093c1bb4019b130e02fc4b3aa4e7acb315ca",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_sweep.rs",
+      "base_sha256": "c207b7a76f0c72009ae61ba133130d12bae920164903954547e43929ad7518a0",
+      "head_sha256": "2be5e2cb8762f12babb02cc0f7e4753ee82a820f9e5c6cc10e2b19da71a4d70f",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_upload.rs",
+      "base_sha256": null,
+      "head_sha256": "7d62ea2986ccb42568f64db01cadfaa1cd540d92a1b916f04e0afd7c468e5ec2",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry-runtime/tests/retained_receipt.rs",
+      "base_sha256": "96db8e3d5b0d3458b5690e9fcbfe2ff5f223a145bcdbf98c37d90bdd5b3a1d2b",
+      "head_sha256": "005e0ec621382e509b6bbf0a6e37f7be6177a5bb78b47b4f2ae3df56b41e0429",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry/src/analytic/curve.rs",
+      "base_sha256": "aabd862ae0633c36eead064c13ccfb06a472f549cbb7a3c7bd58e746b61b2f65",
+      "head_sha256": "637cfbe024ef4f0b2c957fa0493dee59e755df88310e796c7e46a7a908607bf9",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry/src/analytic/mod.rs",
+      "base_sha256": "a2aab90b34dce71bea18991790241ddfed2fe5d598ad73056e8bad32eb7b6f8c",
+      "head_sha256": "7b8bc13c3bdfadbef43208f1b252ada4af356ad202868b91de319e678570435d",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry/src/analytic/owned_directrix.rs",
+      "base_sha256": null,
+      "head_sha256": "d245ccae9096696ae309bc7ed545ceec19736faf18fa70bfd90d90fbf2dfaa68",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry/src/analytic/owned_directrix_tests.rs",
+      "base_sha256": null,
+      "head_sha256": "6a29137fff4f58fc98c228f4693699d342937e3e7618c2b78a538c1b9be0e9c5",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry/src/analytic/profile.rs",
+      "base_sha256": "cb8133a28ced3d5c2888eb84d6a25d2ee9a23c4d47efa11e59d90ea802e1449b",
+      "head_sha256": "f10ac9e7a83038048144900b35eef0b6ba0d1f0b9dcd0c2d51bfe7b166d5e3b8",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry/src/analytic/source.rs",
+      "base_sha256": "f40ae7b08488b37cb0805f0156b5b318023bd0082262fdd336786dd89a67717c",
+      "head_sha256": "8a75f84452f061f18b80152d63802a88aad7b719b5b8a0c498496083e41bcde5",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry/src/analytic/swept_disk.rs",
+      "base_sha256": null,
+      "head_sha256": "09c1f988e6a44df1b02a2d3748126c2d25e8ff1357b361f33e1be8c2021bf6da",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry/src/document/mod.rs",
+      "base_sha256": "831eff5202bc0609c5d00f3c87ceaddc01f21468fe62e9cbeae38d43e0ddcc60",
+      "head_sha256": "964772f8aecc401aa87b0983c4202f78f31fb88f5ffad461c6587b63767f7c28",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry/src/document/retained.rs",
+      "base_sha256": "e6dcbb62bccc0a117d9f74275628dac9e4c653b6b722d204c3036f9d7acb8ede",
+      "head_sha256": "a77dc46ff23d25a66677e2ca0eb8304fb0817e94c770bcdb96641dcc9eb95eb8",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry/src/document/retained_construction.rs",
+      "base_sha256": null,
+      "head_sha256": "4bb4f000b64528fe3073329dab91b46e547b4c4890af65639491129936428286",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry/src/document/retained_disk.rs",
+      "base_sha256": null,
+      "head_sha256": "90bb03e5bc6e1b6a325afd47657412b48ae540839db1508c322eb875e32100a6",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry/src/document/retained_disk_tests.rs",
+      "base_sha256": null,
+      "head_sha256": "70f67e426dc39ee53a663630d6c780984608b8efa04625658df8420adfff0d78",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry/src/document/retained_display.rs",
+      "base_sha256": "fe7cb670939c135b6b450b38cab36f63419c4a9b0ad18a83b561d1f326e70265",
+      "head_sha256": "6fef78f47bd04285ac5dd22224ceea5bcbbe720389535d3b10826903557a77ba",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry/src/document/retained_region.rs",
+      "base_sha256": null,
+      "head_sha256": "d91439314aafbc52d295aa5d6cc270c3e57ba4739688fe5801ef92dfa433d4de",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry/src/document/retained_region_tests.rs",
+      "base_sha256": null,
+      "head_sha256": "ea86862cf6da55e0dce055a74ef6644f919fa910c2c1a9c2bc9dcb6ad0691da1",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry/src/document/retained_sweep.rs",
+      "base_sha256": "b898c16f104948a43aa5d51a7e8550960724b9ba289f62c8228936f9b1308f40",
+      "head_sha256": "e4890f23df49d76cdad5e0f62e896cba0539ce83a0787853c4f9d1795f716c79",
+      "deleted": false
+    },
+    {
+      "path": "rust/geometry/src/document/retained_sweep_tests.rs",
+      "base_sha256": "71293a79f5cde5e4820d4600892ac05c60e3f5728e2e823d56e6f8acc630b9b9",
+      "head_sha256": "9d6ff6e8ef7031017b7053584003ffed4c420ae9baebae052b12cb70b7fcf32e",
+      "deleted": false
+    },
+    {
+      "path": "rust/processing/src/analytic_export/definitions.rs",
+      "base_sha256": "17a9596c9c379028ef65dc32d71d0f551a9c02f7122846f258017b625a375eec",
+      "head_sha256": "9b135d13e069b8fb4c94e84b78adf33f6c4316d3f7b6d8f78600f8ae2436ea9c",
+      "deleted": false
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/evaluator.rs",
+      "base_sha256": "be566b9733cc501f748772f6ed4200174f01af504796c463c835d816f6956151",
+      "head_sha256": "6db76c83541a525de63f1c9ab2b614936217cd5e0acb84bdba927ac783690389",
+      "deleted": false
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/planning.rs",
+      "base_sha256": "e079042930f09459dff51962a4b724bc02ccdab2db805a360e5a27846ff83a53",
+      "head_sha256": "16e42b915f826ed7530330f6c1051fc6db56553529d9943d58c5e98f94070208",
+      "deleted": false
+    },
+    {
+      "path": "rust/processing/tests/retained_authored_evaluator.rs",
+      "base_sha256": "e25dd4bcc94bd385309dfee1b4677e4020f74448b0f6427094e923bbf624c196",
+      "head_sha256": "d0b817db1cec533d84ff801398b852769acbe719a9084d9aa89ca2c53a85e8f3",
+      "deleted": false
+    },
+    {
+      "path": "rust/processing/tests/retained_curved_consumption.rs",
+      "base_sha256": null,
+      "head_sha256": "ce5ec5530afdd86ebc436c0bb99dd76d9bb57918e448cc22cf7d5fa25405355c",
+      "deleted": false
+    },
+    {
+      "path": "rust/processing/tests/retained_model_admission.rs",
+      "base_sha256": "47e9bfff1177789972abf62303c96c961f3190d2cff15047a424facbd7034bef",
+      "head_sha256": "8efa36249805b29a91198eddd134a9c765a95884e340ebbf6b9c2c4463998c31",
+      "deleted": false
+    }
+  ]
+}

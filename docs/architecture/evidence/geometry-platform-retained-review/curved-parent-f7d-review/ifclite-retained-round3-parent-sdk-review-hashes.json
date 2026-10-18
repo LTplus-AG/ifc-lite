@@ -1,0 +1,146 @@
+{
+  "adapter_commit": "f7d8f4ed44d2208ca0722717e5ba84fc633829dc",
+  "checkout_head_at_inspection": "9c75470c82e04c3bd6228d8773158b2516a54c41",
+  "sdk_commit": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "files": [
+    {
+      "origin": "adapter",
+      "path": "native/smlib-adapter/src/sweep.cpp",
+      "sha256": "bab0f3ba560cfd297347c77d566aed30d76b94b80ed6002f4cada2efa7436dac",
+      "bytes": 7290,
+      "checkout_matches_pinned_commit": true
+    },
+    {
+      "origin": "adapter",
+      "path": "native/smlib-adapter/src/disk.cpp",
+      "sha256": "58b84e51b07744002d9284122f5fda4ff172fa62877ef8da623bf9293dcd211d",
+      "bytes": 5495,
+      "checkout_matches_pinned_commit": true
+    },
+    {
+      "origin": "adapter",
+      "path": "native/smlib-adapter/src/sweep.hpp",
+      "sha256": "e62a309bf3cb2064e5620e671f793f292f265b2b23ef7e256c16dcfed5e29d2f",
+      "bytes": 470,
+      "checkout_matches_pinned_commit": true
+    },
+    {
+      "origin": "adapter",
+      "path": "native/smlib-adapter/src/rigid.hpp",
+      "sha256": "2622bae5ee598a90ee827fbc12f3339d3e4d4ee162909e09e302bd067335bb6a",
+      "bytes": 1197,
+      "checkout_matches_pinned_commit": true
+    },
+    {
+      "origin": "adapter",
+      "path": "native/smlib-adapter/src/adapter.cpp",
+      "sha256": "4ad408ff7d4688a74adc41a92a79f8be9dd5ffafd4856472af6bb08d14f742c9",
+      "bytes": 15605,
+      "checkout_matches_pinned_commit": true
+    },
+    {
+      "origin": "adapter",
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "sha256": "1413e52f1a0f52947f11afa43eca9c4dcab7c7b57ffb1b7f13ba33ba2730b97c",
+      "bytes": 7583,
+      "checkout_matches_pinned_commit": true
+    },
+    {
+      "origin": "adapter",
+      "path": "native/smlib-adapter/qualify.sh",
+      "sha256": "b4161be67f284c9f350cf7205c93f431992bc8626df64516272b274922109402",
+      "bytes": 2382,
+      "checkout_matches_pinned_commit": true
+    },
+    {
+      "origin": "adapter",
+      "path": "native/smlib-adapter/acquire-tools.py",
+      "sha256": "7aa90c84bcfe73140c6274e0854c4f52ca1aa5baa1ffc5e8e4eb3bfebfddd4de",
+      "bytes": 2195,
+      "checkout_matches_pinned_commit": true
+    },
+    {
+      "origin": "adapter",
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "sha256": "037d9b26cb2766db01a17eb3acc699fad506dd061eeb8f10b340cc2d4499a9ee",
+      "bytes": 5290,
+      "checkout_matches_pinned_commit": true
+    },
+    {
+      "origin": "adapter",
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "sha256": "56ca3f2c200a3afa9ae5773400d9023b6b2330dec4e2145f6c60e56ef2eb05a5",
+      "bytes": 6513,
+      "checkout_matches_pinned_commit": true
+    },
+    {
+      "origin": "adapter",
+      "path": "native/smlib-adapter/tests/disk_tests.cpp",
+      "sha256": "3f1d6dc1d664cd883230174d52b055126d77635f834b1ec82a157157e9ac3beb",
+      "bytes": 5474,
+      "checkout_matches_pinned_commit": true
+    },
+    {
+      "origin": "adapter",
+      "path": "native/smlib-adapter/tests/sweep_region_tests.cpp",
+      "sha256": "e3d38e8b5de42024ec46736f65ff84c806877a9ae7070fae5df962a320590fb4",
+      "bytes": 7381,
+      "checkout_matches_pinned_commit": true
+    },
+    {
+      "origin": "adapter",
+      "path": "native/smlib-adapter/NUMERICAL_ROUND3.md",
+      "sha256": "1fc6110382c3b1759a2bbad0737c78db822c284471c3856594b05b116a908dda",
+      "bytes": 2319,
+      "checkout_matches_pinned_commit": true
+    },
+    {
+      "origin": "SDK",
+      "path": "source/SM_API/src/SmApiBrep.cpp",
+      "sha256": "c1dcdf9899a386199dd9cc3ee3bef9626d324d5558a8b7b6132b19e18fb70df1",
+      "bytes": 82558
+    },
+    {
+      "origin": "SDK",
+      "path": "source/SM_API/src/SmApiCurves.cpp",
+      "sha256": "c96c0aa4f955eefba6021658748051c5e734adc55e5d8ee08bb6421f8544c438",
+      "bytes": 52050
+    },
+    {
+      "origin": "SDK",
+      "path": "source/SM_API/inc/SmApiGeneral.h",
+      "sha256": "aed8fe3c2564a0b5706fc53674a3c015f4175c5b6113dee6a8827b82d1930d31",
+      "bytes": 9040
+    },
+    {
+      "origin": "SDK",
+      "path": "source/SMLib/src/SmPrimitiveCreation.cpp",
+      "sha256": "38a15b60587059687c13923ba0b22a6a139b0b931997d0650898d866be8b692c",
+      "bytes": 358517
+    },
+    {
+      "origin": "SDK",
+      "path": "source/SMLib/src/SmBSplineCurve.cpp",
+      "sha256": "93c905a12c4124f6761f63ca9dbe2e2ffe400eb32b493c3d514be42de2c41138",
+      "bytes": 321412
+    },
+    {
+      "origin": "SDK",
+      "path": "source/SMLib/inc/SmBSplineCurve.h",
+      "sha256": "0e12036dda5f5439d3cbc5a2daf4253779ed4dfa73167031587d9ff5eb12dfb2",
+      "bytes": 102577
+    },
+    {
+      "origin": "SDK",
+      "path": "source/SMLib/inc/SmCircle.h",
+      "sha256": "04efc5725ef897be297c44625203ee937f6e3518f4f49d57fe2f27315dedf58f",
+      "bytes": 15771
+    },
+    {
+      "origin": "SDK",
+      "path": "source/SMLib/inc/SmEllipse.h",
+      "sha256": "239c365f26cd3bdb12281cd05a65942d50a7e16e45122f49f710b5c0a8b022d1",
+      "bytes": 44921
+    }
+  ]
+}

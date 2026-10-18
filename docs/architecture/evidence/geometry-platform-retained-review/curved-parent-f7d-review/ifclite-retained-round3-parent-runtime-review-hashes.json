@@ -1,0 +1,365 @@
+{
+  "reviewed_commit": "f7d8f4ed44d2208ca0722717e5ba84fc633829dc",
+  "base": "00a6923bab0c8d8642188e0002dd1a475740af16",
+  "all_manifest_git_hashes_verified": [
+    {
+      "path": "Cargo.lock",
+      "sha256": "8f1e27526ac5ba876035bdb9731bcf830cdc7ee574a26f6037895da4b2dae8ac"
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-retained-review/consumption-round3.md",
+      "sha256": "70358dfdd0242e6e29740fecbee6b4b4b6ece790da5f564f3945a1babde6b196"
+    },
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "sha256": "037d9b26cb2766db01a17eb3acc699fad506dd061eeb8f10b340cc2d4499a9ee"
+    },
+    {
+      "path": "native/smlib-adapter/NUMERICAL_ROUND3.md",
+      "sha256": "1fc6110382c3b1759a2bbad0737c78db822c284471c3856594b05b116a908dda"
+    },
+    {
+      "path": "native/smlib-adapter/README.md",
+      "sha256": "b44857d5627fb5e5bb01ce7cc752843145984465fa0a0f4422dee1009451c6fa"
+    },
+    {
+      "path": "native/smlib-adapter/acquire-tools.py",
+      "sha256": "7aa90c84bcfe73140c6274e0854c4f52ca1aa5baa1ffc5e8e4eb3bfebfddd4de"
+    },
+    {
+      "path": "native/smlib-adapter/browser/mesh-witness.mjs",
+      "sha256": "25e3da13ff227e372106b37dc96e9cb0d8d0231f86500faa5e0b779713f8ec9a"
+    },
+    {
+      "path": "native/smlib-adapter/browser/mesh-witness.test.mjs",
+      "sha256": "e7c5ab2b137da515dd4162566a1adcb5c9ee149fbfceac9b362ab84afa540e27"
+    },
+    {
+      "path": "native/smlib-adapter/browser/node-tests.mjs",
+      "sha256": "c841c07d708fbd3e08a5dc7bcbd83e778b6dfb64c75459f5f3ad92dbdbea236d"
+    },
+    {
+      "path": "native/smlib-adapter/browser/region-recipes.mjs",
+      "sha256": "b6b876ed8a4a7271ee49c4b86e4336255f806437006f01c2364734534b0ceee7"
+    },
+    {
+      "path": "native/smlib-adapter/browser/region-recipes.test.mjs",
+      "sha256": "ecd9c8d44d8c6d78b39fec00502fa594399202be6c17d3e1dc6d7841b437ca0d"
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep-contract.mjs",
+      "sha256": "58351e3ac44472032ce679a28f47117c45963da998c841bed56801a923cf81d5"
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep-transport.test.mjs",
+      "sha256": "843dde4d48ebdbd76478d22c9d9da6e3a86af6dc9e522fd0f0b7dcc52ef1f6c5"
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep.mjs",
+      "sha256": "94ee1485970fd42faa2844a7b5e96cd551f3fe4c3e5100be05b72a1048436eb8"
+    },
+    {
+      "path": "native/smlib-adapter/browser/test.html",
+      "sha256": "d123e8e513a1200c0078499e7c74a21966a335eb268145f4db548e3722476b42"
+    },
+    {
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "sha256": "56ca3f2c200a3afa9ae5773400d9023b6b2330dec4e2145f6c60e56ef2eb05a5"
+    },
+    {
+      "path": "native/smlib-adapter/qualify.sh",
+      "sha256": "b4161be67f284c9f350cf7205c93f431992bc8626df64516272b274922109402"
+    },
+    {
+      "path": "native/smlib-adapter/src/adapter.cpp",
+      "sha256": "4ad408ff7d4688a74adc41a92a79f8be9dd5ffafd4856472af6bb08d14f742c9"
+    },
+    {
+      "path": "native/smlib-adapter/src/disk.cpp",
+      "sha256": "58b84e51b07744002d9284122f5fda4ff172fa62877ef8da623bf9293dcd211d"
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "sha256": "1413e52f1a0f52947f11afa43eca9c4dcab7c7b57ffb1b7f13ba33ba2730b97c"
+    },
+    {
+      "path": "native/smlib-adapter/src/rigid.hpp",
+      "sha256": "2622bae5ee598a90ee827fbc12f3339d3e4d4ee162909e09e302bd067335bb6a"
+    },
+    {
+      "path": "native/smlib-adapter/src/sweep.hpp",
+      "sha256": "e62a309bf3cb2064e5620e671f793f292f265b2b23ef7e256c16dcfed5e29d2f"
+    },
+    {
+      "path": "native/smlib-adapter/tests/disk_tests.cpp",
+      "sha256": "3f1d6dc1d664cd883230174d52b055126d77635f834b1ec82a157157e9ac3beb"
+    },
+    {
+      "path": "native/smlib-adapter/tests/sweep_tests.cpp",
+      "sha256": "5979300716ed0c6f7165ccfa3be23a8593b9717db39ad812839d4babc393e8e4"
+    },
+    {
+      "path": "native/smlib-adapter/tests/worker_tests.py",
+      "sha256": "93d1a597cdb288ad39ce6309ac86adcb54660af89749fdac4444c00b6d543f13"
+    },
+    {
+      "path": "rust/geometry-runtime/Cargo.toml",
+      "sha256": "a19beb3b097abf54a33fc428df2ffcca37f6e268319946daab7fd70e126350c6"
+    },
+    {
+      "path": "rust/geometry-runtime/src/lib.rs",
+      "sha256": "8318145850960f56c9b3774cae06050af59fa32f3a9840ea520f91fb83e16b67"
+    },
+    {
+      "path": "rust/geometry-runtime/src/protocol.rs",
+      "sha256": "59a1ec576db112dba52b343a8be46cd1414f6473f1e1316371cfe14efa70f8bf"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker.rs",
+      "sha256": "70b8c2bb0c5a7b7306737e61dff0e3c3b3beebfcbedda648bd3e3e5971f13fe7"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_dependencies.rs",
+      "sha256": "e82c5c6c8f38da59ad6c7673a6793593a2f64f9ed0d5b96afb6abe82cf032cd9"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_dependencies_tests.rs",
+      "sha256": "f3beff8152be2804a34528be37cb52cb6211b580d084fd1bbe01019a97f15579"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_disk_qualification.rs",
+      "sha256": "3e0e71302f7fc3e888b086c2d7c11b3a38be9135c7fbcdfa1ad0bfd184ffe90d"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_qualification.rs",
+      "sha256": "78e19622a91c3894d5e502664f9a093c1bb4019b130e02fc4b3aa4e7acb315ca"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_sweep.rs",
+      "sha256": "2be5e2cb8762f12babb02cc0f7e4753ee82a820f9e5c6cc10e2b19da71a4d70f"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_upload.rs",
+      "sha256": "7d62ea2986ccb42568f64db01cadfaa1cd540d92a1b916f04e0afd7c468e5ec2"
+    },
+    {
+      "path": "rust/geometry-runtime/tests/retained_receipt.rs",
+      "sha256": "005e0ec621382e509b6bbf0a6e37f7be6177a5bb78b47b4f2ae3df56b41e0429"
+    },
+    {
+      "path": "rust/geometry/src/analytic/curve.rs",
+      "sha256": "637cfbe024ef4f0b2c957fa0493dee59e755df88310e796c7e46a7a908607bf9"
+    },
+    {
+      "path": "rust/geometry/src/analytic/mod.rs",
+      "sha256": "7b8bc13c3bdfadbef43208f1b252ada4af356ad202868b91de319e678570435d"
+    },
+    {
+      "path": "rust/geometry/src/analytic/owned_directrix.rs",
+      "sha256": "d245ccae9096696ae309bc7ed545ceec19736faf18fa70bfd90d90fbf2dfaa68"
+    },
+    {
+      "path": "rust/geometry/src/analytic/owned_directrix_tests.rs",
+      "sha256": "6a29137fff4f58fc98c228f4693699d342937e3e7618c2b78a538c1b9be0e9c5"
+    },
+    {
+      "path": "rust/geometry/src/analytic/profile.rs",
+      "sha256": "f10ac9e7a83038048144900b35eef0b6ba0d1f0b9dcd0c2d51bfe7b166d5e3b8"
+    },
+    {
+      "path": "rust/geometry/src/analytic/source.rs",
+      "sha256": "8a75f84452f061f18b80152d63802a88aad7b719b5b8a0c498496083e41bcde5"
+    },
+    {
+      "path": "rust/geometry/src/analytic/swept_disk.rs",
+      "sha256": "09c1f988e6a44df1b02a2d3748126c2d25e8ff1357b361f33e1be8c2021bf6da"
+    },
+    {
+      "path": "rust/geometry/src/document/mod.rs",
+      "sha256": "964772f8aecc401aa87b0983c4202f78f31fb88f5ffad461c6587b63767f7c28"
+    },
+    {
+      "path": "rust/geometry/src/document/retained.rs",
+      "sha256": "a77dc46ff23d25a66677e2ca0eb8304fb0817e94c770bcdb96641dcc9eb95eb8"
+    },
+    {
+      "path": "rust/geometry/src/document/retained_construction.rs",
+      "sha256": "4bb4f000b64528fe3073329dab91b46e547b4c4890af65639491129936428286"
+    },
+    {
+      "path": "rust/geometry/src/document/retained_disk.rs",
+      "sha256": "90bb03e5bc6e1b6a325afd47657412b48ae540839db1508c322eb875e32100a6"
+    },
+    {
+      "path": "rust/geometry/src/document/retained_disk_tests.rs",
+      "sha256": "70f67e426dc39ee53a663630d6c780984608b8efa04625658df8420adfff0d78"
+    },
+    {
+      "path": "rust/geometry/src/document/retained_display.rs",
+      "sha256": "6fef78f47bd04285ac5dd22224ceea5bcbbe720389535d3b10826903557a77ba"
+    },
+    {
+      "path": "rust/geometry/src/document/retained_region.rs",
+      "sha256": "d91439314aafbc52d295aa5d6cc270c3e57ba4739688fe5801ef92dfa433d4de"
+    },
+    {
+      "path": "rust/geometry/src/document/retained_region_tests.rs",
+      "sha256": "ea86862cf6da55e0dce055a74ef6644f919fa910c2c1a9c2bc9dcb6ad0691da1"
+    },
+    {
+      "path": "rust/geometry/src/document/retained_sweep.rs",
+      "sha256": "e4890f23df49d76cdad5e0f62e896cba0539ce83a0787853c4f9d1795f716c79"
+    },
+    {
+      "path": "rust/geometry/src/document/retained_sweep_tests.rs",
+      "sha256": "9d6ff6e8ef7031017b7053584003ffed4c420ae9baebae052b12cb70b7fcf32e"
+    },
+    {
+      "path": "rust/processing/src/analytic_export/definitions.rs",
+      "sha256": "9b135d13e069b8fb4c94e84b78adf33f6c4316d3f7b6d8f78600f8ae2436ea9c"
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/evaluator.rs",
+      "sha256": "6db76c83541a525de63f1c9ab2b614936217cd5e0acb84bdba927ac783690389"
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/planning.rs",
+      "sha256": "16e42b915f826ed7530330f6c1051fc6db56553529d9943d58c5e98f94070208"
+    },
+    {
+      "path": "rust/processing/tests/retained_authored_evaluator.rs",
+      "sha256": "d0b817db1cec533d84ff801398b852769acbe719a9084d9aa89ca2c53a85e8f3"
+    },
+    {
+      "path": "rust/processing/tests/retained_curved_consumption.rs",
+      "sha256": "ce5ec5530afdd86ebc436c0bb99dd76d9bb57918e448cc22cf7d5fa25405355c"
+    },
+    {
+      "path": "rust/processing/tests/retained_model_admission.rs",
+      "sha256": "8efa36249805b29a91198eddd134a9c765a95884e340ebbf6b9c2c4463998c31"
+    }
+  ],
+  "focused_files": [
+    {
+      "path": "rust/geometry-runtime/src/worker.rs",
+      "pinned_sha256": "70b8c2bb0c5a7b7306737e61dff0e3c3b3beebfcbedda648bd3e3e5971f13fe7",
+      "observed_working_sha256": "70b8c2bb0c5a7b7306737e61dff0e3c3b3beebfcbedda648bd3e3e5971f13fe7"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_sweep.rs",
+      "pinned_sha256": "2be5e2cb8762f12babb02cc0f7e4753ee82a820f9e5c6cc10e2b19da71a4d70f",
+      "observed_working_sha256": "2be5e2cb8762f12babb02cc0f7e4753ee82a820f9e5c6cc10e2b19da71a4d70f"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_upload.rs",
+      "pinned_sha256": "7d62ea2986ccb42568f64db01cadfaa1cd540d92a1b916f04e0afd7c468e5ec2",
+      "observed_working_sha256": "7d62ea2986ccb42568f64db01cadfaa1cd540d92a1b916f04e0afd7c468e5ec2"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_mesh.rs",
+      "pinned_sha256": "042051f7e3cfc6fc86b7dd8b903ac4f807f506be3b28b69ebe08a2cd1971a595",
+      "observed_working_sha256": "042051f7e3cfc6fc86b7dd8b903ac4f807f506be3b28b69ebe08a2cd1971a595"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_qualification.rs",
+      "pinned_sha256": "78e19622a91c3894d5e502664f9a093c1bb4019b130e02fc4b3aa4e7acb315ca",
+      "observed_working_sha256": "78e19622a91c3894d5e502664f9a093c1bb4019b130e02fc4b3aa4e7acb315ca"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_disk_qualification.rs",
+      "pinned_sha256": "3e0e71302f7fc3e888b086c2d7c11b3a38be9135c7fbcdfa1ad0bfd184ffe90d",
+      "observed_working_sha256": "3e0e71302f7fc3e888b086c2d7c11b3a38be9135c7fbcdfa1ad0bfd184ffe90d"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_dependencies.rs",
+      "pinned_sha256": "e82c5c6c8f38da59ad6c7673a6793593a2f64f9ed0d5b96afb6abe82cf032cd9",
+      "observed_working_sha256": "ead93c796ebe5db637506b14c84e7c2528e3ce321ec898068be7f8dcec3d0ffd"
+    },
+    {
+      "path": "rust/geometry-runtime/src/runtime_owner.rs",
+      "pinned_sha256": "c171a55edd5324c8e117b0e1aa60d221bb3b478ae0bbbe991d0ff166aff15e87",
+      "observed_working_sha256": "c171a55edd5324c8e117b0e1aa60d221bb3b478ae0bbbe991d0ff166aff15e87"
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/bound.rs",
+      "pinned_sha256": "cb9235de18ef6177ad404b740d9727781f87cfbb82a53471c07527cd1f48afcc",
+      "observed_working_sha256": "cb9235de18ef6177ad404b740d9727781f87cfbb82a53471c07527cd1f48afcc"
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/bound_native.rs",
+      "pinned_sha256": "35463a0ae82c992ad1a755a2d98ed995882e24d9fe265b1b93215ddf7b3665b0",
+      "observed_working_sha256": "35463a0ae82c992ad1a755a2d98ed995882e24d9fe265b1b93215ddf7b3665b0"
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/evaluator.rs",
+      "pinned_sha256": "6db76c83541a525de63f1c9ab2b614936217cd5e0acb84bdba927ac783690389",
+      "observed_working_sha256": "6db76c83541a525de63f1c9ab2b614936217cd5e0acb84bdba927ac783690389"
+    },
+    {
+      "path": "rust/processing/tests/retained_model_admission.rs",
+      "pinned_sha256": "8efa36249805b29a91198eddd134a9c765a95884e340ebbf6b9c2c4463998c31",
+      "observed_working_sha256": "8efa36249805b29a91198eddd134a9c765a95884e340ebbf6b9c2c4463998c31"
+    },
+    {
+      "path": "rust/processing/tests/retained_curved_consumption.rs",
+      "pinned_sha256": "ce5ec5530afdd86ebc436c0bb99dd76d9bb57918e448cc22cf7d5fa25405355c",
+      "observed_working_sha256": "07a3a713b34fbf32c0e866749e8ee43c335246e5ba9fbe418d73b44a9c71b1ef"
+    },
+    {
+      "path": "native/smlib-adapter/browser/client.mjs",
+      "pinned_sha256": "66ed0d7b8c7f463bcab09e59d6633d2c359bc33e06b239f2115f696510f3da4c",
+      "observed_working_sha256": "66ed0d7b8c7f463bcab09e59d6633d2c359bc33e06b239f2115f696510f3da4c"
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep.mjs",
+      "pinned_sha256": "94ee1485970fd42faa2844a7b5e96cd551f3fe4c3e5100be05b72a1048436eb8",
+      "observed_working_sha256": "94ee1485970fd42faa2844a7b5e96cd551f3fe4c3e5100be05b72a1048436eb8"
+    },
+    {
+      "path": "native/smlib-adapter/browser/region-recipes.mjs",
+      "pinned_sha256": "b6b876ed8a4a7271ee49c4b86e4336255f806437006f01c2364734534b0ceee7",
+      "observed_working_sha256": "b6b876ed8a4a7271ee49c4b86e4336255f806437006f01c2364734534b0ceee7"
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep-contract.mjs",
+      "pinned_sha256": "58351e3ac44472032ce679a28f47117c45963da998c841bed56801a923cf81d5",
+      "observed_working_sha256": "58351e3ac44472032ce679a28f47117c45963da998c841bed56801a923cf81d5"
+    },
+    {
+      "path": "native/smlib-adapter/browser/lifecycle-contract.mjs",
+      "pinned_sha256": "2b4df44e63b013e96d002c88150433e6c33c5162032ec86771c6e3ed8332df8b",
+      "observed_working_sha256": "2b4df44e63b013e96d002c88150433e6c33c5162032ec86771c6e3ed8332df8b"
+    },
+    {
+      "path": "native/smlib-adapter/browser/worker.mjs",
+      "pinned_sha256": "aa7f81dbab84cd18e1a2495123def2c1c9a7093d9948eb6ec68832c342d3f700",
+      "observed_working_sha256": "aa7f81dbab84cd18e1a2495123def2c1c9a7093d9948eb6ec68832c342d3f700"
+    },
+    {
+      "path": "native/smlib-adapter/browser/node-tests.mjs",
+      "pinned_sha256": "c841c07d708fbd3e08a5dc7bcbd83e778b6dfb64c75459f5f3ad92dbdbea236d",
+      "observed_working_sha256": "c841c07d708fbd3e08a5dc7bcbd83e778b6dfb64c75459f5f3ad92dbdbea236d"
+    },
+    {
+      "path": "native/smlib-adapter/browser/test.html",
+      "pinned_sha256": "d123e8e513a1200c0078499e7c74a21966a335eb268145f4db548e3722476b42",
+      "observed_working_sha256": "d123e8e513a1200c0078499e7c74a21966a335eb268145f4db548e3722476b42"
+    }
+  ],
+  "observed_head_after_review": "9c75470c82e04c3bd6228d8773158b2516a54c41",
+  "delivery_reviews": [
+    {
+      "path": "/tmp/ifclite-retained-curved-consumption-round3/reviews/ifclite-curved-r3-review1.md",
+      "sha256": "9cba3e0a9b4beddb0fb42f940c55d0bea130a10e628479ffe85b27f5598cdbce"
+    },
+    {
+      "path": "/tmp/ifclite-retained-curved-consumption-round3/reviews/ifclite-curved-r3-review2.md",
+      "sha256": "ed43c60a15f2f7aa9eff14eaae91bdcd57574b7243e849cf7bd263e501ce8f84"
+    },
+    {
+      "path": "/tmp/ifclite-retained-curved-consumption-round3/reviews/ifclite-curved-r3-review3.md",
+      "sha256": "f577bfdf326c680fb967ad94b5923670e2d77dec05f2cc987a9d71f852248d68"
+    }
+  ],
+  "qualification": "read-only static review; no edits/builds/tests/jobs; later Arc commit excluded"
+}

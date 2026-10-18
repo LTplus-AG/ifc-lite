@@ -1,0 +1,105 @@
+{
+  "initial_parent": "390c218c6f24a9d1ed3720b883c145b4bb08a11a",
+  "integration_patch_base": "00a6923bab0c8d8642188e0002dd1a475740af16",
+  "head": "f7d8f4ed44d2208ca0722717e5ba84fc633829dc",
+  "head_tree": "131038bbae25682ff2275cc17f335e655f4bc96d",
+  "checkout": "/home/louistrue/.t3/worktrees/ifc-lite/t3-b7a487b7",
+  "branch": "t3/retain-curved-geometry",
+  "clean": true,
+  "sdk": {
+    "checkout": "/tmp/ifclite-smlib-eval-upstream",
+    "revision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+    "tracked_clean": true,
+    "inputs": [
+      {
+        "path": "LICENSE",
+        "sha256": "83ab8ebac4587a65c32ed2dbdba3c00a86c315a6562929ddff3ec17a175e6065"
+      },
+      {
+        "path": "THIRD_PARTY_NOTICES.md",
+        "sha256": "9fcacebdd1d3e2559959cc504331b0f58d3b3f460b9da5caea4efc84fd20eb7b"
+      },
+      {
+        "path": "source/SM_API/inc/SmApiBrep.h",
+        "sha256": "ca08db54ad2211c4c98eb229bb875573e799fe731b9226288737181705fb4296"
+      },
+      {
+        "path": "source/SM_API/inc/SmApiCurves.h",
+        "sha256": "0dfd139e35adcc01324668b7377f70dadc5e093dbfff1ac12c43842db46a6b27"
+      },
+      {
+        "path": "source/SM_API/inc/SmApiQueries.h",
+        "sha256": "59e8a99a62b7dfc4663c8b2f3e9e23a62b9477a15223a71347dd5e394575e4ee"
+      },
+      {
+        "path": "source/SM_API/src/SmApiBrep.cpp",
+        "sha256": "c1dcdf9899a386199dd9cc3ee3bef9626d324d5558a8b7b6132b19e18fb70df1"
+      },
+      {
+        "path": "source/SMLib/inc/SmBSplineCurve.h",
+        "sha256": "0e12036dda5f5439d3cbc5a2daf4253779ed4dfa73167031587d9ff5eb12dfb2"
+      },
+      {
+        "path": "source/SMLib/inc/SmBrep.h",
+        "sha256": "7826cddbc8816cb51bba8349f5fedee42070ab63c0a33018c1875134c0d9ab73"
+      },
+      {
+        "path": "source/SMLib/inc/SmCircle.h",
+        "sha256": "04efc5725ef897be297c44625203ee937f6e3518f4f49d57fe2f27315dedf58f"
+      },
+      {
+        "path": "source/SMLib/inc/SmCurve.h",
+        "sha256": "b60407a833be0ee6744bff247d1ea00dfd21e55c4ca4fb311dc5976cb50598e8"
+      },
+      {
+        "path": "source/SMLib/inc/SmPrimitiveCreation.h",
+        "sha256": "f4b7ad8d52464fe2018f5f0631048fe950f6189d5575cfd493a9c6a677bf00a5"
+      },
+      {
+        "path": "source/SMLib/src/SmPrimitiveCreation.cpp",
+        "sha256": "38a15b60587059687c13923ba0b22a6a139b0b931997d0650898d866be8b692c"
+      },
+      {
+        "path": "source/SMLib/src/SmCircle.cpp",
+        "sha256": "70e1a503cb628ac58f4c1d92aba463240fb8e4dbdc71ca62508290fa478b62f1"
+      },
+      {
+        "path": "source/SMLib/inc/SmTArray.h",
+        "sha256": "129f846f6b00f80a9a425f849094a39568f3668507ea2585de86909dfc47910b"
+      },
+      {
+        "path": "source/SMLib/src/SmObject.cpp",
+        "sha256": "04e370628a7fbb903a0839edb78633ccd8dba9a996e2e22ea7666824faac54d4"
+      }
+    ]
+  },
+  "incremental_patch_sha256": "998f35716f4cce0b26c53b3bf837c39c36d1b2ab1e1fc800a25bba4a9826fc3d",
+  "changed_files": 59,
+  "commits": [
+    "f7d8f4ed44d2208ca0722717e5ba84fc633829dc Adapt existing coaxial invariant to owned numerical execution receiver",
+    "56080fee0560424ce89b3f31deaada4c511eb7cc Use EXPRESS names for newly serialized authored curve attributes",
+    "331ab9d92ab588063b61400ca0bef1cfd424438a Add real authoring fixture consumption with explicit absent-fixture skips",
+    "c312613fd806feaff90f541087540313460a450b Use pinned Ninja wheel layout and guard qualification setup before acquisition",
+    "c1dbc2203887726f7da65d3e40e3fe9d8c910af1 Own pipe sweep profile and wire extended target witnesses into CTest",
+    "fa197632eeb3c1d236d2d3f58de6d67767c6551b Extend actual module and browser curved region witnesses",
+    "c584593da1cf344848e771b21b7c292fe5b24a97 Pass authenticated source bytes through private analytic admission",
+    "67e6df69f788c84f120a70fae8ca1e9227838473 Record retained consumed mechanisms and remaining qualification scope",
+    "72ba366be053d1a0693c2684b6da2455899eddfe Expose sealed dependency operation identity for canonical pending acceptance",
+    "4e278251eed17044c58c9ce0615022259ad9c880 Correct qualification encoder type and obsolete circle admission assertion",
+    "dee83992896943e09443fe843df25751ade4c639 Exercise curved and rational consumed source invariants",
+    "ffbf40aa869e3d6b50218609bb7b2e53e3a67300 Consume authored constructions with target gates and live object receipts",
+    "6017556473084f26f2615aa3be0916f4b85715cd Preserve rational coefficients and separate provenance capture failures from geometry",
+    "b0e5215a0858a4524fe9967213b92f665d921b20 Lower faithful ordered curved regions independently of target qualification",
+    "cd477ef5bfa8bd9d1281daf637cb3f3f944a4882 Add exact rational disk construction and immutable copied transforms",
+    "bf94476593ed2c85bd3c98c90b9b839950a406d8 Preserve scanned standalone records and canonical decoder admission policy",
+    "ccea8d2365ffa83160ec8618c3cae157a30b6c14 Integrate retained authored evaluator delivery on typed execution base"
+  ],
+  "original_delivery": "/tmp/ifclite-retained-authored-preservation-round2",
+  "original_unknown_request_preserved": "auto-5049ad4327104721832dd92ea474724d",
+  "parent_owned_adaptations_excluded_from_feature_patch": [
+    {
+      "path": "rust/geometry/src/router/voids/coaxial_union_tests.rs",
+      "source_sha256": "6d7fd32b358773d6b2d00372080cbff8b2bf7e7519687439661e1f55bde2ddc5"
+    }
+  ]
+}

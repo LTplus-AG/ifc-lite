@@ -1,0 +1,41 @@
+{
+  "inspected_source": "f7d8f4ed44d2208ca0722717e5ba84fc633829dc",
+  "feature_patch_sha256": "998f35716f4cce0b26c53b3bf837c39c36d1b2ab1e1fc800a25bba4a9826fc3d",
+  "source_files_independently_verified_against_filesystem_and_git": 59,
+  "status": "STATIC_REVIEW_REQUIRES_SOURCE_CACHE_CORRECTION",
+  "source_blocker": "Same context OnceLock returns a plan derived from another legitimate decoder cache selection; bind cache reuse to actual decoder/configuration identity and preserve fresh/warm choices.",
+  "other_open_scope": [
+    "Source-bound retained browser consumer and model/runtime acceptance are not proved by recipe-only browser witnesses",
+    "Full final-net common program branch accounting remains unqualified",
+    "Original solid placement metadata beyond stored ID/derived matrix is not captured",
+    "Witness cleanup must preserve primary oracle failure; shared override build directory needs actual path exclusion"
+  ],
+  "later_source_excluded": "Arc recipe/lineage and all post-f7d changes require focused review at their own final hashes. Old feature patch is not final and was not applied to parent.",
+  "runtime_tests_executed_by_reviews": false,
+  "artifacts": [
+    {
+      "path": "ifclite-retained-round3-parent-source-review.md",
+      "sha256": "56f2436763c4a9fd86f99b1db59056ae86f71c9e822c5fc506ae8a6d972b9536"
+    },
+    {
+      "path": "ifclite-retained-round3-parent-source-review-hashes.json",
+      "sha256": "73542d999fc4bb1ce4f6f4dca29b8bd1a82001197ad9fde72e120b72feba64d6"
+    },
+    {
+      "path": "ifclite-retained-round3-parent-runtime-review.md",
+      "sha256": "2b13be284fb970364dbfd6504507cf5013d9dcffc2c3e15300b5b21df0969640"
+    },
+    {
+      "path": "ifclite-retained-round3-parent-runtime-review-hashes.json",
+      "sha256": "e4669eda44aaf9d3a92dd5fba3cb3ca5ab7da8758d4b2fe7e0216eb21d24e8ae"
+    },
+    {
+      "path": "ifclite-retained-round3-parent-sdk-review.md",
+      "sha256": "87b3649f6d679b4fcdaa98d1952509744aa227dd23828852081d48328e44f500"
+    },
+    {
+      "path": "ifclite-retained-round3-parent-sdk-review-hashes.json",
+      "sha256": "8f2461ee0d470c7b9fc16902eec8c8bf4685b87a84649bd2dd0764b2ef79ae4c"
+    }
+  ]
+}

@@ -32,6 +32,7 @@ export function entityOwnership(
 ): (id: number) => boolean {
   // Table-backed/partial stores may omit the STEP index while retaining a
   // deferred source domain. Normalize only the missing half of the union.
+  // @raw-entity-enumeration-ok immutable source membership only; the predicate below separately checks live tombstones and newly created entities
   const source = {
     entityIndex: { byId: store?.entityIndex?.byId ?? emptySourceEntities },
     deferredEntityIndex: store?.deferredEntityIndex,
@@ -39,7 +40,6 @@ export function entityOwnership(
   return (id: number): boolean => {
     if (!store || !Number.isSafeInteger(id) || id <= 0 || view?.isDeleted(id)) return false;
     if (view?.getNewEntity(id)) return true;
-    // @raw-entity-enumeration-ok source-index availability check before the shared membership primitive; table-backed stores may omit the byte index
     if (storeHasSourceEntity(source, id)) return true;
     return tableOwns(store, id);
   };

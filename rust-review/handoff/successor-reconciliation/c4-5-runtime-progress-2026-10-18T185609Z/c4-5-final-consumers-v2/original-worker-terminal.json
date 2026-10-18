@@ -1,0 +1,89 @@
+{
+  "id": "bc88bde5-b6d9-4e67-9885-c1402e3d0ae7",
+  "host": {
+    "host": "pop-os",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 32,
+    "availableMemoryBytes": 115182641152,
+    "totalMemoryBytes": 134644969472,
+    "python": "3.12.3",
+    "time": 1792348249.0178094
+  },
+  "cwd": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+  "sourceBefore": {
+    "commit": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "command": [
+    "python3",
+    "-c",
+    "from pathlib import Path\nimport os,json,hashlib,subprocess,shutil,time,traceback\nS=Path.cwd();T=Path(os.environ['CARGO_TARGET_DIR']);O=T/'c4-5-final-consumers-v2';P=Path('/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/tests/models');I=json.loads((S/'tests/models/manifest.json').read_text())['files'];R={'scope':'Final C4-5 sourceWASM and actual renderer/export consumer closure plus real contracts; no performance','commands':[],'primaryError':None,'finallyErrors':[],'startedAt':time.time()}\nassert os.environ.get('IFC_WORKER_ACTIVE_STATE') and len(I)==182\nO.mkdir(parents=True,exist_ok=False)\ndef sha(p):\n with Path(p).open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()\ndef save():(O/'report.json').write_text(json.dumps(R,indent=2)+'\\n')\ndef source():\n return {k:subprocess.check_output(['git',*a],cwd=S,text=True).strip() for k,a in {'head':['rev-parse','HEAD'],'tree':['rev-parse','HEAD^{tree}'],'status':['status','--porcelain']}.items()}\ndef guard_storage():\n rows=[]\n for p in [S,T,Path(os.environ.get('TMPDIR','/tmp'))]:\n  while not p.exists():p=p.parent\n  x=os.statvfs(p);row={'path':str(p),'freeBytes':x.f_bavail*x.f_frsize,'freeInodes':x.f_favail};assert row['freeBytes']>60*2**30 and row['freeInodes']>1000000,row;rows.append(row)\n R.setdefault('storageGuards',[]).append({'at':time.time(),'volumes':rows});save()\ndef fixtures(root):\n for x in I:\n  q=root/x['path'];assert not q.is_symlink() and q.is_file() and q.stat().st_size==x['size'] and sha(q)==x['sha256'],str(q)\n return {'count':len(I),'manifestSha256':sha(S/'tests/models/manifest.json'),'totalBytes':sum(x['size'] for x in I),'allSizeShaMatch':True}\ndef run(name,argv):\n guard_storage();row={'name':name,'argv':argv,'startedAt':time.time()};R['commands'].append(row);save();print('START',name,flush=True)\n with (O/(name+'.log')).open('xb') as f:r=subprocess.run(argv,cwd=S,env=os.environ|{'CARGO_NET_OFFLINE':'true'},stdout=f,stderr=subprocess.STDOUT)\n row.update(exitCode=r.returncode,finishedAt=time.time(),logSha256=sha(O/(name+'.log')));save();print('END',name,r.returncode,flush=True);assert r.returncode==0,name+' failed'\n\nimport stat\nA=Path('/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa')\nF=A/'f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2'\nreuse=A/'f3b-canonical-leaf-cache-source/raw-success-memo/memo863-publication-v1/READONLY_POP_PYTHON_REUSE.json'\nC=json.loads((F/'inputs.json').read_text());RE=json.loads(reuse.read_text());PYROOT=Path(RE['runtime_root']);PY=Path(RE['python_executable']);EXPECTED=json.loads((F/'execution-allocated-v2/runtime-full-manifest-after.json').read_text());PS=Path(C['pytest_site']);SEED=json.loads((F/'result.json').read_text())['pytest_readonly_seed'];V=O/'venv';VP=V/'bin/python'\ndef pycensus():\n out={}\n for p in [PYROOT,*sorted(PYROOT.rglob('*'))]:\n  q=p.lstat();r={'mode':stat.S_IMODE(q.st_mode),'mtime_ns':q.st_mtime_ns}\n  if p.is_symlink():r.update(kind='symlink',link=os.readlink(p))\n  elif p.is_dir():r['kind']='dir'\n  else:assert p.is_file();r.update(kind='file',bytes=q.st_size,sha256=sha(p))\n  out[str(p.relative_to(PYROOT))]=r\n assert out==EXPECTED and len(out)==5382,'shared Python runtime changed'\n return {'count':5382,'exact':True,'manifestSha256':sha(F/'execution-allocated-v2/runtime-full-manifest-after.json')}\n\ntry:\n R['before']=source();assert R['before']=={'head':'fc3635ae78665e95ea72328b88fc7b28ead148d2','tree':'4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5','status':''};guard_storage();R['producerFixturesBefore']=fixtures(P)\n for x in I:\n  src=P/x['path'];dst=S/'tests/models'/x['path']\n  if dst.exists():assert dst.stat().st_size==x['size'] and sha(dst)==x['sha256']\n  else:dst.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(src,dst)\n R['fixturesBefore']=fixtures(S/'tests/models');save();print('FIXTURES182 VERIFIED',flush=True)\n assert sha(reuse)=='6025a802ef241a690419433d9099922a0cb7f8c3fb22d1ac9bab9a916f7102fa'\n assert sha(PY)=='f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526'\n assert sha(C['tools']['maturin']['path'])==C['tools']['maturin']['sha256']\n R['pythonBefore']=pycensus();R['maturinSha256']=sha(C['tools']['maturin']['path']);save()\n os.environ.update(PYTHONDONTWRITEBYTECODE='1',PYTHONNOUSERSITE='1',PIP_DISABLE_PIP_VERSION_CHECK='1',PIP_CACHE_DIR=str(O/'pip-cache'),XDG_CACHE_HOME=str(O/'cache'))\n os.environ['LD_LIBRARY_PATH']=str(PYROOT/'lib')+(':'+os.environ['LD_LIBRARY_PATH'] if os.environ.get('LD_LIBRARY_PATH') else '')\n run('fresh-owned-venv',[str(PY),'-m','venv',str(V)])\n site=V/'lib/python3.12/site-packages'\n for name,m in SEED.items():\n  q=PS/name;dest=site/name\n  if q.is_file():assert sha(q)==m;shutil.copyfile(q,dest);assert sha(dest)==m\n  else:\n   original={str(p.relative_to(q)):sha(p) for p in q.rglob('*') if p.is_file() and '__pycache__' not in p.parts and p.suffix!='.pyc'};assert original==m,name\n   shutil.copytree(q,dest,ignore=shutil.ignore_patterns('__pycache__','*.pyc'));assert {str(p.relative_to(dest)):sha(p) for p in dest.rglob('*') if p.is_file()}==m,name\n os.environ['PYO3_PYTHON']=str(VP)\n run('python-toolchain-smoke',[str(VP),'-c','import sys,ssl,sqlite3,ctypes,zlib,pytest;print(sys.version,sys.prefix,sys.base_prefix,pytest.__version__);assert sys.version_info[:3]==(3,12,14);assert pytest.__version__==\"9.1.1\"'])\n run('excluded-python-rust-tests',['cargo','test','--manifest-path','rust/python/Cargo.toml'])\n run('detached-csg-compile-tests',['cargo','test','--manifest-path','rust/csg-thread-bench/Cargo.toml'])\n run('fresh-source-wheel',[C['tools']['maturin']['path'],'build','--release','--locked','--offline','-m','rust/python/Cargo.toml','-o',str(O/'wheels'),'--interpreter',str(VP)])\n wheels=list((O/'wheels').glob('*.whl'));assert len(wheels)==1\n R['wheel']={'path':str(wheels[0]),'sha256':sha(wheels[0]),'size':wheels[0].stat().st_size,'source':R['before']['head']};save()\n run('install-own-wheel',[str(VP),'-m','pip','install','--no-index','--no-deps',str(wheels[0])])\n run('import-own-wheel',[str(VP),'-c','import ifclite_geom,pathlib,sys;p=pathlib.Path(ifclite_geom.__file__).resolve();print(p);assert p.is_relative_to(pathlib.Path(sys.prefix))'])\n run('wheel-pytest',[str(VP),'-m','pytest','rust/python/tests','-q','-rs','--junitxml='+str(O/'pytest.xml'),'-o','cache_dir='+str(O/'cache/pytest')])\n\nexcept BaseException as e:R['primaryError']=repr(e);R['traceback']=traceback.format_exc()\nfinally:\n for name,action in [('sourceAfter',source),('fixturesAfter',lambda:fixtures(S/'tests/models')),('producerFixturesAfter',lambda:fixtures(P)),('storageFinal',guard_storage),('pythonAfter',pycensus)]:\n  try:R[name]=action()\n  except BaseException as e:R['finallyErrors'].append({'check':name,'error':repr(e)})\n if 'before' in R and R.get('sourceAfter')!=R['before']:R['finallyErrors'].append({'check':'sourceIdentity','error':'changed'})\n R['complete']=R['primaryError'] is None and not R['finallyErrors'];R['finishedAt']=time.time();save();print(json.dumps({'report':str(O/'report.json'),'complete':R['complete'],'primaryError':R['primaryError'],'finallyErrors':R['finallyErrors']}),flush=True)\nraise SystemExit(0 if R['complete'] else 1)\n"
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792348249.017646,
+  "resources": [
+    "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98"
+  ],
+  "state": "completed",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "fixtures": {},
+  "tools": {
+    "git": {
+      "path": "/usr/bin/git",
+      "exitCode": 0,
+      "version": "git version 2.43.0"
+    },
+    "rustc": {
+      "path": "/home/louistrue/build-workers/toolchains/cargo/bin/rustc",
+      "exitCode": 0,
+      "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+    },
+    "cargo": {
+      "path": "/home/louistrue/build-workers/toolchains/cargo/bin/cargo",
+      "exitCode": 0,
+      "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+    },
+    "node": {
+      "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+      "exitCode": 0,
+      "version": "v24.22.0"
+    },
+    "pnpm": {
+      "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/pnpm",
+      "exitCode": 0,
+      "version": "10.8.1"
+    }
+  },
+  "runnerSha256": "5ddb5b867d31aae64d78d78e4e7d1407b28df4f06b0ab7db9ad40d0020df2657",
+  "startedAt": 1792348249.3952005,
+  "queueSeconds": 0.37755465507507324,
+  "resourceScope": true,
+  "exitCode": 0,
+  "finishedAt": 1792348389.3878791,
+  "sourceAfter": {
+    "commit": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {},
+  "outputSha256": "469b272280d31db0bb8958c0db60e1016384665f39db73e2978a34032e6d73ca"
+}

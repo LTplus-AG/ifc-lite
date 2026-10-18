@@ -1,0 +1,23 @@
+{
+  "at": "2026-10-18T18:36:44.284566+00:00",
+  "scope": "Independent postterminal read-only guard, not original finally and not original worker success",
+  "primaryCause": "driver local fixtures list shadowed fixtures() function only after all12commandsexit0",
+  "checks": [
+    {
+      "root": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/tests/models",
+      "count": 182,
+      "sizeShaMatch": true,
+      "bytes": 1136371018
+    },
+    {
+      "root": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/tests/models",
+      "count": 182,
+      "sizeShaMatch": true,
+      "bytes": 1136371018
+    }
+  ],
+  "sourceAfter": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "status": ""
+  }
+}

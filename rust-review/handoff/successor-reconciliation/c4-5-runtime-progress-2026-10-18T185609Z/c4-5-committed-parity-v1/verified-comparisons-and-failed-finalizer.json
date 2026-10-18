@@ -1,0 +1,267 @@
+{
+  "source": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "commands": [
+    {
+      "name": "fresh-owned-venv",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/tools/python-reviewed-v1/runtime/bin/python3.12",
+        "-m",
+        "venv",
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/venv"
+      ],
+      "startedAt": 1792348522.2455022,
+      "exitCode": 0,
+      "finishedAt": 1792348523.6834245,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "python-toolchain-smoke",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/venv/bin/python",
+        "-c",
+        "import sys,ssl,sqlite3,ctypes,zlib,pytest;print(sys.version,sys.prefix,sys.base_prefix,pytest.__version__);assert sys.version_info[:3]==(3,12,14);assert pytest.__version__==\"9.1.1\""
+      ],
+      "startedAt": 1792348523.7750528,
+      "exitCode": 0,
+      "finishedAt": 1792348524.0220206,
+      "logSha256": "4cc6ba670cb1e565798036090d4c16acf297ae6cb01af446ac2736e3fb3063ff"
+    },
+    {
+      "name": "install-current-source-wheel",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/venv/bin/python",
+        "-m",
+        "pip",
+        "install",
+        "--no-index",
+        "--no-deps",
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-final-consumers-v2/wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl"
+      ],
+      "startedAt": 1792348524.0307717,
+      "exitCode": 0,
+      "finishedAt": 1792348524.351715,
+      "logSha256": "af605d0a0c9f666cec14010bbb6c169333847c1995af232a605223566919aa69"
+    },
+    {
+      "name": "import-current-source-wheel",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/venv/bin/python",
+        "-c",
+        "import ifclite_geom,pathlib,sys;p=pathlib.Path(ifclite_geom.__file__).resolve();print(p);assert p.is_relative_to(pathlib.Path(sys.prefix))"
+      ],
+      "startedAt": 1792348524.3524337,
+      "exitCode": 0,
+      "finishedAt": 1792348524.3700716,
+      "logSha256": "65392bcc0376e5c8c1099e22abf904f30279c0ec27be89afdfd4b23593099586"
+    },
+    {
+      "name": "install-existing-authenticated-reference-binaries",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/venv/bin/python",
+        "-m",
+        "pip",
+        "install",
+        "--no-index",
+        "--find-links",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/wheelhouse",
+        "--only-binary=:all:",
+        "--require-hashes",
+        "-r",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/correctness-final-r4-v1/reference-resolved-hashes.txt"
+      ],
+      "startedAt": 1792348524.4333296,
+      "exitCode": 0,
+      "finishedAt": 1792348529.63187,
+      "logSha256": "0d4304defda4d49ded9498f98e1480b41178bdb740cff49d20b1b57c143d1769"
+    },
+    {
+      "name": "reference-engine-import",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/venv/bin/python",
+        "-c",
+        "import ifcopenshell,numpy,shapely;print(ifcopenshell.__version__,numpy.__version__,shapely.__version__);assert ifcopenshell.__version__==\"0.9.0.post1\" and numpy.__version__==\"2.0.2\" and shapely.__version__==\"2.0.7\""
+      ],
+      "startedAt": 1792348529.6329176,
+      "exitCode": 0,
+      "finishedAt": 1792348529.7651129,
+      "logSha256": "0691d0fcc3f658e561478594189b411b57cc0a750e0ec7b41465922a52f59290"
+    },
+    {
+      "name": "parity-unit-tests",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/venv/bin/python",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/tools/ifcopenshell_reference",
+        "-p",
+        "test_*.py",
+        "-v"
+      ],
+      "startedAt": 1792348529.7739189,
+      "exitCode": 0,
+      "finishedAt": 1792348546.8444085,
+      "logSha256": "dedb7949203d27c7102819c179703da935577995c2f3ff82ca68cc5c7631a41a"
+    },
+    {
+      "name": "dump-current-source-parity",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/venv/bin/python",
+        "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/tools/ifcopenshell_reference/dump_ifclite.py",
+        "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/rust/geometry/tests/fixtures/bath_csg_solid.ifc",
+        "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc",
+        "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/rust/geometry/tests/fixtures/swept_disk_composite_arc_crankbar.ifc",
+        "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc",
+        "--out-dir",
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/reference"
+      ],
+      "startedAt": 1792348546.8533163,
+      "exitCode": 0,
+      "finishedAt": 1792348546.898975,
+      "logSha256": "0d75f4afa42af4a6a31b14f656a3b4221406de951993d744d9274284b5e59b41"
+    },
+    {
+      "name": "compare-bath_csg_solid",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/venv/bin/python",
+        "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/tools/ifcopenshell_reference/compare.py",
+        "--reference",
+        "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/tools/ifcopenshell_reference/reference/bath_csg_solid.reference.json",
+        "--ifclite",
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/reference/bath_csg_solid.ifclite.json",
+        "--allowlist",
+        "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/tools/ifcopenshell_reference/allowlist.json",
+        "--report",
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/reference/bath_csg_solid.comparison.json"
+      ],
+      "startedAt": 1792348546.9000523,
+      "exitCode": 0,
+      "finishedAt": 1792348546.9327407,
+      "logSha256": "79515b03f6477a78970a7821b9b723e05148b3b1ac203e04b7b9d714ff8db86b"
+    },
+    {
+      "name": "compare-issue_1155_halfspace_flyaway",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/venv/bin/python",
+        "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/tools/ifcopenshell_reference/compare.py",
+        "--reference",
+        "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/tools/ifcopenshell_reference/reference/issue_1155_halfspace_flyaway.reference.json",
+        "--ifclite",
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/reference/issue_1155_halfspace_flyaway.ifclite.json",
+        "--allowlist",
+        "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/tools/ifcopenshell_reference/allowlist.json",
+        "--report",
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/reference/issue_1155_halfspace_flyaway.comparison.json"
+      ],
+      "startedAt": 1792348546.9336002,
+      "exitCode": 0,
+      "finishedAt": 1792348546.9661214,
+      "logSha256": "78a981c09288c44d59cb65ef1d0c30ae00cdfc95579a0637ed25ffbdeeae205a"
+    },
+    {
+      "name": "compare-swept_disk_composite_arc_crankbar",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/venv/bin/python",
+        "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/tools/ifcopenshell_reference/compare.py",
+        "--reference",
+        "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/tools/ifcopenshell_reference/reference/swept_disk_composite_arc_crankbar.reference.json",
+        "--ifclite",
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/reference/swept_disk_composite_arc_crankbar.ifclite.json",
+        "--allowlist",
+        "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/tools/ifcopenshell_reference/allowlist.json",
+        "--report",
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/reference/swept_disk_composite_arc_crankbar.comparison.json"
+      ],
+      "startedAt": 1792348546.9674394,
+      "exitCode": 0,
+      "finishedAt": 1792348546.9997966,
+      "logSha256": "431b250a62f73bd283344cfd420d49eb5103229ec5ae393b9de2717ecbe18431"
+    },
+    {
+      "name": "compare-swept_disk_trimmed_line",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/venv/bin/python",
+        "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/tools/ifcopenshell_reference/compare.py",
+        "--reference",
+        "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/tools/ifcopenshell_reference/reference/swept_disk_trimmed_line.reference.json",
+        "--ifclite",
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/reference/swept_disk_trimmed_line.ifclite.json",
+        "--allowlist",
+        "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/tools/ifcopenshell_reference/allowlist.json",
+        "--report",
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-committed-parity-v1/reference/swept_disk_trimmed_line.comparison.json"
+      ],
+      "startedAt": 1792348547.000766,
+      "exitCode": 0,
+      "finishedAt": 1792348547.0279255,
+      "logSha256": "172a37e6a0f40790326af522a0495795059ff7c1c3a16413192eccf8a425b2af"
+    }
+  ],
+  "worker": "833d9896-4c59-43a2-b49e-7f0ed80c6865",
+  "workerState": "FAILED1",
+  "reason": "Only finally: local fixtures list shadowed helper function. Primary null; all12 actualcommands0.",
+  "unitTests": {
+    "ran": 117,
+    "failed": 0,
+    "skipped": 5,
+    "scope": "unittest discover included existing harness cost/export/surface unit tests too; no timing/cost acceptance claim"
+  },
+  "committedReferences": {
+    "bath_csg_solid": "MATCH1",
+    "issue_1155_halfspace_flyaway": "MATCH1",
+    "swept_disk_composite_arc_crankbar": "MATCH1",
+    "swept_disk_trimmed_line": "MATCH1"
+  },
+  "newWheel": {
+    "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-final-consumers-v2/wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl",
+    "sha256": "8767f41fb45e4b23ccbe8ee6bc96178bc84a9e5eb4e9b97e9109211450fad257",
+    "size": 3835796,
+    "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2"
+  },
+  "engine": "IfcOpenShell0.9.0.post1 NumPy2.0.2 Shapely2.0.7; actual binary provenance reused, requirements engine unversioned",
+  "pythonAfter": {
+    "count": 5382,
+    "exact": true,
+    "manifestSha256": "674e1b9bea243112808f2fc34a24783ad92679a969305e89b8049e4f6a969177"
+  },
+  "originalFinallyErrors": [
+    {
+      "check": "fixturesAfter",
+      "error": "TypeError(\"'list' object is not callable\")"
+    },
+    {
+      "check": "producerFixturesAfter",
+      "error": "TypeError(\"'list' object is not callable\")"
+    }
+  ],
+  "independentLateFixtureGuard": {
+    "at": "2026-10-18T18:36:44.284566+00:00",
+    "scope": "Independent postterminal read-only guard, not original finally and not original worker success",
+    "primaryCause": "driver local fixtures list shadowed fixtures() function only after all12commandsexit0",
+    "checks": [
+      {
+        "root": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2/tests/models",
+        "count": 182,
+        "sizeShaMatch": true,
+        "bytes": 1136371018
+      },
+      {
+        "root": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4/tests/models",
+        "count": 182,
+        "sizeShaMatch": true,
+        "bytes": 1136371018
+      }
+    ],
+    "sourceAfter": {
+      "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "status": ""
+    }
+  },
+  "notOriginalFinallySuccess": true,
+  "performance": "UNRUN"
+}

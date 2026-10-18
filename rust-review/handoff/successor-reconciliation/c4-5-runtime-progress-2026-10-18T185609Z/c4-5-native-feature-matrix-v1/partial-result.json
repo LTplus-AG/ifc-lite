@@ -1,0 +1,78 @@
+{
+  "source": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "actualPassedCommands": 13,
+  "commandVerdicts": {
+    "parquet-tests": 0,
+    "parquet-clippy": 0,
+    "manifold-clippy": 0,
+    "geometry-all-features-clippy": 0,
+    "capture-tests": 0,
+    "opening-ring-tests": 0,
+    "opening-diagnostic-tests": 0,
+    "opening-diagnostic-clippy": 0,
+    "triangulation-runnable": 0,
+    "triangulation-tests": 0,
+    "topology-clippy": 0,
+    "combined-gates-clippy": 0,
+    "manifold-tests": 0
+  },
+  "rustCountsByConfiguration": {
+    "parquet-tests": {
+      "passed": 826,
+      "failed": 0,
+      "ignored": 0
+    },
+    "capture-tests": {
+      "passed": 2038,
+      "failed": 0,
+      "ignored": 34
+    },
+    "opening-ring-tests": {
+      "passed": 6,
+      "failed": 0,
+      "ignored": 0
+    },
+    "opening-diagnostic-tests": {
+      "passed": 5,
+      "failed": 0,
+      "ignored": 0
+    },
+    "triangulation-tests": {
+      "passed": 68,
+      "failed": 0,
+      "ignored": 3
+    },
+    "manifold-tests": {
+      "passed": 2034,
+      "failed": 0,
+      "ignored": 35
+    }
+  },
+  "remainingOnly": [
+    "topology-tests",
+    "combined-gates-tests"
+  ],
+  "primaryError": "AssertionError({'path': '/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2', 'freeBytes': 56985751552, 'freeInodes': 50695577})",
+  "finallyErrors": [
+    {
+      "check": "storageFinal",
+      "error": "AssertionError({'path': '/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2', 'freeBytes': 56985722880, 'freeInodes': 50695577})"
+    }
+  ],
+  "sourceAfter": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "fixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "state": "FAILED1 storageguard, no test failed. No accepted aggregate."
+}

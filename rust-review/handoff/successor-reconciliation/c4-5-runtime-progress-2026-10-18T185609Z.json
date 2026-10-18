@@ -1,0 +1,131 @@
+{
+  "at": "2026-10-18T18:56:09.313258+00:00",
+  "scope": "Actual scoped C4-5 results; no accepted full C4/program/issue closure",
+  "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+  "actualResult": "Final C4-5 defaultworkspace5485/0/47+Clippy0 and actual WASM212/0/1+snap7/sourcegates5/PyO3Rust6/wheel49PASS complete.13featurecommandsPASS, final2stoppedbycapacity.4referencecomparisonsMATCH; originalparityworkerfailedonlyfinalizer, independentlate182SHAguardPASS. Windowsverified12.82GBarchivescomplete; archive-v3currentincrementalcacherunning toallow remaining2 correctness builds withoutDWARF. No newclosure, no benchmarkqueue or permission.",
+  "remaining": {
+    "C4_ownedCacheArchive_v3": {
+      "state": "RUNNING exact original, no duplicate",
+      "host": "pc-wsl",
+      "cpu": 2,
+      "memoryGiB": 2,
+      "worker": "50ed6034-ad2d-40e0-87cb-c10fe43c841a",
+      "originalSession": 18472,
+      "scope": "Only STOPPED finalfc job incremental cache (~19GB), gzip archive+fullGNUtarcompare+SHA before removal; source/models/logs/executablebinaries remain native",
+      "archive": "/mnt/c/ifc-lite-bc9e57fa-owned-incremental-archives-v3",
+      "evidence": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-owned-incremental-archive-v3"
+    },
+    "C4_5_pcSmallSymbolRemainder": {
+      "state": "NOTSUBMITTED: wait for original archive-v3 terminal0, exact ownrowabsent, freshnativefree>=80GiB",
+      "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "scope": "Only topology/combined Rust configurations. Same tests/featureflags/assertions/overflowchecks; DWARF=0/incremental=0 to reduce output footprint; no timing/instruction acceptance transfer",
+      "evidence": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-pc-small-symbol-remainder-v1",
+      "noWaiter": true
+    },
+    "C4_5_extraWasm": {
+      "state": "PREWORKLOAD REFUSAL Pop>90C;0commands. No retry or replacement submission",
+      "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "request": "auto-34e21a49ab3e4cfc9f061ea18e59e849",
+      "worker": "bdf354f4-6ab3-4eba-9a61-06e7c258c494",
+      "evidence": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-wasm-determinism-corpus-v1",
+      "remaining": [
+        "fourfixturegetter/diag compare",
+        "official wasm32 mesh_determinism"
+      ],
+      "next": "Route portable ordinary checks to PC after current own featurematrix terminal/resource release; inspect original job rather than resubmitting request"
+    },
+    "C4_0_combinedDelta": {
+      "state": "34PUREtestsPASS, actual adapter gap correction returned; real capturesUNRUN",
+      "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-combined-capture-delta-v1",
+      "correctionToInventory": "V5 effective overlay already implemented buildPrePassOnce; earlier v17 top-level no-route assertion was wrong. Delta fixes observer native-hex/public-wire collision, missing fields, observed-order evidence, before/finally records.",
+      "sourceScope": "2 changed adapter/schema files, no production checkout/ref/runtime edits",
+      "runtime": "Exact final source/runtime bindings + ordinary/observed captures remain required; original b437 observers do not qualify finalfc"
+    }
+  },
+  "files": [
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-progress-2026-10-18T185609Z/c4-5-required-qualification-v5/verified-result.json",
+      "size": 1991,
+      "sha256": "b1eb717f6f2378ac781d1b18453329c30bd5920a90f6db5e8e4c31d55dad0101"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-progress-2026-10-18T185609Z/c4-5-required-qualification-v5/report.json",
+      "size": 4407,
+      "sha256": "082565283c27adbc768935d5a1aa7d15d4186c23576e9df01fc715a73bca1f51"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-progress-2026-10-18T185609Z/c4-5-required-qualification-v5/original-worker-terminal.json",
+      "size": 6843,
+      "sha256": "898126e95043ff9b6f73a7e6cc07db204481d0b6f61738e610228082f8cf2aba"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-progress-2026-10-18T185609Z/c4-5-required-qualification-v5/workspace.log",
+      "size": 580791,
+      "sha256": "d70d86a4e8998f2292b306f09fcc6fd471e3348dfe3839ae459a65ad7cf6a3a6"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-progress-2026-10-18T185609Z/c4-5-required-qualification-v5/exact-clippy.log",
+      "size": 10960,
+      "sha256": "6aa9f2c9d81f1d0751a153b504287e5736ae2141895adeb1815fd2108e1c84d9"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-progress-2026-10-18T185609Z/c4-5-final-consumers-v1/report.json",
+      "size": 11329,
+      "sha256": "db69f12e00812ca4fb8b7a5852d25d7d4b7bcdef8f5de8b3fce66e2f37adf558"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-progress-2026-10-18T185609Z/c4-5-final-consumers-v2/verified-result.json",
+      "size": 5665,
+      "sha256": "2cda7c9f0abdd71832d6af195e11e82d1c1a1a027c4734a8ffd97afbbc5199d3"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-progress-2026-10-18T185609Z/c4-5-final-consumers-v2/report.json",
+      "size": 12610,
+      "sha256": "59152c6e667041ffc31d30c5a6c92c353468a0ee3219ed6e7f57cac0ab214132"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-progress-2026-10-18T185609Z/c4-5-final-consumers-v2/original-worker-terminal.json",
+      "size": 10552,
+      "sha256": "5a4b419b099a3c96be62d849aa6f5d78070ae8be557376c3ffa837a774918506"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-progress-2026-10-18T185609Z/c4-5-committed-parity-v1/verified-comparisons-and-failed-finalizer.json",
+      "size": 13662,
+      "sha256": "5a0bc9f7387da22ad62146416536155dfd54cfe650bdb6ff6dfc70c1b4179bd4"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-progress-2026-10-18T185609Z/c4-5-committed-parity-v1/independent-postterminal-guard.json",
+      "size": 842,
+      "sha256": "616129b169822f32d4163ce58e3d45ee7fdf9b96cf2a9962b8eff915d0cdf9ec"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-progress-2026-10-18T185609Z/c4-5-native-feature-matrix-v1/partial-result.json",
+      "size": 2131,
+      "sha256": "494629225d28789e65c44bffd6fac70b10957f5918d64b365e58fa9f669645f7"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-progress-2026-10-18T185609Z/c4-5-native-feature-matrix-v1/report.json",
+      "size": 20858,
+      "sha256": "12c9d20b6c34a00c77599cf7007cc479c7695ac9a01780c6128dcddea0b29c5b"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-progress-2026-10-18T185609Z/c4-owned-incremental-archive-v2/verified-archive-receipt.json",
+      "size": 1872,
+      "sha256": "af4f14acfb2ec6165a36f00b6924d59c44f716c4c171ba9c5bd16292777fa49a"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-progress-2026-10-18T185609Z/c4-0-combined-capture-delta-v1/RESULT.md",
+      "size": 3838,
+      "sha256": "add1dd80262d03360df91e76e0f3a816a3377ecf7873238bcba606acaf3ad087"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-5-runtime-progress-2026-10-18T185609Z/c4-0-combined-capture-delta-v1/test-receipt.json",
+      "size": 2887,
+      "sha256": "95f24822a800198b8c9a182b2719f763d0d3f3ec86771eb42baed9f1ac38a299"
+    }
+  ],
+  "acceptedPrograms": 0,
+  "uncheckedAcceptanceConditions": 33,
+  "closuresThisUpdate": 0,
+  "benchmark": "UNRUN, no timed request queue"
+}

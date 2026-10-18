@@ -1,0 +1,54 @@
+{
+  "scope": "source/pure adapter delta only; no production runtime or model execution",
+  "baseSeal": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-parity-harness-source-v5/V5-SEAL.json",
+  "baseSealSha256": "0bc3058c37dc1708b81a51ce6952230f789cfe30c33019f289c8ffaa009aee02",
+  "effectiveV5SourcePreserved": {
+    "capture-wasm.mjs": {
+      "expected": "09fef749a7f6ea3cc757e8d2e76f63f1b14e06349b8d4defc5ea4b4ac9c4ca81",
+      "actual": "09fef749a7f6ea3cc757e8d2e76f63f1b14e06349b8d4defc5ea4b4ac9c4ca81"
+    },
+    "schema.mjs": {
+      "expected": "0869d9c85f369dc413b22233abbb14a77fa215fb32b934553124aed1f22b097a",
+      "actual": "0869d9c85f369dc413b22233abbb14a77fa215fb32b934553124aed1f22b097a"
+    },
+    "compare.mjs": {
+      "expected": "5e660df5173fc211ee3b9ed677a29299f9902fbacdd49e3562ebb3164ab81f65",
+      "actual": "5e660df5173fc211ee3b9ed677a29299f9902fbacdd49e3562ebb3164ab81f65"
+    },
+    "output-reservation.mjs": {
+      "expected": "5f4fddfe16ce22cae5288161da5397162bc2bcd36211007fb756b8c402d23ad7",
+      "actual": "5f4fddfe16ce22cae5288161da5397162bc2bcd36211007fb756b8c402d23ad7"
+    },
+    "public-contract.mjs": {
+      "expected": "75836e62b87a3b5025cef82c9bed6e647335d72bdbef27ed640ac4831b9871a8",
+      "actual": "75836e62b87a3b5025cef82c9bed6e647335d72bdbef27ed640ac4831b9871a8"
+    },
+    "exact-wire.mjs": {
+      "expected": "b96c196a81f7b7ec3506edae7a4cbb4c8e058f3a3fbe2eccf3fc2d6cd5c7ad11",
+      "actual": "b96c196a81f7b7ec3506edae7a4cbb4c8e058f3a3fbe2eccf3fc2d6cd5c7ad11"
+    }
+  },
+  "command": [
+    "node",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-combined-capture-delta-v1/pure-tests/combined-adapter.test.mjs"
+  ],
+  "originalExecSession": 58100,
+  "terminalExitCode": 0,
+  "cases": 34,
+  "passed": 34,
+  "stderrBytes": 0,
+  "files": {
+    "source/capture-wasm.mjs": "c2105857f50423117997a9030b3e3912215110d507c7d9b38f9a4b3ffd43f4c6",
+    "source/schema.mjs": "090d5429704d98605aa5db5d990d3d3adaf40caeb8af08c94e9be7306c7a4b43",
+    "combined-capture.patch": "b2428d36fb343c8cef6adf5404458a96352e0ecafe8f20ca7bff91b3d97094c7",
+    "pure-tests/combined-adapter.test.mjs": "3455c289aefe0b060b80490f08c85f2c7fb0b5223393f2b2024f3492d3985b44",
+    "pure-tests/result.stdout.json": "4c4cfa3b3f7b33e733869fc5743b877b74da4d5061b5ac2f0e5ad87c48a32f4e",
+    "pure-tests/result.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "developmentObservations": [
+    "First pure-double assertion incorrectly expected 17 processGeometryBatch arguments; actual generated binding has 16. Test corrected; no production change.",
+    "Populated observed positive exposed V5 raw.observations native-hex versus public exact-wire encoding collision; adapter corrected to retain observations solely in dedicated receipt channel."
+  ],
+  "ready": false,
+  "runtimeClearance": false
+}

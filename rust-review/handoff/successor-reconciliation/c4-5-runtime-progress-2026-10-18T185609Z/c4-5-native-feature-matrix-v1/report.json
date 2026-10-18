@@ -1,0 +1,562 @@
+{
+  "scope": "Existing C4-5 exact reviewed source; PC ordinary workspace and exactClippy only; no performance",
+  "commands": [
+    {
+      "name": "parquet-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-export",
+        "--features",
+        "parquet-bos"
+      ],
+      "startedAt": 1792348464.415973,
+      "exitCode": 0,
+      "finishedAt": 1792348617.1320608,
+      "logSha256": "9e413dd8bc162dc3ac310dc2ba4916ba8a51e1d98e4e80e831c559b6b605431b"
+    },
+    {
+      "name": "parquet-clippy",
+      "argv": [
+        "cargo",
+        "clippy",
+        "-p",
+        "ifc-lite-export",
+        "--features",
+        "parquet-bos",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "startedAt": 1792348617.1335037,
+      "exitCode": 0,
+      "finishedAt": 1792348636.1542542,
+      "logSha256": "e9be40a13d918be6078e029be9b1c2e0a0dcd467bd304017a5f8eb11268063d2"
+    },
+    {
+      "name": "manifold-clippy",
+      "argv": [
+        "cargo",
+        "clippy",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "csg_manifold_gate",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "startedAt": 1792348636.1547883,
+      "exitCode": 0,
+      "finishedAt": 1792348654.4320104,
+      "logSha256": "b11fdc86449663974d6673cab9cb089019f94695d3b6fb8f4255b4786f5c0355"
+    },
+    {
+      "name": "geometry-all-features-clippy",
+      "argv": [
+        "cargo",
+        "clippy",
+        "-p",
+        "ifc-lite-geometry",
+        "--all-features",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "startedAt": 1792348654.4330575,
+      "exitCode": 0,
+      "finishedAt": 1792348671.0131125,
+      "logSha256": "6e9b6e31fc91d61eb26f877369b9186d6fb36bb6ed8fd9c779d52775731735dd"
+    },
+    {
+      "name": "capture-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "csg_capture"
+      ],
+      "startedAt": 1792348671.013774,
+      "exitCode": 0,
+      "finishedAt": 1792348810.971069,
+      "logSha256": "1a27a03e5af9965ddf4e72a96e96418851cf9dc9defe558d426fd135f3ae3d91"
+    },
+    {
+      "name": "opening-ring-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "opening-perf-trace",
+        "--lib",
+        "csg::consolidate::ring_ops::tests"
+      ],
+      "startedAt": 1792348810.9718137,
+      "exitCode": 0,
+      "finishedAt": 1792348869.8528318,
+      "logSha256": "8ae83a32c01e536a6866bf03ae431b0d502596b5ad446bb2990af616655e98ea"
+    },
+    {
+      "name": "opening-diagnostic-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-processing",
+        "--features",
+        "opening-perf-trace",
+        "--example",
+        "opening_work_probe"
+      ],
+      "startedAt": 1792348869.8538496,
+      "exitCode": 0,
+      "finishedAt": 1792348898.7463963,
+      "logSha256": "42bb32fde4d153fa6e7759ffe97a017413e949897d7fe1573e620d5e115d8956"
+    },
+    {
+      "name": "opening-diagnostic-clippy",
+      "argv": [
+        "cargo",
+        "clippy",
+        "-p",
+        "ifc-lite-processing",
+        "--features",
+        "opening-perf-trace",
+        "--example",
+        "opening_work_probe",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "startedAt": 1792348898.7473145,
+      "exitCode": 0,
+      "finishedAt": 1792348911.130166,
+      "logSha256": "b32bab9e02ecadc61e309ae43f452dccdacadd06fc540bc35bb6857ccd06cbdb"
+    },
+    {
+      "name": "triangulation-runnable",
+      "argv": [
+        "node",
+        "scripts/ci-assert-runnable-cargo-tests.mjs",
+        "--package",
+        "ifc-lite-geometry",
+        "--features",
+        "triangulation-alt",
+        "--test",
+        "triangulation_invariance"
+      ],
+      "startedAt": 1792348911.1307628,
+      "exitCode": 0,
+      "finishedAt": 1792348936.235377,
+      "logSha256": "e48f80abe78209fa87253d072f51a103d9d702b047a397c60042c6a2ba29065e"
+    },
+    {
+      "name": "triangulation-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "triangulation-alt",
+        "--test",
+        "triangulation_invariance",
+        "--",
+        "--nocapture"
+      ],
+      "startedAt": 1792348936.2362592,
+      "exitCode": 0,
+      "finishedAt": 1792348987.5465848,
+      "logSha256": "dae94bc1d907961a691af49a9553c75b2e853efd6aedbb55ad9c85b054bb9b46"
+    },
+    {
+      "name": "topology-clippy",
+      "argv": [
+        "cargo",
+        "clippy",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "csg_topology_gate",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "startedAt": 1792348987.54723,
+      "exitCode": 0,
+      "finishedAt": 1792349002.160332,
+      "logSha256": "495c3adb136179444d9ccc18c1174acb2b830f9367bda826f14a707e4bbded22"
+    },
+    {
+      "name": "combined-gates-clippy",
+      "argv": [
+        "cargo",
+        "clippy",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "csg_manifold_gate,csg_topology_gate",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "startedAt": 1792349002.1609838,
+      "exitCode": 0,
+      "finishedAt": 1792349016.699671,
+      "logSha256": "df888362503a42bc57a28c5df74753fb2a4edc377c89407322d06c80545fca96"
+    },
+    {
+      "name": "manifold-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "csg_manifold_gate",
+        "--no-fail-fast"
+      ],
+      "startedAt": 1792349016.7006092,
+      "exitCode": 0,
+      "finishedAt": 1792349157.0545328,
+      "logSha256": "1f41421067938484ff1ad495c210bc217a5180e8568e3a2dd8a6401c464c3c84"
+    }
+  ],
+  "primaryError": "AssertionError({'path': '/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2', 'freeBytes': 56985751552, 'freeInodes': 50695577})",
+  "finallyErrors": [
+    {
+      "check": "storageFinal",
+      "error": "AssertionError({'path': '/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2', 'freeBytes': 56985722880, 'freeInodes': 50695577})"
+    }
+  ],
+  "startedAt": 1792348462.8067338,
+  "before": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "storageGuards": [
+    {
+      "at": 1792348462.8325467,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 117744926720,
+          "freeInodes": 50742320
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 117744926720,
+          "freeInodes": 50742320
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 117744926720,
+          "freeInodes": 50742320
+        }
+      ]
+    },
+    {
+      "at": 1792348464.415453,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 117744922624,
+          "freeInodes": 50742319
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 117744922624,
+          "freeInodes": 50742319
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 117744922624,
+          "freeInodes": 50742319
+        }
+      ]
+    },
+    {
+      "at": 1792348617.1329527,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 101772976128,
+          "freeInodes": 50737480
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 101772976128,
+          "freeInodes": 50737480
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 101772976128,
+          "freeInodes": 50737480
+        }
+      ]
+    },
+    {
+      "at": 1792348636.15462,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 101345353728,
+          "freeInodes": 50736556
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 101345353728,
+          "freeInodes": 50736556
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 101345353728,
+          "freeInodes": 50736556
+        }
+      ]
+    },
+    {
+      "at": 1792348654.432442,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 100904271872,
+          "freeInodes": 50734247
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 100904271872,
+          "freeInodes": 50734247
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 100904271872,
+          "freeInodes": 50734247
+        }
+      ]
+    },
+    {
+      "at": 1792348671.0135217,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 100601503744,
+          "freeInodes": 50732203
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 100601503744,
+          "freeInodes": 50732203
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 100601503744,
+          "freeInodes": 50732203
+        }
+      ]
+    },
+    {
+      "at": 1792348810.9715672,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 80944467968,
+          "freeInodes": 50717233
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 80944467968,
+          "freeInodes": 50717233
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 80944467968,
+          "freeInodes": 50717233
+        }
+      ]
+    },
+    {
+      "at": 1792348869.8532941,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 79265394688,
+          "freeInodes": 50716124
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 79265394688,
+          "freeInodes": 50716124
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 79265394688,
+          "freeInodes": 50716124
+        }
+      ]
+    },
+    {
+      "at": 1792348898.7468004,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 77934149632,
+          "freeInodes": 50715114
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 77934149632,
+          "freeInodes": 50715114
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 77934149632,
+          "freeInodes": 50715114
+        }
+      ]
+    },
+    {
+      "at": 1792348911.130581,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 77802962944,
+          "freeInodes": 50715147
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 77802962944,
+          "freeInodes": 50715147
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 77802962944,
+          "freeInodes": 50715147
+        }
+      ]
+    },
+    {
+      "at": 1792348936.2357857,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 76929712128,
+          "freeInodes": 50714252
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 76929712128,
+          "freeInodes": 50714252
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 76929712128,
+          "freeInodes": 50714252
+        }
+      ]
+    },
+    {
+      "at": 1792348987.547033,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 76937187328,
+          "freeInodes": 50714251
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 76937187328,
+          "freeInodes": 50714251
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 76937187328,
+          "freeInodes": 50714251
+        }
+      ]
+    },
+    {
+      "at": 1792349002.1607294,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 76646080512,
+          "freeInodes": 50712229
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 76646080512,
+          "freeInodes": 50712229
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 76646080512,
+          "freeInodes": 50712229
+        }
+      ]
+    },
+    {
+      "at": 1792349016.7000897,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 76353675264,
+          "freeInodes": 50710211
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 76353675264,
+          "freeInodes": 50710211
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 76353675264,
+          "freeInodes": 50710211
+        }
+      ]
+    }
+  ],
+  "producerFixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "fixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 32, in <module>\n    for name,argv in [('parquet-tests', ['cargo', 'test', '-p', 'ifc-lite-export', '--features', 'parquet-bos']), ('parquet-clippy', ['cargo', 'clippy', '-p', 'ifc-lite-export', '--features', 'parquet-bos', '--all-targets', '--', '-D', 'warnings']), ('manifold-clippy', ['cargo', 'clippy', '-p', 'ifc-lite-geometry', '--features', 'csg_manifold_gate', '--all-targets', '--', '-D', 'warnings']), ('geometry-all-features-clippy', ['cargo', 'clippy', '-p', 'ifc-lite-geometry', '--all-features', '--all-targets', '--', '-D', 'warnings']), ('capture-tests', ['cargo', 'test', '-p', 'ifc-lite-geometry', '--features', 'csg_capture']), ('opening-ring-tests', ['cargo', 'test', '-p', 'ifc-lite-geometry', '--features', 'opening-perf-trace', '--lib', 'csg::consolidate::ring_ops::tests']), ('opening-diagnostic-tests', ['cargo', 'test', '-p', 'ifc-lite-processing', '--features', 'opening-perf-trace', '--example', 'opening_work_probe']), ('opening-diagnostic-clippy', ['cargo', 'clippy', '-p', 'ifc-lite-processing', '--features', 'opening-perf-trace', '--example', 'opening_work_probe', '--', '-D', 'warnings']), ('triangulation-runnable', ['node', 'scripts/ci-assert-runnable-cargo-tests.mjs', '--package', 'ifc-lite-geometry', '--features', 'triangulation-alt', '--test', 'triangulation_invariance']), ('triangulation-tests', ['cargo', 'test', '-p', 'ifc-lite-geometry', '--features', 'triangulation-alt', '--test', 'triangulation_invariance', '--', '--nocapture']), ('topology-clippy', ['cargo', 'clippy', '-p', 'ifc-lite-geometry', '--features', 'csg_topology_gate', '--all-targets', '--', '-D', 'warnings']), ('combined-gates-clippy', ['cargo', 'clippy', '-p', 'ifc-lite-geometry', '--features', 'csg_manifold_gate,csg_topology_gate', '--all-targets', '--', '-D', 'warnings']), ('manifold-tests', ['cargo', 'test', '-p', 'ifc-lite-geometry', '--features', 'csg_manifold_gate', '--no-fail-fast']), ('topology-tests', ['cargo', 'test', '-p', 'ifc-lite-geometry', '--features', 'csg_topology_gate', '--no-fail-fast']), ('combined-gates-tests', ['cargo', 'test', '-p', 'ifc-lite-geometry', '--features', 'csg_manifold_gate,csg_topology_gate', '--no-fail-fast'])]:run(name,argv)\n                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              ~~~^^^^^^^^^^^\n  File \"<string>\", line 22, in run\n    guard_storage();row={'name':name,'argv':argv,'startedAt':time.time()};R['commands'].append(row);save();print('START',name,flush=True)\n    ~~~~~~~~~~~~~^^\n  File \"<string>\", line 15, in guard_storage\n    x=os.statvfs(p);row={'path':str(p),'freeBytes':x.f_bavail*x.f_frsize,'freeInodes':x.f_favail};assert row['freeBytes']>60*2**30 and row['freeInodes']>1000000,row;rows.append(row)\n                                                                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: {'path': '/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2', 'freeBytes': 56985751552, 'freeInodes': 50695577}\n",
+  "sourceAfter": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "fixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "producerFixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "complete": false,
+  "finishedAt": 1792349158.1994374
+}

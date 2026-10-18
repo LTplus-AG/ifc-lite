@@ -1,0 +1,66 @@
+{
+  "source": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "worker": "cc3c5f75-72f8-43e9-9a64-f66da852d4ac",
+  "exitCode": 0,
+  "sourceUnchanged": true,
+  "commands": [
+    {
+      "name": "exact-clippy",
+      "argv": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "startedAt": 1792347810.9976292,
+      "exitCode": 0,
+      "finishedAt": 1792347840.9862933,
+      "logSha256": "6aa9f2c9d81f1d0751a153b504287e5736ae2141895adeb1815fd2108e1c84d9"
+    },
+    {
+      "name": "workspace",
+      "argv": [
+        "cargo",
+        "test",
+        "--workspace"
+      ],
+      "startedAt": 1792347840.9870057,
+      "exitCode": 0,
+      "finishedAt": 1792348420.444618,
+      "logSha256": "d70d86a4e8998f2292b306f09fcc6fd471e3348dfe3839ae459a65ad7cf6a3a6"
+    }
+  ],
+  "workspace": {
+    "passed": 5485,
+    "failed": 0,
+    "ignored": 47,
+    "summaries": 367
+  },
+  "fixturesBeforeAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "producerBeforeAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "finallyErrors": [],
+  "outputHashes": {
+    "report.json": "082565283c27adbc768935d5a1aa7d15d4186c23576e9df01fc715a73bca1f51",
+    "workspace.log": "d70d86a4e8998f2292b306f09fcc6fd471e3348dfe3839ae459a65ad7cf6a3a6",
+    "exact-clippy.log": "6aa9f2c9d81f1d0751a153b504287e5736ae2141895adeb1815fd2108e1c84d9",
+    "original-worker-terminal.json": "898126e95043ff9b6f73a7e6cc07db204481d0b6f61738e610228082f8cf2aba"
+  },
+  "scope": "Finalfc default native workspace+exactClippy only; feature/runtime/perf/fullC4 acceptance remain separate"
+}

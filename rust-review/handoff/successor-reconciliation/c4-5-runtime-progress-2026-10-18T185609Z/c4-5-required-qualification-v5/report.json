@@ -1,0 +1,155 @@
+{
+  "scope": "Existing C4-5 exact reviewed source; PC ordinary workspace and exactClippy only; no performance",
+  "commands": [
+    {
+      "name": "exact-clippy",
+      "argv": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "startedAt": 1792347810.9976292,
+      "exitCode": 0,
+      "finishedAt": 1792347840.9862933,
+      "logSha256": "6aa9f2c9d81f1d0751a153b504287e5736ae2141895adeb1815fd2108e1c84d9"
+    },
+    {
+      "name": "workspace",
+      "argv": [
+        "cargo",
+        "test",
+        "--workspace"
+      ],
+      "startedAt": 1792347840.9870057,
+      "exitCode": 0,
+      "finishedAt": 1792348420.444618,
+      "logSha256": "d70d86a4e8998f2292b306f09fcc6fd471e3348dfe3839ae459a65ad7cf6a3a6"
+    }
+  ],
+  "primaryError": null,
+  "finallyErrors": [],
+  "startedAt": 1792347809.2943907,
+  "before": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "storageGuards": [
+    {
+      "at": 1792347809.3199196,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 176145620992,
+          "freeInodes": 50789122
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 176145620992,
+          "freeInodes": 50789122
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 176145620992,
+          "freeInodes": 50789122
+        }
+      ]
+    },
+    {
+      "at": 1792347810.9969027,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 175008755712,
+          "freeInodes": 50788919
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 175008755712,
+          "freeInodes": 50788919
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 175008755712,
+          "freeInodes": 50788919
+        }
+      ]
+    },
+    {
+      "at": 1792347840.9867668,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 173344026624,
+          "freeInodes": 50781108
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 173344026624,
+          "freeInodes": 50781108
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 173344026624,
+          "freeInodes": 50781108
+        }
+      ]
+    },
+    {
+      "at": 1792348422.244476,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 117798875136,
+          "freeInodes": 50742461
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 117798875136,
+          "freeInodes": 50742461
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 117798875136,
+          "freeInodes": 50742461
+        }
+      ]
+    }
+  ],
+  "producerFixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "fixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "sourceAfter": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "fixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "producerFixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "storageFinal": null,
+  "complete": true,
+  "finishedAt": 1792348422.2446756
+}

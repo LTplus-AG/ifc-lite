@@ -1,0 +1,42 @@
+{
+  "scope": "Only own stopped incremental caches; binaries/logs/source/models untouched; archive storage only, no execution on DrvFS",
+  "rows": [
+    {
+      "target": "/home/louistrue/build-workers/worker-state/targets/d24eceff42b85f011062",
+      "source": "/home/louistrue/build-workers/worker-state/targets/d24eceff42b85f011062/debug/incremental",
+      "originalJob": "65185739-4372-4adf-984c-98c36e101ed7",
+      "uid": 1000,
+      "dev": 2096,
+      "inode": 1757265,
+      "nativeFreeBefore": 76075565056,
+      "windowsFreeBefore": 848659845120,
+      "archive": "/mnt/c/ifc-lite-bc9e57fa-owned-incremental-archives-v2/d24eceff42b85f011062-incremental.tar",
+      "archiveBytes": 6116065280,
+      "archiveSha256": "cfdf3ee24f92c10c169249cafb55fcda42fe15dc13e09c3d950fd848dd4f6438",
+      "gnuTarFullCompare": 0,
+      "nativeCacheRemovedAfterVerifiedArchive": true,
+      "nativeFreeAfter": 63070240768,
+      "windowsFreeAfter": 842542661632
+    },
+    {
+      "target": "/home/louistrue/build-workers/worker-state/targets/a143a9485c501e80c5b2",
+      "source": "/home/louistrue/build-workers/worker-state/targets/a143a9485c501e80c5b2/debug/incremental",
+      "originalJob": "dd384660-8c62-41b3-b91b-80183c325b9b",
+      "uid": 1000,
+      "dev": 2096,
+      "inode": 2014609,
+      "nativeFreeBefore": 63070236672,
+      "windowsFreeBefore": 842542661632,
+      "archive": "/mnt/c/ifc-lite-bc9e57fa-owned-incremental-archives-v2/a143a9485c501e80c5b2-incremental.tar",
+      "archiveBytes": 6706995200,
+      "archiveSha256": "135512a67b2960b01fb06ee907f50c6ba0d09cc7fc1588cbe4fa894cbb51cb98",
+      "gnuTarFullCompare": 0,
+      "nativeCacheRemovedAfterVerifiedArchive": true,
+      "nativeFreeAfter": 67800633344,
+      "windowsFreeAfter": 835835002880
+    }
+  ],
+  "startedAt": 1792349029.7666104,
+  "complete": true,
+  "finishedAt": 1792349483.4588368
+}

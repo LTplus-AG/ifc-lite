@@ -1,0 +1,379 @@
+{
+  "scope": "Final C4-5 sourceWASM and actual renderer/export consumer closure plus real contracts; no performance",
+  "commands": [
+    {
+      "name": "install",
+      "argv": [
+        "pnpm",
+        "install",
+        "--frozen-lockfile",
+        "--prefer-offline"
+      ],
+      "startedAt": 1792348030.4511056,
+      "exitCode": 0,
+      "finishedAt": 1792348035.6444914,
+      "logSha256": "aafdc02879f4364955d11474cd670c34a42ecd376a921f14de9598e9b382fb08"
+    },
+    {
+      "name": "source-wasm-and-consumer-build",
+      "argv": [
+        "pnpm",
+        "exec",
+        "env",
+        "CI=1",
+        "bash",
+        "-euc",
+        "pnpm exec turbo run build --filter=@ifc-lite/renderer... --filter=@ifc-lite/export... --env-mode=loose\ngit diff --exit-code -- packages/wasm/pkg/ifc-lite.d.ts"
+      ],
+      "startedAt": 1792348035.6465535,
+      "exitCode": 0,
+      "finishedAt": 1792348202.9468808,
+      "logSha256": "14908f676ad5ec68d86cfeed054e90c3b536e3106924f57d758e81e00c832d18"
+    },
+    {
+      "name": "wasm-contract",
+      "argv": [
+        "pnpm",
+        "test:wasm-contract"
+      ],
+      "startedAt": 1792348202.9474216,
+      "exitCode": 0,
+      "finishedAt": 1792348212.8171268,
+      "logSha256": "b02b9c961ce01d4c119362b4e818c4dbffcdab361f8611442b16f117d983ff47"
+    },
+    {
+      "name": "snap-edges",
+      "argv": [
+        "pnpm",
+        "test:snap-edges"
+      ],
+      "startedAt": 1792348212.8258085,
+      "exitCode": 0,
+      "finishedAt": 1792348213.5370963,
+      "logSha256": "d16ba661c096319486c1e0d730ba74d523fe8787f1ef3252a61f36e642b1487d"
+    },
+    {
+      "name": "check-rust-api-surface.mjs",
+      "argv": [
+        "node",
+        "scripts/check-rust-api-surface.mjs"
+      ],
+      "startedAt": 1792348213.5458431,
+      "exitCode": 0,
+      "finishedAt": 1792348214.2570558,
+      "logSha256": "3f25e44a7650a4ae57030d0f0ac5cf2e571e689674b3f2ae37ce0aca3b1d0987"
+    },
+    {
+      "name": "check-refwalk-guards.mjs",
+      "argv": [
+        "node",
+        "scripts/check-refwalk-guards.mjs"
+      ],
+      "startedAt": 1792348214.2658381,
+      "exitCode": 0,
+      "finishedAt": 1792348215.4127593,
+      "logSha256": "7be1a42bff43b274e4ab896ff4c3553ae8795074cafd230a60d68b62a59a1687"
+    },
+    {
+      "name": "check-test-wiring.mjs",
+      "argv": [
+        "node",
+        "scripts/check-test-wiring.mjs"
+      ],
+      "startedAt": 1792348215.4134073,
+      "exitCode": 0,
+      "finishedAt": 1792348215.8259206,
+      "logSha256": "3370f2fdc0825a60c44251b747df1ac3754ceb180d2b87a8e669e76b682388c1"
+    },
+    {
+      "name": "check-rust-source-text-assertions.mjs",
+      "argv": [
+        "node",
+        "scripts/check-rust-source-text-assertions.mjs"
+      ],
+      "startedAt": 1792348215.8345435,
+      "exitCode": 0,
+      "finishedAt": 1792348216.2977178,
+      "logSha256": "c49fd60721e40bbe27a124b8f97df9dc4e621137429567327068f95269c96fbf"
+    },
+    {
+      "name": "check-float-sort-comparators.mjs",
+      "argv": [
+        "node",
+        "scripts/check-float-sort-comparators.mjs"
+      ],
+      "startedAt": 1792348216.298355,
+      "exitCode": 0,
+      "finishedAt": 1792348216.8167853,
+      "logSha256": "b263f3bb5fa923d154d7b5585be5093da0e232602ee991abf5cf34e80443d458"
+    }
+  ],
+  "primaryError": "AttributeError(\"'str' object has no attribute 'open'\")",
+  "finallyErrors": [],
+  "startedAt": 1792348026.7509878,
+  "before": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "storageGuards": [
+    {
+      "at": 1792348026.8157802,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 382125207552,
+          "freeInodes": 115332303
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 382125207552,
+          "freeInodes": 115332303
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 382125207552,
+          "freeInodes": 115332303
+        }
+      ]
+    },
+    {
+      "at": 1792348030.4499178,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 381543886848,
+          "freeInodes": 115333459
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 381543886848,
+          "freeInodes": 115333459
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 381543886848,
+          "freeInodes": 115333459
+        }
+      ]
+    },
+    {
+      "at": 1792348035.6451216,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 383790366720,
+          "freeInodes": 115316579
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 383790366720,
+          "freeInodes": 115316579
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 383790366720,
+          "freeInodes": 115316579
+        }
+      ]
+    },
+    {
+      "at": 1792348202.9472451,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 388549242880,
+          "freeInodes": 115317866
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 388549242880,
+          "freeInodes": 115317866
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 388549242880,
+          "freeInodes": 115317866
+        }
+      ]
+    },
+    {
+      "at": 1792348212.8175752,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 388548128768,
+          "freeInodes": 115317848
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 388548128768,
+          "freeInodes": 115317848
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 388548128768,
+          "freeInodes": 115317848
+        }
+      ]
+    },
+    {
+      "at": 1792348213.5375106,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 388548124672,
+          "freeInodes": 115317847
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 388548124672,
+          "freeInodes": 115317847
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 388548124672,
+          "freeInodes": 115317847
+        }
+      ]
+    },
+    {
+      "at": 1792348214.257661,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 388548112384,
+          "freeInodes": 115317846
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 388548112384,
+          "freeInodes": 115317846
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 388548112384,
+          "freeInodes": 115317846
+        }
+      ]
+    },
+    {
+      "at": 1792348215.413195,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 388547911680,
+          "freeInodes": 115317845
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 388547911680,
+          "freeInodes": 115317845
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 388547911680,
+          "freeInodes": 115317845
+        }
+      ]
+    },
+    {
+      "at": 1792348215.8263829,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 388547891200,
+          "freeInodes": 115317844
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 388547891200,
+          "freeInodes": 115317844
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 388547891200,
+          "freeInodes": 115317844
+        }
+      ]
+    },
+    {
+      "at": 1792348216.2981496,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 388547821568,
+          "freeInodes": 115317835
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 388547821568,
+          "freeInodes": 115317835
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 388547821568,
+          "freeInodes": 115317835
+        }
+      ]
+    },
+    {
+      "at": 1792348218.544325,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 388547772416,
+          "freeInodes": 115317834
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 388547772416,
+          "freeInodes": 115317834
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 388547772416,
+          "freeInodes": 115317834
+        }
+      ]
+    }
+  ],
+  "producerFixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "fixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 56, in <module>\n  File \"<string>\", line 7, in sha\nAttributeError: 'str' object has no attribute 'open'\n",
+  "sourceAfter": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "fixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "producerFixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "storageFinal": null,
+  "pythonAfter": {
+    "count": 5382,
+    "exact": true,
+    "manifestSha256": "674e1b9bea243112808f2fc34a24783ad92679a969305e89b8049e4f6a969177"
+  },
+  "complete": false,
+  "finishedAt": 1792348219.12305
+}

@@ -1,0 +1,381 @@
+{
+  "scope": "Final C4-5 sourceWASM and actual renderer/export consumer closure plus real contracts; no performance",
+  "commands": [
+    {
+      "name": "fresh-owned-venv",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/tools/python-reviewed-v1/runtime/bin/python3.12",
+        "-m",
+        "venv",
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-final-consumers-v2/venv"
+      ],
+      "startedAt": 1792348252.0765634,
+      "exitCode": 0,
+      "finishedAt": 1792348253.551519,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "python-toolchain-smoke",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-final-consumers-v2/venv/bin/python",
+        "-c",
+        "import sys,ssl,sqlite3,ctypes,zlib,pytest;print(sys.version,sys.prefix,sys.base_prefix,pytest.__version__);assert sys.version_info[:3]==(3,12,14);assert pytest.__version__==\"9.1.1\""
+      ],
+      "startedAt": 1792348253.6911032,
+      "exitCode": 0,
+      "finishedAt": 1792348253.9360576,
+      "logSha256": "09580c587664f0c2b2f2a2d86f0b1f44cabe7a41eb541c7b8e29a8e59c27270e"
+    },
+    {
+      "name": "excluded-python-rust-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "rust/python/Cargo.toml"
+      ],
+      "startedAt": 1792348253.9445252,
+      "exitCode": 0,
+      "finishedAt": 1792348291.8074443,
+      "logSha256": "b8bced6a37d0c7daf7c59a9cf18244820afe0a071a4264b7304f090124a3eb64"
+    },
+    {
+      "name": "detached-csg-compile-tests",
+      "argv": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "rust/csg-thread-bench/Cargo.toml"
+      ],
+      "startedAt": 1792348291.809368,
+      "exitCode": 0,
+      "finishedAt": 1792348325.606001,
+      "logSha256": "b9fb7219dda0bfce9e13e266bb90926e9d618da05e1f5052d73ff88c07a865b0"
+    },
+    {
+      "name": "fresh-source-wheel",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c2-published-stack-takeover/python-venv/bin/maturin",
+        "build",
+        "--release",
+        "--locked",
+        "--offline",
+        "-m",
+        "rust/python/Cargo.toml",
+        "-o",
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-final-consumers-v2/wheels",
+        "--interpreter",
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-final-consumers-v2/venv/bin/python"
+      ],
+      "startedAt": 1792348325.6086829,
+      "exitCode": 0,
+      "finishedAt": 1792348386.5257,
+      "logSha256": "a0b2fe8e216be09a16670269632031e6b78d4fd75626f2a79b673ab8d660afe8"
+    },
+    {
+      "name": "install-own-wheel",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-final-consumers-v2/venv/bin/python",
+        "-m",
+        "pip",
+        "install",
+        "--no-index",
+        "--no-deps",
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-final-consumers-v2/wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl"
+      ],
+      "startedAt": 1792348386.53512,
+      "exitCode": 0,
+      "finishedAt": 1792348386.8614712,
+      "logSha256": "af605d0a0c9f666cec14010bbb6c169333847c1995af232a605223566919aa69"
+    },
+    {
+      "name": "import-own-wheel",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-final-consumers-v2/venv/bin/python",
+        "-c",
+        "import ifclite_geom,pathlib,sys;p=pathlib.Path(ifclite_geom.__file__).resolve();print(p);assert p.is_relative_to(pathlib.Path(sys.prefix))"
+      ],
+      "startedAt": 1792348386.8627832,
+      "exitCode": 0,
+      "finishedAt": 1792348386.8808339,
+      "logSha256": "8e01451f916701ffb64e51d6b395f72ec2f26180a176726566b558ae874d9dbb"
+    },
+    {
+      "name": "wheel-pytest",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-final-consumers-v2/venv/bin/python",
+        "-m",
+        "pytest",
+        "rust/python/tests",
+        "-q",
+        "-rs",
+        "--junitxml=/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-final-consumers-v2/pytest.xml",
+        "-o",
+        "cache_dir=/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-final-consumers-v2/cache/pytest"
+      ],
+      "startedAt": 1792348386.8815508,
+      "exitCode": 0,
+      "finishedAt": 1792348387.4163833,
+      "logSha256": "a1fd2a75a346447eaffc4dbe268a589ed7967deddaa4ce94f3fa15a66c37c783"
+    }
+  ],
+  "primaryError": null,
+  "finallyErrors": [],
+  "startedAt": 1792348249.455455,
+  "before": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "storageGuards": [
+    {
+      "at": 1792348249.4883382,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 388543610880,
+          "freeInodes": 115317778
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 388543610880,
+          "freeInodes": 115317778
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 388543610880,
+          "freeInodes": 115317778
+        }
+      ]
+    },
+    {
+      "at": 1792348252.0746768,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 388542586880,
+          "freeInodes": 115317749
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 388542586880,
+          "freeInodes": 115317749
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 388542586880,
+          "freeInodes": 115317749
+        }
+      ]
+    },
+    {
+      "at": 1792348253.6909873,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 388521291776,
+          "freeInodes": 115316246
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 388521291776,
+          "freeInodes": 115316246
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 388521291776,
+          "freeInodes": 115316246
+        }
+      ]
+    },
+    {
+      "at": 1792348253.93643,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 388521283584,
+          "freeInodes": 115316245
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 388521283584,
+          "freeInodes": 115316245
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 388521283584,
+          "freeInodes": 115316245
+        }
+      ]
+    },
+    {
+      "at": 1792348291.8078442,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 386697682944,
+          "freeInodes": 115314061
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 386697682944,
+          "freeInodes": 115314061
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 386697682944,
+          "freeInodes": 115314061
+        }
+      ]
+    },
+    {
+      "at": 1792348325.607174,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 385261359104,
+          "freeInodes": 115312483
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 385261359104,
+          "freeInodes": 115312483
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 385261359104,
+          "freeInodes": 115312483
+        }
+      ]
+    },
+    {
+      "at": 1792348386.5347788,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 384863080448,
+          "freeInodes": 115311433
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 384863080448,
+          "freeInodes": 115311433
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 384863080448,
+          "freeInodes": 115311433
+        }
+      ]
+    },
+    {
+      "at": 1792348386.8623245,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 384853213184,
+          "freeInodes": 115311415
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 384853213184,
+          "freeInodes": 115311415
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 384853213184,
+          "freeInodes": 115311415
+        }
+      ]
+    },
+    {
+      "at": 1792348386.8812537,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 384853209088,
+          "freeInodes": 115311414
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 384853209088,
+          "freeInodes": 115311414
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 384853209088,
+          "freeInodes": 115311414
+        }
+      ]
+    },
+    {
+      "at": 1792348388.8667521,
+      "volumes": [
+        {
+          "path": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2",
+          "freeBytes": 384851611648,
+          "freeInodes": 115311372
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+          "freeBytes": 384851611648,
+          "freeInodes": 115311372
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 384851611648,
+          "freeInodes": 115311372
+        }
+      ]
+    }
+  ],
+  "producerFixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "fixturesBefore": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "pythonBefore": {
+    "count": 5382,
+    "exact": true,
+    "manifestSha256": "674e1b9bea243112808f2fc34a24783ad92679a969305e89b8049e4f6a969177"
+  },
+  "maturinSha256": "7770f6d9cbe0497f69b9b60f001a9a92784767651658e778b9664e6ef9b8a29a",
+  "wheel": {
+    "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98/c4-5-final-consumers-v2/wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl",
+    "sha256": "8767f41fb45e4b23ccbe8ee6bc96178bc84a9e5eb4e9b97e9109211450fad257",
+    "size": 3835796,
+    "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2"
+  },
+  "sourceAfter": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "fixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "producerFixturesAfter": {
+    "count": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "totalBytes": 1136371018,
+    "allSizeShaMatch": true
+  },
+  "storageFinal": null,
+  "pythonAfter": {
+    "count": 5382,
+    "exact": true,
+    "manifestSha256": "674e1b9bea243112808f2fc34a24783ad92679a969305e89b8049e4f6a969177"
+  },
+  "complete": true,
+  "finishedAt": 1792348389.3268354
+}

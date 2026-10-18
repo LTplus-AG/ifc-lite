@@ -15,6 +15,12 @@ slicing and decoder-free presentation assembly. Parallel source/cache preservati
 and checked-resource work must join those same canonical boundaries. No cutover
 or whole-platform non-regression verdict follows from the integrated first phase.
 
+The [opening operation layer](geometry-platform-opening-program.md) is integrated
+with typed terminal propagation and owned numerical effects. Its final source
+remains uncompiled and unqualified. Consumed inner-program integration and the
+explicit retained evaluator continue in isolated implementation tasks; production
+cutover still requires assembled-source consumer and preservation evidence.
+
 ## Implemented execution layer
 
 1. **Authored planning.** Reuse the existing bounded analytic source walk to

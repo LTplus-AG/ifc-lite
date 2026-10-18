@@ -318,21 +318,6 @@
 # +9 (#2616): doc-only comments recording the z_tol coalescing rationale at the
 # depth-guard call sites; no code change.
      704 rust/geometry/src/router/voids/coaxial_union.rs
-# probe.rs +134: the 2D bool-path host/opening extraction — `extruded_solid_from_item`
-# (unwrap IfcMappedItem chains to a single IfcExtrudedAreaSolid + composed transform),
-# `host_extruded_solid` and `opening_extruded_solids` (single-body eligibility gates).
-# +10: mapped-item completeness guard — a non-null MappingTarget must parse and the
-# mapped representation must hold exactly one item, else the opening defers to exact.
-# +87 (#1806 CodeRabbit): body_representation_items now mirrors the mesh path's
-# effective_rep_type + is_body_representation selection (incl. MappedRepresentation
-# de-dup, collecting items across ALL body reps so a multi-rep body defers) instead of
-# a raw RepresentationType match, and mapping_origin_is_identity defers the fast path
-# when an IfcMappedItem's RepresentationMap.MappingOrigin is non-identity (the mesh
-# path drops it) — both keep the analytic cut bit-consistent with the rendered solid.
-# +6 (#1806 CodeRabbit round-2): reject non-finite rectangle dims/extrusion depth
-# (is_finite guards) so an inf depth can no longer slip past the `> 0.0` / `<= 0.0`
-# gates into the fast path.
-     619 rust/geometry/src/router/voids/probe.rs
 # -47: the exit-cap decision (which cutter caps may be pushed through the host)
 # moved to synthesis/exit_cap.rs, a module under the 400 budget, rather than
 # sitting inline here; 1002 -> 955. The move is NOT verbatim: the occupancy veto

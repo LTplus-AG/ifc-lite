@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use super::super::geom::mesh_signed_volume;
 use crate::ClippingProcessor;
 
 /// Append a quad, ordering its winding so the facet normal points along

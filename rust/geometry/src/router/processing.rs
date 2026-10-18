@@ -184,7 +184,9 @@ impl GeometryRouter {
         // layer gets its own sub-mesh keyed by IfcMaterial id. An empty void
         // index is passed — the caller's has_openings branch takes the
         // voids-aware path below.
-        if let Some(layered) = self.try_layered_sub_meshes(element, decoder, None) {
+        let layered = self.try_layered_sub_meshes(element, decoder, None)?;
+        crate::resource::check_current()?;
+        if let Some(layered) = layered {
             return Ok(layered);
         }
 

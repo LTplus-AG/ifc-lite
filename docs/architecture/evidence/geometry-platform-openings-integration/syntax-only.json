@@ -1,0 +1,241 @@
+{
+  "scope": "Syntax parsing only using rustfmt --emit stdout, no source formatting or compiler/runtime qualification",
+  "source": "c9a75c988f8613fffabdd1f6efb8f7c6f837471c",
+  "results": [
+    {
+      "path": "rust/geometry/src/program/layers/mod.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/layers/source.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/mod.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/opening.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/openings/classify.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/openings/decision.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/openings/effects.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/openings/execute.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/openings/execute_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/openings/mod.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/openings/planar.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/openings/raw_terminal_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/openings/rectangular.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/openings/terminal_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/openings/tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/traversal.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/layers.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/processing.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/aabb_clip.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/bool2d_path.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/bool2d_path/footprint.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/bool2d_path_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/bool2d_transaction_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/coaxial_union.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/coaxial_union3d.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/coaxial_union_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/cut_effect_count_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/execution_tests_adapter.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/flap_clip_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/frame_snap.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/geom.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/malformed_opening_repair.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/mod.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/prism_cut.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/prism_cut/opening_finish.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/prism_cut/planar_correction.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/probe.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/probe_rectangle.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/probe_solid.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/probe_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/representation.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/staged.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/synthesis.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/synthesis_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/telemetry_transaction.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/tests/common_opening_program.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/tests/module_size_ratchet.rs",
+      "exit_code": 0,
+      "stderr": ""
+    }
+  ]
+}

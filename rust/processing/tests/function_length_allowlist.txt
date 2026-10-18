@@ -49,16 +49,15 @@
    181 rust/geometry/src/processors/tessellated/triangulate.rs PolygonalFaceSetProcessor::triangulate_polygon
    182 rust/geometry/src/profiles/simplify.rs simplify_smooth_curve_polyline
    189 rust/geometry/src/router/transforms/operator.rs parse_transformation_operator
-   224 rust/geometry/src/router/voids/aabb_clip.rs GeometryRouter::clip_triangle_against_box
-   168 rust/geometry/src/router/voids/aabb_clip.rs GeometryRouter::triangle_intersects_box
-   781 rust/geometry/src/router/voids/mod.rs GeometryRouter::apply_void_context_inner
-   183 rust/geometry/src/router/voids/mod.rs GeometryRouter::try_cut_wall_local_frame
-   311 rust/geometry/src/router/voids/prism_cut.rs GeometryRouter::try_prism_cut
+   224 rust/geometry/src/router/voids/aabb_clip.rs Execution::clip_triangle_against_box
+   168 rust/geometry/src/router/voids/aabb_clip.rs Execution::triangle_intersects_box
+   726 rust/geometry/src/router/voids/mod.rs Execution::apply_void_context_inner
+   183 rust/geometry/src/router/voids/mod.rs Execution::try_cut_wall_local_frame
+   197 rust/geometry/src/router/voids/prism_cut.rs Execution::prism_cut_candidate
    161 rust/geometry/src/router/voids/prism_cut.rs build_face_cap
    233 rust/geometry/src/router/voids/prism_cut.rs cut_prism
    193 rust/geometry/src/router/voids/prism_cut.rs detect_prism
-   247 rust/geometry/src/router/voids/synthesis.rs GeometryRouter::classify_openings_impl
-   215 rust/geometry/src/router/voids/synthesis.rs GeometryRouter::extend_opening_along_direction
+   215 rust/geometry/src/router/voids/synthesis.rs Execution::extend_opening_along_direction
    168 rust/geometry/src/router/voids/synthesis/membrane.rs GeometryRouter::remove_internal_membrane
    269 rust/geometry/src/simplify/cavities.rs drop_enclosed_cavities
    159 rust/geometry/src/space_dcel/arrangement.rs Arrangement::resolve

@@ -30,34 +30,17 @@ pub(crate) fn record(event: impl FnOnce() + 'static) {
 }
 
 /// Must stay on the thread that owns its buffer, including during unwinding.
-pub(crate) struct Transaction {
+struct Transaction {
     active: bool,
     _same_thread: PhantomData<Rc<()>>,
 }
 
 impl Transaction {
-    pub(crate) fn new() -> Self {
+    fn new() -> Self {
         PENDING.with(|pending| pending.borrow_mut().push(Vec::new()));
         Self {
             active: true,
             _same_thread: PhantomData,
-        }
-    }
-
-    pub(crate) fn commit(mut self) {
-        let events = PENDING.with(|pending| {
-            let mut pending = pending.borrow_mut();
-            let events = pending.pop().expect("active telemetry transaction");
-            if let Some(parent) = pending.last_mut() {
-                parent.extend(events);
-                Vec::new()
-            } else {
-                events
-            }
-        });
-        self.active = false;
-        for event in events {
-            event();
         }
     }
 }
@@ -69,5 +52,37 @@ impl Drop for Transaction {
                 pending.borrow_mut().pop();
             });
         }
+    }
+}
+
+/// Detached events have no TLS buffer or transaction guard. They are linear:
+/// dropping discards only these events; committing publishes once into the
+/// currently reached parent scope (or the aggregate sinks).
+pub(crate) struct EffectSet(Vec<Event>);
+impl EffectSet {
+    pub(crate) fn commit(self) {
+        for event in self.0 {
+            record(event);
+        }
+    }
+}
+
+/// The thread-bound guard exists only while a synchronous numerical step runs.
+pub(crate) fn capture<T>(run: impl FnOnce() -> T) -> (T, EffectSet) {
+    let transaction = Transaction::new();
+    let value = run();
+    let effects = transaction.detach();
+    (value, effects)
+}
+impl Transaction {
+    fn detach(mut self) -> EffectSet {
+        let events = PENDING.with(|pending| {
+            pending
+                .borrow_mut()
+                .pop()
+                .expect("active telemetry transaction")
+        });
+        self.active = false;
+        EffectSet(events)
     }
 }

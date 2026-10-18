@@ -93,17 +93,23 @@ impl ReadyLayerSlice {
 pub(crate) fn drive(router: &GeometryRouter, element: &DecodedEntity,
     decoder: &mut EntityDecoder, buildup: &LayerBuildup,
     void_index: &FxHashMap<u32, Vec<u32>>) -> Result<Option<SubMeshCollection>> {
-    let program = match LayerProgram::admit(element, decoder, buildup, router.unit_scale()) {
+    crate::resource::check_current()?;
+    let admitted = LayerProgram::admit(element, decoder, buildup, router.unit_scale());
+    crate::resource::check_current()?;
+    let program = match admitted {
         Ok(Some(program)) => program,
         Ok(None) => return Ok(None),
         Err(skip) => { router.push_layer_slice_diag(element.id, skip.reason()); return Ok(None) }
     };
     let host = router.process_element_with_voids(element, decoder, void_index)?;
+    crate::resource::check_current()?;
     let request = match program.accept_host(host) {
         Ok(request) => request,
         Err(skip) => { router.push_layer_slice_diag(element.id, skip.reason()); return Ok(None) }
     };
-    let ready = source::admit_frame(element, decoder, router)
+    let frame = source::admit_frame(element, decoder, router)?;
+    crate::resource::check_current()?;
+    let ready = frame
         .ok_or(LayerSkip::PlacementUnresolved)
         .and_then(|frame| request.accept_frame(frame));
     let ready = match ready {
@@ -111,6 +117,7 @@ pub(crate) fn drive(router: &GeometryRouter, element: &DecodedEntity,
         Err(skip) => { router.push_layer_slice_diag(element.id, skip.reason()); return Ok(None) }
     };
     let collection = ready.evaluate();
+    crate::resource::check_current()?;
     router.push_layer_slice_diag(element.id,
         if collection.sub_meshes.len() >= 2 { "ok:sliced" } else { "skip:cut-produced-<2" });
     Ok(Some(collection))

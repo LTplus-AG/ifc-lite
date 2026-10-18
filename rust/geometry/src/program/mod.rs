@@ -2,10 +2,11 @@
 //! Reached product representation control and owned numerical operations.
 //!
 //! Owns the five reached representation/item policies, mapping child frames,
-//! boolean continuations and material-layer admission/slicing. Opening
-//! classification retains its existing owner. These synchronous seams claim
+//! boolean continuations, material-layer admission/slicing, and host-opening
+//! classification and owned numerical execution. These synchronous seams claim
 //! no transport authentication or complete resource envelope.
 
+pub(crate) mod openings;
 mod traversal;
 mod boolean;
 pub(crate) mod layers;

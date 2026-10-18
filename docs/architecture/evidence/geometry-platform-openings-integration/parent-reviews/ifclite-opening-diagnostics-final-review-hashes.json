@@ -1,0 +1,59 @@
+{
+  "scope": "read-only; no build/test; root uncommitted correction",
+  "files": [
+    {
+      "path": "rust/geometry/src/program/openings/execute.rs",
+      "sha256": "647e4cb9517725994a11d7178d25b6427989f7072ce5dcfc7da7e4dcb2b313fd",
+      "bytes": 6100,
+      "matches_correction_receipt": true
+    },
+    {
+      "path": "rust/geometry/src/program/openings/effects.rs",
+      "sha256": "3d5a65404da9a5ce17b14779e54bf33b3d4966de1951612d9174733f2d3dd052",
+      "bytes": 1989,
+      "matches_correction_receipt": true
+    },
+    {
+      "path": "rust/geometry/src/program/openings/execute_tests.rs",
+      "sha256": "0d46616660454c9d2114af70e95fce42b249cd88f6a758148db0dccffebd3521",
+      "bytes": 14730,
+      "matches_correction_receipt": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/mod.rs",
+      "sha256": "f41525c944988bf3e3fd1f9c6f90118844cb00ea7178ed183cd328ab9fdab031",
+      "bytes": 99413,
+      "matches_correction_receipt": true
+    },
+    {
+      "path": "rust/geometry/src/csg/mod.rs",
+      "sha256": "35b58ae829c357fe6ffa94d4cea60bb69d82d3c1d9f2f73bbe73159dedbb3f34",
+      "bytes": 21699
+    },
+    {
+      "path": "rust/geometry/src/router/voids/staged.rs",
+      "sha256": "52b9a32ed2212e724ed413c279da59a050b6e47c8c5d0358fa52466e475df13b",
+      "bytes": 4689
+    },
+    {
+      "path": "rust/geometry/src/telemetry_transaction.rs",
+      "sha256": "5bea9f119c268aecbd9ad2aaf0d72541e25ce32df1f2c56a53d5a566bca5d4f9",
+      "bytes": 2664
+    },
+    {
+      "path": "rust/geometry/src/router/diagnostics.rs",
+      "sha256": "1fbda14569ca4cd6c66556082f4a3c19f8b75e7d3f005fdeccfdfe863b421435",
+      "bytes": 15880
+    },
+    {
+      "path": "rust/geometry/src/router/diagnostics_recording.rs",
+      "sha256": "dae630d57edbf3110cfc41904e878c69c136bf299d58898d33266a4b77931101",
+      "bytes": 18210
+    },
+    {
+      "path": "rust/geometry/src/kernel/budget.rs",
+      "sha256": "4c6dbf3b3b57c0894ad4c56b1e66e47b20a78bb6c4bf26e73b3cbf33896c9c80",
+      "bytes": 18042
+    }
+  ]
+}

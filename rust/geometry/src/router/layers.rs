@@ -23,17 +23,21 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
         void_index: Option<&FxHashMap<u32, Vec<u32>>>,
-    ) -> Option<SubMeshCollection> {
-        let index = self.material_layer_index()?;
-        let buildup = index.get(element.id)?;
+    ) -> Result<Option<SubMeshCollection>> {
+        crate::resource::check_current()?;
+        let Some(index) = self.material_layer_index() else { return Ok(None) };
+        let Some(buildup) = index.get(element.id) else { return Ok(None) };
         if !buildup.is_sliceable() {
-            return None;
+            return Ok(None);
         }
         let empty: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
         let voids = void_index.unwrap_or(&empty);
-        let collection = match self.process_element_with_material_layers(element, decoder, buildup, voids) {
+        let result = crate::resource::observe(self.process_element_with_material_layers(element, decoder, buildup, voids));
+        crate::resource::check_current()?;
+        let collection = match result {
+            Err(error @ crate::Error::ProgramStopped(_)) => return Err(error),
             Ok(Some(c)) => c,
-            Ok(None) => return None,
+            Ok(None) => return Ok(None),
             Err(_e) => {
                 // A sliceable wall whose base-mesh build errored falls back to a
                 // single solid. Record for the browser; warn for native.
@@ -45,7 +49,7 @@ impl GeometryRouter {
                         eprintln!("[material-layers] #{}: sliceable but slicing errored", element.id);
                     }
                 );
-                return None;
+                return Ok(None);
             }
         };
         if collection.sub_meshes.len() < 2 {
@@ -61,7 +65,7 @@ impl GeometryRouter {
                     );
                 }
             );
-            return None;
+            return Ok(None);
         }
         crate::diag::diag_debug!(
             { element_id = element.id, sub_meshes = collection.sub_meshes.len(),
@@ -83,7 +87,8 @@ impl GeometryRouter {
         for sub in &mut collection.sub_meshes {
             sub.mesh.clean_degenerate();
         }
-        Some(collection)
+        crate::resource::check_current()?;
+        Ok(Some(collection))
     }
 
     /// Process an element into per-layer sub-meshes, subtracting any

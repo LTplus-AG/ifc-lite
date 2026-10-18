@@ -336,7 +336,7 @@ fn mixed_duplicate_footprints_apply_mandatory_union_correction_4617() {
     // Exercise the existing production entry point, including the mandatory
     // correction call. Reverting production still compiles this test and exposes
     // the former parity result (94), rather than failing at a new private API.
-    let result = router.apply_void_context(host, &context, 4617);
+    let result = router.apply_void_context(host, &context, 4617).unwrap();
     // Two distinct four-unit footprints remove 8, and the half-depth residual
     // removes 2 minus its 0.5 overlap with the corrected through-opening.
     assert!((mesh_signed_volume(&result).abs() - 90.5).abs() < 1e-5);

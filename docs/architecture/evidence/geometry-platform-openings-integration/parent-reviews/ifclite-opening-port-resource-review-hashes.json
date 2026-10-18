@@ -1,0 +1,339 @@
+{
+  "review": "static only; no builds/tests/jobs; child clean during inspection",
+  "child_commit": "c9a75c988f8613fffabdd1f6efb8f7c6f837471c",
+  "parent_checkpoint": "d3f6cecf2d",
+  "manifest_files": [
+    {
+      "path": "rust/geometry/src/program/layers/mod.rs",
+      "child_sha256": "8b41befe3e7d5cbb3233aa6c1d92b7067a80b6b408e4f350ecb5f41ece10ea35",
+      "bytes": 5232,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/program/layers/source.rs",
+      "child_sha256": "8a635d19289a29f5412c19cd6a9d031db86a9d43b1c792620f95aceb9dc7c5e9",
+      "bytes": 8430,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/program/mod.rs",
+      "child_sha256": "729cd5172aacfdb8731f4a7014d6f749410bdef2d2415bf8163123564150ce3b",
+      "bytes": 2489,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/program/opening.rs",
+      "child_sha256": "db75562cb9f70b231228bfce8e170b512e2a4065a13f87d6e522e3c7a9fdbe98",
+      "bytes": 4987,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/program/openings/classify.rs",
+      "child_sha256": "d1548e31eb983863666788d66b103b80829ea72fd04635e30796ab80d4acd584",
+      "bytes": 7555,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/program/openings/decision.rs",
+      "child_sha256": "6d370160ca86c0cd79a215ba80005d6e7062445e8d759a0c9498107d18d13494",
+      "bytes": 3494,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/program/openings/effects.rs",
+      "child_sha256": "c4b7d84d0e26d70666960116f0a475f0323fc28d1f799d00ff66afb895d64726",
+      "bytes": 1611,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/program/openings/execute.rs",
+      "child_sha256": "315b04df1f5e29951a0f2c0fd8b0e9662b9f076927a3a9c2b94935377158d7d7",
+      "bytes": 5005,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/program/openings/execute_tests.rs",
+      "child_sha256": "a416822a3621143720ed73d76abd761d7a58c824af5cb0f8c4ef4ca860affa27",
+      "bytes": 6230,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/program/openings/mod.rs",
+      "child_sha256": "9a5e859ab9a16e0172e52db3762f6b7e6158bbbcb66c05dd12a2d7abddfca8b8",
+      "bytes": 3129,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/program/openings/planar.rs",
+      "child_sha256": "cab7aceb4ac9e6e5836978f092697cdc523cb083df423983e823a40e238162dc",
+      "bytes": 6520,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/program/openings/raw_terminal_tests.rs",
+      "child_sha256": "5dbcc1b6cff81f5d6e24c4000382063e1ffde733d1ff999d902108b84dc9994b",
+      "bytes": 3114,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/program/openings/rectangular.rs",
+      "child_sha256": "4b0b71ceedc29af56f4f0598a6e30bd75d579717c1d4ab1a75dbbd6d63d1cefd",
+      "bytes": 3870,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/program/openings/terminal_tests.rs",
+      "child_sha256": "9e8e688ecbe237baea0ba2b39b0e4a0eb9ab37cc682d9d9e316cdcd00669479c",
+      "bytes": 7341,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/program/openings/tests.rs",
+      "child_sha256": "ab48e0ce49076fc6bbcb79b921a22255241aeb518dcb00f64c69d85d6139faf2",
+      "bytes": 3158,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/program/traversal.rs",
+      "child_sha256": "4e3cac3922c94f273c09c3e1d11df410f87fba6299bffb5ad8364009a601c54d",
+      "bytes": 5174,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/layers.rs",
+      "child_sha256": "6b34468660cadf60ffabed54c7c9176ba1d427b1d9702eb25abaac7cfc4a9aa0",
+      "bytes": 5294,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/processing.rs",
+      "child_sha256": "b035381f3b54687752480159e46405bbac2a5e3526958153fd25264dfbf8ce32",
+      "bytes": 16010,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/aabb_clip.rs",
+      "child_sha256": "0cdbe1f2642cdffc984f5ae61ddda2a4c6f267cee8b753b4ee03c470b704c843",
+      "bytes": 26849,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/bool2d_path.rs",
+      "child_sha256": "9d76135b49998f5195fbd4f2a89944bdc0f1a16ad8222cd7e880c05d348298c9",
+      "bytes": 12388,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/bool2d_path/footprint.rs",
+      "child_sha256": "91d68ed65fadccc83ccea124b1c1b24c12dfea78f83ee765eecb0e3c1cff0af3",
+      "bytes": 3297,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/bool2d_path_tests.rs",
+      "child_sha256": "0caaab062c31070bbf0c5d7120db502de70867bf9abaf889ef52eba855a36238",
+      "bytes": 14317,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/bool2d_transaction_tests.rs",
+      "child_sha256": "7ea2d6daa07ea20a5619e87721c1a1b32d64efc5c4016a13d83c8fe0811d519d",
+      "bytes": 15008,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/coaxial_union.rs",
+      "child_sha256": "f831dd4671668d9901de9a3a86129d6e3effb92108107c6a1560a5ece0f4ca59",
+      "bytes": 32294,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/coaxial_union3d.rs",
+      "child_sha256": "1a872bf95d93e9eac2100eb0022a3fa40c7fd25ebaf2fe3dd51bce93b509e94d",
+      "bytes": 2936,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/coaxial_union_tests.rs",
+      "child_sha256": "ab819ba9b03e94c0947451033fb4289e1130f1b6157413bbdbdcde104a5ef11e",
+      "bytes": 21773,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/cut_effect_count_tests.rs",
+      "child_sha256": "302885fec018912b422259c9bb3fb62458b0d3b39c9c0bc450504da64bca96f4",
+      "bytes": 1949,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/execution_tests_adapter.rs",
+      "child_sha256": "0c37c35d9e844751d9000ab7a9c08f0a90d9c474bcd95293e4d5bc661a93096c",
+      "bytes": 2529,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/flap_clip_tests.rs",
+      "child_sha256": "13a91292d0e3919acea4009fc91d77cc026ac0750b175598b98985575fd9e3e9",
+      "bytes": 17510,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/frame_snap.rs",
+      "child_sha256": "c90480902ac6875655927539f6196f7c7e3f1765af7fbe95969e55a6e3f89ebc",
+      "bytes": 9021,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/geom.rs",
+      "child_sha256": "71e0a820ec656c5963ba8232aa9edb23386f72771187d5d5542a209f9e8a7060",
+      "bytes": 31145,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/malformed_opening_repair.rs",
+      "child_sha256": "25905a4adbcdf2085299e9d8e87f25c5455f80fecf460f944eb5b202dfff1f22",
+      "bytes": 14065,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/mod.rs",
+      "child_sha256": "9f0b38bbaf525311ffc9dd2e98e14d0c3ed185abd1e9b88ced7ff694f9503e38",
+      "bytes": 99543,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/prism_cut.rs",
+      "child_sha256": "038236eb6ef133e7e7ba7fafba3e6b08146e9eaec82f8fc606620cbff7404cf4",
+      "bytes": 119214,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/prism_cut/opening_finish.rs",
+      "child_sha256": "80ddf1a66e7bdcf72bab00c78cf5bcf92e11dc8f5bac24ad77ba3254e2c87451",
+      "bytes": 6663,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/prism_cut/planar_correction.rs",
+      "child_sha256": "52adfb727e868182e357381bedc1c92b939e56db5e7877ca9256b539d02368b6",
+      "bytes": 2206,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/probe.rs",
+      "child_sha256": "ec1312b829837132d183190a80a60f4cbed0086dacd95daf831e4ac25950f02d",
+      "bytes": 16407,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/probe_rectangle.rs",
+      "child_sha256": "8283de2427c3ff41f1d2605286af23db6be0b35b96360aa18ac44c5a60a1bb48",
+      "bytes": 13579,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/probe_solid.rs",
+      "child_sha256": "855ec73c446695e49d9d41cb6e29785d5049020daed1348f90843e5d081050b1",
+      "bytes": 7732,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/probe_tests.rs",
+      "child_sha256": "2368e7f556e2c8f671cae3be8d3b2e1170d0e4627c1936f665068f0be84ac5bd",
+      "bytes": 6846,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/representation.rs",
+      "child_sha256": "beb7a443ddc455f174911287299648afe25ad2e47e53108552b1cc4b52e4575b",
+      "bytes": 2222,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/staged.rs",
+      "child_sha256": "52b9a32ed2212e724ed413c279da59a050b6e47c8c5d0358fa52466e475df13b",
+      "bytes": 4689,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/synthesis.rs",
+      "child_sha256": "c498a4d7f481ab23f890304965d233c4829cd0e5decead791b3494a1cf4cc54f",
+      "bytes": 26778,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/synthesis_tests.rs",
+      "child_sha256": "af61b195076c4cb3610c1a6ad6c9303a3c932b9aa2060588e2946a8af1683783",
+      "bytes": 41926,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/geometry/src/telemetry_transaction.rs",
+      "child_sha256": "5bea9f119c268aecbd9ad2aaf0d72541e25ce32df1f2c56a53d5a566bca5d4f9",
+      "bytes": 2664,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/processing/tests/common_opening_program.rs",
+      "child_sha256": "9d724cd99d44f90e2dfbde448bc9d31ce8f2ab3e6be4bbf423aa765f570b10c8",
+      "bytes": 6378,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/processing/tests/function_length_allowlist.txt",
+      "child_sha256": "02984fac6564b49f356095fa4c2e727d4271b778e0eaf041049c4337725e5026",
+      "bytes": 5691,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/processing/tests/module_size_allowlist.txt",
+      "child_sha256": "7a5f98bbac5237620e06c606423160cd93e7635f39c2b6eaa7aefca1722a4cec",
+      "bytes": 35848,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/processing/tests/module_size_ratchet.rs",
+      "child_sha256": "6c591ebe1b5b146f929555f047d6eeee5e9628cab7f741a96de45fdef1bfb101",
+      "bytes": 20898,
+      "matches_delivery": true
+    },
+    {
+      "path": "rust/processing/tests/positional_read_allowlist.txt",
+      "child_sha256": "250b666c81e2f5f99709a7429ad4f6d5cd55700a46a6c59e1da4102f79aa2d64",
+      "bytes": 6664,
+      "matches_delivery": true
+    }
+  ],
+  "parent_checkpoint_files": [
+    {
+      "path": "rust/geometry/src/resource/mod.rs",
+      "sha256": "041096b83e843c2318aad2947fb00df8079bd949a3fcab420ddabcd54a292943",
+      "bytes": 6124
+    },
+    {
+      "path": "rust/geometry/src/resource/account.rs",
+      "sha256": "8965a9948edf32fe36a86dde6dded7a02af987b25263a841c2ce6b807b705590",
+      "bytes": 7341
+    },
+    {
+      "path": "rust/processing/src/element/session.rs",
+      "sha256": "d533944b04b318eda4412f4615c0e852eb1c4480bea82775b0670ec17c7959f3",
+      "bytes": 13816
+    },
+    {
+      "path": "rust/processing/src/element/session_accept.rs",
+      "sha256": "968cc26df83fd8daa36bc86b3aa7bf72bc26fea122984e839907ea60c3f3186e",
+      "bytes": 3235
+    },
+    {
+      "path": "rust/processing/src/element/session_state.rs",
+      "sha256": "c6161e45da7309b9f47e76956384eba9f0f2be5c5614facab4db3ef57d3f0b95",
+      "bytes": 3321
+    },
+    {
+      "path": "rust/geometry/src/router/diagnostics_checked.rs",
+      "sha256": "3d3558873190de563acb478da92ab52d38083f4153826e4506674d41a965d459",
+      "bytes": 1163
+    }
+  ]
+}

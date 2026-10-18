@@ -1,0 +1,57 @@
+{
+  "id": "b75a33a1-6ead-4508-8524-6613d8d11a55",
+  "host": {
+    "host": "pop-os",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 32,
+    "availableMemoryBytes": 105619410944,
+    "totalMemoryBytes": 134644969472,
+    "python": "3.12.3",
+    "time": 1792364138.270247
+  },
+  "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-ff81c521",
+  "sourceBefore": {
+    "commit": "05390e81a6d6a9dc98c3af9ba98106ef6f5e3eae",
+    "tree": "c9def0391ffe4804f9c9727332734005aeaa5451",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "c8987439833b029efc8627127656e04700586f5b990657cac650a20636a5045e",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "command": [
+    "bash",
+    "-lc",
+    "cargo test --workspace && cargo clippy --workspace --all-targets -- -D warnings && pnpm build:wasm && pnpm test:wasm-contract"
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792364138.269763,
+  "resources": [
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-ff81c521",
+    "/home/louistrue/build-workers/worker-state/targets/88dee51cc299ad870324"
+  ],
+  "state": "failed",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "error": "host capacity guard refused admission",
+  "exitCode": 1,
+  "finishedAt": 1792364138.4798038,
+  "sourceAfter": {
+    "commit": "05390e81a6d6a9dc98c3af9ba98106ef6f5e3eae",
+    "tree": "c9def0391ffe4804f9c9727332734005aeaa5451",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "c8987439833b029efc8627127656e04700586f5b990657cac650a20636a5045e",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {}
+}

@@ -287,7 +287,7 @@ fn partial_depth_cutter_is_not_over_cut_end_to_end() {
     };
     let host = host_wall();
     let host_v = vol(&host);
-    let cut = router.apply_void_context(host, &ctx, 1);
+    let cut = router.apply_void_context(host, &ctx, 1).unwrap();
     super::set_enabled_override(None);
     assert!(watertight(&cut), "partial-depth cut must be watertight");
     let removed = host_v - vol(&cut);
@@ -328,7 +328,7 @@ fn sub_ztol_shallow_recess_is_not_dropped_end_to_end() {
     };
     let host = host_wall();
     let host_v = vol(&host);
-    let cut = router.apply_void_context(host, &ctx, 1);
+    let cut = router.apply_void_context(host, &ctx, 1).unwrap();
     super::set_enabled_override(None);
     assert!(watertight(&cut), "cut must be watertight");
     let removed = host_v - vol(&cut);
@@ -393,9 +393,9 @@ fn tilted_member_defers_to_exact_and_does_not_over_cut() {
 
     let router = GeometryRouter::new();
     super::set_enabled_override(Some(true));
-    let on = router.apply_void_context(host_wall(), &ctx, 1);
+    let on = router.apply_void_context(host_wall(), &ctx, 1).unwrap();
     super::set_enabled_override(Some(false));
-    let off = router.apply_void_context(host_wall(), &ctx, 1);
+    let off = router.apply_void_context(host_wall(), &ctx, 1).unwrap();
     super::set_enabled_override(None);
 
     assert!(watertight(&on), "feature-on tilted cut must be watertight");

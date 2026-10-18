@@ -1,0 +1,23 @@
+# Final static review: opening diagnostic correction
+
+Reviewed the shared-root correction described in `/tmp/ifclite-opening-terminal-diagnostics-correction.md`, on the uncommitted opening integration above `d3f6cecf2d`. All four corrected file hashes match that correction's receipt. Exact inspected hashes, including supporting CSG/telemetry/staged/publication code, are in `/tmp/ifclite-opening-diagnostics-final-review-hashes.json`.
+
+**No concrete static blocker found.** No repository edits, builds, tests, network calls or heavy commands were performed. Final-source compilation, Clippy and executed geometry assertions remain unqualified.
+
+## Ownership, lifetimes and exactly-once publication
+
+`FailureCapture` borrows only the numerical `Execution`, actual local `ClippingProcessor` and copied host ID. It is created after the clipper, so reverse local drop order drains it before the processor is destroyed. Both borrows remain immutable: numerical methods and `take_failures` use short interior-mutable accesses. The guard holds no RefCell borrow across kernel work, no source/decoder/router, and no TLS or suspension scope. It cannot outlive either borrowed local. Crate-visible guard/helper types are sufficient for the router sibling implementation and the child test module; no missing public export or inaccessible test API was identified.
+
+At the normal finalizer, `drain_failures` consumes `clipper.take_failures()` and appends one FailureSummary followed by one Failures effect when nonempty. The subsequent lexical Drop drains an empty log, giving no duplicate summary or failure. If the entry to the finalizer stops, an earlier barrier returns, or numerical work unwinds, the same guard drains the remaining actual processor evidence into the root Execution before that Execution is consumed by `ReadyOperation`'s catch boundary. Existing processor failure recording acquires temporary RefCell borrows; these unwind before the outer lexical guard runs. No reachable callback with an outstanding Execution effects borrow was found.
+
+`NumericalOutcome::publish` is consuming. Successful observed geometry publishes the entire original ordered log and commits detached telemetry. Typed/sticky stop or ordinary numerical Err publishes only FailureSummary/Failures in their original relative order and attribution; Cut/Consumed/Rect and success telemetry are dropped. The publication method does not retry geometry or substitute another error. The panic arm preserves the established full parent-log publication and resumes the identical panic payload. Each local failure log is drained once and the outcome cannot be published twice through this API.
+
+The guard covers the actual exact-path clipper. Analytic returns before that clipper has been created have no clipper evidence to drain. Local-frame and staged paths retain their existing ownership boundaries: staged provisional Execution is separate, rejected/terminal/panicking provisional effects are discarded, and only accepted child effects append to the parent's log. Filtering root failure effects does not resurrect a discarded provisional child. Normal snapshots/rejection logic are unchanged by this correction.
+
+## Tests and remaining qualification
+
+The new subprocess test invokes actual ReadyOperation numerical work, verifies a real successful parametric cut before stopped acceptance, and then uses real off-grid closed cutter geometry with the actual exact-predicate cap. Its geometry/census/failure assertions are substantive but **unrun**. The follow-up lexical scope exercises the same production capture guard around a real capped subtraction before the ordinary finalizer drain; it is not a mocked failure-return assertion. Relevant APIs (`GLOBAL_CAP_LOCK`, budget controls, ClippingProcessor subtraction/drain, router diagnostic drains) have accessible types/signatures in the inspected source. Child test modules may inspect private parent outcome fields in Rust.
+
+That test explicitly proves intended normal completion and terminal/early-drop cases when executed. It does not itself exercise an unwind through the new failure guard or a failed staged child carrying a real kernel failure. Those remain useful focused qualification cases alongside existing staged transaction/panic invariants; no execution result is inferred from this static review. Process isolation avoids sharing global budget/census controls with the parent test process; restore guard is lexical and panic-safe within the subprocess.
+
+This correction preserves reached root kernel failure evidence without publishing stopped current-host success bookkeeping. It does not establish bounded numerical heap coverage, detached public execution, whole-scene parity or a performance verdict.

@@ -68,3 +68,91 @@ fn read_rect_profile_2d_rejects_parallelogram_just_outside_perp_tolerance() {
         "dot=0.011 is outside the 0.01 perpendicularity tolerance and must be rejected, got {result:?}"
     );
 }
+
+#[test]
+fn terminal_port_round2_prior_profile_cache_survives_stopped_later_probe() {
+    // The invariant is that a stopped later source probe cannot consume new
+    // references or replace a previously completed decode/cache entry.
+    let content = format!(
+        "{}#11=IFCCARTESIANPOINT((10.,20.));\n\
+         #12=IFCCARTESIANPOINT((14.,20.));\n\
+         #13=IFCCARTESIANPOINT((14.,22.));\n\
+         #14=IFCCARTESIANPOINT((10.,22.));\n\
+         #15=IFCPOLYLINE((#11,#12,#13,#14));\n\
+         #16=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,'Later',#15);\n",
+        parallelogram_step(0.0)
+    );
+    let mut decoder = EntityDecoder::new(&content);
+    let earlier = decoder.decode_by_id(6).unwrap();
+    let later = decoder.decode_by_id(16).unwrap();
+    let earlier_arc = decoder.decode_and_cache(6, 0, 0).unwrap();
+    let router = GeometryRouter::new();
+    let account = crate::resource::ExecutionAccount::new(
+        crate::resource::ExecutionPolicy::Bounded(crate::resource::ResourceLimits::default()),
+    );
+    account.scope(|| {
+        let dimensions = router
+            .read_rect_profile_2d_checked(&earlier, &mut decoder)
+            .unwrap()
+            .unwrap();
+        assert_eq!(dimensions, (1.0, 1.0, 0.5, 0.5, 1.0, 0.0));
+        let cached = decoder.cache_size();
+        account.cancel();
+        assert!(matches!(
+            router.read_rect_profile_2d_checked(&later, &mut decoder),
+            Err(crate::Error::ProgramStopped(
+                crate::resource::ProgramStop::Cancelled
+            ))
+        ));
+        assert!(matches!(
+            router.parametric_rect_probe_checked(&later, &mut decoder),
+            Err(crate::Error::ProgramStopped(
+                crate::resource::ProgramStop::Cancelled
+            ))
+        ));
+        assert!(matches!(
+            router.parametric_rect_probe_all_checked(&later, &mut decoder),
+            Err(crate::Error::ProgramStopped(
+                crate::resource::ProgramStop::Cancelled
+            ))
+        ));
+        assert!(matches!(
+            router.host_extruded_solid_checked(&later, &mut decoder),
+            Err(crate::Error::ProgramStopped(
+                crate::resource::ProgramStop::Cancelled
+            ))
+        ));
+        assert!(matches!(
+            router.opening_extruded_solids_checked(&later, &mut decoder),
+            Err(crate::Error::ProgramStopped(
+                crate::resource::ProgramStop::Cancelled
+            ))
+        ));
+        assert!(matches!(
+            router.extract_extrusion_direction_recursive_checked(&later, &mut decoder),
+            Err(crate::Error::ProgramStopped(
+                crate::resource::ProgramStop::Cancelled
+            ))
+        ));
+        assert_eq!(decoder.cache_size(), cached);
+        assert!(decoder.get_cached(15).is_none(), "no later curve decode");
+        assert!(decoder.get_cached(11).is_none(), "no later point decode");
+        let retained = decoder.decode_and_cache(6, 0, 0).unwrap();
+        assert!(std::sync::Arc::ptr_eq(&earlier_arc, &retained));
+    });
+}
+
+#[test]
+fn terminal_port_round2_ordinary_optional_position_fault_retains_rectangle() {
+    // Ordinary source faults retain the old optional-position fallback. They
+    // must not become resource stops or reject an otherwise eligible rectangle.
+    let content = "#1=IFCRECTANGLEPROFILEDEF(.AREA.,'Rect',#999,4.,2.);\n";
+    let mut decoder = EntityDecoder::new(&content);
+    let profile = decoder.decode_by_id(1).unwrap();
+    let dimensions = GeometryRouter::new()
+        .read_rect_profile_2d_checked(&profile, &mut decoder)
+        .unwrap()
+        .unwrap();
+    assert_eq!(dimensions, (4.0, 2.0, 0.0, 0.0, 1.0, 0.0));
+    assert_eq!(crate::resource::check_current(), Ok(()));
+}

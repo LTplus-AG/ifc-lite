@@ -41,6 +41,10 @@ enum AdmissionValue {
 }
 
 impl ProductProgram {
+    pub(crate) fn host_openings(host: &DecodedEntity, ids: &[u32]) -> super::openings::HostOpenings {
+        super::openings::HostOpenings::new(host, ids)
+    }
+
     pub(crate) fn admit(element: &DecodedEntity, policy: EntryPolicy, decoder: &mut EntityDecoder<'_>) -> Result<Option<Self>> {
         let Some(shape) = product_shape(element, decoder)? else { return Ok(None) };
         Ok(Some(Self::representations(element, policy, shape.into_selected(element, Select::Meshed))))
@@ -77,12 +81,15 @@ impl ProductProgram {
 
     pub(crate) fn next(&mut self, decoder: &mut EntityDecoder<'_>) -> Result<Option<ReachedItem>> {
         loop {
+            crate::resource::check_current()?;
             match self.state {
                 State::Representations => {
                     let Some(rep) = self.representations.next() else { self.state = State::Complete; continue };
                     // Historical whole-list admission precedes annotation policy
                     // and the first child, even if the final child reference fails.
-                    let value = match self.admit_source(SourceAdmission::RepresentationItems(rep.clone()), decoder) {
+                    let admitted = crate::resource::observe(self.admit_source(SourceAdmission::RepresentationItems(rep.clone()), decoder));
+                    let value = match admitted {
+                        Err(crate::Error::ProgramStopped(stop)) => return Err(stop.into()),
                         Ok(value) => value,
                         Err(_) if self.policy.opening() => continue,
                         Err(error) => return Err(error),

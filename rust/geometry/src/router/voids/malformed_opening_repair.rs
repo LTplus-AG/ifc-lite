@@ -260,16 +260,20 @@ pub(super) fn opening_obb_if_malformed(m: &Mesh) -> Option<OpeningBox> {
 /// `subtract_mesh` (a budget trip included) leaves the host as it is, so a
 /// hard case degrades to "flap remains", never an over-cut. A no-op when `boxes` is empty (every
 /// cutter well-formed) — clean hosts are untouched.
-pub(super) fn recut_malformed_openings(result: &mut Mesh, boxes: &[OpeningBox]) {
+pub(super) fn recut_malformed_openings(result: &mut Mesh, boxes: &[OpeningBox]) -> crate::Result<()> {
+    crate::resource::check_current()?;
     if boxes.is_empty() || result.indices.is_empty() {
-        return;
+        return Ok(());
     }
     let clipper = ClippingProcessor::new();
     for bx in boxes {
+        crate::resource::check_current()?;
         // Extend 2 m past the opening along the thin axis so the box fully
         // penetrates any normal wall (the subtract only removes box ∩ host).
         let box_mesh = bx.extended_box_mesh(result.origin, 2.0);
-        if let Some(cut) = clipper.subtract_mesh(result, &box_mesh).into_mesh() {
+        let outcome = clipper.subtract_mesh(result, &box_mesh);
+        crate::resource::check_current()?;
+        if let Some(cut) = outcome.into_mesh() {
             // A clean box can only remove the opening prism, so it never empties
             // a real wall; ignore a degenerate empty result defensively.
             if !cut.is_empty() {
@@ -279,6 +283,7 @@ pub(super) fn recut_malformed_openings(result: &mut Mesh, boxes: &[OpeningBox]) 
             }
         }
     }
+    Ok(())
 }
 
 /// Express a cutter mesh in the host's local frame: `result = position +

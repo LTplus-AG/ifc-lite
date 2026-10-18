@@ -12,15 +12,23 @@ impl GeometryRouter {
     /// so ordinary cutter/error handling remains authoritative (#4440).
     pub fn opening_requires_subtraction(&self, id:u32, decoder:&mut EntityDecoder<'_>)->bool {
         let reference_only=(|| {
-            let opening=decoder.decode_by_id(id).ok()?;
+            crate::resource::check_current().ok()?;
+            let opening=decoder.decode_by_id(id);
+            crate::resource::check_current().ok()?;
+            let opening=opening.ok()?;
             if !opening.ifc_type.is_subtype_of(IfcType::IfcOpeningElement) {return None;}
-            let pds=decoder.decode_by_id(opening.get_ref(6)?).ok()?;
+            let pds=decoder.decode_by_id(opening.get_ref(6)?);
+            crate::resource::check_current().ok()?;
+            let pds=pds.ok()?;
             if pds.ifc_type!=IfcType::IfcProductDefinitionShape {return None;}
             let representations=pds.get_list(2)?;
             if representations.is_empty() || representations.len()>64 {return None;}
             let mut reference=false;
             for value in representations {
-                let representation=decoder.decode_by_id(value.as_entity_ref()?).ok()?;
+                crate::resource::check_current().ok()?;
+                let representation=decoder.decode_by_id(value.as_entity_ref()?);
+                crate::resource::check_current().ok()?;
+                let representation=representation.ok()?;
                 if representation.ifc_type!=IfcType::IfcShapeRepresentation {return None;}
                 match crate::router::effective_element_rep_type(&opening,&representation) {
                     Some("Reference")=>reference=true,

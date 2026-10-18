@@ -1,0 +1,14 @@
+{
+  "status": "UNCOMPILED_UNRUN",
+  "files": [
+    {
+      "path": "rust/geometry/src/program/openings/classify.rs",
+      "sha256": "a4947baa3b5f3d09616d9f2f5f3ef3b0d334e85d78f24464a9fe169bc3c03f9d"
+    },
+    {
+      "path": "rust/geometry/src/program/openings/requested_identity_tests.rs",
+      "sha256": "960a82b93d2c7d10c5e96299910395e314892e2c677d0342a2abbf5da774570b"
+    }
+  ],
+  "before_classify_sha256": "d1548e31eb983863666788d66b103b80829ea72fd04635e30796ab80d4acd584"
+}

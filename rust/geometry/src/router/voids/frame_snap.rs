@@ -24,9 +24,7 @@
 
 use super::OpeningType;
 use crate::mesh_check::strictly_paired_at;
-use crate::router::diagnostics::HostOpeningDiagnostic;
-use crate::router::GeometryRouter;
-use crate::{BoolFailure, Mesh, Point3};
+use crate::{Mesh, Point3};
 
 /// Coordinates closer than this many f32 ULPs of the world magnitude are one
 /// value. Rotation of a quantised point moves it by up to ~1 ULP per axis;
@@ -189,41 +187,15 @@ pub(super) fn enclosed_volume(mesh: &Mesh) -> f64 {
 /// The per-host diagnostics one void cut records on the router. The retry
 /// runs the cut twice; only the run whose mesh is KEPT may leave its record,
 /// so the caller snapshots around the retry and restores the other one.
-pub(super) struct HostDiagSnapshot {
-    csg_failures: Option<Vec<BoolFailure>>,
-    host_diag: Option<HostOpeningDiagnostic>,
-    consumed: bool,
-    rect_fast: crate::rect_fast::RectFastStats,
-}
+pub(super) struct HostDiagSnapshot(crate::program::openings::execute::NumericalSnapshot);
 
 impl HostDiagSnapshot {
-    pub(super) fn capture(router: &GeometryRouter, host: u32) -> Self {
-        Self {
-            csg_failures: router.csg_failures.borrow().get(&host).cloned(),
-            host_diag: router.host_opening_diagnostics.borrow().get(&host).cloned(),
-            consumed: router.voids_consumed_hosts.borrow().contains(&host),
-            rect_fast: *router.rect_fast_stats.borrow(),
-        }
+    pub(super) fn capture(execution: &crate::program::openings::execute::Execution, _host: u32) -> Self {
+        Self(execution.snapshot())
     }
 
-    pub(super) fn restore(self, router: &GeometryRouter, host: u32) {
-        let mut failures = router.csg_failures.borrow_mut();
-        match self.csg_failures {
-            Some(v) => failures.insert(host, v),
-            None => failures.remove(&host),
-        };
-        let mut diags = router.host_opening_diagnostics.borrow_mut();
-        match self.host_diag {
-            Some(d) => diags.insert(host, d),
-            None => diags.remove(&host),
-        };
-        let mut consumed = router.voids_consumed_hosts.borrow_mut();
-        if self.consumed {
-            consumed.insert(host);
-        } else {
-            consumed.remove(&host);
-        }
-        *router.rect_fast_stats.borrow_mut() = self.rect_fast;
+    pub(super) fn restore(self, execution: &crate::program::openings::execute::Execution, _host: u32) {
+        execution.restore(self.0);
     }
 }
 

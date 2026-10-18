@@ -9,10 +9,15 @@ use rustc_hash::FxHashSet;
 /// Reached only after host production and its empty-mesh test. Use the same
 /// placement service and translation scaling as the original layer path.
 pub(super) fn admit_frame(element: &DecodedEntity, decoder: &mut EntityDecoder,
-    router: &crate::GeometryRouter) -> Option<super::planes::LayerFrame> {
-    let mut placement = router.get_placement_transform_from_element(element, decoder).ok()?;
+    router: &crate::GeometryRouter) -> crate::Result<Option<super::planes::LayerFrame>> {
+    let placement = crate::resource::observe(router.get_placement_transform_from_element(element, decoder));
+    let mut placement = match placement {
+        Ok(placement) => placement,
+        Err(error @ crate::Error::ProgramStopped(_)) => return Err(error),
+        Err(_) => return Ok(None),
+    };
     router.scale_transform(&mut placement);
-    Some(super::planes::LayerFrame { placement, unit_scale: router.unit_scale(), rtc: router.rtc_offset() })
+    Ok(Some(super::planes::LayerFrame { placement, unit_scale: router.unit_scale(), rtc: router.rtc_offset() }))
 }
 
 /// True when the element's Body representation has exactly one item and
@@ -28,7 +33,10 @@ pub(super) fn element_is_single_unshifted_item(
     element: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> bool {
-    let Ok(Some(shape)) = product_shape(element, decoder) else {
+    if crate::resource::check_current().is_err() { return false; }
+    let shape = product_shape(element, decoder);
+    if crate::resource::check_current().is_err() { return false; }
+    let Ok(Some(shape)) = shape else {
         return false;
     };
 
@@ -50,7 +58,9 @@ pub(super) fn element_is_single_unshifted_item(
             Some(id) => id,
             None => return false,
         };
-        let item = match decoder.decode_by_id(item_id) {
+        let item = decoder.decode_by_id(item_id);
+        if crate::resource::check_current().is_err() { return false; }
+        let item = match item {
             Ok(e) => e,
             Err(_) => return false,
         };
@@ -85,6 +95,7 @@ pub(super) fn item_has_identity_position(mut cur: DecodedEntity, decoder: &mut E
     // with layer slicing today would silently render as a single mesh.
     let mut visited: FxHashSet<u32> = FxHashSet::default();
     loop {
+        if crate::resource::check_current().is_err() { return false; }
         // Type check BEFORE the insert: the walk only ever descends FROM a
         // boolean node, so every node on a reachable cycle is one, and a plain
         // extrusion -- the overwhelmingly common root -- reaches its answer
@@ -105,7 +116,9 @@ pub(super) fn item_has_identity_position(mut cur: DecodedEntity, decoder: &mut E
         let Some(first_operand_id) = cur.get_ref(slot::IfcBooleanResult::FIRST_OPERAND.index()) else {
             return false;
         };
-        cur = match decoder.decode_by_id(first_operand_id) {
+        let decoded = decoder.decode_by_id(first_operand_id);
+        if crate::resource::check_current().is_err() { return false; }
+        cur = match decoded {
             Ok(inner) => inner,
             Err(_) => return false,
         };
@@ -159,7 +172,9 @@ fn attribute_placement_is_identity(
         Some(id) => id,
         None => return false,
     };
-    match crate::transform::parse_axis2_placement_3d_from_id(placement_id, decoder) {
+    let placement = crate::resource::observe(crate::transform::parse_axis2_placement_3d_from_id(placement_id, decoder));
+    if crate::resource::check_current().is_err() { return false; }
+    match placement {
         Ok(m) => matrix_is_identity(&m),
         Err(_) => false,
     }

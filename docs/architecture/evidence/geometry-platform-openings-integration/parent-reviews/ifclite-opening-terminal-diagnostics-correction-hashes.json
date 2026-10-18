@@ -1,0 +1,31 @@
+{
+  "root_head": "d3f6cecf2deed0ce96e3570a12378277f2351a2d",
+  "status": "uncommitted; syntax and whitespace only; no build or test",
+  "files": [
+    {
+      "path": "rust/geometry/src/program/openings/execute.rs",
+      "sha256": "647e4cb9517725994a11d7178d25b6427989f7072ce5dcfc7da7e4dcb2b313fd",
+      "bytes": 6100,
+      "lines": 175
+    },
+    {
+      "path": "rust/geometry/src/program/openings/effects.rs",
+      "sha256": "3d5a65404da9a5ce17b14779e54bf33b3d4966de1951612d9174733f2d3dd052",
+      "bytes": 1989,
+      "lines": 56
+    },
+    {
+      "path": "rust/geometry/src/program/openings/execute_tests.rs",
+      "sha256": "0d46616660454c9d2114af70e95fce42b249cd88f6a758148db0dccffebd3521",
+      "bytes": 14730,
+      "lines": 259
+    },
+    {
+      "path": "rust/geometry/src/router/voids/mod.rs",
+      "sha256": "f41525c944988bf3e3fd1f9c6f90118844cb00ea7178ed183cd328ab9fdab031",
+      "bytes": 99413,
+      "lines": 1858
+    }
+  ],
+  "parse_log_sha256": "79f6d115ceb51181754ec734b682ff244e9398e478857dd48f68cfe27cdeeaf8"
+}

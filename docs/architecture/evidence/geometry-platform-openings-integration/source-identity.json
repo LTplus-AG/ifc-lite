@@ -1,0 +1,29 @@
+{
+  "parent": "0c0e5734569b19f48eedc21703cdbf75d241a313",
+  "source": "c9a75c988f8613fffabdd1f6efb8f7c6f837471c",
+  "tree": "224e44c27e09231a9b1c468ba45ba8d83535e392",
+  "branch": "t3/opening-terminal-effects",
+  "worktree": "/home/louistrue/.t3/worktrees/ifc-lite/t3-ff81c521",
+  "status_porcelain": "",
+  "checkpoints": [
+    "c9a75c988f8613fffabdd1f6efb8f7c6f837471c Retain explicit planar terminal errors before eligibility recovery",
+    "05390e81a6d6a9dc98c3af9ba98106ef6f5e3eae Update geometry ratchet pin after splitting opening probes",
+    "67823afd9f414fda22d2d4fcf61c34bf3cca5228 Preserve reached opening gates and terminal acceptance effects",
+    "eb47838ce3c1067de1bdac0bc5e1424a3b60d4c4 Implement common opening program with typed terminal propagation"
+  ],
+  "original_child": {
+    "commit": "aa0f67a4bc4a883a994ff8d6822f6cc92ebe8f1f",
+    "base": "e26527d79c34ed98160c8104e2def7edf9e8dd32",
+    "immutable_archive": "/tmp/ifclite-common-opening-program-round1",
+    "manifest_sha256": "e24feeb6b77ca167e21800e1c280e20f2bc775c6085e3fbd30984543ca71d552",
+    "patch_sha256": "7bbecf9eda12a2f519f220595c564bd69e16eac218a3184b466f8a3710c34e4b",
+    "all_archive_sha256sums_verified": true,
+    "all_child_source_hashes_verified_against_git": true,
+    "applied": "incremental patch only; program/mod.rs manually reconciled to preserve current parent Boolean/resource modules"
+  },
+  "review": {
+    "markdown": "/tmp/ifclite-common-opening-review.md",
+    "markdown_sha256": "163673cc5f4127ad38890328f1c5072356338bb2840ced8e387baeb6522f56f7",
+    "json_sha256": "7d6df94f98a51ee37fb8e75ddbde192ba7a1878c9348abde8b2027a190f8aa2a"
+  }
+}

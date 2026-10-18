@@ -6,25 +6,28 @@
 
 use super::processing::SourceHygiene;
 use super::GeometryRouter;
+use crate::program::openings::execute::Execution;
 use crate::csg::{ClippingProcessor, GroupCut};
 use crate::mesh::{SubMesh, SubMeshCollection};
 use crate::{Mesh, Point3, Result, TessellationQuality, Vector3};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix3;
 use rustc_hash::FxHashMap;
 
 mod aabb_clip;
 mod batch_cutter;
-mod bool2d_path;
+pub(crate) mod bool2d_path;
 mod coaxial_union;
 pub(crate) mod geom;
 mod malformed_opening_repair;
 mod local_frame;
 mod frame_snap;
 pub(crate) mod prism_cut;
-mod probe;
+pub(crate) mod probe;
 mod representation;
 mod staged;
+#[cfg(test)]
+mod execution_tests_adapter;
 mod synthesis;
 pub use bool2d_path::take_bool2d_stats;
 pub use prism_cut::{take_prism_defers, take_prism_stats};
@@ -39,6 +42,17 @@ use malformed_opening_repair::{
 use local_frame::{host_thickness_wall_frame, vertical_depth_wall_frame};
 use sweep::{drop_faces_outside_host, mesh_to_keep};
 mod sweep;
+
+/// The numerical entry has no source callbacks. Retain lazy gate readers so
+/// extensions can affect each gate until its original reached application point.
+pub(crate) fn numerical_configuration() -> crate::program::openings::execute::Configuration {
+    crate::program::openings::execute::Configuration {
+        parametric: crate::rect_fast::param_enabled,
+        rectangular: crate::rect_fast::enabled,
+        prism: prism_cut::enabled,
+        coaxial_union: coaxial_union::enabled,
+    }
+}
 
 /// Epsilon for normalizing direction vectors (guards against zero-length).
 const NORMALIZE_EPSILON: f64 = 1e-12;
@@ -69,7 +83,7 @@ const ENGULF_TOLERANCE_F32: f32 = 0.03;
 
 /// Classification of an opening for void subtraction.
 #[derive(Clone)]
-enum OpeningType {
+pub(crate) enum OpeningType {
     /// Rectangular opening with AABB clipping
     /// Fields: (min_bounds, max_bounds, extrusion_direction)
     Rectangular(Point3<f64>, Point3<f64>, Option<Vector3<f64>>),
@@ -87,7 +101,7 @@ enum OpeningType {
 
 /// World-space basis for an oriented rectangular opening.
 #[derive(Clone, Copy)]
-struct OpeningFrame {
+pub(crate) struct OpeningFrame {
     depth: Vector3<f64>,
     cross_a: Vector3<f64>,
     cross_b: Vector3<f64>,
@@ -112,7 +126,7 @@ impl OpeningFrame {
         })
     }
 
-    fn is_axis_aligned(&self) -> bool {
+    pub(crate) fn is_axis_aligned(&self) -> bool {
         is_axis_aligned_direction(&self.depth)
             && is_axis_aligned_direction(&self.cross_a)
             && is_axis_aligned_direction(&self.cross_b)
@@ -121,32 +135,34 @@ impl OpeningFrame {
 
 /// Pre-computed per-element void subtraction data.
 ///
-/// Building this is expensive: `classify_openings` re-runs `process_element`
-/// on each `IfcOpeningElement`, and clipping-plane extraction resolves the
-/// element's representation. Once built, it can be reused across every
+/// Building this admits each reached opening's body, item probes and optional
+/// rectangle/profile captures through the common host-opening child. Once built, it can be reused across every
 /// sub-mesh of the same element without re-doing any of that work, so the
 /// per-sub-mesh void path in
 /// [`GeometryRouter::process_element_with_submeshes_and_voids`] pays the
 /// classification cost once per element rather than once per sub-mesh.
-pub(super) struct VoidContext {
+pub(crate) struct ReadyVoidContext {
     /// All classified openings. The diagonal-opening pass needs the raw list
     /// (unmerged) so its per-item box rotation stays accurate.
-    openings: Vec<OpeningType>,
+    pub(crate) openings: Vec<OpeningType>,
     /// Rectangular openings merged into larger boxes to prevent O(2^N)
     /// triangle growth when many adjacent openings tile a surface.
-    merged_openings: Vec<OpeningType>,
+    pub(crate) merged_openings: Vec<OpeningType>,
     /// Parametric placement-frame cut data (host + reconciled opening boxes),
     /// captured only when `rect_fast::param_enabled()`. Drives the analytic fast
     /// path in `apply_void_context`; `None` defers to the exact kernel.
-    param: Option<ParamRectCut>,
+    pub(crate) param: Option<ParamRectCut>,
     /// 2D opening-subtraction data (host profile + projected opening footprints),
     /// captured only when `bool2d_path::enabled()`. Drives the arbitrary-profile
     /// 2D re-extrude fast path in `apply_void_context`, tried after the rect
     /// parametric path; `None` defers to the exact kernel.
-    bool2d: Option<bool2d_path::Bool2dCut>,
+    pub(crate) bool2d: Option<bool2d_path::Bool2dCut>,
 }
 
-impl VoidContext {
+// Existing internal callers name the same ready payload; there is one cut path.
+pub(crate) type VoidContext = ReadyVoidContext;
+
+impl ReadyVoidContext {
     fn is_noop(&self) -> bool {
         self.openings.is_empty()
     }
@@ -260,26 +276,12 @@ pub struct RectParam {
 /// meshes and sharing the host frame), enabling the analytic placement-frame cut.
 /// Built in [`GeometryRouter::build_void_context`] only when `param_enabled()`.
 #[derive(Clone)]
-struct ParamRectCut {
-    host: RectParam,
-    openings: Vec<RectParam>,
+pub(crate) struct ParamRectCut {
+    pub(crate) host: RectParam,
+    pub(crate) openings: Vec<RectParam>,
 }
 
 impl GeometryRouter {
-    /// Tier-conditional minimum opening volume (m³) floor. Shared by the batch
-    /// admission gate and the sequential CSG path so the two can never diverge
-    /// (B11 / issue #976): the 0.1 L default filters legacy-BSP CSG artefacts,
-    /// but at High/Highest quality it relaxes to ~1e-9 m³ so genuine small
-    /// openings (bolt holes / sleeves in thin plates) still get cut instead of
-    /// being silently skipped.
-    #[inline]
-    fn min_opening_volume(quality: TessellationQuality) -> f64 {
-        match quality {
-            TessellationQuality::High | TessellationQuality::Highest => 1e-9,
-            _ => MIN_OPENING_VOLUME,
-        }
-    }
-
     /// Process element with void subtraction (openings)
     /// Process element with voids using optimized plane clipping
     ///
@@ -339,11 +341,11 @@ impl GeometryRouter {
             self.process_element_parts_with_hygiene(element, decoder, SourceHygiene::IndexOnly)?;
         // Opening and clip geometry are resolved in world coordinates, the
         // frame every part is in once placement has been applied.
-        let ctx = self.build_void_context(element, opening_ids, decoder);
-        Ok(parts
+        let ctx = self.build_void_context(element, opening_ids, decoder)?;
+        parts
             .into_iter()
             .map(|part| {
-                let mut voided = self.apply_void_context(part, &ctx, element.id);
+                let mut voided = self.apply_void_context(part, &ctx, element.id)?;
                 // Clean slivers the CSG cut can introduce at opening seams — same
                 // hygiene as the tessellation chokepoints (Mesh::clean_degenerate).
                 voided.clean_degenerate();
@@ -351,12 +353,13 @@ impl GeometryRouter {
                 // canonical geometry, so it can never be shared. Drop any metadata that
                 // rode along from the (pre-cut) mapped item.
                 voided.instance_meta = None;
-                voided
+                crate::resource::check_current()?;
+                Ok(voided)
             })
-            .collect())
+            .collect::<Result<Vec<_>>>()
     }
 
-    /// Classify openings and extract clipping planes for an element.
+    /// Admit the common opening classification and conditional capture child.
     ///
     /// This is the expensive half of void subtraction — it decodes every
     /// `IfcOpeningElement` (running `process_element` on each), classifies
@@ -368,7 +371,7 @@ impl GeometryRouter {
         element: &DecodedEntity,
         opening_ids: &[u32],
         decoder: &mut EntityDecoder,
-    ) -> VoidContext {
+    ) -> Result<VoidContext> {
         // NOTE (issue #635): we no longer extract `IfcBooleanClippingResult`
         // planes here. They are applied by `BooleanClippingProcessor::process`
         // when building the input mesh (the wall-inversion fix in
@@ -376,100 +379,111 @@ impl GeometryRouter {
         // correct per IFC); re-applying them as unbounded planes discarded
         // the polygonal bound and chopped off gable peaks (see
         // `apply_void_context` for the full rationale).
-        let openings = self.classify_openings(element, opening_ids, decoder);
-        let merged_openings = Self::merge_rectangular_openings(&openings);
-
-        // PARAMETRIC fast-path capture (flag-gated, zero cost when off): probe the
-        // host + every opening for an exact rectangular box, reconcile each opening
-        // box against its mesh, and require all openings to share the host frame. Any
-        // miss -> `None` -> the host defers to the exact kernel.
-        let param = if crate::rect_fast::param_enabled() {
-            self.capture_param_rect(element, opening_ids, decoder)
-        } else {
-            None
-        };
-
-        // 2D opening-subtraction capture (flag-gated). Cheap when it misses
-        // (profile recovery only, no meshing), tried after the rect parametric
-        // path in `apply_void_context` so rect+rect hosts keep their existing
-        // output byte-identical and only the arbitrary-profile / rect-declined
-        // hosts reach the 2D re-extrude.
-        let bool2d = if bool2d_path::enabled() {
-            self.capture_bool2d(element, opening_ids, decoder)
-        } else {
-            None
-        };
-
-        VoidContext {
-            openings,
-            merged_openings,
-            param,
-            bool2d,
-        }
+        crate::program::ProductProgram::host_openings(element, opening_ids).run(self, decoder)
     }
 
-    /// Build the parametric-cut data for a host + its openings, or `None` if any
-    /// precondition fails (host/opening not a clean rect extrusion, opening box
-    /// disagrees with its mesh, or an opening does not share the host frame).
-    fn capture_param_rect(
+    pub(crate) fn opening_body_parts(&self, element: &DecodedEntity, decoder: &mut EntityDecoder<'_>) -> Result<Vec<Mesh>> {
+        self.process_element_parts_with_hygiene(element, decoder, SourceHygiene::IndexOnly)
+    }
+
+    pub(super) fn apply_void_context(&self, mesh: Mesh, ctx: &VoidContext, element_id: u32) -> Result<Mesh> {
+        crate::program::openings::execute::ReadyOperation::new(mesh, ctx, element_id, self.tessellation_quality, numerical_configuration())
+            .execute().publish(self)
+    }
+
+    /// Process an element into per-item sub-meshes with opening subtraction.
+    ///
+    /// Mirrors [`process_element_with_voids`] but preserves each
+    /// `IfcShapeRepresentation` item as its own sub-mesh so that callers can
+    /// look up a direct `IfcStyledItem` color per geometry item (e.g. the
+    /// three extrusion layers of a multi-layer wall). The opening(s) are
+    /// subtracted from each sub-mesh independently so that windows and doors
+    /// cut through every material layer they intersect.
+    ///
+    /// Returns an empty collection when there are no openings (callers should
+    /// fall back to [`process_element_with_submeshes`]) or when every
+    /// sub-mesh is destroyed by void subtraction.
+    pub fn process_element_with_submeshes_and_voids(
         &self,
         element: &DecodedEntity,
-        opening_ids: &[u32],
         decoder: &mut EntityDecoder,
-    ) -> Option<ParamRectCut> {
-        if opening_ids.is_empty() {
-            return None;
+        void_index: &FxHashMap<u32, Vec<u32>>,
+    ) -> Result<SubMeshCollection> {
+        // Layered single-solid path: slice the element's base mesh by its
+        // material-layer buildup AFTER subtracting voids. This produces one
+        // sub-mesh per layer keyed by IfcMaterial id, so layers show up as
+        // individual colors even when the underlying geometry is a single
+        // swept solid.
+        let layered = self.try_layered_sub_meshes(element, decoder, Some(void_index))?;
+        crate::resource::check_current()?;
+        if let Some(layered) = layered {
+            return Ok(layered);
         }
-        let host = self.parametric_rect_probe(element, decoder)?;
-        let rt = host.r.transpose();
-        let mut openings = Vec::with_capacity(opening_ids.len());
-        for &oid in opening_ids {
-            let opening = decoder.decode_by_id(oid).ok()?;
-            if opening.ifc_type != IfcType::IfcOpeningElement {
-                return None;
-            }
-            // An opening may be a UNION OF RECTANGULAR PRISMS (Tekla multi-solid). Extract
-            // every box; each must share the host frame (signed permutation).
-            let op_boxes = self.parametric_rect_probe_all(&opening, decoder)?;
-            for op in &op_boxes {
-                signed_permutation_map(&(rt * op.r), 1.0e-3)?;
-            }
-            // Reconcile the boxes against the meshed opening by VOLUME: the boxes must
-            // account for the opening solid (catches non-rect / overlapping / partial parts).
-            if !self.opening_boxes_reconcile(&opening, &op_boxes, decoder) {
-                return None;
-            }
-            openings.extend(op_boxes);
-        }
-        Some(ParamRectCut { host, openings })
-    }
 
-    /// True iff the parametric `boxes` account for the actual meshed opening by VOLUME
-    /// (Σ box volume ≈ Σ mesh-shell volume within 3%). For a union of non-overlapping
-    /// rectangular prisms (the Tekla multi-solid opening) the mesh volume equals the
-    /// box-volume sum; a mismatch flags a non-rect / overlapping / partial part → defer.
-    fn opening_boxes_reconcile(
-        &self,
-        opening: &DecodedEntity,
-        boxes: &[RectParam],
-        decoder: &mut EntityDecoder,
-    ) -> bool {
-        if boxes.is_empty() {
-            return false;
-        }
-        let Ok(meshes) = self.get_opening_item_meshes_world(opening, decoder) else {
-            return false;
+        let opening_ids = match void_index.get(&element.id) {
+            Some(ids) if !ids.is_empty() => ids.clone(),
+            _ => return Ok(SubMeshCollection::new()),
         };
-        let mesh_vol: f64 = meshes.iter().map(|m| mesh_signed_volume(m).abs()).sum();
-        if mesh_vol < 1.0e-9 {
-            return false;
+
+        // Voided occurrences materialize cut geometry (#1623 don't-bake off) with no
+        // texture index (#1781: CSG rebuilds vertices, orphaning UVs — colour wins).
+        let sub_meshes = self.process_element_with_submeshes_impl(
+            element,
+            decoder,
+            false,
+            None,
+            SourceHygiene::IndexOnly,
+        )?;
+        if sub_meshes.is_empty() {
+            return Ok(SubMeshCollection::new());
         }
-        let box_vol: f64 = boxes
-            .iter()
-            .map(|b| 8.0 * b.half[0] * b.half[1] * b.half[2])
-            .sum();
-        let ratio = box_vol / mesh_vol;
-        (0.97..1.03).contains(&ratio)
+
+        // Admit opening classification and captures ONCE per element. Doing
+        // this per sub-mesh would re-run `process_element` on every opening
+        // and repeat conditional captures N times, multiplying the expensive
+        // parsing/CSG setup by the sub-mesh count on the exact elements this
+        // path targets (multi-layer walls with windows).
+        let ctx = self.build_void_context(element, &opening_ids, decoder)?;
+
+        // INHERIT the discriminator rather than assuming rep-item ids. This path
+        // is reached only when `try_layered_sub_meshes` declined above, so the
+        // flag is false today -- but hard-coding that would make a future
+        // layered producer silently relabel material ids as representation
+        // items, which is the exact confusion #3199 removes.
+        let mut voided = SubMeshCollection {
+            sub_meshes: Vec::new(),
+            ids_are_materials: sub_meshes.ids_are_materials,
+        };
+        for sub in sub_meshes.sub_meshes {
+            let geometry_id = sub.geometry_id;
+            let mut voided_mesh = self.apply_void_context(sub.mesh, &ctx, element.id)?;
+            // Same CSG-seam hygiene as the single-mesh void path.
+            voided_mesh.clean_degenerate();
+            crate::resource::check_current()?;
+            if !voided_mesh.is_empty() {
+                voided
+                    .sub_meshes
+                    .push(SubMesh::new(geometry_id, voided_mesh));
+            }
+        }
+
+        Ok(voided)
+    }
+}
+
+impl Execution {
+    /// Tier-conditional minimum opening volume (m³) floor. Shared by the batch
+    /// admission gate and the sequential CSG path so the two can never diverge
+    /// (B11 / issue #976): the 0.1 L default filters legacy-BSP CSG artefacts,
+    /// but at High/Highest quality it relaxes to ~1e-9 m³ so genuine small
+    /// openings (bolt holes / sleeves in thin plates) still get cut instead of
+    /// being silently skipped.
+    #[inline]
+    fn min_opening_volume(quality: TessellationQuality) -> f64 {
+        match quality {
+            TessellationQuality::High | TessellationQuality::Highest => 1e-9,
+            _ => MIN_OPENING_VOLUME,
+        }
     }
 
     /// Apply a pre-built `VoidContext` to a single mesh.
@@ -508,7 +522,14 @@ impl GeometryRouter {
     /// gated subset (`ctx.param` captured; host/opening reconciliation, shared-frame,
     /// in-bounds, no-overlap, watertight self-check); any miss returns `None` → exact
     /// kernel. Deterministic f64 → byte-identical native==wasm.
-    fn try_param_rect_cut(&self, mesh: &Mesh, ctx: &VoidContext) -> Option<Mesh> {
+    pub(super) fn try_param_rect_cut(&self, mesh: &Mesh, ctx: &VoidContext) -> Result<Option<Mesh>> {
+        crate::resource::check_current()?;
+        let candidate = self.try_param_rect_cut_candidate(mesh, ctx);
+        crate::resource::check_current()?;
+        Ok(candidate)
+    }
+
+    fn try_param_rect_cut_candidate(&self, mesh: &Mesh, ctx: &VoidContext) -> Option<Mesh> {
         let param = ctx.param.as_ref()?;
         let host = &param.host;
         let rt = host.r.transpose();
@@ -604,8 +625,10 @@ impl GeometryRouter {
 
         let mut stats = crate::rect_fast::RectFastStats::default();
         let cut_f = crate::rect_fast::subtract_rect_openings(&host_f, &boxes, &mut stats)?;
+        crate::resource::check_current().ok()?;
         self.record_rect_fast(&stats);
         let merged = crate::csg::ClippingProcessor::consolidate_coplanar(cut_f);
+        crate::resource::check_current().ok()?;
         // Emit as a local-frame mesh (small positions + origin), then run the SAME
         // hygiene the production output applies — in the small frame, where it is
         // precise — so the self-check sees exactly what downstream will keep.
@@ -616,24 +639,30 @@ impl GeometryRouter {
         if !param_cut_watertight(&out) {
             return None;
         }
+        crate::resource::check_current().ok()?;
         crate::rect_fast::param_record_fire();
         Some(out)
     }
 
-    pub(super) fn apply_void_context(
+    pub(crate) fn apply_void_context(
         &self,
         mut mesh: Mesh,
         ctx: &VoidContext,
         element_id: u32,
-    ) -> Mesh {
+    ) -> Result<Mesh> {
+        crate::resource::check_current()?;
         // PARAMETRIC fast path (flag-gated). ORIGIN-AWARE: it handles both the world
         // mesh (origin 0, native default) AND a per-element local-frame mesh (origin != 0,
         // the wasm default — the precision-critical case this path is FOR), since it
         // builds its own frame from the parametrics. Any miss falls through to the exact
         // kernel below unchanged.
-        if crate::rect_fast::param_enabled() {
-            if let Some(fast) = self.try_param_rect_cut(&mesh, ctx) {
-                return fast;
+        let parametric_enabled = (self.configuration.parametric)();
+        crate::resource::check_current()?;
+        if parametric_enabled {
+            let candidate = self.try_param_rect_cut(&mesh, ctx)?;
+            crate::resource::check_current()?;
+            if let Some(fast) = candidate {
+                return Ok(fast);
             }
         }
 
@@ -645,8 +674,8 @@ impl GeometryRouter {
         // reconciles against the real host mesh, whatever `mesh.origin`). Any miss
         // falls through to the exact kernel below unchanged.
         if let Some(cut) = ctx.bool2d.as_ref() {
-            if let Some(candidate) = self.try_staged_bool2d(&mesh, cut, element_id) {
-                return candidate;
+            if let Some(candidate) = self.try_staged_bool2d(&mesh, cut, element_id)? {
+                return Ok(candidate);
             }
         }
 
@@ -663,12 +692,16 @@ impl GeometryRouter {
         // residual through this path on recursion, so a 2D host's perpendicular
         // sleeves take the prism cut too). Any miss falls through to the exact
         // kernel below with the FULL opening set unchanged.
-        if prism_cut::enabled() {
+        let prism_enabled = (self.configuration.prism)();
+        crate::resource::check_current()?;
+        if prism_enabled {
             // World bounds + triangle count captured BEFORE the cut so the
             // per-host diagnostic matches what the exact/rect paths record.
             let prism_bounds = world_host_bounds(&mesh);
             let prism_tris_before = mesh.triangle_count();
-            if let Some((cut, residual)) = self.try_prism_cut(&mesh, ctx) {
+            let candidate = self.try_prism_cut(&mesh, ctx)?;
+            crate::resource::check_current()?;
+            if let Some((cut, residual)) = candidate {
                 return match residual {
                     None => {
                         // Same per-host cut-effect snapshot the exact path
@@ -681,7 +714,7 @@ impl GeometryRouter {
                             ctx.rect_opening_count(),
                             prism_bounds,
                         );
-                        cut
+                        Ok(cut)
                     }
                     // With a residual, the recursive exact pass below records
                     // the (final) cut-effect snapshot itself.
@@ -715,10 +748,11 @@ impl GeometryRouter {
         mesh.origin = [0.0, 0.0, 0.0];
         let local_ctx = ctx.relativized_by(origin);
         let mut result =
-            self.apply_void_context_inner(mesh, &local_ctx, element_id, host_world_bounds, true);
+            self.apply_void_context_inner(mesh, &local_ctx, element_id, host_world_bounds, true)?;
         // Keep an inner local-frame cut's translation when restoring this frame.
         result.origin = std::array::from_fn(|i| result.origin[i] + origin[i]);
-        result
+        crate::resource::check_current()?;
+        Ok(result)
     }
 
     /// Try the analytic rectangular-opening fast path. Returns the watertight
@@ -726,7 +760,14 @@ impl GeometryRouter {
     /// through-cut and the host is a clean axis-aligned box; otherwise `None`
     /// (→ the exact kernel handles it). A mixed opening set defers the whole
     /// host rather than composing analytic + exact cuts.
-    fn try_rect_fast(&self, host: &Mesh, ctx: &VoidContext) -> Option<Mesh> {
+    pub(super) fn try_rect_fast(&self, host: &Mesh, ctx: &VoidContext) -> Result<Option<Mesh>> {
+        crate::resource::check_current()?;
+        let candidate = self.try_rect_fast_candidate(host, ctx);
+        crate::resource::check_current()?;
+        Ok(candidate)
+    }
+
+    fn try_rect_fast_candidate(&self, host: &Mesh, ctx: &VoidContext) -> Option<Mesh> {
         let (wmn, wmx) = host.bounds();
         let wall_min = Point3::new(wmn.x as f64, wmn.y as f64, wmn.z as f64);
         let wall_max = Point3::new(wmx.x as f64, wmx.y as f64, wmx.z as f64);
@@ -748,6 +789,7 @@ impl GeometryRouter {
         }
         let mut stats = crate::rect_fast::RectFastStats::default();
         let out = crate::rect_fast::subtract_rect_openings(host, &boxes, &mut stats);
+        crate::resource::check_current().ok()?;
         self.record_rect_fast(&stats);
         // The cellular cut conformingly splits EVERY face by ALL grid lines (so
         // adjacent cells share edges → watertight), which over-fragments faces an
@@ -772,14 +814,15 @@ impl GeometryRouter {
     /// are subtracted there too. The result is rotated back; the orthonormal,
     /// origin-centred round-trip is identity for untouched geometry. Recurses
     /// into [`Self::apply_void_context_inner`] with `allow_local_frame: false` (#3641).
-    fn try_cut_wall_local_frame(
+    pub(super) fn try_cut_wall_local_frame(
         &self,
         mesh: &Mesh,
         ctx: &VoidContext,
         element_id: u32,
         host_world_bounds: ((f32, f32, f32), (f32, f32, f32)),
-    ) -> Option<Mesh> {
-        let axes = self.wall_frame_axes(mesh, ctx)?;
+    ) -> Result<Option<Mesh>> {
+        crate::resource::check_current()?;
+        let Some(axes) = self.wall_frame_axes(mesh, ctx) else { return Ok(None); };
         let (mn, mx) = mesh.bounds();
         let center = Vector3::new(
             ((mn.x + mx.x) * 0.5) as f64,
@@ -794,9 +837,9 @@ impl GeometryRouter {
             let cutter = match op {
                 OpeningType::DiagonalRectangular(m, _) => m,
                 OpeningType::NonRectangular(m, _, _, _) => m,
-                OpeningType::Rectangular(..) => return None,
+                OpeningType::Rectangular(..) => return Ok(None),
             };
-            let (lmn, lmx) = project_aabb_in_frame(cutter, &axes, center)?;
+            let Some((lmn, lmx)) = project_aabb_in_frame(cutter, &axes, center) else { return Ok(None); };
             let in_frame =
                 |v: Vector3<f64>| Vector3::new(v.dot(&axes[0]), v.dot(&axes[1]), v.dot(&axes[2]));
             // The cutter's own penetration (depth) axis expressed in the wall
@@ -855,7 +898,7 @@ impl GeometryRouter {
             }
         }
         let local_ctx = VoidContext {
-            merged_openings: Self::merge_rectangular_openings(&local_openings),
+            merged_openings: GeometryRouter::merge_rectangular_openings(&local_openings),
             openings: local_openings,
             // The local-frame recursion never re-captures the parametric cut
             // (issue #1209): it operates on already-classified openings, so the
@@ -878,8 +921,7 @@ impl GeometryRouter {
         let frame = Matrix3::from_columns(&axes);
         let center_point = Point3::from(center);
         let result_local = self
-            .apply_void_context_inner(host_local, &local_ctx, element_id, host_world_bounds, false);
-        // Rotation-only positions retain the far centre in `Mesh::origin`.
+            .apply_void_context_inner(host_local, &local_ctx, element_id, host_world_bounds, false)?;
         let mut result = rotate_mesh_from_frame(&result_local, &frame, &center_point);
         // #5635: the operands arrive as f32 WORLD positions, so in the frame one
         // authored face can land on dozens of depth values micrometres apart and
@@ -907,7 +949,6 @@ impl GeometryRouter {
             // Only the kept run may leave a diagnostics record.
             let diag_first = frame_snap::HostDiagSnapshot::capture(self, element_id);
             diag_before.restore(self, element_id);
-            // Rebuilt rather than kept from above: the clean path pays nothing.
             let mut host_snapped = mesh_to_frame(mesh, &axes, center);
             let mut openings_snapped = local_ctx.openings.clone();
             // The WORLD magnitude (a local-frame host's origin folded in), so
@@ -923,7 +964,7 @@ impl GeometryRouter {
                 frame_snap::frame_snap_tolerance(world_magnitude),
             );
             let snapped_ctx = VoidContext {
-                merged_openings: Self::merge_rectangular_openings(&openings_snapped),
+                merged_openings: GeometryRouter::merge_rectangular_openings(&openings_snapped),
                 openings: openings_snapped,
                 param: None,
                 bool2d: None,
@@ -934,7 +975,7 @@ impl GeometryRouter {
                 element_id,
                 host_world_bounds,
                 false,
-            );
+            )?;
             let retry_volume = frame_snap::enclosed_volume(&retry);
             let same_cut = (retry_volume - first_volume).abs()
                 <= 1.0e-3 * first_volume.abs().max(retry_volume.abs());
@@ -953,14 +994,15 @@ impl GeometryRouter {
                 diag_first.restore(self, element_id);
             }
         }
-        Some(result)
+        crate::resource::check_current()?;
+        Ok(Some(result))
     }
 
     /// The #1167 wall frame `[run, height, normal]` for a plan-rotated wall
     /// whose openings can all be expressed in it, else `None` (the host keeps
     /// the world path). Translation-invariant, so it gives the same answer for a
     /// world-stored host and a local-frame one (#5739).
-    fn wall_frame_axes(&self, mesh: &Mesh, ctx: &VoidContext) -> Option<[Vector3<f64>; 3]> {
+    pub(super) fn wall_frame_axes(&self, mesh: &Mesh, ctx: &VoidContext) -> Option<[Vector3<f64>; 3]> {
         if ctx.merged_openings.is_empty() {
             return None;
         }
@@ -997,14 +1039,15 @@ impl GeometryRouter {
     // `host_mutated` is set just before an early `break` (final write unread; kept
     // for readability). `allow_local_frame` (#3641) caps local-frame recursion.
     #[allow(unused_assignments, clippy::too_many_arguments)]
-    fn apply_void_context_inner(
+    pub(super) fn apply_void_context_inner(
         &self,
         mesh: Mesh,
         ctx: &VoidContext,
         element_id: u32,
         host_bounds_capture: ((f32, f32, f32), (f32, f32, f32)),
         allow_local_frame: bool,
-    ) -> Mesh {
+    ) -> Result<Mesh> {
+        crate::resource::check_current()?;
         // Capture the input triangle count so the per-host diagnostic can flag
         // the "cuts attempted but produced no change" case — the silent-no-op
         // signature when an opening box doesn't intersect the host mesh. The
@@ -1013,7 +1056,7 @@ impl GeometryRouter {
         // rotation), not recomputed here from the possibly local-framed `mesh`.
         let tris_before = mesh.triangle_count();
         if ctx.is_noop() {
-            return mesh;
+            return Ok(mesh);
         }
         let original_host = mesh.clone(); // stray-shard sweep parity reference
 
@@ -1024,12 +1067,13 @@ impl GeometryRouter {
         // fragments badly. Scoped to plan-rotated walls; everything else falls
         // through to the world path unchanged. Gated on `allow_local_frame`.
         if allow_local_frame {
-            if let Some(cut) = self.try_cut_wall_local_frame(&mesh, ctx, element_id, host_bounds_capture) {
-                return cut;
+            if let Some(cut) = self.try_cut_wall_local_frame(&mesh, ctx, element_id, host_bounds_capture)? {
+                return Ok(cut);
             }
         }
 
         let clipper = ClippingProcessor::new();
+        let _failures = self.capture_failures(&clipper, element_id);
         // ROOT-CAUSE FIX (issue #1007, host #1112): correct f32 facet jitter on
         // the host triangle soup BEFORE the exact-kernel cut. A faceted-BREP
         // roof slope authored as ONE flat plane comes back from the f32 import
@@ -1056,18 +1100,23 @@ impl GeometryRouter {
         // openings, near-edge feature) returns `None` and the host falls through
         // to the exact path below unchanged. Fired BEFORE the dense-host
         // subdivision (that workaround is only for the exact kernel).
-        if crate::rect_fast::enabled() {
-            if let Some(fast) = self.try_rect_fast(&result, ctx) {
+        let rectangular_enabled = (self.configuration.rectangular)();
+        crate::resource::check_current()?;
+        if rectangular_enabled {
+            let candidate = self.try_rect_fast(&result, ctx)?;
+            crate::resource::check_current()?;
+            if let Some(fast) = candidate {
                 // Same per-host cut-effect snapshot the exact path records below,
                 // so fast-path hosts aren't missing from the diagnostics.
-                self.record_host_cut_effect(
+                crate::resource::check_current()?;
+        self.record_host_cut_effect(
                     element_id,
                     tris_before,
                     fast.triangle_count(),
                     ctx.rect_opening_count(),
                     host_bounds_capture,
                 );
-                return fast;
+                return Ok(fast);
             }
         }
 
@@ -1126,7 +1175,7 @@ impl GeometryRouter {
             && result.triangle_count() >= 4;
 
         if !wall_valid {
-            return result;
+            return Ok(result);
         }
 
         // NOTE: there is deliberately NO per-element CSG operation budget here.
@@ -1173,7 +1222,7 @@ impl GeometryRouter {
                     } else {
                         (*open_min, *open_max)
                     };
-                    let box_mesh = Self::make_box_mesh(final_min, final_max);
+                    let box_mesh = GeometryRouter::make_box_mesh(final_min, final_max);
                     synth_rect.push(OpeningType::NonRectangular(
                         box_mesh,
                         final_min,
@@ -1231,7 +1280,8 @@ impl GeometryRouter {
             &mut batch_consumed,
             &mut host_mutated,
             &clipper,
-        );
+        )?;
+        crate::resource::check_current()?;
 
         if all_openings.len() >= 2 {
             // Inflation pad: ≥ 2×(promote band 8·2⁻¹⁶ ≈ 122 µm + snap radius);
@@ -1280,7 +1330,7 @@ impl GeometryRouter {
                 if open_vol < Self::min_opening_volume(self.tessellation_quality) {
                     continue;
                 }
-                let Some(ext) = Self::batch_cutter(opening_mesh, extrusion_dir, &result) else {
+                let Some(ext) = GeometryRouter::batch_cutter(opening_mesh, extrusion_dir, &result) else {
                     continue;
                 };
                 let (lo, hi) = ext.bounds();
@@ -1353,6 +1403,7 @@ impl GeometryRouter {
         }
 
         for (opening_idx, opening) in all_openings.iter().enumerate() {
+            crate::resource::check_current()?;
             if batch_consumed[opening_idx] {
                 continue; // already handled by a batched disjoint group
             }
@@ -1377,7 +1428,7 @@ impl GeometryRouter {
                         for &(m_idx, _) in &members {
                             let ext = all_openings[m_idx]
                                 .mesh_cutter()
-                                .and_then(|(m, dir)| Self::batch_cutter(m, dir, &result));
+                                .and_then(|(m, dir)| GeometryRouter::batch_cutter(m, dir, &result));
                             let Some(ext) = ext else {
                                 admissible = false;
                                 break;
@@ -1388,11 +1439,12 @@ impl GeometryRouter {
                     if admissible {
                         let cutters: Vec<&Mesh> = extended.iter().map(|(_, m)| m).collect();
                         let tri_before = result.triangle_count();
-                        let outcome = if Self::batch_cutters_match_sequential(&result, &all_openings, &extended) {
+                        let outcome = if GeometryRouter::batch_cutters_match_sequential(&result, &all_openings, &extended) {
                             clipper.subtract_mesh_many_retaining_miss(&result, &cutters)
                         } else {
                             clipper.subtract_mesh_many(&result, &cutters)
                         };
+                        crate::resource::check_current()?;
                         // #6516: retain the group's validated consolidation on
                         // a conforming miss; keeping the original host instead
                         // can discard useful seam repairs made by the singles.
@@ -1504,6 +1556,7 @@ impl GeometryRouter {
                         // Mark the host consumed so the element pipeline keeps
                         // the empty result instead of falling back to the un-cut
                         // host.
+                        crate::resource::check_current()?;
                         self.record_void_consumed_host(element_id);
                         result = Mesh::default();
                         host_mutated = true;
@@ -1520,11 +1573,12 @@ impl GeometryRouter {
                     // host #1112). Falls back to the raw opening mesh when no depth
                     // direction is known (the kernel handles a true through-cutter
                     // anyway; the extension only matters for the flush-cap case).
-                    let extended_opening = Self::sequential_cutter(
+                    let extended_opening = GeometryRouter::sequential_cutter(
                         opening_mesh, extrusion_dir, &result,
                     );
                     let cutter = &extended_opening;
                     let outcome = clipper.subtract_mesh(&result, cutter);
+                    crate::resource::check_current()?;
                     // Nothing to cut, so the #635 fallback below must not cut a
                     // box either (#5362).
                     let kernel_found_no_overlap = outcome.found_no_overlap();
@@ -1658,6 +1712,7 @@ impl GeometryRouter {
                             // kernel found disjoint (#5362).
                             let aabb_cut =
                                 self.cut_rectangular_opening(&result, final_min, final_max);
+                            crate::resource::check_current()?;
                             #[cfg(feature = "opening-perf-trace")]
                             crate::opening_perf_trace::record(|c| {
                                 c.aabb_fallback_attempts = c.aabb_fallback_attempts.saturating_add(1);
@@ -1708,15 +1763,25 @@ impl GeometryRouter {
         // the polygonal bound and the resulting unbounded plane chops off
         // the gable peak. Voids alone are applied here.
 
+        self.finish_void_cut(result, &clipper, ctx, element_id, tris_before,
+            host_bounds_capture, wall_min, wall_max, host_mutated, &original_host)
+    }
+
+    /// Finish a completed exact pass in its cut frame before publishing host effects.
+    #[allow(clippy::too_many_arguments)]
+    fn finish_void_cut(
+        &self, result: Mesh, clipper: &ClippingProcessor, ctx: &VoidContext,
+        element_id: u32, tris_before: usize,
+        host_bounds_capture: ((f32, f32, f32), (f32, f32, f32)),
+        wall_min: Point3<f64>, wall_max: Point3<f64>, host_mutated: bool,
+        original_host: &Mesh,
+    ) -> Result<Mesh> {
         // Drain whatever fallbacks the kernel logged during this element's
         // void / clip pass, attribute them to the host product, and stash on
         // the router so the caller can surface them (e.g. flagged in a
         // viewer overlay or asserted in regression tests).
-        let kernel_failures = clipper.take_failures();
-        if !kernel_failures.is_empty() {
-            self.record_host_failure_summary(element_id, &kernel_failures);
-            self.record_csg_failures(element_id, kernel_failures);
-        }
+        crate::resource::check_current()?;
+        self.drain_failures(clipper, element_id);
 
         // WATERTIGHT SLIVER REFINEMENT (issue #1007): the exact-kernel cut of a
         // long, tilted faceted-BREP host facet can emit a high-aspect corner
@@ -1741,7 +1806,7 @@ impl GeometryRouter {
         // frame (host + cutters share it), and BEFORE the spike clip so any
         // residual protrusion is still caught. A no-op when no cutter is
         // malformed — clean openings are never reshaped.
-        recut_malformed_openings(&mut result, &ctx.malformed_opening_boxes());
+        recut_malformed_openings(&mut result, &ctx.malformed_opening_boxes())?;
 
         // SPURIOUS-FLAP CLIP: a subtract can only remove material, so the cut is
         // mathematically contained in the host's pre-cut AABB (`wall_min/max`);
@@ -1761,13 +1826,14 @@ impl GeometryRouter {
 
         // STRAY-SHARD SWEEP: see `sweep::drop_faces_outside_host` (#1788).
         if host_mutated {
-            result = drop_faces_outside_host(result, &original_host);
+            result = drop_faces_outside_host(result, original_host);
         }
 
         // Per-host cut-effect snapshot: tris_before / tris_after lets the
         // diagnostic surface the silent-no-op case (rectangular boxes
         // processed but the host mesh came out unchanged — the box
         // probably didn't intersect the wall, e.g. wrong placement).
+        crate::resource::check_current()?;
         self.record_host_cut_effect(
             element_id,
             tris_before,
@@ -1776,84 +1842,10 @@ impl GeometryRouter {
             host_bounds_capture,
         );
 
-        result
+        crate::resource::check_current()?;
+        Ok(result)
     }
 
-    /// Process an element into per-item sub-meshes with opening subtraction.
-    ///
-    /// Mirrors [`process_element_with_voids`] but preserves each
-    /// `IfcShapeRepresentation` item as its own sub-mesh so that callers can
-    /// look up a direct `IfcStyledItem` color per geometry item (e.g. the
-    /// three extrusion layers of a multi-layer wall). The opening(s) are
-    /// subtracted from each sub-mesh independently so that windows and doors
-    /// cut through every material layer they intersect.
-    ///
-    /// Returns an empty collection when there are no openings (callers should
-    /// fall back to [`process_element_with_submeshes`]) or when every
-    /// sub-mesh is destroyed by void subtraction.
-    pub fn process_element_with_submeshes_and_voids(
-        &self,
-        element: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        void_index: &FxHashMap<u32, Vec<u32>>,
-    ) -> Result<SubMeshCollection> {
-        // Layered single-solid path: slice the element's base mesh by its
-        // material-layer buildup AFTER subtracting voids. This produces one
-        // sub-mesh per layer keyed by IfcMaterial id, so layers show up as
-        // individual colors even when the underlying geometry is a single
-        // swept solid.
-        if let Some(layered) = self.try_layered_sub_meshes(element, decoder, Some(void_index)) {
-            return Ok(layered);
-        }
-
-        let opening_ids = match void_index.get(&element.id) {
-            Some(ids) if !ids.is_empty() => ids.clone(),
-            _ => return Ok(SubMeshCollection::new()),
-        };
-
-        // Voided occurrences materialize cut geometry (#1623 don't-bake off) with no
-        // texture index (#1781: CSG rebuilds vertices, orphaning UVs — colour wins).
-        let sub_meshes = self.process_element_with_submeshes_impl(
-            element,
-            decoder,
-            false,
-            None,
-            SourceHygiene::IndexOnly,
-        )?;
-        if sub_meshes.is_empty() {
-            return Ok(SubMeshCollection::new());
-        }
-
-        // Classify openings + resolve clipping planes ONCE per element. Doing
-        // this per sub-mesh would re-run `process_element` on every opening
-        // and re-extract clipping planes N times, multiplying the expensive
-        // parsing/CSG setup by the sub-mesh count on the exact elements this
-        // path targets (multi-layer walls with windows).
-        let ctx = self.build_void_context(element, &opening_ids, decoder);
-
-        // INHERIT the discriminator rather than assuming rep-item ids. This path
-        // is reached only when `try_layered_sub_meshes` declined above, so the
-        // flag is false today -- but hard-coding that would make a future
-        // layered producer silently relabel material ids as representation
-        // items, which is the exact confusion #3199 removes.
-        let mut voided = SubMeshCollection {
-            sub_meshes: Vec::new(),
-            ids_are_materials: sub_meshes.ids_are_materials,
-        };
-        for sub in sub_meshes.sub_meshes {
-            let geometry_id = sub.geometry_id;
-            let mut voided_mesh = self.apply_void_context(sub.mesh, &ctx, element.id);
-            // Same CSG-seam hygiene as the single-mesh void path.
-            voided_mesh.clean_degenerate();
-            if !voided_mesh.is_empty() {
-                voided
-                    .sub_meshes
-                    .push(SubMesh::new(geometry_id, voided_mesh));
-            }
-        }
-
-        Ok(voided)
-    }
 }
 
 #[cfg(test)]

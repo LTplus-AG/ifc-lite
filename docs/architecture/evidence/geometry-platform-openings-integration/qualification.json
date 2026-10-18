@@ -1,0 +1,87 @@
+{
+  "status": "UNQUALIFIED",
+  "final_source": "c9a75c988f8613fffabdd1f6efb8f7c6f837471c",
+  "native_compile": "NOT RUN",
+  "native_tests": "NOT RUN",
+  "clippy": "NOT RUN",
+  "wasm_build": "NOT RUN",
+  "wasm_contracts": "NOT RUN",
+  "real_exporter_model_comparisons": "NOT RUN; external fixtures absent",
+  "performance_verdict": "UNQUALIFIED; no base-vs-branch whole worker-pool numbers or output identity measurement",
+  "final_source_heavy_checks": [],
+  "earlier_source_refusals": [
+    {
+      "job_id": "4c6f9186-87d3-4c0b-a345-010baf665872",
+      "immutable_original": "/home/louistrue/build-workers/worker-state/jobs/4c6f9186-87d3-4c0b-a345-010baf665872/receipt.json",
+      "receipt_copy": "receipt-compile-eb47838.json",
+      "receipt_sha256": "293a202c4a016d044dd4b4f4c9191689ac7735cc6a62cb7df358149012b5152f",
+      "source": "eb47838ce3c1067de1bdac0bc5e1424a3b60d4c4",
+      "clean": true,
+      "source_unchanged": true,
+      "state": "failed",
+      "exit_code": 1,
+      "command": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--no-run"
+      ],
+      "command_executed": false,
+      "error": "host capacity guard refused admission",
+      "admission_detail": "Worker admission refused: disk 265.9 GiB free; require 266 GiB (reserve plus scratch; existing jobs continue)",
+      "host": "pop-os",
+      "final_source_qualification": false
+    },
+    {
+      "job_id": "b75a33a1-6ead-4508-8524-6613d8d11a55",
+      "immutable_original": "/home/louistrue/build-workers/worker-state/jobs/b75a33a1-6ead-4508-8524-6613d8d11a55/receipt.json",
+      "receipt_copy": "receipt-checks-05390.json",
+      "receipt_sha256": "5e54f285ad6c3e58506cdc2bf2fa669e386376f4eacd8b6f9d64be13a6c77c42",
+      "source": "05390e81a6d6a9dc98c3af9ba98106ef6f5e3eae",
+      "clean": true,
+      "source_unchanged": true,
+      "state": "failed",
+      "exit_code": 1,
+      "command": [
+        "bash",
+        "-lc",
+        "cargo test --workspace && cargo clippy --workspace --all-targets -- -D warnings && pnpm build:wasm && pnpm test:wasm-contract"
+      ],
+      "command_executed": false,
+      "error": "host capacity guard refused admission",
+      "admission_detail": "Worker admission refused: disk 265.9 GiB free; require 316 GiB (reserve plus scratch; existing jobs continue)",
+      "host": "pop-os",
+      "final_source_qualification": false
+    }
+  ],
+  "fleet_request": "auto-0307e8163bcb475f93f4e5ae95a53644",
+  "final_attempt_routing": "Combined bash command was classified host-bound by fleet and attempted local admission; rejected before executing it. This was not a remote fleet test run. No refused request was retried.",
+  "final_source_after_refusal": "c9a75c988f adds explicit planar Err(ProgramStopped) propagation and collect cleanup after the 05390 refusal. No earlier refusal or metadata pass is promoted to final-source compilation evidence.",
+  "final_fleet_status": "Pop admission false/78; PC reachable/configured, not proof of admitted capacity; Mac disabled. No bypass or further submission.",
+  "metadata_only": [
+    {
+      "command": "git diff --check 0c0e5734569b19f48eedc21703cdbf75d241a313..HEAD",
+      "exit_code": 0,
+      "scope": "whitespace only"
+    },
+    {
+      "command": "rustfmt --emit stdout --config skip_children=true on 47 changed Rust files",
+      "exit_code": 0,
+      "scope": "syntax parsing only; see syntax-only.json, no formatting edits or compilation"
+    }
+  ],
+  "fixture_presence": {
+    "tests/models/ara3d/AC20-FZK-Haus.ifc": false,
+    "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": false
+  },
+  "missing_qualification": [
+    "whole-crate type/privacy/exhaustive-match validation",
+    "execute all new regression tests; numbers/formulas in tests unverified",
+    "native workspace tests and Clippy",
+    "canonical WASM build and real contracts (do not accept clean skip)",
+    "real-model native/WASM parity and golden/pin implications",
+    "paired end-to-end worker-pool measurements and output identity"
+  ],
+  "preserved_foreign_job": "cd64c7d8-1708-42eb-9dc3-887359679a03 / auto-0c630e8422f94ff7ba3ac4ea77fd711a: not touched, inspected, retried, cancelled or modified",
+  "coverage_limit": "Bounded numerical/profile heap coverage remains opaque. Strict refuses unsupported coverage; Compatibility adds no quotas. No heap/RSS/process bound or scheduler/cutover qualification is claimed."
+}

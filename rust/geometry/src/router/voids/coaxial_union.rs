@@ -113,7 +113,7 @@ struct Footprint {
     z_hi: f64,
 }
 
-impl GeometryRouter {
+impl crate::program::openings::execute::Execution {
     /// Cut every OVERLAPPING opening cluster in `all_openings` from `result` via
     /// the coaxial footprint-union (or the 3D `union_many` fallback), marking the
     /// consumed openings in `consumed` and setting `host_mutated` on any real cut.
@@ -131,9 +131,12 @@ impl GeometryRouter {
         consumed: &mut [bool],
         host_mutated: &mut bool,
         clipper: &ClippingProcessor,
-    ) {
-        if !enabled() || all_openings.len() < 2 {
-            return;
+    ) -> crate::Result<()> {
+        crate::resource::check_current()?;
+        let enabled = (self.configuration.coaxial_union)();
+        crate::resource::check_current()?;
+        if !enabled || all_openings.len() < 2 {
+            return Ok(());
         }
         // 1 mm pad — identical to the disjoint batching's BATCH_PAD, so a cutter
         // pair that the batching would treat as disjoint (touching, not
@@ -185,7 +188,7 @@ impl GeometryRouter {
             }
             // Extended-AABB for the overlap graph: pierce the host along `dir`
             // exactly as the cut will, so the cluster reflects the CUT footprints.
-            let ext = Self::extend_opening_mesh_through_host(mesh, result, dir);
+            let ext = GeometryRouter::extend_opening_mesh_through_host(mesh, result, dir);
             let (elo, ehi) = ext.bounds();
             cands.push(UnionCand {
                 idx,
@@ -196,7 +199,7 @@ impl GeometryRouter {
             });
         }
         if cands.len() < 2 {
-            return;
+            return Ok(());
         }
 
         // Union-find over the extended-AABB overlap graph (deterministic in
@@ -234,8 +237,9 @@ impl GeometryRouter {
             if members.len() < 2 {
                 continue; // disjoint singleton → disjoint batching / sequential
             }
-            self.cut_overlapping_cluster(result, &cands, members, consumed, host_mutated, clipper);
+            self.cut_overlapping_cluster(result, &cands, members, consumed, host_mutated, clipper)?;
         }
+        Ok(())
     }
 
     /// Cut one OVERLAPPING cluster (≥ 2 members). Tries the coaxial footprint
@@ -250,7 +254,8 @@ impl GeometryRouter {
         consumed: &mut [bool],
         host_mutated: &mut bool,
         clipper: &ClippingProcessor,
-    ) {
+    ) -> crate::Result<()> {
+        crate::resource::check_current()?;
         // Coaxial? Every member's axis NEAR-EXACTLY parallel to the reference. The
         // footprint-union path reconstructs each cutter as a prism by projecting its
         // caps ONTO the plane ⟂ `ref_dir`; for a member whose own axis is tilted
@@ -272,7 +277,7 @@ impl GeometryRouter {
             if let Some((prisms, multi_slab, contributors, max_removed)) =
                 self.build_coaxial_prisms(result, cands, members, &ref_dir)
             {
-                if self.subtract_prisms(result, &prisms, multi_slab, max_removed, clipper) {
+                if self.subtract_prisms(result, &prisms, multi_slab, max_removed, clipper)? {
                     // Consume ONLY cutters that fed an emitted slab prism; one whose
                     // band coalesced below `z_tol` spans no slab (removed nothing) and
                     // stays for the exact path rather than being silently dropped.
@@ -280,7 +285,7 @@ impl GeometryRouter {
                         consumed[cands[members[i]].idx] = true;
                     }
                     *host_mutated = true;
-                    return;
+                    return Ok(());
                 }
             }
         }
@@ -290,12 +295,14 @@ impl GeometryRouter {
         // cutter through the host, union them in ONE N-ary arrangement, then
         // subtract the single union mesh. On failure the cluster is left unconsumed
         // for the sequential exact path.
-        if union3d::subtract(result, cands, members, clipper) {
+        crate::resource::check_current()?;
+        if union3d::subtract(result, cands, members, clipper)? {
             for &m in members {
                 consumed[cands[m].idx] = true;
             }
             *host_mutated = true;
         }
+        Ok(())
     }
 
     /// Build the pairwise-disjoint re-extruded prisms for a COAXIAL cluster via
@@ -390,6 +397,7 @@ impl GeometryRouter {
             }
             // ONE i_overlay union of the slab's footprints (overlaps merge exactly).
             let shapes = union_contours_to_shapes(&contours);
+            crate::resource::check_current().ok()?;
             if shapes.is_empty() {
                 return None;
             }
@@ -398,13 +406,15 @@ impl GeometryRouter {
                 if shape.outer.len() < 3 || !crate::bool2d::is_valid_contour(&shape.outer) {
                     return None;
                 }
-                let mut prism = extrude_profile_watertight(shape, slab_depth, Some(base)).ok()?;
+                let extrusion = crate::resource::observe(extrude_profile_watertight(shape, slab_depth, Some(base)));
+                let mut prism = extrusion.ok()?;
                 apply_transform(&mut prism, &m_world);
+                crate::resource::check_current().ok()?;
                 // Push caps a hair past any FLUSH host face along the axis so the
                 // subtract is a clean transversal crossing. A slab boundary INTERIOR
                 // to the host (no host facet there) is left untouched — the two
                 // slabs meeting at it tile the void with no gap.
-                let ext = Self::extend_opening_mesh_through_host(&prism, result, d);
+                let ext = GeometryRouter::extend_opening_mesh_through_host(&prism, result, d);
                 if !mesh_is_closed_exact(&ext) {
                     return None;
                 }
@@ -434,7 +444,7 @@ impl GeometryRouter {
             * contributors
                 .iter()
                 .map(|&i| {
-                    let ext = Self::extend_opening_mesh_through_host(
+                    let ext = GeometryRouter::extend_opening_mesh_through_host(
                         &cands[members[i]].mesh,
                         result,
                         d,
@@ -461,27 +471,30 @@ impl GeometryRouter {
         multi_slab: bool,
         max_removed: f64,
         clipper: &ClippingProcessor,
-    ) -> bool {
+    ) -> crate::Result<bool> {
+        crate::resource::check_current()?;
         let cutters: Vec<&Mesh> = prisms.iter().collect();
         let outcome = if !multi_slab {
             clipper.subtract_mesh_many(result, &cutters)
         } else {
             // Multi-slab: fuse the stacked prisms so their shared boundary
             // planes dissolve, then subtract the single closed solid.
-            let union = ClippingProcessor::consolidate_coplanar(
-                crate::kernel::mesh_bridge::union_many(&cutters),
-            );
+            let union = crate::kernel::mesh_bridge::union_many(&cutters);
+            crate::resource::check_current()?;
+            let union = ClippingProcessor::consolidate_coplanar(union);
+            crate::resource::check_current()?;
             if union.is_empty() || !mesh_is_closed_exact(&union) {
-                return false;
+                return Ok(false);
             }
             clipper.subtract_mesh(result, &union)
         };
+        crate::resource::check_current()?;
         // Nothing to keep is `false`: the caller falls back to the 3D union,
         // then defers.
         let Some(cut) = mesh_to_keep(outcome, result) else {
-            return false;
+            return Ok(false);
         };
-        accept_cut(result, cut, max_removed)
+        Ok(accept_cut(result, cut, max_removed))
     }
 
 

@@ -16,11 +16,19 @@ use super::{
 pub(in crate::router::voids) fn correct_planar_overlap(
     mesh: &Mesh,
     cutters: &[Mesh],
-) -> Option<Mesh> {
+    enabled: bool,
+) -> crate::Result<Option<Mesh>> {
+    crate::resource::check_current()?;
+    let candidate = correction_candidate(mesh, cutters, enabled);
+    crate::resource::check_current()?;
+    Ok(candidate)
+}
+
+fn correction_candidate(mesh: &Mesh, cutters: &[Mesh], enabled: bool) -> Option<Mesh> {
     if cutters.is_empty() {
         return Some(mesh.clone());
     }
-    if !super::enabled() {
+    if !enabled {
         return None;
     }
     let mut tris = ptris_from_mesh(mesh)?;
@@ -30,12 +38,15 @@ pub(in crate::router::voids) fn correct_planar_overlap(
         return None;
     }
     for cutter in cutters {
+        crate::resource::check_current().ok()?;
         let (lo, hi) = cutter.bounds();
         let opening = OpeningType::NonRectangular(cutter.clone(), lo.cast(), hi.cast(), None);
         let mut prism = prepare_prism(&opening, mesh.origin)?;
         let aabbs: Vec<_> = tris.iter().map(PTri::aabb).collect();
         extend_prism_caps(&mut prism, &tris, &aabbs);
-        tris = cut_prism(&tris, &prism).ok()?;
+        let result = cut_prism(&tris, &prism);
+        crate::resource::check_current().ok()?;
+        tris = result.ok()?;
     }
     let out = dedup_cut_vertices(&mesh_from_ptris(&tris, mesh), mesh);
     closed_enough_to_emit(&out).then_some(out)

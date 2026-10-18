@@ -8,321 +8,25 @@ mod exit_cap;
 mod exit_cap_far_field;
 mod membrane;
 
-use super::super::processing::SourceHygiene;
-use super::geom::*;
 use super::{GeometryRouter, OpeningType, NORMALIZE_EPSILON};
 use crate::{Mesh, Point3, Vector3};
+#[cfg(test)]
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 impl GeometryRouter {
 
-    /// Resolve an AABB + extrusion direction for an opening, used as the
-    /// fallback rectangular cut for high-vertex non-rectangular openings
-    /// (issue #635). The opening's full mesh AABB is the only safe choice
-    /// when we are about to over-approximate with an axis-aligned box —
-    /// a per-item bound can miss part of a multi-item opening (e.g. AC20
-    /// round windows store two extrusions with offset depths and the
-    /// first one alone wouldn't reach all the way through the wall).
-    /// The extrusion direction is best-effort from the first item.
-    fn fallback_aabb_for_opening(
-        &self,
-        opening_entity: &DecodedEntity,
-        opening_mesh: &Mesh,
-        decoder: &mut EntityDecoder,
-    ) -> (Point3<f64>, Point3<f64>, Option<Vector3<f64>>) {
-        let dir = self
-            .get_opening_item_bounds_with_direction(opening_entity, decoder)
-            .ok()
-            .and_then(|items| items.into_iter().find_map(|(_, _, d)| d));
-        // WORLD bounds: `opening_mesh` may be in its own per-element local frame
-        // (wasm), so fold its origin back in. `apply_void_context` then relativizes
-        // these by the host origin alongside the cutter mesh, keeping both in the
-        // shared host frame (#1310 review).
-        let o = opening_mesh.origin;
-        let (mn, mx) = opening_mesh.bounds();
-        (
-            Point3::new(mn.x as f64 + o[0], mn.y as f64 + o[1], mn.z as f64 + o[2]),
-            Point3::new(mx.x as f64 + o[0], mx.y as f64 + o[1], mx.z as f64 + o[2]),
-            dir,
-        )
-    }
-
+    #[cfg(test)]
     pub(super) fn classify_openings(
-        &self,
-        host: &DecodedEntity,
-        opening_ids: &[u32],
-        decoder: &mut EntityDecoder,
+        &self, host: &DecodedEntity, ids: &[u32], decoder: &mut EntityDecoder,
     ) -> Vec<OpeningType> {
-        self.classify_openings_impl(host, opening_ids, decoder, true)
-    }
-
-    /// Classify a subset of a host's openings WITHOUT recording the per-host
-    /// diagnostic. Used by the 2D fast path to build the residual (exact-kernel)
-    /// context for the ineligible openings after the host's full opening set has
-    /// already been diagnosed once — `record_host_opening_diagnostic` appends, so
-    /// a second recording for the same host would double-count.
-    pub(super) fn classify_openings_quiet(
-        &self,
-        host: &DecodedEntity,
-        opening_ids: &[u32],
-        decoder: &mut EntityDecoder,
-    ) -> Vec<OpeningType> {
-        self.classify_openings_impl(host, opening_ids, decoder, false)
-    }
-
-    fn classify_openings_impl(
-        &self,
-        host: &DecodedEntity,
-        opening_ids: &[u32],
-        decoder: &mut EntityDecoder,
-        record_diag: bool,
-    ) -> Vec<OpeningType> {
-        use super::super::{ClassificationKind, OpeningDiagnostic, OpeningKindDiag};
-
-        // Per-opening diagnostic accumulator for this host. Pushed to the
-        // router's `host_opening_diagnostics` map before we return.
-        let mut host_diag: Vec<OpeningDiagnostic> = Vec::with_capacity(opening_ids.len());
-
-        let mut openings: Vec<OpeningType> = Vec::new();
-        for &opening_id in opening_ids.iter() {
-            let opening_entity = match decoder.decode_by_id(opening_id) {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-
-            // The cutter is kept in WHATEVER frame `process_element` produced — world
-            // (native / local frame off) or the opening's own per-element local frame
-            // (wasm). `apply_void_context` carries `mesh.origin` through and folds it in
-            // f64 when it relativizes the cutter into the host frame, so the opening's
-            // detail stays precise even far from the global origin and the AABB-overlap
-            // guard sees the cutter at the host (#1297, refined per #1310 review). The
-            // bounds derived below are folded to WORLD so the same relativization applies.
-            // #6349: an opening whose items lie in frames >= 1 km apart comes back as
-            // several frame parts; each stays its own cutter instead of being rounded
-            // into one f32 mesh. An ordinary opening has exactly one part.
-            let opening_parts: Vec<Mesh> = match self.process_element_parts_with_hygiene(&opening_entity, decoder, SourceHygiene::IndexOnly) {
-                Ok(parts) => parts.into_iter().filter(|m| !m.is_empty()).collect(),
-                Err(_) => continue,
-            };
-            if opening_parts.is_empty() {
-                continue;
-            }
-
-            // Triangle count, not raw position-buffer length: the buffer's
-            // element count also includes per-`IfcFace` vertex duplication the
-            // faceted-brep mesher emits, and welding (#4103) merges duplicate
-            // vertex slots without touching `indices`. Gating on the buffer
-            // length let two byte-identical cutters — one authored/welded with
-            // shared corners, one with duplicated ones — land on opposite sides
-            // of the threshold below for the same geometry (issue #4119: 7 of
-            // 618 fixture openings moved branch purely from welding, with no
-            // triangle changed). Triangle count is invariant to that.
-            let triangle_count: usize = opening_parts.iter().map(Mesh::triangle_count).sum();
-            let vertex_count: usize = opening_parts.iter().map(Mesh::vertex_count).sum();
-
-            // Local helper: bump the aggregate counter and push a per-host
-            // diagnostic line together. QUIET mode (`record_diag == false`) is a
-            // full no-op — the host's opening set was already classified once by
-            // `classify_openings`, so bumping `ClassificationStats` again (or
-            // pushing a second host diagnostic) would double-count each residual.
-            let mut bump = |router: &Self, ck: ClassificationKind, kind: OpeningKindDiag| {
-                if record_diag {
-                    router.bump_classification(ck);
-                    host_diag.push(OpeningDiagnostic {
-                        opening_id,
-                        kind,
-                        vertex_count,
-                    });
-                }
-            };
-
-            // Probe per-item geometry up front. An opening that holds several
-            // SPATIALLY SEPARATE void solids — a whole row of windows authored
-            // under one IfcOpeningElement (issue #1367) — must be classified and
-            // subtracted PER ITEM even when its bodies SUM past the high-vertex
-            // guard below: merging them into one cutter and subtracting in a
-            // single arrangement leaves diagonal bridges over some of the holes
-            // (3 of 12 box void bodies on a limestone wall's front face),
-            // whereas one cutter per body cuts every hole cleanly.
-            //
-            // Bodies that TOUCH/OVERLAP are one logical void split into parts
-            // (e.g. the inner+outer wall-leaf halves of a single FZK-Haus
-            // window) and MUST stay merged — splitting them regresses the
-            // gable-wall consolidation watertightness guard into hairline
-            // cracks. So the trigger is ">=2 disjoint spatial clusters", not
-            // merely ">1 body". The merged high-vertex path also stays for a
-            // genuine SINGLE complex sweep (circular / arched / faceted) and for
-            // the rare opening whose per-item bounds can't be recovered.
-            let item_bounds_with_dir = self
-                .get_opening_item_bounds_with_direction(&opening_entity, decoder)
-                .unwrap_or_default();
-            let separable_bodies =
-                item_bounds_with_dir.len() > 1 && spatial_cluster_count(&item_bounds_with_dir) > 1;
-
-            if triangle_count > 100 && !separable_bodies {
-                // High-triangle-count single-body openings (circular / arched /
-                // faceted sweeps) won't fit through the CSG safety thresholds,
-                // so always carry the per-item AABB + extrusion direction
-                // as a fallback (issue #635). Gated on triangle count, not the
-                // position-buffer length, so authoring/weld-time vertex
-                // duplication can't move an opening across the threshold for
-                // unchanged geometry (issue #4119).
-                for opening_mesh in opening_parts {
-                    let (fallback_min, fallback_max, fallback_dir) =
-                        self.fallback_aabb_for_opening(&opening_entity, &opening_mesh, decoder);
-                    bump(
-                        self,
-                        ClassificationKind::NonRectangular,
-                        OpeningKindDiag::NonRectangular,
-                    );
-                    openings.push(OpeningType::NonRectangular(
-                        opening_mesh,
-                        fallback_min,
-                        fallback_max,
-                        fallback_dir,
-                    ));
-                }
-            } else if !item_bounds_with_dir.is_empty() {
-                    // Per-item geometry-driven classification (origin/main).
-                    // The earlier "is_floor_opening" host-aware heuristic
-                    // routed every Z-extruded opening through full CSG, which
-                    // silently failed for roof windows on shallow-slope roofs
-                    // and left the host uncut. The frame-based
-                    // DiagonalRectangular path handles tilted rectangular
-                    // openings — including rotated-footprint floor openings —
-                    // so reserve NonRectangular for genuinely curved or arched
-                    // voids.
-                    let item_meshes = self
-                        .get_opening_item_meshes_world(&opening_entity, decoder)
-                        .unwrap_or_default();
-
-                    if item_meshes.len() == item_bounds_with_dir.len() {
-                        for ((min_pt, max_pt, extrusion_dir), item_mesh) in item_bounds_with_dir
-                            .into_iter()
-                            .zip(item_meshes.into_iter())
-                        {
-                            let frame = infer_opening_frame(&item_mesh, extrusion_dir.as_ref());
-                            let direction_is_diagonal = extrusion_dir
-                                .map(|d| !is_axis_aligned_direction(&d))
-                                .unwrap_or(false);
-                            let is_clean_box = is_rectangular_box_mesh(&item_mesh);
-
-                            if let Some(frame) = frame {
-                                if !is_clean_box {
-                                    bump(
-                                        self,
-                                        ClassificationKind::NonRectangular,
-                                        OpeningKindDiag::NonRectangular,
-                                    );
-                                    openings.push(OpeningType::NonRectangular(
-                                        item_mesh,
-                                        min_pt,
-                                        max_pt,
-                                        extrusion_dir,
-                                    ));
-                                } else if direction_is_diagonal || !frame.is_axis_aligned() {
-                                    bump(
-                                        self,
-                                        ClassificationKind::Diagonal,
-                                        OpeningKindDiag::Diagonal,
-                                    );
-                                    openings.push(OpeningType::DiagonalRectangular(
-                                        item_mesh, frame,
-                                    ));
-                                } else {
-                                    bump(
-                                        self,
-                                        ClassificationKind::Rectangular,
-                                        OpeningKindDiag::Rectangular,
-                                    );
-                                    openings.push(OpeningType::Rectangular(
-                                        min_pt,
-                                        max_pt,
-                                        extrusion_dir,
-                                    ));
-                                }
-                            } else if is_clean_box {
-                                bump(
-                                    self,
-                                    ClassificationKind::Rectangular,
-                                    OpeningKindDiag::Rectangular,
-                                );
-                                openings.push(OpeningType::Rectangular(
-                                    min_pt,
-                                    max_pt,
-                                    extrusion_dir,
-                                ));
-                            } else {
-                                bump(
-                                    self,
-                                    ClassificationKind::NonRectangular,
-                                    OpeningKindDiag::NonRectangular,
-                                );
-                                openings.push(OpeningType::NonRectangular(
-                                    item_mesh,
-                                    min_pt,
-                                    max_pt,
-                                    extrusion_dir,
-                                ));
-                            }
-                        }
-                    } else {
-                        for (min_pt, max_pt, extrusion_dir) in item_bounds_with_dir {
-                            bump(
-                                self,
-                                ClassificationKind::Rectangular,
-                                OpeningKindDiag::Rectangular,
-                            );
-                            openings.push(OpeningType::Rectangular(
-                                min_pt, max_pt, extrusion_dir,
-                            ));
-                        }
-                    }
-                } else {
-                    for opening_mesh in &opening_parts {
-                        // WORLD bounds (fold the opening's per-element origin); see
-                        // `fallback_aabb_for_opening` (#1310 review).
-                        let o = opening_mesh.origin;
-                        let (open_min, open_max) = opening_mesh.bounds();
-                        let min_f64 = Point3::new(
-                            open_min.x as f64 + o[0],
-                            open_min.y as f64 + o[1],
-                            open_min.z as f64 + o[2],
-                        );
-                        let max_f64 = Point3::new(
-                            open_max.x as f64 + o[0],
-                            open_max.y as f64 + o[1],
-                            open_max.z as f64 + o[2],
-                        );
-
-                        bump(
-                            self,
-                            ClassificationKind::Rectangular,
-                            OpeningKindDiag::Rectangular,
-                        );
-                        openings.push(OpeningType::Rectangular(min_f64, max_f64, None));
-                    }
-                }
-        }
-
-        // Stash the per-host diagnostic before returning. `host.ifc_type`
-        // implements `Display` to its STEP name (e.g. "IFCWALLSTANDARDCASE").
-        if record_diag && !host_diag.is_empty() {
-            self.record_host_opening_diagnostic(
-                host.id,
-                &format!("{}", host.ifc_type),
-                host_diag,
-            );
-        }
-
-        openings
+        crate::program::openings::Classifier::new(host, ids, true).run(self, decoder).unwrap()
     }
 
     /// Merge adjacent/overlapping rectangular openings into larger boxes.
     /// This prevents exponential triangle growth when many small openings
     /// tile a wall surface — each clip creates boundary triangles that get
     /// re-split by the next clip, causing O(2^N) growth.
-    pub(super) fn merge_rectangular_openings(openings: &[OpeningType]) -> Vec<OpeningType> {
+    pub(crate) fn merge_rectangular_openings(openings: &[OpeningType]) -> Vec<OpeningType> {
         const MERGE_TOLERANCE: f64 = 0.01; // 1cm tolerance for adjacency
 
         // Separate rectangular and non-rectangular openings
@@ -422,6 +126,9 @@ impl GeometryRouter {
         result
     }
 
+}
+
+impl crate::program::openings::execute::Execution {
     // Cut a rectangular opening from a mesh using optimized plane clipping.
     // This is more efficient than full CSG because it only processes triangles
     // that intersect the opening bounds.
@@ -648,6 +355,9 @@ impl GeometryRouter {
         (new_min, new_max)
     }
 
+}
+
+impl GeometryRouter {
     /// An axis-aligned box `[min,max]` as a closed 12-triangle outward-wound mesh —
     /// the cutter solid for a RECTANGULAR opening routed through the exact subtract
     /// (PART B). 24 verts (4 per face) so each face carries its own outward normal.

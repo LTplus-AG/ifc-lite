@@ -20,10 +20,17 @@ Python wheel/parity, native checks and scoped browser/geometry qualifications
 pass against `b0b670`. Their actual source, completed commands and proof limits
 are published in the linked validation summary. The historical Os cohort below
 still records a real regression and is not evidence about the corrected artifact.
-A fresh opportunistic campaign refused its first host preflight before Chrome
-launched and accepted no rows. Ordinary peer jobs remain unrestricted. The
-conditional ceiling approval remains unfulfilled until corrected-O3 runtime
-qualification passes; neither functional captures nor size alone establish it.
+The final user-authorized window also ends with runtime NO_VERDICT: host CPU
+admission refuses completed captures, including when no named build/test graph
+is active. Every attempt remains separate; partial pairs are not pooled. Late
+original worker request/status metadata required a bounded collector wait; actual
+trace replay, refusal controls and a fresh untimed native-browser qualification
+pass without reducing body coverage or altering load metrics. Waiting for idle
+before launch does not permit retrying a measured row or weakening its strict
+post-sample gate. Lesson: preserve actual late CDP metadata and distinguish
+protocol qualification from an accepted end-to-end timing cohort. The hold is
+released, and independent builds may use the pinned Pop worker. The conditional
+engine-ceiling approval remains unfulfilled until corrected-O3 runtime qualifies.
 
 The following measured Os disposition and attribution limits are historical.
 The independent native attribution campaign was incomplete after host admission
@@ -92,8 +99,8 @@ cohort accepts no rows. The separate
 native cohort stopped before its first sample when host admission failed. No
 retry, missing-body exemption or cached-file substitution qualified either
 attempt. That failure required worker-response retention before another accepted
-timing campaign; setup-navigation retention alone was insufficient. The final
-completed campaign satisfies byte coverage and still records a runtime regression.
+timing campaign; setup-navigation retention alone was insufficient. The historical
+completed Os campaign satisfies byte coverage and still records a runtime regression.
 
 Historical untimed native mesh counts and fingerprints match the base for Haus and Holter;
 ISSUE_129 changes geometry and reports fewer CSG failures. These fingerprints

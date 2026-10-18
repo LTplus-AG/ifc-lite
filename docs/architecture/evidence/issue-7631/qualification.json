@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "issue": 7631,
-  "status": "PARTIAL_QUALIFICATION_RUNTIME_AND_STACK_REVIEW_PENDING",
+  "status": "HISTORICAL_PRE_REBASE_QUALIFICATION_COMBINED_SOURCE_PENDING",
   "reviewedCodeHead": "296fcf3dc5d8920ed873c423ca9e9bf85df5fe61",
   "sourceBuiltHead": "7539404d002f4db1735227b16c7c81c0351d6c48",
   "nativeWorkspaceSourceHead": "08730730df6c587b358b58ca44d872915ce2e976",
@@ -345,5 +345,12 @@
     "Final lower-stack finite-surface review, including ISSUE_129 host244479",
     "Fresh source-bound cap-free runtime qualification before applying the existing conditional engine ceiling",
     "Current cap runtime qualification and final stack landing/main verification"
-  ]
+  ],
+  "applicability": {
+    "qualifiedLowerBase": "e80d0925153d90a912115f7d830b532cc3c74a83",
+    "newLowerBase": "40ea21c26cecbbca8fadb69b72b2afdb313de337",
+    "capProductionChange": "Unchanged cap patch, combined with finite local jamb contact repair.",
+    "qualificationTransfer": false,
+    "required": "Requalify combined native workspace, actual WASM geometry and consumer builds; collect fresh runtime evidence before landing."
+  }
 }

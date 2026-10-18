@@ -40,6 +40,26 @@ fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
 A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
 
 
+## Placement consumer consistency (#7779, #7906)
+
+The frozen X3a, R2a and corrective-tail native cohort preserved mesh, vertex,
+triangle and per-mesh fingerprint output on Haus, ISSUE_129 and Holter. The
+tail stayed within the approved base-relative instruction band in every
+measured phase, while R2a exceeded it in duplex preprocessing. Both sides fit
+the committed small and large instruction ceilings; that does not erase the
+separate base-relative failure. Pool phase timers and wall medians also moved
+in different directions, so this is a mixed result with no speedup claim.
+The exact source pins, raw sample tables, phase comparisons and limits are in
+[#7906](https://github.com/LTplus-AG/ifc-lite/pull/7906).
+
+The separate shared-parent placement harness confirms analytic transforms and
+memo reuse through the production resolver and router. It does not measure
+throughput. Native instruction counts and this mechanism check do not qualify
+WASM worker scheduling or browser load time. Lesson: preserve phase-level
+failures and wall-time disagreements even when aggregate instructions and
+committed ceilings pass; attribute the retained preprocessing dumps before
+changing production work or accepting the regression.
+
 ## Accepted eager viewer JS growth (#7759)
 
 The maintainer approved resetting only the eager viewer JS ceiling to the

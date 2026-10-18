@@ -36,10 +36,11 @@ impl ProductOwner {
             .map_err(|_| WorkError::WrongOwner)?;
         let decoder_work = self.decoder.begin_synchronous_work(decoder.execution_identity())
             .map_err(|_| WorkError::WrongOwner)?;
-        let source_scope = decoder_work.source_borrow_scope();
-        let result = super::session_canonical::with_active_owner(
+        let source_scope = decoder_work.source_borrow_scope_with_resources(ifc_lite_geometry::resource::current_source_context());
+        let result = ifc_lite_geometry::resource::with_source_stop(source_scope.resource_stop_handle(), ||
+            super::session_canonical::with_active_owner(
             router_work.child_capability(), decoder_work.child_capability(),
-            || operation(decoder, router));
+            || operation(decoder, router)));
         // Fresh identities come from the executor's actual owners, never a reply.
         drop(source_scope);
         decoder_work.commit(decoder.execution_identity()).map_err(|_| WorkError::WrongOwner)?;
@@ -55,9 +56,10 @@ impl ProductOwner {
             .map_err(|_| WorkError::WrongOwner)?;
         let decoder_work = self.decoder.begin_synchronous_work(decoder.execution_identity())
             .map_err(|_| WorkError::WrongOwner)?;
-        let source_scope = decoder_work.source_borrow_scope();
-        let result = super::session_canonical::with_active_owner(
-            router_work.child_capability(), decoder_work.child_capability(), operation);
+        let source_scope = decoder_work.source_borrow_scope_with_resources(ifc_lite_geometry::resource::current_source_context());
+        let result = ifc_lite_geometry::resource::with_source_stop(source_scope.resource_stop_handle(), ||
+            super::session_canonical::with_active_owner(
+            router_work.child_capability(), decoder_work.child_capability(), operation));
         drop(source_scope);
         decoder_work.commit(decoder.execution_identity()).map_err(|_| WorkError::WrongOwner)?;
         router_work.commit(router.execution_identity()).map_err(|_| WorkError::WrongOwner)?;

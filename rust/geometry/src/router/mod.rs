@@ -19,7 +19,10 @@ mod instancing;
 mod item_dedup_cache;
 mod layers;
 mod mapped_item;
+mod mapped_cache_ownership;
+pub use mapped_cache_ownership::AccountedMappedItemCache;
 mod processing;
+mod processing_items;
 mod processor;
 mod rtc_offset;
 pub(crate) mod structural;
@@ -130,6 +133,7 @@ pub struct GeometryRouter {
     /// meshing (which nests faceted-brep's rayon `par_iter`) runs OUTSIDE the
     /// lock, so it is never held across a nested join (#1587). `None` ⇒ fallback.
     shared_mapped_item_cache: Option<SharedMappedItemCache>,
+    accounted_mapped_cache: Option<AccountedMappedItemCache>,
     /// Cache for geometry deduplication by content hash (buildings with
     /// repeated floors have 99% identical geometry). Key: mesh-content hash.
     geometry_hash_cache: RefCell<FxHashMap<u64, Arc<Mesh>>>,
@@ -247,8 +251,10 @@ pub struct GeometryRouter {
     /// occurrence of a source inserts its id (materializes); later occurrences see
     /// the id present and don't-bake. Reset implicitly per batch — a fresh router is
     /// built per `produce_batch`. Unused (stays empty) in the native global mode.
-    instanced_sources_materialized: RefCell<FxHashSet<u32>>,
+    instanced_sources_materialized: std::rc::Rc<RefCell<FxHashSet<u32>>>,
     unsupported: RefCell<diagnostics::UnsupportedItemState>, // dropped items by `IfcType` + per-source bookkeeping
+    // Last: retained payloads must drop before their resident owners.
+    mapped_cache_accounts: RefCell<Vec<crate::resource::ExecutionAccount>>,
 }
 
 impl GeometryRouter {
@@ -263,6 +269,8 @@ impl GeometryRouter {
             schema,
             processors: ProcessorRegistry::new(),
             mapped_item_cache: RefCell::new(FxHashMap::default()),
+            mapped_cache_accounts: RefCell::new(Vec::new()),
+            accounted_mapped_cache: None,
             shared_mapped_item_cache: None, // armed by `enable_shared_mapped_item_cache`
             geometry_hash_cache: RefCell::new(FxHashMap::default()),
             item_dedup_cache: None, // armed by `with_units` / `enable_content_dedup_shared`
@@ -286,7 +294,7 @@ impl GeometryRouter {
             indexed_colour_split_ids: None, // armed by `enable_indexed_colour_split_guard`
             preserve_triangle_order: std::cell::Cell::new(false),
             instancing_batch_local: false, // native global-template mode by default
-            instanced_sources_materialized: RefCell::new(FxHashSet::default()),
+            instanced_sources_materialized: std::rc::Rc::new(RefCell::new(FxHashSet::default())),
             unsupported: RefCell::new(Default::default()),
         }
     }
@@ -398,26 +406,6 @@ impl GeometryRouter {
     pub fn enable_content_dedup_shared(&mut self, cache: ItemDedupCache) {
         self.execution_owner.changed();
         self.item_dedup_cache = Some(cache);
-    }
-
-    /// A fresh empty shared `IfcMappedItem` source cache, to be cloned into every
-    /// per-element / per-batch router of ONE loaded model so a mapped source shared
-    /// across owning elements is meshed once model-wide (#1623). Mirrors
-    /// [`Self::new_dedup_cache`]. Keep one per model/pass: the cached meshes bake in
-    /// this pass's unit scale / tessellation quality.
-    pub fn new_mapped_item_cache() -> SharedMappedItemCache {
-        Arc::new(Mutex::new(FxHashMap::default()))
-    }
-
-    /// Inject a shared `IfcMappedItem` source cache (see
-    /// [`Self::new_mapped_item_cache`]) into this router. All routers given the
-    /// SAME `Arc` mesh each unique `IfcRepresentationMap` source once across the
-    /// whole model, instead of once per owning element (a fresh router is built per
-    /// element). Takes precedence over the per-router RefCell `mapped_item_cache`;
-    /// leaving it unset keeps the per-router fallback for single-shot callers.
-    pub fn enable_shared_mapped_item_cache(&mut self, cache: SharedMappedItemCache) {
-        self.execution_owner.changed();
-        self.shared_mapped_item_cache = Some(cache);
     }
 
     /// Arm the #1623 Phase 2 don't-bake instancing plan (see [`MappedInstancePlan`])

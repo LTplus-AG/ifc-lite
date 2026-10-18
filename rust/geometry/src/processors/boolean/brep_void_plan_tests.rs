@@ -247,7 +247,7 @@ fn production_empty_or_invalid_shells_do_not_discover_units_or_decode_later_shel
             outer,
             &mut decoder,
             TessellationQuality::Medium,
-        );
+        ).unwrap();
         assert_eq!(recorded, !empty_outer && voids != "()");
         assert!(
             decoder.refused_record_ids().is_empty(),
@@ -285,7 +285,7 @@ fn production_discovers_units_only_after_all_void_shells_mesh_nonempty() {
         outer,
         &mut decoder,
         TessellationQuality::Medium,
-    );
+    ).unwrap();
     assert!(!recorded);
     assert_volume(&hollow, 7.);
     assert_eq!(decoder.refused_record_ids(), [8]);

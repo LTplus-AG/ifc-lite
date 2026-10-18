@@ -142,3 +142,6 @@ pub use units::{
     resolve_length_unit, LengthUnit,
     try_extract_length_unit_scale, try_extract_plane_angle_to_radians,
 };
+
+/// Fixed resource terminal signals shared by scoped execution owners.
+pub mod resource_stop;

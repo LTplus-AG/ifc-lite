@@ -51,6 +51,12 @@ impl<P: Execute> Completed<P> {
 impl Completed<Group> {
     pub(super) fn assemble_group(self, recorder: &BooleanClippingProcessor,
         mark: usize) -> Result<Option<Value>> {
+        if let Err(stop) = crate::resource::check_current() {
+            // A terminal preserves every reached record, including the
+            // provisional source range; it is not a numerical deferral.
+            let _ = self.assemble(recorder);
+            return Err(stop.into());
+        }
         // Only a historical deferred group rewinds the provisional bool log.
         // Source reports, entered paths and the work counter are not effects
         // of this numerical request and cannot be refunded here.
@@ -103,6 +109,14 @@ pub(super) struct Single {
     pub length_unit_scale: f64,
 }
 pub(super) enum SingleResult { Done(Value), Fallback(Mesh) }
+impl Completed<Single> {
+    pub(super) fn assemble_single(self, recorder: &BooleanClippingProcessor)
+        -> Result<SingleResult> {
+        let value = self.assemble(recorder);
+        crate::resource::check_current()?;
+        Ok(value)
+    }
+}
 impl Execute for Single {
     type Output = SingleResult;
     fn evaluate(self, recorder: &NumericalEffects) -> Self::Output {

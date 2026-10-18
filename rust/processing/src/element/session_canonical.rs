@@ -79,11 +79,43 @@ pub(super) fn inherited_owner(decoder:&mut EntityDecoder,router:&GeometryRouter)
     Ok(Some(ProductOwner::from_child_leases(router_lease,decoder_lease)))
 }
 
+/// A joined worker recovers resource state from its actual mutable source borrow.
+/// Source authority takes precedence over unrelated worker-local accounts.
+/// No other TLS moves.
+pub(super) fn with_source_resources<T>(decoder: &mut EntityDecoder,
+    operation: impl FnOnce(&mut EntityDecoder) -> T) -> T {
+    use ifc_lite_geometry::resource;
+    let transport = decoder.try_source_execution_lease().ok().flatten().map(|lease| {
+        (lease.source_resource_context(), lease.source_stop_handle())
+    });
+    let Some((Ok(context), Ok(Some(stop)))) = transport else { return operation(decoder) };
+    resource::with_source_stop(stop, || {
+        if let Some(context) = context {
+            let account = resource::account_from_source_context(&context)
+                .unwrap_or_else(|stop| { resource::stop(stop); Default::default() });
+            account.source_scope(|| operation(decoder))
+        } else { operation(decoder) }
+    })
+}
+
 pub(super) fn produce(job:&ElementMeshJob<'_>,ctx:&MeshProductionContext<'_>,
     opts:&MeshProductionOptions,decoder:&mut EntityDecoder,router:&GeometryRouter)->ProducedElementMeshes {
     // This child continuation never crosses a scheduling yield, publication
     // boundary or thread. Unwinding drops it before the ancestor scope exits.
+    with_source_resources(decoder, |decoder| {
+    if ifc_lite_geometry::resource::check_current().is_err() { return stopped_output() }
     let mut execution=ProductState::new_canonical(job,ctx,opts,decoder,router);
     while execution.advance(ctx,decoder,router) {}
     execution.finish(decoder,router)
+    })
+}
+
+// Borrowed APIs remain infallible. The actual source-owned terminal survives
+// this empty child return and is reported by the outer accounted adapter.
+// No plan, numerical callback, final hook or cache publication is admitted.
+pub(super) fn stopped_output() -> ProducedElementMeshes {
+    ProducedElementMeshes { meshes: Vec::new(), instance_occurrences: Vec::new(),
+        geometry_hash: None, geometry_aabb: None, geometry_volume: None,
+        geometry_closure: None, csg_failures: FxHashMap::default(),
+        degenerate_triangles_dropped: 0 }
 }

@@ -11,6 +11,7 @@ impl ProductState {
     pub(super) fn assemble_reply(&mut self, reply: WorkReply, ctx: &MeshProductionContext<'_>,
         decoder: &mut EntityDecoder, router: &GeometryRouter) {
         match (reply.request.kind, reply.payload) {
+            (_, WorkPayload::Stopped(stop)) => self.remember_stop(stop),
             (WorkKind::TypeMap { map_id, class }, WorkPayload::TypeMap(parts)) => {
                 if let Some(parts) = parts {
                     self.meshes.extend(presentation_source::type_parts(&self.job.assembly(), (map_id, class),

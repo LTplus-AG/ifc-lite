@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Stable execution ownership for warm decoder/router workers. A reservation
 //! is owned data, never a mutex/TLS guard, and may survive a scheduling yield.
-use std::{fmt, sync::{Arc, Mutex, OnceLock, Weak, atomic::{AtomicBool, AtomicU64, Ordering}}};
+use std::{fmt, sync::{Arc, Mutex, OnceLock, atomic::{AtomicBool, AtomicU64, Ordering}}};
+
+mod resource_context;
+pub use resource_context::{SourceResourceContext, SourceStopHandle};
+use resource_context::ActiveSource;
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 fn next_id() -> u64 {
@@ -23,7 +27,7 @@ struct State {
     generation: AtomicU64,
     reserved: AtomicBool,
     alive: AtomicBool,
-    active_source: Mutex<Weak<WorkEpoch>>,
+    active_source: Mutex<ActiveSource>,
 }
 
 /// Private state of one execution owner. Move preserves identity; construction
@@ -56,21 +60,21 @@ impl ExecutionOwner {
         let state = self.state.get_or_init(|| Arc::new(State {
             generation: AtomicU64::new(self.generation),
             reserved: AtomicBool::new(false), alive: AtomicBool::new(true),
-            active_source: Mutex::new(Weak::new()),
+            active_source: Mutex::new(ActiveSource::default()),
         }));
         state.reserved.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .map_err(|_| ExecutionLeaseError::AlreadyLeased)?;
-        Ok(ExecutionLease { identity: self.identity(), id, state: state.clone(), parent: None, source_borrow: false })
+        Ok(ExecutionLease { identity: self.identity(), id, state: state.clone(), parent: None, source_borrow: false, resources: None })
     }
     pub(crate) fn try_source_borrow_lease(&mut self) -> Result<Option<ExecutionLease>, ExecutionLeaseError> {
         let Some(state) = self.state.get() else { return Ok(None) };
-        let Some(epoch) = state.active_source.lock().expect("source borrow lock").upgrade()
-            else { return Ok(None) };
+        let source = state.active_source.lock().expect("source borrow lock").clone();
+        let Some(epoch) = source.epoch.upgrade() else { return Ok(None) };
         epoch.validate(true)?;
         if !state.alive.load(Ordering::Acquire) { return Err(ExecutionLeaseError::OwnerDropped); }
         if !state.reserved.load(Ordering::Acquire) { return Err(ExecutionLeaseError::ExpiredWork); }
         Ok(Some(ExecutionLease { identity: self.identity(), id: ExecutionLeaseId(next_id()),
-            state: state.clone(), parent: Some(epoch), source_borrow: true }))
+            state: state.clone(), parent: Some(epoch), source_borrow: true, resources: source.resources }))
     }
 
 }
@@ -91,11 +95,22 @@ pub struct ExecutionLease {
     state: Arc<State>,
     parent: Option<Arc<WorkEpoch>>,
     source_borrow: bool,
+    resources: Option<SourceResourceContext>,
 }
 impl ExecutionLease {
     fn validate_parent(&self) -> Result<(), ExecutionLeaseError> {
         if let Some(parent) = &self.parent { parent.validate(self.source_borrow)?; }
         Ok(())
+    }
+    /// Read only an active source-borrow resource context. This does not install
+    /// any execution state or grant a router lease on another thread.
+    pub fn source_resource_context(&self) -> Result<Option<SourceResourceContext>, ExecutionLeaseError> {
+        self.validate_parent()?;
+        Ok(self.resources.clone())
+    }
+    pub fn source_stop_handle(&self) -> Result<Option<SourceStopHandle>, ExecutionLeaseError> {
+        self.validate_parent()?;
+        Ok(self.parent.as_ref().map(|epoch| SourceStopHandle::new(Arc::clone(epoch))))
     }
     pub fn id(&self) -> ExecutionLeaseId { self.id }
     pub fn identity(&self) -> ExecutionIdentity { self.identity }
@@ -142,6 +157,7 @@ impl ExecutionWork<'_> {
         let epoch = self.epoch.get_or_init(|| Arc::new(WorkEpoch {
             active: AtomicBool::new(true), thread: std::thread::current().id(),
             parent: self.lease.parent.clone(), parent_source: self.lease.source_borrow,
+            resource_stop: Mutex::new(None),
         }));
         ExecutionChildCapability { epoch: epoch.clone(), state: self.lease.state.clone(),
             instance: self.lease.identity.instance, _thread_bound: std::marker::PhantomData }
@@ -150,11 +166,16 @@ impl ExecutionWork<'_> {
     /// borrow. The actual decoder's mutable borrow can cross a scoped thread;
     /// generic owner capabilities and router admission remain thread-bound.
     pub fn source_borrow_scope(&self) -> ExecutionSourceScope {
+        self.source_borrow_scope_with_resources(None)
+    }
+    /// Attach only the explicitly supplied resource account to this source
+    /// capability. No kernel, diagnostics, census or other TLS state is copied.
+    pub fn source_borrow_scope_with_resources(&self, resources: Option<SourceResourceContext>) -> ExecutionSourceScope {
         let capability = self.child_capability();
         let previous = std::mem::replace(
             &mut *self.lease.state.active_source.lock().expect("source borrow lock"),
-            Arc::downgrade(&capability.epoch));
-        ExecutionSourceScope { state: self.lease.state.clone(), previous,
+            ActiveSource { epoch: Arc::downgrade(&capability.epoch), resources });
+        ExecutionSourceScope { state: self.lease.state.clone(), previous, epoch: capability.epoch,
             _thread_bound: std::marker::PhantomData }
     }
     pub fn commit(self, current: ExecutionIdentity) -> Result<(), ExecutionLeaseError> {
@@ -185,6 +206,7 @@ struct WorkEpoch {
     thread: std::thread::ThreadId,
     parent: Option<Arc<WorkEpoch>>,
     parent_source: bool,
+    resource_stop: Mutex<Option<crate::resource_stop::ProgramStop>>,
 }
 impl WorkEpoch {
     fn validate(&self, mut source_borrow: bool) -> Result<(), ExecutionLeaseError> {
@@ -219,7 +241,7 @@ impl ExecutionChildCapability {
             return Err(ExecutionLeaseError::ConfigurationChanged);
         }
         Ok(ExecutionLease { identity: current, id: ExecutionLeaseId(next_id()),
-            state: self.state.clone(), parent: Some(self.epoch.clone()), source_borrow: false })
+            state: self.state.clone(), parent: Some(self.epoch.clone()), source_borrow: false, resources: None })
     }
 }
 
@@ -228,8 +250,12 @@ impl ExecutionChildCapability {
 #[derive(Debug)]
 pub struct ExecutionSourceScope {
     state: Arc<State>,
-    previous: Weak<WorkEpoch>,
+    previous: ActiveSource,
+    epoch: Arc<WorkEpoch>,
     _thread_bound: std::marker::PhantomData<*const ()>,
+}
+impl ExecutionSourceScope {
+    pub fn resource_stop_handle(&self) -> SourceStopHandle { SourceStopHandle::new(Arc::clone(&self.epoch)) }
 }
 impl Drop for ExecutionSourceScope {
     fn drop(&mut self) {

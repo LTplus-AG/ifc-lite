@@ -171,3 +171,49 @@ fn frames_merge_below_the_mapped_origin_limit_only() {
     // A NaN origin is already broken input; it keeps the historical merge.
     assert!(frames_mergeable([f64::NAN, 0.0, 0.0], [0.0; 3]));
 }
+
+// The real multi-frame fixture must retain source order through the audited
+// SourceParts -> Vec<Mesh> materialization, including every triangle buffer.
+#[test]
+fn resource_source_parts_materialization_preserves_fixture_order_and_frames() {
+    use crate::resource::{ExecutionAccount, ExecutionPolicy, ResourceLimits};
+    let source = include_str!("../../tests/fixtures/issue_6446_mapped_source_frames.ifc");
+    let run = || {
+        let mut decoder = EntityDecoder::new(source);
+        let item = decoder.decode_by_id(66).unwrap();
+        GeometryRouter::new().process_mapped_item_parts(&item, &mut decoder).unwrap()
+    };
+    let expected = run();
+    let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+    let actual = account.scope(run);
+    assert_eq!(actual.len(), expected.len());
+    for (actual, expected) in actual.iter().zip(&expected) {
+        assert_eq!(actual.positions, expected.positions);
+        assert_eq!(actual.normals, expected.normals);
+        assert_eq!(actual.indices, expected.indices);
+        assert_eq!(actual.origin, expected.origin);
+        assert_eq!(actual.local_bounds, expected.local_bounds);
+        assert_eq!(actual.rtc_applied, expected.rtc_applied);
+    }
+}
+
+#[test]
+fn resource_empty_source_materialization_admits_placeholder_header_before_allocation() {
+    use crate::resource::{ExecutionAccount, ExecutionPolicy, ResourceLimits};
+    let denied = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits {
+        live_bytes: Some(0), ..ResourceLimits::default()
+    }));
+    denied.scope(|| {
+        let parts = super::SourceParts::default().into_parts();
+        assert!(parts.is_empty());
+        assert_eq!(parts.capacity(), 0);
+        assert!(denied.check().is_err());
+    });
+    let accepted = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+    accepted.scope(|| {
+        let parts = super::SourceParts::default().into_parts();
+        assert_eq!(parts.len(), 1);
+        assert!(parts[0].positions.is_empty());
+        assert!(accepted.usage().live_bytes >= std::mem::size_of::<Mesh>() as u64);
+    });
+}

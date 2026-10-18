@@ -24,6 +24,7 @@ impl BooleanClippingProcessor {
         quality: TessellationQuality,
         solo_step: bool,
     ) -> Result<StepAdmission> {
+        crate::resource::check_current()?;
         // An unknown or unreadable operator is recorded BEFORE SecondOperand is
         // resolved: that operand is unused, and a `$` there must not turn the
         // record into an `Err` that drops the parent's host.
@@ -38,7 +39,9 @@ impl BooleanClippingProcessor {
 
         // Operand resolution follows operator admission. Half-space and
         // polygonal cutters retain their specialized production policies.
-        let Some(second_operand) = self.second_operand_or_record(operator, entity, decoder) else {
+        let second_operand = self.second_operand_or_record(operator, entity, decoder);
+        crate::resource::check_current()?;
+        let Some(second_operand) = second_operand else {
             // INTERSECTION with nothing is nothing; the loss is on record.
             let dropped = operator == BoolOp::Intersection;
             return Ok(StepAdmission::Done(if dropped { (Mesh::new(), true) } else { (mesh, false) }));
@@ -47,33 +50,42 @@ impl BooleanClippingProcessor {
         if operator == BoolOp::Difference {
             let polygonal = second_operand.ifc_type == IfcType::IfcPolygonalBoundedHalfSpace;
             if polygonal || second_operand.ifc_type.is_subtype_of(IfcType::IfcHalfSpaceSolid) {
-                let Some((point, normal, agreement)) =
-                    self.half_space_plane_or_record(&second_operand, decoder)
+                let resolved = self.half_space_plane_or_record(&second_operand, decoder);
+                crate::resource::check_current()?;
+                let Some((point, normal, agreement)) = resolved
                     else { return Ok(StepAdmission::Done((mesh, false))) };
                 let plane = HalfSpacePlan { point, normal, agreement };
                 if !polygonal {
-                    return work::Plane { host: mesh, plane, fallback: false }
-                        .execute(&self.effects).assemble(self).map(StepAdmission::Done);
+                    return crate::resource::observe(work::Plane { host: mesh, plane, fallback: false }
+                        .execute(&self.effects).assemble(self)).map(StepAdmission::Done);
                 }
                 // No Position/contour/unit discovery before this numerical test.
                 if polygonal_prism::host_stays_on_kept_side(&mesh, point, normal, agreement) {
                     return Ok(StepAdmission::Done((mesh, false)));
                 }
-                if let Ok(plan) = self.lower_bounded_prism(&second_operand, decoder, quality) {
+                let admitted = crate::resource::observe(self.lower_bounded_prism(&second_operand, decoder, quality));
+                if let Err(error @ crate::Error::ProgramStopped(_)) = admitted { return Err(error); }
+                if let Ok(plan) = admitted {
                     let Some(plan) = plan else { return Ok(StepAdmission::Done((mesh, false))) };
                     let (host, built) = work::Prism { plan, host: mesh, plane }.execute(&self.effects).assemble(self);
                     mesh = host;
+                    let built = crate::resource::observe(built);
+                    if let Err(error @ crate::Error::ProgramStopped(_)) = built { return Err(error); }
                     if let Ok(cutter) = built {
                         // Unit lookup is reached only after the prism succeeds.
-                        match (work::Single { host: mesh, cutter, plane, solo_step,
-                            length_unit_scale: decoder.length_unit_scale() }).execute(&self.effects).assemble(self) {
+                        let units = decoder.length_unit_scale();
+                        crate::resource::check_current()?;
+                        let result = (work::Single { host: mesh, cutter, plane, solo_step,
+                            length_unit_scale: units }).execute(&self.effects).assemble_single(self)?;
+                        match result {
                             work::SingleResult::Done(value) => return Ok(StepAdmission::Done(value)),
                             work::SingleResult::Fallback(host) => mesh = host,
                         }
                     }
                 }
-                return work::Plane { host: mesh, plane, fallback: true }
-                    .execute(&self.effects).assemble(self).map(StepAdmission::Done);
+                crate::resource::check_current()?;
+                return crate::resource::observe(work::Plane { host: mesh, plane, fallback: true }
+                    .execute(&self.effects).assemble(self)).map(StepAdmission::Done);
             }
         }
 
@@ -86,6 +98,7 @@ impl BooleanClippingProcessor {
         &self, operator: BoolOp, first: Mesh, second: (Mesh, bool),
         decoder: &mut EntityDecoder, quality: TessellationQuality,
     ) -> Result<(Mesh, bool)> {
+        crate::resource::check_current()?;
         let (second_mesh, loss_recorded) = second;
         let mut plan = solid_execution::SolidBooleanPlan {
             operator,
@@ -97,9 +110,10 @@ impl BooleanClippingProcessor {
         if admission == solid_execution::SolidAdmission::Kernel {
             // Preserve lazy unit discovery: skipped/empty cuts never needed it.
             plan.length_unit_scale = decoder.length_unit_scale();
+            crate::resource::check_current()?;
         }
-        work::Solid { plan, first, second: second_mesh, loss_recorded, admission }
-            .execute(&self.effects).assemble(self)
+        crate::resource::observe(work::Solid { plan, first, second: second_mesh, loss_recorded, admission }
+            .execute(&self.effects).assemble(self))
     }
 }
 

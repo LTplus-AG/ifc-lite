@@ -1,0 +1,6 @@
+{
+  "base": "e26527d79c34ed98160c8104e2def7edf9e8dd32",
+  "checkpoint": "e81028c2339b668a149123e6544501f0843d0e6f",
+  "paths_verified": 46,
+  "result": "all resulting bytes match delivery manifest; patch application only, not Rust compilation"
+}

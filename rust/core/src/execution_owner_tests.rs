@@ -265,3 +265,39 @@ fn escaped_source_child_expires_with_work_and_cannot_authorize_replacement_decod
     drop(root);
     decoder.try_execution_lease().unwrap();
 }
+
+// Resource integration round 2: actual source ancestry, including a worker
+// whose child epoch was created after its Compatibility parent stopped.
+#[test]
+fn source_stop_observes_oldest_ancestor_and_cannot_extend_expired_authority() {
+    use crate::resource_stop::{Dimension, ProgramStop, RefusalReason, ResourceFailure};
+    let mut decoder = EntityDecoder::new(SOURCE);
+    let mut root = decoder.try_execution_lease().unwrap();
+    let work = root.begin_synchronous_work(decoder.execution_identity()).unwrap();
+    let source = work.source_borrow_scope();
+    let ancestor = source.resource_stop_handle();
+    let refusal = ProgramStop::ResourceRefused(ResourceFailure { dimension: Dimension::Work,
+        requested: 2, remaining: 1, reason: RefusalReason::Limit });
+    assert_eq!(ancestor.stop(refusal), refusal);
+    let escaped = std::thread::scope(|scope| scope.spawn(|| {
+        let mut child = decoder.try_source_execution_lease().unwrap().unwrap();
+        let child_work = child.begin_synchronous_work(decoder.execution_identity()).unwrap();
+        let child_source = child_work.source_borrow_scope();
+        let handle = child_source.resource_stop_handle();
+        assert_eq!(handle.check(), Err(refusal));
+        assert_eq!(handle.stop(ProgramStop::Cancelled), refusal);
+        assert_eq!(handle.check(), Err(refusal));
+        drop(child_source);
+        child_work.commit(decoder.execution_identity()).unwrap();
+        child
+    }).join().unwrap());
+    drop(source);
+    drop(work);
+    // A retained stop handle is resource data, never an owner lease capability.
+    assert_eq!(ancestor.stop(ProgramStop::Cancelled), refusal);
+    assert_eq!(escaped.validate(decoder.execution_identity()), Err(ExecutionLeaseError::ExpiredWork));
+    assert!(decoder.try_source_execution_lease().unwrap().is_none());
+    drop(escaped);
+    drop(root);
+    decoder.try_execution_lease().unwrap();
+}

@@ -11,6 +11,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 pub(crate) fn evaluate(recorder: &BooleanClippingProcessor, op: BoolOp,
     operand: &DecodedEntity, decoder: &mut EntityDecoder, quality: TessellationQuality,
 ) -> Result<Value> {
+    crate::resource::check_current()?;
     match &operand.ifc_type {
         IfcType::IfcCsgSolid | IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
             Err(Error::geometry("Recursive operand requires continuation dispatch"))
@@ -20,12 +21,14 @@ pub(crate) fn evaluate(recorder: &BooleanClippingProcessor, op: BoolOp,
             Some(processor) => {
                 // Never invoke a source-reading process callback as numeric work.
                 // Every non-recursive builtin has the shared owned constructor.
-                let plan = processor.lower_owned(operand, decoder, quality, None)
-                    .ok_or_else(|| Error::geometry("Builtin operand has no owned constructor"))??;
-                let outer = plan.execute(&recorder.effects).assemble(recorder)?;
+                let admitted = processor.lower_owned(operand, decoder, quality, None);
+                crate::resource::check_current()?;
+                let plan = crate::resource::observe(admitted
+                    .ok_or_else(|| Error::geometry("Builtin operand has no owned constructor"))?)?;
+                let outer = crate::resource::observe(plan.execute(&recorder.effects).assemble(recorder))?;
                 if op != BoolOp::Unknown {
                     if let Some(kind) = brep_with_voids_shell_kind(other) {
-                        return Ok(without_voids(recorder, kind, op, operand, outer, decoder, quality));
+                        return without_voids(recorder, kind, op, operand, outer, decoder, quality);
                     }
                 }
                 Ok((outer, false))
@@ -42,29 +45,39 @@ fn unsupported(recorder: &BooleanClippingProcessor, op: BoolOp, ty: &IfcType) ->
 pub(crate) fn without_voids(recorder: &BooleanClippingProcessor, shell_kind: IfcType,
     op: BoolOp, operand: &DecodedEntity, outer: Mesh, decoder: &mut EntityDecoder,
     quality: TessellationQuality,
-) -> Value {
-    let Some(voids) = plan::void_refs(operand) else { return (outer, false); };
-    if voids.is_empty() || outer.is_empty() { return (outer, false); }
+) -> Result<Value> {
+    crate::resource::check_current()?;
+    let Some(voids) = plan::void_refs(operand) else { return Ok((outer, false)); };
+    if voids.is_empty() || outer.is_empty() { return Ok((outer, false)); }
     let Some(kind) = ShellKind::from_type(&shell_kind) else {
-        return void_evaluation::refuse_source(recorder, op, &operand.ifc_type, VoidFault::NoProcessor.message());
+        return Ok(void_evaluation::refuse_source(recorder, op, &operand.ifc_type, VoidFault::NoProcessor.message()));
     };
     let mut meshes = Vec::with_capacity(voids.len());
     // Do not lower the next shell until the previous shell actually meshed.
     for value in voids {
+        crate::resource::check_current()?;
         let Some(id) = value.as_entity_ref() else {
-            return void_evaluation::refuse_source(recorder, op, &operand.ifc_type, VoidFault::NotReference.message());
+            return Ok(void_evaluation::refuse_source(recorder, op, &operand.ifc_type, VoidFault::NotReference.message()));
         };
-        let mesh = ShellPlan::lower(id, kind, decoder, quality)
-            .and_then(|plan| plan.execute(&recorder.effects).assemble(recorder));
+        let admitted = crate::resource::observe(ShellPlan::lower(id, kind, decoder, quality));
+        let mesh = admitted.and_then(|plan|
+            crate::resource::observe(plan.execute(&recorder.effects).assemble(recorder)));
+        crate::resource::check_current()?;
         match mesh {
             Ok(mesh) if !mesh.is_empty() => meshes.push(mesh),
-            _ => return void_evaluation::refuse_source(recorder, op, &operand.ifc_type, VoidFault::ShellDidNotMesh.message()),
+            Err(error @ Error::ProgramStopped(_)) => return Err(error),
+            _ => return Ok(void_evaluation::refuse_source(recorder, op, &operand.ifc_type, VoidFault::ShellDidNotMesh.message())),
         }
     }
     // Unit discovery stays after every required shell has succeeded.
-    work::Voids { ready: void_evaluation::ReadyVoids::new(meshes), outer,
-        length_unit_scale: decoder.length_unit_scale(), op, operand_type: operand.ifc_type.clone() }
-        .execute(&recorder.effects).assemble(recorder)
+    crate::resource::check_current()?;
+    let units = decoder.length_unit_scale();
+    crate::resource::check_current()?;
+    let result = work::Voids { ready: void_evaluation::ReadyVoids::new(meshes), outer,
+        length_unit_scale: units, op, operand_type: operand.ifc_type.clone() }
+        .execute(&recorder.effects).assemble(recorder);
+    crate::resource::check_current()?;
+    Ok(result)
 }
 
 // Direct private test adapters use the same program, never the superseded path.
@@ -76,7 +89,7 @@ impl BooleanClippingProcessor {
     }
     pub(crate) fn without_voids(&self, shell_kind: IfcType, op: BoolOp,
         operand: &DecodedEntity, outer: Mesh, decoder: &mut EntityDecoder,
-        quality: TessellationQuality) -> Value {
+        quality: TessellationQuality) -> Result<Value> {
         without_voids(self, shell_kind, op, operand, outer, decoder, quality)
     }
 }

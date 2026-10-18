@@ -24,16 +24,27 @@ impl GeometryRouter {
         }
     }
 
-    pub(crate) fn publish_mapped_source(&self, id: u32, mesh: &Mesh, truncated: bool) {
+    pub(crate) fn publish_mapped_source(&self, id: u32, mesh: &Mesh, truncated: bool) -> Result<()> {
+        crate::resource::check_current()?;
         match &self.shared_mapped_item_cache {
             Some(shared) => {
                 if !mesh.positions.is_empty() && !crate::kernel::budget::tripped() && !truncated {
-                    let source = std::sync::Arc::new(mesh.clone());
+                    let source = self.clone_mapped_source(id, mesh)?;
                     shared.lock().unwrap_or_else(|e| e.into_inner()).insert(id, source);
                 }
             }
-            None => { self.mapped_item_cache.borrow_mut().insert(id, std::sync::Arc::new(mesh.clone())); }
+            None => { self.mapped_item_cache.borrow_mut().insert(id, self.clone_mapped_source(id, mesh)?); }
         }
+        Ok(())
+    }
+
+    fn clone_mapped_source(&self, id: u32, mesh: &Mesh) -> Result<std::sync::Arc<Mesh>> {
+        if !crate::resource::is_active() { return Ok(std::sync::Arc::new(mesh.clone())) }
+        self.check_mapped_cache_coverage()?;
+        let (mesh, permit) = crate::resource::mesh::clone_mesh(mesh)?;
+        self.retain_mapped_cache_account(id)?;
+        permit.retain();
+        Ok(std::sync::Arc::new(mesh))
     }
 
     /// Process MappedItem with caching for repeated geometry.
@@ -56,7 +67,7 @@ impl GeometryRouter {
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Vec<Mesh>> {
-        control::MergedWalk::new(item, self).run(self, decoder)
+        control::MergedWalk::new(item, self)?.run(self, decoder)
     }
 
     /// [`Self::process_representation_item`] as frame parts (#6446): only a
@@ -79,7 +90,7 @@ impl GeometryRouter {
         sub_meshes: &mut SubMeshCollection, allow_instancing: bool,
         texture_index: Option<&rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>>,
     ) -> Result<()> {
-        control::SubmeshWalk::new(item, allow_instancing, self)
+        control::SubmeshWalk::new(item, allow_instancing, self)?
             .run(self, decoder, sub_meshes, texture_index)
     }
 
@@ -108,6 +119,7 @@ impl GeometryRouter {
             }
             None => Err(Error::geometry("no processor")),
         };
+        if crate::resource::check_current().is_err() { return }
         match meshed {
             Ok(mut mesh) => {
                 self.keep_rebase_in_origin(&mut mesh);

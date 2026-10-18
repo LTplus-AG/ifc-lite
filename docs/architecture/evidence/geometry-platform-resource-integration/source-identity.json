@@ -1,0 +1,15 @@
+{
+  "checkpoint": "e81028c2339b668a149123e6544501f0843d0e6f",
+  "base": "e26527d79c34ed98160c8104e2def7edf9e8dd32",
+  "worktree": "/home/louistrue/.t3/worktrees/ifc-lite/t3-67b1d6af",
+  "branch": "t3/rust-resource-admission",
+  "original_child_head": "717a386c6aaff2eb3bfd30094d49e73f06208693",
+  "original_runtime_checkpoint": "5a4d1edd914a13e4bac7320bf91482f9b0a2e229",
+  "original_baseline_manifest_sha256": "63bb222be30076a296d109eb6cc7d057ec3ab880f727313d62892df82d65ff93",
+  "original_incremental_patch_sha256": "d23aa8ef1e3d8af2d0ce6eed1ea7a2600458c1139c1f2cbbc1aa7681da11e9b5",
+  "delivery_patch_sha256": "28cc5d5ca540c5ed806cf6f09fec0f94bc7d4bc84623fe61952bbd3668801ffc",
+  "original_paths_verified": 45,
+  "delivery_paths": 46,
+  "whole_child_overlay_applied": false,
+  "qualification": "uncompiled; resource-unqualified; no performance claim"
+}

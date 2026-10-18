@@ -76,3 +76,6 @@ fn skipped(router: &GeometryRouter, item: &ItemIdentity, error: &Error, merged: 
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod resource_tests;

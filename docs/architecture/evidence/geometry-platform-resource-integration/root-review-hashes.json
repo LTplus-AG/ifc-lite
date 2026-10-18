@@ -1,0 +1,309 @@
+{
+  "checkout": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361",
+  "head": "b3a441ec17e1619066ee14e15bdcc915975d42bd",
+  "observed_utc": "2026-10-18T22:40:30.727150+00:00",
+  "scope": "Applied resource delivery plus parent fixture rename and authorized ProductState/source-terminal corrections; Boolean files excluded while parent edits them",
+  "files": [
+    {
+      "path": "docs/api/rust.md",
+      "sha256": "f73c9a7aa89d75dab924946f595360220d622939150aa2e1ca41104912f6536f",
+      "lines": 1924
+    },
+    {
+      "path": "docs/architecture/geometry-platform-resource-accounting.md",
+      "sha256": "b6bc68a99af2b98a9294cd9198b56fe8b56da57ba0d972ced6584f06d9f5838e",
+      "lines": 156
+    },
+    {
+      "path": "docs/guide/geometry.md",
+      "sha256": "951565fba9e1e0c5fa11b3c2f7079b792c03a0254cd7c18df6234f810951ca1d",
+      "lines": 873
+    },
+    {
+      "path": "rust/core/src/execution_owner.rs",
+      "sha256": "e38ffab725f51a3b047cdd77ee6a00716d3aac3c2e7f2901588406e4b86b9aca",
+      "lines": 284
+    },
+    {
+      "path": "rust/core/src/execution_owner/resource_context.rs",
+      "sha256": "e00ba5f784fff0d3bf42b13c579f8a5711eb453e0140ac80d30dce7421a555c3",
+      "lines": 55
+    },
+    {
+      "path": "rust/core/src/execution_owner_tests.rs",
+      "sha256": "3f8944bb80fda6f0fe5843a0edaf457fd8e8cc19228b92120f5ef52b7cc6899c",
+      "lines": 303
+    },
+    {
+      "path": "rust/core/src/lib.rs",
+      "sha256": "ba0287dde720a1f97334e5e63f9d05f4add48fc9e712f8732754cf1799bf4a99",
+      "lines": 153
+    },
+    {
+      "path": "rust/core/src/resource_stop.rs",
+      "sha256": "71e33810e5f7802b76e5ba89905460015ee3557a663555c8e371f391be4a486c",
+      "lines": 20
+    },
+    {
+      "path": "rust/geometry/src/error.rs",
+      "sha256": "b2d0294aa8245782d0dbde463129381b2a0cb8cb27fab42634aca8bd0352986c",
+      "lines": 40
+    },
+    {
+      "path": "rust/geometry/src/lib.rs",
+      "sha256": "0956827eab796c2a3f1ac6098ed5aeb067222b0abdcd68452e5d15f9e0cdb7c4",
+      "lines": 312
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/merged.rs",
+      "sha256": "0746d1a10959222bc443ebc7b2756c24da11bbba5d7fac002946ac02641b5af9",
+      "lines": 153
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/mod.rs",
+      "sha256": "760df450a8a548bded5074e644e4813c266f57645d58a96845cf5d8444e9aecf",
+      "lines": 81
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/occurrence.rs",
+      "sha256": "762be993f6757549bbfe60e1c023cd529185919b560279366815acfaaf50df59",
+      "lines": 135
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/resource_tests.rs",
+      "sha256": "489306b5774fa1baf9048fe24a464bceaf743646d06e7d5d5d1f14230885a7b1",
+      "lines": 161
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/submeshes.rs",
+      "sha256": "f43f882ebeb651176580808e5ace5902c66eaf20201c7dd796ebe4602c29cdb6",
+      "lines": 174
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/tests.rs",
+      "sha256": "e83bfaaff35ad14e24bb7354aaebe9abc90e965d220180699ccf61c8867755d0",
+      "lines": 271
+    },
+    {
+      "path": "rust/geometry/src/resource/account.rs",
+      "sha256": "8965a9948edf32fe36a86dde6dded7a02af987b25263a841c2ce6b807b705590",
+      "lines": 140
+    },
+    {
+      "path": "rust/geometry/src/resource/mesh.rs",
+      "sha256": "a988cfddc48dca2a5e1da7a2e8a2c8a7ade7b41787249d9f608fc4ac57f47e0d",
+      "lines": 329
+    },
+    {
+      "path": "rust/geometry/src/resource/mesh_tests.rs",
+      "sha256": "1ee17e7e1e483019c7586ae2196b2aa7b470b8efb3c8c33668f784b72a00bb4a",
+      "lines": 214
+    },
+    {
+      "path": "rust/geometry/src/resource/mod.rs",
+      "sha256": "041096b83e843c2318aad2947fb00df8079bd949a3fcab420ddabcd54a292943",
+      "lines": 131
+    },
+    {
+      "path": "rust/geometry/src/resource/pool.rs",
+      "sha256": "d2d1d8e29747d3171cced8ff66d2c3ed19fb8b4a73528b57a419550744b43c5a",
+      "lines": 39
+    },
+    {
+      "path": "rust/geometry/src/resource/storage.rs",
+      "sha256": "44d279e0d4333a1a1901e3bb6afdbaf4177c216b59e8ea491216f8bd721fcc4a",
+      "lines": 90
+    },
+    {
+      "path": "rust/geometry/src/resource/tests.rs",
+      "sha256": "ff414d6b53e1966759f9b798bc114714b65bbec77a1c178b746434c5ac9e11f3",
+      "lines": 104
+    },
+    {
+      "path": "rust/geometry/src/router/diagnostics_checked.rs",
+      "sha256": "3d3558873190de563acb478da92ab52d38083f4153826e4506674d41a965d459",
+      "lines": 27
+    },
+    {
+      "path": "rust/geometry/src/router/diagnostics_recording.rs",
+      "sha256": "dae630d57edbf3110cfc41904e878c69c136bf299d58898d33266a4b77931101",
+      "lines": 397
+    },
+    {
+      "path": "rust/geometry/src/router/frame_parts.rs",
+      "sha256": "d37c0b5fd5b3d3e77b3f6b0fa909acb6a8d58e56df3250539c151f6d94e79c60",
+      "lines": 297
+    },
+    {
+      "path": "rust/geometry/src/router/frame_parts_tests.rs",
+      "sha256": "f12bc800dbf75b35dcfd955d33e7c05e1af4c6dc88705b8714a0f5d3d1576a82",
+      "lines": 219
+    },
+    {
+      "path": "rust/geometry/src/router/instancing.rs",
+      "sha256": "00dc0dddb1a98dcc40f96f84ee10cc73648c457ad955eef293cd3f0302749ac1",
+      "lines": 296
+    },
+    {
+      "path": "rust/geometry/src/router/mapped_cache_ownership.rs",
+      "sha256": "74072852e62941ac41de7134c511bb35bc042c75c557a3fd388092d73bd91a6e",
+      "lines": 148
+    },
+    {
+      "path": "rust/geometry/src/router/mapped_cache_ownership_tests.rs",
+      "sha256": "a0c6d73266eb67be483a374f29d824f9483e86b3a25c6617d3be61b108eb11a1",
+      "lines": 140
+    },
+    {
+      "path": "rust/geometry/src/router/mapped_item.rs",
+      "sha256": "f4973edf4544cd7846f229a18003d48a4197e298d86580d6b6eda2f125ef2716",
+      "lines": 165
+    },
+    {
+      "path": "rust/geometry/src/router/mod.rs",
+      "sha256": "3f8027b726a35f39098761c11e43c83604b179681bc481216e685e1b4b673adf",
+      "lines": 702
+    },
+    {
+      "path": "rust/geometry/src/router/processing.rs",
+      "sha256": "383171f8f767c59e7ac813be3a96bc49c5bc90fc987f8fa40e56721e9bfa0825",
+      "lines": 345
+    },
+    {
+      "path": "rust/geometry/src/router/processing_items.rs",
+      "sha256": "2da65cd2d38c817f29b83e7a54c42b749a28d93300cfe54112179fc8e90345a5",
+      "lines": 339
+    },
+    {
+      "path": "rust/geometry/src/router/rtc_terminal_tests.rs",
+      "sha256": "d64bbd0f6033fd8d7084c6e4f1d03196c51add9673b942070299db18a539a51e",
+      "lines": 186
+    },
+    {
+      "path": "rust/processing/src/element.rs",
+      "sha256": "e144d676113ca21297467bb5b7f45688c41fd42badc49548803dc43522f9ce33",
+      "lines": 168
+    },
+    {
+      "path": "rust/processing/src/element/accounted_protocol_tests.rs",
+      "sha256": "6db4c84697f29b59a79338a762aac116788f2178dba3e33d9e07ad7026b6aacb",
+      "lines": 88
+    },
+    {
+      "path": "rust/processing/src/element/accounted_session.rs",
+      "sha256": "837297dfe4e0581c92bf97b0b1ab0065155b8bd2072abdc2c9ff83db70d65dfc",
+      "lines": 150
+    },
+    {
+      "path": "rust/processing/src/element/accounted_session_tests.rs",
+      "sha256": "6d468b6317688a20bd658719d525ba6701ca30d130cfca05255f743e4290f7e8",
+      "lines": 404
+    },
+    {
+      "path": "rust/processing/src/element/accounted_threaded_tests.rs",
+      "sha256": "f3bb7cb9b57944cc7473ce83077af66532a9f8bd6477b9bd4978436b75fb95d4",
+      "lines": 495
+    },
+    {
+      "path": "rust/processing/src/element/model_context.rs",
+      "sha256": "34dcf79098542050e19b3e377d634253135f62e67525164c801bc02ea30a51c1",
+      "lines": 115
+    },
+    {
+      "path": "rust/processing/src/element/owned_session.rs",
+      "sha256": "3e1348d29e5772211c7c37d9c4c931f19ad2ef76498d73bf13e1b310aed3d3b1",
+      "lines": 93
+    },
+    {
+      "path": "rust/processing/src/element/presentation.rs",
+      "sha256": "8d5acce8dfc9c489be0684af75f5b4dcd2306e977b344f96d9509819835221cf",
+      "lines": 163
+    },
+    {
+      "path": "rust/processing/src/element/presentation_source.rs",
+      "sha256": "8ef40fbb2125406595873e63e395100b2376345c582fba3202298549bb6b119b",
+      "lines": 202
+    },
+    {
+      "path": "rust/processing/src/element/session.rs",
+      "sha256": "d533944b04b318eda4412f4615c0e852eb1c4480bea82775b0670ec17c7959f3",
+      "lines": 260
+    },
+    {
+      "path": "rust/processing/src/element/session_accept.rs",
+      "sha256": "968cc26df83fd8daa36bc86b3aa7bf72bc26fea122984e839907ea60c3f3186e",
+      "lines": 64
+    },
+    {
+      "path": "rust/processing/src/element/session_canonical.rs",
+      "sha256": "8e74934fca54d3ef4f463176453d190ad011db8eef27463e70252793903fc35a",
+      "lines": 121
+    },
+    {
+      "path": "rust/processing/src/element/session_owner.rs",
+      "sha256": "2ddea677fb77d972daec4adac01ff773515ecf94a8d747b888e464801a621c50",
+      "lines": 82
+    },
+    {
+      "path": "rust/processing/src/element/session_protocol.rs",
+      "sha256": "0adabf1f0fa994efba9f327ad7941c0da57aa407963143e0e989fa4e7b3dcd29",
+      "lines": 145
+    },
+    {
+      "path": "rust/processing/src/element/session_state.rs",
+      "sha256": "c6161e45da7309b9f47e76956384eba9f0f2be5c5614facab4db3ef57d3f0b95",
+      "lines": 86
+    },
+    {
+      "path": "rust/processing/src/element/session_terminal_tests.rs",
+      "sha256": "c93449d8ee6533567e609e28645a30e75e6877cfe69b84a14557e6ccbba669b2",
+      "lines": 188
+    },
+    {
+      "path": "rust/processing/src/element/session_work.rs",
+      "sha256": "e22535184636846eda07975ae2e1e5a1b11dcdbe2883d34d2d4ef132677721ad",
+      "lines": 80
+    },
+    {
+      "path": "rust/processing/tests/module_size_allowlist.txt",
+      "sha256": "525bee4322952c0784dd513d7fc42f7956ff05d0288d34ea95c4dfbbda1b1365",
+      "lines": 407
+    },
+    {
+      "path": "rust/processing/tests/module_size_ratchet.rs",
+      "sha256": "683e6873422377fa6cbc308c0472cc6be97f5b7eccdaa65e6591f93149f89f86",
+      "lines": 458
+    },
+    {
+      "path": "scripts/perf/README.md",
+      "sha256": "007a38a79eac74f0728e9dec0944f240d770c5e70e324c63a6f6c42cdd726026",
+      "lines": 4298
+    }
+  ],
+  "delivery": [
+    {
+      "path": "/tmp/ifclite-resource-integration-preservation-round2/files.json",
+      "sha256": "756ba9d73ac8f521f9526c09379eb6a816e5576ffac16951d8ded6dfca8339fc"
+    },
+    {
+      "path": "/tmp/ifclite-resource-integration-preservation-round2/incremental.patch",
+      "sha256": "28cc5d5ca540c5ed806cf6f09fec0f94bc7d4bc84623fe61952bbd3668801ffc"
+    },
+    {
+      "path": "/tmp/ifclite-resource-integration-preservation-round2/ASSEMBLY.md",
+      "sha256": "c2219b35df9dba080000a417cab3bcaeed2c9b75c8bd601364a085cdc36709c3"
+    },
+    {
+      "path": "/tmp/ifclite-resource-integration-preservation-round2/review-responses.md",
+      "sha256": "c8fb86f38678a2fc5f3c2a5bec2e8715879bf20843d8b6c0f1ae2e95ce49a8bc"
+    },
+    {
+      "path": "/tmp/ifclite-resource-integration-preservation-round2/new-parent-terminal-audit.md",
+      "sha256": "eef03f5fc9e8dc8edde9085b536e2df9e5e7ef248db089f4ab0f2f81cd0c730e"
+    }
+  ],
+  "syntax_receipt": {
+    "path": "/tmp/ifclite-resource-session-syntax.json",
+    "sha256": "f2fc10c87146bdd2bde430e75ba8c6b62438ce1d137f47e4d3035c42d59ebf87"
+  }
+}

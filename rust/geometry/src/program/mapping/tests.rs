@@ -42,7 +42,7 @@ fn cache_hit_skips_source_representation_but_preserves_transform_admission() {
     let mut decoder = EntityDecoder::new(&source);
     let router = GeometryRouter::new();
     let cached = parts(&router, &mut decoder, 13).remove(0);
-    router.publish_mapped_source(30, &cached, false);
+    router.publish_mapped_source(30, &cached, false).unwrap();
     let merged = parts(&router, &mut decoder, 31);
     assert_eq!(merged[0].positions, cached.positions);
     assert_eq!(merged[0].indices, cached.indices);
@@ -157,7 +157,7 @@ fn owned_source_counting_policy_is_installed_only_during_reached_steps() {
         let item = decoder.decode_by_id(22).unwrap();
         let footprint = decoder.decode_by_id(50).unwrap();
         if merged {
-            let mut walk = MergedWalk::new(&item, &router);
+            let mut walk = MergedWalk::new(&item, &router).unwrap();
             assert!(walk.advance(&router, &mut decoder)); // Claim and own the Body source policy.
             let ambient = router.enter_unsupported_source(500, &footprint);
             assert_eq!(triangles(&walk.run(&router, &mut decoder).unwrap()), 0);
@@ -168,7 +168,7 @@ fn owned_source_counting_policy_is_installed_only_during_reached_steps() {
             drop(ambient);
         } else {
             let mut meshes = SubMeshCollection::new();
-            let mut walk = SubmeshWalk::new(&item, false, &router);
+            let mut walk = SubmeshWalk::new(&item, false, &router).unwrap();
             assert!(walk.advance(&router, &mut decoder, &mut meshes, None));
             let ambient = router.enter_unsupported_source(500, &footprint);
             walk.run(&router, &mut decoder, &mut meshes, None).unwrap();

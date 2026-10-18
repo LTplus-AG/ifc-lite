@@ -1,0 +1,67 @@
+{
+  "status": "INTEGRATED_UNCOMPILED_UNQUALIFIED",
+  "files": [
+    {
+      "path": "rust/geometry/src/program/boolean/mod.rs",
+      "sha256": "46f21a894b78c2d30b718ff8e83e3c9ea89fa1b3ea5258b1bdd320d643c65531",
+      "syntax_parse_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/operand.rs",
+      "sha256": "5078f2e9511ac5640f55c078ab59901488a72191718cd009c07b37aad5805fb8",
+      "syntax_parse_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/step.rs",
+      "sha256": "3e6288ff978d3ad97570f32a3adb29c5c3b3938ba1e29a161542020261a44120",
+      "syntax_parse_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/batch.rs",
+      "sha256": "39164d6b8efc373258657dfc1bbd3457374b1aec8961bfa8d422a7469fbbb101",
+      "syntax_parse_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/work.rs",
+      "sha256": "e82affa98ec93bde322bef9c3cbd968f641b72130534429cc1c689df5150bcec",
+      "syntax_parse_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/work_tests.rs",
+      "sha256": "78e6556580b98704991c10fbe7ca812d6b6b1e3b1848abdd8abd857f2dc845ae",
+      "syntax_parse_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/resource_tests.rs",
+      "sha256": "00e2e48b2b41f7f0c994f1f6804ab4681da9665b76ef723fe792e36b666f6eae",
+      "syntax_parse_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/brep_void_plan_tests.rs",
+      "sha256": "9c5333b382d5795ae72b574ee9190ebc67e09d69dcb8504c0a1cd131585fa869",
+      "syntax_parse_exit_code": 0,
+      "stderr": ""
+    }
+  ],
+  "root_test_refinement": "Group cancellation invariant uses two identical real cutters to match canonical group minimum; empty-cutter case remains an explicit numerical-layer contract probe.",
+  "changes": [
+    "Terminal barriers at reached driver, lowering, numerical completion and recovery boundaries",
+    "Typed Result for private void-shell child and existing test adapters",
+    "Group stop preserves prior/provisional/numerical records without ordinary deferral rewind",
+    "Single stop cannot expose Done or Fallback",
+    "PendingEffects unwind forwarding retained unchanged"
+  ],
+  "checks_not_run": [
+    "Cargo workspace tests",
+    "all-target Clippy",
+    "WASM build and contracts",
+    "consumer/corpus/determinism/performance qualification"
+  ]
+}

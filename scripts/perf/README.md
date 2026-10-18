@@ -4257,3 +4257,16 @@ sites or proving allocator fragmentation or arena behavior. Requested backing
 bytes, actual copied bytes and process RSS are different measurements. Preserve
 the uninstrumented controlled-runner latency gate; allocator instrumentation
 adds contention and cannot qualify timing.
+## Explicit Rust resource admission: performance unqualified
+
+Compatibility preserves existing dispatch, source reads, cache publication and
+numerical algorithms; accounted execution adds checked preflight and ownership
+at audited mapping/copy/output sites. Reservation probes establish early refusal,
+not speed or physical-memory savings. Fleet storage admission prevents compiled
+qualification and an end-to-end A/B verdict for this integration. No
+microbenchmark or inherited timing receipt qualifies it. Full default-worker
+comparisons, heavy-model timing/RSS and actual WASM output lifetime qualification
+remain outstanding. Lesson: keep deterministic request allowances separate from
+shared resident admission, and do not describe partial requested-storage
+accounting as an allocator or process bound. The implementation coverage is in
+[the resource note](../../docs/architecture/geometry-platform-resource-accounting.md).

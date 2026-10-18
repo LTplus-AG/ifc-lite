@@ -90,6 +90,7 @@ impl BooleanProgram {
     }
     fn drive(&mut self, services: &mut Services<'_, '_>) -> Result<Value> {
         while let Some(frame) = self.frames.pop() {
+            crate::resource::check_current()?;
             match frame {
                 Frame::Boolean(entity, depth) => self.enter_boolean(entity, depth, services)?,
                 Frame::Csg { entity, depth, guarded } => self.enter_csg(entity, depth, guarded, services)?,
@@ -104,6 +105,8 @@ impl BooleanProgram {
                     let value = self.value.take().expect("base continuation result");
                     #[cfg(test)]
                     unwind_tests::after_base(&value);
+                    #[cfg(test)]
+                    resource_tests::after_base(&value);
                     self.frames.push(Frame::Steps(walk.steps(value, false)));
                 }
                 Frame::AfterBatch { walk, cutters, mark } => self.finish_batch(walk, cutters, mark, services)?,
@@ -117,6 +120,7 @@ impl BooleanProgram {
                 }
             }
         }
+        crate::resource::check_current()?;
         Ok(self.value.take().expect("completed operation result"))
     }
     fn steps(&mut self, mut steps: Steps, services: &mut Services<'_, '_>) -> Result<()> {
@@ -197,3 +201,6 @@ impl Drop for RestoringProgram<'_> {
 
 #[cfg(test)]
 mod unwind_tests;
+
+#[cfg(test)]
+mod resource_tests;

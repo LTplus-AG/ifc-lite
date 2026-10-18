@@ -1,0 +1,229 @@
+{
+  "checkpoint": "e81028c2339b668a149123e6544501f0843d0e6f",
+  "observed_at_utc": "2026-10-18T22:28:04.144722+00:00",
+  "state": "UNCOMPILED / RESOURCE-UNQUALIFIED",
+  "executed_observations": [
+    "45 original after hashes and all available before hashes independently verified",
+    "42 changed Rust files parsed using rustfmt --emit stdout --config skip_children=true; no files rewritten",
+    "32 production Rust physical module counts within existing/decreased budgets",
+    "git diff --check clean",
+    "46 final paths reproduce exact delivered SHA256 hashes after applying patch to separate exact e265 baseline copy",
+    "original orphaned workspace/Clippy requests queried read-only; both still unknown, not retried"
+  ],
+  "heavy_jobs_submitted": 0,
+  "fleet": {
+    "pop": "guard exit78 admission refusal; no verified capacity recovery",
+    "pc": "reachable status; prior disk-full result has no verified recovery",
+    "mac": "disabled"
+  },
+  "pending_checks": [
+    {
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-core",
+        "--lib",
+        "source_stop_observes_oldest_ancestor"
+      ],
+      "status": "NOT RUN",
+      "fleet_prefix": [
+        "/home/louistrue/build-workers/ifc-fleet",
+        "run",
+        "--host",
+        "pop-os",
+        "--cwd",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-67b1d6af",
+        "--"
+      ],
+      "reason": "No verified storage recovery; do not repeat refused submissions until capacity changes"
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-geometry",
+        "--lib",
+        "resource"
+      ],
+      "status": "NOT RUN",
+      "fleet_prefix": [
+        "/home/louistrue/build-workers/ifc-fleet",
+        "run",
+        "--host",
+        "pop-os",
+        "--cwd",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-67b1d6af",
+        "--"
+      ],
+      "reason": "No verified storage recovery; do not repeat refused submissions until capacity changes"
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-geometry",
+        "--lib",
+        "mesh"
+      ],
+      "status": "NOT RUN",
+      "fleet_prefix": [
+        "/home/louistrue/build-workers/ifc-fleet",
+        "run",
+        "--host",
+        "pop-os",
+        "--cwd",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-67b1d6af",
+        "--"
+      ],
+      "reason": "No verified storage recovery; do not repeat refused submissions until capacity changes"
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-processing",
+        "--lib",
+        "accounted"
+      ],
+      "status": "NOT RUN",
+      "fleet_prefix": [
+        "/home/louistrue/build-workers/ifc-fleet",
+        "run",
+        "--host",
+        "pop-os",
+        "--cwd",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-67b1d6af",
+        "--"
+      ],
+      "reason": "No verified storage recovery; do not repeat refused submissions until capacity changes"
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-processing",
+        "--test",
+        "module_size_ratchet",
+        "--test",
+        "function_length_ratchet",
+        "--test",
+        "positional_read_ratchet",
+        "--test",
+        "styling_parity"
+      ],
+      "status": "NOT RUN",
+      "fleet_prefix": [
+        "/home/louistrue/build-workers/ifc-fleet",
+        "run",
+        "--host",
+        "pop-os",
+        "--cwd",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-67b1d6af",
+        "--"
+      ],
+      "reason": "No verified storage recovery; do not repeat refused submissions until capacity changes"
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--workspace"
+      ],
+      "status": "NOT RUN",
+      "fleet_prefix": [
+        "/home/louistrue/build-workers/ifc-fleet",
+        "run",
+        "--host",
+        "pop-os",
+        "--cwd",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-67b1d6af",
+        "--"
+      ],
+      "reason": "No verified storage recovery; do not repeat refused submissions until capacity changes"
+    },
+    {
+      "command": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "status": "NOT RUN",
+      "fleet_prefix": [
+        "/home/louistrue/build-workers/ifc-fleet",
+        "run",
+        "--host",
+        "pop-os",
+        "--cwd",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-67b1d6af",
+        "--"
+      ],
+      "reason": "No verified storage recovery; do not repeat refused submissions until capacity changes"
+    },
+    {
+      "command": [
+        "bash",
+        "scripts/build-wasm.sh"
+      ],
+      "status": "NOT RUN",
+      "fleet_prefix": [
+        "/home/louistrue/build-workers/ifc-fleet",
+        "run",
+        "--host",
+        "pop-os",
+        "--cwd",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-67b1d6af",
+        "--"
+      ],
+      "reason": "No verified storage recovery; do not repeat refused submissions until capacity changes"
+    },
+    {
+      "command": [
+        "pnpm",
+        "test:wasm-contract"
+      ],
+      "status": "NOT RUN",
+      "fleet_prefix": [
+        "/home/louistrue/build-workers/ifc-fleet",
+        "run",
+        "--host",
+        "pop-os",
+        "--cwd",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-67b1d6af",
+        "--"
+      ],
+      "reason": "No verified storage recovery; do not repeat refused submissions until capacity changes"
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "rust/python/Cargo.toml"
+      ],
+      "status": "NOT RUN",
+      "fleet_prefix": [
+        "/home/louistrue/build-workers/ifc-fleet",
+        "run",
+        "--host",
+        "pop-os",
+        "--cwd",
+        "/home/louistrue/.t3/worktrees/ifc-lite/t3-67b1d6af",
+        "--"
+      ],
+      "reason": "No verified storage recovery; do not repeat refused submissions until capacity changes"
+    }
+  ],
+  "launch_notes": "Clean committed pinned Cargo route is allowed once admitted. For a host-bound prepared launcher use bash env-exec.sh; it is readable but not executable. Never nest fleet reservations. WASM contract needs a successfully rebuilt runtime; skipped runtime is not a pass. PyO3 is excluded from workspace.",
+  "performance": "No paired end-to-end worker-pool result; no performance claim",
+  "scope": "Compatibility no new quota/account; Bounded opt-in partial requested accounting; Strict refuses opaque coverage; no full heap/RAM bound",
+  "new_parent": "fb913d3a5c inspected read-only; Boolean terminal integration hazards recorded, not merged into this base"
+}

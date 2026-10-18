@@ -60,6 +60,7 @@ impl GeometryRouter {
         source_id: u32,
         decoder: &mut EntityDecoder,
     ) {
+        if crate::resource::check_current().is_err() { return }
         let Some(shared) = self.shared_mapped_item_cache.as_ref() else {
             // Without a shared registry there is nothing to recover from; callers
             // that arm output instancing always enable the shared cache too.
@@ -116,6 +117,8 @@ impl GeometryRouter {
             && !parts[0].positions.is_empty()
             && !crate::kernel::budget::tripped()
         {
+            if crate::resource::check_current().is_err() || self.check_mapped_cache_coverage().is_err() { return }
+            if self.retain_mapped_cache_account(source_id).is_err() { return }
             let mesh = parts.pop().unwrap_or_default();
             shared
                 .lock()

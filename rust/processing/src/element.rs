@@ -65,6 +65,8 @@ mod model_context;
 pub use model_context::{OwnedMeshProductionData,OwnedMeshProductionContext,ProductionModel,ProductionContextId,ProductionContextError};
 mod session;
 mod owned_session;
+mod accounted_session;
+pub use accounted_session::{produce_element_meshes_owned_accounted, AccountedElementMeshes, AccountedProductionError};
 pub use owned_session::produce_element_meshes_owned;
 mod session_state;
 mod session_work;
@@ -149,3 +151,12 @@ mod presentation_tests;
 
 #[cfg(test)]
 mod presentation_palette_tests;
+
+#[cfg(test)]
+mod accounted_session_tests;
+
+#[cfg(test)]
+mod accounted_protocol_tests;
+
+#[cfg(test)]
+mod accounted_threaded_tests;

@@ -46,6 +46,7 @@ impl WorkKind {
 }
 
 pub(super) enum WorkPayload {
+    Stopped(ifc_lite_geometry::resource::ProgramStop),
     Primary(PrimaryOutcome),
     TypeMap(Option<Vec<TypePart>>),
     VoidedParts(PartsOutcome),
@@ -54,6 +55,7 @@ pub(super) enum WorkPayload {
 impl WorkPayload {
     fn matches(&self, kind: WorkKind) -> bool {
         matches!((self, kind),
+            (Self::Stopped(_), _) |
             (Self::Primary(_), WorkKind::Primary { .. }) |
             (Self::TypeMap(_), WorkKind::TypeMap { .. }) |
             (Self::VoidedParts(_), WorkKind::VoidedParts) |

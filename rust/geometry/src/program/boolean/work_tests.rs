@@ -6,6 +6,7 @@ use crate::processors::boolean::{half_space_plan::HalfSpacePlan, OperandPath, MA
 use crate::{BoolFailure, BoolFailureReason, BoolOp, GeometryProcessor, Mesh, TessellationQuality};
 use ifc_lite_core::{EntityDecoder, IfcSchema};
 use crate::kernel::mesh_volume::mesh_volume;
+use crate::resource::{ExecutionAccount, ExecutionPolicy, ProgramStop, ResourceLimits};
 
 fn block(decoder: &mut EntityDecoder, id: u32) -> Mesh {
     let entity = decoder.decode_by_id(id).unwrap();
@@ -36,7 +37,7 @@ fn plane_prism_and_single_cutter_use_only_admitted_inputs_after_source_disposal(
     let cutter = cutter.unwrap();
     assert!(!cutter.is_empty());
     let work::SingleResult::Done((cut, lost)) = work::Single { host, cutter, plane,
-        solo_step: true, length_unit_scale: 1. }.execute(&recorder.effects).assemble(&recorder)
+        solo_step: true, length_unit_scale: 1. }.execute(&recorder.effects).assemble_single(&recorder).unwrap()
         else { panic!("a valid full-cross-section prism must cut") };
     assert!(!lost);
     assert!((mesh_volume(&cut).abs() - 4.).abs() < 1e-5);
@@ -74,6 +75,83 @@ fn successful_group_completion_preserves_prior_records_and_exact_union_volume() 
     assert!(!lost);
     assert!((mesh_volume(&cut).abs() - 5.).abs() < 1e-5);
     assert_eq!(recorder.failure_mark(), mark);
+}
+
+#[test]
+fn terminal_group_acceptance_keeps_provisional_and_reached_numerical_records() {
+    // Full-removal geometry really defers. The empty-cutter variant also
+    // produces the actual unique union failure that acceptance must retain.
+    for empty_cutter in [false, true] {
+        let host = block(&mut EntityDecoder::new("#1=IFCBLOCK($,2.,2.,2.);"), 1);
+        assert!((mesh_volume(&host).abs() - 8.).abs() < 1e-6);
+        let cutter = if empty_cutter { Mesh::new() } else { host.clone() };
+        if !empty_cutter { assert!((mesh_volume(&cutter).abs() - 8.).abs() < 1e-6); }
+        let control = BooleanClippingProcessor::new();
+        assert!(work::Group { base: host.clone(), prisms: vec![cutter.clone(), cutter.clone()],
+            length_unit_scale: 1. }.execute(&control.effects)
+            .assemble_group(&control, 0).unwrap().is_none());
+        let numerical = control.take_failures();
+        assert_eq!(numerical, if empty_cutter {
+            vec![BoolFailure::new(BoolOp::Union, BoolFailureReason::CutterUnionUnavailable)]
+        } else { Vec::new() });
+
+        let recorder = BooleanClippingProcessor::new();
+        let prior = BoolFailure::new(BoolOp::Unknown, BoolFailureReason::EmptyOperand);
+        let provisional = BoolFailure::new(BoolOp::Difference, BoolFailureReason::EmptyOperand);
+        recorder.absorb_failures(vec![prior.clone()]);
+        let mark = recorder.failure_mark();
+        recorder.absorb_failures(vec![provisional.clone()]);
+        let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+        let result = account.scope(|| {
+            let completed = work::Group { base: host, prisms: vec![cutter.clone(), cutter],
+                length_unit_scale: 1. }.execute(&recorder.effects);
+            assert_eq!(recorder.failure_mark(), 2, "numerics have not published or rewound");
+            crate::resource::stop(ProgramStop::Cancelled);
+            completed.assemble_group(&recorder, mark)
+        });
+        assert!(matches!(result, Err(crate::Error::ProgramStopped(ProgramStop::Cancelled))));
+        let mut expected = vec![prior, provisional];
+        expected.extend(numerical);
+        assert_eq!(recorder.take_failures(), expected,
+            "terminal acceptance cannot apply ordinary deferral rollback");
+    }
+}
+
+#[test]
+fn terminal_single_acceptance_cannot_publish_fallback_or_drop_reached_records() {
+    let host = block(&mut EntityDecoder::new("#1=IFCBLOCK($,2.,2.,2.);"), 1);
+    assert!((mesh_volume(&host).abs() - 8.).abs() < 1e-6);
+    let plane = HalfSpacePlan { point: crate::Point3::new(0., 0., 1.),
+        normal: crate::Vector3::new(0., 0., 1.), agreement: false };
+    let control = BooleanClippingProcessor::new();
+    // Subtracting the complete real host produces an empty bounded result,
+    // which genuinely requests the plane fallback in the unstopped case.
+    let work::SingleResult::Fallback(uncut) = work::Single {
+        host: host.clone(), cutter: host.clone(), plane, solo_step: true,
+        length_unit_scale: 1. }.execute(&control.effects).assemble_single(&control).unwrap()
+        else { panic!("full bounded removal must request recovery") };
+    assert!((mesh_volume(&uncut).abs() - 8.).abs() < 1e-6);
+    let numerical = control.take_failures();
+    let recorder = BooleanClippingProcessor::new();
+    let prior = BoolFailure::new(BoolOp::Unknown, BoolFailureReason::EmptyOperand);
+    let provisional = BoolFailure::new(BoolOp::Difference, BoolFailureReason::EmptyOperand);
+    recorder.absorb_failures(vec![prior.clone(), provisional.clone()]);
+    let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+    let result = account.scope(|| {
+        let completed = work::Single { cutter: host.clone(), host, plane,
+            solo_step: true, length_unit_scale: 1. }.execute(&recorder.effects);
+        assert_eq!(recorder.failure_mark(), 2, "numerics have not published effects");
+        crate::resource::stop(ProgramStop::Cancelled);
+        completed.assemble_single(&recorder)
+    });
+    assert!(matches!(result, Err(crate::Error::ProgramStopped(ProgramStop::Cancelled))));
+    let mut expected = vec![prior, provisional];
+    expected.extend(numerical);
+    let actual = recorder.take_failures();
+    assert_eq!(actual, expected);
+    assert!(!actual.iter().any(|record| matches!(&record.reason,
+        BoolFailureReason::PolygonalBoundedHalfSpaceFallback)),
+        "a terminal cannot admit the recovery plane operation");
 }
 
 #[test]

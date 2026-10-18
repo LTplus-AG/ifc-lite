@@ -855,3 +855,19 @@ count; it does not cancel an active load. Unused workers expire after sixty
 seconds. `warmGeometryWorkerPoolStats()` returns `GeometryWorkerPoolStats`, or
 null before a pool exists. `idleBytes` is booked memory using an estimate per
 fresh worker, rather than a measurement of actual process memory.
+
+## Rust resource admission
+
+Native Rust integrations can opt into `ExecutionAccount` and
+`produce_element_meshes_owned_accounted` while retaining the ordinary borrowed
+producer APIs. `Bounded(ResourceLimits)` checks independent explicit allowances;
+zero means zero and unspecified dimensions are unlimited. Keep the returned
+`AccountedElementMeshes` alive through output use. Use
+`AccountedMappedItemCache` for bounded shared mapping-cache ownership.
+
+These runs remain resource-unqualified because decoder, numerical, raster and
+presentation allocations are not fully covered. `Strict(ResourceLimits)` refuses
+unsupported coverage before invoking producers. This is not an RSS or GPU-memory
+limit and does not change the browser batch ABI. See the
+[implementation boundary](../architecture/geometry-platform-resource-accounting.md)
+for ownership, terminal errors and remaining coverage.

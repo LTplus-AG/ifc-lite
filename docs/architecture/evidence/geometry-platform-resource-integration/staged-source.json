@@ -1,0 +1,525 @@
+{
+  "base_commit": "b3a441ec17e1619066ee14e15bdcc915975d42bd",
+  "status": "INTEGRATED_UNCOMPILED_RESOURCE_UNQUALIFIED",
+  "files": [
+    {
+      "path": "docs/architecture/geometry-platform-resource-accounting.md",
+      "sha256": "b6bc68a99af2b98a9294cd9198b56fe8b56da57ba0d972ced6584f06d9f5838e"
+    },
+    {
+      "path": "docs/guide/geometry.md",
+      "sha256": "951565fba9e1e0c5fa11b3c2f7079b792c03a0254cd7c18df6234f810951ca1d"
+    },
+    {
+      "path": "rust/core/src/execution_owner.rs",
+      "sha256": "e38ffab725f51a3b047cdd77ee6a00716d3aac3c2e7f2901588406e4b86b9aca"
+    },
+    {
+      "path": "rust/core/src/execution_owner/resource_context.rs",
+      "sha256": "e00ba5f784fff0d3bf42b13c579f8a5711eb453e0140ac80d30dce7421a555c3"
+    },
+    {
+      "path": "rust/core/src/execution_owner_tests.rs",
+      "sha256": "3f8944bb80fda6f0fe5843a0edaf457fd8e8cc19228b92120f5ef52b7cc6899c"
+    },
+    {
+      "path": "rust/core/src/lib.rs",
+      "sha256": "8278bb9e51eb4106cacd5ff897f445af540bb4550193ed5eecc67be545b52821"
+    },
+    {
+      "path": "rust/core/src/resource_stop.rs",
+      "sha256": "71e33810e5f7802b76e5ba89905460015ee3557a663555c8e371f391be4a486c"
+    },
+    {
+      "path": "rust/geometry/src/error.rs",
+      "sha256": "b2d0294aa8245782d0dbde463129381b2a0cb8cb27fab42634aca8bd0352986c"
+    },
+    {
+      "path": "rust/geometry/src/lib.rs",
+      "sha256": "0956827eab796c2a3f1ac6098ed5aeb067222b0abdcd68452e5d15f9e0cdb7c4"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/brep_void_plan_tests.rs",
+      "sha256": "9c5333b382d5795ae72b574ee9190ebc67e09d69dcb8504c0a1cd131585fa869"
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/batch.rs",
+      "sha256": "39164d6b8efc373258657dfc1bbd3457374b1aec8961bfa8d422a7469fbbb101"
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/mod.rs",
+      "sha256": "46f21a894b78c2d30b718ff8e83e3c9ea89fa1b3ea5258b1bdd320d643c65531"
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/operand.rs",
+      "sha256": "5078f2e9511ac5640f55c078ab59901488a72191718cd009c07b37aad5805fb8"
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/resource_tests.rs",
+      "sha256": "00e2e48b2b41f7f0c994f1f6804ab4681da9665b76ef723fe792e36b666f6eae"
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/step.rs",
+      "sha256": "3e6288ff978d3ad97570f32a3adb29c5c3b3938ba1e29a161542020261a44120"
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/work.rs",
+      "sha256": "e82affa98ec93bde322bef9c3cbd968f641b72130534429cc1c689df5150bcec"
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/work_tests.rs",
+      "sha256": "78e6556580b98704991c10fbe7ca812d6b6b1e3b1848abdd8abd857f2dc845ae"
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/merged.rs",
+      "sha256": "0746d1a10959222bc443ebc7b2756c24da11bbba5d7fac002946ac02641b5af9"
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/mod.rs",
+      "sha256": "760df450a8a548bded5074e644e4813c266f57645d58a96845cf5d8444e9aecf"
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/occurrence.rs",
+      "sha256": "762be993f6757549bbfe60e1c023cd529185919b560279366815acfaaf50df59"
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/resource_tests.rs",
+      "sha256": "489306b5774fa1baf9048fe24a464bceaf743646d06e7d5d5d1f14230885a7b1"
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/submeshes.rs",
+      "sha256": "f43f882ebeb651176580808e5ace5902c66eaf20201c7dd796ebe4602c29cdb6"
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/tests.rs",
+      "sha256": "e83bfaaff35ad14e24bb7354aaebe9abc90e965d220180699ccf61c8867755d0"
+    },
+    {
+      "path": "rust/geometry/src/resource/account.rs",
+      "sha256": "8965a9948edf32fe36a86dde6dded7a02af987b25263a841c2ce6b807b705590"
+    },
+    {
+      "path": "rust/geometry/src/resource/mesh.rs",
+      "sha256": "a988cfddc48dca2a5e1da7a2e8a2c8a7ade7b41787249d9f608fc4ac57f47e0d"
+    },
+    {
+      "path": "rust/geometry/src/resource/mesh_tests.rs",
+      "sha256": "1ee17e7e1e483019c7586ae2196b2aa7b470b8efb3c8c33668f784b72a00bb4a"
+    },
+    {
+      "path": "rust/geometry/src/resource/mod.rs",
+      "sha256": "041096b83e843c2318aad2947fb00df8079bd949a3fcab420ddabcd54a292943"
+    },
+    {
+      "path": "rust/geometry/src/resource/pool.rs",
+      "sha256": "d2d1d8e29747d3171cced8ff66d2c3ed19fb8b4a73528b57a419550744b43c5a"
+    },
+    {
+      "path": "rust/geometry/src/resource/storage.rs",
+      "sha256": "44d279e0d4333a1a1901e3bb6afdbaf4177c216b59e8ea491216f8bd721fcc4a"
+    },
+    {
+      "path": "rust/geometry/src/resource/tests.rs",
+      "sha256": "ff414d6b53e1966759f9b798bc114714b65bbec77a1c178b746434c5ac9e11f3"
+    },
+    {
+      "path": "rust/geometry/src/router/diagnostics_checked.rs",
+      "sha256": "3d3558873190de563acb478da92ab52d38083f4153826e4506674d41a965d459"
+    },
+    {
+      "path": "rust/geometry/src/router/diagnostics_recording.rs",
+      "sha256": "dae630d57edbf3110cfc41904e878c69c136bf299d58898d33266a4b77931101"
+    },
+    {
+      "path": "rust/geometry/src/router/frame_parts.rs",
+      "sha256": "d37c0b5fd5b3d3e77b3f6b0fa909acb6a8d58e56df3250539c151f6d94e79c60"
+    },
+    {
+      "path": "rust/geometry/src/router/frame_parts_tests.rs",
+      "sha256": "f12bc800dbf75b35dcfd955d33e7c05e1af4c6dc88705b8714a0f5d3d1576a82"
+    },
+    {
+      "path": "rust/geometry/src/router/instancing.rs",
+      "sha256": "00dc0dddb1a98dcc40f96f84ee10cc73648c457ad955eef293cd3f0302749ac1"
+    },
+    {
+      "path": "rust/geometry/src/router/mapped_cache_ownership.rs",
+      "sha256": "74072852e62941ac41de7134c511bb35bc042c75c557a3fd388092d73bd91a6e"
+    },
+    {
+      "path": "rust/geometry/src/router/mapped_cache_ownership_tests.rs",
+      "sha256": "a0c6d73266eb67be483a374f29d824f9483e86b3a25c6617d3be61b108eb11a1"
+    },
+    {
+      "path": "rust/geometry/src/router/mapped_item.rs",
+      "sha256": "f4973edf4544cd7846f229a18003d48a4197e298d86580d6b6eda2f125ef2716"
+    },
+    {
+      "path": "rust/geometry/src/router/mod.rs",
+      "sha256": "3f8027b726a35f39098761c11e43c83604b179681bc481216e685e1b4b673adf"
+    },
+    {
+      "path": "rust/geometry/src/router/processing.rs",
+      "sha256": "383171f8f767c59e7ac813be3a96bc49c5bc90fc987f8fa40e56721e9bfa0825"
+    },
+    {
+      "path": "rust/geometry/src/router/processing_items.rs",
+      "sha256": "2da65cd2d38c817f29b83e7a54c42b749a28d93300cfe54112179fc8e90345a5"
+    },
+    {
+      "path": "rust/geometry/src/router/rtc_terminal_tests.rs",
+      "sha256": "d64bbd0f6033fd8d7084c6e4f1d03196c51add9673b942070299db18a539a51e"
+    },
+    {
+      "path": "rust/processing/src/element.rs",
+      "sha256": "f734ab1db7389831e7e87ff012de9517ea8bc679d43fc1c14489e2a2511e8e86"
+    },
+    {
+      "path": "rust/processing/src/element/accounted_protocol_tests.rs",
+      "sha256": "6db4c84697f29b59a79338a762aac116788f2178dba3e33d9e07ad7026b6aacb"
+    },
+    {
+      "path": "rust/processing/src/element/accounted_session.rs",
+      "sha256": "47183ec80b8a7970b215fbc89438380e469c740b142cb0426e015a5b1e9e86a2"
+    },
+    {
+      "path": "rust/processing/src/element/accounted_session_tests.rs",
+      "sha256": "6d468b6317688a20bd658719d525ba6701ca30d130cfca05255f743e4290f7e8"
+    },
+    {
+      "path": "rust/processing/src/element/accounted_threaded_tests.rs",
+      "sha256": "f3bb7cb9b57944cc7473ce83077af66532a9f8bd6477b9bd4978436b75fb95d4"
+    },
+    {
+      "path": "rust/processing/src/element/owned_session.rs",
+      "sha256": "4c6dcfaa742fea5e812f41a51882e3e77b540fa3e02a83531613fa502a2b3f73"
+    },
+    {
+      "path": "rust/processing/src/element/session.rs",
+      "sha256": "d533944b04b318eda4412f4615c0e852eb1c4480bea82775b0670ec17c7959f3"
+    },
+    {
+      "path": "rust/processing/src/element/session_accept.rs",
+      "sha256": "968cc26df83fd8daa36bc86b3aa7bf72bc26fea122984e839907ea60c3f3186e"
+    },
+    {
+      "path": "rust/processing/src/element/session_canonical.rs",
+      "sha256": "8e74934fca54d3ef4f463176453d190ad011db8eef27463e70252793903fc35a"
+    },
+    {
+      "path": "rust/processing/src/element/session_owner.rs",
+      "sha256": "2ddea677fb77d972daec4adac01ff773515ecf94a8d747b888e464801a621c50"
+    },
+    {
+      "path": "rust/processing/src/element/session_protocol.rs",
+      "sha256": "6cde3eaa6b44878b95a16e9d48436298d226b55349160c1e1f753e93657cff4d"
+    },
+    {
+      "path": "rust/processing/src/element/session_terminal_tests.rs",
+      "sha256": "c93449d8ee6533567e609e28645a30e75e6877cfe69b84a14557e6ccbba669b2"
+    },
+    {
+      "path": "rust/processing/src/element/session_work.rs",
+      "sha256": "e22535184636846eda07975ae2e1e5a1b11dcdbe2883d34d2d4ef132677721ad"
+    },
+    {
+      "path": "rust/processing/tests/module_size_allowlist.txt",
+      "sha256": "525bee4322952c0784dd513d7fc42f7956ff05d0288d34ea95c4dfbbda1b1365"
+    },
+    {
+      "path": "rust/processing/tests/module_size_ratchet.rs",
+      "sha256": "683e6873422377fa6cbc308c0472cc6be97f5b7eccdaa65e6591f93149f89f86"
+    },
+    {
+      "path": "scripts/perf/README.md",
+      "sha256": "6fbd06cd15cb49579d254ca62636b32d3ad18eb366fb473606a22734c9cbbea0"
+    },
+    {
+      "path": "docs/api/rust.md",
+      "sha256": "c3d8503eaf79c3ee429836d512be6dc4cf482bbbc4edfd85c718436ab7cc8daa"
+    }
+  ],
+  "source_layer_hunks_deferred": [
+    "rust/core/src/lib.rs",
+    "rust/processing/src/element.rs",
+    "rust/processing/src/element/accounted_session.rs",
+    "rust/processing/src/element/owned_session.rs",
+    "rust/processing/src/element/session_protocol.rs",
+    "scripts/perf/README.md"
+  ],
+  "new_rust_api_guide": "Checked-drain API paragraph staged in this layer, source ownership guide hunks deferred.",
+  "syntax_only": [
+    {
+      "path": "rust/core/src/execution_owner.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/core/src/execution_owner/resource_context.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/core/src/execution_owner_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/core/src/lib.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/core/src/resource_stop.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/error.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/lib.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/brep_void_plan_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/batch.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/mod.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/operand.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/resource_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/step.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/work.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/work_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/merged.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/mod.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/occurrence.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/resource_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/submeshes.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/resource/account.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/resource/mesh.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/resource/mesh_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/resource/mod.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/resource/pool.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/resource/storage.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/resource/tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/diagnostics_checked.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/diagnostics_recording.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/frame_parts.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/frame_parts_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/instancing.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/mapped_cache_ownership.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/mapped_cache_ownership_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/mapped_item.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/mod.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/processing.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/processing_items.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/rtc_terminal_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element/accounted_protocol_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element/accounted_session.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element/accounted_session_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element/accounted_threaded_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element/owned_session.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element/session.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element/session_accept.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element/session_canonical.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element/session_owner.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element/session_protocol.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element/session_terminal_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/element/session_work.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/tests/module_size_ratchet.rs",
+      "exit_code": 0,
+      "stderr": ""
+    }
+  ],
+  "runtime_checks": null,
+  "performance": "UNQUALIFIED; no output-identity, neutrality, memory or latency claim."
+}

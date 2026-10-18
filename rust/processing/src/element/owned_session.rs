@@ -19,7 +19,7 @@ impl OwnedProductExecution {
         let state=ProductState::new(job,&context.borrowed(),opts,decoder,router);
         Ok(Self::bind(state,context))
     }
-    fn canonical(job:&ElementMeshJob<'_>,context:&Arc<OwnedMeshProductionContext>,
+    pub(super) fn canonical(job:&ElementMeshJob<'_>,context:&Arc<OwnedMeshProductionContext>,
         opts:&MeshProductionOptions,decoder:&mut EntityDecoder,router:&GeometryRouter)->Result<Self,WorkError> {
         context.validate_source().map_err(|_|WorkError::StaleSource)?;
         match session_canonical::inherited_owner(decoder,router).expect("canonical synchronous ancestor owner") {
@@ -68,9 +68,14 @@ impl OwnedProductExecution {
 /// Decoder/router callback and lexical child behavior matches the borrowed entry.
 pub fn produce_element_meshes_owned(job:&ElementMeshJob<'_>,context:&Arc<OwnedMeshProductionContext>,
     opts:&MeshProductionOptions,decoder:&mut EntityDecoder,router:&GeometryRouter)->Result<ProducedElementMeshes,ProductionContextError> {
+    session_canonical::with_source_resources(decoder, |decoder| {
+    if ifc_lite_geometry::resource::check_current().is_err() {
+        return Ok(session_canonical::stopped_output());
+    }
     let mut execution=OwnedProductExecution::canonical(job,context,opts,decoder,router).map_err(public_error)?;
     while execution.advance(decoder,router).map_err(public_error)? {}
     execution.finish(decoder,router).map_err(public_error)
+    })
 }
 fn public_error(error:WorkError)->ProductionContextError {
     match error {WorkError::StaleSource=>ProductionContextError::StaleSource,

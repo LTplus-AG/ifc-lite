@@ -392,3 +392,6 @@ pub(crate) enum ClassificationKind {
     Diagonal,
     NonRectangular,
 }
+
+#[path = "diagnostics_checked.rs"]
+mod checked;

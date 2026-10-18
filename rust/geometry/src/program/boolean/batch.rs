@@ -23,7 +23,7 @@ impl BooleanProgram {
         if super::boolean_operator(&walk.current) == Ok(BoolOp::Difference) {
             // Collector admission precedes base evaluation even if the base
             // will be empty. Preserve these speculative direct source reads.
-            let (base, cutters) = services.recorder.collect_polygonal_chain(walk.current.clone(), services.decoder)?;
+            let (base, cutters) = crate::resource::observe(services.recorder.collect_polygonal_chain(walk.current.clone(), services.decoder))?;
             if cutters.len() >= 2 {
                 let mark = services.recorder.failure_mark();
                 let depth = walk.depth;
@@ -46,6 +46,7 @@ impl BooleanProgram {
     }
     pub(super) fn finish_batch(&mut self, walk: Walk,
         cutters: Vec<DecodedEntity>, mark: usize, services: &mut Services<'_, '_>) -> Result<()> {
+        crate::resource::check_current()?;
         let (base, empty_recorded) = self.value.take().expect("batch base continuation result");
         if base.is_empty() {
             self.frames.push(Frame::Steps(walk.steps((base, empty_recorded), true)));
@@ -53,9 +54,13 @@ impl BooleanProgram {
         }
         let (base, attempt) = self.prepare_group(base, cutters, mark, services)?;
         let result = match attempt {
-            Some(prisms) => work::Group { base, prisms,
-                length_unit_scale: services.decoder.length_unit_scale() }
-                .execute(&services.recorder.effects).assemble_group(services.recorder, mark)?,
+            Some(prisms) => {
+                let units = services.decoder.length_unit_scale();
+                crate::resource::check_current()?;
+                let completed = work::Group { base, prisms, length_unit_scale: units }
+                    .execute(&services.recorder.effects);
+                crate::resource::observe(completed.assemble_group(services.recorder, mark))?
+            }
             None => None,
         };
         match result {
@@ -68,19 +73,26 @@ impl BooleanProgram {
     }
     fn prepare_group(&mut self, mut base: Mesh, cutters: Vec<DecodedEntity>,
         mark: usize, services: &mut Services<'_, '_>) -> Result<(Mesh, Option<Vec<Mesh>>)> {
+        crate::resource::check_current()?;
         let mut prisms = Vec::with_capacity(cutters.len());
         for cutter in cutters {
-            let Ok(plane) = services.recorder.parse_half_space_solid(&cutter, services.decoder)
+            crate::resource::check_current()?;
+            let plane = crate::resource::observe(services.recorder.parse_half_space_solid(&cutter, services.decoder));
+            if let Err(error @ crate::Error::ProgramStopped(_)) = plane { return Err(error); }
+            let Ok(plane) = plane
                 else { services.recorder.rewind_to(mark); return Ok((base, None)); };
-            let plan = match services.recorder.lower_bounded_prism(&cutter, services.decoder, self.quality) {
+            let admitted = crate::resource::observe(services.recorder.lower_bounded_prism(&cutter, services.decoder, self.quality));
+            let plan = match admitted {
                 Ok(Some(plan)) => plan,
+                Err(error @ crate::Error::ProgramStopped(_)) => return Err(error),
                 _ => { services.recorder.rewind_to(mark); return Ok((base, None)); }
             };
             let plane = HalfSpacePlan { point: plane.0, normal: plane.1, agreement: plane.2 };
             let (host, built) = work::Prism { plan, host: base, plane }.execute(&services.recorder.effects).assemble(services.recorder);
             base = host;
-            match built {
+            match crate::resource::observe(built) {
                 Ok(prism) if !prism.is_empty() => prisms.push(prism),
+                Err(error @ crate::Error::ProgramStopped(_)) => return Err(error),
                 _ => { services.recorder.rewind_to(mark); return Ok((base, None)); }
             }
         }

@@ -1,0 +1,30 @@
+{
+  "report": "/tmp/ifclite-boolean-resource-completion-review.md",
+  "report_sha256": "1479d410970de3ce79551f32a5948694b5c1732d9b9dd8c3e62c32dab31690e8",
+  "changed_paths_sha256": {
+    "rust/geometry/src/program/boolean/work.rs": "e82affa98ec93bde322bef9c3cbd968f641b72130534429cc1c689df5150bcec",
+    "rust/geometry/src/program/boolean/work_tests.rs": "265d17f359532bf29ae9e0bfd2489b9d28f4c29a4c22a51f5beb218a2b03954e",
+    "rust/geometry/src/program/boolean/step.rs": "3e6288ff978d3ad97570f32a3adb29c5c3b3938ba1e29a161542020261a44120",
+    "rust/geometry/src/program/boolean/batch.rs": "39164d6b8efc373258657dfc1bbd3457374b1aec8961bfa8d422a7469fbbb101"
+  },
+  "validation": {
+    "kind": "syntax parse only; not type checking or tests",
+    "command": [
+      "rustfmt",
+      "--edition",
+      "2021",
+      "--config",
+      "skip_children=true",
+      "--emit",
+      "stdout",
+      "rust/geometry/src/program/boolean/work.rs",
+      "rust/geometry/src/program/boolean/work_tests.rs",
+      "rust/geometry/src/program/boolean/step.rs",
+      "rust/geometry/src/program/boolean/batch.rs"
+    ],
+    "exit_code": 0,
+    "stderr_log": "/tmp/ifclite-boolean-resource-completion-parse.log",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "builds_or_tests_run": false
+}

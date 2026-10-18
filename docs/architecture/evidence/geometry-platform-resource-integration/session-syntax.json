@@ -1,0 +1,50 @@
+[
+  {
+    "path": "rust/geometry/src/resource/mod.rs",
+    "exit_code": 0,
+    "stderr": "",
+    "purpose": "syntax-only output discarded; no source formatting applied"
+  },
+  {
+    "path": "rust/geometry/src/resource/account.rs",
+    "exit_code": 0,
+    "stderr": "",
+    "purpose": "syntax-only output discarded; no source formatting applied"
+  },
+  {
+    "path": "rust/geometry/src/router/diagnostics_recording.rs",
+    "exit_code": 0,
+    "stderr": "",
+    "purpose": "syntax-only output discarded; no source formatting applied"
+  },
+  {
+    "path": "rust/geometry/src/router/diagnostics_checked.rs",
+    "exit_code": 0,
+    "stderr": "",
+    "purpose": "syntax-only output discarded; no source formatting applied"
+  },
+  {
+    "path": "rust/processing/src/element/accounted_threaded_tests.rs",
+    "exit_code": 0,
+    "stderr": "",
+    "purpose": "syntax-only output discarded; no source formatting applied"
+  },
+  {
+    "path": "rust/processing/src/element/session.rs",
+    "exit_code": 0,
+    "stderr": "",
+    "purpose": "syntax-only output discarded; no source formatting applied"
+  },
+  {
+    "path": "rust/processing/src/element/session_accept.rs",
+    "exit_code": 0,
+    "stderr": "",
+    "purpose": "syntax-only output discarded; no source formatting applied"
+  },
+  {
+    "path": "rust/processing/src/element/session_terminal_tests.rs",
+    "exit_code": 0,
+    "stderr": "",
+    "purpose": "syntax-only output discarded; no source formatting applied"
+  }
+]

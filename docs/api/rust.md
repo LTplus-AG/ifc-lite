@@ -178,6 +178,13 @@ identities when the panic boundary surrounds the scope; the static convenience
 cannot return a packet while unwinding. Private work acceptance compares the
 reply trace against executor-held evidence before presentation.
 
+`GeometryRouter::take_csg_failures_checked()` is the terminal-aware final drain
+used by canonical mesh production. It invokes the existing processor diagnostic
+hooks once. If a hook stops execution, it returns `ProgramStop` and restores
+captured records to their exact router buckets for a later explicit diagnostic
+drain, retaining record order and product attribution. The existing
+`take_csg_failures()` behavior is unchanged.
+
 `ifc_lite_geometry::csg::CsgCensus` provides an optional owned CSG measurement
 sink. `new()` creates a sink; clones share its records. `with_scope(operation)`
 records reached CSG invocations in that sink while preserving the existing

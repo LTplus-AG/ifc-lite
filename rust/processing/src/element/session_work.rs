@@ -10,7 +10,10 @@ use super::session_protocol::{WorkEmitter, WorkKind, WorkPayload};
 pub(super) fn execute(kind: WorkKind, job: &OwnedJob,
     ctx: &MeshProductionContext<'_>, decoder: &mut EntityDecoder,
     router: &GeometryRouter) -> (WorkEmitter, WorkPayload) {
-    match kind {
+    if let Err(stop) = ifc_lite_geometry::resource::check_current() {
+        return (kind.emitter(), WorkPayload::Stopped(stop));
+    }
+    let result = match kind {
         WorkKind::Primary { strategy: PrimaryStrategy::TexturedSubmeshes, .. } => (
             WorkEmitter::TexturedProduct, WorkPayload::Primary(primary(
                 PrimaryStrategy::TexturedSubmeshes, job, ctx, decoder, router))),
@@ -23,6 +26,10 @@ pub(super) fn execute(kind: WorkKind, job: &OwnedJob,
             WorkPayload::VoidedParts(voided_parts(job, ctx, decoder, router))),
         WorkKind::PlainParts => (WorkEmitter::PlainParts, WorkPayload::PlainParts(
             router.process_element_parts(&job.entity, decoder).unwrap_or_default())),
+    };
+    match ifc_lite_geometry::resource::check_current() {
+        Ok(()) => result,
+        Err(stop) => (result.0, WorkPayload::Stopped(stop)),
     }
 }
 

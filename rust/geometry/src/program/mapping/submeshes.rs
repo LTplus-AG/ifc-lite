@@ -8,6 +8,7 @@ use crate::processors::texture::ResolvedTextureMap;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rustc_hash::FxHashMap;
 use crate::program::{ItemProgram, ItemListPolicy};
+use crate::resource::{self, Cost};
 
 struct Source {
     item_id: u32, depth: usize, policy: bool, start: usize,
@@ -29,31 +30,50 @@ impl Frame {
 }
 pub(crate) struct SubmeshWalk { frames: Vec<Frame>, path: Path, value: Option<Result<()>> }
 impl SubmeshWalk {
-    pub(crate) fn new(item: &DecodedEntity, allow_instancing: bool, router: &GeometryRouter) -> Self {
-        Self { frames: vec![Frame::Enter { item: item.clone(), depth: 0,
-            policy: router.unsupported_policy(), allow_instancing }], path: Path::default(), value: None }
+    pub(crate) fn new(item: &DecodedEntity, allow_instancing: bool, router: &GeometryRouter) -> Result<Self> {
+        resource::charge(Cost { work: 1, ..Cost::default() })?.retain();
+        let frames = if resource::is_active() {
+            let mut frames = Vec::new();
+            resource::reserve_headers(&mut frames, 1)?.retain();
+            frames.push(Frame::Enter { item: item.clone(), depth: 0, policy: router.unsupported_policy(), allow_instancing });
+            frames
+        } else { vec![Frame::Enter { item: item.clone(), depth: 0, policy: router.unsupported_policy(), allow_instancing }] };
+        Ok(Self { frames, path: Path::default(), value: None })
     }
     pub(crate) fn run(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>,
         meshes: &mut SubMeshCollection, textures: Option<&FxHashMap<u32, ResolvedTextureMap>>) -> Result<()> {
-        while self.advance(router, decoder, meshes, textures) {}
+        let start = meshes.len();
+        while self.advance(router, decoder, meshes, textures) {
+            if let Err(stop) = resource::check_current() { meshes.sub_meshes.truncate(start); return Err(stop.into()) }
+        }
+        if let Err(stop) = resource::check_current() { meshes.sub_meshes.truncate(start); return Err(stop.into()) }
         self.value.expect("completed submesh-source value")
     }
     pub(super) fn advance(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>,
         meshes: &mut SubMeshCollection, textures: Option<&FxHashMap<u32, ResolvedTextureMap>>) -> bool {
         let Some(frame) = self.frames.pop() else { return false };
+        if let Err(stop) = resource::check_current().and_then(|()| resource::charge(Cost { work: 1, ..Cost::default() }).map(|p| p.retain())) {
+            self.frames.clear(); self.value = Some(Err(stop.into())); return false;
+        }
         router.with_unsupported_policy(frame.policy(), || self.step(frame, router, decoder, meshes, textures));
         true
+    }
+    fn push(&mut self, frame: Frame) {
+        if let Ok(permit) = resource::reserve_headers(&mut self.frames, 1) {
+            permit.retain(); self.frames.push(frame);
+        }
     }
     fn step(&mut self, frame: Frame, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>,
         meshes: &mut SubMeshCollection, textures: Option<&FxHashMap<u32, ResolvedTextureMap>>) {
         match frame {
             Frame::Enter { item, depth, allow_instancing, .. } => {
-                let result = Path::depth(depth, item.id).and_then(|()| {
+                let result = resource::charge(Cost { occurrences: 1, ..Cost::default() })
+                    .map(|p| p.retain()).map_err(crate::Error::from).and_then(|()| Path::depth(depth, item.id)).and_then(|()| {
                     if item.ifc_type == IfcType::IfcMappedItem {
                         self.path.enter(item.id)?;
                         self.enter(item, depth, allow_instancing, router, decoder, meshes, textures)
                     } else {
-                        plain(&item, depth, router, decoder, meshes, textures);
+                        plain(&item, depth, router, decoder, meshes, textures)?;
                         self.value = Some(Ok(()));
                         Ok(())
                     }
@@ -66,10 +86,11 @@ impl SubmeshWalk {
                 Some(item) => {
                     let depth = parent.depth + 1;
                     let policy = parent.policy;
-                    self.frames.push(Frame::AfterChild { parent, item: ItemIdentity::from(&item), start: meshes.len() });
-                    self.frames.push(Frame::Enter { item, depth, policy, allow_instancing: false });
+                    self.push(Frame::AfterChild { parent, item: ItemIdentity::from(&item), start: meshes.len() });
+                    self.push(Frame::Enter { item, depth, policy, allow_instancing: false });
                 }
                 None => {
+                    if resource::check_current().is_err() { return }
                     occurrence::retag_template(&parent.admission, parent.start, meshes, router);
                     self.path.exit(parent.item_id);
                     self.value = Some(Ok(()));
@@ -78,9 +99,12 @@ impl SubmeshWalk {
             Frame::AfterChild { parent, item, start } => {
                 match self.value.take().expect("submesh child returned") {
                     Ok(()) => occurrence::transform_children(parent.admission.transform, start, meshes, router),
-                    Err(error) => skipped(router, &item, &error, false),
+                    Err(error) => {
+                        if resource::check_current().is_err() { return }
+                        skipped(router, &item, &error, false);
+                    }
                 }
-                self.frames.push(Frame::Source(parent));
+                self.push(Frame::Source(parent));
             }
         }
     }
@@ -89,7 +113,7 @@ impl SubmeshWalk {
         router: &GeometryRouter, decoder: &mut EntityDecoder<'_>, meshes: &mut SubMeshCollection,
         textures: Option<&FxHashMap<u32, ResolvedTextureMap>>) -> Result<()> {
         let admission = occurrence::admit(&item, depth, allow_instancing, textures, router, decoder)?;
-        if occurrence::placeholder(&admission, meshes, router, decoder) {
+        if occurrence::placeholder(&admission, meshes, router, decoder)? {
             self.path.exit(item.id);
             self.value = Some(Ok(()));
             return Ok(());
@@ -98,24 +122,30 @@ impl SubmeshWalk {
         // Submeshes claim BEFORE their optional bulk item-list admission.
         let policy = router.claim_unsupported_source(admission.source_id, &admission.representation);
         let items = ItemProgram::admit(&admission.representation, decoder, ItemListPolicy::OptionalMap)?;
-        self.frames.push(Frame::Source(Source { item_id: item.id, depth, policy, start, admission,
+        self.push(Frame::Source(Source { item_id: item.id, depth, policy, start, admission,
             items }));
         Ok(())
     }
 }
 fn plain(item: &DecodedEntity, depth: usize, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>,
-    meshes: &mut SubMeshCollection, textures: Option<&FxHashMap<u32, ResolvedTextureMap>>) {
+    meshes: &mut SubMeshCollection, textures: Option<&FxHashMap<u32, ResolvedTextureMap>>) -> Result<()> {
+    resource::check_current()?;
     if let Some(map) = textures.and_then(|index| index.get(&item.id)) {
         if let Some((mut mesh, uvs)) = router.textured_face_set(item, decoder, map, Some(router.rtc_offset())) {
             if depth > 0 { router.keep_rebase_in_origin(&mut mesh); }
+            admit_output(&mesh, uvs.len(), meshes)?;
             meshes.add_textured(item.id, mesh, uvs, map.attachment());
-            return;
+            resource::check_current()?;
+            return Ok(());
         }
+        resource::check_current()?;
     }
-    match router.process_representation_item(item, decoder) {
+    let result = router.process_representation_item(item, decoder);
+    resource::check_current()?;
+    match result {
         Ok(mut mesh) => {
             if depth > 0 { router.keep_rebase_in_origin(&mut mesh); }
-            if !mesh.is_empty() { meshes.add(item.id, mesh); }
+            if !mesh.is_empty() { admit_output(&mesh, 0, meshes)?; meshes.add(item.id, mesh); }
         }
         Err(error) => {
             router.record_unsupported_item(item.ifc_type.clone());
@@ -129,4 +159,16 @@ fn plain(item: &DecodedEntity, depth: usize, router: &GeometryRouter, decoder: &
             let _ = error;
         }
     }
+    Ok(())
+}
+
+fn admit_output(mesh: &crate::Mesh, uv_len: usize, meshes: &mut SubMeshCollection) -> Result<()> {
+    if !resource::is_active() { return Ok(()) }
+    let bytes = resource::mesh::MeshLengths::of(mesh).bytes().map_err(|_| resource::overflow())?;
+    let uv_bytes = uv_len.checked_mul(4).and_then(|n| u64::try_from(n).ok()).ok_or_else(resource::overflow)?;
+    let bytes = bytes.checked_add(uv_bytes).and_then(|n| n.checked_add(std::mem::size_of::<crate::SubMesh>() as u64))
+        .ok_or_else(resource::overflow)?;
+    resource::charge(Cost { output_bytes: bytes, live_bytes: bytes, ..Cost::default() })?.retain();
+    resource::reserve_headers(&mut meshes.sub_meshes, 1)?.retain();
+    Ok(())
 }

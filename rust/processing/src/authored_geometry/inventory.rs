@@ -14,17 +14,16 @@ pub(super) struct Inventory {
 
 pub(super) fn inventory(content: &[u8], ids: Option<&HashSet<u32>>) -> Inventory {
     let mut decoder = EntityDecoder::with_index(content, build_entity_index(content));
-    collect(&mut decoder, ids, Admission::ScannedRecord)
+    collect(&mut decoder, content, ids, Admission::ScannedRecord)
 }
 
-pub(super) fn inventory_decoder(decoder: &mut EntityDecoder<'_>, ids: Option<&HashSet<u32>>) -> Inventory {
-    collect(decoder, ids, Admission::CanonicalDecoder)
+pub(super) fn inventory_decoder(decoder: &mut EntityDecoder<'_>, content: &[u8], ids: Option<&HashSet<u32>>) -> Inventory {
+    collect(decoder, content, ids, Admission::CanonicalDecoder)
 }
 
 #[derive(Clone, Copy)]
 enum Admission { ScannedRecord, CanonicalDecoder }
-fn collect(decoder: &mut EntityDecoder<'_>, ids: Option<&HashSet<u32>>, admission: Admission) -> Inventory {
-    let content = decoder.content;
+fn collect(decoder: &mut EntityDecoder<'_>, content: &[u8], ids: Option<&HashSet<u32>>, admission: Admission) -> Inventory {
     let mut result = Inventory { products: BTreeSet::new(), openings: BTreeMap::new(),
         opening_relationships_verified: true, diagnostics: Vec::new() };
     let mut scanner = EntityScanner::new(content);

@@ -17,9 +17,9 @@ pub fn plan_authored_geometry(content: &[u8], ids: Option<&HashSet<u32>>) -> Aut
     assemble(views, inventory, ids)
 }
 
-pub(super) fn plan_decoder(decoder: &mut ifc_lite_core::EntityDecoder<'_>) -> AuthoredGeometryPlan {
-    let views = crate::analytic_export::extract_analytic_quantity_sources_from_decoder(decoder);
-    let inventory = super::inventory::inventory_decoder(decoder, None);
+pub(super) fn plan_decoder(decoder: &mut ifc_lite_core::EntityDecoder<'_>, content: &[u8]) -> AuthoredGeometryPlan {
+    let views = crate::analytic_export::extract_analytic_quantity_sources_from_decoder(decoder, content);
+    let inventory = super::inventory::inventory_decoder(decoder, content, None);
     assemble(views, inventory, None)
 }
 

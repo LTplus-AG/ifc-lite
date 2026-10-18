@@ -1,0 +1,62 @@
+{
+  "source": "93110c5a45c56ec82348d50748346aa2b33dcdea",
+  "state": "TERMINAL_FAILED_COMPILATION",
+  "exit_code": 101,
+  "fixture_fetch": {
+    "fetched": 182,
+    "skipped": 0,
+    "errors": 0
+  },
+  "diagnostics": [
+    "E0616 analytic_export/walk.rs:58 private decoder.content",
+    "E0616 authored_geometry/inventory.rs:27 private decoder.content"
+  ],
+  "runtime_tests_executed": false,
+  "source_unchanged": true,
+  "output_hash_verified": true,
+  "correction": "Borrow already validated SourceBundle bytes through private shared admission seams; no new public decoder accessor, no source copy or cache/index rebuild. Also correct the same illegal field access in prewarm test helper.",
+  "corrected_source_syntax_only": [
+    {
+      "path": "rust/processing/src/analytic_export.rs",
+      "sha256": "819a1e23fd8ebf1a9dcd81440b28e0e252b7218af178f6a9144ebd5c2284328f",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/analytic_export/walk.rs",
+      "sha256": "6dfdf3fd0909ed26da94f8c06387f53d6c18bb09f1d56b11082fac9d0af218ac",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/analytic_export/walk/entry.rs",
+      "sha256": "047dbd954d5526f39a90babf1d68f709485164f95b80fecd242560ad4a763e22",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/bound.rs",
+      "sha256": "cb9235de18ef6177ad404b740d9727781f87cfbb82a53471c07527cd1f48afcc",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/inventory.rs",
+      "sha256": "911db3c65e2a66fa213e40e6c36fc67217e6aac878c8acbb4807a933f941350f",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/planning.rs",
+      "sha256": "e079042930f09459dff51962a4b724bc02ccdab2db805a360e5a27846ff83a53",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/tests/retained_admission_policy.rs",
+      "sha256": "121c0ebd6dc152c3e6d63ac9d533f78d68ebfc0ebdb2f8c03dac966aabcf2349",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    }
+  ]
+}

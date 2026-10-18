@@ -53,8 +53,8 @@ fn standalone_duplicate_products_keep_scanned_definitions_and_last_instance() {
     assert_eq!(openings(&plan), [(910, 920), (910, 921)]);
 }
 
-fn prewarm_first(decoder: &mut EntityDecoder<'_>, id: u32) {
-    let mut scanner = EntityScanner::new(decoder.content);
+fn prewarm_first(decoder: &mut EntityDecoder<'_>, content: &[u8], id: u32) {
+    let mut scanner = EntityScanner::new(content);
     while let Some((candidate, _, start, end)) = scanner.next_entity() {
         if candidate == id {
             decoder.decode_at_with_id(id, start, end).unwrap();
@@ -79,8 +79,8 @@ fn bound_duplicate_products_and_links_use_actual_factory_cache_without_replaying
     // by the fresh-worker last-record policy during bound admission.
     let warm_context = model.snapshot(OwnedMeshProductionData::default());
     let mut warm = source.decoder();
-    prewarm_first(&mut warm, 31);
-    prewarm_first(&mut warm, 910);
+    prewarm_first(&mut warm, source.bytes(), 31);
+    prewarm_first(&mut warm, source.bytes(), 910);
     let warm_plan = warm_context.admit_authored_plan(&mut warm).unwrap();
     assert_eq!(solids(warm_plan.plan()), [12]);
     assert_eq!(openings(warm_plan.plan()), [(910, 920)]);

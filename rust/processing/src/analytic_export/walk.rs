@@ -53,9 +53,9 @@ use entry::extract_standalone_with_source_cache;
 fn extract_with_admission(
     decoder: &mut EntityDecoder<'_>, ids: Option<&HashSet<u32>>,
     collect_definitions: bool, collect_descriptions: bool, collect_extrusions: bool,
-    mapped_sources: &mut MappedSourceCache, admission: ProductAdmission,
+    mapped_sources: &mut MappedSourceCache, admission: ProductAdmission<'_>,
 ) -> ExtractResult {
-    let content = decoder.content;
+    let content = admission.content();
     let mut result = SweptDiskDescriptions::default();
     if !collect_definitions && !collect_extrusions && ids.is_some_and(HashSet::is_empty) {
         return ExtractResult { descriptions: result, definitions: None, extrusions: None };

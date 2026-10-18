@@ -36,31 +36,34 @@ pub(super) fn extract_standalone_with_source_cache(
     let index = build_entity_index(content);
     let mut decoder = EntityDecoder::with_index(content, index);
     extract_with_admission(&mut decoder, ids, collect_definitions, collect_descriptions,
-        collect_extrusions, mapped_sources, ProductAdmission::ScannedRecord)
+        collect_extrusions, mapped_sources, ProductAdmission::ScannedRecord(content))
 }
 
 /// Product source policy is distinct from the shared representation geometry walk.
 #[derive(Clone, Copy)]
-pub(super) enum ProductAdmission { ScannedRecord, CanonicalDecoder }
-impl ProductAdmission {
+pub(super) enum ProductAdmission<'a> { ScannedRecord(&'a [u8]), CanonicalDecoder(&'a [u8]) }
+impl<'a> ProductAdmission<'a> {
+    pub(super) fn content(self) -> &'a [u8] {
+        match self { Self::ScannedRecord(content) | Self::CanonicalDecoder(content) => content }
+    }
     pub(super) fn decode(self, decoder: &mut EntityDecoder<'_>, id: u32,
         start: usize, end: usize, seen: &mut HashSet<u32>)
         -> Option<ifc_lite_core::Result<DecodedEntity>>
     {
         match self {
-            Self::ScannedRecord => Some(decoder.decode_at_uncached(start, end)),
-            Self::CanonicalDecoder if seen.insert(id) => Some(decoder.decode_by_id(id)),
-            Self::CanonicalDecoder => None,
+            Self::ScannedRecord(_) => Some(decoder.decode_at_uncached(start, end)),
+            Self::CanonicalDecoder(_) if seen.insert(id) => Some(decoder.decode_by_id(id)),
+            Self::CanonicalDecoder(_) => None,
         }
     }
 }
 
 /// Model admission reuses the actual leased decoder, including its warm caches.
 pub(in crate::analytic_export) fn extract_with_source_cache(
-    decoder: &mut EntityDecoder<'_>, ids: Option<&HashSet<u32>>,
+    decoder: &mut EntityDecoder<'_>, content: &[u8], ids: Option<&HashSet<u32>>,
     definitions: bool, descriptions: bool, extrusions: bool,
     mapped_sources: &mut MappedSourceCache,
 ) -> ExtractResult {
     extract_with_admission(decoder, ids, definitions, descriptions, extrusions,
-        mapped_sources, ProductAdmission::CanonicalDecoder)
+        mapped_sources, ProductAdmission::CanonicalDecoder(content))
 }

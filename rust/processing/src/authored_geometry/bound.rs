@@ -22,13 +22,11 @@ impl OwnedMeshProductionContext {
         -> Result<Arc<BoundAuthoredPlan>, RetainedRefusal>
     {
         self.validate_decoder(decoder).map_err(source_error)?;
-        if self.source().is_none() {
-            return Err(RetainedRefusal::InvalidSource("authenticated source bundle required"));
-        }
+        let source = self.source().ok_or(RetainedRefusal::InvalidSource("authenticated source bundle required"))?;
         let _lease = decoder.try_execution_lease()
             .map_err(|_| RetainedRefusal::InvalidSource("authored source decoder busy"))?;
         let plan = self.authored_cache().get_or_init(|| Arc::new(BoundAuthoredPlan {
-            plan: super::planning::plan_decoder(decoder), lifecycle: self.lifecycle(),
+            plan: super::planning::plan_decoder(decoder, source.bytes()), lifecycle: self.lifecycle(),
         }));
         self.validate_decoder(decoder).map_err(source_error)?;
         Ok(Arc::clone(plan))

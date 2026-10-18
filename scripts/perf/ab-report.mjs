@@ -135,6 +135,8 @@ const report = { base: baseLabel, branch: branchLabel, fixtures: [] };
 let anyRealChange = false;
 let anyFingerprintDrift = false;
 let anyTooNoisy = false;
+let anyBelowResolution = false;
+let anyZeroBaselineIncrease = false;
 
 const lines = [];
 lines.push(`\nperf A/B  base=${baseLabel}  branch=${branchLabel}`);
@@ -175,21 +177,30 @@ for (const [path, sides] of byFixture) {
     const bMed = median(baseVals);
     const brMed = median(branchVals);
     const d = pct(brMed, bMed);
-    const noise = spreadPct(baseVals); // machine noise floor for this phase
+    const noise = bMed === 0 ? null : spreadPct(baseVals); // no relative noise floor at zero
+    const belowResolution = bMed === 0 && brMed === 0;
+    const zeroBaselineIncrease = bMed === 0 && brMed > 0;
+    if (belowResolution) anyBelowResolution = true;
+    if (zeroBaselineIncrease) anyZeroBaselineIncrease = true;
     // A change is only "real" if it exceeds the base's own spread AND a small
     // absolute floor (sub-ms phases are all noise).
-    const real = d != null && Math.abs(d) > Math.max(noise, 3) && Math.abs(brMed - bMed) >= 1;
+    const real = d != null && noise != null && Math.abs(d) > Math.max(noise, 3) && Math.abs(brMed - bMed) >= 1;
+    const direction = d == null ? null : d < 0 ? 'faster' : d > 0 ? 'slower' : 'unchanged';
     // TOTAL participates in the verdict too: a regression can be spread across
     // sub-phases that each stay under the per-phase floor while the TOTAL clears
     // it (or land in unaccounted overhead). Excluding TOTAL would let that show
     // ⛔ in the table yet still print "within noise" — a false no-regression.
     if (real) anyRealChange = true;
     if (key === 'totalMs' && noise > 15) anyTooNoisy = true;
-    const tag = real ? (d < 0 ? '  ✅' : '  ⛔') : '  ·';
+    const tag = zeroBaselineIncrease ? '  ⛔ zero baseline'
+      : belowResolution ? '  ? below resolution'
+        : real ? (direction === 'faster' ? '  ✅' : '  ⛔') : '  ·';
+    const noiseLabel = noise == null ? '—' : '±' + noise.toFixed(0) + '%';
+    const deltaLabel = d == null ? '—' : sign(d) + fmt(d) + '%';
     lines.push(
-      `    ${label.padEnd(14)} ${fmt(bMed).padStart(9)} ${fmt(brMed).padStart(9)}  ${(sign(d) + fmt(d) + '%').padStart(7)}  ${('±' + noise.toFixed(0) + '%').padStart(6)}${tag}`
+      `    ${label.padEnd(14)} ${fmt(bMed).padStart(9)} ${fmt(brMed).padStart(9)}  ${deltaLabel.padStart(7)}  ${noiseLabel.padStart(6)}${tag}`
     );
-    fx.phases.push({ phase: label, baseMedianMs: bMed, branchMedianMs: brMed, deltaPct: d, noisePct: noise, real });
+    fx.phases.push({ phase: label, baseMedianMs: bMed, branchMedianMs: brMed, deltaPct: d, noisePct: noise, real, direction });
   }
   report.fixtures.push(fx);
 }
@@ -198,8 +209,12 @@ for (const [path, sides] of byFixture) {
 lines.push('');
 if (anyFingerprintDrift) {
   lines.push('VERDICT: ⚠️  output fingerprint changed — re-pin determinism manifests and state the output change; the timing delta is not like-for-like.');
+} else if (anyZeroBaselineIncrease) {
+  lines.push('VERDICT: ⛔ blocked — a phase increased from a zero baseline; its relative delta and noise floor are undefined. This cannot certify no regression.');
 } else if (anyTooNoisy) {
   lines.push('VERDICT: ⚠️  machine too noisy (base TOTAL spread >15%) — close other load and re-run with more --iters before trusting any delta.');
+} else if (anyBelowResolution) {
+  lines.push('VERDICT: ? inconclusive — a phase is zero on both sides, below timer resolution. This cannot certify no change.');
 } else if (anyRealChange) {
   lines.push('VERDICT: a phase moved beyond the noise floor (✅ faster / ⛔ slower). Output counts matched across all rounds (mesh/vertex/triangle — NOT a byte hash; confirm byte-identity via the mesh_determinism manifest if the change could alter geometry). Cite the ✅/⛔ phases + these numbers in the PR.');
 } else {
@@ -209,7 +224,8 @@ if (anyFingerprintDrift) {
 const out = lines.join('\n');
 console.log(out);
 if (jsonOut) {
-  report.verdict = { fingerprintDrift: anyFingerprintDrift, tooNoisy: anyTooNoisy, realChange: anyRealChange };
+  report.verdict = { fingerprintDrift: anyFingerprintDrift, tooNoisy: anyTooNoisy, realChange: anyRealChange,
+    inconclusive: anyBelowResolution, zeroBaselineIncrease: anyZeroBaselineIncrease };
   writeFileSync(jsonOut, JSON.stringify(report, null, 2));
   console.log(`\n(machine-readable report → ${jsonOut})`);
 }

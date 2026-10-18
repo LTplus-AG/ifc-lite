@@ -36,6 +36,14 @@ It refuses empty, incomplete, or unpaired comparisons before printing a
 verdict. Equal mesh/vertex/triangle counts remain a count check, not proof of
 byte identity.
 
+A zero baseline has no defined relative delta or noise floor. The reporter
+preserves those values as `null`: zero on both sides is inconclusive (below
+timer resolution), while an increase from zero blocks a no-regression verdict.
+Positive-baseline noise and real-change thresholds are unchanged. The JSON
+verdict exposes `inconclusive` and `zeroBaselineIncrease`; each phase records
+its direction when the relative delta is defined. Reporter regression tests use
+synthetic input, not new performance measurements (#7912).
+
 **Instruction ceilings gate kernel and parse work only (#6982).** The
 `native-instructions` ratchet (`tests/perf-ratchets/native-instructions*.json`,
 0.05% tolerance, FZK-Haus per PR, ISSUE_129 daily) is a blocking check for

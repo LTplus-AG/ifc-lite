@@ -934,7 +934,8 @@ fn incidence_work_exhaustion_rejects_single_and_batch_atomically_7024() {
     let original = (host.positions.clone(), host.indices.clone(), cutter.positions.clone(), cutter.indices.clone());
     incidence_work::with_limit(0, || {
         let clipper = ClippingProcessor::new();
-        assert!(matches!(clipper.subtract_mesh(&host, &cutter), GroupCut::Rejected(GroupReject::BudgetTripped)));
+        let outcome = clipper.subtract_mesh(&host, &cutter);
+        assert!(matches!(outcome, GroupCut::Rejected(GroupReject::BudgetTripped)), "expected atomic budget rejection, got {outcome:?}; host triangles {}, cutter triangles {}", host.triangle_count(), cutter.triangle_count());
         assert!(budget::tripped());
         assert!(matches!(clipper.subtract_mesh_many(&host, &[&cutter]), GroupCut::Rejected(GroupReject::BudgetTripped)));
         assert_eq!((host.positions.clone(), host.indices.clone(), cutter.positions.clone(), cutter.indices.clone()), original);

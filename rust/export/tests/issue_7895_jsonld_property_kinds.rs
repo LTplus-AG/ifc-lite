@@ -105,18 +105,32 @@ fn issue_7895_filters_and_property_opt_out_preserve_their_contracts() {
 }
 
 #[test]
-fn issue_7895_classified_stream_preserves_the_existing_flat_model() {
-    use ifc_lite_processing::data_model::rows::{build_export_model, stream_export_model_with_property_kinds};
+fn issue_7895_jsonld_preserves_the_existing_flat_model() {
+    // Use only APIs present on the base, so reverting the class fix reaches
+    // behavior assertions rather than an unresolved import in this test.
+    use ifc_lite_processing::data_model::rows::{build_export_model, stream_export_model};
     let input = ambiguous_fixture();
     let before = build_export_model(&input);
     let mut rows = Vec::new();
-    let units = stream_export_model_with_property_kinds(&input, |row, kinds| {
-        assert_eq!(row.property_sets.len(), kinds.len());
-        for (set, kinds) in row.property_sets.iter().zip(kinds) {
-            assert_eq!(set.properties.len(), kinds.len());
-        }
-        rows.push(row);
-    });
-    assert_eq!(rows, before.entities, "class metadata preserves all existing flat rows");
+    let units = stream_export_model(&input, |row| rows.push(row));
+    assert_eq!(rows, before.entities, "existing flat rows remain compatible");
     assert_eq!(units, before.units);
+
+    let doc = document(&input);
+    let graph = doc["@graph"].as_array().unwrap();
+    assert_eq!(graph.len(), before.entities.len());
+    for (row, node) in before.entities.iter().zip(graph) {
+        assert_eq!(node["ifc:expressId"], row.express_id);
+        let sets = node["ifc:hasPropertySets"].as_array().unwrap();
+        assert_eq!(sets.len(), row.property_sets.len());
+        for (flat, exported) in row.property_sets.iter().zip(sets) {
+            assert_eq!(exported["ifc:name"], flat.name);
+            let properties = exported["ifc:hasProperties"].as_array().unwrap();
+            assert_eq!(properties.len(), flat.properties.len());
+            for (value, exported) in flat.properties.iter().zip(properties) {
+                assert_eq!(exported["ifc:name"], value.name);
+                assert_eq!(exported["ifc:nominalValue"], value.value);
+            }
+        }
+    }
 }

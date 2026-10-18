@@ -1,14 +1,11 @@
 # Filled finite-surface comparison
 
-Current-source follow-up: [closed-component hygiene correction](./closed-component-hygiene.json)
-addresses review comment 4304375117. A new regression fails before the fix and
-all three hygiene tests plus exact workspace Clippy pass after it. This is a
-production change: the earlier D1 artifact/browser/geometry receipts below remain
-historical and do not qualify the new source. Fresh final-source qualification
-is outstanding; performance remains NO_VERDICT and this is not merge ready.
+Completed functional validation and open performance disposition: [source-bound validation and performance disposition](./final-43ec-validation.json).
 
-Validation sections below retain their named historical source scope. The current
-disposition is recorded in the final D1A5 addendum at the end of this document.
+The current qualification uses candidate `43ecf3aa3e240e1a7c41c5c799212b60df010ebd`
+against base `b0b670f0cfd704ceb7c78a622f5730d0cd9510de`. The final addendum below
+records the actual outcomes and remaining limits. Earlier sections retain their
+named historical source scope; their failed or incomplete attempts remain unchanged.
 
 `compare_surface.py` compares recorded meshes in metres against pinned
 IfcOpenShell geometry. Its `finite-coverage-v3` contract is unoriented filled
@@ -340,7 +337,7 @@ phase counts and successful source restoration are retained. This seam witness
 does not establish exhaustive mutation coverage of the entire change. Whole-change
 reversion resumes once the module is on main.
 
-## Final D1A5 disposition: performance NO_VERDICT, not merge ready
+## Historical D1A5 disposition: performance NO_VERDICT, not merge ready
 
 `final-ba457-validation.json`, its member manifest and archive bind current
 `d1a5a415a9a97a1254cf92b381414b8521ca3311` against main
@@ -387,3 +384,21 @@ check remain. [The source review and actual targeted tests/workspace Clippy](./l
 record the exact test-only commit and logs. This does not prove public negative
 lenient-conformity routing. Historical receipts and the O3 NO_VERDICT above remain
 unchanged; no new runtime or performance qualification is claimed.
+
+## Final 43ec qualification
+
+### Completed functional qualification; performance unqualified
+
+The frozen candidate is `43ecf3aa3e240e1a7c41c5c799212b60df010ebd` against `b0b670f0cfd704ceb7c78a622f5730d0cd9510de`. The final [validation summary](./final-43ec-validation.json), [checksum manifest](./final-43ec-validation.manifest.json) and [selected archive](./final-43ec-validation.tar.gz) publish the completed evidence. This section does not qualify performance, current hosted CI, cross-platform determinism or merge readiness.
+
+Native evidence keeps its actual source labels. The original `54d` full-workspace command timed out; its completed targets plus the approved remaining-target continuation established complete target coverage. Later changed-main checks and the bounds-hygiene regression are recorded separately. The bounds regression failed before the fix, passed afterward and matches the final committed blobs. Exact workspace Clippy, the final Python wheel tests and required quick parity passed on `43ec`.
+
+Both official O3 artifact chains completed. Candidate v1 supplied the successful WASM, size and build prefix before its typecheck ENOSPC failure; that original run remains rejected. V2 refused before consumer tasks. Fresh same-source v3 completed the consumer checks and explicitly binds the successful prefix. Original failures and private audit receipts remain retained by exact hash rather than being relabelled as successful runs.
+
+Fresh candidate and base FZK captures and all five functional cases passed their actual source, native, protected-browser and cleanup gates. Root viewed the actual screenshots; screenshots alone do not prove the thin cut or a full solid. Four prior finite-surface passes transfer through exact whole-RAW and ordered comparator-input identity, with unchanged tolerance and work bound. No fresh oracle ran. SOffice retains the exact six unique owners and their entire payloads plus nonmesh metadata; only asynchronous owner arrival order changed. Its scope remains selected-payload identity and structural/render readiness, not a full-solid oracle. The earlier ordered-arrival assertion failure is preserved and explicitly identified as a root-observed failure, not a fabricated completed attester receipt.
+
+End-to-end O3 performance qualification remains pending. One opportunistic timing attempt refused its first actual host preflight before Chrome launched; it accepted zero rows. No accepted cohort or runtime verdict is inferred from completed functional checks. The engine-ceiling approval remains conditional until the required runtime qualification is satisfied. Other agents may continue ordinary work; this section makes no hold, drain or exclusivity claim.
+
+
+Historical hosted CI witnesses do not qualify current required CI. The archived review-only PRs #7730, #7731 and #7802 are closed unmerged; #7607 is the sole landing PR, and #7292 remains open until that fix lands. The test-only conflict follow-up retains both main's independent deep-chain/cycle regressions and the analytic every-link translation assertion; it changes no product source.
+

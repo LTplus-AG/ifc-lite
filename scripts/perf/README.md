@@ -14,13 +14,21 @@ off the viewer's own telemetry (below).
 
 ## Sloped coincident-sided differences (#7292)
 
-**Unmerged: historical Os worker-pool regression; restored-O3 NO_VERDICT; not ready.** The final
-`ba457b1283` correctness, official-build and consumer checks pass, and the
-completed matched interleaved browser cohort retains its original admission and
-delivered-body proof gates. Actual end-to-end cost regresses on both required
-fixtures. The independent native attribution campaign is incomplete after host
-admission refuses a later sample; it provides no completed native verdict.
-Earlier failed browser attempts and cleanup failures remain preserved.
+**Unmerged: restored-O3 functional qualification complete; runtime NO_VERDICT.**
+The current `43ec` candidate's official O3 build, approved size gate, consumers,
+Python wheel/parity, native checks and scoped browser/geometry qualifications
+pass against `b0b670`. Their actual source, completed commands and proof limits
+are published in the linked validation summary. The historical Os cohort below
+still records a real regression and is not evidence about the corrected artifact.
+A fresh opportunistic campaign refused its first host preflight before Chrome
+launched and accepted no rows. Ordinary peer jobs remain unrestricted. The
+conditional ceiling approval remains unfulfilled until corrected-O3 runtime
+qualification passes; neither functional captures nor size alone establish it.
+
+The following measured Os disposition and attribution limits are historical.
+The independent native attribution campaign was incomplete after host admission
+refused a later sample. Earlier failed browser attempts and cleanup failures
+remain preserved.
 
 The measured branch ships LLVM `Os`, while matched main ships `O3`. The
 comparison therefore combines geometry/output changes and build policy. The

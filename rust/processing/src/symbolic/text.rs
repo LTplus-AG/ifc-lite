@@ -87,7 +87,7 @@ pub(super) fn extract_text_literal(
     let text_scale = if raw_scale.is_finite() { raw_scale } else { 1.0 };
     // Only the X-axis column (m00, m10) feeds the direction — NOT the Y
     // column, which is where a mirroring MappingTarget's reflection lives
-    // (see `parse_cartesian_transformation_operator`). Glyphs therefore stay
+    // (see `resolve_mapping_target`). Glyphs therefore stay
     // readable (non-mirrored) under a mirroring transform, same as before
     // #1994: Axis1 is unaffected by an Axis2 mirror by construction, so this
     // is not a special case — it falls out of reading only the X column.

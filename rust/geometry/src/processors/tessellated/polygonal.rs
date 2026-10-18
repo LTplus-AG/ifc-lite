@@ -7,6 +7,7 @@ use crate::{Error, Mesh, Point3, Result, TessellationQuality};
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use crate::router::GeometryProcessor;
+use super::super::advanced_face::note_face_refused;
 
 /// Handles IfcPolygonalFaceSet - explicit polygon meshes that need triangulation
 /// Unlike IfcTriangulatedFaceSet, faces can be arbitrary polygons (not just triangles)
@@ -103,7 +104,16 @@ impl PolygonalFaceSetProcessor {
                 .as_entity_ref()
                 .ok_or_else(|| Error::geometry("Expected entity reference for face".to_string()))?;
 
-            let face_entity = decoder.decode_by_id(face_id)?;
+            let face_entity = match decoder.decode_by_id(face_id) {
+                Ok(face) => face,
+                Err(_) if decoder.get_raw_bytes(face_id).is_none() => {
+                    // The referenced face has no source record (#7779). Its
+                    // subtype is unknowable, so report the declared base type.
+                    note_face_refused(&IfcType::IfcIndexedPolygonalFace);
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
 
             // IfcIndexedPolygonalFace has CoordIndex at attribute 0
             // IfcIndexedPolygonalFaceWithVoids has CoordIndex at 0 and InnerCoordIndices at 1

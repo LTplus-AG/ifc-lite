@@ -51,16 +51,16 @@
       "bytes": 782
     },
     "c6_data_model_synthetic:attributes": {
-      "fnv1a64": "7c14eb1573ca8b26",
-      "bytes": 3359
+      "fnv1a64": "294ed3bd798314ab",
+      "bytes": 3939
     },
     "c6_data_model_synthetic:inherit": {
-      "fnv1a64": "fdadba9b53596fab",
-      "bytes": 4490
+      "fnv1a64": "014450f746f04ace",
+      "bytes": 6230
     },
     "c6_data_model_synthetic:inherit+attributes": {
-      "fnv1a64": "1150ed59659e0926",
-      "bytes": 5009
+      "fnv1a64": "6fc8f263bc20393d",
+      "bytes": 6749
     },
     "duplex:attributes": {
       "fnv1a64": "335f61376f71b345",

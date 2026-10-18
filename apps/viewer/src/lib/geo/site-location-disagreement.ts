@@ -37,7 +37,7 @@ export function readSiteLocationReference(store: IfcDataStore | undefined): Site
   const latitude = angle(site?.attributes?.[9], 90);
   const longitude = angle(site?.attributes?.[10], 180);
   if (!latitude || !longitude || (latitude.degrees === 0 && longitude.degrees === 0)) return undefined;
-  const origin = resolveProductOriginMeters(store, ids[0]);
+  const origin = resolveProductOriginMeters(store, ids[0], { strictDirections: true });
   if (!origin) return undefined;
   const radians = Math.PI / 180;
   // Half a quantum on each axis. Latitude bounds the metre length of a second

@@ -153,3 +153,21 @@ fn mint_avoids_collisions_with_emitted_pending_and_local() {
     let third = minter.mint("y", "m2", &empty, &also);
     assert!(!also.contains(&third));
 }
+
+/// F4 M-export-b (CORE-1, CORE-8, CORE-10, CORE-16): the merge's head and
+/// attribute reads go through core's `StepRecord`, so a comment is trivia and
+/// a name is decoded once, in one funnel.
+#[test]
+fn head_and_attribute_reads_are_trivia_aware() {
+    use super::super::spatial::{entity_name, nth_attr, storey_elevation};
+    assert_eq!(entity_type_upper(b"#1= /* ( */ ifcwall /* x */ ('g',$);").as_deref(), Some("IFCWALL"));
+    assert_eq!(entity_type_upper(b"#1=(IFCA() IFCB());"), None);
+    // The attribute list is the first `(` outside a comment, not the first `(`.
+    let line = "#7=/* ( */IFCBUILDINGSTOREY('g',$,'Caf\\X2\\00E9\\X0\\ ''A''',$,$,$,$,$,.ELEMENT.,3.5);";
+    assert_eq!(nth_attr(line, 0), Some("'g'"));
+    assert_eq!(entity_name(line).as_deref(), Some("caf\u{e9} 'a'"));
+    assert_eq!(storey_elevation(line), Some(3.5));
+    assert_eq!(storey_elevation(&line.replace("3.5", "1.E400")), None);
+    assert_eq!(entity_name("#1=IFCX('g',$,$,$);"), None);
+    assert_eq!(entity_name("#1=IFCX('g',$,'$',$);").as_deref(), Some("$"));
+}

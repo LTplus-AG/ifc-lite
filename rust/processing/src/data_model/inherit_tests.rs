@@ -7,7 +7,7 @@
 //! a future change has to argue with the name, not just the assertion.
 
 use super::merge_inherited;
-use crate::model::{PropValue, PropertySet, QuantitySet, QuantityValue, ValueKind};
+use crate::data_model::rows::{PropValue, PropertySet, QuantitySet, QuantityValue, ValueKind};
 
 fn prop(name: &str, value: &str) -> PropValue {
     PropValue {

@@ -67,7 +67,7 @@ export function buildTreeForGrouping(
     return buildIfcTypeTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, geometryReadyModelIds, treeOverlay);
   }
   if (groupingMode === 'material') {
-    return buildMaterialTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, geometryReadyModelIds, materialSourceStores);
+    return buildMaterialTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, geometryReadyModelIds, materialSourceStores, treeOverlay);
   }
   if (groupingMode === 'presentation-layers') {
     // Curve-only annotations render in the symbolic overlay rather than meshes.

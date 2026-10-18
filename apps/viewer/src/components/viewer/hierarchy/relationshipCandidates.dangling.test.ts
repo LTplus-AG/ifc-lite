@@ -17,6 +17,7 @@ import {
   buildUnifiedStoreys, getUnifiedStoreyElements,
 } from './treeDataBuilder.js';
 import type { TreeNode } from './types.js';
+import { buildTreeForGrouping } from './revealGlobalId.js';
 import { buildGroupTree } from './groupTreeBuilder.js';
 
 // #7890: relationship candidates are file supplied, whereas federation
@@ -138,6 +139,36 @@ for (const count of [1, 2]) {
           .getRelated(6, RelationshipType.DefinesByType, 'forward'), [5, 8, 2035],
         'consumer filtering leaves the raw relationship evidence intact');
       }
+    });
+
+    test(`#7890 material grouping excludes tombstoned users with ${count} ${phase} model(s)`, async () => {
+      const models = await installModels(count, complete);
+      const views = new Map<string, MutablePropertyView>();
+      // Local IDs overlap across models: deleting one model's wall cannot
+      // suppress a live wall in the other model's material action.
+      const deletedModelId = models.keys().next().value;
+      assert.ok(deletedModelId);
+      const view = new MutablePropertyView(null, deletedModelId);
+      view.deleteEntity(5);
+      views.set(deletedModelId, view);
+      useViewerStore.setState({ mutationViews: views });
+      const nodes = buildTreeForGrouping('material', models, null, expanded, count > 1,
+        [], 'elevation-desc', new Set(globalIds(models, [5, 8])), new Set(), [], 'all',
+        complete ? new Set(models.keys()) : new Set(), new Map(), views);
+      assert.equal(nodes.length, count);
+      for (const modelId of models.keys()) {
+        const material = nodes.find(node => node.modelId === modelId);
+        assert.ok(material);
+        const expected = modelId === deletedModelId ? [8] : [5, 8];
+        assert.deepEqual(material.expressIds, expected);
+        assert.deepEqual(material.globalIds,
+          expected.map(id => useViewerStore.getState().toGlobalId(modelId, id)));
+        assert.equal(material.elementCount, expected.length);
+        assert.deepEqual(buildMaterialUsageIndex(models.get(modelId)!.ifcDataStore!)
+          .get(7)?.entries.map(entry => entry.entityId), [5, 8, 2035],
+        'overlay filtering does not rewrite raw source material associations');
+      }
+      assertMissingUnpublished(models, nodes);
     });
 
     test(`#7890 materials reject missing candidates with ${count} ${phase} model(s)`, async () => {
@@ -323,5 +354,21 @@ for (const count of [1, 2]) {
       assert.equal(nodes.some(node => node.modelId === modelId && node.expressIds.includes(5)), false);
     }
     assertMissingUnpublished(models, nodes);
+  });
+}
+
+for (const overlayKey of ['__legacy__', 'legacy']) {
+  test(`#7890 legacy material rows honor tombstones under ${overlayKey}`, async () => {
+    const models = await installModels(1);
+    const store = [...models.values()][0].ifcDataStore;
+    assert.ok(store);
+    const view = new MutablePropertyView(null, overlayKey);
+    view.deleteEntity(5);
+    const nodes = buildMaterialTree(new Map(), store, expanded, false,
+      undefined, undefined, undefined, key => key === overlayKey ? view : undefined);
+    assert.equal(nodes.length, 1);
+    assert.deepEqual(nodes[0].expressIds, [8]);
+    assert.deepEqual(nodes[0].globalIds, [8]);
+    assert.equal(nodes[0].elementCount, 1);
   });
 }

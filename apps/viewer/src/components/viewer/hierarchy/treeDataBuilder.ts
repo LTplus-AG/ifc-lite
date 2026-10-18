@@ -990,6 +990,7 @@ export function buildMaterialTree(
   geometricIds?: Set<number>,
   geometryReadyModelIds?: ReadonlySet<string>,
   effectiveStores?: ReadonlyMap<string, IfcDataStore>,
+  overlay?: TreeOverlay,
 ): TreeNode[] {
   interface MatEntry {
     name: string;
@@ -1006,7 +1007,7 @@ export function buildMaterialTree(
       ? ownerModelIds.some((owner) => geometryReadyModelIds.has(owner))
       : !!geometricIds && geometricIds.size > 0;
     const usage = buildMaterialUsageIndex(dataStore);
-    const owns = entityOwnership(dataStore);
+    const owns = entityOwnership(dataStore, overlayViewFor(overlay, modelId));
     for (const u of usage.values()) {
       const key = JSON.stringify([modelId, u.name]);
       let entry = byName.get(key);

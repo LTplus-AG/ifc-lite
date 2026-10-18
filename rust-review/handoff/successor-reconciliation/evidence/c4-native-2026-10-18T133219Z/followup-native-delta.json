@@ -1,0 +1,335 @@
+{
+  "scope": "C4-4b corrected r2/r3/r4 bounded native qualification followup only; no production/source/ref changes, no benchmark/publication/acceptance",
+  "canonicalStateEdited": false,
+  "workspaceClippyRepeated": false,
+  "prefixes": {
+    "r2": {
+      "workspaceClippySummary": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/r2-qualified-summary.json",
+      "workspaceClippySummarySha256": "0dc7b648abf2229fe64d5f6197bd3ac8fd2f202d06a4b343a632d79ea84aa701",
+      "behaviorControlsEvidence": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/r2-behavior-controls-from-workspace.json",
+      "behaviorControlsEvidenceSha256": "86608903fb097ed20fbcf76ea76d5d0a88662b234a456ab2b8816d7cff9ab2d0",
+      "worker": "f4e1ce5c-3ec2-4318-9b82-5e31f4c5df36",
+      "workerTerminalSha256": "245743ad9fc61e97df0879d34e9f36be2b45049203bfe97c71d5734042270963",
+      "source": {
+        "commit": "d3e281e1a234f8bca23cd59fb8ddf85926264a2f",
+        "tree": "676d937b8b03f65f1aa2ab23f43e49f015ebe9bf",
+        "clean": true,
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "toolchainInputs": {
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+          "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+          "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+          "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+        }
+      },
+      "sourceUnchanged": true,
+      "exitCode": 0,
+      "quiescenceReceiptSha256": "d84ef740bf41839d9c2427400e58e9d0ae1ea3a89726821f92e5d4fd9e8b06dd",
+      "report": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/r2-missing-run/report.json",
+      "reportSha256": "222f1f4bb0f119e72b276621440fdc8aa8f4aa4b4a48a931725063dae1cdff66",
+      "sourceGates": [
+        {
+          "name": "check-rust-api-surface.mjs",
+          "argv": [
+            "node",
+            "scripts/check-rust-api-surface.mjs"
+          ],
+          "exitCode": 0,
+          "logSha256": "28985194161cb69a96fe39232e677930b1982792cf78d9ee085c65c4dead1adb"
+        },
+        {
+          "name": "check-refwalk-guards.mjs",
+          "argv": [
+            "node",
+            "scripts/check-refwalk-guards.mjs"
+          ],
+          "exitCode": 0,
+          "logSha256": "184929400d524d8b3e7dfe9a54729fb6b026346b7c32a325730398e87684ac97"
+        },
+        {
+          "name": "check-test-wiring.mjs",
+          "argv": [
+            "node",
+            "scripts/check-test-wiring.mjs"
+          ],
+          "exitCode": 0,
+          "logSha256": "3370f2fdc0825a60c44251b747df1ac3754ceb180d2b87a8e669e76b682388c1"
+        },
+        {
+          "name": "check-rust-source-text-assertions.mjs",
+          "argv": [
+            "node",
+            "scripts/check-rust-source-text-assertions.mjs"
+          ],
+          "exitCode": 0,
+          "logSha256": "a5b9f0edf8830d540c0b3374f49cc32aceb753413620906f47749224e3bfb58e"
+        },
+        {
+          "name": "check-float-sort-comparators.mjs",
+          "argv": [
+            "node",
+            "scripts/check-float-sort-comparators.mjs"
+          ],
+          "exitCode": 0,
+          "logSha256": "4b4d2b0020aced8b6e7bb3d35fd29b10a3683f3eb5cd6b9f8deee13c15b30797"
+        }
+      ],
+      "corpus": {
+        "cases": 56,
+        "sha256": "1ac321114af134ab7b19f6ca4e73c2aceb727546df5aa0b9ef2acbce1db829bf",
+        "baselineSha256": "1ac321114af134ab7b19f6ca4e73c2aceb727546df5aa0b9ef2acbce1db829bf"
+      },
+      "fixtures": {
+        "entries": 182,
+        "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3"
+      },
+      "guardRecords": 9,
+      "toolsBeforeAfterEqual": true,
+      "storageFinally": [
+        {
+          "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r2",
+          "freeBytes": 798440517632,
+          "freeInodes": 116117497
+        },
+        {
+          "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/r2-missing-run",
+          "freeBytes": 798440517632,
+          "freeInodes": 116117497
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/3a9c872d829495e0751f",
+          "freeBytes": 798440517632,
+          "freeInodes": 116117497
+        },
+        {
+          "path": "/home/louistrue/build-workers/toolchains/cargo",
+          "freeBytes": 798440517632,
+          "freeInodes": 116117497
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 798440517632,
+          "freeInodes": 116117497
+        }
+      ],
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/3a9c872d829495e0751f",
+        "CARGO_HOME": "/home/louistrue/build-workers/toolchains/cargo",
+        "RUSTUP_HOME": "/home/louistrue/build-workers/toolchains/rustup",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null
+      },
+      "ownershipOracle": {
+        "inverse": {
+          "name": "ownership-clone-inverse",
+          "argv": [
+            "cargo",
+            "test",
+            "-p",
+            "ifc-lite-processing",
+            "--lib",
+            "processor::resolve::prepass::tests::issue_7782_prepass_conversion_moves_parsed_material_allocations",
+            "--",
+            "--exact",
+            "--nocapture"
+          ],
+          "exitCode": 101,
+          "logSha256": "426deaab90b877ca95d6c3b6edeb88ae115624cd23f5e6227e9dc60044ec6112",
+          "summaries": [
+            [
+              "0",
+              "1"
+            ]
+          ],
+          "verdict": "OBSERVED_WORK_OWNERSHIP_ONLY"
+        },
+        "restoredPositive": {
+          "name": "restored-parsed-positive",
+          "argv": [
+            "cargo",
+            "test",
+            "-p",
+            "ifc-lite-processing",
+            "--lib",
+            "processor::resolve::prepass::tests::issue_7782_",
+            "--",
+            "--nocapture"
+          ],
+          "exitCode": 0,
+          "logSha256": "77b3dbaeb7155fe83f7fe848751c72fb66c5c6c2b858eb8d1c08f2ab81092a9a",
+          "summaries": [
+            [
+              "2",
+              "0"
+            ]
+          ]
+        },
+        "exactSourceRestored": true,
+        "originalSourceSha256": "701f578971075bae43b981553ccd2abea44803d9e70937ade9e219173a85d43e",
+        "actualMutationSha256": "aeee43c471f186abc430926a157ffc514572768ca659c8421705b4ed9f3b49bd",
+        "scope": "WORK/allocation ownership only. Equal parsed values and distinct map allocation assertion; no destructor timing, geometry or whole-production-revert claim."
+      }
+    },
+    "r3": {
+      "workspaceClippySummary": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/r3-qualified-summary.json",
+      "workspaceClippySummarySha256": "2f8351028e2add207daf69e8e0884faa01481fabb19bab2b1301b29d63fa28c4",
+      "behaviorControlsEvidence": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/r3-behavior-controls-from-workspace.json",
+      "behaviorControlsEvidenceSha256": "a344f98eed9b1f848760037eec4c8bc1e96d1316719712adfbb7b2aa1c190bd2",
+      "worker": "1a40479e-2f8d-400a-9590-e6b4cdaeaf84",
+      "workerTerminalSha256": "25d1a398980c9f24652860cbcdca78e2c0e1019644134cabd0714b1e73c70117",
+      "source": {
+        "commit": "c7cf41e902c20a99a828e952151e981f3cc2d048",
+        "tree": "672ea8c55c8ae5426a1d1b833981f56489bae290",
+        "clean": true,
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "toolchainInputs": {
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+          "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+          "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+          "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+        }
+      },
+      "sourceUnchanged": true,
+      "exitCode": 0,
+      "quiescenceReceiptSha256": "660f8bb85cc1d5d8b3b2ee3e8edbef57a71ca07cf39cbfc22fdfea48812ff429",
+      "report": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/r3-missing-run/report.json",
+      "reportSha256": "829611e43132252260b6280e5fa3fc965a6b4596603cf19e3ea8b4817856738f",
+      "sourceGates": [
+        {
+          "name": "check-rust-api-surface.mjs",
+          "argv": [
+            "node",
+            "scripts/check-rust-api-surface.mjs"
+          ],
+          "exitCode": 0,
+          "logSha256": "28985194161cb69a96fe39232e677930b1982792cf78d9ee085c65c4dead1adb"
+        },
+        {
+          "name": "check-refwalk-guards.mjs",
+          "argv": [
+            "node",
+            "scripts/check-refwalk-guards.mjs"
+          ],
+          "exitCode": 0,
+          "logSha256": "184929400d524d8b3e7dfe9a54729fb6b026346b7c32a325730398e87684ac97"
+        },
+        {
+          "name": "check-test-wiring.mjs",
+          "argv": [
+            "node",
+            "scripts/check-test-wiring.mjs"
+          ],
+          "exitCode": 0,
+          "logSha256": "3370f2fdc0825a60c44251b747df1ac3754ceb180d2b87a8e669e76b682388c1"
+        },
+        {
+          "name": "check-rust-source-text-assertions.mjs",
+          "argv": [
+            "node",
+            "scripts/check-rust-source-text-assertions.mjs"
+          ],
+          "exitCode": 0,
+          "logSha256": "a5b9f0edf8830d540c0b3374f49cc32aceb753413620906f47749224e3bfb58e"
+        },
+        {
+          "name": "check-float-sort-comparators.mjs",
+          "argv": [
+            "node",
+            "scripts/check-float-sort-comparators.mjs"
+          ],
+          "exitCode": 0,
+          "logSha256": "4b4d2b0020aced8b6e7bb3d35fd29b10a3683f3eb5cd6b9f8deee13c15b30797"
+        }
+      ],
+      "corpus": {
+        "cases": 56,
+        "sha256": "1ac321114af134ab7b19f6ca4e73c2aceb727546df5aa0b9ef2acbce1db829bf",
+        "baselineSha256": "1ac321114af134ab7b19f6ca4e73c2aceb727546df5aa0b9ef2acbce1db829bf"
+      },
+      "fixtures": {
+        "entries": 182,
+        "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3"
+      },
+      "guardRecords": 7,
+      "toolsBeforeAfterEqual": true,
+      "storageFinally": [
+        {
+          "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r3",
+          "freeBytes": 798458576896,
+          "freeInodes": 116117521
+        },
+        {
+          "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/r3-missing-run",
+          "freeBytes": 798458576896,
+          "freeInodes": 116117521
+        },
+        {
+          "path": "/home/louistrue/build-workers/worker-state/targets/899d43786f3f1d14e1ff",
+          "freeBytes": 798458576896,
+          "freeInodes": 116117521
+        },
+        {
+          "path": "/home/louistrue/build-workers/toolchains/cargo",
+          "freeBytes": 798458576896,
+          "freeInodes": 116117521
+        },
+        {
+          "path": "/tmp",
+          "freeBytes": 798458576896,
+          "freeInodes": 116117521
+        }
+      ],
+      "environment": {
+        "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/targets/899d43786f3f1d14e1ff",
+        "CARGO_HOME": "/home/louistrue/build-workers/toolchains/cargo",
+        "RUSTUP_HOME": "/home/louistrue/build-workers/toolchains/rustup",
+        "CARGO_BUILD_JOBS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "RUST_TEST_THREADS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": null,
+        "CARGO_PROFILE_TEST_DEBUG": null,
+        "CARGO_INCREMENTAL": null
+      }
+    },
+    "r4": {
+      "workspaceClippySummary": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/r4-qualified-summary.json",
+      "workspaceClippySummarySha256": "6b23409591c334ee01d71dcbffc8c3b8dbdad59d117376dd89f405dbfd0af8fa",
+      "behaviorControlsEvidence": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/r4-behavior-controls-from-workspace.json",
+      "behaviorControlsEvidenceSha256": "7c63eccfaa1630b8b7c3ef2ca55353544cd3e8e2b2fe5d41b7bcf12a0c2c6db2",
+      "worker": "a20de8e4-9ea9-41af-b7ff-a75b964283a3",
+      "workerTerminalSha256": "5dfa76da1fbfb29fcb543358ff083713bee5e32416e03fecf3a2bdd9363b65ea",
+      "source": {
+        "commit": "12157693a84d9495fafd14a0ade6a5939bf3e0b8",
+        "tree": "4c512c747f2aa6f364200f2415a609c1ce425248",
+        "clean": true,
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "toolchainInputs": {
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+          "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+          "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+          "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+        }
+      },
+      "sourceUnchanged": true,
+      "exitCode": 1,
+      "quiescenceReceiptSha256": "4eaea06bac56c3e236bec7daae69df91b0363d6b42c807e9f896c50e26836b7a",
+      "sourceGates": "UNRUN",
+      "corpus": "UNRUN",
+      "reason": "Managed guard thermal refusal above90C before driver,0 commands; no retry",
+      "commandsExecuted": 0
+    }
+  },
+  "remaining": [
+    "r4 five source gates and56-case native output/event/diagnostic corpus: UNRUN due preserved thermal refusal. Requires legitimate later ordinary admission; no hot retry or new job submitted.",
+    "WASM/Python/browser/arm/parity and full final consumer qualification remain outside this native allocation. No proof projected across prefixes.",
+    "Original V7 six IR failures/seven browser TOTAL failures/native noise and zero-baseline inconclusive verdicts remain binding; Q1 is not proven full cause. New balanced cohort and all adjacent verdicts remain pending parent authorization.",
+    "Mechanical whole-production revert is not claimed by the scoped clone WORK/ownership oracle. No baseline or snapshot repins.",
+    "Final current-main/public corrected C2-4 mapping and publication/merge remain parent-owned."
+  ],
+  "buildSettingsCaveat": "Reused exact private v6 per-source targets and inherited Cargo profile; no flags/target deletion/workspace repetition. CARGO_PROFILE_DEV_DEBUG/CARGO_PROFILE_TEST_DEBUG/CARGO_INCREMENTAL were unset in actual v6 and missing-work environments, so a forced three-lean-zero guard is NOT claimed. Targeted package commands performed their required Cargo dependency-feature builds.",
+  "driverSha256": "4d090737133375c43e6475742d4db9641120a55c5f82baac53d405fc1d4e9c6c"
+}

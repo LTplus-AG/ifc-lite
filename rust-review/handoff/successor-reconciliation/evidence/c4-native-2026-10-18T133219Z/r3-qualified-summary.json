@@ -1,0 +1,23 @@
+{
+  "pin": "c7cf41e902c20a99a828e952151e981f3cc2d048",
+  "worker": "6778bf08-c313-42df-adb3-b288fa064894",
+  "originalSession": 13240,
+  "exitCode": 0,
+  "sourceUnchanged": true,
+  "workspace": {
+    "passed": 5479,
+    "failed": 0,
+    "ignored": 47,
+    "measured": 0,
+    "filteredOut": 0
+  },
+  "harnessSummaries": 365,
+  "exactClippyExitCode": 0,
+  "fixturesBeforeAfter": {
+    "entries": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3"
+  },
+  "rawWorkspaceSha256": "cef48139126117f4db338695e566ade27cc4732e2a8b300fbce29030170092fe",
+  "rawClippySha256": "5ee924730a131fdc71b13a4ef80e490af145fe3651306f1d4612aa49aaccaa4c",
+  "scope": "Exact native workspace+clippy only; other requirements separate"
+}

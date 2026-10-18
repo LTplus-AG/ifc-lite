@@ -1,0 +1,215 @@
+{
+  "files": [
+    {
+      "path": "FOLLOWUP-RESULT.md",
+      "sha256": "c1ca5a20dc2dc10e92363964cc5042cf252ba87604ca8ee87e42a07207edde68",
+      "size": 3535
+    },
+    {
+      "path": "followup-native-delta.json",
+      "sha256": "0bda18f6993331bb97267f0185f03f1f61faddfcc525b1897e13b8b21d1edd52",
+      "size": 15648
+    },
+    {
+      "path": "missing-followup-allocations.json",
+      "sha256": "728094fe80c7e824dea82ff8488c5a35606abf1d12d8cdf8bbdd606f5c8289b9",
+      "size": 3658
+    },
+    {
+      "path": "missing-jobs-owned-processes-inflight.json",
+      "sha256": "772ca4bc8efa4f9a8c3b5a9955f33d042cc721a1cb2acf2f2ad750d5281fbc3c",
+      "size": 12665
+    },
+    {
+      "path": "original-workspace-owned-quiescence.json",
+      "sha256": "d0a802ddfc752efcdf7141664388b033a15150394acec9cfdc9cfcfc4a2ea2f4",
+      "size": 191
+    },
+    {
+      "path": "r2-missing-authoritative-worker-terminal.json",
+      "sha256": "245743ad9fc61e97df0879d34e9f36be2b45049203bfe97c71d5734042270963",
+      "size": 3986
+    },
+    {
+      "path": "r2-missing-controller.log",
+      "sha256": "93ea9a858415bf24e14b58dc5e9d7e13d88876353e4f8a7c37eb4cc076730c27",
+      "size": 937
+    },
+    {
+      "path": "r2-missing-original-launch.json",
+      "sha256": "2b839018914e34153feb118cfcb12fe524e16bc5a6162d6033534fe2f6449ffe",
+      "size": 382
+    },
+    {
+      "path": "r2-missing-owned-quiescence.json",
+      "sha256": "d84ef740bf41839d9c2427400e58e9d0ae1ea3a89726821f92e5d4fd9e8b06dd",
+      "size": 790
+    },
+    {
+      "path": "r2-missing-run/actual-inverse.patch",
+      "sha256": "aeee43c471f186abc430926a157ffc514572768ca659c8421705b4ed9f3b49bd",
+      "size": 703
+    },
+    {
+      "path": "r2-missing-run/check-float-sort-comparators.mjs.log",
+      "sha256": "4b4d2b0020aced8b6e7bb3d35fd29b10a3683f3eb5cd6b9f8deee13c15b30797",
+      "size": 95
+    },
+    {
+      "path": "r2-missing-run/check-refwalk-guards.mjs.log",
+      "sha256": "184929400d524d8b3e7dfe9a54729fb6b026346b7c32a325730398e87684ac97",
+      "size": 1128
+    },
+    {
+      "path": "r2-missing-run/check-rust-api-surface.mjs.log",
+      "sha256": "28985194161cb69a96fe39232e677930b1982792cf78d9ee085c65c4dead1adb",
+      "size": 593
+    },
+    {
+      "path": "r2-missing-run/check-rust-source-text-assertions.mjs.log",
+      "sha256": "a5b9f0edf8830d540c0b3374f49cc32aceb753413620906f47749224e3bfb58e",
+      "size": 122
+    },
+    {
+      "path": "r2-missing-run/check-test-wiring.mjs.log",
+      "sha256": "3370f2fdc0825a60c44251b747df1ac3754ceb180d2b87a8e669e76b682388c1",
+      "size": 859
+    },
+    {
+      "path": "r2-missing-run/compare-corpus.log",
+      "sha256": "f767e33fb6a0e81d07c7286eec28d05a1d1e66eb926a293ba327f0de530c96a4",
+      "size": 399
+    },
+    {
+      "path": "r2-missing-run/corpus.json",
+      "sha256": "1ac321114af134ab7b19f6ca4e73c2aceb727546df5aa0b9ef2acbce1db829bf",
+      "size": 1002127
+    },
+    {
+      "path": "r2-missing-run/corpus.log",
+      "sha256": "8405f39ff54a4c3457cd0102b58e4e541c20185beae0489003bdbbd73eb2cb23",
+      "size": 40268
+    },
+    {
+      "path": "r2-missing-run/ownership-clone-inverse.log",
+      "sha256": "426deaab90b877ca95d6c3b6edeb88ae115624cd23f5e6227e9dc60044ec6112",
+      "size": 2645
+    },
+    {
+      "path": "r2-missing-run/prepass-original.rs",
+      "sha256": "701f578971075bae43b981553ccd2abea44803d9e70937ade9e219173a85d43e",
+      "size": 2477
+    },
+    {
+      "path": "r2-missing-run/report.json",
+      "sha256": "222f1f4bb0f119e72b276621440fdc8aa8f4aa4b4a48a931725063dae1cdff66",
+      "size": 21708
+    },
+    {
+      "path": "r2-missing-run/restored-parsed-positive.log",
+      "sha256": "77b3dbaeb7155fe83f7fe848751c72fb66c5c6c2b858eb8d1c08f2ab81092a9a",
+      "size": 755
+    },
+    {
+      "path": "r3-missing-authoritative-worker-terminal.json",
+      "sha256": "25d1a398980c9f24652860cbcdca78e2c0e1019644134cabd0714b1e73c70117",
+      "size": 3985
+    },
+    {
+      "path": "r3-missing-controller.log",
+      "sha256": "12447661859b26df94b67b1613886286aa16afeaa013a6bff706ba2436e873d4",
+      "size": 813
+    },
+    {
+      "path": "r3-missing-original-launch.json",
+      "sha256": "dcd5961266393c52227d6d350ce02969fcfc542da185b58fb9eba7f90e80d03e",
+      "size": 282
+    },
+    {
+      "path": "r3-missing-owned-quiescence.json",
+      "sha256": "660f8bb85cc1d5d8b3b2ee3e8edbef57a71ca07cf39cbfc22fdfea48812ff429",
+      "size": 891
+    },
+    {
+      "path": "r3-missing-run/check-float-sort-comparators.mjs.log",
+      "sha256": "4b4d2b0020aced8b6e7bb3d35fd29b10a3683f3eb5cd6b9f8deee13c15b30797",
+      "size": 95
+    },
+    {
+      "path": "r3-missing-run/check-refwalk-guards.mjs.log",
+      "sha256": "184929400d524d8b3e7dfe9a54729fb6b026346b7c32a325730398e87684ac97",
+      "size": 1128
+    },
+    {
+      "path": "r3-missing-run/check-rust-api-surface.mjs.log",
+      "sha256": "28985194161cb69a96fe39232e677930b1982792cf78d9ee085c65c4dead1adb",
+      "size": 593
+    },
+    {
+      "path": "r3-missing-run/check-rust-source-text-assertions.mjs.log",
+      "sha256": "a5b9f0edf8830d540c0b3374f49cc32aceb753413620906f47749224e3bfb58e",
+      "size": 122
+    },
+    {
+      "path": "r3-missing-run/check-test-wiring.mjs.log",
+      "sha256": "3370f2fdc0825a60c44251b747df1ac3754ceb180d2b87a8e669e76b682388c1",
+      "size": 859
+    },
+    {
+      "path": "r3-missing-run/compare-corpus.log",
+      "sha256": "f767e33fb6a0e81d07c7286eec28d05a1d1e66eb926a293ba327f0de530c96a4",
+      "size": 399
+    },
+    {
+      "path": "r3-missing-run/corpus.json",
+      "sha256": "1ac321114af134ab7b19f6ca4e73c2aceb727546df5aa0b9ef2acbce1db829bf",
+      "size": 1002127
+    },
+    {
+      "path": "r3-missing-run/corpus.log",
+      "sha256": "a2c16e119db7976e84738558612072d16aaa24da9d8f93581b06468765938d9c",
+      "size": 41705
+    },
+    {
+      "path": "r3-missing-run/report.json",
+      "sha256": "829611e43132252260b6280e5fa3fc965a6b4596603cf19e3ea8b4817856738f",
+      "size": 18158
+    },
+    {
+      "path": "r4-missing-authoritative-worker-terminal.json",
+      "sha256": "5dfa76da1fbfb29fcb543358ff083713bee5e32416e03fecf3a2bdd9363b65ea",
+      "size": 2710
+    },
+    {
+      "path": "r4-missing-controller.log",
+      "sha256": "5384e269f3c3073bc74cc861db1133f648431df90e0e122bab51d927a4a58769",
+      "size": 225
+    },
+    {
+      "path": "r4-missing-original-launch.json",
+      "sha256": "0cded2a0b6403ea1a7804364ce279c6921290423191e5b0017543dcd7c767d49",
+      "size": 281
+    },
+    {
+      "path": "r4-missing-owned-quiescence.json",
+      "sha256": "4eaea06bac56c3e236bec7daae69df91b0363d6b42c807e9f896c50e26836b7a",
+      "size": 484
+    },
+    {
+      "path": "r4-missing-terminal.json",
+      "sha256": "fd51ad2819304f27a8a5c5edc796288f0596028208e5dc4baf0362bdc89c0dcb",
+      "size": 233
+    },
+    {
+      "path": "r4-missing-thermal-refusal-worker.json",
+      "sha256": "5dfa76da1fbfb29fcb543358ff083713bee5e32416e03fecf3a2bdd9363b65ea",
+      "size": 2710
+    },
+    {
+      "path": "run-missing.py",
+      "sha256": "4d090737133375c43e6475742d4db9641120a55c5f82baac53d405fc1d4e9c6c",
+      "size": 10844
+    }
+  ],
+  "scope": "New followup evidence only; protected historical packet manifests remain separate and unchanged by this allocation"
+}

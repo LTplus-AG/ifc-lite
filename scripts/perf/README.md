@@ -40,6 +40,30 @@ fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
 A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
 
 
+## Successful raw-leaf memo (#7779)
+
+The bounded raw-success memo reuses a validated point or direction only after
+checking the current selected id, kind and immutable raw span. Decoded overlays
+and fallback results provide no memo authority. The original parser, fallback,
+refusal accounting and clear/drain behavior remain the contract.
+
+The retained base-relative native phase bands passed against both the published
+tail and earlier X3a. Selected native totals decreased on Haus and Holter, while
+ISSUE_129's selected total against the tail stayed flat and parse medians rose
+on ISSUE_129 and Holter. Pooled wall observations are separate descriptive
+statistics, with tied command-best selection limited by the retained producer
+evidence. These results do not establish an overall regression-free speedup;
+production memo hit rate remains unknown.
+
+Output evidence is one ordered whole-mesh aggregate fingerprint, not per-mesh
+or full-result identity. It excludes text metadata, material definitions, UVs,
+textures and instancing; this precision also applies to the earlier placement
+cohort. The historical duplex instruction failure and mixed wall results below
+remain unwaived. Functional WASM consumers passed, but WASM worker-pool and
+browser performance remain unknown. Lesson: preserve raw-source authority and
+measure the added key checks and storage end to end; less parser work alone
+cannot establish a speedup or replace independent phase and output checks.
+
 ## Placement consumer consistency (#7779, #7906)
 
 The frozen X3a, R2a and corrective-tail native cohort preserved mesh, vertex,

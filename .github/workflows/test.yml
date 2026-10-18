@@ -860,6 +860,13 @@ jobs:
           E2E_GPU_STRICT: '0'
         run: |
           oracle_args=(--base origin/main --ci --json)
+          # #6729: keep the newly introduced GPU pass importable and remove
+          # only its geometric visibility constraint. The paired projection
+          # witness must then assert the original wrong foreground ownership.
+          # Once the module is on main, ordinary whole-change reverts resume.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- packages/renderer/src/opaque-visibility-pass.ts | grep -Fxq 'packages/renderer/src/opaque-visibility-pass.ts'; then
+            oracle_args+=(--mutation tests/evidence/reporter-6729/visibility.oracle.patch)
+          fi
           # #7495: deleting the newly introduced report service prevents test
           # collection. Its initial qualification instead removes ONLY the
           # approved NDA digest check: wrong-digest acceptance must turn RED.

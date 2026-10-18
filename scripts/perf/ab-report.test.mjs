@@ -4,7 +4,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -25,20 +25,23 @@ const sample = (side, overrides = {}) => ({
 });
 
 function runReport(rows, extraArgs = []) {
+  const jsonl = rows.map((row) => JSON.stringify(row)).join('\n') + (rows.length ? '\n' : '');
+  return runRawJsonl(jsonl, extraArgs);
+}
+
+function runRawJsonl(jsonl, extraArgs = []) {
   const dir = mkdtempSync(join(tmpdir(), 'ab-report-test-'));
   try {
     const input = join(dir, 'runs.jsonl');
     const output = join(dir, 'report.json');
-    writeFileSync(input, rows.map((row) => JSON.stringify(row)).join('\n') + (rows.length ? '\n' : ''));
+    writeFileSync(input, jsonl);
     const result = spawnSync(process.execPath, [cli, input, '--json', output, ...extraArgs], { encoding: 'utf8' });
+    const outputExists = existsSync(output);
+    const outputText = outputExists ? readFileSync(output, 'utf8') : null;
     return {
       ...result,
-      report: (() => {
-        try { return JSON.parse(readFileSync(output, 'utf8')); } catch { return null; }
-      })(),
-      emittedJson: (() => {
-        try { return readFileSync(output, 'utf8'); } catch { return null; }
-      })(),
+      outputExists,
+      report: outputText === null ? null : JSON.parse(outputText),
     };
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -46,11 +49,14 @@ function runReport(rows, extraArgs = []) {
 }
 
 function assertRefused(rows, description) {
-  const result = runReport(rows);
+  assertRefusedResult(runReport(rows), description);
+}
+
+function assertRefusedResult(result, description) {
   assert.notEqual(result.status, 0, `${description}: expected nonzero exit; stdout=${result.stdout}`);
   assert.match(`${result.stderr}${result.stdout}`, /ab-report:.*(invalid|missing|must|expected|require|empty|unequal)/i,
     `${description}: expected actionable validation diagnostic; stderr=${result.stderr} stdout=${result.stdout}`);
-  assert.equal(result.report, null, `${description}: must not emit success JSON`);
+  assert.equal(result.outputExists, false, `${description}: must not emit success JSON`);
   assert.doesNotMatch(result.stdout, /VERDICT:/, `${description}: must not print a trusted verdict`);
 }
 
@@ -79,6 +85,14 @@ test('refuses invalid numeric values rather than silently dropping phases (#7781
   ]) {
     assertRefused([sample('base', { [field]: value }), sample('branch')], `invalid ${field}`);
   }
+});
+
+test('refuses raw JSON exponent overflow instead of JSON.stringify converting it to null (#7781)', () => {
+  const rawJsonl = [
+    '{"side":"base","path":"/synthetic/test-data/model.ifc","parseMs":1e309,"geometryMs":20,"totalMs":35,"meshes":2,"vertices":12,"triangles":4}',
+    '{"side":"branch","path":"/synthetic/test-data/model.ifc","parseMs":10,"geometryMs":20,"totalMs":35,"meshes":2,"vertices":12,"triangles":4}',
+  ].join('\n') + '\n';
+  assertRefusedResult(runRawJsonl(rawJsonl), 'raw JSON parseMs overflow');
 });
 
 test('accepts literal sides with custom display labels and retains report behavior', () => {

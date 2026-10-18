@@ -166,6 +166,16 @@ fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
 A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
 
 
+## Generated shader commentary and eager bytes (#7918)
+
+WGSL comments inside generated shader strings survive JavaScript minification
+and count against eager viewer bytes. Keep explanations in TypeScript comments
+outside the template when they do not need to reach the GPU compiler. Moving
+the orthographic visibility explanation out of its generated string restored
+the existing bundle allowance without changing any shader operation or raising
+a ceiling. The rebuilt viewer and all six GPU witnesses passed. This is a
+bundle-size correction, with no model-load or frame-time speed claim.
+
 ## Accepted eager viewer JS growth (#7759)
 
 The maintainer approved resetting only the eager viewer JS ceiling to the

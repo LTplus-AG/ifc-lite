@@ -63,3 +63,6 @@ The first-pass classification column and counts above remain historical context.
 [Five-claim review](verified-explicit-claims/REVIEW.md) supports the original concrete schema-route parity defects (PROCESSING-5/SERVER-18) and derived-context panic (PROCESSING-APP-2), based on exact merged/current source plus cited historic validation. These tests were not rerun. Energy relative precision (EXPORT-DATA-6) is supported; the original origin-loss observation retains an explicit scope question. SERVER-26 remains partial: output rows are capped, but an already reported allocation before the charge still clones long material names across repeated layers. No original finding is erased and no new feature is inferred from a suggestion.
 
 The separate [merged-C6 disposition review](merged-c6-review/REVIEW.md) confirms that the previously reported TypeAssignments membership and IFCX first-parent consumer findings survive the inspected merges. Source identity and test coverage were checked; no new runtime or performance result is claimed. C6 acceptance also retains open D47 #7895 despite #7783's automatic closure.
+
+
+Latest operational reconciliation: [2026-10-18T0628 UTC](coordinator-checkpoint-2026-10-18T0628.md), with [exact machine evidence](coordinator-checkpoint-2026-10-18T0628.json). Prior snapshots remain historical and unchanged.

@@ -2,62 +2,11 @@
 //! `EntityExtractor.extractEntity`: one record's attributes in the shape the
 //! TypeScript exporter reads them (see [`super::jsval::JsVal`]).
 
-use ifc_lite_core::decode_ifc_string;
+use ifc_lite_core::parse_step_real;
+use ifc_lite_core::step_encoding::decode_step_literal;
 use ifc_lite_core::step_encoding::step_string_literal_end;
 
 use super::jsval::JsVal;
-
-/// `isCompleteStepNumericLiteral` (`@ifc-lite/data`).
-fn is_complete_numeric(token: &str) -> bool {
-    let b = token.as_bytes();
-    let n = b.len();
-    let mut i = 0;
-    if i < n && (b[i] == b'+' || b[i] == b'-') {
-        i += 1;
-    }
-    let mut digits = 0;
-    while i < n && b[i].is_ascii_digit() {
-        i += 1;
-        digits += 1;
-    }
-    if i < n && b[i] == b'.' {
-        i += 1;
-        while i < n && b[i].is_ascii_digit() {
-            i += 1;
-            digits += 1;
-        }
-    }
-    if digits == 0 {
-        return false;
-    }
-    if i < n {
-        if b[i] != b'E' && b[i] != b'e' {
-            return false;
-        }
-        i += 1;
-        if i < n && (b[i] == b'+' || b[i] == b'-') {
-            i += 1;
-        }
-        let mut exp = 0;
-        while i < n && b[i].is_ascii_digit() {
-            i += 1;
-            exp += 1;
-        }
-        if exp == 0 {
-            return false;
-        }
-    }
-    i == n
-}
-
-/// `parseFloat` over a token `is_complete_numeric` accepted.
-fn parse_float(token: &str) -> f64 {
-    // Rust rejects a bare trailing `.` before the exponent (`1.E-5`) in some
-    // positions only in older toolchains; normalise it to be safe.
-    let normalised = token.replacen(".E", ".0E", 1).replacen(".e", ".0e", 1);
-    let normalised = if normalised.ends_with('.') { format!("{normalised}0") } else { normalised };
-    normalised.parse::<f64>().unwrap_or(f64::NAN)
-}
 
 /// `isUnrepresentableNumericValue` (`attribute-helpers.ts`) over the shape
 /// [`extract_entity`] yields: a raw token kept as text because it is a
@@ -74,7 +23,9 @@ pub(crate) fn is_unrepresentable_numeric(value: &JsVal) -> bool {
     let numeric_attempt = b.first().is_some_and(u8::is_ascii_digit)
         || (b.first() == Some(&b'.') && b.get(1).is_some_and(u8::is_ascii_digit));
     if numeric_attempt {
-        return !is_complete_numeric(s) || parse_float(s).is_infinite();
+        // Not one complete literal (`1.52.3`), or one `f64` cannot hold
+        // (`1.E400`): core's one numeric reader refuses both.
+        return parse_step_real(s.as_bytes()).is_none();
     }
     unsigned.starts_with("Infinity")
 }
@@ -152,10 +103,11 @@ fn parse_list_items(text: &str, depth: usize) -> Vec<JsVal> {
     if text.trim().is_empty() {
         return out;
     }
+    // Every delimiter is ASCII, so byte offsets are char boundaries and the
+    // text is walked as bytes (no `Vec<char>`, no ASCII projection).
+    let bytes = text.as_bytes();
     let mut current = String::new();
     let mut paren = 0i32;
-    let chars: Vec<char> = text.chars().collect();
-    let ascii = crate::step_slot::ascii_projection(&chars);
     let mut i = 0;
     let push = |current: &mut String, out: &mut Vec<JsVal>| {
         let token = current.trim().to_string();
@@ -164,32 +116,35 @@ fn parse_list_items(text: &str, depth: usize) -> Vec<JsVal> {
         }
         current.clear();
     };
-    while i < chars.len() {
-        let c = chars[i];
-        if c == '/' && chars.get(i + 1) == Some(&'*') {
-            if let Some(end) = find_comment_end(&chars, i + 2) {
+    while i < bytes.len() {
+        let c = bytes[i];
+        if c == b'/' && bytes.get(i + 1) == Some(&b'*') {
+            if let Some(end) = find_comment_end(bytes, i + 2) {
                 current.push(' ');
                 i = end;
                 continue;
             }
         }
-        if c == '\'' {
+        if c == b'\'' {
             // A literal is copied whole; where it ends is the shared rule, so a
             // `\S\'` operand stays inside it (#7589). Unterminated: the rest.
-            let end = step_string_literal_end(&ascii, i).unwrap_or(chars.len());
-            current.extend(&chars[i..end]);
+            let end = step_string_literal_end(bytes, i).unwrap_or(bytes.len());
+            current.push_str(&text[i..end]);
             i = end;
             continue;
-        } else if c == '(' {
-            paren += 1;
-            current.push(c);
-        } else if c == ')' {
-            paren -= 1;
-            current.push(c);
-        } else if c == ',' && paren == 0 {
+        } else if c == b',' && paren == 0 {
             push(&mut current, &mut out);
         } else {
-            current.push(c);
+            if c == b'(' {
+                paren += 1;
+            } else if c == b')' {
+                paren -= 1;
+            }
+            // Copy the whole character: a multi-byte one is never a delimiter.
+            let width = text[i..].chars().next().map_or(1, char::len_utf8);
+            current.push_str(&text[i..i + width]);
+            i += width;
+            continue;
         }
         i += 1;
     }
@@ -199,8 +154,8 @@ fn parse_list_items(text: &str, depth: usize) -> Vec<JsVal> {
     out
 }
 
-fn find_comment_end(chars: &[char], from: usize) -> Option<usize> {
-    (from..chars.len().saturating_sub(1)).find(|&j| chars[j] == '*' && chars[j + 1] == '/').map(|j| j + 2)
+fn find_comment_end(bytes: &[u8], from: usize) -> Option<usize> {
+    (from..bytes.len().saturating_sub(1)).find(|&j| bytes[j] == b'*' && bytes[j + 1] == b'/').map(|j| j + 2)
 }
 
 /// `parseAttributeValue`.
@@ -230,14 +185,14 @@ fn parse_value(raw: &str, depth: usize) -> JsVal {
         };
     }
     if value.len() >= 2 && value.starts_with('\'') && value.ends_with('\'') {
-        let raw = value[1..value.len() - 1].replace("''", "'");
-        return JsVal::Str(decode_ifc_string(&raw).into_owned());
-    }
-    if is_complete_numeric(value) {
-        let n = parse_float(value);
-        if n.is_finite() {
-            return JsVal::Num(n);
+        // Un-double, then decode, in core's one order.
+        if let Some(text) = decode_step_literal(value.as_bytes()) {
+            return JsVal::Str(text.into_owned());
         }
+    }
+    // `isCompleteStepNumericLiteral` then `parseFloat`, finite: core's reader.
+    if let Some(n) = parse_step_real(value.as_bytes()) {
+        return JsVal::Num(n);
     }
     JsVal::Str(value.to_string())
 }

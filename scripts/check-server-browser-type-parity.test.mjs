@@ -65,7 +65,7 @@ const FILES = {
   TS_SPATIAL: 'packages/data/src/spatial-types.ts',
   RUST_PROPS: 'rust/processing/src/data_model/properties.rs',
   TS_PROPS: 'packages/parser/src/property-value-parser.ts',
-  RUST_QTY: 'rust/processing/src/data_model/quantities.rs',
+  RUST_QTY: 'rust/processing/src/data_model/quantity.rs',
   TS_QTY_COLLECT: 'packages/parser/src/quantity-collect.ts',
   RUST_MATERIALS: 'rust/processing/src/data_model/materials.rs',
   TS_MATERIALS: 'packages/parser/src/material-resolver.ts',
@@ -371,8 +371,8 @@ test('QUANTITIES: an allowlisted DELIBERATE gap (IfcPhysicalComplexQuantity, #32
 test('QUANTITIES: RED when a quantity type is removed from the Rust chain', () => {
   const rust = replaceOnce(
     real.RUST_QTY,
-    'ifc_type.eq_ignore_ascii_case("IFCQUANTITYWEIGHT")',
-    'ifc_type.eq_ignore_ascii_case("__REMOVED_WEIGHT__")',
+    'Self::Weight => "IFCQUANTITYWEIGHT",',
+    'Self::Weight => "__REMOVED_WEIGHT__",',
   );
   const { status, out } = runOn({ RUST_QTY: rust });
   assert.equal(status, 1, out);
@@ -391,8 +391,8 @@ test('QUANTITIES: making the Rust side also name IFCPHYSICALCOMPLEXQUANTITY now 
   // has, in this simulation, stopped being true must not stay silent.
   const rust = replaceOnce(
     real.RUST_QTY,
-    'ifc_type.eq_ignore_ascii_case("IFCQUANTITYLENGTH")',
-    'ifc_type.eq_ignore_ascii_case("IFCQUANTITYLENGTH") || ifc_type.eq_ignore_ascii_case("IFCPHYSICALCOMPLEXQUANTITY")',
+    'Self::Number => "IFCQUANTITYNUMBER",',
+    'Self::Number => "IFCQUANTITYNUMBER",\n            _ if false => "IFCPHYSICALCOMPLEXQUANTITY",',
   );
   const { status, out } = runOn({ RUST_QTY: rust });
   assert.equal(status, 1, out);

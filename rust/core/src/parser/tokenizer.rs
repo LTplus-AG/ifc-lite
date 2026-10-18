@@ -175,7 +175,7 @@ fn derived(input: &[u8]) -> IResult<&[u8], Token<'_>> {
 /// Each `(` in the input bumps depth by one. Real-world IFC entities rarely
 /// nest beyond 5-10 levels; 256 leaves comfortable headroom while keeping
 /// the stack bounded against pathological inputs.
-const MAX_NESTING_DEPTH: u32 = 256;
+pub(crate) const MAX_NESTING_DEPTH: u32 = 256;
 
 /// Parse typed value: IFCPARAMETERVALUE(0.), IFCBOOLEAN(.T.)
 ///

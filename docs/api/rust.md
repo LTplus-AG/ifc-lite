@@ -63,6 +63,29 @@ items are not all plain `#n` references is refused whole (`ref_list_at`), and
 `extract_first_entity_ref`, `extract_entity_refs_from_list` and
 `EntityDecoder::get_first_entity_ref_fast` are removed in favour of it.
 
+The native merged exporter also uses `StepRecord::attrs()` and `StepListItems`
+for relationship edits. A legal comment such as `#10=/* ( */IFCRELDEFINESBYPROPERTIES(...)`
+does not change the attribute boundaries: folding into the first relationship,
+removing duplicate members, and pruning empty containers edit only the selected
+values and separators. Unrelated comments and whitespace stay as authored.
+An unreadable argument list remains unedited and blocks unsafe pruning.
+List edits require the complete attribute to be one value under
+`parser::is_step_value`: a closed list followed by another value is not an
+editable list, and all its references conservatively block pruning. Legal
+trivia after a complete list remains allowed.
+
+`ifc_lite_core::parser::is_step_value(text)` and `parser::split_step_slots(inner)` are the
+strict reads for STEP WRITERS: whether text is exactly one well-formed value
+(the grammar the tokenizer reads: no bare keyword, no `1..2`, no empty list
+element, a binary is `[0-3]` plus hex, STEP whitespace only), and an argument
+list cut into untrimmed slots that rejoin byte for byte, or `None` when a
+by-index edit cannot trust it. The export crate's `step_slot` is a thin
+wrapper over them.
+
+`ifc_lite_core::optional_text(Option<&str>)` is the one "no value" rule for a decoded
+name or label: trimmed of STEP whitespace, and an empty result or a bare `$` is
+`None`. `get_string()` is already decoded, so never call `decode_ifc_string` on it.
+
 #### Token
 
 ```rust

@@ -14,6 +14,8 @@ import { markMapWebglUnsupported, resetMapWebglSupportForTests } from '@/lib/geo
 import { readSiteLocationReference, siteLocationDisagreement } from '@/lib/geo/site-location-disagreement.js';
 import { reprojectPointToLatLon } from '@/lib/geo/reproject.js';
 import { LocationMap } from './LocationMap.js';
+import { resolveProductOriginMeters } from '@/lib/geo/product-origin.js';
+import { displayStoreyElevationMeters } from '@/lib/geo/storey-elevation.js';
 
 // #7666: a real STEP parse, not a mocked getter. The reference values are the
 // reporter's PROJ9/QGIS oracle in #7658. This minimal fixture states only the
@@ -21,6 +23,7 @@ import { LocationMap } from './LocationMap.js';
 async function siteStore(options: {
   latitude?: string; longitude?: string; position?: string; parent?: string;
   unit?: string; cycle?: boolean; multiple?: boolean; missingPlacement?: boolean;
+  axis?: string; refDirection?: string; direction?: string; parent2D?: boolean; withStorey?: boolean;
 } = {}) {
   const source = `ISO-10303-21;
 HEADER;
@@ -31,15 +34,16 @@ DATA;
 #10=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,$,$);
 #20=IFCUNITASSIGNMENT((#21));
 #21=IFCSIUNIT(*,.LENGTHUNIT.,${options.unit ?? '$'},.METRE.);
-#30=IFCCARTESIANPOINT((${options.parent ?? '0.,0.,0.'}));
-#31=IFCDIRECTION((0.,1.,0.));
-#32=IFCAXIS2PLACEMENT3D(#30,$,#31);
+#30=IFCCARTESIANPOINT((${options.parent ?? (options.parent2D ? '0.,0.' : '0.,0.,0.')}));
+#31=${options.direction ?? 'IFCDIRECTION((0.,1.,0.))'};
+#32=${options.parent2D ? `IFCAXIS2PLACEMENT2D(#30,${options.refDirection ?? '#31'})` : `IFCAXIS2PLACEMENT3D(#30,${options.axis ?? '$'},${options.refDirection ?? '#31'})`};
 #33=IFCLOCALPLACEMENT(${options.cycle ? '#36' : '$'},#32);
 #34=IFCCARTESIANPOINT((${options.position ?? '0.,0.,0.'}));
 #35=IFCAXIS2PLACEMENT3D(#34,$,$);
 #36=IFCLOCALPLACEMENT(#33,#35);
 #40=IFCSITE('Site000000000000000001',$,'Site',$,$,${options.missingPlacement ? '$' : '#36'},$,$,.ELEMENT.,${options.latitude ?? '(50,25,51,826800)'},${options.longitude ?? '(7,31,16,129200)'},0.,$,$);
 ${options.multiple ? "#41=IFCSITE('Site000000000000000002',$,'Other',$,$,#36,$,$,.ELEMENT.,(51,0,0),(8,0,0),0.,$,$);" : ''}
+${options.withStorey ? "#42=IFCBUILDINGSTOREY('Story00000000000000001',$,'Storey',$,$,#36,$,$,.ELEMENT.,123.);" : ''}
 ENDSEC;
 END-ISO-10303-21;`;
   return new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer as ArrayBuffer, { disableWorkerScan: true });
@@ -182,5 +186,55 @@ it('#7666 the georeferencing panel compares only its own model in a federation o
       assert.equal(other.querySelector('output'), null, 'a site in another model must not leak into this panel');
       cleanup();
     }
+  }
+});
+
+it('#7892 an explicit missing parent RefDirection cannot produce a site warning from a guessed origin', async () => {
+  markMapWebglUnsupported('probe_no_context');
+  const store = await siteStore({ position: '100.,0.,0.', refDirection: '#999' });
+  const ui = render(<LocationMap dataStore={store} mapConversion={conversion} projectedCRS={crs} />);
+  await waitFor(() => ui.querySelector('a[href*="google.com/maps"]') !== null, 'the independent declared origin resolves');
+  assert.equal(ui.querySelector('output')?.textContent ?? null, null, 'unresolved RefDirection must not generate a guessed 100m discrepancy');
+  assert.equal(readSiteLocationReference(store), undefined);
+});
+it('#7892 site admission refuses invalid explicit Axis/RefDirection, while storey display retains tolerance', async () => {
+  const invalid = [
+    { refDirection: '#999' }, { axis: '#999' },
+    { refDirection: '#30' }, { axis: '#30' }, // CartesianPoint has a numeric tuple but is not IfcDirection.
+    { direction: 'IFCCARTESIANPOINT((0.,1.,0.))' }, // Nonzero wrong-class tuples must not pass as directions.
+    { axis: '#31', refDirection: '$', direction: 'IFCCARTESIANPOINT((0.,0.,1.))' },
+    { direction: 'IFCDIRECTION((0.,0.,0.))' },
+    { direction: 'IFCDIRECTION((0.,$,1.))' },
+    { direction: 'IFCDIRECTION((1.,0.))' }, // A 2D direction cannot define this 3D frame.
+    { direction: 'IFCDIRECTION((0.,0.,1.))' }, // Explicit X parallel to default Z.
+    { axis: '#31', direction: 'IFCDIRECTION((0.,0.,0.))' },
+    { axis: '#31', direction: 'IFCDIRECTION((0.,$,1.))' },
+    { axis: '#31', refDirection: '$', direction: 'IFCDIRECTION((1.,0.))' },
+    { parent2D: true, refDirection: '#999' }, { parent2D: true, refDirection: '#30' },
+    { parent2D: true, direction: 'IFCDIRECTION((0.,0.))' },
+    { parent2D: true, direction: 'IFCDIRECTION((1.,0.,0.))' },
+  ];
+  for (const options of invalid) {
+    const store = await siteStore({ ...options, position: '100.,0.,7.', withStorey: true });
+    assert.equal(readSiteLocationReference(store), undefined, JSON.stringify(options));
+    assert.ok(resolveProductOriginMeters(store, 40), 'display still permits its existing direction fallback');
+    // This parsed storey shares the site's placed origin, independently of its authored Elevation=123.
+    const expectedHeight = options.axis === '#31' && options.direction === 'IFCDIRECTION((1.,0.))' ? 0 : 7;
+    assert.equal(displayStoreyElevationMeters(123, null, store, 42), expectedHeight,
+      'the tolerant display path must retain the placed height instead of reverting to a relative elevation');
+  }
+});
+it('#7892 omitted directions keep IFC defaults, including tilted Axis and 2D frames', async () => {
+  for (const options of [
+    { axis: '$', refDirection: '$' },
+    { axis: '#31', refDirection: '$', direction: 'IFCDIRECTION((0.,1.,0.))' },
+    { parent2D: true, refDirection: '$' },
+    { parent2D: true, direction: 'IFCDIRECTION((0.,1.))' },
+  ]) {
+    const store = await siteStore({ ...options, position: '100.,0.,7.' });
+    const reference = readSiteLocationReference(store);
+    assert.ok(reference, JSON.stringify(options));
+    assert.deepEqual(reference.origin, resolveProductOriginMeters(store, 40),
+      'valid defaulted frames must agree with the existing display calculation');
   }
 });

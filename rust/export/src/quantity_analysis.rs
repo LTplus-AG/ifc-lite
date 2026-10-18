@@ -8,7 +8,7 @@ use std::sync::Arc;
 use ifc_lite_core::{slot, AttributeValue, EntityDecoder, EntityIndex, EntityScanner, IfcType, ProjectUnits};
 use serde::Serialize;
 
-use crate::model::props::{decode_quantity_records, QuantityDecodeMode};
+use ifc_lite_processing::data_model::quantity::{decode_quantity_records, QuantityDecodeMode};
 
 #[path = "quantity_analysis_units.rs"]
 mod units;

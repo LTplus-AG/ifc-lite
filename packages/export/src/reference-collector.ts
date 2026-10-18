@@ -119,6 +119,13 @@ function extractRefsFromBytes(
       // PAGE operand stay inside it. Unterminated: the rest is text.
       const close = stepBytesLiteralEnd(source, i, end);
       i = close === -1 ? end : close;
+    } else if (b === 0x2f && source[i + 1] === 0x2a && i + 1 < end) {
+      // A `/* ... */` comment is trivia (F4 M-export-b, CORE-8): an apostrophe
+      // in one opens no string and a `#` in one is no reference. Unterminated:
+      // the rest is comment. The Rust twin is `step_text::ref_spans`.
+      i += 2;
+      while (i < end && !(source[i] === 0x2a && source[i + 1] === 0x2f)) i++;
+      i = Math.min(end, i + 2);
     } else if (b === HASH) {
       i++;
       // Check if followed by at least one digit

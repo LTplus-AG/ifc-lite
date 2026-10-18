@@ -150,7 +150,7 @@ def check(path: str, authored: dict) -> tuple[list[str], int]:
 
             if index == len(layout) - 1:
                 continue  # zero length: its only point is the previous end
-            fn = W.map_shape(settings, our_curve.wrapped_data)
+            fn = W.map_shape(settings, our_curve)
             evaluator = W.function_item_evaluator(settings, fn)
             for which, param, expected in (("start", fn.start(), boundaries[index]), ("end", fn.end(), boundaries[index + 1])):
                 matrix = evaluator.evaluate(param)

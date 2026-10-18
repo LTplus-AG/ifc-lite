@@ -143,9 +143,8 @@
 6 rust/processing/src/processor/mod.rs
 7 rust/processing/src/processor/opening_filter.rs
 16 rust/processing/src/processor/properties.rs
-6 rust/processing/src/processor/quick_collector.rs
 1 rust/processing/src/processor/quick_metadata.rs
-3 rust/processing/src/processor/scan.rs
+1 rust/processing/src/processor/scan.rs
 1 rust/processing/src/shard_classes.rs
 8 rust/processing/src/style/fill.rs
 2 rust/processing/src/style/finish_join.rs

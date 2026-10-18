@@ -29,7 +29,7 @@
    159 rust/export/src/gltf.rs push_mesh_quantized
    158 rust/export/src/gltf.rs write_bounded_glb
    260 rust/export/src/merged/mod.rs export_merged_models
-   328 rust/export/src/model.rs stream_export_model_with_options
+   328 rust/processing/src/data_model/rows/mod.rs stream_rows
    269 rust/export/src/rebar_schedule_build.rs build_rebar_schedule_impl
    238 rust/export/src/step.rs emit
    178 rust/export/src/step_log/write.rs emit

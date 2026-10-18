@@ -48,17 +48,19 @@ impl EntityDecoder<'_> {
     /// rayon tasks. After calling this, the decoder is empty (cache
     /// moved out); callers typically then drop the decoder.
     pub fn drain_cache(&mut self) -> FxHashMap<u32, Arc<DecodedEntity>> {
+        self.raw_leaf_memo = None;
         std::mem::take(&mut self.cache)
     }
 
     /// Clear all caches to free memory
     pub fn clear_cache(&mut self) {
         self.cache.clear();
+        self.raw_leaf_memo = None;
         self.point_cache.clear();
         self.placement_transform_cache.clear();
     }
 
-    /// Clear only the decoded-entity cache, keeping the placement memo.
+    /// Clear decoded entities and the raw leaf memo, keeping the placement memo.
     ///
     /// For a caller that drains on a size trigger while resolving placements.
     /// The two caches have very different value per byte: an entry in the
@@ -70,6 +72,7 @@ impl EntityDecoder<'_> {
     /// stays correct and large models simply get slower.
     pub fn clear_entity_cache(&mut self) {
         self.cache.clear();
+        self.raw_leaf_memo = None;
     }
 
     /// Clear only the point coordinate cache (used after BREP preprocessing).

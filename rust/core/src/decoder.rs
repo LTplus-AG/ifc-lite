@@ -65,6 +65,10 @@ pub struct EntityDecoder<'a> {
     /// Cache of decoded entities (entity_id -> `Arc<DecodedEntity>`)
     /// Using Arc avoids expensive clones on cache hits
     cache: FxHashMap<u32, Arc<DecodedEntity>>,
+    /// One successful strict raw leaf, independent of decoded overlays.
+    raw_leaf_memo: Option<leaf_read::RawLeafMemo<'a>>,
+    #[cfg(test)]
+    raw_leaf_parse_attempts: usize,
     /// Entity offsets (entity_id -> (start, end)): legacy `FxHashMap` or compact
     /// columnar index. `pub(crate)` for `crate::columnar_index`'s constructors.
     pub(crate) entity_index: Option<EntityIndexStore>,
@@ -134,6 +138,9 @@ impl<'a> EntityDecoder<'a> {
         Self {
             content,
             cache: FxHashMap::default(),
+            raw_leaf_memo: None,
+            #[cfg(test)]
+            raw_leaf_parse_attempts: 0,
             entity_index: None,
             point_cache: FxHashMap::default(),
             point_cache_hits: 0,
@@ -160,6 +167,9 @@ impl<'a> EntityDecoder<'a> {
         Self {
             content,
             cache: FxHashMap::default(),
+            raw_leaf_memo: None,
+            #[cfg(test)]
+            raw_leaf_parse_attempts: 0,
             entity_index: Some(EntityIndexStore::Hash(Arc::new(index))),
             point_cache: FxHashMap::default(),
             point_cache_hits: 0,
@@ -186,6 +196,9 @@ impl<'a> EntityDecoder<'a> {
         Self {
             content,
             cache: FxHashMap::default(),
+            raw_leaf_memo: None,
+            #[cfg(test)]
+            raw_leaf_parse_attempts: 0,
             entity_index: Some(EntityIndexStore::Hash(index)),
             point_cache: FxHashMap::default(),
             point_cache_hits: 0,

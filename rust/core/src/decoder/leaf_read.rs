@@ -25,6 +25,15 @@ use crate::IfcType;
 const POINT_KEYWORD: &[u8] = b"IFCCARTESIANPOINT";
 const DIRECTION_KEYWORD: &[u8] = b"IFCDIRECTION";
 
+/// At most one successful raw parse. References into immutable decoder content
+/// preserve Send/Sync; no raw pointer, decoded entity, fallback or error is kept.
+pub(super) struct RawLeafMemo<'a> {
+    id: u32,
+    keyword: &'static [u8],
+    raw: &'a [u8],
+    value: [f64; 3],
+}
+
 /// One coordinate at `i` (trivia skipped before and after), read once by the
 /// shared STEP number reader the tokenizer uses, so the byte path and the full
 /// decode cannot disagree about a literal. An `INTEGER` is `v as f64`, as
@@ -102,9 +111,24 @@ fn slow_leaf(entity: &DecodedEntity, ifc_type: IfcType) -> Option<[f64; 3]> {
 }
 
 impl EntityDecoder<'_> {
-    fn leaf3(&mut self, id: u32, keyword: &[u8], ifc_type: IfcType) -> Result<[f64; 3]> {
-        if let Some(value) = self.get_raw_bytes(id).and_then(|bytes| fast_leaf(bytes, keyword)) {
-            return Ok(value);
+    fn leaf3(&mut self, id: u32, keyword: &'static [u8], ifc_type: IfcType) -> Result<[f64; 3]> {
+        // Obtain the CURRENT selected slice even on a hit: index replacement
+        // and duplicate ids can select different immutable source spans.
+        if let Some(bytes) = self.get_raw_bytes(id) {
+            if let Some(memo) = &self.raw_leaf_memo {
+                if memo.id == id && memo.keyword == keyword
+                    && std::ptr::eq(memo.raw.as_ptr(), bytes.as_ptr())
+                    && memo.raw.len() == bytes.len()
+                {
+                    return Ok(memo.value);
+                }
+            }
+            #[cfg(test)]
+            { self.raw_leaf_parse_attempts += 1; }
+            if let Some(value) = fast_leaf(bytes, keyword) {
+                self.raw_leaf_memo = Some(RawLeafMemo { id, keyword, raw: bytes, value });
+                return Ok(value);
+            }
         }
         let entity = self.decode_by_id(id)?;
         slow_leaf(&entity, ifc_type).ok_or_else(|| self.refuse_malformed(id))
@@ -180,3 +204,7 @@ impl EntityDecoder<'_> {
 #[cfg(test)]
 #[path = "leaf_read_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "leaf_memo_tests.rs"]
+mod memo_tests;

@@ -1,0 +1,35 @@
+{
+  "worker": "da9a82a3-da11-4bd7-9be4-d944dac05ac5",
+  "originalSession": 15617,
+  "originalExecExitCode": 0,
+  "workerReceiptSha256": "ad0dc8c206badcde88375398c044072764f233696b075841b53e2d652ed660bb",
+  "ownedScopeProcesses": [],
+  "recordedProcessTokens": [
+    {
+      "pid": 2964281,
+      "startToken": "10308221",
+      "sameProcessPresent": false
+    },
+    {
+      "pid": 2965032,
+      "startToken": "10309453",
+      "sameProcessPresent": false
+    },
+    {
+      "pid": 2965180,
+      "startToken": "10309531",
+      "sameProcessPresent": false
+    },
+    {
+      "pid": 2965282,
+      "startToken": "10309643",
+      "sameProcessPresent": false
+    }
+  ],
+  "dbRows": [],
+  "scopeShowExitCode": 0,
+  "scopeShowStdout": "ControlGroup=\nLoadState=not-found\nActiveState=inactive\nSubState=dead\n",
+  "scopeShowStderr": "",
+  "ownedQuiescent": true,
+  "resourcesReleased": true
+}

@@ -1,0 +1,160 @@
+{
+  "scope": "Single authorized remaining-only r4 ordinary attempt; native scoped completion only",
+  "worker": "da9a82a3-da11-4bd7-9be4-d944dac05ac5",
+  "originalSession": 15617,
+  "workerExitCode": 0,
+  "workerReceiptSha256": "ad0dc8c206badcde88375398c044072764f233696b075841b53e2d652ed660bb",
+  "reportSha256": "b022ec9a4696ea9a2127ecf0dca3191fa48fec9480378598605fa46e3116636e",
+  "source": {
+    "head": "12157693a84d9495fafd14a0ade6a5939bf3e0b8",
+    "tree": "4c512c747f2aa6f364200f2415a609c1ce425248",
+    "status": ""
+  },
+  "sourceUnchanged": true,
+  "sourceGates": [
+    {
+      "name": "check-rust-api-surface.mjs",
+      "argv": [
+        "node",
+        "scripts/check-rust-api-surface.mjs"
+      ],
+      "exitCode": 0,
+      "logSha256": "28985194161cb69a96fe39232e677930b1982792cf78d9ee085c65c4dead1adb"
+    },
+    {
+      "name": "check-refwalk-guards.mjs",
+      "argv": [
+        "node",
+        "scripts/check-refwalk-guards.mjs"
+      ],
+      "exitCode": 0,
+      "logSha256": "5b49845301423e56504d219a671c0b149cb84d2796a607c9322ad7e1fc901a9b"
+    },
+    {
+      "name": "check-test-wiring.mjs",
+      "argv": [
+        "node",
+        "scripts/check-test-wiring.mjs"
+      ],
+      "exitCode": 0,
+      "logSha256": "3370f2fdc0825a60c44251b747df1ac3754ceb180d2b87a8e669e76b682388c1"
+    },
+    {
+      "name": "check-rust-source-text-assertions.mjs",
+      "argv": [
+        "node",
+        "scripts/check-rust-source-text-assertions.mjs"
+      ],
+      "exitCode": 0,
+      "logSha256": "4c9412915ecafd0e8e7250a871f260f71b630316bacad0e5cd3629207ac2ecac"
+    },
+    {
+      "name": "check-float-sort-comparators.mjs",
+      "argv": [
+        "node",
+        "scripts/check-float-sort-comparators.mjs"
+      ],
+      "exitCode": 0,
+      "logSha256": "3ad77d8f34c7fae89905910b7bddf87419e2eb197353f95fbe8a2591e14f0156"
+    }
+  ],
+  "corpus": {
+    "cases": 56,
+    "sha256": "1ac321114af134ab7b19f6ca4e73c2aceb727546df5aa0b9ef2acbce1db829bf",
+    "baselineSha256": "1ac321114af134ab7b19f6ca4e73c2aceb727546df5aa0b9ef2acbce1db829bf"
+  },
+  "fixturesBeforeAfterEqual": true,
+  "fixtureCensus": {
+    "entries": 182,
+    "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3"
+  },
+  "toolBytesBeforeAfterEqual": true,
+  "guardRecords": 7,
+  "finallyErrors": [],
+  "storageAfter": [
+    {
+      "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+      "freeBytes": 793991372800,
+      "freeInodes": 116075104
+    },
+    {
+      "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/r4-missing-after-cool-run",
+      "freeBytes": 793991372800,
+      "freeInodes": 116075104
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "freeBytes": 793991372800,
+      "freeInodes": 116075104
+    },
+    {
+      "path": "/home/louistrue/build-workers/toolchains/cargo",
+      "freeBytes": 793991372800,
+      "freeInodes": 116075104
+    },
+    {
+      "path": "/tmp",
+      "freeBytes": 793991372800,
+      "freeInodes": 116075104
+    }
+  ],
+  "ownedQuiescent": true,
+  "resourcesReleased": true,
+  "quiescenceSha256": "97221ef8d08e52ae69cf61b2b2b14ec09d4e853c458f940403281ff2eaebe0e4",
+  "driverSha256": "4d090737133375c43e6475742d4db9641120a55c5f82baac53d405fc1d4e9c6c",
+  "prior42FilesPreserved": {
+    "oldManifestSha256": "014eb71757efa6a3b93b16e12a769ccd3411a34113d8d2212825116c14cdca94",
+    "filesMatched": 42,
+    "errors": [],
+    "scope": "Existing42-file followup evidence including original r4 thermal-refusal files; no historical runtime evidence relabeled"
+  },
+  "workspaceClippyRepeated": false,
+  "passedR2R3ChecksRepeated": false,
+  "canonicalStateEdited": false,
+  "newSourceRefPublicationOrBenchmarkChanges": false,
+  "buildSettingsCaveat": "Unchanged inherited v6 Cargo profile/target; three lean override variables unset, no forced-zero guard claimed. Targeted package Cargo feature compilation only.",
+  "remainingFiniteGaps": [
+    {
+      "id": "changed-prefix-artifacts",
+      "status": "UNRUN for corrected sources",
+      "scope": "Only corrected r2 d3e281e1/r3 c7cf41e9/r4 12157693 need source-bound native profiling probe+phase-marker and sourceWASM/minimal CPU-browser artifacts. Existing corrected native test targets are not these profiling/WASM artifacts.",
+      "reuse": "artifacts-base receipt binds61f9; middle-native-pop and PC WASM receipts bind unchanged45be plus OLDca2/166f; artifacts-branch binds OLDb437. Only unchanged61/45be are read-only reuse candidates after exact tool/compiler/CPU/profile/deplock/runtime/fixture revalidation. Never relabel oldca2/166f/b437 outputs as corrected sources.",
+      "evidence": [
+        "artifacts-base/receipt.json",
+        "artifacts-branch/receipt.json",
+        "middle-native-pop/receipt.json",
+        "pc-middle-wasm-serial8-v5/qualification-summary.json"
+      ]
+    },
+    {
+      "id": "source-wasm-consumers",
+      "status": "UNRUN for corrected sources",
+      "scope": "Actual wasm32 build and committed d.ts sync, root Turbo consumer build/typecheck/tests as applicable, real WASM contracts/mesh determinism and preserved output/diagnostic corpus. Native workspace builds of wasm-bindings do not execute wasm32-only tests. Existing212-contract/4-fixture/browser proofs remain at their old pins."
+    },
+    {
+      "id": "excluded-and-feature-consumers",
+      "status": "Not discharged by corrected workspace/exact-clippy",
+      "scope": "Exact final-source workflow-required feature legs, PyO3 isolated Cargo tests/fresh wheel+pytest and committed-reference parity. Workspace excludes rust/python. Native workspace does not cover parquet-bos, csg_capture/gated feature tests or all-features clippy. Determine applicability against eventual integrated/published source, without rerunning completed default workspace/clippy on these unchanged pins.",
+      "sourceWorkflowReferences": [
+        ".github/workflows/test.yml:2774 parquet-bos tests;2780 excluded Python Cargo;2783 parquet clippy;2801/2804 csg_manifold;2826 all-feature clippy;2835 csg_capture;2840/2843/2846 opening-perf-trace",
+        ".github/workflows/python-wheels.yml:93-105 fresh wheel and pytest",
+        ".github/workflows/ifcopenshell-parity.yml:180-211 committed-reference comparator"
+      ]
+    },
+    {
+      "id": "cross-platform",
+      "status": "UNRUN for corrected sources",
+      "scope": "Required/applicable arm64 exact-predicate/geometry-correctness/native mesh/export-golden and wasm32 mesh manifest lanes remain separate from x86 native evidence; no cross-target proof borrowed."
+    },
+    {
+      "id": "causal-performance",
+      "status": "BLOCKED / no new measurement authorization",
+      "scope": "After only changed artifacts are ready and independently bound, parent controls any single balanced five-revision dataset61\u219245be\u2192d3e\u2192c7cf\u2192121 and4adjacent verdicts. Existing sixIR/sevenbrowser/nativezero-noise failures remain binding. No original failed data relabeled, threshold/zero/u64 policy changes, or acceptance from collection exit0."
+    },
+    {
+      "id": "integration-publication",
+      "status": "Parent-owned / pending",
+      "scope": "Current-main2fbe observation does not qualify a rebased tree. Public corrected C2-4 mapping/final integration, any required whole-production revert disposition, final hosted requirements and publication are unclaimed. Scoped ownership inverse already complete and not a whole-production revert/destructor/geometry proof. No C4-0/6a/6b expansion."
+    }
+  ]
+}

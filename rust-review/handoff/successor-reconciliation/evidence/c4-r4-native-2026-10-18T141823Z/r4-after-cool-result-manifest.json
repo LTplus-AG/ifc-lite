@@ -1,0 +1,95 @@
+{
+  "files": [
+    {
+      "path": "R4-MISSING-AFTER-COOL-RESULT.md",
+      "size": 3857,
+      "sha256": "7fd14a537f6ecfa202e5b6e4eeca60d1af88d678280f9cbc19b52f5c62f69c28"
+    },
+    {
+      "path": "r4-missing-after-cool-admission-argv.json",
+      "size": 1684,
+      "sha256": "f8d660f3398d157499afc2998743ad95b17a11b60f7623c26a9fff3f151d3a43"
+    },
+    {
+      "path": "r4-missing-after-cool-controller.log",
+      "size": 813,
+      "sha256": "92d72967e40c1d4bd7ed930c6cc544a61edbbc57bb9bc51be06e14dda48db889"
+    },
+    {
+      "path": "r4-missing-after-cool-delta.json",
+      "size": 7697,
+      "sha256": "9e5609810a5339cb4e0ae8cbce85590cf56583875015d5757dda329990ac5ca5"
+    },
+    {
+      "path": "r4-missing-after-cool-history-preservation.json",
+      "size": 266,
+      "sha256": "8b763ea94a3ed3907c64c9da47e68d174ad64546a89caad0c498300325a7a9ba"
+    },
+    {
+      "path": "r4-missing-after-cool-launch.json",
+      "size": 1334,
+      "sha256": "7cffd191d638320eb51bfe0178ca3918b42974a46b8aa021916abfc78779bf50"
+    },
+    {
+      "path": "r4-missing-after-cool-owned-processes-inflight.json",
+      "size": 5158,
+      "sha256": "809d4aa99da1269ed0aedcc1652b40c5edd65ce4a24adb473f0c638944069095"
+    },
+    {
+      "path": "r4-missing-after-cool-quiescence.json",
+      "size": 891,
+      "sha256": "97221ef8d08e52ae69cf61b2b2b14ec09d4e853c458f940403281ff2eaebe0e4"
+    },
+    {
+      "path": "r4-missing-after-cool-run/check-float-sort-comparators.mjs.log",
+      "size": 95,
+      "sha256": "3ad77d8f34c7fae89905910b7bddf87419e2eb197353f95fbe8a2591e14f0156"
+    },
+    {
+      "path": "r4-missing-after-cool-run/check-refwalk-guards.mjs.log",
+      "size": 1128,
+      "sha256": "5b49845301423e56504d219a671c0b149cb84d2796a607c9322ad7e1fc901a9b"
+    },
+    {
+      "path": "r4-missing-after-cool-run/check-rust-api-surface.mjs.log",
+      "size": 593,
+      "sha256": "28985194161cb69a96fe39232e677930b1982792cf78d9ee085c65c4dead1adb"
+    },
+    {
+      "path": "r4-missing-after-cool-run/check-rust-source-text-assertions.mjs.log",
+      "size": 122,
+      "sha256": "4c9412915ecafd0e8e7250a871f260f71b630316bacad0e5cd3629207ac2ecac"
+    },
+    {
+      "path": "r4-missing-after-cool-run/check-test-wiring.mjs.log",
+      "size": 859,
+      "sha256": "3370f2fdc0825a60c44251b747df1ac3754ceb180d2b87a8e669e76b682388c1"
+    },
+    {
+      "path": "r4-missing-after-cool-run/compare-corpus.log",
+      "size": 399,
+      "sha256": "f767e33fb6a0e81d07c7286eec28d05a1d1e66eb926a293ba327f0de530c96a4"
+    },
+    {
+      "path": "r4-missing-after-cool-run/corpus.json",
+      "size": 1002127,
+      "sha256": "1ac321114af134ab7b19f6ca4e73c2aceb727546df5aa0b9ef2acbce1db829bf"
+    },
+    {
+      "path": "r4-missing-after-cool-run/corpus.log",
+      "size": 41705,
+      "sha256": "810f3eff135bf75937a2660ca4332bef38fea8c4d699c6c7efa360f30c2ee9d0"
+    },
+    {
+      "path": "r4-missing-after-cool-run/report.json",
+      "size": 18268,
+      "sha256": "b022ec9a4696ea9a2127ecf0dca3191fa48fec9480378598605fa46e3116636e"
+    },
+    {
+      "path": "r4-missing-after-cool-worker-terminal.json",
+      "size": 4018,
+      "sha256": "ad0dc8c206badcde88375398c044072764f233696b075841b53e2d652ed660bb"
+    }
+  ],
+  "scope": "Only new r4 after-cool execution/delta evidence; historical42-file manifest preserved separately"
+}

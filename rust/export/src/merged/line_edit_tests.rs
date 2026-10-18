@@ -198,3 +198,20 @@ fn split_args_and_arg_span_keep_a_page_operand_inside_its_string_7589() {
     let slots = classify_refs(r"#9=IFCRELAGGREGATES('g',$,'Para \S\' #7 5',$,#4,(#5,#6));").expect("parseable line");
     assert_eq!(slots, vec![(4, RefSlot::Single), (5, RefSlot::ListElement), (6, RefSlot::ListElement)]);
 }
+
+/// F4 M-export-b (CORE-1, CORE-8): a comment is trivia everywhere the scanner
+/// looks. An apostrophe in a comment opened a phantom string that hid every
+/// later reference; a `#` in one was rewritten as if it were a reference.
+#[test]
+fn comments_are_skipped_by_the_reference_scanner() {
+    let line = "#5=IFCRELX('g',$,/* it's #99 */$,(#1,#2),#3);";
+    let mut refs = Vec::new();
+    crate::step_text::refs_in_line(line.as_bytes(), &mut refs);
+    assert_eq!(refs, vec![5, 1, 2, 3]);
+    let out = rewrite_refs(line.as_bytes(), 100, &|_| None);
+    assert_eq!(out, "#105=IFCRELX('g',$,/* it's #99 */$,(#101,#102),#103);");
+    assert_eq!(crate::step_text::substitute_ref_in_attr("/* #1 */ (#1,#12)", 1, 9).as_deref(), Some("/* #1 */ (#9,#12)"));
+    let (open, close) = arg_span("#5=IFCX(/* ) */ #1,'a)');").unwrap();
+    assert_eq!((open, close), (7, 23));
+    assert_eq!(split_args("#1 /* , */,#2"), vec!["#1 /* , */", "#2"]);
+}

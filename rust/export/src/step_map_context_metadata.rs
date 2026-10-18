@@ -2,7 +2,7 @@
 //! TrueNorth belongs to the engineering frame, including its implicit +Y default.
 //! Clone metadata directions when baking map rotation; shared input IDs stay intact.
 use super::{writer, MapConversionNormalizationPlan, Record};
-use ifc_lite_core::{EntityDecoder, IfcType};
+use ifc_lite_core::{slot, EntityDecoder, IfcType};
 use nalgebra::Matrix4;
 use std::collections::{HashMap, HashSet};
 
@@ -21,7 +21,7 @@ pub(super) fn transform_north(
         let context = decoder
             .decode_by_id(id)
             .map_err(|error| error.to_string())?;
-        let direction = match context.get(5).filter(|attr| !attr.is_null()) {
+        let direction = match context.attr(slot::IfcGeometricRepresentationContext::TRUE_NORTH).filter(|attr| !attr.is_null()) {
             None => [0., 1.],
             Some(attr) => {
                 let reference = attr.as_entity_ref().ok_or("TrueNorth is not a reference")?;
@@ -32,7 +32,7 @@ pub(super) fn transform_north(
                     return Err("TrueNorth is not an IfcDirection".into());
                 }
                 let values = node
-                    .get_list(0)
+                    .list_at(slot::IfcDirection::DIRECTION_RATIOS)
                     .filter(|values| values.len() == 2)
                     .ok_or("TrueNorth requires exactly two direction ratios")?;
                 let x = values[0]

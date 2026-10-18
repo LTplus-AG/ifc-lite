@@ -4,7 +4,7 @@
 
 import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { skipStepComment } from './step-comment-skip.js';
-import { isWellFormedStepSlot } from './step-slot-grammar.js';
+import { isStepBlank, isWellFormedStepSlot } from './step-slot-grammar.js';
 import { frameArgs, stepRecordFrame } from './step-record-frame.js';
 
 /**
@@ -211,7 +211,9 @@ export function replaceStepArgument(
  * that has no slots.
  */
 export function splitTopLevelStepArguments(input: string): string[] | null {
-  if (input.trim() === '') return [];
+  // STEP whitespace only (core's `is_step_space`), never `trim()`: a no-break
+  // space is not padding, and `String.prototype.trim` strips it.
+  if (isStepBlank(input)) return [];
 
   const parts: string[] = [];
   let current = '';
@@ -220,12 +222,25 @@ export function splitTopLevelStepArguments(input: string): string[] | null {
   for (let i = 0; i < input.length; i++) {
     const char = input[i];
 
-    // See skipStepComment's docstring; isWellFormedStepSlot below still
-    // rejects an unterminated comment via skipTrivia.
+    // See skipStepComment's docstring. A comment that never closes is not
+    // trivia: the list is refused (core's `split_step_slots` refuses it too).
     if (char === '/' && input[i + 1] === '*') {
+      if (input.indexOf('*/', i + 2) === -1) return null;
       const stop = skipStepComment(input, i);
       current += input.slice(i, stop);
       i = stop - 1;
+      continue;
+    }
+
+    // A binary literal has no escapes: the first following quote closes it. It
+    // moves into the part whole, so a comma or apostrophe in a malformed one
+    // is never read as structure; `isWellFormedStepSlot` then holds it to the
+    // `[0-3]` + hex form.
+    if (char === '"') {
+      const close = input.indexOf('"', i + 1);
+      if (close === -1) return null;
+      current += input.slice(i, close + 1);
+      i = close;
       continue;
     }
 

@@ -9,7 +9,7 @@
 use super::color_layer::collect_presentation_layer_assignments;
 use super::entity_index::IndexBuilder;
 use super::quick_collector::QuickCollector;
-use super::quick_metadata::{parse_step_arguments, parse_step_ref, parse_step_ref_list};
+use super::quick_metadata::{record_ref_at, record_refs_at};
 use super::{EntityJob, ProcessingRequest};
 use crate::scan::ScanClass;
 use ifc_lite_core::{EntityDecoder, EntityScanner, IfcType};
@@ -305,8 +305,7 @@ impl Scan<'_, '_> {
     #[inline(always)]
     fn note_type_geometry(&mut self, class: ScanClass, id: u32, type_name: &str, start: usize, end: usize) {
         if class == ScanClass::MappedItem {
-            let args = parse_step_arguments(&self.content[start..end]);
-            if let Some(source_id) = args.first().and_then(|token| parse_step_ref(token)) {
+            if let Some(source_id) = record_ref_at(&self.content[start..end], 0) {
                 self.types.referenced_representation_maps.insert(source_id);
                 // #1623 Phase 2: tally occurrences per source + track the min-id
                 // (deterministic template) occurrence. `id` is this IfcMappedItem's
@@ -329,17 +328,12 @@ impl Scan<'_, '_> {
             // record it so its type-only geometry is suppressed (it has occurrences).
             // (Its span also feeds the shared resolver's type-material fallback:
             // stashed with the other relationship spans above.)
-            let args = parse_step_arguments(&self.content[start..end]);
-            if let Some(type_id) = args.get(5).and_then(|token| parse_step_ref(token)) {
+            if let Some(type_id) = record_ref_at(&self.content[start..end], 5) {
                 self.types.instantiated_type_ids.insert(type_id);
             }
         } else if let Some(type_ty) = ifc_lite_core::type_product_ifc_type(type_name) {
-            let args = parse_step_arguments(&self.content[start..end]);
             // IfcTypeProduct.RepresentationMaps is attribute index 6.
-            let rep_map_ids = args
-                .get(6)
-                .map(|token| parse_step_ref_list(token))
-                .unwrap_or_default();
+            let rep_map_ids = record_refs_at(&self.content[start..end], 6);
             if !rep_map_ids.is_empty() {
                 self.types.products.push((id, start, end, type_ty, rep_map_ids));
             }

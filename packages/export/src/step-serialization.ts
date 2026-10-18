@@ -22,7 +22,7 @@
  */
 
 import { serializeValue, SCHEMA_REGISTRY, type IfcAttributeValue } from '@ifc-lite/parser';
-import { QuantityType, formatStepReal, escapeStepString } from '@ifc-lite/data';
+import { QuantityType, formatStepReal, escapeStepString, isCompleteStepNumericLiteral } from '@ifc-lite/data';
 
 /**
  * Re-exported so every existing `import { escapeStepString } from
@@ -224,7 +224,10 @@ export function serializeAttributeValue(value: string, currentToken: string): st
     return '.U.';
   }
 
-  if (/^-?\d+(?:\.\d+)?(?:E[+-]?\d+)?$/i.test(trimmed) && /^-?\d/.test(current)) {
+  // The one STEP numeric grammar (core's `step_numeric_literal_len`): `.5`,
+  // `+1`, `1.E5`, `+1.` and `-0.` are numbers too. The regex this was refused
+  // them, so such a slot was rewritten as a quoted string (F4 M-export-a).
+  if (isCompleteStepNumericLiteral(trimmed) && isCompleteStepNumericLiteral(current)) {
     const numberValue = Number(trimmed);
     if (!Number.isFinite(numberValue)) return '$';
     return current.includes('.') || /E/i.test(current) || !Number.isInteger(numberValue)

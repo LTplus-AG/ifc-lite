@@ -171,7 +171,8 @@ async function buildFeature(repo, spec, prepared) {
   });
   const fetchEnv = { ...env };
   delete fetchEnv.CARGO_NET_OFFLINE;
-  await run(`cargo-fetch-${spec.name}`, 'rustup', ['run', 'nightly-2025-11-15', 'cargo', 'fetch', '--locked', '--target', 'wasm32-unknown-unknown'], {
+  // wasm-pack runs unfiltered cargo metadata, so prefetch every locked target before forcing offline mode.
+  await run(`cargo-fetch-${spec.name}`, 'rustup', ['run', 'nightly-2025-11-15', 'cargo', 'fetch', '--locked'], {
     cwd: prepared.source, env: fetchEnv, timeout: runTimeoutMs,
   });
   const args = ['run', 'nightly-2025-11-15', 'wasm-pack', 'build', 'rust/wasm-bindings', '--target', 'web', '--out-dir', '../../packages/wasm/pkg-csg-work-census', '--out-name', 'ifc-lite', '--release', '--', '--features', 'csg-work-census'];

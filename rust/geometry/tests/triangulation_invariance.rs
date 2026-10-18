@@ -2438,6 +2438,38 @@ fn issue_7292_rvt_void_cut_hygiene_preserves_exact_closed_boundaries() {
 }
 
 #[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+#[test]
+fn issue_7631_cap_recovery_does_not_increase_rvt13797_open_edges() {
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _reset = AltTriangulatorReset;
+    let Some(content) = ifc_lite_testkit::fixture_text("various/rvt01.ifc") else {
+        eprintln!("Skipping #7631 cap/opening regression: run pnpm fixtures");
+        return;
+    };
+    let golden = read_golden(&crate_dir().join(GOLDEN_PATH), false);
+    let reference = golden.iter().find(|row| row.model == "various/rvt01.ifc" && row.id == 13797)
+        .expect("existing rvt01 host must remain in the census");
+    let frame = ModelFrame::new(&content);
+    let voids = void_index(&content);
+    #[cfg(feature = "triangulation-alt")]
+    let triangulators = &[false, true][..];
+    #[cfg(not(feature = "triangulation-alt"))]
+    let triangulators = &[false][..];
+    for &alt in triangulators {
+        set_alt(alt);
+        let mesh = process(&frame, 13797, &voids).expect("actual void-cut wall must mesh");
+        let stats = edge_stats(&mesh);
+        let ceiling = if alt { reference.alt.expect("recorded alternate reading") } else { reference.open };
+        assert!(stats.open <= ceiling,
+            "#7631 cap recovery regressed void-cut rvt01 13797: {} > {ceiling} open edges, alt={alt}", stats.open);
+        if !alt {
+            assert!(stats.strict <= reference.strict,
+                "#7631 cap recovery regressed directed incidence: {} > {}", stats.strict, reference.strict);
+        }
+    }
+}
+
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
 #[path = "triangulation_invariance/source_boundary_7292_tests.rs"]
 mod source_boundary_7292_tests;
 

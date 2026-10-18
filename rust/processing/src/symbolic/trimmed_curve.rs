@@ -103,11 +103,11 @@ pub(super) fn extract_trimmed_curve(
     } else if chord_len > 0.0001 {
         let mid_angle = (start_angle + end_angle) / 2.0;
         let (mid_x, mid_y) = circle.point_at(mid_angle);
-        let sagitta = ((end_y - start_y) * mid_x - (end_x - start_x) * mid_y
-            + end_x * start_y
-            - end_y * start_x)
-            .abs()
-            / chord_len;
+        // Keep the projected-shape test translation invariant. World-coordinate
+        // products cancel a georeferenced small arc's sagitta (#7779).
+        let mid_dx = mid_x - start_x;
+        let mid_dy = mid_y - start_y;
+        let sagitta = (chord_dx * mid_dy - chord_dy * mid_dx).abs() / chord_len;
         sagitta < chord_len * 0.02
     } else {
         true

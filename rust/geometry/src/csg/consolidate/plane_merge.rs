@@ -34,6 +34,7 @@ use nalgebra::{Point3, Vector3};
 use std::collections::{BTreeMap, HashSet};
 
 /// A triangle inside one of `consolidate_coplanar`'s plane buckets.
+#[derive(Clone)]
 pub(super) struct PlaneTri {
     pub v: [Point3<f64>; 3],
     pub normal: Vector3<f64>,

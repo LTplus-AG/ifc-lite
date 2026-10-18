@@ -9,6 +9,7 @@ import { Picker } from './picker.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { RenderOptions, BatchedMesh, Mesh } from './types.js';
 import type { Scene } from './scene.js';
+import { OpaqueVisibilityPass } from './opaque-visibility-pass.js';
 import type { RenderPipeline } from './pipeline.js';
 import { DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { rteRelativePositionF32 } from './relative-to-eye.js';
@@ -312,6 +313,7 @@ function makeHarness(): Harness {
     wdev['contextConfigured'] = true;
     wdev['lastWidth'] = 256;
     wdev['lastHeight'] = 256;
+    const visibility = new OpaqueVisibilityPass(fakeGpuDevice as unknown as GPUDevice, 1);
     // Permissive pipeline stub: draw-state getters return inert objects,
     // sizing predicates return stable values, everything else no-ops.
     (renderer as unknown as Record<string, unknown>)['pipeline'] = new Proxy(
@@ -319,6 +321,7 @@ function makeHarness(): Harness {
         {
             get(_t, prop) {
                 switch (prop) {
+                    case 'visibility': return visibility;
                     case 'needsResize': return () => false;
                     case 'getSampleCount': return () => 1;
                     case 'getMultisampleTextureView': return () => null;

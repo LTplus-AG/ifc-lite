@@ -4062,7 +4062,7 @@ spending another capture window. This integration fix grants no timing verdict.
 
 ## Recovered frame and placement validation: mixed, held (#7779)
 
-**Acceptance and supporting publication remain held.** The single admitted,
+**Performance acceptance and merging remain held.** The single admitted,
 matched idle cohort compared the ordered tail/currentmain base with the recovered
 private integration using already-built source-pinned binaries. Haus wall time,
 public Viadotto planner time and public Duplex symbolic extraction time increased;

@@ -1,0 +1,20 @@
+{
+  "base": "d1726086eb",
+  "status": "UNCOMPILED_UNRUN",
+  "files": [
+    {
+      "path": "rust/geometry/src/router/voids/bool2d_path.rs",
+      "sha256": "9c2d228c12405f9d6c32599d735897c09823114a8ab7d2ee1bfd89beed246025",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/router/voids/bool2d_kernel_rollback_tests.rs",
+      "sha256": "f49c0159387ae3682ce068a1e56e8e1f92356cc95481450a02729e524ad3f750",
+      "syntax_exit_code": 0,
+      "stderr": ""
+    }
+  ],
+  "root_correction": "Feature-enabled prism defer APIs return named zero buckets; assert all counts zero rather than empty vector. Original subagent hashes preserved unchanged.",
+  "remaining_qualification": "Execute positive control and actual staged modes under default and observability features; witness assumptions must pass, not be weakened to census-only assertions."
+}

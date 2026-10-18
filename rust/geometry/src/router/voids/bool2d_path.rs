@@ -258,3 +258,7 @@ mod tests;
 #[cfg(test)]
 #[path = "bool2d_transaction_tests.rs"]
 mod transaction_tests;
+
+#[cfg(test)]
+#[path = "bool2d_kernel_rollback_tests.rs"]
+mod kernel_rollback_tests;

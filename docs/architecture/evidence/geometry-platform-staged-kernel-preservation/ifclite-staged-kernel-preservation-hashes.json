@@ -1,0 +1,41 @@
+{
+  "base": "d1726086eb",
+  "qualification": "syntax/whitespace only; tests unrun",
+  "files": [
+    {
+      "path": "rust/geometry/src/router/voids/bool2d_kernel_rollback_tests.rs",
+      "sha256": "8a43c47b148eb3b6a0ea167077ceedc7f464705e7492558b5814699706eb8b1f",
+      "bytes": 9359,
+      "lines": 191,
+      "edited": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/bool2d_path.rs",
+      "sha256": "9c2d228c12405f9d6c32599d735897c09823114a8ab7d2ee1bfd89beed246025",
+      "bytes": 12560,
+      "lines": 264,
+      "edited": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/bool2d_path_tests.rs",
+      "sha256": "0caaab062c31070bbf0c5d7120db502de70867bf9abaf889ef52eba855a36238",
+      "bytes": 14317,
+      "lines": 344,
+      "edited": false
+    },
+    {
+      "path": "rust/geometry/src/router/voids/staged.rs",
+      "sha256": "52b9a32ed2212e724ed413c279da59a050b6e47c8c5d0358fa52466e475df13b",
+      "bytes": 4689,
+      "lines": 101,
+      "edited": false
+    },
+    {
+      "path": "rust/geometry/src/program/openings/execute.rs",
+      "sha256": "e830ff8e9d2776a0a08bd9e05263a00562ab80344f72aa2b25b924b718530ab9",
+      "bytes": 6160,
+      "lines": 179,
+      "edited": false
+    }
+  ]
+}

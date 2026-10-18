@@ -188,8 +188,11 @@ describe('clash reward shaping', () => {
 // slowest in the package. #1910 raised that cost legitimately: AB22 is an
 // infra model with ten IFCFACILITYPART entities that all carry a non-null
 // Representation, and generalising the container-geometry exception means
-// those ten road-surface solids are now meshed instead of silently skipped
-// (clash count 19 -> 75 for the same input). Locally that is ~0.4s, well
+// those ten road-surface solids are now meshed instead of silently skipped.
+// The default clash count on AB22 is no longer a useful signal: it rose from
+// 19 to 75 with that change, fell back to 19 when spatial containers stopped
+// being clash bodies (#2572), and is 0 since contact within f32 noise counts
+// as touch (#5564). Locally that is ~0.4s, well
 // inside the 5s default, but CI runs this file roughly 5x slower and the
 // benign-property case began timing out there. The work is correct, so the
 // budget moves rather than the coverage.

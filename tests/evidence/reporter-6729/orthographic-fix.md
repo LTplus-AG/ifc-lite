@@ -27,11 +27,11 @@ mismatches on the tested backend; that failed prototype was rejected. Numerical
 coincidence allows four float32 ULPs, independently of the entity hash. This
 cannot promise ordering for arbitrarily small separations at arbitrary ranges.
 
-## Verified coverage
+## Recorded coverage
 
-On the PC's observed SwiftShader backend:
+The initial implementation on the PC's observed SwiftShader backend:
 
-- 2,160 paired visibility cases pass: 1/4/30mm gaps, 5.2/40/1000m depth ranges,
+- 2,160 recorded visibility rows pass (including 720 duplicate perspective controls): 1/4/30mm gaps, 5.2/40/1000m depth ranges,
   five orbit angles, both draw orders and projections, flat/quantized/instanced
   vertex stages, MSAA 1/4, production and identity-nudge controls.
 - 240 real selection/hover mask cases pass, including maximal-rank hidden
@@ -82,3 +82,15 @@ both machines still reported SwiftShader. Mac is disabled in fleet policy.
 The additional orthographic opaque replay and depth32float MSAA attachment have
 a real cost; frame-time overhead has not been benchmarked. Perspective avoids
 the replay and attachment allocation, but that is not a measured speed claim.
+
+
+## Review follow-up qualification
+
+The current matrix removes the repeated perspective rows: 1,080 orthographic
+cases across three ranges plus 360 perspective controls, 1,440 distinct cases.
+Perspective uses the actual infinite-far matrix and records no finite range.
+Review follow-ups compile visibility variants asynchronously before drawing,
+defer frames while compilation is pending, reject failed variants without an
+unconstrained fallback, and release the depth texture on perspective frames.
+These production follow-ups require fresh root checks and real viewer captures;
+the initial implementation's measurements above are retained with their scope.

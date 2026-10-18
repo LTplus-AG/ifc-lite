@@ -219,7 +219,12 @@ five orbit angles, all mesh vertex families and MSAA 1/4. Existing coplanar and
 clip-plane viewer tests cover the ranking and clipping contracts separately.
 
 The extra depth attachment and opaque replay cost apply to orthographic frames.
-GPU timing reports the additional `opaque-visibility` pass separately.
+GPU timing reports the additional `opaque-visibility` pass separately. The depth
+attachment is released when switching back to perspective. Colour/depth variants
+use asynchronous pipeline validation; an orthographic frame that needs a pending
+variant is discarded before submission and requested again when validation
+finishes. Failed variants reach renderer diagnostics, never an unconstrained
+colour-pipeline fallback.
 
 ### Fragment Shader
 

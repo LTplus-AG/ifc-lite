@@ -123,8 +123,11 @@ The control shader replaces only the composed nudge helper with identity.
 It does not modify production files or geometry. The report retains shader
 digests, actual packed IDs/lanes, matrices, geometric clearance, pixel counts,
 adapter/browser identity, source revision, dirty-tree status and source hashes.
-All 2,160 visibility cases must pass, including the orthographic 1mm and 4mm
-invariants that the former depth-ranking mechanism violated. Production cases
+All 1,440 distinct visibility cases must pass, including the orthographic 1mm and 4mm
+invariants that the former depth-ranking mechanism violated. The 1,080 orthographic
+rows sweep scene range; the 360 perspective controls use the real infinite-far
+projection and record `range: null`. Earlier 2,160-row reports repeated those
+perspective controls three times; they do not establish additional range coverage. Production cases
 execute the actual geometric prepass and guarded colour pass; identity-nudge
 controls retain their independent single-pass path. The same command also runs
 240 real selection/hover mask cases, including maximal-rank hidden sources

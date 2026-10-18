@@ -792,6 +792,29 @@
         assert_eq!(new_max, open_max, "a far-flush recess's max bound must be left unchanged");
     }
 
+    /// Issue #7920: a rebate flush with a wall face 51 m from the origin. The host bounds come
+    /// from f32-stored vertices: in the real model the wall faces at y = 51.48
+    /// and 51.73 read back as 51.479995728 and 51.729995728, 4.3 um off the
+    /// authored opening face. A tolerance of `thickness * 1e-5` (2.5 um for a
+    /// 250 mm wall) is below that f32 noise, so the 190 mm rebate was not read
+    /// as a recess and got extended through the remaining 60 mm of wall. Both
+    /// extrusion signs must leave it unchanged.
+    #[test]
+    fn test_extend_opening_recess_survives_f32_host_bounds_far_from_origin() {
+        let router = crate::router::GeometryRouter::new();
+        let wall_min = Point3::new(23.2479, 51.479995728, 10.84);
+        let wall_max = Point3::new(25.59, 51.729995728, 14.01);
+        let open_min = Point3::new(23.24, 51.48, 13.75);
+        let open_max = Point3::new(25.6068, 51.67, 14.01);
+
+        for dir in [Vector3::new(0.0, 1.0, 0.0), Vector3::new(0.0, -1.0, 0.0)] {
+            let (new_min, new_max) =
+                router.extend_opening_along_direction(open_min, open_max, wall_min, wall_max, dir);
+            assert_eq!(new_min, open_min, "rebate min bound changed for dir {dir:?}");
+            assert_eq!(new_max, open_max, "rebate extended through the wall for dir {dir:?}");
+        }
+    }
+
     /// DETERMINISM (CI-safe, no fixture): the parametric cut on a rotated, building-scale
     /// wall must FIRE, be watertight, emit a local-frame mesh (small positions + origin),
     /// and produce BIT-IDENTICAL output across runs. Bit-identical-across-runs + the

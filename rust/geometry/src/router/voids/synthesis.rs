@@ -11,6 +11,7 @@ mod membrane;
 use super::super::processing::SourceHygiene;
 use super::geom::*;
 use super::{GeometryRouter, OpeningType, NORMALIZE_EPSILON};
+use crate::math::tol::F32_ULP_SCALE;
 use crate::{Mesh, Point3, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
@@ -574,7 +575,17 @@ impl GeometryRouter {
         // a face); in a recess one end is on a face and the other is inside.
         // Use coplanarity-pad tolerance so a tiny float-error offset doesn't
         // mask the alignment.
-        let face_align_tol = (wall_max_proj - wall_min_proj).abs() * 1e-5;
+        //
+        // The host bounds come from f32-stored vertices, so a face authored
+        // flush with the opening can read back a few ULPs off at building
+        // scale (4.3 um at 51 m), more than `thickness * 1e-5` for a 250 mm
+        // wall. Floor the tolerance at the f32 noise of the coordinates (#7920).
+        let coord_magnitude = [wall_min, wall_max, open_min, open_max]
+            .iter()
+            .flat_map(|p| [p.x.abs(), p.y.abs(), p.z.abs()])
+            .fold(0.0, f64::max);
+        let face_align_tol = ((wall_max_proj - wall_min_proj).abs() * 1e-5)
+            .max(coord_magnitude * F32_ULP_SCALE);
         let near_at_min_face = (open_min_proj - wall_min_proj).abs() < face_align_tol;
         let near_at_max_face = (open_max_proj - wall_max_proj).abs() < face_align_tol;
         let far_inside_min = open_min_proj > wall_min_proj + face_align_tol;

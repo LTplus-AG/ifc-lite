@@ -20,6 +20,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { buildMaterialUsageIndex } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
+import { entityOwnership } from '@/utils/entity-ownership';
 import { mergeObjectCounts, summarizeObjects } from './objectCountSummary';
 import { appendOtherGroupNodes, type OtherBucketEntry } from './otherBucket';
 import { elementRowType, emitElementsWithOtherBucket, makeShapeTest, type ElementRowView } from './elementSubtree';
@@ -172,7 +173,7 @@ export function buildUnifiedStoreys(
             'IfcBuildingStorey',
             descendantSpaceCache, view,
           )
-        : elements as number[];
+        : (elements as number[]).filter(entityOwnership(dataStore, view));
       const spacesNotCounted = storeyNode
         ? (storeyNode.children ?? []).filter((child) => isSpaceLikeSpatialType(child.type)).length
         : 0;
@@ -655,14 +656,11 @@ export function buildTypeTree(
   const otherEntities: OtherBucketEntry[] = [];
 
   const processDataStore = (dataStore: IfcDataStore, modelId: string) => {
-    const assemblyGeometry = makeAssemblyGeometry(
-      dataStore,
-      modelId,
-      models,
-      geometricIds,
-      geometryReadyModelIds?.has(modelId),
-    );
     const view = overlayViewFor(overlay, modelId);
+    const assemblyGeometry = makeAssemblyGeometry(
+      dataStore, modelId, models,
+      geometricIds, geometryReadyModelIds?.has(modelId), view,
+    );
     // @raw-entity-enumeration-ok parsed rows, each passed through effectiveTreeType (deleted skipped, retype applied); created products arrive as authoredProducts
     for (let i = 0; i < dataStore.entities.count; i++) {
       const expressId = dataStore.entities.expressId[i];
@@ -816,15 +814,14 @@ export function buildIfcTypeTree(
 
   const processDataStore = (dataStore: IfcDataStore, modelId: string) => {
     if (!dataStore.relationships) return;
+    const view = overlayViewFor(overlay, modelId);
     const assemblyGeometry = makeAssemblyGeometry(
       dataStore,
       modelId,
       models,
-      geometricIds,
-      geometryReadyModelIds?.has(modelId),
+      geometricIds, geometryReadyModelIds?.has(modelId), view,
     );
 
-    const view = overlayViewFor(overlay, modelId);
     const assignments = effectiveTypeAssignments(dataStore, view);
     for (const { expressId, typeClassName, name: typeName } of effectiveTypeEntities(dataStore, view)) {
 
@@ -993,6 +990,7 @@ export function buildMaterialTree(
   geometricIds?: Set<number>,
   geometryReadyModelIds?: ReadonlySet<string>,
   effectiveStores?: ReadonlyMap<string, IfcDataStore>,
+  overlay?: TreeOverlay,
 ): TreeNode[] {
   interface MatEntry {
     name: string;
@@ -1009,6 +1007,7 @@ export function buildMaterialTree(
       ? ownerModelIds.some((owner) => geometryReadyModelIds.has(owner))
       : !!geometricIds && geometricIds.size > 0;
     const usage = buildMaterialUsageIndex(dataStore);
+    const owns = entityOwnership(dataStore, overlayViewFor(overlay, modelId));
     for (const u of usage.values()) {
       const key = JSON.stringify([modelId, u.name]);
       let entry = byName.get(key);
@@ -1023,6 +1022,7 @@ export function buildMaterialTree(
         byName.set(key, entry);
       }
       for (const { entityId } of u.entries) {
+        if (!owns(entityId)) continue;
         const globalId = resolveTreeGlobalId(modelId, entityId, models);
         if (applyGeomFilter && !geometricIds!.has(globalId)) continue;
         entry.elements.set(globalId, entityId);

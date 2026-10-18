@@ -30,6 +30,28 @@ scripts/perf/instructions.sh tests/models/ara3d/AC20-FZK-Haus.ifc --json
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+`ab-report.mjs` accepts input rows only with literal `side` values `base` and
+`branch`; `--base` and `--branch` set display labels and do not select rows.
+It refuses empty, incomplete, or unpaired comparisons before printing a
+verdict. Optional phases may be absent for a whole fixture; once supplied in
+any sample, they must be present in every base and branch sample for that
+fixture. Equal mesh/vertex/triangle counts remain a count check, not proof of
+byte identity.
+
+A zero baseline has no defined relative delta or noise floor. Both native and
+browser reporters preserve those values as `null`: zero on both sides is inconclusive (below
+timer resolution), while an increase from zero blocks a no-regression verdict.
+Positive-baseline noise and real-change thresholds are unchanged. The JSON
+verdict exposes `inconclusive` and `zeroBaselineIncrease`; each phase records
+its direction when the relative delta is defined. Reporter regression tests use
+synthetic input, not new performance measurements (#7912).
+
+The browser reporter retains descriptive partial metrics but requires every
+sample's metric to be present for a noise-based verdict. A metric absent
+everywhere remains optional. Unknown sides, invalid fixture/round/count
+identity and invalid supplied timings cannot produce a trusted comparison.
+Existing readiness, failed-sample and GPU-loss rules remain binding.
+
 **Instruction ceilings gate kernel and parse work only (#6982).** The
 `native-instructions` ratchet (`tests/perf-ratchets/native-instructions*.json`,
 0.05% tolerance, FZK-Haus per PR, ISSUE_129 daily) is a blocking check for

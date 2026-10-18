@@ -159,7 +159,7 @@ for (const count of [1, 2]) {
       for (const modelId of models.keys()) {
         const material = nodes.find(node => node.modelId === modelId);
         assert.ok(material);
-        const expected = modelId === deletedModelId ? [8] : [5, 8];
+        const expected: number[] = modelId === deletedModelId ? [8] : [5, 8];
         assert.deepEqual(material.expressIds, expected);
         assert.deepEqual(material.globalIds,
           expected.map(id => useViewerStore.getState().toGlobalId(modelId, id)));

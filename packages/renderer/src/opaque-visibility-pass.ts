@@ -23,7 +23,15 @@ export function opaqueVisibilityLayout(device: GPUDevice, samples: number): GPUB
 interface Registration { descriptor: GPURenderPipelineDescriptor; source: string }
 interface Variants { colour: GPURenderPipeline; depth: GPURenderPipeline | null }
 class PendingVisibility extends Error {
-  constructor(readonly ready: Promise<void>) { super('Orthographic pipelines are compiling'); }
+  constructor(readonly ready: Promise<void>, readonly alive: () => boolean) { super('Orthographic pipelines are compiling'); }
+}
+
+/** A compiling frame is discarded before submit; completion requests its replacement. */
+export function deferOpaqueVisibilityFrame(error: unknown, requestRender: () => void): boolean {
+  if (!(error instanceof PendingVisibility)) return false;
+  const wake = () => { if (error.alive()) requestRender(); };
+  void error.ready.then(wake, wake); // Rejection is retained and thrown on the next draw.
+  return true;
 }
 
 /**
@@ -85,19 +93,11 @@ export class OpaqueVisibilityPass {
     await ready;
   }
 
-  /** A compiling frame is discarded before submit; completion requests its replacement. */
-  deferFrame(error: unknown, requestRender: () => void): boolean {
-    if (!(error instanceof PendingVisibility)) return false;
-    const wake = () => { if (!this.destroyed) requestRender(); };
-    void error.ready.then(wake, wake); // Rejection is retained and thrown on the next draw.
-    return true;
-  }
-
   private forPipeline(base: GPURenderPipeline): Variants | undefined {
     if (this.failures.has(base)) throw this.failures.get(base);
     const variants = this.variants.get(base);
     if (variants || !this.registrations.get(base)?.descriptor.fragment) return variants;
-    throw new PendingVisibility(this.prepare(base));
+    throw new PendingVisibility(this.prepare(base), () => !this.destroyed);
   }
 
   private async buildVariants(base: GPURenderPipeline, registration: Registration): Promise<Variants | undefined> {

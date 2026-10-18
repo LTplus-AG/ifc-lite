@@ -15,6 +15,7 @@ export type { SceneContents } from './scene-contents.js';
 export { appearanceSourceTriangle, expandAppearanceCorners, equivalentAppearanceGeometry } from './appearance-uvs.js';
 export { sameCompanionParts } from './appearance-companions.js';
 export { invertAppearancePartition, validateAppearancePartition, type AppearancePreview, type AppearanceOwner, type AppearanceToken, type AppearanceChange, type AppearancePartition, type AppearancePartitionPart } from './appearance-preview.js';
+import { deferOpaqueVisibilityFrame } from './opaque-visibility-pass.js';
 import type { AppearancePreview } from './appearance-preview.js';
 import { createReferenceImageManager } from './reference-image-host.js';
 export type { ReferenceImages, ReferenceImageInput, ReferenceImageHit, ReferenceCorners } from './reference-image-types.js';
@@ -3153,7 +3154,7 @@ export class Renderer {
             // `getOrCreatePartialBatch`'s CPU-side geometry merge running out of
             // host memory, and that throws a `RangeError` — which is exactly why
             // the discriminator keys on the TYPE and not on "a frame threw".
-            if (this.pipeline.visibility.deferFrame(error, () => this.requestRender())) return false;
+            if (deferOpaqueVisibilityFrame(error, () => this.requestRender())) return false;
             this.containFrameThrow(error, 'encode');
             cancelRendererColorFrame(this); return false;
         }

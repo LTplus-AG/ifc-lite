@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { OpaqueVisibilityPass } from './opaque-visibility-pass.js';
+import { deferOpaqueVisibilityFrame, OpaqueVisibilityPass } from './opaque-visibility-pass.js';
 
 Object.assign(globalThis, {
   GPUShaderStage: { VERTEX: 1, FRAGMENT: 2 },
@@ -40,7 +40,7 @@ test('#6729 pending async validation defers the frame without an unconstrained d
   const h = harness(); let wakes = 0;
   try {
     const pass = h.begin();
-    assert.throws(() => pass.setPipeline(h.base), error => h.visibility.deferFrame(error, () => { wakes++; }));
+    assert.throws(() => pass.setPipeline(h.base), error => deferOpaqueVisibilityFrame(error, () => { wakes++; }));
     assert.equal(h.stats.pipelines, 0, 'neither the base nor an invalid variant may reach the pass');
     assert.equal(h.stats.sync, 1, 'only the existing base pipeline uses synchronous creation');
     h.resolve(); await h.visibility.prepare(); await Promise.resolve();
@@ -55,13 +55,13 @@ test('#6729 rejected async validation is reported and never cached as a drawable
   const h = harness(); const failure = new Error('controlled GPU validation rejection');
   try {
     const pass = h.begin();
-    assert.throws(() => pass.setPipeline(h.base), error => h.visibility.deferFrame(error, () => {}));
+    assert.throws(() => pass.setPipeline(h.base), error => deferOpaqueVisibilityFrame(error, () => {}));
     h.reject(failure);
     await assert.rejects(h.visibility.prepare(), error => error === failure);
     assert.throws(() => pass.setPipeline(h.base), error => error === failure);
     assert.equal(h.stats.pipelines, 0); assert.equal(h.stats.draws, 0);
     assert.equal(h.stats.async, 1, 'a rejected colour variant never publishes or starts a depth variant');
-    assert.equal(h.visibility.deferFrame(failure, () => {}), false, 'real validation failures go to renderer diagnostics');
+    assert.equal(deferOpaqueVisibilityFrame(failure, () => {}), false, 'real validation failures go to renderer diagnostics');
   } finally { h.visibility.destroy(); }
 });
 

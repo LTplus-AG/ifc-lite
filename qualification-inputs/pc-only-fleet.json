@@ -1,0 +1,19 @@
+{
+  "hosts": [
+    {
+      "name": "pc-wsl",
+      "transport": "ssh",
+      "address": "ifc-pc-worker",
+      "python": "/home/louistrue/build-workers/worker-python",
+      "worker": "/home/louistrue/build-workers/worker-current/worker.py",
+      "state": "/home/louistrue/build-workers/worker-state",
+      "capabilities": [
+        "linux",
+        "rust",
+        "wasm",
+        "node"
+      ],
+      "enabled": true
+    }
+  ]
+}

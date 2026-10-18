@@ -1,0 +1,51 @@
+{
+  "base": {
+    "commit": "c53cfaa3a2034638f4c4ab40f7674b29e0528fed",
+    "tree": "9287fa44578221cfbc091d14ba7925bba42a8d8b"
+  },
+  "candidate": {
+    "tree": "323c7c47be86076c438da04d3a7c0f28b4b32b02",
+    "patchSha256": "5f750906d0f6b2a56396b7387a4117a2850f6f4f1747c3d3338ba4dd82e67e96",
+    "files": [
+      "apps/viewer/src/components/viewer/PropertiesPanel.tsx",
+      "apps/viewer/src/components/viewer/ViewportWelcomeCard.tsx",
+      "apps/viewer/src/components/viewer/validation/RuleModelPicker.tsx",
+      "apps/viewer/src/lib/commands/modeling/storey-live-frame.test.ts",
+      "apps/viewer/src/lib/commands/modeling/workplane.ts"
+    ]
+  },
+  "priorPc7901": {
+    "jobId": "3efe28a2-58b0-4698-b11b-fc3ca9b51ded",
+    "sourceCommit": "5da6bb4d147ba520a807ac7e3a57a23fa712264f",
+    "target": "/home/louistrue/build-workers/worker-state/targets/7548ffe131f5bb6be34c",
+    "rustSourcePathsDifferentFromC53": 50,
+    "runtimeWasmSha256": "b22f4d38df99d6474d034e2f2272bccf5ecb38816a35d34da9405f0162a1f212",
+    "reuseDecision": "do not copy or mutate; source incompatible"
+  },
+  "compatibleC53TurboCache": {
+    "origin": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f5423ba6/.turbo/cache",
+    "taskId": "@ifc-lite/wasm#build",
+    "taskHash": "90c398373844d98e",
+    "sourceSha": "c53cfaa3a2034638f4c4ab40f7674b29e0528fed",
+    "dryRunCacheStatus": "HIT",
+    "files": {
+      "90c398373844d98e.tar.zst": "589185de6ddd40e56456043ebdfbde6b3ae96e445f359328685e822bddf1b585",
+      "90c398373844d98e-manifest.json": "993426d7083b71f6c8d1c747b4b8926e47d02760c3ad13051361a1ebdad9733b",
+      "90c398373844d98e-meta.json": "f46a6f497f32eac051e3269884f5450539245fef6ad89e5049d3d8ce4e231eab"
+    },
+    "cachedOutputs": {
+      "packages/wasm/pkg/ifc-lite_bg.wasm": "ddce7a28af2d706fe8f601eecbea5f9f2600f68ae42d59093dec995b22338e63",
+      "packages/wasm/pkg/ifc-lite.js": "04c85b1449d8fee992f25f0685170ff03fb4360726fa4e4d2a2d180314c169c0",
+      "packages/wasm/pkg/ifc-lite.d.ts": "e2bf5dee93a6277acee5a814f0bab346ec3c270cbc01bc8a1d0ca75d1c2b65cb"
+    },
+    "c53BuildOutputTree": "9287fa44578221cfbc091d14ba7925bba42a8d8b",
+    "priorPcCompatibleC53Artifact": false,
+    "copyPolicy": "read-only source; copied into own private job cache after fleet admission"
+  },
+  "qualification": {
+    "submitted": false,
+    "sourceBuilds": "one c53 baseline plus one exact combined candidate through root Turbo",
+    "wasmBuild": "must be a verified Turbo cache HIT on both arms; abort before root build on miss",
+    "parentPublicationDispositionPending": true
+  }
+}

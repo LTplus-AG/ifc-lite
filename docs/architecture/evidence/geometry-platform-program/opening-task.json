@@ -1,0 +1,7 @@
+{
+  "task_id": "node:delegated-task:command%3Amcp%3A40782b11-2ce6-4f4a-b37b-2a6dbccb22b9%3Adelegate-task%3Aifclite-common-opening-program-round1",
+  "state_at_recording": "running",
+  "baseline": "e26527d79c",
+  "scope": "Complete ordered opening classification, source capture, numerical application and provisional effects in common child; replace old control, retain exact algorithms/thresholds and every recovery branch",
+  "qualification": "Task acceptance is not implementation or runtime proof"
+}

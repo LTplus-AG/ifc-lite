@@ -1,0 +1,61 @@
+{
+  "id": "d7ae2ef9-03a4-47d0-8289-d97b7e54ff7e",
+  "host": {
+    "host": "pop-os",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 32,
+    "availableMemoryBytes": 114165055488,
+    "totalMemoryBytes": 134644969472,
+    "python": "3.12.3",
+    "time": 1792360540.4066942
+  },
+  "cwd": "/home/louistrue/build-workers/worker-state/checkouts/816ed544ee14b50f84748bcd808b7605bbe1b1b0",
+  "sourceBefore": {
+    "commit": "816ed544ee14b50f84748bcd808b7605bbe1b1b0",
+    "tree": "e861cf2a2273da583b920ab843f27a9d4e9730b0",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "c8987439833b029efc8627127656e04700586f5b990657cac650a20636a5045e",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "command": [
+    "cargo",
+    "clippy",
+    "--workspace",
+    "--all-targets",
+    "--",
+    "-D",
+    "warnings"
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792360540.4061854,
+  "resources": [
+    "/home/louistrue/build-workers/worker-state/checkouts/816ed544ee14b50f84748bcd808b7605bbe1b1b0",
+    "/home/louistrue/build-workers/worker-state/targets/807c47b8bbaa06892aa3"
+  ],
+  "state": "failed",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "error": "host capacity guard refused admission",
+  "exitCode": 1,
+  "finishedAt": 1792361594.9152064,
+  "sourceAfter": {
+    "commit": "816ed544ee14b50f84748bcd808b7605bbe1b1b0",
+    "tree": "e861cf2a2273da583b920ab843f27a9d4e9730b0",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "c8987439833b029efc8627127656e04700586f5b990657cac650a20636a5045e",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {}
+}

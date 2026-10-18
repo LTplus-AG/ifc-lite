@@ -1,18 +1,30 @@
 {
   "source_commit": "816ed544ee",
   "runtime_source_identity": "No rust/packages/apps/scripts/Cargo input changes relative to integrated programe2e42bbfb8",
-  "state_at_recording": "Both original handles live; no command result yet",
+  "state_at_recording": "Both original checks terminal: storage guard refused before Cargo execution",
   "host_pin": "pop-os",
   "checks": [
     {
       "command": "cargo test --workspace --no-fail-fast",
       "request": "auto-d13260effc08436f937e23381aaee805",
-      "session": 21731
+      "session": 21731,
+      "job": "a170ac7a-118f-4acb-b4d2-80f1f412ce8a",
+      "state": "refused before Cargo execution",
+      "receipt": "integrated-a170ac7a-118f-4acb-b4d2-80f1f412ce8a-refusal.json",
+      "receipt_sha256": "6185307df470b1666bb96bae718cae91f0af6dd52ee8dd4d0b44601eb9adea68",
+      "observed_guard": "209.2 GiB free; 316 GiB required",
+      "resubmitted": false
     },
     {
       "command": "cargo clippy --workspace --all-targets -- -D warnings",
       "request": "auto-1d7f2352ccc445eebb36c53c62f9c0e3",
-      "session": 56318
+      "session": 56318,
+      "job": "d7ae2ef9-03a4-47d0-8289-d97b7e54ff7e",
+      "state": "refused before Cargo execution",
+      "receipt": "integrated-d7ae2ef9-03a4-47d0-8289-d97b7e54ff7e-refusal.json",
+      "receipt_sha256": "cfa008d1c5221553db91df66901c70f80f3b084b4803d64dd4862e052f967aa2",
+      "observed_guard": "209.2 GiB free; 316 GiB required",
+      "resubmitted": false
     }
   ],
   "launch": "Canonical ifc-fleet run --host pop-os --cwd clean-parent-checkout -- COMMAND; fleet prepares immutable checkout/toolchain and admission",

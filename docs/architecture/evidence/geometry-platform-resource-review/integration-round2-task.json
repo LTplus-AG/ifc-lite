@@ -1,0 +1,12 @@
+{
+  "task_id": "node:delegated-task:command%3Amcp%3A40782b11-2ce6-4f4a-b37b-2a6dbccb22b9%3Adelegate-task%3Aifclite-resource-integration-preservation-round2",
+  "state_at_recording": "running",
+  "baseline": "e26527d79c",
+  "scope": [
+    "Port sole old mapping resource path into current program/mapping",
+    "Preserve current owned layer and presentation boundaries",
+    "Prevent worker fresh epoch hiding preexisting ancestor terminal before geometry/effects"
+  ],
+  "review_limit": "Static cross-thread edge only; same-thread example is protected and is explicitly excluded",
+  "qualification": "No assembled-source result or full memory bound claimed"
+}

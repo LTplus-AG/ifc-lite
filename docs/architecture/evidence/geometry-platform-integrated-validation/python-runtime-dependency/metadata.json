@@ -1,0 +1,31 @@
+{
+  "base": "19190ea287",
+  "original_full_resolve": {
+    "command": "cargo metadata --manifest-path rust/python/Cargo.toml --locked --offline --format-version 1",
+    "exit_code": 101,
+    "diagnostic": "Separate Python lockfile lacks the new processing -> geometry-runtime dependency; --no-deps had not detected it."
+  },
+  "refresh": {
+    "command": "cargo update --manifest-path rust/python/Cargo.toml -p ifc-lite-processing --offline",
+    "exit_code": 0,
+    "change": "Add geometry runtime path package and processing dependency; no registry version updates."
+  },
+  "corrected_full_resolve": {
+    "command": "cargo metadata --manifest-path rust/python/Cargo.toml --locked --offline --format-version 1",
+    "exit_code": 0,
+    "full_metadata_sha256": "48fa0bd0972604c049fa23e09c192846c529c4f7d7836d07f1047de862e8d221",
+    "resolved_dependency_verified": "ifc-lite-processing -> ifc-lite-geometry-runtime"
+  },
+  "workflow_change": "Both push and pull_request path filters now watch rust/geometry-runtime/**. Existing wheel jobs remain the executing gates.",
+  "compilation_and_wheel_tests": "PENDING; metadata is not compilation or runtime qualification.",
+  "files": [
+    {
+      "path": "rust/python/Cargo.lock",
+      "sha256": "4f00107da42a30f971f0a7ade26bff54ad47431f3e33964680cc914dc5e2c617"
+    },
+    {
+      "path": ".github/workflows/python-wheels.yml",
+      "sha256": "3d49e305e2e4832c74033da42a2cb5f124022ff43fdb855d6ae079c9b619c402"
+    }
+  ]
+}

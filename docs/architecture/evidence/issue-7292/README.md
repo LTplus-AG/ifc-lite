@@ -1,6 +1,37 @@
 # Filled finite-surface comparison
 
-Completed functional validation and open performance disposition: [source-bound validation and performance disposition](./final-43ec-validation.json).
+## Current qualification and landing record
+
+The [completed corrected-O3 runtime result](./final-43ec-qualified-runtime.json)
+records the successful frozen source pair, the approved CPU aggregation, all
+three real-model comparisons, output identity limits, and the current main
+integration checks. FZK and the larger Holter model retain their full canonical
+fingerprints. ISSUE129 changes cut outputs and carries a measurable runtime
+cost; it is not reported as performance-neutral. Existing regression and approved
+size gates pass. The [partition evidence manifest](./final-43ec-partition-evidence.manifest.json)
+and [Holter evidence manifest](./final-43ec-holter-evidence.manifest.json) bind the
+selected original archives. Complete raw geometry remains retained at the
+recorded local paths where it is not included in the publication archive.
+
+The `ced41577` main composition passed native geometry tests serially, workspace
+Clippy, root typecheck through its documented continuation, the current viewer
+build, WASM contracts and all bundle ceilings on Pop. The final `17a27190`
+composition also includes main’s renderer lifetime and Assistant test fixes; its
+root viewer build and every bundle ceiling pass on Pop, with exact unchanged
+Rust/WASM/build subtrees verified against `ced41577`. The separate
+[final build receipt and full log](./final-landing-build.json) retain that source scope.
+Original parallel-test,
+operator-argument, low-heap and hosted Assistant/BCF failures remain disclosed in
+the result and archives. There is no blanket claim of green hosted CI or a
+passing parallel native suite. All browser processes are reaped; no shared hold
+or competing-job pause was required by the partition protocol.
+
+The sections below retain their named historical dispositions. Their refused
+windows and Os regression are preserved; the completed result above records the
+new qualification and never pools their partial rows.
+
+
+Historical completed functional validation and then-open performance disposition: [source-bound validation and performance disposition](./final-43ec-validation.json).
 
 The current qualification uses candidate `43ecf3aa3e240e1a7c41c5c799212b60df010ebd`
 against base `b0b670f0cfd704ceb7c78a622f5730d0cd9510de`. The final addendum below

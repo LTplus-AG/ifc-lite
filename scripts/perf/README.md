@@ -14,23 +14,29 @@ off the viewer's own telemetry (below).
 
 ## Sloped coincident-sided differences (#7292)
 
-**Unmerged: restored-O3 functional qualification complete; runtime NO_VERDICT.**
-The current `43ec` candidate's official O3 build, approved size gate, consumers,
-Python wheel/parity, native checks and scoped browser/geometry qualifications
-pass against `b0b670`. Their actual source, completed commands and proof limits
-are published in the linked validation summary. The historical Os cohort below
-still records a real regression and is not evidence about the corrected artifact.
-The final user-authorized window also ends with runtime NO_VERDICT: host CPU
-admission refuses completed captures, including when no named build/test graph
-is active. Every attempt remains separate; partial pairs are not pooled. Late
-original worker request/status metadata required a bounded collector wait; actual
-trace replay, refusal controls and a fresh untimed native-browser qualification
-pass without reducing body coverage or altering load metrics. Waiting for idle
-before launch does not permit retrying a measured row or weakening its strict
-post-sample gate. Lesson: preserve actual late CDP metadata and distinguish
-protocol qualification from an accepted end-to-end timing cohort. The hold is
-released, and independent builds may use the pinned Pop worker. The conditional
-engine-ceiling approval remains unfulfilled until corrected-O3 runtime qualifies.
+**Restored-O3 frozen-pair qualification complete; workload-dependent cost.**
+The [completed evidence](../../docs/architecture/evidence/issue-7292/final-43ec-qualified-runtime.json)
+binds fresh interleaved worker-pool comparisons on the small model, the void-heavy
+regression fixture and the larger tower. Exact flat typed fingerprints and
+canonical instanced metadata match on the small model and tower. The void-heavy
+fixture changes cut outputs and has a measurable runtime cost; passing the
+existing coarse regression gate does not establish neutrality. Current-main
+native, Clippy, root consumer, actual viewer/WASM and approved size checks retain
+their separate execution source and command scopes.
+
+Fixed inherited affinity for owned native Chrome, recorded physical-processor
+counters, a user-approved integrated CPU budget and stable same-source controls
+made a reproducible comparison possible without stopping other work. This is
+not an OS-exclusive reservation or whole-host idle claim. Large-model uploads
+use the same canonical file input through native CDP, with the whole staged IFC
+verified and cleaned. Complete raw output is exported in bounded chunks after
+timing; transmitting JSON text avoids Playwright recursively wrapping every
+number. Every actual JS/WASM response and every flat geometry buffer still
+requires full verification. Failed attempts remain separate and unused. Lesson:
+separate setup/collection cost from the authored worker-pool interval, keep
+actual byte coverage, and report correctness costs honestly. The approved engine
+ceiling keeps its original relative tolerance; its restored-O3 runtime condition
+is now fulfilled for the measured pair.
 
 The following measured Os disposition and attribution limits are historical.
 The independent native attribution campaign was incomplete after host admission
@@ -47,11 +53,11 @@ performance neutrality. The original one-file `O3` restoration fails its origina
 original generated-types source guard. The generated declaration order is now
 committed, and the user conditionally approved a measured engine ceiling with
 the same relative tolerance. The fresh restored-O3 official build, types, approved size and root consumers
-pass. Fresh functional captures and scoped reporter proof transfers also pass. Fresh
-end-to-end runtime qualification ends without a verdict: canonical host admission
+pass. Fresh functional captures and scoped reporter proof transfers also pass. That historical fresh
+end-to-end runtime qualification ended without a verdict: canonical host admission
 refuses the campaign after a base-only sample, with no branch sample or completed
-pair. The window is released and its authorities revoked. The performance
-condition remains unfulfilled; this approval does not erase either original
+pair. The window is released and its authorities revoked. At that stage the performance
+condition remained unfulfilled; approval did not erase either original
 failure or the measured shipping regression. Native proofs retain their actual
 qualification head and only their demonstrated source applicability.
 

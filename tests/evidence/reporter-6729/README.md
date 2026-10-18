@@ -112,7 +112,7 @@ only the returned adapter identity establishes whether physical hardware ran.
 The same two opaque squares and eye/target/up are rendered in perspective and
 orthographic projection with matched center-plane scale. The foreground square
 must hide the background square across five orbit angles, both draw orders,
-4/30mm separations, three scene depth ranges, MSAA 1/4, and the actual flat,
+1/4/30mm separations, three scene depth ranges, MSAA 1/4, and the actual flat,
 quantized and instanced colour vertex stages. A diagnostic fragment reports
 front/rear sample ownership as red/green, excluding lighting and selection.
 An independent f64 ray/plane oracle establishes front-first visibility and
@@ -123,10 +123,20 @@ The control shader replaces only the composed nudge helper with identity.
 It does not modify production files or geometry. The report retains shader
 digests, actual packed IDs/lanes, matrices, geometric clearance, pixel counts,
 adapter/browser identity, source revision, dirty-tree status and source hashes.
-Perspective and zero-nudge controls must pass; the orthographic 4mm invariant
-is expected to expose the current bug and remains a failing assertion until
-production is fixed. The test does not require orthographic failure: it asserts
-correct visibility, so a fix can pass without rewriting the witness.
+All 2,160 visibility cases must pass, including the orthographic 1mm and 4mm
+invariants that the former depth-ranking mechanism violated. Production cases
+execute the actual geometric prepass and guarded colour pass; identity-nudge
+controls retain their independent single-pass path. The same command also runs
+240 real selection/hover mask cases, including maximal-rank hidden sources
+behind rank-zero 1mm occluders. Intentional hidden selection silhouettes remain
+present. Reports require zero GPU validation errors.
+
+With a built viewer dependency graph and real WASM runtime, run existing
+coplanar ownership, annotation, override and clipping controls plus the reduced
+reporter recorder using `DEPTH_WITNESS_VIEWER=1 pnpm test:projection-depth`.
+Set `REPORTER_6729_IFC` to the pinned public attachment and `E2E_GPU_STRICT=1`
+for the reporter cohort; its absence skips that cohort rather than granting
+acceptance. This uses the same isolated browser and private source servers.
 
 This isolates the renderer's ordering mechanism. It is not an authentic
 nut/bolt or plate topology check, selection acceptance, continuous viewer-motion

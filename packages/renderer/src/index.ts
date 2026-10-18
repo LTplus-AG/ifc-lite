@@ -2179,7 +2179,7 @@ export class Renderer {
                 storeOp: (needsObjectIdPass ? 'store' : 'discard') as GPUStoreOp,
             });
 
-            const pass = encoder.beginRenderPass({
+            const pass = this.pipeline.visibility.begin(encoder, {
                 timestampWrites: renderPassTimestampWrites(encoder, 'main'),
                 colorAttachments,
                 depthStencilAttachment: {
@@ -2193,7 +2193,7 @@ export class Renderer {
                     stencilLoadOp: 'clear',
                     stencilStoreOp: 'store',
                 },
-            });
+            }, this.camera.getProjectionMode() === 'orthographic', this.canvas.width, this.canvas.height);
 
             // Global lighting environment: write the uniform once per frame.
             // The group(1) bind is deferred until AFTER the sky pass below —
@@ -3084,7 +3084,7 @@ export class Renderer {
                 pixelRatio: this.pixelRatio,
                 // EDL only when point clouds are loaded and the user enabled it.
                 edl: this.edlOptions.enabled && this.pointCloudRenderer?.hasAssets() ? this.edlOptions : null,
-                selectionOutline,
+                selectionOutline, geometricVisibility: this.pipeline.visibility.getBinding(),
             });
 
             colorReadback = colorCapture && encodeRendererColorFrameCapture(device, encoder, colorCapture);

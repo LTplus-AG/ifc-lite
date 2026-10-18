@@ -24,7 +24,7 @@ test.beforeAll(async ({ browser }, info) => {
       const probe: { runProjectionDepthWitness(): Promise<ProjectionDepthReport> } = await import(moduleUrl);
       return probe.runProjectionDepthWitness();
     }, url);
-    const sources = ['projection-depth.fixture.ts', 'projection-depth.gpu.ts', '../../packages/renderer/src/shaders/main.wgsl.ts', '../../packages/renderer/src/shaders/depth-nudge.wgsl.ts'];
+    const sources = ['projection-depth.fixture.ts', 'projection-depth.gpu.ts', '../../packages/renderer/src/shaders/main.wgsl.ts', '../../packages/renderer/src/shaders/depth-nudge.wgsl.ts', '../../packages/renderer/src/shaders/opaque-visibility.wgsl.ts', '../../packages/renderer/src/opaque-visibility-pass.ts'];
     const hashes = Object.fromEntries(sources.map(name => [name, createHash('sha256').update(readFileSync(new URL(name, import.meta.url))).digest('hex')]));
     await info.attach('paired-projection-depth', { body: JSON.stringify({
       source: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
@@ -32,7 +32,7 @@ test.beforeAll(async ({ browser }, info) => {
     }, null, 2), contentType: 'application/json' });
     expect(pageErrors).toEqual([]);
     expect(report.errors).toEqual([]);
-    expect(report.rows).toHaveLength(1440);
+    expect(report.rows).toHaveLength(2160);
     for (const row of report.rows) {
       expect(row.otherPixels, `probe must be covered: ${JSON.stringify(row)}`).toBe(0);
       expect(row.frontPixels + row.rearPixels).toBe(64);
@@ -60,8 +60,7 @@ test('orthographic 30mm and reduced-range controls preserve visibility (#6729)',
   requireFront(report.rows.filter(row => row.projection === 'orthographic' && (row.gap === 0.03 || row.range === 5.201668158)));
 });
 
-// Intentionally exposes the remaining defect on the current production shader.
-// Never invert this assertion to bless a known leak, skip it, or increase gap.
-test('orthographic keeps 4mm surfaces hidden while orbiting larger scenes (#6729)', () => {
-  requireFront(report.rows.filter(row => row.projection === 'orthographic' && row.mode === 'production' && row.gap === 0.004 && row.range > 5.201668158));
+// Independent geometry must win over entity rank throughout the orbit.
+test('orthographic keeps 1mm and 4mm surfaces hidden while orbiting larger scenes (#6729)', () => {
+  requireFront(report.rows.filter(row => row.projection === 'orthographic' && row.mode === 'production' && row.gap <= 0.004 && row.range > 5.201668158));
 });

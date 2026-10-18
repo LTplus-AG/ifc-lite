@@ -5,8 +5,14 @@
     "declaration": false,
     "declarationMap": false,
     "rootDir": "../..",
-    "types": ["node", "@webgpu/types"],
-    "typeRoots": ["../../node_modules/@types", "../../packages/renderer/node_modules"]
+    "types": [
+      "node",
+      "@webgpu/types"
+    ],
+    "typeRoots": [
+      "../../node_modules/@types",
+      "../../packages/renderer/node_modules"
+    ]
   },
   "include": [],
   "exclude": [],
@@ -14,6 +20,8 @@
     "projection-depth.config.ts",
     "projection-depth.e2e.spec.ts",
     "projection-depth.fixture.ts",
-    "projection-depth.gpu.ts"
+    "projection-depth.gpu.ts",
+    "selection-mask-depth.gpu.ts",
+    "selection-mask-depth.e2e.spec.ts"
   ]
 }

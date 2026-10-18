@@ -6,12 +6,16 @@ import { defineConfig } from '@playwright/test';
 // Isolated shader witness: no shared preview, IFC fixture, WASM build or GPU
 // acceptance waiver. Use a full Chrome/Chromium binary, not headless-shell.
 export default defineConfig({
-  testDir: '.', testMatch: 'projection-depth.e2e.spec.ts',
+  testDir: '.',
+  testMatch: process.env.DEPTH_WITNESS_VIEWER === '1'
+    ? /(?:ortho-depth-nudge|reporter-6729)\.e2e\.spec\.ts/
+    : /(?:projection-depth|selection-mask-depth)\.e2e\.spec\.ts/,
   timeout: 180_000, workers: 1, fullyParallel: false, retries: 0,
   outputDir: '../../test-results/projection-depth',
   reporter: [['list'], ['json', { outputFile: '../../test-results/projection-depth-results.json' }]],
   use: {
     channel: process.env.DEPTH_WITNESS_CHROME ? undefined : 'chrome', headless: true,
+    viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1, locale: 'en-US',
     launchOptions: {
       executablePath: process.env.DEPTH_WITNESS_CHROME,
       args: process.env.DEPTH_WITNESS_GPU === 'native'

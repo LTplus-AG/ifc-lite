@@ -10,6 +10,8 @@ import { colorSaltByte, packEntityLane } from '../../packages/renderer/src/scene
 import { quantizeInterleaved } from '../../packages/renderer/src/quantize.js';
 import { INSTANCED_VERTEX_BUFFERS } from '../../packages/renderer/src/instanced-vertex-layout.js';
 import { packRteOrigin } from '../../packages/renderer/src/relative-to-eye.js';
+import { OpaqueVisibilityPass } from '../../packages/renderer/src/opaque-visibility-pass.js';
+import { takeOpaqueVisibilityCommands } from '../../packages/renderer/src/opaque-visibility-commands.js';
 import {
   DEPTH_SIZE, PROBE_MIN, PROBE_MAX, ORBIT_ANGLES, DEPTH_RANGES, DEPTH_GAPS,
   EYE_DISTANCE, FOV, HALF_HEIGHT, orbitEye, geometricOracle, squarePositions, type Projection,
@@ -83,22 +85,26 @@ export async function runProjectionDepthWitness(): Promise<ProjectionDepthReport
       const front = entityForHash(0, family), rear = entityForHash(255, family);
       // Only the real vertex stage computes the displaced depth. This fragment
       // reports front=red/rear=green, independently of shading or selection.
-      const fragment = device.createShaderModule({ code: `
-        @fragment fn fs(@location(2) @interpolate(flat) lane:u32)->@location(0) vec4<f32> {
-          if ((lane & 0x00ffffffu) == ${front.id}u) { return vec4<f32>(1,0,0,1); }
+      const witnessFragment = `
+        @fragment fn fs_witness(input: VertexOutput)->@location(0) vec4<f32> {
+          if ((input.entityId & 0x00ffffffu) == ${front.id}u) { return vec4<f32>(1,0,0,1); }
           return vec4<f32>(0,1,0,1);
-        }` });
+        }`;
       for (const samples of [1, 4]) for (const mode of ['production', 'zero-nudge'] as const) {
-        const shader = device.createShaderModule({ code: sources[mode] });
-        const pipeline = await device.createRenderPipelineAsync({
-          layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
+        const visibility = new OpaqueVisibilityPass(device, samples);
+        const source = sources[mode] + witnessFragment;
+        const shader = device.createShaderModule({ code: source });
+        const descriptor: GPURenderPipelineDescriptor = {
+          layout: device.createPipelineLayout({ bindGroupLayouts: [layout, device.createBindGroupLayout({ entries: [] })] }),
           vertex: { module: shader, entryPoint: family === 'flat' ? 'vs_main' : family === 'quantized' ? 'vs_main_quantized' : 'vs_instanced',
             buffers: family === 'instanced' ? INSTANCED_VERTEX_BUFFERS : [family === 'flat' ? FLAT_LAYOUT : QUANT_LAYOUT] },
-          fragment: { module: fragment, entryPoint: 'fs', targets: [{ format: 'rgba8unorm' }] },
+          fragment: { module: shader, entryPoint: 'fs_witness', targets: [{ format: 'rgba8unorm' }] },
           primitive: { topology: 'triangle-list', cullMode: 'none' },
           depthStencil: { format: 'depth24plus-stencil8', depthWriteEnabled: true, depthCompare: 'greater' },
           multisample: { count: samples },
-        });
+        };
+        const pipeline = mode === 'production' ? await visibility.createAsync(descriptor, source) : await device.createRenderPipelineAsync(descriptor);
+        try {
         for (const gap of DEPTH_GAPS) for (const angle of ORBIT_ANGLES) for (const range of DEPTH_RANGES)
           for (const projection of ['perspective', 'orthographic'] as const) for (const reverseDrawOrder of [false, true]) {
             const mark = owned.length;
@@ -135,7 +141,7 @@ export async function runProjectionDepthWitness(): Promise<ProjectionDepthReport
                   bindGroup: device.createBindGroup({ layout, entries: [{ binding: 0, resource: { buffer: gpuUniform } }] }),
                 };
               });
-              const counts = await drawReadback(device, pipeline, index, reverseDrawOrder ? [...pieces].reverse() : pieces, samples);
+              const counts = await drawReadback(device, visibility, projection === 'orthographic' && mode === 'production', pipeline, index, reverseDrawOrder ? [...pieces].reverse() : pieces, samples);
               const renderedGap = pieces[0].planeZ - pieces[1].planeZ;
               rows.push({ family, samples, projection, mode, range, gap, angle, reverseDrawOrder,
                 renderedGap,
@@ -143,6 +149,7 @@ export async function runProjectionDepthWitness(): Promise<ProjectionDepthReport
                 ...counts, viewProjection: Array.from(vp.m), oracle: geometricOracle(projection, angle, renderedGap) });
             } finally { for (const b of owned.splice(mark)) b.destroy(); }
           }
+        } finally { visibility.destroy(); }
       }
     }
     await device.queue.onSubmittedWorkDone();
@@ -153,15 +160,15 @@ export async function runProjectionDepthWitness(): Promise<ProjectionDepthReport
 }
 
 interface Piece { vertex: GPUBuffer; instance: GPUBuffer | null; delta: GPUBuffer | null; bindGroup: GPUBindGroup }
-async function drawReadback(device: GPUDevice, pipeline: GPURenderPipeline, index: GPUBuffer, pieces: Piece[], samples: number) {
+async function drawReadback(device: GPUDevice, visibility: OpaqueVisibilityPass, orthographic: boolean, pipeline: GPURenderPipeline, index: GPUBuffer, pieces: Piece[], samples: number) {
   const color = device.createTexture({ size: [DEPTH_SIZE, DEPTH_SIZE], sampleCount: samples, format: 'rgba8unorm', usage: GPUTextureUsage.RENDER_ATTACHMENT | (samples === 1 ? GPUTextureUsage.COPY_SRC : 0) });
   const resolved = samples === 1 ? color : device.createTexture({ size: [DEPTH_SIZE, DEPTH_SIZE], format: 'rgba8unorm', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
   const depth = device.createTexture({ size: [DEPTH_SIZE, DEPTH_SIZE], sampleCount: samples, format: 'depth24plus-stencil8', usage: GPUTextureUsage.RENDER_ATTACHMENT });
   const read = device.createBuffer({ size: DEPTH_SIZE * 256, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
   try {
     const encoder = device.createCommandEncoder();
-    const pass = encoder.beginRenderPass({ colorAttachments: [{ view: color.createView(), ...(samples === 1 ? {} : { resolveTarget: resolved.createView() }), loadOp: 'clear', storeOp: 'store' }],
-      depthStencilAttachment: { view: depth.createView(), depthLoadOp: 'clear', depthStoreOp: 'store', depthClearValue: 0, stencilLoadOp: 'clear', stencilStoreOp: 'store', stencilClearValue: 0 } });
+    const pass = visibility.begin(encoder, { colorAttachments: [{ view: color.createView(), ...(samples === 1 ? {} : { resolveTarget: resolved.createView() }), loadOp: 'clear', storeOp: 'store' }],
+      depthStencilAttachment: { view: depth.createView(), depthLoadOp: 'clear', depthStoreOp: 'store', depthClearValue: 0, stencilLoadOp: 'clear', stencilStoreOp: 'store', stencilClearValue: 0 } }, orthographic, DEPTH_SIZE, DEPTH_SIZE);
     pass.setPipeline(pipeline); pass.setIndexBuffer(index, 'uint32');
     for (const piece of pieces) {
       pass.setBindGroup(0, piece.bindGroup); pass.setVertexBuffer(0, piece.vertex);
@@ -169,7 +176,7 @@ async function drawReadback(device: GPUDevice, pipeline: GPURenderPipeline, inde
       pass.drawIndexed(6);
     }
     pass.end(); encoder.copyTextureToBuffer({ texture: resolved }, { buffer: read, bytesPerRow: 256 }, [DEPTH_SIZE, DEPTH_SIZE]);
-    device.queue.submit([encoder.finish()]); await read.mapAsync(GPUMapMode.READ);
+    device.queue.submit([...takeOpaqueVisibilityCommands(encoder), encoder.finish()]); await read.mapAsync(GPUMapMode.READ);
     const rgba = new Uint8Array(read.getMappedRange());
     let frontPixels = 0, rearPixels = 0, otherPixels = 0;
     for (let y = PROBE_MIN; y < PROBE_MAX; y++) for (let x = PROBE_MIN; x < PROBE_MAX; x++) {

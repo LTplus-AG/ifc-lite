@@ -13,7 +13,7 @@
 //! folded back in, and (c) gated by the same switch as the hash.
 //!
 //! Run against real fixture geometry, not a synthetic cube: the production path
-//! reaches the hasher through `emit_sub_meshes` (many segments per element,
+//! reaches the hasher through submesh assembly (many segments per element,
 //! each in its own local frame with its own `origin`), which a single-mesh unit
 //! test cannot exercise.
 

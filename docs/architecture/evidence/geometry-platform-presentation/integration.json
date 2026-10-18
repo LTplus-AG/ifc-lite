@@ -1,0 +1,37 @@
+{
+  "baseline": "288932a247",
+  "original_checkpoint": "c8f5fff12e1203a25bcd5a9f7b87889067977dd5",
+  "original_patch_sha256": "c3f7c80e7765f9fcac6d77054888a20296e07da13caf7a06f9c534ecb0c415cd",
+  "original_hashes_verified_before_corrections": 16,
+  "archive_sha256": "dcb6f9457e35134d94bae9cb020913e9dbfc21276686d8305f41c03c71eda22d",
+  "integration_corrections": [
+    "Remove orphan import and deleted-function rustdoc/prose references",
+    "Retain only palette/rotation derived Arcs in ready packets; no transitive whole-model/source authority",
+    "Strengthen actual textured packet lifetime test with weak-model release, nonidentity rotation and derived handle release"
+  ],
+  "source_hashes": {
+    "rust/processing/src/element.rs": "d4e5a69113db5f75d9b7bacbfd3e01cc72d4ee8484a67ccc42afeac17cfa771e",
+    "rust/processing/src/element/assembly_fallback.rs": "809fd4daf11e8489b0a0e948fa9b7a9ebabda3772fb5b7927e81a06277e9d5ad",
+    "rust/processing/src/element/assembly_job.rs": "06b3fa9eebe0fb0d07a2138ec71d0a15c487abb12055cf89149fd5765715f971",
+    "rust/processing/src/element/assembly_submeshes.rs": "56c593dfa9b850ea63c67c47a78e5c3ad75418f000b1b21f021432203fd4d57d",
+    "rust/processing/src/element/assembly_types.rs": "625822ac3ae7bb46a2e24bb4c90344cb7c448e6108615284d21fee41a5a71d9b",
+    "rust/processing/src/element/element_color.rs": "af6ba301c51a788480439ad72f57e092671e16725310c5fce307156c87873624",
+    "rust/processing/src/element/owned_session.rs": "05dc99e138854f154283ba1132678ecc430af6da047e8c5de13648757dbeb059",
+    "rust/processing/src/element/presentation.rs": "8d5acce8dfc9c489be0684af75f5b4dcd2306e977b344f96d9509819835221cf",
+    "rust/processing/src/element/presentation_palette_tests.rs": "ba58494f41efbc690a67349170a1381d744bfb36a8085c1051e6eb2fcc088417",
+    "rust/processing/src/element/presentation_source.rs": "8ef40fbb2125406595873e63e395100b2376345c582fba3202298549bb6b119b",
+    "rust/processing/src/element/presentation_tests.rs": "ba0d65e761f7a5cd327c1c38d2298894ec3e1fd3a05bab80ea1286e3d79ba149",
+    "rust/processing/src/element/session.rs": "ddb799ae62895725b24c7e561a5ea0a528afd1962063ec2b59cc4848ba22afed",
+    "rust/processing/src/element/session_accept.rs": "ae83ccd64da2c0eb24737199d1a7a25154cae0facf9a0c5d9f8e9a88d3fbaddf",
+    "rust/processing/src/element/session_state.rs": "c6161e45da7309b9f47e76956384eba9f0f2be5c5614facab4db3ef57d3f0b95",
+    "rust/processing/src/element_mesh_build.rs": "7731bf4b00023f717bfbe393326c0ba1ef1ecd0fad9b725ae48810f8efc553ed",
+    "rust/processing/src/element_tests.rs": "bc11a0c3552354e2cbe4d6da0c3d90448eff52556b16af54b38d90655a6e040f",
+    "rust/processing/src/element/model_context.rs": "5228555bf80a924d739246cc1c47610c63298a193bee35cb30d14e6e375b0cf5",
+    "rust/processing/src/types/mesh.rs": "cc623bca9cf2bfb2a19f930a6357017138febadb49ff6d358bc34861eff10838",
+    "rust/processing/tests/geometry_hash_world_aabb.rs": "62a4ab90bca91f997a299ab5e41c5027afa52692eb2f3ff5c524da4460d705a7",
+    "rust/processing/tests/geometry_volume_gate.rs": "1d8d9a69d4d42d490f83b570b09619c058790ee924972fbf8c73e9dfba1e8667"
+  },
+  "validation": "Not compiled or executed; pinned rustfmt syntax-only parsing passed; machine storage admission blocks full checks",
+  "qualification_scope": "No child or predecessor runtime result qualifies this source; seven original behavioral tests plus strengthened lifetime invariant remain unverified",
+  "allocation_note": "Shared metadata adds per-product Arc ownership; no allocation-neutrality or performance claim without full worker-pool evidence"
+}

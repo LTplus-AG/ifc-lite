@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Once-only canonical presentation after work/owner validation.
-use super::assembly_fallback::emit_fallback_mesh;
-use super::assembly_submeshes::emit_sub_meshes;
-use super::assembly_types::assemble_type_parts;
+use super::presentation_source;
 use super::session::ProductState;
 use super::session_protocol::{WorkKind, WorkPayload, WorkReply};
 use super::session_state::Stage;
@@ -15,8 +13,8 @@ impl ProductState {
         match (reply.request.kind, reply.payload) {
             (WorkKind::TypeMap { map_id, class }, WorkPayload::TypeMap(parts)) => {
                 if let Some(parts) = parts {
-                    self.meshes.extend(assemble_type_parts(&self.job.assembly(), map_id, class,
-                        parts, self.element_color, ctx, decoder));
+                    self.meshes.extend(presentation_source::type_parts(&self.job.assembly(), (map_id, class),
+                        parts, self.element_color, ctx, decoder, self.presentation_context.as_ref()));
                 }
             }
             (WorkKind::Primary { layer_class, .. }, WorkPayload::Primary(outcome)) => {
@@ -24,8 +22,9 @@ impl ProductState {
                 match outcome {
                     PrimaryOutcome::RefusedAnnotation => return,
                     PrimaryOutcome::Candidate(submeshes) => {
-                        let (meshes, occurrences) = emit_sub_meshes(&self.job.assembly(), submeshes,
-                            self.element_color, ctx, decoder, &mut self.hasher, layer_class);
+                        let (meshes, occurrences) = presentation_source::submeshes(&self.job.assembly(), submeshes,
+                            self.element_color, ctx, decoder, &mut self.hasher, layer_class,
+                            self.presentation_context.as_ref());
                         if !meshes.is_empty() || !occurrences.is_empty() {
                             self.meshes = meshes;
                             self.occurrences = occurrences;
@@ -57,8 +56,8 @@ impl ProductState {
     fn assemble_parts(&mut self, parts: Vec<Mesh>, ctx: &MeshProductionContext<'_>,
         decoder: &mut EntityDecoder) {
         for mesh in parts.into_iter().filter(|mesh| !mesh.is_empty()) {
-            self.meshes.extend(emit_fallback_mesh(&self.job.assembly(), mesh,
-                self.element_color, ctx, decoder, &mut self.hasher));
+            self.meshes.extend(presentation_source::fallback(&self.job.assembly(), &self.job.entity, mesh,
+                self.element_color, ctx, decoder, &mut self.hasher, self.presentation_context.as_ref()));
         }
     }
 }

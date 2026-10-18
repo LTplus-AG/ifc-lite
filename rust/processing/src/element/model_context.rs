@@ -61,6 +61,14 @@ pub struct OwnedMeshProductionContext {
 }
 impl OwnedMeshProductionContext {
     pub fn id(&self)->ProductionContextId {self.id}
+    /// Numerical presentation retains only its immutable derived inputs, never
+    /// the model/context authority or a future source bundle attached to it.
+    pub(super) fn presentation_palettes(&self)->Arc<FxHashMap<u32,FullIndexedColourMap>> {
+        Arc::clone(&self.data.indexed_colour_full)
+    }
+    pub(super) fn presentation_rotation(&self)->Option<Arc<Vec<f64>>> {
+        self.data.site_local_rotation.clone()
+    }
     pub fn validate_source(&self)->Result<(),ProductionContextError> {
         if self.id.source_epoch==self.state.source_epoch.load(Ordering::Acquire) {Ok(())}
         else {Err(ProductionContextError::StaleSource)}

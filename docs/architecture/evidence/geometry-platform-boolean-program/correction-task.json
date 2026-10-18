@@ -1,0 +1,9 @@
+{
+  "task_id": "node:delegated-task:command%3Amcp%3A40782b11-2ce6-4f4a-b37b-2a6dbccb22b9%3Adelegate-task%3Aifclite-common-boolean-preservation-round2",
+  "state": "running",
+  "scope": [
+    "Remove new per-operation schema/processor allocation",
+    "Restore moved caller operand path/budget on unwind"
+  ],
+  "qualification": "Original initial dirty test iteration does not qualify final returned source; correction source not yet integrated"
+}

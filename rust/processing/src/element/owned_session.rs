@@ -32,6 +32,7 @@ impl OwnedProductExecution {
     }
     fn bind(mut state:ProductState,context:&Arc<OwnedMeshProductionContext>)->Self {
         state.bind_context(context.id());
+        state.presentation_context = Some(Arc::clone(context));
         Self {state,context:Arc::clone(context)}
     }
     fn validate(&self)->Result<(),WorkError> {self.context.validate_source().map_err(|_|WorkError::StaleSource)}

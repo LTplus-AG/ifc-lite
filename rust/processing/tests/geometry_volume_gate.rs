@@ -9,7 +9,7 @@
 //! The unit tests in `geom_hash_tests.rs` pin the arithmetic on a synthetic
 //! cube. What they cannot exercise is the thing that made this hard: on the real
 //! production path an element arrives as many sub-meshes through
-//! `emit_sub_meshes`, each in its own local frame, each separately oriented, and
+//! submesh assembly, each in its own local frame, each separately oriented, and
 //! the gate has to be applied to the right one. So these run against fixture
 //! geometry and assert the two properties that would catch a wrong number
 //! without needing a ground-truth volume to compare against:

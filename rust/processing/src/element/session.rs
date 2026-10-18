@@ -16,6 +16,7 @@ pub(super) struct ProductState {
     pub(super) hasher: Option<GeometryHasher>,
     pub(super) meshes: Vec<MeshData>,
     pub(super) occurrences: Vec<RawInstanceOccurrence>,
+    pub(super) presentation_context: Option<std::sync::Arc<OwnedMeshProductionContext>>,
     protocol: Protocol,
     owner: Option<ProductOwner>,
     pending_adopted: bool,
@@ -66,7 +67,7 @@ impl ProductState {
         let scopes = scopes.complete();
         Self { job: OwnedJob::new(job), stage, element_color: plan.element_color,
             keep_order, scopes: Some(scopes), hasher, meshes: Vec::new(), occurrences: Vec::new(),
-            protocol: Protocol::new(), owner, pending_adopted: false }
+            presentation_context: None, protocol: Protocol::new(), owner, pending_adopted: false }
     }
 
     pub(super) fn bind_context(&mut self,id:ProductionContextId) {self.protocol.bind_context(id)}

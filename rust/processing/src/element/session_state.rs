@@ -8,16 +8,16 @@ pub(super) struct OwnedJob {
     pub id: u32,
     pub ifc_type: IfcType,
     pub entity: DecodedEntity,
-    pub metadata: Option<ElementMeshMetadata>,
+    pub metadata: Option<std::sync::Arc<ElementMeshMetadata>>,
 }
 impl OwnedJob {
     pub fn new(job: &ElementMeshJob<'_>) -> Self {
         Self { id: job.id, ifc_type: job.ifc_type.clone(), entity: job.entity.clone(),
-            metadata: job.metadata.cloned() }
+            metadata: job.metadata.cloned().map(std::sync::Arc::new) }
     }
-    pub fn assembly(&self) -> AssemblyJob<'_> {
-        AssemblyJob { id: self.id, ifc_type: &self.ifc_type,
-            entity: &self.entity, metadata: self.metadata.as_ref() }
+    pub fn assembly(&self) -> AssemblyJob<'static> {
+        AssemblyJob { id: self.id, ifc_type: self.ifc_type.clone(),
+            metadata: super::assembly_job::AssemblyMetadata::Shared(self.metadata.clone()) }
     }
 }
 

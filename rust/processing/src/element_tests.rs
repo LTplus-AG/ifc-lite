@@ -88,7 +88,7 @@ END-ISO-10303-21;
     assert!(!mesh.welded_in_object_frame);
 
     let assembly_job = AssemblyJob::from(&job);
-    let _ = build_mesh_data(&assembly_job, mesh, [1.0, 1.0, 1.0, 1.0], None, None, false, 0, &ctx, None);
+    let _ = build_mesh_data(&assembly_job, mesh, [1.0, 1.0, 1.0, 1.0], None, None, false, 0, ctx.site_local_rotation, None);
 }
 
 #[test]

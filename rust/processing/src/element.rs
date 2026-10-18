@@ -38,7 +38,7 @@ use crate::style::{FullIndexedColourMap, GeometryStyleInfo};
 use crate::types::mesh::{MeshData, MeshTextureData, RawInstanceOccurrence};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use ifc_lite_geometry::{
-    calculate_normals, compose_instance_world_row_major, orient_mesh_outward_verdict, BoolFailure,
+    calculate_normals, orient_mesh_outward_verdict, BoolFailure,
     GeometryHasher, GeometryRouter, Mesh, ResolvedTextureMap, SubMeshCollection,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -72,6 +72,8 @@ mod session_protocol;
 mod session_owner;
 mod session_accept;
 mod session_canonical;
+mod presentation;
+mod presentation_source;
 mod assembly_fallback;
 mod assembly_submeshes;
 mod assembly_types;
@@ -141,3 +143,9 @@ mod owned_texture_tests;
 
 #[cfg(test)]
 mod owned_callback_tests;
+
+#[cfg(test)]
+mod presentation_tests;
+
+#[cfg(test)]
+mod presentation_palette_tests;

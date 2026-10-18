@@ -1,0 +1,108 @@
+{
+  "baseline": "e2e42bbfb8bd087a386450a0ab643bcb061c133c",
+  "checkpoint": "c8f5fff12e1203a25bcd5a9f7b87889067977dd5",
+  "branch": "t3/late-presentation-assembly",
+  "checkout": "/home/louistrue/.t3/worktrees/ifc-lite/t3-0ea08063",
+  "createdUtc": "2026-10-18T22:01:55.790286+00:00",
+  "clean": true,
+  "changes": [
+    {
+      "status": "M",
+      "path": "rust/processing/src/element.rs",
+      "baselineSha256": "1255bfa11b8862d9bdb25817c0a6e56df58fb63273d008e1760666ded25e9fa3",
+      "checkpointSha256": "e94588ca7939f9b06122f88785f102288148583d309c93705887481e31eba776"
+    },
+    {
+      "status": "M",
+      "path": "rust/processing/src/element/assembly_fallback.rs",
+      "baselineSha256": "b889532c50c9a3573db2eb6861a9562719573e53ef825d6ab286fece683eb7aa",
+      "checkpointSha256": "809fd4daf11e8489b0a0e948fa9b7a9ebabda3772fb5b7927e81a06277e9d5ad"
+    },
+    {
+      "status": "M",
+      "path": "rust/processing/src/element/assembly_job.rs",
+      "baselineSha256": "70e2dde6f72bc1f93e87fff3af556cf2fe34c704db4171f7611762cc02c97b40",
+      "checkpointSha256": "06b3fa9eebe0fb0d07a2138ec71d0a15c487abb12055cf89149fd5765715f971"
+    },
+    {
+      "status": "M",
+      "path": "rust/processing/src/element/assembly_submeshes.rs",
+      "baselineSha256": "7dc94bad1e7eebcc731ff9f8b4f4dd5daea2d5b388165a00d5d64cdde1b068ae",
+      "checkpointSha256": "56c593dfa9b850ea63c67c47a78e5c3ad75418f000b1b21f021432203fd4d57d"
+    },
+    {
+      "status": "M",
+      "path": "rust/processing/src/element/assembly_types.rs",
+      "baselineSha256": "c8f342282bf7db2ba764fe59340afee1735a765276c0110f47cb89be1a442a05",
+      "checkpointSha256": "625822ac3ae7bb46a2e24bb4c90344cb7c448e6108615284d21fee41a5a71d9b"
+    },
+    {
+      "status": "M",
+      "path": "rust/processing/src/element/element_color.rs",
+      "baselineSha256": "25623b02b70ded29e05575d0995d51e127eaf845ba8de2082d1bbb76e437df23",
+      "checkpointSha256": "af6ba301c51a788480439ad72f57e092671e16725310c5fce307156c87873624"
+    },
+    {
+      "status": "M",
+      "path": "rust/processing/src/element/owned_session.rs",
+      "baselineSha256": "d4c208425ed28d15b0e880d3b4c45f1c7c7e15e146b63e65e766e31c2844481e",
+      "checkpointSha256": "05dc99e138854f154283ba1132678ecc430af6da047e8c5de13648757dbeb059"
+    },
+    {
+      "status": "A",
+      "path": "rust/processing/src/element/presentation.rs",
+      "baselineSha256": null,
+      "checkpointSha256": "4eb6b4564d0fe93d90ef074af3c445621a63865e5e86854061a3bb91eb5a78d8"
+    },
+    {
+      "status": "A",
+      "path": "rust/processing/src/element/presentation_palette_tests.rs",
+      "baselineSha256": null,
+      "checkpointSha256": "3ef39858c4b7bcc9d8000cfbee9f19da4e414dac8d7ee97c2bb19eb93506d69f"
+    },
+    {
+      "status": "A",
+      "path": "rust/processing/src/element/presentation_source.rs",
+      "baselineSha256": null,
+      "checkpointSha256": "8ef40fbb2125406595873e63e395100b2376345c582fba3202298549bb6b119b"
+    },
+    {
+      "status": "A",
+      "path": "rust/processing/src/element/presentation_tests.rs",
+      "baselineSha256": null,
+      "checkpointSha256": "ba0d65e761f7a5cd327c1c38d2298894ec3e1fd3a05bab80ea1286e3d79ba149"
+    },
+    {
+      "status": "M",
+      "path": "rust/processing/src/element/session.rs",
+      "baselineSha256": "8637ff7e1380cc9dff9e08b1b0ed4a9b8f59aa738d2b828ac37248b5d5ea6a8e",
+      "checkpointSha256": "ddb799ae62895725b24c7e561a5ea0a528afd1962063ec2b59cc4848ba22afed"
+    },
+    {
+      "status": "M",
+      "path": "rust/processing/src/element/session_accept.rs",
+      "baselineSha256": "c633d2d26aef66b532f7c74a1cc3b246a6192012fbac82a78819cc0a403cab32",
+      "checkpointSha256": "ae83ccd64da2c0eb24737199d1a7a25154cae0facf9a0c5d9f8e9a88d3fbaddf"
+    },
+    {
+      "status": "M",
+      "path": "rust/processing/src/element/session_state.rs",
+      "baselineSha256": "4d1abb95475368ba038eb41d254a13e7292ebaefe0438ada5cf2c90e1fd15e1c",
+      "checkpointSha256": "c6161e45da7309b9f47e76956384eba9f0f2be5c5614facab4db3ef57d3f0b95"
+    },
+    {
+      "status": "M",
+      "path": "rust/processing/src/element_mesh_build.rs",
+      "baselineSha256": "e35399777d31a977bea72f30120fe1bbf968863838fd64daef812ac0d206c4c7",
+      "checkpointSha256": "7731bf4b00023f717bfbe393326c0ba1ef1ecd0fad9b725ae48810f8efc553ed"
+    },
+    {
+      "status": "M",
+      "path": "rust/processing/src/element_tests.rs",
+      "baselineSha256": "cb9b72bc8614e0867215632ebc670d43500f7a55c658b75872cee4f92b591248",
+      "checkpointSha256": "bc11a0c3552354e2cbe4d6da0c3d90448eff52556b16af54b38d90655a6e040f"
+    }
+  ],
+  "deleted": [],
+  "patchSha256": "c3f7c80e7765f9fcac6d77054888a20296e07da13caf7a06f9c534ecb0c415cd"
+}

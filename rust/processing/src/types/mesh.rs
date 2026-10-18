@@ -325,7 +325,7 @@ impl MeshData {
 /// #1623 Phase 2 "don't-bake": a non-template occurrence of a shared
 /// `IfcRepresentationMap` that skipped the per-occurrence vertex materialize. The
 /// router emits an instance-only placeholder (empty geometry carrying
-/// `InstanceMeta`); [`crate::element::emit_sub_meshes`] turns it into one of these,
+/// `InstanceMeta`); canonical submesh assembly turns it into one of these,
 /// and the streaming finalize resolves it against the template MeshData into an
 /// [`InstanceRecord`]. Purely in-memory (recomputed each load), never serialized.
 #[derive(Debug, Clone)]

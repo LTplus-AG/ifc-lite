@@ -1,0 +1,95 @@
+{
+  "checkpoint": "c8f5fff12e1203a25bcd5a9f7b87889067977dd5",
+  "compiled": false,
+  "rustTestsPassed": false,
+  "clippyPassed": false,
+  "wasmContractExecuted": false,
+  "pythonExecuted": false,
+  "nativeScenesCompared": false,
+  "baselineComparisonExecuted": false,
+  "performanceClaim": false,
+  "refusals": [
+    {
+      "request": "auto-24a8a71127bd4ea68645dc3e79371a43",
+      "command": [
+        "cargo",
+        "test",
+        "--workspace"
+      ],
+      "source": "7c050907cd",
+      "exitCode": 69,
+      "reason": "job kind is disabled on this host"
+    },
+    {
+      "request": "auto-49bd6c3c1e47472eb310434faae7e3b4",
+      "command": [
+        "cargo",
+        "test",
+        "--workspace"
+      ],
+      "source": "56eaa2123a",
+      "exitCode": 69,
+      "reason": "job kind is disabled on this host"
+    },
+    {
+      "request": "auto-814fea5c3a0b4d12b12a5d6d59f39b4e",
+      "command": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "source": "56eaa2123a",
+      "exitCode": 69,
+      "reason": "job kind is disabled on this host"
+    }
+  ],
+  "limits": [
+    "PC filesystem 100% full, zero available; initial claim write failed before execution",
+    "Pop disk guard: 245 GiB free, requires 316 GiB reserve plus scratch",
+    "No foreign source, target, locks, jobs or immutable evidence cleaned",
+    "Existing borrowed ProductState still performs its baseline initial job/entity/metadata capture; this layer adds no whole-map, source-index or per-part metadata copy",
+    "No complete resource-bound claim; accounted_session/session_canonical/session_owner untouched",
+    "Both earlier focused jobs exited 1 at the disk guard before compilation; neither remains queued. Their source checkpoints differ from final."
+  ],
+  "lightweightChecks": [
+    {
+      "command": "git diff --check",
+      "exitCode": 0
+    },
+    {
+      "command": "rustfmt --edition 2021 (only new or completely rewritten presentation modules)",
+      "exitCode": 0,
+      "scope": "syntax/formatting only, no typecheck"
+    },
+    {
+      "command": "node scripts/check-rust-source-text-assertions.mjs",
+      "exitCode": 0,
+      "result": "1781 Rust files, 1162 with test code, 240 reads, 0 assertions"
+    },
+    {
+      "command": "node scripts/check-refwalk-guards.mjs",
+      "exitCode": 0,
+      "result": "1339 files, 29 candidate walks, 0 unguarded; 12 existing fan-out budget review notices"
+    }
+  ],
+  "focusedInitialCompletion": {
+    "request": "auto-e2134a5761d84641b82c94d5e73c6735",
+    "jobId": "e14ecaf6-2e8f-4b5f-b2bf-4f604ef95362",
+    "checkpoint": "9747de023a664748f0eacd0dda04ba14fd8f8df0",
+    "exitCode": 1,
+    "result": "Worker admission refused: disk 209.2 GiB free; require 316 GiB (reserve plus scratch; existing jobs continue)",
+    "compilationStarted": false
+  },
+  "focusedTestsCompletion": {
+    "request": "auto-c8915c892c7a41ab917b861f769b76c7",
+    "jobId": "62c5c4ff-c020-4e67-b086-f5b573d5f2a2",
+    "checkpoint": "2db8855b549b358262f225460f3480d05e8dcc64",
+    "exitCode": 1,
+    "result": "Worker admission refused: disk 209.2 GiB free; require 316 GiB (reserve plus scratch; existing jobs continue)",
+    "compilationStarted": false
+  }
+}

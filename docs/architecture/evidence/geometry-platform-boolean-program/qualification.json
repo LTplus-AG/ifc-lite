@@ -1,0 +1,135 @@
+{
+  "status": "IMPLEMENTED_UNQUALIFIED",
+  "checkout": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2a1a3f7f",
+  "branch": "t3/common-boolean-program",
+  "parent_commit": "772522f9df7a06d5287c1e9934055206fd464866",
+  "baseline_commit": "b626ff95cca7cad35da9cf162e20437bf900412e",
+  "checkpoint_commit": "d5a55817d1b2c3a022378a4291a79cb98b3ca61e",
+  "checkpoint_tree": "d13029caa437ad3da7632d028ccdda29e72855fb",
+  "incremental_patch": "common-boolean-program.patch",
+  "incremental_patch_sha256": "ecc3ed3998440d321868bd239cf0648d21e567fbd217d44f633e9fe3ff25ec7d",
+  "source_manifest": "source-manifest.json",
+  "integration": "Apply only common-boolean-program.patch after the supplied product-program.patch; do not cherry-pick the baseline checkpoint or the whole original ProductProgram child.",
+  "implementation": [
+    "Canonical Boolean/CSG control under program/boolean; no retained decoder, recorder or path borrow in BooleanProgram",
+    "Owned source-free constructor/plane/prism/single-cutter/solid/group/shell/void work with typed consuming Completed<Operation> and reached bool-effect assembly",
+    "Fresh builtin operand lower_owned dispatch; actual registered/configured root hooks and callbacks retained",
+    "Historical source/units/empty/unknown/group-rollback/spine/path/depth/visit policies and existing exact numeric algorithms reused",
+    "Superseded old continuation and combined step paths removed; only test adapters forward to the common path"
+  ],
+  "tests": {
+    "dirty_iteration": {
+      "job": "71a71cd9-46a6-4c7d-8078-f5ae61b4253a",
+      "host": "pop-os",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-geometry",
+        "--lib",
+        "--no-fail-fast"
+      ],
+      "exit_code": 0,
+      "passed": 1531,
+      "failed": 0,
+      "ignored": 1,
+      "qualifies_checkpoint": false,
+      "reason": "Source changed during compilation. This proves the initial implementation iteration only, not final commit or six new tests."
+    },
+    "final_focused": {
+      "job": "563f7776-a86b-4bdd-9ed2-a9a98c44865f",
+      "state": "REFUSED_BEFORE_EXECUTION",
+      "reason": "Pop disk capacity: 212.1 GiB free; 316 GiB required",
+      "receipt": "focused-admission-receipt.json"
+    },
+    "cancelled_batch": {
+      "job": "68bc97b6-da18-4f73-a971-018d5795c46c",
+      "state": "CANCELLED_WHILE_QUEUED",
+      "started": false,
+      "receipt": "cancelled-unstarted-receipt.json"
+    },
+    "typecheck": {
+      "request": "auto-626ea2ed322a45ceab10baf716ac74fc",
+      "source_commit": "d5a55817d1b2c3a022378a4291a79cb98b3ca61e",
+      "host": "pc-wsl",
+      "wrapper_exit": 1,
+      "checkout_error": "No space left on device; git worktree add exited 128 before validation",
+      "durable_state": "accepted",
+      "safeToResubmitAutomatically": false,
+      "resubmitted": false,
+      "result": "UNQUALIFIED: durable request has no terminal validation receipt"
+    },
+    "not_executed": [
+      "final focused program tests (six new behavior tests plus five migrated step tests)",
+      "cargo test --workspace --no-fail-fast",
+      "cargo clippy --workspace --all-targets -- -D warnings",
+      "reference-walk gate",
+      "native full/stream/instanced scene comparison",
+      "canonical scripts/build-wasm.sh",
+      "root Turbo WASM/dependency builds and package tests",
+      "pnpm test:wasm-contract"
+    ],
+    "prepared_resume_driver": "validate.py",
+    "prepared_native_driver": "native.py"
+  },
+  "toolchains": {
+    "pinned_source": "rust-toolchain.toml",
+    "observed_iteration": {
+      "git": {
+        "path": "/usr/bin/git",
+        "exitCode": 0,
+        "version": "git version 2.43.0"
+      },
+      "rustc": {
+        "path": "/home/louistrue/build-workers/toolchains/cargo/bin/rustc",
+        "exitCode": 0,
+        "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+      },
+      "cargo": {
+        "path": "/home/louistrue/build-workers/toolchains/cargo/bin/cargo",
+        "exitCode": 0,
+        "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+      },
+      "node": {
+        "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "exitCode": 0,
+        "version": "v24.22.0"
+      },
+      "pnpm": {
+        "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/pnpm",
+        "exitCode": 0,
+        "version": "10.8.1"
+      }
+    },
+    "iteration_host": {
+      "host": "pop-os",
+      "os": "Linux",
+      "arch": "x86_64",
+      "cpus": 32,
+      "availableMemoryBytes": 110178590720,
+      "totalMemoryBytes": 134644969472,
+      "python": "3.12.3",
+      "time": 1792360105.388454
+    }
+  },
+  "fixtures": {
+    "manifest": "fixtures.json",
+    "catalogued_available": 26,
+    "verification": "Every copied fixture checked against tests/models/manifest.json SHA256; original child read-only. No model qualification was executed for final commit."
+  },
+  "limits": [
+    "Final checkpoint unqualified because mandatory fleet capacity refused new work; no goldens re-pinned.",
+    "Private synchronous consuming work seams, not detachable scheduler packets or authenticated cross-session result IDs.",
+    "Owned Mesh values move directly; no public runtime handle registry/resource account or complete resource envelope claimed.",
+    "Coherent source and checked resource implementations remain separate and untouched.",
+    "Opening orchestration, layer slicing and presentation ownership remain later layers.",
+    "No end-to-end performance verdict, improvement or neutrality claim; no performance experiments performed.",
+    "No external original-project references, active engine switching, new loader, API changes or parent edits introduced."
+  ],
+  "fleet_safety": [
+    "No nested reservations",
+    "Foreign/active jobs preserved",
+    "Own queued batch cancellation confirmed terminal before any replacement",
+    "Unknown PC typecheck request not resubmitted"
+  ]
+}

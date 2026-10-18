@@ -1,0 +1,256 @@
+{
+  "observed_utc": "2026-10-18T22:07:45.607155+00:00",
+  "checkout": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2a1a3f7f",
+  "head": "d5a55817d1b2c3a022378a4291a79cb98b3ca61e",
+  "baseline": "b626ff95cca7cad35da9cf162e20437bf900412e",
+  "candidate": "d5a55817d1b2c3a022378a4291a79cb98b3ca61e",
+  "manifest_mismatches": [],
+  "worktree_status": "",
+  "inspected_files": [
+    {
+      "path": "docs/architecture/geometry-platform-common-boolean-program.md",
+      "sha256": "5017c8696bf10ffe7057184145caa8e2470b675be46096663a6a21efb5d8388a",
+      "baseline_sha256": null
+    },
+    {
+      "path": "rust/geometry/src/diagnostics.rs",
+      "sha256": "b3be733ef0418d36120c2212f1bac458bf57d9fad9e83c720c783817c7a293d1",
+      "baseline_sha256": "a3a24c5b5800129d95e964caf6bea58dd854e7c1c72612c6ee6501f157af5ad9"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/brep_void_plan.rs",
+      "sha256": "bcb51ded3b78719f1e15cda6c5fdbc94c95286b27f7e5f03faff776f1414e93d",
+      "baseline_sha256": "6eeb58e6cdcdd6ec59b82eec2c076a5f1bbbab807110e450a958a8c69569d0e0"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/brep_voids.rs",
+      "sha256": "6f8a6d1c9ad4d94cd0babd57bd355a406f683e1ae28ffaf1c518de8800e9c19f",
+      "baseline_sha256": "11ba555fa3748dda9c2924a3d3694bad5dd1327613f0513bfa58c95d95d89bbe"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/continuation.rs",
+      "sha256": null,
+      "baseline_sha256": "80ddeba6623761d3a62d162beeab6d6549bf527a6f590a5a504d22b4b2d82712"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/continuation_batch.rs",
+      "sha256": null,
+      "baseline_sha256": "23b9dfb3adbffa668f5abc7537b9f06da925cc9fa241719b37b6e89fc94a7c4f"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/continuation_state.rs",
+      "sha256": null,
+      "baseline_sha256": "978ed3cf350cb8a3428a9d5449957653b00192f3a490f7d6fa3868ffcd54889a"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/cut_heuristics.rs",
+      "sha256": "13f75e47a2d0694804f6d1829440b37a3a0bee4a5a14fcb1fbb08bf9bf57478e",
+      "baseline_sha256": "b4946aca7d37b655026278f2563680ded1b24c99addce8e7bb7ea43079c780a0"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/failures.rs",
+      "sha256": "08ac30d08cbed8c20e739454c33982c7436dd3f5e83c482e67f861c46f54d42d",
+      "baseline_sha256": "5d4441890e0263d1eda9713b109fb1857c7913311fa256b300e38e12f7957e6f"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/half_space_plan.rs",
+      "sha256": "c450033083987ddc41bee9988b011925e7463594087b26b4a81b56f7d6cfc137",
+      "baseline_sha256": "0b8787bcbb4c54a23ae5bb6fa0a157abf718626819fd801eabcb64f73ee86e00"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/mod.rs",
+      "sha256": "af9858676a44c24b79228ffb88e7d7c5b51f023dbca3e26c19d40065a36bd22b",
+      "baseline_sha256": "db9e0ac4d61d8ffea345cbeb40319d43b45f74c664feafc649b3b477f6bb087e"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/operand.rs",
+      "sha256": "c6af644a3baeb0653bd1b83bce1c4860f85b838e6408e30bb9effb5cef8834c7",
+      "baseline_sha256": "150712d7f885b8dd2a523c7e7ffca1dc0f6222d44c46b1e8cbc0550bb93aa089"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/polygonal_candidate.rs",
+      "sha256": "b59b610d537af41940377952e165ab4e775d0dbc8f9f616077731e5f95c5e266",
+      "baseline_sha256": "5fef53dfca6d09720d9e63f43406485785925b37bf0e4788fffbb2cd431ba1a6"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/polygonal_group_execution.rs",
+      "sha256": "8ccf6c69f28ae62eab96183cbb08bd121f09cad37234bd2ae66eac9adfaf5e0d",
+      "baseline_sha256": "77d62a11b24a3d4b63c4a215d831f6d59926ce0ea36c3b5970776e6bf7059946"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/polygonal_prism.rs",
+      "sha256": "399251308d6910057c64757f693597895489f0197b1eb55f1afa4aad0c9ec3e4",
+      "baseline_sha256": "c5c44b380364cf273e5b7717a7167b020e361a0e751185797580d582d0ccdb89"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/single_cutter_gate.rs",
+      "sha256": "60da8c972c63875cbbfd1903f204e870c905bc63efb937fef8f7a134fc90ecb6",
+      "baseline_sha256": "a1484999ecae8c0ad63eed74f9be0e8a79895a34d355072071bc636837316c2f"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/solid_execution.rs",
+      "sha256": "32ca3a772c2a9c42e646531b52a43fbedbcf7dc1c240f0fb6bc77ebeb3c32525",
+      "baseline_sha256": "b1174316e16a1790805c75fbc7c03ad9e786211442eaadd6c5daf7b461f5b106"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/step.rs",
+      "sha256": null,
+      "baseline_sha256": "0ce41b2e3b79a147e485551023ad9d25d0a13152306313b66be9c6f676ca92f8"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/step_tests.rs",
+      "sha256": null,
+      "baseline_sha256": "683cf08981dcdbbdb7ba27a2a398ae37e2a8a8ea71942c0b13a0092bd8913543"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/void_evaluation.rs",
+      "sha256": "5c833a9824eb0917a4f0758871ccf71003eb533159faf0849d030e82d0dcce5a",
+      "baseline_sha256": "a03d71658d8580edc71b621882478ad51f4428da8a4fbddca20e707236093e94"
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/batch.rs",
+      "sha256": "98f250d435b11649a2618267a7a979d1c2e7a380d02ea9dabc9955531d9ded9f",
+      "baseline_sha256": null
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/dispatch_tests.rs",
+      "sha256": "0005cf533c83f6766673fa8cd28f075764b0087c5c905db10af33ce6f8540619",
+      "baseline_sha256": null
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/mod.rs",
+      "sha256": "227f6240298f4b1bcf73d397507f0d59e60cd93c8abd930398f53f9d408d1822",
+      "baseline_sha256": null
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/operand.rs",
+      "sha256": "776c672323f5819c746af3c50726c1a62db7529846230e4f48abc7e322d73fd6",
+      "baseline_sha256": null
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/state.rs",
+      "sha256": "978ed3cf350cb8a3428a9d5449957653b00192f3a490f7d6fa3868ffcd54889a",
+      "baseline_sha256": null
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/step.rs",
+      "sha256": "320a0928505cc570217688051ee1328daed9ba07ab67f229a83239a7e27370f2",
+      "baseline_sha256": null
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/step_tests.rs",
+      "sha256": "683cf08981dcdbbdb7ba27a2a398ae37e2a8a8ea71942c0b13a0092bd8913543",
+      "baseline_sha256": null
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/work.rs",
+      "sha256": "7c39e690317d885b9c6d3047a089befab3942e8870a4c0ae9549ed6a14b6ad1c",
+      "baseline_sha256": null
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/work_tests.rs",
+      "sha256": "6f3cf31d7281a57a92e429f31194b38718e4da656c0af5fa249b7918cb3623f9",
+      "baseline_sha256": null
+    },
+    {
+      "path": "rust/geometry/src/program/mod.rs",
+      "sha256": "96cbf7cca6e796880e16d2fe5265a46272a8810efaf1927164cd5de33c98f938",
+      "baseline_sha256": "a908952b5a17afa8599fccd7fa29fd28efeeebd5cf1e2d0073acf277f57cbed1"
+    },
+    {
+      "path": "rust/core/src/schema_gen.rs",
+      "sha256": "0f95cc070ac575de864734dd34cc76de13dfc1f13f3af373efc04c9107757551"
+    },
+    {
+      "path": "rust/geometry/src/router/processor_registry.rs",
+      "sha256": "46bd835c22d91fe92855f25f0f3070f7e6e9e3681fefb4296752eacbd4c60bb9"
+    },
+    {
+      "path": "rust/geometry/src/program/execute.rs",
+      "sha256": "1257de2788d2b5dc2a74d22b6dbedd75aad2aa1b02290a6e9f7f61ce28ec06d7"
+    },
+    {
+      "path": "rust/geometry/src/program/constructor.rs",
+      "sha256": "31c5d79891d006360b800de57097f8449a8bee32fef484f7601f8f7f62f762f2"
+    },
+    {
+      "path": "rust/geometry/src/processors/csg_primitive.rs",
+      "sha256": "67f7a3914fba967770f47a74d69b7d1e5625e56a30fad35a6c7f3a4eab085152"
+    },
+    {
+      "path": "rust/geometry/src/processors/csg_root.rs",
+      "sha256": "b9760f6bbe67bebb6e0d52c9bd49a72425e2ab2de71859a2d2e4e32ba10b5081"
+    },
+    {
+      "path": "rust/geometry/src/processors/brep/surface_model.rs",
+      "sha256": "f8e959f71cd547c9d59079a5742b3007080759512a1abde0f085e9a1c9cd8669"
+    },
+    {
+      "path": "rust/geometry/src/processors/brep/surface_model_plan.rs",
+      "sha256": "8aed47b28f15af62c15f7dbccfad0e84a05500bbd1126a5d73ccf63d088906f5"
+    },
+    {
+      "path": "rust/geometry/src/processors/extrusion.rs",
+      "sha256": "d02fc41c4dfacbc433db44b4cbfa5c2e9ab6e9ffb05a3ce064a32da8e2b554f6"
+    },
+    {
+      "path": "rust/geometry/src/processors/extrusion_tapered.rs",
+      "sha256": "e51f0be3d03f8e5ad8a5bca71d0082c2475d91facd82cb590540ca61762ea9f9"
+    },
+    {
+      "path": "rust/geometry/src/processors/advanced.rs",
+      "sha256": "4a6ca0c565161023f91c5caaac27645c1587c75135b75456aad8e7a0c29df1a2"
+    },
+    {
+      "path": "rust/geometry/src/processors/advanced_plan.rs",
+      "sha256": "8cd43333427da1d5233501248328d4954a1e8adf3a0835703c27d29f12aeb853"
+    },
+    {
+      "path": "rust/geometry/src/processors/alignment.rs",
+      "sha256": "73c60d61b284b70732dd5a8e5242bb75b6c39489406e5517d6cf63011f0a91f7"
+    },
+    {
+      "path": "rust/geometry/src/processors/structural_face.rs",
+      "sha256": "936179f5eaf54b376989735aaed334c5a4dda71c9df1b23f262bf4354d980592"
+    },
+    {
+      "path": "rust/geometry/src/processors/sectioned.rs",
+      "sha256": "a308d172f87e9ea9dddacb1dc499fe985a72f7cfa18a4f0689ed6ed0592551b8"
+    },
+    {
+      "path": "rust/geometry/src/processors/tessellated/triangulated.rs",
+      "sha256": "a53ce55a5cbb6924c566f48eb37ca7c74245405c9e0759c79eb2b942b31d54e8"
+    },
+    {
+      "path": "rust/geometry/src/program/product.rs",
+      "sha256": "050b7622fd42dbfc6f71446c56d6e35899bfdb73a779c73aa552782c84cf098a"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/spine_plan.rs",
+      "sha256": "ee695f4f0ec48156f53648f5aac69c7e0b5b4431000281222b1840da59177a47"
+    },
+    {
+      "path": "rust/geometry/src/csg/mod.rs",
+      "sha256": "35b58ae829c357fe6ffa94d4cea60bb69d82d3c1d9f2f73bbe73159dedbb3f34"
+    },
+    {
+      "path": "rust/geometry/src/kernel/budget.rs",
+      "sha256": "4c6dbf3b3b57c0894ad4c56b1e66e47b20a78bb6c4bf26e73b3cbf33896c9c80"
+    }
+  ],
+  "delivery": [
+    {
+      "path": "/tmp/ifclite-common-boolean-program-round1/qualification.json",
+      "sha256": "e4c20f8ed054ad420b7101d99671058269fa1f85ea30817de076790ce23ff110"
+    },
+    {
+      "path": "/tmp/ifclite-common-boolean-program-round1/source-manifest.json",
+      "sha256": "0a19042b121d1987cceb5f9e36c4d241b1c987e6463ac503004c30fda5224b05"
+    },
+    {
+      "path": "/tmp/ifclite-common-boolean-program-round1/common-boolean-program.patch",
+      "sha256": "ecc3ed3998440d321868bd239cf0648d21e567fbd217d44f633e9fe3ff25ec7d"
+    }
+  ],
+  "validation": "Read-only; no builds/tests/jobs"
+}

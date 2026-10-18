@@ -185,12 +185,14 @@ pub(crate) fn product_shape_style_source(
 
 /// Find the first representation item of `entity` that carries a full
 /// `IfcIndexedColourMap` (#858). Drives the element-level palette split on
-/// the single-mesh fallback path.
+/// the single-mesh fallback path. Keep the selected index key separately from
+/// the map's embedded geometry id; malformed inputs may disagree, and assembly
+/// historically stamps the embedded id without changing the selected palette.
 pub(crate) fn find_indexed_colour_for_element<'a>(
     entity: &DecodedEntity,
     indexed_colour_full: &'a FxHashMap<u32, FullIndexedColourMap>,
     decoder: &mut EntityDecoder,
-) -> Option<&'a FullIndexedColourMap> {
+) -> Option<(u32, &'a FullIndexedColourMap)> {
     let pds_id = entity.get_ref(6)?;
     let pds = decoder.decode_by_id(pds_id).ok()?;
     let repr_ids = pds.get_refs(2)?;
@@ -199,7 +201,7 @@ pub(crate) fn find_indexed_colour_for_element<'a>(
             if let Some(items) = repr.get_refs(3) {
                 for item_id in items {
                     if let Some(full) = indexed_colour_full.get(&item_id) {
-                        return Some(full);
+                        return Some((item_id, full));
                     }
                 }
             }

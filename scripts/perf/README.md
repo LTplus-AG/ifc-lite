@@ -30,6 +30,12 @@ scripts/perf/instructions.sh tests/models/ara3d/AC20-FZK-Haus.ifc --json
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+`ab-report.mjs` accepts input rows only with literal `side` values `base` and
+`branch`; `--base` and `--branch` set display labels and do not select rows.
+It refuses empty, incomplete, or unpaired comparisons before printing a
+verdict. Equal mesh/vertex/triangle counts remain a count check, not proof of
+byte identity.
+
 **Instruction ceilings gate kernel and parse work only (#6982).** The
 `native-instructions` ratchet (`tests/perf-ratchets/native-instructions*.json`,
 0.05% tolerance, FZK-Haus per PR, ISSUE_129 daily) is a blocking check for

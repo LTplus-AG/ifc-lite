@@ -35,11 +35,6 @@ if (!jsonlPath) {
   process.exit(2);
 }
 
-const rows = readFileSync(jsonlPath, 'utf-8')
-  .split('\n')
-  .filter(Boolean)
-  .map((l) => JSON.parse(l));
-
 // Phases to report, in pipeline order. `parseMs` is the gate on
 // time-to-first-geometry; keep it first.
 const PHASES = [
@@ -56,6 +51,70 @@ const PHASES = [
 // matched", never "byte-identical"; a real byte-identity gate is the
 // mesh_determinism manifest, not this harness.
 const FINGERPRINT = ['meshes', 'vertices', 'triangles'];
+const REQUIRED_PHASES = ['parseMs', 'geometryMs', 'totalMs'];
+
+function invalidInput(message) {
+  console.error(`ab-report: invalid comparison input: ${message}`);
+  process.exit(2);
+}
+
+let rows;
+try {
+  rows = readFileSync(jsonlPath, 'utf-8')
+    .split('\n')
+    .filter((line) => line.trim().length > 0)
+    .map((line, index) => {
+      try {
+        return JSON.parse(line);
+      } catch (error) {
+        invalidInput(`line ${index + 1} is not valid JSON (${error.message})`);
+      }
+    });
+} catch (error) {
+  invalidInput(`cannot read runs JSONL (${error.message})`);
+}
+
+if (rows.length === 0) invalidInput('runs JSONL is empty');
+
+const byFixture = new Map();
+for (const [index, row] of rows.entries()) {
+  const line = index + 1;
+  if (!row || typeof row !== 'object' || Array.isArray(row)) {
+    invalidInput(`line ${line} must contain a JSON object`);
+  }
+  if (typeof row.path !== 'string' || row.path.trim().length === 0 || row.path.trim().split(/[\\/]/).pop().length === 0) {
+    invalidInput(`line ${line} is missing a usable fixture path`);
+  }
+  if (row.side !== 'base' && row.side !== 'branch') {
+    invalidInput(`line ${line} has side ${JSON.stringify(row.side)}; input sides must be literal "base" or "branch"`);
+  }
+  for (const field of REQUIRED_PHASES) {
+    if (!Number.isFinite(row[field]) || row[field] < 0) {
+      invalidInput(`line ${line} requires a finite nonnegative ${field}`);
+    }
+  }
+  for (const [field] of PHASES) {
+    if (Object.hasOwn(row, field) && (!Number.isFinite(row[field]) || row[field] < 0)) {
+      invalidInput(`line ${line} has invalid ${field}; present phase values must be finite and nonnegative`);
+    }
+  }
+  for (const field of FINGERPRINT) {
+    if (!Number.isInteger(row[field]) || row[field] < 0) {
+      invalidInput(`line ${line} requires a nonnegative integer ${field} count`);
+    }
+  }
+  if (!byFixture.has(row.path)) byFixture.set(row.path, { base: [], branch: [] });
+  byFixture.get(row.path)[row.side].push(row);
+}
+
+for (const [path, sides] of byFixture) {
+  if (sides.base.length === 0 || sides.branch.length === 0) {
+    invalidInput(`fixture ${path} needs at least one base and one branch sample`);
+  }
+  if (sides.base.length !== sides.branch.length) {
+    invalidInput(`fixture ${path} has unequal paired sample counts (base ${sides.base.length}, branch ${sides.branch.length})`);
+  }
+}
 
 const median = (xs) => {
   const s = [...xs].sort((a, b) => a - b);
@@ -71,13 +130,6 @@ const spreadPct = (xs) => {
 const pct = (cur, base) => (base > 0 ? ((cur - base) / base) * 100 : null);
 const fmt = (n) => (n == null ? '—' : n.toFixed(1));
 const sign = (n) => (n == null ? '' : n >= 0 ? '+' : '');
-
-// Group by fixture path, then by side.
-const byFixture = new Map();
-for (const r of rows) {
-  if (!byFixture.has(r.path)) byFixture.set(r.path, { base: [], branch: [] });
-  byFixture.get(r.path)[r.side]?.push(r);
-}
 
 const report = { base: baseLabel, branch: branchLabel, fixtures: [] };
 let anyRealChange = false;
@@ -117,8 +169,8 @@ for (const [path, sides] of byFixture) {
   lines.push(`    ${'phase'.padEnd(14)} ${baseLabel.padStart(9)} ${branchLabel.padStart(9)}   delta    noise`);
 
   for (const [key, label] of PHASES) {
-    const baseVals = sides.base.map((r) => r[key]).filter((x) => typeof x === 'number');
-    const branchVals = sides.branch.map((r) => r[key]).filter((x) => typeof x === 'number');
+    const baseVals = sides.base.map((r) => r[key]).filter((x) => x !== undefined);
+    const branchVals = sides.branch.map((r) => r[key]).filter((x) => x !== undefined);
     if (!baseVals.length || !branchVals.length) continue;
     const bMed = median(baseVals);
     const brMed = median(branchVals);

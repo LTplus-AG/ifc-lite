@@ -22,6 +22,8 @@
     "projection-depth.fixture.ts",
     "projection-depth.gpu.ts",
     "selection-mask-depth.gpu.ts",
-    "selection-mask-depth.e2e.spec.ts"
+    "selection-mask-depth.e2e.spec.ts",
+    "projection-texture.gpu.ts",
+    "projection-texture.e2e.spec.ts"
   ]
 }

@@ -94,11 +94,14 @@ for the residual ordering defect. Run it without a shared preview or IFC/WASM
 runtime:
 
 ```sh
-pnpm exec playwright test --config=tests/e2e/projection-depth.config.ts
+pnpm test:projection-depth
 ```
 
 The dedicated config requests software WebGPU on full Chrome. An existing full
 Chromium binary can be selected with `DEPTH_WITNESS_CHROME=/absolute/path/to/chrome`.
+The root command builds the small `load-trace` dependency through Turbo first;
+it does not require a full viewer build or a WASM runtime. This preparation is
+required in a fresh fleet checkout as well as on a developer machine.
 An unavailable adapter or lost device is a failure, never a skip or acceptance.
 The spec is also included in both regular viewer E2E project matchers.
 Root `pnpm typecheck` checks the witness's browser, fixture, spec and config

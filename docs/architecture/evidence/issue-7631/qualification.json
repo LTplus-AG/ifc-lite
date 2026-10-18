@@ -1,0 +1,349 @@
+{
+  "schema": 1,
+  "issue": 7631,
+  "status": "PARTIAL_QUALIFICATION_RUNTIME_AND_STACK_REVIEW_PENDING",
+  "reviewedCodeHead": "296fcf3dc5d8920ed873c423ca9e9bf85df5fe61",
+  "sourceBuiltHead": "7539404d002f4db1735227b16c7c81c0351d6c48",
+  "nativeWorkspaceSourceHead": "08730730df6c587b358b58ca44d872915ce2e976",
+  "nativeSourceDifferenceScope": [
+    "rust/geometry/src/profile_cap_adjoint_tests.rs",
+    "rust/geometry/src/scalar_adjoint_tests.rs",
+    "rust/geometry/tests/manifests/watertightness_census.tsv"
+  ],
+  "fixtures": {
+    "MiniBIM": {
+      "path": "georeferencer/MiniBIM-3.1-DO_01_VORM.ifc",
+      "bytes": 7459201,
+      "sha256": "7d3ae097a2f1ca5e63f7698d12215cb58427cdb6a932e75e6bf1ca222bcf873b"
+    },
+    "Revit": {
+      "path": "various/rvt01.ifc",
+      "bytes": 4199228,
+      "sha256": "a83e9aacb43c7f82955ee3ba650ec66dc24af552924ec058e1b0c49a76180ee6"
+    }
+  },
+  "native": {
+    "default": {
+      "passed": 5745,
+      "failed": 0,
+      "ignored": 47,
+      "command": [
+        "cargo",
+        "test",
+        "--workspace"
+      ],
+      "executionLogSHA256": "0aa91761c90ff72e368104d87b5d2cfa5643b1ae33b13ceb14bb6c3d0dd1e26d"
+    },
+    "alt": {
+      "passed": 5745,
+      "failed": 0,
+      "ignored": 47,
+      "command": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--features",
+        "ifc-lite-geometry/triangulation-alt"
+      ],
+      "executionLogSHA256": "195f549d344f40324bebdfd469b4254ef34a19c5ab51f069041124fe7ff533ad",
+      "sourceUnchanged": true,
+      "selectedCensusPatchSHA256": "f060c43c8a72a7b7519caa634728ca1dff7e1ab4eb3c89470c56c47f6187c418"
+    },
+    "clippy": {
+      "command": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "sourceHead": "7539404d002f4db1735227b16c7c81c0351d6c48",
+      "jobId": "f095782b-a245-4e7e-98b7-7f893d0c35a2",
+      "status": "PASS"
+    },
+    "derivativeDefault": {
+      "jobId": "0eb60942-646b-4789-b68d-ba7394e7373c",
+      "passed": 1,
+      "testOnlyOptimizationOverride": "profile.test.package.ifc-lite-geometry.opt-level=0",
+      "scope": "Invariant diagnostic, not performance evidence"
+    },
+    "derivativeAlt": {
+      "sourceHead": "296fcf3dc5d8920ed873c423ca9e9bf85df5fe61",
+      "command": [
+        "cargo",
+        "test",
+        "--config",
+        "profile.test.package.ifc-lite-geometry.opt-level=0",
+        "-p",
+        "ifc-lite-geometry",
+        "--features",
+        "triangulation-alt",
+        "--lib",
+        "issue_7631_recovered_cap_area_retains_authored_vertex_derivatives",
+        "--",
+        "--nocapture"
+      ],
+      "passed": 1,
+      "failed": 0,
+      "sourceUnchanged": true,
+      "executionLogSHA256": "29fa5b10fbe211e8eee3a7550b033f2109b2edb6bd082132ea395b79fbf6560a",
+      "scope": "Targeted generic-scalar derivative invariant with existing test-only opt0 override; not performance evidence"
+    }
+  },
+  "consumerBuild": {
+    "officialWasmSHA256": "afdfae301070074aac5acf943aea7e04dd7bafb8ecc19b258e34ca12aec9a198",
+    "committedTypesInSync": true,
+    "fullRootBuild": "PASS",
+    "rootTypecheckTestFiles": 4249,
+    "rootTypecheckPackages": 67,
+    "wasmContracts": {
+      "passed": 212,
+      "failed": 0,
+      "skipped": 1
+    },
+    "originalEngineCeiling": "FAIL",
+    "engineBrotliBytes": 2331890,
+    "conditionalCeilingApplied": false,
+    "freshCapRuntimeVerdict": "NOT_MEASURED",
+    "originalAdapterFailureRetained": "served WASM does not equal official WASM",
+    "artifactAuditCorrection": "Original adapter required every third-party WASM asset to equal the IFC engine. Exactly one IFC geometry WASM exists and matches the fresh package. All third-party assets remain in the fully verified inventories. No build command rerun.",
+    "auditSHA256": "e5c6138062ecf66c1c6fab2a2d161ff564e59620014cac0c15fe816457be6a62"
+  },
+  "canonicalWasm": {
+    "inputFixtureSHA256": "7d3ae097a2f1ca5e63f7698d12215cb58427cdb6a932e75e6bf1ca222bcf873b",
+    "sourceHead": "7539404d002f4db1735227b16c7c81c0351d6c48",
+    "runtimeSHA256": "afdfae301070074aac5acf943aea7e04dd7bafb8ecc19b258e34ca12aec9a198",
+    "harnessSHA256": "ba9a796d0cc67a4a1168f1fb431532035e209349f5e71a0573328050518a2692",
+    "receiptSHA256": "d800a7a7ec080f39d87d10b89b8b6e6f81be3aae771506c5b4f26824262c9c4d",
+    "coordinateFrame": "Actual canonical pre-pass RTC; viewer Y-up origin plus positions, kernel-grid directed incidence",
+    "cleanup": {
+      "prepassCacheCleared": true,
+      "apiFreed": true
+    },
+    "cases": [
+      {
+        "host": 135923,
+        "openings": "none",
+        "triangles": 452,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "f70ebcdd4930982e1c1dd47a842a9bf68fc364cfbc76d4a0d7951676570c14fa"
+      },
+      {
+        "host": 135923,
+        "openings": "one",
+        "triangles": 720,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "014d26e3bd451844610c7541e5a88962ed97427da2af50e1bea8f63354aee367"
+      },
+      {
+        "host": 135923,
+        "openings": "all",
+        "triangles": 1608,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "1a12d2787475867a173441a38a434b8bdefcd341c234bf8d4e62720679abf99b"
+      },
+      {
+        "host": 137627,
+        "openings": "none",
+        "triangles": 192,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "56267e8ff227d1c2f9c306ee0587c46d1e2a9fb13928c23ffdf7794a81765426"
+      },
+      {
+        "host": 137627,
+        "openings": "one",
+        "triangles": 220,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "82c9d164365eba87582b8fa8273ff1cac27cfe9d221419fe88d057df80d673ce"
+      },
+      {
+        "host": 137627,
+        "openings": "all",
+        "triangles": 380,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "1230389dcf6744e0298ccb45c77b143b756f4fe04b7ffc1732acd743b48c764c"
+      },
+      {
+        "host": 139545,
+        "openings": "none",
+        "triangles": 192,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "65e75281a02bad1ae593a874df96690fbe1a1f66ba1fdadead0a546868b73fa5"
+      },
+      {
+        "host": 139545,
+        "openings": "one",
+        "triangles": 220,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "86f70addf9b8021de5e7c71f0d74cc3726a5eef6c3d10243da8690f429c553b2"
+      },
+      {
+        "host": 139545,
+        "openings": "all",
+        "triangles": 382,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "084e078d8795965dcba34f765439c343f2b1ff3e020b9c1b5ae80ce10f35d1b3"
+      },
+      {
+        "host": 141434,
+        "openings": "none",
+        "triangles": 192,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "92914e4723490f8d21226cd3c873095bc03a148df34db95b0c9ba4776c230d5f"
+      },
+      {
+        "host": 141434,
+        "openings": "one",
+        "triangles": 220,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "965d94cd25c70a53450c48ef6f16b27126a729aefcde527f9250a9ed978062ab"
+      },
+      {
+        "host": 141434,
+        "openings": "all",
+        "triangles": 382,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "c65c20b28dd855885183a60818428f40c8c0906440fa8085d1130018177b1f7a"
+      },
+      {
+        "host": 143323,
+        "openings": "none",
+        "triangles": 192,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "a152a9a8d4cb5ebbac470383bb6845915e8c9c2daee300f2873ac32810553058"
+      },
+      {
+        "host": 143323,
+        "openings": "one",
+        "triangles": 220,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "daa37f0a794f9f498e59021926d55f137d6f8437de6f9ef71ce3d18515108e9d"
+      },
+      {
+        "host": 143323,
+        "openings": "all",
+        "triangles": 382,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "4c8fb0cf755c0597ceffeb2aa1b8bcee60334367c1d5c265eaae8056e0a3f39c"
+      },
+      {
+        "host": 145212,
+        "openings": "none",
+        "triangles": 192,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "38ca7e9a52f6380059cae79282d8baaa2cc809bcaf858f955ca973cce9da5caf"
+      },
+      {
+        "host": 145212,
+        "openings": "one",
+        "triangles": 220,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "5b2efbc24966122c7d71a05899358e149789ad636c9cc2703e3ac4b070296f40"
+      },
+      {
+        "host": 145212,
+        "openings": "all",
+        "triangles": 382,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "b568e33ee18a62f014c0dac3d7cd925a23c7fd48d8ce529acb367d319e996a77"
+      },
+      {
+        "host": 151760,
+        "openings": "none",
+        "triangles": 192,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "e89bf517e81cd36a8d38ec9b72df57974b68f4398fd941957a587e2715a15d19"
+      },
+      {
+        "host": 151760,
+        "openings": "one",
+        "triangles": 220,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "b2b25e8de8313648a5ca0f4b34a2a64433a284ff209ef0ae07d2bb2865697c62"
+      },
+      {
+        "host": 151760,
+        "openings": "all",
+        "triangles": 382,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "30d3f54cf430e5c6db8b59cf78a65df3edd7007258cf099ebf9ffda01aa54720"
+      },
+      {
+        "host": 154626,
+        "openings": "none",
+        "triangles": 192,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "36ea200b2a081db485abaa8cc5b81da098c677c08aacc7de2499ce46e9bf849d"
+      },
+      {
+        "host": 154626,
+        "openings": "one",
+        "triangles": 220,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "44bb4003c3bf50496db5b7267a097fde68e40897430f787e3b040a1b59c3f846"
+      },
+      {
+        "host": 154626,
+        "openings": "all",
+        "triangles": 382,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "5cf115ee88811f48120e803b50361a0562c3d520e20d0307e92c8fb00fcc33e0"
+      },
+      {
+        "host": 150890,
+        "openings": "none",
+        "triangles": 188,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "6b29b5106a6417506953dc8ada368c9cc8c346b5a0856675e0e9c3d4a09ebe93"
+      },
+      {
+        "host": 150890,
+        "openings": "one",
+        "triangles": 696,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "fe0d4bf1b8b24c0c87bf5b4962fb3f1257c2ae61b8bb358fae910f1b3d3af406"
+      },
+      {
+        "host": 150890,
+        "openings": "all",
+        "triangles": 338,
+        "unmatchedDirectedEdges": 0,
+        "collapsedTriangles": 0,
+        "meshPayloadSHA256": "92a0f933fe75d528081d18bd628761b87c84beda0a9c71e0b389299e183aed57"
+      }
+    ]
+  },
+  "remainingHolds": [
+    "Final lower-stack finite-surface review, including ISSUE_129 host244479",
+    "Fresh source-bound cap-free runtime qualification before applying the existing conditional engine ceiling",
+    "Current cap runtime qualification and final stack landing/main verification"
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "at": "2026-10-18T20:25:56.412270+00:00",
+  "baselinePredecessor": {
+    "worker": "5ba9224e-8629-4988-a58f-3529d3dba080",
+    "state": "FAILED1 preparation fixture-path guard",
+    "sourceUnchanged": true,
+    "ownedQuiescent": true,
+    "commands": 0,
+    "cellsUnrun": 32,
+    "attribution": "All182baselinefixturepaths arelinks; AB22bytes/SHA match. No symlinkguard waiver. Frozenbaselineunchanged."
+  },
+  "next": "Same existing C4 owner v22: fresh private regular182fixture context verified against exactbaseline manifest; oldsource/runtime reused; only missing32captures. One PC ordinary allocation proposed, admission not yet observed.",
+  "task": "node:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Athread-send%3Ac4-base61-regular-private-fixture-context-missing32-only-20261018-v22",
+  "files": [
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-fixture-prerequisite-2026-10-18T2024/RESULT.md",
+      "size": 2314,
+      "sha256": "60e99a59e0af51d5dc6ed55b59f7ffc4d40c713cbc35042d437390461f12ed98"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-fixture-prerequisite-2026-10-18T2024/INPUT-CONTEXT.json",
+      "size": 798,
+      "sha256": "9094cfcef6fa4f03f68772610aca352365b2cac23e4585fb00637b0c710ad527"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-fixture-prerequisite-2026-10-18T2024/delta.json",
+      "size": 1808,
+      "sha256": "043d34099e4eec6dd0159325cdd75d449aa935d0197cc1db1091a9a33f60cb2b"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-fixture-prerequisite-2026-10-18T2024/matrix-index.json",
+      "size": 7604,
+      "sha256": "f52af7dc28f5f8c8b25be868cd03c41dac32999faec57e98975fa16fc98ee3f1"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-fixture-prerequisite-2026-10-18T2024/result-manifest.json",
+      "size": 5310,
+      "sha256": "5070e4eb64f4396fbe340f63ec28dd1118d86bebf349a10c56a939c7c64447bd"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-fixture-prerequisite-2026-10-18T2024/terminal-quiescence.json",
+      "size": 1222,
+      "sha256": "0f1819f5ab75019fb7758ea49a98b89ab6817fa5e60cb0ba9727075713ceaef7"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-fixture-prerequisite-2026-10-18T2024/original-exec-terminal.json",
+      "size": 56,
+      "sha256": "bab4c1b0679013e504358ed35cf5b92c77bed216229fda3e9ed6c35a33854e7c"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-fixture-prerequisite-2026-10-18T2024/launch-remote.sh",
+      "size": 1611,
+      "sha256": "2d3f9ffe49eef25fb59967947a9d77d4e594e2be525e942918de4d0befb3fb35"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-fixture-prerequisite-2026-10-18T2024/inputs/run-baseline.py",
+      "size": 12977,
+      "sha256": "4c57b0a0836bea7303d3272728ca9ce3062f3c3a5a9dc718b3f4481d9ac49b9c"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-fixture-prerequisite-2026-10-18T2024/inputs/INPUTS.json",
+      "size": 3292,
+      "sha256": "72781d4dc138fa2f2a1eb24179e945f51cc87d81caf4ad75a0495657877e9b15"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-baseline-fixture-prerequisite-2026-10-18T2024/parent-pop-capacity.json",
+      "size": 947,
+      "sha256": "d631ad25d05bbe0ec8bde9c5a002ba26492a5702b9aebb697a359b856c1aa62a"
+    }
+  ],
+  "acceptance": false,
+  "newIssueClosures": 0,
+  "newProductionMerges": 0
+}

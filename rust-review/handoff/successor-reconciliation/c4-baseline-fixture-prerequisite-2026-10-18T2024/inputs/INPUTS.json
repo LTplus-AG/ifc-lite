@@ -1,0 +1,98 @@
+{
+  "EXPECTED_DIFF.json": {
+    "bytes": 4551,
+    "sha256": "7bbbb5045ff3c62b8af6e233d56e19b045ce5eaf53bd0e501a8ca029fcfbb448"
+  },
+  "adapter/capture-wasm.mjs": {
+    "bytes": 19825,
+    "sha256": "2223eb6fc6f1b0ed627fa8b6f2c524a8e5a78004f5aa721e4dbb03bc7dffe219"
+  },
+  "adapter/compare.mjs": {
+    "bytes": 11670,
+    "sha256": "70b0c51fd64c854a92ad9b26aa4addbf99061f6073a828177f41f12614e77d7b"
+  },
+  "adapter/exact-wire.mjs": {
+    "bytes": 3804,
+    "sha256": "b96c196a81f7b7ec3506edae7a4cbb4c8e058f3a3fbe2eccf3fc2d6cd5c7ad11"
+  },
+  "adapter/native-adapter.py": {
+    "bytes": 9706,
+    "sha256": "702e40d0c65ab27fb6eb700a9e3f86a51f01262192ccca72b06571662644b078"
+  },
+  "adapter/output-reservation.mjs": {
+    "bytes": 423,
+    "sha256": "5f4fddfe16ce22cae5288161da5397162bc2bcd36211007fb756b8c402d23ad7"
+  },
+  "adapter/public-contract.mjs": {
+    "bytes": 3663,
+    "sha256": "75836e62b87a3b5025cef82c9bed6e647335d72bdbef27ed640ac4831b9871a8"
+  },
+  "adapter/schema.mjs": {
+    "bytes": 16084,
+    "sha256": "090d5429704d98605aa5db5d990d3d3adaf40caeb8af08c94e9be7306c7a4b43"
+  },
+  "baseline-runtime-producer.json": {
+    "bytes": 3629,
+    "sha256": "4135972642c889517120a0c62ed12476f139e297e7c6e17303e4c2f071925d3b"
+  },
+  "baseline61-native-capture-only.patch": {
+    "bytes": 9773,
+    "sha256": "737a8d6a6ee1b3ea243d9b2d230088e45519072b2e7fd6521661827ad36b9240"
+  },
+  "compare-saved.mjs": {
+    "bytes": 996,
+    "sha256": "92a12d4bb12b825c7f8a6b2266ad947a7a1f3aedbd2b52deea2f336ef71918a6"
+  },
+  "fixtures/bare-type-map.ifc": {
+    "bytes": 991,
+    "sha256": "1497da63927b93a0a67d93b696c02786e7c13ef1aebe5389d7c0805f97d70c4e"
+  },
+  "fixtures/haus.ifc": {
+    "bytes": 2526511,
+    "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5"
+  },
+  "fixtures/mapped-instances.ifc": {
+    "bytes": 23440,
+    "sha256": "3069997f0b7d555232180c88bea27d0f6ca4d9c309a9cf4b1c3a8c68bba166ad"
+  },
+  "fixtures/multicolor.ifc": {
+    "bytes": 1582,
+    "sha256": "dde566815a01e18584aa099692820ec315ab237857b504f9ddae8f718d56cc79"
+  },
+  "fixtures/nonfinite-depth-neighbor.ifc": {
+    "bytes": 1426,
+    "sha256": "961ac6967d559896bb14dd3488d6d697a07bdc4eaa132f9787a9aa60c555960f"
+  },
+  "fixtures/orphan-type.ifc": {
+    "bytes": 993,
+    "sha256": "b0de96d6d113d8eed0745b439aec3c1f544a44429f60b592545f2f90774bd4ee"
+  },
+  "fixtures/revit-wall.ifc": {
+    "bytes": 64373,
+    "sha256": "65b04e28e8f2d06ac8bcf3bf0d57264f168456d09865c3353fb802a5e66ee0c0"
+  },
+  "fixtures/voided-wall.ifc": {
+    "bytes": 3867,
+    "sha256": "21625ddf0c241cd7562cc2b2fa0ab49a0d2218ba32da37b2ef4d34f1143c146f"
+  },
+  "head-matrix-index.json": {
+    "bytes": 276857,
+    "sha256": "846bfdc17fa7f68217c009247240f98bd3f6927809eca58bea5e5956125c5f9e"
+  },
+  "head-ordinary.json": {
+    "bytes": 11492,
+    "sha256": "3e34d050690b4e562ee0a06618b3fe4b5e5f7779304206cbf41629fe62dd17c9"
+  },
+  "helper-reuse.json": {
+    "bytes": 2794,
+    "sha256": "18e2af3b381bd07b6532f55442da1a0cad05e583c517d2a4fe91cb0ec8898159"
+  },
+  "run-baseline.py": {
+    "bytes": 12977,
+    "sha256": "4c57b0a0836bea7303d3272728ca9ce3062f3c3a5a9dc718b3f4481d9ac49b9c"
+  },
+  "sealed-fixture-manifest.json": {
+    "bytes": 7816,
+    "sha256": "b558d1803e50f7361b308de8b059341591481e1dc2aa8169258d009b7d63dea4"
+  }
+}

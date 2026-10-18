@@ -1,0 +1,39 @@
+{
+  "state": "STOPPED_INITIAL_FIXTURE_SYMLINK_GUARD_NO_RUNTIME",
+  "worker": "5ba9224e-8629-4988-a58f-3529d3dba080",
+  "originalSession": null,
+  "originalExecToolChunk": "ca914e",
+  "exitCode": 1,
+  "commands": 0,
+  "capturedCells": 0,
+  "comparisons": 0,
+  "pendingCells": 32,
+  "source": {
+    "head": "61f9cb64803b37270fcc0603d97f5f47808212bf",
+    "tree": "6c3b87a4fe38cbf7170deca3d39ca3885b630e7c",
+    "status": ""
+  },
+  "sourceUnchanged": true,
+  "ownQueueRowsAbsent": true,
+  "ownedProcessesAbsent": true,
+  "report": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-baseline61-counterparts-v1/RESULT.md",
+  "matrix": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-baseline61-counterparts-v1/matrix-index.json",
+  "workerReceipt": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-baseline61-counterparts-v1/worker-original/receipt.json",
+  "terminalQuiescence": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-baseline61-counterparts-v1/terminal-quiescence.json",
+  "blockingPrerequisite": {
+    "path": "tests/models/AB22.ifc",
+    "condition": "is_symlink refused before any build/capture",
+    "expectedBytes": 225508,
+    "actualBytes": 225508,
+    "expectedSha256": "b3665488720f1e4e74710c3e3dc26a0d1f07a56bb691a679751861a3697f76ec",
+    "actualSha256": "b3665488720f1e4e74710c3e3dc26a0d1f07a56bb691a679751861a3697f76ec",
+    "link": {
+      "path": "AB22.ifc",
+      "link": "/home/louistrue/build-workers/worker-state/checkouts/5952f62dadaad032d575703f17265a15abd4569d/tests/models/AB22.ifc",
+      "realpath": "/home/louistrue/build-workers/worker-state/checkouts/5952f62dadaad032d575703f17265a15abd4569d/tests/models/AB22.ifc"
+    },
+    "baselineManifestSymlinks": 182
+  },
+  "noRetry": true,
+  "acceptance": false
+}

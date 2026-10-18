@@ -1,0 +1,29 @@
+{
+  "at": "2026-10-18T20:23:38.205558+00:00",
+  "diskFreeBytes": 182720180224,
+  "guardState": {
+    "disk-guard.json": {
+      "at": "2026-10-18T20:21:23.817115+00:00",
+      "held": true,
+      "freeGiB": 180.23,
+      "requiredGiB": 266,
+      "scope": "new_jobs_only"
+    },
+    "io-guard.json": {
+      "at": "2026-10-18T20:06:54.852258+00:00",
+      "held": true,
+      "fullAvg60": 52.52,
+      "threshold": 10,
+      "scope": "new_jobs_only"
+    }
+  },
+  "ordinaryForeignJob": "9463bbb5-181e-4462-bf04-9423430956e5",
+  "benchmarkSubmitted": false,
+  "cacheInventoryOnly": {
+    "oldOwnedPrefixIncrementalKiB": 41688380,
+    "deleted": false,
+    "reason": "Only old r2/r3/r4 incremental caches identified; estimated39.8GiB would not reach held resume threshold266GiB. No cache mutation or guard reset."
+  },
+  "latestPRHead": "f04d4f621e2dd0b168ef298e116a25a827161995",
+  "existingC4BaselineTask": "running; no new submission by parent"
+}

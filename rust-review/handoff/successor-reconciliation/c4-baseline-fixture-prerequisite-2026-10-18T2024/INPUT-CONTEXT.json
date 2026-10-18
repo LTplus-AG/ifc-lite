@@ -1,0 +1,13 @@
+{
+  "base": "61f9cb64803b37270fcc0603d97f5f47808212bf",
+  "tree": "6c3b87a4fe38cbf7170deca3d39ca3885b630e7c",
+  "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+  "captureCells": 32,
+  "observed": false,
+  "headCaptures": "reuse original V20 ordinary32; no rerun",
+  "comparatorChange": "Only final-source literal b437\u2192fc in compareRevisions. No algorithm/schema/policy change; original empty expected-diff policy.",
+  "baselineRuntime": "exact existing official source-built61 runtime, no build",
+  "nativeSupport": "original baseline61-native-capture-only.patch external-index check PASS; new detached context; server-release --no-run only",
+  "historicalNativeCompilerByteClosure": "UNKNOWN",
+  "inputManifestSha256": "72781d4dc138fa2f2a1eb24179e945f51cc87d81caf4ad75a0495657877e9b15"
+}

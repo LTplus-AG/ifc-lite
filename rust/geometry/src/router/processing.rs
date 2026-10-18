@@ -5,9 +5,8 @@
 //! Core element processing: resolving representations, processing items, and caching.
 
 use super::frame_parts::{mesh_bounds, single_frame};
-use super::transforms::instancing_enabled;
 use super::GeometryRouter;
-use crate::{InstanceMeta, Mesh, Result, SubMeshCollection};
+use crate::{Mesh, Result, SubMeshCollection};
 use crate::program::{EntryPolicy, ProductProgram};
 
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};

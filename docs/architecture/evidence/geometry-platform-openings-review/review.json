@@ -1,0 +1,64 @@
+{
+  "review": "/tmp/ifclite-common-opening-review.md",
+  "review_sha256": "163673cc5f4127ad38890328f1c5072356338bb2840ced8e387baeb6522f56f7",
+  "child": "aa0f67a4bc4a883a994ff8d6822f6cc92ebe8f1f",
+  "base": "e26527d79c34ed98160c8104e2def7edf9e8dd32",
+  "parent_head": "0c0e5734569b19f48eedc21703cdbf75d241a313",
+  "all27_child_source_hashes_and_git_objects_match": true,
+  "child_source_sha256": {
+    "rust/geometry/src/program/mod.rs": "24f5208ccbf376947be1eae5c8a4abcfb8a354ec510218cd1d73b1f554369f26",
+    "rust/geometry/src/program/openings/classify.rs": "161f4ffe92f35dd5b7e0cccc20af2aab086c976a9ff262ec34e41e2b8a8aaf96",
+    "rust/geometry/src/program/openings/decision.rs": "6d370160ca86c0cd79a215ba80005d6e7062445e8d759a0c9498107d18d13494",
+    "rust/geometry/src/program/openings/effects.rs": "9d2d1d85ae004bc473d74ec8a6e994cae493f2aa3929e60158ca20a7a9c6c768",
+    "rust/geometry/src/program/openings/execute.rs": "a1f22b36a31535fb4ac2c3afcbb898f81875ce56954c09dea267ed0973bf7841",
+    "rust/geometry/src/program/openings/mod.rs": "c77da074fefaa133d0974c0c5edcbaa91f3dd21a52a7160a24f5fdc7bb9d5a8f",
+    "rust/geometry/src/program/openings/planar.rs": "1b202dc16d6af8326ce2fc9d8665556d281fa48aae5627b33738c1dbb5e1252e",
+    "rust/geometry/src/program/openings/rectangular.rs": "29feb7df8fdeaba10d987f8a30d5f81b1a2f52fa7e84a5e65f561b44b6c681dc",
+    "rust/geometry/src/program/openings/tests.rs": "5726c7d8815f87fe4e1f445d7bb35c61d4a5c826c4e82cb11939be18d9853949",
+    "rust/geometry/src/program/traversal.rs": "6a1568bb80c03dc92934aaf50dfa193ee50c921a8e2c9e6fd55ffa4f9fd8b743",
+    "rust/geometry/src/router/voids/aabb_clip.rs": "0cdbe1f2642cdffc984f5ae61ddda2a4c6f267cee8b753b4ee03c470b704c843",
+    "rust/geometry/src/router/voids/bool2d_path.rs": "f04b2d2ae0ce16bda5f37f0fe1fd8d83deda56675118d82c5fa4e0c3faaead98",
+    "rust/geometry/src/router/voids/bool2d_path/footprint.rs": "91d68ed65fadccc83ccea124b1c1b24c12dfea78f83ee765eecb0e3c1cff0af3",
+    "rust/geometry/src/router/voids/bool2d_transaction_tests.rs": "9d234753ca9c4b967cf759774bcf11515fdbd1d705481cd3d7bdeb37a2f4d5f2",
+    "rust/geometry/src/router/voids/coaxial_union.rs": "da6b31100ccf65f9b290268088d6cf3b888f2048737fd61dd7613fe3abe79476",
+    "rust/geometry/src/router/voids/execution_tests_adapter.rs": "984c931dc01076f89632b66b89b6d43a092bc76f461edc1250bd240133ace885",
+    "rust/geometry/src/router/voids/geom.rs": "71e0a820ec656c5963ba8232aa9edb23386f72771187d5d5542a209f9e8a7060",
+    "rust/geometry/src/router/voids/mod.rs": "693ed5d555d0136753dbbacd959f25665c5edf405696ba1970e1c20edc906890",
+    "rust/geometry/src/router/voids/prism_cut.rs": "5aa7e45dd7719bc622458629d2ea5f5d71b3a7e164f9e2de9ad3fabddf710834",
+    "rust/geometry/src/router/voids/prism_cut/planar_correction.rs": "439a6555fce94c24b765eb4dd9afe0ade3d3cb215eb71eb443617120205de88f",
+    "rust/geometry/src/router/voids/probe.rs": "c977e8145598d88ddd96625a13679ec39c5669b536c03bf6a5cbd94bafb6a722",
+    "rust/geometry/src/router/voids/staged.rs": "98ad8b12d8279ee8c1cd5277f379ec4f90efafd224a620d18f0913be879999de",
+    "rust/geometry/src/router/voids/synthesis.rs": "de0ef6fe66884ad8b1992cf7c10377991f46cdd8b4920ef74025d385ae136644",
+    "rust/geometry/src/router/voids/synthesis_tests.rs": "af61b195076c4cb3610c1a6ad6c9303a3c932b9aa2060588e2946a8af1683783",
+    "rust/geometry/src/telemetry_transaction.rs": "5bea9f119c268aecbd9ad2aaf0d72541e25ce32df1f2c56a53d5a566bca5d4f9",
+    "rust/processing/tests/common_opening_program.rs": "9d724cd99d44f90e2dfbde448bc9d31ce8f2ab3e6be4bbf423aa765f570b10c8",
+    "rust/processing/tests/function_length_allowlist.txt": "2133e50e4d197d757ad25749bc82a124c510413ba721568f1f8c2af51e80445d"
+  },
+  "parent_inspected_sha256": {
+    "rust/geometry/src/program/mod.rs": "179ecbc859960ab3366a52c4acb4989ba270c6ea830157e2f4a80a215657a6a2",
+    "rust/geometry/src/program/opening.rs": "7b8d57f7afbb7130c074a4bedfe280afc963e6768714c242444a460fd2668aea",
+    "rust/geometry/src/program/source.rs": "76dbcd81bce47e04ab8d8b160ab19e183b2f869ef466be2308c5d30a0f4d3428",
+    "rust/geometry/src/resource/mod.rs": "041096b83e843c2318aad2947fb00df8079bd949a3fcab420ddabcd54a292943",
+    "rust/geometry/src/program/boolean/work.rs": "e82affa98ec93bde322bef9c3cbd968f641b72130534429cc1c689df5150bcec",
+    "rust/geometry/src/program/boolean/batch.rs": "39164d6b8efc373258657dfc1bbd3457374b1aec8961bfa8d422a7469fbbb101",
+    "rust/geometry/src/program/boolean/step.rs": "3e6288ff978d3ad97570f32a3adb29c5c3b3938ba1e29a161542020261a44120",
+    "rust/geometry/src/program/boolean/operand.rs": "5078f2e9511ac5640f55c078ab59901488a72191718cd009c07b37aad5805fb8",
+    "rust/geometry/src/router/processing.rs": "383171f8f767c59e7ac813be3a96bc49c5bc90fc987f8fa40e56721e9bfa0825",
+    "rust/processing/src/element/session.rs": "d533944b04b318eda4412f4615c0e852eb1c4480bea82775b0670ec17c7959f3"
+  },
+  "delivery_sha256": {
+    "handoff.txt": "accdfc36ab1a73ae7559665f45eccd254fce243326802fd73067ab4a9a4f1f17",
+    "incremental.patch": "7bbecf9eda12a2f519f220595c564bd69e16eac218a3184b466f8a3710c34e4b",
+    "source-manifest.json": "e24feeb6b77ca167e21800e1c280e20f2bc775c6085e3fbd30984543ca71d552",
+    "SHA256SUMS": "534218e4da371008c57477fba5bc45477943899976043226f0b776897ced2b5e",
+    "terminal-port-audit.txt": "c270b0b91feb1e765b540d82c5a6d5025ea5c9e2fbdd5272e0148eadc528720d"
+  },
+  "validation": "static read-only source/diff/hash inspection; no edits/builds/typecheck/syntax/runtime/heavy submissions",
+  "definite_static_blockers": [
+    "private GeometryRouter import through router::voids"
+  ],
+  "compatibility_delta": [
+    "eager initialization of previously lazy environment gates"
+  ],
+  "terminal_port_status": "not implemented/qualified in delivered child"
+}

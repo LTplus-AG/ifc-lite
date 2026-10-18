@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Accumulating mapping invariants: repeated paths are real geometry, not cycles.
 use super::*;
+use ifc_lite_core::IfcType;
 use crate::{Mesh, SubMeshCollection, AccountedMappedItemCache, GeometryProcessor};
 use crate::resource::{ExecutionAccount, ExecutionPolicy, ResourceLimits, Dimension, ProgramStop};
 use std::sync::Arc;

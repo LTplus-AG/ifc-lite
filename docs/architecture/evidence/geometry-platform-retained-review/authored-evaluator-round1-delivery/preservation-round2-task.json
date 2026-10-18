@@ -1,0 +1,19 @@
+{
+  "taskId": "node:delegated-task:command%3Amcp%3A40782b11-2ce6-4f4a-b37b-2a6dbccb22b9%3Adelegate-task%3Aifclite-retained-authored-preservation-round2",
+  "childThreadId": "thread:delegated-task:command%3Amcp%3A40782b11-2ce6-4f4a-b37b-2a6dbccb22b9%3Adelegate-task%3Aifclite-retained-authored-preservation-round2",
+  "childRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A40782b11-2ce6-4f4a-b37b-2a6dbccb22b9%253Adelegate-task%253Aifclite-retained-authored-preservation-round2:ordinal:1",
+  "childNodeId": "node:delegated-task:command%3Amcp%3A40782b11-2ce6-4f4a-b37b-2a6dbccb22b9%3Adelegate-task%3Aifclite-retained-authored-preservation-round2",
+  "status": "running",
+  "workState": "working",
+  "hasPendingChildRuns": false,
+  "latestTerminalRunId": null,
+  "latestTerminalStatus": null,
+  "latestTerminalSummary": null,
+  "latestTerminalResultContextTransferId": null,
+  "providerInstanceId": "codex",
+  "model": "gpt-6.1-sol",
+  "summary": null,
+  "resultContextTransferId": null,
+  "hasPendingQuestion": false,
+  "waitTimedOut": false
+}

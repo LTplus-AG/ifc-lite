@@ -1,0 +1,177 @@
+{
+  "checkpoint": "80f0a6a5e55024cad3311b6a6bada9098d6f43b0",
+  "overall": "IMPLEMENTED_SOURCE_SLICE_UNCOMPILED_AND_UNQUALIFIED",
+  "perf_verdict": "UNQUALIFIED",
+  "runtime_geometry_qualified": false,
+  "implemented_and_consumed_in_source": [
+    "Canonical AuthoredGeometryPlan rectangle extrusion -> replayable retained definition/request -> explicit RetainedBrep evaluator -> actual capped SDK linear sweep -> immutable worker handle plus owned f64 packet -> geometry-document display consumer.",
+    "Raw rectangle line coefficients, original source-unit geometry, separate profile/solid placements, source epoch/revision, local metre edge conversion and f64 inverse frames.",
+    "Distinct retained definition, worker handle and mapped occurrences; all selected rigid mapped occurrences share one display definition.",
+    "Version-1-compatible capability/recipe-version negotiation and bounded staged begin/chunk/commit/abort in C ABI, single C++ command decoder, Rust native/supervised and browser transports.",
+    "Transactional cleanup, checked declared sizes/counts, finite local numerical domain, RAII curves, capped solid manifold/analytic-volume checks before publication.",
+    "Explicit stale/foreign request and completion rejection, retained f64 buffers, flat-corner display expansion and narrowing-collapse refusal.",
+    "Processing assembly consumes owned packets without production runtime dependency; caller independently owns/releases the worker handle."
+  ],
+  "not_claimed_or_unqualified": [
+    "No current C++/Rust compile, Clippy, native SDK, actual worker, WASM/browser SDK, Python or complete consumer validation.",
+    "Low-level numerical circle producer and real SDK tests exist, but IFC circle source admission is gated until a positive sweep witness.",
+    "Rectangle execution is an opt-in unqualified source implementation, never default production output or final net product geometry.",
+    "No measured performance, process RAM enforcement, app asset closure, surface-type/section qualification or retained USD stage-reader evidence."
+  ],
+  "typed_refusals": [
+    "Non-RetainedBrep request",
+    "Circle/holed/multiple regions pending qualification",
+    "Arbitrary/trimmed/general profiles lacking original trim/angle convention metadata",
+    "Swept disks",
+    "Nonrigid/scaled/mirrored mapped occurrences pending qualification",
+    "Persistent IFC face provenance",
+    "Analytic smooth normals",
+    "IFC appearance/material/UV contracts",
+    "Stale/foreign document/runtime identity",
+    "Malformed/incomplete/overflowed uploads",
+    "Invalid/narrowing-collapsed display geometry"
+  ],
+  "unresolved_defects_and_integration": [
+    {
+      "path": "rust/geometry-runtime/src/supervision/controller.rs",
+      "owner": "active resource sibling; not edited",
+      "defect": "Controller may cache worker before respond; receiver loss after final interrupted check can strand an undelivered newly created solid. Release undeliverable handles or retire process."
+    },
+    {
+      "paths": [
+        "rust/geometry-runtime/src/worker_sweep.rs",
+        "rust/geometry/src/document/retained.rs"
+      ],
+      "requirement": "Bind resource-owner current-incarnation/liveness invalidation. Geometry document requires a caller-supplied live incarnation; it cannot automatically observe spontaneous process death. Low-level terminated workers now report incarnation 0."
+    },
+    {
+      "requirement": "Add copied transforms/common local evaluation frames before integrating retained booleans/openings; no authored final-net BooleanProgram integration is claimed."
+    },
+    {
+      "requirement": "Preserve original IFC Trim1/Trim2/MasterRepresentation/SenseAgreement and plane-angle conventions before general curve/profile admission. Interpreted radian geometry is not original trim metadata."
+    },
+    {
+      "requirement": "Run real rectangle/circle/holed/curved region SDK witnesses including bounds, sections and analytic surface types; leave unqualified families refused."
+    },
+    {
+      "requirement": "Supervised cancellation/undelivered-result resource integration, live Rust/WASM browser host binding, memory budgets and app asset delivery remain open."
+    },
+    {
+      "requirement": "Run preserved exact/default/borrowed/public, USD mesh and IFCX composition consumers on assembled final source. Their implementations were not replaced, but fresh regression execution is unavailable."
+    }
+  ],
+  "actual_checks": [
+    {
+      "command": "node --test native/smlib-adapter/browser/sweep-transport.test.mjs",
+      "status": "PASS",
+      "exit_code": 0,
+      "tests": 5,
+      "scope": "Protocol fault injection only; no SDK or geometry evidence",
+      "transcript_chunk": "d82cf7",
+      "source_note": "Browser files unchanged since this run; committed in 03e83839ac"
+    },
+    {
+      "command": "rustfmt --edition 2021 --emit stdout --config skip_children=true <each changed .rs>",
+      "status": "PASS_SYNTAX_ONLY",
+      "files": 13,
+      "receipt": "rust-parse-check.json",
+      "source_commit": "80f0a6a5e55024cad3311b6a6bada9098d6f43b0"
+    },
+    {
+      "command": "cargo metadata --locked --offline --no-deps --format-version 1",
+      "status": "PASS_METADATA_ONLY",
+      "receipt": "cargo-metadata-receipt.json"
+    },
+    {
+      "command": "node --check native/smlib-adapter/browser/{sweep,sweep-contract,node-tests}.mjs",
+      "status": "PASS_SYNTAX_ONLY",
+      "source_note": "During dirty iteration; these files subsequently unchanged",
+      "transcript_chunk": "f2e163 / 4a9c8d / d82cf7"
+    },
+    {
+      "command": "node scripts/check-refwalk-guards.mjs",
+      "status": "PASS_WITH_EXISTING_REVIEW_NOTES",
+      "candidate_walks": 29,
+      "unguarded": 0,
+      "fan_out_reviews": 12,
+      "source_note": "Earlier dirty iteration; not a runtime test",
+      "transcript_chunk": "3048d2"
+    },
+    {
+      "command": "node scripts/check-float-sort-comparators.mjs",
+      "status": "PASS_SOURCE_ONLY",
+      "source_note": "Earlier dirty iteration",
+      "transcript_chunk": "3048d2"
+    },
+    {
+      "command": "node scripts/check-module-size.mjs",
+      "status": "PASS_SOURCE_ONLY",
+      "new_over_400": 0,
+      "source_note": "Earlier dirty iteration; final changed production module line counts additionally in manifest",
+      "transcript_chunk": "3048d2"
+    },
+    {
+      "command": "node scripts/check-source-text-assertions.mjs",
+      "status": "UNAVAILABLE",
+      "exit_code": 1,
+      "reason": "ERR_MODULE_NOT_FOUND: typescript; checkout dependencies are absent",
+      "transcript_chunk": "3048d2"
+    },
+    {
+      "command": "node scripts/add-license-headers.mjs --check",
+      "status": "FAIL_PREEXISTING_UNTOUCHED_EVIDENCE",
+      "exit_code": 1,
+      "reason": "Eight existing evidence Python scripts lack headers; no evidence files rewritten",
+      "transcript_chunk": "270bfc"
+    },
+    {
+      "command": "new source MPL header inspection",
+      "status": "PASS_SOURCE_ONLY",
+      "receipt": "new-source-header-check.json",
+      "source_commit": "80f0a6a5e55024cad3311b6a6bada9098d6f43b0"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "source_note": "Final dirty tree before checkpoint; no subsequent source modifications"
+    },
+    {
+      "command": "gh api repos/:owner/:repo/rulesets/11806334",
+      "status": "READ_ONLY_SUCCESS",
+      "required_contexts": [
+        "Build + WASM + Rust + Node",
+        "Issue queue",
+        "PR review signal",
+        "parity (in-tree fixtures, committed reference)"
+      ],
+      "transcript_chunk": "7e05e0"
+    }
+  ],
+  "heavy_validation": {
+    "status": "NOT_RUN_NO_BYPASS",
+    "fleet_status_calls": 1,
+    "observed": {
+      "pop-os": "reachable; admission false; guardExitCode 78",
+      "pc-wsl": "reachable; prior disk-full preparation failure supplied by user; no unchanged resubmission",
+      "mac": "disabled"
+    },
+    "new_heavy_requests_submitted": 0,
+    "unknown_outcomes_retried": 0,
+    "required_unrun": [
+      "CMake native SDK build + CTest",
+      "CMake Emscripten build + Node/browser real SDK contracts",
+      "cargo test --workspace with configured actual IFCLITE_SMLIB_WORKER",
+      "cargo clippy --workspace --all-targets -- -D warnings",
+      "root pnpm typecheck / pnpm test through Turbo",
+      "Rust Python and real WASM consumer regressions",
+      "base-vs-branch end-to-end worker-pool perf probes"
+    ]
+  },
+  "preservation_scope": "Exact kernel/default production emitter, parent BooleanProgram/effects, presentation/context, USD mesh and IFCX implementations not modified. No new loader, appearance resolver, issue, PR, publication or parent-checkout edit.",
+  "receipt_links": [
+    "rust-parse-check.json",
+    "cargo-metadata-receipt.json",
+    "new-source-header-check.json",
+    "source-manifest.json"
+  ]
+}

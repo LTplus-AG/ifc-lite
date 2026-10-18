@@ -21,15 +21,20 @@ execution and production cutover remain unqualified.
 | Boolean and CSG | Owned continuation, numerical payloads, consuming effects and unwind preservation | Compile and run final source; corpus, WASM, exact determinism and whole-pool performance |
 | Material layers | Owned eligibility, late frame admission and decoder-free slicing | Run real layer/opening/RTC invariants and model comparisons |
 | Appearance and presentation | Late source admission and source-free packets retaining derived palette/rotation Arcs | Run interleaving, mutation, context-release and complete output comparisons |
-| Opening classification and application | Item probe policies integrated; full opening child under implementation | Integrate classifier/capture/application with original rollback and diagnostic contracts |
-| Source coherence | Separate source-bundle implementation under preservation correction | Integrate duplicate-ID prepass compatibility and authenticated cache transfer |
-| Resource admission | Separate implementation being ported to the current program | Preserve terminal ancestor stops across scoped workers; no complete heap envelope claim |
-| Retained execution | Explicit evaluation contracts and limited primitive worker operations | Connect genuine authored curves/sweeps and provenance; qualify shipping and reader interoperability |
+| Opening classification and application | Item probes integrated; full owned child delivered and independently reviewed | Port typed terminal propagation and preserve lazy numerical gates, then compile and qualify |
+| Source coherence | SourceBundle factories, duplicate-ID prepass compatibility and authenticated cache transfer integrated | Qualify the final combined native/browser source and invalidation/rejection behavior |
+| Resource admission | Accounted canonical production, ancestor stop precedence, partial-output suppression and checked diagnostic drain integrated | Run final stop/cache/worker invariants; complete numerical/profile/decoder allocation coverage remains absent |
+| Retained execution | Explicit evaluation contracts and primitive workers; unintegrated rectangle-evaluator candidate reviewed | Correct lifecycle/upload/completion ownership, complete authored regions and qualify actual SDK/consumer behavior |
 
 The older successful native, browser, Python and scene receipts qualify only
 their recorded predecessor source. The integrated layer and presentation sources,
 and the corrected boolean program, have no final compiled qualification yet.
 Storage admission refusals are retained as refusals, never passing test results.
+The first admitted combined workspace run at `0c0e573456` failed test compilation
+with missing test imports and a callback error-type mismatch. Those corrections
+leave geometry assertions and numerical algorithms unchanged. The
+[original failed receipt](evidence/geometry-platform-integrated-validation/initial-native/receipt.json)
+and output hash are preserved; no runtime pass follows from that run.
 The current task records and integration manifests live beside each layer's
 architecture evidence. Source review and syntax parsing do not authorize cutover.
 

@@ -1,0 +1,311 @@
+{
+  "child_checkpoint": "80f0a6a5e55024cad3311b6a6bada9098d6f43b0",
+  "source_files": [
+    {
+      "path": "Cargo.lock",
+      "expected": "f52385dc435b1addd5560d94e7576d38647d0551aa89f3330ac5c4391a738a0c",
+      "actual": "f52385dc435b1addd5560d94e7576d38647d0551aa89f3330ac5c4391a738a0c",
+      "matches": true
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-retained-review/authored-evaluator-round1.md",
+      "expected": "8757094293b7145280b3460e9e23b6afb99ce04d4debc5801af91b9293dac6be",
+      "actual": "8757094293b7145280b3460e9e23b6afb99ce04d4debc5801af91b9293dac6be",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "expected": "8f16f5d323c5c20c91fcd015c0ccfc79ab597ba7d473ce3f08b90db0ad053231",
+      "actual": "8f16f5d323c5c20c91fcd015c0ccfc79ab597ba7d473ce3f08b90db0ad053231",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/README.md",
+      "expected": "82005ad522b84265714c0e4ef7769fbee99912574738ea9d824698458ec237bc",
+      "actual": "82005ad522b84265714c0e4ef7769fbee99912574738ea9d824698458ec237bc",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/node-tests.mjs",
+      "expected": "92a490c30fb500177d57eec161513e5b36b902c5ca2d17a1d63997045aa76fb0",
+      "actual": "92a490c30fb500177d57eec161513e5b36b902c5ca2d17a1d63997045aa76fb0",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep-contract.mjs",
+      "expected": "aefca4addfe7234e9f7c13d630e9b5ab193e74c6d460c5cf592e46f833dc2610",
+      "actual": "aefca4addfe7234e9f7c13d630e9b5ab193e74c6d460c5cf592e46f833dc2610",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep-transport.test.mjs",
+      "expected": "b0fd92e413f7704ed76d45705bf1873ae618be58951fbd33037033cf15c0bd27",
+      "actual": "b0fd92e413f7704ed76d45705bf1873ae618be58951fbd33037033cf15c0bd27",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep.mjs",
+      "expected": "3c271e1251a9cdb776d2e4339295fa13e128b9e748662768fa618e718bb3b3c3",
+      "actual": "3c271e1251a9cdb776d2e4339295fa13e128b9e748662768fa618e718bb3b3c3",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/test.html",
+      "expected": "1961bcf7e9386e602dbb3324d5431e72d3dbfc02812f927e96caf2a0512cfbc3",
+      "actual": "1961bcf7e9386e602dbb3324d5431e72d3dbfc02812f927e96caf2a0512cfbc3",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "expected": "ab984572c63b45a8bffc8d7e886d67a45ec6a6741eb522feec03b8d70e8f5c5d",
+      "actual": "ab984572c63b45a8bffc8d7e886d67a45ec6a6741eb522feec03b8d70e8f5c5d",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/src/adapter.cpp",
+      "expected": "7c1f2fc8f286893aeac8bee6e28aec29c8fd26fd6e07ce51324435e41ac28d35",
+      "actual": "7c1f2fc8f286893aeac8bee6e28aec29c8fd26fd6e07ce51324435e41ac28d35",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "expected": "e27d03533d9a4af4d8f866a17725629a3c936d27e97fa701519a0deaae6f973f",
+      "actual": "e27d03533d9a4af4d8f866a17725629a3c936d27e97fa701519a0deaae6f973f",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/src/sweep.cpp",
+      "expected": "5895f680c48fab64c7f3423b6bd77faf08134348c5b7cffacc5248fc96ef8435",
+      "actual": "5895f680c48fab64c7f3423b6bd77faf08134348c5b7cffacc5248fc96ef8435",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/src/sweep.hpp",
+      "expected": "b550162e4c1ef8681daa04c5aa934db481f51bc874b4aaeab052e85e2ad0d7f8",
+      "actual": "b550162e4c1ef8681daa04c5aa934db481f51bc874b4aaeab052e85e2ad0d7f8",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/tests/adapter_tests.cpp",
+      "expected": "875fa795f30bb157464f4101f182adcf44a3728897ec44e9c7a275328007f25b",
+      "actual": "875fa795f30bb157464f4101f182adcf44a3728897ec44e9c7a275328007f25b",
+      "matches": true
+    },
+    {
+      "path": "native/smlib-adapter/tests/sweep_tests.cpp",
+      "expected": "b4f8ba21a9d5ce60f683a47577fc885f52af4a2a300f028e22953fa06197a617",
+      "actual": "b4f8ba21a9d5ce60f683a47577fc885f52af4a2a300f028e22953fa06197a617",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry-runtime/README.md",
+      "expected": "8dc91b3d86ac417bdd62c1da5e37a9dc848f6ff210c2b52ccdda90add3f946a8",
+      "actual": "8dc91b3d86ac417bdd62c1da5e37a9dc848f6ff210c2b52ccdda90add3f946a8",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/lib.rs",
+      "expected": "0f5c4440607d69eeac55fb3fd11a41a370e22e5873706cf0b5e15cb19e2b588d",
+      "actual": "0f5c4440607d69eeac55fb3fd11a41a370e22e5873706cf0b5e15cb19e2b588d",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/protocol.rs",
+      "expected": "8670ee16ca8b6049041e2bec8b5a6822aea92c5cdfe0df8455ed2d76edecd3ed",
+      "actual": "8670ee16ca8b6049041e2bec8b5a6822aea92c5cdfe0df8455ed2d76edecd3ed",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/protocol_tests.rs",
+      "expected": "39e62396add83a661f3e15eb4182eda93f3668167dc1c6c84fd0b4af4d2cea6a",
+      "actual": "39e62396add83a661f3e15eb4182eda93f3668167dc1c6c84fd0b4af4d2cea6a",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/supervision.rs",
+      "expected": "5700989c4ddd080e5dbee906902bb0f7dd4a75f52c418fe61166a37f3f9501a7",
+      "actual": "5700989c4ddd080e5dbee906902bb0f7dd4a75f52c418fe61166a37f3f9501a7",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker.rs",
+      "expected": "42dd7a8898ef095dcec5bc59d96938cb644f1a4efbeb496755fdd971f2fc41e2",
+      "actual": "42dd7a8898ef095dcec5bc59d96938cb644f1a4efbeb496755fdd971f2fc41e2",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_sweep.rs",
+      "expected": "65c1ead176c8f9de635b396389f2ab9858467735fda0d874053bf126744cfc39",
+      "actual": "65c1ead176c8f9de635b396389f2ab9858467735fda0d874053bf126744cfc39",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/document/mod.rs",
+      "expected": "831eff5202bc0609c5d00f3c87ceaddc01f21468fe62e9cbeae38d43e0ddcc60",
+      "actual": "831eff5202bc0609c5d00f3c87ceaddc01f21468fe62e9cbeae38d43e0ddcc60",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained.rs",
+      "expected": "b38e413612d9c7f0159823db0aba64a61763b7155b55bdacc3c8c1b4db18dd26",
+      "actual": "b38e413612d9c7f0159823db0aba64a61763b7155b55bdacc3c8c1b4db18dd26",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained_display.rs",
+      "expected": "721ab2044610379bc5f023a84c8b2b29d992c966842996d1ca269da9288bf220",
+      "actual": "721ab2044610379bc5f023a84c8b2b29d992c966842996d1ca269da9288bf220",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained_sweep.rs",
+      "expected": "3370ebf26e35f5f1d77099eef5451708022a81f8e9b5596c7c137cfd6a2c4ab8",
+      "actual": "3370ebf26e35f5f1d77099eef5451708022a81f8e9b5596c7c137cfd6a2c4ab8",
+      "matches": true
+    },
+    {
+      "path": "rust/processing/Cargo.toml",
+      "expected": "48efedf62b65a534c419ffdd1cc4dd0ab9f51d4600a7c4bc358c55fd802ebb81",
+      "actual": "48efedf62b65a534c419ffdd1cc4dd0ab9f51d4600a7c4bc358c55fd802ebb81",
+      "matches": true
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/evaluator.rs",
+      "expected": "e8cb19fb05a7bfbd80a967bf20d676746ffcc50863393f6e8d8c55da0a23732e",
+      "actual": "e8cb19fb05a7bfbd80a967bf20d676746ffcc50863393f6e8d8c55da0a23732e",
+      "matches": true
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/mod.rs",
+      "expected": "86cd429bc384cea7bbfca7659e426202d82f2543e1dd66656ecc97f1b208bdfd",
+      "actual": "86cd429bc384cea7bbfca7659e426202d82f2543e1dd66656ecc97f1b208bdfd",
+      "matches": true
+    },
+    {
+      "path": "rust/processing/tests/retained_authored_evaluator.rs",
+      "expected": "de52b918196429fd07a227fc94d40b8e87ccef6ca53efbca5bdfa55731745b18",
+      "actual": "de52b918196429fd07a227fc94d40b8e87ccef6ca53efbca5bdfa55731745b18",
+      "matches": true
+    }
+  ],
+  "sdk_files": [
+    {
+      "path": "LICENSE",
+      "expected": "83ab8ebac4587a65c32ed2dbdba3c00a86c315a6562929ddff3ec17a175e6065",
+      "actual": "83ab8ebac4587a65c32ed2dbdba3c00a86c315a6562929ddff3ec17a175e6065",
+      "matches": true
+    },
+    {
+      "path": "THIRD_PARTY_NOTICES.md",
+      "expected": "9fcacebdd1d3e2559959cc504331b0f58d3b3f460b9da5caea4efc84fd20eb7b",
+      "actual": "9fcacebdd1d3e2559959cc504331b0f58d3b3f460b9da5caea4efc84fd20eb7b",
+      "matches": true
+    },
+    {
+      "path": "KNOWN_ISSUES.md",
+      "expected": "4602b1ad0310a005a00c65a2cfcb2d3708f2e3d32daf1ada9137e7732382c0e7",
+      "actual": "4602b1ad0310a005a00c65a2cfcb2d3708f2e3d32daf1ada9137e7732382c0e7",
+      "matches": true
+    },
+    {
+      "path": "source/SM_API/inc/SmApiCurves.h",
+      "expected": "0dfd139e35adcc01324668b7377f70dadc5e093dbfff1ac12c43842db46a6b27",
+      "actual": "0dfd139e35adcc01324668b7377f70dadc5e093dbfff1ac12c43842db46a6b27",
+      "matches": true
+    },
+    {
+      "path": "source/SM_API/inc/SmApiBrep.h",
+      "expected": "ca08db54ad2211c4c98eb229bb875573e799fe731b9226288737181705fb4296",
+      "actual": "ca08db54ad2211c4c98eb229bb875573e799fe731b9226288737181705fb4296",
+      "matches": true
+    },
+    {
+      "path": "source/SM_API/src/SmApiCurves.cpp",
+      "expected": "c96c0aa4f955eefba6021658748051c5e734adc55e5d8ee08bb6421f8544c438",
+      "actual": "c96c0aa4f955eefba6021658748051c5e734adc55e5d8ee08bb6421f8544c438",
+      "matches": true
+    },
+    {
+      "path": "source/SM_API/src/SmApiBrep.cpp",
+      "expected": "c1dcdf9899a386199dd9cc3ee3bef9626d324d5558a8b7b6132b19e18fb70df1",
+      "actual": "c1dcdf9899a386199dd9cc3ee3bef9626d324d5558a8b7b6132b19e18fb70df1",
+      "matches": true
+    },
+    {
+      "path": "source/SMLib/inc/SmCurve.h",
+      "expected": "b60407a833be0ee6744bff247d1ea00dfd21e55c4ca4fb311dc5976cb50598e8",
+      "actual": "b60407a833be0ee6744bff247d1ea00dfd21e55c4ca4fb311dc5976cb50598e8",
+      "matches": true
+    },
+    {
+      "path": "source/SMLib/inc/SmBSplineCurve.h",
+      "expected": "0e12036dda5f5439d3cbc5a2daf4253779ed4dfa73167031587d9ff5eb12dfb2",
+      "actual": "0e12036dda5f5439d3cbc5a2daf4253779ed4dfa73167031587d9ff5eb12dfb2",
+      "matches": true
+    },
+    {
+      "path": "source/SMLib/inc/SmTArray.h",
+      "expected": "129f846f6b00f80a9a425f849094a39568f3668507ea2585de86909dfc47910b",
+      "actual": "129f846f6b00f80a9a425f849094a39568f3668507ea2585de86909dfc47910b",
+      "matches": true
+    },
+    {
+      "path": "source/SMLib/src/SmBSplineCurve.cpp",
+      "expected": "93c905a12c4124f6761f63ca9dbe2e2ffe400eb32b493c3d514be42de2c41138",
+      "actual": "93c905a12c4124f6761f63ca9dbe2e2ffe400eb32b493c3d514be42de2c41138",
+      "matches": true
+    },
+    {
+      "path": "source/SMLib/src/SmBrep.cpp",
+      "expected": "5d44d6ac347fa42e4e83fead8bbde82ce46c5ff48e0a973b5c7cddc778a2fca1",
+      "actual": "5d44d6ac347fa42e4e83fead8bbde82ce46c5ff48e0a973b5c7cddc778a2fca1",
+      "matches": true
+    },
+    {
+      "path": "source/SMLib/src/SmPrimitiveCreation.cpp",
+      "expected": "38a15b60587059687c13923ba0b22a6a139b0b931997d0650898d866be8b692c",
+      "actual": "38a15b60587059687c13923ba0b22a6a139b0b931997d0650898d866be8b692c",
+      "matches": true
+    }
+  ],
+  "sdk_revision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "sdk_tracked_status": "",
+  "delivery_files": {
+    "README.md": "0da2fe6220d77f805b3fbc36d34f239582fbbbcd94339d08c862fdd2d59d14e3",
+    "source-manifest.json": "6c373ec23b838390c4b6c8e6098383ec23c6832ead473799f9d075c1c2fe5a4b",
+    "qualification.json": "efca3d68db5da6615b92410f00bb5b9aabdbc4a741a4bea2ffb04ec01a0e6613",
+    "incremental.patch": "a6e631248f0e74075897d200fe6d1f21ec59b4cb09fe882d6424aa63f466f293",
+    "SHA256SUMS": "da26e9e733ba937419ed6eb20099f0bc1f48cd59bcb31b97fb7c676bbffb1b79"
+  },
+  "root_comparison_checkpoint": "0c0e5734569b19f48eedc21703cdbf75d241a313",
+  "root_inspected_files": [
+    {
+      "path": "rust/core/src/source_bundle.rs",
+      "sha256": "ed174aa07af14f1647302f44095be34a2d3f6760e35d9a204e6a3524ca5518ad"
+    },
+    {
+      "path": "rust/processing/src/element/model_context.rs",
+      "sha256": "34dcf79098542050e19b3e377d634253135f62e67525164c801bc02ea30a51c1"
+    },
+    {
+      "path": "rust/processing/src/analytic_export.rs",
+      "sha256": "4f56f607aebf4519b5c394ee54f2d8388b8bf3d2ff10a7e9c21e09b7de45b162"
+    },
+    {
+      "path": "rust/processing/src/analytic_export/walk.rs",
+      "sha256": "44c89ec4ec024e685a93ce0d764299cb8c1b8321481f8ddd0d53599245e86e96"
+    },
+    {
+      "path": "rust/geometry/src/analytic/mod.rs",
+      "sha256": "97a0e6e1de72fc26b959e2724abe814360ab8497295d8efc8978ba1bf0fb3936"
+    },
+    {
+      "path": "rust/geometry/src/analytic/profile.rs",
+      "sha256": "ca0853a69b6418f4687a930f86c6d9c0935a65fc13c51ada3d099c032bd92b57"
+    },
+    {
+      "path": "rust/geometry/src/analytic/helpers.rs",
+      "sha256": "4bd41076f77ead468e05f88bb5b3500f3df32e6784121a8501a895daa9ddeec6"
+    }
+  ]
+}

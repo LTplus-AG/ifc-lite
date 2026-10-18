@@ -1,0 +1,19 @@
+{
+  "source_commit": "80f0a6a5e55024cad3311b6a6bada9098d6f43b0",
+  "scope": "new source files only; repository-wide check separately failed on eight untouched evidence scripts",
+  "checked": [
+    "native/smlib-adapter/browser/sweep-contract.mjs",
+    "native/smlib-adapter/browser/sweep-transport.test.mjs",
+    "native/smlib-adapter/browser/sweep.mjs",
+    "native/smlib-adapter/src/sweep.cpp",
+    "native/smlib-adapter/src/sweep.hpp",
+    "native/smlib-adapter/tests/sweep_tests.cpp",
+    "rust/geometry-runtime/src/worker_sweep.rs",
+    "rust/geometry/src/document/retained.rs",
+    "rust/geometry/src/document/retained_display.rs",
+    "rust/geometry/src/document/retained_sweep.rs",
+    "rust/processing/src/authored_geometry/evaluator.rs",
+    "rust/processing/tests/retained_authored_evaluator.rs"
+  ],
+  "missing": []
+}

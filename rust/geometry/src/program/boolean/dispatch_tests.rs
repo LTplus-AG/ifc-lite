@@ -14,7 +14,7 @@ impl GeometryProcessor for SelectedBlock {
         quality: TessellationQuality, rtc: Option<(f64, f64, f64)>) -> Option<Result<OwnedConstructor>> {
         if rtc.is_some() { return None; }
         self.0.set(self.0.get() + 1);
-        Some(decoder.decode_by_id(90).and_then(|replacement| {
+        Some(decoder.decode_by_id(90).map_err(crate::Error::from).and_then(|replacement| {
             BlockProcessor::new().lower_owned(&replacement, decoder, quality, None).unwrap()
         }))
     }

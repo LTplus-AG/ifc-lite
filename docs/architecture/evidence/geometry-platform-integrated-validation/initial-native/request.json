@@ -1,0 +1,20 @@
+{
+  "id": "auto-0c630e8422f94ff7ba3ac4ea77fd711a",
+  "commit": "0c0e5734569b19f48eedc21703cdbf75d241a313",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "/home/louistrue/build-workers/setup/projects-20261017/ifc-lite/env-exec.sh",
+    "cargo",
+    "test",
+    "--workspace",
+    "--no-fail-fast"
+  ],
+  "pools": [],
+  "requestedHost": "pop-os"
+}

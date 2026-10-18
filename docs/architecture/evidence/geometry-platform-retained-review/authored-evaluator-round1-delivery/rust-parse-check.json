@@ -1,0 +1,71 @@
+{
+  "source_commit": "80f0a6a5e55024cad3311b6a6bada9098d6f43b0",
+  "kind": "syntax-only; no typecheck, compile or test",
+  "results": [
+    {
+      "path": "rust/geometry-runtime/src/lib.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry-runtime/src/protocol.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry-runtime/src/protocol_tests.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry-runtime/src/supervision.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_sweep.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/document/mod.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/document/retained.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/document/retained_display.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/document/retained_sweep.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/evaluator.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/mod.rs",
+      "exit_code": 0,
+      "stderr": ""
+    },
+    {
+      "path": "rust/processing/tests/retained_authored_evaluator.rs",
+      "exit_code": 0,
+      "stderr": ""
+    }
+  ]
+}

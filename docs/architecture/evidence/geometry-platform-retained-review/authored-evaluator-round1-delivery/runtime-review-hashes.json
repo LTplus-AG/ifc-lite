@@ -1,0 +1,115 @@
+{
+  "observed_utc": "2026-10-18T22:52:56.850118+00:00",
+  "checkout": "/home/louistrue/.t3/worktrees/ifc-lite/t3-530d53b8",
+  "head": "80f0a6a5e55024cad3311b6a6bada9098d6f43b0",
+  "status": "",
+  "delivery_manifest_mismatches": [],
+  "files": [
+    {
+      "path": "rust/geometry-runtime/src/supervision.rs",
+      "sha256": "5700989c4ddd080e5dbee906902bb0f7dd4a75f52c418fe61166a37f3f9501a7"
+    },
+    {
+      "path": "rust/geometry-runtime/src/supervision/controller.rs",
+      "sha256": "bd91582546ac48c61b65c2497ad2ed089209668703434aabb714bd02af3aa1ce"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker.rs",
+      "sha256": "42dd7a8898ef095dcec5bc59d96938cb644f1a4efbeb496755fdd971f2fc41e2"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_sweep.rs",
+      "sha256": "65c1ead176c8f9de635b396389f2ab9858467735fda0d874053bf126744cfc39"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_mesh.rs",
+      "sha256": "d424200d1f36bf133aa6e49e19b652d7c7486c001c6bfd5fae610dc4d6322e11"
+    },
+    {
+      "path": "rust/geometry-runtime/src/process_control.rs",
+      "sha256": "b0e3b116ff1192aff25b9d6003400aa33c64cbb275b305227b738c31cd8d794f"
+    },
+    {
+      "path": "rust/geometry-runtime/src/lib.rs",
+      "sha256": "0f5c4440607d69eeac55fb3fd11a41a370e22e5873706cf0b5e15cb19e2b588d"
+    },
+    {
+      "path": "rust/geometry-runtime/src/protocol.rs",
+      "sha256": "8670ee16ca8b6049041e2bec8b5a6822aea92c5cdfe0df8455ed2d76edecd3ed"
+    },
+    {
+      "path": "rust/geometry-runtime/tests/supervision.rs",
+      "sha256": "9d4071ebcd385ae4ae7535bac5cb8afeccd8ee2f5e6f622be68546be640878d4"
+    },
+    {
+      "path": "rust/geometry-runtime/tests/smlib_worker.rs",
+      "sha256": "e443c1ed8308aeaf8f445395548743f274b4c6c33b67b390bc20473dc7c96db9"
+    },
+    {
+      "path": "rust/geometry-runtime/tests/fixtures/partial-frame-peer.py",
+      "sha256": "502c43c5bb0befbc311e8549e9c14b75ffaa6006f62890a60b54327e66872869"
+    },
+    {
+      "path": "rust/geometry/src/document/retained.rs",
+      "sha256": "b38e413612d9c7f0159823db0aba64a61763b7155b55bdacc3c8c1b4db18dd26"
+    },
+    {
+      "path": "native/smlib-adapter/src/adapter.cpp",
+      "sha256": "7c1f2fc8f286893aeac8bee6e28aec29c8fd26fd6e07ce51324435e41ac28d35"
+    },
+    {
+      "path": "native/smlib-adapter/src/sweep.cpp",
+      "sha256": "5895f680c48fab64c7f3423b6bd77faf08134348c5b7cffacc5248fc96ef8435"
+    },
+    {
+      "path": "native/smlib-adapter/src/sweep.hpp",
+      "sha256": "b550162e4c1ef8681daa04c5aa934db481f51bc874b4aaeab052e85e2ad0d7f8"
+    },
+    {
+      "path": "native/smlib-adapter/browser/client.mjs",
+      "sha256": "2d6f335e8d60c214991f8a6ecdccf512bc4ab1908d3bffa5c639d688e9242570"
+    },
+    {
+      "path": "native/smlib-adapter/browser/worker.mjs",
+      "sha256": "aa7f81dbab84cd18e1a2495123def2c1c9a7093d9948eb6ec68832c342d3f700"
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep.mjs",
+      "sha256": "3c271e1251a9cdb776d2e4339295fa13e128b9e748662768fa618e718bb3b3c3"
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep-contract.mjs",
+      "sha256": "aefca4addfe7234e9f7c13d630e9b5ab193e74c6d460c5cf592e46f833dc2610"
+    },
+    {
+      "path": "native/smlib-adapter/tests/sweep_tests.cpp",
+      "sha256": "b4f8ba21a9d5ce60f683a47577fc885f52af4a2a300f028e22953fa06197a617"
+    }
+  ],
+  "root_controller": {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry-runtime/src/supervision/controller.rs",
+    "sha256": "bd91582546ac48c61b65c2497ad2ed089209668703434aabb714bd02af3aa1ce"
+  },
+  "receipts": [
+    {
+      "path": "/tmp/ifclite-retained-authored-evaluator-round1/README.md",
+      "sha256": "0da2fe6220d77f805b3fbc36d34f239582fbbbcd94339d08c862fdd2d59d14e3"
+    },
+    {
+      "path": "/tmp/ifclite-retained-authored-evaluator-round1/source-manifest.json",
+      "sha256": "6c373ec23b838390c4b6c8e6098383ec23c6832ead473799f9d075c1c2fe5a4b"
+    },
+    {
+      "path": "/tmp/ifclite-retained-authored-evaluator-round1/incremental.patch",
+      "sha256": "a6e631248f0e74075897d200fe6d1f21ec59b4cb09fe882d6424aa63f466f293"
+    },
+    {
+      "path": "/tmp/ifclite-retained-authored-evaluator-round1/qualification.json",
+      "sha256": "efca3d68db5da6615b92410f00bb5b9aabdbc4a741a4bea2ffb04ec01a0e6613"
+    },
+    {
+      "path": "/tmp/ifclite-retained-authored-evaluator-round1/SHA256SUMS",
+      "sha256": "da26e9e733ba937419ed6eb20099f0bc1f48cd59bcb31b97fb7c676bbffb1b79"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "scope": "syntax parsing only; compilation pending",
+  "files": [
+    {
+      "path": "rust/geometry/src/router/processing.rs",
+      "exit_code": 0,
+      "sha256": "a73fa22df356288239a76bb8dc9255006e898dbbaaea11e98f9cb3717102d2e1",
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/chain_cycle_tests.rs",
+      "exit_code": 0,
+      "sha256": "e4ba42d89916bdbeb807184d6e44871ad2d83a1f8dce4b95b667ef502497d660",
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/resource_tests.rs",
+      "exit_code": 0,
+      "sha256": "ac250ab0f90a8ecb0b6aed85d83a14e7aafd8372a35deb1a7f991eb23965e520",
+      "stderr": ""
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/dispatch_tests.rs",
+      "exit_code": 0,
+      "sha256": "7bcfe3334a5bb5b302a35621c9847fce66d636597f071ee6bb2181221e1f4135",
+      "stderr": ""
+    }
+  ]
+}

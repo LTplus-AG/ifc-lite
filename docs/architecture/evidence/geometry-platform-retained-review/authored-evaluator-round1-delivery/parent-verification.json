@@ -1,0 +1,9 @@
+{
+  "state": "DELIVERED_UNINTEGRATED_UNCOMPILED_UNQUALIFIED",
+  "source_paths_independently_verified": 31,
+  "delivery_SHA256SUMS_verified": true,
+  "child": "80f0a6a5e55024cad3311b6a6bada9098d6f43b0",
+  "review_status": "independent authored-source, runtime-lifecycle and SDK/browser reviews active",
+  "geometry_runtime_result": null,
+  "scope": "Consumed rectangle only; circle/holed/general source admission and copied-transform boolean/opening integration incomplete. Five protocol tests are not SDK geometry evidence."
+}

@@ -1,0 +1,267 @@
+{
+  "parent": "fb913d3a5cd3801bafad14ff29c4066074182c86",
+  "checkpoint": "80f0a6a5e55024cad3311b6a6bada9098d6f43b0",
+  "checkout": "/home/louistrue/.t3/worktrees/ifc-lite/t3-530d53b8",
+  "branch": "t3/retained-authored-extrusion",
+  "clean": true,
+  "commits": [
+    "80f0a6a5e55024cad3311b6a6bada9098d6f43b0 Gate unqualified occurrence contracts and isolate packet assembly from transports",
+    "182389f73c3fafbd5338f92999dee47b95866b98 Consume retained authored extrusion results through geometry documents",
+    "416d49d337fc344ff087ad8eb99b673f547c6064 Own replayable retained extrusion requests and immutable worker results",
+    "03e83839acf884165f862977c3ce1440eb239197 Add bounded staged authored-sweep transport and capped SDK producer"
+  ],
+  "source_files": [
+    {
+      "path": "Cargo.lock",
+      "sha256": "f52385dc435b1addd5560d94e7576d38647d0551aa89f3330ac5c4391a738a0c",
+      "bytes": 90176,
+      "lines": 3714
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-retained-review/authored-evaluator-round1.md",
+      "sha256": "8757094293b7145280b3460e9e23b6afb99ce04d4debc5801af91b9293dac6be",
+      "bytes": 4354,
+      "lines": 64
+    },
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "sha256": "8f16f5d323c5c20c91fcd015c0ccfc79ab597ba7d473ce3f08b90db0ad053231",
+      "bytes": 4922,
+      "lines": 88
+    },
+    {
+      "path": "native/smlib-adapter/README.md",
+      "sha256": "82005ad522b84265714c0e4ef7769fbee99912574738ea9d824698458ec237bc",
+      "bytes": 14384,
+      "lines": 226
+    },
+    {
+      "path": "native/smlib-adapter/browser/node-tests.mjs",
+      "sha256": "92a490c30fb500177d57eec161513e5b36b902c5ca2d17a1d63997045aa76fb0",
+      "bytes": 1097,
+      "lines": 19
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep-contract.mjs",
+      "sha256": "aefca4addfe7234e9f7c13d630e9b5ab193e74c6d460c5cf592e46f833dc2610",
+      "bytes": 5060,
+      "lines": 83
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep-transport.test.mjs",
+      "sha256": "b0fd92e413f7704ed76d45705bf1873ae618be58951fbd33037033cf15c0bd27",
+      "bytes": 3903,
+      "lines": 72
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep.mjs",
+      "sha256": "3c271e1251a9cdb776d2e4339295fa13e128b9e748662768fa618e718bb3b3c3",
+      "bytes": 3714,
+      "lines": 63
+    },
+    {
+      "path": "native/smlib-adapter/browser/test.html",
+      "sha256": "1961bcf7e9386e602dbb3324d5431e72d3dbfc02812f927e96caf2a0512cfbc3",
+      "bytes": 4972,
+      "lines": 97
+    },
+    {
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "sha256": "ab984572c63b45a8bffc8d7e886d67a45ec6a6741eb522feec03b8d70e8f5c5d",
+      "bytes": 5652,
+      "lines": 104
+    },
+    {
+      "path": "native/smlib-adapter/src/adapter.cpp",
+      "sha256": "7c1f2fc8f286893aeac8bee6e28aec29c8fd26fd6e07ce51324435e41ac28d35",
+      "bytes": 14985,
+      "lines": 316
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "sha256": "e27d03533d9a4af4d8f866a17725629a3c936d27e97fa701519a0deaae6f973f",
+      "bytes": 7237,
+      "lines": 151
+    },
+    {
+      "path": "native/smlib-adapter/src/sweep.cpp",
+      "sha256": "5895f680c48fab64c7f3423b6bd77faf08134348c5b7cffacc5248fc96ef8435",
+      "bytes": 5438,
+      "lines": 107
+    },
+    {
+      "path": "native/smlib-adapter/src/sweep.hpp",
+      "sha256": "b550162e4c1ef8681daa04c5aa934db481f51bc874b4aaeab052e85e2ad0d7f8",
+      "bytes": 388,
+      "lines": 10
+    },
+    {
+      "path": "native/smlib-adapter/tests/adapter_tests.cpp",
+      "sha256": "875fa795f30bb157464f4101f182adcf44a3728897ec44e9c7a275328007f25b",
+      "bytes": 5640,
+      "lines": 101
+    },
+    {
+      "path": "native/smlib-adapter/tests/sweep_tests.cpp",
+      "sha256": "b4f8ba21a9d5ce60f683a47577fc885f52af4a2a300f028e22953fa06197a617",
+      "bytes": 4826,
+      "lines": 87
+    },
+    {
+      "path": "rust/geometry-runtime/README.md",
+      "sha256": "8dc91b3d86ac417bdd62c1da5e37a9dc848f6ff210c2b52ccdda90add3f946a8",
+      "bytes": 5410,
+      "lines": 87
+    },
+    {
+      "path": "rust/geometry-runtime/src/lib.rs",
+      "sha256": "0f5c4440607d69eeac55fb3fd11a41a370e22e5873706cf0b5e15cb19e2b588d",
+      "bytes": 634,
+      "lines": 16
+    },
+    {
+      "path": "rust/geometry-runtime/src/protocol.rs",
+      "sha256": "8670ee16ca8b6049041e2bec8b5a6822aea92c5cdfe0df8455ed2d76edecd3ed",
+      "bytes": 10558,
+      "lines": 322
+    },
+    {
+      "path": "rust/geometry-runtime/src/protocol_tests.rs",
+      "sha256": "39e62396add83a661f3e15eb4182eda93f3668167dc1c6c84fd0b4af4d2cea6a",
+      "bytes": 4753,
+      "lines": 155
+    },
+    {
+      "path": "rust/geometry-runtime/src/supervision.rs",
+      "sha256": "5700989c4ddd080e5dbee906902bb0f7dd4a75f52c418fe61166a37f3f9501a7",
+      "bytes": 8807,
+      "lines": 268
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker.rs",
+      "sha256": "42dd7a8898ef095dcec5bc59d96938cb644f1a4efbeb496755fdd971f2fc41e2",
+      "bytes": 10736,
+      "lines": 324
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_sweep.rs",
+      "sha256": "65c1ead176c8f9de635b396389f2ab9858467735fda0d874053bf126744cfc39",
+      "bytes": 4785,
+      "lines": 125
+    },
+    {
+      "path": "rust/geometry/src/document/mod.rs",
+      "sha256": "831eff5202bc0609c5d00f3c87ceaddc01f21468fe62e9cbeae38d43e0ddcc60",
+      "bytes": 9275,
+      "lines": 291
+    },
+    {
+      "path": "rust/geometry/src/document/retained.rs",
+      "sha256": "b38e413612d9c7f0159823db0aba64a61763b7155b55bdacc3c8c1b4db18dd26",
+      "bytes": 9677,
+      "lines": 278
+    },
+    {
+      "path": "rust/geometry/src/document/retained_display.rs",
+      "sha256": "721ab2044610379bc5f023a84c8b2b29d992c966842996d1ca269da9288bf220",
+      "bytes": 6921,
+      "lines": 180
+    },
+    {
+      "path": "rust/geometry/src/document/retained_sweep.rs",
+      "sha256": "3370ebf26e35f5f1d77099eef5451708022a81f8e9b5596c7c137cfd6a2c4ab8",
+      "bytes": 5593,
+      "lines": 150
+    },
+    {
+      "path": "rust/processing/Cargo.toml",
+      "sha256": "48efedf62b65a534c419ffdd1cc4dd0ab9f51d4600a7c4bc358c55fd802ebb81",
+      "bytes": 2824,
+      "lines": 67
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/evaluator.rs",
+      "sha256": "e8cb19fb05a7bfbd80a967bf20d676746ffcc50863393f6e8d8c55da0a23732e",
+      "bytes": 9103,
+      "lines": 239
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/mod.rs",
+      "sha256": "86cd429bc384cea7bbfca7659e426202d82f2543e1dd66656ecc97f1b208bdfd",
+      "bytes": 3807,
+      "lines": 100
+    },
+    {
+      "path": "rust/processing/tests/retained_authored_evaluator.rs",
+      "sha256": "de52b918196429fd07a227fc94d40b8e87ccef6ca53efbca5bdfa55731745b18",
+      "bytes": 13603,
+      "lines": 351
+    }
+  ],
+  "patch_sha256": "a6e631248f0e74075897d200fe6d1f21ec59b4cb09fe882d6424aa63f466f293",
+  "sdk": {
+    "checkout": "/tmp/ifclite-smlib-eval-upstream",
+    "expected_revision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+    "actual_revision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+    "tracked_sdk_clean": true,
+    "inspected_files": [
+      {
+        "path": "LICENSE",
+        "sha256": "83ab8ebac4587a65c32ed2dbdba3c00a86c315a6562929ddff3ec17a175e6065"
+      },
+      {
+        "path": "THIRD_PARTY_NOTICES.md",
+        "sha256": "9fcacebdd1d3e2559959cc504331b0f58d3b3f460b9da5caea4efc84fd20eb7b"
+      },
+      {
+        "path": "KNOWN_ISSUES.md",
+        "sha256": "4602b1ad0310a005a00c65a2cfcb2d3708f2e3d32daf1ada9137e7732382c0e7"
+      },
+      {
+        "path": "source/SM_API/inc/SmApiCurves.h",
+        "sha256": "0dfd139e35adcc01324668b7377f70dadc5e093dbfff1ac12c43842db46a6b27"
+      },
+      {
+        "path": "source/SM_API/inc/SmApiBrep.h",
+        "sha256": "ca08db54ad2211c4c98eb229bb875573e799fe731b9226288737181705fb4296"
+      },
+      {
+        "path": "source/SM_API/src/SmApiCurves.cpp",
+        "sha256": "c96c0aa4f955eefba6021658748051c5e734adc55e5d8ee08bb6421f8544c438"
+      },
+      {
+        "path": "source/SM_API/src/SmApiBrep.cpp",
+        "sha256": "c1dcdf9899a386199dd9cc3ee3bef9626d324d5558a8b7b6132b19e18fb70df1"
+      },
+      {
+        "path": "source/SMLib/inc/SmCurve.h",
+        "sha256": "b60407a833be0ee6744bff247d1ea00dfd21e55c4ca4fb311dc5976cb50598e8"
+      },
+      {
+        "path": "source/SMLib/inc/SmBSplineCurve.h",
+        "sha256": "0e12036dda5f5439d3cbc5a2daf4253779ed4dfa73167031587d9ff5eb12dfb2"
+      },
+      {
+        "path": "source/SMLib/inc/SmTArray.h",
+        "sha256": "129f846f6b00f80a9a425f849094a39568f3668507ea2585de86909dfc47910b"
+      },
+      {
+        "path": "source/SMLib/src/SmBSplineCurve.cpp",
+        "sha256": "93c905a12c4124f6761f63ca9dbe2e2ffe400eb32b493c3d514be42de2c41138"
+      },
+      {
+        "path": "source/SMLib/src/SmBrep.cpp",
+        "sha256": "5d44d6ac347fa42e4e83fead8bbde82ce46c5ff48e0a973b5c7cddc778a2fca1"
+      },
+      {
+        "path": "source/SMLib/src/SmPrimitiveCreation.cpp",
+        "sha256": "38a15b60587059687c13923ba0b22a6a139b0b931997d0650898d866be8b692c"
+      }
+    ]
+  },
+  "notes": [
+    "No build artifact was produced or qualified.",
+    "No parent checkout edits, publication, issues or PRs.",
+    "New SDK source is locally present with license/notices; not claimed missing/proprietary."
+  ]
+}

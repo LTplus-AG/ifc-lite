@@ -1,0 +1,53 @@
+{
+  "review": "/tmp/ifclite-retained-sdk-browser-review.md",
+  "review_sha256": "b148de48d6e3da0a2ce960dfdb2e21fadd959e1654a3d368bc88094feff40736",
+  "child": "80f0a6a5e55024cad3311b6a6bada9098d6f43b0",
+  "base": "fb913d3a5cd3801bafad14ff29c4066074182c86",
+  "sdk_revision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "delivered_source_files_verified": 31,
+  "delivery_source_hash_mismatches": [],
+  "sdk_manifest_inputs_verified": 13,
+  "sdk_input_mismatches": [],
+  "reviewed_child_sha256": {
+    "native/smlib-adapter/src/sweep.cpp": "5895f680c48fab64c7f3423b6bd77faf08134348c5b7cffacc5248fc96ef8435",
+    "native/smlib-adapter/src/sweep.hpp": "b550162e4c1ef8681daa04c5aa934db481f51bc874b4aaeab052e85e2ad0d7f8",
+    "native/smlib-adapter/src/adapter.cpp": "7c1f2fc8f286893aeac8bee6e28aec29c8fd26fd6e07ce51324435e41ac28d35",
+    "native/smlib-adapter/src/protocol.cpp": "e27d03533d9a4af4d8f866a17725629a3c936d27e97fa701519a0deaae6f973f",
+    "native/smlib-adapter/src/browser.cpp": "71e0aabaca48fc648d67157d2a2374abe7553e5853e22a7a91db5943ec9295bb",
+    "native/smlib-adapter/include/ifclite_smlib.h": "ab984572c63b45a8bffc8d7e886d67a45ec6a6741eb522feec03b8d70e8f5c5d",
+    "native/smlib-adapter/CMakeLists.txt": "8f16f5d323c5c20c91fcd015c0ccfc79ab597ba7d473ce3f08b90db0ad053231",
+    "native/smlib-adapter/tests/sweep_tests.cpp": "b4f8ba21a9d5ce60f683a47577fc885f52af4a2a300f028e22953fa06197a617",
+    "native/smlib-adapter/browser/sweep.mjs": "3c271e1251a9cdb776d2e4339295fa13e128b9e748662768fa618e718bb3b3c3",
+    "native/smlib-adapter/browser/client.mjs": "2d6f335e8d60c214991f8a6ecdccf512bc4ab1908d3bffa5c639d688e9242570",
+    "native/smlib-adapter/browser/module.mjs": "52164155e79562c4a660fbbfeb0d38ae754b5a0487b8d74924b5de9b282857e3",
+    "native/smlib-adapter/browser/worker.mjs": "aa7f81dbab84cd18e1a2495123def2c1c9a7093d9948eb6ec68832c342d3f700",
+    "native/smlib-adapter/browser/sweep-contract.mjs": "aefca4addfe7234e9f7c13d630e9b5ab193e74c6d460c5cf592e46f833dc2610",
+    "native/smlib-adapter/browser/sweep-transport.test.mjs": "b0fd92e413f7704ed76d45705bf1873ae618be58951fbd33037033cf15c0bd27",
+    "native/smlib-adapter/browser/node-tests.mjs": "92a490c30fb500177d57eec161513e5b36b902c5ca2d17a1d63997045aa76fb0",
+    "native/smlib-adapter/browser/test.html": "1961bcf7e9386e602dbb3324d5431e72d3dbfc02812f927e96caf2a0512cfbc3",
+    "rust/geometry-runtime/src/protocol.rs": "8670ee16ca8b6049041e2bec8b5a6822aea92c5cdfe0df8455ed2d76edecd3ed",
+    "rust/geometry-runtime/src/worker_sweep.rs": "65c1ead176c8f9de635b396389f2ab9858467735fda0d874053bf126744cfc39",
+    "rust/geometry/src/document/retained_sweep.rs": "3370ebf26e35f5f1d77099eef5451708022a81f8e9b5596c7c137cfd6a2c4ab8"
+  },
+  "reviewed_sdk_sha256": {
+    "source/SM_API/inc/SmApiCurves.h": "0dfd139e35adcc01324668b7377f70dadc5e093dbfff1ac12c43842db46a6b27",
+    "source/SM_API/inc/SmApiBrep.h": "ca08db54ad2211c4c98eb229bb875573e799fe731b9226288737181705fb4296",
+    "source/SM_API/src/SmApiCurves.cpp": "c96c0aa4f955eefba6021658748051c5e734adc55e5d8ee08bb6421f8544c438",
+    "source/SM_API/src/SmApiBrep.cpp": "c1dcdf9899a386199dd9cc3ee3bef9626d324d5558a8b7b6132b19e18fb70df1",
+    "source/SMLib/inc/SmCurve.h": "b60407a833be0ee6744bff247d1ea00dfd21e55c4ca4fb311dc5976cb50598e8",
+    "source/SMLib/inc/SmTArray.h": "129f846f6b00f80a9a425f849094a39568f3668507ea2585de86909dfc47910b",
+    "source/SMLib/src/SmPrimitiveCreation.cpp": "38a15b60587059687c13923ba0b22a6a139b0b931997d0650898d866be8b692c"
+  },
+  "delivery_sha256": {
+    "README.md": "0da2fe6220d77f805b3fbc36d34f239582fbbbcd94339d08c862fdd2d59d14e3",
+    "source-manifest.json": "6c373ec23b838390c4b6c8e6098383ec23c6832ead473799f9d075c1c2fe5a4b",
+    "incremental.patch": "a6e631248f0e74075897d200fe6d1f21ec59b4cb09fe882d6424aa63f466f293",
+    "qualification.json": "efca3d68db5da6615b92410f00bb5b9aabdbc4a741a4bea2ffb04ec01a0e6613",
+    "SHA256SUMS": "da26e9e733ba937419ed6eb20099f0bc1f48cd59bcb31b97fb7c676bbffb1b79"
+  },
+  "checks_run": "read-only static/hash inspection only; no syntax/build/test/heavy request",
+  "blockers": [
+    "Browser pre-transfer commit rejection leaves active upload",
+    "Old browser upload cleanup can dispose replacement worker incarnation"
+  ]
+}

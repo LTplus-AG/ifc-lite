@@ -1,0 +1,11 @@
+{
+  "command": "cargo metadata --locked --offline --no-deps --format-version 1",
+  "exit_code": 0,
+  "metadata_sha256": "c09cc93993a4ce46b4b5fa4dec29394f30683e9a76ef8d2b37abe8ba0f7fce0b",
+  "processing_runtime_dependency_kind": "dev",
+  "scope": "manifest resolution only; no compile",
+  "source_commit_at_run": "182389f73c",
+  "working_tree_dirty_at_run": true,
+  "final_checkpoint": "80f0a6a5e55024cad3311b6a6bada9098d6f43b0",
+  "manifest_content_equivalent_to_final_checkpoint": true
+}

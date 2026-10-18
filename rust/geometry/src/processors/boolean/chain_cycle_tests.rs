@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use crate::BoolFailure;
 use crate::router::GeometryProcessor;
 
 /// A self-referential clipping result: `#10`'s FirstOperand is `#10` again,

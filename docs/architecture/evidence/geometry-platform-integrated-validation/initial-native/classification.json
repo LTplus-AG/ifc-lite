@@ -1,0 +1,20 @@
+{
+  "status": "COMPILE_FAILURE_NOT_RUNTIME_PASS",
+  "source": "0c0e5734569b19f48eedc21703cdbf75d241a313",
+  "host": "pop-os",
+  "request": "auto-0c630e8422f94ff7ba3ac4ea77fd711a",
+  "job": "cd64c7d8-1708-42eb-9dc3-887359679a03",
+  "exit_code": 101,
+  "source_unchanged": true,
+  "errors": [
+    "Missing BoolFailure import in boolean chain_cycle_tests",
+    "Missing IfcType import in program mapping resource_tests",
+    "Core parser error must convert into geometry error before custom lower_owned and_then"
+  ],
+  "warnings": [
+    "Two stale router processing imports after extraction"
+  ],
+  "correction": "Explicit test imports/error conversion and stale-import removal; geometry assertions and production algorithms unchanged.",
+  "runtime_tests": "Not reached; no pass inferred.",
+  "next": "Clean corrected-source run with pnpm fixtures before cargo test --workspace --no-fail-fast."
+}

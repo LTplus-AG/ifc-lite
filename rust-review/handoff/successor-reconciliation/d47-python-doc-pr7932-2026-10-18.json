@@ -1,0 +1,137 @@
+{
+  "at": "2026-10-18T21:30:29.958738+00:00",
+  "pr": "https://github.com/LTplus-AG/ifc-lite/pull/7932",
+  "head": "58460fe102dc70159601602a1a3b043592dee88f",
+  "base": "779a431a28abac6da3e55ff536d74aee13ddce02",
+  "tree": "ac3349f5bba9189d98dfb69fa93c5c6ee5e023a4",
+  "validation": "ExactworkspaceClippyPCPASS0, sourceunchanged, workerccb3ed41 terminal0/quiescent; docs-only, excludedPythonruntime notrerun",
+  "published": true,
+  "linked": true,
+  "merged": false,
+  "autoMerge": false,
+  "requiredHostedChecks": "PENDING",
+  "closingIssuesReferences": [],
+  "scope": "Four documentation files correct Python property dictionary field/value contract; unchanged runtime/stub declarations; original7895description also corrected. LargerD47budget/consumers/perf remains pending; C4 and7911 remain pending. No globalacceptance orissueclosure.",
+  "files": [
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/FINAL-HANDOFF.md",
+      "size": 3771,
+      "sha256": "4b42e836c4eb7a68560a96d58d9fab5f44d0bddd9c25f74df074c0a6a2cd5a41"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/checkpoint.json",
+      "size": 922,
+      "sha256": "612e204fa1135af1a6341d64980f74cf16e2c707f62b9233030ac754106eb636"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/candidate.patch",
+      "size": 5637,
+      "sha256": "5dab6b55aec869533fad08b3fa4d16a42c6242ea35fa060eb70791f6018c0d7f"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/candidate.bundle",
+      "size": 1613,
+      "sha256": "a7fcf8502607765c185ec8ca2a38543bfa0659801f6f74a9f4b81afa8d4fc9a7"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/preservation.json",
+      "size": 819,
+      "sha256": "5d9905d8fccb79a0c08a3c84122819ebac428f7c9d4026d62416d66bf183bca8"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/parent-candidate-review.json",
+      "size": 898,
+      "sha256": "56fce738897090138cd47452f61f41aef64077d6b041900f1d80b13c5021e4ac"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/worker-receipt-terminal.json",
+      "size": 3600,
+      "sha256": "5597e17279869e8773eb72d934784b70f8517f9ed314392606b3e75b533891a8"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/terminal-quiescence.json",
+      "size": 1039,
+      "sha256": "f47e9c35aa3f858c0f17f4cb7b19e67b34bee2dc225804b62ebe25c4da7a9d27"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/ARTIFACT-HASHES.json",
+      "size": 5871,
+      "sha256": "3feaa37389f01304fc98b86911b1b03c38df983c90801ae7584bbe7b94717b95"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/qualify.py",
+      "size": 2454,
+      "sha256": "b08a9e6624d7ff16d98e5e135594a402bef4f9a5299566ce8eb7ae66d8387d32"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/PR_BODY-final.txt",
+      "size": 885,
+      "sha256": "5e6978e553d3ca12a504317b941f8630deef4e04246683659d16cd275471b01b"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/pr-create-readback.json",
+      "size": 1140,
+      "sha256": "14c3fa4e1e113950e403c77cc2dc7a4e1e27307da226854d08ffc1e83994e745"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/publication-policy.json",
+      "size": 873,
+      "sha256": "dfc4fed7c87f708b9f26759d32bc9b0d7c0020e4ba037863e437e2cbfb269f1e"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/retained-consumer-evidence.json",
+      "size": 1098,
+      "sha256": "64d6fb71bdade0a459a56530305ca6ca839171d3a3e4073d88326e85f57831ec"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/preparation-session54114-timeout.json",
+      "size": 227,
+      "sha256": "681904b927db0397fb39affbe9b16977b3ac0f2987025b9453d4d78d44f67ded"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/post-timeout-preparation-inspection.json",
+      "size": 836,
+      "sha256": "70e88379646a7e301dcf358063b782751db45aedbe4c7d363419ac54d8c76675"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/evidence/source-after.json",
+      "size": 226,
+      "sha256": "14382b5df4f629189949d4f7f844e5f76147a89b767206c780d8efada7127998"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/evidence/exact-clippy.log",
+      "size": 10618,
+      "sha256": "515036b6f699027c7e9a7149917cb29b9b33007b89bd51092387142ac98db312"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/evidence/source-before.json",
+      "size": 227,
+      "sha256": "d5e874a7067b9dc877953a957a9353e4392663eeeecd7763f626b90684271486"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/evidence/result.json",
+      "size": 1015,
+      "sha256": "1cceae6b8bb1ca560ca354068f04323c914e4cb1ffadb44c0ed866824771a0b4"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/evidence/inputs.json",
+      "size": 2156,
+      "sha256": "578100cb412e81ee5b091646ee6836554503328fea124005d013e67ce7867af1"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/7895-description-fresh-before-correction.json",
+      "size": 3323,
+      "sha256": "ba4dd35c78885e795ec4f3c5ea8e6299d207026d2fa7fd71129597022e250dd6"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/7895-description-after-correction.json",
+      "size": 3489,
+      "sha256": "fad1b0531f6b917f61a9072b18d0d536f595158dc32bc22bffe1ace3e3f0c3de"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/d47-python-doc-pr7932-2026-10-18/7895-description-correction-receipt.json",
+      "size": 555,
+      "sha256": "b37b1de7082b62bd7890cc84ecac7159d2322fd5da57bc857ca9e6c8348447d1"
+    }
+  ]
+}

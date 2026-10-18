@@ -1,0 +1,20 @@
+{
+  "sourceScope": "714 actualpublicwheel only; projection region byte-equal candidate; no new current-main/584 wheel qualification",
+  "private714": "71436f4ca6b39881dfb2211498731bef76f247d3",
+  "actualPublicWheel": "19target+49existing=68PASS/0SKIP; base19 7PASS12assertRED belongs old private productionbase only",
+  "retainedArtifacts": {
+    "FINAL-HANDOFF.txt": {
+      "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/canonical-admission-runtime-v2/FINAL-HANDOFF.txt",
+      "sha256": "36e3af32fc7b2bed2dc119757200dfce79bef219349f52748f8e59f1a2af713c",
+      "bytes": 3503
+    },
+    "inspection.json": {
+      "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/canonical-admission-runtime-v2/inspection.json",
+      "sha256": "50056e4a710278a944b499a8561e96ab4ceb55e67e30bcce0cccdd5228abbea5",
+      "bytes": 9912
+    }
+  },
+  "types": "candidate PropValue declarations name:str value:str value_type:str, QuantityValue name:str value:float kind:str unchanged",
+  "newSourceTextTests": 0,
+  "testReruns": 0
+}

@@ -1,0 +1,5 @@
+Python `entity_data` documentation promises a property `kind="text"` field that the projection does not return. Align the API guide, README, stub docstring and Rust docstring with the existing `{name, value, value_type}` dictionary and string property values. Quantity dictionaries retain their separate numeric value and `kind` contract.
+
+Follow-up to the [documentation finding in #7895](https://github.com/LTplus-AG/ifc-lite/pull/7895#discussion_r4304812454); references #7783. No runtime implementation, dictionary fields or type declarations change.
+
+Validation: `cargo clippy --workspace --all-targets -- -D warnings` passed on exact head `58460fe1` in managed PC job `ccb3ed41`. Workspace Clippy excludes the Python crate. Source review confirms unchanged implementation and stub declarations; no new runtime or wheel qualification is claimed for this documentation correction.

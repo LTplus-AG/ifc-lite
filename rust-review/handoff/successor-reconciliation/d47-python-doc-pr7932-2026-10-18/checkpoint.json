@@ -1,0 +1,19 @@
+{
+  "head": "58460fe102dc70159601602a1a3b043592dee88f",
+  "tree": "ac3349f5bba9189d98dfb69fa93c5c6ee5e023a4",
+  "parent": "779a431a28abac6da3e55ff536d74aee13ddce02",
+  "branch": "t3/d47-python-property-doc",
+  "changedFiles": [
+    "docs/api/python.md",
+    "rust/python/README.md",
+    "rust/python/ifclite_geom.pyi",
+    "rust/python/src/entity_data.rs"
+  ],
+  "runtimeRustBytesExcludingDocCommentsIdentical": true,
+  "stubASTExcludingDocstringsIdentical": true,
+  "propertyQuantityProjectionIdenticalToRetained714": true,
+  "projectionSha256": "0cbbc97bb36f10007464691a99b6490b161a87dc289541a8a9b9eb832b2ad08c",
+  "retained714Scope": "actual source-matched native wheel714 public19+existing49=68PASS0SKIP; NOT a current-main wheel/runtime claim",
+  "patchSha256": "5dab6b55aec869533fad08b3fa4d16a42c6242ea35fa060eb70791f6018c0d7f",
+  "bundleSha256": "a7fcf8502607765c185ec8ca2a38543bfa0659801f6f74a9f4b81afa8d4fc9a7"
+}

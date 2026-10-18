@@ -1,0 +1,23 @@
+{
+  "frozenEvidenceInventories": {
+    "canonical-admission-runtime-v2": {
+      "verifiedFiles": 85,
+      "indexSha256": "4420539ea0fb22ae41fdf37750931160fc6eb72978af3eaa85b3decb7552fef1"
+    },
+    "raw-native-qualification-v1": {
+      "verifiedFiles": 21,
+      "indexSha256": "3c915efe91a2840d4e4b1c62f4466e39e0a04c9f7bf754e82762eecb28c00742"
+    },
+    "raw-native-qualification-v2": {
+      "verifiedFiles": 52,
+      "indexSha256": "cd6f12828009ae8aee596f13298c492218364236f76b007be6daae2d396e3bd2"
+    },
+    "raw-consumer-preparation-v1": {
+      "verifiedFiles": 47,
+      "indexSha256": "d81b2c4655e7b8846eb3fb73ece63a5ef70d42c2b8442a84ac6de600bbc0c561"
+    }
+  },
+  "original525WorktreeCleanUnchanged": true,
+  "newCandidateClean": true,
+  "original714AndRawSourceAndConsumerPreparationUntouched": true
+}

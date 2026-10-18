@@ -1,0 +1,15 @@
+{
+  "at": "2026-10-18T21:15:04.934864+00:00",
+  "head": "58460fe102dc70159601602a1a3b043592dee88f",
+  "base": "779a431a28abac6da3e55ff536d74aee13ddce02",
+  "diffSha256": "5dab6b55aec869533fad08b3fa4d16a42c6242ea35fa060eb70791f6018c0d7f",
+  "files": [
+    "docs/api/python.md",
+    "rust/python/README.md",
+    "rust/python/ifclite_geom.pyi",
+    "rust/python/src/entity_data.rs"
+  ],
+  "parentReview": "Read full27insertions/23deletions. Onlydoccomments/docstrings/prose changed; exactdictfields and quantitykind align with entity_data.rs projection149-151/166-168 and rows/types.rs PropValue.value:String. Single nominal strings corrected along with nonexistentkind claim. No new publicfields or behavior change.",
+  "validation": "Pending child exactworkspaceClippy; no runtime qualification claim",
+  "oldDescription": "PR7895 body corrected with readback exact; originalmergedhead unchanged"
+}

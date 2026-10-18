@@ -1,0 +1,34 @@
+{
+  "head": "58460fe102dc70159601602a1a3b043592dee88f",
+  "tree": "ac3349f5bba9189d98dfb69fa93c5c6ee5e023a4",
+  "command": [
+    "cargo",
+    "clippy",
+    "--workspace",
+    "--all-targets",
+    "--",
+    "-D",
+    "warnings"
+  ],
+  "exitCode": 0,
+  "started": 1792358572.1529994,
+  "finished": 1792358771.759633,
+  "logSha256": "515036b6f699027c7e9a7149917cb29b9b33007b89bd51092387142ac98db312",
+  "before": {
+    "head": "58460fe102dc70159601602a1a3b043592dee88f",
+    "tree": "ac3349f5bba9189d98dfb69fa93c5c6ee5e023a4",
+    "clean": true,
+    "freeBytes": 828185116672,
+    "freeInodes": 1000000,
+    "linuxWorkerVolumeFreeBytes": 19752775680
+  },
+  "after": {
+    "head": "58460fe102dc70159601602a1a3b043592dee88f",
+    "tree": "ac3349f5bba9189d98dfb69fa93c5c6ee5e023a4",
+    "clean": true,
+    "freeBytes": 827819421696,
+    "freeInodes": 1000000,
+    "linuxWorkerVolumeFreeBytes": 8216903680
+  },
+  "scope": "exact workspace clippy only; rust/python excluded by workspace; no tests/wheel/runtime repeated"
+}

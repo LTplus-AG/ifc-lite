@@ -1,0 +1,7 @@
+{
+  "at": "2026-10-18T21:12:43.537374+00:00",
+  "beforeSha256": "1c626bd12692a8f634d0d88551650cc7c99f49381c88296ecee381a74580fe46",
+  "afterSha256": "4cab8ec2d1b41c2b702eef657b50dcd58f42f9c623dbeeda7b4baadbfe80e123",
+  "head": "a66e0479e32f9835dcad3a1cbf799f3a2e94681a",
+  "scope": "One inaccurate Python API description sentence only; canonical flat model kind unchanged; actual projection source at main779a lines149-151 and separatequantitykind168 inspected. Merged source docstring still awaits narrow followup; no behavioral change/issue closure."
+}

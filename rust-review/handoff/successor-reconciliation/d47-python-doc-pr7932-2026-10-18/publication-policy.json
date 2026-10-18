@@ -1,0 +1,13 @@
+{
+  "queueMode": "enforcing (actual checker printed mode; no proposed PR input => BAD_ARGS1, not a candidate gate verdict)",
+  "authenticatedActor": "louistrue (parent authenticated; exempt in current sourceconfig)",
+  "queueGateIssue": "None identified for maintainer-authored publication. No fake closing issue or closed charter necessary; no PR created to adjudicate.",
+  "requiredContexts": [
+    "Build + WASM + Rust + Node",
+    "Issue queue",
+    "PR review signal",
+    "parity (in-tree fixtures, committed reference)"
+  ],
+  "paths": "rust/python/** triggers Python-wheel workflow; actual future hosted policy/checks remain parent-owned. Current native workspace clippy excludes rust/python; no Python wheel gate claimed.",
+  "ownership": "No potentially overlapping Python/D47 open PR in actual captured open-pr list; same existing owner authorized by parent."
+}

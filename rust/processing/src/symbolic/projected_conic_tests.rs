@@ -310,3 +310,37 @@ fn issue_7779_mapped_origin_below_identity_tolerance_keeps_large_z_coupling() {
     let source = mapped(&source, "#21", "IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#90,$,$)");
     assert_bounds(&extract_symbolic_data(&source), [-1., 9., 1., 11.]);
 }
+
+#[test]
+fn issue_7779_projected_arc_sampling_is_invariant_under_georeferenced_translation() {
+    // Classify in the composed projected frame, before the public extraction
+    // rebases to small f32 coordinates. Large world products must not flatten
+    // a quarter circle into its chord (#7779 independent source review).
+    for (radius, offset) in [(0.01_f64, 5_000_000_f64), (1., 1_000_000_000.), (0.1, 10_000_000.)] {
+        for (axis, half_y) in [("0.,0.,1.", 1.), ("0.,-0.8660254037844386,0.5", 0.5), ("0.,-1.,0.", 0.)] {
+            let extract = |translation: f64| {
+                let source = SOURCE.replace("0.,-0.8660254037844386,0.5", axis)
+                    .replace("IFCCIRCLE(#30,1.)", &format!("IFCCIRCLE(#30,{radius})"))
+                    .replace("#21=IFCAXIS2PLACEMENT3D(#12,#20,$)", "#21=IFCAXIS2PLACEMENT3D(#72,#20,$)")
+                    .replace("#22=", &format!("#72=IFCCARTESIANPOINT(({translation},{translation},0.));\n#22="))
+                    .replace("(#32));", "(#33));")
+                    .replace("#40=", "#33=IFCTRIMMEDCURVE(#32,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(1.5707963267948966)),.T.,.PARAMETER.);\n#40=");
+                super::extract_symbolic_data_with_provenance_in_frame(&source,
+                    crate::MeshFrame::ModelRtc { anchor: (translation, translation, 0.) }).into_parts().0
+            };
+            let local = extract(0.);
+            let translated = extract(offset);
+            assert_eq!(local.polylines.len(), 1);
+            assert_eq!(translated.polylines.len(), 1);
+            let a = &local.polylines[0].points;
+            let b = &translated.polylines[0].points;
+            if half_y > 0. { assert!(a.len() > 4, "quarter circle must be sampled"); }
+            else { assert_eq!(a.len(), 4, "edge-on arc projects to a line"); }
+            assert_eq!(b.len(), a.len(), "translation changed arc sampling: radius={radius}, offset={offset}, axis={axis}");
+            for (&got, &expected) in b.iter().zip(a) {
+                assert!((f64::from(got) - f64::from(expected)).abs() < radius * 0.00002,
+                    "translated projected arc changed shape: {got} vs {expected}");
+            }
+        }
+    }
+}

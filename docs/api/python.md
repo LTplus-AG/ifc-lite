@@ -537,11 +537,12 @@ its own mesh bounds.
   Only the length and plane-angle scales are resolved, so a model that declares
   an area or volume unit inconsistent with its length unit cannot be reconciled
   from what is returned here.
-- **Every property kind is decoded.** An `IfcPropertySingleValue` keeps its
-  typed value. An enumerated, list, bounded, table, reference or complex
-  property arrives as its display string (`"A, B"`, `"2 [1 – 5]"`,
-  `"Table (2 rows)"`, the referenced object's name), typed as text, with
-  `value_type` set to the members' shared type tag or else the property class
+- **Every property kind is decoded.** Each property dictionary contains
+  `name`, `value` and `value_type`. An `IfcPropertySingleValue` returns its
+  nominal value as a string. An enumerated, list, bounded, table, reference or
+  complex property returns its display string (`"A, B"`, `"2 [1 – 5]"`,
+  `"Table (2 rows)"`, the referenced object's name), with `value_type` set to
+  the members' shared type tag or else the property class
   (`IFCPROPERTYTABLEVALUE`, ...).
 ### Entity attributes
 

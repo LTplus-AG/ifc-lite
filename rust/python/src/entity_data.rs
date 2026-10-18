@@ -88,14 +88,15 @@ fn run_entity_export(
 /// returned in 4.3.0, and which affects `property_sets` and `quantity_sets`
 /// alike.
 ///
+/// Each property dictionary contains `name`, `value` and `value_type`.
 /// Every property kind is decoded (EXPORT-DATA-2, D47). An
-/// `IfcPropertySingleValue` keeps its typed nominal value; an enumerated, list,
-/// bounded, table, reference or complex property arrives as its display string
-/// (`"A, B"`, `"2 [1 – 5]"`, `"Table (2 rows)"`, the referenced object's name,
-/// `"Inner: a, Other: 2.5"`) with `kind` `"text"` and `value_type` set to the
-/// members' shared type tag, else the property class keyword
-/// (`IFCPROPERTYTABLEVALUE`, ...). Complex properties share the model's
-/// complex-property budget (#7675).
+/// `IfcPropertySingleValue` returns its nominal value as a string; an
+/// enumerated, list, bounded, table, reference or complex property returns its
+/// display string (`"A, B"`, `"2 [1 – 5]"`, `"Table (2 rows)"`, the referenced
+/// object's name, `"Inner: a, Other: 2.5"`). `value_type` is the members' shared
+/// type tag, else the property class keyword (`IFCPROPERTYTABLEVALUE`, ...).
+/// Complex properties share the model's complex-property budget (#7675).
+/// Quantity dictionaries contain `name`, a numeric `value` and `kind`.
 ///
 /// **Schema-declared entity attributes** arrive in their own `attributes` list,
 /// on by default. These are unrelated to the `IfcTypeObject` inheritance above,

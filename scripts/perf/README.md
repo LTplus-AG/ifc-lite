@@ -4049,9 +4049,19 @@ Palette fragments are rejoined by source representation item before choosing
 solid clipping; appearance partitioning cannot decide whether a cut is capped.
 Retained face colours use bounded BVH attribution after the exact topology cut.
 
-Performance qualification is pending. Concurrent owned work on the shared host
-prevents an otherwise-idle, interleaved worker-pool cohort; a successful source
-build, functional export/reopen, or native test is not a browser performance
-verdict. No speed or neutral-performance claim is made. The lesson is to charge
-remeshing and intersection to the requested export operation and measure that
-operation separately from normal loading before interpreting timing changes.
+The [retained cohort](evidence/section-export-7711/README.md) measures actual
+base/branch STEP serialization with identical DATA output and records the new
+section operation's complete parse, serialization, remesh and cut cost. It does
+not establish a useful speed win. There is no equivalent baseline operation for
+the new trim API. The native worker-pool arms use byte-identical binaries and
+source inputs: they are controls, not causal evidence about changed export code.
+Prepared artifacts were verified before and after exclusive measurement; no
+compilation or dependency installation ran inside that cohort.
+
+Qualification remains mixed: hosted viewer entry/eager bundle ceilings failed,
+and the causal-test witness, generated-table and viewer-shard checks remain
+unresolved. Current API/docs/lint qualification also awaits its existing worker.
+The operation timings do not waive those gates or qualify browser startup.
+Lesson: charge remeshing and intersection to the requested export operation,
+measure its public path separately from ordinary loading, and preserve the eager
+import budget. Identical native controls cannot validate a changed export path.

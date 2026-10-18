@@ -1,0 +1,477 @@
+{
+  "formatVersion": 1,
+  "generated": true,
+  "qualifiedCommit": "4bf77c6566a9aca84acd1d67c28273525de2f2e9",
+  "qualifiedTree": "cd5e29e2c8ddbb2a4dc529b6096510f0b66b7cd4",
+  "baseCommit": "c53cfaa3a2034638f4c4ab40f7674b29e0528fed",
+  "benchmarkJobId": "67a3deb5-1847-4581-89da-0f1840eb9c6f",
+  "verdict": "Mixed/held: operation measurements completed; hosted failures and current PC metadata qualification pending",
+  "nativeScope": "Byte-identical binary controls only; no changed export-path causal claim",
+  "trimScope": "New operation cost; no equivalent base operation",
+  "numericBaselineUpdated": false,
+  "PCMetadataJobId": "04fee2d7-0093-4683-9ef9-b80f1fc23806",
+  "PCMetadataStateAtCapture": "queued",
+  "archive": {
+    "path": "retained-evidence.tar.gz",
+    "bytes": 928056,
+    "sha256": "5b2b96b595e884fb20d7fc82c07a4f38393b0779e9b3e437dfff460dfbcd6451"
+  },
+  "members": [
+    {
+      "path": "functional/browser/browser-result.json",
+      "bytes": 1093,
+      "sha256": "9f28ec485b2dc0c0ce95b564c19e000da8999c70b65df8036ee2ffb4fffb7b33",
+      "scope": "actual browser output and independent oracle receipt; IFC file not committed"
+    },
+    {
+      "path": "functional/browser/haus-evidence.json",
+      "bytes": 1093,
+      "sha256": "9f28ec485b2dc0c0ce95b564c19e000da8999c70b65df8036ee2ffb4fffb7b33",
+      "scope": "actual browser output and independent oracle receipt; IFC file not committed"
+    },
+    {
+      "path": "functional/browser/ifcopenshell-result.json",
+      "bytes": 473,
+      "sha256": "c7c83cb98e204df65b47b2f05ecf3ca0dc4b51f5b1b8cabc710cc4cc7712e2b1",
+      "scope": "actual browser output and independent oracle receipt; IFC file not committed"
+    },
+    {
+      "path": "functional/browser/runtime-manifest.json",
+      "bytes": 311,
+      "sha256": "dc10a05e017496fa9c7fbc842b4e58110fa0a4ec09016b991267743a3aa49a8d",
+      "scope": "actual browser output and independent oracle receipt; IFC file not committed"
+    },
+    {
+      "path": "functional/logs/browser.log",
+      "bytes": 137,
+      "sha256": "b841a5eb4f059d881988e8f1e130fa10ea004bf414bf435da738b7c72d0bbb66",
+      "scope": "lossless actual output bound by corresponding worker receipt"
+    },
+    {
+      "path": "functional/logs/clippy.log",
+      "bytes": 1002,
+      "sha256": "cd8f23fc7be90ad441d54f3eef678607fe7f814c1514255679c9e223924d3df3",
+      "scope": "lossless actual output bound by corresponding worker receipt"
+    },
+    {
+      "path": "functional/logs/export.log",
+      "bytes": 670890,
+      "sha256": "713364f9a410268e8df3df5d0648e484bb8a4b17dd3fb3eb07209767122f9af2",
+      "scope": "lossless actual output bound by corresponding worker receipt"
+    },
+    {
+      "path": "functional/logs/oracle.log",
+      "bytes": 417,
+      "sha256": "c277a53256e14623a67234b1040bc75fc0574c978edb5b2281569f7bb8b212ba",
+      "scope": "lossless actual output bound by corresponding worker receipt"
+    },
+    {
+      "path": "functional/logs/typecheck.log",
+      "bytes": 72870,
+      "sha256": "6ba8be1538bbf9713340542352d4378daad1c7ed3a6f00954b5cd644daf907b2",
+      "scope": "lossless actual output bound by corresponding worker receipt"
+    },
+    {
+      "path": "functional/logs/wasm-contract.log",
+      "bytes": 20558,
+      "sha256": "ba01e447fd02707176e922fa92f3a803e6bd4961a509fced49cc453238fcc671",
+      "scope": "lossless actual output bound by corresponding worker receipt"
+    },
+    {
+      "path": "functional/logs/workspace.log",
+      "bytes": 545604,
+      "sha256": "14fdb02b6278379d211d28071eced9e4be1cd4908eef630aa2632da1840b1633",
+      "scope": "lossless actual output bound by corresponding worker receipt"
+    },
+    {
+      "path": "functional/receipts/browser.json",
+      "bytes": 3247,
+      "sha256": "7b7a1d32eb18e5975f25fa555cce42ff5cdbb9d705b9d4b562b0e7cefd645361",
+      "scope": "completed current4bf functional gate; retain exact scope/skips"
+    },
+    {
+      "path": "functional/receipts/clippy.json",
+      "bytes": 3272,
+      "sha256": "c9ffb2b9139a8edad58ffff43790989c3c681010198ee9a2c8d6e4924cb51560",
+      "scope": "completed current4bf functional gate; retain exact scope/skips"
+    },
+    {
+      "path": "functional/receipts/export.json",
+      "bytes": 3218,
+      "sha256": "7db958f1d8a2969a258259c09fab62ccba9a004aeb4d4de370a6b8830a12b6ac",
+      "scope": "completed current4bf functional gate; retain exact scope/skips"
+    },
+    {
+      "path": "functional/receipts/oracle.json",
+      "bytes": 3372,
+      "sha256": "914c5e7f347cf0645df6d8203b6f896887b133ac45d56b3c5c21d383e051fe6f",
+      "scope": "completed current4bf functional gate; retain exact scope/skips"
+    },
+    {
+      "path": "functional/receipts/typecheck.json",
+      "bytes": 3269,
+      "sha256": "545a893fa4c71874dbfd700e46669523331895fab906772bed3c72d0f13e1c53",
+      "scope": "completed current4bf functional gate; retain exact scope/skips"
+    },
+    {
+      "path": "functional/receipts/wasm-contract.json",
+      "bytes": 3269,
+      "sha256": "1ae782b980ec4c90bb2012a57e70b49b62ed0ab9c46e77700f41ae688f13af0c",
+      "scope": "completed current4bf functional gate; retain exact scope/skips"
+    },
+    {
+      "path": "functional/receipts/workspace.json",
+      "bytes": 3210,
+      "sha256": "838e03a1d82ecbf1b9daa83e880148c85735f6c3564ed91f5d38d5a5e34f1438",
+      "scope": "completed current4bf functional gate; retain exact scope/skips"
+    },
+    {
+      "path": "measurement/AC20-FZK-Haus-0-base.json",
+      "bytes": 644,
+      "sha256": "bfddbab48cea89ed2f7e6845c80f305cfa36194406d9c0a3b6ab9c0c91efd3f5",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/AC20-FZK-Haus-0-base.stderr.log",
+      "bytes": 897,
+      "sha256": "0dbbb1ac2b14a6ec1a401bdfb39362c63b910621e005f7cf14e0af3b3a29d8ba",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/AC20-FZK-Haus-0-branch.json",
+      "bytes": 635,
+      "sha256": "341ae8d1e6235606d906ec48eb9080b9299b9dfb939def5819bf423ea51caf12",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/AC20-FZK-Haus-0-branch.stderr.log",
+      "bytes": 888,
+      "sha256": "6946c543503958785ea80186f78aa39e0d1fdfcabcc261a94553f7b131bf6bf8",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/AC20-FZK-Haus-1-base.json",
+      "bytes": 632,
+      "sha256": "717d83587bd81e251891abe70a9486854c5dc749b6f987f206ca452c5430b763",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/AC20-FZK-Haus-1-base.stderr.log",
+      "bytes": 885,
+      "sha256": "fd3dc4934cbaed3e9fe2c455f6575f8869d2b45581fceada8992841ccbc62095",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/AC20-FZK-Haus-1-branch.json",
+      "bytes": 635,
+      "sha256": "5c8a6f08a774ec71aaf24ba22115a580aeaf68e1867481673f7d8cfbb5649508",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/AC20-FZK-Haus-1-branch.stderr.log",
+      "bytes": 888,
+      "sha256": "d16fc7e627f6e361e39f237da2171d9638af2c2ff22bc24ad14baae0bd3ebed6",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/ISSUE_053_20181220Holter_Tower_10-0-base.json",
+      "bytes": 688,
+      "sha256": "9ccd70a3260fe81baee0f7cb5178d405d728f82a6fdcb1319563cf627270f5e6",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/ISSUE_053_20181220Holter_Tower_10-0-base.stderr.log",
+      "bytes": 932,
+      "sha256": "4136fe8b713e38b1c87db8470a0e83a4bcec12b61a502cce908730af8469b106",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/ISSUE_053_20181220Holter_Tower_10-0-branch.json",
+      "bytes": 711,
+      "sha256": "b39d894fda69b51e4aaa9a656b18dbc7878694896e78a74cc411d33a2ede7d31",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/ISSUE_053_20181220Holter_Tower_10-0-branch.stderr.log",
+      "bytes": 955,
+      "sha256": "53ee72627bcb02bc8430f013b3b4a8768864c8cdbe73f1784bf1a9043ef811bf",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/ISSUE_053_20181220Holter_Tower_10-1-base.json",
+      "bytes": 697,
+      "sha256": "a2e68fc93e5c3648c3841998ff3dbacc3ec4dd792970248ad4bd1b82e4a451ba",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/ISSUE_053_20181220Holter_Tower_10-1-base.stderr.log",
+      "bytes": 941,
+      "sha256": "172d06d4e0f1b52daf977f6ddf7facb3675d77bd81af23a139b3eaf8ca59d0a6",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/ISSUE_053_20181220Holter_Tower_10-1-branch.json",
+      "bytes": 697,
+      "sha256": "8c04fc2e3035f1b413e804878cb886d836c7d33da792a0c07d728bcfeb6bf779",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/ISSUE_053_20181220Holter_Tower_10-1-branch.stderr.log",
+      "bytes": 941,
+      "sha256": "163f77d327b3a4650da697ada64bd34b0030d773dbe3884b9f2a0a546c058fb3",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17-0-base.json",
+      "bytes": 715,
+      "sha256": "4d189b74920ee42fbe893dc54923bf33f68ff694822de5f0850f817665a5fbd2",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17-0-base.stderr.log",
+      "bytes": 1033,
+      "sha256": "f370edc637ba39f675220a4cb3585eb17e667554f4fcaf285c3736cd658a96df",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17-0-branch.json",
+      "bytes": 706,
+      "sha256": "65fc5f17109d210f1c4989d79b5728d0c2b5513e953551b8293bd05cdd27cc43",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17-0-branch.stderr.log",
+      "bytes": 1025,
+      "sha256": "2e4559dcc2809b872a3096d333523a4fac47850ce3447f274f31886b0ea5afbe",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17-1-base.json",
+      "bytes": 713,
+      "sha256": "ed9224f9d58c37008382c60368b2970d473380b42a192bb97aced2272ca6a610",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17-1-base.stderr.log",
+      "bytes": 1032,
+      "sha256": "51a364cf888970236ffb9c5d9da003c42ad75f159b360371b991cacdb1ea156a",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17-1-branch.json",
+      "bytes": 707,
+      "sha256": "ca3b4dc5ea6922c99e792309fde4f6bf1f3c3964845e1731d3b619352275dc18",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17-1-branch.stderr.log",
+      "bytes": 1026,
+      "sha256": "ffb569325a841d8161f10b03aa2f59643155ad86a0a24392793ed9e4c0e243ce",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/after-cohort-proof.json",
+      "bytes": 451,
+      "sha256": "63602adadb21a8972e8b2a7be3d031c65b4b2a8744dcf9de676d20cc78ed6d24",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/after-guard.stderr.log",
+      "bytes": 233,
+      "sha256": "496d086093edbeb426e7babc454e06076e2bff82956240a647b9ca165895d237",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/after-guard.stdout.log",
+      "bytes": 107,
+      "sha256": "4fc61470a713d0bc9b7649f61a56dd7ca4de255241d8418936aca1da7d161d6e",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/base-build-handle.json",
+      "bytes": 168,
+      "sha256": "297f29a64bb2dfbc66e0c48ba9b3d371916f513fb166dcdd53519ef57f6fff30",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/branch-build-handle.json",
+      "bytes": 168,
+      "sha256": "297f29a64bb2dfbc66e0c48ba9b3d371916f513fb166dcdd53519ef57f6fff30",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/export-build-manifest.json",
+      "bytes": 128855,
+      "sha256": "85677847c764e58dbfbf4928acbd3e07704fcbdc391a27e5f03ff781847108aa",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/immediate-guard.stderr.log",
+      "bytes": 233,
+      "sha256": "4b1d6b9a10d462478799613d5c7b9870df22a8cecbe4c41a3bd138a2e20ddefa",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/immediate-guard.stdout.log",
+      "bytes": 107,
+      "sha256": "4fc61470a713d0bc9b7649f61a56dd7ca4de255241d8418936aca1da7d161d6e",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/immediate-window-preflight.json",
+      "bytes": 778,
+      "sha256": "7c7131e1d89bfb7e68d6747a50178dd4a5eac8692ec4e2f7b91241e7e95f6794",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/measure-export.mjs",
+      "bytes": 4339,
+      "sha256": "b137cab116eb2bd9f8af6d97a2f854452e91e95c1a8754fd0aec43891935fab0",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/measure.py",
+      "bytes": 6238,
+      "sha256": "da8b82e6f30d940539d8549723b9c43363c9c17637ff0b65959e3a100c6e78a1",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/measured-export-result.json",
+      "bytes": 73016,
+      "sha256": "bd638db8e0dbf5b7630bdf405418071709214e42551c0d6d079dceca5ea5ecd1",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/measured-result.json",
+      "bytes": 27487,
+      "sha256": "9738e098180740519849c1aa31530a41283de8d3c96aeab8bdc020b9abdded78",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/measurement.log",
+      "bytes": 3329,
+      "sha256": "0fb63ec6beeb89c2e6b1d4c686023adb17b8ebeb3ffe64e7e6ad4973efa5f8c7",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/post-run-integrity.json",
+      "bytes": 5120,
+      "sha256": "6f5cc490ada9ee8a7afa53aba99a9ec87fbf7dd7f25516dc8dbaa8f1f8ebfec7",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/preflight-reader-failure.json",
+      "bytes": 327,
+      "sha256": "8154de6fd8f66b7b7aa5222bd7856097b40decbece6de6e698b1594356f1ef32",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/preparation/output.log",
+      "bytes": 807,
+      "sha256": "955a36b5874cb2e58f494e96ec569bbc35570370a2080a9f9452ce4ed320eab0",
+      "scope": "completed ordinary native preparation, not measurement"
+    },
+    {
+      "path": "measurement/preparation/receipt.json",
+      "bytes": 3442,
+      "sha256": "8a60774e0a2100254934797f114a9d6b9e1b044bc9767723ab11f13d38f4f798",
+      "scope": "completed ordinary native preparation, not measurement"
+    },
+    {
+      "path": "measurement/readiness.json",
+      "bytes": 1922905,
+      "sha256": "dcd8021dbc87d8fbcdcc640a4279f77ecb49f394ea9ab0566d9e2bd98b5b77d2",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/retired-83c0/receipt.json",
+      "bytes": 2379,
+      "sha256": "314fefc2d258cbc1ae925740bcaf72ed104ec0c59db9a58ef60669ea49fd5449",
+      "scope": "cancelled while queued, never measured"
+    },
+    {
+      "path": "measurement/retired-83c0/sealed-measurement-driver-repair.json",
+      "bytes": 4930,
+      "sha256": "67eb32e6a63306830d67dea85bc09c798cf4ac247db11b64c2df66afb7f55257",
+      "scope": "cancelled while queued, never measured"
+    },
+    {
+      "path": "measurement/source-manifest.json",
+      "bytes": 55307,
+      "sha256": "071ad3e2869ca2ed019e1ec64cbf56e4c2e644548f24c36d1e217d5a098df20f",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/terminal-summary.json",
+      "bytes": 1584,
+      "sha256": "e15a37ed017a6df4d88bdd956fed3578557c126bc949ddeacf4181d987e8c8a6",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/verify-ready.py",
+      "bytes": 629,
+      "sha256": "711e8ed55ef1c8ef5f6db3fbcd52c4f7199d4ffeda57d754dbca2feb7ae88b74",
+      "scope": "completed measurement or its frozen preparation/provenance"
+    },
+    {
+      "path": "measurement/worker/output.log",
+      "bytes": 2770,
+      "sha256": "e3f2c7f08e32945d98173fb8afa7267ab295217356e7cd71ee341318f884cafd",
+      "scope": "actual completed0 source-unchanged worker terminal"
+    },
+    {
+      "path": "measurement/worker/receipt.json",
+      "bytes": 3707,
+      "sha256": "c071275ef29a883d5200231db409f31bd741946b9252cc6acbe618e73d579805",
+      "scope": "actual completed0 source-unchanged worker terminal"
+    },
+    {
+      "path": "qualification/current-main-check-api-surface.log",
+      "bytes": 705,
+      "sha256": "ababc843b6ba53f29eb6d2025a8b66cc457d159e6846b6bac70e0f85d3d87162",
+      "scope": "observed review identity, failure or pending gate; not a pass waiver"
+    },
+    {
+      "path": "qualification/current-main-metadata-checks.json",
+      "bytes": 1809,
+      "sha256": "19ffc36db1704113d1a2bc264bf766809774202870a09d9e8588c265e5c8e669",
+      "scope": "observed review identity, failure or pending gate; not a pass waiver"
+    },
+    {
+      "path": "qualification/current-main-pc-metadata-receipt.json",
+      "bytes": 1465,
+      "sha256": "9638873387d2ff67fdc6c92c30e00f5dcdb81743548cf7ce1fef8429b3614d6a",
+      "scope": "observed review identity, failure or pending gate; not a pass waiver"
+    },
+    {
+      "path": "qualification/hosted-current-7900-failures.log",
+      "bytes": 2185170,
+      "sha256": "eff14ba1a55443899dc46b9486ce2a6b0385e29d83494bc00f74cc78d35bcd56",
+      "scope": "observed review identity, failure or pending gate; not a pass waiver"
+    },
+    {
+      "path": "qualification/hosted-current-7908-review-failure.log",
+      "bytes": 129451,
+      "sha256": "caae86ec4232d071e9fb0ba5b023b129725aeb49b04c01a752137b5f32fdf3cc",
+      "scope": "observed review identity, failure or pending gate; not a pass waiver"
+    },
+    {
+      "path": "qualification/hosted-current-blockers.json",
+      "bytes": 4822,
+      "sha256": "405c43ad901a99f2bc97f87d31082215a4e583657760623f1a88135efbc7e3cf",
+      "scope": "observed review identity, failure or pending gate; not a pass waiver"
+    },
+    {
+      "path": "qualification/production-delta-60b-to-4bf.patch",
+      "bytes": 2036,
+      "sha256": "98f61783012208202bf28b35e50fc1d35ce71556304442d3fb2d8fb5e460f99e",
+      "scope": "observed review identity, failure or pending gate; not a pass waiver"
+    },
+    {
+      "path": "qualification/production-identity-60b-to-4bf.json",
+      "bytes": 24002,
+      "sha256": "524e009f863d35391e6741b3789ac3f09db4fb25e189919e207a3d8a27aed546",
+      "scope": "observed review identity, failure or pending gate; not a pass waiver"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "checkedAt": 1792344511.5725396,
+  "worker": "c56cce3b-08e5-4d09-b4b0-3f9ae6e9011d",
+  "ownDatabaseRows": 0,
+  "remainingExactOwnedArgv": [],
+  "systemdScope": false,
+  "runningPidTokensCaptured": false,
+  "scope": "Postterminal exact command/source argv scan and read-only admission DB; no live PID history invented",
+  "resourcesReleased": true
+}

@@ -1,0 +1,9 @@
+{
+  "scope": "Single parent-owned correction; lexical preservation census only for stopped OLD tree; strict real runnable venv/pnpm/RT guards unchanged; offline install and13 tests only",
+  "previousWorker": "8abd6cf9-869b-44ab-98e7-bc1783052f53",
+  "previousOriginalSession": 29793,
+  "source": "12157693a84d9495fafd14a0ade6a5939bf3e0b8",
+  "driverSha256": "8532cf9b1f9f7a7c05740039966da8f21a8782f0bfccf6ac7e640095b52f36d8",
+  "noNewReview": true,
+  "repeatedPassedPrerequisiteCommands": 0
+}

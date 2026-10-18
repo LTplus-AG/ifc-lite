@@ -1,0 +1,21 @@
+{
+  "readOnlyPreflight": "PASS",
+  "stoppedTreeLexicalEntries": 129730,
+  "stoppedTreeLinksRetained": 303,
+  "strictVenvEntries": 3427,
+  "authenticatedExternalInterpreterLinks": [
+    "bin/python3",
+    "bin/python",
+    "bin/python3.12"
+  ],
+  "runtimeEntries": 5382,
+  "pnpmEntries": 1391,
+  "source": {
+    "head": "12157693a84d9495fafd14a0ade6a5939bf3e0b8",
+    "tree": "4c512c747f2aa6f364200f2415a609c1ce425248",
+    "status": ""
+  },
+  "fixturesVerified": 7,
+  "executionCommandsRun": 0,
+  "storeLayout": "Producer files/index seed will be copied into owned store/v10; explicit CLI ends/v10"
+}

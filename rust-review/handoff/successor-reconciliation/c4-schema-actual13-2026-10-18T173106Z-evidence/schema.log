@@ -1,0 +1,93 @@
+
+> ifc-lite@10.4.0 test /home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/source
+> turbo test --only --filter\=\@ifc-lite/export --concurrency\=1 --env-mode\=loose -- src/ifcopenshell-schema-conformance.test.ts
+
+
+   • Packages in scope: @ifc-lite/export
+   • Running test in 1 package
+   • Remote caching disabled
+
+@ifc-lite/export:test: cache bypass, force executing 45146644ec9ef8fe
+@ifc-lite/export:test: 
+@ifc-lite/export:test: > @ifc-lite/export@4.11.0 test /home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/source/packages/export
+@ifc-lite/export:test: > vitest run src/ifcopenshell-schema-conformance.test.ts
+@ifc-lite/export:test: 
+@ifc-lite/export:test: [33m(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+@ifc-lite/export:test:   - `__dirname` (vitest.config.ts:16:58). Use `import.meta.dirname` instead
+@ifc-lite/export:test: Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.[39m
+@ifc-lite/export:test: 
+@ifc-lite/export:test: [1m[30m[46m RUN [49m[39m[22m [36mv5.0.3 [39m[90m/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/source/packages/export[39m
+@ifc-lite/export:test: 
+@ifc-lite/export:test: [90mstderr[2m | src/ifcopenshell-schema-conformance.test.ts[2m > [22m[2mStepExporter output is schema-conformant per IfcOpenShell[2m > [22m[2mvalidates an IFC2X3 MergedExporter output that unifies a nested object (#5726)
+@ifc-lite/export:test: [22m[39m[SpatialHierarchyBuilder] No storeys found in spatial hierarchy
+@ifc-lite/export:test: [SpatialHierarchyBuilder] No buildings found in spatial hierarchy
+@ifc-lite/export:test: 
+@ifc-lite/export:test: [90mstderr[2m | src/ifcopenshell-schema-conformance.test.ts[2m > [22m[2mStepExporter output is schema-conformant per IfcOpenShell[2m > [22m[2mvalidates an IFC2X3 MergedExporter output that unifies a property set by GlobalId (#5774)
+@ifc-lite/export:test: [22m[39m[SpatialHierarchyBuilder] No storeys found in spatial hierarchy
+@ifc-lite/export:test: [SpatialHierarchyBuilder] No buildings found in spatial hierarchy
+@ifc-lite/export:test: 
+@ifc-lite/export:test: [90mstderr[2m | src/ifcopenshell-schema-conformance.test.ts[2m > [22m[2mStepExporter output is schema-conformant per IfcOpenShell[2m > [22m[2mvalidates a IFC2X3 MergedExporter output where later models repeat a wall's containment and a property set's definer (#5923, #5774)
+@ifc-lite/export:test: [22m[39m[SpatialHierarchyBuilder] No storeys found in spatial hierarchy
+@ifc-lite/export:test: [SpatialHierarchyBuilder] No buildings found in spatial hierarchy
+@ifc-lite/export:test: 
+@ifc-lite/export:test: [90mstderr[2m | src/ifcopenshell-schema-conformance.test.ts[2m > [22m[2mStepExporter output is schema-conformant per IfcOpenShell[2m > [22m[2mvalidates a IFC2X3 MergedExporter output where later models repeat a wall's containment and a property set's definer (#5923, #5774)
+@ifc-lite/export:test: [22m[39m[SpatialHierarchyBuilder] No storeys found in spatial hierarchy
+@ifc-lite/export:test: [SpatialHierarchyBuilder] No buildings found in spatial hierarchy
+@ifc-lite/export:test: 
+@ifc-lite/export:test: [90mstderr[2m | src/ifcopenshell-schema-conformance.test.ts[2m > [22m[2mStepExporter output is schema-conformant per IfcOpenShell[2m > [22m[2mvalidates a IFC4 MergedExporter output where later models repeat a wall's containment and a property set's definer (#5923, #5774)
+@ifc-lite/export:test: [22m[39m[SpatialHierarchyBuilder] No storeys found in spatial hierarchy
+@ifc-lite/export:test: [SpatialHierarchyBuilder] No buildings found in spatial hierarchy
+@ifc-lite/export:test: 
+@ifc-lite/export:test: [90mstderr[2m | src/ifcopenshell-schema-conformance.test.ts[2m > [22m[2mStepExporter output is schema-conformant per IfcOpenShell[2m > [22m[2mvalidates a IFC4 MergedExporter output where later models repeat a wall's containment and a property set's definer (#5923, #5774)
+@ifc-lite/export:test: [22m[39m[SpatialHierarchyBuilder] No storeys found in spatial hierarchy
+@ifc-lite/export:test: [SpatialHierarchyBuilder] No buildings found in spatial hierarchy
+@ifc-lite/export:test: 
+@ifc-lite/export:test: [90mstderr[2m | src/ifcopenshell-schema-conformance.test.ts[2m > [22m[2mStepExporter IFC4X3 output is schema-conformant per IfcOpenShell (#5351)[2m > [22m[2mvalidates IFC4 fixtures converted to IFC4X3, declared as IFC4X3_ADD2
+@ifc-lite/export:test: [22m[39m[SpatialHierarchyBuilder] No storeys found in spatial hierarchy
+@ifc-lite/export:test: 
+@ifc-lite/export:test: [90mstderr[2m | src/ifcopenshell-schema-conformance.test.ts[2m > [22m[2mStepExporter IFC4X3 output is schema-conformant per IfcOpenShell (#5351)[2m > [22m[2mcontrol: the same converted bytes declared as bare IFC4X3 fail, so the identifier is what makes the difference
+@ifc-lite/export:test: [22m[39m[SpatialHierarchyBuilder] No storeys found in spatial hierarchy
+@ifc-lite/export:test: 
+@ifc-lite/export:test: [90mstderr[2m | src/ifcopenshell-schema-conformance.test.ts[2m > [22m[2mStepExporter IFC4X3 output is schema-conformant per IfcOpenShell (#5351)[2m > [22m[2mvalidates the MergedExporter output of the two converted fixtures, as IFC4 and IFC4X3 (#5471)
+@ifc-lite/export:test: [22m[39m[SpatialHierarchyBuilder] No storeys found in spatial hierarchy
+@ifc-lite/export:test: 
+@ifc-lite/export:test: [90mstderr[2m | src/ifcopenshell-schema-conformance.test.ts[2m > [22m[2mStepExporter IFC4X3 output is schema-conformant per IfcOpenShell (#5351)[2m > [22m[2mvalidates a dropEmptyContainers merge that unifies an IfcBridge by GlobalId alone (#5937)
+@ifc-lite/export:test: [22m[39m[SpatialHierarchyBuilder] No storeys found in spatial hierarchy
+@ifc-lite/export:test: 
+@ifc-lite/export:test: [90mstderr[2m | src/ifcopenshell-schema-conformance.test.ts[2m > [22m[2mStepExporter IFC4X3 output is schema-conformant per IfcOpenShell (#5351)[2m > [22m[2mvalidates a dropEmptyContainers merge that unifies an IfcBridge by GlobalId alone (#5937)
+@ifc-lite/export:test: [22m[39m[SpatialHierarchyBuilder] No storeys found in spatial hierarchy
+@ifc-lite/export:test: 
+@ifc-lite/export:test: [90mstderr[2m | src/ifcopenshell-schema-conformance.test.ts[2m > [22m[2mStepExporter IFC4X3 output is schema-conformant per IfcOpenShell (#5351)[2m > [22m[2mvalidates the round-trip re-export of IFC4X3_ADD2 fixtures
+@ifc-lite/export:test: [22m[39m[SpatialHierarchyBuilder] No storeys found in spatial hierarchy
+@ifc-lite/export:test: 
+@ifc-lite/export:test: [90mstderr[2m | src/ifcopenshell-schema-conformance.test.ts[2m > [22m[2mStepExporter IFC4X3 output is schema-conformant per IfcOpenShell (#5351)[2m > [22m[2mvalidates the round-trip re-export of IFC4X3_ADD2 fixtures
+@ifc-lite/export:test: [22m[39m[SpatialHierarchyBuilder] No storeys found in spatial hierarchy
+@ifc-lite/export:test: 
+@ifc-lite/export:test:  [32m✓[39m src/ifcopenshell-schema-conformance.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 36610[2mms[22m[39m
+@ifc-lite/export:test:    [32m✓[39m StepExporter output is schema-conformant per IfcOpenShell [2m(6)[22m
+@ifc-lite/export:test:      [33m[2m✓[22m[39m validates the ORIGINAL fixtures as a control (a non-conformant input must not masquerade as a writer defect)[33m 3237[2mms[22m[39m
+@ifc-lite/export:test:      [33m[2m✓[22m[39m validates the full-fidelity StepExporter re-export of both fixtures[33m 3284[2mms[22m[39m
+@ifc-lite/export:test:      [33m[2m✓[22m[39m validates an IFC2X3 MergedExporter output that unifies a nested object (#5726)[33m 2007[2mms[22m[39m
+@ifc-lite/export:test:      [33m[2m✓[22m[39m validates an IFC2X3 MergedExporter output that unifies a property set by GlobalId (#5774)[33m 1962[2mms[22m[39m
+@ifc-lite/export:test:      [33m[2m✓[22m[39m validates a IFC2X3 MergedExporter output where later models repeat a wall's containment and a property set's definer (#5923, #5774)[33m 1998[2mms[22m[39m
+@ifc-lite/export:test:      [33m[2m✓[22m[39m validates a IFC4 MergedExporter output where later models repeat a wall's containment and a property set's definer (#5923, #5774)[33m 1738[2mms[22m[39m
+@ifc-lite/export:test:    [32m✓[39m StepExporter IFC4X3 output is schema-conformant per IfcOpenShell (#5351) [2m(6)[22m
+@ifc-lite/export:test:      [33m[2m✓[22m[39m validates the ORIGINAL IFC4X3 fixtures as a control[33m 6155[2mms[22m[39m
+@ifc-lite/export:test:      [33m[2m✓[22m[39m validates IFC4 fixtures converted to IFC4X3, declared as IFC4X3_ADD2[33m 3349[2mms[22m[39m
+@ifc-lite/export:test:      [33m[2m✓[22m[39m control: the same converted bytes declared as bare IFC4X3 fail, so the identifier is what makes the difference[33m 489[2mms[22m[39m
+@ifc-lite/export:test:      [33m[2m✓[22m[39m validates the MergedExporter output of the two converted fixtures, as IFC4 and IFC4X3 (#5471)[33m 3496[2mms[22m[39m
+@ifc-lite/export:test:      [33m[2m✓[22m[39m validates a dropEmptyContainers merge that unifies an IfcBridge by GlobalId alone (#5937)[33m 1895[2mms[22m[39m
+@ifc-lite/export:test:      [33m[2m✓[22m[39m validates the round-trip re-export of IFC4X3_ADD2 fixtures[33m 3435[2mms[22m[39m
+@ifc-lite/export:test:    [32m✓[39m StepExporter re-export of a `$` FILE_NAME author/organization (#5470) [2m(1)[22m
+@ifc-lite/export:test:      [33m[2m✓[22m[39m writes the ('') default, and the re-export validates with 0 issues[33m 3560[2mms[22m[39m
+@ifc-lite/export:test: 
+@ifc-lite/export:test: [2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+@ifc-lite/export:test: [2m      Tests [22m [1m[32m13 passed[39m[22m[90m (13)[39m
+@ifc-lite/export:test: [2m   Start at [22m 19:26:51
+@ifc-lite/export:test: [2m   Duration [22m 40.17s[2m (tests 91%, transform 6%, import 3%)[22m
+@ifc-lite/export:test: 
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    40.643s 
+

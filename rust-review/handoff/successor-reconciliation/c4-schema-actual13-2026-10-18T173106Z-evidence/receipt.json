@@ -1,0 +1,1155 @@
+{
+  "scope": "ONLY corrected offline dependency install then root Turbo13 schema cases; reuse four prior prerequisites",
+  "commands": [
+    {
+      "name": "offline-js-install",
+      "argv": [
+        "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node",
+        "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/corepack/v1/pnpm/10.8.1/bin/pnpm.cjs",
+        "install",
+        "--offline",
+        "--frozen-lockfile",
+        "--ignore-scripts",
+        "--store-dir",
+        "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/store/v10",
+        "--filter",
+        "@ifc-lite/export...",
+        "--include-workspace-root"
+      ],
+      "cwd": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/source",
+      "startedAt": 1792344410.2045517,
+      "exitCode": 0,
+      "finishedAt": 1792344411.2717774,
+      "logSha256": "da92e39e675dec5cf791be6cb52ee3631fbe73b405838de62b1b59d80f56e2bd"
+    },
+    {
+      "name": "schema",
+      "argv": [
+        "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node",
+        "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/corepack/v1/pnpm/10.8.1/bin/pnpm.cjs",
+        "test",
+        "--only",
+        "--filter=@ifc-lite/export",
+        "--concurrency=1",
+        "--env-mode=loose",
+        "--",
+        "src/ifcopenshell-schema-conformance.test.ts"
+      ],
+      "cwd": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/source",
+      "startedAt": 1792344411.272421,
+      "exitCode": 0,
+      "finishedAt": 1792344452.1274827,
+      "logSha256": "55df038c2fca30f6883413d9e5ca67301903f75e9e3e25834915bfb9d0ab81b4"
+    }
+  ],
+  "primaryError": null,
+  "finallyErrors": [],
+  "startedAt": 1792344393.6848063,
+  "storageBefore": [
+    {
+      "path": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3",
+      "freeBytes": 309803560960,
+      "freeInodes": 51177760
+    },
+    {
+      "path": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/source",
+      "freeBytes": 309803560960,
+      "freeInodes": 51177760
+    },
+    {
+      "path": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v1",
+      "freeBytes": 309803560960,
+      "freeInodes": 51177760
+    },
+    {
+      "path": "/home/louistrue/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu",
+      "freeBytes": 309803560960,
+      "freeInodes": 51177760
+    },
+    {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin",
+      "freeBytes": 309803560960,
+      "freeInodes": 51177760
+    },
+    {
+      "path": "/tmp",
+      "freeBytes": 309803560960,
+      "freeInodes": 51177760
+    },
+    {
+      "path": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3",
+      "freeBytes": 309803560960,
+      "freeInodes": 51177760
+    },
+    {
+      "path": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3",
+      "freeBytes": 309803560960,
+      "freeInodes": 51177760
+    },
+    {
+      "path": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3",
+      "freeBytes": 309803560960,
+      "freeInodes": 51177760
+    },
+    {
+      "path": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3",
+      "freeBytes": 309803560960,
+      "freeInodes": 51177760
+    }
+  ],
+  "sourceBefore": {
+    "head": "12157693a84d9495fafd14a0ade6a5939bf3e0b8",
+    "tree": "4c512c747f2aa6f364200f2415a609c1ce425248",
+    "status": ""
+  },
+  "toolsBefore": {
+    "nodeSha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c",
+    "nodeSize": 126595440,
+    "corepack": {
+      ".": {
+        "mode": 493,
+        "mtime_ns": 1788825405000000000,
+        "kind": "dir"
+      },
+      "shims": {
+        "mode": 493,
+        "mtime_ns": 1788825405000000000,
+        "kind": "dir"
+      },
+      "package.json": {
+        "mode": 420,
+        "mtime_ns": 1788242417000000000,
+        "kind": "file",
+        "size": 2808,
+        "sha256": "6f431b9a91afe6b4757f4b5a3855e2f79e2f366dd4242fd397713932aa3a2714"
+      },
+      "LICENSE.md": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 1063,
+        "sha256": "30a7b8ba5c4483d97d6123f5634da2362d578fb81f42ed6e1dfbb84fb1cd8fe4"
+      },
+      "CHANGELOG.md": {
+        "mode": 420,
+        "mtime_ns": 1788242417000000000,
+        "kind": "file",
+        "size": 36924,
+        "sha256": "18fa6d9444de9d1f7c6d99a37b12ec83597edd7b2ccfd3a9bf0219902d7b088f"
+      },
+      "README.md": {
+        "mode": 420,
+        "mtime_ns": 1788242417000000000,
+        "kind": "file",
+        "size": 16961,
+        "sha256": "ad51a006ca2313b0089858e059b60390d78d44992f92237bbb05fe52fe131cbe"
+      },
+      "dist": {
+        "mode": 493,
+        "mtime_ns": 1788825405000000000,
+        "kind": "dir"
+      },
+      "shims/yarnpkg": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 282,
+        "sha256": "58732b063df0c3e5636f18628efd287a2ff58594e634dfc17820897b274b3a96"
+      },
+      "shims/pnpm": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 276,
+        "sha256": "61086ca5dbabc2a49451e282f61954f9c844b6f5631d9246653410f07fe62b03"
+      },
+      "shims/yarn.cmd": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 172,
+        "sha256": "b5e2d2a4b7818ce047a39a68c9e08e7230b23f7a088e0b1677b3c47ef807fb0f"
+      },
+      "shims/yarn": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 276,
+        "sha256": "3df00c03dfa6070b135d138a3a16e092e9c53b0e3b4727929947cbfa1670dc26"
+      },
+      "shims/pnpm.ps1": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 773,
+        "sha256": "265560053661f4247b1dd8c012ffce9adf6ef6b5038662d3c7162cf15736f204"
+      },
+      "shims/npm.ps1": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 769,
+        "sha256": "d559b49acafd99e65bf27c987fb91245156c7497ba873ba03e6c39214d3cec22"
+      },
+      "shims/corepack.cmd": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 180,
+        "sha256": "c50dc5168eff5c1e8dd07e179635924b344dd67bf58a69526d44f26803fa199f"
+      },
+      "shims/pnpx.cmd": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 172,
+        "sha256": "cd0f0363556a75da272fa8f6a7e7021da6a7f9a4396eae1f0fc7ea318525f1b1"
+      },
+      "shims/corepack.ps1": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 789,
+        "sha256": "42e8c72cd78b14e7cd45f682d0a6eb741d5b0b9e8288ce3f6d2c8b82880c60b7"
+      },
+      "shims/nodewin": {
+        "mode": 493,
+        "mtime_ns": 1788825405000000000,
+        "kind": "dir"
+      },
+      "shims/yarnpkg.ps1": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 785,
+        "sha256": "8cc95cc1ef59c81254db932455ab8334e87deca411df67ef5a6f925023717518"
+      },
+      "shims/corepack": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 284,
+        "sha256": "e5020e3430810638b169bbf91b3871644ebc85063cf868065336cf57874ed4eb"
+      },
+      "shims/pnpm.cmd": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 172,
+        "sha256": "b70680ee9e60e9906dc52e53acda23fd997aad01eddf7fe3fbcdfe28980f88e4"
+      },
+      "shims/npm": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 274,
+        "sha256": "14e8c15fb4da999e0a407f12be3c232b21920c8816c432631e256d2d781c64a0"
+      },
+      "shims/npx": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 274,
+        "sha256": "807b9b9f523b4b91aaf59925e7bcd26b4507b3c8582623d6eb27b996f7d9b349"
+      },
+      "shims/yarnpkg.cmd": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 178,
+        "sha256": "a7f74b86cc7ac2d5b8d85dd3616fc5a87b87818ffe88681f9bf391dd589dfc1b"
+      },
+      "shims/pnpx.ps1": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 773,
+        "sha256": "fca1f4de4776dd73200173db0c2b10e289bfbfdd7694070a2d1fa55abed6f2c9"
+      },
+      "shims/npx.ps1": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 769,
+        "sha256": "4d3b80abc3f7573231ed1fd388b4dc2a343ca2ea8723ffda12f940ec0216d316"
+      },
+      "shims/npm.cmd": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 170,
+        "sha256": "727e18574154a52a497d81f840461ac62655d101b2514ab8a3e8eccd0a3dc991"
+      },
+      "shims/npx.cmd": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 170,
+        "sha256": "7b179468496aabf9f4a852a1da671cc7bf074fbeed88261ee7c3e2bc9b1c9e2d"
+      },
+      "shims/pnpx": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 276,
+        "sha256": "10c398eda2e7a2634f74dc6088ac9f2495d4861317f20611374d5412492ddf32"
+      },
+      "shims/yarn.ps1": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 773,
+        "sha256": "92de62489a3714c5f11d9334cbc6f53ac2642d0ccb15ab67b792e296825c6b3b"
+      },
+      "dist/npm.js": {
+        "mode": 493,
+        "mtime_ns": 1737439250000000000,
+        "kind": "file",
+        "size": 185,
+        "sha256": "5d9704326d1ddedc5e0724c440e9052a422e616a3c21633bc955ac4a53013c06"
+      },
+      "dist/yarn.js": {
+        "mode": 493,
+        "mtime_ns": 1737439250000000000,
+        "kind": "file",
+        "size": 186,
+        "sha256": "9f6dcacd3a256eedf09e382b14c4fd6a9e62e8c8009e64116997621bbd6531dd"
+      },
+      "dist/lib": {
+        "mode": 493,
+        "mtime_ns": 1788825405000000000,
+        "kind": "dir"
+      },
+      "dist/pnpx.js": {
+        "mode": 493,
+        "mtime_ns": 1737439250000000000,
+        "kind": "file",
+        "size": 186,
+        "sha256": "be8a28dbc76a5f76f50b336121237e451530b517d2bde9355c44e4d519ed7f28"
+      },
+      "dist/pnpm.js": {
+        "mode": 493,
+        "mtime_ns": 1737439250000000000,
+        "kind": "file",
+        "size": 186,
+        "sha256": "7c2a67995976b5b592b611d8b236e3b0633bd654fb49aedd96c6eb7ce04c9cbb"
+      },
+      "dist/yarnpkg.js": {
+        "mode": 493,
+        "mtime_ns": 1737439250000000000,
+        "kind": "file",
+        "size": 189,
+        "sha256": "69110596f81458d8d37524b5d70c63b7658e05c954244c5f7658719ca2b7a165"
+      },
+      "dist/npx.js": {
+        "mode": 493,
+        "mtime_ns": 1737439250000000000,
+        "kind": "file",
+        "size": 185,
+        "sha256": "74d56d596d3449b4d35508227bbd6f371aaa06999e53b261397d43e82655425e"
+      },
+      "dist/corepack.js": {
+        "mode": 493,
+        "mtime_ns": 1737439250000000000,
+        "kind": "file",
+        "size": 174,
+        "sha256": "3655bc798f300951f2070fee411b337d626b0c3ae80c2d24c46ccac4595d4bf9"
+      },
+      "dist/lib/corepack.cjs": {
+        "mode": 420,
+        "mtime_ns": 1788242417000000000,
+        "kind": "file",
+        "size": 530014,
+        "sha256": "abd6f0e7b4e2af310243e202fd908ea64cda545786222f0a3d3f62426e8ad66e"
+      },
+      "shims/nodewin/yarnpkg": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 320,
+        "sha256": "0b55e5de871fbaa75a270ed198268c4d9a9b9d86c847823e5ec8eafb51360b08"
+      },
+      "shims/nodewin/pnpm": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 314,
+        "sha256": "b2d81ac629b340fe2c7d5bc480ad9441e89a4b4d654fd45a50a4c8843ea47aa6"
+      },
+      "shims/nodewin/yarn.cmd": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 210,
+        "sha256": "2daa763e70eae568ffdd7edaeb4f9edeeff5e8bad0fc773b1c3d750833629654"
+      },
+      "shims/nodewin/yarn": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 314,
+        "sha256": "a8f21107b50fec83da4e6495b51f0dad16107d00214a52f305395bcda26e5731"
+      },
+      "shims/nodewin/pnpm.ps1": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 849,
+        "sha256": "20f74dc3a724cae781e4297188028c4b4512c201add63868f9a9852135adf5f5"
+      },
+      "shims/nodewin/npm.ps1": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 845,
+        "sha256": "528701fdbb70f298e54c839bf68a3831fdd582740f4fb1231d46da18e2c9fb3f"
+      },
+      "shims/nodewin/corepack.cmd": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 218,
+        "sha256": "920630a1d1ec47aedea7345e3c868ecdc07e191373497bbf47fbbf5942fbad4f"
+      },
+      "shims/nodewin/pnpx.cmd": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 210,
+        "sha256": "05ac43e3237b9a146e432c3d785a22822828acce122740c0aad3dee35221b5c4"
+      },
+      "shims/nodewin/corepack.ps1": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 865,
+        "sha256": "f9cbe52c92c62ca73ed82fcd2d59e16ff4bbdf9c214f7c2f3ab51c9c098a77fa"
+      },
+      "shims/nodewin/yarnpkg.ps1": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 861,
+        "sha256": "750624e85c009d6dcc314f9aceb967c407de2a7ef11c1f67560f8ef6e3091fa0"
+      },
+      "shims/nodewin/corepack": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 322,
+        "sha256": "65a34c84c3820cadd8bb3f4aed2a010d2a92c9a4f72f5ea83291f1f65820f0c8"
+      },
+      "shims/nodewin/pnpm.cmd": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 210,
+        "sha256": "045eb4580b746837ecf0091d32384dbf519fa4f33f9f1d4da9452b8cea7dc232"
+      },
+      "shims/nodewin/npm": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 312,
+        "sha256": "b805432c230b8c711f89aaaf8e9a0f52d3594a40e94f89b580217b0e3eed2bef"
+      },
+      "shims/nodewin/npx": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 312,
+        "sha256": "05f9721a4e7222958732c14195780cc888ba3bb3143723b2639dbd40f43fa51b"
+      },
+      "shims/nodewin/yarnpkg.cmd": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 216,
+        "sha256": "30fed702510a977562baefa059b3179ce4456d5b9f459671ba420e63ae81743b"
+      },
+      "shims/nodewin/pnpx.ps1": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 849,
+        "sha256": "14b0ef6056a55bce9cfaec6454ce6a50141543eef5b7cd9feb832ac30c9ede29"
+      },
+      "shims/nodewin/npx.ps1": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 845,
+        "sha256": "9b001ed22cbc0106d571895e2e7fdc7e030cecf182dab269e73cfdc321ce7466"
+      },
+      "shims/nodewin/npm.cmd": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 208,
+        "sha256": "834223f326442c96e0d2480390e2c341f01a1196e342f16fe00ef11b9431370d"
+      },
+      "shims/nodewin/npx.cmd": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 208,
+        "sha256": "8007c6ca3cb132ed22c62ab6a93975eee5fac573b6827de24e0668ad74d2cde1"
+      },
+      "shims/nodewin/pnpx": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 314,
+        "sha256": "52d0200d77b19c890e282562382851dd37e613d236456cef63310b874ba50abf"
+      },
+      "shims/nodewin/yarn.ps1": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 849,
+        "sha256": "7975e73914107ec48224be53e0a88317cc9595a71d637ef12a7c10ccd61ec53d"
+      }
+    },
+    "driverSha256": "8532cf9b1f9f7a7c05740039966da8f21a8782f0bfccf6ac7e640095b52f36d8",
+    "workerSha256": "5ddb5b867d31aae64d78d78e4e7d1407b28df4f06b0ab7db9ad40d0020df2657",
+    "workerEnvSha256": "1392ce8db7f51c6ac0fb36ac111f85bdae551b90196bcdd8f2369aa14fe03ed4"
+  },
+  "reusedPrerequisites": {
+    "receipt": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v1/receipt.json",
+    "sha256": "69102a062d36d5178e2037538d8d97444c06e3561784df939614ae1a7d4e88ed",
+    "terminal": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v1/original-worker-terminal.json",
+    "terminalSha256": "e4ee9e609fc21f8dd2421def7ba139098dab5e4ef38a688859977bddb7f706c4",
+    "commandsAlreadyPassed": [
+      "node-version",
+      "python-venv",
+      "offline-engine-install",
+      "pc-loader-import-smoke"
+    ]
+  },
+  "stoppedAttemptBefore": {
+    "path": "stoppedAttempt-before.json",
+    "sha256": "f4e020d0885512173b03490e18e48d33c84372b98e4dbb83c4871d1ed78a1f6b",
+    "entries": 129730
+  },
+  "pythonRuntimeBefore": {
+    "path": "pythonRuntime-before.json",
+    "sha256": "52887ffa7b372353a85ad814f2331f1a6fa3502a6b6af9233142c43af88307d8",
+    "entries": 5382
+  },
+  "reusedVenvBefore": {
+    "path": "reusedVenv-before.json",
+    "sha256": "d944248b110180eeb7f9bd81dd175f873c43ef6ce31afc3ede4df8c7c16db0c9",
+    "entries": 3427
+  },
+  "pnpmProducerBefore": {
+    "path": "pnpmProducer-before.json",
+    "sha256": "a3441edb3bf5f6ec33e1ec729e4972abe8613f9c342b75820632aff620db0bbc",
+    "entries": 1391
+  },
+  "fixturesBefore": [
+    {
+      "path": "ara3d/duplex.ifc",
+      "sha256": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+      "size": 2380763
+    },
+    {
+      "path": "ara3d/IfcOpenHouse_IFC4.ifc",
+      "sha256": "71c9466bf02306be58d45b77d738541a0e7410767960b5eed1cf85737dfa34c9",
+      "size": 113264
+    },
+    {
+      "path": "buildingsmart/Building-Architecture.ifc",
+      "sha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5",
+      "size": 225635
+    },
+    {
+      "path": "buildingsmart/tessellated-item.ifc",
+      "sha256": "758974f7d558f11b8d8121816954179def32594ed7eafcd1faae70ee0a8e5946",
+      "size": 5199
+    },
+    {
+      "path": "ifc5/Georeferencing_georeferenced-bridge-deck.ifc",
+      "sha256": "6b1de724ceb436759d9cdbe7ce7f4c71734065dfde8cc8786b6239de347de1b1",
+      "size": 1919
+    },
+    {
+      "path": "buildingsmart/annex_e/basic-geometric-shape/triangulated-item.ifc",
+      "sha256": "935acf08d1f1c93035c9f2454928f8ff7ba89378f60e6560fcc07c82f7eb8fd1",
+      "size": 5295
+    },
+    {
+      "path": "ifc5/Hello_Wall_hello-wall.ifc",
+      "sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "size": 79592
+    }
+  ],
+  "pnpmCopyBefore": {
+    "path": "pnpmCopy-before.json",
+    "sha256": "a3441edb3bf5f6ec33e1ec729e4972abe8613f9c342b75820632aff620db0bbc",
+    "entries": 1391
+  },
+  "seededStoreBefore": {
+    "literalStoreDir": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/store/v10",
+    "endsWithVersion": "v10",
+    "pnpmResolvedStoreDir": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/store/v10",
+    "entries": 102971,
+    "hasFiles": true,
+    "hasIndex": true,
+    "producer": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v1/store",
+    "sourceContract": "pnpm10.8.1 dist/pnpm.cjs51213-51228 returns supplied path unchanged iff it ends in /v10"
+  },
+  "environment": {
+    "PATH": "/home/louistrue/.cargo/bin:/home/louistrue/.nvm/versions/node/v24.21.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin",
+    "COREPACK_HOME": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/corepack",
+    "COREPACK_ENABLE_NETWORK": "0",
+    "IFCOPENSHELL_PYTHON": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v1/venv/bin/python",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONNOUSERSITE": "1",
+    "LD_LIBRARY_PATH": "/home/louistrue/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib",
+    "TMPDIR": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/tmp",
+    "NODE_COMPILE_CACHE": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/cache/node",
+    "TURBO_CACHE_DIR": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/cache/turbo",
+    "XDG_CACHE_HOME": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/cache"
+  },
+  "counts": {
+    "passed": 13,
+    "failed": 0,
+    "skipped": 0,
+    "collected": 13,
+    "tasksPassed": 1,
+    "cachedTasks": 0
+  },
+  "sourceAfter": {
+    "head": "12157693a84d9495fafd14a0ade6a5939bf3e0b8",
+    "tree": "4c512c747f2aa6f364200f2415a609c1ce425248",
+    "status": ""
+  },
+  "fixturesAfter": [
+    {
+      "path": "ara3d/duplex.ifc",
+      "sha256": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+      "size": 2380763
+    },
+    {
+      "path": "ara3d/IfcOpenHouse_IFC4.ifc",
+      "sha256": "71c9466bf02306be58d45b77d738541a0e7410767960b5eed1cf85737dfa34c9",
+      "size": 113264
+    },
+    {
+      "path": "buildingsmart/Building-Architecture.ifc",
+      "sha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5",
+      "size": 225635
+    },
+    {
+      "path": "buildingsmart/tessellated-item.ifc",
+      "sha256": "758974f7d558f11b8d8121816954179def32594ed7eafcd1faae70ee0a8e5946",
+      "size": 5199
+    },
+    {
+      "path": "ifc5/Georeferencing_georeferenced-bridge-deck.ifc",
+      "sha256": "6b1de724ceb436759d9cdbe7ce7f4c71734065dfde8cc8786b6239de347de1b1",
+      "size": 1919
+    },
+    {
+      "path": "buildingsmart/annex_e/basic-geometric-shape/triangulated-item.ifc",
+      "sha256": "935acf08d1f1c93035c9f2454928f8ff7ba89378f60e6560fcc07c82f7eb8fd1",
+      "size": 5295
+    },
+    {
+      "path": "ifc5/Hello_Wall_hello-wall.ifc",
+      "sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "size": 79592
+    }
+  ],
+  "toolsAfter": {
+    "nodeSha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c",
+    "nodeSize": 126595440,
+    "corepack": {
+      ".": {
+        "mode": 493,
+        "mtime_ns": 1788825405000000000,
+        "kind": "dir"
+      },
+      "shims": {
+        "mode": 493,
+        "mtime_ns": 1788825405000000000,
+        "kind": "dir"
+      },
+      "package.json": {
+        "mode": 420,
+        "mtime_ns": 1788242417000000000,
+        "kind": "file",
+        "size": 2808,
+        "sha256": "6f431b9a91afe6b4757f4b5a3855e2f79e2f366dd4242fd397713932aa3a2714"
+      },
+      "LICENSE.md": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 1063,
+        "sha256": "30a7b8ba5c4483d97d6123f5634da2362d578fb81f42ed6e1dfbb84fb1cd8fe4"
+      },
+      "CHANGELOG.md": {
+        "mode": 420,
+        "mtime_ns": 1788242417000000000,
+        "kind": "file",
+        "size": 36924,
+        "sha256": "18fa6d9444de9d1f7c6d99a37b12ec83597edd7b2ccfd3a9bf0219902d7b088f"
+      },
+      "README.md": {
+        "mode": 420,
+        "mtime_ns": 1788242417000000000,
+        "kind": "file",
+        "size": 16961,
+        "sha256": "ad51a006ca2313b0089858e059b60390d78d44992f92237bbb05fe52fe131cbe"
+      },
+      "dist": {
+        "mode": 493,
+        "mtime_ns": 1788825405000000000,
+        "kind": "dir"
+      },
+      "shims/yarnpkg": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 282,
+        "sha256": "58732b063df0c3e5636f18628efd287a2ff58594e634dfc17820897b274b3a96"
+      },
+      "shims/pnpm": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 276,
+        "sha256": "61086ca5dbabc2a49451e282f61954f9c844b6f5631d9246653410f07fe62b03"
+      },
+      "shims/yarn.cmd": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 172,
+        "sha256": "b5e2d2a4b7818ce047a39a68c9e08e7230b23f7a088e0b1677b3c47ef807fb0f"
+      },
+      "shims/yarn": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 276,
+        "sha256": "3df00c03dfa6070b135d138a3a16e092e9c53b0e3b4727929947cbfa1670dc26"
+      },
+      "shims/pnpm.ps1": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 773,
+        "sha256": "265560053661f4247b1dd8c012ffce9adf6ef6b5038662d3c7162cf15736f204"
+      },
+      "shims/npm.ps1": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 769,
+        "sha256": "d559b49acafd99e65bf27c987fb91245156c7497ba873ba03e6c39214d3cec22"
+      },
+      "shims/corepack.cmd": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 180,
+        "sha256": "c50dc5168eff5c1e8dd07e179635924b344dd67bf58a69526d44f26803fa199f"
+      },
+      "shims/pnpx.cmd": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 172,
+        "sha256": "cd0f0363556a75da272fa8f6a7e7021da6a7f9a4396eae1f0fc7ea318525f1b1"
+      },
+      "shims/corepack.ps1": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 789,
+        "sha256": "42e8c72cd78b14e7cd45f682d0a6eb741d5b0b9e8288ce3f6d2c8b82880c60b7"
+      },
+      "shims/nodewin": {
+        "mode": 493,
+        "mtime_ns": 1788825405000000000,
+        "kind": "dir"
+      },
+      "shims/yarnpkg.ps1": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 785,
+        "sha256": "8cc95cc1ef59c81254db932455ab8334e87deca411df67ef5a6f925023717518"
+      },
+      "shims/corepack": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 284,
+        "sha256": "e5020e3430810638b169bbf91b3871644ebc85063cf868065336cf57874ed4eb"
+      },
+      "shims/pnpm.cmd": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 172,
+        "sha256": "b70680ee9e60e9906dc52e53acda23fd997aad01eddf7fe3fbcdfe28980f88e4"
+      },
+      "shims/npm": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 274,
+        "sha256": "14e8c15fb4da999e0a407f12be3c232b21920c8816c432631e256d2d781c64a0"
+      },
+      "shims/npx": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 274,
+        "sha256": "807b9b9f523b4b91aaf59925e7bcd26b4507b3c8582623d6eb27b996f7d9b349"
+      },
+      "shims/yarnpkg.cmd": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 178,
+        "sha256": "a7f74b86cc7ac2d5b8d85dd3616fc5a87b87818ffe88681f9bf391dd589dfc1b"
+      },
+      "shims/pnpx.ps1": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 773,
+        "sha256": "fca1f4de4776dd73200173db0c2b10e289bfbfdd7694070a2d1fa55abed6f2c9"
+      },
+      "shims/npx.ps1": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 769,
+        "sha256": "4d3b80abc3f7573231ed1fd388b4dc2a343ca2ea8723ffda12f940ec0216d316"
+      },
+      "shims/npm.cmd": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 170,
+        "sha256": "727e18574154a52a497d81f840461ac62655d101b2514ab8a3e8eccd0a3dc991"
+      },
+      "shims/npx.cmd": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 170,
+        "sha256": "7b179468496aabf9f4a852a1da671cc7bf074fbeed88261ee7c3e2bc9b1c9e2d"
+      },
+      "shims/pnpx": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 276,
+        "sha256": "10c398eda2e7a2634f74dc6088ac9f2495d4861317f20611374d5412492ddf32"
+      },
+      "shims/yarn.ps1": {
+        "mode": 493,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 773,
+        "sha256": "92de62489a3714c5f11d9334cbc6f53ac2642d0ccb15ab67b792e296825c6b3b"
+      },
+      "dist/npm.js": {
+        "mode": 493,
+        "mtime_ns": 1737439250000000000,
+        "kind": "file",
+        "size": 185,
+        "sha256": "5d9704326d1ddedc5e0724c440e9052a422e616a3c21633bc955ac4a53013c06"
+      },
+      "dist/yarn.js": {
+        "mode": 493,
+        "mtime_ns": 1737439250000000000,
+        "kind": "file",
+        "size": 186,
+        "sha256": "9f6dcacd3a256eedf09e382b14c4fd6a9e62e8c8009e64116997621bbd6531dd"
+      },
+      "dist/lib": {
+        "mode": 493,
+        "mtime_ns": 1788825405000000000,
+        "kind": "dir"
+      },
+      "dist/pnpx.js": {
+        "mode": 493,
+        "mtime_ns": 1737439250000000000,
+        "kind": "file",
+        "size": 186,
+        "sha256": "be8a28dbc76a5f76f50b336121237e451530b517d2bde9355c44e4d519ed7f28"
+      },
+      "dist/pnpm.js": {
+        "mode": 493,
+        "mtime_ns": 1737439250000000000,
+        "kind": "file",
+        "size": 186,
+        "sha256": "7c2a67995976b5b592b611d8b236e3b0633bd654fb49aedd96c6eb7ce04c9cbb"
+      },
+      "dist/yarnpkg.js": {
+        "mode": 493,
+        "mtime_ns": 1737439250000000000,
+        "kind": "file",
+        "size": 189,
+        "sha256": "69110596f81458d8d37524b5d70c63b7658e05c954244c5f7658719ca2b7a165"
+      },
+      "dist/npx.js": {
+        "mode": 493,
+        "mtime_ns": 1737439250000000000,
+        "kind": "file",
+        "size": 185,
+        "sha256": "74d56d596d3449b4d35508227bbd6f371aaa06999e53b261397d43e82655425e"
+      },
+      "dist/corepack.js": {
+        "mode": 493,
+        "mtime_ns": 1737439250000000000,
+        "kind": "file",
+        "size": 174,
+        "sha256": "3655bc798f300951f2070fee411b337d626b0c3ae80c2d24c46ccac4595d4bf9"
+      },
+      "dist/lib/corepack.cjs": {
+        "mode": 420,
+        "mtime_ns": 1788242417000000000,
+        "kind": "file",
+        "size": 530014,
+        "sha256": "abd6f0e7b4e2af310243e202fd908ea64cda545786222f0a3d3f62426e8ad66e"
+      },
+      "shims/nodewin/yarnpkg": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 320,
+        "sha256": "0b55e5de871fbaa75a270ed198268c4d9a9b9d86c847823e5ec8eafb51360b08"
+      },
+      "shims/nodewin/pnpm": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 314,
+        "sha256": "b2d81ac629b340fe2c7d5bc480ad9441e89a4b4d654fd45a50a4c8843ea47aa6"
+      },
+      "shims/nodewin/yarn.cmd": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 210,
+        "sha256": "2daa763e70eae568ffdd7edaeb4f9edeeff5e8bad0fc773b1c3d750833629654"
+      },
+      "shims/nodewin/yarn": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 314,
+        "sha256": "a8f21107b50fec83da4e6495b51f0dad16107d00214a52f305395bcda26e5731"
+      },
+      "shims/nodewin/pnpm.ps1": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 849,
+        "sha256": "20f74dc3a724cae781e4297188028c4b4512c201add63868f9a9852135adf5f5"
+      },
+      "shims/nodewin/npm.ps1": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 845,
+        "sha256": "528701fdbb70f298e54c839bf68a3831fdd582740f4fb1231d46da18e2c9fb3f"
+      },
+      "shims/nodewin/corepack.cmd": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 218,
+        "sha256": "920630a1d1ec47aedea7345e3c868ecdc07e191373497bbf47fbbf5942fbad4f"
+      },
+      "shims/nodewin/pnpx.cmd": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 210,
+        "sha256": "05ac43e3237b9a146e432c3d785a22822828acce122740c0aad3dee35221b5c4"
+      },
+      "shims/nodewin/corepack.ps1": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 865,
+        "sha256": "f9cbe52c92c62ca73ed82fcd2d59e16ff4bbdf9c214f7c2f3ab51c9c098a77fa"
+      },
+      "shims/nodewin/yarnpkg.ps1": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 861,
+        "sha256": "750624e85c009d6dcc314f9aceb967c407de2a7ef11c1f67560f8ef6e3091fa0"
+      },
+      "shims/nodewin/corepack": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 322,
+        "sha256": "65a34c84c3820cadd8bb3f4aed2a010d2a92c9a4f72f5ea83291f1f65820f0c8"
+      },
+      "shims/nodewin/pnpm.cmd": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 210,
+        "sha256": "045eb4580b746837ecf0091d32384dbf519fa4f33f9f1d4da9452b8cea7dc232"
+      },
+      "shims/nodewin/npm": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 312,
+        "sha256": "b805432c230b8c711f89aaaf8e9a0f52d3594a40e94f89b580217b0e3eed2bef"
+      },
+      "shims/nodewin/npx": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 312,
+        "sha256": "05f9721a4e7222958732c14195780cc888ba3bb3143723b2639dbd40f43fa51b"
+      },
+      "shims/nodewin/yarnpkg.cmd": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 216,
+        "sha256": "30fed702510a977562baefa059b3179ce4456d5b9f459671ba420e63ae81743b"
+      },
+      "shims/nodewin/pnpx.ps1": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 849,
+        "sha256": "14b0ef6056a55bce9cfaec6454ce6a50141543eef5b7cd9feb832ac30c9ede29"
+      },
+      "shims/nodewin/npx.ps1": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 845,
+        "sha256": "9b001ed22cbc0106d571895e2e7fdc7e030cecf182dab269e73cfdc321ce7466"
+      },
+      "shims/nodewin/npm.cmd": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 208,
+        "sha256": "834223f326442c96e0d2480390e2c341f01a1196e342f16fe00ef11b9431370d"
+      },
+      "shims/nodewin/npx.cmd": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 208,
+        "sha256": "8007c6ca3cb132ed22c62ab6a93975eee5fac573b6827de24e0668ad74d2cde1"
+      },
+      "shims/nodewin/pnpx": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 314,
+        "sha256": "52d0200d77b19c890e282562382851dd37e613d236456cef63310b874ba50abf"
+      },
+      "shims/nodewin/yarn.ps1": {
+        "mode": 420,
+        "mtime_ns": 1665485975000000000,
+        "kind": "file",
+        "size": 849,
+        "sha256": "7975e73914107ec48224be53e0a88317cc9595a71d637ef12a7c10ccd61ec53d"
+      }
+    },
+    "driverSha256": "8532cf9b1f9f7a7c05740039966da8f21a8782f0bfccf6ac7e640095b52f36d8",
+    "workerSha256": "5ddb5b867d31aae64d78d78e4e7d1407b28df4f06b0ab7db9ad40d0020df2657",
+    "workerEnvSha256": "1392ce8db7f51c6ac0fb36ac111f85bdae551b90196bcdd8f2369aa14fe03ed4"
+  },
+  "storageAfter": [
+    {
+      "path": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3",
+      "freeBytes": 305600905216,
+      "freeInodes": 51069692
+    },
+    {
+      "path": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/source",
+      "freeBytes": 305600905216,
+      "freeInodes": 51069692
+    },
+    {
+      "path": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v1",
+      "freeBytes": 305600905216,
+      "freeInodes": 51069692
+    },
+    {
+      "path": "/home/louistrue/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu",
+      "freeBytes": 305600905216,
+      "freeInodes": 51069692
+    },
+    {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin",
+      "freeBytes": 305600905216,
+      "freeInodes": 51069692
+    },
+    {
+      "path": "/tmp",
+      "freeBytes": 305600905216,
+      "freeInodes": 51069692
+    },
+    {
+      "path": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3",
+      "freeBytes": 305600905216,
+      "freeInodes": 51069692
+    },
+    {
+      "path": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/tmp",
+      "freeBytes": 305600905216,
+      "freeInodes": 51069692
+    },
+    {
+      "path": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/cache",
+      "freeBytes": 305600905216,
+      "freeInodes": 51069692
+    },
+    {
+      "path": "/home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/store",
+      "freeBytes": 305600905216,
+      "freeInodes": 51069692
+    }
+  ],
+  "stoppedAttemptAfter": {
+    "path": "stoppedAttempt-after.json",
+    "sha256": "f4e020d0885512173b03490e18e48d33c84372b98e4dbb83c4871d1ed78a1f6b",
+    "entries": 129730
+  },
+  "pythonRuntimeAfter": {
+    "path": "pythonRuntime-after.json",
+    "sha256": "52887ffa7b372353a85ad814f2331f1a6fa3502a6b6af9233142c43af88307d8",
+    "entries": 5382
+  },
+  "reusedVenvAfter": {
+    "path": "reusedVenv-after.json",
+    "sha256": "d944248b110180eeb7f9bd81dd175f873c43ef6ce31afc3ede4df8c7c16db0c9",
+    "entries": 3427
+  },
+  "pnpmProducerAfter": {
+    "path": "pnpmProducer-after.json",
+    "sha256": "a3441edb3bf5f6ec33e1ec729e4972abe8613f9c342b75820632aff620db0bbc",
+    "entries": 1391
+  },
+  "pnpmCopyAfter": {
+    "path": "pnpmCopy-after.json",
+    "sha256": "a3441edb3bf5f6ec33e1ec729e4972abe8613f9c342b75820632aff620db0bbc",
+    "entries": 1391
+  },
+  "complete": true,
+  "finishedAt": 1792344457.9018562
+}

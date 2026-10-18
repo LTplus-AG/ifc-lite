@@ -1,0 +1,40 @@
+{
+  "observedAt": "2026-10-18T17:29:11.231712+00:00",
+  "source": {
+    "head": "12157693a84d9495fafd14a0ade6a5939bf3e0b8",
+    "tree": "4c512c747f2aa6f364200f2415a609c1ce425248",
+    "status": ""
+  },
+  "worker": "c56cce3b-08e5-4d09-b4b0-3f9ae6e9011d",
+  "originalSession": 82321,
+  "workerState": "failed",
+  "workerExitCode": 1,
+  "workerFailure": "requested artifact missing: /home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/report.json",
+  "actualCommands": [
+    {
+      "name": "offline-js-install",
+      "exitCode": 0,
+      "logSha256": "da92e39e675dec5cf791be6cb52ee3631fbe73b405838de62b1b59d80f56e2bd"
+    },
+    {
+      "name": "schema",
+      "exitCode": 0,
+      "logSha256": "55df038c2fca30f6883413d9e5ca67301903f75e9e3e25834915bfb9d0ab81b4"
+    }
+  ],
+  "actualSchemaCounts": {
+    "passed": 13,
+    "failed": 0,
+    "skipped": 0,
+    "collected": 13,
+    "tasksPassed": 1,
+    "cachedTasks": 0
+  },
+  "driverComplete": true,
+  "driverPrimaryError": null,
+  "driverFinallyErrors": [],
+  "identityChecks": "source/tools/seven fixture pins equal before/after; whole stopped tree lexical identities, original5382 Python runtime, reused3427 venv,1391 pnpm producer/copy equal before/after",
+  "ownedQuiescent": true,
+  "scope": "13 real IfcOpenShell schema tests on exact r4; Node24.21.0, prior passed engine0.9.0.post1/CPython3.12.14 reused read-only. No model/performance/current-main/publication acceptance.",
+  "noRerunRequired": "Both commands exited0,13PASS0SKIP with all final guards. Worker remains FAILED1 because launcher requested report.json but driver emits receipt.json; preserve original failure, no report manufactured or worker relabelled."
+}

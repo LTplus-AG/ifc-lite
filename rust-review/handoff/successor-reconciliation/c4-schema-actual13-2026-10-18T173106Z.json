@@ -1,0 +1,99 @@
+{
+  "recordedAt": "2026-10-18T17:31:06.576483+00:00",
+  "scope": "Exact corrected r4 only;13 formerly skipped schema cases now actually13PASS/0SKIP. No new acceptance/merge/closure claimed.",
+  "result": {
+    "observedAt": "2026-10-18T17:29:11.231712+00:00",
+    "source": {
+      "head": "12157693a84d9495fafd14a0ade6a5939bf3e0b8",
+      "tree": "4c512c747f2aa6f364200f2415a609c1ce425248",
+      "status": ""
+    },
+    "worker": "c56cce3b-08e5-4d09-b4b0-3f9ae6e9011d",
+    "originalSession": 82321,
+    "workerState": "failed",
+    "workerExitCode": 1,
+    "workerFailure": "requested artifact missing: /home/louistrue/build-workers/incoming/c4-schema-only-pc-r4-v3/report.json",
+    "actualCommands": [
+      {
+        "name": "offline-js-install",
+        "exitCode": 0,
+        "logSha256": "da92e39e675dec5cf791be6cb52ee3631fbe73b405838de62b1b59d80f56e2bd"
+      },
+      {
+        "name": "schema",
+        "exitCode": 0,
+        "logSha256": "55df038c2fca30f6883413d9e5ca67301903f75e9e3e25834915bfb9d0ab81b4"
+      }
+    ],
+    "actualSchemaCounts": {
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "collected": 13,
+      "tasksPassed": 1,
+      "cachedTasks": 0
+    },
+    "driverComplete": true,
+    "driverPrimaryError": null,
+    "driverFinallyErrors": [],
+    "identityChecks": "source/tools/seven fixture pins equal before/after; whole stopped tree lexical identities, original5382 Python runtime, reused3427 venv,1391 pnpm producer/copy equal before/after",
+    "ownedQuiescent": true,
+    "scope": "13 real IfcOpenShell schema tests on exact r4; Node24.21.0, prior passed engine0.9.0.post1/CPython3.12.14 reused read-only. No model/performance/current-main/publication acceptance.",
+    "noRerunRequired": "Both commands exited0,13PASS0SKIP with all final guards. Worker remains FAILED1 because launcher requested report.json but driver emits receipt.json; preserve original failure, no report manufactured or worker relabelled."
+  },
+  "priorPassedEvidenceUnchanged": true,
+  "priorFailuresPreserved": true,
+  "next": {
+    "taskId": "node:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Athread-send%3Ac4-corrected-five-input-map-existing-v7-only-20261018-v16",
+    "state": "started; DATA/source binding only",
+    "scope": "Wire sealed corrected3 artifacts into existing five-arm V7 method, preserve unchangedlower/thresholds/old failures, no measurement/host/READY/queue",
+    "unresolved": "Parent input disposition and genuine idle/cool benchmark admission remain pending"
+  },
+  "acceptancePrograms": {
+    "pending": 8,
+    "uncheckedConditions": 33,
+    "acceptedComplete": 0
+  },
+  "evidence": [
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-schema-actual13-2026-10-18T173106Z-evidence/original-worker-terminal.json",
+      "size": 3959,
+      "sha256": "0e54beac4df4f0c9df20127a29f15ba434dc67a8f9f952a4014e2033adcb93b5"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-schema-actual13-2026-10-18T173106Z-evidence/parent-correction.json",
+      "size": 493,
+      "sha256": "f993ef059c7600fc99429524c4f87ec364de4c76d4ed5ba2f6e5021961d70d30"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-schema-actual13-2026-10-18T173106Z-evidence/preflight-result.json",
+      "size": 601,
+      "sha256": "6d7552e11e26fcd71640d70d51163790dc77f2d693ec49bc4a4972ab1ccee06e"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-schema-actual13-2026-10-18T173106Z-evidence/receipt.json",
+      "size": 38300,
+      "sha256": "b2cb277567179ce1e1e3ff7659e337a7562a0789e149c9a3f4cac92318ce530a"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-schema-actual13-2026-10-18T173106Z-evidence/result-manifest.json",
+      "size": 5696,
+      "sha256": "63266bbc37ca5432be6a96e3c0ba4dd2b33de859ec4295639dc6dae5a43c12ef"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-schema-actual13-2026-10-18T173106Z-evidence/schema.log",
+      "size": 10119,
+      "sha256": "55df038c2fca30f6883413d9e5ca67301903f75e9e3e25834915bfb9d0ab81b4"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-schema-actual13-2026-10-18T173106Z-evidence/terminal-quiescence.json",
+      "size": 353,
+      "sha256": "08a24558376b5fc15043ae5351937d4f275bf69dc168cf83ece6177c1fbde65f"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-schema-actual13-2026-10-18T173106Z-evidence/verified-result.json",
+      "size": 1687,
+      "sha256": "ee10a63d87cc90bbb99a4d3693a2fbd404465609bf1a4fcd27548c5ab2b6c9b6"
+    }
+  ]
+}

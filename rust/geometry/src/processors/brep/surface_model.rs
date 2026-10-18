@@ -113,6 +113,13 @@ impl FaceBasedSurfaceModelProcessor {
 }
 
 impl GeometryProcessor for FaceBasedSurfaceModelProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        Some(self.lower(entity, decoder, quality, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::SurfaceModel(plan))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,
@@ -170,6 +177,13 @@ impl ShellBasedSurfaceModelProcessor {
 }
 
 impl GeometryProcessor for ShellBasedSurfaceModelProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        Some(self.lower(entity, decoder, quality, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::SurfaceModel(plan))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,

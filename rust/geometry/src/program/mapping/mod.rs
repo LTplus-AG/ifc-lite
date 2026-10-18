@@ -6,11 +6,11 @@ mod submeshes;
 mod occurrence;
 use crate::{Error, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, MAX_MAPPED_ITEM_DEPTH, slot};
-use super::super::GeometryRouter;
+use crate::GeometryRouter;
 use rustc_hash::FxHashSet;
 
-pub(super) use merged::MergedWalk;
-pub(super) use submeshes::SubmeshWalk;
+pub(crate) use merged::MergedWalk;
+pub(crate) use submeshes::SubmeshWalk;
 
 #[derive(Default)]
 struct Path { ids: FxHashSet<u32> }
@@ -36,7 +36,7 @@ fn source(item: &DecodedEntity, decoder: &mut EntityDecoder<'_>) -> Result<Decod
         .ok_or_else(|| Error::geometry("MappedItem missing MappingSource".to_string()))?;
     decoder.resolve_ref(attribute)?.ok_or_else(|| Error::geometry("Failed to resolve MappingSource".to_string()))
 }
-fn representation(source: &DecodedEntity, decoder: &mut EntityDecoder<'_>) -> Result<DecodedEntity> {
+pub(in crate::program) fn representation(source: &DecodedEntity, decoder: &mut EntityDecoder<'_>) -> Result<DecodedEntity> {
     let attribute = source.get(slot::IfcRepresentationMap::MAPPED_REPRESENTATION.index())
         .ok_or_else(|| Error::geometry("RepresentationMap missing MappedRepresentation".to_string()))?;
     decoder.resolve_ref(attribute)?.ok_or_else(|| Error::geometry("Failed to resolve MappedRepresentation".to_string()))

@@ -19,7 +19,7 @@ pub(crate) use crate::mesh_check::{
 };
 
 /// Extract rotation columns from a 4x4 transform matrix.
-pub(super) fn extract_rotation_columns(m: &Matrix4<f64>) -> (Vector3<f64>, Vector3<f64>, Vector3<f64>) {
+pub(crate) fn extract_rotation_columns(m: &Matrix4<f64>) -> (Vector3<f64>, Vector3<f64>, Vector3<f64>) {
     (
         Vector3::new(m[(0, 0)], m[(1, 0)], m[(2, 0)]),
         Vector3::new(m[(0, 1)], m[(1, 1)], m[(2, 1)]),
@@ -28,7 +28,7 @@ pub(super) fn extract_rotation_columns(m: &Matrix4<f64>) -> (Vector3<f64>, Vecto
 }
 
 /// Apply rotation from columns to a direction and normalize.
-pub(super) fn rotate_and_normalize(
+pub(crate) fn rotate_and_normalize(
     rot: &(Vector3<f64>, Vector3<f64>, Vector3<f64>),
     dir: &Vector3<f64>,
 ) -> Result<Vector3<f64>> {

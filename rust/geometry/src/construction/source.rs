@@ -6,7 +6,7 @@ use super::brep_operand::BrepOperandPlan;
 use super::program::Instruction;
 use crate::GeometryRouter;
 use crate::processors::boolean::{boolean_operator, solid_execution::SolidBooleanPlan};
-use crate::router::{builtin_family, ProcessorOrigin};
+use crate::router::ProcessorOrigin;
 use ifc_lite_core::{slot, EntityDecoder, IfcSchema, IfcType};
 
 // Context belongs in the memo key: Base preserves Outer-only, while an
@@ -80,7 +80,7 @@ pub(super) fn admit(router: &GeometryRouter, schema: &IfcSchema,
             crate::processors::diagnostic_capture::restore(&plan.source_reports());
             Ok(Admission::Leaf(Construction::BrepOperand(plan)))
         }
-        _ => lower_leaf(router, schema, decoder, &entity, builtin_family(&entity.ifc_type))
+        _ => lower_leaf(router, schema, decoder, &entity, key.1)
             .map(Admission::Leaf),
     }
 }

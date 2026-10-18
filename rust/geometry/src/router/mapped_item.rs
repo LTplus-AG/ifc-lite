@@ -12,10 +12,30 @@ use super::GeometryRouter;
 use crate::{Error, Mesh, Result, SubMeshCollection};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
-#[path = "mapping/mod.rs"]
-mod control;
+use crate::program::mapping as control;
 
 impl GeometryRouter {
+    /// Reached cache effects of the common mapping child program. Lookup and
+    /// publication keep their historical lock scope and degraded-source policy.
+    pub(crate) fn cached_mapped_source(&self, id: u32) -> Option<std::sync::Arc<Mesh>> {
+        match &self.shared_mapped_item_cache {
+            Some(shared) => shared.lock().unwrap_or_else(|e| e.into_inner()).get(&id).cloned(),
+            None => self.mapped_item_cache.borrow().get(&id).cloned(),
+        }
+    }
+
+    pub(crate) fn publish_mapped_source(&self, id: u32, mesh: &Mesh, truncated: bool) {
+        match &self.shared_mapped_item_cache {
+            Some(shared) => {
+                if !mesh.positions.is_empty() && !crate::kernel::budget::tripped() && !truncated {
+                    let source = std::sync::Arc::new(mesh.clone());
+                    shared.lock().unwrap_or_else(|e| e.into_inner()).insert(id, source);
+                }
+            }
+            None => { self.mapped_item_cache.borrow_mut().insert(id, std::sync::Arc::new(mesh.clone())); }
+        }
+    }
+
     /// Process MappedItem with caching for repeated geometry.
     ///
     /// Errors when the source's items cannot share one f64 frame (#6446); use
@@ -31,7 +51,7 @@ impl GeometryRouter {
 
     /// [`Self::process_mapped_item_cached`] as frame parts: one mesh, unless the
     /// source's items lie in frames at least 1 km apart (#6446).
-    pub(super) fn process_mapped_item_parts(
+    pub(crate) fn process_mapped_item_parts(
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
@@ -41,7 +61,7 @@ impl GeometryRouter {
 
     /// [`Self::process_representation_item`] as frame parts (#6446): only a
     /// mapped item can yield more than one.
-    pub(in crate::router) fn process_representation_item_parts(
+    pub(crate) fn process_representation_item_parts(
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
@@ -54,7 +74,7 @@ impl GeometryRouter {
 
     /// The styled consumer shares the mapping continuation architecture but
     /// retains separate source ordering, error and occurrence policies.
-    pub(super) fn collect_submeshes_from_item(
+    pub(crate) fn collect_submeshes_from_item(
         &self, item: &DecodedEntity, decoder: &mut EntityDecoder<'_>,
         sub_meshes: &mut SubMeshCollection, allow_instancing: bool,
         texture_index: Option<&rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>>,
@@ -75,7 +95,7 @@ impl GeometryRouter {
     /// for this source rather than the next item on the thread (ROUTER-26). A
     /// failed or unsupported item is recorded as dropped; `walk` only names
     /// the caller in the debug message.
-    pub(super) fn merge_source_item(
+    pub(crate) fn merge_source_item(
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
@@ -121,7 +141,7 @@ impl GeometryRouter {
     /// Every later transform carries `origin` exactly in f64, and the final
     /// placement then subtracts the RTC once, so the item keeps its precision
     /// at any rotation. A no-op for an item that was not rebased.
-    pub(super) fn keep_rebase_in_origin(&self, mesh: &mut Mesh) {
+    pub(crate) fn keep_rebase_in_origin(&self, mesh: &mut Mesh) {
         if mesh.rtc_applied {
             mesh.rtc_applied = false;
             let rtc = [self.rtc_offset.0, self.rtc_offset.1, self.rtc_offset.2];

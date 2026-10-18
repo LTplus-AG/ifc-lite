@@ -1,0 +1,346 @@
+{
+  "scope": "Final corrected288-source candidate; actual Holter full/stream/instanced/fastfirst structured native scene records; no performance claim",
+  "source_manifest_sha256": "63bb222be30076a296d109eb6cc7d057ec3ab880f727313d62892df82d65ff93",
+  "source_count": 288,
+  "cases": [
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "input_sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+      "mode": "full",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 69819,
+        "meshes": 109514,
+        "pixel_textures": 0,
+        "polylines": 3568,
+        "property_sets": 80155,
+        "texts": 11760,
+        "triangles": 2895362,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 4515161
+      },
+      "scene_sha256": "121ee75d0d383bacbd3c6cea9c25ba4719b24ba32ed68e88a7e4ae6cc6127acd",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-pilot/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-full/base/manifest.json",
+            "bytes": 37479430,
+            "sha256": "764367541037c360731f137eece6ca4d6dcd1a70a125416cf0b28194faa5ce1c"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-pilot/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-full/base/records.jsonl",
+            "bytes": 1691615820,
+            "sha256": "67e1590e0e4facce8ecada8568bda088c49a08e7b4894d76a551d67db4609ada"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-pilot/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-full/base-repeat/manifest.json",
+            "bytes": 37479430,
+            "sha256": "27eb1a11efa1e67731448e6ce32b7f3dbaa6b054645be156c8be240951cd3a71"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-pilot/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-full/base-repeat/records.jsonl",
+            "bytes": 1691615819,
+            "sha256": "683e51c1a159a431090357a125610587cf432439bfde5b76561c49b8070843e8"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-pilot/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-full/candidate/manifest.json",
+            "bytes": 37479430,
+            "sha256": "d89ba5f76034f8b6e95fca077f9306b1970f796487e9b9aa471ad73947284ba2"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-pilot/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-full/candidate/records.jsonl",
+            "bytes": 1691615819,
+            "sha256": "4e21aa289455d3500ae31ec78a7b46f5113299c90b0a997ca3ee76ff72b5ee77"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "input_sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+      "mode": "stream",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 69819,
+        "meshes": 109514,
+        "pixel_textures": 0,
+        "polylines": 3568,
+        "property_sets": 80155,
+        "texts": 11760,
+        "triangles": 2895362,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 4515161
+      },
+      "scene_sha256": "620c5f0ef909901d74ffe2feba1e2872e936bd1dc65db835983b7311be4071b9",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-stream/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-stream/base/manifest.json",
+            "bytes": 43641362,
+            "sha256": "0de0e0520016571330d2fca9ff42fd8420103e2aa295f2d8a190ec97b02d712d"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-stream/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-stream/base/records.jsonl",
+            "bytes": 1696674208,
+            "sha256": "ddd5ce13f9b141fe14bb8388f9225d8ef34d2816e3869bfec70c2a670913f125"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-stream/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-stream/base-repeat/manifest.json",
+            "bytes": 43641362,
+            "sha256": "b3c502ab91cbf7924940f5762f737c35cc6d411aa632fdfc042f688e0e37976b"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-stream/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-stream/base-repeat/records.jsonl",
+            "bytes": 1696674208,
+            "sha256": "17a642cef3f4d5e845b09694832fe636c2c047b5cc67de318f8ce6d9859c065e"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-stream/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-stream/candidate/manifest.json",
+            "bytes": 43641362,
+            "sha256": "c613f8f6bcba0b07352edb85762afa0eb09755e9b1ed745a549f906a7692ba30"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-stream/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-stream/candidate/records.jsonl",
+            "bytes": 1696674208,
+            "sha256": "906625c07f1abaa768d36f088bbf527f81736323a53fdfceb804f4ec02a7e4d2"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "input_sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+      "mode": "instanced",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 0,
+        "fills": 0,
+        "instances": 5629,
+        "layer_meshes": 0,
+        "materials": 69819,
+        "meshes": 103885,
+        "pixel_textures": 0,
+        "polylines": 3568,
+        "property_sets": 80155,
+        "texts": 11760,
+        "triangles": 2308246,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 3642769
+      },
+      "scene_sha256": "f328037cfcd453717931594411b3648b2fd3c95f708a67c835c3180fd7fc3862",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-instanced/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-instanced/base/manifest.json",
+            "bytes": 42379969,
+            "sha256": "f373ae1eec656cef3d3c1fdd494cf0f9a014437f762bbc9f643245ac90bfa6ac"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-instanced/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-instanced/base/records.jsonl",
+            "bytes": 1512826487,
+            "sha256": "d5eb650d4d700f8137f053a78ec21faa7c36c868b16f13eafd77176d34ef285c"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-instanced/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-instanced/base-repeat/manifest.json",
+            "bytes": 42379969,
+            "sha256": "386125f460838bff7a3505eef5eea6af13594184e96c94f9bb3859d54eae38e4"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-instanced/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-instanced/base-repeat/records.jsonl",
+            "bytes": 1512826487,
+            "sha256": "c94201a99838aea646e29653246d55242e770b20803c6826f9bda0d05dfee24a"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-instanced/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-instanced/candidate/manifest.json",
+            "bytes": 42379969,
+            "sha256": "b2a208e0e9f1b1c16bc5b9fef8b7f09f92136f87174f7ea8801d3bd8a24a9f06"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-instanced/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-instanced/candidate/records.jsonl",
+            "bytes": 1512826487,
+            "sha256": "b25d2c27e920120cc57d95ff53763676995a3746e7e9fb12dc0ea28dabb5fdfc"
+          }
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "input_sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+      "mode": "fastfirst",
+      "equal": true,
+      "base_reproducible": true,
+      "required_witnesses": {
+        "meshes": 1
+      },
+      "missing_witnesses": [],
+      "qualified": true,
+      "witnesses": {
+        "color_updates": 1,
+        "fills": 0,
+        "instances": 0,
+        "layer_meshes": 0,
+        "materials": 69819,
+        "meshes": 109514,
+        "pixel_textures": 0,
+        "polylines": 3568,
+        "property_sets": 80155,
+        "texts": 11760,
+        "triangles": 2895362,
+        "type_meshes": 0,
+        "url_textures": 0,
+        "uv_meshes": 0,
+        "vertices": 4515161
+      },
+      "scene_sha256": "8f3d93f71f02032cf6c648e57d1a0caba08f8bcb6cd014537e2f7be9da91663a",
+      "semantic_differences": [],
+      "capability_difference": null,
+      "execution_differing_records": 1,
+      "raw": {
+        "base": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-fastfirst/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-fastfirst/base/manifest.json",
+            "bytes": 43626460,
+            "sha256": "f5925b2380f845ce758098985884e4e854b553b31c407cac53550a45895d11c5"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-fastfirst/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-fastfirst/base/records.jsonl",
+            "bytes": 1684273808,
+            "sha256": "a018af4ed9dac3d1db47c680c0e0700ed0183e8611803c96650fc6e638237a7c"
+          }
+        },
+        "base-repeat": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-fastfirst/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-fastfirst/base-repeat/manifest.json",
+            "bytes": 43626460,
+            "sha256": "fa6476d59c38557f97dae399c8f0f71127bf5f09daedf822c06b3ecb06c63183"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-fastfirst/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-fastfirst/base-repeat/records.jsonl",
+            "bytes": 1684273808,
+            "sha256": "36f85da0cb936fbf42d752fe18b46b3a4f6aa1d84f1c89ec6591d876aa9d03cb"
+          }
+        },
+        "candidate": {
+          "manifest.json": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-fastfirst/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-fastfirst/candidate/manifest.json",
+            "bytes": 43626460,
+            "sha256": "f968b017c37189a5fe65f209b24a0d73b57a4bf846346e19be540c311e628b6e"
+          },
+          "records.jsonl": {
+            "path": "/tmp/ifclite-context-final-scene-heavy-fastfirst/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-fastfirst/candidate/records.jsonl",
+            "bytes": 1684273808,
+            "sha256": "ab7a354b294ab474f149c2eaac4c775dfd948690bdebdcc0992fa077e68fb2da"
+          }
+        }
+      }
+    }
+  ],
+  "qualified": 4,
+  "case_count": 4,
+  "observed_totals": {
+    "color_updates": 1,
+    "fills": 0,
+    "instances": 5629,
+    "layer_meshes": 0,
+    "materials": 279276,
+    "meshes": 432427,
+    "pixel_textures": 0,
+    "polylines": 14272,
+    "property_sets": 320620,
+    "texts": 47040,
+    "triangles": 10994332,
+    "type_meshes": 0,
+    "url_textures": 0,
+    "uv_meshes": 0,
+    "vertices": 17188252
+  },
+  "unwitnessed": [
+    "fills",
+    "layer_meshes",
+    "pixel_textures",
+    "type_meshes",
+    "url_textures",
+    "uv_meshes"
+  ],
+  "final_library_sha256": {
+    "base": {
+      "ifc_lite_core": "a414ffcd8475301d7704145b440ec7f7e05f9f4a9e336301c0f31208f3e801b5",
+      "ifc_lite_geometry": "3ea2d4671bf8810b1deb7b9ba9b3f438b6437171d185db815b48d6f93b615b21",
+      "ifc_lite_processing": "44ff20c67bc366a3f0742c9d58a26bc0e0e51e3d79ffc2bc9ee61716aba557b3",
+      "serde": "f0cab349843a98de6694f20e773728e488f02625bb4f6dc5a812bd55b937335d",
+      "serde_json": "2982ce89ec152e810879351d90de820370b44a97eeccf3fcd2c0322247fd3c0d",
+      "sha2": "e91112f5d4762288c2bf5ec09bc832e67df0c03f251e081b754f3aab3209d5cc"
+    },
+    "candidate": {
+      "ifc_lite_core": "882fd9855d407a51c6a6a2fe5d69f782578775f805ab801fde5fbb4315d9e1ef",
+      "ifc_lite_geometry": "adbe4bbb31607612365a91f698866fbba27178b5cebc649ea1d8ecfee7bbbfb3",
+      "ifc_lite_processing": "86895ecc66e7e3894d24babf575f8a041de9a000f3cb2c874cf54206cf5c2cab",
+      "serde": "d5b3ac3006edeb2f7c7414235dc3c2bd70c22f9377ed0fe247cb237b13e38cb0",
+      "serde_json": "7e8525ec1d719c6ed8f8a0e1b07ec4a831f53df32c33ffdf7b70d4acda68cfd1",
+      "sha2": "e91112f5d4762288c2bf5ec09bc832e67df0c03f251e081b754f3aab3209d5cc"
+    }
+  },
+  "consumer_build_receipt_sha256": "68b36d0e6df4606b9acb1e3ec9d549b03cc2bde695b1ef474c3dfaa3446a8390",
+  "runner_sha256": "1d76aae1139e114167b21df45fc825383e2ffacd42290447ec9adedadffdee43",
+  "finalizer_sha256": "c0a81253ef0bd22bafca891e1625e6ef9f67463d15fccaa84929ce154dac84be",
+  "limitations": [
+    "public full-pass aggregates do not expose per-element hashes/refusal chronology",
+    "external image reference equality does not prove image resolution",
+    "source material-definition graph is not fully exposed; extracted associations are compared",
+    "coverage is limited to the listed actual inputs/modes and positive witnesses; no performance claim",
+    "IFCX and USD have separate actual-consumer evidence"
+  ]
+}

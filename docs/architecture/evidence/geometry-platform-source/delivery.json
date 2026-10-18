@@ -1,0 +1,12 @@
+{
+  "base_commit": "02cd98b5193c1c70b314fa106b0337438524db49",
+  "head_commit": "434e5cab2931b6f98a2ae219c91584e73b247bc6",
+  "source_manifest_commit": "d857910ffad4bd9a3c7e8df07d1ea0dd1ca6aeb3",
+  "source_files": 52,
+  "source_manifest_sha256": "d71cd4df7b78cec83cff7b30ae7b99261bc0cab3fc43e454236eecf911795669",
+  "incremental_source_patch_sha256": "d7094616225a0291a9168949f1a73150a56e0618cc3ad6785341c57538c1c8f2",
+  "incremental_full_patch_sha256": "53fca1de07a9286baf261af30c438175b2a65434fc373f6a9f09cfec33801053",
+  "scope": "Only baseline-to-child increments; inherited final288 excluded. Full patch adds child-owned evidence; source patch excludes evidence.",
+  "qualification": "See verification.json; default workspace ratchet failure, blocked final fixture groups, active legacy root TS run and physical-browser/performance holds remain.",
+  "patch_application": "Passed git apply --check, applied to exact baseline blobs, all 52 resulting SHA256 values matched source manifest and deleted paths were absent."
+}

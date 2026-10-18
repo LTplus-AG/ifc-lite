@@ -983,6 +983,16 @@ pub struct GeometryRouter {
 }
 ```
 
+`GeometryProcessor::lower_owned(entity, decoder, quality, rtc_file_units)` is an
+optional admission hook on the selected registration. Its default `None` keeps
+the existing mutable-decoder `process` and RTC callbacks. Built-in constructor
+registrations return an owned `program::OwnedConstructor`; `evaluate(self)` then
+uses the same numerical builders without a decoder. Parameters remain in file
+units, with the supplied RTC offset already expressed in the item frame. Unit
+scaling, product placement and presentation remain the router's responsibility.
+A lowering error stays an error; it does not retry a different constructor.
+Boolean/CSG processors retain their contextual continuations and recorder.
+
 Built-in processors (all re-exported at the crate root): `ExtrudedAreaSolidProcessor`, `ExtrudedAreaSolidTaperedProcessor`, `FacetedBrepProcessor`, `AdvancedBrepProcessor`, `BooleanClippingProcessor`, `FaceBasedSurfaceModelProcessor`, `PolygonalFaceSetProcessor`, `RevolvedAreaSolidProcessor`, `SurfaceOfLinearExtrusionProcessor`, `SweptDiskSolidProcessor`, `TriangulatedFaceSetProcessor`.
 
 For routers processing batches from one immutable model,

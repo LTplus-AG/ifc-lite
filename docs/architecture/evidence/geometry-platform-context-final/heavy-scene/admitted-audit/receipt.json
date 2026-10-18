@@ -1,0 +1,84 @@
+{
+  "status": "admitted post-run audit passed; prior partial receipt and refusal preserved",
+  "source_manifest": "../../source-manifest-ratchet-corrected.json",
+  "source_manifest_sha256": "63bb222be30076a296d109eb6cc7d057ec3ab880f727313d62892df82d65ff93",
+  "source_count": 288,
+  "all_source_hashes_match_before_after": true,
+  "job_id": "d749af30-d938-4389-804e-c0dd9b8d85d6",
+  "host": {
+    "host": "pop-os",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 32,
+    "availableMemoryBytes": 115338702848,
+    "totalMemoryBytes": 134644969472,
+    "python": "3.12.3",
+    "time": 1792359239.7403579
+  },
+  "checkout_source_before": {
+    "commit": "772522f9df7a06d5287c1e9934055206fd464866",
+    "tree": "c56ff269bb6516a329ca63a620dbd661c9ad1a2e",
+    "clean": false,
+    "worktreeDigest": "095f848434448dbc87629972549651839544e055f2b00e1b7274a2bb19473788",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "c8987439833b029efc8627127656e04700586f5b990657cac650a20636a5045e",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "checkout_source_after": {
+    "commit": "772522f9df7a06d5287c1e9934055206fd464866",
+    "tree": "c56ff269bb6516a329ca63a620dbd661c9ad1a2e",
+    "clean": false,
+    "worktreeDigest": "5b063af87c5091b018aefece3ef693fd4ec20676033749fd89d902028da3674a",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "c8987439833b029efc8627127656e04700586f5b990657cac650a20636a5045e",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "fleet_source_unchanged": false,
+  "fleet_exit_code": 0,
+  "command": [
+    "python3",
+    "/tmp/ifclite-context-final-scene-heavy-finalize-chain.py"
+  ],
+  "submitted_once_after_fresh_capacity_change": true,
+  "numerical_reruns": 0,
+  "prior_partial_receipt_sha256": "244afeceb69d84d2e030eb0a40386efdf4ec9430267d51b4b577da27898d2bd0",
+  "prior_refusal_sha256": "ce5560b1579b7edaf55e42a370ac892585783cff5ae39fac5f94c18b27448d0c",
+  "cases": 4,
+  "candidate_semantic_matches": 4,
+  "independent_baseline_repeat_matches": 4,
+  "post_run_raw_library_executable_harness_rehash_passed": true,
+  "csg_census_records_across_modes": 424,
+  "csg_census_multisets_identical": true,
+  "all_unmasked_stats_identical": true,
+  "masked_stats_fields": [
+    "entity_scan_time_ms",
+    "faceted_brep_time_ms",
+    "from_cache",
+    "geometry_time_ms",
+    "lookup_time_ms",
+    "parse_time_ms",
+    "point_cache_hits",
+    "point_cache_misses",
+    "preprocess_time_ms",
+    "total_time_ms"
+  ],
+  "performance_claim": false,
+  "evidence_sha256": {
+    "README.md": "ebe52ba578e9e347c3cfb7b619c6394ee349712b65a22d09110237e9704175e3",
+    "execution-audit.log": "f0b014b7ca5b376a3900ee625b2162f953fda84444b078c3a3e3e7aa0cabc1c6",
+    "execution-record-audit.json": "17f3be157db996cc41def6c7eea275d8aca9a55cce4cea5acbdee49b57779f68",
+    "finalize.log": "95c970a32a6787fc16d3e179afcf822c558f4787515fc83fa368e6833080335c",
+    "fleet-receipt.json": "2097369e4acd02629bdb96a6e98e97745db0dcd55409a5cf762802e453a248e3",
+    "fleet.log": "89820c84938fd112622849745557bd819f69238b5f59fac6bfff21cdea33de44",
+    "native-summary.json": "835d3469851e72911019ecd5ebcc7ccaa12d61a35809de97d6477b47c8fbfbe2",
+    "source-verification.json": "0bbddcba0d225e5f0efbfcb640128e5d0e81c819d4b6ee88ddede440d81d312d",
+    "support.json": "b9a03ede1fb767bc98a544524a0a2cfc3b735e2a353391039b552df56df39383",
+    "support.tar.gz": "3866883930d0772c69d74c91435f68da394e861be7439e85b8d21782d3cf6140"
+  }
+}

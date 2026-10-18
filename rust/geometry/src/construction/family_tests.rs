@@ -65,6 +65,15 @@ fn registered_family_plans_replay_after_disposal_through_production_builders() {
         let mut decoder = EntityDecoder::new(SOURCE);
         let entity = decoder.decode_by_id(id).unwrap();
         let expected = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
+        // ProductProgram phase: the selected instance admits the common payload;
+        // numerical replay outlives the source and agrees with direct production.
+        let plan = processor.lower_owned(&entity, &mut decoder, TessellationQuality::Medium, None)
+            .expect("registered builtin lowering").unwrap();
+        drop(decoder);
+        let owned = plan.evaluate().unwrap();
+        assert_eq!(owned.positions, expected.positions, "{family:?} selected owned positions");
+        assert_eq!(owned.indices, expected.indices, "{family:?} selected owned indices");
+        assert_eq!(owned.normals, expected.normals, "{family:?} selected owned normals");
         assert!(!actual.is_empty(), "{family:?} must exercise its builder");
         assert_eq!(actual.positions, expected.positions, "{family:?} positions");
         assert_eq!(actual.indices, expected.indices, "{family:?} indices");

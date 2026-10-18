@@ -59,6 +59,14 @@ impl Default for BlockProcessor {
 }
 
 impl GeometryProcessor for BlockProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        _quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        if rtc_file_units.is_some() { return None; }
+        Some(self.lower(entity, decoder).map(|plan| crate::program::OwnedConstructor::new(Constructor::Block(plan))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,

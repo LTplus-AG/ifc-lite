@@ -1,0 +1,80 @@
+{
+  "id": "auto-9d46e5d830324e3eae373ead2f6dfbc7",
+  "claim": {
+    "request": {
+      "id": "auto-9d46e5d830324e3eae373ead2f6dfbc7",
+      "commit": "88dc838c4fa74a21968c3735e3f2e751b165c5dd",
+      "kind": "ordinary",
+      "cpu": 4,
+      "memoryGiB": 12,
+      "capabilities": [
+        "linux"
+      ],
+      "command": [
+        "bash",
+        "-c",
+        "pnpm install --frozen-lockfile --prefer-offline && exec \"$@\"",
+        "ifc-fleet",
+        "pnpm",
+        "typecheck"
+      ],
+      "pools": []
+    },
+    "state": "queued",
+    "at": 1792358584.8806393,
+    "jobId": "8d413b59-eca4-4199-90bb-01fdf2b40a98",
+    "receipt": "/home/louistrue/build-workers/worker-state/jobs/8d413b59-eca4-4199-90bb-01fdf2b40a98/receipt.json"
+  },
+  "state": "orphaned",
+  "safeToResubmitAutomatically": false,
+  "jobId": "8d413b59-eca4-4199-90bb-01fdf2b40a98",
+  "receipt": "/home/louistrue/build-workers/worker-state/jobs/8d413b59-eca4-4199-90bb-01fdf2b40a98/receipt.json",
+  "execution": {
+    "id": "8d413b59-eca4-4199-90bb-01fdf2b40a98",
+    "host": {
+      "host": "louistrue-pc",
+      "os": "Linux",
+      "arch": "x86_64",
+      "cpus": 24,
+      "availableMemoryBytes": 61845078016,
+      "totalMemoryBytes": 67423592448,
+      "python": "3.14.4",
+      "time": 1792358589.1488876
+    },
+    "cwd": "/home/louistrue/build-workers/worker-state/checkouts/88dc838c4fa74a21968c3735e3f2e751b165c5dd",
+    "sourceBefore": {
+      "commit": "88dc838c4fa74a21968c3735e3f2e751b165c5dd",
+      "tree": "94264976ade2fa40bf58d1fb1267fb728800b99a",
+      "clean": true,
+      "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "toolchainInputs": {
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "Cargo.lock": "c8987439833b029efc8627127656e04700586f5b990657cac650a20636a5045e",
+        "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+        "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+      }
+    },
+    "command": [
+      "bash",
+      "-c",
+      "pnpm install --frozen-lockfile --prefer-offline && exec \"$@\"",
+      "ifc-fleet",
+      "pnpm",
+      "typecheck"
+    ],
+    "kind": "ordinary",
+    "requestedAt": 1792358589.1487558,
+    "resources": [
+      "/home/louistrue/build-workers/worker-state/checkouts/88dc838c4fa74a21968c3735e3f2e751b165c5dd",
+      "/home/louistrue/build-workers/worker-state/targets/3c521c409d1666dab92e"
+    ],
+    "state": "orphaned",
+    "cpu": 4,
+    "memoryGiB": 12,
+    "exitCode": null,
+    "finishedAt": 1792359299.1936705,
+    "error": "Wrapper exited; no live child group remains. Command outcome is unknown."
+  },
+  "host": "pc-wsl",
+  "dispatchState": "returned"
+}

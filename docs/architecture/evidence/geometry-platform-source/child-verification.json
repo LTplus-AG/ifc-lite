@@ -1,0 +1,72 @@
+{
+  "source_manifest_commit": "d857910ffad4bd9a3c7e8df07d1ea0dd1ca6aeb3",
+  "compiled_source": "a5d606abb35b66003d20c45871a0f132dac57275",
+  "fleet_workspace": {
+    "result": "failed: inherited stale positional-read rows",
+    "new_source_bundle_tests": 5,
+    "new_semantic_cache_tests": 6,
+    "owned_source_tests": 5,
+    "owned_callback_tests": 2,
+    "fixtures": "remote receipt records no provisioned fixture corpus; fixture-dependent Rust tests may return early",
+    "ownership_tests_passed": true
+  },
+  "fleet_wasm": {
+    "build": "passed canonical build, committed types unchanged",
+    "contracts": "not run: missing renderer dist dependency; corrected graph pending",
+    "corrected_graph": {
+      "result": "passed",
+      "source": "7a15deedc9cc4d7b35e023d388dc027b45a3c62a",
+      "host": "pc-wsl",
+      "turbo_build": "16 tasks successful",
+      "wasm_contracts": {
+        "passed": 102,
+        "failed": 0,
+        "skipped": 4,
+        "reason": "remote corpus absent; IFC-backed/progress/fixture groups skipped"
+      },
+      "model_context_tests": {
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      "committed_type_surface": "unchanged after canonical rebuild",
+      "request": "auto-9f351d283fcb447ebdce66dc38fff534"
+    },
+    "fixture_rerun": "blocked before dispatch: PC SSH unavailable and Pop ordinary kind disabled; see fixture-rerun-blocked.json"
+  },
+  "fleet_clippy": {
+    "result": "passed",
+    "command": "cargo clippy --workspace --all-targets -- -D warnings",
+    "request": "auto-4fb72aa0a1e24c7fbeaceb0929d08506",
+    "host": "pc-wsl",
+    "source": "a5d606abb35b66003d20c45871a0f132dac57275"
+  },
+  "root_pnpm_test": {
+    "state": "active at implementation handoff; preserved without stopping/restarting",
+    "host": "Pop!_OS own managed checkout",
+    "source_cohort": "9da2de870065c5763d551b3f8338053789ed968c (package sources remain identical after Rust cache correction; runtime from before that correction)",
+    "command": "VITEST_MAX_WORKERS=1 pnpm test --concurrency=1 --env-mode=loose",
+    "target": "target-source-owner",
+    "earlier_hook_timeout": "create hosted mapped E2E beforeAll; final serial-worker create suite passed 1610 tests, 14 skipped",
+    "result": "MCP passed 738 tests (5 skipped); create passed 1610 tests (14 skipped); root graph reached viewer build/tests; full-root result pending",
+    "log": "/tmp/source-owner-ts-tests-worker1.log",
+    "tool_session_id": 62616,
+    "snapshot_utc": "2026-10-18T21:36:28.006997+00:00",
+    "inflight_log_snapshot_sha256": "8205def7b7a6039fcf0a313b482cefc35d77723cdbaae968494c346f9788f572",
+    "typescript_source_identity": "All package/app sources byte-identical to earlier 9da2 source; later correction changes Rust only."
+  },
+  "earlier_source_checks": {
+    "source": "9da2de870065c5763d551b3f8338053789ed968c",
+    "typecheck": "passed 127 tasks and 4248-file test typecheck audit",
+    "clippy": "passed workspace all targets -D warnings",
+    "python": "passed 6",
+    "wasm_contracts": "passed 210, skipped 3",
+    "wasm_model_context": "passed 5",
+    "api_surface": "passed",
+    "full_workspace": "failed inherited positional-read rows",
+    "ts_test_prior_attempts": "beforeAll 10000ms timeout in create hosted mapped E2E suite; no assertion failure"
+  },
+  "performance": "held, earlier-source controls only; no final-source/browser throughput verdict",
+  "remaining": "Full default Rust workspace blocked by inherited ratchet; final-source fixture-backed WASM groups blocked by fleet capacity; physical browser one/N federation and worker-pool timing/memory unrun; full router cache effect transactions outside scope.",
+  "handoff": "Implementation delivered with explicit default-workspace ratchet failure, blocked fixture-backed WASM groups and active legacy root TS run; no complete platform qualification claim."
+}

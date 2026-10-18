@@ -1,0 +1,18 @@
+{
+  "task_id": "node:delegated-task:command%3Amcp%3A40782b11-2ce6-4f4a-b37b-2a6dbccb22b9%3Adelegate-task%3Aifclite-coherent-source-preservation-round2",
+  "state_at_recording": "running",
+  "purpose": "Preserve native scan and later shared-prepass duplicate-ID cache behavior while retaining authenticated factory workers",
+  "review": {
+    "mode": "read-only, no executed reproduction",
+    "checkpoint": "434e5cab2931b6f98a2ae219c91584e73b247bc6",
+    "finding": "PresentationLayerAssignment decode_at_uncached changes first-successful cached duplicate behavior during scan and later prepass reads",
+    "required": "Retain original prepass decoder/cache/refusal state; install existing canonical index through explicitly unauthenticated compatibility contract; fresh geometry workers remain factory-bound",
+    "other_result": "Documented foreign decoded/point/placement/grid cache attacks appear closed in inspected code",
+    "hashes": {
+      "source_bundle.rs": "dbb90ff43a41659cdfe91ad15ddaa975b018202d9a9a10bc12361f057c713bd8",
+      "decoder/source_caches.rs": "5690daa4d42cfe1199f958d58159d1d40eb1ff881992ed4a6e2c476488036c9e",
+      "processor/scan.rs": "428f9fcca2a222537279c4b2974f21825dcf9e0c8a22ccff4c1e61076d224aab"
+    }
+  },
+  "coverage": "No integration, corrected-source test pass or engine cutover claimed"
+}

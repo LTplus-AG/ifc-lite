@@ -251,7 +251,7 @@
 # +16: #1623 Phase 3 — thread the batch-local vs global template decision through the mapped-item intercept (is_template match arm + retag guard).
 # +3: hoist the item-dedup mesh clone out of the cache Mutex critical section (let-binding + 2-line rationale) so a dedup miss no longer serializes the worker pool on a deep-copy.
 # +18: #1293 dedup rep_identity: store rep beside the cached mesh, split tag_direct_instance into direct_rep_identity + stamp_direct_instance, and the flagged IFC_LITE_DEDUP_EXTRA type gate in item_dedup_key.
-    1106 rust/geometry/src/router/processing.rs
+    634 rust/geometry/src/router/processing.rs
 # +1: reveal-quads comment expanded to 2 lines (dead-symbol reference fix, no code change).
      619 rust/geometry/src/router/voids/aabb_clip.rs
 # +36: `parity_along` extracted so the single-ray `point_inside_mesh` and the
@@ -348,7 +348,7 @@
 # +6 (#1806 CodeRabbit round-2): reject non-finite rectangle dims/extrusion depth
 # (is_finite guards) so an inf depth can no longer slip past the `> 0.0` / `<= 0.0`
 # gates into the fast path.
-     858 rust/geometry/src/router/voids/probe.rs
+     619 rust/geometry/src/router/voids/probe.rs
 # -47: the exit-cap decision (which cutter caps may be pushed through the host)
 # moved to synthesis/exit_cap.rs, a module under the 400 budget, rather than
 # sitting inline here; 1002 -> 955. The move is NOT verbatim: the occupancy veto

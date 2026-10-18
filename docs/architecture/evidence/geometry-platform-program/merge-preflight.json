@@ -1,0 +1,32 @@
+[
+  {
+    "command": [
+      "git",
+      "read-tree",
+      "HEAD"
+    ],
+    "exit": 0,
+    "stderr": ""
+  },
+  {
+    "command": [
+      "git",
+      "apply",
+      "--cached",
+      "/tmp/ifclite-product-program-d63e73e7/product-program.patch"
+    ],
+    "exit": 0,
+    "stderr": ""
+  },
+  {
+    "command": [
+      "git",
+      "apply",
+      "--cached",
+      "--exclude=packages/wasm/pkg/ifc-lite.d.ts",
+      "/tmp/ifclite-source-owner-delivery/incremental-source.patch"
+    ],
+    "exit": 0,
+    "stderr": ""
+  }
+]

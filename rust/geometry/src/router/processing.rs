@@ -4,12 +4,12 @@
 
 //! Core element processing: resolving representations, processing items, and caching.
 
-use super::frame_parts::{frames_mergeable, mesh_bounds, single_frame, union_bounds, FrameParts};
+use super::frame_parts::{mesh_bounds, single_frame};
 use super::transforms::instancing_enabled;
 use crate::math::mat4;
 use super::{GeometryProcessor, GeometryRouter};
 use crate::{Error, InstanceMeta, Mesh, Result, SubMeshCollection};
-use crate::representation::{product_shape, rep_items, Select};
+use crate::program::{EntryPolicy, ProductProgram};
 
 /// High tag bit distinguishing direct-solid rep_identity (a 128-bit local-mesh
 /// content hash) from mapped-item rep_identity (a RepresentationMap entity id,
@@ -133,90 +133,11 @@ impl GeometryRouter {
             }
         }
 
-        let Some(shape) = product_shape(element, decoder)? else {
-            return Ok(vec![Mesh::new()]); // No geometry
+        let Some(program) = ProductProgram::admit(element, EntryPolicy::MergedProduct, decoder)? else {
+            return Ok(vec![Mesh::new()]);
         };
 
-        // Process all representations and merge meshes
-        let mut combined_mesh = Mesh::new();
-        let mut rebased_mesh = Mesh::new();
-        let mut captured_local_bounds: Option<[f32; 6]> = None;
-        // #6349: items too far from `combined_mesh`'s frame, and the RTC-frame items' own bounds.
-        let (mut far_parts, mut rebased_bounds) = (FrameParts::default(), None);
-
-        // Instancing: an element is cleanly shareable only when its whole body is
-        // exactly ONE representation item that itself carried instance metadata
-        // (a mapped item). `Mesh::merge` does not propagate the side-channel, so we
-        // capture the single item's metadata here and re-attach it below; any second
-        // item disqualifies the element (left as None -> rendered flat).
-        let mut single_instance_meta: Option<InstanceMeta> = None;
-        let mut instanceable_item_count: usize = 0;
-
-        // Body representations only ('Axis', 'FootPrint', 'Box' are skipped), and
-        // a MappedRepresentation is skipped when direct geometry duplicates it.
-        for shape_rep in shape.select(element, Select::Meshed) {
-            let items = rep_items(shape_rep, decoder)?;
-            let fill_only = super::annotation::is_fill_only_representation(element, shape_rep);
-
-            // Process each representation item
-            // A mapped item whose source mixes frames yields one mesh per frame (#6446).
-            for item in items {
-                let item_parts = if element.ifc_type == IfcType::IfcAnnotation
-                    && item.ifc_type == IfcType::IfcAnnotationFillArea
-                {
-                    vec![self.process_annotation_fill(&item, decoder)?]
-                } else if fill_only {
-                    continue; // symbolic annotation item, never meshed (#5389)
-                } else if let Some(mesh) =
-                    self.process_raw_item_for_element(&item, element, decoder)?
-                {
-                    vec![mesh]
-                } else {
-                    self.process_representation_item_parts(&item, decoder)?
-                };
-                for mesh in item_parts {
-                    if mesh.positions.is_empty() {
-                        continue; // Mesh::merge would ignore it too
-                    }
-                    let bounds = mesh.local_bounds.unwrap_or_else(|| mesh_bounds(&mesh));
-                    if instancing_enabled() {
-                        instanceable_item_count += 1;
-                        single_instance_meta = if instanceable_item_count == 1 {
-                            mesh.instance_meta.clone()
-                        } else {
-                            None
-                        };
-                    }
-                    // #5684: early f64 processors and ordinary f32 processors can
-                    // return different RTC frames. Merge only like frames until
-                    // placement has brought both into the world/RTC frame.
-                    if mesh.rtc_applied {
-                        rebased_mesh.merge(&mesh);
-                        union_bounds(&mut rebased_bounds, bounds);
-                        continue;
-                    } else if combined_mesh.positions.is_empty()
-                        || frames_mergeable(combined_mesh.origin, mesh.origin)
-                    {
-                        combined_mesh.merge(&mesh);
-                    } else {
-                        far_parts.merge(&mesh, bounds);
-                        continue;
-                    }
-                    union_bounds(&mut captured_local_bounds, bounds);
-                }
-            }
-        }
-        if combined_mesh.positions.is_empty() {
-            std::mem::swap(&mut combined_mesh, &mut rebased_mesh);
-            captured_local_bounds = rebased_bounds.take();
-        }
-
-        // Re-attach single-item instance metadata so apply_placement can fold the
-        // element's world placement into `transform`.
-        if instancing_enabled() {
-            combined_mesh.instance_meta = single_instance_meta;
-        }
-        combined_mesh.local_bounds = captured_local_bounds;
+        let (mut combined_mesh, far_parts, rebased) = program.merged(element, self, decoder)?;
 
         // Source-triangle hygiene before placement (rigid transforms preserve
         // degeneracy, while the element-local frame retains more f32 precision).
@@ -229,7 +150,6 @@ impl GeometryRouter {
 
         // Apply placement transformation
         self.apply_placement(element, decoder, &mut combined_mesh)?;
-        let rebased = (rebased_mesh, rebased_bounds);
         self.place_frame_parts(element, decoder, hygiene, combined_mesh, far_parts, rebased)
     }
 
@@ -276,59 +196,11 @@ impl GeometryRouter {
             return Ok(layered);
         }
 
-        let Some(shape) = product_shape(element, decoder)? else {
-            return Ok(SubMeshCollection::new()); // No geometry
+        let Some(program) = ProductProgram::admit(element, EntryPolicy::StyledProduct, decoder)? else {
+            return Ok(SubMeshCollection::new());
         };
 
-        let mut sub_meshes = SubMeshCollection::new();
-
-        for shape_rep in shape.select(element, Select::Meshed) {
-            let items = rep_items(shape_rep, decoder)?;
-            let fill_only = super::annotation::is_fill_only_representation(element, shape_rep);
-
-            // Process each representation item, preserving geometry IDs
-            for item in items {
-                if element.ifc_type == IfcType::IfcAnnotation
-                    && item.ifc_type == IfcType::IfcAnnotationFillArea
-                {
-                    sub_meshes.add(item.id, self.process_annotation_fill(&item, decoder)?);
-                    continue;
-                }
-                if fill_only {
-                    continue; // symbolic annotation item, never meshed (#5389)
-                }
-                // A textured face set keeps its UV channel (#1781) and, like
-                // any raw item, rebases in its own frame (#5698). A failed
-                // textured build falls through to the untextured paths.
-                // A terrain TIN is a face set that only appends `Flags` (#5942).
-                let texture = texture_index
-                    .and_then(|index| index.get(&item.id))
-                    .filter(|_| matches!(
-                        item.ifc_type,
-                        IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork
-                    ));
-                if let Some(map) = texture {
-                    let offset = self.element_frame_rtc(element, decoder)?;
-                    if let Some((mesh, uvs)) = self.textured_face_set(&item, decoder, map, offset) {
-                        sub_meshes.add_textured(item.id, mesh, uvs, map.attachment());
-                        continue;
-                    }
-                }
-                if let Some(mesh) = self.process_raw_item_for_element(&item, element, decoder)? {
-                    if !mesh.is_empty() {
-                        sub_meshes.add(item.id, mesh);
-                    }
-                    continue;
-                }
-                self.collect_submeshes_from_item(
-                    &item,
-                    decoder,
-                    &mut sub_meshes,
-                    allow_instancing,
-                    texture_index,
-                )?;
-            }
-        }
+        let mut sub_meshes = program.styled(element, self, decoder, allow_instancing, texture_index)?;
 
         // Source-triangle hygiene before placement — the per-style counterpart
         // to `process_element`'s choke point. Facet canonicalizers downstream do
@@ -390,7 +262,7 @@ impl GeometryRouter {
     /// placement produces `M(p) - rtc` for rotated/scaled elements as well.
     /// `None` when the item is not a raw-coordinate item beyond the RTC
     /// threshold; the ordinary item path then handles it.
-    pub(in crate::router) fn process_raw_item_for_element(
+    pub(crate) fn process_raw_item_for_element(
         &self,
         item: &DecodedEntity,
         element: &DecodedEntity,
@@ -419,7 +291,7 @@ impl GeometryRouter {
     /// pulled through the placement's inverse linear transform, so placing
     /// a mesh rebased by it yields `M(p) - rtc`. `None` for a singular
     /// placement, where no object-frame offset exists.
-    fn element_frame_rtc(
+    pub(crate) fn element_frame_rtc(
         &self,
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
@@ -439,7 +311,7 @@ impl GeometryRouter {
     /// preserves precision (#5698). Shared by the occurrence walk and the
     /// type-geometry walk (#7690). `None` when the item is not a face set,
     /// or the textured build fails or is empty.
-    pub(super) fn textured_face_set(
+    pub(crate) fn textured_face_set(
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
@@ -454,10 +326,9 @@ impl GeometryRouter {
             self.raw_item_rtc_file_units(item, decoder, offset)
                 .zip(Some(offset))
         });
-        let proc = crate::processors::TriangulatedFaceSetProcessor::new();
-        let (mut mesh, uvs) = proc
-            .process_with_texture_rebased(item, decoder, map, rtc.map(|(file_units, _)| file_units))
-            .ok()?;
+        let plan = crate::program::TextureConstructor::admit(item, decoder,
+            rtc.map(|(file_units, _)| file_units)).ok()?;
+        let (mut mesh, uvs) = plan.evaluate(map);
         if mesh.is_empty() {
             return None;
         }
@@ -501,18 +372,22 @@ impl GeometryRouter {
         let rebased = self.raw_item_rtc_file_units(item, decoder, offset_meters)
             .and_then(|rtc_file_units| {
                 self.record_processor_dispatch(processor);
-                processor.process_in_rtc_frame(
-                    item,
-                    decoder,
-                    self.schema,
-                    self.tessellation_quality,
-                    rtc_file_units,
-                )
+                match processor.lower_owned(item, decoder, self.tessellation_quality, Some(rtc_file_units)) {
+                    Some(plan) => Some(plan.and_then(crate::program::OwnedConstructor::evaluate)),
+                    None => processor.process_in_rtc_frame(item, decoder, self.schema,
+                        self.tessellation_quality, rtc_file_units),
+                }
             });
         let rtc_applied = rebased.is_some();
         let result = match rebased {
             Some(result) => result,
-            None => { self.record_processor_dispatch(processor); processor.process(item, decoder, self.schema, self.tessellation_quality) },
+            None => {
+                self.record_processor_dispatch(processor);
+                match processor.lower_owned(item, decoder, self.tessellation_quality, None) {
+                    Some(plan) => plan.and_then(crate::program::OwnedConstructor::evaluate),
+                    None => processor.process(item, decoder, self.schema, self.tessellation_quality),
+                }
+            },
         };
         if crate::processors::take_curve_capped() {
             self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
@@ -733,7 +608,11 @@ impl GeometryRouter {
             None => return Ok(None),
         };
         self.record_processor_dispatch(processor.as_ref());
-        let mut mesh = match processor.process(element, decoder, self.schema, self.tessellation_quality) {
+        let result = match processor.lower_owned(element, decoder, self.tessellation_quality, None) {
+            Some(plan) => plan.and_then(crate::program::OwnedConstructor::evaluate),
+            None => processor.process(element, decoder, self.schema, self.tessellation_quality),
+        };
+        let mut mesh = match result {
             Ok(m) => m,
             // Missing Axis or unparseable curve isn't fatal — fall back so
             // the caller can still walk a normal representation if present.

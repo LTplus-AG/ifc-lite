@@ -306,6 +306,14 @@ impl SweptDiskSolidProcessor {
 }
 
 impl GeometryProcessor for SweptDiskSolidProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        if rtc_file_units.is_some() { return None; }
+        Some(self.lower(entity, decoder, quality).map(|plan| crate::program::OwnedConstructor::new(plan.map_or(Constructor::Empty, Constructor::SweptDisk))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,

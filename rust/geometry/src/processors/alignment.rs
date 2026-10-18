@@ -63,6 +63,14 @@ const MAX_SAMPLES: usize = 5_000;
 const RIBBON_HALF_WIDTH_FILE_UNITS: f64 = 0.25;
 
 impl GeometryProcessor for IfcAlignmentProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        _quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        if rtc_file_units.is_some() { return None; }
+        Some(self.lower(entity, decoder).map(|plan| crate::program::OwnedConstructor::new(Constructor::Alignment(plan))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,

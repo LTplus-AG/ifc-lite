@@ -60,7 +60,7 @@ impl GeometryRouter {
 
     /// The processor for `ifc_type`, or none when the length unit is refused.
     /// Every registry lookup in the router goes through this.
-    pub(super) fn processor_for(&self, ifc_type: &IfcType) -> Option<&Rc<dyn GeometryProcessor>> {
+    pub(crate) fn processor_for(&self, ifc_type: &IfcType) -> Option<&Rc<dyn GeometryProcessor>> {
         if self.length_unit_refused {
             return None;
         }

@@ -1,0 +1,74 @@
+[
+  {
+    "pid": 590357,
+    "ppid": 2143534,
+    "pgid": 590357,
+    "stat": "Ss",
+    "elapsed": "42:24",
+    "command": "/bin/bash -lc CARGO_TARGET_DIR=$PWD/target-source-owner CARGO_BUILD_JOBS=2 VITEST_MAX_WORKERS=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.excludesfile GIT_CONFIG_VALUE_0=/tmp/source-owner-git-excludes pnpm test --concurrency=1 --env-mode=loose > /tmp/source-owner-ts-tests-worker1.log 2>&1"
+  },
+  {
+    "pid": 590378,
+    "ppid": 590357,
+    "pgid": 590357,
+    "stat": "Sl",
+    "elapsed": "42:24",
+    "command": "node /home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/pnpm test --concurrency=1 --env-mode=loose"
+  },
+  {
+    "pid": 590427,
+    "ppid": 590378,
+    "pgid": 590357,
+    "stat": "S",
+    "elapsed": "42:24",
+    "command": "sh -c turbo test --concurrency\\=1 --env-mode\\=loose"
+  },
+  {
+    "pid": 590428,
+    "ppid": 590427,
+    "pgid": 590357,
+    "stat": "Sl",
+    "elapsed": "42:24",
+    "command": "node /home/louistrue/.t3/worktrees/ifc-lite/t3-2aec1157/node_modules/.bin/../.pnpm/turbo@2.11.7/node_modules/turbo/bin/turbo test --concurrency=1 --env-mode=loose"
+  },
+  {
+    "pid": 590441,
+    "ppid": 590428,
+    "pgid": 590357,
+    "stat": "Sl",
+    "elapsed": "42:24",
+    "command": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2aec1157/node_modules/.pnpm/@turbo+linux-64@2.11.7/node_modules/@turbo/linux-64/bin/turbo test --concurrency=1 --env-mode=loose"
+  },
+  {
+    "pid": 757810,
+    "ppid": 590441,
+    "pgid": 757810,
+    "stat": "Sl",
+    "elapsed": "04:10",
+    "command": "node /home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/pnpm run test"
+  },
+  {
+    "pid": 757873,
+    "ppid": 757810,
+    "pgid": 757810,
+    "stat": "S",
+    "elapsed": "04:10",
+    "command": "sh -c vitest run"
+  },
+  {
+    "pid": 757874,
+    "ppid": 757873,
+    "pgid": 757810,
+    "stat": "Sl",
+    "elapsed": "04:10",
+    "command": "node /home/louistrue/.t3/worktrees/ifc-lite/t3-2aec1157/packages/cli/node_modules/.bin/../../../../node_modules/.pnpm/vitest@5.0.3_@edge-runtime+vm@3.2.0_@types+node@26.6.5_happy-dom@20.14.6_vite@8.3.4_@ty_3d41f55219b050553cacb90ccfc67a97/node_modules/vitest/vitest.mjs run"
+  },
+  {
+    "pid": 775139,
+    "ppid": 757874,
+    "pgid": 757810,
+    "stat": "Rl",
+    "elapsed": "00:00",
+    "command": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node --experimental-import-meta-resolve --require /home/louistrue/.t3/worktrees/ifc-lite/t3-2aec1157/node_modules/.pnpm/vitest@5.0.3_@edge-runtime+vm@3.2.0_@types+node@26.6.5_happy-dom@20.14.6_vite@8.3.4_@ty_3d41f55219b050553cacb90ccfc67a97/node_modules/vitest/suppress-warnings.cjs --conditions node --conditions development /home/louistrue/.t3/worktrees/ifc-lite/t3-2aec1157/node_modules/.pnpm/vitest@5.0.3_@edge-runtime+vm@3.2.0_@types+node@26.6.5_happy-dom@20.14.6_vite@8.3.4_@ty_3d41f55219b050553cacb90ccfc67a97/node_modules/vitest/dist/workers/forks.js"
+  }
+]

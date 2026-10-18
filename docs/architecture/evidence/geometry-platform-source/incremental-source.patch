@@ -1,0 +1,3309 @@
+diff --git a/.changeset/coherent-source-context.md b/.changeset/coherent-source-context.md
+new file mode 100644
+index 0000000000..f2fd07491e
+--- /dev/null
++++ b/.changeset/coherent-source-context.md
+@@ -0,0 +1,6 @@
++---
++"@ifc-lite/wasm": minor
++"@ifc-lite/geometry": patch
++---
++
++Bind geometry workers to an immutable Rust-owned source/index load and reuse it across batches. Coherent source batches apply exact style revisions; existing batch signatures and legacy setter contracts remain compatible.
+diff --git a/docs/api/rust.md b/docs/api/rust.md
+index 00e209bace..480080f68a 100644
+--- a/docs/api/rust.md
++++ b/docs/api/rust.md
+@@ -42,6 +42,29 @@ pub mod units;           // Unit conversion helpers
+ pub mod error;           // Error types
+ ```
+ 
++### Owned source bundles
++
++`SourceBundle::new(Vec<u8>)` owns original IFC bytes and builds their index with
++the canonical byte scanner. `scan_with(Arc<Vec<u8>>, visitor)` fuses that work
++with an existing classification pass. `columnar` builds the browser index;
++`with_columnar_index` validates every delivered span and completeness once
++before retaining the supplied compact allocation.
++
++A bundle's `decoder()` borrows its owned bytes and carries private factory
++provenance. It keeps custom mutable decoder behavior and scoped-worker use.
++Independent index setters remove that provenance. No source clone, digest or
++whole-index scan occurs when making a fresh decoder or producing a product.
++
++`ifc_lite_processing::ProductionModel::from_source(bundle)` retains the source
++in immutable snapshots. `produce_element_meshes_owned` returns
++`ProductionContextError::MismatchedSource` for an unbound/foreign decoder and
++`StaleSource` after explicit lifecycle invalidation. Fresh decoders from the
++same bundle are compatible with dormant work. Configuration revisions preserve
++earlier source snapshots. The borrowed six-field context and
++`ProductionModel::new` remain explicit compatibility APIs whose callers pair
++bytes/indexes themselves. See [source ownership](../architecture/coherent-source-ownership.md)
++for native, browser and appearance integration and the remaining boundaries.
++
+ ### Parser Module
+ 
+ `ifc_lite_core::declared_schema_bounded(ifc_bytes)` reads the first actual
+@@ -1562,3 +1585,11 @@ very large profiles may be unavailable for analytic quantities; they are never
+ silently certified or substituted with an approximation. Rendering is
+ unaffected. This change makes no performance claim; an end-to-end base/branch
+ performance verdict is required before merge.
++
++For coherent decoders, use opaque `drain_source_cache` / `inject_source_cache`
++and `take_source_point_cache` / `set_source_point_cache` or
++`take_source_placement_cache` / `set_source_placement_cache` for checked reuse.
++The raw cache setters remain trusted-input APIs and revoke bundle authority.
++`ProductionModel::from_trusted_inputs(decoder.trusted_inputs().unwrap())` explicitly
++accepts an authored/extension input revision; it does not authenticate those rows
++as parsed source. Later raw imports require a new trusted revision.
+diff --git a/docs/api/wasm.md b/docs/api/wasm.md
+index 050a0d5781..582d666460 100644
+--- a/docs/api/wasm.md
++++ b/docs/api/wasm.md
+@@ -177,6 +177,22 @@ processGeometryBatchFromSource(jobsFlat, unitScale, /* same trailing args */): M
+ processGeometryBatchPartitionedFromSource(jobsFlat, unitScale, /* ... */): PartitionedBatch;
+ ```
+ 
++After installing the source and entity index, `bindSourceModel(): void` admits
++one coherent immutable load for the `FromSource` geometry calls. The geometry
++worker calls it once before its first batch; repeated calls reuse the handle.
++Admission checks every delivered span and index completeness against the existing
++canonical byte scanner once per worker. It reuses the installed source and index
++allocations, with no source hash, clone or index scan per batch. A mismatched pair
++throws before geometry. This adds a load-time scan cost that requires performance
++qualification on the intended worker pool.
++
++Coherent batches select current opening/material/finish arguments and cache styles
++by exact wire revision. Changed style colors with unchanged IDs therefore take
++effect. Earlier immutable Rust snapshots retain their selected maps. Independent
++`setSourceBytes`/`setEntityIndex` setters and data-taking batch signatures remain
++compatible; legacy calls retain their explicit same-source precondition and cheap
++style-cache predicate. A lifecycle token alone never authenticates those inputs.
++
+ The sharded pre-pass can reuse the same installed source before geometry batches:
+ 
+ ```typescript
+diff --git a/docs/architecture/coherent-source-ownership.md b/docs/architecture/coherent-source-ownership.md
+new file mode 100644
+index 0000000000..ec57093fac
+--- /dev/null
++++ b/docs/architecture/coherent-source-ownership.md
+@@ -0,0 +1,95 @@
++<!-- SPDX-License-Identifier: MPL-2.0 -->
++# Immutable source and model-context ownership
++
++`ifc_lite_core::SourceBundle` owns original bytes and their canonical entity
++index. `scan_with` fuses the existing byte scanner with native classification;
++only scanner-produced rows enter the adaptive index builder. The builder moved
++from processing to core without changing hash/dense/columnar selection, duplicate
++precedence, wide-offset handling or shared lookup caches. `columnar` uses the
++existing compact scanner directly for browser loads without delivered columns.
++
++A bundle's decoder factory borrows the owned bytes, installs the paired index,
++and retains private factory provenance. The decoder remains mutable for custom
++processors and scoped worker borrowing. Index setters remove that provenance.
++A pristine unindexed decoder reading the exact owned allocation can adopt the
++canonical index. Populated borrowed decoders and independently installed indexes
++cannot acquire authority; canonical prewarming starts with a factory decoder.
++
++`with_columnar_index` admits delivered columns by checking every canonical span
++and completeness once against the original bytes. It reuses the delivered
++allocation. Equal lengths, IDs, allocation addresses and asserted tokens are
++insufficient. Different contents with the same correct record boundaries may
++legitimately use the same span table: an index maps spans, not attribute values.
++No lossy UTF-8 conversion, source digest or per-product index walk is involved.
++Validated span reuse never imports another source's already populated inverse
++lookups. Coherent columnar StyledItem and grid-axis caches belong to the actual
++bundle. Hash/dense StyledItem caches retain their decoder-local domain and refusal
++attribution; this migration does not hoist those lookups model-wide.
++
++`ProductionModel::from_source` retains the bundle in every immutable snapshot.
++Owned planning, execution, reply acceptance and publication reject a foreign or
++unbound decoder with `MismatchedSource` before entering that transition's owner
++or geometry work. Explicit lifecycle invalidation remains `StaleSource`. New
++configuration snapshots preserve prior same-source snapshots. Dropping the
++factory caller does not expire retained source or styles. Dormant work can use a
++fresh decoder from the same bundle; live owner and reply validation still apply.
++
++The six-field borrowed `MeshProductionContext` and its canonical producer retain
++their existing API and allocation behavior. `ProductionModel::new` deliberately
++selects compatibility mode: callers must pair independently borrowed bytes and
++indexes themselves. Its lifecycle stamp does not authenticate those inputs.
++Native `ProcessingRequest.entity_index` retains that explicit compatibility
++precondition; ordinary native loads use the coherent factory. Native borrowed
++load bytes are copied once into owned storage, never per chunk or product.
++
++Production appearance entry points construct one bundle per effective input.
++Their existing classification and context discovery use its decoder from the
++start, retaining its cache instead of creating an unrelated decoder afterward.
++Appearance snapshot reuse checks the actual model owner and texture component;
++the unrelated appearance source counter has been removed.
++
++The browser geometry worker calls additive `bindSourceModel` after source/index
++installation and before geometry. The handle validates delivered columns once
++per worker, then all FromSource batch variants use the same factory decoder and
++producer. This is an additional source scan on the delivered-index worker path;
++it is necessary to validate an untrusted independently delivered span table and
++requires worker-pool performance qualification. Repeated bind calls are cheap.
++Existing JS exports, Rust batch signatures and raw batch return conventions stay
++unchanged. Progress callbacks must not reenter the synchronous module.
++
++Coherent style caching compares complete supplied ID/color wires and rebuilds
++only on a real revision. Changed colors with identical IDs deliberately take
++effect in this path. Legacy data-taking calls retain their existing cheap style
++signature and documented collision behavior. Opening, material and finish
++arguments remain selected on every call. Source replacement, index installation
++and cleanup invalidate coherent authority at their existing boundary; shared
++source-map/template clearing is factored into one helper. Configuration setters
++keep their existing narrower cache boundaries. Old snapshots own their maps.
++
++This layer does not authenticate arbitrary caller-authored jobs or configuration
++maps, provide remote
++credentials, own all mutable router effects, implement cache transactions or
++activate a retained SMLib engine. General model/overlay revision coordination,
++resource admission and source-independent geometry programs remain separate.
++The source bundle certifies its bytes/index pairing; custom decoder maintenance
++and extension side effects retain their existing synchronous contracts.
++
++Semantic cache authority follows the producing decoder as well as the bundle.
++`SourceCache<T>` is opaque: canonical worker point/placement memos and prewarmed
++records move with private bundle/revision provenance. Checked transfers reject
++foreign bundles before installing entries. Raw `inject_shared_cache`,
++`set_point_cache`, `set_placement_transform_cache`, and `set_grid_axis_index`
++retain their trusted-input compatibility behavior and revoke coherent authority,
++even for empty imports. Adoption accepts only pristine borrowed decoders. Prewarm
++through the factory instead; direct noncanonical duplicate spans never populate
++its canonical last-occurrence ID cache.
++
++Appearance authoring deliberately adds/edits entities outside immutable source
++bytes. It now explicitly accepts `TrustedDecoderInputs` into a new model revision
++and invalidates its previous revision. This is trusted configuration, not source
++authentication; later imports do not match that revision. The same opt-in is
++available for extensions. Placement memo writers still owe the existing complete
++canonical world-transform contract, and supplied unit scales remain explicit
++consumer configuration; source ownership does not prove arbitrary extension code
++or supplied numeric configuration correct. Typed transfers prove origin and
++revision without rescanning/cloning cache maps, source bytes, or index tables.
+diff --git a/packages/geometry/src/geometry.worker.ts b/packages/geometry/src/geometry.worker.ts
+index ae60fc0f7b..8f0b2634af 100644
+--- a/packages/geometry/src/geometry.worker.ts
++++ b/packages/geometry/src/geometry.worker.ts
+@@ -558,6 +558,7 @@ type IfcAPIWithMerge = IfcAPI & {
+   /** Cold-load lever 1c: store the source file ONCE per load (see
+    *  `applySourceBytesToApi`). Absent on wasm builds predating the setter. */
+   setSourceBytes?: (data: Uint8Array) => void;
++  bindSourceModel?: () => void;
+ };
+ 
+ /**
+@@ -717,6 +718,7 @@ function applyPrepassColumnsToApi(): void {
+  * consumes that preparation instead of discarding it. */
+ let cachedSourceBytes: Uint8Array | null = null;
+ let sourceBytesApplied: boolean = false;
++let sourceBindingAttempted = false;
+ let sourcePreparedForStream = false;
+ let installedSourceSessionId: string | undefined;
+ 
+@@ -725,6 +727,7 @@ function applySourceBytesToApi(): void {
+   const ifcApi = api as IfcAPIWithMerge | null;
+   if (!ifcApi || sourceBytesApplied || !cachedSourceBytes) return;
+   if (typeof ifcApi.setSourceBytes !== 'function') return;
++  sourceBindingAttempted = false;
+   ifcApi.setSourceBytes(cachedSourceBytes);
+   sourceBytesApplied = true;
+ }
+@@ -1170,6 +1173,10 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
+     // re-installs the copy from the materialised buffer.
+     cachedSourceBytes = session.localBytes;
+     applySourceBytesToApi();
++    if (sourceBytesApplied && !sourceBindingAttempted) {
++      (ifcApi as IfcAPIWithMerge).bindSourceModel?.();
++      sourceBindingAttempted = true;
++    }
+     applyStyleFinishes(ifcApi, session.styleIds, session.styleFinishes);
+ 
+     // Instanced-only path: produce geometry ONCE via a partitioned batch, which
+@@ -1667,6 +1674,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
+       cachedEntityIndex = null;
+       cachedPrepassColumns = null;
+       prepassColumnsApplied = false;
++      sourceBindingAttempted = false;
+       ifcApi.setEntityIndex(e.data.ids, e.data.starts, e.data.lengths);
+       cachedEntityIndex = { ids: e.data.ids, starts: e.data.starts, lengths: e.data.lengths };
+       entityIndexApplied = true;
+diff --git a/packages/wasm/pkg/ifc-lite.d.ts b/packages/wasm/pkg/ifc-lite.d.ts
+index f366f270d7..af11a55cb9 100644
+--- a/packages/wasm/pkg/ifc-lite.d.ts
++++ b/packages/wasm/pkg/ifc-lite.d.ts
+@@ -525,6 +525,12 @@ export class GridAxisJs {
+ export class IfcAPI {
+     free(): void;
+     [Symbol.dispose](): void;
++    /**
++     * Admit this worker's installed bytes/index pair once before geometry.
++     * Full canonical span validation is required across worker realms. This
++     * does not authenticate arbitrary later data-taking compatibility calls.
++     */
++    bindSourceModel(): void;
+     /**
+      * Run the pre-pass ONCE and return serialized results for worker distribution.
+      * Takes raw bytes (&[u8]) to avoid TextDecoder overhead.
+@@ -1103,6 +1109,7 @@ export class IfcAPI {
+      * Thin wrapper over [`IfcAPI::produce_batch`]; converts each produced mesh
+      * to MeshDataJs (the IFC Z-up→WebGL Y-up rotation with preserved winding happens
+      * there). Flat indices preserve source order through this proper rotation.
++     * Synchronous Rust compatibility entry; this call creates its own live snapshot.
+      */
+     processGeometryBatch(data: Uint8Array, jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): MeshCollection;
+     /**
+@@ -1122,6 +1129,7 @@ export class IfcAPI {
+      * co-locates identical geometry on one worker, so per-batch collation
+      * captures ~all the dedup and no cross-batch merge is needed. Returns empty
+      * bytes only when the batch produced zero non-empty meshes.
++     * Synchronous Rust compatibility entry; this call creates its own live snapshot.
+      */
+     processGeometryBatchInstanced(data: Uint8Array, jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): Uint8Array;
+     /**
+@@ -1139,6 +1147,7 @@ export class IfcAPI {
+      * / lens overlays on instanced geometry) before the worker calls this in
+      * place of processGeometryBatch — otherwise those features break for the
+      * opaque bulk. See the instanced-only follow-ups.
++     * Synchronous Rust compatibility entry; this call creates its own live snapshot.
+      */
+     processGeometryBatchPartitioned(data: Uint8Array, jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): PartitionedBatch;
+     /**
+@@ -2674,6 +2683,7 @@ export interface InitOutput {
+     readonly gridaxisjs_gridId: (a: number) => number;
+     readonly gridaxisjs_start: (a: number) => number;
+     readonly gridaxisjs_tag: (a: number, b: number) => void;
++    readonly ifcapi_bindSourceModel: (a: number, b: number) => void;
+     readonly ifcapi_buildPrePassOnce: (a: number, b: number, c: number) => number;
+     readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
+     readonly ifcapi_buildPrePassStreamingSharded: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number) => void;
+diff --git a/packages/wasm/test/model-context.test.mjs b/packages/wasm/test/model-context.test.mjs
+index 2f93c45f8c..8d01c04cfb 100644
+--- a/packages/wasm/test/model-context.test.mjs
++++ b/packages/wasm/test/model-context.test.mjs
+@@ -30,10 +30,12 @@ async function apiFor(t, fixture, run) {
+ 
+ function batch(api, bytes, pre, { ids = pre.styleIds, colors = pre.styleColors,
+   voidKeys = pre.voidKeys, voidCounts = pre.voidCounts, voidValues = pre.voidValues,
+-  materialIds, materialCounts, materialColors } = {}) {
+-  const collection = api.processGeometryBatch(bytes, pre.jobs, pre.unitScale,
++  materialIds, materialCounts, materialColors } = {}, fromSource = false) {
++  const args = [pre.jobs, pre.unitScale,
+     ...pre.rtcOffset, pre.needsShift, voidKeys, voidCounts, voidValues,
+-    ids, colors, undefined, materialIds, materialCounts, materialColors);
++    ids, colors, undefined, materialIds, materialCounts, materialColors];
++  const collection = fromSource ? api.processGeometryBatchFromSource(...args)
++    : api.processGeometryBatch(bytes, ...args);
+   try {
+     return Array.from({ length: collection.length }, (_, i) => {
+       const mesh = collection.get(i);
+@@ -121,3 +123,51 @@ test('new snapshots use the current opening wire instead of freezing the first b
+     assert.deepEqual(again, cut, 'later batches must recover the original actual cut and buffers');
+   });
+ });
++
++test('coherent worker source has exact style revisions and keeps later material and opening inputs live', async t => {
++  await apiFor(t, styled, (api, bytes, pre) => {
++    api.setSourceBytes(bytes);
++    api.bindSourceModel();
++    const first=batch(api, bytes, pre, {}, true);
++    assert.equal(first.length,2);
++    closeColor(first[0].color,[1,0,0,1]);
++    const blue=new Uint8Array(pre.styleColors.length);
++    for(let i=0;i<blue.length;i+=4) {blue[i+2]=255;blue[i+3]=255;}
++    const next=batch(api, bytes, pre, {colors:blue}, true);
++    next.forEach(mesh=>closeColor(mesh.color,[0,0,1,1]));
++    assert.deepEqual(next.map(m=>[m.positions,m.indices]),first.map(m=>[m.positions,m.indices]));
++    assert.deepEqual(batch(api,bytes,pre,{},true),first);
++    const material={ids:new Uint32Array(),colors:new Uint8Array(),
++      materialIds:new Uint32Array([23]),materialCounts:new Uint32Array([2]),
++      materialColors:new Uint8Array([0,255,0,102,255,255,0,255])};
++    const overridden=batch(api,bytes,pre,material,true);
++    closeColor(overridden[0].color,[0,1,0,0.4]);
++    closeColor(overridden[1].color,[1,1,0,1]);
++    batch(api,bytes,pre,{ids:material.ids,colors:material.colors},true)
++      .forEach(mesh=>closeColor(mesh.color,[0.6,0.6,0.6,1]));
++  });
++  await apiFor(t,wall,(api,bytes,pre)=>{
++    api.setSourceBytes(bytes);api.bindSourceModel();
++    const host=meshes=>meshes.filter(m=>m.id===30);
++    const cut=host(batch(api,bytes,pre,{},true));
++    const solid=host(batch(api,bytes,pre,{voidKeys:new Uint32Array(),
++      voidCounts:new Uint32Array(),voidValues:new Uint32Array()},true));
++    assert.ok(Math.abs(volume(solid[0])-2.4)<1e-5);
++    assert.ok(cut.reduce((sum,m)=>sum+volume(m),0)<2.3);
++    assert.deepEqual(host(batch(api,bytes,pre,{},true)),cut);
++  });
++});
++
++test('one API admits repeated source loads and rejects mismatched delivered spans', async t => {
++  await apiFor(t,styled,(api,bytes,pre)=>{
++    for(let load=0;load<2;load++) {
++      if(load) pre=api.buildPrePassOnce(bytes);
++      api.setSourceBytes(bytes);api.bindSourceModel();
++      assert.equal(batch(api,bytes,pre,{},true).length,2);
++      api.clearPrePassCache();
++    }
++    api.setEntityIndex(new Uint32Array([23]),new Uint32Array([0]),new Uint32Array([1]));
++    api.setSourceBytes(bytes);
++    assert.throws(()=>api.bindSourceModel(),/entity index does not match source bytes/);
++  });
++});
+diff --git a/rust/core/src/columnar_index.rs b/rust/core/src/columnar_index.rs
+index da7e72b1d5..5f87d469e2 100644
+--- a/rust/core/src/columnar_index.rs
++++ b/rust/core/src/columnar_index.rs
+@@ -389,6 +389,7 @@ impl<'a> crate::EntityDecoder<'a> {
+     /// but for the compact representation; afterwards `build_index` no-ops.
+     pub fn set_columnar_index(&mut self, index: Arc<ColumnarEntityIndex>) {
+         self.execution_owner.changed();
++        self.source_bundle = None;
+         self.set_grid_axis_index(index.grid_axis_index.clone());
+         self.entity_index = Some(EntityIndexStore::Columnar(index));
+     }
+diff --git a/rust/core/src/decoder.rs b/rust/core/src/decoder.rs
+index ac0977c52a..8173235ae2 100644
+--- a/rust/core/src/decoder.rs
++++ b/rust/core/src/decoder.rs
+@@ -19,6 +19,7 @@ use std::sync::Arc;
+ 
+ #[path = "decoder/caches.rs"]
+ mod caches;
++pub(crate) mod source_caches;
+ #[path = "decoder/execution.rs"]
+ mod execution;
+ #[path = "decoder/fast_buffers.rs"]
+@@ -64,7 +65,9 @@ where
+ /// structural scanning and byte offsets always use the original source bytes.
+ pub struct EntityDecoder<'a> {
+     pub(crate) execution_owner: crate::execution_owner::ExecutionOwner,
+-    content: &'a [u8],
++    pub(crate) content: &'a [u8],
++    pub(crate) source_bundle: Option<Arc<crate::SourceBundle>>,
++    pub(crate) cache_revision: u64,
+     /// Cache of decoded entities (entity_id -> `Arc<DecodedEntity>`)
+     /// Using Arc avoids expensive clones on cache hits
+     cache: FxHashMap<u32, Arc<DecodedEntity>>,
+@@ -137,6 +140,8 @@ impl<'a> EntityDecoder<'a> {
+         Self {
+             execution_owner: Default::default(),
+             content,
++            source_bundle: None,
++            cache_revision: 0,
+             cache: FxHashMap::default(),
+             entity_index: None,
+             point_cache: FxHashMap::default(),
+@@ -160,53 +165,18 @@ impl<'a> EntityDecoder<'a> {
+     where
+         T: AsRef<[u8]> + ?Sized,
+     {
+-        let content = content.as_ref();
+-        Self {
+-            execution_owner: Default::default(),
+-            content,
+-            cache: FxHashMap::default(),
+-            entity_index: Some(EntityIndexStore::Hash(Arc::new(index))),
+-            point_cache: FxHashMap::default(),
+-            point_cache_hits: 0,
+-            point_cache_misses: 0,
+-            plane_angle_to_radians_cache: None,
+-            project_id_cache: None,
+-            length_unit_scale_cache: None,
+-            geometric_precision_cache: None,
+-            placement_transform_cache: FxHashMap::default(),
+-            styled_item_index: std::sync::OnceLock::new(),
+-            schema_version_cache: None,
+-            grid_axis_index: Arc::default(),
+-            strict_reals: false,
+-            refused_records: std::sync::Mutex::default(),
+-        }
++        Self::with_arc_index(content,Arc::new(index))
+     }
+ 
+-    /// Create decoder with shared Arc index (for parallel processing)
++    /// Create decoder with shared Arc index (for parallel processing).
++    /// The caller must pair the index with the exact original source bytes.
+     pub fn with_arc_index<T>(content: &'a T, index: Arc<EntityIndex>) -> Self
+     where
+         T: AsRef<[u8]> + ?Sized,
+     {
+-        let content = content.as_ref();
+-        Self {
+-            execution_owner: Default::default(),
+-            content,
+-            cache: FxHashMap::default(),
+-            entity_index: Some(EntityIndexStore::Hash(index)),
+-            point_cache: FxHashMap::default(),
+-            point_cache_hits: 0,
+-            point_cache_misses: 0,
+-            plane_angle_to_radians_cache: None,
+-            project_id_cache: None,
+-            length_unit_scale_cache: None,
+-            geometric_precision_cache: None,
+-            placement_transform_cache: FxHashMap::default(),
+-            styled_item_index: std::sync::OnceLock::new(),
+-            schema_version_cache: None,
+-            grid_axis_index: Arc::default(),
+-            strict_reals: false,
+-            refused_records: std::sync::Mutex::default(),
+-        }
++        let mut decoder=Self::new(content);
++        decoder.entity_index=Some(EntityIndexStore::Hash(index));
++        decoder
+     }
+ 
+     /// Install a pre-built index into this decoder. Used when the caller already
+@@ -215,6 +185,7 @@ impl<'a> EntityDecoder<'a> {
+     /// `decode_by_id`/ref-resolving call; afterwards `build_index` no-ops.
+     pub fn set_entity_index(&mut self, index: Arc<EntityIndex>) {
+         self.execution_owner.changed();
++        self.source_bundle = None;
+         self.entity_index = Some(EntityIndexStore::Hash(index));
+     }
+ 
+@@ -239,6 +210,13 @@ impl<'a> EntityDecoder<'a> {
+     #[inline]
+     pub fn decode_at(&mut self, start: usize, end: usize) -> Result<DecodedEntity> {
+         let (id, ifc_type, tokens) = self.parse_at(start, end, "decode_at")?;
++        // Direct reads may name an earlier duplicate. They remain readable,
++        // but cannot populate the canonical last-occurrence ID cache.
++        if self.source_bundle.is_some()
++            && self.entity_index.as_ref().and_then(|index| index.lookup(id)) != Some((start, end))
++        {
++            return self.admit(id, ifc_type, &tokens).map(|(entity, _)| entity);
++        }
+ 
+         // Check cache first - return clone of inner DecodedEntity
+         if let Some(entity_arc) = self.cache.get(&id) {
+@@ -553,6 +531,8 @@ impl<'a> EntityDecoder<'a> {
+     }
+ 
+     /// Inject a pre-warmed Arc-shared cache into this decoder's local cache.
++    /// Trusted-input compatibility API: entries must belong to this source.
++    /// Revokes coherent authority; use `inject_source_cache` for checked reuse.
+     ///
+     /// Used by the de-normalized parallel path: a serial pre-pass builds a
+     /// shared `Arc<FxHashMap<u32, Arc<DecodedEntity>>>` containing all
+@@ -566,6 +546,7 @@ impl<'a> EntityDecoder<'a> {
+     /// total, ~90 ms wall (incurred ONCE at task setup; the parallel
+     /// hot path then runs lock-free against the populated cache).
+     pub fn inject_shared_cache(&mut self, shared: &FxHashMap<u32, Arc<DecodedEntity>>) {
++        self.revoke_cache_authority();
+         self.execution_owner.changed();
+         self.cache.reserve(shared.len());
+         for (&id, entity) in shared.iter() {
+diff --git a/rust/core/src/decoder/caches.rs b/rust/core/src/decoder/caches.rs
+index f856b85e28..d658afb50e 100644
+--- a/rust/core/src/decoder/caches.rs
++++ b/rust/core/src/decoder/caches.rs
+@@ -93,10 +93,12 @@ impl EntityDecoder<'_> {
+         std::mem::take(&mut self.point_cache)
+     }
+ 
++    /// Trusted-input compatibility API; revokes coherent source authority.
+     /// Install a previously-accumulated point cache (see [`Self::take_point_cache`]).
+     /// Does not reset the hit/miss counters, which stay per-decoder so each job's
+     /// [`Self::point_cache_stats`] reflect only that job's activity.
+     pub fn set_point_cache(&mut self, cache: FxHashMap<u32, (f64, f64, f64)>) {
++        self.revoke_cache_authority();
+         self.execution_owner.changed();
+         self.point_cache = cache;
+     }
+@@ -121,9 +123,11 @@ impl EntityDecoder<'_> {
+         std::mem::take(&mut self.placement_transform_cache)
+     }
+ 
++    /// Trusted-input compatibility API; revokes coherent source authority.
+     /// Install a previously-accumulated placement-transform memo (see
+     /// [`Self::take_placement_transform_cache`]).
+     pub fn set_placement_transform_cache(&mut self, cache: FxHashMap<u32, [f64; 16]>) {
++        self.revoke_cache_authority();
+         self.execution_owner.changed();
+         self.placement_transform_cache = cache;
+     }
+diff --git a/rust/core/src/decoder/schema_layout.rs b/rust/core/src/decoder/schema_layout.rs
+index b86ce94e10..269d15cf31 100644
+--- a/rust/core/src/decoder/schema_layout.rs
++++ b/rust/core/src/decoder/schema_layout.rs
+@@ -99,6 +99,7 @@ impl EntityDecoder<'_> {
+     /// entity index installs that index's own.
+     pub fn set_grid_axis_index(&mut self, index: Arc<GridAxisIndex>) {
+         self.execution_owner.changed();
++        self.revoke_cache_authority();
+         self.grid_axis_index = index;
+     }
+ 
+diff --git a/rust/core/src/decoder/source_caches.rs b/rust/core/src/decoder/source_caches.rs
+new file mode 100644
+index 0000000000..7ffe4304c7
+--- /dev/null
++++ b/rust/core/src/decoder/source_caches.rs
+@@ -0,0 +1,100 @@
++// SPDX-License-Identifier: MPL-2.0
++//! Opaque cache moves carry the provenance of their producing decoder. Raw
++//! compatibility imports are trusted inputs, never proof of source identity.
++use super::EntityDecoder;
++use crate::{DecodedEntity, SourceBundle};
++use rustc_hash::FxHashMap;
++use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
++
++/// A cache produced by a decoder. Entries and authority cannot be supplied
++/// independently. Moving a worker cache moves only a map header and Arc.
++pub struct SourceCache<T> {
++    source: Option<Arc<SourceBundle>>,
++    revision: u64,
++    entries: FxHashMap<u32, T>,
++}
++impl<T> Default for SourceCache<T> {
++    fn default() -> Self { Self { source: None, revision: 0, entries: Default::default() } }
++}
++
++/// Explicit acceptance of a decoder's current externally authored inputs.
++/// This is a trusted configuration revision, NOT source authentication. Later
++/// raw imports invalidate it. It cannot be manufactured from an index/token.
++#[derive(Clone)]
++pub struct TrustedDecoderInputs { source: Arc<SourceBundle>, revision: u64 }
++impl TrustedDecoderInputs {
++    pub fn source(&self) -> &Arc<SourceBundle> { &self.source }
++    pub fn matches(&self, decoder: &EntityDecoder<'_>) -> bool {
++        decoder.cache_revision == self.revision && decoder.source_bundle.as_ref()
++            .is_some_and(|source| Arc::ptr_eq(source, &self.source))
++    }
++}
++
++impl EntityDecoder<'_> {
++    pub(crate) fn revoke_cache_authority(&mut self) {
++        static NEXT: AtomicU64 = AtomicU64::new(1);
++        self.cache_revision = NEXT.fetch_update(Ordering::Relaxed, Ordering::Relaxed,
++            |n| n.checked_add(1)).expect("decoder cache revision exhausted");
++    }
++    pub(crate) fn can_bind_source(&self) -> bool {
++        self.cache_revision == 0 && self.cache.is_empty() && self.point_cache.is_empty()
++            && self.placement_transform_cache.is_empty() && self.project_id_cache.is_none()
++            && self.length_unit_scale_cache.is_none() && self.plane_angle_to_radians_cache.is_none()
++            && self.geometric_precision_cache.is_none() && self.schema_version_cache.is_none()
++            && self.styled_item_index.get().is_none()
++    }
++    /// Call only when the caller explicitly trusts all current external inputs.
++    /// This does not restore `SourceBundle::owns_decoder` authentication.
++    pub fn trusted_inputs(&self) -> Option<TrustedDecoderInputs> {
++        self.source_bundle.as_ref().map(|source| TrustedDecoderInputs {
++            source: Arc::clone(source), revision: self.cache_revision,
++        })
++    }
++    fn accepts_cache<T>(&self, cache: &SourceCache<T>) -> bool {
++        if cache.entries.is_empty() && cache.source.is_none() && cache.revision == 0 { return true; }
++        match (&self.source_bundle, &cache.source) {
++            (Some(a), Some(b)) => self.cache_revision == cache.revision && Arc::ptr_eq(a, b),
++            (None, None) => true, // explicit borrowed caller precondition remains
++            _ => false,
++        }
++    }
++    pub fn take_source_point_cache(&mut self) -> SourceCache<(f64, f64, f64)> {
++        SourceCache { source: self.source_bundle.clone(), revision: self.cache_revision,
++            entries: self.take_point_cache() }
++    }
++    /// False leaves this decoder unchanged; the foreign cache is not installed.
++    pub fn set_source_point_cache(&mut self, cache: SourceCache<(f64, f64, f64)>) -> bool {
++        if !self.accepts_cache(&cache) { return false; }
++        self.execution_owner.changed();
++        self.point_cache = cache.entries;
++        true
++    }
++    pub fn take_source_placement_cache(&mut self) -> SourceCache<[f64; 16]> {
++        SourceCache { source: self.source_bundle.clone(), revision: self.cache_revision,
++            entries: self.take_placement_transform_cache() }
++    }
++    /// The memo writer retains its documented canonical-transform precondition;
++    /// this checks transfer provenance, not the correctness of extension code.
++    pub fn set_source_placement_cache(&mut self, cache: SourceCache<[f64; 16]>) -> bool {
++        if !self.accepts_cache(&cache) { return false; }
++        self.execution_owner.changed();
++        self.placement_transform_cache = cache.entries;
++        true
++    }
++    pub fn drain_source_cache(&mut self) -> SourceCache<Arc<DecodedEntity>> {
++        SourceCache { source: self.source_bundle.clone(), revision: self.cache_revision,
++            entries: self.drain_cache() }
++    }
++    /// Share canonically prewarmed records without a source/index scan. The
++    /// entry cloning cost is the same as the existing raw injection API.
++    pub fn inject_source_cache(&mut self, cache: &SourceCache<Arc<DecodedEntity>>) -> bool {
++        if !self.accepts_cache(cache) { return false; }
++        self.execution_owner.changed();
++        self.cache.extend(cache.entries.iter().map(|(&id, entity)| (id, Arc::clone(entity))));
++        true
++    }
++}
++
++#[cfg(test)]
++#[path = "source_caches_tests.rs"]
++mod tests;
+diff --git a/rust/core/src/decoder/source_caches_tests.rs b/rust/core/src/decoder/source_caches_tests.rs
+new file mode 100644
+index 0000000000..402de845d1
+--- /dev/null
++++ b/rust/core/src/decoder/source_caches_tests.rs
+@@ -0,0 +1,110 @@
++// SPDX-License-Identifier: MPL-2.0
++use crate::{EntityDecoder, EntityScanner, SourceBundle, GridAxisIndex};
++use rustc_hash::FxHashMap;
++use std::sync::Arc;
++
++#[test]
++fn foreign_raw_decoded_cache_cannot_acquire_or_retain_bundle_authority() {
++    let source = SourceBundle::new(b"DATA;#1=IFCWALL();".to_vec());
++    let mut foreign = EntityDecoder::new(b"DATA;#1=IFCBEAM();");
++    foreign.decode_by_id(1).unwrap();
++    let cache = foreign.drain_cache();
++    let mut candidate = EntityDecoder::new(source.bytes());
++    candidate.inject_shared_cache(&cache);
++    assert!(!source.bind_decoder(&mut candidate));
++    let mut bound = source.decoder();
++    bound.inject_shared_cache(&cache);
++    assert!(!source.owns_decoder(&bound));
++    assert_eq!(bound.decode_by_id(1).unwrap().ifc_type.as_str(), "IFCBEAM",
++        "legacy trusted-input behavior remains usable, without authentication");
++    let inputs = bound.trusted_inputs().unwrap();
++    assert!(inputs.matches(&bound));
++    bound.inject_shared_cache(&cache);
++    assert!(!inputs.matches(&bound), "later imports create a new trusted revision");
++}
++
++#[test]
++fn direct_duplicate_reads_cannot_override_canonical_id_cache() {
++    let source = SourceBundle::new(b"DATA;#1=IFCWALL();#1=IFCBEAM();".to_vec());
++    let (_, _, start, end) = EntityScanner::new(source.bytes()).next_entity().unwrap();
++    let mut borrowed = EntityDecoder::new(source.bytes());
++    borrowed.decode_at(start, end).unwrap();
++    assert!(!source.bind_decoder(&mut borrowed));
++    let mut bound = source.decoder();
++    assert_eq!(bound.decode_at(start, end).unwrap().ifc_type.as_str(), "IFCWALL");
++    assert_eq!(bound.decode_by_id(1).unwrap().ifc_type.as_str(), "IFCBEAM");
++    assert!(source.owns_decoder(&bound));
++}
++
++#[test]
++fn prewarmed_decoded_cache_has_checked_same_bundle_transfer() {
++    let source = SourceBundle::new(b"DATA;#1=IFCWALL();".to_vec());
++    let foreign = SourceBundle::new(b"DATA;#1=IFCBEAM();".to_vec());
++    let mut warm = source.decoder();
++    warm.decode_by_id(1).unwrap();
++    let cache = warm.drain_source_cache();
++    let mut fresh = source.decoder();
++    assert!(fresh.inject_source_cache(&cache));
++    assert_eq!(fresh.cache_size(), 1);
++    assert!(source.owns_decoder(&fresh));
++    assert_eq!(fresh.decode_by_id(1).unwrap().ifc_type.as_str(), "IFCWALL");
++    let mut wrong = foreign.decoder();
++    assert!(!wrong.inject_source_cache(&cache));
++    assert_eq!(wrong.decode_by_id(1).unwrap().ifc_type.as_str(), "IFCBEAM");
++}
++
++#[test]
++fn point_and_placement_cache_transfers_reject_foreign_and_reuse_same_source() {
++    let source = SourceBundle::new(b"DATA;#1=IFCCARTESIANPOINT((1.,2.,3.));#2=IFCPOLYLOOP((#1,#1,#1));".to_vec());
++    let foreign = SourceBundle::new(b"DATA;#1=IFCCARTESIANPOINT((9.,8.,7.));#2=IFCPOLYLOOP((#1,#1,#1));".to_vec());
++    let mut warm = source.decoder();
++    assert_eq!(warm.get_polyloop_coords_cached(2).unwrap(), vec![(1.,2.,3.);3]);
++    // Placement memo entries are written under the existing trusted canonical
++    // transform contract; the transfer must not assert a foreign source.
++    warm.cache_placement_transform(3, [4.;16]);
++    let mut same = source.decoder();
++    assert!(same.set_source_point_cache(warm.take_source_point_cache()));
++    assert!(same.set_source_placement_cache(warm.take_source_placement_cache()));
++    assert_eq!(same.get_polyloop_coords_cached(2).unwrap(), vec![(1.,2.,3.);3]);
++    assert_eq!(same.point_cache_stats(), (3,0));
++    assert_eq!(same.get_placement_transform_cached(3), Some([4.;16]));
++    assert!(source.owns_decoder(&same));
++    let mut wrong = foreign.decoder();
++    assert!(!wrong.set_source_point_cache(same.take_source_point_cache()));
++    assert!(!wrong.set_source_placement_cache(same.take_source_placement_cache()));
++    assert_eq!(wrong.get_polyloop_coords_cached(2).unwrap(), vec![(9.,8.,7.);3]);
++    assert_eq!(wrong.get_placement_transform_cached(3), None);
++    assert!(foreign.owns_decoder(&wrong));
++}
++
++#[test]
++fn raw_point_placement_and_grid_imports_revoke_authority_even_when_empty() {
++    let source = SourceBundle::new(b"DATA;#1=IFCWALL();".to_vec());
++    let mut points = source.decoder();
++    points.set_point_cache(FxHashMap::default());
++    assert!(!source.owns_decoder(&points));
++    let mut placements = source.decoder();
++    placements.set_placement_transform_cache(FxHashMap::default());
++    assert!(!source.owns_decoder(&placements));
++    let mut grids = source.decoder();
++    grids.set_grid_axis_index(Arc::new(GridAxisIndex::default()));
++    assert!(!source.owns_decoder(&grids));
++    for decoder in [&mut points, &mut placements, &mut grids] {
++        assert!(!source.bind_decoder(decoder));
++    }
++}
++
++#[test]
++fn populated_foreign_grid_inverse_is_compatibility_only() {
++    let bytes=b"DATA;#1=IFCGRIDAXIS('A',$,.T.);#9=IFCGRID('g',$,$,$,$,$,$,(#1),(),$);";
++    let shared=Arc::new(GridAxisIndex::default());
++    let mut foreign=EntityDecoder::new(bytes);
++    foreign.set_grid_axis_index(shared.clone());
++    assert_eq!(foreign.grid_of_axis(1),Some(9));
++    let source=SourceBundle::new(b"DATA;#1=IFCGRIDAXIS('A',$,.T.);".to_vec());
++    let mut bound=source.decoder();
++    bound.set_grid_axis_index(shared);
++    assert_eq!(bound.grid_of_axis(1),Some(9),"raw compatibility retains trusted behavior");
++    assert!(!source.owns_decoder(&bound));
++    assert_eq!(source.decoder().grid_of_axis(1),None,"factory inverse stays independent");
++}
+diff --git a/rust/core/src/decoder/styled_items.rs b/rust/core/src/decoder/styled_items.rs
+index 46cd9ac2d3..9291c29cbb 100644
+--- a/rust/core/src/decoder/styled_items.rs
++++ b/rust/core/src/decoder/styled_items.rs
+@@ -17,10 +17,14 @@ impl EntityDecoder<'_> {
+         if self.content.len() <= 256 * 1024 * 1024 {
+             self.build_index();
+         }
+-        let cache = match self.entity_index.as_ref() {
+-            Some(crate::columnar_index::EntityIndexStore::Columnar(index)) => {
+-                &index.styled_item_index
+-            }
++        // A delivered table can have correct spans for a different source but
++        // already-populated inverse caches. Coherent decoders use their actual
++        // immutable source owner; legacy columnar sharing keeps its precondition.
++        let cache = match (self.source_bundle.as_ref(),self.entity_index.as_ref()) {
++            (Some(source),Some(crate::columnar_index::EntityIndexStore::Columnar(_))) => &source.styled_items,
++            (_,Some(crate::columnar_index::EntityIndexStore::Columnar(index))) => &index.styled_item_index,
++            // Preserve the existing decoder-local hash/dense cache domain and
++            // refusal attribution rather than silently hoisting it model-wide.
+             _ => &self.styled_item_index,
+         };
+         match cache.get_or_init(|| self.build_styled_item_index()) {
+diff --git a/rust/core/src/dense_index.rs b/rust/core/src/dense_index.rs
+index 540e259062..b253a65ed9 100644
+--- a/rust/core/src/dense_index.rs
++++ b/rust/core/src/dense_index.rs
+@@ -61,6 +61,7 @@ impl EntityDecoder<'_> {
+     /// Like `set_columnar_index`, source bytes and indexed spans must agree.
+     pub fn set_dense_index(&mut self, index: Arc<DenseEntityIndex>) {
+         self.execution_owner.changed();
++        self.source_bundle = None;
+         self.set_grid_axis_index(index.grid_axis_index.clone());
+         self.entity_index = Some(EntityIndexStore::Dense(index));
+     }
+diff --git a/rust/core/src/lib.rs b/rust/core/src/lib.rs
+index 0dbf2c18fb..481b496248 100644
+--- a/rust/core/src/lib.rs
++++ b/rust/core/src/lib.rs
+@@ -142,3 +142,9 @@ pub use units::{
+     resolve_length_unit, LengthUnit,
+     try_extract_length_unit_scale, try_extract_plane_angle_to_radians,
+ };
++
++mod source_index;
++pub mod source_bundle;
++pub use source_bundle::SourceBundle;
++
++pub use decoder::source_caches::{SourceCache, TrustedDecoderInputs};
+diff --git a/rust/core/src/source_bundle.rs b/rust/core/src/source_bundle.rs
+new file mode 100644
+index 0000000000..3cbf2e2147
+--- /dev/null
++++ b/rust/core/src/source_bundle.rs
+@@ -0,0 +1,139 @@
++// SPDX-License-Identifier: MPL-2.0
++//! Immutable bytes and their canonically scanned index. No caller-provided
++//! identity or independently installed index can manufacture a bundle decoder.
++use crate::source_index::{SourceIndex, SourceIndexBuilder};
++use crate::{EntityDecoder, EntityScanner};
++use std::sync::Arc;
++
++/// One immutable source load. Construction scans original bytes, never a UTF-8
++/// rewrite. Cloning the Arc or making a decoder does not rescan or copy inputs.
++pub struct SourceBundle {
++    bytes: Arc<Vec<u8>>,
++    index: SourceIndex,
++    grid_axes: Arc<crate::GridAxisIndex>,
++    pub(crate) styled_items: std::sync::OnceLock<crate::decoder::StyledItemIndexResult>,
++}
++impl SourceBundle {
++    fn paired(bytes: Arc<Vec<u8>>, index: SourceIndex) -> Arc<Self> {
++        Arc::new(Self {
++            bytes,
++            index,
++            grid_axes: Arc::default(),
++            styled_items: Default::default(),
++        })
++    }
++
++    pub fn new(bytes: Vec<u8>) -> Arc<Self> {
++        Self::scan_with(Arc::new(bytes), |_, _, _, _| {})
++    }
++
++    /// Fuse index construction with an existing canonical classification pass.
++    /// The visitor sees canonical scanner records; it cannot supply index rows.
++    pub fn scan_with(
++        bytes: Arc<Vec<u8>>,
++        mut visit: impl FnMut(u32, &str, usize, usize),
++    ) -> Arc<Self> {
++        let mut index = SourceIndexBuilder::new(bytes.len());
++        let mut scanner = EntityScanner::new(bytes.as_slice());
++        while let Some((id, name, start, end)) = scanner.next_entity() {
++            index.insert(id, (start, end));
++            visit(id, name, start, end);
++        }
++        crate::report_scan_diagnostics(
++            scanner.skipped_oversized_ids(),
++            scanner.malformed_record_start().is_some(),
++        );
++        Self::paired(bytes, index.finish())
++    }
++
++    /// Build the compact browser representation directly with the existing
++    /// canonical index builder, without building or validating a second index.
++    pub fn columnar(bytes: Arc<Vec<u8>>) -> Result<Arc<Self>, crate::SpanBeyondU32> {
++        let index = crate::ColumnarEntityIndex::from_scan(bytes.as_slice())?;
++        Ok(Self::paired(bytes, SourceIndex::Columnar(Arc::new(index))))
++    }
++
++    /// Validate a delivered compact index against the canonical byte scanner
++    /// once at load. Exact spans and completeness are checked, including the
++    /// canonical last-occurrence rule. Equal IDs or lengths alone prove nothing.
++    pub fn with_columnar_index(
++        bytes: Arc<Vec<u8>>,
++        index: Arc<crate::ColumnarEntityIndex>,
++    ) -> Result<Arc<Self>, SourceIndexMismatch> {
++        let mut scanner = EntityScanner::new(bytes.as_slice());
++        let mut matched = 0;
++        while let Some((id, _, start, end)) = scanner.next_entity() {
++            match index.lookup(id) {
++                Some(span) if span == (start, end) => matched += 1,
++                Some((later, _)) if later > start => {}
++                _ => return Err(SourceIndexMismatch),
++            }
++        }
++        crate::report_scan_diagnostics(
++            scanner.skipped_oversized_ids(),
++            scanner.malformed_record_start().is_some(),
++        );
++        if matched != index.len() {
++            return Err(SourceIndexMismatch);
++        }
++        Ok(Self::paired(bytes, SourceIndex::Columnar(index)))
++    }
++
++    /// Adopt a pristine decoder over the exact owned allocation. Populated or
++    /// externally seeded decoders cannot acquire factory authority. Prewarm a
++    /// factory decoder instead, then move its opaque source caches.
++    pub fn bind_decoder(self: &Arc<Self>, decoder: &mut EntityDecoder<'_>) -> bool {
++        if decoder.entity_index.is_some() || !decoder.can_bind_source() {
++            return false;
++        }
++        if decoder.content.as_ptr() != self.bytes.as_ptr()
++            || decoder.content.len() != self.bytes.len()
++        {
++            return false;
++        }
++        self.index.install(decoder);
++        decoder.set_grid_axis_index(Arc::clone(&self.grid_axes));
++        decoder.source_bundle = Some(Arc::clone(self));
++        decoder.cache_revision = 0;
++        true
++    }
++
++    pub fn bytes(&self) -> &[u8] {
++        &self.bytes
++    }
++
++    /// A fresh mutable decoder retains the actual paired allocation. It can
++    /// move to a scoped worker. The context retains the bundle after its caller
++    /// drops the original handle; borrowing that snapshot needs no input copy.
++    pub fn decoder(self: &Arc<Self>) -> EntityDecoder<'_> {
++        let mut decoder = EntityDecoder::new(self.bytes.as_slice());
++        self.index.install(&mut decoder);
++        decoder.set_grid_axis_index(Arc::clone(&self.grid_axes));
++        decoder.source_bundle = Some(Arc::clone(self));
++        decoder.cache_revision = 0;
++        decoder
++    }
++
++    /// This compares private factory provenance, not caller-asserted identity,
++    /// length, IDs or an arbitrary prebuilt index's allocation address.
++    pub fn owns_decoder(self: &Arc<Self>, decoder: &EntityDecoder<'_>) -> bool {
++        decoder.cache_revision == 0 && decoder
++            .source_bundle
++            .as_ref()
++            .is_some_and(|source| Arc::ptr_eq(self, source))
++    }
++}
++
++/// Delivered spans do not describe the original bytes' complete canonical scan.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub struct SourceIndexMismatch;
++impl std::fmt::Display for SourceIndexMismatch {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        f.write_str("entity index does not match source bytes")
++    }
++}
++impl std::error::Error for SourceIndexMismatch {}
++
++#[cfg(test)]
++#[path = "source_bundle_tests.rs"]
++mod tests;
+diff --git a/rust/core/src/source_bundle_tests.rs b/rust/core/src/source_bundle_tests.rs
+new file mode 100644
+index 0000000000..fb7b3c2280
+--- /dev/null
++++ b/rust/core/src/source_bundle_tests.rs
+@@ -0,0 +1,105 @@
++// SPDX-License-Identifier: MPL-2.0
++//! Source/index ownership invariants for the model-context migration.
++use super::*;
++use crate::{build_entity_index, ColumnarEntityIndex};
++
++#[test]
++fn same_sized_sources_and_identical_ids_do_not_authenticate_mismatched_spans() {
++    let a = b"DATA;#1=IFCCARTESIANPOINT((1.,2.,3.)); #2=IFCDIRECTION((0.,0.,1.));";
++    let b = b"DATA; #1=IFCCARTESIANPOINT((1.,2.,3.));#2=IFCDIRECTION((0.,0.,1.));";
++    assert_eq!(a.len(), b.len());
++    let index = Arc::new(ColumnarEntityIndex::from_scan(a).unwrap());
++    assert!(SourceBundle::with_columnar_index(Arc::new(b.to_vec()), index).is_err());
++    let canonical = Arc::new(ColumnarEntityIndex::from_scan(b).unwrap());
++    let source = SourceBundle::with_columnar_index(Arc::new(b.to_vec()), canonical).unwrap();
++    assert_eq!(source.decoder().decode_by_id(1).unwrap().id, 1);
++}
++
++#[test]
++fn missing_extra_and_duplicate_rows_obey_the_canonical_scanner_not_length_checks() {
++    let bytes = Arc::new(b"DATA;#2=IFCWALL('old');#1=IFCWALL();#2=IFCBEAM('last');".to_vec());
++    let index = Arc::new(ColumnarEntityIndex::from_scan(bytes.as_slice()).unwrap());
++    let source = SourceBundle::with_columnar_index(bytes.clone(), index).unwrap();
++    assert_eq!(
++        source.decoder().decode_by_id(2).unwrap().ifc_type,
++        crate::IfcType::IfcBeam
++    );
++    let partial = Arc::new(
++        ColumnarEntityIndex::from_hashmap_consuming(
++            [(1, build_entity_index(bytes.as_slice())[&1])]
++                .into_iter()
++                .collect(),
++        )
++        .unwrap(),
++    );
++    assert!(SourceBundle::with_columnar_index(bytes.clone(), partial).is_err());
++    let mut extra = build_entity_index(bytes.as_slice());
++    extra.insert(99, (0, 4));
++    let extra = Arc::new(ColumnarEntityIndex::from_hashmap_consuming(extra).unwrap());
++    assert!(SourceBundle::with_columnar_index(bytes, extra).is_err());
++}
++
++#[test]
++fn original_non_utf8_bytes_survive_caller_drop_and_fresh_decoders_share_the_bundle() {
++    let bytes = Arc::new(b"DATA;#1=IFCWALL('\xff');".to_vec());
++    let weak = Arc::downgrade(&bytes);
++    let source = SourceBundle::scan_with(bytes, |_, _, _, _| {});
++    let mut first = source.decoder();
++    let mut second = source.decoder();
++    assert_eq!(first.get_raw_bytes(1).unwrap(), b"#1=IFCWALL('\xff');");
++    assert_eq!(second.decode_by_id(1).unwrap().id, 1);
++    assert!(source.owns_decoder(&first));
++    assert!(source.owns_decoder(&second));
++    assert_eq!(
++        weak.strong_count(),
++        1,
++        "decoders retain the bundle, never clone source bytes"
++    );
++    first.set_entity_index(Arc::new(build_entity_index(source.bytes())));
++    assert!(
++        !source.owns_decoder(&first),
++        "legacy setter cannot retain factory authority"
++    );
++    assert!(source.owns_decoder(&second));
++}
++
++#[test]
++fn arbitrary_decoder_cannot_keep_a_prebuilt_index_when_adopting_factory_source() {
++    let source = SourceBundle::new(b"DATA;#1=IFCWALL();".to_vec());
++    let mut decoder = EntityDecoder::with_index(source.bytes(), Default::default());
++    assert!(!source.bind_decoder(&mut decoder));
++    let mut decoder = EntityDecoder::new(source.bytes());
++    assert!(source.bind_decoder(&mut decoder));
++    assert_eq!(decoder.decode_by_id(1).unwrap().id, 1);
++}
++
++#[test]
++fn validated_span_reuse_does_not_import_another_sources_lazy_inverse_caches() {
++    // Equal span tables are valid for both sources, but their relationships
++    // differ. A table's previously populated caches are not source authority.
++    let a=b"DATA;#1=IFCSTYLEDITEM(#2,(),$);#2=IFCWALL();#3=IFCBEAM();#4=IFCGRIDAXIS('A',$,.T.);#5=IFCGRIDAXIS('B',$,.T.);#9=IFCGRID('g',$,$,$,$,$,$,(#4),(),$);";
++    let b = String::from_utf8(a.to_vec())
++        .unwrap()
++        .replace("IFCSTYLEDITEM(#2", "IFCSTYLEDITEM(#3")
++        .replace("(#4),()", "(#5),()")
++        .into_bytes();
++    let index = Arc::new(ColumnarEntityIndex::from_scan(a).unwrap());
++    let mut old = EntityDecoder::with_arc_columnar_index(a, index.clone());
++    assert_eq!(old.styled_item_ids(2).unwrap(), [1]);
++    assert_eq!(old.grid_of_axis(4), Some(9));
++    let source = SourceBundle::with_columnar_index(Arc::new(b), index).unwrap();
++    let mut expected = EntityDecoder::new(source.bytes());
++    assert_eq!(expected.styled_item_ids(3).unwrap(), [1]);
++    assert_eq!(expected.grid_of_axis(5), Some(9));
++    for _ in 0..2 {
++        let mut actual = source.decoder();
++        assert!(actual.styled_item_ids(2).unwrap().is_empty());
++        assert_eq!(actual.styled_item_ids(3).unwrap(), [1]);
++        assert_eq!(actual.grid_of_axis(4), None);
++        assert_eq!(actual.grid_of_axis(5), Some(9));
++    }
++    assert!(
++        source.styled_items.get().is_some(),
++        "the actual source cache is reused by fresh decoders"
++    );
++}
+diff --git a/rust/core/src/source_index.rs b/rust/core/src/source_index.rs
+new file mode 100644
+index 0000000000..1c98e52399
+--- /dev/null
++++ b/rust/core/src/source_index.rs
+@@ -0,0 +1,157 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++
++//! Adaptive index storage used by the canonical owned source scan.
++
++use crate::{ColumnarEntityIndex, DenseEntityIndex, EntityDecoder, EntityIndex};
++use rustc_hash::FxHashMap;
++use std::sync::Arc;
++
++#[derive(Clone)]
++pub(crate) enum SourceIndex {
++    Hash(Arc<EntityIndex>),
++    Columnar(Arc<ColumnarEntityIndex>),
++    Dense(Arc<DenseEntityIndex>),
++}
++
++impl SourceIndex {
++    pub(crate) fn hash(spans: Arc<EntityIndex>) -> Self {
++        Self::Hash(spans)
++    }
++
++    #[cfg(test)]
++    pub(crate) fn decoder<'a>(&self, content: &'a [u8]) -> EntityDecoder<'a> {
++        let mut decoder = EntityDecoder::new(content);
++        self.install(&mut decoder);
++        decoder
++    }
++
++    pub(crate) fn install(&self, decoder: &mut EntityDecoder<'_>) {
++        match self {
++            Self::Hash(index) => {
++                decoder.set_entity_index(index.clone());
++            }
++            Self::Columnar(index) => decoder.set_columnar_index(index.clone()),
++            Self::Dense(index) => decoder.set_dense_index(index.clone()),
++        }
++    }
++}
++
++type Row = (u32, u32, u32);
++const PAGE_ROWS: usize = 4096;
++
++pub(crate) enum SourceIndexBuilder {
++    Hash(EntityIndex),
++    Compact {
++        pages: Vec<Vec<Row>>,
++        len: usize,
++        max_rows: usize,
++    },
++}
++
++fn compact_eligible(content_len: usize) -> bool {
++    cfg!(not(target_arch = "wasm32"))
++        && content_len >= 32 * 1024 * 1024
++        && u32::try_from(content_len).is_ok()
++}
++
++impl SourceIndexBuilder {
++    pub(crate) fn new(content_len: usize) -> Self {
++        if compact_eligible(content_len) {
++            // Reuse the old hash path's source-based capacity estimate as a
++            // hard staging budget. Short duplicate-heavy records must not
++            // retain one compact row per record indefinitely (#3921).
++            Self::Compact {
++                pages: Vec::new(),
++                len: 0,
++                max_rows: content_len / 50,
++            }
++        } else {
++            Self::Hash(FxHashMap::with_capacity_and_hasher(
++                content_len / 50,
++                Default::default(),
++            ))
++        }
++    }
++
++    pub(crate) fn insert(&mut self, id: u32, span: (usize, usize)) {
++        if matches!(self, Self::Compact { len, max_rows, .. } if *len == *max_rows) {
++            let Self::Compact { pages, .. } =
++                std::mem::replace(self, Self::Hash(FxHashMap::default()))
++            else {
++                unreachable!("only the compact builder exhausts a row budget");
++            };
++            let Self::Hash(index) = self else {
++                unreachable!("installed hash builder")
++            };
++            for page in pages {
++                for (id, start, length) in page {
++                    index.insert(id, (start as usize, start as usize + length as usize));
++                }
++            }
++        }
++        match self {
++            Self::Hash(index) => {
++                index.insert(id, span);
++            }
++            Self::Compact { pages, len, .. } => {
++                debug_assert!(span.0 <= span.1 && u32::try_from(span.1).is_ok());
++                if pages.last().is_none_or(|page| page.len() == PAGE_ROWS) {
++                    pages.push(Vec::with_capacity(PAGE_ROWS));
++                }
++                pages.last_mut().expect("a page was allocated").push((
++                    id,
++                    span.0 as u32,
++                    (span.1 - span.0) as u32,
++                ));
++                *len += 1;
++            }
++        }
++    }
++
++    pub(crate) fn finish(self) -> SourceIndex {
++        match self {
++            Self::Hash(index) => SourceIndex::hash(Arc::new(index)),
++            Self::Compact { pages, len, .. } => {
++                // Fixed pages avoid geometric Vec over-allocation. At most
++                // two 12-byte representations overlap; release each consumed
++                // page as the contiguous sort input fills.
++                let mut rows = Vec::with_capacity(len);
++                for page in pages {
++                    rows.extend(page);
++                }
++                // Scanner spans increase in file order. Sorting ties by start
++                // retains the last authored occurrence without a permutation
++                // array or a stable-sort scratch allocation.
++                rows.sort_unstable_by_key(|row| (row.0, row.1));
++                rows.dedup_by(|later, earlier| {
++                    if later.0 != earlier.0 {
++                        return false;
++                    }
++                    *earlier = *later;
++                    true
++                });
++                let mut ids = Vec::with_capacity(rows.len());
++                let mut starts = Vec::with_capacity(rows.len());
++                let mut lengths = Vec::with_capacity(rows.len());
++                for (id, start, length) in rows {
++                    ids.push(id);
++                    starts.push(start);
++                    lengths.push(length);
++                }
++                match DenseEntityIndex::try_from_columns(&ids, &starts, &lengths) {
++                    Some(index) => SourceIndex::Dense(Arc::new(index)),
++                    None => SourceIndex::Columnar(Arc::new(
++                        ColumnarEntityIndex::from_columns(&ids, &starts, &lengths)
++                            .expect("the three columns are pushed together above"),
++                    )),
++                }
++            }
++        }
++    }
++}
++
++#[cfg(test)]
++#[path = "source_index_tests.rs"]
++mod tests;
+diff --git a/rust/processing/src/processor/entity_index_tests.rs b/rust/core/src/source_index_tests.rs
+similarity index 54%
+rename from rust/processing/src/processor/entity_index_tests.rs
+rename to rust/core/src/source_index_tests.rs
+index df8162a1be..4003eab568 100644
+--- a/rust/processing/src/processor/entity_index_tests.rs
++++ b/rust/core/src/source_index_tests.rs
+@@ -10,14 +10,23 @@ fn compact_builder_preserves_index_last_occurrence_and_sparse_ids() {
+         "DATA;#2=IFCWALL('old');#0=IFCWALL();#1=IFCWALL();#2=IFCBEAM('last');",
+         "DATA;#4294967295=IFCWALL();#3=IFCBEAM('old');#3=IFCBEAM('last');",
+     ] {
+-        let expected = ifc_lite_core::build_entity_index(source);
+-        let mut builder = IndexBuilder::Compact { pages: Vec::new(), len: 0, max_rows: PAGE_ROWS * 2 };
+-        let mut scan = ifc_lite_core::EntityScanner::new(source);
+-        while let Some((id, _, start, end)) = scan.next_entity() { builder.insert(id, (start, end)); }
++        let expected = crate::build_entity_index(source);
++        let mut builder = SourceIndexBuilder::Compact {
++            pages: Vec::new(),
++            len: 0,
++            max_rows: PAGE_ROWS * 2,
++        };
++        let mut scan = crate::EntityScanner::new(source);
++        while let Some((id, _, start, end)) = scan.next_entity() {
++            builder.insert(id, (start, end));
++        }
+         let index = builder.finish();
+         let mut decoder = index.decoder(source.as_bytes());
+         for (id, (start, end)) in expected {
+-            assert_eq!(decoder.get_raw_bytes(id), Some(&source.as_bytes()[start..end]));
++            assert_eq!(
++                decoder.get_raw_bytes(id),
++                Some(&source.as_bytes()[start..end])
++            );
+         }
+         assert!(decoder.decode_by_id(123).is_err());
+     }
+@@ -25,11 +34,22 @@ fn compact_builder_preserves_index_last_occurrence_and_sparse_ids() {
+ 
+ #[test]
+ fn compact_builder_crosses_pages_without_losing_rows() {
+-    let mut builder = IndexBuilder::Compact { pages: Vec::new(), len: 0, max_rows: PAGE_ROWS * 2 };
+-    for id in 0..(PAGE_ROWS as u32 + 3) { builder.insert(id, (id as usize * 10, id as usize * 10 + 5)); }
+-    let ProcessingIndex::Dense(index) = builder.finish() else { panic!("dense ids should select direct lookup") };
++    let mut builder = SourceIndexBuilder::Compact {
++        pages: Vec::new(),
++        len: 0,
++        max_rows: PAGE_ROWS * 2,
++    };
++    for id in 0..(PAGE_ROWS as u32 + 3) {
++        builder.insert(id, (id as usize * 10, id as usize * 10 + 5));
++    }
++    let SourceIndex::Dense(index) = builder.finish() else {
++        panic!("dense ids should select direct lookup")
++    };
+     for id in 0..(PAGE_ROWS as u32 + 3) {
+-        assert_eq!(index.lookup(id), Some((id as usize * 10, id as usize * 10 + 5)));
++        assert_eq!(
++            index.lookup(id),
++            Some((id as usize * 10, id as usize * 10 + 5))
++        );
+     }
+ }
+ 
+@@ -38,10 +58,12 @@ fn native_wide_offsets_keep_the_hash_representation() {
+     #[cfg(target_pointer_width = "64")]
+     {
+         assert!(!compact_eligible(u32::MAX as usize + 1));
+-        let mut builder = IndexBuilder::Hash(FxHashMap::default());
++        let mut builder = SourceIndexBuilder::Hash(FxHashMap::default());
+         let span = (u32::MAX as usize + 10, u32::MAX as usize + 20);
+         builder.insert(1, span);
+-        let ProcessingIndex::Hash(index) = builder.finish() else { panic!("wide offsets must not narrow") };
++        let SourceIndex::Hash(index) = builder.finish() else {
++            panic!("wide offsets must not narrow")
++        };
+         assert_eq!(index.get(&1), Some(&span));
+     }
+ }
+@@ -51,29 +73,40 @@ fn native_wide_offsets_keep_the_hash_representation() {
+ fn duplicate_heavy_input_bounds_rows_and_keeps_the_last_authored_span() {
+     let source_len = 32 * 1024 * 1024;
+     let budget = source_len / 50;
+-    let mut builder = IndexBuilder::new(source_len, true);
++    let mut builder = SourceIndexBuilder::new(source_len);
+     for row in 0..budget * 2 {
+         builder.insert((row % 3) as u32, (row * 10, row * 10 + 5));
+-        if let IndexBuilder::Compact { len, pages, .. } = &builder {
++        if let SourceIndexBuilder::Compact { len, pages, .. } = &builder {
+             assert!(*len <= budget);
+             assert!(pages.iter().map(Vec::capacity).sum::<usize>() <= budget + PAGE_ROWS);
+         }
+     }
+-    let ProcessingIndex::Hash(index) = builder.finish() else { panic!("dense records must leave bounded staging") };
++    let SourceIndex::Hash(index) = builder.finish() else {
++        panic!("dense records must leave bounded staging")
++    };
+     assert_eq!(index.len(), 3);
+     for row in budget * 2 - 3..budget * 2 {
+-        assert_eq!(index.get(&((row % 3) as u32)), Some(&(row * 10, row * 10 + 5)));
++        assert_eq!(
++            index.get(&((row % 3) as u32)),
++            Some(&(row * 10, row * 10 + 5))
++        );
+     }
+ }
+ 
+ #[test]
+ fn staging_budget_transition_preserves_unique_and_sparse_ids() {
+-    let mut builder = IndexBuilder::Compact { pages: Vec::new(), len: 0, max_rows: 2 };
++    let mut builder = SourceIndexBuilder::Compact {
++        pages: Vec::new(),
++        len: 0,
++        max_rows: 2,
++    };
+     builder.insert(0, (0, 0));
+     builder.insert(u32::MAX, (11, 17));
+     builder.insert(42, (20, 24));
+     builder.insert(u32::MAX, (30, 38));
+-    let ProcessingIndex::Hash(index) = builder.finish() else { panic!("budget transition must coalesce directly") };
++    let SourceIndex::Hash(index) = builder.finish() else {
++        panic!("budget transition must coalesce directly")
++    };
+     assert_eq!(index.len(), 3);
+     assert_eq!(index.get(&0), Some(&(0, 0)));
+     assert_eq!(index.get(&42), Some(&(20, 24)));
+diff --git a/rust/processing/src/appearance/annotation.rs b/rust/processing/src/appearance/annotation.rs
+index f308ce10ef..36a8fa9b46 100644
+--- a/rust/processing/src/appearance/annotation.rs
++++ b/rust/processing/src/appearance/annotation.rs
+@@ -23,8 +23,9 @@ pub(super) fn plan_textured_product(bytes:&[u8], request:&AnnotationPlaneRequest
+         containment_global_id:&r.containment_global_id,extra_global_ids:&[],name:&r.name};
+     super::authored::validate_metadata(&metadata)?;
+     validate_image_uri(&r.image_uri)?;
++    let source_bundle=super::source::Source::bundle(bytes)?;
+     let super::authored::Authoring {mut author,mut source,placement,context_id,owner,scale,rtc_offset} =
+-        super::authored::prepare(bytes,&metadata,f,32)?;
++        super::authored::prepare(&source_bundle,&metadata,f,32)?;
+     let size=f.size_metres.map(|v|v/scale);
+     let vertices = captured.map_or_else(|| vec![[0.,0.,0.],[size[0],0.,0.],[size[0],size[1],0.],[0.,size[1],0.]], |m| m.positions.iter().map(|p| std::array::from_fn(|i| (p[i]-f.origin[i])/scale)).collect());
+     let mut point_attributes=vec![A::List(vertices.into_iter().map(vector).collect())];
+@@ -51,7 +52,7 @@ pub(super) fn plan_textured_product(bytes:&[u8], request:&AnnotationPlaneRequest
+     else if r.schema=="IFC4X3" { annotation_attributes.push(A::Enum("USERDEFINED".into())); }
+     let annotation=author.add(if captured.is_some() {IfcType::IfcBuildingElementProxy} else {IfcType::IfcAnnotation},annotation_attributes);
+     author.add(IfcType::IfcRelContainedInSpatialStructure,vec![A::String(r.containment_global_id.clone()),owner,A::Null,A::Null,refs(&[annotation]),A::EntityRef(r.container_id)]);
+-    source.decoder.inject_shared_cache(&author.entities);
++    source.install_authored_entities(&author.entities);
+     let mut styles=crate::prepass::ResolvedPrepass::default();
+     let (_,info)=crate::prepass::surface_style_from_styled_item(&author.entities[&styled],&mut source.decoder).ok_or("Generated style failed canonical resolution")?;
+     styles.geometry_style_index.insert(item,info);
+diff --git a/rust/processing/src/appearance/atlas_plan.rs b/rust/processing/src/appearance/atlas_plan.rs
+index 56b5a466f0..319a622057 100644
+--- a/rust/processing/src/appearance/atlas_plan.rs
++++ b/rust/processing/src/appearance/atlas_plan.rs
+@@ -33,15 +33,16 @@ pub(super) fn plan_sampled_appearance(bytes: &[u8], spec: &AppearanceRequest, so
+             return Err("Source rasters need distinct bounded IFC image URIs".into());
+         }
+     }
+-    let mut source = Source::new(bytes)?;
++    let source_bundle=Source::bundle(bytes)?;
++    let mut source=Source::from_bundle(&source_bundle)?;
+     let normalization=if spec.representation_policy==RepresentationPolicy::EvaluatedOccurrence {
+-        Some(evaluated::prepare(bytes,spec,&mut source)?)
++        Some(evaluated::prepare(spec,&mut source)?)
+     } else { None };
+     let spec=normalization.as_ref().map_or(spec,|n|n.request());
+-    let mut plan = plan_with_source(bytes,spec,&mut source)?;
++    let mut plan = plan_with_source(spec,&mut source)?;
+     texture_budget::preflight(&mut source)?;
+-    let textures = source.texture_index(bytes);
+-    let mut styles = page_source::appearance(bytes, &mut source);
++    let textures = source.texture_index();
++    let mut styles = page_source::appearance( &mut source);
+     if let Some(normalized)=&normalization { normalized.patch_styles(&mut source,&mut styles)?; }
+     let scale = source.decoder.length_unit_scale();
+     let extra = plan.items.len().checked_mul(4).ok_or("Page entity capacity overflow")?;
+diff --git a/rust/processing/src/appearance/authored.rs b/rust/processing/src/appearance/authored.rs
+index d7489ea655..3a607cbb70 100644
+--- a/rust/processing/src/appearance/authored.rs
++++ b/rust/processing/src/appearance/authored.rs
+@@ -110,7 +110,7 @@ pub(super) fn validate_metadata(r: &Metadata<'_>) -> Result<(),String> {
+ }
+ 
+ pub(super) fn prepare<'a>(
+-    bytes: &'a [u8],
++    source_bundle: &'a std::sync::Arc<ifc_lite_core::SourceBundle>,
+     request: &Metadata<'_>,
+     frame: &AnnotationPlaneFrame,
+     reserve: usize,
+@@ -131,7 +131,7 @@ pub(super) fn prepare<'a>(
+     {
+         return Err("Annotation image frame must have orthonormal axes".into());
+     }
+-    let mut source = Source::new(bytes)?;
++    let mut source=Source::from_bundle(source_bundle)?;
+     if source
+         .types
+         .len()
+diff --git a/rust/processing/src/appearance/canonical.rs b/rust/processing/src/appearance/canonical.rs
+index 539fcac48c..41212cf5f5 100644
+--- a/rust/processing/src/appearance/canonical.rs
++++ b/rust/processing/src/appearance/canonical.rs
+@@ -155,7 +155,7 @@ fn produce_with_frame(
+     evaluated: bool,
+ ) -> Result<Vec<MeshData>, String> {
+     let styles = appearance.unwrap_or(&source.empty_styles);
+-    let context = styles.context(&source.production_model, source.production_identity, textures);
++    let context = styles.context(&source.production_model, textures);
+     produce_with_context(source, product_id, &context, appearance.is_some(), evaluated)
+ }
+ 
+diff --git a/rust/processing/src/appearance/catalog.rs b/rust/processing/src/appearance/catalog.rs
+index 465c3a0bdb..7a5cd59136 100644
+--- a/rust/processing/src/appearance/catalog.rs
++++ b/rust/processing/src/appearance/catalog.rs
+@@ -52,7 +52,8 @@ pub fn catalog_appearance(bytes: &[u8], request: &AppearanceCatalogRequest) -> R
+     }
+     // Shared canonical parse and its 128MiB/200k-entity/8m-value bounds. No
+     // geometry jobs, texture decode, or second source/overlay parser is added.
+-    let mut source = Source::new(bytes)?;
++    let source_bundle=Source::bundle(bytes)?;
++    let mut source=Source::from_bundle(&source_bundle)?;
+     let mut products = BTreeMap::<u32, (IfcType, BTreeSet<u32>)>::new();
+     let mut missing = BTreeSet::new();
+     for &id in &request.product_ids {
+diff --git a/rust/processing/src/appearance/context_tests.rs b/rust/processing/src/appearance/context_tests.rs
+index 71d97562fb..195a2fc797 100644
+--- a/rust/processing/src/appearance/context_tests.rs
++++ b/rust/processing/src/appearance/context_tests.rs
+@@ -4,13 +4,14 @@ use crate::appearance::{page_source, source::Source, tests::CONTROLLED_IFC};
+ 
+ #[test]
+ fn appearance_passes_share_owned_maps_but_replacement_textures_have_a_new_revision() {
+-    let mut source = Source::new(CONTROLLED_IFC.as_bytes()).unwrap();
+-    let styles = page_source::appearance(CONTROLLED_IFC.as_bytes(), &mut source);
+-    let textures = source.texture_index(CONTROLLED_IFC.as_bytes());
+-    let original = styles.context(&source.production_model, source.production_identity, &textures);
++    let bundle=Source::bundle(CONTROLLED_IFC.as_bytes()).unwrap();
++    let mut source = Source::from_bundle(&bundle).unwrap();
++    let styles = page_source::appearance( &mut source);
++    let textures = source.texture_index();
++    let original = styles.context(&source.production_model, &textures);
+     let before = produce(&mut source, 10, &textures, Some(&styles)).unwrap();
+     let other = produce(&mut source, 30, &textures, Some(&styles)).unwrap();
+-    let same = styles.context(&source.production_model, source.production_identity, &textures);
++    let same = styles.context(&source.production_model, &textures);
+     assert_eq!(original.id(), same.id());
+     assert_eq!((before.len(), other.len()), (1, 1));
+     assert_eq!((before[0].indices.len(), other[0].indices.len()), (12, 3));
+@@ -48,14 +49,15 @@ fn appearance_passes_share_owned_maps_but_replacement_textures_have_a_new_revisi
+ 
+ #[test]
+ fn appearance_style_edits_rebuild_the_snapshot_after_completed_geometry_without_map_copy() {
+-    let mut source = Source::new(CONTROLLED_IFC.as_bytes()).unwrap();
+-    let mut styles = page_source::appearance(CONTROLLED_IFC.as_bytes(), &mut source);
+-    let textures = source.texture_index(CONTROLLED_IFC.as_bytes());
++    let bundle=Source::bundle(CONTROLLED_IFC.as_bytes()).unwrap();
++    let mut source = Source::from_bundle(&bundle).unwrap();
++    let mut styles = page_source::appearance( &mut source);
++    let textures = source.texture_index();
+     let before = produce(&mut source, 10, &textures, Some(&styles)).unwrap();
+-    let old = styles.context(&source.production_model, source.production_identity, &textures).id();
++    let old = styles.context(&source.production_model, &textures).id();
+     styles.insert_style(14, crate::style::GeometryStyleInfo::from_color([0., 0., 1., 1.]));
+     let after = produce(&mut source, 10, &textures, Some(&styles)).unwrap();
+-    let new = styles.context(&source.production_model, source.production_identity, &textures).id();
++    let new = styles.context(&source.production_model, &textures).id();
+     assert_ne!(old, new);
+     assert_ne!(before[0].color, after[0].color);
+     assert_eq!(after[0].color, [0., 0., 1., 1.]);
+diff --git a/rust/processing/src/appearance/evaluated.rs b/rust/processing/src/appearance/evaluated.rs
+index 20f13c9726..b593100523 100644
+--- a/rust/processing/src/appearance/evaluated.rs
++++ b/rust/processing/src/appearance/evaluated.rs
+@@ -55,7 +55,7 @@ fn face_set(plan: &mut AppearancePlan, entities: &mut FxHashMap<u32, Arc<Decoded
+     (item,styled)
+ }
+ 
+-pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut Source<'_>) -> Result<Normalized,String> {
++pub(super) fn prepare(request: &AppearanceRequest, source: &mut Source<'_>) -> Result<Normalized,String> {
+     if !matches!(request.schema.as_str(),"IFC4"|"IFC4X3") || request.product_ids.is_empty()
+         || request.product_ids.len()>10_000 || request.source_revision.len()>4096 {
+         return Err("Evaluated appearance requires a bounded IFC4/IFC4X3 scope".into());
+@@ -67,8 +67,8 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
+     if request.next_express_id <= source.types.last_key_value().map_or(0,|(id,_)|*id) {
+         return Err("Stale allocator watermark overlaps effective IFC source".into());
+     }
+-    let mut styles = page_source::appearance(bytes,source);
+-    let textures = source.texture_index(bytes);
++    let mut styles = page_source::appearance(source);
++    let textures = source.texture_index();
+     let mut consumers=BTreeMap::<u32,BTreeSet<u32>>::new();
+     for (&host,openings) in styles.void_index.iter() {
+         for &opening in openings {consumers.entry(opening).or_default().insert(host);}
+@@ -158,7 +158,7 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
+         }
+         let body_id=body.id;
+         entities.insert(body.id,Arc::new(body));
+-        source.decoder.inject_shared_cache(&entities);
++        source.install_authored_entities(&entities);
+         for entity in &plan.created { source.types.insert(entity.express_id,entities[&entity.express_id].ifc_type.clone()); }
+         for old in old_items { if let Some(parents)=source.incoming.get_mut(&old) {parents.remove(&body_id);} }
+         source.incoming.insert(coordinates,items.iter().copied().collect());
+diff --git a/rust/processing/src/appearance/evaluated_tests.rs b/rust/processing/src/appearance/evaluated_tests.rs
+index 843af1c907..403ed2bde9 100644
+--- a/rust/processing/src/appearance/evaluated_tests.rs
++++ b/rust/processing/src/appearance/evaluated_tests.rs
+@@ -143,12 +143,12 @@ fn issue_4404_filtered_private_conversion_prefix_compacts_to_host_allocation_ord
+     let Some(text)=real_source() else{return};
+     let mut request=request(); request.product_ids=vec![35169,35304];
+     let mut source=Source::new(text.as_bytes()).unwrap();
+-    let mut normalized=prepare(text.as_bytes(),&request,&mut source).unwrap();
++    let mut normalized=prepare(&request,&mut source).unwrap();
+     assert_eq!(normalized.conversions.len(),2);
+     // The final appearance pass can exclude a normalized occurrence. Its unused
+     // private IDs must not leave a gap before the accepted occurrence's rows.
+     normalized.request.product_ids.retain(|id|*id==35304);
+-    let mapped=super::super::plan_with_source(text.as_bytes(),&normalized.request,&mut source).unwrap();
++    let mapped=super::super::plan_with_source(&normalized.request,&mut source).unwrap();
+     let (plan,ids)=normalized.compose(mapped,&source).unwrap();
+     assert_eq!(plan.conversions.len(),1);
+     assert_eq!(plan.conversions[0].product_id,35304);
+@@ -214,7 +214,7 @@ fn issue_4404_materialization_payload_restores_georeferenced_native_frame_once()
+     let mut effective=source::Source::new(source.as_bytes()).unwrap();
+     let context=context::Context::new(source.as_bytes(),&mut effective.decoder);
+     effective.context=Some(context);
+-    let styles=page_source::appearance(source.as_bytes(),&mut effective);
++    let styles=page_source::appearance(&mut effective);
+     let textures=std::sync::Arc::new(ifc_lite_geometry::build_texture_index(source.as_bytes(),&mut effective.decoder));
+     let meshes=canonical::produce(&mut effective,35169,&textures,Some(&styles)).unwrap();
+     let mesh=&meshes[0];
+@@ -244,7 +244,7 @@ fn issue_4404_post_opening_source_matches_canonical_load() {
+     let Some(bytes)=real_source() else{return};
+     let mut source=super::super::source::Source::new(bytes.as_bytes()).unwrap();
+     assert!(!source.context.as_ref().unwrap().layers.is_sliceable(59290), "real slab requires unsupported material slicing");
+-    let appearance=super::super::page_source::appearance(bytes.as_bytes(), &mut source);
++    let appearance=super::super::page_source::appearance( &mut source);
+     assert_eq!(appearance.void_index.get(&59290),Some(&vec![59365]));
+     let produced=super::super::canonical::produce(&mut source,59290,&std::sync::Arc::default(),Some(&appearance)).unwrap();
+     let loaded=crate::process_geometry(bytes.as_bytes());
+@@ -353,7 +353,7 @@ fn issue_4404_real_cut_slab_preserves_type_semantics_and_accepts_second_appearan
+ fn issue_4404_opening_companions_share_the_aggregate_geometry_budget() {
+     let Some(bytes)=real_source() else{return};
+     let mut source=Source::new(bytes.as_bytes()).unwrap();
+-    let styles=page_source::appearance(bytes.as_bytes(),&mut source);
++    let styles=page_source::appearance(&mut source);
+     let textures=std::sync::Arc::new(ifc_lite_geometry::build_texture_index(bytes.as_bytes(),&mut source.decoder));
+     let edits=super::super::evaluated_openings::prepare(&mut source,59290,&[59365],&BTreeSet::from([59365])).unwrap();
+     let mut budget=budget::PlanBudget::default();
+diff --git a/rust/processing/src/appearance/mod.rs b/rust/processing/src/appearance/mod.rs
+index 70e3899e4e..db534b279b 100644
+--- a/rust/processing/src/appearance/mod.rs
++++ b/rust/processing/src/appearance/mod.rs
+@@ -112,16 +112,17 @@ pub fn plan_appearance(
+     request: &AppearanceRequest,
+ ) -> Result<AppearancePlan, String> {
+     if request.product_ids.is_empty() { return Err("Appearance scope must contain 1..10000 products".into()); }
+-    let mut source=Source::new(bytes)?;
++    let source_bundle=Source::bundle(bytes)?;
++    let mut source=Source::from_bundle(&source_bundle)?;
+     if request.representation_policy==RepresentationPolicy::EvaluatedOccurrence {
+-        let normalized=evaluated::prepare(bytes,request,&mut source)?;
+-        let plan=plan_with_source(bytes,normalized.request(),&mut source)?;
++        let normalized=evaluated::prepare(request,&mut source)?;
++        let plan=plan_with_source(normalized.request(),&mut source)?;
+         return Ok(normalized.compose(plan,&source)?.0);
+     }
+-    plan_with_source(bytes,request,&mut source)
++    plan_with_source(request,&mut source)
+ }
+ 
+-fn plan_with_source(bytes:&[u8], request:&AppearanceRequest, source:&mut Source<'_>) -> Result<AppearancePlan,String> {
++fn plan_with_source(request:&AppearanceRequest, source:&mut Source<'_>) -> Result<AppearancePlan,String> {
+     if request.schema != "IFC4" && request.schema != "IFC4X3" {
+         return Err("Appearance authoring requires IFC4 or IFC4X3".into());
+     }
+@@ -137,7 +138,7 @@ fn plan_with_source(bytes:&[u8], request:&AppearanceRequest, source:&mut Source<
+     validate_image_uri(uri)?;
+     mapping::validate(&request.mapping)?;
+     texture_budget::preflight(source)?;
+-    let textures = source.texture_index(bytes);
++    let textures = source.texture_index();
+     let max_id = source
+         .types
+         .last_key_value()
+diff --git a/rust/processing/src/appearance/owned_context.rs b/rust/processing/src/appearance/owned_context.rs
+index 47735bf6c5..5c5419dd8d 100644
+--- a/rust/processing/src/appearance/owned_context.rs
++++ b/rust/processing/src/appearance/owned_context.rs
+@@ -6,10 +6,10 @@ use crate::prepass::ResolvedPrepass;
+ use crate::style::{FullIndexedColourMap, GeometryStyleInfo};
+ use ifc_lite_geometry::ResolvedTextureMap;
+ use rustc_hash::FxHashMap;
+-use std::{cell::RefCell, sync::{Arc, atomic::{AtomicUsize, Ordering}}};
++use std::{cell::RefCell, sync::Arc};
+ 
+ type TextureIndex = FxHashMap<u32, ResolvedTextureMap>;
+-type Cached = (usize, Arc<TextureIndex>, Arc<OwnedMeshProductionContext>);
++type Cached = (Arc<TextureIndex>, Arc<OwnedMeshProductionContext>);
+ 
+ #[derive(Default)]
+ pub(super) struct Styles {
+@@ -47,23 +47,17 @@ impl Styles {
+             texture_index: Arc::clone(textures), site_local_rotation: None,
+         })
+     }
+-    pub(super) fn context(&self, model: &ProductionModel, source: usize,
++    pub(super) fn context(&self, model: &ProductionModel,
+         textures: &Arc<TextureIndex>) -> Arc<OwnedMeshProductionContext> {
+         let mut cached = self.cached.borrow_mut();
+-        if let Some((owner, existing_textures, context)) = cached.as_ref() {
++        if let Some((existing_textures, context)) = cached.as_ref() {
+             // Arc equality is only a cache reuse check. Source authority and
+             // snapshot identity come from the actual model, never an address.
+-            if *owner == source && Arc::ptr_eq(existing_textures, textures)
++            if model.owns_snapshot(context) && Arc::ptr_eq(existing_textures, textures)
+                 && context.validate_source().is_ok() { return Arc::clone(context); }
+         }
+         let context = self.snapshot(model, textures);
+-        *cached = Some((source, Arc::clone(textures), Arc::clone(&context)));
++        *cached = Some((Arc::clone(textures), Arc::clone(&context)));
+         context
+     }
+ }
+-
+-pub(super) fn source_identity() -> usize {
+-    static NEXT: AtomicUsize = AtomicUsize::new(1);
+-    NEXT.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+-        .expect("appearance source identity exhausted")
+-}
+diff --git a/rust/processing/src/appearance/page_source.rs b/rust/processing/src/appearance/page_source.rs
+index ee41e1f802..4477286687 100644
+--- a/rust/processing/src/appearance/page_source.rs
++++ b/rust/processing/src/appearance/page_source.rs
+@@ -7,7 +7,8 @@ use ifc_lite_core::EntityScanner;
+ 
+ /// Reuse the ordinary style/material/type resolver, including first-wins
+ /// precedence. Source::new has already bounded every source row/reference.
+-pub(super) fn appearance(bytes: &[u8], source: &mut Source<'_>) -> super::owned_context::Styles {
++pub(super) fn appearance(source: &mut Source<'_>) -> super::owned_context::Styles {
++    let bytes=source.bytes();
+     let mut spans = PrepassSpans::default();
+     let mut scan = EntityScanner::new(bytes);
+     while let Some((id, name, start, end)) = scan.next_entity() {
+diff --git a/rust/processing/src/appearance/pdf_fill.rs b/rust/processing/src/appearance/pdf_fill.rs
+index 76cf9c29cc..5712b989b7 100644
+--- a/rust/processing/src/appearance/pdf_fill.rs
++++ b/rust/processing/src/appearance/pdf_fill.rs
+@@ -42,16 +42,7 @@ pub fn plan_pdf_fill_annotation_with_clip(
+     let accept_partial = r.accepted_fidelity_sha256.is_some();
+     let geometry = crate::pdf_vector::fills::compose(&prepared, r.page.model_metres_from_pdf, accept_partial)?;
+     let extra_global_ids = [r.property_set_global_id.as_str(), r.property_relation_global_id.as_str()];
+-    let metadata = Metadata {
+-        schema: &r.schema,
+-        source_revision: &r.source_revision,
+-        next_express_id: r.next_express_id,
+-        container_id: r.container_id,
+-        global_id: &r.global_id,
+-        containment_global_id: &r.containment_global_id,
+-        extra_global_ids: &extra_global_ids,
+-        name: &r.name,
+-    };
++    let metadata=annotation_metadata(r,&extra_global_ids);
+     let provenance = Provenance {
+         request: r,
+         prepared: &prepared,
+@@ -64,6 +55,7 @@ pub fn plan_pdf_fill_annotation_with_clip(
+             .checked_add(4 + shape.rings.len() + shape.rings.iter().map(Vec::len).sum::<usize>())
+             .ok_or("PDF annotation entity budget overflow")?;
+     }
++    let source_bundle=super::source::Source::bundle(bytes)?;
+     let authored::Authoring {
+         mut author,
+         mut source,
+@@ -72,7 +64,7 @@ pub fn plan_pdf_fill_annotation_with_clip(
+         owner,
+         scale,
+         rtc_offset,
+-    } = authored::prepare(bytes, &metadata, &r.frame, reserve)?;
++    } = authored::prepare(&source_bundle, &metadata, &r.frame, reserve)?;
+     let mut items = Vec::new();
+     let mut styled = Vec::new();
+     let mut regions = Vec::new();
+@@ -173,7 +165,7 @@ pub fn plan_pdf_fill_annotation_with_clip(
+     if author.plan.created.len() != reserve {
+         return Err("PDF annotation allocation preflight disagrees with authored rows".into());
+     }
+-    source.decoder.inject_shared_cache(&author.entities);
++    source.install_authored_entities(&author.entities);
+     let mut styles = super::owned_context::Styles::default();
+     for (item, styled) in styled {
+         let info = crate::style::fill::fill_style_from_styled_item(
+@@ -280,3 +272,16 @@ pub fn plan_pdf_fill_annotation_with_clip(
+ #[cfg(test)]
+ #[path = "pdf_fill_tests.rs"]
+ mod tests;
++
++fn annotation_metadata<'a>(r:&'a PdfFillAnnotationRequest,extra_global_ids:&'a [&'a str])->Metadata<'a> {
++    Metadata {
++        schema: &r.schema,
++        source_revision: &r.source_revision,
++        next_express_id: r.next_express_id,
++        container_id: r.container_id,
++        global_id: &r.global_id,
++        containment_global_id: &r.containment_global_id,
++        extra_global_ids,
++        name: &r.name,
++    }
++}
+diff --git a/rust/processing/src/appearance/source.rs b/rust/processing/src/appearance/source.rs
+index fb1c227a86..915bfc5087 100644
+--- a/rust/processing/src/appearance/source.rs
++++ b/rust/processing/src/appearance/source.rs
+@@ -16,8 +16,8 @@ pub(super) struct SplitBody {
+     pub retained: u32,
+ }
+ pub(super) struct Source<'a> {
++    bytes: &'a [u8],
+     pub production_model: crate::element::ProductionModel,
+-    pub production_identity: usize,
+     pub empty_styles: super::owned_context::Styles,
+     pub context: Option<super::context::Context>,
+     pub decoder: EntityDecoder<'a>,
+@@ -34,28 +34,52 @@ pub(super) struct Source<'a> {
+     texture_index: Option<Arc<FxHashMap<u32, ResolvedTextureMap>>>,
+ }
+ impl<'a> Source<'a> {
++    /// Authored rows are explicit trusted configuration, not source-parsed cache.
++    /// Every edit expires the preceding revision before a canonical product runs.
++    pub(super) fn install_authored_entities(&mut self, entities: &FxHashMap<u32, Arc<DecodedEntity>>) {
++        self.decoder.inject_shared_cache(entities);
++        self.production_model.invalidate_source();
++        self.production_model = crate::element::ProductionModel::from_trusted_inputs(
++            self.decoder.trusted_inputs().expect("appearance owns its base source"));
++    }
++
+     /// The model's surface-texture index, built on first use and shared by
+     /// every later caller of this session. Each build decodes every texture
+     /// and counts each refused binary, so building it per planning stage
+     /// decoded a shared image up to three times and counted one bad texture
+     /// as many (F4-1 follow-up, #7776).
+-    pub fn texture_index(&mut self, bytes: &[u8]) -> Arc<FxHashMap<u32, ResolvedTextureMap>> {
++    pub fn texture_index(&mut self) -> Arc<FxHashMap<u32, ResolvedTextureMap>> {
++        let bytes=self.bytes;
+         let decoder = &mut self.decoder;
+         Arc::clone(self.texture_index.get_or_insert_with(|| {
+             Arc::new(ifc_lite_geometry::build_texture_index(bytes, decoder))
+         }))
+     }
+ 
+-    pub fn new(bytes: &'a [u8]) -> Result<Self, String> {
++    pub fn bundle(bytes:&[u8])->Result<Arc<ifc_lite_core::SourceBundle>,String> {
++        if bytes.len()>128*1024*1024 {return Err("Appearance source exceeds 128 MiB budget".into())}
++        Ok(ifc_lite_core::SourceBundle::new(bytes.to_vec()))
++    }
++
++    pub fn from_bundle(bundle:&'a Arc<ifc_lite_core::SourceBundle>)->Result<Self,String> {
++        Self::scan(bundle.bytes(),bundle.decoder(),crate::element::ProductionModel::from_source(Arc::clone(bundle)))
++    }
++
++    #[cfg(test)]
++    pub fn new(bytes:&'a [u8])->Result<Self,String> {
++        Self::scan(bytes,EntityDecoder::new(bytes),crate::element::ProductionModel::new())
++    }
++
++    fn scan(bytes:&'a [u8],decoder:EntityDecoder<'a>,production_model:crate::element::ProductionModel)->Result<Self,String> {
+         if bytes.len() > 128 * 1024 * 1024 {
+             return Err("Appearance source exceeds 128 MiB budget".into());
+         }
+         let mut source = Self {
+-            production_model: crate::element::ProductionModel::new(),
+-            production_identity: super::owned_context::source_identity(),
++            bytes,
++            production_model,
+             empty_styles: super::owned_context::Styles::default(),
+             context: None,
+-            decoder: EntityDecoder::new(bytes),
++            decoder,
+             types: BTreeMap::new(),
+             incoming: BTreeMap::new(),
+             texture_maps: BTreeMap::new(),
+@@ -117,6 +141,7 @@ impl<'a> Source<'a> {
+         source.context = Some(super::context::Context::new(bytes, &mut source.decoder));
+         Ok(source)
+     }
++    pub fn bytes(&self)->&'a [u8] {self.bytes}
+     pub fn entity(&mut self, id: u32) -> Result<DecodedEntity, String> {
+         self.decoder.decode_by_id(id).map_err(|e| e.to_string())
+     }
+@@ -314,8 +339,8 @@ mod texture_index_tests {
+     #[test]
+     fn a_session_builds_the_texture_index_once_7776() {
+         let mut source = Source::new(MODEL.as_bytes()).unwrap();
+-        let first = source.texture_index(MODEL.as_bytes());
+-        let second = source.texture_index(MODEL.as_bytes());
++        let first = source.texture_index();
++        let second = source.texture_index();
+         assert!(Arc::ptr_eq(&first, &second));
+     }
+ }
+diff --git a/rust/processing/src/element.rs b/rust/processing/src/element.rs
+index e5b6f0c8c9..74bc84f8ae 100644
+--- a/rust/processing/src/element.rs
++++ b/rust/processing/src/element.rs
+@@ -141,3 +141,7 @@ mod owned_texture_tests;
+ 
+ #[cfg(test)]
+ mod owned_callback_tests;
++
++#[cfg(test)]
++#[path = "element/source_context_tests.rs"]
++mod source_context_tests;
+diff --git a/rust/processing/src/element/model_context.rs b/rust/processing/src/element/model_context.rs
+index b8a60d8c92..25bc584ce5 100644
+--- a/rust/processing/src/element/model_context.rs
++++ b/rust/processing/src/element/model_context.rs
+@@ -27,14 +27,25 @@ struct ModelState {load:u64,source_epoch:AtomicU64,revision:AtomicU64}
+ 
+ /// Explicit source lifecycle. Dropping this handle does not invalidate snapshots.
+ #[derive(Clone)]
+-pub struct ProductionModel {state:Arc<ModelState>}
++pub struct ProductionModel {state:Arc<ModelState>,source:Option<Arc<ifc_lite_core::SourceBundle>>,trusted:Option<ifc_lite_core::TrustedDecoderInputs>}
+ impl Default for ProductionModel {fn default()->Self {Self::new()}}
+ impl ProductionModel {
++    /// Explicit compatibility mode for callers that retain borrowed bytes and
++    /// independently supplied indexes. No source authentication is promised.
+     pub fn new()->Self {
+         static NEXT:AtomicU64=AtomicU64::new(1);
+         let load=NEXT.fetch_update(Ordering::Relaxed,Ordering::Relaxed,|n|n.checked_add(1))
+             .expect("production model identity exhausted");
+-        Self {state:Arc::new(ModelState {load,source_epoch:AtomicU64::new(0),revision:AtomicU64::new(0)})}
++        Self {state:Arc::new(ModelState {load,source_epoch:AtomicU64::new(0),revision:AtomicU64::new(0)}),source:None,trusted:None}
++    }
++    /// Bind a model to immutable bytes and their canonically constructed index.
++    pub fn from_source(source:Arc<ifc_lite_core::SourceBundle>)->Self {
++        Self {source:Some(source),..Self::new()}
++    }
++    /// Explicit authoring/extension mode: authenticate the immutable base source,
++    /// and accept this decoder's external input revision as trusted configuration.
++    pub fn from_trusted_inputs(inputs:ifc_lite_core::TrustedDecoderInputs)->Self {
++        Self {source:Some(inputs.source().clone()),trusted:Some(inputs),..Self::new()}
+     }
+     /// Capture the actual selected components. A later same-source snapshot
+     /// never changes or expires this snapshot.
+@@ -43,7 +54,12 @@ impl ProductionModel {
+         let revision=self.state.revision.fetch_update(Ordering::Relaxed,Ordering::Relaxed,|n|n.checked_add(1))
+             .expect("production context revision exhausted")+1;
+         Arc::new(OwnedMeshProductionContext {id:ProductionContextId {load:self.state.load,source_epoch,revision},
+-            data,state:self.state.clone()})
++            data,state:self.state.clone(),source:self.source.clone(),trusted:self.trusted.clone()})
++    }
++    /// Whether a snapshot was created by this model load, independent of its
++    /// immutable configuration revision. This grants no decoder authority.
++    pub fn owns_snapshot(&self,context:&OwnedMeshProductionContext)->bool {
++        self.state.load==context.id.load
+     }
+     /// Expire all snapshots tied to the preceding source/index bundle. Call at
+     /// explicit source replacement; never infer an epoch from map addresses.
+@@ -58,6 +74,8 @@ pub struct OwnedMeshProductionContext {
+     id:ProductionContextId,
+     data:OwnedMeshProductionData,
+     state:Arc<ModelState>,
++    source:Option<Arc<ifc_lite_core::SourceBundle>>,
++    trusted:Option<ifc_lite_core::TrustedDecoderInputs>,
+ }
+ impl OwnedMeshProductionContext {
+     pub fn id(&self)->ProductionContextId {self.id}
+@@ -65,6 +83,16 @@ impl OwnedMeshProductionContext {
+         if self.id.source_epoch==self.state.source_epoch.load(Ordering::Acquire) {Ok(())}
+         else {Err(ProductionContextError::StaleSource)}
+     }
++    /// None denotes the explicit borrowed compatibility contract: the caller
++    /// must pair bytes/index itself. Lifecycle validity is not authentication.
++    pub fn source(&self)->Option<&Arc<ifc_lite_core::SourceBundle>> {self.source.as_ref()}
++    pub fn validate_decoder(&self,decoder:&EntityDecoder<'_>)->Result<(),ProductionContextError> {
++        self.validate_source()?;
++        if self.trusted.as_ref().map_or_else(|| self.source.as_ref().is_some_and(|source| !source.owns_decoder(decoder)), |inputs| !inputs.matches(decoder)) {
++            return Err(ProductionContextError::MismatchedSource);
++        }
++        Ok(())
++    }
+     pub fn borrowed(&self)->MeshProductionContext<'_> {
+         MeshProductionContext {void_index:&self.data.void_index,geometry_style_index:&self.data.geometry_style_index,
+             indexed_colour_full:&self.data.indexed_colour_full,element_material_colors:&self.data.element_material_colors,
+@@ -72,8 +100,8 @@ impl OwnedMeshProductionContext {
+     }
+ }
+ #[derive(Debug,Clone,Copy,PartialEq,Eq)]
+-pub enum ProductionContextError {StaleSource}
++pub enum ProductionContextError {StaleSource,MismatchedSource}
+ impl fmt::Display for ProductionContextError {
+-    fn fmt(&self,f:&mut fmt::Formatter<'_>)->fmt::Result {f.write_str("production model source was invalidated")}
++    fn fmt(&self,f:&mut fmt::Formatter<'_>)->fmt::Result {f.write_str(match self {Self::StaleSource=>"production model source was invalidated", Self::MismatchedSource=>"decoder does not belong to the production source bundle"})}
+ }
+ impl std::error::Error for ProductionContextError {}
+diff --git a/rust/processing/src/element/owned_callback_tests.rs b/rust/processing/src/element/owned_callback_tests.rs
+index 48be4c23ea..59fd8fe916 100644
+--- a/rust/processing/src/element/owned_callback_tests.rs
++++ b/rust/processing/src/element/owned_callback_tests.rs
+@@ -25,8 +25,9 @@ impl GeometryProcessor for Nested {
+ }
+ #[test]
+ fn owned_public_driver_preserves_lexical_nested_product_with_same_snapshot_and_runtime_owners() {
+-    let model=ProductionModel::new();let context=model.snapshot(OwnedMeshProductionData::default());
+-    let mut decoder=EntityDecoder::new(SOURCE);let mut geometry_router=router(&mut decoder);
++    let source=ifc_lite_core::SourceBundle::new(SOURCE.as_bytes().to_vec());
++    let model=ProductionModel::from_source(source.clone());let context=model.snapshot(OwnedMeshProductionData::default());
++    let mut decoder=source.decoder();let mut geometry_router=router(&mut decoder);
+     let child=Rc::new(RefCell::new(None));
+     let router=Rc::new_cyclic(|router| {
+         geometry_router.register(Box::new(Nested {router:router.clone(),context:context.clone(),child:child.clone()}));
+@@ -51,8 +52,9 @@ impl GeometryProcessor for Invalidate {
+ }
+ #[test]
+ fn invalidation_inside_actual_geometry_callback_returns_typed_error_and_fresh_snapshot_can_retry() {
+-    let model=ProductionModel::new();let context=model.snapshot(OwnedMeshProductionData::default());
+-    let mut decoder=EntityDecoder::new(SOURCE);let mut router=router(&mut decoder);
++    let source=ifc_lite_core::SourceBundle::new(SOURCE.as_bytes().to_vec());
++    let model=ProductionModel::from_source(source.clone());let context=model.snapshot(OwnedMeshProductionData::default());
++    let mut decoder=source.decoder();let mut router=router(&mut decoder);
+     let calls=Rc::new(Cell::new(0));
+     router.register(Box::new(Invalidate {model:model.clone(),once:Rc::new(Cell::new(true)),calls:calls.clone()}));
+     let entity=decoder.decode_by_id(10).unwrap();
+diff --git a/rust/processing/src/element/owned_session.rs b/rust/processing/src/element/owned_session.rs
+index e109b1f86c..d63581e6e6 100644
+--- a/rust/processing/src/element/owned_session.rs
++++ b/rust/processing/src/element/owned_session.rs
+@@ -15,13 +15,13 @@ impl OwnedProductExecution {
+     /// Independent resumable sessions always use strict owner admission.
+     pub fn new(job:&ElementMeshJob<'_>,context:&Arc<OwnedMeshProductionContext>,
+         opts:&MeshProductionOptions,decoder:&mut EntityDecoder,router:&GeometryRouter)->Result<Self,WorkError> {
+-        context.validate_source().map_err(|_|WorkError::StaleSource)?;
++        context.validate_decoder(decoder).map_err(work_error)?;
+         let state=ProductState::new(job,&context.borrowed(),opts,decoder,router);
+         Ok(Self::bind(state,context))
+     }
+     fn canonical(job:&ElementMeshJob<'_>,context:&Arc<OwnedMeshProductionContext>,
+         opts:&MeshProductionOptions,decoder:&mut EntityDecoder,router:&GeometryRouter)->Result<Self,WorkError> {
+-        context.validate_source().map_err(|_|WorkError::StaleSource)?;
++        context.validate_decoder(decoder).map_err(work_error)?;
+         match session_canonical::inherited_owner(decoder,router).expect("canonical synchronous ancestor owner") {
+             Some(owner)=> {
+                 let state=ProductState::new_with_owner(job,&context.borrowed(),opts,decoder,router,Some(owner));
+@@ -41,10 +41,14 @@ impl OwnedProductExecution {
+     }
+     pub fn execute(&mut self,request:WorkRequest,decoder:&mut EntityDecoder,router:&GeometryRouter)->Result<WorkReply,WorkError> {
+         self.validate()?;
++        self.context.validate_decoder(decoder).map_err(work_error)?;
+         self.state.execute(request,&self.context.borrowed(),decoder,router)
+     }
+     pub fn accept(&mut self,reply:WorkReply,decoder:&mut EntityDecoder,router:&GeometryRouter)->Result<(),Box<RejectedReply>> {
+         if let Err(error)=self.validate() {return Err(Box::new(RejectedReply {error,reply}))}
++        if let Err(error)=self.context.validate_decoder(decoder) {
++            return Err(Box::new(RejectedReply {error:work_error(error),reply}));
++        }
+         self.state.accept(reply,&self.context.borrowed(),decoder,router)
+     }
+     pub fn advance(&mut self,decoder:&mut EntityDecoder,router:&GeometryRouter)->Result<bool,WorkError> {
+@@ -55,9 +59,10 @@ impl OwnedProductExecution {
+     }
+     pub fn finish(self,decoder:&EntityDecoder,router:&GeometryRouter)->Result<ProducedElementMeshes,WorkError> {
+         self.validate()?;
++        self.context.validate_decoder(decoder).map_err(work_error)?;
+         let result=self.state.finish(decoder,router);
+         // A final diagnostic callback may explicitly invalidate the model.
+-        self.context.validate_source().map_err(|_|WorkError::StaleSource)?;
++        self.context.validate_decoder(decoder).map_err(work_error)?;
+         Ok(result)
+     }
+ }
+@@ -71,7 +76,12 @@ pub fn produce_element_meshes_owned(job:&ElementMeshJob<'_>,context:&Arc<OwnedMe
+     while execution.advance(decoder,router).map_err(public_error)? {}
+     execution.finish(decoder,router).map_err(public_error)
+ }
++fn work_error(error:ProductionContextError)->WorkError {
++    match error {ProductionContextError::StaleSource=>WorkError::StaleSource,
++        ProductionContextError::MismatchedSource=>WorkError::MismatchedSource}
++}
+ fn public_error(error:WorkError)->ProductionContextError {
+     match error {WorkError::StaleSource=>ProductionContextError::StaleSource,
++        WorkError::MismatchedSource=>ProductionContextError::MismatchedSource,
+         _=>panic!("canonical owned production invariant: {error:?}")}
+ }
+diff --git a/rust/processing/src/element/session_protocol.rs b/rust/processing/src/element/session_protocol.rs
+index 2fa06495a9..878db3ec0c 100644
+--- a/rust/processing/src/element/session_protocol.rs
++++ b/rust/processing/src/element/session_protocol.rs
+@@ -84,7 +84,7 @@ impl std::fmt::Debug for RejectedReply {
+ }
+ 
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+-pub(super) enum WorkError { Outstanding, StaleTicket, AlreadyExecuted, NotExecuted, WrongEmitter, WrongPayload, WrongOwner, OwnerBusy, WrongContext, StaleSource }
++pub(super) enum WorkError { Outstanding, StaleTicket, AlreadyExecuted, NotExecuted, WrongEmitter, WrongPayload, WrongOwner, OwnerBusy, WrongContext, StaleSource, MismatchedSource }
+ 
+ pub(super) struct Protocol {
+     session: usize,
+diff --git a/rust/processing/src/element/source_context_tests.rs b/rust/processing/src/element/source_context_tests.rs
+new file mode 100644
+index 0000000000..3e5f236cc7
+--- /dev/null
++++ b/rust/processing/src/element/source_context_tests.rs
+@@ -0,0 +1,236 @@
++// SPDX-License-Identifier: MPL-2.0
++//! Actual source binding through canonical product work and reply admission.
++use super::owned_session::OwnedProductExecution;
++use super::session_protocol::WorkError;
++use super::session_tests::{assert_same, canonical, job, metadata, options, router, SOURCE};
++use super::*;
++use ifc_lite_core::SourceBundle;
++use std::sync::Arc;
++
++#[test]
++fn bundle_snapshot_retains_actual_source_after_caller_drop_and_dormant_worker_transfer() {
++    let bundle = SourceBundle::new(SOURCE.as_bytes().to_vec());
++    let model = ProductionModel::from_source(bundle.clone());
++    let context = model.snapshot(OwnedMeshProductionData::default());
++    let session = {
++        let mut decoder = bundle.decoder();
++        let router = router(&mut decoder);
++        let entity = decoder.decode_by_id(50).unwrap();
++        OwnedProductExecution::new(
++            &job(&entity, &metadata(50)),
++            &context,
++            &options(),
++            &mut decoder,
++            &router,
++        )
++        .unwrap()
++    };
++    drop(model);
++    drop(bundle);
++    let result = std::thread::spawn(move || {
++        let source = context.source().unwrap();
++        let mut decoder = source.decoder();
++        let router = router(&mut decoder);
++        let mut session = session;
++        while session.advance(&mut decoder, &router).unwrap() {}
++        session.finish(&decoder, &router).unwrap()
++    })
++    .join()
++    .unwrap();
++    assert_same(&result, &canonical(50, false));
++}
++
++#[test]
++fn same_sized_foreign_source_is_rejected_before_owner_effects_and_real_reply_admission() {
++    let source = SourceBundle::new(SOURCE.as_bytes().to_vec());
++    let foreign = SourceBundle::new(SOURCE.replace("IFCWALL", "IFCBEAM").into_bytes());
++    assert_eq!(source.bytes().len(), foreign.bytes().len());
++    let context =
++        ProductionModel::from_source(source.clone()).snapshot(OwnedMeshProductionData::default());
++    let mut decoder = source.decoder();
++    let router = router(&mut decoder);
++    let entity = decoder.decode_by_id(10).unwrap();
++    let mut other = foreign.decoder();
++    assert_eq!(
++        produce_element_meshes_owned(
++            &job(&entity, &metadata(10)),
++            &context,
++            &options(),
++            &mut other,
++            &router
++        )
++        .err(),
++        Some(ProductionContextError::MismatchedSource)
++    );
++    assert!(other.try_execution_lease().is_ok());
++    let mut session = OwnedProductExecution::new(
++        &job(&entity, &metadata(10)),
++        &context,
++        &options(),
++        &mut decoder,
++        &router,
++    )
++    .unwrap();
++    let request = session.request().unwrap().unwrap();
++    assert_eq!(
++        session.execute(request, &mut other, &router).err(),
++        Some(WorkError::MismatchedSource)
++    );
++    let reply = session.execute(request, &mut decoder, &router).unwrap();
++    let rejected = session.accept(reply, &mut other, &router).unwrap_err();
++    assert_eq!(rejected.error, WorkError::MismatchedSource);
++    assert!(session.state.meshes.is_empty());
++    session
++        .accept(rejected.reply, &mut decoder, &router)
++        .unwrap();
++    while session.advance(&mut decoder, &router).unwrap() {}
++    assert_same(
++        &session.finish(&decoder, &router).unwrap(),
++        &canonical(10, false),
++    );
++}
++
++#[test]
++fn immutable_configuration_revisions_keep_same_source_valid_until_explicit_expiry() {
++    let source = SourceBundle::new(SOURCE.as_bytes().to_vec());
++    let model = ProductionModel::from_source(source.clone());
++    let red = [0.8, 0.1, 0.2, 1.];
++    let green = [0.2, 0.8, 0.1, 1.];
++    let snapshot = |color| {
++        model.snapshot(OwnedMeshProductionData {
++            geometry_style_index: Arc::new(
++                [(13, GeometryStyleInfo::from_color(color))]
++                    .into_iter()
++                    .collect(),
++            ),
++            ..Default::default()
++        })
++    };
++    let a = snapshot(red);
++    let b = snapshot(green);
++    for (context, color) in [(&a, red), (&b, green), (&a, red)] {
++        let mut decoder = source.decoder();
++        let router = router(&mut decoder);
++        let entity = decoder.decode_by_id(10).unwrap();
++        let actual = produce_element_meshes_owned(
++            &job(&entity, &metadata(10)),
++            context,
++            &options(),
++            &mut decoder,
++            &router,
++        )
++        .unwrap();
++        assert_eq!(actual.meshes[0].color, color);
++        assert!((actual.geometry_volume.unwrap() - 24.).abs() < 1e-5);
++    }
++    model.invalidate_source();
++    assert_eq!(
++        a.validate_source(),
++        Err(ProductionContextError::StaleSource)
++    );
++    assert_eq!(
++        b.validate_source(),
++        Err(ProductionContextError::StaleSource)
++    );
++}
++
++struct ScopedChild {
++    context: Arc<OwnedMeshProductionContext>,
++    child: Arc<std::sync::Mutex<Option<ProducedElementMeshes>>>,
++}
++impl ifc_lite_geometry::GeometryProcessor for ScopedChild {
++    fn supported_types(&self) -> Vec<IfcType> {
++        vec![IfcType::IfcExtrudedAreaSolid]
++    }
++    fn process(
++        &self,
++        entity: &DecodedEntity,
++        decoder: &mut EntityDecoder,
++        schema: &ifc_lite_core::IfcSchema,
++        quality: ifc_lite_geometry::TessellationQuality,
++    ) -> ifc_lite_geometry::Result<Mesh> {
++        if entity.id == 13 {
++            let context = &self.context;
++            let parent = std::thread::current().id();
++            let child = std::thread::scope(|scope| {
++                let decoder = &mut *decoder;
++                scope
++                    .spawn(move || {
++                        assert_ne!(parent, std::thread::current().id());
++                        let child_router = router(decoder);
++                        let entity = decoder.decode_by_id(20).unwrap();
++                        let output = produce_element_meshes_owned(
++                            &job(&entity, &metadata(20)),
++                            context,
++                            &options(),
++                            decoder,
++                            &child_router,
++                        )
++                        .unwrap();
++                        assert!(
++                            decoder.try_execution_lease().is_err(),
++                            "scoped child cannot release parent decoder"
++                        );
++                        output
++                    })
++                    .join()
++                    .unwrap()
++            });
++            *self.child.lock().unwrap() = Some(child);
++        }
++        ifc_lite_geometry::ExtrudedAreaSolidProcessor::new(schema.clone())
++            .process(entity, decoder, schema, quality)
++    }
++}
++#[test]
++fn bound_source_preserves_scoped_mutable_decoder_and_nested_canonical_child() {
++    let source = SourceBundle::new(SOURCE.as_bytes().to_vec());
++    let context = ProductionModel::from_source(source.clone()).snapshot(Default::default());
++    let mut decoder = source.decoder();
++    let mut router = router(&mut decoder);
++    let child = Arc::new(std::sync::Mutex::new(None));
++    router.register(Box::new(ScopedChild {
++        context: context.clone(),
++        child: child.clone(),
++    }));
++    let entity = decoder.decode_by_id(10).unwrap();
++    let output = produce_element_meshes_owned(
++        &job(&entity, &metadata(10)),
++        &context,
++        &options(),
++        &mut decoder,
++        &router,
++    )
++    .unwrap();
++    assert_same(&output, &canonical(10, false));
++    assert_same(
++        &child.lock().unwrap().take().unwrap(),
++        &canonical(20, false),
++    );
++    assert!(decoder.try_execution_lease().is_ok());
++}
++
++#[test]
++fn raw_semantic_imports_are_rejected_before_work_but_explicit_authored_revision_is_scoped() {
++    let source = SourceBundle::new(SOURCE.as_bytes().to_vec());
++    let model = ProductionModel::from_source(source.clone());
++    let context = model.snapshot(OwnedMeshProductionData::default());
++    let mut decoder = source.decoder();
++    let router = router(&mut decoder);
++    let entity = decoder.decode_by_id(10).unwrap();
++    let foreign_bytes = SOURCE.replace("IFCWALL", "IFCBEAM").into_bytes();
++    let mut foreign = EntityDecoder::new(&foreign_bytes);
++    foreign.decode_by_id(10).unwrap();
++    decoder.inject_shared_cache(&foreign.drain_cache());
++    assert_eq!(produce_element_meshes_owned(&job(&entity, &metadata(10)), &context,
++        &options(), &mut decoder, &router).err(), Some(ProductionContextError::MismatchedSource));
++    assert!(decoder.try_execution_lease().is_ok());
++    // Authoring explicitly trusts a particular current input revision; this
++    // neither restores pure-source authority nor accepts a later raw import.
++    let authored = ProductionModel::from_trusted_inputs(decoder.trusted_inputs().unwrap())
++        .snapshot(OwnedMeshProductionData::default());
++    assert!(authored.validate_decoder(&decoder).is_ok());
++    assert!(!source.owns_decoder(&decoder));
++    decoder.set_point_cache(Default::default());
++    assert_eq!(authored.validate_decoder(&decoder), Err(ProductionContextError::MismatchedSource));
++}
+diff --git a/rust/processing/src/processor/entity_index.rs b/rust/processing/src/processor/entity_index.rs
+index e555968a5f..de2a53c8c1 100644
+--- a/rust/processing/src/processor/entity_index.rs
++++ b/rust/processing/src/processor/entity_index.rs
+@@ -1,146 +1,33 @@
+-// This Source Code Form is subject to the terms of the Mozilla Public
+-// License, v. 2.0. If a copy of the MPL was not distributed with this
+-// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+-
+-//! Native scan indexes. Keep the public supplied-hash-index contract while
+-//! avoiding hash bucket padding for large sources with 32-bit byte offsets.
+-
++// SPDX-License-Identifier: MPL-2.0
++//! A coherent canonical load or the explicit legacy supplied-index contract.
+ use std::sync::Arc;
+-use ifc_lite_core::{ColumnarEntityIndex, DenseEntityIndex, EntityDecoder, EntityIndex, GridAxisIndex};
+-use rustc_hash::FxHashMap;
+-
++use ifc_lite_core::{EntityDecoder,EntityIndex,GridAxisIndex,SourceBundle};
+ #[derive(Clone)]
+ pub(super) enum ProcessingIndex {
+-    Hash(HashIndex),
+-    Columnar(Arc<ColumnarEntityIndex>),
+-    Dense(Arc<DenseEntityIndex>),
++    Owned(Arc<SourceBundle>),
++    Borrowed { spans:Arc<EntityIndex>, grid_axes:Arc<GridAxisIndex> },
+ }
+-
+-/// A bare hash map has nowhere to keep source-scoped lookups, so it travels
+-/// with its own; the compact indexes carry theirs (#6232 F2).
+-#[derive(Clone)]
+-pub(super) struct HashIndex {
+-    spans: Arc<EntityIndex>,
+-    grid_axes: Arc<GridAxisIndex>,
+-}
+-
+-impl std::ops::Deref for HashIndex {
+-    type Target = EntityIndex;
+-    fn deref(&self) -> &EntityIndex {
+-        &self.spans
+-    }
+-}
+-
+ impl ProcessingIndex {
+-    pub(super) fn hash(spans: Arc<EntityIndex>) -> Self {
+-        Self::Hash(HashIndex { spans, grid_axes: Arc::default() })
+-    }
+-
+-    pub(super) fn decoder<'a>(&self, content: &'a [u8]) -> EntityDecoder<'a> {
+-        let mut decoder = EntityDecoder::new(content);
+-        self.install(&mut decoder);
+-        decoder
+-    }
+-
+-    pub(super) fn install(&self, decoder: &mut EntityDecoder<'_>) {
+-        match self {
+-            Self::Hash(index) => {
+-                decoder.set_entity_index(index.spans.clone());
+-                decoder.set_grid_axis_index(index.grid_axes.clone());
+-            }
+-            Self::Columnar(index) => decoder.set_columnar_index(index.clone()),
+-            Self::Dense(index) => decoder.set_dense_index(index.clone()),
+-        }
+-    }
+-}
+-
+-type Row = (u32, u32, u32);
+-const PAGE_ROWS: usize = 4096;
+-
+-pub(super) enum IndexBuilder {
+-    Hash(EntityIndex),
+-    Compact { pages: Vec<Vec<Row>>, len: usize, max_rows: usize },
+-}
+-
+-fn compact_eligible(content_len: usize) -> bool {
+-    cfg!(not(target_arch = "wasm32"))
+-        && content_len >= 32 * 1024 * 1024 && u32::try_from(content_len).is_ok()
+-}
+-
+-impl IndexBuilder {
+-    pub(super) fn new(content_len: usize, build: bool) -> Self {
+-        if build && compact_eligible(content_len) {
+-            // Reuse the old hash path's source-based capacity estimate as a
+-            // hard staging budget. Short duplicate-heavy records must not
+-            // retain one compact row per record indefinitely (#3921).
+-            Self::Compact { pages: Vec::new(), len: 0, max_rows: content_len / 50 }
+-        } else {
+-            Self::Hash(FxHashMap::with_capacity_and_hasher(
+-                if build { content_len / 50 } else { 0 }, Default::default()))
+-        }
++    pub(super) fn hash(spans:Arc<EntityIndex>)->Self {
++        Self::Borrowed {spans,grid_axes:Arc::default()}
+     }
+-
+-    pub(super) fn insert(&mut self, id: u32, span: (usize, usize)) {
+-        if matches!(self, Self::Compact { len, max_rows, .. } if *len == *max_rows) {
+-            let Self::Compact { pages, .. } = std::mem::replace(self, Self::Hash(FxHashMap::default())) else {
+-                unreachable!("only the compact builder exhausts a row budget");
+-            };
+-            let Self::Hash(index) = self else { unreachable!("installed hash builder") };
+-            for page in pages {
+-                for (id, start, length) in page {
+-                    index.insert(id, (start as usize, start as usize + length as usize));
+-                }
+-            }
+-        }
++    pub(super) fn decoder<'a>(&'a self,content:&'a [u8])->EntityDecoder<'a> {
+         match self {
+-            Self::Hash(index) => { index.insert(id, span); }
+-            Self::Compact { pages, len, .. } => {
+-                debug_assert!(span.0 <= span.1 && u32::try_from(span.1).is_ok());
+-                if pages.last().is_none_or(|page| page.len() == PAGE_ROWS) {
+-                    pages.push(Vec::with_capacity(PAGE_ROWS));
+-                }
+-                pages.last_mut().expect("a page was allocated")
+-                    .push((id, span.0 as u32, (span.1 - span.0) as u32));
+-                *len += 1;
++            Self::Owned(source)=>source.decoder(),
++            Self::Borrowed {..}=> {
++                let mut decoder=EntityDecoder::new(content);
++                self.install(&mut decoder);
++                decoder
+             }
+         }
+     }
+-
+-    pub(super) fn finish(self) -> ProcessingIndex {
++    pub(super) fn install(&self,decoder:&mut EntityDecoder<'_>) {
+         match self {
+-            Self::Hash(index) => ProcessingIndex::hash(Arc::new(index)),
+-            Self::Compact { pages, len, .. } => {
+-                // Fixed pages avoid geometric Vec over-allocation. At most
+-                // two 12-byte representations overlap; release each consumed
+-                // page as the contiguous sort input fills.
+-                let mut rows = Vec::with_capacity(len);
+-                for page in pages { rows.extend(page); }
+-                // Scanner spans increase in file order. Sorting ties by start
+-                // retains the last authored occurrence without a permutation
+-                // array or a stable-sort scratch allocation.
+-                rows.sort_unstable_by_key(|row| (row.0, row.1));
+-                rows.dedup_by(|later, earlier| {
+-                    if later.0 != earlier.0 { return false; }
+-                    *earlier = *later;
+-                    true
+-                });
+-                let mut ids = Vec::with_capacity(rows.len());
+-                let mut starts = Vec::with_capacity(rows.len());
+-                let mut lengths = Vec::with_capacity(rows.len());
+-                for (id, start, length) in rows {
+-                    ids.push(id); starts.push(start); lengths.push(length);
+-                }
+-                match DenseEntityIndex::try_from_columns(&ids, &starts, &lengths) {
+-                    Some(index) => ProcessingIndex::Dense(Arc::new(index)),
+-                    None => ProcessingIndex::Columnar(Arc::new(
+-                        ColumnarEntityIndex::from_columns(&ids, &starts, &lengths)
+-                            .expect("the three columns are pushed together above"))),
+-                }
++            Self::Owned(source)=>assert!(source.bind_decoder(decoder),"canonical scan source allocation"),
++            Self::Borrowed {spans,grid_axes}=> {
++                decoder.set_entity_index(spans.clone());
++                decoder.set_grid_axis_index(grid_axes.clone());
+             }
+         }
+     }
+ }
+-
+-#[cfg(test)]
+-#[path = "entity_index_tests.rs"]
+-mod tests;
+diff --git a/rust/processing/src/processor/jobs.rs b/rust/processing/src/processor/jobs.rs
+index 70552264b8..42f699823b 100644
+--- a/rust/processing/src/processor/jobs.rs
++++ b/rust/processing/src/processor/jobs.rs
+@@ -13,12 +13,12 @@ use super::*;
+ 
+ /// Per-rayon-worker CartesianPoint caches: one `FxHashMap` behind a `Mutex` per
+ /// worker thread, indexed by `rayon::current_thread_index()`.
+-pub(super) type WorkerPointCaches = Vec<std::sync::Mutex<FxHashMap<u32, (f64, f64, f64)>>>;
++pub(super) type WorkerPointCaches = Vec<std::sync::Mutex<ifc_lite_core::SourceCache<(f64, f64, f64)>>>;
+ 
+ /// Per-rayon-worker placement-transform caches, indexed like [`WorkerPointCaches`];
+ /// value is the opaque column-major `[f64; 16]` world transform the geometry
+ /// router memoizes per IfcObjectPlacement id.
+-pub(super) type WorkerPlacementCaches = Vec<std::sync::Mutex<FxHashMap<u32, [f64; 16]>>>;
++pub(super) type WorkerPlacementCaches = Vec<std::sync::Mutex<ifc_lite_core::SourceCache<[f64; 16]>>>;
+ 
+ /// One persistent CartesianPoint cache per rayon worker thread, indexed by
+ /// `rayon::current_thread_index()`.
+@@ -39,7 +39,7 @@ pub(super) type WorkerPlacementCaches = Vec<std::sync::Mutex<FxHashMap<u32, [f64
+ /// persistent slot cold-starts that worker for the whole model, not just a chunk.
+ pub(super) fn new_worker_point_caches() -> WorkerPointCaches {
+     (0..rayon::current_num_threads().max(1))
+-        .map(|_| std::sync::Mutex::new(FxHashMap::default()))
++        .map(|_| std::sync::Mutex::new(Default::default()))
+         .collect()
+ }
+ 
+@@ -52,7 +52,7 @@ pub(super) fn new_worker_point_caches() -> WorkerPointCaches {
+ /// the one worker that owns that index; see the `try_lock` note at the call site.
+ pub(super) fn new_worker_placement_caches() -> WorkerPlacementCaches {
+     (0..rayon::current_num_threads().max(1))
+-        .map(|_| std::sync::Mutex::new(FxHashMap::default()))
++        .map(|_| std::sync::Mutex::new(Default::default()))
+         .collect()
+ }
+ 
+@@ -64,18 +64,18 @@ pub(super) fn new_worker_placement_caches() -> WorkerPlacementCaches {
+ /// `Deref`/`DerefMut` expose the wrapped decoder so call sites are unchanged.
+ struct WorkerCacheGuard<'c, 's> {
+     decoder: EntityDecoder<'c>,
+-    slot: &'s mut FxHashMap<u32, (f64, f64, f64)>,
++    slot: &'s mut ifc_lite_core::SourceCache<(f64, f64, f64)>,
+     // The worker's persistent placement-transform cache, written back on the
+     // same EVERY-exit-path guarantee as `slot` so a `decode_at` error or panic
+     // does not cold-start placement resolution for the worker's next element.
+-    placement_slot: &'s mut FxHashMap<u32, [f64; 16]>,
++    placement_slot: &'s mut ifc_lite_core::SourceCache<[f64; 16]>,
+ }
+ 
+ impl Drop for WorkerCacheGuard<'_, '_> {
+     fn drop(&mut self) {
+         // Cheap: moves the map header (now warmer), not its entries.
+-        *self.slot = self.decoder.take_point_cache();
+-        *self.placement_slot = self.decoder.take_placement_transform_cache();
++        *self.slot = self.decoder.take_source_point_cache();
++        *self.placement_slot = self.decoder.take_source_placement_cache();
+     }
+ }
+ 
+@@ -131,13 +131,13 @@ pub(super) fn process_entity_job(
+     // `worker_point_caches` store at the call site). Moved into this job's decoder
+     // and moved back out afterwards so a shared point list is parsed once per worker
+     // for the entire pass, not once per chunk or once per part.
+-    worker_point_cache: &mut FxHashMap<u32, (f64, f64, f64)>,
++    worker_point_cache: &mut ifc_lite_core::SourceCache<(f64, f64, f64)>,
+     // The current rayon worker's PERSISTENT placement-transform cache, reused
+     // across every element that worker meshes for the whole model (see the
+     // `worker_placement_caches` store at the call site). Moved into this job's
+     // decoder and moved back out afterwards so a placement chain shared by many
+     // elements (storey/building) is composed once per worker, not once per element.
+-    worker_placement_cache: &mut FxHashMap<u32, [f64; 16]>,
++    worker_placement_cache: &mut ifc_lite_core::SourceCache<[f64; 16]>,
+     // Request-local point-cache hit/miss + faceted-brep-timing sinks (see the
+     // collectors declared before the chunk loop).
+     point_cache_hits_collector: &std::sync::atomic::AtomicU64,
+@@ -151,11 +151,11 @@ pub(super) fn process_entity_job(
+     let mut local_decoder = entity_index_arc.decoder(content).with_strict_reals(); // #7678
+     // Adopt this worker's persistent point cache so faceted-brep polyloop points
+     // shared across elements are served from memory instead of re-parsed per element.
+-    local_decoder.set_point_cache(std::mem::take(worker_point_cache));
++    assert!(local_decoder.set_source_point_cache(std::mem::take(worker_point_cache)));
+     // Adopt this worker's persistent placement-transform cache so a placement
+     // chain shared across elements (storey/building) is composed once per worker
+     // instead of re-resolved per element.
+-    local_decoder.set_placement_transform_cache(std::mem::take(worker_placement_cache));
++    assert!(local_decoder.set_source_placement_cache(std::mem::take(worker_placement_cache)));
+     // Seed the unit-scale caches so curve/arc processing skips the O(file)
+     // IFCPROJECT scan that each fresh per-element decoder would otherwise repeat.
+     local_decoder.seed_unit_scales(unit_scale, seed_plane_angle_to_radians);
+diff --git a/rust/processing/src/processor/mod.rs b/rust/processing/src/processor/mod.rs
+index ab47dff98d..8346b1d356 100644
+--- a/rust/processing/src/processor/mod.rs
++++ b/rust/processing/src/processor/mod.rs
+@@ -23,7 +23,7 @@ mod csg_summary;
+ mod csg_summary_tests;
+ mod diagnostics;
+ mod entity_index;
+-use entity_index::{IndexBuilder, ProcessingIndex};
++use entity_index::ProcessingIndex;
+ mod entry_points;
+ #[allow(deprecated)] // the deprecated delegates stay exported until the next major
+ pub use entry_points::{
+@@ -359,22 +359,20 @@ pub fn process(
+     );
+     let scan_guard = scan_span.clone().entered();
+ 
+-    // The entity index (expressId -> byte span) is built INLINE in the scan loop
+-    // below rather than in a separate `build_entity_index` pass, so the file is
+-    // walked once instead of twice. A caller that injected an index reuses it and
+-    // skips the inline build. `decode_at` during the scan needs no index (it parses
+-    // local bytes), so the scan-phase decoder starts index-less; the completed
+-    // index is installed before the first ref-resolving call (`resolve_prepass`).
++    // The canonical scan constructs the immutable source/index pair inline.
++    // Supplied legacy indexes retain their explicit same-source precondition.
+     let provided_index = req.entity_index.clone();
+-    let building_index = provided_index.is_none();
+-    let mut inline_index = IndexBuilder::new(content.len(), building_index);
++    // Borrowed public input is copied once at load, never per job. The legacy
++    // supplied-index option retains its documented same-source precondition.
++    let owned_bytes=provided_index.is_none().then(||Arc::new(content.to_vec()));
++    let content=owned_bytes.as_deref().map_or(content, |bytes|bytes.as_slice());
+     let mut decoder = match &provided_index { // geometry pre-pass: strict reals (#7678)
+         Some(idx) => EntityDecoder::with_arc_index(content, idx.clone()).with_strict_reals(),
+         None => EntityDecoder::new(content).with_strict_reals(),
+     };
+     tracing::debug!("Entity index will be built inline during the scan");
+ 
+-    let scan::ScanOutput {
++    let (scan::ScanOutput {
+         mut entity_jobs,
+         prepass_spans,
+         project_id,
+@@ -386,20 +384,16 @@ pub fn process(
+         total_entities,
+         site_entity_pos,
+         building_entity_pos,
+-    } = scan::scan_entities(content, req, &mut decoder, &mut inline_index, building_index);
++    }, source) = scan::scan_entities(content, req, &mut decoder, owned_bytes.clone());
+ 
+     let defer_style_updates = req.batching.fast_first
+         && req.opening_filter == OpeningFilterMode::Default
+         && !req.features.presentation_layers;
+ 
+ 
+-    // The inline index is now complete — identical to `build_entity_index` over
+-    // the same scanner. Install it into the decoder so `resolve_prepass` and the
+-    // downstream phases resolve refs against it, and expose it (as before) to the
+-    // geometry workers further down.
+     let entity_index = match provided_index {
+         Some(idx) => ProcessingIndex::hash(idx),
+-        None => inline_index.finish(),
++        None => ProcessingIndex::Owned(source.clone().expect("canonical scan owns its source")),
+     };
+     entity_index.install(&mut decoder);
+ 
+@@ -598,7 +592,7 @@ pub fn process(
+         .collect();
+     let element_material_colors = Arc::new(element_material_colors);
+ 
+-    let production_model = crate::element::ProductionModel::new();
++    let production_model = source.map_or_else(crate::element::ProductionModel::new, crate::element::ProductionModel::from_source);
+     let shared_site_rotation = site_transform.as_ref().filter(|_| coord_space == MeshCoordinateSpace::SiteLocal).map(|v| Arc::new(v.clone()));
+     let total_jobs = entity_jobs.len();
+     let initial_chunk_size = req.batching.initial.max(1);
+@@ -831,9 +825,9 @@ pub fn process(
+                 // fails on that re-entrant steal; that rare job uses a throwaway
+                 // cache instead. Output is byte-identical: the cache is pure
+                 // memoization of deterministic coordinates, so a miss just re-decodes.
+-                let mut fallback_cache = FxHashMap::default();
++                let mut fallback_cache = Default::default();
+                 let mut slot_guard = worker_point_caches[widx].try_lock().ok();
+-                let worker_point_cache: &mut FxHashMap<u32, (f64, f64, f64)> =
++                let worker_point_cache: &mut ifc_lite_core::SourceCache<(f64, f64, f64)> =
+                     match slot_guard.as_deref_mut() {
+                         Some(cache) => cache,
+                         None => &mut fallback_cache,
+@@ -846,9 +840,9 @@ pub fn process(
+                 // self-deadlock (#1587). On that rare re-entrant steal we fall
+                 // back to a throwaway cache; output stays byte-identical since
+                 // the cache is pure memoization of a deterministic composition.
+-                let mut fallback_placement_cache = FxHashMap::default();
++                let mut fallback_placement_cache = Default::default();
+                 let mut placement_slot_guard = worker_placement_caches[widx].try_lock().ok();
+-                let worker_placement_cache: &mut FxHashMap<u32, [f64; 16]> =
++                let worker_placement_cache: &mut ifc_lite_core::SourceCache<[f64; 16]> =
+                     match placement_slot_guard.as_deref_mut() {
+                         Some(cache) => cache,
+                         None => &mut fallback_placement_cache,
+diff --git a/rust/processing/src/processor/scan.rs b/rust/processing/src/processor/scan.rs
+index cbcaa02d8e..169c7a5175 100644
+--- a/rust/processing/src/processor/scan.rs
++++ b/rust/processing/src/processor/scan.rs
+@@ -7,7 +7,6 @@
+ //! later phase resolves.
+ 
+ use super::color_layer::collect_presentation_layer_assignments;
+-use super::entity_index::IndexBuilder;
+ use super::quick_collector::QuickCollector;
+ use super::quick_metadata::{record_ref_at, record_refs_at};
+ use super::{EntityJob, ProcessingRequest};
+@@ -103,26 +102,23 @@ impl TypeScan {
+     }
+ }
+ 
+-/// The scan loop's state: what it reads, what it fills, and the inline index.
++/// The scan loop's classification state; core owns canonical index construction.
+ struct Scan<'a, 'd> {
+     content: &'a [u8],
+     req: &'a ProcessingRequest,
+     decoder: &'a mut EntityDecoder<'d>,
+-    inline_index: &'a mut IndexBuilder,
+-    building_index: bool,
+     out: ScanOutput,
+     types: TypeScan,
+ }
+ 
+-/// Walk `content` once. `building_index` says whether `inline_index` is being
+-/// filled (no index was injected); `decoder` only needs local bytes here.
++/// Walk original bytes once, fusing the canonical index builder with native
++/// classification when this load owns its source. Supplied indexes stay borrowed.
+ pub(super) fn scan_entities(
+     content: &[u8],
+     req: &ProcessingRequest,
+     decoder: &mut EntityDecoder,
+-    inline_index: &mut IndexBuilder,
+-    building_index: bool,
+-) -> ScanOutput {
++    owned_bytes: Option<std::sync::Arc<Vec<u8>>>,
++) -> (ScanOutput, Option<std::sync::Arc<ifc_lite_core::SourceBundle>>) {
+     let out = ScanOutput {
+         entity_jobs: Vec::with_capacity(2000),
+         // Styled items / indexed colour maps / material chain / voids / fills /
+@@ -149,21 +145,21 @@ pub(super) fn scan_entities(
+         content,
+         req,
+         decoder,
+-        inline_index,
+-        building_index,
+         out,
+         types: TypeScan::default(),
+     };
+ 
+-    let mut scanner = EntityScanner::new(content);
+-    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+-        scan.visit(id, type_name, start, end);
+-    }
+-    // The whole-file scan: refused ids (#3395) + a malformed stop (#3695).
+-    ifc_lite_core::report_scan_diagnostics(scanner.skipped_oversized_ids(), scanner.malformed_record_start().is_some());
++    let source = if let Some(bytes)=owned_bytes {
++        Some(ifc_lite_core::SourceBundle::scan_with(bytes, |id,name,start,end| scan.visit(id,name,start,end)))
++    } else {
++        let mut scanner=EntityScanner::new(content);
++        while let Some((id,name,start,end))=scanner.next_entity() {scan.visit(id,name,start,end);}
++        ifc_lite_core::report_scan_diagnostics(scanner.skipped_oversized_ids(),scanner.malformed_record_start().is_some());
++        None
++    };
+ 
+     scan.types.append_orphan_jobs(&mut scan.out.entity_jobs);
+-    scan.out
++    (scan.out,source)
+ }
+ 
+ impl Scan<'_, '_> {
+@@ -175,9 +171,6 @@ impl Scan<'_, '_> {
+         if let Some(ifc_type) = crate::georeferencing::georeferencing_candidate_type(type_name) {
+             self.out.georeferencing_candidates.push((id, ifc_type));
+         }
+-        if self.building_index {
+-            self.inline_index.insert(id, (start, end));
+-        }
+         if let Some(quick) = self.out.quick.as_mut() {
+             quick.observe(self.content, id, type_name, start, end);
+         }
+@@ -206,7 +199,7 @@ impl Scan<'_, '_> {
+             }
+             ScanClass::PresentationLayerAssignment => {
+                 if self.req.features.presentation_layers {
+-                    if let Ok(layer_assignment) = self.decoder.decode_at(start, end) {
++                    if let Ok(layer_assignment) = self.decoder.decode_at_uncached(start, end) {
+                         collect_presentation_layer_assignments(
+                             &mut self.out.presentation_layer_by_assigned_id,
+                             &layer_assignment,
+diff --git a/rust/wasm-bindings/src/api/coherent_source.rs b/rust/wasm-bindings/src/api/coherent_source.rs
+new file mode 100644
+index 0000000000..c8f6425ff5
+--- /dev/null
++++ b/rust/wasm-bindings/src/api/coherent_source.rs
+@@ -0,0 +1,200 @@
++// SPDX-License-Identifier: MPL-2.0
++//! Once-per-worker source admission; legacy independent setters stay explicit.
++use super::{gpu_meshes::StyleMaps, IfcAPI};
++use ifc_lite_core::{EntityDecoder, SourceBundle};
++use ifc_lite_processing::{style::GeometryStyleInfo, ProductionModel};
++use std::sync::{Arc, Mutex};
++use wasm_bindgen::prelude::*;
++
++type StyleRevision = (Vec<u32>, Vec<u8>, StyleMaps);
++pub(super) struct CoherentLoad {
++    pub source: Arc<SourceBundle>,
++    pub model: ProductionModel,
++    styles: Mutex<Option<StyleRevision>>,
++}
++impl CoherentLoad {
++    pub fn styles(&self, ids: &[u32], colors: &[u8]) -> StyleMaps {
++        let mut slot = self
++            .styles
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if let Some((old_ids, old_colors, maps)) = slot.as_ref() {
++            if old_ids == ids && old_colors == colors {
++                return Arc::clone(maps);
++            }
++        }
++        let colors_map = super::gpu_meshes::batch_partition::style_colors_from_wire(ids, colors);
++        let index = colors_map
++            .iter()
++            .map(|(&id, &c)| (id, GeometryStyleInfo::from_color(c)))
++            .collect();
++        let maps = Arc::new((colors_map, Arc::new(index)));
++        *slot = Some((ids.to_vec(), colors.to_vec(), Arc::clone(&maps)));
++        maps
++    }
++}
++impl IfcAPI {
++    pub(super) fn decoder_for_batch<'a>(
++        &self,
++        content: &'a [u8],
++        coherent_load: Option<&'a Arc<CoherentLoad>>,
++    ) -> EntityDecoder<'a> {
++        // Reuse the cached Arc<EntityIndex> across calls so we don't
++        // re-clone the 14 M-entry HashMap on every batch. On streaming
++        // paths this turns ~36 calls/worker into 1 build + 35 Arc::clone()
++        // (a single refcount bump) instead of 36 full HashMap clones.
++        //
++        // If the cache is empty (which happens on every process worker
++        // because they're separate WASM realms from the pre-pass worker),
++        // build once here and store under Arc so subsequent calls hit
++        // the fast path.
++        if let Some(load) = coherent_load {
++            load.source.decoder()
++        } else {
++            let entity_index_arc: std::sync::Arc<ifc_lite_core::ColumnarEntityIndex> = {
++                // Mutex briefly held: peek at cache, build-if-empty, clone Arc.
++                // The clone is what gets handed to rayon — no lock contention
++                // on the per-job hot path that follows. Poison panics here
++                // (an earlier panic-with-lock-held has corrupted the cache).
++                let mut slot = self
++                    .cached_entity_index
++                    .lock()
++                    .unwrap_or_else(std::sync::PoisonError::into_inner);
++                if let Some(existing) = slot.as_ref() {
++                    std::sync::Arc::clone(existing)
++                } else {
++                    // No setEntityIndex was delivered (non-streaming path): scan the
++                    // file straight into sorted columns, skipping the FxHashMap.
++                    let built =
++                        std::sync::Arc::new(super::gpu_meshes::scan_columnar_index(content));
++                    *slot = Some(std::sync::Arc::clone(&built));
++                    built
++                }
++            };
++            EntityDecoder::with_arc_columnar_index(content, entity_index_arc)
++        }
++        .with_strict_reals() // #7678
++    }
++    pub(super) fn begin_source_load(&self) {
++        if self.invalidate_coherent_source() {self.clear_source_caches();}
++        self.reset_pipeline_diagnostics();
++    }
++    pub(super) fn invalidate_coherent_source(&self) -> bool {
++        if let Some(load) = self
++            .coherent_source
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .take()
++        {
++            load.model.invalidate_source();
++            true
++        } else {
++            false
++        }
++    }
++    /// Source-derived maps and numerical templates share the established load
++    /// boundary. Configuration-only setters retain their narrower invalidation.
++    pub(super) fn clear_source_caches(&self) {
++        self.cached_parts_to_skip
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .take();
++        self.cached_material_layer_index
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .take();
++        self.cached_referenced_repmaps
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .take();
++        self.cached_instantiated_type_ids
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .take();
++        self.cached_mapped_instance_plan
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .take();
++        self.cached_texture_index
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .take();
++        self.cached_indexed_colour_maps
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .take();
++        self.cached_plane_angle_to_radians
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .take();
++        self.cached_geometry_styles
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .take();
++        self.cached_item_dedup
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .take();
++        self.cached_mapped_item
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .take();
++    }
++    pub(super) fn coherent_source_for(&self, bytes: &[u8]) -> Option<Arc<CoherentLoad>> {
++        self.coherent_source
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .as_ref()
++            .filter(|load| {
++                load.source.bytes().as_ptr() == bytes.as_ptr()
++                    && load.source.bytes().len() == bytes.len()
++            })
++            .cloned()
++    }
++}
++#[wasm_bindgen]
++impl IfcAPI {
++    /// Admit this worker's installed bytes/index pair once before geometry.
++    /// Full canonical span validation is required across worker realms. This
++    /// does not authenticate arbitrary later data-taking compatibility calls.
++    #[wasm_bindgen(js_name = bindSourceModel)]
++    pub fn bind_source_model(&self) -> Result<(), JsValue> {
++        self.bind_source_model_inner()
++            .map_err(|error| JsValue::from_str(&error))
++    }
++}
++impl IfcAPI {
++    pub(super) fn bind_source_model_inner(&self) -> Result<(), String> {
++        let mut slot = self
++            .coherent_source
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if slot.is_some() {
++            return Ok(());
++        }
++        let bytes = self
++            .cached_source_bytes
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .clone()
++            .ok_or("source bytes are not installed")?;
++        let index = self
++            .cached_entity_index
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .clone();
++        let source = match index {
++            Some(index) => {
++                SourceBundle::with_columnar_index(bytes, index).map_err(|e| e.to_string())?
++            }
++            None => SourceBundle::columnar(bytes).map_err(|e| e.to_string())?,
++        };
++        let model = ProductionModel::from_source(Arc::clone(&source));
++        *slot = Some(Arc::new(CoherentLoad {
++            source,
++            model,
++            styles: Mutex::new(None),
++        }));
++        Ok(())
++    }
++}
+diff --git a/rust/wasm-bindings/src/api/entity_index.rs b/rust/wasm-bindings/src/api/entity_index.rs
+index 4bf4f52c8d..b92df3aa73 100644
+--- a/rust/wasm-bindings/src/api/entity_index.rs
++++ b/rust/wasm-bindings/src/api/entity_index.rs
+@@ -65,6 +65,7 @@ impl IfcAPI {
+         built: Result<ColumnarEntityIndex, ColumnLengthMismatch>,
+     ) -> Result<(), ColumnLengthMismatch> {
+         self.production_model.invalidate_source();
++        self.invalidate_coherent_source();
+         let (installed, outcome) = match built {
+             Ok(index) => ((!index.is_empty()).then(|| std::sync::Arc::new(index)), Ok(())),
+             Err(mismatch) => (None, Err(mismatch)),
+@@ -76,64 +77,7 @@ impl IfcAPI {
+         *slot = installed;
+         drop(slot);
+ 
+-        // Swapping the entity index means a different file. The other caches are
+-        // content-scoped (keyed off the previous load) — carrying them into the
+-        // next file would wrongly suppress/keep orphan type geometry, reuse a
+-        // stale texture index, or skip the wrong parts. Drop them so they
+-        // rebuild against the new content (#962 review). Mirrors clearPrePassCache.
+-        self.cached_parts_to_skip
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .take();
+-        self.cached_material_layer_index
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .take();
+-        self.cached_referenced_repmaps
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .take();
+-        self.cached_instantiated_type_ids
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .take();
+-        self.cached_mapped_instance_plan
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .take();
+-        self.cached_texture_index
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .take();
+-        self.cached_indexed_colour_maps
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .take();
+-        self.cached_plane_angle_to_radians
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .take();
+-        // The geometry-style maps belong to the previous load's wire styles —
+-        // drop them on content swap so a reused IfcAPI can't reuse a stale map
+-        // (the (len,first,last) signature would otherwise collide rarely).
+-        self.cached_geometry_styles
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .take();
+-        // The content-dedup cache holds the previous model's item meshes — drop it
+-        // on content swap so a reused IfcAPI starts the new file with an empty
+-        // cache (bounds memory across loads).
+-        self.cached_item_dedup
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .take();
+-        // The mapped-item source cache holds the previous model's source meshes —
+-        // drop it on content swap so a reused IfcAPI starts the new file empty
+-        // (bounds memory across loads; #1623).
+-        self.cached_mapped_item
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .take();
++        self.clear_source_caches();
+         // A new entity index means a new file — the pipeline diagnostics
+         // describe the previous load, so start fresh.
+         self.reset_pipeline_diagnostics();
+diff --git a/rust/wasm-bindings/src/api/gpu_meshes/batch.rs b/rust/wasm-bindings/src/api/gpu_meshes/batch.rs
+index adb13bfd22..c034854a56 100644
+--- a/rust/wasm-bindings/src/api/gpu_meshes/batch.rs
++++ b/rust/wasm-bindings/src/api/gpu_meshes/batch.rs
+@@ -102,7 +102,6 @@ impl IfcAPI {
+         Vec<super::instancing::ShardOccurrence>,
+     ), ifc_lite_processing::element::ProductionContextError> {
+         use crate::api::styling::resolve_element_color;
+-        use ifc_lite_core::EntityDecoder;
+         use ifc_lite_geometry::GeometryRouter;
+         use ifc_lite_processing::element::{
+             plan_type_geometry, produce_element_meshes_owned, ElementJobKind, ElementMeshJob,
+@@ -116,6 +115,7 @@ impl IfcAPI {
+         let batch_started_ms = js_sys::Date::now();
+ 
+         let content = data;
++        let coherent_load=self.coherent_source_for(content);
+ 
+         // Geometry fingerprinting for the viewer's revision-diff feature.
+         // When enabled we hash each entity's meshes *before* MeshDataJs::new
+@@ -129,35 +129,7 @@ impl IfcAPI {
+             [0.0, 0.0, 0.0]
+         };
+ 
+-        // Reuse the cached Arc<EntityIndex> across calls so we don't
+-        // re-clone the 14 M-entry HashMap on every batch. On streaming
+-        // paths this turns ~36 calls/worker into 1 build + 35 Arc::clone()
+-        // (a single refcount bump) instead of 36 full HashMap clones.
+-        //
+-        // If the cache is empty (which happens on every process worker
+-        // because they're separate WASM realms from the pre-pass worker),
+-        // build once here and store under Arc so subsequent calls hit
+-        // the fast path.
+-        let entity_index_arc: std::sync::Arc<ifc_lite_core::ColumnarEntityIndex> = {
+-            // Mutex briefly held: peek at cache, build-if-empty, clone Arc.
+-            // The clone is what gets handed to rayon — no lock contention
+-            // on the per-job hot path that follows. Poison panics here
+-            // (an earlier panic-with-lock-held has corrupted the cache).
+-            let mut slot = self
+-                .cached_entity_index
+-                .lock()
+-                .unwrap_or_else(std::sync::PoisonError::into_inner);
+-            if let Some(existing) = slot.as_ref() {
+-                std::sync::Arc::clone(existing)
+-            } else {
+-                // No setEntityIndex was delivered (non-streaming path): scan the
+-                // file straight into sorted columns, skipping the FxHashMap.
+-                let built = std::sync::Arc::new(super::scan_columnar_index(content));
+-                *slot = Some(std::sync::Arc::clone(&built));
+-                built
+-            }
+-        };
+-        let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index_arc).with_strict_reals(); // #7678
++        let mut decoder=self.decoder_for_batch(content,coherent_load.as_ref());
+         // Seed the unit-scale caches so curve/arc tessellation never re-pays the
+         // O(file) IFCPROJECT scan: this decoder is fresh on every batch call,
+         // and `plane_angle_to_radians()` would otherwise walk the whole DATA
+@@ -268,7 +240,9 @@ impl IfcAPI {
+         // AND the GeometryStyleInfo index the producer consumes ONCE per worker
+         // and reuse across batches (was ~18 M HashMap inserts each on a 140 K-
+         // styled model). Keyed by a cheap (len, first_id, last_id) signature.
+-        let style_maps: StyleMaps = {
++        let style_maps: StyleMaps = if let Some(load)=coherent_load.as_ref() {
++            load.styles(style_ids,style_colors)
++        } else {
+             let sig_len = style_ids.len();
+             let sig_first = style_ids.first().copied().unwrap_or(0);
+             let sig_last = style_ids.last().copied().unwrap_or(0);
+@@ -357,7 +331,8 @@ impl IfcAPI {
+             _ => rustc_hash::FxHashMap::default(),
+         };
+ 
+-        let ctx = self.production_model.snapshot(OwnedMeshProductionData {
++        let model=coherent_load.as_ref().map_or(&self.production_model, |load|&load.model);
++        let ctx = model.snapshot(OwnedMeshProductionData {
+             void_index: std::sync::Arc::new(void_index),
+             geometry_style_index: std::sync::Arc::clone(&style_maps.1),
+             indexed_colour_full: std::sync::Arc::clone(&indexed_colour.maps),
+diff --git a/rust/wasm-bindings/src/api/gpu_meshes/batch_from_source.rs b/rust/wasm-bindings/src/api/gpu_meshes/batch_from_source.rs
+index 236b14dae0..6c71394d35 100644
+--- a/rust/wasm-bindings/src/api/gpu_meshes/batch_from_source.rs
++++ b/rust/wasm-bindings/src/api/gpu_meshes/batch_from_source.rs
+@@ -60,6 +60,10 @@ impl IfcAPI {
+     #[wasm_bindgen(js_name = setSourceBytes)]
+     pub fn set_source_bytes(&self, data: Vec<u8>) {
+         self.production_model.invalidate_source();
++        if self.invalidate_coherent_source() {
++            self.clear_source_caches();
++            self.clear_style_finishes();
++        }
+         let mut slot = self
+             .cached_source_bytes
+             .lock()
+diff --git a/rust/wasm-bindings/src/api/gpu_meshes/batch_partition.rs b/rust/wasm-bindings/src/api/gpu_meshes/batch_partition.rs
+index 347ba8eefa..4fb32d9935 100644
+--- a/rust/wasm-bindings/src/api/gpu_meshes/batch_partition.rs
++++ b/rust/wasm-bindings/src/api/gpu_meshes/batch_partition.rs
+@@ -203,7 +203,7 @@ pub(super) fn meets_instance_threshold(mesh: &MeshData, counts: &FxHashMap<u128,
+ /// older or truncated producer); a style whose four bytes are not all present
+ /// is dropped rather than read past the end or filled with garbage, so a short
+ /// tail costs those styles their colour and nothing else.
+-pub(super) fn style_colors_from_wire(
++pub(in crate::api) fn style_colors_from_wire(
+     style_ids: &[u32],
+     style_colors: &[u8],
+ ) -> FxHashMap<u32, [f32; 4]> {
+diff --git a/rust/wasm-bindings/src/api/gpu_meshes/mod.rs b/rust/wasm-bindings/src/api/gpu_meshes/mod.rs
+index f6f9bb1c3b..e460414c5c 100644
+--- a/rust/wasm-bindings/src/api/gpu_meshes/mod.rs
++++ b/rust/wasm-bindings/src/api/gpu_meshes/mod.rs
+@@ -13,7 +13,7 @@ mod batch_entry_points;
+ pub(super) use batch::StyleMaps;
+ mod partitioned_batch;
+ mod batch_from_source;
+-mod batch_partition;
++pub(super) mod batch_partition;
+ mod batch_partitioned_output;
+ mod instancing;
+ pub(crate) mod prepass;
+@@ -31,7 +31,7 @@ mod source_fingerprint_prepass;
+ /// past `u32::MAX` (#7675, CORE-24), which a wasm32 `&[u8]` cannot reach: the
+ /// linear memory it lives in is itself 32-bit addressed. These entry points
+ /// have no `Result` to return it through, so the bound is stated here instead.
+-fn scan_columnar_index(content: &[u8]) -> ifc_lite_core::ColumnarEntityIndex {
++pub(super) fn scan_columnar_index(content: &[u8]) -> ifc_lite_core::ColumnarEntityIndex {
+     ifc_lite_core::ColumnarEntityIndex::from_scan(content)
+         .expect("a wasm32 source is below 4 GiB, so every span fits u32")
+ }
+diff --git a/rust/wasm-bindings/src/api/gpu_meshes/prepass.rs b/rust/wasm-bindings/src/api/gpu_meshes/prepass.rs
+index 1373a62ee5..5ee620302d 100644
+--- a/rust/wasm-bindings/src/api/gpu_meshes/prepass.rs
++++ b/rust/wasm-bindings/src/api/gpu_meshes/prepass.rs
+@@ -25,7 +25,7 @@ impl IfcAPI {
+         // Load START on the serial/main-thread path: the previous load's
+         // pipeline diagnostics must not accumulate into this one. (The worker
+         // path resets via setEntityIndex; every load-start entry point resets.)
+-        self.reset_pipeline_diagnostics();
++        self.begin_source_load();
+ 
+         let content = data;
+ 
+@@ -196,7 +196,7 @@ impl IfcAPI {
+         let have_columns = columns.is_some();
+         let mut prebuilt_arc: Option<std::sync::Arc<ifc_lite_core::ColumnarEntityIndex>> = None;
+         // Load START on the streaming pre-pass path (see build_pre_pass_once).
+-        self.reset_pipeline_diagnostics();
++        self.begin_source_load();
+         use ifc_lite_core::{has_geometry_by_name, keyword_eq, EntityDecoder, EntityScanner, IfcType};
+         use ifc_lite_geometry::GeometryRouter;
+         use ifc_lite_processing::stream_meta::{resolve_stream_meta, MetaMode};
+diff --git a/rust/wasm-bindings/src/api/mod.rs b/rust/wasm-bindings/src/api/mod.rs
+index cad0b7e663..3f97a7a27e 100644
+--- a/rust/wasm-bindings/src/api/mod.rs
++++ b/rust/wasm-bindings/src/api/mod.rs
+@@ -71,6 +71,7 @@ pub(crate) struct IndexedColourCache {
+ /// Main IFC-Lite API
+ #[wasm_bindgen]
+ pub struct IfcAPI {
++    coherent_source: std::sync::Mutex<Option<std::sync::Arc<coherent_source::CoherentLoad>>>,
+     initialized: bool,
+     production_model: ifc_lite_processing::element::ProductionModel,
+     /// Cached entity index from buildPrePassOnce, reused by processGeometryBatch.
+@@ -298,6 +299,7 @@ impl IfcAPI {
+ 
+         Self {
+             initialized: true,
++            coherent_source: std::sync::Mutex::new(None),
+             production_model: ifc_lite_processing::element::ProductionModel::new(),
+             cached_entity_index: std::sync::Mutex::new(None),
+             cached_source_bytes: std::sync::Mutex::new(None),
+@@ -341,91 +343,15 @@ impl IfcAPI {
+     #[wasm_bindgen(js_name = clearPrePassCache)]
+     pub fn clear_pre_pass_cache(&self) {
+         self.production_model.invalidate_source();
++        self.invalidate_coherent_source();
+         let mut slot = self
+             .cached_entity_index
+             .lock()
+             .unwrap_or_else(std::sync::PoisonError::into_inner);
+         slot.take();
+-        // The parts-to-skip set is keyed off the content scanned during
+-        // the previous load; drop it together with the entity index so the
+-        // next file's first batch call rebuilds against fresh content.
+-        let mut parts_slot = self
+-            .cached_parts_to_skip
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+-        parts_slot.take();
+-        // The material-layer index is keyed off the previous load's content.
+-        self.cached_material_layer_index
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .take();
+-        // The referenced-RepresentationMap set is keyed off the previous load's
+-        // content; drop it so the next file rebuilds against fresh content.
+-        let mut repmap_slot = self
+-            .cached_referenced_repmaps
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+-        repmap_slot.take();
+-        // The instantiated-type-ids set is keyed off the previous load's content.
+-        let mut inst_slot = self
+-            .cached_instantiated_type_ids
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+-        inst_slot.take();
+-        // The don't-bake mapped-instance plan is keyed off the previous load's
+-        // IfcMappedItem scan (#1623 Phase 3); drop it so the next file rebuilds it.
+-        self.cached_mapped_instance_plan
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .take();
+-        // The texture index is keyed off the previous load's content; drop it.
+-        let mut texture_slot = self
+-            .cached_texture_index
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+-        texture_slot.take();
+-        // The indexed-colour-map index is also keyed off the previous load's
+-        // content; drop it so the next file rebuilds against fresh content.
+-        let mut icm_slot = self
+-            .cached_indexed_colour_maps
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+-        icm_slot.take();
+-        // The plane-angle scale belongs to the previous load's content.
+-        self.cached_plane_angle_to_radians
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .take();
+-        // The geometry-style maps belong to the previous load's wire styles.
+-        self.cached_geometry_styles
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .take();
+-        // So do the #5582 style finishes, and any unconsumed sharded stash.
++        self.clear_source_caches();
+         self.clear_style_finishes();
+-        // The content-dedup cache holds the previous model's item meshes, keyed by
+-        // a content hash of that model's entities. Drop it so a new file on the
+-        // same reused IfcAPI starts with an empty cache (bounds memory across
+-        // loads; defensive even though the key is content- not id-based).
+-        self.cached_item_dedup
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .take();
+-        // The session source bytes are the previous load's whole file; drop them
+-        // at end-of-load cleanup so a reused IfcAPI doesn't retain a ~100s-of-MB
+-        // copy between loads (the next load's setSourceBytes re-installs its own).
+-        self.cached_source_bytes
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .take();
+-        // The mapped-item source cache holds the previous model's source meshes,
+-        // keyed by RepresentationMap id (baking in that load's unit scale /
+-        // tessellation quality). Drop it so a new file on the same reused IfcAPI
+-        // starts empty (#1623).
+-        self.cached_mapped_item
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .take();
++        self.cached_source_bytes.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
+         // NB: do NOT reset pipeline_diagnostics here. clearPrePassCache runs in
+         // the JS load wrapper's `finally` AFTER the last processGeometryBatch
+         // (packages/geometry/src/index.ts), i.e. end-of-load cleanup; resetting
+@@ -1029,3 +955,5 @@ fn set_js_prop(obj: &JsValue, key: &str, value: &JsValue) -> bool {
+ }
+ 
+ #[cfg(test)] mod mod_tests;
++
++mod coherent_source;
+diff --git a/scripts/perf/README.md b/scripts/perf/README.md
+index 506f6fddb6..892c65971e 100644
+--- a/scripts/perf/README.md
++++ b/scripts/perf/README.md
+@@ -62,6 +62,32 @@ fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
+ A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
+ 
+ 
++## Immutable source/index ownership
++
++The canonical native scan now constructs an immutable source/index bundle while
++classifying entities, retaining adaptive index selection. Borrowed native load
++bytes are copied once into owned storage. Browser geometry workers retain their
++installed byte/index allocations and validate all delivered spans against the
++canonical scanner once per load. Products and batches never clone or hash the
++source or walk the whole index. Validated span reuse keeps source-bound inverse
++lookups separate from a delivered table's old caches, preserving the existing
++hash/dense decoder-local lookup and refusal domain. Same-source configuration revisions retain old
++immutable snapshots; source-derived cache clearing has one shared implementation.
++
++Native base/candidate controls preserve ordered mesh fingerprints on the normal
++and CSG fixtures. The recorded probe timings ran beside compiler/test workloads
++and do not establish a throughput verdict. Browser worker-pool admission cost
++remains unqualified; the delivered-index validation adds a real load-time scan.
++See `docs/architecture/evidence/coherent-source-owner/` for source-matched receipts
++and their explicit scope. No speedup, no-regression or retained-engine activation
++claim follows from this ownership change.
++
++Lesson: lifecycle identity cannot authenticate independent bytes and span tables.
++Either construct the pair in the canonical scan or validate the delivered table
++against original bytes once. A cheap signature or a caller-asserted token cannot
++replace that work. Preserve legacy cache behavior explicitly while qualifying a
++new coherent path's actual output independently.
++
+ ## Accepted eager viewer JS growth (#7759)
+ 
+ The maintainer approved resetting only the eager viewer JS ceiling to the

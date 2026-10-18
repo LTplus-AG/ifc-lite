@@ -7,14 +7,14 @@
 //! Routes IFC representation entities to appropriate processors based on type.
 
 pub(crate) mod annotation;
-mod annotation_polygon;
-mod annotation_style;
+pub(crate) mod annotation_polygon;
+pub(crate) mod annotation_style;
 mod caching;
 mod brep_signatures;
 mod content_hash;
 mod diagnostics;
 mod diagnostics_recording;
-mod frame_parts;
+pub(crate) mod frame_parts;
 mod instancing;
 mod item_dedup_cache;
 mod layers;
@@ -431,7 +431,7 @@ impl GeometryRouter {
     }
 
     /// The armed don't-bake plan, if any (see [`Self::enable_output_instancing`]).
-    pub(super) fn output_instancing_plan(&self) -> Option<&MappedInstancePlan> {
+    pub(crate) fn output_instancing_plan(&self) -> Option<&MappedInstancePlan> {
         self.output_instancing_plan.as_ref()
     }
 
@@ -457,7 +457,7 @@ impl GeometryRouter {
     /// Whether `geometry_id` is a mapped-source solid carrying an `IfcIndexedColourMap`
     /// (see [`Self::enable_indexed_colour_split_guard`]) — such a source must not
     /// don't-bake, so its per-triangle palette survives the flat split.
-    pub(super) fn is_indexed_colour_split_source(&self, geometry_id: u32) -> bool {
+    pub(crate) fn is_indexed_colour_split_source(&self, geometry_id: u32) -> bool {
         self.indexed_colour_split_ids
             .as_ref()
             .is_some_and(|ids| ids.contains(&geometry_id))
@@ -474,14 +474,14 @@ impl GeometryRouter {
 
     /// Whether batch-local template selection is active (see the field doc).
     #[inline]
-    pub(super) fn instancing_batch_local(&self) -> bool {
+    pub(crate) fn instancing_batch_local(&self) -> bool {
         self.instancing_batch_local
     }
 
     /// Batch-local don't-bake template decision: returns `true` (materialize as the
     /// batch-local template) the FIRST time this router sees `source_id`, `false`
     /// (don't-bake) every time after. Idempotent per source within one router/batch.
-    pub(super) fn mark_source_materialized_if_first(&self, source_id: u32) -> bool {
+    pub(crate) fn mark_source_materialized_if_first(&self, source_id: u32) -> bool {
         self.instanced_sources_materialized
             .borrow_mut()
             .insert(source_id)
@@ -670,7 +670,7 @@ impl GeometryRouter {
     /// Scale the translation component of a transform matrix from file units to meters
     /// The rotation/scale part stays unchanged, only translation (column 3) is scaled
     #[inline]
-    fn scale_transform(&self, transform: &mut Matrix4<f64>) {
+    pub(crate) fn scale_transform(&self, transform: &mut Matrix4<f64>) {
         if self.unit_scale != 1.0 {
             transform[(0, 3)] *= self.unit_scale;
             transform[(1, 3)] *= self.unit_scale;

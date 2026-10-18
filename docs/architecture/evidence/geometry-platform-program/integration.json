@@ -1,0 +1,16 @@
+{
+  "state": "applied to parent checkout; not yet requalified",
+  "parent_base": "772522f9df7a06d5287c1e9934055206fd464866",
+  "patch_sha256": "8ea8e7f6d3ed78a9ca98458a961febe7b3f1c3a5924b6969815ad2f76f4fb367",
+  "changed_source_hashes_checked": 63,
+  "hash_differences": [
+    {
+      "path": "docs/api/rust.md",
+      "expected": "e606d6225f22d128ca819181481b9bf87a8669d56ff12df057fb2313a114fa27",
+      "actual": "994cc3ee8a82ff5d4458ce923b523c9f508c6c025f335834f09fad8a4e034e33"
+    }
+  ],
+  "explanation": "docs/api/rust.md retains parent-owned context documentation alongside new constructor documentation",
+  "old_context_evidence": "Qualified frozen288 predecessor only; does not qualify this changed program source",
+  "source_freeze_release": "heavy-scene/admitted-audit/receipt.json terminal0 and all288 before/after unchanged"
+}

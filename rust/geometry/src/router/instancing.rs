@@ -22,7 +22,7 @@ impl GeometryRouter {
     /// materialize — never instanced, never lost. The returned id is used as the
     /// placeholder's `geometry_id` so colour resolves EXACTLY as the flat/template
     /// sub-mesh does (both key on the nested solid's id).
-    pub(super) fn mapped_source_single_item(
+    pub(crate) fn mapped_source_single_item(
         &self,
         mapped_repr: &DecodedEntity,
         decoder: &mut EntityDecoder,
@@ -54,7 +54,7 @@ impl GeometryRouter {
     /// The #6446 single-frame guard needs no copy here: one non-mapped item is one
     /// mesh with one origin, so it can never be a multi-frame source. A mixed
     /// near+far source has at least two items, so it never reaches this walk.
-    pub(super) fn ensure_shared_mapped_source(
+    pub(crate) fn ensure_shared_mapped_source(
         &self,
         mapped_repr: &DecodedEntity,
         source_id: u32,

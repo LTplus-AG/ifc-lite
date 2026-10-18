@@ -1,0 +1,47 @@
+{
+  "checkpoint": "88dc838c4fa74a21968c3735e3f2e751b165c5dd",
+  "integration": "Not yet applied; parent frozen during heavy audit",
+  "files": {
+    "product-program.patch": {
+      "sha256": "8ea8e7f6d3ed78a9ca98458a961febe7b3f1c3a5924b6969815ad2f76f4fb367",
+      "bytes": 167833
+    },
+    "product-program-evidence.tar.gz": {
+      "sha256": "67ed203794b2bb42d91b146cdb000ac054ab86b568b0704adc79517722be7ec3",
+      "bytes": 262055
+    },
+    "source-manifest.json": {
+      "sha256": "ff6af81c4504728cd0e1cf160e62da47fe6d214d90d2873af8721b64417fb73f",
+      "bytes": 8664
+    },
+    "qualification.json": {
+      "sha256": "e523c8ba790473cfed1c84105719481ebe0801d8bad8f08abdfcae9f5ef738c4",
+      "bytes": 4292
+    },
+    "validation.json": {
+      "sha256": "d3187d42dd7a096e289e30d4e1510b1a4cf5567f44e8d03bdea58473e9aac23f",
+      "bytes": 803
+    },
+    "wasm-abi.json": {
+      "sha256": "6e8b4a1f759a57c927882cc23a9dc7fe8eb09e15f42255236e5f3ff97f9e5aa6",
+      "bytes": 2605
+    },
+    "wasm-validation.json": {
+      "sha256": "51760ffbcf49f61cf234c570b58043e78e8400cd320f3b01fe26a00b3a6aecac",
+      "bytes": 1717
+    }
+  },
+  "qualification_scope": "Child source only; no integrated-source or whole-platform claim",
+  "archive_members": 47,
+  "workspace_log_summaries": 377,
+  "workspace_log_totals": [
+    5766,
+    0,
+    47
+  ],
+  "read_only_review": {
+    "reviewer": "authored_plan",
+    "result": "No concrete semantic regression found in inspected source; targeted custom/RTC opening-frame and texture qualification still required",
+    "execution": "No new builds or tests"
+  }
+}

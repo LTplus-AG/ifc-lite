@@ -1,0 +1,17 @@
+{
+  "request_id": "auto-c692a5c026a442698e8bfa41fbc306a9",
+  "job_id": "db87a320-da04-4069-8b6e-4b250e30f3ad",
+  "host": "pc-wsl",
+  "source_commit": "772522f9df7a06d5287c1e9934055206fd464866",
+  "command": "pnpm test",
+  "launcher": "/home/louistrue/build-workers/ifc-fleet run --cwd /home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361 -- pnpm test",
+  "transport_exit_code": 255,
+  "execution_outcome": "unknown",
+  "observed_worker_error": "OSError: [Errno 28] No space left on device in copy_output while flushing output.log; connection closed by remote host.",
+  "last_recovery_result": "execution host unavailable; outcome remains unknown; do not resubmit",
+  "receipt_on_execution_host": "/home/louistrue/build-workers/worker-state/jobs/db87a320-da04-4069-8b6e-4b250e30f3ad/receipt.json",
+  "recovery": "ifc-fleet job --id auto-c692a5c026a442698e8bfa41fbc306a9",
+  "safe_to_resubmit_automatically": false,
+  "qualification": "No pass, failure count, complete runtime suite or unchanged-source claim until the original execution receipt is recovered. Earlier successful root typecheck remains separately qualified.",
+  "next_action": "Recover this original request when the configured execution host becomes reachable; preserve active and foreign jobs, credentials, source, locks and immutable evidence. Do not bypass admission or launch replacement validation because the observation transport ended."
+}

@@ -70,10 +70,12 @@ into exporter evidence.
 
 The [heavy Holter comparisons](heavy-scene/) separately match all four native
 modes against candidate and independent baseline repeat, including actual
-instances and deferred color output. This remains partial qualification: the
-post-run raw/artifact rehash and supplemental execution-record audit were
-refused by fleet admission and remain unrun. Its empty texture, layer and fill
-channels provide no positive witnesses, and it establishes no performance verdict.
+instances and deferred color output. The later [admitted post-run audit](heavy-scene/admitted-audit/) completes
+raw/artifact rehash and supplemental execution-record checks on the frozen
+source. The earlier partial receipt and admission refusal remain preserved.
+Its empty texture, layer and fill channels provide no positive witnesses, and
+it establishes no performance verdict. This qualifies the recorded predecessor
+source only; later program changes require their own qualification.
 
 [Whole-worker-pool measurements](measurement-support.json) retain the actual
 interleaved base/candidate timings, geometry fingerprints and native process

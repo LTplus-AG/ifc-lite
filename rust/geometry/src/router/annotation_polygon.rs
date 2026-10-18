@@ -10,7 +10,7 @@ use nalgebra::{Point2, Point3};
 
 type P = Point2<f64>;
 
-pub(super) fn triangulate(rings: &[Vec<Point3<f64>>]) -> Result<Mesh> {
+pub(crate) fn triangulate(rings: &[Vec<Point3<f64>>]) -> Result<Mesh> {
     let outer = &rings[0];
     let origin = outer[0];
     let extent = rings

@@ -31,7 +31,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder};
 ///
 /// Written as a negated `>=` so a NaN origin (already-broken input) keeps the
 /// historical merge instead of opening a new part.
-pub(super) fn frames_mergeable(a: [f64; 3], b: [f64; 3]) -> bool {
+pub(crate) fn frames_mergeable(a: [f64; 3], b: [f64; 3]) -> bool {
     !(0..3).any(|axis| (a[axis] - b[axis]).abs() >= LARGE_MAPPED_ORIGIN_M)
 }
 
@@ -75,7 +75,7 @@ fn frame_span(parts: &[Mesh]) -> f64 {
 }
 
 /// Object-frame AABB of a mesh's f32 positions.
-pub(super) fn mesh_bounds(mesh: &Mesh) -> [f32; 6] {
+pub(crate) fn mesh_bounds(mesh: &Mesh) -> [f32; 6] {
     let mut bounds = [
         f32::INFINITY,
         f32::INFINITY,
@@ -93,7 +93,7 @@ pub(super) fn mesh_bounds(mesh: &Mesh) -> [f32; 6] {
     bounds
 }
 
-pub(super) fn union_bounds(accumulator: &mut Option<[f32; 6]>, incoming: [f32; 6]) {
+pub(crate) fn union_bounds(accumulator: &mut Option<[f32; 6]>, incoming: [f32; 6]) {
     if let Some(bounds) = accumulator {
         for axis in 0..3 {
             bounds[axis] = bounds[axis].min(incoming[axis]);
@@ -107,14 +107,14 @@ pub(super) fn union_bounds(accumulator: &mut Option<[f32; 6]>, incoming: [f32; 6
 /// Items that could not join the element's primary accumulator, grouped by
 /// frame. Each entry keeps the object-frame bounds of the items it holds.
 #[derive(Default)]
-pub(super) struct FrameParts {
+pub(crate) struct FrameParts {
     parts: Vec<(Mesh, Option<[f32; 6]>)>,
 }
 
 impl FrameParts {
     /// Merge a non-empty `mesh` into the first part sharing its frame, or
     /// open a new part.
-    pub(super) fn merge(&mut self, mesh: &Mesh, bounds: [f32; 6]) {
+    pub(crate) fn merge(&mut self, mesh: &Mesh, bounds: [f32; 6]) {
         match self
             .parts
             .iter_mut()
@@ -143,7 +143,7 @@ impl FrameParts {
 /// (#6446). A single-frame source, which is every source observed in the
 /// fixture corpus, runs the exact historical `Mesh::merge` sequence.
 #[derive(Default)]
-pub(super) struct SourceParts {
+pub(crate) struct SourceParts {
     /// The primary accumulator first, then the far frame parts.
     parts: Vec<SourcePart>,
 }
@@ -156,7 +156,7 @@ struct SourcePart {
 }
 
 impl SourceParts {
-    pub(super) fn merge(&mut self, mesh: &Mesh) {
+    pub(crate) fn merge(&mut self, mesh: &Mesh) {
         if mesh.is_empty() {
             return; // Mesh::merge would ignore it too
         }
@@ -181,7 +181,7 @@ impl SourceParts {
     /// published them: an item rebased into its f64 origin does (#7690), and
     /// its positions alone would not give its object-frame extent. Ordinary
     /// items do not, so an ordinary source carries none, as it never did.
-    pub(super) fn into_parts(self) -> Vec<Mesh> {
+    pub(crate) fn into_parts(self) -> Vec<Mesh> {
         if self.parts.is_empty() {
             return vec![Mesh::new()];
         }

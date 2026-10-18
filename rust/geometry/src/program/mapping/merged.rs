@@ -2,17 +2,17 @@
 //! Merged-source consumer: errors remove path membership, child failures mark
 //! every enclosing source truncated, and cache admission precedes mapping bake.
 use super::{GeometryRouter, ItemIdentity, Path, representation, skipped, source};
-use crate::{Error, InstanceMeta, Mesh, Result, math::mat4};
+use crate::{InstanceMeta, Mesh, Result, math::mat4};
 use crate::router::{frame_parts::SourceParts, transforms::instancing_enabled};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType, slot};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix4;
-use std::sync::Arc;
+use crate::program::{ItemProgram, ItemListPolicy};
 
 type Value = Result<(Vec<Mesh>, bool)>;
 struct Source {
     id: u32, depth: usize, policy: bool,
     transform: Option<Matrix4<f64>>,
-    items: std::vec::IntoIter<DecodedEntity>,
+    items: ItemProgram,
     parts: SourceParts, truncated: bool,
 }
 enum Frame {
@@ -29,13 +29,13 @@ impl Frame {
         }
     }
 }
-pub(in crate::router) struct MergedWalk { frames: Vec<Frame>, path: Path, value: Option<Value> }
+pub(crate) struct MergedWalk { frames: Vec<Frame>, path: Path, value: Option<Value> }
 impl MergedWalk {
-    pub(in crate::router) fn new(item: &DecodedEntity, router: &GeometryRouter) -> Self {
+    pub(crate) fn new(item: &DecodedEntity, router: &GeometryRouter) -> Self {
         Self { frames: vec![Frame::Enter { item: item.clone(), depth: 0, policy: router.unsupported_policy() }],
             path: Path::default(), value: None }
     }
-    pub(in crate::router) fn run(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>) -> Result<Vec<Mesh>> {
+    pub(crate) fn run(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>) -> Result<Vec<Mesh>> {
         while self.advance(router, decoder) {}
         self.value.expect("completed mapped-source value").map(|(parts, _)| parts)
     }
@@ -84,41 +84,24 @@ impl MergedWalk {
         let source = source(&item, decoder)?;
         // Merged sources decode transforms BEFORE looking in either cache.
         let transform = router.mapped_item_transform(&item, &source, decoder)?;
-        let cached = match &router.shared_mapped_item_cache {
-            Some(shared) => shared.lock().unwrap_or_else(|e| e.into_inner()).get(&source.id).cloned(),
-            None => router.mapped_item_cache.borrow().get(&source.id).cloned(),
-        };
+        let cached = router.cached_mapped_source(source.id);
         if let Some(mesh) = cached {
             self.value = Some(Ok((place(vec![mesh.as_ref().clone()], source.id, transform, router), false)));
             return Ok(());
         }
         let representation = representation(&source, decoder)?;
-        let attribute = representation.get(slot::IfcRepresentation::ITEMS.index())
-            .ok_or_else(|| Error::geometry("Representation missing Items".to_string()))?;
-        let items = decoder.resolve_ref_list(attribute)?;
+        let items = ItemProgram::admit(&representation, decoder, ItemListPolicy::RequiredMap)?;
         // Unlike the submesh consumer, claim AFTER this bulk item admission.
         let policy = router.claim_unsupported_source(source.id, &representation);
         self.frames.push(Frame::Source(Source { id: source.id, depth, policy, transform,
-            items: items.into_iter(), parts: SourceParts::default(), truncated: false }));
+            items, parts: SourceParts::default(), truncated: false }));
         Ok(())
     }
 }
 fn finish(state: Source, router: &GeometryRouter) -> (Vec<Mesh>, bool) {
     let parts = state.parts.into_parts();
     if parts.len() == 1 {
-        match &router.shared_mapped_item_cache {
-            Some(shared) => {
-                // Shared state must not retain depth-/budget-degraded geometry.
-                if !parts[0].positions.is_empty() && !crate::kernel::budget::tripped() && !state.truncated {
-                    let source = Arc::new(parts[0].clone());
-                    shared.lock().unwrap_or_else(|e| e.into_inner()).insert(state.id, source);
-                }
-            }
-            None => {
-                let source = Arc::new(parts[0].clone());
-                router.mapped_item_cache.borrow_mut().insert(state.id, source);
-            }
-        }
+        router.publish_mapped_source(state.id, &parts[0], state.truncated);
     }
     (place(parts, state.id, state.transform, router), state.truncated)
 }

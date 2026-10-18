@@ -1,0 +1,33 @@
+{
+  "scope": "Original child job recovery only; no retried execution or inferred pass",
+  "files": {
+    "pc-worker-status.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "pc-worker-status.json": {
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "bytes": 3
+    },
+    "coherent-source-ts-log.snapshot.log": {
+      "sha256": "4f60a4628ae68581def00a12535b6f98d3890498d50377ecaa65d98cdc56b899",
+      "bytes": 604412
+    },
+    "recovery-receipt.json": {
+      "sha256": "a8fdbbb86f8878f06cc6def0c2863e11693f72c08f4ec89e4706affc9dee5ff7",
+      "bytes": 6199
+    },
+    "product-typecheck-recovery.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "coherent-source-process-snapshot.json": {
+      "sha256": "5b5ddeadbc441cc74a0002565ed8e0788746efffab91a5dda09eb0dae6f8c484",
+      "bytes": 2945
+    },
+    "product-typecheck-recovery.json": {
+      "sha256": "51d4618d9773cd4140d868e22427f6f6aa7d7b35638ef82a20376aab329962bb",
+      "bytes": 2785
+    }
+  }
+}

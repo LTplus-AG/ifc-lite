@@ -7,7 +7,7 @@ use super::annotation::invalid;
 use crate::Result;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, EntityScanner, IfcType};
 
-pub(super) fn validate(item_id: u32, decoder: &mut EntityDecoder) -> Result<()> {
+pub(crate) fn validate(item_id: u32, decoder: &mut EntityDecoder) -> Result<()> {
     let ids = decoder.styled_item_ids(item_id)?.to_vec();
     let mut work = 512usize;
     let mut fills = 0usize;

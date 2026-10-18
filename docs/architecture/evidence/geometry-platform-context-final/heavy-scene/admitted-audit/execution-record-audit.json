@@ -1,0 +1,316 @@
+{
+  "scope": "Supplemental exact execution-record audit of four actual Holter modes; raw records hash-verified against finalizer receipt.",
+  "source_manifest_sha256": "63bb222be30076a296d109eb6cc7d057ec3ab880f727313d62892df82d65ff93",
+  "original_summary_sha256": "835d3469851e72911019ecd5ebcc7ccaa12d61a35809de97d6477b47c8fbfbe2",
+  "cases": [
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "mode": "full",
+      "csg_census_records": 106,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "entity_scan_time_ms": {
+            "base": 755,
+            "base-repeat": 680
+          },
+          "geometry_time_ms": {
+            "base": 60121,
+            "base-repeat": 42491
+          },
+          "lookup_time_ms": {
+            "base": 261,
+            "base-repeat": 154
+          },
+          "parse_time_ms": {
+            "base": 1047,
+            "base-repeat": 851
+          },
+          "preprocess_time_ms": {
+            "base": 16,
+            "base-repeat": 10
+          },
+          "total_time_ms": {
+            "base": 61169,
+            "base-repeat": 43342
+          }
+        },
+        "candidate": {
+          "entity_scan_time_ms": {
+            "base": 755,
+            "candidate": 743
+          },
+          "geometry_time_ms": {
+            "base": 60121,
+            "candidate": 51854
+          },
+          "lookup_time_ms": {
+            "base": 261,
+            "candidate": 149
+          },
+          "parse_time_ms": {
+            "base": 1047,
+            "candidate": 913
+          },
+          "preprocess_time_ms": {
+            "base": 16,
+            "candidate": 12
+          },
+          "total_time_ms": {
+            "base": 61169,
+            "candidate": 52768
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-final-scene-heavy-pilot/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-full/base/records.jsonl",
+          "sha256": "67e1590e0e4facce8ecada8568bda088c49a08e7b4894d76a551d67db4609ada",
+          "bytes": 1691615820
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-final-scene-heavy-pilot/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-full/base-repeat/records.jsonl",
+          "sha256": "683e51c1a159a431090357a125610587cf432439bfde5b76561c49b8070843e8",
+          "bytes": 1691615819
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-final-scene-heavy-pilot/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-full/candidate/records.jsonl",
+          "sha256": "4e21aa289455d3500ae31ec78a7b46f5113299c90b0a997ca3ee76ff72b5ee77",
+          "bytes": 1691615819
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "mode": "stream",
+      "csg_census_records": 106,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "geometry_time_ms": {
+            "base": 55412,
+            "base-repeat": 54115
+          },
+          "lookup_time_ms": {
+            "base": 147,
+            "base-repeat": 206
+          },
+          "parse_time_ms": {
+            "base": 1160,
+            "base-repeat": 1228
+          },
+          "total_time_ms": {
+            "base": 56573,
+            "base-repeat": 55344
+          }
+        },
+        "candidate": {
+          "entity_scan_time_ms": {
+            "base": 759,
+            "candidate": 787
+          },
+          "geometry_time_ms": {
+            "base": 55412,
+            "candidate": 49480
+          },
+          "lookup_time_ms": {
+            "base": 147,
+            "candidate": 153
+          },
+          "parse_time_ms": {
+            "base": 1160,
+            "candidate": 1199
+          },
+          "preprocess_time_ms": {
+            "base": 11,
+            "candidate": 10
+          },
+          "total_time_ms": {
+            "base": 56573,
+            "candidate": 50680
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-final-scene-heavy-stream/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-stream/base/records.jsonl",
+          "sha256": "ddd5ce13f9b141fe14bb8388f9225d8ef34d2816e3869bfec70c2a670913f125",
+          "bytes": 1696674208
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-final-scene-heavy-stream/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-stream/base-repeat/records.jsonl",
+          "sha256": "17a642cef3f4d5e845b09694832fe636c2c047b5cc67de318f8ce6d9859c065e",
+          "bytes": 1696674208
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-final-scene-heavy-stream/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-stream/candidate/records.jsonl",
+          "sha256": "906625c07f1abaa768d36f088bbf527f81736323a53fdfceb804f4ec02a7e4d2",
+          "bytes": 1696674208
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "mode": "instanced",
+      "csg_census_records": 106,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "entity_scan_time_ms": {
+            "base": 763,
+            "base-repeat": 765
+          },
+          "geometry_time_ms": {
+            "base": 47765,
+            "base-repeat": 47142
+          },
+          "parse_time_ms": {
+            "base": 1162,
+            "base-repeat": 1164
+          },
+          "total_time_ms": {
+            "base": 48937,
+            "base-repeat": 48318
+          }
+        },
+        "candidate": {
+          "entity_scan_time_ms": {
+            "base": 763,
+            "candidate": 788
+          },
+          "geometry_time_ms": {
+            "base": 47765,
+            "candidate": 42502
+          },
+          "parse_time_ms": {
+            "base": 1162,
+            "candidate": 1190
+          },
+          "total_time_ms": {
+            "base": 48937,
+            "candidate": 43701
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-final-scene-heavy-instanced/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-instanced/base/records.jsonl",
+          "sha256": "d5eb650d4d700f8137f053a78ec21faa7c36c868b16f13eafd77176d34ef285c",
+          "bytes": 1512826487
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-final-scene-heavy-instanced/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-instanced/base-repeat/records.jsonl",
+          "sha256": "c94201a99838aea646e29653246d55242e770b20803c6826f9bda0d05dfee24a",
+          "bytes": 1512826487
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-final-scene-heavy-instanced/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-instanced/candidate/records.jsonl",
+          "sha256": "b25d2c27e920120cc57d95ff53763676995a3746e7e9fb12dc0ea28dabb5fdfc",
+          "bytes": 1512826487
+        }
+      }
+    },
+    {
+      "fixture": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "mode": "fastfirst",
+      "csg_census_records": 106,
+      "csg_census_multiset_identical": true,
+      "all_unmasked_stats_identical": true,
+      "masked_stats_differences": {
+        "base-repeat": {
+          "entity_scan_time_ms": {
+            "base": 694,
+            "base-repeat": 715
+          },
+          "geometry_time_ms": {
+            "base": 53691,
+            "base-repeat": 53299
+          },
+          "lookup_time_ms": {
+            "base": 159,
+            "base-repeat": 169
+          },
+          "parse_time_ms": {
+            "base": 1106,
+            "base-repeat": 1135
+          },
+          "preprocess_time_ms": {
+            "base": 10,
+            "base-repeat": 11
+          },
+          "total_time_ms": {
+            "base": 54798,
+            "base-repeat": 54435
+          }
+        },
+        "candidate": {
+          "entity_scan_time_ms": {
+            "base": 694,
+            "candidate": 690
+          },
+          "geometry_time_ms": {
+            "base": 53691,
+            "candidate": 48054
+          },
+          "lookup_time_ms": {
+            "base": 159,
+            "candidate": 162
+          },
+          "parse_time_ms": {
+            "base": 1106,
+            "candidate": 1121
+          },
+          "preprocess_time_ms": {
+            "base": 10,
+            "candidate": 13
+          },
+          "total_time_ms": {
+            "base": 54798,
+            "candidate": 49175
+          }
+        }
+      },
+      "raw_record_pins": {
+        "base": {
+          "path": "/tmp/ifclite-context-final-scene-heavy-fastfirst/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-fastfirst/base/records.jsonl",
+          "sha256": "a018af4ed9dac3d1db47c680c0e0700ed0183e8611803c96650fc6e638237a7c",
+          "bytes": 1684273808
+        },
+        "base-repeat": {
+          "path": "/tmp/ifclite-context-final-scene-heavy-fastfirst/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-fastfirst/base-repeat/records.jsonl",
+          "sha256": "36f85da0cb936fbf42d752fe18b46b3a4f6aa1d84f1c89ec6591d876aa9d03cb",
+          "bytes": 1684273808
+        },
+        "candidate": {
+          "path": "/tmp/ifclite-context-final-scene-heavy-fastfirst/ISSUE_053_20181220Holter_Tower_10-d8cc92c00ba6-fastfirst/candidate/records.jsonl",
+          "sha256": "ab7a354b294ab474f149c2eaac4c775dfd948690bdebdcc0992fa077e68fb2da",
+          "bytes": 1684273808
+        }
+      }
+    }
+  ],
+  "case_count": 4,
+  "csg_census_records_across_modes": 424,
+  "csg_census_multisets_identical": true,
+  "all_unmasked_stats_identical": true,
+  "masked_stats_fields": [
+    "entity_scan_time_ms",
+    "faceted_brep_time_ms",
+    "from_cache",
+    "geometry_time_ms",
+    "lookup_time_ms",
+    "parse_time_ms",
+    "point_cache_hits",
+    "point_cache_misses",
+    "preprocess_time_ms",
+    "total_time_ms"
+  ],
+  "limitations": [
+    "Census is a sorted multiset, not execution chronology, emitter/source attribution or proof of all worker entries.",
+    "Timing and point-cache/from-cache fields are separately reported; no performance verdict.",
+    "Original shared comparison excludes execution records; this supplement checks census and every nonmasked statistics field."
+  ]
+}

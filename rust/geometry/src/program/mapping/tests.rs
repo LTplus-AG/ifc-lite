@@ -42,7 +42,7 @@ fn cache_hit_skips_source_representation_but_preserves_transform_admission() {
     let mut decoder = EntityDecoder::new(&source);
     let router = GeometryRouter::new();
     let cached = parts(&router, &mut decoder, 13).remove(0);
-    router.mapped_item_cache.borrow_mut().insert(30, Arc::new(cached.clone()));
+    router.publish_mapped_source(30, &cached, false);
     let merged = parts(&router, &mut decoder, 31);
     assert_eq!(merged[0].positions, cached.positions);
     assert_eq!(merged[0].indices, cached.indices);
@@ -131,7 +131,7 @@ fn failed_bulk_item_admission_claims_only_the_submesh_source_and_runs_no_earlier
             else { router.collect_submeshes_from_item(&item, &mut decoder, &mut meshes, false, None) };
         assert!(result.is_err());
         assert!(meshes.is_empty());
-        assert!(router.mapped_item_cache.borrow().is_empty(), "bulk failure must precede meshing and cache publication");
+        assert!(router.cached_mapped_source(21).is_none(), "bulk failure must precede meshing and cache publication");
         assert!(router.take_unsupported_items().is_empty());
         let repaired = decoder.decode_by_id(90).unwrap();
         decoder.inject_shared_cache(&[(999, Arc::new(repaired))].into_iter().collect());
@@ -201,7 +201,7 @@ fn mapped_custom_panic_restores_ambient_policy_and_never_publishes_partial_sourc
         }));
         assert!(result.is_err());
         assert!(router.unsupported_policy());
-        assert!(router.mapped_item_cache.borrow().is_empty());
+        assert!(router.cached_mapped_source(12).is_none());
         // A post-panic unsupported top-level item must report independently.
         router.record_unsupported_item(IfcType::IfcPolyline);
         assert_eq!(router.take_unsupported_items().get("IfcPolyline"), Some(&1));
@@ -249,4 +249,23 @@ fn reentrant_body_source_reports_inside_suppressed_footprint_and_restores_outer_
         assert_eq!(router.take_unsupported_items().get("IfcPolyline"), Some(&1));
         assert!(router.unsupported_policy());
     }
+}
+
+#[test]
+fn repeated_diamond_dag_retains_all_256_authored_occurrences() {
+    let mut source = BASE.to_owned();
+    let mut previous = 13;
+    for level in 0..8 {
+        let map = 100 + level * 3;
+        source.push_str(&format!("#{map}=IFCREPRESENTATIONMAP(#2,#{rep});
+            #{rep}=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#{previous},#{previous}));
+            #{item}=IFCMAPPEDITEM(#{map},#3);", rep = map + 1, item = map + 2));
+        previous = map + 2;
+    }
+    let mut decoder = EntityDecoder::new(&source);
+    let router = GeometryRouter::new();
+    assert_eq!(triangles(&parts(&router, &mut decoder, previous)), 256 * 12);
+    let styled = submeshes(&router, &mut decoder, previous);
+    assert_eq!(styled.len(), 256);
+    assert_eq!(styled.sub_meshes.iter().map(|sub| sub.mesh.indices.len() / 3).sum::<usize>(), 256 * 12);
 }

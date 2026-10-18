@@ -1,0 +1,139 @@
+{
+  "observed_at_utc": "2026-10-18T21:42:12.186214+00:00",
+  "operations": "Read-only canonical fleet job recovery, configured worker status query, local process/log inspection. No submissions, builds, tests, retries or cancellation.",
+  "product_program_pc_typecheck": {
+    "request_id": "auto-9d46e5d830324e3eae373ead2f6dfbc7",
+    "job_id": "8d413b59-eca4-4199-90bb-01fdf2b40a98",
+    "host": "pc-wsl",
+    "source_commit": "88dc838c4fa74a21968c3735e3f2e751b165c5dd",
+    "source_was_clean": true,
+    "command": [
+      "bash",
+      "-c",
+      "pnpm install --frozen-lockfile --prefer-offline && exec \"$@\"",
+      "ifc-fleet",
+      "pnpm",
+      "typecheck"
+    ],
+    "canonical_state": "orphaned",
+    "exit_code": null,
+    "known_final_command_result": false,
+    "reason": "Wrapper exited; no live child group remains. Command outcome is unknown.",
+    "configured_worker_status": [],
+    "safe_to_resubmit_automatically": false,
+    "recovery_command": "/home/louistrue/build-workers/ifc-fleet job --id auto-9d46e5d830324e3eae373ead2f6dfbc7",
+    "conclusion": "Wrapper/job marked orphaned; no live worker group remains; command success/failure unknown, not a passing typecheck receipt."
+  },
+  "coherent_source_legacy_ts": {
+    "source_worktree": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2aec1157",
+    "current_head_at_observation": "434e5cab2931b6f98a2ae219c91584e73b247bc6",
+    "log_original_path": "/tmp/source-owner-ts-tests-worker1.log",
+    "log_snapshot": "coherent-source-ts-log.snapshot.log",
+    "log_original_mtime_ns_at_observation": 1792359723208358409,
+    "log_snapshot_sha256": "4f60a4628ae68581def00a12535b6f98d3890498d50377ecaa65d98cdc56b899",
+    "root_pid": 590357,
+    "root_cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2aec1157",
+    "process_tree": [
+      {
+        "pid": 590357,
+        "ppid": 2143534,
+        "pgid": 590357,
+        "stat": "Ss",
+        "elapsed": "42:24",
+        "command": "/bin/bash -lc CARGO_TARGET_DIR=$PWD/target-source-owner CARGO_BUILD_JOBS=2 VITEST_MAX_WORKERS=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.excludesfile GIT_CONFIG_VALUE_0=/tmp/source-owner-git-excludes pnpm test --concurrency=1 --env-mode=loose > /tmp/source-owner-ts-tests-worker1.log 2>&1"
+      },
+      {
+        "pid": 590378,
+        "ppid": 590357,
+        "pgid": 590357,
+        "stat": "Sl",
+        "elapsed": "42:24",
+        "command": "node /home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/pnpm test --concurrency=1 --env-mode=loose"
+      },
+      {
+        "pid": 590427,
+        "ppid": 590378,
+        "pgid": 590357,
+        "stat": "S",
+        "elapsed": "42:24",
+        "command": "sh -c turbo test --concurrency\\=1 --env-mode\\=loose"
+      },
+      {
+        "pid": 590428,
+        "ppid": 590427,
+        "pgid": 590357,
+        "stat": "Sl",
+        "elapsed": "42:24",
+        "command": "node /home/louistrue/.t3/worktrees/ifc-lite/t3-2aec1157/node_modules/.bin/../.pnpm/turbo@2.11.7/node_modules/turbo/bin/turbo test --concurrency=1 --env-mode=loose"
+      },
+      {
+        "pid": 590441,
+        "ppid": 590428,
+        "pgid": 590357,
+        "stat": "Sl",
+        "elapsed": "42:24",
+        "command": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2aec1157/node_modules/.pnpm/@turbo+linux-64@2.11.7/node_modules/@turbo/linux-64/bin/turbo test --concurrency=1 --env-mode=loose"
+      },
+      {
+        "pid": 757810,
+        "ppid": 590441,
+        "pgid": 757810,
+        "stat": "Sl",
+        "elapsed": "04:10",
+        "command": "node /home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/pnpm run test"
+      },
+      {
+        "pid": 757873,
+        "ppid": 757810,
+        "pgid": 757810,
+        "stat": "S",
+        "elapsed": "04:10",
+        "command": "sh -c vitest run"
+      },
+      {
+        "pid": 757874,
+        "ppid": 757873,
+        "pgid": 757810,
+        "stat": "Sl",
+        "elapsed": "04:10",
+        "command": "node /home/louistrue/.t3/worktrees/ifc-lite/t3-2aec1157/packages/cli/node_modules/.bin/../../../../node_modules/.pnpm/vitest@5.0.3_@edge-runtime+vm@3.2.0_@types+node@26.6.5_happy-dom@20.14.6_vite@8.3.4_@ty_3d41f55219b050553cacb90ccfc67a97/node_modules/vitest/vitest.mjs run"
+      },
+      {
+        "pid": 775139,
+        "ppid": 757874,
+        "pgid": 757810,
+        "stat": "Rl",
+        "elapsed": "00:00",
+        "command": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node --experimental-import-meta-resolve --require /home/louistrue/.t3/worktrees/ifc-lite/t3-2aec1157/node_modules/.pnpm/vitest@5.0.3_@edge-runtime+vm@3.2.0_@types+node@26.6.5_happy-dom@20.14.6_vite@8.3.4_@ty_3d41f55219b050553cacb90ccfc67a97/node_modules/vitest/suppress-warnings.cjs --conditions node --conditions development /home/louistrue/.t3/worktrees/ifc-lite/t3-2aec1157/node_modules/.pnpm/vitest@5.0.3_@edge-runtime+vm@3.2.0_@types+node@26.6.5_happy-dom@20.14.6_vite@8.3.4_@ty_3d41f55219b050553cacb90ccfc67a97/node_modules/vitest/dist/workers/forks.js"
+      }
+    ],
+    "final_exit_proof": false,
+    "conclusion": "Still running at observation: root shell/pnpm/Turbo and CLI Vitest descendants live. No durable final exit status; log snapshot is progress only. Session62616 remains owned by original agent."
+  },
+  "artifacts": {
+    "pc-worker-status.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "pc-worker-status.json": {
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "bytes": 3
+    },
+    "coherent-source-ts-log.snapshot.log": {
+      "sha256": "4f60a4628ae68581def00a12535b6f98d3890498d50377ecaa65d98cdc56b899",
+      "bytes": 604412
+    },
+    "product-typecheck-recovery.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "coherent-source-process-snapshot.json": {
+      "sha256": "5b5ddeadbc441cc74a0002565ed8e0788746efffab91a5dda09eb0dae6f8c484",
+      "bytes": 2945
+    },
+    "product-typecheck-recovery.json": {
+      "sha256": "51d4618d9773cd4140d868e22427f6f6aa7d7b35638ef82a20376aab329962bb",
+      "bytes": 2785
+    }
+  }
+}

@@ -5,13 +5,14 @@
 use super::{GeometryRouter, ItemIdentity, Path, occurrence, skipped};
 use crate::{Result, SubMeshCollection};
 use crate::processors::texture::ResolvedTextureMap;
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType, slot};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rustc_hash::FxHashMap;
+use crate::program::{ItemProgram, ItemListPolicy};
 
 struct Source {
     item_id: u32, depth: usize, policy: bool, start: usize,
     admission: occurrence::Admission,
-    items: std::vec::IntoIter<DecodedEntity>,
+    items: ItemProgram,
 }
 enum Frame {
     Enter { item: DecodedEntity, depth: usize, policy: bool, allow_instancing: bool },
@@ -26,13 +27,13 @@ impl Frame {
         }
     }
 }
-pub(in crate::router) struct SubmeshWalk { frames: Vec<Frame>, path: Path, value: Option<Result<()>> }
+pub(crate) struct SubmeshWalk { frames: Vec<Frame>, path: Path, value: Option<Result<()>> }
 impl SubmeshWalk {
-    pub(in crate::router) fn new(item: &DecodedEntity, allow_instancing: bool, router: &GeometryRouter) -> Self {
+    pub(crate) fn new(item: &DecodedEntity, allow_instancing: bool, router: &GeometryRouter) -> Self {
         Self { frames: vec![Frame::Enter { item: item.clone(), depth: 0,
             policy: router.unsupported_policy(), allow_instancing }], path: Path::default(), value: None }
     }
-    pub(in crate::router) fn run(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>,
+    pub(crate) fn run(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>,
         meshes: &mut SubMeshCollection, textures: Option<&FxHashMap<u32, ResolvedTextureMap>>) -> Result<()> {
         while self.advance(router, decoder, meshes, textures) {}
         self.value.expect("completed submesh-source value")
@@ -96,19 +97,16 @@ impl SubmeshWalk {
         let start = meshes.len();
         // Submeshes claim BEFORE their optional bulk item-list admission.
         let policy = router.claim_unsupported_source(admission.source_id, &admission.representation);
-        let items = match admission.representation.get(slot::IfcRepresentation::ITEMS.index()) {
-            Some(attribute) => decoder.resolve_ref_list(attribute)?,
-            None => Vec::new(),
-        };
+        let items = ItemProgram::admit(&admission.representation, decoder, ItemListPolicy::OptionalMap)?;
         self.frames.push(Frame::Source(Source { item_id: item.id, depth, policy, start, admission,
-            items: items.into_iter() }));
+            items }));
         Ok(())
     }
 }
 fn plain(item: &DecodedEntity, depth: usize, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>,
     meshes: &mut SubMeshCollection, textures: Option<&FxHashMap<u32, ResolvedTextureMap>>) {
     if let Some(map) = textures.and_then(|index| index.get(&item.id)) {
-        if let Some((mut mesh, uvs)) = router.textured_face_set(item, decoder, map, Some(router.rtc_offset)) {
+        if let Some((mut mesh, uvs)) = router.textured_face_set(item, decoder, map, Some(router.rtc_offset())) {
             if depth > 0 { router.keep_rebase_in_origin(&mut mesh); }
             meshes.add_textured(item.id, mesh, uvs, map.attachment());
             return;

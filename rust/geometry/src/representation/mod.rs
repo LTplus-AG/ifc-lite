@@ -103,6 +103,13 @@ pub fn product_shape(
 }
 
 impl ProductShape {
+    /// Consume the admitted list without copying entities or revisiting prefixes.
+    pub(crate) fn into_selected(self, element: &DecodedEntity, select: Select) -> Vec<DecodedEntity> {
+        let direct = select.needs_direct_geometry()
+            && select::has_direct_geometry(element, &self.representations);
+        self.representations.into_iter().filter(|rep| select.admits(element, rep, direct)).collect()
+    }
+
     /// Every representation, in list order.
     pub fn representations(&self) -> &[DecodedEntity] {
         &self.representations

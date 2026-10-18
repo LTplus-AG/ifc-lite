@@ -201,7 +201,7 @@ impl GeometryRouter {
     }
 
     /// Get placement transform from element without applying it
-    pub(super) fn get_placement_transform_from_element(
+    pub(crate) fn get_placement_transform_from_element(
         &self,
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,

@@ -185,6 +185,7 @@ pub use rect_fast::RectFastStats;
 pub(crate) mod router;
 /// Owned, explicitly partial construction batches before router publication.
 pub mod construction;
+pub mod program;
 /// Vector outlines traced from a slab of scan points (#6871). Reached through
 /// the root-level re-exports below.
 pub(crate) mod scan_outline;

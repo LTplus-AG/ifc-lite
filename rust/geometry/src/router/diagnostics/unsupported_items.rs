@@ -102,13 +102,13 @@ impl GeometryRouter {
     }
 
     /// Own the innermost counting decision, without retaining a router guard.
-    pub(in crate::router) fn unsupported_policy(&self) -> bool {
+    pub(crate) fn unsupported_policy(&self) -> bool {
         self.unsupported.borrow().scope.last().copied().unwrap_or(true)
     }
 
     /// Claim at the same reached point as `enter_unsupported_source`. A later
     /// step reinstalls this decision; it must never claim the source again.
-    pub(in crate::router) fn claim_unsupported_source(
+    pub(crate) fn claim_unsupported_source(
         &self, source_id: u32, mapped_repr: &DecodedEntity,
     ) -> bool {
         let is_body = crate::router::effective_rep_type(mapped_repr)
@@ -118,7 +118,7 @@ impl GeometryRouter {
 
     /// Install one owned continuation's policy only for its synchronous work.
     /// Nested source scopes still override it, and panic restores the caller.
-    pub(in crate::router) fn with_unsupported_policy<T>(&self, record: bool,
+    pub(crate) fn with_unsupported_policy<T>(&self, record: bool,
         work: impl FnOnce() -> T) -> T {
         self.unsupported.borrow_mut().scope.push(record);
         let _scope = UnsupportedSourceScope { router: self };

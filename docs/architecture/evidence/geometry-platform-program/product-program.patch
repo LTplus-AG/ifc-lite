@@ -1,0 +1,3555 @@
+diff --git a/docs/api/rust.md b/docs/api/rust.md
+index 00e209bace..711c6efd10 100644
+--- a/docs/api/rust.md
++++ b/docs/api/rust.md
+@@ -671,6 +671,16 @@ pub struct GeometryRouter {
+ }
+ ```
+ 
++`GeometryProcessor::lower_owned(entity, decoder, quality, rtc_file_units)` is an
++optional admission hook on the selected registration. Its default `None` keeps
++the existing mutable-decoder `process` and RTC callbacks. Built-in constructor
++registrations return an owned `program::OwnedConstructor`; `evaluate(self)` then
++uses the same numerical builders without a decoder. Parameters remain in file
++units, with the supplied RTC offset already expressed in the item frame. Unit
++scaling, product placement and presentation remain the router's responsibility.
++A lowering error stays an error; it does not retry a different constructor.
++Boolean/CSG processors retain their contextual continuations and recorder.
++
+ Built-in processors (all re-exported at the crate root): `ExtrudedAreaSolidProcessor`, `ExtrudedAreaSolidTaperedProcessor`, `FacetedBrepProcessor`, `AdvancedBrepProcessor`, `BooleanClippingProcessor`, `FaceBasedSurfaceModelProcessor`, `PolygonalFaceSetProcessor`, `RevolvedAreaSolidProcessor`, `SurfaceOfLinearExtrusionProcessor`, `SweptDiskSolidProcessor`, `TriangulatedFaceSetProcessor`.
+ 
+ For routers processing batches from one immutable model,
+diff --git a/docs/architecture/geometry-platform-product-program-phase-one.md b/docs/architecture/geometry-platform-product-program-phase-one.md
+new file mode 100644
+index 0000000000..534012c07c
+--- /dev/null
++++ b/docs/architecture/geometry-platform-product-program-phase-one.md
+@@ -0,0 +1,79 @@
++<!-- SPDX-License-Identifier: MPL-2.0 -->
++# ProductProgram representation and constructor phase
++
++This incremental implementation starts from the restored 288-file source
++manifest with SHA-256
++`ede5cfafab73e79657c4680398156b84cc4ce62f6fd4fb50a4ef4dba2e16207b`,
++plus the parent qualification fixes (five streaming events, original batch API
++descriptions and obsolete positional-read allowance removal). It incorporates
++the recovered constructor work and extends its representation/item coverage.
++It does not qualify the whole geometry platform or replace processing's attempt
++and snapshot authority.
++
++`geometry/program/traversal.rs` owns five explicit entry policies:
++`MergedProduct`, `StyledProduct`, `TypeMap`, `OpeningItemMeshes` and
++`OpeningItemBounds`. Whole representation admission precedes selection and
++whole selected Items admission precedes the first item. Skipped descendants
++are not decoded. The ordinary product item execution lives in `product.rs`;
++the public router entrypoints drive it synchronously and retain their original
++alignment/layer entry gates, hygiene and final placement. The replaced loops
++are deleted.
++
++Opening admission preserves the probes' distinct error strings and permissive
++shape handling. Whole representations resolve before placement, and placement
++before each selected Items list. Missing or bad lists and failed items skip
++only their original scopes; placement failure means identity. Mesh probes try
++the raw-per-element route first. Bounds probes admit direction before geometry,
++bypass that raw route, and evaluate the original corner arithmetic per frame
++in `opening_bounds.rs`. A zero direction loses only that item's direction.
++Opening classification, rectangle/profile capture and application orchestration
++remain in their existing owners.
++
++`program/mapping/` owns the two existing mapping frame machines, path sets,
++ordered child occurrences and owned occurrence admissions. The replaced mapping
++frame machines are deleted from the router. Narrow router services retain cache
++ownership and reached effects; the existing flat orphan-cache materialization
++helper remains synchronous at its original reached point. Merged mapping resolves transforms before cache lookup,
++admits required whole Items before claiming the source, releases failed path
++IDs and propagates truncation. Styled mapping resolves representation before
++transform, claims before optional Items, preserves sticky failed IDs and applies
++transforms only to each successfully appended range. Template selection, UV and
++instance order and shared-cache publication policy retain their existing rules.
++These are synchronous child programs, not opaque source-free Execute commands.
++
++`program/type_map.rs` uses the same item cursor without filtering non-Body maps.
++Only counting is suppressed. Each textured item stays separate; untextured
++items merge by frame. Nested maps keep the merged consumer's existing lack of
++UV output. MappingOrigin is admitted after every item; a resolved wrong
++placement type means identity, while a failed reference propagates at that late
++point. Ordinary mapped occurrences retain stricter earlier origin validation.
++
++The nineteen built-in constructor admissions return the common opaque
++`program::OwnedConstructor`. Canonical dispatch calls `lower_owned` on the
++actual selected processor. Optional ConstructionBatch roots use the same
++selected-instance hook and payload; operand roles keep their existing fresh
++builtin dispatch. Its eager graph does not replace canonical boolean control.
++The numerical constructor evaluator has no decoder or router. Empty operand
++flags, boolean continuation and exact-kernel recovery remain unchanged.
++
++Annotation fills now admit validated style and owned rings before numerical
++triangulation/scaling/storage checks. Texture attempts admit the existing owned
++triangulated payload and use `evaluate_with_texture` against the selected
++immutable texture input; failed attempts still recover through plain geometry.
++No per-product texture-index clone is introduced.
++
++Custom registrations retain actual mutable-decoder process/RTC callbacks when
++they decline owned lowering. No program frame stores a decoder, borrowed scope,
++transaction, kernel budget guard, unsupported-counting guard or triangle-order
++guard. Owned counting policies are installed only around synchronous reached
++work. Public borrowed Rust entrypoints and existing JavaScript batch/raw ABI are
++unchanged by this layer.
++
++Remaining work includes boolean/CSG program migration, layer eligibility and
++slicing, opening classification/capture orchestration, full terminal resource
++admission, effect receipts and finer request/reply identities. Processing still
++drives its existing outer ProductState work synchronously. Source lifecycle
++labels do not authenticate bytes/index coherence; the separate source-bundle
++work must be integrated and qualified independently. No public asynchronous
++scheduler, complete resource envelope, active SMLib cutover or performance
++improvement is claimed.
+diff --git a/rust/geometry/src/construction/family_tests.rs b/rust/geometry/src/construction/family_tests.rs
+index e5842a27c3..3798304d0f 100644
+--- a/rust/geometry/src/construction/family_tests.rs
++++ b/rust/geometry/src/construction/family_tests.rs
+@@ -65,6 +65,15 @@ fn registered_family_plans_replay_after_disposal_through_production_builders() {
+         let mut decoder = EntityDecoder::new(SOURCE);
+         let entity = decoder.decode_by_id(id).unwrap();
+         let expected = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
++        // ProductProgram phase: the selected instance admits the common payload;
++        // numerical replay outlives the source and agrees with direct production.
++        let plan = processor.lower_owned(&entity, &mut decoder, TessellationQuality::Medium, None)
++            .expect("registered builtin lowering").unwrap();
++        drop(decoder);
++        let owned = plan.evaluate().unwrap();
++        assert_eq!(owned.positions, expected.positions, "{family:?} selected owned positions");
++        assert_eq!(owned.indices, expected.indices, "{family:?} selected owned indices");
++        assert_eq!(owned.normals, expected.normals, "{family:?} selected owned normals");
+         assert!(!actual.is_empty(), "{family:?} must exercise its builder");
+         assert_eq!(actual.positions, expected.positions, "{family:?} positions");
+         assert_eq!(actual.indices, expected.indices, "{family:?} indices");
+diff --git a/rust/geometry/src/construction/leaf.rs b/rust/geometry/src/construction/leaf.rs
+index 34c562c875..7ec32cba81 100644
+--- a/rust/geometry/src/construction/leaf.rs
++++ b/rust/geometry/src/construction/leaf.rs
+@@ -1,64 +1,22 @@
+ // SPDX-License-Identifier: MPL-2.0
+-use super::{Construction, ConstructionFamily, ConstructionRequirement};
+-use crate::GeometryRouter;
+-use crate::processors::{BlockProcessor, ExtrudedAreaSolidProcessor, SphereProcessor,
+-    ExtrudedAreaSolidTaperedProcessor, RevolvedAreaSolidProcessor, SweptDiskSolidProcessor,
+-    SurfaceCurveSweptAreaSolidProcessor, faceted_plan, polygonal_plan, triangulated_plan,
+-    SectionedSolidHorizontalProcessor, IfcAlignmentProcessor, IfcEdgeProcessor,
+-    SurfaceOfLinearExtrusionProcessor, FaceBasedSurfaceModelProcessor,
+-    ShellBasedSurfaceModelProcessor, advanced_plan, structural_face_plan};
++//! Optional eager graphs reuse actual processor-owned constructor admission.
++use super::{Construction, ConstructionRequirement, source::Role};
++use crate::{GeometryRouter, router::builtin_processor};
+ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema};
+ 
+ pub(super) fn lower_leaf(router: &GeometryRouter, schema: &IfcSchema,
+     decoder: &mut EntityDecoder, entity: &DecodedEntity,
+-    family: Option<ConstructionFamily>) -> std::result::Result<Construction, ConstructionRequirement> {
+-    let quality = router.tessellation_quality();
+-    let result = match family {
+-            Some(ConstructionFamily::Extrusion) => ExtrudedAreaSolidProcessor::new(schema.clone())
+-                .lower(entity, decoder, quality).map(Construction::Extrusion),
+-            Some(ConstructionFamily::TaperedExtrusion) => ExtrudedAreaSolidTaperedProcessor::new(schema.clone())
+-                .lower(entity, decoder, quality).map(Construction::TaperedExtrusion),
+-            Some(ConstructionFamily::RevolvedAreaSolid) => RevolvedAreaSolidProcessor::new(schema.clone())
+-                .lower(entity, decoder, quality).map(Construction::Revolved),
+-            Some(ConstructionFamily::SweptDisk) => SweptDiskSolidProcessor::new(schema.clone())
+-                .lower(entity, decoder, quality).map(|plan| plan.map_or(Construction::Empty, Construction::SweptDisk)),
+-            Some(ConstructionFamily::SweptArea) => SurfaceCurveSweptAreaSolidProcessor::new(schema.clone())
+-                .lower(entity, decoder, quality).map(|plan| plan.map_or(Construction::Empty, Construction::SweptArea)),
+-            Some(ConstructionFamily::Block) => BlockProcessor::new()
+-                .lower(entity, decoder).map(Construction::Block),
+-            Some(ConstructionFamily::Sphere) => SphereProcessor::new()
+-                .lower(entity, decoder, quality).map(Construction::Sphere),
+-            Some(ConstructionFamily::TriangulatedFaceSet) => triangulated_plan::lower(entity, decoder, None)
+-                .map(Construction::Triangles),
+-            Some(ConstructionFamily::PolygonalFaceSet) => polygonal_plan::lower(entity, decoder, None)
+-                .map(Construction::Polygons),
+-            Some(ConstructionFamily::FacetedBrep) => faceted_plan::lower(entity, decoder, None)
+-                .map(Construction::FacetedBrep),
+-            Some(ConstructionFamily::SectionedSolid) => SectionedSolidHorizontalProcessor::new(schema.clone())
+-                .lower(entity, decoder, quality).map(Construction::SectionedSolid),
+-            Some(ConstructionFamily::AdvancedBrep) => advanced_plan::lower_brep(entity, decoder, quality, None)
+-                .map(Construction::AdvancedBrep),
+-            Some(ConstructionFamily::BSplineSurface) => advanced_plan::lower_bspline_surface(entity, decoder, quality, None)
+-                .map(Construction::BSplineSurface),
+-            Some(ConstructionFamily::ShellSurfaceModel) => ShellBasedSurfaceModelProcessor::new()
+-                .lower(entity, decoder, quality, None).map(Construction::SurfaceModel),
+-            Some(ConstructionFamily::FaceSurfaceModel) => FaceBasedSurfaceModelProcessor::new()
+-                .lower(entity, decoder, quality, None).map(Construction::SurfaceModel),
+-            Some(ConstructionFamily::Alignment) => IfcAlignmentProcessor::new()
+-                .lower(entity, decoder).map(Construction::Alignment),
+-            Some(ConstructionFamily::Edge) => IfcEdgeProcessor::new()
+-                .lower(entity, decoder, quality).map(Construction::Edge),
+-            Some(ConstructionFamily::FaceSurface) => structural_face_plan::lower(entity, decoder, quality, None)
+-                .map(Construction::FaceSurface),
+-            Some(ConstructionFamily::LinearExtrusionSurface) => SurfaceOfLinearExtrusionProcessor::new()
+-                .lower(entity, decoder, None).map(Construction::LinearExtrusionSurface),
+-            _ => return Err(ConstructionRequirement::ConstructorNotLowered),
+-        };
+-    // Production surface models replay source reports in face order during
+-    // evaluation. Eager graph admission also retains a source-only snapshot,
+-    // including when a different root prevents execution of the whole batch.
+-    if let Ok(Construction::SurfaceModel(plan)) = &result {
+-        crate::processors::diagnostic_capture::restore(&plan.source_reports());
+-    }
+-    result.map_err(|error| ConstructionRequirement::SourceAdmission(error.to_string()))
++    role: Role) -> std::result::Result<Construction, ConstructionRequirement> {
++    // Root dispatch uses the configured registration. Boolean operands have
++    // always used fresh builtins, independently of custom router overrides.
++    let operand = if role == Role::Root { None } else { builtin_processor(entity.ifc_type.clone(), schema) };
++    let processor = if role == Role::Root { router.processor_for(&entity.ifc_type).map(|p| p.as_ref()) }
++        else { operand.as_deref() }.ok_or(ConstructionRequirement::ConstructorNotLowered)?;
++    let result = processor.lower_owned(entity, decoder, router.tessellation_quality(), None)
++        .ok_or(ConstructionRequirement::ConstructorNotLowered)?;
++    let plan = result.map_err(|error| ConstructionRequirement::SourceAdmission(error.to_string()))?;
++    // Retain eager source evidence even when another root prevents execution.
++    // Numerical evaluation still replays per-face reports in their own order.
++    plan.restore_source_reports();
++    Ok(Construction::Builtin(plan))
+ }
+diff --git a/rust/geometry/src/construction/mod.rs b/rust/geometry/src/construction/mod.rs
+index 1276211811..7d7463d871 100644
+--- a/rust/geometry/src/construction/mod.rs
++++ b/rust/geometry/src/construction/mod.rs
+@@ -13,15 +13,6 @@
+ //! The canonical element path remains responsible for final product geometry.
+ 
+ use crate::{Error, Mesh, Result};
+-use crate::processors::{csg_primitive::plan::{BlockPlan, SpherePlan},
+-    extrusion::plan::ExtrusionPlan, extrusion_tapered::plan::TaperedExtrusionPlan,
+-    swept::revolved::plan::RevolvedPlan, SweptDiskPlan, SurfaceCurveSweepPlan,
+-    polygonal_plan::PolygonalFaceSetPlan, triangulated_plan::TriangulatedFaceSetPlan};
+-use crate::processors::{faceted_plan::FacetedBrepPlan,
+-    advanced_plan::{AdvancedBrepPlan, BSplineSurfacePlan},
+-    structural_face_plan::StructuralFacePlan, structural_edge::EdgePlan,
+-    SurfaceModelPlan, sectioned::plan::SectionedPlan,
+-    alignment::plan::AlignmentPlan, surface::plan::LinearExtrusionSurfacePlan};
+ 
+ pub use crate::router::ConstructionFamily;
+ pub use reports::{ConstructionDiagnostic, ConstructionExecutionError, ConstructionReports};
+@@ -56,26 +47,8 @@ pub struct ConstructionNode {
+ 
+ #[derive(Debug, Clone)]
+ enum Construction {
+-    Empty,
++    Builtin(crate::program::OwnedConstructor),
+     BrepOperand(brep_operand::BrepOperandPlan),
+-    Extrusion(ExtrusionPlan),
+-    TaperedExtrusion(TaperedExtrusionPlan),
+-    Revolved(RevolvedPlan),
+-    SweptDisk(SweptDiskPlan),
+-    SweptArea(SurfaceCurveSweepPlan),
+-    Block(BlockPlan),
+-    Sphere(SpherePlan),
+-    Triangles(TriangulatedFaceSetPlan),
+-    Polygons(PolygonalFaceSetPlan),
+-    FacetedBrep(FacetedBrepPlan),
+-    SectionedSolid(SectionedPlan),
+-    AdvancedBrep(AdvancedBrepPlan),
+-    BSplineSurface(BSplineSurfacePlan),
+-    SurfaceModel(SurfaceModelPlan),
+-    Alignment(AlignmentPlan),
+-    Edge(EdgePlan),
+-    FaceSurface(StructuralFacePlan),
+-    LinearExtrusionSurface(LinearExtrusionSurfacePlan),
+ }
+ 
+ impl ConstructionNode {
+@@ -158,28 +131,9 @@ mod family_tests;
+ 
+ impl Construction {
+     fn evaluate(self, recorder: &crate::processors::BooleanClippingProcessor) -> Result<(Mesh, bool)> {
+-        let mesh = match self {
+-            Self::BrepOperand(plan) => return plan.evaluate(recorder),
+-            Self::Empty => Ok(Mesh::new()),
+-            Self::Extrusion(plan) => plan.evaluate(),
+-            Self::TaperedExtrusion(plan) => plan.evaluate(),
+-            Self::Revolved(plan) => plan.evaluate(),
+-            Self::SweptDisk(plan) => Ok(plan.evaluate()),
+-            Self::SweptArea(plan) => plan.evaluate(),
+-            Self::Block(plan) => Ok(plan.evaluate()),
+-            Self::Sphere(plan) => Ok(plan.evaluate()),
+-            Self::Triangles(plan) => Ok(plan.evaluate()),
+-            Self::Polygons(plan) => Ok(plan.evaluate()),
+-            Self::FacetedBrep(plan) => Ok(plan.evaluate()),
+-            Self::SectionedSolid(plan) => plan.evaluate(),
+-            Self::AdvancedBrep(plan) => plan.evaluate(),
+-            Self::BSplineSurface(plan) => plan.evaluate(),
+-            Self::SurfaceModel(plan) => plan.evaluate(),
+-            Self::Alignment(plan) => Ok(plan.evaluate()),
+-            Self::Edge(plan) => Ok(plan.evaluate()),
+-            Self::FaceSurface(plan) => plan.evaluate(),
+-            Self::LinearExtrusionSurface(plan) => Ok(plan.evaluate()),
+-        }?;
+-        Ok((mesh, false))
++        match self {
++            Self::Builtin(plan) => plan.evaluate().map(|mesh| (mesh, false)),
++            Self::BrepOperand(plan) => plan.evaluate(recorder),
++        }
+     }
+ }
+diff --git a/rust/geometry/src/construction/source.rs b/rust/geometry/src/construction/source.rs
+index e9af9639fc..ea446de26f 100644
+--- a/rust/geometry/src/construction/source.rs
++++ b/rust/geometry/src/construction/source.rs
+@@ -6,7 +6,7 @@ use super::brep_operand::BrepOperandPlan;
+ use super::program::Instruction;
+ use crate::GeometryRouter;
+ use crate::processors::boolean::{boolean_operator, solid_execution::SolidBooleanPlan};
+-use crate::router::{builtin_family, ProcessorOrigin};
++use crate::router::ProcessorOrigin;
+ use ifc_lite_core::{slot, EntityDecoder, IfcSchema, IfcType};
+ 
+ // Context belongs in the memo key: Base preserves Outer-only, while an
+@@ -80,7 +80,7 @@ pub(super) fn admit(router: &GeometryRouter, schema: &IfcSchema,
+             crate::processors::diagnostic_capture::restore(&plan.source_reports());
+             Ok(Admission::Leaf(Construction::BrepOperand(plan)))
+         }
+-        _ => lower_leaf(router, schema, decoder, &entity, builtin_family(&entity.ifc_type))
++        _ => lower_leaf(router, schema, decoder, &entity, key.1)
+             .map(Admission::Leaf),
+     }
+ }
+diff --git a/rust/geometry/src/lib.rs b/rust/geometry/src/lib.rs
+index 50c37f8ead..31e5b86aa7 100644
+--- a/rust/geometry/src/lib.rs
++++ b/rust/geometry/src/lib.rs
+@@ -185,6 +185,7 @@ pub use rect_fast::RectFastStats;
+ pub(crate) mod router;
+ /// Owned, explicitly partial construction batches before router publication.
+ pub mod construction;
++pub mod program;
+ /// Vector outlines traced from a slab of scan points (#6871). Reached through
+ /// the root-level re-exports below.
+ pub(crate) mod scan_outline;
+diff --git a/rust/geometry/src/processors/advanced.rs b/rust/geometry/src/processors/advanced.rs
+index f09043daf6..2201f8d1be 100644
+--- a/rust/geometry/src/processors/advanced.rs
++++ b/rust/geometry/src/processors/advanced.rs
+@@ -33,6 +33,13 @@ impl AdvancedBrepProcessor {
+ }
+ 
+ impl GeometryProcessor for AdvancedBrepProcessor {
++    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
++        quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
++        -> Option<Result<crate::program::OwnedConstructor>> {
++        use crate::program::constructor::Constructor;
++        Some(super::advanced_plan::lower_brep(entity, decoder, quality, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::AdvancedBrep(plan))))
++    }
++
+     fn process(
+         &self,
+         entity: &DecodedEntity,
+@@ -93,6 +100,13 @@ impl Default for BSplineSurfaceProcessor {
+ }
+ 
+ impl GeometryProcessor for BSplineSurfaceProcessor {
++    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
++        quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
++        -> Option<Result<crate::program::OwnedConstructor>> {
++        use crate::program::constructor::Constructor;
++        Some(super::advanced_plan::lower_bspline_surface(entity, decoder, quality, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::BSplineSurface(plan))))
++    }
++
+     fn process(
+         &self,
+         entity: &DecodedEntity,
+diff --git a/rust/geometry/src/processors/alignment.rs b/rust/geometry/src/processors/alignment.rs
+index 743c117ac5..d1e9819fe7 100644
+--- a/rust/geometry/src/processors/alignment.rs
++++ b/rust/geometry/src/processors/alignment.rs
+@@ -63,6 +63,14 @@ const MAX_SAMPLES: usize = 5_000;
+ const RIBBON_HALF_WIDTH_FILE_UNITS: f64 = 0.25;
+ 
+ impl GeometryProcessor for IfcAlignmentProcessor {
++    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
++        _quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
++        -> Option<Result<crate::program::OwnedConstructor>> {
++        use crate::program::constructor::Constructor;
++        if rtc_file_units.is_some() { return None; }
++        Some(self.lower(entity, decoder).map(|plan| crate::program::OwnedConstructor::new(Constructor::Alignment(plan))))
++    }
++
+     fn process(
+         &self,
+         entity: &DecodedEntity,
+diff --git a/rust/geometry/src/processors/brep/faceted.rs b/rust/geometry/src/processors/brep/faceted.rs
+index 40a3d08696..26fcc4557f 100644
+--- a/rust/geometry/src/processors/brep/faceted.rs
++++ b/rust/geometry/src/processors/brep/faceted.rs
+@@ -116,6 +116,13 @@ impl FacetedBrepProcessor {
+ }
+ 
+ impl GeometryProcessor for FacetedBrepProcessor {
++    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
++        _quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
++        -> Option<Result<crate::program::OwnedConstructor>> {
++        use crate::program::constructor::Constructor;
++        Some(faceted_plan::lower(entity, decoder, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::FacetedBrep(plan))))
++    }
++
+     fn process(
+         &self,
+         entity: &DecodedEntity,
+diff --git a/rust/geometry/src/processors/brep/surface_model.rs b/rust/geometry/src/processors/brep/surface_model.rs
+index b97b333175..c8e157765f 100644
+--- a/rust/geometry/src/processors/brep/surface_model.rs
++++ b/rust/geometry/src/processors/brep/surface_model.rs
+@@ -113,6 +113,13 @@ impl FaceBasedSurfaceModelProcessor {
+ }
+ 
+ impl GeometryProcessor for FaceBasedSurfaceModelProcessor {
++    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
++        quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
++        -> Option<Result<crate::program::OwnedConstructor>> {
++        use crate::program::constructor::Constructor;
++        Some(self.lower(entity, decoder, quality, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::SurfaceModel(plan))))
++    }
++
+     fn process(
+         &self,
+         entity: &DecodedEntity,
+@@ -170,6 +177,13 @@ impl ShellBasedSurfaceModelProcessor {
+ }
+ 
+ impl GeometryProcessor for ShellBasedSurfaceModelProcessor {
++    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
++        quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
++        -> Option<Result<crate::program::OwnedConstructor>> {
++        use crate::program::constructor::Constructor;
++        Some(self.lower(entity, decoder, quality, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::SurfaceModel(plan))))
++    }
++
+     fn process(
+         &self,
+         entity: &DecodedEntity,
+diff --git a/rust/geometry/src/processors/csg_primitive.rs b/rust/geometry/src/processors/csg_primitive.rs
+index 7b9fd40af3..2ec6bcfd65 100644
+--- a/rust/geometry/src/processors/csg_primitive.rs
++++ b/rust/geometry/src/processors/csg_primitive.rs
+@@ -59,6 +59,14 @@ impl Default for BlockProcessor {
+ }
+ 
+ impl GeometryProcessor for BlockProcessor {
++    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
++        _quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
++        -> Option<Result<crate::program::OwnedConstructor>> {
++        use crate::program::constructor::Constructor;
++        if rtc_file_units.is_some() { return None; }
++        Some(self.lower(entity, decoder).map(|plan| crate::program::OwnedConstructor::new(Constructor::Block(plan))))
++    }
++
+     fn process(
+         &self,
+         entity: &DecodedEntity,
+diff --git a/rust/geometry/src/processors/extrusion.rs b/rust/geometry/src/processors/extrusion.rs
+index 0f02e1c050..10fed96bf7 100644
+--- a/rust/geometry/src/processors/extrusion.rs
++++ b/rust/geometry/src/processors/extrusion.rs
+@@ -123,6 +123,14 @@ impl ExtrudedAreaSolidProcessor {
+ }
+ 
+ impl GeometryProcessor for ExtrudedAreaSolidProcessor {
++    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
++        quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
++        -> Option<Result<crate::program::OwnedConstructor>> {
++        use crate::program::constructor::Constructor;
++        if rtc_file_units.is_some() { return None; }
++        Some(self.lower(entity, decoder, quality).map(|plan| crate::program::OwnedConstructor::new(Constructor::Extrusion(plan))))
++    }
++
+     fn process(
+         &self,
+         entity: &DecodedEntity,
+diff --git a/rust/geometry/src/processors/extrusion_tapered.rs b/rust/geometry/src/processors/extrusion_tapered.rs
+index 0b452bedc5..f0099c7c57 100644
+--- a/rust/geometry/src/processors/extrusion_tapered.rs
++++ b/rust/geometry/src/processors/extrusion_tapered.rs
+@@ -42,6 +42,14 @@ impl ExtrudedAreaSolidTaperedProcessor {
+ }
+ 
+ impl GeometryProcessor for ExtrudedAreaSolidTaperedProcessor {
++    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
++        quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
++        -> Option<Result<crate::program::OwnedConstructor>> {
++        use crate::program::constructor::Constructor;
++        if rtc_file_units.is_some() { return None; }
++        Some(self.lower(entity, decoder, quality).map(|plan| crate::program::OwnedConstructor::new(Constructor::TaperedExtrusion(plan))))
++    }
++
+     fn process(
+         &self,
+         entity: &DecodedEntity,
+diff --git a/rust/geometry/src/processors/sectioned.rs b/rust/geometry/src/processors/sectioned.rs
+index 2a8ff3e0b5..6e1678ed34 100644
+--- a/rust/geometry/src/processors/sectioned.rs
++++ b/rust/geometry/src/processors/sectioned.rs
+@@ -109,6 +109,14 @@ impl Default for SectionedSolidHorizontalProcessor {
+ }
+ 
+ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
++    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
++        quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
++        -> Option<Result<crate::program::OwnedConstructor>> {
++        use crate::program::constructor::Constructor;
++        if rtc_file_units.is_some() { return None; }
++        Some(self.lower(entity, decoder, quality).map(|plan| crate::program::OwnedConstructor::new(Constructor::SectionedSolid(plan))))
++    }
++
+     fn process(
+         &self,
+         entity: &DecodedEntity,
+diff --git a/rust/geometry/src/processors/sphere.rs b/rust/geometry/src/processors/sphere.rs
+index 753672c5c5..d479bed00f 100644
+--- a/rust/geometry/src/processors/sphere.rs
++++ b/rust/geometry/src/processors/sphere.rs
+@@ -43,6 +43,14 @@ impl Default for SphereProcessor {
+ }
+ 
+ impl GeometryProcessor for SphereProcessor {
++    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
++        quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
++        -> Option<Result<crate::program::OwnedConstructor>> {
++        use crate::program::constructor::Constructor;
++        if rtc_file_units.is_some() { return None; }
++        Some(self.lower(entity, decoder, quality).map(|plan| crate::program::OwnedConstructor::new(Constructor::Sphere(plan))))
++    }
++
+     fn process(
+         &self,
+         entity: &DecodedEntity,
+diff --git a/rust/geometry/src/processors/structural_edge.rs b/rust/geometry/src/processors/structural_edge.rs
+index af18b98b78..be92b61e3f 100644
+--- a/rust/geometry/src/processors/structural_edge.rs
++++ b/rust/geometry/src/processors/structural_edge.rs
+@@ -63,6 +63,14 @@ impl Default for IfcEdgeProcessor {
+ }
+ 
+ impl GeometryProcessor for IfcEdgeProcessor {
++    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
++        quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
++        -> Option<Result<crate::program::OwnedConstructor>> {
++        use crate::program::constructor::Constructor;
++        if rtc_file_units.is_some() { return None; }
++        Some(self.lower(entity, decoder, quality).map(|plan| crate::program::OwnedConstructor::new(Constructor::Edge(plan))))
++    }
++
+     fn process(
+         &self,
+         entity: &DecodedEntity,
+diff --git a/rust/geometry/src/processors/structural_face.rs b/rust/geometry/src/processors/structural_face.rs
+index c59da49184..96da99bec0 100644
+--- a/rust/geometry/src/processors/structural_face.rs
++++ b/rust/geometry/src/processors/structural_face.rs
+@@ -34,6 +34,13 @@ impl Default for IfcFaceSurfaceProcessor {
+ }
+ 
+ impl GeometryProcessor for IfcFaceSurfaceProcessor {
++    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
++        quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
++        -> Option<Result<crate::program::OwnedConstructor>> {
++        use crate::program::constructor::Constructor;
++        Some(super::structural_face_plan::lower(entity, decoder, quality, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::FaceSurface(plan))))
++    }
++
+     fn process(
+         &self,
+         entity: &DecodedEntity,
+diff --git a/rust/geometry/src/processors/surface.rs b/rust/geometry/src/processors/surface.rs
+index 66db203666..951246dcc2 100644
+--- a/rust/geometry/src/processors/surface.rs
++++ b/rust/geometry/src/processors/surface.rs
+@@ -36,6 +36,13 @@ impl SurfaceOfLinearExtrusionProcessor {
+ }
+ 
+ impl GeometryProcessor for SurfaceOfLinearExtrusionProcessor {
++    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
++        _quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
++        -> Option<Result<crate::program::OwnedConstructor>> {
++        use crate::program::constructor::Constructor;
++        Some(self.lower(entity, decoder, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::LinearExtrusionSurface(plan))))
++    }
++
+     fn process(
+         &self,
+         entity: &DecodedEntity,
+diff --git a/rust/geometry/src/processors/swept/disk.rs b/rust/geometry/src/processors/swept/disk.rs
+index efde664398..7abde362cb 100644
+--- a/rust/geometry/src/processors/swept/disk.rs
++++ b/rust/geometry/src/processors/swept/disk.rs
+@@ -306,6 +306,14 @@ impl SweptDiskSolidProcessor {
+ }
+ 
+ impl GeometryProcessor for SweptDiskSolidProcessor {
++    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
++        quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
++        -> Option<Result<crate::program::OwnedConstructor>> {
++        use crate::program::constructor::Constructor;
++        if rtc_file_units.is_some() { return None; }
++        Some(self.lower(entity, decoder, quality).map(|plan| crate::program::OwnedConstructor::new(plan.map_or(Constructor::Empty, Constructor::SweptDisk))))
++    }
++
+     fn process(
+         &self,
+         entity: &DecodedEntity,
+diff --git a/rust/geometry/src/processors/swept/revolved.rs b/rust/geometry/src/processors/swept/revolved.rs
+index 22a2aa548a..de333a1794 100644
+--- a/rust/geometry/src/processors/swept/revolved.rs
++++ b/rust/geometry/src/processors/swept/revolved.rs
+@@ -39,6 +39,14 @@ impl RevolvedAreaSolidProcessor {
+ }
+ 
+ impl GeometryProcessor for RevolvedAreaSolidProcessor {
++    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
++        quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
++        -> Option<Result<crate::program::OwnedConstructor>> {
++        use crate::program::constructor::Constructor;
++        if rtc_file_units.is_some() { return None; }
++        Some(self.lower(entity, decoder, quality).map(|plan| crate::program::OwnedConstructor::new(Constructor::Revolved(plan))))
++    }
++
+     fn process(
+         &self,
+         entity: &DecodedEntity,
+diff --git a/rust/geometry/src/processors/swept/surface_curve.rs b/rust/geometry/src/processors/swept/surface_curve.rs
+index 565e5636ea..2787917abf 100644
+--- a/rust/geometry/src/processors/swept/surface_curve.rs
++++ b/rust/geometry/src/processors/swept/surface_curve.rs
+@@ -145,6 +145,14 @@ impl SurfaceCurveSweptAreaSolidProcessor {
+ }
+ 
+ impl GeometryProcessor for SurfaceCurveSweptAreaSolidProcessor {
++    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
++        quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
++        -> Option<Result<crate::program::OwnedConstructor>> {
++        use crate::program::constructor::Constructor;
++        if rtc_file_units.is_some() { return None; }
++        Some(self.lower(entity, decoder, quality).map(|plan| crate::program::OwnedConstructor::new(plan.map_or(Constructor::Empty, Constructor::SweptArea))))
++    }
++
+     fn process(
+         &self,
+         entity: &DecodedEntity,
+diff --git a/rust/geometry/src/processors/tessellated/polygonal.rs b/rust/geometry/src/processors/tessellated/polygonal.rs
+index a7f72230e3..5f8e861d1f 100644
+--- a/rust/geometry/src/processors/tessellated/polygonal.rs
++++ b/rust/geometry/src/processors/tessellated/polygonal.rs
+@@ -25,6 +25,13 @@ impl PolygonalFaceSetProcessor {
+ }
+ 
+ impl GeometryProcessor for PolygonalFaceSetProcessor {
++    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
++        _quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
++        -> Option<Result<crate::program::OwnedConstructor>> {
++        use crate::program::constructor::Constructor;
++        Some(polygonal_plan::lower(entity, decoder, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::Polygons(plan))))
++    }
++
+     fn process(
+         &self,
+         entity: &DecodedEntity,
+diff --git a/rust/geometry/src/processors/tessellated/triangulated.rs b/rust/geometry/src/processors/tessellated/triangulated.rs
+index c9f1996daa..2cea23866c 100644
+--- a/rust/geometry/src/processors/tessellated/triangulated.rs
++++ b/rust/geometry/src/processors/tessellated/triangulated.rs
+@@ -56,6 +56,13 @@ impl TriangulatedFaceSetProcessor {
+ }
+ 
+ impl GeometryProcessor for TriangulatedFaceSetProcessor {
++    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
++        _quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
++        -> Option<Result<crate::program::OwnedConstructor>> {
++        use crate::program::constructor::Constructor;
++        Some(triangulated_plan::lower(entity, decoder, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::Triangles(plan))))
++    }
++
+     #[inline]
+     fn process(
+         &self,
+diff --git a/rust/geometry/src/program/annotation.rs b/rust/geometry/src/program/annotation.rs
+new file mode 100644
+index 0000000000..7771c8049d
+--- /dev/null
++++ b/rust/geometry/src/program/annotation.rs
+@@ -0,0 +1,128 @@
++// SPDX-License-Identifier: MPL-2.0
++//! Reached style/ring admission, followed by source-free fill construction.
++use crate::router::annotation::invalid;
++use crate::{Mesh, Result};
++use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
++use nalgebra::Point3;
++
++const MAX_VERTICES: usize = 2048;
++const MAX_RINGS: usize = 64;
++
++pub(crate) struct AnnotationFill {
++    rings: Vec<Vec<Point3<f64>>>,
++    unit_scale: f64,
++}
++impl AnnotationFill {
++    pub(crate) fn admit(
++        item: &DecodedEntity,
++        decoder: &mut EntityDecoder<'_>,
++        unit_scale: f64,
++    ) -> Result<Self> {
++        crate::router::annotation_style::validate(item.id, decoder)?;
++        let outer = item
++            .get_ref(slot::IfcAnnotationFillArea::OUTER_BOUNDARY.index())
++            .ok_or_else(|| invalid("missing outer boundary"))?;
++        let mut refs = vec![outer];
++        if let Some(inner) = item
++            .get(slot::IfcAnnotationFillArea::INNER_BOUNDARIES.index())
++            .filter(|a| !a.is_null())
++        {
++            let list = inner
++                .as_list()
++                .ok_or_else(|| invalid("invalid inner boundaries"))?;
++            if list.len() >= MAX_RINGS {
++                return Err(invalid("ring budget exceeded"));
++            }
++            for attr in list {
++                refs.push(
++                    attr.as_entity_ref()
++                        .ok_or_else(|| invalid("invalid boundary reference"))?,
++                );
++            }
++        }
++        let mut remaining = MAX_VERTICES;
++        let mut rings = Vec::with_capacity(refs.len());
++        // Fixed-depth curve→point walk, no recursive reference expansion.
++        for id in refs {
++            rings.push(read_ring(id, decoder, &mut remaining)?);
++        }
++        Ok(Self { rings, unit_scale })
++    }
++
++    pub(crate) fn evaluate(self) -> Result<Mesh> {
++        let mut mesh = crate::router::annotation_polygon::triangulate(&self.rings)?;
++        if self.unit_scale != 1.0 {
++            let scale = self.unit_scale as f32;
++            for pos in &mut mesh.positions {
++                *pos *= scale;
++            }
++        }
++        if mesh.positions.iter().any(|p| !p.is_finite()) {
++            return Err(invalid("coordinates exceed mesh storage range"));
++        }
++        for triangle in mesh.indices.chunks_exact(3) {
++            let point = |i: u32| {
++                let i = i as usize * 3;
++                Point3::new(
++                    mesh.positions[i] as f64,
++                    mesh.positions[i + 1] as f64,
++                    mesh.positions[i + 2] as f64,
++                )
++            };
++            let a = point(triangle[0]);
++            let b = point(triangle[1]);
++            let c = point(triangle[2]);
++            if (b - a).cross(&(c - a)).norm_squared() == 0. {
++                return Err(invalid("mesh storage precision collapses a fill triangle"));
++            }
++        }
++        Ok(mesh)
++    }
++}
++
++fn read_ring(
++    id: u32,
++    decoder: &mut EntityDecoder,
++    remaining: &mut usize,
++) -> Result<Vec<Point3<f64>>> {
++    let curve = decoder.decode_by_id(id)?;
++    if curve.ifc_type != IfcType::IfcPolyline {
++        return Err(invalid("only closed IfcPolyline boundaries are supported"));
++    }
++    let refs = curve
++        .get_list(slot::IfcPolyline::POINTS.index())
++        .ok_or_else(|| invalid("missing polyline points"))?;
++    if refs.len() < 4 || refs.len() > *remaining {
++        return Err(invalid("vertex budget or ring size invalid"));
++    }
++    *remaining -= refs.len();
++    let mut points = Vec::with_capacity(refs.len());
++    for attr in refs {
++        let point = decoder.decode_by_id(
++            attr.as_entity_ref()
++                .ok_or_else(|| invalid("invalid point reference"))?,
++        )?;
++        if point.ifc_type != IfcType::IfcCartesianPoint {
++            return Err(invalid("boundary point has wrong type"));
++        }
++        let coords = point
++            .get_list(slot::IfcCartesianPoint::COORDINATES.index())
++            .ok_or_else(|| invalid("missing point coordinates"))?;
++        if !(2..=3).contains(&coords.len()) {
++            return Err(invalid("point must be 2D or 3D"));
++        }
++        let mut xyz = [0.; 3];
++        for (i, attr) in coords.iter().enumerate() {
++            xyz[i] = attr
++                .as_float()
++                .filter(|v| v.is_finite())
++                .ok_or_else(|| invalid("nonfinite point"))?;
++        }
++        points.push(Point3::from(xyz));
++    }
++    if points.first() != points.last() {
++        return Err(invalid("boundary must be explicitly closed"));
++    }
++    points.pop();
++    Ok(points)
++}
+diff --git a/rust/geometry/src/program/constructor.rs b/rust/geometry/src/program/constructor.rs
+new file mode 100644
+index 0000000000..c81d57854d
+--- /dev/null
++++ b/rust/geometry/src/program/constructor.rs
+@@ -0,0 +1,34 @@
++// SPDX-License-Identifier: MPL-2.0
++//! Common owned payloads used by reached production and optional construction graphs.
++use crate::processors::{csg_primitive::plan::{BlockPlan, SpherePlan},
++    extrusion::plan::ExtrusionPlan, extrusion_tapered::plan::TaperedExtrusionPlan,
++    swept::revolved::plan::RevolvedPlan, SweptDiskPlan, SurfaceCurveSweepPlan,
++    polygonal_plan::PolygonalFaceSetPlan, triangulated_plan::TriangulatedFaceSetPlan};
++use crate::processors::{faceted_plan::FacetedBrepPlan,
++    advanced_plan::{AdvancedBrepPlan, BSplineSurfacePlan},
++    structural_face_plan::StructuralFacePlan, structural_edge::EdgePlan,
++    SurfaceModelPlan, sectioned::plan::SectionedPlan,
++    alignment::plan::AlignmentPlan, surface::plan::LinearExtrusionSurfacePlan};
++
++#[derive(Debug, Clone)]
++pub(crate) enum Constructor {
++    Empty,
++    Extrusion(ExtrusionPlan),
++    TaperedExtrusion(TaperedExtrusionPlan),
++    Revolved(RevolvedPlan),
++    SweptDisk(SweptDiskPlan),
++    SweptArea(SurfaceCurveSweepPlan),
++    Block(BlockPlan),
++    Sphere(SpherePlan),
++    Triangles(TriangulatedFaceSetPlan),
++    Polygons(PolygonalFaceSetPlan),
++    FacetedBrep(FacetedBrepPlan),
++    SectionedSolid(SectionedPlan),
++    AdvancedBrep(AdvancedBrepPlan),
++    BSplineSurface(BSplineSurfacePlan),
++    SurfaceModel(SurfaceModelPlan),
++    Alignment(AlignmentPlan),
++    Edge(EdgePlan),
++    FaceSurface(StructuralFacePlan),
++    LinearExtrusionSurface(LinearExtrusionSurfacePlan),
++}
+diff --git a/rust/geometry/src/program/constructor_tests.rs b/rust/geometry/src/program/constructor_tests.rs
+new file mode 100644
+index 0000000000..d6f8beff5d
+--- /dev/null
++++ b/rust/geometry/src/program/constructor_tests.rs
+@@ -0,0 +1,88 @@
++// SPDX-License-Identifier: MPL-2.0
++//! Selected-instance lowering parity for the initial ten built-in constructors.
++//! The other nine are exercised by construction::family_tests. Each owned
++//! evaluation outlives its source; direct process is the compatibility oracle.
++use crate::{GeometryProcessor, Mesh, TessellationQuality};
++use crate::processors::*;
++use ifc_lite_core::{EntityDecoder, IfcSchema};
++
++const SOURCE: &str = "#1=IFCCARTESIANPOINT((0.,0.,0.));
++#2=IFCCARTESIANPOINT((0.,0.,4.));
++#3=IFCPOLYLINE((#1,#2));
++#4=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,4.,4.);
++#5=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,2.,2.);
++#6=IFCDIRECTION((0.,0.,1.));
++#7=IFCAXIS1PLACEMENT(#1,#6);
++#8=IFCCARTESIANPOINT((4.,0.,0.));
++#9=IFCCARTESIANPOINT((0.,4.,0.));
++#10=IFCPOLYLOOP((#1,#8,#9));
++#11=IFCFACEOUTERBOUND(#10,.T.);
++#12=IFCFACE((#11));
++#13=IFCCLOSEDSHELL((#12));
++#14=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(4.,0.,0.),(0.,4.,0.)));
++#15=IFCINDEXEDPOLYGONALFACE((1,2,3));
++#100=IFCEXTRUDEDAREASOLID(#4,$,#6,3.);
++#101=IFCEXTRUDEDAREASOLIDTAPERED(#4,$,#6,3.,#5);
++#102=IFCREVOLVEDAREASOLID(#5,$,#7,3.141592653589793);
++#103=IFCSWEPTDISKSOLID(#3,2.,1.,$,$);
++#104=IFCSURFACECURVESWEPTAREASOLID(#5,$,#3,$,$,$);
++#105=IFCBLOCK($,2.,3.,4.);
++#106=IFCSPHERE($,2.);
++#107=IFCTRIANGULATEDFACESET(#14,$,.F.,((1,2,3)),$);
++#108=IFCPOLYGONALFACESET(#14,.F.,(#15),$);
++#109=IFCFACETEDBREP(#13);";
++
++fn same_mesh(actual: &Mesh, expected: &Mesh) {
++    assert_eq!(actual.positions, expected.positions);
++    assert_eq!(actual.indices, expected.indices);
++    assert_eq!(actual.normals, expected.normals);
++    assert_eq!(actual.rtc_applied, expected.rtc_applied);
++    assert_eq!(actual.origin, expected.origin);
++    assert_eq!(actual.local_bounds, expected.local_bounds);
++}
++
++#[test]
++fn selected_constructor_payloads_match_production_after_source_disposal() {
++    let schema = IfcSchema::new();
++    let processors: [Box<dyn GeometryProcessor>; 10] = [
++        Box::new(ExtrudedAreaSolidProcessor::new(schema.clone())),
++        Box::new(ExtrudedAreaSolidTaperedProcessor::new(schema.clone())),
++        Box::new(RevolvedAreaSolidProcessor::new(schema.clone())),
++        Box::new(SweptDiskSolidProcessor::new(schema.clone())),
++        Box::new(SurfaceCurveSweptAreaSolidProcessor::new(schema.clone())),
++        Box::new(BlockProcessor::new()), Box::new(SphereProcessor::new()),
++        Box::new(TriangulatedFaceSetProcessor::new()), Box::new(PolygonalFaceSetProcessor::new()),
++        Box::new(FacetedBrepProcessor::new()),
++    ];
++    for (id, processor) in (100..=109).zip(processors) {
++        let (plan, expected) = {
++            let source = SOURCE.to_owned();
++            let mut decoder = EntityDecoder::new(&source);
++            let item = decoder.decode_by_id(id).unwrap();
++            let expected = processor.process(&item, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
++            let plan = processor.lower_owned(&item, &mut decoder, TessellationQuality::Medium, None)
++                .expect("actual selected builtin admission").unwrap();
++            (plan, expected)
++        };
++        assert!(!expected.is_empty(), "#{id} must exercise real construction");
++        same_mesh(&plan.evaluate().unwrap(), &expected);
++    }
++}
++
++#[test]
++fn raw_constructor_rtc_admission_retains_f64_sub_ulp_detail() {
++    let source = "#1=IFCCARTESIANPOINTLIST3D(((5000000.,5000000.,0.),
++        (5000000.125,5000000.,0.),(5000000.,5000000.125,0.)));
++        #2=IFCTRIANGULATEDFACESET(#1,$,.F.,((1,2,3)),$);";
++    let plan = {
++        let mut decoder = EntityDecoder::new(source);
++        let item = decoder.decode_by_id(2).unwrap();
++        TriangulatedFaceSetProcessor::new().lower_owned(&item, &mut decoder,
++            TessellationQuality::Medium, Some((5_000_000., 5_000_000., 0.))).unwrap().unwrap()
++    };
++    let mesh = plan.evaluate().unwrap();
++    assert!(mesh.rtc_applied);
++    let max = mesh.positions.iter().copied().fold(f32::NEG_INFINITY, f32::max);
++    assert_eq!(max, 0.125, "RTC subtraction precedes f32 narrowing");
++    assert_eq!(mesh.indices.len(), 3);
++}
+diff --git a/rust/geometry/src/program/execute.rs b/rust/geometry/src/program/execute.rs
+new file mode 100644
+index 0000000000..350d6518ae
+--- /dev/null
++++ b/rust/geometry/src/program/execute.rs
+@@ -0,0 +1,29 @@
++// SPDX-License-Identifier: MPL-2.0
++//! Numerical entry: no decoder or router service can enter construction.
++use super::{OwnedConstructor, constructor::Constructor};
++use crate::{Mesh, Result};
++
++pub(super) fn construct(plan: OwnedConstructor) -> Result<Mesh> {
++    let mesh = match plan.0 {
++        Constructor::Empty => Ok(Mesh::new()),
++        Constructor::Extrusion(plan) => plan.evaluate(),
++        Constructor::TaperedExtrusion(plan) => plan.evaluate(),
++        Constructor::Revolved(plan) => plan.evaluate(),
++        Constructor::SweptDisk(plan) => Ok(plan.evaluate()),
++        Constructor::SweptArea(plan) => plan.evaluate(),
++        Constructor::Block(plan) => Ok(plan.evaluate()),
++        Constructor::Sphere(plan) => Ok(plan.evaluate()),
++        Constructor::Triangles(plan) => Ok(plan.evaluate()),
++        Constructor::Polygons(plan) => Ok(plan.evaluate()),
++        Constructor::FacetedBrep(plan) => Ok(plan.evaluate()),
++        Constructor::SectionedSolid(plan) => plan.evaluate(),
++        Constructor::AdvancedBrep(plan) => plan.evaluate(),
++        Constructor::BSplineSurface(plan) => plan.evaluate(),
++        Constructor::SurfaceModel(plan) => plan.evaluate(),
++        Constructor::Alignment(plan) => Ok(plan.evaluate()),
++        Constructor::Edge(plan) => Ok(plan.evaluate()),
++        Constructor::FaceSurface(plan) => plan.evaluate(),
++        Constructor::LinearExtrusionSurface(plan) => Ok(plan.evaluate()),
++    }?;
++    Ok(mesh)
++}
+diff --git a/rust/geometry/src/router/mapping/merged.rs b/rust/geometry/src/program/mapping/merged.rs
+similarity index 75%
+rename from rust/geometry/src/router/mapping/merged.rs
+rename to rust/geometry/src/program/mapping/merged.rs
+index 2ed627525c..20a031886d 100644
+--- a/rust/geometry/src/router/mapping/merged.rs
++++ b/rust/geometry/src/program/mapping/merged.rs
+@@ -2,17 +2,17 @@
+ //! Merged-source consumer: errors remove path membership, child failures mark
+ //! every enclosing source truncated, and cache admission precedes mapping bake.
+ use super::{GeometryRouter, ItemIdentity, Path, representation, skipped, source};
+-use crate::{Error, InstanceMeta, Mesh, Result, math::mat4};
++use crate::{InstanceMeta, Mesh, Result, math::mat4};
+ use crate::router::{frame_parts::SourceParts, transforms::instancing_enabled};
+-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType, slot};
++use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+ use nalgebra::Matrix4;
+-use std::sync::Arc;
++use crate::program::{ItemProgram, ItemListPolicy};
+ 
+ type Value = Result<(Vec<Mesh>, bool)>;
+ struct Source {
+     id: u32, depth: usize, policy: bool,
+     transform: Option<Matrix4<f64>>,
+-    items: std::vec::IntoIter<DecodedEntity>,
++    items: ItemProgram,
+     parts: SourceParts, truncated: bool,
+ }
+ enum Frame {
+@@ -29,13 +29,13 @@ impl Frame {
+         }
+     }
+ }
+-pub(in crate::router) struct MergedWalk { frames: Vec<Frame>, path: Path, value: Option<Value> }
++pub(crate) struct MergedWalk { frames: Vec<Frame>, path: Path, value: Option<Value> }
+ impl MergedWalk {
+-    pub(in crate::router) fn new(item: &DecodedEntity, router: &GeometryRouter) -> Self {
++    pub(crate) fn new(item: &DecodedEntity, router: &GeometryRouter) -> Self {
+         Self { frames: vec![Frame::Enter { item: item.clone(), depth: 0, policy: router.unsupported_policy() }],
+             path: Path::default(), value: None }
+     }
+-    pub(in crate::router) fn run(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>) -> Result<Vec<Mesh>> {
++    pub(crate) fn run(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>) -> Result<Vec<Mesh>> {
+         while self.advance(router, decoder) {}
+         self.value.expect("completed mapped-source value").map(|(parts, _)| parts)
+     }
+@@ -84,41 +84,24 @@ impl MergedWalk {
+         let source = source(&item, decoder)?;
+         // Merged sources decode transforms BEFORE looking in either cache.
+         let transform = router.mapped_item_transform(&item, &source, decoder)?;
+-        let cached = match &router.shared_mapped_item_cache {
+-            Some(shared) => shared.lock().unwrap_or_else(|e| e.into_inner()).get(&source.id).cloned(),
+-            None => router.mapped_item_cache.borrow().get(&source.id).cloned(),
+-        };
++        let cached = router.cached_mapped_source(source.id);
+         if let Some(mesh) = cached {
+             self.value = Some(Ok((place(vec![mesh.as_ref().clone()], source.id, transform, router), false)));
+             return Ok(());
+         }
+         let representation = representation(&source, decoder)?;
+-        let attribute = representation.get(slot::IfcRepresentation::ITEMS.index())
+-            .ok_or_else(|| Error::geometry("Representation missing Items".to_string()))?;
+-        let items = decoder.resolve_ref_list(attribute)?;
++        let items = ItemProgram::admit(&representation, decoder, ItemListPolicy::RequiredMap)?;
+         // Unlike the submesh consumer, claim AFTER this bulk item admission.
+         let policy = router.claim_unsupported_source(source.id, &representation);
+         self.frames.push(Frame::Source(Source { id: source.id, depth, policy, transform,
+-            items: items.into_iter(), parts: SourceParts::default(), truncated: false }));
++            items, parts: SourceParts::default(), truncated: false }));
+         Ok(())
+     }
+ }
+ fn finish(state: Source, router: &GeometryRouter) -> (Vec<Mesh>, bool) {
+     let parts = state.parts.into_parts();
+     if parts.len() == 1 {
+-        match &router.shared_mapped_item_cache {
+-            Some(shared) => {
+-                // Shared state must not retain depth-/budget-degraded geometry.
+-                if !parts[0].positions.is_empty() && !crate::kernel::budget::tripped() && !state.truncated {
+-                    let source = Arc::new(parts[0].clone());
+-                    shared.lock().unwrap_or_else(|e| e.into_inner()).insert(state.id, source);
+-                }
+-            }
+-            None => {
+-                let source = Arc::new(parts[0].clone());
+-                router.mapped_item_cache.borrow_mut().insert(state.id, source);
+-            }
+-        }
++        router.publish_mapped_source(state.id, &parts[0], state.truncated);
+     }
+     (place(parts, state.id, state.transform, router), state.truncated)
+ }
+diff --git a/rust/geometry/src/router/mapping/mod.rs b/rust/geometry/src/program/mapping/mod.rs
+similarity index 93%
+rename from rust/geometry/src/router/mapping/mod.rs
+rename to rust/geometry/src/program/mapping/mod.rs
+index 24bfb2be93..e617ac088f 100644
+--- a/rust/geometry/src/router/mapping/mod.rs
++++ b/rust/geometry/src/program/mapping/mod.rs
+@@ -6,11 +6,11 @@ mod submeshes;
+ mod occurrence;
+ use crate::{Error, Result};
+ use ifc_lite_core::{DecodedEntity, EntityDecoder, MAX_MAPPED_ITEM_DEPTH, slot};
+-use super::super::GeometryRouter;
++use crate::GeometryRouter;
+ use rustc_hash::FxHashSet;
+ 
+-pub(super) use merged::MergedWalk;
+-pub(super) use submeshes::SubmeshWalk;
++pub(crate) use merged::MergedWalk;
++pub(crate) use submeshes::SubmeshWalk;
+ 
+ #[derive(Default)]
+ struct Path { ids: FxHashSet<u32> }
+@@ -36,7 +36,7 @@ fn source(item: &DecodedEntity, decoder: &mut EntityDecoder<'_>) -> Result<Decod
+         .ok_or_else(|| Error::geometry("MappedItem missing MappingSource".to_string()))?;
+     decoder.resolve_ref(attribute)?.ok_or_else(|| Error::geometry("Failed to resolve MappingSource".to_string()))
+ }
+-fn representation(source: &DecodedEntity, decoder: &mut EntityDecoder<'_>) -> Result<DecodedEntity> {
++pub(in crate::program) fn representation(source: &DecodedEntity, decoder: &mut EntityDecoder<'_>) -> Result<DecodedEntity> {
+     let attribute = source.get(slot::IfcRepresentationMap::MAPPED_REPRESENTATION.index())
+         .ok_or_else(|| Error::geometry("RepresentationMap missing MappedRepresentation".to_string()))?;
+     decoder.resolve_ref(attribute)?.ok_or_else(|| Error::geometry("Failed to resolve MappedRepresentation".to_string()))
+diff --git a/rust/geometry/src/router/mapping/occurrence.rs b/rust/geometry/src/program/mapping/occurrence.rs
+similarity index 100%
+rename from rust/geometry/src/router/mapping/occurrence.rs
+rename to rust/geometry/src/program/mapping/occurrence.rs
+diff --git a/rust/geometry/src/router/mapping/submeshes.rs b/rust/geometry/src/program/mapping/submeshes.rs
+similarity index 89%
+rename from rust/geometry/src/router/mapping/submeshes.rs
+rename to rust/geometry/src/program/mapping/submeshes.rs
+index 8ee39975f8..1387843782 100644
+--- a/rust/geometry/src/router/mapping/submeshes.rs
++++ b/rust/geometry/src/program/mapping/submeshes.rs
+@@ -5,13 +5,14 @@
+ use super::{GeometryRouter, ItemIdentity, Path, occurrence, skipped};
+ use crate::{Result, SubMeshCollection};
+ use crate::processors::texture::ResolvedTextureMap;
+-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType, slot};
++use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+ use rustc_hash::FxHashMap;
++use crate::program::{ItemProgram, ItemListPolicy};
+ 
+ struct Source {
+     item_id: u32, depth: usize, policy: bool, start: usize,
+     admission: occurrence::Admission,
+-    items: std::vec::IntoIter<DecodedEntity>,
++    items: ItemProgram,
+ }
+ enum Frame {
+     Enter { item: DecodedEntity, depth: usize, policy: bool, allow_instancing: bool },
+@@ -26,13 +27,13 @@ impl Frame {
+         }
+     }
+ }
+-pub(in crate::router) struct SubmeshWalk { frames: Vec<Frame>, path: Path, value: Option<Result<()>> }
++pub(crate) struct SubmeshWalk { frames: Vec<Frame>, path: Path, value: Option<Result<()>> }
+ impl SubmeshWalk {
+-    pub(in crate::router) fn new(item: &DecodedEntity, allow_instancing: bool, router: &GeometryRouter) -> Self {
++    pub(crate) fn new(item: &DecodedEntity, allow_instancing: bool, router: &GeometryRouter) -> Self {
+         Self { frames: vec![Frame::Enter { item: item.clone(), depth: 0,
+             policy: router.unsupported_policy(), allow_instancing }], path: Path::default(), value: None }
+     }
+-    pub(in crate::router) fn run(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>,
++    pub(crate) fn run(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>,
+         meshes: &mut SubMeshCollection, textures: Option<&FxHashMap<u32, ResolvedTextureMap>>) -> Result<()> {
+         while self.advance(router, decoder, meshes, textures) {}
+         self.value.expect("completed submesh-source value")
+@@ -96,19 +97,16 @@ impl SubmeshWalk {
+         let start = meshes.len();
+         // Submeshes claim BEFORE their optional bulk item-list admission.
+         let policy = router.claim_unsupported_source(admission.source_id, &admission.representation);
+-        let items = match admission.representation.get(slot::IfcRepresentation::ITEMS.index()) {
+-            Some(attribute) => decoder.resolve_ref_list(attribute)?,
+-            None => Vec::new(),
+-        };
++        let items = ItemProgram::admit(&admission.representation, decoder, ItemListPolicy::OptionalMap)?;
+         self.frames.push(Frame::Source(Source { item_id: item.id, depth, policy, start, admission,
+-            items: items.into_iter() }));
++            items }));
+         Ok(())
+     }
+ }
+ fn plain(item: &DecodedEntity, depth: usize, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>,
+     meshes: &mut SubMeshCollection, textures: Option<&FxHashMap<u32, ResolvedTextureMap>>) {
+     if let Some(map) = textures.and_then(|index| index.get(&item.id)) {
+-        if let Some((mut mesh, uvs)) = router.textured_face_set(item, decoder, map, Some(router.rtc_offset)) {
++        if let Some((mut mesh, uvs)) = router.textured_face_set(item, decoder, map, Some(router.rtc_offset())) {
+             if depth > 0 { router.keep_rebase_in_origin(&mut mesh); }
+             meshes.add_textured(item.id, mesh, uvs, map.attachment());
+             return;
+diff --git a/rust/geometry/src/router/mapping/tests.rs b/rust/geometry/src/program/mapping/tests.rs
+similarity index 92%
+rename from rust/geometry/src/router/mapping/tests.rs
+rename to rust/geometry/src/program/mapping/tests.rs
+index 211ddebf38..6a2c26c12e 100644
+--- a/rust/geometry/src/router/mapping/tests.rs
++++ b/rust/geometry/src/program/mapping/tests.rs
+@@ -42,7 +42,7 @@ fn cache_hit_skips_source_representation_but_preserves_transform_admission() {
+     let mut decoder = EntityDecoder::new(&source);
+     let router = GeometryRouter::new();
+     let cached = parts(&router, &mut decoder, 13).remove(0);
+-    router.mapped_item_cache.borrow_mut().insert(30, Arc::new(cached.clone()));
++    router.publish_mapped_source(30, &cached, false);
+     let merged = parts(&router, &mut decoder, 31);
+     assert_eq!(merged[0].positions, cached.positions);
+     assert_eq!(merged[0].indices, cached.indices);
+@@ -131,7 +131,7 @@ fn failed_bulk_item_admission_claims_only_the_submesh_source_and_runs_no_earlier
+             else { router.collect_submeshes_from_item(&item, &mut decoder, &mut meshes, false, None) };
+         assert!(result.is_err());
+         assert!(meshes.is_empty());
+-        assert!(router.mapped_item_cache.borrow().is_empty(), "bulk failure must precede meshing and cache publication");
++        assert!(router.cached_mapped_source(21).is_none(), "bulk failure must precede meshing and cache publication");
+         assert!(router.take_unsupported_items().is_empty());
+         let repaired = decoder.decode_by_id(90).unwrap();
+         decoder.inject_shared_cache(&[(999, Arc::new(repaired))].into_iter().collect());
+@@ -201,7 +201,7 @@ fn mapped_custom_panic_restores_ambient_policy_and_never_publishes_partial_sourc
+         }));
+         assert!(result.is_err());
+         assert!(router.unsupported_policy());
+-        assert!(router.mapped_item_cache.borrow().is_empty());
++        assert!(router.cached_mapped_source(12).is_none());
+         // A post-panic unsupported top-level item must report independently.
+         router.record_unsupported_item(IfcType::IfcPolyline);
+         assert_eq!(router.take_unsupported_items().get("IfcPolyline"), Some(&1));
+@@ -250,3 +250,22 @@ fn reentrant_body_source_reports_inside_suppressed_footprint_and_restores_outer_
+         assert!(router.unsupported_policy());
+     }
+ }
++
++#[test]
++fn repeated_diamond_dag_retains_all_256_authored_occurrences() {
++    let mut source = BASE.to_owned();
++    let mut previous = 13;
++    for level in 0..8 {
++        let map = 100 + level * 3;
++        source.push_str(&format!("#{map}=IFCREPRESENTATIONMAP(#2,#{rep});
++            #{rep}=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#{previous},#{previous}));
++            #{item}=IFCMAPPEDITEM(#{map},#3);", rep = map + 1, item = map + 2));
++        previous = map + 2;
++    }
++    let mut decoder = EntityDecoder::new(&source);
++    let router = GeometryRouter::new();
++    assert_eq!(triangles(&parts(&router, &mut decoder, previous)), 256 * 12);
++    let styled = submeshes(&router, &mut decoder, previous);
++    assert_eq!(styled.len(), 256);
++    assert_eq!(styled.sub_meshes.iter().map(|sub| sub.mesh.indices.len() / 3).sum::<usize>(), 256 * 12);
++}
+diff --git a/rust/geometry/src/program/mod.rs b/rust/geometry/src/program/mod.rs
+new file mode 100644
+index 0000000000..07b624d682
+--- /dev/null
++++ b/rust/geometry/src/program/mod.rs
+@@ -0,0 +1,63 @@
++// SPDX-License-Identifier: MPL-2.0
++//! Reached product representation control and owned numerical operations.
++//!
++//! Owns the five reached representation/item policies and mapping child frames.
++//! Boolean continuation, layer slicing and opening classification retain their
++//! existing owners. This synchronous module claims no transport or resource safety.
++
++mod traversal;
++mod product;
++pub(crate) mod opening;
++mod opening_bounds;
++pub(crate) mod mapping;
++pub(crate) mod type_map;
++pub(crate) mod annotation;
++pub(crate) mod constructor;
++mod execute;
++mod resources;
++mod source;
++pub(crate) use source::{ItemListPolicy, ItemProgram};
++pub(crate) use traversal::{EntryPolicy, ProductProgram, ReachedItem};
++
++/// Opaque, owned constructor admitted by the actual selected processor instance.
++/// It contains sampled production parameters in file units, never a decoder,
++/// source callback, product placement or a finished-mesh substitute for source.
++#[derive(Debug, Clone)]
++pub struct OwnedConstructor(constructor::Constructor);
++
++impl OwnedConstructor {
++    pub(crate) fn new(value: constructor::Constructor) -> Self { Self(value) }
++
++    pub(crate) fn restore_source_reports(&self) {
++        if let constructor::Constructor::SurfaceModel(plan) = &self.0 {
++            crate::processors::diagnostic_capture::restore(&plan.source_reports());
++        }
++    }
++
++    /// Evaluate without access to IFC source or a geometry router.
++    pub fn evaluate(self) -> crate::Result<crate::Mesh> {
++        execute::construct(self)
++    }
++}
++
++#[cfg(test)]
++mod tests;
++
++#[cfg(test)]
++mod constructor_tests;
++
++/// Owned geometry side of the texture attempt. The immutable resolved texture
++/// index is an execution input, never a decoder/source callback. An unsuccessful
++/// attempt retains the caller's historical plain-geometry recovery.
++pub(crate) struct TextureConstructor(crate::processors::triangulated_plan::TriangulatedFaceSetPlan);
++impl TextureConstructor {
++    pub(crate) fn admit(item: &ifc_lite_core::DecodedEntity, decoder: &mut ifc_lite_core::EntityDecoder<'_>, rtc: Option<(f64, f64, f64)>) -> crate::Result<Self> {
++        crate::processors::triangulated_plan::lower(item, decoder, rtc).map(Self)
++    }
++    pub(crate) fn evaluate(self, texture: &crate::ResolvedTextureMap) -> (crate::Mesh, Vec<f32>) {
++        self.0.evaluate_with_texture(texture)
++    }
++}
++
++#[cfg(test)]
++mod policy_tests;
+diff --git a/rust/geometry/src/program/opening.rs b/rust/geometry/src/program/opening.rs
+new file mode 100644
+index 0000000000..4d4b6a7981
+--- /dev/null
++++ b/rust/geometry/src/program/opening.rs
+@@ -0,0 +1,92 @@
++// SPDX-License-Identifier: MPL-2.0
++//! Lenient opening policies on the same reached representation/item program.
++use super::{EntryPolicy, ProductProgram, ReachedItem};
++use crate::router::voids::geom::{extract_rotation_columns, rotate_and_normalize};
++use crate::{GeometryRouter, Mesh, Point3, Result, Vector3};
++use ifc_lite_core::{DecodedEntity, EntityDecoder};
++use nalgebra::Matrix4;
++
++pub(crate) type OpeningBounds = Vec<(Point3<f64>, Point3<f64>, Option<Vector3<f64>>)>;
++pub(crate) struct OpeningProgram {
++    items: ProductProgram,
++    placement: Matrix4<f64>,
++}
++impl OpeningProgram {
++    pub(crate) fn admit(
++        element: &DecodedEntity,
++        policy: EntryPolicy,
++        router: &GeometryRouter,
++        decoder: &mut EntityDecoder<'_>,
++    ) -> Result<Option<Self>> {
++        let Some(items) = ProductProgram::opening(element, policy, decoder)? else {
++            return Ok(None);
++        };
++        // Whole representations have resolved; no Items have been requested yet.
++        let mut placement = router
++            .get_placement_transform_from_element(element, decoder)
++            .unwrap_or_else(|_| Matrix4::identity());
++        router.scale_transform(&mut placement);
++        Ok(Some(Self { items, placement }))
++    }
++
++    pub(crate) fn meshes(
++        mut self,
++        element: &DecodedEntity,
++        router: &GeometryRouter,
++        decoder: &mut EntityDecoder<'_>,
++    ) -> Result<Vec<Mesh>> {
++        let mut output = Vec::new();
++        while let Some(ReachedItem { item, .. }) = self.items.next(decoder)? {
++            // Only the mesh policy attempts the raw-per-element route first.
++            let parts = match router.process_raw_item_for_element(&item, element, decoder) {
++                Ok(Some(mesh)) => Ok(vec![mesh]),
++                Ok(None) => router.process_representation_item_parts(&item, decoder),
++                Err(error) => Err(error),
++            };
++            let Ok(parts) = parts else { continue };
++            for mut mesh in parts.into_iter().filter(|mesh| !mesh.is_empty()) {
++                let framed = router.needs_local_frame(&mesh, &self.placement);
++                router.transform_mesh_world_framed(&mut mesh, &self.placement, framed);
++                output.push(mesh);
++            }
++        }
++        Ok(output)
++    }
++
++    pub(crate) fn bounds(
++        mut self,
++        router: &GeometryRouter,
++        decoder: &mut EntityDecoder<'_>,
++    ) -> Result<OpeningBounds> {
++        let mut output = Vec::new();
++        while let Some(ReachedItem { item, .. }) = self.items.next(decoder)? {
++            let direction = if let Some((local_dir, position_transform)) =
++                router.extract_extrusion_direction_recursive(&item, decoder)
++            {
++                // A zero-length IFCDIRECTION drops only THIS item's direction
++                // (coarser bounds), not `?`-abort every sibling item's bounds.
++                let element_rot = extract_rotation_columns(&self.placement);
++                if let Some(pos_transform) = position_transform {
++                    let pos_rot = extract_rotation_columns(&pos_transform);
++                    rotate_and_normalize(&pos_rot, &local_dir)
++                        .ok()
++                        .and_then(|world_dir| rotate_and_normalize(&element_rot, &world_dir).ok())
++                } else {
++                    rotate_and_normalize(&element_rot, &local_dir).ok()
++                }
++            } else {
++                None
++            };
++
++            let Ok(parts) = router.process_representation_item_parts(&item, decoder) else {
++                continue;
++            };
++            for mesh in parts.into_iter().filter(|mesh| !mesh.is_empty()) {
++                let (min, max) =
++                    super::opening_bounds::evaluate(&mesh, &self.placement, router.rtc_offset());
++                output.push((min, max, direction));
++            }
++        }
++        Ok(output)
++    }
++}
+diff --git a/rust/geometry/src/program/opening_bounds.rs b/rust/geometry/src/program/opening_bounds.rs
+new file mode 100644
+index 0000000000..6dcd7a290e
+--- /dev/null
++++ b/rust/geometry/src/program/opening_bounds.rs
+@@ -0,0 +1,84 @@
++// SPDX-License-Identifier: MPL-2.0
++//! Source-free per-frame AABB calculation; preserves world/RTC corner arithmetic.
++use crate::{Mesh, Point3};
++use nalgebra::Matrix4;
++
++pub(super) fn evaluate(
++    mesh: &Mesh,
++    placement_transform: &Matrix4<f64>,
++    rtc: (f64, f64, f64),
++) -> (Point3<f64>, Point3<f64>) {
++    // Mesh::bounds is local to mesh.positions. Mapped items can
++    // carry a large f64 origin that must be folded in before the
++    // element placement, or the cutter box lands near zero.
++    let (mesh_min, mesh_max) = mesh.bounds();
++
++    // Transform corner points to world coordinates
++    let corners = [
++        Point3::new(mesh_min.x as f64, mesh_min.y as f64, mesh_min.z as f64),
++        Point3::new(mesh_max.x as f64, mesh_min.y as f64, mesh_min.z as f64),
++        Point3::new(mesh_min.x as f64, mesh_max.y as f64, mesh_min.z as f64),
++        Point3::new(mesh_max.x as f64, mesh_max.y as f64, mesh_min.z as f64),
++        Point3::new(mesh_min.x as f64, mesh_min.y as f64, mesh_max.z as f64),
++        Point3::new(mesh_max.x as f64, mesh_min.y as f64, mesh_max.z as f64),
++        Point3::new(mesh_min.x as f64, mesh_max.y as f64, mesh_max.z as f64),
++        Point3::new(mesh_max.x as f64, mesh_max.y as f64, mesh_max.z as f64),
++    ];
++
++    // Transform all corners and compute new AABB
++    let transformed: Vec<Point3<f64>> = corners
++        .iter()
++        .map(|p| {
++            let source = Point3::new(
++                p.x + mesh.origin[0],
++                p.y + mesh.origin[1],
++                p.z + mesh.origin[2],
++            );
++            placement_transform.transform_point(&source)
++        })
++        .collect();
++
++    let world_min = Point3::new(
++        transformed
++            .iter()
++            .map(|p| p.x)
++            .fold(f64::INFINITY, f64::min),
++        transformed
++            .iter()
++            .map(|p| p.y)
++            .fold(f64::INFINITY, f64::min),
++        transformed
++            .iter()
++            .map(|p| p.z)
++            .fold(f64::INFINITY, f64::min),
++    );
++    let world_max = Point3::new(
++        transformed
++            .iter()
++            .map(|p| p.x)
++            .fold(f64::NEG_INFINITY, f64::max),
++        transformed
++            .iter()
++            .map(|p| p.y)
++            .fold(f64::NEG_INFINITY, f64::max),
++        transformed
++            .iter()
++            .map(|p| p.z)
++            .fold(f64::NEG_INFINITY, f64::max),
++    );
++
++    // Apply RTC offset to opening bounds so they match wall mesh coordinate system
++    // Wall mesh positions have RTC subtracted during transform_mesh, so opening bounds must match
++    let rtc_min = Point3::new(
++        world_min.x - rtc.0,
++        world_min.y - rtc.1,
++        world_min.z - rtc.2,
++    );
++    let rtc_max = Point3::new(
++        world_max.x - rtc.0,
++        world_max.y - rtc.1,
++        world_max.z - rtc.2,
++    );
++
++    (rtc_min, rtc_max)
++}
+diff --git a/rust/geometry/src/program/policy_tests.rs b/rust/geometry/src/program/policy_tests.rs
+new file mode 100644
+index 0000000000..609054bfc9
+--- /dev/null
++++ b/rust/geometry/src/program/policy_tests.rs
+@@ -0,0 +1,183 @@
++// SPDX-License-Identifier: MPL-2.0
++//! ProductProgram preservation review: malformed source and live callback order.
++use super::tests::{ObservedBlock, BLOCK};
++use crate::{GeometryRouter, Mesh};
++use ifc_lite_core::EntityDecoder;
++use std::{cell::Cell, rc::Rc};
++
++fn observed(repair: bool) -> (GeometryRouter, Rc<Cell<usize>>) {
++    let calls = Rc::new(Cell::new(0));
++    let mut router = GeometryRouter::new();
++    router.register(Box::new(ObservedBlock {
++        calls: calls.clone(),
++        repair,
++    }));
++    (router, calls)
++}
++fn triangles(meshes: &[Mesh]) -> usize {
++    meshes.iter().map(|mesh| mesh.indices.len() / 3).sum()
++}
++
++#[test]
++fn type_origin_is_admitted_after_items_and_wrong_placement_type_is_tolerated() {
++    // A real callback repairs #999 into an IfcBlock. The late type-origin
++    // read accepts the resolved wrong type as identity; normal mapping rejects it.
++    let source = format!(
++        "{BLOCK}#1=IFCREPRESENTATIONMAP(#999,#2);
++        #2=IFCSHAPEREPRESENTATION($,'Body','CSG',(#10));
++        #20=IFCMAPPEDITEM(#1,$);"
++    );
++    for repair in [false, true] {
++        let (router, calls) = observed(repair);
++        let mut decoder = EntityDecoder::new(&source);
++        let map = decoder.decode_by_id(1).unwrap();
++        let result = router.process_representation_map(&map, &mut decoder);
++        assert_eq!(
++            calls.get(),
++            1,
++            "origin failure must follow the real item callback"
++        );
++        if repair {
++            assert_eq!(triangles(&[result.unwrap()]), 12);
++        } else {
++            assert!(result.unwrap_err().to_string().contains("999"));
++        }
++    }
++    let (router, calls) = observed(true);
++    let strict_source = source.replace("#999,#2", "#10,#2");
++    let mut decoder = EntityDecoder::new(&strict_source);
++    let item = decoder.decode_by_id(20).unwrap();
++    assert!(router
++        .process_mapped_item_parts(&item, &mut decoder)
++        .is_err());
++    assert_eq!(
++        calls.get(),
++        0,
++        "ordinary mapped origin validates strictly before Items"
++    );
++}
++
++#[test]
++fn type_map_bulk_failure_precedes_origin_and_every_item_callback() {
++    let source = format!(
++        "{BLOCK}#1=IFCREPRESENTATIONMAP(#998,#2);
++        #2=IFCSHAPEREPRESENTATION($,'Body','CSG',(#10,#999));"
++    );
++    let (router, calls) = observed(true);
++    let mut decoder = EntityDecoder::new(&source);
++    let map = decoder.decode_by_id(1).unwrap();
++    let error = router
++        .process_representation_map(&map, &mut decoder)
++        .unwrap_err();
++    assert!(
++        error.to_string().contains("999"),
++        "whole Items fails before late origin: {error}"
++    );
++    assert_eq!(calls.get(), 0);
++}
++
++#[test]
++fn opening_bad_whole_lists_and_failed_items_skip_only_their_siblings() {
++    let source = format!(
++        "{BLOCK}#1=IFCOPENINGELEMENT('o',$,$,$,$,#997,#2,$);
++        #2=IFCPRODUCTDEFINITIONSHAPE($,$,(#3,#4,#5,#6));
++        #3=IFCSHAPEREPRESENTATION($,'Body','CSG',(#10,#999));
++        #4=IFCSHAPEREPRESENTATION($,'Body','CSG');
++        #5=IFCSHAPEREPRESENTATION($,'Body','CSG',(#90,#10));
++        #6=IFCSHAPEREPRESENTATION($,'Body','CSG',(#999));
++        #90=IFCPOLYLINE(());"
++    );
++    for bounds in [false, true] {
++        let (router, calls) = observed(true);
++        let mut decoder = EntityDecoder::new(&source);
++        let opening = decoder.decode_by_id(1).unwrap();
++        if bounds {
++            let boxes = router
++                .get_opening_item_bounds_with_direction(&opening, &mut decoder)
++                .unwrap();
++            assert_eq!(
++                boxes.len(),
++                2,
++                "a later list sees the earlier live decoder repair"
++            );
++            assert!(
++                boxes.iter().all(|(min, max, direction)| {
++                    *min == crate::Point3::new(0., 0., 0.)
++                        && *max == crate::Point3::new(2., 3., 4.)
++                        && direction.is_none()
++                }),
++                "failed placement uses identity"
++            );
++        } else {
++            let meshes = router
++                .get_opening_item_meshes_world(&opening, &mut decoder)
++                .unwrap();
++            assert_eq!(triangles(&meshes), 24);
++            assert!(meshes.iter().all(|mesh| mesh.origin == [0.; 3]));
++        }
++        assert_eq!(
++            calls.get(),
++            2,
++            "bad whole first list runs no earlier child; later lists still run"
++        );
++    }
++}
++
++#[test]
++fn opening_bulk_representations_fail_before_placement_and_any_item_work() {
++    let source = format!(
++        "{BLOCK}#1=IFCOPENINGELEMENT('o',$,$,$,$,#998,#2,$);
++        #2=IFCPRODUCTDEFINITIONSHAPE($,$,(#3,#999));
++        #3=IFCSHAPEREPRESENTATION($,'Body','CSG',(#10));"
++    );
++    for bounds in [false, true] {
++        let (router, calls) = observed(true);
++        let mut decoder = EntityDecoder::new(&source);
++        let opening = decoder.decode_by_id(1).unwrap();
++        let error = if bounds {
++            router
++                .get_opening_item_bounds_with_direction(&opening, &mut decoder)
++                .unwrap_err()
++        } else {
++            router
++                .get_opening_item_meshes_world(&opening, &mut decoder)
++                .unwrap_err()
++        };
++        assert!(error.to_string().contains("999"));
++        assert_eq!(calls.get(), 0);
++    }
++}
++
++#[test]
++fn admitted_annotation_fill_outlives_source_and_keeps_scaled_area() {
++    let plan = {
++        let mut decoder = EntityDecoder::new(
++            "#1=IFCCARTESIANPOINT((0.,0.));
++            #2=IFCCARTESIANPOINT((2.,0.));#3=IFCCARTESIANPOINT((0.,3.));
++            #4=IFCPOLYLINE((#1,#2,#3,#1));#10=IFCANNOTATIONFILLAREA(#4,$);",
++        );
++        let item = decoder.decode_by_id(10).unwrap();
++        super::annotation::AnnotationFill::admit(&item, &mut decoder, 2.).unwrap()
++    };
++    let mesh = plan.evaluate().unwrap();
++    assert_eq!(mesh.indices.len(), 3);
++    let area: f64 = mesh
++        .indices
++        .chunks_exact(3)
++        .map(|indices| {
++            let point = |index: u32| {
++                let i = index as usize * 3;
++                crate::Point3::new(
++                    mesh.positions[i] as f64,
++                    mesh.positions[i + 1] as f64,
++                    mesh.positions[i + 2] as f64,
++                )
++            };
++            (point(indices[1]) - point(indices[0]))
++                .cross(&(point(indices[2]) - point(indices[0])))
++                .norm()
++                * 0.5
++        })
++        .sum();
++    assert_eq!(area, 12.);
++}
+diff --git a/rust/geometry/src/program/product.rs b/rust/geometry/src/program/product.rs
+new file mode 100644
+index 0000000000..5efe1b6f53
+--- /dev/null
++++ b/rust/geometry/src/program/product.rs
+@@ -0,0 +1,102 @@
++// SPDX-License-Identifier: MPL-2.0
++//! Ordinary merged/styled item execution. Source remains reached per item;
++//! nested mappings use owned child frames and custom processors keep the live decoder.
++use super::{ProductProgram, ReachedItem};
++use crate::processors::texture::ResolvedTextureMap;
++use crate::router::transforms::instancing_enabled;
++use crate::{GeometryRouter, Result, SubMeshCollection};
++use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
++use rustc_hash::FxHashMap;
++
++impl ProductProgram {
++    pub(crate) fn merged(
++        mut self,
++        element: &DecodedEntity,
++        router: &GeometryRouter,
++        decoder: &mut EntityDecoder<'_>,
++    ) -> Result<super::resources::MergedParts> {
++        // Body representations only ('Axis', 'FootPrint', 'Box' are skipped), and
++        // a MappedRepresentation is skipped when direct geometry duplicates it.
++        while let Some(ReachedItem { item, fill_only }) = self.next(decoder)? {
++            // Process each representation item
++            // A mapped item whose source mixes frames yields one mesh per frame (#6446).
++            let item_parts = if element.ifc_type == IfcType::IfcAnnotation
++                && item.ifc_type == IfcType::IfcAnnotationFillArea
++            {
++                vec![router.process_annotation_fill(&item, decoder)?]
++            } else if fill_only {
++                continue; // symbolic annotation item, never meshed (#5389)
++            } else if let Some(mesh) =
++                router.process_raw_item_for_element(&item, element, decoder)?
++            {
++                vec![mesh]
++            } else {
++                router.process_representation_item_parts(&item, decoder)?
++            };
++            for mesh in item_parts {
++                if !mesh.positions.is_empty() {
++                    self.merge(mesh, instancing_enabled());
++                }
++            }
++        }
++        Ok(self.finish_merged(instancing_enabled()))
++    }
++
++    pub(crate) fn styled(
++        mut self,
++        element: &DecodedEntity,
++        router: &GeometryRouter,
++        decoder: &mut EntityDecoder<'_>,
++        allow_instancing: bool,
++        texture_index: Option<&FxHashMap<u32, ResolvedTextureMap>>,
++    ) -> Result<SubMeshCollection> {
++        let mut sub_meshes = SubMeshCollection::new();
++
++        while let Some(ReachedItem { item, fill_only }) = self.next(decoder)? {
++            // Process each representation item, preserving geometry IDs
++            if element.ifc_type == IfcType::IfcAnnotation
++                && item.ifc_type == IfcType::IfcAnnotationFillArea
++            {
++                sub_meshes.add(item.id, router.process_annotation_fill(&item, decoder)?);
++                continue;
++            }
++            if fill_only {
++                continue; // symbolic annotation item, never meshed (#5389)
++            }
++            // A textured face set keeps its UV channel (#1781) and, like
++            // any raw item, rebases in its own frame (#5698). A failed
++            // textured build falls through to the untextured paths.
++            // A terrain TIN is a face set that only appends `Flags` (#5942).
++            let texture = texture_index
++                .and_then(|index| index.get(&item.id))
++                .filter(|_| {
++                    matches!(
++                        item.ifc_type,
++                        IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork
++                    )
++                });
++            if let Some(map) = texture {
++                let offset = router.element_frame_rtc(element, decoder)?;
++                if let Some((mesh, uvs)) = router.textured_face_set(&item, decoder, map, offset) {
++                    sub_meshes.add_textured(item.id, mesh, uvs, map.attachment());
++                    continue;
++                }
++            }
++            if let Some(mesh) = router.process_raw_item_for_element(&item, element, decoder)? {
++                if !mesh.is_empty() {
++                    sub_meshes.add(item.id, mesh);
++                }
++                continue;
++            }
++            router.collect_submeshes_from_item(
++                &item,
++                decoder,
++                &mut sub_meshes,
++                allow_instancing,
++                texture_index,
++            )?;
++        }
++
++        Ok(sub_meshes)
++    }
++}
+diff --git a/rust/geometry/src/program/resources.rs b/rust/geometry/src/program/resources.rs
+new file mode 100644
+index 0000000000..b9a2e3e361
+--- /dev/null
++++ b/rust/geometry/src/program/resources.rs
+@@ -0,0 +1,50 @@
++// SPDX-License-Identifier: MPL-2.0
++//! Numerical accumulation in the historical item order. No source service.
++use crate::router::frame_parts::{frames_mergeable, mesh_bounds, union_bounds, FrameParts};
++use crate::{InstanceMeta, Mesh};
++
++pub(super) type MergedParts = (Mesh, FrameParts, (Mesh, Option<[f32; 6]>));
++
++#[derive(Default)]
++pub(super) struct MergedResources {
++    combined: Mesh,
++    rebased: Mesh,
++    bounds: Option<[f32; 6]>,
++    far: FrameParts,
++    rebased_bounds: Option<[f32; 6]>,
++    single_instance: Option<InstanceMeta>,
++    item_count: usize,
++}
++
++impl MergedResources {
++    pub(super) fn merge(&mut self, mesh: Mesh, instancing: bool) {
++        if mesh.positions.is_empty() { return; }
++        let bounds = mesh.local_bounds.unwrap_or_else(|| mesh_bounds(&mesh));
++        if instancing {
++            self.item_count += 1;
++            self.single_instance = if self.item_count == 1 { mesh.instance_meta.clone() } else { None };
++        }
++        // Raw-coordinate and RTC-applied items cannot merge until placement.
++        if mesh.rtc_applied {
++            self.rebased.merge(&mesh);
++            union_bounds(&mut self.rebased_bounds, bounds);
++            return;
++        } else if self.combined.positions.is_empty() || frames_mergeable(self.combined.origin, mesh.origin) {
++            self.combined.merge(&mesh);
++        } else {
++            self.far.merge(&mesh, bounds);
++            return;
++        }
++        union_bounds(&mut self.bounds, bounds);
++    }
++
++    pub(super) fn finish(mut self, instancing: bool) -> MergedParts {
++        if self.combined.positions.is_empty() {
++            std::mem::swap(&mut self.combined, &mut self.rebased);
++            self.bounds = self.rebased_bounds.take();
++        }
++        if instancing { self.combined.instance_meta = self.single_instance; }
++        self.combined.local_bounds = self.bounds;
++        (self.combined, self.far, (self.rebased, self.rebased_bounds))
++    }
++}
+diff --git a/rust/geometry/src/program/source.rs b/rust/geometry/src/program/source.rs
+new file mode 100644
+index 0000000000..3145daba22
+--- /dev/null
++++ b/rust/geometry/src/program/source.rs
+@@ -0,0 +1,52 @@
++// SPDX-License-Identifier: MPL-2.0
++//! Reached whole-list admission shared by product, mapped and type consumers.
++use crate::{Error, Result};
++use ifc_lite_core::{slot, DecodedEntity, EntityDecoder};
++
++/// The consumers historically disagree about absent Items. Keep that policy at
++/// admission rather than turning malformed required lists into empty success.
++pub(crate) enum ItemListPolicy { Product, RequiredMap, OptionalMap }
++
++/// Owns the already admitted list, including repeated authored occurrences.
++/// Constructed only at the consumer's historical reached admission point.
++pub(crate) struct ItemProgram(std::vec::IntoIter<DecodedEntity>);
++
++impl ItemProgram {
++    pub(crate) fn empty() -> Self { Self(Vec::new().into_iter()) }
++
++    pub(crate) fn admit(rep: &DecodedEntity, decoder: &mut EntityDecoder<'_>, policy: ItemListPolicy) -> Result<Self> {
++        let items = match policy {
++            ItemListPolicy::Product => crate::representation::rep_items(rep, decoder)?,
++            ItemListPolicy::RequiredMap => {
++                let attribute = rep.get(slot::IfcRepresentation::ITEMS.index())
++                    .ok_or_else(|| Error::geometry("Representation missing Items".to_string()))?;
++                decoder.resolve_ref_list(attribute)?
++            }
++            ItemListPolicy::OptionalMap => match rep.get(slot::IfcRepresentation::ITEMS.index()) {
++                Some(attribute) => decoder.resolve_ref_list(attribute)?,
++                None => Vec::new(),
++            },
++        };
++        Ok(Self(items.into_iter()))
++    }
++}
++
++impl Iterator for ItemProgram {
++    type Item = DecodedEntity;
++    fn next(&mut self) -> Option<Self::Item> { self.0.next() }
++}
++
++/// The opening probes deliberately accept a resolved shape of any type and use
++/// their historical error strings. All representations precede placement and
++/// every item admission; this is not the stricter product_shape policy.
++pub(super) fn opening_representations(element: &DecodedEntity, decoder: &mut EntityDecoder<'_>) -> Result<Option<Vec<DecodedEntity>>> {
++    let attr = element.get(slot::IfcProduct::REPRESENTATION.index())
++        .ok_or_else(|| Error::geometry("Element has no representation attribute".to_string()))?;
++    if attr.is_null() { return Ok(None) }
++    let representation = decoder.resolve_ref(attr)?
++        .ok_or_else(|| Error::geometry("Failed to resolve representation".to_string()))?;
++    let list = representation.get(slot::IfcProductDefinitionShape::REPRESENTATIONS.index())
++        .ok_or_else(|| Error::geometry("ProductDefinitionShape missing Representations".to_string()))?;
++    let representations = decoder.resolve_ref_list(list)?;
++    Ok(Some(crate::representation::meshed_representations(element, &representations).cloned().collect()))
++}
+diff --git a/rust/geometry/src/program/tests.rs b/rust/geometry/src/program/tests.rs
+new file mode 100644
+index 0000000000..9de89c5d0c
+--- /dev/null
++++ b/rust/geometry/src/program/tests.rs
+@@ -0,0 +1,107 @@
++// SPDX-License-Identifier: MPL-2.0
++//! ProductProgram phase invariants: source admission precedes child execution,
++//! while conditional descendants observe earlier mutable-decoder callbacks.
++use crate::{GeometryProcessor, GeometryRouter, Mesh, Result, TessellationQuality};
++use crate::processors::BlockProcessor;
++use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
++use std::{cell::Cell, rc::Rc, sync::Arc};
++
++pub(super) const BLOCK: &str = "#10=IFCBLOCK($,2.,3.,4.);";
++
++pub(super) struct ObservedBlock { pub calls: Rc<Cell<usize>>, pub repair: bool }
++impl GeometryProcessor for ObservedBlock {
++    fn supported_types(&self) -> Vec<IfcType> { vec![IfcType::IfcBlock] }
++    fn process(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
++        schema: &IfcSchema, quality: TessellationQuality) -> Result<Mesh> {
++        self.calls.set(self.calls.get() + 1);
++        if self.repair {
++            let repaired = decoder.decode_by_id(10)?;
++            decoder.inject_shared_cache(&[(999, Arc::new(repaired))].into_iter().collect());
++        }
++        BlockProcessor::new().process(entity, decoder, schema, quality)
++    }
++}
++
++fn run(source: &str, styled: bool, repair: bool) -> (Result<usize>, usize) {
++    let calls = Rc::new(Cell::new(0));
++    let mut router = GeometryRouter::new();
++    router.register(Box::new(ObservedBlock { calls: calls.clone(), repair }));
++    let mut decoder = EntityDecoder::new(source);
++    let element = decoder.decode_by_id(1).unwrap();
++    let result = if styled {
++        router.process_element_with_submeshes(&element, &mut decoder)
++            .map(|out| out.sub_meshes.iter().map(|sub| sub.mesh.indices.len() / 3).sum())
++    } else {
++        router.process_element_parts(&element, &mut decoder)
++            .map(|parts| parts.iter().map(|part| part.indices.len() / 3).sum())
++    };
++    (result, calls.get())
++}
++
++#[test]
++fn product_program_bulk_lists_fail_before_the_first_child_in_both_consumers() {
++    for styled in [false, true] {
++        for (reps, items) in [("#3,#999", "#10"), ("#3", "#10,#999")] {
++            let source = format!("{BLOCK}#1=IFCWALL('w',$,$,$,$,$,#2,$);
++                #2=IFCPRODUCTDEFINITIONSHAPE($,$,({reps}));
++                #3=IFCSHAPEREPRESENTATION($,'Body','CSG',({items}));");
++            let (result, calls) = run(&source, styled, true);
++            assert!(result.is_err(), "malformed later reference must fail the whole list");
++            assert_eq!(calls, 0, "an earlier child must not repair a later bulk-list reference");
++        }
++    }
++}
++
++#[test]
++fn product_program_admits_later_representation_items_after_callback_repairs() {
++    let source = format!("{BLOCK}#1=IFCWALL('w',$,$,$,$,$,#2,$);
++        #2=IFCPRODUCTDEFINITIONSHAPE($,$,(#3,#4));
++        #3=IFCSHAPEREPRESENTATION($,'Body','CSG',(#10));
++        #4=IFCSHAPEREPRESENTATION($,'Body','CSG',(#999));");
++    for styled in [false, true] {
++        let (result, calls) = run(&source, styled, true);
++        assert_eq!(result.unwrap(), 24, "both real block occurrences survive");
++        assert_eq!(calls, 2, "later item admission sees the live decoder after the callback");
++    }
++}
++
++#[test]
++fn product_program_skips_axis_and_duplicate_mapped_descendants_without_source_reads() {
++    let source = format!("{BLOCK}#1=IFCWALL('w',$,$,$,$,$,#2,$);
++        #2=IFCPRODUCTDEFINITIONSHAPE($,$,(#4,#5,#3));
++        #3=IFCSHAPEREPRESENTATION($,'Body','CSG',(#10,#10));
++        #4=IFCSHAPEREPRESENTATION($,'Axis','Curve3D',(#998));
++        #5=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#999));");
++    for styled in [false, true] {
++        let (result, calls) = run(&source, styled, false);
++        assert_eq!(result.unwrap(), 24);
++        assert_eq!(calls, 2, "repeated direct items are occurrences, not a global visited set");
++    }
++}
++
++#[test]
++fn product_program_absent_shape_skips_invalid_placement() {
++    for styled in [false, true] {
++        let (result, calls) = run("#1=IFCWALL('w',$,$,$,$,#999,$,$);", styled, false);
++        assert_eq!(result.unwrap(), 0);
++        assert_eq!(calls, 0);
++    }
++}
++
++#[test]
++fn selected_builtin_constructor_owns_parameters_after_source_disposal() {
++    let plan = {
++        let source = BLOCK.to_owned();
++        let mut decoder = EntityDecoder::new(&source);
++        let entity = decoder.decode_by_id(10).unwrap();
++        BlockProcessor::new().lower_owned(&entity, &mut decoder, TessellationQuality::Medium, None)
++            .expect("selected builtin admits an owned payload").unwrap()
++    };
++    let mesh = plan.evaluate().unwrap();
++    assert_eq!(mesh.indices.len(), 36);
++    for axis in 0..3 {
++        let max = mesh.positions.chunks_exact(3).map(|p| p[axis]).fold(f32::NEG_INFINITY, f32::max);
++        let min = mesh.positions.chunks_exact(3).map(|p| p[axis]).fold(f32::INFINITY, f32::min);
++        assert_eq!((min, max), (0., [2., 3., 4.][axis]));
++    }
++}
+diff --git a/rust/geometry/src/program/traversal.rs b/rust/geometry/src/program/traversal.rs
+new file mode 100644
+index 0000000000..503c3936e1
+--- /dev/null
++++ b/rust/geometry/src/program/traversal.rs
+@@ -0,0 +1,109 @@
++// SPDX-License-Identifier: MPL-2.0
++//! One reached representation and one whole admitted item list at a time.
++use crate::representation::{product_shape, Select};
++use crate::Result;
++use super::{ItemProgram, ItemListPolicy};
++use ifc_lite_core::{DecodedEntity, EntityDecoder};
++
++/// Owned item and the selected representation's annotation policy.
++pub(crate) struct ReachedItem {
++    pub item: DecodedEntity,
++    pub fill_only: bool,
++}
++
++/// Representation/item error and filtering policies retained by each entry.
++#[derive(Clone, Copy)]
++pub(crate) enum EntryPolicy { MergedProduct, StyledProduct, TypeMap, OpeningItemMeshes, OpeningItemBounds }
++impl EntryPolicy {
++    fn opening(self) -> bool { matches!(self, Self::OpeningItemMeshes | Self::OpeningItemBounds) }
++}
++
++/// Owns reached control; no decoder or borrowed scope survives `next`.
++/// Descendants of a later item are never admitted early.
++pub(crate) struct ProductProgram {
++    policy: EntryPolicy,
++    element: DecodedEntity,
++    representations: std::vec::IntoIter<DecodedEntity>,
++    items: ItemProgram,
++    fill_only: bool,
++    state: State,
++    resources: super::resources::MergedResources,
++}
++
++enum State { Representations, Items, Complete }
++
++enum SourceAdmission {
++    RepresentationItems(DecodedEntity),
++}
++
++enum AdmissionValue {
++    Items(ItemProgram),
++}
++
++impl ProductProgram {
++    pub(crate) fn admit(element: &DecodedEntity, policy: EntryPolicy, decoder: &mut EntityDecoder<'_>) -> Result<Option<Self>> {
++        let Some(shape) = product_shape(element, decoder)? else { return Ok(None) };
++        Ok(Some(Self::representations(element, policy, shape.into_selected(element, Select::Meshed))))
++    }
++
++    fn representations(element: &DecodedEntity, policy: EntryPolicy, reps: Vec<DecodedEntity>) -> Self {
++        Self { element: element.clone(), policy, representations: reps.into_iter(),
++            items: ItemProgram::empty(), fill_only: false, state: State::Representations,
++            resources: Default::default() }
++    }
++
++    pub(crate) fn opening(element: &DecodedEntity, policy: EntryPolicy, decoder: &mut EntityDecoder<'_>) -> Result<Option<Self>> {
++        debug_assert!(policy.opening());
++        Ok(super::source::opening_representations(element, decoder)?
++            .map(|reps| Self::representations(element, policy, reps)))
++    }
++
++    pub(super) fn type_map(rep_map: &DecodedEntity, representation: &DecodedEntity, decoder: &mut EntityDecoder<'_>) -> Result<Self> {
++        // Whole Items precede the source claim and every child, even for non-Body maps.
++        let items = ItemProgram::admit(representation, decoder, ItemListPolicy::RequiredMap)?;
++        let mut program = Self::representations(rep_map, EntryPolicy::TypeMap, Vec::new());
++        program.items = items;
++        program.state = State::Items;
++        Ok(program)
++    }
++
++    pub(crate) fn merge(&mut self, mesh: crate::Mesh, instancing: bool) {
++        self.resources.merge(mesh, instancing);
++    }
++
++    pub(crate) fn finish_merged(self, instancing: bool) -> super::resources::MergedParts {
++        self.resources.finish(instancing)
++    }
++
++    pub(crate) fn next(&mut self, decoder: &mut EntityDecoder<'_>) -> Result<Option<ReachedItem>> {
++        loop {
++            match self.state {
++                State::Representations => {
++                    let Some(rep) = self.representations.next() else { self.state = State::Complete; continue };
++                    // Historical whole-list admission precedes annotation policy
++                    // and the first child, even if the final child reference fails.
++                    let value = match self.admit_source(SourceAdmission::RepresentationItems(rep.clone()), decoder) {
++                        Ok(value) => value,
++                        Err(_) if self.policy.opening() => continue,
++                        Err(error) => return Err(error),
++                    };
++                    let AdmissionValue::Items(items) = value;
++                    self.fill_only = !self.policy.opening() && crate::router::annotation::is_fill_only_representation(&self.element, &rep);
++                    self.items = items;
++                    self.state = State::Items;
++                }
++                State::Items => match self.items.next() {
++                    Some(item) => return Ok(Some(ReachedItem { item, fill_only: self.fill_only })),
++                    None => self.state = State::Representations,
++                },
++                State::Complete => return Ok(None),
++            }
++        }
++    }
++
++    fn admit_source(&self, request: SourceAdmission, decoder: &mut EntityDecoder<'_>) -> Result<AdmissionValue> {
++        Ok(match request {
++            SourceAdmission::RepresentationItems(rep) => AdmissionValue::Items(ItemProgram::admit(&rep, decoder, ItemListPolicy::Product)?),
++        })
++    }
++}
+diff --git a/rust/geometry/src/program/type_map.rs b/rust/geometry/src/program/type_map.rs
+new file mode 100644
+index 0000000000..0e26844d4c
+--- /dev/null
++++ b/rust/geometry/src/program/type_map.rs
+@@ -0,0 +1,159 @@
++// SPDX-License-Identifier: MPL-2.0
++//! Orphan type maps: ordered common item control and late MappingOrigin.
++use super::{ProductProgram, ReachedItem};
++use crate::processors::texture::{ResolvedTextureMap, TextureAttachment};
++use crate::router::{frame_parts::SourceParts, GeometryRouter};
++use crate::{Mesh, Result};
++use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
++use nalgebra::Matrix4;
++use rustc_hash::FxHashMap;
++
++type TexturedPart = (Mesh, Vec<f32>, TextureAttachment);
++pub(crate) type TypeParts = Vec<(Mesh, Vec<f32>, Option<TextureAttachment>)>;
++pub(crate) struct TypeMap {
++    rep_map: DecodedEntity,
++    program: ProductProgram,
++    policy: bool,
++    untextured: SourceParts,
++    textured: Vec<TexturedPart>,
++}
++impl TypeMap {
++    pub(crate) fn admit(
++        rep_map: &DecodedEntity,
++        router: &GeometryRouter,
++        decoder: &mut EntityDecoder<'_>,
++    ) -> Result<Self> {
++        let representation = super::mapping::representation(rep_map, decoder)?;
++        let program = ProductProgram::type_map(rep_map, &representation, decoder)?;
++        let policy = router.claim_unsupported_source(rep_map.id, &representation);
++        Ok(Self {
++            rep_map: rep_map.clone(),
++            program,
++            policy,
++            untextured: SourceParts::default(),
++            textured: Vec::new(),
++        })
++    }
++
++    pub(crate) fn run(
++        mut self,
++        router: &GeometryRouter,
++        decoder: &mut EntityDecoder<'_>,
++        texture_index: &FxHashMap<u32, ResolvedTextureMap>,
++    ) -> Result<TypeParts> {
++        while let Some(ReachedItem { item, .. }) = self.program.next(decoder)? {
++            router.with_unsupported_policy(self.policy, || {
++                self.item(item, router, decoder, texture_index)
++            });
++        }
++        // A live callback may have repaired the origin. Do not admit it early.
++        let origin = router.with_unsupported_policy(self.policy, || {
++            Self::origin(&self.rep_map, router, decoder)
++        })?;
++        Ok(self.finish(origin, router))
++    }
++
++    fn item(
++        &mut self,
++        item: DecodedEntity,
++        router: &GeometryRouter,
++        decoder: &mut EntityDecoder<'_>,
++        texture_index: &FxHashMap<u32, ResolvedTextureMap>,
++    ) {
++        // A nested IfcMappedItem inside a type's own representation: process
++        // it (applies its MappingTarget) rather than dropping its geometry.
++        if item.ifc_type == IfcType::IfcMappedItem {
++            match router.process_mapped_item_parts(&item, decoder) {
++                // already scaled inside the cached path
++                Ok(sub_parts) => sub_parts
++                    .iter()
++                    .for_each(|part| self.untextured.merge(part)),
++                Err(_e) => {
++                    router.record_unsupported_item(item.ifc_type.clone());
++                    crate::diag::diag_debug!(
++                        { item_id = item.id, error = %_e,
++                          "skipping unsupported nested IfcMappedItem in representation map" }
++                        else {
++                            #[cfg(debug_assertions)]
++                            eprintln!(
++                                "[ifc-lite] Skipping unsupported nested IfcMappedItem #{} in representation map: {}",
++                                item.id, _e
++                            );
++                        }
++                    );
++                }
++            }
++            return;
++        }
++
++        // Textured tessellated face set → its own part with per-vertex UVs (#961),
++        // rebased like the plain items below (#5698, #7690).
++        if let Some(map) = texture_index.get(&item.id) {
++            if let Some((mut sub_mesh, sub_uvs)) =
++                router.textured_face_set(&item, decoder, map, Some(router.rtc_offset()))
++            {
++                router.keep_rebase_in_origin(&mut sub_mesh);
++                self.textured.push((sub_mesh, sub_uvs, map.attachment()));
++                return;
++            }
++        }
++
++        router.merge_source_item(&item, decoder, &mut self.untextured, "representation-map");
++    }
++
++    fn origin(
++        rep_map: &DecodedEntity,
++        router: &GeometryRouter,
++        decoder: &mut EntityDecoder<'_>,
++    ) -> Result<Option<Matrix4<f64>>> {
++        let origin_transform: Option<nalgebra::Matrix4<f64>> =
++            match rep_map.get(slot::IfcRepresentationMap::MAPPING_ORIGIN.index()) {
++                Some(origin_attr) if !origin_attr.is_null() => {
++                    match decoder.resolve_ref(origin_attr)? {
++                        Some(origin) if origin.ifc_type == IfcType::IfcAxis2Placement3D => {
++                            let mut t = router.parse_axis2_placement_3d(&origin, decoder)?;
++                            router.scale_transform(&mut t);
++                            Some(t)
++                        }
++                        _ => None,
++                    }
++                }
++                _ => None,
++            };
++
++        Ok(origin_transform)
++    }
++
++    fn finish(self, origin_transform: Option<Matrix4<f64>>, router: &GeometryRouter) -> TypeParts {
++        let mut out: Vec<(
++            Mesh,
++            Vec<f32>,
++            Option<crate::processors::texture::TextureAttachment>,
++        )> = Vec::new();
++        for (mut mesh, uvs, texture) in self.textured {
++            if let Some(t) = &origin_transform {
++                router.transform_mesh_local(&mut mesh, t);
++            }
++            // Same sliver hygiene as the other mesh-output chokepoints. This is
++            // the type-geometry (RepresentationMap) channel and the only one
++            // carrying a parallel per-vertex UV array; clean_degenerate edits
++            // only indices (vertices/UVs untouched), so the UVs stay in sync.
++            mesh.clean_degenerate();
++            out.push((mesh, uvs, Some(texture)));
++        }
++        for mut untextured in self
++            .untextured
++            .into_parts()
++            .into_iter()
++            .filter(|mesh| !mesh.is_empty())
++        {
++            if let Some(t) = &origin_transform {
++                router.transform_mesh_local(&mut untextured, t);
++            }
++            untextured.clean_degenerate();
++            out.push((untextured, Vec::new(), None));
++        }
++
++        out
++    }
++}
+diff --git a/rust/geometry/src/representation/mod.rs b/rust/geometry/src/representation/mod.rs
+index e2330abc31..3618aaab80 100644
+--- a/rust/geometry/src/representation/mod.rs
++++ b/rust/geometry/src/representation/mod.rs
+@@ -103,6 +103,13 @@ pub fn product_shape(
+ }
+ 
+ impl ProductShape {
++    /// Consume the admitted list without copying entities or revisiting prefixes.
++    pub(crate) fn into_selected(self, element: &DecodedEntity, select: Select) -> Vec<DecodedEntity> {
++        let direct = select.needs_direct_geometry()
++            && select::has_direct_geometry(element, &self.representations);
++        self.representations.into_iter().filter(|rep| select.admits(element, rep, direct)).collect()
++    }
++
+     /// Every representation, in list order.
+     pub fn representations(&self) -> &[DecodedEntity] {
+         &self.representations
+diff --git a/rust/geometry/src/router/annotation.rs b/rust/geometry/src/router/annotation.rs
+index 6634d9ae97..8d628f1132 100644
+--- a/rust/geometry/src/router/annotation.rs
++++ b/rust/geometry/src/router/annotation.rs
+@@ -7,10 +7,6 @@
+ use super::GeometryRouter;
+ use crate::{Error, Mesh, Result};
+ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+-use nalgebra::Point3;
+-
+-const MAX_VERTICES: usize = 2048;
+-const MAX_RINGS: usize = 64;
+ 
+ pub(crate) fn accepts(product: &DecodedEntity, rep_type: &str) -> bool {
+     product.ifc_type == IfcType::IfcAnnotation && matches!(rep_type, "Annotation2D" | "Surface2D")
+@@ -22,65 +18,19 @@ pub(crate) fn accepts(product: &DecodedEntity, rep_type: &str) -> bool {
+ /// text literals) are symbolic: the symbolic-annotation layer draws them and
+ /// no mesh processor exists for them, so walking them only counted each one as
+ /// a dropped item and warned "missing or incomplete" on a clean model (#5389).
+-pub(super) fn is_fill_only_representation(product: &DecodedEntity, shape_rep: &DecodedEntity) -> bool {
++pub(crate) fn is_fill_only_representation(product: &DecodedEntity, shape_rep: &DecodedEntity) -> bool {
+     crate::representation::effective_element_rep_type(product, shape_rep)
+         .is_some_and(|rep_type| accepts(product, rep_type))
+ }
+ 
+ impl GeometryRouter {
+-    pub(super) fn process_annotation_fill(
++    pub(crate) fn process_annotation_fill(
+         &self,
+         item: &DecodedEntity,
+         decoder: &mut EntityDecoder,
+     ) -> Result<Mesh> {
+         let result = (|| {
+-            super::annotation_style::validate(item.id, decoder)?;
+-            let outer = item
+-                .get_ref(0)
+-                .ok_or_else(|| invalid("missing outer boundary"))?;
+-            let mut refs = vec![outer];
+-            if let Some(inner) = item.get(1).filter(|a| !a.is_null()) {
+-                let list = inner
+-                    .as_list()
+-                    .ok_or_else(|| invalid("invalid inner boundaries"))?;
+-                if list.len() >= MAX_RINGS {
+-                    return Err(invalid("ring budget exceeded"));
+-                }
+-                for attr in list {
+-                    refs.push(
+-                        attr.as_entity_ref()
+-                            .ok_or_else(|| invalid("invalid boundary reference"))?,
+-                    );
+-                }
+-            }
+-            let mut remaining = MAX_VERTICES;
+-            let mut rings = Vec::with_capacity(refs.len());
+-            // Fixed-depth curve→point walk, no recursive reference expansion.
+-            for id in refs {
+-                rings.push(read_ring(id, decoder, &mut remaining)?);
+-            }
+-            let mut mesh = super::annotation_polygon::triangulate(&rings)?;
+-            self.scale_mesh(&mut mesh);
+-            if mesh.positions.iter().any(|p| !p.is_finite()) {
+-                return Err(invalid("coordinates exceed mesh storage range"));
+-            }
+-            for triangle in mesh.indices.chunks_exact(3) {
+-                let point = |i: u32| {
+-                    let i = i as usize * 3;
+-                    Point3::new(
+-                        mesh.positions[i] as f64,
+-                        mesh.positions[i + 1] as f64,
+-                        mesh.positions[i + 2] as f64,
+-                    )
+-                };
+-                let a = point(triangle[0]);
+-                let b = point(triangle[1]);
+-                let c = point(triangle[2]);
+-                if (b - a).cross(&(c - a)).norm_squared() == 0. {
+-                    return Err(invalid("mesh storage precision collapses a fill triangle"));
+-                }
+-            }
+-            Ok(mesh)
++            crate::program::annotation::AnnotationFill::admit(item, decoder, self.unit_scale())?.evaluate()
+         })();
+         if result.is_err() {
+             self.record_unsupported_item(item.ifc_type.clone());
+@@ -89,53 +39,6 @@ impl GeometryRouter {
+     }
+ }
+ 
+-fn read_ring(
+-    id: u32,
+-    decoder: &mut EntityDecoder,
+-    remaining: &mut usize,
+-) -> Result<Vec<Point3<f64>>> {
+-    let curve = decoder.decode_by_id(id)?;
+-    if curve.ifc_type != IfcType::IfcPolyline {
+-        return Err(invalid("only closed IfcPolyline boundaries are supported"));
+-    }
+-    let refs = curve
+-        .get_list(0)
+-        .ok_or_else(|| invalid("missing polyline points"))?;
+-    if refs.len() < 4 || refs.len() > *remaining {
+-        return Err(invalid("vertex budget or ring size invalid"));
+-    }
+-    *remaining -= refs.len();
+-    let mut points = Vec::with_capacity(refs.len());
+-    for attr in refs {
+-        let point = decoder.decode_by_id(
+-            attr.as_entity_ref()
+-                .ok_or_else(|| invalid("invalid point reference"))?,
+-        )?;
+-        if point.ifc_type != IfcType::IfcCartesianPoint {
+-            return Err(invalid("boundary point has wrong type"));
+-        }
+-        let coords = point
+-            .get_list(0)
+-            .ok_or_else(|| invalid("missing point coordinates"))?;
+-        if !(2..=3).contains(&coords.len()) {
+-            return Err(invalid("point must be 2D or 3D"));
+-        }
+-        let mut xyz = [0.; 3];
+-        for (i, attr) in coords.iter().enumerate() {
+-            xyz[i] = attr
+-                .as_float()
+-                .filter(|v| v.is_finite())
+-                .ok_or_else(|| invalid("nonfinite point"))?;
+-        }
+-        points.push(Point3::from(xyz));
+-    }
+-    if points.first() != points.last() {
+-        return Err(invalid("boundary must be explicitly closed"));
+-    }
+-    points.pop();
+-    Ok(points)
+-}
+-
+-pub(super) fn invalid(reason: &str) -> Error {
++pub(crate) fn invalid(reason: &str) -> Error {
+     Error::geometry(format!("IfcAnnotationFillArea: {reason}"))
+ }
+diff --git a/rust/geometry/src/router/annotation_polygon.rs b/rust/geometry/src/router/annotation_polygon.rs
+index 29a8320663..038b45ef19 100644
+--- a/rust/geometry/src/router/annotation_polygon.rs
++++ b/rust/geometry/src/router/annotation_polygon.rs
+@@ -10,7 +10,7 @@ use nalgebra::{Point2, Point3};
+ 
+ type P = Point2<f64>;
+ 
+-pub(super) fn triangulate(rings: &[Vec<Point3<f64>>]) -> Result<Mesh> {
++pub(crate) fn triangulate(rings: &[Vec<Point3<f64>>]) -> Result<Mesh> {
+     let outer = &rings[0];
+     let origin = outer[0];
+     let extent = rings
+diff --git a/rust/geometry/src/router/annotation_style.rs b/rust/geometry/src/router/annotation_style.rs
+index 23739f6876..187e997134 100644
+--- a/rust/geometry/src/router/annotation_style.rs
++++ b/rust/geometry/src/router/annotation_style.rs
+@@ -7,7 +7,7 @@ use super::annotation::invalid;
+ use crate::Result;
+ use ifc_lite_core::{DecodedEntity, EntityDecoder, EntityScanner, IfcType};
+ 
+-pub(super) fn validate(item_id: u32, decoder: &mut EntityDecoder) -> Result<()> {
++pub(crate) fn validate(item_id: u32, decoder: &mut EntityDecoder) -> Result<()> {
+     let ids = decoder.styled_item_ids(item_id)?.to_vec();
+     let mut work = 512usize;
+     let mut fills = 0usize;
+diff --git a/rust/geometry/src/router/diagnostics/unsupported_items.rs b/rust/geometry/src/router/diagnostics/unsupported_items.rs
+index d26cd24c04..635f6ef574 100644
+--- a/rust/geometry/src/router/diagnostics/unsupported_items.rs
++++ b/rust/geometry/src/router/diagnostics/unsupported_items.rs
+@@ -102,13 +102,13 @@ impl GeometryRouter {
+     }
+ 
+     /// Own the innermost counting decision, without retaining a router guard.
+-    pub(in crate::router) fn unsupported_policy(&self) -> bool {
++    pub(crate) fn unsupported_policy(&self) -> bool {
+         self.unsupported.borrow().scope.last().copied().unwrap_or(true)
+     }
+ 
+     /// Claim at the same reached point as `enter_unsupported_source`. A later
+     /// step reinstalls this decision; it must never claim the source again.
+-    pub(in crate::router) fn claim_unsupported_source(
++    pub(crate) fn claim_unsupported_source(
+         &self, source_id: u32, mapped_repr: &DecodedEntity,
+     ) -> bool {
+         let is_body = crate::router::effective_rep_type(mapped_repr)
+@@ -118,7 +118,7 @@ impl GeometryRouter {
+ 
+     /// Install one owned continuation's policy only for its synchronous work.
+     /// Nested source scopes still override it, and panic restores the caller.
+-    pub(in crate::router) fn with_unsupported_policy<T>(&self, record: bool,
++    pub(crate) fn with_unsupported_policy<T>(&self, record: bool,
+         work: impl FnOnce() -> T) -> T {
+         self.unsupported.borrow_mut().scope.push(record);
+         let _scope = UnsupportedSourceScope { router: self };
+diff --git a/rust/geometry/src/router/frame_parts.rs b/rust/geometry/src/router/frame_parts.rs
+index c5f2638275..3b4c9edbaa 100644
+--- a/rust/geometry/src/router/frame_parts.rs
++++ b/rust/geometry/src/router/frame_parts.rs
+@@ -31,7 +31,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder};
+ ///
+ /// Written as a negated `>=` so a NaN origin (already-broken input) keeps the
+ /// historical merge instead of opening a new part.
+-pub(super) fn frames_mergeable(a: [f64; 3], b: [f64; 3]) -> bool {
++pub(crate) fn frames_mergeable(a: [f64; 3], b: [f64; 3]) -> bool {
+     !(0..3).any(|axis| (a[axis] - b[axis]).abs() >= LARGE_MAPPED_ORIGIN_M)
+ }
+ 
+@@ -75,7 +75,7 @@ fn frame_span(parts: &[Mesh]) -> f64 {
+ }
+ 
+ /// Object-frame AABB of a mesh's f32 positions.
+-pub(super) fn mesh_bounds(mesh: &Mesh) -> [f32; 6] {
++pub(crate) fn mesh_bounds(mesh: &Mesh) -> [f32; 6] {
+     let mut bounds = [
+         f32::INFINITY,
+         f32::INFINITY,
+@@ -93,7 +93,7 @@ pub(super) fn mesh_bounds(mesh: &Mesh) -> [f32; 6] {
+     bounds
+ }
+ 
+-pub(super) fn union_bounds(accumulator: &mut Option<[f32; 6]>, incoming: [f32; 6]) {
++pub(crate) fn union_bounds(accumulator: &mut Option<[f32; 6]>, incoming: [f32; 6]) {
+     if let Some(bounds) = accumulator {
+         for axis in 0..3 {
+             bounds[axis] = bounds[axis].min(incoming[axis]);
+@@ -107,14 +107,14 @@ pub(super) fn union_bounds(accumulator: &mut Option<[f32; 6]>, incoming: [f32; 6
+ /// Items that could not join the element's primary accumulator, grouped by
+ /// frame. Each entry keeps the object-frame bounds of the items it holds.
+ #[derive(Default)]
+-pub(super) struct FrameParts {
++pub(crate) struct FrameParts {
+     parts: Vec<(Mesh, Option<[f32; 6]>)>,
+ }
+ 
+ impl FrameParts {
+     /// Merge a non-empty `mesh` into the first part sharing its frame, or
+     /// open a new part.
+-    pub(super) fn merge(&mut self, mesh: &Mesh, bounds: [f32; 6]) {
++    pub(crate) fn merge(&mut self, mesh: &Mesh, bounds: [f32; 6]) {
+         match self
+             .parts
+             .iter_mut()
+@@ -143,7 +143,7 @@ impl FrameParts {
+ /// (#6446). A single-frame source, which is every source observed in the
+ /// fixture corpus, runs the exact historical `Mesh::merge` sequence.
+ #[derive(Default)]
+-pub(super) struct SourceParts {
++pub(crate) struct SourceParts {
+     /// The primary accumulator first, then the far frame parts.
+     parts: Vec<SourcePart>,
+ }
+@@ -156,7 +156,7 @@ struct SourcePart {
+ }
+ 
+ impl SourceParts {
+-    pub(super) fn merge(&mut self, mesh: &Mesh) {
++    pub(crate) fn merge(&mut self, mesh: &Mesh) {
+         if mesh.is_empty() {
+             return; // Mesh::merge would ignore it too
+         }
+@@ -181,7 +181,7 @@ impl SourceParts {
+     /// published them: an item rebased into its f64 origin does (#7690), and
+     /// its positions alone would not give its object-frame extent. Ordinary
+     /// items do not, so an ordinary source carries none, as it never did.
+-    pub(super) fn into_parts(self) -> Vec<Mesh> {
++    pub(crate) fn into_parts(self) -> Vec<Mesh> {
+         if self.parts.is_empty() {
+             return vec![Mesh::new()];
+         }
+diff --git a/rust/geometry/src/router/instancing.rs b/rust/geometry/src/router/instancing.rs
+index 20e2013921..d805bd431b 100644
+--- a/rust/geometry/src/router/instancing.rs
++++ b/rust/geometry/src/router/instancing.rs
+@@ -22,7 +22,7 @@ impl GeometryRouter {
+     /// materialize — never instanced, never lost. The returned id is used as the
+     /// placeholder's `geometry_id` so colour resolves EXACTLY as the flat/template
+     /// sub-mesh does (both key on the nested solid's id).
+-    pub(super) fn mapped_source_single_item(
++    pub(crate) fn mapped_source_single_item(
+         &self,
+         mapped_repr: &DecodedEntity,
+         decoder: &mut EntityDecoder,
+@@ -54,7 +54,7 @@ impl GeometryRouter {
+     /// The #6446 single-frame guard needs no copy here: one non-mapped item is one
+     /// mesh with one origin, so it can never be a multi-frame source. A mixed
+     /// near+far source has at least two items, so it never reaches this walk.
+-    pub(super) fn ensure_shared_mapped_source(
++    pub(crate) fn ensure_shared_mapped_source(
+         &self,
+         mapped_repr: &DecodedEntity,
+         source_id: u32,
+diff --git a/rust/geometry/src/router/mapped_item.rs b/rust/geometry/src/router/mapped_item.rs
+index 9c804fb3bb..de966e442c 100644
+--- a/rust/geometry/src/router/mapped_item.rs
++++ b/rust/geometry/src/router/mapped_item.rs
+@@ -12,10 +12,30 @@ use super::GeometryRouter;
+ use crate::{Error, Mesh, Result, SubMeshCollection};
+ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+ 
+-#[path = "mapping/mod.rs"]
+-mod control;
++use crate::program::mapping as control;
+ 
+ impl GeometryRouter {
++    /// Reached cache effects of the common mapping child program. Lookup and
++    /// publication keep their historical lock scope and degraded-source policy.
++    pub(crate) fn cached_mapped_source(&self, id: u32) -> Option<std::sync::Arc<Mesh>> {
++        match &self.shared_mapped_item_cache {
++            Some(shared) => shared.lock().unwrap_or_else(|e| e.into_inner()).get(&id).cloned(),
++            None => self.mapped_item_cache.borrow().get(&id).cloned(),
++        }
++    }
++
++    pub(crate) fn publish_mapped_source(&self, id: u32, mesh: &Mesh, truncated: bool) {
++        match &self.shared_mapped_item_cache {
++            Some(shared) => {
++                if !mesh.positions.is_empty() && !crate::kernel::budget::tripped() && !truncated {
++                    let source = std::sync::Arc::new(mesh.clone());
++                    shared.lock().unwrap_or_else(|e| e.into_inner()).insert(id, source);
++                }
++            }
++            None => { self.mapped_item_cache.borrow_mut().insert(id, std::sync::Arc::new(mesh.clone())); }
++        }
++    }
++
+     /// Process MappedItem with caching for repeated geometry.
+     ///
+     /// Errors when the source's items cannot share one f64 frame (#6446); use
+@@ -31,7 +51,7 @@ impl GeometryRouter {
+ 
+     /// [`Self::process_mapped_item_cached`] as frame parts: one mesh, unless the
+     /// source's items lie in frames at least 1 km apart (#6446).
+-    pub(super) fn process_mapped_item_parts(
++    pub(crate) fn process_mapped_item_parts(
+         &self,
+         item: &DecodedEntity,
+         decoder: &mut EntityDecoder,
+@@ -41,7 +61,7 @@ impl GeometryRouter {
+ 
+     /// [`Self::process_representation_item`] as frame parts (#6446): only a
+     /// mapped item can yield more than one.
+-    pub(in crate::router) fn process_representation_item_parts(
++    pub(crate) fn process_representation_item_parts(
+         &self,
+         item: &DecodedEntity,
+         decoder: &mut EntityDecoder,
+@@ -54,7 +74,7 @@ impl GeometryRouter {
+ 
+     /// The styled consumer shares the mapping continuation architecture but
+     /// retains separate source ordering, error and occurrence policies.
+-    pub(super) fn collect_submeshes_from_item(
++    pub(crate) fn collect_submeshes_from_item(
+         &self, item: &DecodedEntity, decoder: &mut EntityDecoder<'_>,
+         sub_meshes: &mut SubMeshCollection, allow_instancing: bool,
+         texture_index: Option<&rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>>,
+@@ -75,7 +95,7 @@ impl GeometryRouter {
+     /// for this source rather than the next item on the thread (ROUTER-26). A
+     /// failed or unsupported item is recorded as dropped; `walk` only names
+     /// the caller in the debug message.
+-    pub(super) fn merge_source_item(
++    pub(crate) fn merge_source_item(
+         &self,
+         item: &DecodedEntity,
+         decoder: &mut EntityDecoder,
+@@ -121,7 +141,7 @@ impl GeometryRouter {
+     /// Every later transform carries `origin` exactly in f64, and the final
+     /// placement then subtracts the RTC once, so the item keeps its precision
+     /// at any rotation. A no-op for an item that was not rebased.
+-    pub(super) fn keep_rebase_in_origin(&self, mesh: &mut Mesh) {
++    pub(crate) fn keep_rebase_in_origin(&self, mesh: &mut Mesh) {
+         if mesh.rtc_applied {
+             mesh.rtc_applied = false;
+             let rtc = [self.rtc_offset.0, self.rtc_offset.1, self.rtc_offset.2];
+diff --git a/rust/geometry/src/router/mod.rs b/rust/geometry/src/router/mod.rs
+index 8ae5dbc691..6a18f51330 100644
+--- a/rust/geometry/src/router/mod.rs
++++ b/rust/geometry/src/router/mod.rs
+@@ -7,14 +7,14 @@
+ //! Routes IFC representation entities to appropriate processors based on type.
+ 
+ pub(crate) mod annotation;
+-mod annotation_polygon;
+-mod annotation_style;
++pub(crate) mod annotation_polygon;
++pub(crate) mod annotation_style;
+ mod caching;
+ mod brep_signatures;
+ mod content_hash;
+ mod diagnostics;
+ mod diagnostics_recording;
+-mod frame_parts;
++pub(crate) mod frame_parts;
+ mod instancing;
+ mod item_dedup_cache;
+ mod layers;
+@@ -431,7 +431,7 @@ impl GeometryRouter {
+     }
+ 
+     /// The armed don't-bake plan, if any (see [`Self::enable_output_instancing`]).
+-    pub(super) fn output_instancing_plan(&self) -> Option<&MappedInstancePlan> {
++    pub(crate) fn output_instancing_plan(&self) -> Option<&MappedInstancePlan> {
+         self.output_instancing_plan.as_ref()
+     }
+ 
+@@ -457,7 +457,7 @@ impl GeometryRouter {
+     /// Whether `geometry_id` is a mapped-source solid carrying an `IfcIndexedColourMap`
+     /// (see [`Self::enable_indexed_colour_split_guard`]) — such a source must not
+     /// don't-bake, so its per-triangle palette survives the flat split.
+-    pub(super) fn is_indexed_colour_split_source(&self, geometry_id: u32) -> bool {
++    pub(crate) fn is_indexed_colour_split_source(&self, geometry_id: u32) -> bool {
+         self.indexed_colour_split_ids
+             .as_ref()
+             .is_some_and(|ids| ids.contains(&geometry_id))
+@@ -474,14 +474,14 @@ impl GeometryRouter {
+ 
+     /// Whether batch-local template selection is active (see the field doc).
+     #[inline]
+-    pub(super) fn instancing_batch_local(&self) -> bool {
++    pub(crate) fn instancing_batch_local(&self) -> bool {
+         self.instancing_batch_local
+     }
+ 
+     /// Batch-local don't-bake template decision: returns `true` (materialize as the
+     /// batch-local template) the FIRST time this router sees `source_id`, `false`
+     /// (don't-bake) every time after. Idempotent per source within one router/batch.
+-    pub(super) fn mark_source_materialized_if_first(&self, source_id: u32) -> bool {
++    pub(crate) fn mark_source_materialized_if_first(&self, source_id: u32) -> bool {
+         self.instanced_sources_materialized
+             .borrow_mut()
+             .insert(source_id)
+@@ -670,7 +670,7 @@ impl GeometryRouter {
+     /// Scale the translation component of a transform matrix from file units to meters
+     /// The rotation/scale part stays unchanged, only translation (column 3) is scaled
+     #[inline]
+-    fn scale_transform(&self, transform: &mut Matrix4<f64>) {
++    pub(crate) fn scale_transform(&self, transform: &mut Matrix4<f64>) {
+         if self.unit_scale != 1.0 {
+             transform[(0, 3)] *= self.unit_scale;
+             transform[(1, 3)] *= self.unit_scale;
+diff --git a/rust/geometry/src/router/processing.rs b/rust/geometry/src/router/processing.rs
+index 40cd578cd0..3ed359757f 100644
+--- a/rust/geometry/src/router/processing.rs
++++ b/rust/geometry/src/router/processing.rs
+@@ -4,12 +4,12 @@
+ 
+ //! Core element processing: resolving representations, processing items, and caching.
+ 
+-use super::frame_parts::{frames_mergeable, mesh_bounds, single_frame, union_bounds, FrameParts};
++use super::frame_parts::{mesh_bounds, single_frame};
+ use super::transforms::instancing_enabled;
+ use crate::math::mat4;
+ use super::{GeometryProcessor, GeometryRouter};
+ use crate::{Error, InstanceMeta, Mesh, Result, SubMeshCollection};
+-use crate::representation::{product_shape, rep_items, Select};
++use crate::program::{EntryPolicy, ProductProgram};
+ 
+ /// High tag bit distinguishing direct-solid rep_identity (a 128-bit local-mesh
+ /// content hash) from mapped-item rep_identity (a RepresentationMap entity id,
+@@ -133,90 +133,11 @@ impl GeometryRouter {
+             }
+         }
+ 
+-        let Some(shape) = product_shape(element, decoder)? else {
+-            return Ok(vec![Mesh::new()]); // No geometry
++        let Some(program) = ProductProgram::admit(element, EntryPolicy::MergedProduct, decoder)? else {
++            return Ok(vec![Mesh::new()]);
+         };
+ 
+-        // Process all representations and merge meshes
+-        let mut combined_mesh = Mesh::new();
+-        let mut rebased_mesh = Mesh::new();
+-        let mut captured_local_bounds: Option<[f32; 6]> = None;
+-        // #6349: items too far from `combined_mesh`'s frame, and the RTC-frame items' own bounds.
+-        let (mut far_parts, mut rebased_bounds) = (FrameParts::default(), None);
+-
+-        // Instancing: an element is cleanly shareable only when its whole body is
+-        // exactly ONE representation item that itself carried instance metadata
+-        // (a mapped item). `Mesh::merge` does not propagate the side-channel, so we
+-        // capture the single item's metadata here and re-attach it below; any second
+-        // item disqualifies the element (left as None -> rendered flat).
+-        let mut single_instance_meta: Option<InstanceMeta> = None;
+-        let mut instanceable_item_count: usize = 0;
+-
+-        // Body representations only ('Axis', 'FootPrint', 'Box' are skipped), and
+-        // a MappedRepresentation is skipped when direct geometry duplicates it.
+-        for shape_rep in shape.select(element, Select::Meshed) {
+-            let items = rep_items(shape_rep, decoder)?;
+-            let fill_only = super::annotation::is_fill_only_representation(element, shape_rep);
+-
+-            // Process each representation item
+-            // A mapped item whose source mixes frames yields one mesh per frame (#6446).
+-            for item in items {
+-                let item_parts = if element.ifc_type == IfcType::IfcAnnotation
+-                    && item.ifc_type == IfcType::IfcAnnotationFillArea
+-                {
+-                    vec![self.process_annotation_fill(&item, decoder)?]
+-                } else if fill_only {
+-                    continue; // symbolic annotation item, never meshed (#5389)
+-                } else if let Some(mesh) =
+-                    self.process_raw_item_for_element(&item, element, decoder)?
+-                {
+-                    vec![mesh]
+-                } else {
+-                    self.process_representation_item_parts(&item, decoder)?
+-                };
+-                for mesh in item_parts {
+-                    if mesh.positions.is_empty() {
+-                        continue; // Mesh::merge would ignore it too
+-                    }
+-                    let bounds = mesh.local_bounds.unwrap_or_else(|| mesh_bounds(&mesh));
+-                    if instancing_enabled() {
+-                        instanceable_item_count += 1;
+-                        single_instance_meta = if instanceable_item_count == 1 {
+-                            mesh.instance_meta.clone()
+-                        } else {
+-                            None
+-                        };
+-                    }
+-                    // #5684: early f64 processors and ordinary f32 processors can
+-                    // return different RTC frames. Merge only like frames until
+-                    // placement has brought both into the world/RTC frame.
+-                    if mesh.rtc_applied {
+-                        rebased_mesh.merge(&mesh);
+-                        union_bounds(&mut rebased_bounds, bounds);
+-                        continue;
+-                    } else if combined_mesh.positions.is_empty()
+-                        || frames_mergeable(combined_mesh.origin, mesh.origin)
+-                    {
+-                        combined_mesh.merge(&mesh);
+-                    } else {
+-                        far_parts.merge(&mesh, bounds);
+-                        continue;
+-                    }
+-                    union_bounds(&mut captured_local_bounds, bounds);
+-                }
+-            }
+-        }
+-        if combined_mesh.positions.is_empty() {
+-            std::mem::swap(&mut combined_mesh, &mut rebased_mesh);
+-            captured_local_bounds = rebased_bounds.take();
+-        }
+-
+-        // Re-attach single-item instance metadata so apply_placement can fold the
+-        // element's world placement into `transform`.
+-        if instancing_enabled() {
+-            combined_mesh.instance_meta = single_instance_meta;
+-        }
+-        combined_mesh.local_bounds = captured_local_bounds;
++        let (mut combined_mesh, far_parts, rebased) = program.merged(element, self, decoder)?;
+ 
+         // Source-triangle hygiene before placement (rigid transforms preserve
+         // degeneracy, while the element-local frame retains more f32 precision).
+@@ -229,7 +150,6 @@ impl GeometryRouter {
+ 
+         // Apply placement transformation
+         self.apply_placement(element, decoder, &mut combined_mesh)?;
+-        let rebased = (rebased_mesh, rebased_bounds);
+         self.place_frame_parts(element, decoder, hygiene, combined_mesh, far_parts, rebased)
+     }
+ 
+@@ -276,59 +196,11 @@ impl GeometryRouter {
+             return Ok(layered);
+         }
+ 
+-        let Some(shape) = product_shape(element, decoder)? else {
+-            return Ok(SubMeshCollection::new()); // No geometry
++        let Some(program) = ProductProgram::admit(element, EntryPolicy::StyledProduct, decoder)? else {
++            return Ok(SubMeshCollection::new());
+         };
+ 
+-        let mut sub_meshes = SubMeshCollection::new();
+-
+-        for shape_rep in shape.select(element, Select::Meshed) {
+-            let items = rep_items(shape_rep, decoder)?;
+-            let fill_only = super::annotation::is_fill_only_representation(element, shape_rep);
+-
+-            // Process each representation item, preserving geometry IDs
+-            for item in items {
+-                if element.ifc_type == IfcType::IfcAnnotation
+-                    && item.ifc_type == IfcType::IfcAnnotationFillArea
+-                {
+-                    sub_meshes.add(item.id, self.process_annotation_fill(&item, decoder)?);
+-                    continue;
+-                }
+-                if fill_only {
+-                    continue; // symbolic annotation item, never meshed (#5389)
+-                }
+-                // A textured face set keeps its UV channel (#1781) and, like
+-                // any raw item, rebases in its own frame (#5698). A failed
+-                // textured build falls through to the untextured paths.
+-                // A terrain TIN is a face set that only appends `Flags` (#5942).
+-                let texture = texture_index
+-                    .and_then(|index| index.get(&item.id))
+-                    .filter(|_| matches!(
+-                        item.ifc_type,
+-                        IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork
+-                    ));
+-                if let Some(map) = texture {
+-                    let offset = self.element_frame_rtc(element, decoder)?;
+-                    if let Some((mesh, uvs)) = self.textured_face_set(&item, decoder, map, offset) {
+-                        sub_meshes.add_textured(item.id, mesh, uvs, map.attachment());
+-                        continue;
+-                    }
+-                }
+-                if let Some(mesh) = self.process_raw_item_for_element(&item, element, decoder)? {
+-                    if !mesh.is_empty() {
+-                        sub_meshes.add(item.id, mesh);
+-                    }
+-                    continue;
+-                }
+-                self.collect_submeshes_from_item(
+-                    &item,
+-                    decoder,
+-                    &mut sub_meshes,
+-                    allow_instancing,
+-                    texture_index,
+-                )?;
+-            }
+-        }
++        let mut sub_meshes = program.styled(element, self, decoder, allow_instancing, texture_index)?;
+ 
+         // Source-triangle hygiene before placement — the per-style counterpart
+         // to `process_element`'s choke point. Facet canonicalizers downstream do
+@@ -390,7 +262,7 @@ impl GeometryRouter {
+     /// placement produces `M(p) - rtc` for rotated/scaled elements as well.
+     /// `None` when the item is not a raw-coordinate item beyond the RTC
+     /// threshold; the ordinary item path then handles it.
+-    pub(in crate::router) fn process_raw_item_for_element(
++    pub(crate) fn process_raw_item_for_element(
+         &self,
+         item: &DecodedEntity,
+         element: &DecodedEntity,
+@@ -419,7 +291,7 @@ impl GeometryRouter {
+     /// pulled through the placement's inverse linear transform, so placing
+     /// a mesh rebased by it yields `M(p) - rtc`. `None` for a singular
+     /// placement, where no object-frame offset exists.
+-    fn element_frame_rtc(
++    pub(crate) fn element_frame_rtc(
+         &self,
+         element: &DecodedEntity,
+         decoder: &mut EntityDecoder,
+@@ -439,7 +311,7 @@ impl GeometryRouter {
+     /// preserves precision (#5698). Shared by the occurrence walk and the
+     /// type-geometry walk (#7690). `None` when the item is not a face set,
+     /// or the textured build fails or is empty.
+-    pub(super) fn textured_face_set(
++    pub(crate) fn textured_face_set(
+         &self,
+         item: &DecodedEntity,
+         decoder: &mut EntityDecoder,
+@@ -454,10 +326,9 @@ impl GeometryRouter {
+             self.raw_item_rtc_file_units(item, decoder, offset)
+                 .zip(Some(offset))
+         });
+-        let proc = crate::processors::TriangulatedFaceSetProcessor::new();
+-        let (mut mesh, uvs) = proc
+-            .process_with_texture_rebased(item, decoder, map, rtc.map(|(file_units, _)| file_units))
+-            .ok()?;
++        let plan = crate::program::TextureConstructor::admit(item, decoder,
++            rtc.map(|(file_units, _)| file_units)).ok()?;
++        let (mut mesh, uvs) = plan.evaluate(map);
+         if mesh.is_empty() {
+             return None;
+         }
+@@ -501,18 +372,22 @@ impl GeometryRouter {
+         let rebased = self.raw_item_rtc_file_units(item, decoder, offset_meters)
+             .and_then(|rtc_file_units| {
+                 self.record_processor_dispatch(processor);
+-                processor.process_in_rtc_frame(
+-                    item,
+-                    decoder,
+-                    self.schema,
+-                    self.tessellation_quality,
+-                    rtc_file_units,
+-                )
++                match processor.lower_owned(item, decoder, self.tessellation_quality, Some(rtc_file_units)) {
++                    Some(plan) => Some(plan.and_then(crate::program::OwnedConstructor::evaluate)),
++                    None => processor.process_in_rtc_frame(item, decoder, self.schema,
++                        self.tessellation_quality, rtc_file_units),
++                }
+             });
+         let rtc_applied = rebased.is_some();
+         let result = match rebased {
+             Some(result) => result,
+-            None => { self.record_processor_dispatch(processor); processor.process(item, decoder, self.schema, self.tessellation_quality) },
++            None => {
++                self.record_processor_dispatch(processor);
++                match processor.lower_owned(item, decoder, self.tessellation_quality, None) {
++                    Some(plan) => plan.and_then(crate::program::OwnedConstructor::evaluate),
++                    None => processor.process(item, decoder, self.schema, self.tessellation_quality),
++                }
++            },
+         };
+         if crate::processors::take_curve_capped() {
+             self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
+@@ -733,7 +608,11 @@ impl GeometryRouter {
+             None => return Ok(None),
+         };
+         self.record_processor_dispatch(processor.as_ref());
+-        let mut mesh = match processor.process(element, decoder, self.schema, self.tessellation_quality) {
++        let result = match processor.lower_owned(element, decoder, self.tessellation_quality, None) {
++            Some(plan) => plan.and_then(crate::program::OwnedConstructor::evaluate),
++            None => processor.process(element, decoder, self.schema, self.tessellation_quality),
++        };
++        let mut mesh = match result {
+             Ok(m) => m,
+             // Missing Axis or unparseable curve isn't fatal — fall back so
+             // the caller can still walk a normal representation if present.
+diff --git a/rust/geometry/src/router/processor.rs b/rust/geometry/src/router/processor.rs
+index c61a173909..b00d4b4e07 100644
+--- a/rust/geometry/src/router/processor.rs
++++ b/rust/geometry/src/router/processor.rs
+@@ -54,6 +54,20 @@ pub trait GeometryProcessor {
+         None
+     }
+ 
++    /// Admit an owned numerical constructor through this selected processor.
++    /// Default registrations retain their mutable-decoder process/RTC callbacks.
++    /// `Some` commits to the supplied raw-file-unit frame, including RTC when
++    /// present; `None` preserves the historical callback and fallback order.
++    fn lower_owned(
++        &self,
++        _entity: &DecodedEntity,
++        _decoder: &mut EntityDecoder,
++        _quality: TessellationQuality,
++        _rtc_file_units: Option<(f64, f64, f64)>,
++    ) -> Option<Result<crate::program::OwnedConstructor>> {
++        None
++    }
++
+     /// Get supported IFC types
+     fn supported_types(&self) -> Vec<IfcType>;
+ 
+diff --git a/rust/geometry/src/router/textured.rs b/rust/geometry/src/router/textured.rs
+index 69f199a38c..1409241b5e 100644
+--- a/rust/geometry/src/router/textured.rs
++++ b/rust/geometry/src/router/textured.rs
+@@ -8,11 +8,11 @@
+ //! element pipeline stays within the module-size house rule; the texture
+ //! index itself is built in `crate::processors::texture`.
+ 
+-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
++use ifc_lite_core::{DecodedEntity, EntityDecoder};
+ 
+ use super::frame_parts::{single_frame_source, SourceParts};
+ use super::GeometryRouter;
+-use crate::{Error, Mesh, Result, SubMeshCollection};
++use crate::{Mesh, Result, SubMeshCollection};
+ 
+ impl GeometryRouter {
+     /// Texture-aware [`Self::process_element_with_submeshes`] (#1781): a face
+@@ -93,128 +93,6 @@ impl GeometryRouter {
+             Option<crate::processors::texture::TextureAttachment>,
+         )>,
+     > {
+-        // attr 1: MappedRepresentation (IfcShapeRepresentation)
+-        let mapped_rep_attr = rep_map.get(1).ok_or_else(|| {
+-            Error::geometry("RepresentationMap missing MappedRepresentation".to_string())
+-        })?;
+-        let mapped_rep = decoder
+-            .resolve_ref(mapped_rep_attr)?
+-            .ok_or_else(|| Error::geometry("Failed to resolve MappedRepresentation".to_string()))?;
+-
+-        // attr 3: Items
+-        let items_attr = mapped_rep
+-            .get(3)
+-            .ok_or_else(|| Error::geometry("Representation missing Items".to_string()))?;
+-        let items = decoder.resolve_ref_list(items_attr)?;
+-
+-        // Whether a dropped item here is a real content gap, or just this router
+-        // declining to mesh a 2D representation it was never meant to mesh.
+-        //
+-        // The occurrence path filters representations with `is_body_representation`
+-        // before it ever reaches an item (`processing.rs`, "Skip 'Axis', 'Curve2D',
+-        // 'FootPrint'"). The TYPE path does not: `plan_type_geometry` selects
+-        // RepresentationMaps by reference/instantiation only and never looks at the
+-        // identifier, so a Revit/ArchiCAD `IfcDoorType` carrying a 'FootPrint' or
+-        // 'Annotation' map hands us `IfcGeometricCurveSet` / `IfcPolyline` /
+-        // `IfcAnnotationFillArea` — none of which have a processor, all of which are
+-        // CORRECTLY absent from a 3D view. Counting those made a clean model warn
+-        // "N representation items dropped ... elements are missing or incomplete",
+-        // which is exactly the false positive that would teach users to ignore it.
+-        //
+-        // Only the counting is gated, not the walk: a non-body map still runs
+-        // through the loop (merging nothing) so geometry output is byte-identical.
+-        // The scope also makes the count per SOURCE rather than per call — this
+-        // map may already have been walked through `mapped_item.rs` — see
+-        // `GeometryRouter::enter_unsupported_source`.
+-        let _drop_scope = self.enter_unsupported_source(rep_map.id, &mapped_rep);
+-
+-        let mut untextured = SourceParts::default();
+-        // One entry per textured item — keeps each item with its own image.
+-        let mut textured: Vec<(
+-            Mesh,
+-            Vec<f32>,
+-            crate::processors::texture::TextureAttachment,
+-        )> = Vec::new();
+-        for item in items {
+-            // A nested IfcMappedItem inside a type's own representation: process
+-            // it (applies its MappingTarget) rather than dropping its geometry.
+-            if item.ifc_type == IfcType::IfcMappedItem {
+-                match self.process_mapped_item_parts(&item, decoder) {
+-                    // already scaled inside the cached path
+-                    Ok(sub_parts) => sub_parts.iter().for_each(|part| untextured.merge(part)),
+-                    Err(_e) => {
+-                        self.record_unsupported_item(item.ifc_type.clone());
+-                        crate::diag::diag_debug!(
+-                            { item_id = item.id, error = %_e,
+-                              "skipping unsupported nested IfcMappedItem in representation map" }
+-                            else {
+-                                #[cfg(debug_assertions)]
+-                                eprintln!(
+-                                    "[ifc-lite] Skipping unsupported nested IfcMappedItem #{} in representation map: {}",
+-                                    item.id, _e
+-                                );
+-                            }
+-                        );
+-                    }
+-                }
+-                continue;
+-            }
+-
+-            // Textured tessellated face set → its own part with per-vertex UVs (#961),
+-            // rebased like the plain items below (#5698, #7690).
+-            if let Some(map) = texture_index.get(&item.id) {
+-                if let Some((mut sub_mesh, sub_uvs)) =
+-                    self.textured_face_set(&item, decoder, map, Some(self.rtc_offset))
+-                {
+-                    self.keep_rebase_in_origin(&mut sub_mesh);
+-                    textured.push((sub_mesh, sub_uvs, map.attachment()));
+-                    continue;
+-                }
+-            }
+-
+-            self.merge_source_item(&item, decoder, &mut untextured, "representation-map");
+-        }
+-
+-        // attr 0: MappingOrigin (IfcAxis2Placement3D) — the only 3D transform;
+-        // UVs are 2D and unaffected. Parse once, bake into every part.
+-        let origin_transform: Option<nalgebra::Matrix4<f64>> = match rep_map.get(0) {
+-            Some(origin_attr) if !origin_attr.is_null() => {
+-                match decoder.resolve_ref(origin_attr)? {
+-                Some(origin) if origin.ifc_type == IfcType::IfcAxis2Placement3D => {
+-                    let mut t = self.parse_axis2_placement_3d(&origin, decoder)?;
+-                    self.scale_transform(&mut t);
+-                    Some(t)
+-                }
+-                _ => None,
+-                }
+-            }
+-            _ => None,
+-        };
+-
+-        let mut out: Vec<(
+-            Mesh,
+-            Vec<f32>,
+-            Option<crate::processors::texture::TextureAttachment>,
+-        )> = Vec::new();
+-        for (mut mesh, uvs, texture) in textured {
+-            if let Some(t) = &origin_transform {
+-                self.transform_mesh_local(&mut mesh, t);
+-            }
+-            // Same sliver hygiene as the other mesh-output chokepoints. This is
+-            // the type-geometry (RepresentationMap) channel and the only one
+-            // carrying a parallel per-vertex UV array; clean_degenerate edits
+-            // only indices (vertices/UVs untouched), so the UVs stay in sync.
+-            mesh.clean_degenerate();
+-            out.push((mesh, uvs, Some(texture)));
+-        }
+-        for mut untextured in untextured.into_parts().into_iter().filter(|mesh| !mesh.is_empty()) {
+-            if let Some(t) = &origin_transform {
+-                self.transform_mesh_local(&mut untextured, t);
+-            }
+-            untextured.clean_degenerate();
+-            out.push((untextured, Vec::new(), None));
+-        }
+-
+-        Ok(out)
++        crate::program::type_map::TypeMap::admit(rep_map, self, decoder)?.run(self, decoder, texture_index)
+     }
+ }
+diff --git a/rust/geometry/src/router/transforms/mod.rs b/rust/geometry/src/router/transforms/mod.rs
+index 8e114a6957..bda520cc56 100644
+--- a/rust/geometry/src/router/transforms/mod.rs
++++ b/rust/geometry/src/router/transforms/mod.rs
+@@ -201,7 +201,7 @@ impl GeometryRouter {
+     }
+ 
+     /// Get placement transform from element without applying it
+-    pub(super) fn get_placement_transform_from_element(
++    pub(crate) fn get_placement_transform_from_element(
+         &self,
+         element: &DecodedEntity,
+         decoder: &mut EntityDecoder,
+diff --git a/rust/geometry/src/router/unit_admission.rs b/rust/geometry/src/router/unit_admission.rs
+index bc69c8a0d0..505301f2ec 100644
+--- a/rust/geometry/src/router/unit_admission.rs
++++ b/rust/geometry/src/router/unit_admission.rs
+@@ -60,7 +60,7 @@ impl GeometryRouter {
+ 
+     /// The processor for `ifc_type`, or none when the length unit is refused.
+     /// Every registry lookup in the router goes through this.
+-    pub(super) fn processor_for(&self, ifc_type: &IfcType) -> Option<&Rc<dyn GeometryProcessor>> {
++    pub(crate) fn processor_for(&self, ifc_type: &IfcType) -> Option<&Rc<dyn GeometryProcessor>> {
+         if self.length_unit_refused {
+             return None;
+         }
+diff --git a/rust/geometry/src/router/voids/geom.rs b/rust/geometry/src/router/voids/geom.rs
+index 4826d649c9..841851aef2 100644
+--- a/rust/geometry/src/router/voids/geom.rs
++++ b/rust/geometry/src/router/voids/geom.rs
+@@ -19,7 +19,7 @@ pub(crate) use crate::mesh_check::{
+ };
+ 
+ /// Extract rotation columns from a 4x4 transform matrix.
+-pub(super) fn extract_rotation_columns(m: &Matrix4<f64>) -> (Vector3<f64>, Vector3<f64>, Vector3<f64>) {
++pub(crate) fn extract_rotation_columns(m: &Matrix4<f64>) -> (Vector3<f64>, Vector3<f64>, Vector3<f64>) {
+     (
+         Vector3::new(m[(0, 0)], m[(1, 0)], m[(2, 0)]),
+         Vector3::new(m[(0, 1)], m[(1, 1)], m[(2, 1)]),
+@@ -28,7 +28,7 @@ pub(super) fn extract_rotation_columns(m: &Matrix4<f64>) -> (Vector3<f64>, Vecto
+ }
+ 
+ /// Apply rotation from columns to a direction and normalize.
+-pub(super) fn rotate_and_normalize(
++pub(crate) fn rotate_and_normalize(
+     rot: &(Vector3<f64>, Vector3<f64>, Vector3<f64>),
+     dir: &Vector3<f64>,
+ ) -> Result<Vector3<f64>> {
+diff --git a/rust/geometry/src/router/voids/probe.rs b/rust/geometry/src/router/voids/probe.rs
+index d0c2b08268..3f79efb545 100644
+--- a/rust/geometry/src/router/voids/probe.rs
++++ b/rust/geometry/src/router/voids/probe.rs
+@@ -4,11 +4,10 @@
+ 
+ //! IFC parametric decode + cutter-mesh extraction from opening elements.
+ 
+-use super::geom::*;
+ use super::{GeometryRouter, RectParam, MAX_EXTRUSION_EXTRACT_DEPTH};
+ use crate::profile::Profile2D;
+ use crate::profiles::ProfileProcessor;
+-use crate::{Error, Mesh, Point3, Result, Vector3};
++use crate::{Mesh, Point3, Result, Vector3};
+ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+ use nalgebra::{Matrix3, Matrix4};
+ use rustc_hash::FxHashSet;
+@@ -71,7 +70,7 @@ impl GeometryRouter {
+     /// Recursively extract extrusion direction and position transform from representation item
+     /// Handles IfcExtrudedAreaSolid, IfcBooleanClippingResult, and IfcMappedItem
+     /// Returns (local_direction, position_transform) where direction is in local space
+-    fn extract_extrusion_direction_recursive(
++    pub(crate) fn extract_extrusion_direction_recursive(
+         &self,
+         item: &DecodedEntity,
+         decoder: &mut EntityDecoder,
+@@ -465,67 +464,9 @@ impl GeometryRouter {
+         element: &DecodedEntity,
+         decoder: &mut EntityDecoder,
+     ) -> Result<Vec<Mesh>> {
+-        let representation_attr = element.get(6).ok_or_else(|| {
+-            Error::geometry("Element has no representation attribute".to_string())
+-        })?;
+-        if representation_attr.is_null() {
+-            return Ok(vec![]);
+-        }
+-
+-        let representation = decoder
+-            .resolve_ref(representation_attr)?
+-            .ok_or_else(|| Error::geometry("Failed to resolve representation".to_string()))?;
+-        let representations_attr = representation.get(2).ok_or_else(|| {
+-            Error::geometry("ProductDefinitionShape missing Representations".to_string())
+-        })?;
+-        let representations = decoder.resolve_ref_list(representations_attr)?;
+-
+-        // Get the same placement transform that apply_placement uses
+-        let mut placement_transform = self
+-            .get_placement_transform_from_element(element, decoder)
+-            .unwrap_or_else(|_| Matrix4::identity());
+-        self.scale_transform(&mut placement_transform);
+-
+-        let mut item_meshes = Vec::new();
+-
+-        // The representations the mesh path meshes: body only, and a
+-        // MappedRepresentation skipped when direct body geometry duplicates
+-        // it, so one void yields one cutter, not two (ROUTER-28, #7690).
+-        for shape_rep in crate::router::meshed_representations(element, &representations) {
+-            let items_attr = match shape_rep.get(3) {
+-                Some(attr) => attr,
+-                None => continue,
+-            };
+-            let items = match decoder.resolve_ref_list(items_attr) {
+-                Ok(items) => items,
+-                Err(_) => continue,
+-            };
+-
+-            for item in items {
+-                // A raw national-grid cutter rebases in this opening's own
+-                // frame, like the host it cuts (#5698).
+-                // A mapped source mixing frames yields one cutter per frame (#6446).
+-                let item_parts = match self.process_raw_item_for_element(&item, element, decoder) {
+-                    Ok(Some(mesh)) => Ok(vec![mesh]),
+-                    Ok(None) => self.process_representation_item_parts(&item, decoder),
+-                    Err(error) => Err(error),
+-                };
+-                let Ok(item_parts) = item_parts else { continue };
+-                for mut mesh in item_parts.into_iter().filter(|mesh| !mesh.is_empty()) {
+-                    // Keep ordinary opening cutters in the world/RTC frame. A large
+-                    // mapped origin, or a cutter far from the RTC origin (#6478),
+-                    // would lose its fractional translation when the world point is
+-                    // cast to f32; the void context folds each cutter's origin into
+-                    // the host frame before cutting.
+-                    let frame_cutter = self.needs_local_frame(&mesh, &placement_transform);
+-                    self.transform_mesh_world_framed(&mut mesh, &placement_transform, frame_cutter);
+-
+-                    item_meshes.push(mesh);
+-                }
+-            }
+-        }
+-
+-        Ok(item_meshes)
++        let Some(program) = crate::program::opening::OpeningProgram::admit(element,
++            crate::program::EntryPolicy::OpeningItemMeshes, self, decoder)? else { return Ok(vec![]) };
++        program.meshes(element, self, decoder)
+     }
+ 
+     /// Extrusion direction is in world coordinates, normalized
+@@ -535,155 +476,9 @@ impl GeometryRouter {
+         element: &DecodedEntity,
+         decoder: &mut EntityDecoder,
+     ) -> Result<Vec<(Point3<f64>, Point3<f64>, Option<Vector3<f64>>)>> {
+-        // Get representation (attribute 6 for most building elements)
+-        let representation_attr = element.get(6).ok_or_else(|| {
+-            Error::geometry("Element has no representation attribute".to_string())
+-        })?;
+-
+-        if representation_attr.is_null() {
+-            return Ok(vec![]);
+-        }
+-
+-        let representation = decoder
+-            .resolve_ref(representation_attr)?
+-            .ok_or_else(|| Error::geometry("Failed to resolve representation".to_string()))?;
+-
+-        // Get representations list
+-        let representations_attr = representation.get(2).ok_or_else(|| {
+-            Error::geometry("ProductDefinitionShape missing Representations".to_string())
+-        })?;
+-
+-        let representations = decoder.resolve_ref_list(representations_attr)?;
+-
+-        // Get placement transform
+-        let mut placement_transform = self
+-            .get_placement_transform_from_element(element, decoder)
+-            .unwrap_or_else(|_| Matrix4::identity());
+-        self.scale_transform(&mut placement_transform);
+-
+-        let mut bounds_list = Vec::new();
+-
+-        // Same representation selection as `get_opening_item_meshes_world`.
+-        for shape_rep in crate::router::meshed_representations(element, &representations) {
+-            // Get items list
+-            let items_attr = match shape_rep.get(3) {
+-                Some(attr) => attr,
+-                None => continue,
+-            };
+-
+-            let items = match decoder.resolve_ref_list(items_attr) {
+-                Ok(items) => items,
+-                Err(_) => continue,
+-            };
+-
+-            // Process each item separately to get individual bounds
+-            for item in items {
+-                // Try to extract extrusion direction recursively (handles wrappers)
+-                let extrusion_direction = if let Some((local_dir, position_transform)) =
+-                    self.extract_extrusion_direction_recursive(&item, decoder)
+-                {
+-                    // A zero-length IFCDIRECTION drops only THIS item's direction
+-                    // (coarser bounds), not `?`-abort every sibling item's bounds.
+-                    let element_rot = extract_rotation_columns(&placement_transform);
+-                    if let Some(pos_transform) = position_transform {
+-                        let pos_rot = extract_rotation_columns(&pos_transform);
+-                        rotate_and_normalize(&pos_rot, &local_dir)
+-                            .ok()
+-                            .and_then(|world_dir| {
+-                                rotate_and_normalize(&element_rot, &world_dir).ok()
+-                            })
+-                    } else {
+-                        rotate_and_normalize(&element_rot, &local_dir).ok()
+-                    }
+-                } else {
+-                    None
+-                };
+-
+-                // Get mesh bounds (same as original function), one entry per frame
+-                // part in the order `get_opening_item_meshes_world` emits them (#6446).
+-                let Ok(item_parts) = self.process_representation_item_parts(&item, decoder) else {
+-                    continue;
+-                };
+-                for mesh in item_parts.into_iter().filter(|mesh| !mesh.is_empty()) {
+-                    // Mesh::bounds is local to mesh.positions. Mapped items can
+-                    // carry a large f64 origin that must be folded in before the
+-                    // element placement, or the cutter box lands near zero.
+-                    let (mesh_min, mesh_max) = mesh.bounds();
+-
+-                    // Transform corner points to world coordinates
+-                    let corners = [
+-                        Point3::new(mesh_min.x as f64, mesh_min.y as f64, mesh_min.z as f64),
+-                        Point3::new(mesh_max.x as f64, mesh_min.y as f64, mesh_min.z as f64),
+-                        Point3::new(mesh_min.x as f64, mesh_max.y as f64, mesh_min.z as f64),
+-                        Point3::new(mesh_max.x as f64, mesh_max.y as f64, mesh_min.z as f64),
+-                        Point3::new(mesh_min.x as f64, mesh_min.y as f64, mesh_max.z as f64),
+-                        Point3::new(mesh_max.x as f64, mesh_min.y as f64, mesh_max.z as f64),
+-                        Point3::new(mesh_min.x as f64, mesh_max.y as f64, mesh_max.z as f64),
+-                        Point3::new(mesh_max.x as f64, mesh_max.y as f64, mesh_max.z as f64),
+-                    ];
+-
+-                    // Transform all corners and compute new AABB
+-                    let transformed: Vec<Point3<f64>> = corners
+-                        .iter()
+-                        .map(|p| {
+-                            let source = Point3::new(
+-                                p.x + mesh.origin[0],
+-                                p.y + mesh.origin[1],
+-                                p.z + mesh.origin[2],
+-                            );
+-                            placement_transform.transform_point(&source)
+-                        })
+-                        .collect();
+-
+-                    let world_min = Point3::new(
+-                        transformed
+-                            .iter()
+-                            .map(|p| p.x)
+-                            .fold(f64::INFINITY, f64::min),
+-                        transformed
+-                            .iter()
+-                            .map(|p| p.y)
+-                            .fold(f64::INFINITY, f64::min),
+-                        transformed
+-                            .iter()
+-                            .map(|p| p.z)
+-                            .fold(f64::INFINITY, f64::min),
+-                    );
+-                    let world_max = Point3::new(
+-                        transformed
+-                            .iter()
+-                            .map(|p| p.x)
+-                            .fold(f64::NEG_INFINITY, f64::max),
+-                        transformed
+-                            .iter()
+-                            .map(|p| p.y)
+-                            .fold(f64::NEG_INFINITY, f64::max),
+-                        transformed
+-                            .iter()
+-                            .map(|p| p.z)
+-                            .fold(f64::NEG_INFINITY, f64::max),
+-                    );
+-
+-                    // Apply RTC offset to opening bounds so they match wall mesh coordinate system
+-                    // Wall mesh positions have RTC subtracted during transform_mesh, so opening bounds must match
+-                    let rtc = self.rtc_offset;
+-                    let rtc_min = Point3::new(
+-                        world_min.x - rtc.0,
+-                        world_min.y - rtc.1,
+-                        world_min.z - rtc.2,
+-                    );
+-                    let rtc_max = Point3::new(
+-                        world_max.x - rtc.0,
+-                        world_max.y - rtc.1,
+-                        world_max.z - rtc.2,
+-                    );
+-
+-                    bounds_list.push((rtc_min, rtc_max, extrusion_direction));
+-                }
+-            }
+-        }
+-
+-        Ok(bounds_list)
++        let Some(program) = crate::program::opening::OpeningProgram::admit(element,
++            crate::program::EntryPolicy::OpeningItemBounds, self, decoder)? else { return Ok(vec![]) };
++        program.bounds(self, decoder)
+     }
+ 
+     /// Unwrap `item` — through `IfcMappedItem` (accumulating the mapping
+diff --git a/rust/processing/tests/function_length_allowlist.txt b/rust/processing/tests/function_length_allowlist.txt
+index bff6d792b1..8f768c73f9 100644
+--- a/rust/processing/tests/function_length_allowlist.txt
++++ b/rust/processing/tests/function_length_allowlist.txt
+@@ -57,7 +57,6 @@
+    161 rust/geometry/src/router/voids/prism_cut.rs build_face_cap
+    233 rust/geometry/src/router/voids/prism_cut.rs cut_prism
+    193 rust/geometry/src/router/voids/prism_cut.rs detect_prism
+-   155 rust/geometry/src/router/voids/probe.rs GeometryRouter::get_opening_item_bounds_with_direction
+    247 rust/geometry/src/router/voids/synthesis.rs GeometryRouter::classify_openings_impl
+    215 rust/geometry/src/router/voids/synthesis.rs GeometryRouter::extend_opening_along_direction
+    168 rust/geometry/src/router/voids/synthesis/membrane.rs GeometryRouter::remove_internal_membrane
+diff --git a/rust/processing/tests/module_size_allowlist.txt b/rust/processing/tests/module_size_allowlist.txt
+index 021db78b50..c79b515700 100644
+--- a/rust/processing/tests/module_size_allowlist.txt
++++ b/rust/processing/tests/module_size_allowlist.txt
+@@ -251,7 +251,7 @@
+ # +16: #1623 Phase 3 — thread the batch-local vs global template decision through the mapped-item intercept (is_template match arm + retag guard).
+ # +3: hoist the item-dedup mesh clone out of the cache Mutex critical section (let-binding + 2-line rationale) so a dedup miss no longer serializes the worker pool on a deep-copy.
+ # +18: #1293 dedup rep_identity: store rep beside the cached mesh, split tag_direct_instance into direct_rep_identity + stamp_direct_instance, and the flagged IFC_LITE_DEDUP_EXTRA type gate in item_dedup_key.
+-    1106 rust/geometry/src/router/processing.rs
++    634 rust/geometry/src/router/processing.rs
+ # +1: reveal-quads comment expanded to 2 lines (dead-symbol reference fix, no code change).
+      619 rust/geometry/src/router/voids/aabb_clip.rs
+ # +36: `parity_along` extracted so the single-ray `point_inside_mesh` and the
+@@ -348,7 +348,7 @@
+ # +6 (#1806 CodeRabbit round-2): reject non-finite rectangle dims/extrusion depth
+ # (is_finite guards) so an inf depth can no longer slip past the `> 0.0` / `<= 0.0`
+ # gates into the fast path.
+-     858 rust/geometry/src/router/voids/probe.rs
++     619 rust/geometry/src/router/voids/probe.rs
+ # -47: the exit-cap decision (which cutter caps may be pushed through the host)
+ # moved to synthesis/exit_cap.rs, a module under the 400 budget, rather than
+ # sitting inline here; 1002 -> 955. The move is NOT verbatim: the occupancy veto
+diff --git a/rust/processing/tests/module_size_ratchet.rs b/rust/processing/tests/module_size_ratchet.rs
+index 02e628032e..207590dc4a 100644
+--- a/rust/processing/tests/module_size_ratchet.rs
++++ b/rust/processing/tests/module_size_ratchet.rs
+@@ -60,7 +60,7 @@ const ALLOWLIST_DIGESTS: &[(&str, u64)] = &[
+     ("apps/server", 4104424009168246343),
+     ("rust/core", 12372798877575856707),
+     ("rust/export", 2156577647744325171),
+-    ("rust/geometry", 1674152600355874594),
++    ("rust/geometry", 1850909529217958824),
+     ("rust/processing", 13894717140543592832),
+     ("rust/wasm-bindings", 2522940784876655197),
+ ];
+diff --git a/rust/processing/tests/positional_read_allowlist.txt b/rust/processing/tests/positional_read_allowlist.txt
+index a7f3a4bbd8..fe2c0dabc9 100644
+--- a/rust/processing/tests/positional_read_allowlist.txt
++++ b/rust/processing/tests/positional_read_allowlist.txt
+@@ -69,17 +69,15 @@
+ 3 rust/geometry/src/representation/mod.rs
+ 1 rust/geometry/src/representation/select.rs
+ 3 rust/geometry/src/representation/walk.rs
+-4 rust/geometry/src/router/annotation.rs
+ 2 rust/geometry/src/router/instancing.rs
+ 2 rust/geometry/src/router/layers.rs
+ 1 rust/geometry/src/router/mod.rs
+ 17 rust/geometry/src/router/rtc_offset.rs
+ 2 rust/geometry/src/router/rtc_offset/raw_coordinate.rs
+-3 rust/geometry/src/router/textured.rs
+ 2 rust/geometry/src/router/transforms/mapped.rs
+ 3 rust/geometry/src/router/transforms/mod.rs
+ 15 rust/geometry/src/router/transforms/operator.rs
+-43 rust/geometry/src/router/voids/probe.rs
++37 rust/geometry/src/router/voids/probe.rs
+ 2 rust/geometry/src/router/voids/representation.rs
+ 3 rust/geometry/src/transform.rs
+ 5 rust/geometry/src/trimmed_curve.rs

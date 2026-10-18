@@ -1,0 +1,17 @@
+{
+  "task_id": "node:delegated-task:command%3Amcp%3A40782b11-2ce6-4f4a-b37b-2a6dbccb22b9%3Adelegate-task%3Aifclite-common-boolean-program-round1",
+  "state_at_recording": "running",
+  "isolation": "app-owned worktree",
+  "baseline": "Parent772522 plus incremental ProductProgram patch SHA8ea8e7f6d3ed78a9ca98458a961febe7b3f1c3a5924b6969815ad2f76f4fb367",
+  "scope": "Actual shared boolean/CSG source admission, owned numerical work and explicit conditional assembly/recovery; replace old decoder-retaining canonical control",
+  "preservation": [
+    "exact kernel permanent/default",
+    "reached-source/error order",
+    "path-scoped cycle and monotonic budget semantics",
+    "group provisional failure rollback scope",
+    "empty/unknown operand diagnostic behavior",
+    "fresh builtin operand roles vs selected root processors",
+    "public borrowed and custom worker contracts"
+  ],
+  "qualification": "No implementation or validation outcome claimed by task acceptance"
+}

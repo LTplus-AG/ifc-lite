@@ -1,0 +1,100 @@
+{
+  "checkpoint_commit": "88dc838c4fa74a21968c3735e3f2e751b165c5dd",
+  "checkpoint_tree": "94264976ade2fa40bf58d1fb1267fb728800b99a",
+  "integration": "Apply product-program.patch against reconstructed baseline_tree from source-manifest.json. Checkpoint contains inherited overlay; do not use its entire diff as the incremental implementation.",
+  "source_manifest": "source-manifest.json",
+  "workspace": {
+    "summaries": 377,
+    "passed": 5766,
+    "failed": 0,
+    "ignored": 47,
+    "exit_code": 0
+  },
+  "legacy_validation": [
+    {
+      "name": "ratchets-final",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-processing",
+        "--test",
+        "positional_read_ratchet",
+        "--test",
+        "function_length_ratchet",
+        "--test",
+        "module_size_ratchet",
+        "--test",
+        "styling_parity",
+        "--no-fail-fast"
+      ],
+      "exit_code": 0,
+      "seconds": 375.9457004070282
+    },
+    {
+      "name": "workspace",
+      "command": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--no-fail-fast"
+      ],
+      "exit_code": 0,
+      "seconds": 1579.4478297233582
+    },
+    {
+      "name": "clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "seconds": 154.8000259399414
+    }
+  ],
+  "validation_provenance": "Native pipeline, focused/Python checks, WASM builds/contracts and dependency builds began before fleet policy update on Pop. Original running graph preserved; not relabeled as fleet admission.",
+  "other_completed_checks": {
+    "focused_program_tests": 21,
+    "python_tests": 6,
+    "ratchets_passed": 51,
+    "ratchets_ignored_reseed_helpers": 2,
+    "wasm_package_tests": 24,
+    "wasm_contract_tests": 223,
+    "raw_wasm_abi": "Original five signatures and direct instanced retbuf decode passed; wasm-abi.json",
+    "refwalk": "1335 files; 29 candidate walks guarded; 12 existing fanout reviews; zero unguarded"
+  },
+  "root_typecheck": {
+    "status": "UNKNOWN",
+    "request": "auto-9d46e5d830324e3eae373ead2f6dfbc7",
+    "job": "8d413b59-eca4-4199-90bb-01fdf2b40a98",
+    "host": "pc-wsl",
+    "command": "pnpm typecheck",
+    "fleet_wrapper_exit": 1,
+    "original_receipt": "/home/louistrue/build-workers/worker-state/jobs/8d413b59-eca4-4199-90bb-01fdf2b40a98/receipt.json",
+    "recovery": "execution host unavailable; outcome remains unknown; do not resubmit",
+    "error": "No space left on device",
+    "resubmitted": false
+  },
+  "performance": {
+    "status": "UNQUALIFIED",
+    "benchmark_admission_job": "f597d448-ef7d-459f-affe-3e32ff19330c",
+    "reason": "Pop capacity guard refused before execution: 139.5 GiB free, 266 GiB required",
+    "samples": 0,
+    "remaining": "Paired native full-load identity and whole worker-pool ABBA5 byte identity/performance; no speed or neutrality claim"
+  },
+  "coverage_limits": [
+    "Boolean/CSG continuation remains synchronous in existing owner; optional ConstructionBatch does not replace canonical boolean control",
+    "Layer eligibility/slicing and opening classification/capture orchestration remain in existing owners; geometry calls enter common program",
+    "Full terminal resource admission/cancellation and effect receipts/finer request-reply identities remain open",
+    "Source bytes/index coherence bundle is a separate parallel integration; lifecycle labels do not authenticate coherence",
+    "No public async scheduler or active SMLib production cutover",
+    "Root pnpm test was not run for this checkpoint; parent results do not qualify this source"
+  ],
+  "fixtures": "Available parent model files copied read-only into this checkout ignored tests/models. Tests retain normal absent-fixture skips; 47 ignored invocations include existing manual probes, known reproductions and unavailable local models. Harness captures successful test output, so silent skip-return tests cannot be counted as fixture coverage.",
+  "history": "Initial contract run failed on absent renderer/dist; root Turbo dependency build and actual contract rerun passed. Earlier ratchet failure on obsolete allowance preserved with final successful run. Original logs retained."
+}

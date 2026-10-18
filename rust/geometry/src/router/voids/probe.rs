@@ -4,11 +4,10 @@
 
 //! IFC parametric decode + cutter-mesh extraction from opening elements.
 
-use super::geom::*;
 use super::{GeometryRouter, RectParam, MAX_EXTRUSION_EXTRACT_DEPTH};
 use crate::profile::Profile2D;
 use crate::profiles::ProfileProcessor;
-use crate::{Error, Mesh, Point3, Result, Vector3};
+use crate::{Mesh, Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::{Matrix3, Matrix4};
 use rustc_hash::FxHashSet;
@@ -71,7 +70,7 @@ impl GeometryRouter {
     /// Recursively extract extrusion direction and position transform from representation item
     /// Handles IfcExtrudedAreaSolid, IfcBooleanClippingResult, and IfcMappedItem
     /// Returns (local_direction, position_transform) where direction is in local space
-    fn extract_extrusion_direction_recursive(
+    pub(crate) fn extract_extrusion_direction_recursive(
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
@@ -465,67 +464,9 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Vec<Mesh>> {
-        let representation_attr = element.get(6).ok_or_else(|| {
-            Error::geometry("Element has no representation attribute".to_string())
-        })?;
-        if representation_attr.is_null() {
-            return Ok(vec![]);
-        }
-
-        let representation = decoder
-            .resolve_ref(representation_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve representation".to_string()))?;
-        let representations_attr = representation.get(2).ok_or_else(|| {
-            Error::geometry("ProductDefinitionShape missing Representations".to_string())
-        })?;
-        let representations = decoder.resolve_ref_list(representations_attr)?;
-
-        // Get the same placement transform that apply_placement uses
-        let mut placement_transform = self
-            .get_placement_transform_from_element(element, decoder)
-            .unwrap_or_else(|_| Matrix4::identity());
-        self.scale_transform(&mut placement_transform);
-
-        let mut item_meshes = Vec::new();
-
-        // The representations the mesh path meshes: body only, and a
-        // MappedRepresentation skipped when direct body geometry duplicates
-        // it, so one void yields one cutter, not two (ROUTER-28, #7690).
-        for shape_rep in crate::router::meshed_representations(element, &representations) {
-            let items_attr = match shape_rep.get(3) {
-                Some(attr) => attr,
-                None => continue,
-            };
-            let items = match decoder.resolve_ref_list(items_attr) {
-                Ok(items) => items,
-                Err(_) => continue,
-            };
-
-            for item in items {
-                // A raw national-grid cutter rebases in this opening's own
-                // frame, like the host it cuts (#5698).
-                // A mapped source mixing frames yields one cutter per frame (#6446).
-                let item_parts = match self.process_raw_item_for_element(&item, element, decoder) {
-                    Ok(Some(mesh)) => Ok(vec![mesh]),
-                    Ok(None) => self.process_representation_item_parts(&item, decoder),
-                    Err(error) => Err(error),
-                };
-                let Ok(item_parts) = item_parts else { continue };
-                for mut mesh in item_parts.into_iter().filter(|mesh| !mesh.is_empty()) {
-                    // Keep ordinary opening cutters in the world/RTC frame. A large
-                    // mapped origin, or a cutter far from the RTC origin (#6478),
-                    // would lose its fractional translation when the world point is
-                    // cast to f32; the void context folds each cutter's origin into
-                    // the host frame before cutting.
-                    let frame_cutter = self.needs_local_frame(&mesh, &placement_transform);
-                    self.transform_mesh_world_framed(&mut mesh, &placement_transform, frame_cutter);
-
-                    item_meshes.push(mesh);
-                }
-            }
-        }
-
-        Ok(item_meshes)
+        let Some(program) = crate::program::opening::OpeningProgram::admit(element,
+            crate::program::EntryPolicy::OpeningItemMeshes, self, decoder)? else { return Ok(vec![]) };
+        program.meshes(element, self, decoder)
     }
 
     /// Extrusion direction is in world coordinates, normalized
@@ -535,155 +476,9 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Vec<(Point3<f64>, Point3<f64>, Option<Vector3<f64>>)>> {
-        // Get representation (attribute 6 for most building elements)
-        let representation_attr = element.get(6).ok_or_else(|| {
-            Error::geometry("Element has no representation attribute".to_string())
-        })?;
-
-        if representation_attr.is_null() {
-            return Ok(vec![]);
-        }
-
-        let representation = decoder
-            .resolve_ref(representation_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve representation".to_string()))?;
-
-        // Get representations list
-        let representations_attr = representation.get(2).ok_or_else(|| {
-            Error::geometry("ProductDefinitionShape missing Representations".to_string())
-        })?;
-
-        let representations = decoder.resolve_ref_list(representations_attr)?;
-
-        // Get placement transform
-        let mut placement_transform = self
-            .get_placement_transform_from_element(element, decoder)
-            .unwrap_or_else(|_| Matrix4::identity());
-        self.scale_transform(&mut placement_transform);
-
-        let mut bounds_list = Vec::new();
-
-        // Same representation selection as `get_opening_item_meshes_world`.
-        for shape_rep in crate::router::meshed_representations(element, &representations) {
-            // Get items list
-            let items_attr = match shape_rep.get(3) {
-                Some(attr) => attr,
-                None => continue,
-            };
-
-            let items = match decoder.resolve_ref_list(items_attr) {
-                Ok(items) => items,
-                Err(_) => continue,
-            };
-
-            // Process each item separately to get individual bounds
-            for item in items {
-                // Try to extract extrusion direction recursively (handles wrappers)
-                let extrusion_direction = if let Some((local_dir, position_transform)) =
-                    self.extract_extrusion_direction_recursive(&item, decoder)
-                {
-                    // A zero-length IFCDIRECTION drops only THIS item's direction
-                    // (coarser bounds), not `?`-abort every sibling item's bounds.
-                    let element_rot = extract_rotation_columns(&placement_transform);
-                    if let Some(pos_transform) = position_transform {
-                        let pos_rot = extract_rotation_columns(&pos_transform);
-                        rotate_and_normalize(&pos_rot, &local_dir)
-                            .ok()
-                            .and_then(|world_dir| {
-                                rotate_and_normalize(&element_rot, &world_dir).ok()
-                            })
-                    } else {
-                        rotate_and_normalize(&element_rot, &local_dir).ok()
-                    }
-                } else {
-                    None
-                };
-
-                // Get mesh bounds (same as original function), one entry per frame
-                // part in the order `get_opening_item_meshes_world` emits them (#6446).
-                let Ok(item_parts) = self.process_representation_item_parts(&item, decoder) else {
-                    continue;
-                };
-                for mesh in item_parts.into_iter().filter(|mesh| !mesh.is_empty()) {
-                    // Mesh::bounds is local to mesh.positions. Mapped items can
-                    // carry a large f64 origin that must be folded in before the
-                    // element placement, or the cutter box lands near zero.
-                    let (mesh_min, mesh_max) = mesh.bounds();
-
-                    // Transform corner points to world coordinates
-                    let corners = [
-                        Point3::new(mesh_min.x as f64, mesh_min.y as f64, mesh_min.z as f64),
-                        Point3::new(mesh_max.x as f64, mesh_min.y as f64, mesh_min.z as f64),
-                        Point3::new(mesh_min.x as f64, mesh_max.y as f64, mesh_min.z as f64),
-                        Point3::new(mesh_max.x as f64, mesh_max.y as f64, mesh_min.z as f64),
-                        Point3::new(mesh_min.x as f64, mesh_min.y as f64, mesh_max.z as f64),
-                        Point3::new(mesh_max.x as f64, mesh_min.y as f64, mesh_max.z as f64),
-                        Point3::new(mesh_min.x as f64, mesh_max.y as f64, mesh_max.z as f64),
-                        Point3::new(mesh_max.x as f64, mesh_max.y as f64, mesh_max.z as f64),
-                    ];
-
-                    // Transform all corners and compute new AABB
-                    let transformed: Vec<Point3<f64>> = corners
-                        .iter()
-                        .map(|p| {
-                            let source = Point3::new(
-                                p.x + mesh.origin[0],
-                                p.y + mesh.origin[1],
-                                p.z + mesh.origin[2],
-                            );
-                            placement_transform.transform_point(&source)
-                        })
-                        .collect();
-
-                    let world_min = Point3::new(
-                        transformed
-                            .iter()
-                            .map(|p| p.x)
-                            .fold(f64::INFINITY, f64::min),
-                        transformed
-                            .iter()
-                            .map(|p| p.y)
-                            .fold(f64::INFINITY, f64::min),
-                        transformed
-                            .iter()
-                            .map(|p| p.z)
-                            .fold(f64::INFINITY, f64::min),
-                    );
-                    let world_max = Point3::new(
-                        transformed
-                            .iter()
-                            .map(|p| p.x)
-                            .fold(f64::NEG_INFINITY, f64::max),
-                        transformed
-                            .iter()
-                            .map(|p| p.y)
-                            .fold(f64::NEG_INFINITY, f64::max),
-                        transformed
-                            .iter()
-                            .map(|p| p.z)
-                            .fold(f64::NEG_INFINITY, f64::max),
-                    );
-
-                    // Apply RTC offset to opening bounds so they match wall mesh coordinate system
-                    // Wall mesh positions have RTC subtracted during transform_mesh, so opening bounds must match
-                    let rtc = self.rtc_offset;
-                    let rtc_min = Point3::new(
-                        world_min.x - rtc.0,
-                        world_min.y - rtc.1,
-                        world_min.z - rtc.2,
-                    );
-                    let rtc_max = Point3::new(
-                        world_max.x - rtc.0,
-                        world_max.y - rtc.1,
-                        world_max.z - rtc.2,
-                    );
-
-                    bounds_list.push((rtc_min, rtc_max, extrusion_direction));
-                }
-            }
-        }
-
-        Ok(bounds_list)
+        let Some(program) = crate::program::opening::OpeningProgram::admit(element,
+            crate::program::EntryPolicy::OpeningItemBounds, self, decoder)? else { return Ok(vec![]) };
+        program.bounds(self, decoder)
     }
 
     /// Unwrap `item` — through `IfcMappedItem` (accumulating the mapping

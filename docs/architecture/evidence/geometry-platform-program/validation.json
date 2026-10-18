@@ -1,0 +1,47 @@
+[
+  {
+    "name": "ratchets-final",
+    "command": [
+      "cargo",
+      "test",
+      "-p",
+      "ifc-lite-processing",
+      "--test",
+      "positional_read_ratchet",
+      "--test",
+      "function_length_ratchet",
+      "--test",
+      "module_size_ratchet",
+      "--test",
+      "styling_parity",
+      "--no-fail-fast"
+    ],
+    "exit_code": 0,
+    "seconds": 375.9457004070282
+  },
+  {
+    "name": "workspace",
+    "command": [
+      "cargo",
+      "test",
+      "--workspace",
+      "--no-fail-fast"
+    ],
+    "exit_code": 0,
+    "seconds": 1579.4478297233582
+  },
+  {
+    "name": "clippy",
+    "command": [
+      "cargo",
+      "clippy",
+      "--workspace",
+      "--all-targets",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "exit_code": 0,
+    "seconds": 154.8000259399414
+  }
+]

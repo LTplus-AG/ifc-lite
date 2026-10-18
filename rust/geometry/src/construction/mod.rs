@@ -13,15 +13,6 @@
 //! The canonical element path remains responsible for final product geometry.
 
 use crate::{Error, Mesh, Result};
-use crate::processors::{csg_primitive::plan::{BlockPlan, SpherePlan},
-    extrusion::plan::ExtrusionPlan, extrusion_tapered::plan::TaperedExtrusionPlan,
-    swept::revolved::plan::RevolvedPlan, SweptDiskPlan, SurfaceCurveSweepPlan,
-    polygonal_plan::PolygonalFaceSetPlan, triangulated_plan::TriangulatedFaceSetPlan};
-use crate::processors::{faceted_plan::FacetedBrepPlan,
-    advanced_plan::{AdvancedBrepPlan, BSplineSurfacePlan},
-    structural_face_plan::StructuralFacePlan, structural_edge::EdgePlan,
-    SurfaceModelPlan, sectioned::plan::SectionedPlan,
-    alignment::plan::AlignmentPlan, surface::plan::LinearExtrusionSurfacePlan};
 
 pub use crate::router::ConstructionFamily;
 pub use reports::{ConstructionDiagnostic, ConstructionExecutionError, ConstructionReports};
@@ -56,26 +47,8 @@ pub struct ConstructionNode {
 
 #[derive(Debug, Clone)]
 enum Construction {
-    Empty,
+    Builtin(crate::program::OwnedConstructor),
     BrepOperand(brep_operand::BrepOperandPlan),
-    Extrusion(ExtrusionPlan),
-    TaperedExtrusion(TaperedExtrusionPlan),
-    Revolved(RevolvedPlan),
-    SweptDisk(SweptDiskPlan),
-    SweptArea(SurfaceCurveSweepPlan),
-    Block(BlockPlan),
-    Sphere(SpherePlan),
-    Triangles(TriangulatedFaceSetPlan),
-    Polygons(PolygonalFaceSetPlan),
-    FacetedBrep(FacetedBrepPlan),
-    SectionedSolid(SectionedPlan),
-    AdvancedBrep(AdvancedBrepPlan),
-    BSplineSurface(BSplineSurfacePlan),
-    SurfaceModel(SurfaceModelPlan),
-    Alignment(AlignmentPlan),
-    Edge(EdgePlan),
-    FaceSurface(StructuralFacePlan),
-    LinearExtrusionSurface(LinearExtrusionSurfacePlan),
 }
 
 impl ConstructionNode {
@@ -158,28 +131,9 @@ mod family_tests;
 
 impl Construction {
     fn evaluate(self, recorder: &crate::processors::BooleanClippingProcessor) -> Result<(Mesh, bool)> {
-        let mesh = match self {
-            Self::BrepOperand(plan) => return plan.evaluate(recorder),
-            Self::Empty => Ok(Mesh::new()),
-            Self::Extrusion(plan) => plan.evaluate(),
-            Self::TaperedExtrusion(plan) => plan.evaluate(),
-            Self::Revolved(plan) => plan.evaluate(),
-            Self::SweptDisk(plan) => Ok(plan.evaluate()),
-            Self::SweptArea(plan) => plan.evaluate(),
-            Self::Block(plan) => Ok(plan.evaluate()),
-            Self::Sphere(plan) => Ok(plan.evaluate()),
-            Self::Triangles(plan) => Ok(plan.evaluate()),
-            Self::Polygons(plan) => Ok(plan.evaluate()),
-            Self::FacetedBrep(plan) => Ok(plan.evaluate()),
-            Self::SectionedSolid(plan) => plan.evaluate(),
-            Self::AdvancedBrep(plan) => plan.evaluate(),
-            Self::BSplineSurface(plan) => plan.evaluate(),
-            Self::SurfaceModel(plan) => plan.evaluate(),
-            Self::Alignment(plan) => Ok(plan.evaluate()),
-            Self::Edge(plan) => Ok(plan.evaluate()),
-            Self::FaceSurface(plan) => plan.evaluate(),
-            Self::LinearExtrusionSurface(plan) => Ok(plan.evaluate()),
-        }?;
-        Ok((mesh, false))
+        match self {
+            Self::Builtin(plan) => plan.evaluate().map(|mesh| (mesh, false)),
+            Self::BrepOperand(plan) => plan.evaluate(recorder),
+        }
     }
 }

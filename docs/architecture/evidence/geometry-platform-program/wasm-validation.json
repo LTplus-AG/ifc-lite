@@ -1,0 +1,64 @@
+{
+  "checks": [
+    {
+      "name": "wasm-package",
+      "command": [
+        "pnpm",
+        "test",
+        "--filter=@ifc-lite/wasm",
+        "--force"
+      ],
+      "exit_code": 0,
+      "seconds": 6.901633024215698
+    },
+    {
+      "name": "wasm-abi",
+      "command": [
+        "node",
+        "/tmp/ifclite-product-program-d63e73e7/verify-wasm-abi.mjs"
+      ],
+      "exit_code": 0,
+      "seconds": 0.17056512832641602
+    },
+    {
+      "name": "wasm-contract",
+      "command": [
+        "pnpm",
+        "test:wasm-contract"
+      ],
+      "exit_code": 1,
+      "seconds": 0.5956175327301025
+    },
+    {
+      "name": "contract-dependencies-build",
+      "command": [
+        "pnpm",
+        "build",
+        "--filter=@ifc-lite/renderer",
+        "--filter=@ifc-lite/export"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "wasm-contract-built",
+      "command": [
+        "pnpm",
+        "test:wasm-contract"
+      ],
+      "exit_code": 0,
+      "passed": 223,
+      "failed": 0,
+      "skipped": 0
+    }
+  ],
+  "before": {
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "43c4a26b4f6c28b62dfab4607514a5e2d46c051fcd3061779fa061deddfbd70c",
+    "packages/wasm/pkg/ifc-lite.js": "f857f30fcb7060511f823068bb259301f0fbd588db668bb8f980f5608dd550a7",
+    "packages/wasm/pkg/ifc-lite.d.ts": "09d8d25805b6d66866b65cfeb3fbc0cbd35edc8b1ef45967930c34c0bad22353"
+  },
+  "after": {
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "43c4a26b4f6c28b62dfab4607514a5e2d46c051fcd3061779fa061deddfbd70c",
+    "packages/wasm/pkg/ifc-lite.js": "f857f30fcb7060511f823068bb259301f0fbd588db668bb8f980f5608dd550a7",
+    "packages/wasm/pkg/ifc-lite.d.ts": "09d8d25805b6d66866b65cfeb3fbc0cbd35edc8b1ef45967930c34c0bad22353"
+  }
+}

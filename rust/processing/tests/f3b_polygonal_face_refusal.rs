@@ -4,7 +4,9 @@
 
 //! #7779 F3b: an absent independent IfcPolygonalFaceSet face record must not
 //! erase its product's valid geometry, and the native diagnostics must report
-//! the dropped face type independently of the mesh count.
+//! the dropped face type independently of the mesh count. Empty native results
+//! may be retried by the producer, so native diagnostic counts are signals, not
+//! per-missing-reference cardinalities; exact per-item counts are router tests.
 
 use ifc_lite_processing::{process_geometry, ProcessingResult};
 
@@ -31,12 +33,18 @@ fn run(face_records: &str, face_refs: &str) -> ProcessingResult {
     process_geometry(model(face_records, face_refs).as_bytes())
 }
 
-fn dropped_indexed_faces(result: &ProcessingResult) -> u64 {
-    result
+fn assert_only_indexed_face_refusal(result: &ProcessingResult) -> u64 {
+    let diagnostics = result
         .stats
         .geometry_diagnostics
         .as_ref()
-        .expect("face refusal must surface geometry diagnostics")
+        .expect("face refusal must surface geometry diagnostics");
+    assert!(!diagnostics.unsupported_items_by_type.is_empty());
+    assert!(diagnostics
+        .unsupported_items_by_type
+        .iter()
+        .all(|entry| entry.reason == "IfcIndexedPolygonalFace"));
+    diagnostics
         .unsupported_items_by_type
         .iter()
         .find(|entry| entry.reason == "IfcIndexedPolygonalFace")
@@ -50,12 +58,14 @@ fn native_product_geometry_survives_dangling_polygonal_face_7779() {
     let clean_mesh = clean.meshes.iter().find(|m| m.express_id == 25).expect("control wall mesh");
     assert_eq!(clean_mesh.indices.len(), 3);
 
-    let partial = run(face, "#21,#999");
-    let mesh = partial.meshes.iter().find(|m| m.express_id == 25).expect("valid face keeps wall mesh");
-    assert_eq!(mesh.indices, clean_mesh.indices);
-    assert_eq!(mesh.positions, clean_mesh.positions);
-    assert_eq!(mesh.normals, clean_mesh.normals);
-    assert_eq!(dropped_indexed_faces(&partial), 1, "diagnostics report the item/type drop");
+    for refs in ["#21,#999", "#999,#21"] {
+        let partial = run(face, refs);
+        let mesh = partial.meshes.iter().find(|m| m.express_id == 25).expect("valid face keeps wall mesh");
+        assert_eq!(mesh.indices, clean_mesh.indices, "authored indices survive for {refs}");
+        assert_eq!(mesh.positions, clean_mesh.positions, "authored positions survive for {refs}");
+        assert_eq!(mesh.normals, clean_mesh.normals, "authored normals survive for {refs}");
+        assert!(assert_only_indexed_face_refusal(&partial) > 0, "missing face is reported for {refs}");
+    }
 }
 
 #[test]
@@ -65,5 +75,5 @@ fn native_all_missing_polygonal_faces_report_without_a_product_mesh_7779() {
         result.meshes.iter().all(|m| m.express_id != 25 || m.indices.is_empty()),
         "all-missing face entries cannot produce product triangles"
     );
-    assert_eq!(dropped_indexed_faces(&result), 1);
+    assert!(assert_only_indexed_face_refusal(&result) > 0);
 }

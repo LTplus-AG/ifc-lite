@@ -1,0 +1,21 @@
+{
+  "source_commit": "816ed544ee",
+  "runtime_source_identity": "No rust/packages/apps/scripts/Cargo input changes relative to integrated programe2e42bbfb8",
+  "state_at_recording": "Both original handles live; no command result yet",
+  "host_pin": "pop-os",
+  "checks": [
+    {
+      "command": "cargo test --workspace --no-fail-fast",
+      "request": "auto-d13260effc08436f937e23381aaee805",
+      "session": 21731
+    },
+    {
+      "command": "cargo clippy --workspace --all-targets -- -D warnings",
+      "request": "auto-1d7f2352ccc445eebb36c53c62f9c0e3",
+      "session": 56318
+    }
+  ],
+  "launch": "Canonical ifc-fleet run --host pop-os --cwd clean-parent-checkout -- COMMAND; fleet prepares immutable checkout/toolchain and admission",
+  "previous_attempts": "All original PC preparation failures, direct-script permission error and own queued cancellation preserved separately; no successful Cargo verdict from them",
+  "recovery": "Inspect original handles/requests after observation interruption; no automatic duplicate submission"
+}

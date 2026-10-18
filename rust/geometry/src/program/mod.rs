@@ -2,10 +2,11 @@
 //! Reached product representation control and owned numerical operations.
 //!
 //! Owns the five reached representation/item policies and mapping child frames.
-//! Boolean continuation, layer slicing and opening classification retain their
+//! Boolean continuation and opening classification retain their
 //! existing owners. This synchronous module claims no transport or resource safety.
 
 mod traversal;
+pub(crate) mod layers;
 mod product;
 pub(crate) mod opening;
 mod opening_bounds;

@@ -1,0 +1,40 @@
+{
+  "parent_base": "816ed544ee14b50f84748bcd808b7605bbe1b1b0",
+  "state": "Implemented in parent checkout; compilation/tests not yet verified",
+  "files": {
+    "rust/geometry/src/program/mod.rs": "d23f1de905ba9de950cb58eb9503df7a28bff1d3ecd5493fa0ddde75fc274e1d",
+    "rust/geometry/src/router/layers.rs": "2881252a8c75b4e3f0abbc2308a8076a3f3230727cb1b863a26f5b471c17ad2c",
+    "rust/processing/tests/module_size_allowlist.txt": "04d4459732f58fbe40a3389077019fb0aaf779eb8d2fa9369de2ca35bda56341",
+    "rust/processing/tests/positional_read_allowlist.txt": "0963907d0afaaf580de14ec4a4cb6d410e4873209b139b6b8ac13ce98077aa1f",
+    "rust/geometry/src/program/layers/source.rs": "3f2c5d879c237914bff71dc016c6ad098f8dc7486d5201b07506c5900d2e08a0",
+    "rust/geometry/src/program/layers/planes.rs": "8e6fd9faf00f0a14baba69ce6b8bf9907850a3305c0c5e71d4b06ac341017952",
+    "rust/geometry/src/program/layers/source_tests.rs": "084a0a7c99747b619a354f124cf00d24ca986f7f87f90f01c3f27fe24803f2ae",
+    "rust/geometry/src/program/layers/geometry_tests.rs": "8c0c52df56f48ef2e894a5218e66f8487db950e66e89377042ffc987f7786661",
+    "rust/geometry/src/program/layers/slice.rs": "961dedcb694c48e97abee534fe9443501804e58e15c6256dddcf8e8e2b689d41",
+    "rust/geometry/src/program/layers/stack.rs": "df348423647c6c390f346c3934034fc17b94c1612e5d55c6f64affea7108984d",
+    "rust/geometry/src/program/layers/mod.rs": "15aeb3f7963bb21a775e73da25227d7c2edb53cc61bb1d2963077a97c262ef3c",
+    "rust/geometry/src/program/layers/stack_tests.rs": "f6596d4ce53c7322da3607bca3f7ec57f18d7aa04b6b9509863c1e9530797a0c"
+  },
+  "deleted": [
+    "rust/geometry/src/router/layers_tests.rs",
+    "rust/geometry/src/router/layers_cycle_tests.rs"
+  ],
+  "review": "Read-only; no concrete semantic blocker found; production source reviewed before window-cut test addition",
+  "new_test_status": "Three public actual-geometry invariant tests added, not executed; existing thin/cycle tests moved",
+  "guard_check": {
+    "command": "node scripts/check-refwalk-guards.mjs",
+    "exit": 0,
+    "production_files": 1341,
+    "candidate_walks": 29,
+    "unguarded": 0,
+    "fanout_reviews": 12
+  },
+  "preservation": "Original source/error/diagnostic and numerical arithmetic order retained; public borrowed API unchanged; no extra mesh clone introduced by control move",
+  "qualification_limits": [
+    "No compile/Clippy pass yet",
+    "No current-source WASM or real-model comparisons",
+    "No controlled worker-pool performance verdict",
+    "Opening production remains existing host request owner; complete product migration still open"
+  ],
+  "predecessor_checks": "Immutable816 Pop requests retain original handles; their eventual results cannot qualify this later layer"
+}

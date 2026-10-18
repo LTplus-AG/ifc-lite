@@ -1,0 +1,76 @@
+{
+  "observed_utc": "2026-10-18T22:03:45.676073+00:00",
+  "scope": "Read-only active dirty implementation; not immutable prior qualification",
+  "files": [
+    {
+      "path": "/tmp/ifclite-layers-before.rs",
+      "sha256": "d8bba94484eda047ea15f661f491893f26dd5e753b9cd79a246c4ebe104296ab",
+      "bytes": 25814
+    },
+    {
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/src/router/layers.rs",
+      "sha256": "2881252a8c75b4e3f0abbc2308a8076a3f3230727cb1b863a26f5b471c17ad2c",
+      "bytes": 4943
+    },
+    {
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/src/program/mod.rs",
+      "sha256": "d23f1de905ba9de950cb58eb9503df7a28bff1d3ecd5493fa0ddde75fc274e1d",
+      "bytes": 2383
+    },
+    {
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/src/program/layers/geometry_tests.rs",
+      "sha256": "76614ade5cf1b44ff1dcf3aab311937ce334aa860b8fbb673569c5d19f79bb54",
+      "bytes": 3928
+    },
+    {
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/src/program/layers/mod.rs",
+      "sha256": "15aeb3f7963bb21a775e73da25227d7c2edb53cc61bb1d2963077a97c262ef3c",
+      "bytes": 4984
+    },
+    {
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/src/program/layers/planes.rs",
+      "sha256": "8e6fd9faf00f0a14baba69ce6b8bf9907850a3305c0c5e71d4b06ac341017952",
+      "bytes": 1810
+    },
+    {
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/src/program/layers/slice.rs",
+      "sha256": "961dedcb694c48e97abee534fe9443501804e58e15c6256dddcf8e8e2b689d41",
+      "bytes": 4033
+    },
+    {
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/src/program/layers/source.rs",
+      "sha256": "3f2c5d879c237914bff71dc016c6ad098f8dc7486d5201b07506c5900d2e08a0",
+      "bytes": 7650
+    },
+    {
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/src/program/layers/source_tests.rs",
+      "sha256": "084a0a7c99747b619a354f124cf00d24ca986f7f87f90f01c3f27fe24803f2ae",
+      "bytes": 5756
+    },
+    {
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/src/program/layers/stack.rs",
+      "sha256": "df348423647c6c390f346c3934034fc17b94c1612e5d55c6f64affea7108984d",
+      "bytes": 2910
+    },
+    {
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/src/program/layers/stack_tests.rs",
+      "sha256": "f6596d4ce53c7322da3607bca3f7ec57f18d7aa04b6b9509863c1e9530797a0c",
+      "bytes": 2200
+    },
+    {
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/src/router/execution_owner.rs",
+      "sha256": "17ab194fe0f25b6b6ad754df552ffc37add5ad5e59a246eb55ef389a00097b54",
+      "bytes": 1560
+    },
+    {
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/geometry/src/router/mod.rs",
+      "sha256": "cfd196982ba3ecdf4d31684e273e3bc3e2e28338ea7da3e188e75a2a35e730a0",
+      "bytes": 36579
+    },
+    {
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361/rust/core/src/generated/slots.rs",
+      "sha256": "0960306a243abde77a1e1fb4ffa55cb96283136722c3804613b41ef5f0e59d98",
+      "bytes": 814131
+    }
+  ]
+}

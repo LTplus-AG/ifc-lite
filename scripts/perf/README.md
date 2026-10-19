@@ -4060,3 +4060,10 @@ now uses the reviewed first-frame clock contract in both cadence and markers,
 and reads finalized sidecars at their actual case paths. Lesson: verify final
 checker contracts and receipt discovery against retained real captures before
 spending another capture window. This integration fix grants no timing verdict.
+
+
+### Missing polygonal-face records (#7911)
+
+Correctness change, with no performance improvement or neutrality claim. A source-matched native cohort on Haus, ISSUE_129 and Holter retained identical ordered mesh fingerprints, counts and reported failure counters. Timings were inconclusive: the best-selected phase totals and the complete internal sample distributions gave mixed results, including a divergent best sample on the heavy fixture. The PR retains all observations and the distinction between native process-geometry timing and a full worker-pool load.
+
+Lesson: refuse missing face records through the existing diagnostic path while preserving valid neighboring faces. Keep output identity separate from timing, and retain noisy results rather than selecting a favorable sample or inferring browser performance from a native probe. The wider Rust charter performance and consumer obligations remain tracked independently.

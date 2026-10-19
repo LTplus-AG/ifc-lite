@@ -40,6 +40,7 @@ pub struct BrowserDependencyResult {
     object_live: AtomicBool,
     #[cfg(target_arch = "wasm32")]
     object: wasm_bindgen::JsValue,
+    outcome: crate::NumericalOutcome,
     mesh: RetainedTessellation,
     world_from_evaluation: [f64; 16],
     lineage: Arc<RetainedLineage>,
@@ -49,6 +50,8 @@ pub struct BrowserDependencyResult {
 }
 impl BrowserDependencyResult {
     pub fn handle(&self) -> &BrowserObjectHandle { &self.handle }
+    pub fn outcome(&self) -> crate::NumericalOutcome { self.outcome }
+    pub fn is_empty(&self) -> bool { self.outcome == crate::NumericalOutcome::Empty }
     pub fn mesh(&self) -> &RetainedTessellation { &self.mesh }
     pub fn world_from_evaluation(&self) -> &[f64; 16] { &self.world_from_evaluation }
     pub fn lineage(&self) -> &RetainedLineage { &self.lineage }
@@ -136,9 +139,11 @@ impl super::BrowserWorker {
         self.owner.validate().map_err(error)?;
         let object = js_sys::Reflect::get(&value, &JsValue::from_str("object"))?;
         if !self.owner.driver.object_live(&object) { return Err(error(RetainedRefusal::InvalidRuntime)); }
+        let mesh = super::bridge::mesh(&value)?;
+        let outcome = super::bridge::outcome(&value, &mesh)?;
         let result = BrowserDependencyResult {
             owner: self.owner.clone(), handle: BrowserObjectHandle::new(), object,
-            object_live: AtomicBool::new(true), mesh: super::bridge::mesh(&value)?,
+            object_live: AtomicBool::new(true), mesh, outcome,
             world_from_evaluation: left.frame, operations,
             lineage: Arc::new(RetainedLineage::Boolean { operation, left: left.lineage, right: right.lineage }),
             identity: BrowserOperationIdentity { left: left.handle, right: right.handle, operation,

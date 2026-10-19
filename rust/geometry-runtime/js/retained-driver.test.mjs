@@ -30,6 +30,8 @@ async function fixture() {
         if (op === this.fail) throw new Error(`fixture failure opcode ${op}`);
         let bytes = new Uint8Array();
         if (op === 1) { bytes = new Uint8Array(8); new DataView(bytes.buffer).setBigUint64(0, 42n, true); }
+        else if (op === 12) { bytes = new Uint8Array(8); new DataView(bytes.buffer).setUint32(0, 1, true); new DataView(bytes.buffer).setUint32(4, 32, true); }
+        else if (op === 19) { bytes = new Uint8Array(4); new DataView(bytes.buffer).setUint32(0, this.emptyQuery ?? 0, true); }
         else if (op === 17) {
           assert.ok(this.objects.has(view.getUint32(28, true)));
           bytes = this.allocate();
@@ -43,7 +45,7 @@ async function fixture() {
         } else if (op === 9) { bytes = this.allocate(); }
         else if (op === 10) {
           bytes = new Uint8Array(24);
-          [4,4,4,0,0,0].forEach((n, i) => new DataView(bytes.buffer).setUint32(i * 4, n, true));
+          (this.meshInfo ?? [4,4,4,0,0,0]).forEach((n, i) => new DataView(bytes.buffer).setUint32(i * 4, n, true));
         } else if (op === 11) {
           const stream = view.getUint32(36, true), count = view.getUint32(44, true);
           const width = [1,4].includes(stream) ? 8 : 4;

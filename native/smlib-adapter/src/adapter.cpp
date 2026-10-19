@@ -208,6 +208,13 @@ int32_t ifclite_smlib_volume(uint64_t session, ifclite_smlib_handle handle,
         *out = volume;
     });
 }
+int32_t ifclite_smlib_is_empty(uint64_t session, ifclite_smlib_handle handle, uint32_t* out) {
+    return boundary([&] {
+        require(out != nullptr, IFCLITE_SMLIB_INVALID_ARGUMENT, "null empty query output");
+        *out = 0;
+        *out = solid(session,handle)->IsEmptyModel() ? 1u : 0u;
+    });
+}
 int32_t ifclite_smlib_manifold(uint64_t session, ifclite_smlib_handle handle, uint32_t* out) {
     return boundary([&] {
         require(out != nullptr, IFCLITE_SMLIB_INVALID_ARGUMENT, "null manifold output");
@@ -267,7 +274,7 @@ int32_t ifclite_smlib_transform(uint64_t session, ifclite_smlib_handle handle,
         *out=store(session,std::move(result));
     });
 }
-uint32_t ifclite_smlib_capabilities(void) { return 1u|2u|8u; }
+uint32_t ifclite_smlib_capabilities(void) { return 1u|2u|8u|32u; }
 int32_t ifclite_smlib_sweep_begin(uint64_t session, uint32_t format,
     uint32_t length, uint32_t loops, uint32_t segments, uint64_t* out) {
     return boundary([&] {

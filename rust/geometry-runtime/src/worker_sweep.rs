@@ -87,6 +87,10 @@ impl SmlibWorker {
                 return Err(error);
             }
         };
+        if tessellation.is_empty() {
+            self.retire();
+            return Err(WorkerError::Protocol("construction returned empty solid"));
+        }
         let mesh = RetainedTessellation {
             positions: tessellation.positions,
             indices: tessellation.indices,

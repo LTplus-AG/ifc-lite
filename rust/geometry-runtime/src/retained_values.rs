@@ -34,3 +34,8 @@ pub(crate) fn relative(a: [f64; 16], b: [f64; 16]) -> Result<[f64; 16], &'static
     rigid(out)?;
     Ok(out)
 }
+
+/// Classification sealed by the runtime from the actual numerical solid and
+/// consistent strict mesh metadata. This value alone grants no result authority.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NumericalOutcome { NonEmpty, Empty }

@@ -5,7 +5,7 @@
 pub mod protocol;
 pub mod browser;
 mod retained_values;
-pub use retained_values::RetainedLineage;
+pub use retained_values::{RetainedLineage, NumericalOutcome};
 
 #[cfg(not(target_arch = "wasm32"))]
 mod worker;

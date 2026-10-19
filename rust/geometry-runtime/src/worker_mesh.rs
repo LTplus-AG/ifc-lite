@@ -22,6 +22,7 @@ impl Default for MeshLimits {
 /// revision-local indices of the source BRep, not persistent IFC identities.
 #[derive(Debug)]
 pub struct TessellatedMesh {
+    outcome: crate::NumericalOutcome,
     pub positions: Vec<f64>,
     pub indices: Vec<u32>,
     pub corner_normals: Vec<f64>,
@@ -31,7 +32,28 @@ pub struct TessellatedMesh {
     pub spine_edges: u32,
 }
 
+impl TessellatedMesh {
+    pub fn outcome(&self) -> crate::NumericalOutcome { self.outcome }
+    pub fn is_empty(&self) -> bool { self.outcome == crate::NumericalOutcome::Empty }
+}
+
 impl SmlibWorker {
+    /// Queries the actual retained SDK solid; zero volume/buffers are no proof.
+    pub fn is_empty(&mut self, solid: BrepHandle) -> Result<bool, WorkerError> {
+        let solid = self.wire(solid)?;
+        let capabilities = self.call(KernelCommand::Capabilities)?;
+        if capabilities.len() != 8 || capabilities[..4] != 1u32.to_le_bytes()
+            || u32::from_le_bytes(capabilities[4..].try_into().expect("four bytes")) & 32 == 0 {
+            return Err(self.poison("missing semantic empty query capability"));
+        }
+        let bytes = self.call(KernelCommand::IsEmpty { session: self.session, solid })?;
+        let value: [u8; 4] = self.fixed(bytes)?;
+        match u32::from_le_bytes(value) {
+            0 => Ok(false), 1 => Ok(true),
+            _ => Err(self.poison("invalid semantic empty query result")),
+        }
+    }
+
     /// Tessellate a retained solid without consuming it, then copy the owned
     /// result in bounded frames and release the worker's mesh handle on every
     /// reported success/failure path. Strict worker tessellation refuses partial
@@ -43,6 +65,7 @@ impl SmlibWorker {
         angle_degrees: f64,
         limits: MeshLimits,
     ) -> Result<TessellatedMesh, WorkerError> {
+        let empty = self.is_empty(solid)?;
         let solid = self.wire(solid)?;
         let bytes = self.call(KernelCommand::Tessellate {
             session: self.session,
@@ -51,7 +74,7 @@ impl SmlibWorker {
             angle_degrees,
         })?;
         let mesh = self.handle(bytes)?;
-        let result = self.read_mesh(mesh, limits);
+        let result = self.read_mesh(mesh, limits, empty);
         let released = self.release(mesh);
         if released.is_err() {
             self.retire();
@@ -66,6 +89,7 @@ impl SmlibWorker {
         &mut self,
         mesh: BrepHandle,
         limits: MeshLimits,
+        empty: bool,
     ) -> Result<TessellatedMesh, WorkerError> {
         let object = self.wire(mesh)?;
         let bytes = self.call(KernelCommand::MeshInfo {
@@ -79,7 +103,10 @@ impl SmlibWorker {
         let source_face_count = field(8);
         let boundary_edges = field(12);
         let spine_edges = field(16);
-        if field(20) != 0 {
+        let consistent = if empty {
+            info.iter().all(|&byte| byte == 0)
+        } else { vertices > 0 && triangles > 0 && source_face_count > 0 };
+        if !consistent || boundary_edges != 0 || spine_edges != 0 || field(20) != 0 {
             return Err(self.poison("partial tessellation returned as success"));
         }
         let positions = multiply(vertices, 3)?;
@@ -103,6 +130,7 @@ impl SmlibWorker {
             return Err(self.poison("mesh index or source face out of bounds"));
         }
         Ok(TessellatedMesh {
+            outcome: if empty { crate::NumericalOutcome::Empty } else { crate::NumericalOutcome::NonEmpty },
             positions,
             indices,
             corner_normals,

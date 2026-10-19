@@ -13,7 +13,11 @@ void checked(SmStatus status) { ensure(status == SM_SUCCESS,"upstream tessellati
 }
 std::unique_ptr<AdapterMesh> tessellate_mesh(SmBrep* solid, double chord, double angle) {
     SmTArray<SmFace*> source_faces; solid->GetFaces(source_faces);
-    if (source_faces.GetSize() == 0) return std::make_unique<AdapterMesh>();
+    if (solid->IsEmptyModel()) {
+        ensure(source_faces.GetSize() == 0,"empty solid has source faces");
+        return std::make_unique<AdapterMesh>();
+    }
+    ensure(source_faces.GetSize() > 0,"nonempty solid has no tessellatable faces");
     ensure(source_faces.GetSize() <= 1000000,"source face budget exceeded");
     std::unordered_map<SmFace*,uint32_t> source_ids;
     for (ULONG i = 0; i < source_faces.GetSize(); ++i) source_ids.emplace(source_faces[i],i);
@@ -74,5 +78,6 @@ std::unique_ptr<AdapterMesh> tessellate_mesh(SmBrep* solid, double chord, double
     }
     mesh->info.vertex_count = uint32_t(mesh->positions.size()/3);
     mesh->info.triangle_count = uint32_t(mesh->indices.size()/3);
+    ensure(mesh->info.vertex_count && mesh->info.triangle_count,"nonempty solid produced empty tessellation");
     return mesh;
 }

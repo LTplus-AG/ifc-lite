@@ -125,6 +125,9 @@ impl BrowserWorker {
             return Err(error(RetainedRefusal::InvalidRuntime));
         }
         let mesh = mesh(&value)?;
+        if outcome(&value, &mesh)? != crate::NumericalOutcome::NonEmpty {
+            return Err(error(RetainedRefusal::Contract));
+        }
         let realization = BrowserRealization {
             owner: self.owner.clone(),
             handle: BrowserObjectHandle::new(),
@@ -156,4 +159,19 @@ pub(super) fn mesh(value: &JsValue) -> Result<RetainedTessellation, JsValue> {
     Ok(RetainedTessellation { positions: mesh.positions, indices: mesh.indices,
         flat_corner_normals: mesh.flat_corner_normals, revision_local_faces: mesh.revision_local_faces,
         source_face_count: mesh.source_face_count, boundary_edges: mesh.boundary_edges, spine_edges: mesh.spine_edges })
+}
+
+// The imported private driver issues this classification only after querying
+// the actual result solid. Recheck buffer consistency before sealing Rust data.
+pub(super) fn outcome(value: &JsValue, mesh: &RetainedTessellation) -> Result<crate::NumericalOutcome, JsValue> {
+    let kind = js_sys::Reflect::get(value, &JsValue::from_str("outcome"))?.as_string();
+    let empty = mesh.positions.is_empty() && mesh.indices.is_empty()
+        && mesh.flat_corner_normals.is_empty() && mesh.revision_local_faces.is_empty()
+        && mesh.source_face_count == 0 && mesh.boundary_edges == 0 && mesh.spine_edges == 0;
+    match kind.as_deref() {
+        Some("empty") if empty => Ok(crate::NumericalOutcome::Empty),
+        Some("nonempty") if !mesh.positions.is_empty() && !mesh.indices.is_empty()
+            && mesh.source_face_count > 0 => Ok(crate::NumericalOutcome::NonEmpty),
+        _ => Err(error(RetainedRefusal::Contract)),
+    }
 }

@@ -59,6 +59,11 @@ ifclite_smlib_status ifclite_smlib_boolean(ifclite_smlib_session session,
  * Matrix has 16 column-major doubles: finite positive rigid affine only. */
 ifclite_smlib_status ifclite_smlib_transform(ifclite_smlib_session session,
     ifclite_smlib_handle solid, const double* matrix, ifclite_smlib_handle* out);
+/* Semantic query on the actual retained SmBrep::IsEmptyModel(), not a mesh or
+ * volume heuristic. Returns exactly 0 or 1; does not consume the solid.
+ * Additive opcode 19, capability bit 5 (numeric 32). */
+ifclite_smlib_status ifclite_smlib_is_empty(ifclite_smlib_session session,
+    ifclite_smlib_handle solid, uint32_t* out);
 /* Relative numerical-integration tolerance, supported range [1e-8, 1e-1]. */
 ifclite_smlib_status ifclite_smlib_volume(ifclite_smlib_session session,
     ifclite_smlib_handle solid, double integration_tolerance, double* out);

@@ -75,6 +75,7 @@ pub enum KernelCommand {
     SweepCommit { session: u64, upload: u64 },
     SweepAbort { session: u64, upload: u64 },
     CopyTransform { session: u64, solid: WireHandle, column_major: [f64; 16] },
+    IsEmpty { session: u64, solid: WireHandle },
     CreateSession,
     DestroySession {
         session: u64,
@@ -172,6 +173,7 @@ pub fn encode_request(request_id: u32, command: &KernelCommand) -> Result<Vec<u8
     let opcode: u32 = match command {
         KernelCommand::AbiVersion => 0,
         KernelCommand::Capabilities => 12,
+        KernelCommand::IsEmpty { .. } => 19,
         KernelCommand::CopyTransform { .. } => 17,
         KernelCommand::SweepBegin { .. } => 13,
         KernelCommand::SweepChunk { .. } => 14,
@@ -267,7 +269,7 @@ fn encode_arguments(command: &KernelCommand, out: &mut Vec<u8>) -> Result<(), Pr
             write_solid(out, *session, *solid);
             out.extend(relative_accuracy.to_le_bytes());
         }
-        Manifold { session, solid } => write_solid(out, *session, *solid),
+        IsEmpty { session, solid } | Manifold { session, solid } => write_solid(out, *session, *solid),
         Release { session, object } => write_solid(out, *session, *object),
         Tessellate {
             session,

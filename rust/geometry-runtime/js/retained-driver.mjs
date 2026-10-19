@@ -157,7 +157,7 @@ export class RetainedDriver {
       if (!this.live()) throw new Error('retained upload worker expired');
       const solid = new Uint8Array(handle.bytes);
       validateHandle(solid, sessionId);
-      return await this.#seal(solid, chord, angle, maxBytes);
+      return await this.#seal(solid, chord, angle, maxBytes, false);
     } catch (error) {
       // Unknown outcomes are never retried; the captured Worker owns all its
       // session allocations, including a solid whose response was lost.
@@ -190,7 +190,7 @@ export class RetainedDriver {
       if (sameHandle(solid, moved)) throw new Error('Boolean result aliases temporary operand');
       this.#assertNewSolid(solid);
       await this.#call(8, this.#session, moved);
-      return await this.#seal(solid, chord, angle, maxBytes);
+      return await this.#seal(solid, chord, angle, maxBytes, true);
     } catch (error) { this.retire(); throw error; }
     finally { this.#busy = false; this.#scheduleReleases(); }
   }
@@ -198,25 +198,35 @@ export class RetainedDriver {
     if (Array.from(this.#objects.values()).some(existing => sameHandle(existing, solid)))
       throw new Error('retained result aliases live input lease');
   }
-  async #seal(solid, chord, angle, maxBytes) {
+  async #seal(solid, chord, angle, maxBytes, allowEmpty) {
     this.#assertNewSolid(solid);
     const sessionId = new DataView(this.#session.buffer).getBigUint64(0, true);
+    const capabilities = await this.#call(12);
+    if (capabilities.byteLength !== 8 || new DataView(capabilities.buffer).getUint32(0, true) !== 1 ||
+        !(new DataView(capabilities.buffer).getUint32(4, true) & 32)) throw new Error('missing semantic empty query capability');
+    const certificate = await this.#call(19, this.#session, solid);
+    if (certificate.byteLength !== 4) throw new Error('invalid semantic empty query');
+    const kind = new DataView(certificate.buffer).getUint32(0, true);
+    if (kind > 1 || (kind === 1 && !allowEmpty)) throw new Error('invalid or empty retained construction');
+    const empty = kind === 1;
     const meshHandle = await this.#call(9, this.#session, solid, f64(chord), f64(angle));
     validateHandle(meshHandle, sessionId);
-    const mesh = await this.#readMesh(meshHandle, maxBytes);
+    const mesh = await this.#readMesh(meshHandle, maxBytes, empty);
     await this.#call(8, this.#session, meshHandle);
     if (!this.live()) throw new Error('retained object owner expired');
     const object = Object.freeze({});
     this.#objects.set(object, solid);
-    return { object, mesh };
+    return Object.freeze({ object, mesh, outcome: empty ? 'empty' : 'nonempty' });
   }
-  async #readMesh(handle, maxBytes) {
+  async #readMesh(handle, maxBytes, empty) {
     const info = await this.#call(10, this.#session, handle);
     if (info.byteLength !== 24) throw new Error('invalid retained mesh info');
     const view = new DataView(info.buffer);
     const [vertices, triangles, faces, boundary, spine, failures] = Array.from({ length: 6 }, (_, i) => view.getUint32(i * 4, true));
     const bytes = vertices * 3 * 8 + triangles * (3 * 4 + 9 * 8 + 4);
-    if (!vertices || !triangles || !faces || boundary || spine || failures || !Number.isSafeInteger(bytes) || bytes > maxBytes ||
+    const consistent = empty ? [vertices, triangles, faces, boundary, spine, failures].every(n => n === 0)
+      : vertices > 0 && triangles > 0 && faces > 0;
+    if (!consistent || boundary || spine || failures || !Number.isSafeInteger(bytes) || bytes > maxBytes ||
         vertices * 3 > 0xffffffff || triangles * 9 > 0xffffffff) throw new Error('invalid or oversized retained mesh');
     const read = async (stream, count, width) => {
       const values = width === 8 ? new Float64Array(count) : new Uint32Array(count);

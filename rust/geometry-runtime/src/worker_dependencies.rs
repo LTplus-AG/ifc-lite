@@ -43,6 +43,8 @@ pub struct RetainedDependencyResult {
 }
 impl RetainedDependencyResult {
     pub fn solid(&self) -> BrepHandle { self.solid }
+    pub fn outcome(&self) -> crate::NumericalOutcome { self.mesh.outcome() }
+    pub fn is_empty(&self) -> bool { self.mesh.is_empty() }
     pub fn mesh(&self) -> &TessellatedMesh { &self.mesh }
     pub fn world_from_evaluation(&self) -> &[f64; 16] { &self.world_from_evaluation }
     pub fn lineage(&self) -> &RetainedLineage { &self.lineage }

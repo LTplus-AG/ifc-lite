@@ -157,7 +157,7 @@ export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
       // Mouse dragging changes the cube orientation; the child face buttons provide keyboard views.
       // eslint-disable-next-line jsx-a11y/no-static-element-interactions
       <div
-        className="relative select-none"
+        className="relative select-none drop-shadow-md"
         style={{
           width: size,
           height: size,
@@ -200,12 +200,16 @@ export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
                     // 20 more stops, many of them facing away, would bloat the tab order.
                     tabIndex={isFace ? undefined : -1}
                     className={cn(
-                      'flex items-center justify-center text-2xs font-bold transition-colors cursor-pointer border',
+                      'flex items-center justify-center text-2xs font-bold transition-colors cursor-pointer border text-foreground/70',
+                      // Solid fills throughout (derived from the card colour, so both themes follow):
+                      // a translucent edge band disappears into the viewport behind it.
                       lit
-                        ? 'bg-primary/40 border-primary text-primary'
+                        ? 'bg-[color-mix(in_srgb,var(--color-primary)_55%,var(--color-card))] border-primary text-foreground'
                         : isFace
-                          ? 'bg-card/95 border-border/50 hover:bg-muted'
-                          : 'bg-muted/70 border-border/50',
+                          ? 'bg-card border-foreground/30'
+                          : zone.kind === 'edge'
+                            ? 'bg-[color-mix(in_srgb,var(--color-foreground)_11%,var(--color-card))] border-foreground/30'
+                            : 'bg-[color-mix(in_srgb,var(--color-foreground)_18%,var(--color-card))] border-foreground/30',
                     )}
                     onMouseEnter={() => setHoveredKey(zone.key)}
                     onMouseLeave={() => setHoveredKey(null)}

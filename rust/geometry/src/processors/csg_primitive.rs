@@ -11,7 +11,6 @@
 //! are not yet implemented.
 
 use super::boolean::OperandPath;
-use crate::extrusion::apply_transform;
 use crate::{BoolFailure, Error, Mesh, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Point3;
@@ -19,8 +18,10 @@ use std::cell::RefCell;
 
 use super::boolean::BooleanClippingProcessor;
 use super::sphere::SphereProcessor;
-use super::helpers::parse_axis2_placement_3d;
 use crate::router::GeometryProcessor;
+
+#[path = "primitive_plan.rs"]
+pub(crate) mod plan;
 
 /// `IfcBlock` — axis-aligned box CSG primitive.
 ///
@@ -39,6 +40,14 @@ impl BlockProcessor {
     pub fn new() -> Self {
         Self
     }
+
+    pub(crate) fn lower(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<plan::BlockPlan> {
+        plan::lower_block(entity, decoder)
+    }
 }
 
 impl Default for BlockProcessor {
@@ -55,37 +64,7 @@ impl GeometryProcessor for BlockProcessor {
         _schema: &IfcSchema,
         _quality: TessellationQuality,
     ) -> Result<Mesh> {
-        let x = entity
-            .get_float(1)
-            .ok_or_else(|| Error::geometry("IfcBlock missing XLength".to_string()))?;
-        let y = entity
-            .get_float(2)
-            .ok_or_else(|| Error::geometry("IfcBlock missing YLength".to_string()))?;
-        let z = entity
-            .get_float(3)
-            .ok_or_else(|| Error::geometry("IfcBlock missing ZLength".to_string()))?;
-
-        if !(x.is_finite() && y.is_finite() && z.is_finite() && x > 0.0 && y > 0.0 && z > 0.0) {
-            return Err(Error::geometry(format!(
-                "IfcBlock requires finite positive lengths, got ({}, {}, {})",
-                x, y, z
-            )));
-        }
-
-        let mut mesh = build_axis_aligned_box(x, y, z);
-
-        if let Some(pos_attr) = entity.get(0) {
-            if !pos_attr.is_null() {
-                if let Some(pos_entity) = decoder.resolve_ref(pos_attr)? {
-                    if pos_entity.ifc_type == IfcType::IfcAxis2Placement3D {
-                        let transform = parse_axis2_placement_3d(&pos_entity, decoder)?;
-                        apply_transform(&mut mesh, &transform);
-                    }
-                }
-            }
-        }
-
-        Ok(mesh)
+        Ok(self.lower(entity, decoder)?.evaluate())
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

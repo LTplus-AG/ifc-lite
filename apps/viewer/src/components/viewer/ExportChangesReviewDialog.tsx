@@ -172,10 +172,9 @@ export function ExportChangesReviewDialog({
       description={
         isEmpty
           ? t('exportChangesReviewDialog.noPendingChanges')
-          : t('exportChangesReviewDialog.changesSummary', {
+          : t(groups.length === 1 ? 'exportChangesReviewDialog.changesSummaryOneFile' : 'exportChangesReviewDialog.changesSummaryMultipleFiles', {
               count: totalCount,
               models: t('exportChangesReviewDialog.modelsCount', { count: groups.length }),
-              fileSuffix: groups.length === 1 ? '' : 's',
             })
       }
       contentClassName="sm:max-w-2xl overflow-hidden"

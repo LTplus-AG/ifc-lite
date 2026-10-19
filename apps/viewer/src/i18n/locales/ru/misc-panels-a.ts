@@ -79,11 +79,17 @@ export const miscPanelsARu = {
     many: "{count} моделях",
     other: "{count} модели",
   },
-  "exportChangesReviewDialog.changesSummary": {
-    one: "{count} изменение в {models} будет применено к экспортируемому файлу{fileSuffix}.",
-    few: "{count} изменения в {models} будут применены к экспортируемому файлу{fileSuffix}.",
-    many: "{count} изменений в {models} будут применены к экспортируемому файлу{fileSuffix}.",
-    other: "{count} изменения в {models} будет применено к экспортируемому файлу{fileSuffix}.",
+  "exportChangesReviewDialog.changesSummaryOneFile": {
+    one: "{count} изменение в {models} будет применено к экспортируемому файлу.",
+    few: "{count} изменения в {models} будут применены к экспортируемому файлу.",
+    many: "{count} изменений в {models} будут применены к экспортируемому файлу.",
+    other: "{count} изменения в {models} будет применено к экспортируемому файлу.",
+  },
+  "exportChangesReviewDialog.changesSummaryMultipleFiles": {
+    one: "{count} изменение в {models} будет применено к экспортируемым файлам.",
+    few: "{count} изменения в {models} будут применены к экспортируемым файлам.",
+    many: "{count} изменений в {models} будут применены к экспортируемым файлам.",
+    other: "{count} изменения в {models} будет применено к экспортируемым файлам.",
   },
   "exportChangesReviewDialog.emptyStateMessage": "С последнего экспорта ничего не изменилось — нет наложения для применения.",
   "exportChangesReviewDialog.noneValue": "(нет)",

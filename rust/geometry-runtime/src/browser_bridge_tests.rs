@@ -49,10 +49,12 @@ async fn abandoned_commit_future_retires_actual_worker_without_killing_replaceme
     assert!(owner.validate().is_ok());
     drop(future);
     assert_eq!(worker.incarnation(), 0);
-    let replacement = BrowserWorker::new().unwrap();
-    assert_ne!(replacement.incarnation(), 0);
+    let mut replacement = BrowserWorker::new().unwrap();
+    replacement.qualify().await.unwrap();
     worker.retire();
-    assert_ne!(replacement.incarnation(), 0);
+    let next = replacement.evaluate(rectangle(&replacement), 0.001, 5., 1_048_576).await.unwrap();
+    assert!((volume(&next.completion().tessellation) - 1.).abs() < 1e-6);
+    next.validate_live().unwrap();
 }
 
 fn rectangle(worker: &BrowserWorker) -> RetainedRequest {
@@ -151,9 +153,12 @@ async fn abandoned_actual_browser_boolean_future_retires_only_captured_incarnati
     drop(future);
     assert_eq!(worker.incarnation(), 0);
     assert!(a.validate_live().is_err()); assert!(b.validate_live().is_err());
-    let replacement = BrowserWorker::new_retained_execution().unwrap();
+    let mut replacement = BrowserWorker::new_retained_execution().unwrap();
+    replacement.qualify().await.unwrap();
     drop(a); drop(b); drop(worker);
-    assert_ne!(replacement.incarnation(), 0);
+    let next = replacement.evaluate(rectangle(&replacement), 0.001, 5., 1_048_576).await.unwrap();
+    assert!((volume(&next.completion().tessellation) - 1.).abs() < 1e-6);
+    next.validate_live().unwrap();
 }
 
 #[wasm_bindgen_test(async)]

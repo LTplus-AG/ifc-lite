@@ -13,6 +13,15 @@
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::Duration;
 
+// Execute the real account/owned/pool implementation in the dependency's core
+// type universe. Core unit tests must not fabricate an adapter account to cross
+// the normal-library versus unit-test crate identity boundary.
+#[cfg(feature = "source-resource-tracking")]
+pub use crate::resource::boundary_witnesses::{
+    actual_metadata_weak_and_pool_witness, actual_owned_fault_witness,
+    actual_joined_payload_witness, actual_zero_metadata_witness,
+};
+
 /// Undirected edges NOT shared by exactly two triangles, vertices keyed by
 /// exact f32 bits: 0 on a closed 2-manifold whose coincident vertices share
 /// bit patterns (the extrusion and T-junction repair tests, #5313).

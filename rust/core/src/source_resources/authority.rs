@@ -71,6 +71,9 @@ impl Authority {
         published.resources.ok_or(ExecutionLeaseError::ExpiredWork)
     }
     pub(crate) fn thread(&self) -> std::thread::ThreadId { self.epoch.thread }
+    pub(crate) fn stop_handle(&self) -> SourceStopHandle {
+        SourceStopHandle::new(Arc::clone(&self.epoch))
+    }
     pub(crate) fn original_stop(&self) -> Result<(), ProgramStop> {
         SourceStopHandle::new(Arc::clone(&self.epoch)).check()
     }

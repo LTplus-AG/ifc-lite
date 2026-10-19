@@ -21,3 +21,7 @@ fn coverage() -> ProgramStop {
 mod fixtures;
 #[cfg(test)]
 mod lifetime_tests;
+#[cfg(test)]
+mod actual_account_tests;
+#[cfg(test)]
+mod observer_tests;

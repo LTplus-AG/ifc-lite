@@ -13,7 +13,7 @@ exclude = ["examples/test_real_ifc.rs"]
 
 [features]
 default = []
-source-resource-tracking = ["dep:hashbrown"]
+source-resource-tracking = ["dep:hashbrown", "ifc-lite-geometry/source-resource-tracking"]
 
 [dependencies]
 
@@ -48,7 +48,7 @@ bytemuck = "1.25"
 thiserror.workspace = true
 
 [dev-dependencies]
-ifc-lite-geometry = { path = "../geometry" }
+ifc-lite-geometry = { workspace = true, features = ["test-support"] }
 tokio = { workspace = true, features = ["macros", "rt"] }
 # Test-only: parse the shared decode parity fixture.
 serde_json.workspace = true

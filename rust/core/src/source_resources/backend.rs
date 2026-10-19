@@ -6,30 +6,16 @@ use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 
 pub(super) const MAX_GATES: usize = 4;
 pub(super) const MAX_BINDINGS: usize = 16;
-#[derive(Clone, Copy, Default)]
-pub(super) struct Cost { pub live: u64, pub work: u64, pub copies: u64 }
-#[derive(Clone, Copy)]
-pub(super) enum StorageEvent {
-    Allocated(u64),
-    Deallocated(u64),
-    Replaced { old: u64, new: u64 },
-}
-/// All methods must be allocation-free and nonpanicking, including after stop.
-/// The parent supplies the eventual geometry adapter; core imports no geometry.
-pub(super) trait Backend: Send + Sync {
-    fn check(&self) -> Result<(), ProgramStop>;
-    fn admit(&self, cost: Cost) -> Result<(), ProgramStop>;
-    fn refund(&self, bytes: u64);
-    fn stop(&self, stop: ProgramStop) -> ProgramStop;
-    fn observe(&self, event: StorageEvent);
-}
+pub(super) use crate::execution_owner::{AllocationAccount as Backend, AllocationCost as Cost,
+    StorageEvent};
+use crate::execution_owner::{AllocationClass, SourceResourceContext};
 pub(super) struct Resources {
     pub backend: Arc<dyn Backend>,
     gates: AtomicUsize,
 }
 impl Resources {
-    /// This record/backend are declared baseline control storage, not source
-    /// Layout storage. Creation must be covered by the parent's metadata envelope.
+    /// Historical test account baseline only. Actual geometry contexts preserve
+    /// their existing Inner payload; they neither allocate nor publish this type.
     pub fn new(backend: Arc<dyn Backend>) -> Result<Arc<Self>, ProgramStop> {
         backend.check()?;
         Arc::try_new(Self { backend: Arc::clone(&backend), gates: AtomicUsize::new(0) })
@@ -51,4 +37,17 @@ impl Resources {
         }
     }
     pub fn retained_gates(&self) -> usize { self.gates.load(Ordering::Acquire) }
+}
+
+// Historical observer fixture only. Actual-account witnesses publish geometry's
+// paired private Inner context and never construct Resources.
+impl Backend for Resources {
+    fn check(&self) -> Result<(), ProgramStop> { self.backend.check() }
+    fn admit(&self, cost: Cost) -> Result<(), ProgramStop> { self.backend.admit(cost) }
+    fn refund(&self, bytes: u64, class: AllocationClass) { self.backend.refund(bytes, class); }
+    fn stop(&self, stop: ProgramStop) -> ProgramStop { self.backend.stop(stop) }
+    fn observe(&self, event: StorageEvent, class: AllocationClass) { self.backend.observe(event, class); }
+}
+pub(super) fn fixture_resources(context: &SourceResourceContext) -> Option<Arc<Resources>> {
+    context.downcast::<Resources>()
 }

@@ -5,6 +5,12 @@ use std::{fmt, sync::{Arc, Mutex, OnceLock, atomic::{AtomicBool, AtomicU64, Orde
 
 mod resource_context;
 pub use resource_context::{SourceResourceContext, SourceStopHandle};
+mod allocation_account;
+pub use allocation_account::{AllocationAccount, AllocationClass, AllocationCost, AllocationObserver, StorageEvent};
+#[cfg(feature = "source-resource-tracking")]
+mod accounted_arc;
+#[cfg(feature = "source-resource-tracking")]
+pub use accounted_arc::{AccountedArc, AccountedWeak, AllocationObserverHandle};
 use resource_context::ActiveSource;
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
@@ -259,7 +265,11 @@ impl ExecutionSourceScope {
 }
 impl Drop for ExecutionSourceScope {
     fn drop(&mut self) {
-        *self.state.active_source.lock().expect("source borrow lock") = self.previous.clone();
+        let displaced = {
+            let mut active = self.state.active_source.lock().expect("source borrow lock");
+            std::mem::replace(&mut *active, std::mem::take(&mut self.previous))
+        };
+        drop(displaced); // Final account/pool destruction must occur outside the lock.
     }
 }
 
@@ -282,6 +292,9 @@ impl std::error::Error for ExecutionLeaseError {}
 #[cfg(test)]
 #[path="execution_owner_tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "execution_owner/resource_context_tests.rs"]
+mod resource_context_tests;
 
 #[cfg(all(test, feature = "source-resource-tracking"))]
 #[path = "source_resources/authority.rs"]

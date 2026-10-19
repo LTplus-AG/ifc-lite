@@ -7,11 +7,27 @@ use super::WorkEpoch;
 /// Opaque shared resource account. The resource implementation supplies and
 /// recovers its concrete account; source authority is validated independently.
 #[derive(Clone)]
-pub struct SourceResourceContext(Arc<dyn Any + Send + Sync>);
+pub struct SourceResourceContext {
+    payload: Arc<dyn Any + Send + Sync>,
+    account: Option<Arc<dyn super::AllocationAccount>>,
+}
 impl SourceResourceContext {
-    pub fn new<T: Any + Send + Sync>(value: Arc<T>) -> Self { Self(value) }
+    pub fn new<T: Any + Send + Sync>(value: Arc<T>) -> Self { Self { payload: value, account: None } }
+    /// Both views derive from one allocation. Resource capability alone never
+    /// authenticates a source or authorizes decoder work.
+    pub fn new_accounted<T: Any + Send + Sync + super::AllocationAccount>(value: Arc<T>) -> Self {
+        Self { payload: value.clone(), account: Some(value) }
+    }
     pub fn downcast<T: Any + Send + Sync>(&self) -> Option<Arc<T>> {
-        Arc::clone(&self.0).downcast().ok()
+        Arc::clone(&self.payload).downcast().ok()
+    }
+    /// Reports a resource projection, never source authentication or active work.
+    pub fn is_accounted(&self) -> bool { self.account.is_some() }
+    #[cfg(feature = "source-resource-tracking")]
+    pub(crate) fn allocation_account(&self) -> Option<Arc<dyn super::AllocationAccount>> { self.account.clone() }
+    #[cfg(all(test, feature = "source-resource-tracking"))]
+    pub(crate) fn same_account(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.payload, &other.payload) && self.account.is_some() && other.account.is_some()
     }
 }
 impl fmt::Debug for SourceResourceContext {

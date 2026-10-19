@@ -19,6 +19,8 @@ opening-perf-trace = []
 # legacy BSP port were removed in the kernel consolidation
 # (docs/architecture/geometry-pipeline.md).
 default = []
+# Resource boundary only; does not activate decoder/parser/cache tracking.
+source-resource-tracking = ["ifc-lite-core/source-resource-tracking"]
 debug_geometry = []
 # Measurement-only: record the (host, cutters) of every kernel subtract into a
 # global buffer so a bench can replay the real CSG corpus under varying thread

@@ -9,12 +9,17 @@ pub struct Usage {
     pub occurrences: u64, pub live_bytes: u64, pub peak_live_bytes: u64,
 }
 #[derive(Debug, Default)]
-struct State { usage: Usage, terminal: Option<ProgramStop> }
+struct State { usage: Usage, terminal: Option<ProgramStop>, tracked_live: u64, metadata_live: u64 }
 #[derive(Debug)]
 struct Inner {
     limits: ResourceLimits, state: Mutex<State>, cancelled: AtomicBool,
     _model: Option<PoolPermit>,
 }
+#[path = "account_allocation.rs"]
+mod allocation;
+#[cfg(all(test, feature = "source-resource-tracking"))]
+#[path = "account_allocation_tests.rs"]
+mod allocation_tests;
 /// Clone shares one deterministic request allowance, including reentered calls.
 /// Holding an account retains all storage transferred with Reservation::retain.
 #[derive(Debug, Clone, Default)]
@@ -37,13 +42,21 @@ impl ExecutionAccount {
             cancelled: AtomicBool::new(false), _model: model })))
     }
     pub(super) fn source_context(&self) -> Option<ifc_lite_core::execution_owner::SourceResourceContext> {
-        self.0.as_ref().map(|inner| ifc_lite_core::execution_owner::SourceResourceContext::new(Arc::clone(inner)))
+        self.0.as_ref().map(|inner| ifc_lite_core::execution_owner::SourceResourceContext::new_accounted(Arc::clone(inner)))
     }
     pub(super) fn from_source_context(context: &ifc_lite_core::execution_owner::SourceResourceContext) -> Option<Self> {
         context.downcast::<Inner>().map(|inner| Self(Some(inner)))
     }
     pub fn usage(&self) -> Usage {
         self.0.as_ref().map_or(Usage::default(), |inner| inner.state.lock().unwrap_or_else(|e| e.into_inner()).usage)
+    }
+    /// Subsets of total live bytes, never additional allowances. The account's
+    /// pre-existing control allocation remains the declared baseline.
+    pub fn allocation_usage(&self) -> (u64, u64) {
+        self.0.as_ref().map_or((0, 0), |inner| {
+            let state = inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            (state.tracked_live, state.metadata_live)
+        })
     }
     pub fn cancel(&self) { if let Some(inner) = &self.0 { inner.cancelled.store(true, Ordering::Release); } }
     pub fn check(&self) -> Result<(), ProgramStop> {

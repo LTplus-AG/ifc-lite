@@ -3,6 +3,7 @@
 use super::backend::{Cost, StorageEvent};
 use super::gate::Gate;
 use super::failure;
+use crate::execution_owner::AllocationClass;
 use crate::resource_stop::{Dimension, ProgramStop, RefusalReason};
 use std::{alloc::{AllocError, Allocator, Global, Layout}, ptr::NonNull};
 
@@ -17,7 +18,7 @@ impl ResourceAllocator {
         let work = u64::try_from(work).map_err(|_| self.overflow())?;
         let copies = u64::try_from(copies).map_err(|_| self.record(failure(
             Dimension::CopyBytes, u64::MAX, 0, RefusalReason::Overflow)))?;
-        self.gate.before(Cost { work, copies, live: 0 })
+        self.gate.before(Cost { work, copies, live: 0, ..Default::default() })
     }
     pub fn record(&self, stop: ProgramStop) -> ProgramStop { self.gate.record(stop) }
     pub fn error(&self) -> ProgramStop {
@@ -36,11 +37,11 @@ impl ResourceAllocator {
     fn debit(&self, layout: Layout, copies: usize) -> Result<u64, AllocError> {
         let live = u64::try_from(layout.size()).map_err(|_| { self.overflow(); AllocError })?;
         let copies = u64::try_from(copies).map_err(|_| { self.overflow(); AllocError })?;
-        self.gate.before(Cost { live, work: 1, copies }).map_err(|_| AllocError)?;
+        self.gate.before(Cost { live, work: 1, copies, ..Default::default() }).map_err(|_| AllocError)?;
         Ok(live)
     }
     fn failed_global(&self, bytes: u64) -> AllocError {
-        self.gate.backend().refund(bytes);
+        self.gate.backend().refund(bytes, AllocationClass::Container);
         self.gate.record(failure(Dimension::LiveBytes, bytes, 0, RefusalReason::Allocation));
         AllocError
     }
@@ -49,7 +50,7 @@ impl ResourceAllocator {
         let result = if zeroed { Global.allocate_zeroed(layout) } else { Global.allocate(layout) };
         match result {
             Ok(memory) => {
-                if bytes != 0 { self.gate.backend().observe(StorageEvent::Allocated(bytes)); }
+                if bytes != 0 { self.gate.backend().observe(StorageEvent::Allocated(bytes), AllocationClass::Container); }
                 Ok(memory)
             }
             Err(_) => Err(self.failed_global(bytes)),
@@ -69,9 +70,9 @@ impl ResourceAllocator {
         match result {
             Ok(memory) => {
                 if old.size() != 0 || bytes != 0 {
-                    self.gate.backend().observe(StorageEvent::Replaced { old: old.size() as u64, new: bytes });
+                    self.gate.backend().observe(StorageEvent::Replaced { old: old.size() as u64, new: bytes }, AllocationClass::Container);
                 }
-                self.gate.backend().refund(old.size() as u64);
+                self.gate.backend().refund(old.size() as u64, AllocationClass::Container);
                 Ok(memory)
             }
             Err(_) => Err(self.failed_global(bytes)),
@@ -94,9 +95,9 @@ unsafe impl Allocator for ResourceAllocator {
         // SAFETY: caller supplies the unchanged Global block and fitting Layout.
         unsafe { Global.deallocate(ptr, layout); }
         if layout.size() != 0 {
-            self.gate.backend().observe(StorageEvent::Deallocated(layout.size() as u64));
+            self.gate.backend().observe(StorageEvent::Deallocated(layout.size() as u64), AllocationClass::Container);
         }
-        self.gate.backend().refund(layout.size() as u64);
+        self.gate.backend().refund(layout.size() as u64, AllocationClass::Container);
     }
     unsafe fn grow(&self, ptr: NonNull<u8>, old: Layout, new: Layout)
         -> Result<NonNull<[u8]>, AllocError> {

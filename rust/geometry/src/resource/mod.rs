@@ -4,6 +4,9 @@ mod account;
 mod pool;
 mod storage;
 mod owned;
+#[cfg(all(feature = "source-resource-tracking", any(test, feature = "test-support")))]
+#[path = "boundary_witnesses_tests.rs"]
+pub(crate) mod boundary_witnesses;
 pub use owned::OwnedResourceContext;
 pub(crate) use storage::reserve_headers;
 pub mod mesh;

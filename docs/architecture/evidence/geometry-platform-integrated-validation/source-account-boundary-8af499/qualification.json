@@ -1,0 +1,40 @@
+{
+  "source_commit": "8af4994f3f5227b0135ec4219dbfaf5c59e9a162",
+  "base_commit": "7628bf9acf82d8169084df40edcaaae07247877e",
+  "build": "UNRUN",
+  "tests": "UNRUN",
+  "clippy": "UNRUN",
+  "wasm_test_compilation": "UNRUN",
+  "default_exact_outputs": "UNRUN",
+  "performance": "UNRUN; no claim",
+  "packaging_and_feature_graph": "UNRUN",
+  "heavy_jobs_submitted": false,
+  "root_overlays": false,
+  "github_actions": false,
+  "static_checks": [
+    "git diff --check",
+    "Python TOML syntax parsing only",
+    "frozen artifact SHA256SUMS verification",
+    "prior 31 behavioral test source files unchanged",
+    "incremental patch reverse applicability"
+  ],
+  "parent_reported_prior_evidence": {
+    "source": "26354b06cc798a36cd363b1ec9610334f03a7e33",
+    "native_source_resources": "31 passed, 0 failed, 0 ignored, 477 filtered",
+    "wasm32_opted_core_test_compilation": "PASS",
+    "new_checkpoint_qualified": false,
+    "workspace_clippy": "Prior unrelated runtime failure; parent a154 repair not imported or qualified here"
+  },
+  "residuals": [
+    "Parent-coordinated compilation, tests, strict Clippy and feature/package validation",
+    "Core unit witnesses call real geometry test-support implementation to avoid normal-lib/unit-test type identity substitution",
+    "No end-to-end ProductOwner/real-account tracked decoder allocation witness yet",
+    "Original decoder/work/generation-coupled witness remains private prototype authority only",
+    "Existing owner/epoch/account/Pool backing remains explicit baseline, not retrospectively funded",
+    "Prototype feasibility 4/16 caps are not production workload authority",
+    "Global allocation failure branch not forced",
+    "Raw/cache/COW/nested attribute/lazy owner migration and region activation remain mandatory",
+    "No Reservation-backed container migrated or double charged",
+    "Downstream Python/wasm/server/CLI/FFI and performance qualification deferred to coordinated migration"
+  ]
+}

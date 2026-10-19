@@ -556,3 +556,114 @@ response checks reject frames over4096 bytes. Rust's protocol module also uses
 and parsing for v2 without widening the existing request admission. No Rust/JS
 transport was modified by this child, and no end-to-end response acceptance is
 claimed from the native serializer or syntax result alone.
+
+## Actual SDK representation fixture correction after c227 (UNRUN repair)
+
+Parent-reported source `4a85b7d6de` integrates the native method8 code and
+certificate handoff; its verification harness is `ba3aa7fcee`. The parent's
+native and WASM full builds/link steps succeeded. Both owned-boundary runs then
+failed inside the additive fixture at `actual SDK result exercises generic
+affine representation`. Original four context scenarios passed before it.
+The native original job is `0468a83b-07c8-4268-be78-5eb2c26ed777`; its log is
+`/home/louistrue/build-workers/worker-state/jobs/0468a83b-07c8-4268-be78-5eb2c26ed777/output.log`.
+The child did not run/resubmit any job or modify those receipts.
+
+The test required `prove_generics(*sealed,0)` to find at least one generic face
+in a direct box Clip result. That is not a valid SDK representation contract.
+The pinned `SmMerge.cpp:7125` copies a surface using `CopyAndAddAnalytics`;
+`SmBSplineSurface.cpp:924–989` recognizes planar geometry as `SmPlane` when
+analytics are enabled (`SmConfig.h:262`). Boolean surface classes must be
+observed independently of the earlier input class and affine conversion path.
+The original failure text did not label its caller or dump the count. The
+source-local diagnosis identifies the final Boolean fixture by the explicit
+generic replacement constructors and by `copy_affine_rational`'s independently
+enforced all-generic return invariant for the preceding affine fixtures;
+it is not a new case-tagged execution result.
+
+The corrected fixture requires six actual analytic plane faces in this direct
+axis-aligned box Boolean result, existing cached-UV method1 admission, no derived
+records and v1. It does not relabel geometry, manufacture a UV cache, accept
+status7, or waive the Clip success/ownership/topology checks. A new companion
+performs the real identity-affine operation on that actual Boolean result,
+checks its six analytic source-class counts and then requires **six actual
+generic faces, six absent-cache derived records, bit8 and v2**. A subsequent
+real Clip consumes that generic affine result and must retain six source proof
+records and independent input/output volumes6 and3. Snapshots cover both the
+original Boolean source across affine copying and the generic source across
+proof and Clip. No conversion is applied to the original source in place.
+
+All original explicit generic replacement and identity/reflected survey affine
+fixtures still require six actual generic faces. Their generic helper now
+requires all six to execute the missing-cache production proof, rather than
+allowing every generic face to pass through cached method2. There is no zero
+count/optional generic success path. Fixture labels, actual class counts and
+an FNV64 of raw materialized surface/edge coefficients and knots identify the
+next source-bound native/WASM failure without sampled geometry. Source ledger
+96/102-control cases, seventeenth-record refusal, tolerance contributions and
+all malformed-source negatives remain must-pass and are neither skipped nor
+weakened. These are the same wired tests on native and WASM.
+
+Parent coordination remains necessary for the separate `plane_tests.cpp`
+direct box->Clip->Clip case: that file currently requires the second certificate
+to be v2 and invokes a v2-only protocol witness. A direct Boolean chain must
+still succeed, but its actual source representation cannot be assumed generic.
+The strict v2/protocol companion belongs on actual affine-produced generic
+geometry; do not merely drop its proof or accept a refusal. That file and all
+parent cutter/copy/context/protocol/runtime/JS/CMake/qualification code were
+left untouched by this narrow child correction.
+
+Only the corrected fixture translation unit was syntax-checked against the
+immutable SDK headers (C++17, exit0, no diagnostics). No SDK code was linked or
+executed here. **Every new/corrected actual SDK/native/WASM/C ABI witness is
+UNRUN until parent-admitted execution.** No production proof predicate,
+coefficient/record ceiling, tolerance, wire layout or source admission rule was
+changed. The restricted theorem's earlier source review is not a blanket claim
+about actual Boolean outputs, arbitrary edited graphs, broader affine maps,
+paired partition, layers, appearance or whole-product closure.
+
+## Direct-chain certificate distinction and exact endpoint gap (UNRUN follow-up)
+
+After frozen0534 the parent narrowly assigned the direct-chain certificate
+expectation in `tests/plane_tests.cpp`. That direct box->Clip->Clip fixture now
+requires v1/method1 and no derived records, matching its analytic source rather
+than assuming a generic representation. All existing success, original plane,
+handle/frame, manifold, closed oriented mesh, volume and release assertions
+remain. A separate real `copy_affine(first,I)->Clip` companion requires six
+actual derived source records and v2/bit8 and runs the strict existing protocol
+witness. Its input/output volumes6 and3, mesh/manifold and independent release
+oracles are asserted. The v2 witness was moved to genuinely affine-produced
+geometry, not removed or replaced with refusal-as-success.
+
+The parent's actual native Rust run at source4a85 reports a different failure:
+`plane_clip.rs:48` returns Kernel7, `edge interval endpoints do not exactly equal
+topology vertices`, while consuming the identity-affine copy of the second
+Clip. Both earlier Clips, their volumes and the affine copy had succeeded.
+World placement is separate runtime metadata: the local plane and native handle
+are passed unchanged to opcode20. A world-frame expectation correction cannot
+make that native coefficient predicate true.
+
+The restricted gate checks exact real equality of stored finite binary64
+coefficients: `q*(b-a)==c0*(b-t)+c1*(t-a)` for both endpoints in all coordinates.
+Failure means this source does not supply the exact boundary incidence required
+by the reviewed rectangle theorem. It can still satisfy SDK toleranced geometry
+validation. `SmMerge.cpp:6670–6820` transports curves/intervals/vertices as
+separate representations; `SmStitch.cpp:518–591` obtains floating split params
+using a toleranced DropPoint. `TurnToNURBS` and affine class preflight do not
+certify exact endpoint incidence. The old log has no scalar dump, so the precise
+producer stage/residual magnitude is **unestablished**.
+
+Only bounded failure diagnostics were added at that existing predicate: actual
+curve class, endpoint booleans, orientations, selected edge ordinal/coordinate,
+homogeneous controls, knots, actual interval and topology vertices, all using
+round-trippable17-digit text. The same exact dyadic predicate and status7 refusal
+remain. There is no approximation, tolerance easing, cache writing, evaluation,
+fitted trim, source repair or new admission method. Frozen0534's strict generic
+Clip positive is unchanged and may expose the same genuine gap when executed.
+
+The runtime test's required affine chain must remain an open production gap
+until a valid stronger certificate or proved representation-preserving producer
+repair closes it. Parent-only proposed Rust expectations/diagnostic hunks and
+the detailed source-causal analysis are recorded in the external handoff;
+no runtime source was edited. Native/WASM actual execution is still UNRUN for
+this correction; only syntax and whitespace checks passed. Exact remains
+default/permanent, with broader domains and whole-product closure unclaimed.

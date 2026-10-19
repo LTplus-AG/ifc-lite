@@ -7,6 +7,7 @@
 #include "plane_dyadic.hpp"
 #include <SmApiGeneral.h>
 #include <SmApiBrep.h>
+#include <SmApiQueries.h>
 #include <SmVertex.h>
 #include <SmApiPrimitives.h>
 #include <SmBSplineSurface.h>
@@ -88,8 +89,24 @@ void unchanged(const Snapshot& before,SmBrep& source) {
         same_metadata(before.source,after.source) && same_metadata(before.context,after.context),
         "proof leaves materialized source, absent trim identities and shared policy unchanged");
 }
-unsigned prove_generics(SmBrep& source,unsigned expected) {
-    Snapshot before(source);
+void representation(const char* fixture,SmBrep& source,const Snapshot& snapshot) {
+    SmTArray<SmFace*> faces; source.GetFaces(faces);
+    unsigned generic=0,planes=0,other=0; uint64_t hash=14695981039346656037ULL;
+    for(double coefficient:snapshot.coefficients) {
+        uint64_t bits=0; std::memcpy(&bits,&coefficient,8);
+        for(unsigned b=0;b<8;++b) { hash^=(bits>>(8*b))&255u; hash*=1099511628211ULL; }
+    }
+    for(auto* face:faces) {
+        const auto type=face->GetSurface()->GetType();
+        generic+=type==SmBSplineSurface_TYPE; planes+=type==SmPlane_TYPE;
+        other+=type!=SmBSplineSurface_TYPE && type!=SmPlane_TYPE;
+    }
+    std::fprintf(stderr,"affine source fixture=%s faces=%lu generic=%u planes=%u other=%u raw_coefficients=%zu fnv64=%016llx\n",
+        fixture,static_cast<unsigned long>(faces.GetSize()),generic,planes,other,snapshot.coefficients.size(),
+        static_cast<unsigned long long>(hash));
+}
+unsigned prove_generics(SmBrep& source,const char* fixture,unsigned expected) {
+    Snapshot before(source); representation(fixture,source,before);
     SmTArray<SmFace*> faces; source.GetFaces(faces); unsigned count=0;
     for(ULONG i=0;i<faces.GetSize();++i) {
         if(faces[i]->GetSurface()->GetType()!=SmBSplineSurface_TYPE) continue;
@@ -103,7 +120,7 @@ unsigned prove_generics(SmBrep& source,unsigned expected) {
                 edge.end[d]>=proof.bounds[d].lo && edge.end[d]<=proof.bounds[d].hi,"actual complete boundary enclosed");
         ++count;
     }
-    demand(expected?count==expected:count>0,"actual SDK result exercises generic affine representation");
+    demand(expected>0 && count==expected,"explicit fixture exercises every required actual generic affine face");
     const auto domain=certify_plane_domain(&source); unsigned missing=0;
     for(ULONG i=0;i<faces.GetSize();++i) if(faces[i]->GetSurface()->GetType()==SmBSplineSurface_TYPE) {
         SmTArray<SmEdgeuse*> uses; faces[i]->GetUpwardEdgeuses(uses); bool absent=false;
@@ -113,12 +130,43 @@ unsigned prove_generics(SmBrep& source,unsigned expected) {
                 "production record binds actual revision-local source face index"); ++missing;
         }
     }
-    demand(domain.rectangle_count==missing && ((domain.methods&8u)!=0)==(missing!=0),"derived-only production dispatch");
+    demand(missing==expected && domain.rectangle_count==expected && (domain.methods&8u),
+        "every required generic face executes genuine missing-cache derived production proof");
     ifclite_smlib_plane_certificate c{}; populate_plane_source_records(domain,c);
     demand(c.version==(missing?2u:1u) && c.rectangle_count==missing &&
         c.rectangle_record_bytes==(missing?1376u:0u) && c.rectangle_edge_bytes==(missing?248u:0u),
         "native certificate version2 iff actual derived proof records exist");
     unchanged(before,source); return count;
+}
+void prove_analytic_clip(SmBrep& source) {
+    Snapshot before(source); representation("direct-box-clip",source,before);
+    SmTArray<SmFace*> faces; source.GetFaces(faces);
+    demand(faces.GetSize()==6,"actual box Clip retains six bounded boundary faces");
+    for(auto* face:faces) demand(face->GetSurface()->GetType()==SmPlane_TYPE,
+        "direct box Boolean fixture has actual analytic plane dispatch");
+    const auto domain=certify_plane_domain(&source);
+    demand(domain.methods==1 && domain.rectangle_count==0 && domain.cylinder_count==0,
+        "analytic Boolean result certifies through existing real cached UV route");
+    ifclite_smlib_plane_certificate certificate{}; populate_plane_source_records(domain,certificate);
+    demand(certificate.version==1 && certificate.rectangle_count==0,"actual analytic source remains certificate v1");
+    unchanged(before,source);
+}
+void clipped_affine_positive(SmBrep& source,const double* identity) {
+    Snapshot original(source); ifclite_smlib_affine_certificate affine{};
+    auto generic=copy_affine_rational(&source,identity,affine); unchanged(original,source);
+    demand(affine.version==1 && affine.source_classes[7]==6,
+        "real affine operation consumes six actual analytic Boolean faces");
+    prove_generics(*generic,"identity-affine-of-direct-box-clip",6);
+    Snapshot before(*generic);
+    const double y[]={0,1,0,0,1,0}; ifclite_smlib_plane_certificate receipt{};
+    auto second=clip_finite_plane(generic.get(),y,1,IFCLITE_SMLIB_INTERSECTION,receipt);
+    demand(receipt.version==2 && (receipt.method&8u) && receipt.rectangle_count==6 && !receipt.empty,
+        "actual Clip consumes genuine affine generic coefficients using six derived source proofs");
+    unchanged(before,*generic);
+    double input_volume=0,output_volume=0;
+    demand(SmApiBrepComputeVolume(generic.get(),1e-8,input_volume)==SM_SUCCESS && std::abs(input_volume-6)<1e-4 &&
+        SmApiBrepComputeVolume(second.get(),1e-8,output_volume)==SM_SUCCESS && std::abs(output_volume-3)<1e-4,
+        "actual affine generic Clip retains independent box-chain input/output volumes");
 }
 void exact_predicates() {
     using namespace plane_source_proof;
@@ -155,6 +203,7 @@ void tolerance_enclosures() {
 void production_ledgers() {
     auto source=box(); replace_planes(*source);
     const auto domain=certify_plane_domain(source.get());
+    std::fprintf(stderr,"affine source ledger=all-derived records=%u coefficients=%u\n",domain.rectangle_count,domain.coefficients);
     demand(domain.rectangle_count==6 && domain.coefficients==96,
         "one ledger charges all six 12-control derived faces plus all twelve two-control edges");
     auto authored=box(); replace_planes(*authored,true);
@@ -168,6 +217,7 @@ void production_ledgers() {
     uses[0]->SetUVTrimCurve(nullptr,0,TRUE); uses[0]->GetMate()->SetUVTrimCurve(nullptr,0,TRUE);
     demand(uses[0]->GetUVTrimCurve()==nullptr,"fixture has exactly the intended absent cache");
     const auto mixed=certify_plane_domain(authored.get());
+    std::fprintf(stderr,"affine source ledger=mixed-trims records=%u coefficients=%u\n",mixed.rectangle_count,mixed.coefficients);
     demand(mixed.rectangle_count==1 && (mixed.methods&2u) && (mixed.methods&8u) && mixed.coefficients==102,
         "mixed old/new face routes retain every present trim charge across faces");
     // Real source with 18 independently bounded planar faces exceeds 16 records.
@@ -232,20 +282,25 @@ void negative_fixtures() {
 void run_plane_source_domain_tests() {
     auto* context=SmApiGetOrCreateContext(); raw_context::Restore restore(context);
     exact_predicates();
-    auto source=box(); replace_planes(*source); prove_generics(*source,6);
-    auto survey=box(5000000,-2000000,100); replace_planes(*survey); prove_generics(*survey,6);
+    auto source=box(); replace_planes(*source); prove_generics(*source,"explicit-generic-replacement",6);
+    auto survey=box(5000000,-2000000,100); replace_planes(*survey); prove_generics(*survey,"explicit-survey-generic-replacement",6);
     const double identity[]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
     const double reflection[]={-2,0,0,0,0,3,0,0,0,0,4,0,5000000,-2000000,100,1};
     auto authored=box();
     for(const double* matrix:{identity,reflection}) {
         ifclite_smlib_affine_certificate c{}; auto transformed=copy_affine_rational(authored.get(),matrix,c);
-        demand(c.version!=0,"actual SDK affine output certificate"); prove_generics(*transformed,6);
+        demand(c.version!=0,"actual SDK affine output certificate");
+        prove_generics(*transformed,matrix==identity?"actual-identity-affine":"actual-reflected-survey-affine",6);
     }
     const double plane[]={0.5,0,0,1,0,0}; ifclite_smlib_plane_certificate c{};
     auto sealed=clip_finite_plane(authored.get(),plane,1,IFCLITE_SMLIB_INTERSECTION,c);
     demand(c.version && !c.empty,"actual first sealed Clip source, not inferred affine ancestry");
-    prove_generics(*sealed,0);
+    prove_analytic_clip(*sealed);
+    clipped_affine_positive(*sealed,identity);
+    std::fprintf(stderr,"affine source BEGIN actual tolerance enclosure fixtures\n");
     tolerance_enclosures();
+    std::fprintf(stderr,"affine source BEGIN actual shared operation ledger fixtures\n");
     production_ledgers();
+    std::fprintf(stderr,"affine source BEGIN strict malformed source negatives\n");
     negative_fixtures();
 }

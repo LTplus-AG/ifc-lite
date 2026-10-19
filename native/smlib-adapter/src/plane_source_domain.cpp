@@ -11,6 +11,7 @@
 #include <SmLoopuse.h>
 #include <SmVertex.h>
 #include <SmVertexuse.h>
+#include <cstdio>
 namespace plane_source_proof {
 namespace {
 using namespace plane_numeric;
@@ -61,7 +62,7 @@ void analytic_line(SmLine* line,EdgeRecord& r) {
     }
     require(varying==1,"noninjective canonical boundary line");
 }
-EdgeRecord edge_record(SmEdgeuse* use) {
+EdgeRecord edge_record(SmEdgeuse* use,unsigned edge_ordinal) {
     auto* e=use->GetEdge(); auto* curve=e->GetCurve();
     require(curve && (curve->GetType()==SmBSplineCurve_TYPE || curve->GetType()==SmLine_TYPE),
         "affine boundary requires a generic linear patch or canonical line");
@@ -86,10 +87,23 @@ EdgeRecord edge_record(SmEdgeuse* use) {
         "missing canonical edge endpoint topology");
     r.start=point(e->GetStartVertex()); r.end=point(e->GetEndVertex());
     require(r.start!=r.end,"collapsed affine boundary edge");
-    for(unsigned d=0;d<3;++d) require(
-        linear_value(r.start[d],p[d],p[4+d],k[0],k[3],r.interval[0]) &&
-        linear_value(r.end[d],p[d],p[4+d],k[0],k[3],r.interval[1]),
-        "edge interval endpoints do not exactly equal topology vertices");
+    for(unsigned d=0;d<3;++d) {
+        const bool start_exact=linear_value(r.start[d],p[d],p[4+d],k[0],k[3],r.interval[0]);
+        const bool end_exact=linear_value(r.end[d],p[d],p[4+d],k[0],k[3],r.interval[1]);
+        if(!start_exact || !end_exact) {
+            // Diagnostic of the same exact predicate, not an alternate proof.
+            // All arrays already passed finite/materialized/size checks. No
+            // SDK evaluation, source edits, fitting or tolerance substitution.
+            std::fprintf(stderr,"affine endpoint refusal edge_ordinal=%u curve_type=%ld primary_orientation=%ld use_orientation=%ld dimension=%u start_exact=%d end_exact=%d\n",
+                edge_ordinal,static_cast<long>(curve->GetType()),static_cast<long>(primary->GetOrientation()),
+                static_cast<long>(use->GetOrientation()),d,start_exact,end_exact);
+            std::fprintf(stderr,"affine endpoint controls=(%.17g %.17g %.17g %.17g) (%.17g %.17g %.17g %.17g)\n",
+                p[0],p[1],p[2],p[3],p[4],p[5],p[6],p[7]);
+            std::fprintf(stderr,"affine endpoint knots=(%.17g %.17g %.17g %.17g) interval=(%.17g %.17g) start=(%.17g %.17g %.17g) end=(%.17g %.17g %.17g)\n",
+                k[0],k[1],k[2],k[3],r.interval[0],r.interval[1],r.start[0],r.start[1],r.start[2],r.end[0],r.end[1],r.end[2]);
+        }
+        require(start_exact && end_exact,"edge interval endpoints do not exactly equal topology vertices");
+    }
     if(curve->GetType()==SmLine_TYPE) analytic_line(static_cast<SmLine*>(curve),r);
     return r;
 }
@@ -147,7 +161,7 @@ Rectangle certify_axis_rectangle(SmFace* face) {
     // Complete edge-control hulls lie in the same plane and supported patch.
     std::array<std::array<double,3>,4> starts{},ends{};
     for(unsigned i=0;i<4;++i) {
-        r.edges[i]=edge_record(uses[i]); auto& e=r.edges[i];
+        r.edges[i]=edge_record(uses[i],i); auto& e=r.edges[i];
         for(unsigned j=0;j<2;++j) for(unsigned d=0;d<3;++d)
             require(e.controls[4*j+d]>=r.bounds[d].lo && e.controls[4*j+d]<=r.bounds[d].hi,
                 "full boundary hull escapes exact patch plane or support");

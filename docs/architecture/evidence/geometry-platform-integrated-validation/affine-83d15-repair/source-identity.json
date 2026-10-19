@@ -1,0 +1,43 @@
+{
+  "integrationParent": "da5d26225d62c33ab9661c7ee9fd628e41037b33",
+  "childSource": "83d15fa4971f4dcbc69aef7890673ff27a560bf0",
+  "childBase": "c227cd078434b7a46333b1111a367148fe2ce2ab",
+  "files": {
+    "native/smlib-adapter/PLANE_CONTRACT.md": {
+      "before": "fa04a69d309d29e20aed613372fc2cdb0555e8194b7945b1a71d15a5f0beb9ca",
+      "after": "cd197be92b2c970e07d85e370eb40a34efb9812e4bf9bbccca3e77189bf11c52"
+    },
+    "native/smlib-adapter/src/plane_source_domain.cpp": {
+      "before": "4add7a2599ce54cc0e80f18f74d5bda6ef6c8eebc308dc496768cbd958ddeeec",
+      "after": "aa2b70f251fc48ee59262c9be76dfe0bfb6d53e8bf2cda3550ab4423bf5a44c7"
+    },
+    "native/smlib-adapter/tests/plane_source_domain_tests.cpp": {
+      "before": "a06cd7fe97d67ed2f5dc904e404992a79e4d1f5288373593db13bfe6307749ab",
+      "after": "c585cd7fa91ea5a64756b984a2daf9ff7a91be250dbc21c36840f7e5adf95d1a"
+    },
+    "native/smlib-adapter/tests/plane_tests.cpp": {
+      "before": "483ed29199127ab15d6c7c382684975bee9f39a4f8bc9d706b1cd984f28d9b04",
+      "after": "4fad4e4ecc26b3c5161a460c604385294cb4f355688083538bc0f9f701e7dde1"
+    }
+  },
+  "parentSyntax": {
+    "exitCode": 0,
+    "sdk": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+    "translationUnits": [
+      "native/smlib-adapter/src/plane_source_domain.cpp",
+      "native/smlib-adapter/tests/plane_source_domain_tests.cpp",
+      "native/smlib-adapter/tests/plane_tests.cpp"
+    ],
+    "flags": [
+      "-std=c++17",
+      "-fsyntax-only",
+      "-Wall",
+      "-Wextra",
+      "-Werror"
+    ],
+    "diagnosticSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "actualCorrectedNative": "UNRUN",
+  "actualCorrectedWASM": "UNRUN",
+  "fullAffineClipSuccess": "NOT ACHIEVED; original required success remains red, no runtime test edit"
+}

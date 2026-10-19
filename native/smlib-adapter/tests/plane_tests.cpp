@@ -130,14 +130,27 @@ void source_rectangle_chains(uint64_t s) {
     shell(s,first,x,1,6,true);
     // The real regression is this second consumption of a Boolean output.
     ok(ifclite_smlib_clip_plane(s,first,y,1,2,&second,&second_cert));
-    require(second_cert.version==2 && (second_cert.method&8u) && second_cert.rectangle_count && second_cert.frame==1 && same(second_cert.input,first) &&
+    require(second_cert.version==1 && second_cert.method==1 && second_cert.rectangle_count==0 && second_cert.frame==1 && same(second_cert.input,first) &&
         same(second_cert.output,second) && std::memcmp(second_cert.plane,y,sizeof(y))==0,
         "second Clip binds actual input/output/frame and unchanged requested coefficients");
     uint32_t manifold=0; ok(ifclite_smlib_manifold(s,second,&manifold)); require(manifold==1,"chained result manifold");
     near(actual_volume(s,first),6); near(actual_volume(s,second),3); shell(s,second,y,1,3,false);
-    run_plane_source_protocol_tests(s,first,y,second_cert);
+    // The direct Boolean source is analytically represented in this fixture.
+    // Preserve a separate ACTUAL affine-generated generic source for v2/wire.
     const double identity[]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
     ifclite_smlib_affine_certificate affine{};
+    ifclite_smlib_handle generic_first{},generic_second{}; ifclite_smlib_plane_certificate generic_cert{};
+    ok(ifclite_smlib_copy_affine(s,first,identity,&generic_first,&affine));
+    ok(ifclite_smlib_clip_plane(s,generic_first,y,1,2,&generic_second,&generic_cert));
+    require(generic_cert.version==2 && (generic_cert.method&8u) && generic_cert.rectangle_count==6 &&
+        generic_cert.frame==1 && same(generic_cert.input,generic_first) && same(generic_cert.output,generic_second) &&
+        std::memcmp(generic_cert.plane,y,sizeof(y))==0,"real affine generic chain binds all six derived v2 source records");
+    near(actual_volume(s,generic_first),6); near(actual_volume(s,generic_second),3);
+    uint32_t generic_manifold=0; ok(ifclite_smlib_manifold(s,generic_second,&generic_manifold));
+    require(generic_manifold==1,"actual affine generic chained result manifold"); shell(s,generic_second,y,1,3,false);
+    run_plane_source_protocol_tests(s,generic_first,y,generic_cert);
+    ok(ifclite_smlib_release(s,generic_first)); near(actual_volume(s,generic_second),3);
+    ok(ifclite_smlib_release(s,generic_second));
     ok(ifclite_smlib_copy_affine(s,source,identity,&identity_copy,&affine));
     clip_case(s,identity_copy,{0.5,0,0,1,0,0},1,2,6,8,true);
     ok(ifclite_smlib_release(s,source)); ok(ifclite_smlib_release(s,first));

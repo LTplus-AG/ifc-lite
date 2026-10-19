@@ -32,7 +32,7 @@ impl SubmeshSource {
                 SourceAction::Transform(mut state)=> {
                     let mut transform=router.mapped_item_transform(&state.item,state.source.as_ref().expect("mapped source"),decoder)?;
                     if let Some(matrix)=&mut transform {router.scale_transform(matrix)}
-                    if retained.is_some() {crate::program::retained::proper_rigid(&transform.unwrap_or_else(Matrix4::identity))?;}
+                    if retained.is_some() {crate::program::retained::validate_affine(&transform.unwrap_or_else(Matrix4::identity))?;}
                     state.transform=transform;Reply::Next(Self(SourceAction::Eligibility(state)))
                 }
                 SourceAction::Eligibility(state)=> {

@@ -55,7 +55,7 @@ impl MergedSource {
                     let mut transform=router.mapped_item_transform(&item,&source,decoder)?;
                     if let Some(matrix)=&mut transform {router.scale_transform(matrix)}
                     if retained.is_some() {
-                        crate::program::retained::proper_rigid(&transform.unwrap_or_else(Matrix4::identity))?;
+                        crate::program::retained::validate_affine(&transform.unwrap_or_else(Matrix4::identity))?;
                     }
                     SourceValue::Next(Self(SourceAction::Cache {source,depth,policy,transform}))
                 }

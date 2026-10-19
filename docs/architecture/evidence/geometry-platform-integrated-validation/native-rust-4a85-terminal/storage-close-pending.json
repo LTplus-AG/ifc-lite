@@ -1,0 +1,35 @@
+{
+  "command": "storage close --task ifclite-native-composed-4a85-20261019",
+  "exit": 1,
+  "error": "RuntimeError: live process or T3 task still references output",
+  "task": {
+    "autoClose": false,
+    "closeRequestedAt": 1792414201.268945,
+    "createdAt": 1792410872.9406424,
+    "id": "ifclite-native-composed-4a85-20261019",
+    "jobs": [
+      "0468a83b-07c8-4268-be78-5eb2c26ed777"
+    ],
+    "manifests": [
+      "pop-os-0468a83b-07c8-4268-be78-5eb2c26ed777-975f9f5ab322"
+    ],
+    "ownerPid": 2611045,
+    "resources": [
+      {
+        "compatibilityKey": "0d9333ad8f4ae9cad2c1fc49",
+        "path": "/home/louistrue/build-workers/worker-state/caches/0d9333ad8f4ae9cad2c1fc49",
+        "project": "ifc-lite",
+        "role": "cache"
+      },
+      {
+        "path": "/home/louistrue/build-workers/worker-state/checkouts/4a85b7d6de82aae00673db2b025233d800ec3603",
+        "role": "worktree"
+      }
+    ],
+    "state": "active",
+    "updatedAt": 1792410872.9406748
+  },
+  "released": false,
+  "reclaimed": false,
+  "disposition": "Closure requested through normal lifecycle API. Refusal preserved; no force, policy edits or reclamation attempted. New jobs and shared caches remain protected."
+}

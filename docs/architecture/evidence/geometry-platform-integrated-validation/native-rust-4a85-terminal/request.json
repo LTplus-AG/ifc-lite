@@ -1,0 +1,18 @@
+{
+  "id": "auto-2e1ffafa20ad4527a8bec0c76594ee72",
+  "commit": "4a85b7d6de82aae00673db2b025233d800ec3603",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "-c",
+    "# SPDX-License-Identifier: MPL-2.0\nsource \"$HOME/build-workers/worker-env.sh\" || exit $?\npnpm fixtures || exit $?\npnpm fixtures:check || exit $?\nbash /home/louistrue/build-workers/setup/projects-20261017/ifc-lite/env-exec.sh bash native/smlib-adapter/qualify.sh native --rust-consumers\nnative_status=$?\nunset IFCLITE_SMLIB_WORKER\ncargo test --workspace --no-fail-fast\nworkspace_status=$?\ncargo clippy --workspace --all-targets -- -D warnings\nclippy_status=$?\nprintf 'native_ctest_and_consumers_exit=%s exact_workspace_exit=%s clippy_exit=%s\\n' \"$native_status\" \"$workspace_status\" \"$clippy_status\"\nif [ \"$native_status\" -ne 0 ]; then exit \"$native_status\"; fi\nif [ \"$workspace_status\" -ne 0 ]; then exit \"$workspace_status\"; fi\nexit \"$clippy_status\"\n"
+  ],
+  "storageTask": "ifclite-native-composed-4a85-20261019",
+  "pools": [],
+  "requestedHost": "pop-os"
+}

@@ -1,0 +1,79 @@
+{
+  "source": "4a85b7d6de82aae00673db2b025233d800ec3603",
+  "source_tree": "52ac6326e1d5553aee9e56a03d544734de79bbf2",
+  "request": "auto-2e1ffafa20ad4527a8bec0c76594ee72",
+  "job": "0468a83b-07c8-4268-be78-5eb2c26ed777",
+  "host": "pop-os",
+  "exit": 8,
+  "sourceUnchanged": true,
+  "native_build": "281 compilation/link steps completed",
+  "ctest": [
+    {
+      "name": "smlib_sweep_upload_transport",
+      "outcome": "Passed"
+    },
+    {
+      "name": "retained_driver_protocol_lifetimes",
+      "outcome": "Passed"
+    },
+    {
+      "name": "smlib_worker_framing",
+      "outcome": "Passed"
+    },
+    {
+      "name": "smlib_owned_boundary",
+      "outcome": "***Failed"
+    },
+    {
+      "name": "smlib_copy_failure_boundary",
+      "outcome": "Passed"
+    },
+    {
+      "name": "smlib_paired_copy_observability",
+      "outcome": "***Failed"
+    },
+    {
+      "name": "smlib_checked_face_extraction",
+      "outcome": "***Failed"
+    },
+    {
+      "name": "smlib_face_extraction_failure_boundary",
+      "outcome": "Passed"
+    }
+  ],
+  "ctest_exit": 8,
+  "sdk_env_rust_consumers": {
+    "summaries": 133,
+    "passed": 1335,
+    "failed": 2,
+    "ignored": 5
+  },
+  "sdk_env_rust_exit": 101,
+  "sdk_unset_workspace": {
+    "summaries": 391,
+    "passed": 6427,
+    "failed": 0,
+    "ignored": 47
+  },
+  "workspace_exit": 0,
+  "clippy_exit": 101,
+  "clippy_defect": "RetainedLineage::PlaneClip large enum variant after certificate expansion",
+  "later_source_repair": "a15484afbd; not qualified by this run",
+  "output_bytes": 966984,
+  "output_sha256": "859d5fa2656f3d860ecf2a3d988cf1f8e378c971cc5a23702a73a2cece44cce5",
+  "vault": {
+    "manifest": "pop-os-0468a83b-07c8-4268-be78-5eb2c26ed777-975f9f5ab322",
+    "name": "output.log",
+    "decoded_output_readback_sha256": "859d5fa2656f3d860ecf2a3d988cf1f8e378c971cc5a23702a73a2cece44cce5",
+    "verified": true
+  },
+  "not_qualified": [
+    "latest integrated source",
+    "new exact-route capture example",
+    "private allocator prototype",
+    "corrected read/UV and affine fixture source",
+    "actual browser",
+    "final product closure",
+    "performance"
+  ]
+}

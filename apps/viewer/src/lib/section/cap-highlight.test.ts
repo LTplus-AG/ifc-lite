@@ -40,7 +40,7 @@ describe('capOverlayInput fill mode (#7950)', () => {
   const cut = {
     cutPolygons: [
       { polygon: square, entityId: 1, ifcType: 'IfcWall', modelIndex: 0, isCut: true, sourceColor: [0.2, 0.4, 0.6, 0.5] as [number, number, number, number] },
-      { polygon: square, entityId: 2, ifcType: 'IfcSlab', modelIndex: 0, isCut: true, color: [1, 0, 0, 1] as [number, number, number, number], sourceColor: [0, 1, 0, 1] as [number, number, number, number] },
+      { polygon: square, entityId: 2, ifcType: 'IfcSlab', modelIndex: 0, isCut: true, color: [1, 0, 0, 0.5] as [number, number, number, number], sourceColor: [0, 1, 0, 1] as [number, number, number, number] },
       { polygon: square, entityId: 3, ifcType: 'IfcBeam', modelIndex: 0, isCut: true },
     ],
     layerBaseCutPolygons: [],
@@ -50,10 +50,10 @@ describe('capOverlayInput fill mode (#7950)', () => {
   it('uniform (default): single-material polygons carry no colour', () => {
     const { polygons } = capOverlayInput(cut, false);
     assert.equal(polygons[0].color, undefined);
-    assert.deepEqual(polygons[1].color, [1, 0, 0, 1]);
+    assert.deepEqual(polygons[1].color, [1, 0, 0, 0.5], 'uniform mode leaves layer colours as they were');
   });
 
-  it('element: polygons keep their source colour, opaque; layer colour wins; colourless stays uniform', () => {
+  it('element: polygons keep their source colour, opaque; layer colour wins, also opaque; colourless stays uniform', () => {
     const { polygons } = capOverlayInput(cut, false, 'element');
     assert.deepEqual(polygons[0].color, [0.2, 0.4, 0.6, 1]);
     assert.deepEqual(polygons[1].color, [1, 0, 0, 1]);

@@ -14,6 +14,10 @@ import { customPlaneCenter } from '@/store/slices/section-plane-center';
 
 type Cut = Pick<Drawing2D, 'cutPolygons' | 'layerBaseCutPolygons' | 'lines'>;
 
+function opaque(c: [number, number, number, number] | undefined): [number, number, number, number] | undefined {
+  return c ? [c[0], c[1], c[2], 1] : undefined;
+}
+
 export function capOverlayInput(cut: Cut, showHiddenLines: boolean, fillMode: 'uniform' | 'element' = 'uniform'): { polygons: CutPolygon2D[]; lines: DrawingLine2D[] } {
   // Opaque base cross-sections FIRST (one per multi-material entity, built from the
   // watertight union so they always close). The overlay triangulates polygons in
@@ -30,9 +34,9 @@ export function capOverlayInput(cut: Cut, showHiddenLines: boolean, fillMode: 'u
     ifcType: cp.ifcType,
     expressId: cp.entityId,
     // Per-layer material colour, so the cap matches the 3D build-up; undefined → uniform cap style.
-    // "Element colour" fills every other polygon with its own source colour too.
-    // Opaque: a translucent source (glass) would otherwise leave the cut see-through.
-    color: cp.color ?? (fillMode === 'element' && cp.sourceColor ? [cp.sourceColor[0], cp.sourceColor[1], cp.sourceColor[2], 1] : undefined),
+    // "Element colour" fills every other polygon with its own source colour too, and keeps
+    // every cap opaque: a translucent source (glass) would otherwise leave the cut see-through.
+    color: fillMode === 'element' ? opaque(cp.color ?? cp.sourceColor) : cp.color,
   }));
   const lines: DrawingLine2D[] = cut.lines
     .filter((line) => showHiddenLines || line.visibility !== 'hidden')

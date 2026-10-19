@@ -205,7 +205,7 @@ fn p2_sdk_issue_5314_source_edge_clip_obeys_existing_prism_integral() {
     while let Some(issued)=execution.issue_next(&worker,&mut decoder,&router).unwrap() {
         let work=issued.execute(&mut worker,0.00001,15.,MeshLimits::default()).unwrap();
         if let RealizationKind::UnaryClip(value)=work.realizations[0].kind() {
-            let volume=worker.volume(value.solid(),1e-10).unwrap();
+            let volume=worker.volume(value.solid(),1e-8).unwrap();
             assert!((volume/expected-1.).abs()<1e-5);assert!(worker.is_manifold(value.solid()).unwrap());clips+=1;
         }
         execution.accept(work,&mut decoder,&router).unwrap();

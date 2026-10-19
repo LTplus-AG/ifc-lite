@@ -998,6 +998,16 @@ jobs:
           # revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/imported-geometry/src/math.rs | grep -Fxq 'rust/imported-geometry/src/math.rs'; then
             oracle_args+=(--mutation tests/evidence/imported-geometry-i1/behaviour.oracle.patch)
+          # #7955 A2: diagnostic scopes add pending_diagnostics.rs,
+          # budget_state.rs, CsgCensus and ElementState, which its tests name,
+          # so a whole-change revert cannot compile them (INCONCLUSIVE). Keep
+          # the types and break ONLY the behaviour: scopes stop restoring the
+          # caller's budget counters, pending reports and CSG sink, and the
+          # degenerate tally is no longer retained by its owner. Once
+          # pending_diagnostics.rs is on main, ordinary whole-change revert
+          # resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/pending_diagnostics.rs | grep -Fxq 'rust/geometry/src/pending_diagnostics.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-diagnostic-scopes-a2/behaviour.oracle.patch)
           # #7676: the upload admission change adds ApiError::UploadTimeout, which
           # its tests name, so a whole-change revert cannot compile them
           # (INCONCLUSIVE). Keep the type and break ONLY the behaviour: the

@@ -148,6 +148,22 @@ it('dedupes aliases by resolved colour and keeps differently styled occurrences'
   assert.deepEqual(styled.map(m => m.color).sort(), [[0, 0, 1, 1], [1, 0, 0, 1]]);
 });
 
+it('attributes meshes to the closest ancestor-or-self entity and skips entity-less meshes', () => {
+  const wall = node('wall', { [ATTR.CLASS]: { code: 'IfcWall' } });
+  const plain = node('plain');
+  const inner = node('inner', { [ATTR.CLASS]: { code: 'IfcBeam' } });
+  const deepMesh = node('deep', { [ATTR.MESH]: triangle() });
+  const innerMesh = node('innerMesh', { [ATTR.MESH]: triangle() });
+  const orphan = node('orphan', { [ATTR.MESH]: triangle() });
+  wall.children.set('p', plain); plain.children.set('m', deepMesh);
+  plain.children.set('i', inner); inner.children.set('m', innerMesh);
+  const all = [wall, plain, inner, deepMesh, innerMesh, orphan];
+  const meshes = extractGeometry(new Map(all.map(item => [item.path, item])),
+    new Map([['wall', 1], ['inner', 2]]));
+  const byId = meshes.map(m => [m.expressId, m.ifcType]).sort();
+  assert.deepEqual(byId, [[1, 'IfcWall'], [2, 'IfcBeam']]);
+});
+
 it('matches the composed cycle stub seed order when an independent root exists', async () => {
   const { composeIfcx } = await import('./composition.js');
   const composed = composeIfcx({ header: { id: '', ifcxVersion: 'ifcx_alpha', dataVersion: '', author: '', timestamp: '' },

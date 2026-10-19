@@ -605,9 +605,10 @@ jobs:
       # Rust + wasm-pack for the wasm32 build (pure-Rust CSG kernel — no
       # C++ toolchain needed since M9). Single-sourced in
       # .github/actions/setup-wasm-build so the four wasm-building
-      # workflows stay in lock-step. Skipped on the prebuilt fast path.
+      # workflows stay in lock-step. Skipped on the prebuilt fast path unless the
+      # imported-geometry freshness check below needs cargo.
       - name: Setup WASM build toolchain
-        if: needs.changes.outputs.wasm_prebuilt != 'true'
+        if: needs.changes.outputs.wasm_prebuilt != 'true' || needs.changes.outputs.rust == 'true'
         uses: ./.github/actions/setup-wasm-build
         with:
           cache-prefix: ci-build
@@ -686,10 +687,11 @@ jobs:
 
       # The generated IFCX imported-geometry kernel must match the Rust crate it
       # is built from. Regenerates into a temp dir and diffs; not a build gate for
-      # packages (their --verify is Rust-free). Needs cargo, so it shares the
-      # toolchain guard of 'Setup WASM build toolchain' (skipped on the prebuilt fast path).
+      # packages (their --verify is Rust-free). Needs cargo, so 'Setup WASM build toolchain'
+      # is also enabled whenever the rust filter is true, even on the prebuilt fast path
+      # (the script provisions its own pinned wasm2js).
       - name: Verify imported geometry artifacts are current
-        if: needs.changes.outputs.wasm_prebuilt != 'true' && needs.changes.outputs.rust == 'true'
+        if: needs.changes.outputs.rust == 'true'
         run: node scripts/build-imported-geometry.mjs --check
 
       # Build all workspace packages so their dist/ artifacts exist for

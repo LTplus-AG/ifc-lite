@@ -1,0 +1,173 @@
+{
+  "at": "2026-10-19T04:22:24.259277+00:00",
+  "session": 24954,
+  "terminal": "COMPLETED0",
+  "archives": 22,
+  "executablesRelocated": 1403,
+  "netAllocatedBytesRecovered": 137437954048,
+  "closingFreeGiB": 329.236,
+  "originalPathsRelocated": true,
+  "restorationRequiredForOldTests": true,
+  "sourceAndArtifactPreservation": "Original owner verified37,008unmoved paths,55logs/receipts and182fixtures per source. Archive binaries preserved with full member byte/metadata verification.",
+  "parentVerification": "All bounded receipt/manifest hashes and22batch-manifest hashes plus totals verified; archive sizes checked,38GB content was already fully verified by original owner and is not reread.",
+  "archivedMembers": 189,
+  "localOnlyHashBoundMembers": [
+    {
+      "path": "archives/b001-3a9c872d829495e0751f.tar.zst",
+      "bytes": 1776156825,
+      "sha256": "2e3722a9e72ae64631284c9ebdd0c4a7f7ed4be29f09f92da3f2d99fd46db1e3",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b002-3a9c872d829495e0751f.tar.zst",
+      "bytes": 1854154907,
+      "sha256": "20a7377d19727477f8c7657cec270a57f5033f40d9c7dd434dedcc26b185092d",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b003-3a9c872d829495e0751f.tar.zst",
+      "bytes": 1788623265,
+      "sha256": "a280b49f05884b4b48be10acafcc35011bf80e178ba8ff7c11edd1d70044ec2c",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b004-3a9c872d829495e0751f.tar.zst",
+      "bytes": 1902063072,
+      "sha256": "45692f17ad1969233d44b5268b4ad81c88b168a239731ec5296ad20375c78b4e",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b005-3a9c872d829495e0751f.tar.zst",
+      "bytes": 1910092171,
+      "sha256": "ad4dac74c637b7498f9445fde9eadaa44e519f71d126b67eb02d2e6f35cb8f87",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b006-3a9c872d829495e0751f.tar.zst",
+      "bytes": 615385837,
+      "sha256": "a1d2afc59b19393ab8ace315c9d399b2e1124c670f6d84570511fc9e432ab107",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b007-49926200a29e09a7679b.tar.zst",
+      "bytes": 1506447721,
+      "sha256": "1ca8ee5913c252af611d16032d41b3130ae033dcf7929d41e6204d6de74dcb79",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b008-49926200a29e09a7679b.tar.zst",
+      "bytes": 1697371955,
+      "sha256": "9cb3af5f72b61611eeb219d76750f836d995312b7f0929a9a4d4be9e24e26ade",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b009-49926200a29e09a7679b.tar.zst",
+      "bytes": 1822352471,
+      "sha256": "96a320c93ca84cc1c49693ca210a4696447150e25472a186d0e680a32a2ed403",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b010-49926200a29e09a7679b.tar.zst",
+      "bytes": 1836295500,
+      "sha256": "785445b35ac8f81d2887dfe6f84d8a53e88efa689094c235e0cf1fd182f5d1bf",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b011-49926200a29e09a7679b.tar.zst",
+      "bytes": 1812423837,
+      "sha256": "09f45cd425b7dbc56ba631979c5421f6d693a3f1790d3beeecdea129c527952e",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b012-49926200a29e09a7679b.tar.zst",
+      "bytes": 1968319989,
+      "sha256": "4013f2bd3a0c72a9a26b10afdd4cf55c5ef463add9960740ffd6d88d9263108e",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b013-49926200a29e09a7679b.tar.zst",
+      "bytes": 1961575238,
+      "sha256": "ca85c59597b99f8543cef829a11bf1e6258d60beb2424f431863b58156ec8811",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b014-49926200a29e09a7679b.tar.zst",
+      "bytes": 1946427958,
+      "sha256": "206a5c3e97a7eee3f8e7c95adadbbbfcffbe9c910b0f0b7d0ce891e49f97cd69",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b015-49926200a29e09a7679b.tar.zst",
+      "bytes": 1930079064,
+      "sha256": "d6b8b6ea1d0e7cccfa7c9e413726d066c23c9e0418557fe5cea0a1d0daa24709",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b016-49926200a29e09a7679b.tar.zst",
+      "bytes": 1933919476,
+      "sha256": "0133e6c366639fd01768bc290a58d73e29071591f32aae5b489071919e9dadf7",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b017-49926200a29e09a7679b.tar.zst",
+      "bytes": 1925034744,
+      "sha256": "5f1293f890d65c1fa489c3cb0d2d3c4af723dc46b30f8372afeceae018d91b38",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b018-49926200a29e09a7679b.tar.zst",
+      "bytes": 1907915267,
+      "sha256": "345993caae915c3d14312068c8696f77a1db6308e4378594929861381296600c",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b019-49926200a29e09a7679b.tar.zst",
+      "bytes": 1828962281,
+      "sha256": "99b6b93f365d69233712e46aba4c2d98f8343015f3071f06885f73eec1e2ce8d",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b020-49926200a29e09a7679b.tar.zst",
+      "bytes": 1838779844,
+      "sha256": "f0050ec5aff1ec1ea8cf7547da171e7629b51530a4c3c2ee07b3d5d1dd5611b8",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b021-49926200a29e09a7679b.tar.zst",
+      "bytes": 526365866,
+      "sha256": "b30fbd8166aff77dcc2707c61966c69fecd05d4ef390479e2b2db82ed0a22834",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    },
+    {
+      "path": "archives/b022-899d43786f3f1d14e1ff.tar.zst",
+      "bytes": 1802278050,
+      "sha256": "e8cfac556f37295f8a44c97b43abf7d6a20734f89e03fb630b8107e560dbcc18",
+      "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+      "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+    }
+  ],
+  "manifestSha256": "ec0d983bf6b444ef5db3b2587c23f261d63249e46e9ce0f65cc65a8be76476cb",
+  "guardUnchanged": true,
+  "benchmarkDispatched": false
+}

@@ -1,0 +1,6 @@
+{
+  "at": 1792381394.550701,
+  "paths": {},
+  "activeRunsInspected": 26,
+  "scope": "Only exact debug/deps binary references; any matched live reference conservatively requires path in place. No payload text/environment persisted."
+}

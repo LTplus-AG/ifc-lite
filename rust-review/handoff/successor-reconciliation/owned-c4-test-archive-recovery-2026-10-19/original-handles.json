@@ -1,0 +1,16 @@
+{
+  "originalSession": 24954,
+  "at": 1792381819.7073998,
+  "controller": {
+    "pid": 1528594,
+    "startToken": "15192839",
+    "pgid": 1528592,
+    "affinity": [
+      0,
+      1
+    ]
+  },
+  "scriptSha256": "9b50583fc8f5f2bde256a731a8258be9b6ea539a46ee60169e08fbd8131305a3",
+  "workerJob": false,
+  "benchmarkJob": false
+}

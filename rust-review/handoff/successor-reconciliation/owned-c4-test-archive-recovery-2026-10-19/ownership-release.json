@@ -1,0 +1,37 @@
+{
+  "originalSession": 24954,
+  "originalExitCode": 0,
+  "originalTerminalToolChunk": "a8e2ee",
+  "originalController": {
+    "pid": 1528594,
+    "startToken": "15192839",
+    "pgid": 1528592,
+    "affinity": [
+      0,
+      1
+    ]
+  },
+  "originalControllerGone": true,
+  "ownedArchiveNamespaceProcesses": [],
+  "maintenanceOwnershipReleased": true,
+  "resourceLocks": [
+    {
+      "target": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "resourceLock": "/home/louistrue/build-workers/worker-state/resource-eeac6e0232422bf08f17f57f92c0ebccce7bb183c7903a97d544b6c735b0c807",
+      "availableAfterOriginalTask": true
+    },
+    {
+      "target": "/home/louistrue/build-workers/worker-state/targets/899d43786f3f1d14e1ff",
+      "resourceLock": "/home/louistrue/build-workers/worker-state/resource-7b4347c71f112e3d83b026e6dd2258bd932fc0cc01ad5f1491ff46bdb9841adc",
+      "availableAfterOriginalTask": true
+    },
+    {
+      "target": "/home/louistrue/build-workers/worker-state/targets/3a9c872d829495e0751f",
+      "resourceLock": "/home/louistrue/build-workers/worker-state/resource-d5f9834ecc65b5afb820cf1613d2aeb27b045e918b6813b964dbb177ef0e0bbc",
+      "availableAfterOriginalTask": true
+    }
+  ],
+  "workloadOrBenchmarkSubmitted": false,
+  "globalIdleOrPerformanceClaim": false,
+  "observedAt": 1792383617.5278082
+}

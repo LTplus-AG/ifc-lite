@@ -1,0 +1,15 @@
+{
+  "acceptedManifestSha256": "693c246cf7d347cca1deabfa82ccf257d7b5b526466744cf0c3de68860b0de84",
+  "files": {
+    "receipt-v3.json": {
+      "bytes": 27712,
+      "sha256": "9e533eb1999ee5646f2700874cd42eba216941fe0c8f25a4adbf89fd445efe4e",
+      "matchesAcceptedV23Manifest": true
+    },
+    "preserved-artifact-identities-before.json": {
+      "bytes": 15986800,
+      "sha256": "0210f2d8f2a8106c329b7c1b4830c16ba3cc3d973f0d75031ff509fde143c96d",
+      "matchesAcceptedV23Manifest": true
+    }
+  }
+}

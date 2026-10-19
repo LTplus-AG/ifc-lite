@@ -1,0 +1,1944 @@
+{
+  "id": "b017-49926200a29e09a7679b",
+  "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+  "archive": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-owned-terminal-test-archives-pop-v1/archives/b017-49926200a29e09a7679b.tar.zst",
+  "manifest": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-owned-terminal-test-archives-pop-v1/batches/b017-49926200a29e09a7679b.json",
+  "state": "relocated_losslessly_original_paths_absent",
+  "members": [
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7786_brep_voids_cutter-c670dcdd23b86b03",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_7786_brep_voids_cutter-c670dcdd23b86b03",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9651045,
+        "bytes": 108316144,
+        "blocks": 211512,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792338640915521295,
+        "ctimeNs": 1792338640918521286,
+        "sha256": "952e7322c7931e1ff48b75e26dc84e8053089fb44d8ef9cf574d6e44818f8e48"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-c670dcdd23b86b03/test-integration-test-issue_7786_brep_voids_cutter.json",
+        "sha256": "ff19a4c3c2a00ffabecb7fd3d69cc2c14b6329fc4b1f5e0bb1da978076dfd870"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_5313_thin_drop_tjunction-2cd60622224035c9",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_5313_thin_drop_tjunction-2cd60622224035c9",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9670718,
+        "bytes": 108311504,
+        "blocks": 211512,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792341261013656803,
+        "ctimeNs": 1792341261017656792,
+        "sha256": "a140e64bc791af2a22ba01815413cb05818593fe838557470b3cf37de4d13d3c"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-2cd60622224035c9/test-integration-test-issue_5313_thin_drop_tjunction.json",
+        "sha256": "772f82cd1ac7379c1b5d49640e455b729f953f211378a7264d3bdae3d95423bd"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/mesh_welding_calibration-1fd2d0bad409791b",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/mesh_welding_calibration-1fd2d0bad409791b",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9676395,
+        "bytes": 108308872,
+        "blocks": 211496,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792341610130635601,
+        "ctimeNs": 1792341610133635592,
+        "sha256": "872e9a6fbbeb74a144498caeadf618b68540f876696520130208b4257d000f03"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-1fd2d0bad409791b/test-integration-test-mesh_welding_calibration.json",
+        "sha256": "191e7b76087335d2b5ded6b47556058c6133c3b91e211e3fb8e87ee7f97d9e98"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/nested_mapped_item-6cbed274fa3ac771",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/nested_mapped_item-6cbed274fa3ac771",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9658373,
+        "bytes": 108298408,
+        "blocks": 211488,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340015355908718,
+        "ctimeNs": 1792340015357908714,
+        "sha256": "e82b68924454a866d645994b2a0400ffa949c57c9e3dbb4d93d68c0735cdf99c"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-6cbed274fa3ac771/test-integration-test-nested_mapped_item.json",
+        "sha256": "be7ab00e83ab38e1464218b106695f995469bfdeae4144c32c23f46d54f6a1d7"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_820_trimmed_curve_planeangleunit-83ec8d2b82db57a8",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_820_trimmed_curve_planeangleunit-83ec8d2b82db57a8",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9655445,
+        "bytes": 108295472,
+        "blocks": 211480,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792339137541031550,
+        "ctimeNs": 1792339137616031325,
+        "sha256": "66433dfb3c58f8b422d8af031512f982ac21195677a07f0ab47b86b3b14a1d7f"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-83ec8d2b82db57a8/test-integration-test-issue_820_trimmed_curve_planeangleunit.json",
+        "sha256": "5faed84081d1dc03d8f12754fb06cfaddb1b6c259c86ffceb71c47fbbe58ed1e"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/nested_mapped_item-7fb891a8ac3df33b",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/nested_mapped_item-7fb891a8ac3df33b",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9669208,
+        "bytes": 108279472,
+        "blocks": 211448,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340829927785800,
+        "ctimeNs": 1792340829931785791,
+        "sha256": "e0ebff0a20d56d39f3dd41cf624701e5552cda7bf869e688db0e55ab7a4eb384"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-7fb891a8ac3df33b/test-integration-test-nested_mapped_item.json",
+        "sha256": "cac3d94e2109b9fc71ccc5161dd275cd87bc7c354728bcf2d60d5e7220a7432f"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_819_triangulated_normals-d561935de8bdd9a4",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_819_triangulated_normals-d561935de8bdd9a4",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9651440,
+        "bytes": 108270040,
+        "blocks": 211432,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792338671514429508,
+        "ctimeNs": 1792338671517429499,
+        "sha256": "de47840b8adfef208312c2396338aefc02bbbdf0b993771dc23eb1eaca142db7"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-d561935de8bdd9a4/test-integration-test-issue_819_triangulated_normals.json",
+        "sha256": "9248df8911db2531d1e7df3007f3e828be0482bc1e3af66a4fc8441a7a847c3d"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7688_surface_of_linear_extrusion-83441177ea56b0be",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_7688_surface_of_linear_extrusion-83441177ea56b0be",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9650305,
+        "bytes": 108266608,
+        "blocks": 211424,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792338611919608276,
+        "ctimeNs": 1792338611929608246,
+        "sha256": "185337a51a016f33e73ddc9c2df588254daf0a464c778713856f3312fc4dbfde"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-83441177ea56b0be/test-integration-test-issue_7688_surface_of_linear_extrusion.json",
+        "sha256": "4e544e1a9ede6cc60825abaa1a859499a3e139fec2122853c894d03aa3c2cf83"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/nested_mapped_item-021dcf29c5cf46d8",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/nested_mapped_item-021dcf29c5cf46d8",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9672647,
+        "bytes": 108261680,
+        "blocks": 211416,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792341357530373979,
+        "ctimeNs": 1792341357535373964,
+        "sha256": "dfa32f0eacede3378aa07861a8cd5d5ed8bef79aab22d40bce685ae7f2df1134"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-021dcf29c5cf46d8/test-integration-test-nested_mapped_item.json",
+        "sha256": "2f925fb2077f841e12d3ca949929f3c9dd31f70037d23ca5a3e9a10cde15567f"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7795_polygonal_faces-6105943c988c3e4e",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_7795_polygonal_faces-6105943c988c3e4e",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9654960,
+        "bytes": 108253872,
+        "blocks": 211392,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792339113020105106,
+        "ctimeNs": 1792339113028105082,
+        "sha256": "3df61e636c1ffc7c047d48bf20a2d71c8b67b1b27b7bd750277012667297b973"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-6105943c988c3e4e/test-integration-test-issue_7795_polygonal_faces.json",
+        "sha256": "2c808f7c7c3128af541bccbbc4d26e4f422d5d7fe243e474044c268f1f2afc65"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_854_rect_hollow_fillet-b0c65114ef75fc08",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_854_rect_hollow_fillet-b0c65114ef75fc08",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9658626,
+        "bytes": 108252592,
+        "blocks": 211384,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340027214882778,
+        "ctimeNs": 1792340027220882765,
+        "sha256": "6d5ca548087c34546a54cc9bda1cc73a4517b249cbd1f45c9e806a2ef399391b"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-b0c65114ef75fc08/test-integration-test-issue_854_rect_hollow_fillet.json",
+        "sha256": "33a5505d493fef505ac293487baebf3fc8dc2408e521f37fbd539270a7cc3be2"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_845_wall_elemented_case-d491abd0d1a34d5b",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_845_wall_elemented_case-d491abd0d1a34d5b",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9661525,
+        "bytes": 108251984,
+        "blocks": 211392,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340167731550849,
+        "ctimeNs": 1792340167820550586,
+        "sha256": "6579334c720d8897e638f5f1520b1fe0c8d35a9a722641719354d44ccef73eaf"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-d491abd0d1a34d5b/test-integration-test-issue_845_wall_elemented_case.json",
+        "sha256": "fcdeb058dd88559be554a22b5650c2084ce2ecd76111b8bec729967b20a679fc"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7687_refusal_counter-58e76537e3d77e55",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_7687_refusal_counter-58e76537e3d77e55",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9661016,
+        "bytes": 108240344,
+        "blocks": 211368,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340143631621984,
+        "ctimeNs": 1792340143633621978,
+        "sha256": "7a3f6ea1a14a3f975521fde6a8a2c629a1c19ed06b8da89e36b55edc064473ac"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-58e76537e3d77e55/test-integration-test-issue_7687_refusal_counter.json",
+        "sha256": "453bd2f7a11abfd7a7fff12014116f4507ce667f688c497c734198d2fa555b59"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_3821_auxiliary_routers_mesh_nothing-eeb254019a8ad063",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_3821_auxiliary_routers_mesh_nothing-eeb254019a8ad063",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9660869,
+        "bytes": 108235880,
+        "blocks": 211344,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340138131638218,
+        "ctimeNs": 1792340138134638209,
+        "sha256": "d24cf848d280f439f21b027012b4e6112bad3c4d08c2cc990a04517274cba27b"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-eeb254019a8ad063/test-integration-test-issue_3821_auxiliary_routers_mesh_nothing.json",
+        "sha256": "16cbd8bfb1262d595dad0d3b35cb678c8ede3e48f4746fe99848106236cdd1c8"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_854_rect_hollow_fillet-5df8e695e5c1e41f",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_854_rect_hollow_fillet-5df8e695e5c1e41f",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9668888,
+        "bytes": 108234216,
+        "blocks": 211360,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340804722848603,
+        "ctimeNs": 1792340804725848595,
+        "sha256": "c82902c18360069c2981dce23b9f9554e6e0fa57a268266be4b259f0df5c6312"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-5df8e695e5c1e41f/test-integration-test-issue_854_rect_hollow_fillet.json",
+        "sha256": "18ec3da4d01f5a001b860a2417724428742b4f00f604cb5e1cd981e0b3f04411"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_845_wall_elemented_case-046f452cb0c7aa8d",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_845_wall_elemented_case-046f452cb0c7aa8d",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9664789,
+        "bytes": 108233480,
+        "blocks": 211360,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340565329445088,
+        "ctimeNs": 1792340565332445081,
+        "sha256": "d609ed814d23a1bf4b7b3dfada35cfb6ad064d7a5e33590f670d1656f8ec5114"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-046f452cb0c7aa8d/test-integration-test-issue_845_wall_elemented_case.json",
+        "sha256": "96c94ec934d8e3bde0ad8ae5e9cbd49c80490efed0b40f6917e677ef2d323ab7"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_4560_polygonal_faceset_operand-89a2ffd0c15cca15",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_4560_polygonal_faceset_operand-89a2ffd0c15cca15",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9657590,
+        "bytes": 108233072,
+        "blocks": 211352,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792339978522989296,
+        "ctimeNs": 1792339978536989266,
+        "sha256": "73cfae1b4a66980c511a42fc69941eba67b2b83a79eb8fa988165dc87160e595"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-89a2ffd0c15cca15/test-integration-test-issue_4560_polygonal_faceset_operand.json",
+        "sha256": "717b714d21704481319d99f39602f8d4d7af134df39170e7caa175a02a2e85ff"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_3821_router_drains_bool_failures-06a396ba29719ae2",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_3821_router_drains_bool_failures-06a396ba29719ae2",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9662158,
+        "bytes": 108229032,
+        "blocks": 211352,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340215119410976,
+        "ctimeNs": 1792340215127410953,
+        "sha256": "f4bb3dac517bb1c84a3d515b54e4d144e390cbe3ba0a71b512dd69e74b83349d"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-06a396ba29719ae2/test-integration-test-issue_3821_router_drains_bool_failures.json",
+        "sha256": "53f2ef27ee64ba69646d8bb134cd251d4b5f48f4ddbd48f894d0761bcf5e858b"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/ifc4x3_sectioned_linear_positions-7aa11bc4ec50e373",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/ifc4x3_sectioned_linear_positions-7aa11bc4ec50e373",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9655676,
+        "bytes": 108228416,
+        "blocks": 211344,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792339145929006389,
+        "ctimeNs": 1792339145932006380,
+        "sha256": "e105cf3247688f968f7cc92fe5c68cfbac2e71c7c6ad08f1bf50bb2f22565240"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-7aa11bc4ec50e373/test-integration-test-ifc4x3_sectioned_linear_positions.json",
+        "sha256": "a88f3b51aae24f8b5471b7f99a872039ea681bcf4ad9584f839137fac10d5ab9"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_6232_grid_placement_schema-6295c22eead9cbf7",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_6232_grid_placement_schema-6295c22eead9cbf7",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9650914,
+        "bytes": 108227192,
+        "blocks": 211392,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792338637017532989,
+        "ctimeNs": 1792338637022532974,
+        "sha256": "b2641e81908984684edb1b94acc14aafa350840078af4f3bb770917cdc19ce46"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-6295c22eead9cbf7/test-integration-test-issue_6232_grid_placement_schema.json",
+        "sha256": "91ce20acb4aa5a4e07fa741e9b0732ee4dba1092a1968a36703f565d26419105"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7687_refusal_counter-bb79c10965ce4765",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_7687_refusal_counter-bb79c10965ce4765",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9669623,
+        "bytes": 108221944,
+        "blocks": 211336,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340858113715571,
+        "ctimeNs": 1792340858121715551,
+        "sha256": "360cd5c2437fd9a2ea58426d3d1b7863e93afaeea272ec2fe6214a4304616061"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-bb79c10965ce4765/test-integration-test-issue_7687_refusal_counter.json",
+        "sha256": "be4147a8ed6d075548376250d18afc3fb5b9320e5a442158ec37bd783bc9149d"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_3821_auxiliary_routers_mesh_nothing-7a6eb26e377c0660",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_3821_auxiliary_routers_mesh_nothing-7a6eb26e377c0660",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9667491,
+        "bytes": 108217464,
+        "blocks": 211312,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340692533128140,
+        "ctimeNs": 1792340692617127931,
+        "sha256": "d8c98bf40a1e6683e9d476c050f8539c65505da622214b8759455a55122c1e17"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-7a6eb26e377c0660/test-integration-test-issue_3821_auxiliary_routers_mesh_nothing.json",
+        "sha256": "2488b34227d58f9b012c8fbc116b5f29b1d65c5a9a3e88ccc5c5df0e314fe7f2"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_854_rect_hollow_fillet-5b73d1ae88010508",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_854_rect_hollow_fillet-5b73d1ae88010508",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9676454,
+        "bytes": 108216504,
+        "blocks": 211320,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792341612036630036,
+        "ctimeNs": 1792341612039630028,
+        "sha256": "69dad63b167983ad51cf42feed9b3e7201d09a6ac3f3df401a9d81a91c80e03a"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-5b73d1ae88010508/test-integration-test-issue_854_rect_hollow_fillet.json",
+        "sha256": "d416838528ba650cc3eb3cf6c7f95fc21ff15dbe810a22b5cfe7027470f76170"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_845_wall_elemented_case-2da98cda19eca296",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_845_wall_elemented_case-2da98cda19eca296",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9676410,
+        "bytes": 108215736,
+        "blocks": 211320,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792341610213635359,
+        "ctimeNs": 1792341610218635344,
+        "sha256": "e3cad9afbcd12563d69365a6f317155f1b02629af27ae2e0d95c838afa177d42"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-2da98cda19eca296/test-integration-test-issue_845_wall_elemented_case.json",
+        "sha256": "577f46df09f047958894f11f88b42e8c839e449d7bd3ba3dd211f560bb79deba"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_4560_polygonal_faceset_operand-3d159dd7dc9a9381",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_4560_polygonal_faceset_operand-3d159dd7dc9a9381",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9667365,
+        "bytes": 108214656,
+        "blocks": 211320,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340686621142871,
+        "ctimeNs": 1792340686629142851,
+        "sha256": "792816305705984765d1c845cb21ab2a58b6c6b17987ec9baadcb654dcb57deb"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-3d159dd7dc9a9381/test-integration-test-issue_4560_polygonal_faceset_operand.json",
+        "sha256": "9b61e7b53659193c2800c8ce509f75d7bd60492df8057f1104c6e683023b5a6d"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_5566_swept_disk_parameters-6f87ee14dbaa721f",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_5566_swept_disk_parameters-6f87ee14dbaa721f",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9659580,
+        "bytes": 108214208,
+        "blocks": 211312,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340072319784109,
+        "ctimeNs": 1792340072322784102,
+        "sha256": "3009e5a2453f4ce5a128ae87d3337a82ba1b76ab755ef95cf711eff09f077f1d"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-6f87ee14dbaa721f/test-integration-test-issue_5566_swept_disk_parameters.json",
+        "sha256": "b59fe79ba018d2f5826dacaeda53f8349bff58afb4a3f8f359cb96994a80be5d"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_3821_router_drains_bool_failures-97eefaf2a1953bc7",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_3821_router_drains_bool_failures-97eefaf2a1953bc7",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9664818,
+        "bytes": 108210560,
+        "blocks": 211312,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340565320445111,
+        "ctimeNs": 1792340565323445103,
+        "sha256": "ee94d83dd4659576b851bf35782d4efb090c1080c50338ae0e09900eb2a79347"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-97eefaf2a1953bc7/test-integration-test-issue_3821_router_drains_bool_failures.json",
+        "sha256": "d4642b748e0ea469703de282386961fbeb69f94f3a7bc1f80672102a4779cd42"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7687_refusal_counter-1d8cb9e51fcc1c61",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_7687_refusal_counter-1d8cb9e51fcc1c61",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9674028,
+        "bytes": 108204240,
+        "blocks": 211304,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792341462544066469,
+        "ctimeNs": 1792341462547066460,
+        "sha256": "90782ec30bc12ab731236805a8baacc863388662bd2e12fc0b312638513ef114"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-1d8cb9e51fcc1c61/test-integration-test-issue_7687_refusal_counter.json",
+        "sha256": "9211a05a1f4493191d45f694a039669dc6d481e814f8b47c2d6c8504e13ca577"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/test_materials_ifc-ced440cfeb43d5e3",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/test_materials_ifc-ced440cfeb43d5e3",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9662911,
+        "bytes": 108203256,
+        "blocks": 211296,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340271430244766,
+        "ctimeNs": 1792340271435244751,
+        "sha256": "9fe25b0a48036808df49214a44f0699c6a0fdb8148a44c49d2e8c32b12cddc3e"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-ced440cfeb43d5e3/test-integration-test-test_materials_ifc.json",
+        "sha256": "f91adc38b1cddea208ba12001a0f5bc40175002b46ce50eee95272ab2f783a2d"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_3821_auxiliary_routers_mesh_nothing-05f0b781acadfdcf",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_3821_auxiliary_routers_mesh_nothing-05f0b781acadfdcf",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9672425,
+        "bytes": 108199664,
+        "blocks": 211280,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792341339322427334,
+        "ctimeNs": 1792341339330427310,
+        "sha256": "6a508c4f91c957e5bb39e27dbf3b1907864793baacc390a24a7267f78929dc2e"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-05f0b781acadfdcf/test-integration-test-issue_3821_auxiliary_routers_mesh_nothing.json",
+        "sha256": "1d2fa2150acf3cca9807af30fbfea854040b65858371abc0dccbd4e92884d42d"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_4560_polygonal_faceset_operand-b23533a40dbf588f",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_4560_polygonal_faceset_operand-b23533a40dbf588f",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9673144,
+        "bytes": 108196968,
+        "blocks": 211288,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792341391538274324,
+        "ctimeNs": 1792341391541274315,
+        "sha256": "1bb5b26134619eec44022089ca2b02b750174757d6119f6243f3ca2214a6daeb"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-b23533a40dbf588f/test-integration-test-issue_4560_polygonal_faceset_operand.json",
+        "sha256": "03cd83258f89406456f07d17d5b6a8725268aec27d9cf9ceedc0b2eecd10d46c"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_5566_swept_disk_parameters-d2281cc28cc04fef",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_5566_swept_disk_parameters-d2281cc28cc04fef",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9665054,
+        "bytes": 108195784,
+        "blocks": 211280,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340578332412689,
+        "ctimeNs": 1792340578335412682,
+        "sha256": "6ab5a3e6709074ed670a650fb475a286ed01c73cb4d671348db8445312019033"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-d2281cc28cc04fef/test-integration-test-issue_5566_swept_disk_parameters.json",
+        "sha256": "2891d11e381c68cb228a1d32795ac89eed1f4499f6a2e17f44096b0556211201"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_5327_viadotto_sectioned-2596a725f7bed14d",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_5327_viadotto_sectioned-2596a725f7bed14d",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9655025,
+        "bytes": 108193968,
+        "blocks": 211280,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792339117114092825,
+        "ctimeNs": 1792339117117092816,
+        "sha256": "7b7eed0dbfbf2961db6c2cc326010cc632183d9aba4b11f386ee373ad782e018"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-2596a725f7bed14d/test-integration-test-issue_5327_viadotto_sectioned.json",
+        "sha256": "781a7bf6447bd046a2e53b10cfaa88a89fdc64ddf683dff802bb45c545658fe9"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_3821_router_drains_bool_failures-54e4d628a2658c2a",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_3821_router_drains_bool_failures-54e4d628a2658c2a",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9675629,
+        "bytes": 108192912,
+        "blocks": 211280,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792341575713736077,
+        "ctimeNs": 1792341575716736068,
+        "sha256": "16b0c3560442ae61f4e6d50bd7f2927952429c3b246254228ef9bbd4901c55d0"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-54e4d628a2658c2a/test-integration-test-issue_3821_router_drains_bool_failures.json",
+        "sha256": "87415962c69b35215516a8bbe43c8df173346092bfc2d1a4ac2f81fe40babce7"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_4083_diagnostic_dedup_test-92a5b5bc682c904d",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_4083_diagnostic_dedup_test-92a5b5bc682c904d",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9651166,
+        "bytes": 108192592,
+        "blocks": 211280,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792338645820506582,
+        "ctimeNs": 1792338645823506573,
+        "sha256": "2beee3b745d6ab51351a303dd52680067e0dee5d22a0d2f12bb678e94a8bbadc"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-92a5b5bc682c904d/test-integration-test-issue_4083_diagnostic_dedup_test.json",
+        "sha256": "b5d5d8340d43182402f3a4615dc9543329c0b9ed7a83e2b2afb44e8bd2cd6550"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_3923_polygonal_bounded_half_space_single_cutter_gate-bf20f77f98b2806f",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_3923_polygonal_bounded_half_space_single_cutter_gate-bf20f77f98b2806f",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9626775,
+        "bytes": 108190664,
+        "blocks": 211272,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792328460455780007,
+        "ctimeNs": 1792328460457780000,
+        "sha256": "04f19cc7a1dae76ba3fbca5ac4130ee9e9a53934feb3048dd466e303f3609a02"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-bf20f77f98b2806f/test-integration-test-issue_3923_polygonal_bounded_half_space_single_cutter_gate.json",
+        "sha256": "6e9b71153f072aedd9941b83a97b4cad1ccf1165ff0a61e047a6265daa676d0d"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/test_materials_ifc-6b9fac879d5543c9",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/test_materials_ifc-6b9fac879d5543c9",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9666820,
+        "bytes": 108184816,
+        "blocks": 211264,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340656622217618,
+        "ctimeNs": 1792340656625217611,
+        "sha256": "e0b9d68d19be369a02911d31edfb63b62de8cb79e7afa605a8dd1aab59945d4f"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-6b9fac879d5543c9/test-integration-test-test_materials_ifc.json",
+        "sha256": "a7255739ec79d29bdc7df6e48be527eec111bffa880670594f2695a5441abcdb"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_5566_swept_disk_parameters-bda33070bdb63971",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_5566_swept_disk_parameters-bda33070bdb63971",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9673775,
+        "bytes": 108177968,
+        "blocks": 211248,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792341439739133079,
+        "ctimeNs": 1792341439742133071,
+        "sha256": "b8f16a78a0451a602bc14f9092104d63d09a94cc8a9ef45a90075326b8915117"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-bda33070bdb63971/test-integration-test-issue_5566_swept_disk_parameters.json",
+        "sha256": "45e434ca754d5a392e138d71af10b4f6185176b3cbdabe986f0e585ced3da000"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/consolidate_unit_scale-d13597feb5a830b2",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/consolidate_unit_scale-d13597feb5a830b2",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9652308,
+        "bytes": 108173976,
+        "blocks": 211240,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792338754039181957,
+        "ctimeNs": 1792338754119181717,
+        "sha256": "266ddbfbd2a5477f7c10997f2b2cb22e237afb98a7a0b878087efd5cffb6e749"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-d13597feb5a830b2/test-integration-test-consolidate_unit_scale.json",
+        "sha256": "a86899acb8d386745707261ed05ba1021b1337c6dee3534ddecbe4cc9d2de7f3"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/test_materials_ifc-837d4468805c8d4f",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/test_materials_ifc-837d4468805c8d4f",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9671751,
+        "bytes": 108167152,
+        "blocks": 211216,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792341310327512298,
+        "ctimeNs": 1792341310329512293,
+        "sha256": "d33285eed5fc0dfdbda1f4343f8ac55f5bd2e2d585ade46d56c0b6b17d275e75"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-837d4468805c8d4f/test-integration-test-test_materials_ifc.json",
+        "sha256": "64b74914e54f076bbd86e108dc4c614cb0b8cefb7a05bf15f347f01ec0be1eda"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7787_cap_holes-3c8a2eb5e54b395b",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_7787_cap_holes-3c8a2eb5e54b395b",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9652180,
+        "bytes": 108163584,
+        "blocks": 211224,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792338740836221563,
+        "ctimeNs": 1792338740923221302,
+        "sha256": "d47f719b96546f285042421a489d0839a7e766bf510eaef7354b7c82c9523646"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-3c8a2eb5e54b395b/test-integration-test-issue_7787_cap_holes.json",
+        "sha256": "8b0118bf16d0d03ac39356217e80ba2017cfae8fd8dfd0651bc8f54a9aa6cb9e"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_859_tin_irregular_network-82765c377ed5eed5",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_859_tin_irregular_network-82765c377ed5eed5",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9649960,
+        "bytes": 108149120,
+        "blocks": 211192,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792338599613645191,
+        "ctimeNs": 1792338599616645182,
+        "sha256": "98d03fb57b1399d1823013daee57be41532769720b6097b955b4c5ddb410929e"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-82765c377ed5eed5/test-integration-test-issue_859_tin_irregular_network.json",
+        "sha256": "bbceb95f9bcdd3640b77ab59173efe47790c64aa72ca526cfd8220a87407cfcf"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/swept_disk_duplicate_directrix-097bb2e084bb6c5d",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/swept_disk_duplicate_directrix-097bb2e084bb6c5d",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9654544,
+        "bytes": 108141696,
+        "blocks": 211168,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792339083383194009,
+        "ctimeNs": 1792339084116191810,
+        "sha256": "f3333d3127622da605a89fe5c10c9d648f9b488ff1b6b93d764b16b8bbb476d5"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-097bb2e084bb6c5d/test-integration-test-swept_disk_duplicate_directrix.json",
+        "sha256": "3deb1e17755917d6e9fcc8928e09ebc2f3a60172f9112329595fc42eb93187b1"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1164_swept_disk_trimmed_line-a49620157efd6241",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_1164_swept_disk_trimmed_line-a49620157efd6241",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9660120,
+        "bytes": 108133848,
+        "blocks": 211160,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340099126725465,
+        "ctimeNs": 1792340099129725459,
+        "sha256": "5049e296f3dd7289856a117a6682429a46b35e31f52c752514f72c2f733010dd"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-a49620157efd6241/test-integration-test-issue_1164_swept_disk_trimmed_line.json",
+        "sha256": "9da071767e7ea3e21cc9bc7816db678bb80613666488deb27fee3732b3c8d3a4"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/bath_csg_solid_test-c5d5bee9ad0e5a97",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/bath_csg_solid_test-c5d5bee9ad0e5a97",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9657508,
+        "bytes": 108125784,
+        "blocks": 211144,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792339974323998481,
+        "ctimeNs": 1792339974331998464,
+        "sha256": "ba58a15d104111faa6d16e7ec15ea87448dbe5b3db201c114aaf8f9e416d199d"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-c5d5bee9ad0e5a97/test-integration-test-bath_csg_solid_test.json",
+        "sha256": "3e09b26f20e9f19964d1262827a9fe8903cff4de9f18251b4595f60170419c91"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1485_duct_elbow_surface_curve_swept-2e940b8af853b5bf",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_1485_duct_elbow_surface_curve_swept-2e940b8af853b5bf",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9662367,
+        "bytes": 108118912,
+        "blocks": 211120,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340229514368487,
+        "ctimeNs": 1792340229517368479,
+        "sha256": "3eb0b1600dde0798529b58956273f26bec285588cb2ff0ea1d62aab9de3bcdc0"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-2e940b8af853b5bf/test-integration-test-issue_1485_duct_elbow_surface_curve_swept.json",
+        "sha256": "4b9afca1aa67e8ea605e1283d9c02e773f6f071666dcf8a5b1e484fefb8912ff"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1164_swept_disk_trimmed_line-1c77a83027f5c461",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_1164_swept_disk_trimmed_line-1c77a83027f5c461",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9668460,
+        "bytes": 108115424,
+        "blocks": 211128,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340770119934821,
+        "ctimeNs": 1792340770123934811,
+        "sha256": "69abaafb3e3b2cbec997adc0527d58282a936e6d05866bb27f938c0ecc7857c9"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-1c77a83027f5c461/test-integration-test-issue_1164_swept_disk_trimmed_line.json",
+        "sha256": "e43fe993a82e7056f549ab5fab19041bfdb3ad7ef62b7acea500c167a814b145"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7780_linear_placement_schema_positions-07d6857dd531f3e3",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_7780_linear_placement_schema_positions-07d6857dd531f3e3",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9652442,
+        "bytes": 108114664,
+        "blocks": 211112,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792338765729146891,
+        "ctimeNs": 1792338765742146852,
+        "sha256": "e449b681a624f699bf2ee0400a4b4d94ede187f26b0b55888ac574c3c5a4c100"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-07d6857dd531f3e3/test-integration-test-issue_7780_linear_placement_schema_positions.json",
+        "sha256": "20b6da9df47179d0fa3c304c981d111e14a42b0a0b2c623587ff9c7bc7db7c9e"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1155_halfspace_flyaway-70c50c08b0c23736",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_1155_halfspace_flyaway-70c50c08b0c23736",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9655548,
+        "bytes": 108114032,
+        "blocks": 211120,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792339141887018513,
+        "ctimeNs": 1792339141889018507,
+        "sha256": "a36ed0970d1a0a927df19203cff76ce33c4fe109154a0be1df7ce06ee9aaeb60"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-70c50c08b0c23736/test-integration-test-issue_1155_halfspace_flyaway.json",
+        "sha256": "1e84ec6c3bb695707726b19ae83026b29540ddd953ec9f997e857ecabc7faa96"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/bath_csg_solid_test-0f6bc7d39b192288",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/bath_csg_solid_test-0f6bc7d39b192288",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9668263,
+        "bytes": 108107424,
+        "blocks": 211104,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340753427976411,
+        "ctimeNs": 1792340753517976187,
+        "sha256": "64b2fa4fd3aa184c62756ee57afa678e961d232238af41084bda1f78fe345828"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-0f6bc7d39b192288/test-integration-test-bath_csg_solid_test.json",
+        "sha256": "c049b7f81a0f891004a10cb9223e16ccee369ac89117c6ff224b355806450128"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1485_duct_elbow_surface_curve_swept-b2d55ba4bed62619",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_1485_duct_elbow_surface_curve_swept-b2d55ba4bed62619",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9666320,
+        "bytes": 108100456,
+        "blocks": 211096,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340634841271889,
+        "ctimeNs": 1792340634924271682,
+        "sha256": "6f30729d52d0809406888bc3071362c4d6b7fd6ac25110d6fed2e578cc31e293"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-b2d55ba4bed62619/test-integration-test-issue_1485_duct_elbow_surface_curve_swept.json",
+        "sha256": "7cf7df25e81201e6571c4cf787a933bcfa621e6e5614d6ca72e5690bd0979385"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1164_swept_disk_trimmed_line-f5216b2752a5de90",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_1164_swept_disk_trimmed_line-f5216b2752a5de90",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9671389,
+        "bytes": 108097712,
+        "blocks": 211096,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792341292722563887,
+        "ctimeNs": 1792341292724563881,
+        "sha256": "c4e946ab8ecb235dfab73c77fe904258a374bdc17f88d0406391e8f88c9f7f50"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-f5216b2752a5de90/test-integration-test-issue_1164_swept_disk_trimmed_line.json",
+        "sha256": "9f9be4336d4efbc72e68f413d518be3d15054c3d43a783ca2cd1bf7b11dade41"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1348_swept_disk_composite_arc-2c94307e2e734b53",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_1348_swept_disk_composite_arc-2c94307e2e734b53",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9659106,
+        "bytes": 108092096,
+        "blocks": 211080,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340050013832905,
+        "ctimeNs": 1792340050018832894,
+        "sha256": "c665270179feee7a23dca847e419133152bfca3be05f64aae2d14ae4c0860477"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-2c94307e2e734b53/test-integration-test-issue_1348_swept_disk_composite_arc.json",
+        "sha256": "b246ffe5a268b73fb3be39f4739bd1a82ab46a19648904ca7099a3c435131b3b"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/bath_csg_solid_test-8b49413e3263d41f",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/bath_csg_solid_test-8b49413e3263d41f",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9673225,
+        "bytes": 108089656,
+        "blocks": 211080,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792341400124249164,
+        "ctimeNs": 1792341400129249150,
+        "sha256": "747c945f88c7f0e7d407466ffba62e1299cdfd06a74fa19f1fdb36e9b2de1a71"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-8b49413e3263d41f/test-integration-test-bath_csg_solid_test.json",
+        "sha256": "b688484eea9138174c10effb8b048f74b4ac1e18f0ed01976aca89bc2c72f632"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/swept_disk_winding_and_bore-d62cc9f4cf24a082",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/swept_disk_winding_and_bore-d62cc9f4cf24a082",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9659467,
+        "bytes": 108088008,
+        "blocks": 211072,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340067013795716,
+        "ctimeNs": 1792340067018795705,
+        "sha256": "7953efff98050cda8077bddaf0bb2bd53e680450bf97098ef5a59f9ca2238d1f"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-d62cc9f4cf24a082/test-integration-test-swept_disk_winding_and_bore.json",
+        "sha256": "62354bacb2205969bab85bba5ebe79c09ddfaa67357dcda379e952b32e650dc6"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1485_duct_elbow_surface_curve_swept-c879e2a10d11147f",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_1485_duct_elbow_surface_curve_swept-c879e2a10d11147f",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9672601,
+        "bytes": 108082784,
+        "blocks": 211064,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792341353412386046,
+        "ctimeNs": 1792341353415386037,
+        "sha256": "0d7def32bd0017b703bb4bc9f37691ba5d6e19c3a136114cc7b234decbb8c9ad"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-c879e2a10d11147f/test-integration-test-issue_1485_duct_elbow_surface_curve_swept.json",
+        "sha256": "c474efeb1db2ff3ac93e0d67b6734bfd9860127e65d1058b812cf16ae2fe402e"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1910_building_geometry_rtc-56ddc91ac61cce1b",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_1910_building_geometry_rtc-56ddc91ac61cce1b",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9663199,
+        "bytes": 108076168,
+        "blocks": 211096,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340289832190450,
+        "ctimeNs": 1792340289836190438,
+        "sha256": "e409dbff321ac27cb2faf034ece8e4d401a1546acccd30dc00b82dd5f0eba912"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-56ddc91ac61cce1b/test-integration-test-issue_1910_building_geometry_rtc.json",
+        "sha256": "81717183e12c6c2632131bb742c281630bbfe7491ec7a6a62019a986a1ee8e12"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_953_trimmed_curve_cartesian-fcdebcedbb1faf84",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_953_trimmed_curve_cartesian-fcdebcedbb1faf84",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9660301,
+        "bytes": 108075136,
+        "blocks": 211048,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340107419707323,
+        "ctimeNs": 1792340107423707315,
+        "sha256": "23557c02b4c185b03d05fca3b20dc972c37e1d2f1cab7eb3af982308fab532be"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-fcdebcedbb1faf84/test-integration-test-issue_953_trimmed_curve_cartesian.json",
+        "sha256": "56b33f6ea9a3f75d30523643e10ad25dc410b6ae3aa89e750785b65d84395a2f"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1348_swept_disk_composite_arc-c384f58f43defeb7",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_1348_swept_disk_composite_arc-c384f58f43defeb7",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9669999,
+        "bytes": 108073608,
+        "blocks": 211048,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340879531662206,
+        "ctimeNs": 1792340879539662185,
+        "sha256": "4d1248cf8de25074f8e07a7f1b090f119b81f3a31b9d0a2f90408682e25ef40d"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-c384f58f43defeb7/test-integration-test-issue_1348_swept_disk_composite_arc.json",
+        "sha256": "f8e97be3ec6c8441b98460fd986daff175b620775674cafb6537c8a68572cde9"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/swept_disk_winding_and_bore-8dc62b2ba5efc44b",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/swept_disk_winding_and_bore-8dc62b2ba5efc44b",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9669256,
+        "bytes": 108069616,
+        "blocks": 211040,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340833930775826,
+        "ctimeNs": 1792340834020775602,
+        "sha256": "f5721100b0123ec742b61f9dd75120b0c2ec45d084fc14268e35d8877de45701"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-8dc62b2ba5efc44b/test-integration-test-swept_disk_winding_and_bore.json",
+        "sha256": "afa0518d8ab9dbfe0afdc133dc50cc12bcbeae5a339ccee00e5208d3ddeaba68"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1910_storey_generalization-97649ed1a7b90b03",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_1910_storey_generalization-97649ed1a7b90b03",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9659308,
+        "bytes": 108062568,
+        "blocks": 211016,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340058925813409,
+        "ctimeNs": 1792340059019813203,
+        "sha256": "a27011ad5f1207bcd44c9c9bea69a9e5edd71bfff93efb450d5db72057e85cb6"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-97649ed1a7b90b03/test-integration-test-issue_1910_storey_generalization.json",
+        "sha256": "e9dbc46b7d1aa375476255614d3260e9e10d6d648c01b65f73bc1d29f744d4b9"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_3421_content_hash_oversized_ref-350687971adedcf0",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_3421_content_hash_oversized_ref-350687971adedcf0",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9651011,
+        "bytes": 108062256,
+        "blocks": 211016,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792338640914521298,
+        "ctimeNs": 1792338640918521286,
+        "sha256": "3322d59255a635702723708de51213435ece1fd79f18cb9c2fb110f5246e8a69"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-350687971adedcf0/test-integration-test-issue_3421_content_hash_oversized_ref.json",
+        "sha256": "f79e72c3d0ba8bf73b78d37e9398d411d807a03f505b01d5b9b33ec5c66e53b1"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1910_building_geometry_rtc-c604ff7e61b2101c",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_1910_building_geometry_rtc-c604ff7e61b2101c",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9668663,
+        "bytes": 108057792,
+        "blocks": 211016,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340787633891182,
+        "ctimeNs": 1792340787718890970,
+        "sha256": "54c7c36ee8ffe9675c31b1afba8f03643ecbccae29a146a0b44e706db78b4dbf"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-c604ff7e61b2101c/test-integration-test-issue_1910_building_geometry_rtc.json",
+        "sha256": "84fb5c1d25ef06c877d0e5da53e0ded40a0c24f6850520bd79a01aaa06dd207e"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_953_trimmed_curve_cartesian-421c3bdda9be62ca",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_953_trimmed_curve_cartesian-421c3bdda9be62ca",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9668223,
+        "bytes": 108056688,
+        "blocks": 211008,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340749830985374,
+        "ctimeNs": 1792340749922985144,
+        "sha256": "a78d255a423693211cae27ceec12e7af4b481b355d1569c0c866cfca662b3f79"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-421c3bdda9be62ca/test-integration-test-issue_953_trimmed_curve_cartesian.json",
+        "sha256": "5c76cd467b0ca0f3dfbe846a4dfde78bd92c4edfea2ee0b3f1a9681bef79efb3"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1348_swept_disk_composite_arc-f1826285ce795f0a",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_1348_swept_disk_composite_arc-f1826285ce795f0a",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9675348,
+        "bytes": 108055920,
+        "blocks": 211000,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792341558534786230,
+        "ctimeNs": 1792341558537786221,
+        "sha256": "a9c5226f4cfddcbaa836e41baf2ac0cc78975bb25e03f71433f10be387d0019a"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-f1826285ce795f0a/test-integration-test-issue_1348_swept_disk_composite_arc.json",
+        "sha256": "bdc8f9b2d61de4c06524596c4cc0b9d5b3e335dad1df049b4d5d724fff905909"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/swept_disk_winding_and_bore-1026e3ab1b0742d6",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/swept_disk_winding_and_bore-1026e3ab1b0742d6",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9675508,
+        "bytes": 108051912,
+        "blocks": 211000,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792341568819756203,
+        "ctimeNs": 1792341568836756153,
+        "sha256": "083d57627ac30d6c9f62c9adba09ae9db884f8aeccd578167378705b361bd8ad"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-1026e3ab1b0742d6/test-integration-test-swept_disk_winding_and_bore.json",
+        "sha256": "1b7e1842b89728b4ad62142a4de2b9fe606711cdc88aa8aa21ac72e786699ed1"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1910_storey_generalization-274dc051b40bb80e",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_1910_storey_generalization-274dc051b40bb80e",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9669866,
+        "bytes": 108044168,
+        "blocks": 210976,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340872632679395,
+        "ctimeNs": 1792340872635679388,
+        "sha256": "dc7bb674e8844fa3a008fff570baf5740b344712301e72eff4a58a2992b390af"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-274dc051b40bb80e/test-integration-test-issue_1910_storey_generalization.json",
+        "sha256": "55107351302f611a38dd803d9e90db4e743926a40013dea34d69404f7f3d2409"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1910_building_geometry_rtc-5bfd830616200601",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_1910_building_geometry_rtc-5bfd830616200601",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9671671,
+        "bytes": 108040096,
+        "blocks": 210976,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792341305833525467,
+        "ctimeNs": 1792341305836525458,
+        "sha256": "30fc7d4bd23dccc0cb5e23464627b37bd01ead6178561f6e6c28cc38190c1d13"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-5bfd830616200601/test-integration-test-issue_1910_building_geometry_rtc.json",
+        "sha256": "8b8d8ca475687e9a1062c0f313771239f373175769a6eb4ba7e5c9bd4229627f"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_953_trimmed_curve_cartesian-1fa6bc301ba7f61a",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_953_trimmed_curve_cartesian-1fa6bc301ba7f61a",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9676036,
+        "bytes": 108038960,
+        "blocks": 210976,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792341595025679697,
+        "ctimeNs": 1792341595028679688,
+        "sha256": "9fba87eecb7f26b7550ed19b1a63e7fcbce88a231a027062ad4ca0ebf97458a5"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-1fa6bc301ba7f61a/test-integration-test-issue_953_trimmed_curve_cartesian.json",
+        "sha256": "63ec5dec8ecae2962e0b4bbe31755b6d5a5d4455474b7e23f74d837d9da1e788"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1910_storey_generalization-ea244c69a0045e4d",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_1910_storey_generalization-ea244c69a0045e4d",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9670559,
+        "bytes": 108026464,
+        "blocks": 210944,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792341252954680417,
+        "ctimeNs": 1792341252956680411,
+        "sha256": "ef097f65a4decf58c49d4a92ea806dfd299864360ba1f6d077d2e2e3d8156ad4"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-ea244c69a0045e4d/test-integration-test-issue_1910_storey_generalization.json",
+        "sha256": "019f6aa04a3bb27587a93e7c8454562c524c11df54c384da12fca7abaf090116"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1909_large_single_brep_dedup-542e7f9c2b749a11",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_1909_large_single_brep_dedup-542e7f9c2b749a11",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9650786,
+        "bytes": 108022160,
+        "blocks": 210952,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792338629050556887,
+        "ctimeNs": 1792338629054556875,
+        "sha256": "2e2b9fc54aee486504fe5c91b41b5863dc01efef0b0e1ce09200d664bddbc431"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-542e7f9c2b749a11/test-integration-test-issue_1909_large_single_brep_dedup.json",
+        "sha256": "e5fd1b297815d9a72d1814b0ec777ae8e6700b75b2dac07ce79c62ed6da1715b"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_604_advanced_face_holes-fb492fa75518e6b3",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_604_advanced_face_holes-fb492fa75518e6b3",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9659200,
+        "bytes": 108021280,
+        "blocks": 210936,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340054516823053,
+        "ctimeNs": 1792340054525823034,
+        "sha256": "4776dcf70980461e3ac87aa6402d04d1ba011a1906e9edd1c3cb35d1dc1ee133"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-fb492fa75518e6b3/test-integration-test-issue_604_advanced_face_holes.json",
+        "sha256": "353d950d00ad8ce584b004cfa5df893e141f29e8effce4e7997e22a08e84c090"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7786_brep_voids_cutter-43fc0eadcf4062a4",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_7786_brep_voids_cutter-43fc0eadcf4062a4",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9658278,
+        "bytes": 108015840,
+        "blocks": 210928,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340012232915551,
+        "ctimeNs": 1792340012320915358,
+        "sha256": "75ad622df9bf1bdd33366635787ffd6874bd406853a03a0d47491866d2a27f17"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-43fc0eadcf4062a4/test-integration-test-issue_7786_brep_voids_cutter.json",
+        "sha256": "d9b7d1ed1e7f0daf2d94b684336559db828cb7af2937e70b1094e0af1d5b46bb"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_604_advanced_face_holes-7b51a70dd17e1ef1",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_604_advanced_face_holes-7b51a70dd17e1ef1",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9664604,
+        "bytes": 108002856,
+        "blocks": 210896,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340557228465273,
+        "ctimeNs": 1792340557236465253,
+        "sha256": "dff5110b698c87a132736148dbf4be3dade91d1082e6004b5e44573bf390da27"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-7b51a70dd17e1ef1/test-integration-test-issue_604_advanced_face_holes.json",
+        "sha256": "2147ba4e3f92109c0dbad78f4e7734709cd20a3dacfd77f4c2fd13de314fd639"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7688_boolean_operands-494d7610b01d0bb9",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_7688_boolean_operands-494d7610b01d0bb9",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9655644,
+        "bytes": 108002120,
+        "blocks": 210904,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792339145920006416,
+        "ctimeNs": 1792339145923006407,
+        "sha256": "29f3f898eb6e5496865127659357c20667342d4700d3cacd3dfaa8fedcdebed0"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-494d7610b01d0bb9/test-integration-test-issue_7688_boolean_operands.json",
+        "sha256": "a8a142199be418fc2b1fc46eca7f1ede7a1009e7d0e77c0d7398b92dc3ea3995"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7786_brep_voids_cutter-656b8251ed3857f9",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_7786_brep_voids_cutter-656b8251ed3857f9",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9669159,
+        "bytes": 107997440,
+        "blocks": 210888,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340825719796285,
+        "ctimeNs": 1792340825730796258,
+        "sha256": "981b1b3e51a6be1c5991142fb170e1a2bafec8b97407d91920e16018f9fcf522"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-656b8251ed3857f9/test-integration-test-issue_7786_brep_voids_cutter.json",
+        "sha256": "5921f4b88097f21217558515a976916e52cf5a7bfd2e53431d80db2d73174c37"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/straight_corners_polygonal-d1f01981b04fcddb",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/straight_corners_polygonal-d1f01981b04fcddb",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9655044,
+        "bytes": 107996144,
+        "blocks": 210896,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792339117050093017,
+        "ctimeNs": 1792339117054093005,
+        "sha256": "e7a578871f973fa9edf93e9e362f54aed70d9b0dbd8b59b2fcc89cfce36fef6e"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-d1f01981b04fcddb/test-integration-test-straight_corners_polygonal.json",
+        "sha256": "30abfacea574cea08847f4c4156c594be0fab1a7998c18568568d320080fdac2"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_820_trimmed_curve_planeangleunit-dcc19780095adacc",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_820_trimmed_curve_planeangleunit-dcc19780095adacc",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9658825,
+        "bytes": 107995232,
+        "blocks": 210904,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792340033847868266,
+        "ctimeNs": 1792340033849868262,
+        "sha256": "4aea04985a5eb20f7dc16b314f7a9e8adef905ebc1d7c6b7cd7cd79989782109"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-dcc19780095adacc/test-integration-test-issue_820_trimmed_curve_planeangleunit.json",
+        "sha256": "260c64c81be26d8b2fd627812818a914cf3998e900426b3cc028ffd0b9a2e7cf"
+      }
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_604_advanced_face_holes-16a5fa0255e1cfa2",
+      "root": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "member": "debug/deps/issue_604_advanced_face_holes-16a5fa0255e1cfa2",
+      "originalIdentity": {
+        "dev": 64513,
+        "ino": 9675392,
+        "bytes": 107985120,
+        "blocks": 210872,
+        "mode": 33277,
+        "uid": 1000,
+        "gid": 1000,
+        "nlink": 1,
+        "mtimeNs": 1792341560744779778,
+        "ctimeNs": 1792341560747779769,
+        "sha256": "a509ac4a4cd5d749105e6527f6be487666892447fd0679de0192fa964bee464f"
+      },
+      "testFingerprint": {
+        "kind": "integration-test",
+        "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/.fingerprint/ifc-lite-geometry-16a5fa0255e1cfa2/test-integration-test-issue_604_advanced_face_holes.json",
+        "sha256": "1000779798e8cbef1682f767f43fd9b0316eb300ee46e878dd5e65bce0d7c68f"
+      }
+    }
+  ],
+  "sourceBytes": 8543878056,
+  "sourceAllocatedBytes": 8542363648,
+  "freeBefore": 321114247168,
+  "removedPaths": [
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7786_brep_voids_cutter-c670dcdd23b86b03",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_5313_thin_drop_tjunction-2cd60622224035c9",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/mesh_welding_calibration-1fd2d0bad409791b",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/nested_mapped_item-6cbed274fa3ac771",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_820_trimmed_curve_planeangleunit-83ec8d2b82db57a8",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/nested_mapped_item-7fb891a8ac3df33b",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_819_triangulated_normals-d561935de8bdd9a4",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7688_surface_of_linear_extrusion-83441177ea56b0be",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/nested_mapped_item-021dcf29c5cf46d8",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7795_polygonal_faces-6105943c988c3e4e",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_854_rect_hollow_fillet-b0c65114ef75fc08",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_845_wall_elemented_case-d491abd0d1a34d5b",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7687_refusal_counter-58e76537e3d77e55",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_3821_auxiliary_routers_mesh_nothing-eeb254019a8ad063",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_854_rect_hollow_fillet-5df8e695e5c1e41f",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_845_wall_elemented_case-046f452cb0c7aa8d",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_4560_polygonal_faceset_operand-89a2ffd0c15cca15",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_3821_router_drains_bool_failures-06a396ba29719ae2",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/ifc4x3_sectioned_linear_positions-7aa11bc4ec50e373",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_6232_grid_placement_schema-6295c22eead9cbf7",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7687_refusal_counter-bb79c10965ce4765",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_3821_auxiliary_routers_mesh_nothing-7a6eb26e377c0660",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_854_rect_hollow_fillet-5b73d1ae88010508",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_845_wall_elemented_case-2da98cda19eca296",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_4560_polygonal_faceset_operand-3d159dd7dc9a9381",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_5566_swept_disk_parameters-6f87ee14dbaa721f",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_3821_router_drains_bool_failures-97eefaf2a1953bc7",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7687_refusal_counter-1d8cb9e51fcc1c61",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/test_materials_ifc-ced440cfeb43d5e3",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_3821_auxiliary_routers_mesh_nothing-05f0b781acadfdcf",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_4560_polygonal_faceset_operand-b23533a40dbf588f",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_5566_swept_disk_parameters-d2281cc28cc04fef",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_5327_viadotto_sectioned-2596a725f7bed14d",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_3821_router_drains_bool_failures-54e4d628a2658c2a",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_4083_diagnostic_dedup_test-92a5b5bc682c904d",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_3923_polygonal_bounded_half_space_single_cutter_gate-bf20f77f98b2806f",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/test_materials_ifc-6b9fac879d5543c9",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_5566_swept_disk_parameters-bda33070bdb63971",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/consolidate_unit_scale-d13597feb5a830b2",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/test_materials_ifc-837d4468805c8d4f",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7787_cap_holes-3c8a2eb5e54b395b",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_859_tin_irregular_network-82765c377ed5eed5",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/swept_disk_duplicate_directrix-097bb2e084bb6c5d",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1164_swept_disk_trimmed_line-a49620157efd6241",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/bath_csg_solid_test-c5d5bee9ad0e5a97",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1485_duct_elbow_surface_curve_swept-2e940b8af853b5bf",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1164_swept_disk_trimmed_line-1c77a83027f5c461",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7780_linear_placement_schema_positions-07d6857dd531f3e3",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1155_halfspace_flyaway-70c50c08b0c23736",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/bath_csg_solid_test-0f6bc7d39b192288",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1485_duct_elbow_surface_curve_swept-b2d55ba4bed62619",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1164_swept_disk_trimmed_line-f5216b2752a5de90",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1348_swept_disk_composite_arc-2c94307e2e734b53",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/bath_csg_solid_test-8b49413e3263d41f",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/swept_disk_winding_and_bore-d62cc9f4cf24a082",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1485_duct_elbow_surface_curve_swept-c879e2a10d11147f",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1910_building_geometry_rtc-56ddc91ac61cce1b",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_953_trimmed_curve_cartesian-fcdebcedbb1faf84",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1348_swept_disk_composite_arc-c384f58f43defeb7",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/swept_disk_winding_and_bore-8dc62b2ba5efc44b",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1910_storey_generalization-97649ed1a7b90b03",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_3421_content_hash_oversized_ref-350687971adedcf0",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1910_building_geometry_rtc-c604ff7e61b2101c",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_953_trimmed_curve_cartesian-421c3bdda9be62ca",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1348_swept_disk_composite_arc-f1826285ce795f0a",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/swept_disk_winding_and_bore-1026e3ab1b0742d6",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1910_storey_generalization-274dc051b40bb80e",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1910_building_geometry_rtc-5bfd830616200601",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_953_trimmed_curve_cartesian-1fa6bc301ba7f61a",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1910_storey_generalization-ea244c69a0045e4d",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_1909_large_single_brep_dedup-542e7f9c2b749a11",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_604_advanced_face_holes-fb492fa75518e6b3",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7786_brep_voids_cutter-43fc0eadcf4062a4",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_604_advanced_face_holes-7b51a70dd17e1ef1",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7688_boolean_operands-494d7610b01d0bb9",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_7786_brep_voids_cutter-656b8251ed3857f9",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/straight_corners_polygonal-d1f01981b04fcddb",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_820_trimmed_curve_planeangleunit-dcc19780095adacc",
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b/debug/deps/issue_604_advanced_face_holes-16a5fa0255e1cfa2"
+  ],
+  "packProcesses": [
+    {
+      "pid": 1537973,
+      "startToken": "15340126"
+    },
+    {
+      "pid": 1537974,
+      "startToken": "15340126"
+    }
+  ],
+  "packExitCodes": {
+    "tar": 0,
+    "zstd": 0
+  },
+  "archiveBytes": 1925034744,
+  "archiveSha256": "5f1293f890d65c1fa489c3cb0d2d3c4af723dc46b30f8372afeceae018d91b38",
+  "verifiedMembers": 79,
+  "allMemberShaAndMetadataMatchOriginal": true,
+  "standardTarIntegrityExitCode": 0,
+  "zstdIntegrityExitCode": 0,
+  "freeAfter": 327728291840,
+  "archiveAllocatedBytes": 1925042176,
+  "netAllocatedBytesRecovered": 6617321472,
+  "restoreArgv": [
+    "/usr/bin/tar",
+    "--zstd",
+    "--extract",
+    "--file=/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-owned-terminal-test-archives-pop-v1/archives/b017-49926200a29e09a7679b.tar.zst",
+    "--directory=/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+    "--keep-old-files",
+    "--same-permissions",
+    "--same-owner",
+    "--numeric-owner"
+  ]
+}

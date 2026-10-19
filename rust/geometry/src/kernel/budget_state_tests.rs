@@ -118,8 +118,6 @@ fn element_budget_survives_thread_migration_and_restores_destination_counters() 
     });
     assert_eq!((count(), element_count()), (0, 0));
     assert!(!tripped());
-    assert!(peak() >= 4);
-    assert!(element_peak() >= 6);
 }
 
 #[test]
@@ -189,4 +187,24 @@ fn panic_saves_element_progress_and_restores_the_callers_budget() {
     });
     assert_eq!((count(), element_count()), (1, 1));
     assert!(!tripped());
+}
+
+#[test]
+fn leaving_a_scope_folds_its_last_operation_and_element_totals_into_the_peaks() {
+    let _lock = GLOBAL_CAP_LOCK.lock().unwrap();
+    let profile = TestProfile::new();
+    profile.set_cap(Some(100));
+    profile.set_element_cap(Some(100));
+    let _caller = enter_element();
+    begin();
+    let mut state = ElementState::new();
+    reset_peak();
+    state.with_scope(|| {
+        begin();
+        charge(3);
+        charge(2);
+    });
+    assert_eq!(peak(), 5, "the scope's last operation is folded on exit");
+    assert_eq!(element_peak(), 5, "the scope's element total is folded on exit");
+    assert_eq!((count(), element_count()), (0, 0));
 }

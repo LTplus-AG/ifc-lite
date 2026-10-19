@@ -118,8 +118,11 @@ fn authored_position_lifts_the_revolution_into_object_coordinates() {
         (min, max)
     };
     let (base_min, base_max) = bounds(&lower(SOURCE).unwrap().evaluate().unwrap());
-    let placed = SOURCE.replace("#15=IFCREVOLVEDAREASOLID(#11,$,", "#16=IFCCARTESIANPOINT((10.,20.,30.));\n\
-        #17=IFCAXIS2PLACEMENT3D(#16,$,$);\n#15=IFCREVOLVEDAREASOLID(#11,#17,");
+    let placed = SOURCE.replace(
+        "#15=IFCREVOLVEDAREASOLID(#11,$,",
+        "#16=IFCCARTESIANPOINT((10.,20.,30.));\n\
+        #17=IFCAXIS2PLACEMENT3D(#16,$,$);\n#15=IFCREVOLVEDAREASOLID(#11,#17,",
+    );
     let (min, max) = bounds(&lower(&placed).unwrap().evaluate().unwrap());
     for (axis, shift) in [10.0_f32, 20.0, 30.0].into_iter().enumerate() {
         assert!((min[axis] - base_min[axis] - shift).abs() < 1e-3);

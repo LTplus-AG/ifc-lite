@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 // P2 actual pinned SDK semantic empty certificates. Keep every oracle strict.
 #include "ifclite_smlib.h"
+#include "empty.hpp"
+#include "mesh.hpp"
+#include <SmLine.h>
+#include <SmApiPrimitives.h>
+#include <memory>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -35,6 +40,29 @@ void classify(uint64_t session, ifclite_smlib_handle solid, bool empty) {
 }
 }
 void run_empty_tests() {
+    // Pinned SDK regression: valid vacant BReps retain an infinite void region
+    // and list headers. Full space and an unknown region are not empty solids.
+    SmBrep* raw=nullptr;
+    expect(SmApiCreateBox(SmVector3d(0,0,0),2,2,2,raw)==SM_SUCCESS && raw);
+    std::unique_ptr<SmBrep> box(raw);
+    std::unique_ptr<SmBrep> vacant(new (*box->GetContext()) SmBrep());
+    expect(!vacant->IsEmptyModel());
+    expect(semantically_empty_brep(vacant.get()));
+    vacant->GetInfiniteRegion()->SetIsVoid(FALSE);
+    expect(!semantically_empty_brep(vacant.get()));
+    vacant->GetInfiniteRegion()->SetIsVoid(UNSURE);
+    expect(!semantically_empty_brep(vacant.get()));
+    vacant->GetInfiniteRegion()->SetIsVoid(TRUE);
+    expect(semantically_empty_brep(vacant.get()));
+    expect(!semantically_empty_brep(box.get()));
+    SmEdge* wire_edge=nullptr;
+    auto* line=new (*vacant->GetContext()) SmLine(SmPoint3d(0,0,0),SmVector3d(1,0,0));
+    expect(vacant->CreateWireEdgeFromCurve(line,SmExtent1d(0,1),wire_edge)==SM_SUCCESS);
+    expect(wire_edge && !semantically_empty_brep(vacant.get()));
+    bool wire_refused=false;
+    try { (void)tessellate_mesh(vacant.get(),0.001,5); }
+    catch(const AdapterMeshFailure&) { wire_refused=true; }
+    expect(wire_refused);
     expect(ifclite_smlib_capabilities() & 32u);
     uint64_t session; ok(ifclite_smlib_session_create(&session));
     ifclite_smlib_handle a{}, b{}, empty{}, removed{};

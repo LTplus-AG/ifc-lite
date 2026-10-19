@@ -5,6 +5,7 @@
 #include "rigid.hpp"
 #include "affine.hpp"
 #include "copy.hpp"
+#include "empty.hpp"
 #include <SmApiBrep.h>
 #include <SmApiGeneral.h>
 #include <SmApiPrimitives.h>
@@ -233,7 +234,7 @@ int32_t ifclite_smlib_is_empty(uint64_t session, ifclite_smlib_handle handle, ui
     return boundary([&] {
         require(out != nullptr, IFCLITE_SMLIB_INVALID_ARGUMENT, "null empty query output");
         *out = 0;
-        *out = solid(session,handle)->IsEmptyModel() ? 1u : 0u;
+        *out = semantically_empty_brep(solid(session,handle)) ? 1u : 0u;
     });
 }
 int32_t ifclite_smlib_manifold(uint64_t session, ifclite_smlib_handle handle, uint32_t* out) {

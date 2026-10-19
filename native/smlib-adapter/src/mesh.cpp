@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "mesh.hpp"
+#include "empty.hpp"
 #include <SmApiBrep.h>
 #include <SmBrep.h>
 #include <SmPoly.h>
@@ -13,7 +14,7 @@ void checked(SmStatus status) { ensure(status == SM_SUCCESS,"upstream tessellati
 }
 std::unique_ptr<AdapterMesh> tessellate_mesh(SmBrep* solid, double chord, double angle) {
     SmTArray<SmFace*> source_faces; solid->GetFaces(source_faces);
-    if (solid->IsEmptyModel()) {
+    if (semantically_empty_brep(solid)) {
         ensure(source_faces.GetSize() == 0,"empty solid has source faces");
         return std::make_unique<AdapterMesh>();
     }

@@ -5,44 +5,44 @@ Planning checkpoint: 2026-10-19, parent `01abf2b4d9` plus uncommitted common
 retained construction and resource-authority corrections. This is a release plan,
 not a qualification receipt. Historical passing runs do not qualify this tree.
 
-Latest executed observations (2026-10-19): source `4a85b7d6de` completed the
-SDK-unset workspace with 6,427 passed, zero failed and 47 ignored. Source
-`26354b06cc` passed all 31 private allocator tests and compiled their opted-in
-wasm32 test target; neither result activates production tracked source owners.
-Source `6896c7425a` subsequently passes both default and opted-in allocator-feature
-workspace/all-target strict Clippy. Exact terminal evidence is under
-`evidence/geometry-platform-integrated-validation/{native-rust-4a85-terminal,core-allocator-26354-terminal,clippy-6896-terminal}`.
+Current assembly observations (2026-10-19), each scoped to its own source:
 
-Source `a3752756ca` successfully regenerated the imported artifact, verified it,
-and built canonical WASM. Worker exit 1 is its expected rejection of tracked
-regeneration changes, not a compiler failure. The exact generated outputs were
-hash-checked and committed at `38fac90894`; imported executable bytes are unchanged,
-while provenance and retained public WASM declarations update. See
-`artifacts-a375-terminal`. A clean repeat-generation, real WASM contract and full
-root TypeScript typecheck/test request now runs on that committed source. A separate
-actual SDK/Worker/browser request runs the same source; it includes bounded normal
-retries and hash verification for browser provisioning. Neither pending job is a pass.
+- Source `34ab0e4571` passed the SDK-unset workspace: 6,428 passed, zero failed,
+  47 ignored, plus default workspace/all-target strict Clippy. Its opted-in
+  resource lanes failed compilation on a witness import, subsequently corrected
+  at `cab7783a10`. They did not execute. See `resource-workspace-34ab-terminal`.
+- Source `639582e0a4` passed repeat imported generation/verification, canonical
+  WASM generation and declaration identity, and 212 real WASM contracts. One
+  historical-fingerprint case skips without a matched retained baseline build.
+  The same request fails the embed build on optional SDK literal imports and
+  viewer typecheck at the 3 GiB V8 heap limit; root tests are still running at
+  this observation. These are not a full consumer pass. Optional deployment SDK
+  imports are corrected as a class at `32f2d206ca`, awaiting actual bundling.
+- The actual WASM SDK run on `38fac90894` passed six of eight CTests. Checked
+  extraction and its isolated destructive-failure lane passed. Affine endpoint
+  representation and ledger DeleteEdge cases failed. Browser Rust commands
+  rejected their missing Chrome option, and JavaScript module linking exposed
+  the constructor name mismatch. The argument and constructor fixes are in
+  source; a later staged-asset reuse attempt correctly refused a foreign CMake
+  checkout before execution. See `browser-38fac-terminal` and
+  `browser-reuse-9b827-refusal`. The next browser run must build its own adapter.
+- The issued rectangular transition and same-target/lifetime correction are
+  integrated through `bf30716ce0` from frozen `64cfbd1509`. Independent source
+  review closes the terminal-continuity finding. Actual SDK execution remains
+  outstanding. See `planar-transition-12ace-assembly`.
+- The bounded identity-affine UV transfer and full direct analytic-dispatch
+  arithmetic correction are integrated through `06171ec187` from `30cf377a57`.
+  Independent review closes span and derivative-overflow findings. Actual
+  restoration reachability, method2/method8 positives, Rust clip chain and
+  status8 qualification remain held. See `affine-dispatch-30cf-assembly`.
+- The actual geometry-account boundary, fresh-epoch fault correction and explicit
+  normal-core gate test-support seam are integrated through `256710a69e`.
+  Independent review found no remaining source blocker in frozen `42c4a874d5`.
+  Four combined wrappers/seven cases, feature exposure, wasm compilation and
+  strict Clippy remain unexecuted on this assembly. CI now invokes that feature
+  graph separately. No tracked parser/cache/ProductOwner activation follows.
 
-The latest actual WASM SDK execution on source `26354b06cc` passes five of eight
-CTests, including checked extraction and isolated destructive-failure handling.
-It exposes a section-grid negative-zero key defect, a real affine edge endpoint
-representation mismatch, and an unissued DeleteEdge transition in the lineage
-witness. The section-key repair preserves the existing rounding grid and passes
-32 small protocol/oracle fixtures; actual SDK rerun is pending. Narrow source-backed
-affine and issued rectangular-transition repairs remain in progress. Chrome
-provisioning then failed on DNS before any actual browser tests. See
-`browser-26354-terminal`; previous SDK or fixture passes do not qualify later edits.
-
-An opt-in actual geometry-account resource boundary is integrated from source
-`8af4994f3f` at `dc7b2545ba`, with no tracked parser/cache/ProductOwner activation.
-The first independent review identifies a fresh-epoch fault-precedence defect;
-its repair is pending. New compilation, behavior, cyclic feature packaging and
-end-to-end actual-account/private-gate evidence remain outstanding. Whole owner,
-cache, nested entity/COW and borrowed-view migration remains a mandatory release
-requirement, as do regularized source binding, paired layers, appearance, final
-product publication, installed consumers, preservation, platform and performance.
-
-The remaining owner-wide migration has a dependency-ordered [coverage ledger](geometry-platform-owner-migration.md). It reuses the chosen standard-container allocator design and keeps production enrollment disabled until the complete owner, parser/cache/COW, authority and charge-partition gates pass. Test-support feasibility is not a partial production cutover.
+The remaining owner-wide migration has a dependency-ordered [coverage ledger](geometry-platform-owner-migration.md). Live cache-revision authority is the next implementation unit. Production enrollment stays disabled until complete owner, parser/cache/COW, authority and charge-partition gates pass. Regularized source binding, paired layers, appearance, final product publication, installed consumers, exact preservation, platform and performance remain release requirements. Source reviews and test-support feasibility do not establish a production cutover.
 
 ## Outcome and non-negotiable contracts
 

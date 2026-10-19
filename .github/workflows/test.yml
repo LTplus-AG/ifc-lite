@@ -271,6 +271,9 @@ jobs:
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
               - 'scripts/build-wasm.sh'
+              - '.cargo/config.toml'
+              - 'scripts/build-imported-geometry.mjs'
+              - 'scripts/lib/imported-artifacts.mjs'
               - 'tests/models/manifest.json'
               - '.github/workflows/test.yml'
             # AGENTS.md is the instruction file every agent reads, and
@@ -677,6 +680,13 @@ jobs:
             exit 1
           fi
           echo "✅ committed wasm types match the Rust source"
+
+      # The generated IFCX imported-geometry kernel must match the Rust crate it
+      # is built from. Regenerates into a temp dir and diffs; not a build gate for
+      # packages (their --verify is Rust-free). Runs only when its inputs may have changed.
+      - name: Verify imported geometry artifacts are current
+        if: needs.changes.outputs.rust == 'true'
+        run: node scripts/build-imported-geometry.mjs --check
 
       # Build all workspace packages so their dist/ artifacts exist for
       # downstream consumers — turbo handles the dep graph.

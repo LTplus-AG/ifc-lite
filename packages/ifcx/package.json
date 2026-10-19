@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "build": "pnpm exec tsc && node ./scripts/verify-dist-hello-wall.mjs",
+    "build": "node ../../scripts/build-imported-geometry.mjs --verify && pnpm exec tsc && node ../../scripts/build-imported-geometry.mjs --copy && node ./scripts/verify-dist-hello-wall.mjs",
     "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "test": "tsx --test src/*.test.ts"

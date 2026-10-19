@@ -1,0 +1,41 @@
+{
+  "source": "4a85b7d6de82aae00673db2b025233d800ec3603",
+  "jobId": "0b90ebce-4ca0-46fc-87d1-dc9b5e8ac97a",
+  "request": "auto-f69699b6e91e441b929c698f1d5876a2",
+  "host": "pc-wsl",
+  "exitCode": 8,
+  "sourceUnchanged": false,
+  "trackedDiffInspection": "git diff --exit-code succeeded after terminal; three untracked test asset directories remained",
+  "wasmBuildLink": "PASS",
+  "wasmCTest": {
+    "passed": 4,
+    "failed": [
+      "smlib_browser_protocol",
+      "smlib_owned_boundary",
+      "smlib_paired_copy_observability",
+      "smlib_checked_face_extraction"
+    ],
+    "total": 8
+  },
+  "browserRuntime": "compiled; driver HTTP404 before tests; Chrome153 versus downloaded driver155",
+  "browserProcessing": "UNRUN: filter incorrectly passed to cargo build",
+  "browserAPI": "UNRUN: filter incorrectly passed to cargo build",
+  "canonicalBuild": "FAIL E0599 target-only resource validation method missing",
+  "declarationDiff": "empty but canonical build failed: not qualification",
+  "browserJS": "FAIL missing canonical wasm prerequisite",
+  "rootTypecheck": "FAIL canonical wasm build dependency",
+  "outputSha256": "669268eb114da68b7084c7e6900a745eb615aecc7df5f74a57e98002096ad89d",
+  "storageLifecycle": {
+    "id": "pc-wsl-0b90ebce-4ca0-46fc-87d1-dc9b5e8ac97a-962f993b687c",
+    "manifestSha256": "c2e75ebedcfd03da4cd52022bdb756161f72a0d8739d663b011851eb632b22c8",
+    "state": "published",
+    "task": "ifclite-browser-composed-4a85-r2-20261019",
+    "verified": true
+  },
+  "nextSourceRepairs": [
+    "af3c477eb4 removes erroneous native-only resource validation cfg",
+    "2c71b25ad7 corrects test runner separator and ignores three explicit staged SDK asset directories",
+    "7159ddaf3d adds section endpoint diagnostics; no tolerance or closure weakening"
+  ],
+  "wholeGoal": "OPEN; no all-consumer/no-loss/performance claim"
+}

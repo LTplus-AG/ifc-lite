@@ -1,0 +1,144 @@
+{
+  "id": "auto-b0b092ec338e42978153674ea6a2bb9d",
+  "claim": {
+    "request": {
+      "id": "auto-b0b092ec338e42978153674ea6a2bb9d",
+      "commit": "4a85b7d6de82aae00673db2b025233d800ec3603",
+      "kind": "ordinary",
+      "cpu": 4,
+      "memoryGiB": 12,
+      "capabilities": [
+        "linux"
+      ],
+      "command": [
+        "bash",
+        "-c",
+        "# SPDX-License-Identifier: MPL-2.0\nsource \"$HOME/build-workers/worker-env.sh\" || exit $?\npnpm install --frozen-lockfile || exit $?\npnpm fixtures || exit $?\npnpm fixtures:check || exit $?\nsource_id=$(git rev-parse HEAD)\ncheckout_key=$(printf '%s' \"$(pwd -P)\" | sha256sum | cut -c1-12)\nexport IFCLITE_ADAPTER_BUILD=\"$CARGO_TARGET_DIR/ifclite-smlib/wasm-$source_id-$checkout_key\"\nbash /home/louistrue/build-workers/setup/projects-20261017/ifc-lite/env-exec.sh bash native/smlib-adapter/qualify.sh wasm\nwasm_status=$?\ntest -f \"$IFCLITE_ADAPTER_BUILD/ifclite_smlib_browser.mjs\" || exit 2\nsdk=${SMLIB_SOURCE:-${IFCLITE_SDK_CACHE:-/tmp/ifclite-public-sdk-c9c5979}/usd-brep}\nfor crate in rust/geometry-runtime rust/processing rust/wasm-bindings; do\n  node scripts/stage-retained-browser-assets.mjs --build \"$IFCLITE_ADAPTER_BUILD\" --sdk \"$sdk\" --out \"$PWD/$crate/smlib\" || exit $?\ndone\nexport WASM_BINDGEN_TEST_TIMEOUT=180\nwasm-pack test --headless --chrome rust/geometry-runtime --lib\nruntime_status=$?\nwasm-pack test --headless --chrome rust/processing --lib session_retained\nprocessing_status=$?\nwasm-pack test --headless --chrome rust/wasm-bindings --lib retained_\napi_status=$?\npnpm build:wasm\nbuild_status=$?\ngit diff --exit-code -- packages/wasm/pkg/ifc-lite.d.ts\ntypes_status=$?\nnode scripts/stage-retained-browser-assets.mjs --build \"$IFCLITE_ADAPTER_BUILD\" --sdk \"$sdk\" --out \"$PWD/apps/viewer/public/smlib\" || exit $?\npnpm exec playwright install chromium || exit $?\npnpm test:retained-browser\njs_status=$?\npnpm typecheck\ntypecheck_status=$?\nprintf 'wasm_ctest_exit=%s browser_runtime_exit=%s browser_processing_exit=%s browser_api_exit=%s canonical_build_exit=%s generated_types_exit=%s browser_js_exit=%s root_typecheck_exit=%s\\n' \"$wasm_status\" \"$runtime_status\" \"$processing_status\" \"$api_status\" \"$build_status\" \"$types_status\" \"$js_status\" \"$typecheck_status\"\nfor result in \"$wasm_status\" \"$runtime_status\" \"$processing_status\" \"$api_status\" \"$build_status\" \"$types_status\" \"$js_status\" \"$typecheck_status\"; do\n  if [ \"$result\" -ne 0 ]; then exit \"$result\"; fi\ndone\n"
+      ],
+      "storageTask": "ifclite-browser-composed-4a85-20261019",
+      "pools": [],
+      "requestedHost": "pc-wsl"
+    },
+    "state": "returned",
+    "at": 1792410944.0953472,
+    "jobId": "ed2b42a4-5f23-4812-bc9e-ebecf4f41ccd",
+    "receipt": "/home/louistrue/build-workers/worker-state/jobs/ed2b42a4-5f23-4812-bc9e-ebecf4f41ccd/receipt.json",
+    "exitCode": 2
+  },
+  "state": "failed",
+  "safeToResubmitAutomatically": false,
+  "storageLifecycle": {
+    "id": "pc-wsl-ed2b42a4-5f23-4812-bc9e-ebecf4f41ccd-55c84ffa7d12",
+    "manifestSha256": "db257b351babdae17ac38a262847a53adb78ac94f4353ab9f8973f0f0dc6ef22",
+    "state": "published",
+    "task": "ifclite-browser-composed-4a85-20261019",
+    "verified": true
+  },
+  "jobId": "ed2b42a4-5f23-4812-bc9e-ebecf4f41ccd",
+  "receipt": "/home/louistrue/build-workers/worker-state/jobs/ed2b42a4-5f23-4812-bc9e-ebecf4f41ccd/receipt.json",
+  "execution": {
+    "id": "ed2b42a4-5f23-4812-bc9e-ebecf4f41ccd",
+    "host": {
+      "host": "louistrue-pc",
+      "os": "Linux",
+      "arch": "x86_64",
+      "cpus": 24,
+      "availableMemoryBytes": 63633661952,
+      "totalMemoryBytes": 67423580160,
+      "python": "3.14.4",
+      "time": 1792410916.8922102
+    },
+    "cwd": "/home/louistrue/build-workers/worker-state/checkouts/4a85b7d6de82aae00673db2b025233d800ec3603",
+    "sourceBefore": {
+      "commit": "4a85b7d6de82aae00673db2b025233d800ec3603",
+      "tree": "52ac6326e1d5553aee9e56a03d544734de79bbf2",
+      "clean": true,
+      "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "toolchainInputs": {
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "Cargo.lock": "b006ec6433690a164f71539412558d230e5935c9852c7cb296762ca4bd2ea1e0",
+        "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+        "package.json": "4cf9cf1dc70cee40ab775df7d3d36665c55bd855514913fee9149209fc9b2edd"
+      }
+    },
+    "command": [
+      "bash",
+      "-c",
+      "# SPDX-License-Identifier: MPL-2.0\nsource \"$HOME/build-workers/worker-env.sh\" || exit $?\npnpm install --frozen-lockfile || exit $?\npnpm fixtures || exit $?\npnpm fixtures:check || exit $?\nsource_id=$(git rev-parse HEAD)\ncheckout_key=$(printf '%s' \"$(pwd -P)\" | sha256sum | cut -c1-12)\nexport IFCLITE_ADAPTER_BUILD=\"$CARGO_TARGET_DIR/ifclite-smlib/wasm-$source_id-$checkout_key\"\nbash /home/louistrue/build-workers/setup/projects-20261017/ifc-lite/env-exec.sh bash native/smlib-adapter/qualify.sh wasm\nwasm_status=$?\ntest -f \"$IFCLITE_ADAPTER_BUILD/ifclite_smlib_browser.mjs\" || exit 2\nsdk=${SMLIB_SOURCE:-${IFCLITE_SDK_CACHE:-/tmp/ifclite-public-sdk-c9c5979}/usd-brep}\nfor crate in rust/geometry-runtime rust/processing rust/wasm-bindings; do\n  node scripts/stage-retained-browser-assets.mjs --build \"$IFCLITE_ADAPTER_BUILD\" --sdk \"$sdk\" --out \"$PWD/$crate/smlib\" || exit $?\ndone\nexport WASM_BINDGEN_TEST_TIMEOUT=180\nwasm-pack test --headless --chrome rust/geometry-runtime --lib\nruntime_status=$?\nwasm-pack test --headless --chrome rust/processing --lib session_retained\nprocessing_status=$?\nwasm-pack test --headless --chrome rust/wasm-bindings --lib retained_\napi_status=$?\npnpm build:wasm\nbuild_status=$?\ngit diff --exit-code -- packages/wasm/pkg/ifc-lite.d.ts\ntypes_status=$?\nnode scripts/stage-retained-browser-assets.mjs --build \"$IFCLITE_ADAPTER_BUILD\" --sdk \"$sdk\" --out \"$PWD/apps/viewer/public/smlib\" || exit $?\npnpm exec playwright install chromium || exit $?\npnpm test:retained-browser\njs_status=$?\npnpm typecheck\ntypecheck_status=$?\nprintf 'wasm_ctest_exit=%s browser_runtime_exit=%s browser_processing_exit=%s browser_api_exit=%s canonical_build_exit=%s generated_types_exit=%s browser_js_exit=%s root_typecheck_exit=%s\\n' \"$wasm_status\" \"$runtime_status\" \"$processing_status\" \"$api_status\" \"$build_status\" \"$types_status\" \"$js_status\" \"$typecheck_status\"\nfor result in \"$wasm_status\" \"$runtime_status\" \"$processing_status\" \"$api_status\" \"$build_status\" \"$types_status\" \"$js_status\" \"$typecheck_status\"; do\n  if [ \"$result\" -ne 0 ]; then exit \"$result\"; fi\ndone\n"
+    ],
+    "kind": "ordinary",
+    "requestedAt": 1792410916.8884182,
+    "resources": [
+      "/home/louistrue/build-workers/worker-state/checkouts/4a85b7d6de82aae00673db2b025233d800ec3603",
+      "/home/louistrue/build-workers/worker-state/caches/0d9333ad8f4ae9cad2c1fc49"
+    ],
+    "state": "failed",
+    "cpu": 4,
+    "memoryGiB": 12,
+    "storageTask": "ifclite-browser-composed-4a85-20261019",
+    "storageTaskExplicit": true,
+    "storageResources": [
+      {
+        "path": "/home/louistrue/build-workers/worker-state/caches/0d9333ad8f4ae9cad2c1fc49",
+        "role": "cache",
+        "project": "ifc-lite",
+        "compatibilityKey": "0d9333ad8f4ae9cad2c1fc49"
+      },
+      {
+        "path": "/home/louistrue/build-workers/worker-state/checkouts/4a85b7d6de82aae00673db2b025233d800ec3603",
+        "role": "worktree"
+      }
+    ],
+    "fixtures": {},
+    "tools": {
+      "git": {
+        "path": "/usr/local/bin/git",
+        "exitCode": 0,
+        "version": "git version 2.53.0"
+      },
+      "rustc": {
+        "path": "/home/louistrue/.cargo/bin/rustc",
+        "exitCode": 0,
+        "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+      },
+      "cargo": {
+        "path": "/home/louistrue/.cargo/bin/cargo",
+        "exitCode": 0,
+        "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+      },
+      "node": {
+        "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node",
+        "exitCode": 0,
+        "version": "v24.21.0"
+      },
+      "pnpm": {
+        "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/pnpm",
+        "exitCode": 0,
+        "version": "10.8.1"
+      }
+    },
+    "runnerSha256": "e43e00e2d93ae926cf7369009285aa96f63d4722b8e3e0b266a1daa699fed7bb",
+    "startedAt": 1792410917.276775,
+    "queueSeconds": 0.38835716247558594,
+    "resourceScope": false,
+    "exitCode": 2,
+    "finishedAt": 1792410939.3478396,
+    "sourceAfter": {
+      "commit": "4a85b7d6de82aae00673db2b025233d800ec3603",
+      "tree": "52ac6326e1d5553aee9e56a03d544734de79bbf2",
+      "clean": true,
+      "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "toolchainInputs": {
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "Cargo.lock": "b006ec6433690a164f71539412558d230e5935c9852c7cb296762ca4bd2ea1e0",
+        "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+        "package.json": "4cf9cf1dc70cee40ab775df7d3d36665c55bd855514913fee9149209fc9b2edd"
+      }
+    },
+    "sourceUnchanged": true,
+    "artifacts": {},
+    "outputSha256": "245afa1e994c9fb2a0d76c0d740a2666c97538624f39d872b9b6814ec499e3bb"
+  },
+  "host": "pc-wsl",
+  "dispatchState": "returned"
+}

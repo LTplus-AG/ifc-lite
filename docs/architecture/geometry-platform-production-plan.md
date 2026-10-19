@@ -166,6 +166,38 @@ for its named source; it does not qualify subsequent edits.
 | Browser continuation coverage | Source `bbd3298829` widens the actual processing browser filter from only `browser_tests` to all `session_retained` modules, including unary clips and openings, and adds a canonical source-only API/Worker units, survey, replacement-domain and source-expiry witness. Three asset-staging fixtures, parsing and metadata gates pass. | Actual browser compilation and numerical execution remain unrun. The crate filter now includes both retained source and product API tests. Source `3c68778cdd` wires the standalone JavaScript export contract into a separate actual Playwright/browser invocation after canonical WASM build and SDK staging, with observed-file hashes and failure traces. Independent native/WASM/browser failures are gathered, then an aggregate requires every lane to succeed. Only syntax, metadata and 33 aggregate-control fixture cases have run; actual compilation/browser execution and JavaScript export qualification remain pending. |
 | Generated artifacts | The current imported-artifact verifier rejects the source fingerprint; canonical WASM declarations also still need regeneration. | Regenerate under fleet admission, verify repeat generation and run installed/browser consumers with their exact artifacts. Do not edit provenance or generated declarations by hand. |
 
+### Current composed execution and source repairs
+
+Source `4a85b7d6de` now executes the assembled eight-boundary native and WASM
+SDK builds. Native builds/links and passes five of eight CTests; WASM builds/links
+and passes four of eight. Both locate remaining lineage refusals in the real
+copy/lifetime witness and target boundary-integral evaluation. The independent
+virtual surface-copy fault boundary now passes. A direct Boolean result incorrectly
+expected to remain generic instead uses analytic planes; its fixture repair is
+separately source-pinned and still awaits integrated execution. A real chained
+affine clip also refuses exact endpoint/topology identity and remains a numerical
+support gap. No prior strict proof predicate or tolerance is waived.
+
+The PC browser attempt terminates with exit 8. Its runtime test compiled but the
+browser driver failed before test execution; the installed Chrome build and
+automatically downloaded driver differ. The other two Rust browser lanes passed
+their filters incorrectly to `cargo build`, and the canonical WASM build exposes
+a native-only cfg on shared resource validation. Those source/wiring defects are
+repaired in `af3c477eb4` and `2c71b25ad7`, without claiming a corrected runtime pass.
+The canonical JavaScript test and root typecheck fail their missing canonical WASM
+prerequisite. A zero declaration diff after failed generation is not qualification.
+The receipt reports sourceUnchanged=false because the three deliberately staged
+SDK test directories were untracked; post-terminal tracked-file diff is empty.
+The staging paths are now explicitly ignored. [Original terminal evidence and
+lane scope](evidence/geometry-platform-integrated-validation/browser-4a85-terminal/summary.json).
+The Pop actual-consumer/full-workspace/Clippy job is still active at this observation.
+
+The full exact-route capture harness is assembled at `ba3aa7fcee`, reproducing
+all 54 reviewed child files, with all four parent metadata gates passing. Its
+source review closes executable binding and literal dependency-graph comparison
+findings. Real baseline/candidate compiler cohorts and full raw-output A/B remain
+unexecuted. [Assembly and limits](evidence/geometry-platform-integrated-validation/exact-harness-d1a679/ASSEMBLY.md).
+
 Independent reviewable deliveries remain distinct from platform qualification:
 [PR #7946](https://github.com/LTplus-AG/ifc-lite/pull/7946) carries exact-kernel
 test-budget isolation with source `6c7edd4d4c` workspace/Clippy evidence under

@@ -43,8 +43,6 @@
    166 rust/geometry/src/instancing/wire.rs encode_refs_with_finishes
    185 rust/geometry/src/mesh_orient.rs orient_mesh_outward_verdict
    175 rust/geometry/src/processors/advanced_face/polyline.rs sample_curve_polyline_guarded
-   229 rust/geometry/src/processors/advanced_face/revolution.rs process_surface_of_revolution_face
-   157 rust/geometry/src/processors/advanced_face/surfaces.rs process_cylindrical_face
    300 rust/geometry/src/processors/boolean/halfspace_cap.rs cap_half_space_clip
    181 rust/geometry/src/processors/tessellated/triangulate.rs PolygonalFaceSetProcessor::triangulate_polygon
    182 rust/geometry/src/profiles/simplify.rs simplify_smooth_curve_polyline

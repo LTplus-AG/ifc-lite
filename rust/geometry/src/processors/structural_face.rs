@@ -5,10 +5,8 @@
 //! Standalone planar `IfcFaceSurface` processing for structural surface topology.
 
 use crate::router::GeometryProcessor;
-use crate::{Error, Mesh, Result, TessellationQuality};
+use crate::{Mesh, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
-
-use super::advanced_face::{lower_face, FacePlan};
 
 pub struct IfcFaceSurfaceProcessor;
 
@@ -24,34 +22,7 @@ impl IfcFaceSurfaceProcessor {
         quality: TessellationQuality,
         rtc_file_units: Option<(f64, f64, f64)>,
     ) -> Result<Mesh> {
-        let surface_attribute = entity
-            .get(ifc_lite_core::slot::IfcFaceSurface::FACE_SURFACE.index())
-            .ok_or_else(|| Error::geometry("FaceSurface missing FaceSurface"))?;
-        let surface = decoder
-            .resolve_ref(surface_attribute)?
-            .ok_or_else(|| Error::geometry("Failed to resolve FaceSurface"))?;
-        if surface.ifc_type != IfcType::IfcPlane {
-            return Ok(Mesh::new());
-        }
-        // The bound loops wind about the face normal (ISO 10303-42), which is
-        // the member's local z: the surface normal reversed when `SameSense`
-        // is `.F.`. So the loop triangulation already faces the right side
-        // and is not flipped again, as for a Brep's planar faces (#7686,
-        // PROC-S16).
-        let (positions, indices) =
-            lower_face(entity, decoder, quality, rtc_file_units).and_then(FacePlan::evaluate)?;
-        Ok(Mesh {
-            positions,
-            normals: Vec::new(),
-            indices,
-            rtc_applied: rtc_file_units.is_some(),
-            welded_in_object_frame: false,
-            plane_tags: None,
-            origin: [0.0; 3],
-            instance_meta: None,
-            local_bounds: None,
-            local_to_world: None,
-        })
+        super::structural_face_plan::lower(entity, decoder, quality, rtc_file_units)?.evaluate()
     }
 }
 

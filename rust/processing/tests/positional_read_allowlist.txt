@@ -42,7 +42,6 @@
 1 rust/geometry/src/placement/grid_frame.rs
 6 rust/geometry/src/placement/linear.rs
 2 rust/geometry/src/placement/validate.rs
-2 rust/geometry/src/processors/advanced.rs
 2 rust/geometry/src/processors/advanced_face/bounds.rs
 2 rust/geometry/src/processors/advanced_face/bspline_parse.rs
 5 rust/geometry/src/processors/advanced_face/conics.rs
@@ -55,7 +54,6 @@
 4 rust/geometry/src/processors/extrusion_params.rs
 18 rust/geometry/src/processors/helpers.rs
 17 rust/geometry/src/processors/sectioned_positions.rs
-3 rust/geometry/src/processors/structural_edge.rs
 3 rust/geometry/src/processors/surface.rs
 5 rust/geometry/src/processors/swept/disk.rs
 5 rust/geometry/src/processors/swept/surface_curve.rs

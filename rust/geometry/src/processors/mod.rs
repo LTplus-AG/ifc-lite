@@ -19,6 +19,7 @@
 
 mod advanced;
 mod advanced_face;
+mod advanced_plan;
 mod alignment;
 mod boolean;
 mod brep;
@@ -31,6 +32,7 @@ mod helpers;
 mod sectioned;
 mod structural_edge;
 mod structural_face;
+mod structural_face_plan;
 mod surface;
 mod swept;
 mod tessellated;

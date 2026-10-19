@@ -43,6 +43,10 @@ mod test_profile;
 #[cfg(test)]
 pub(crate) use test_profile::TestProfile;
 
+#[path = "budget_state.rs"]
+mod state;
+pub use state::ElementState;
+
 use std::cell::Cell;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};

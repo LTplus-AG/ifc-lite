@@ -43,7 +43,7 @@ mod tests;
 pub use advanced::{AdvancedBrepProcessor, BSplineSurfaceProcessor};
 // Drained by the router once per representation item to report a capped
 // B-spline curve edge (#4901); see `advanced_face::bspline_budget`.
-pub(crate) use advanced_face::{take_curve_capped, take_face_refused};
+pub(crate) use advanced_face::{restore_reports, take_curve_capped, take_face_refused};
 pub use alignment::IfcAlignmentProcessor;
 pub use boolean::BooleanClippingProcessor;
 pub use brep::{

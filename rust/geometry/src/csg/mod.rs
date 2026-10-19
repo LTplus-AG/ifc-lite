@@ -13,6 +13,9 @@ use nalgebra::{Point3, Vector3};
 use smallvec::SmallVec;
 use std::cell::RefCell;
 
+mod census;
+pub use census::{reset_csg_census, take_csg_census, CsgCensus, CsgCensusContext, CsgOpRecord};
+use census::record_csg_op;
 mod consolidate;
 mod degenerate_check;
 mod group_cut;
@@ -144,54 +147,6 @@ impl Triangle {
     #[inline]
     pub fn is_degenerate(&self, epsilon: f64) -> bool {
         self.cross_product().try_normalize(epsilon).is_none()
-    }
-}
-
-/// One recorded invocation of a CSG kernel op (perf-census diagnostics).
-/// `op`: 0=subtract 1=union 2=intersection
-/// 3=clip. `a_tris`/`b_tris` are the operand triangle counts — the arrangement
-/// cost driver — so the census measures the *real* heavy-path workload reaching
-/// the kernel (analytic AABB box clips never get here).
-#[derive(Clone, Copy, Debug)]
-pub struct CsgOpRecord {
-    pub op: u8,
-    pub a_tris: u32,
-    pub b_tris: u32,
-}
-
-// Global (Mutex) so it captures ops on rayon worker threads, not just the caller.
-static CSG_CENSUS: std::sync::Mutex<Vec<CsgOpRecord>> = std::sync::Mutex::new(Vec::new());
-
-/// Clear the CSG op census (call before a measured run).
-pub fn reset_csg_census() {
-    if let Ok(mut g) = CSG_CENSUS.lock() {
-        g.clear();
-    }
-}
-
-/// Drain the CSG op census (call after a measured run).
-pub fn take_csg_census() -> Vec<CsgOpRecord> {
-    CSG_CENSUS
-        .lock()
-        .map(|mut g| std::mem::take(&mut *g))
-        .unwrap_or_default()
-}
-
-#[inline]
-fn record_csg_op(op: u8, a_tris: usize, b_tris: usize) {
-    #[cfg(feature = "opening-perf-trace")]
-    crate::opening_perf_trace::record(|c| {
-        let index = usize::from(op).min(3);
-        c.csg_operations[index] = c.csg_operations[index].saturating_add(1);
-        c.csg_operand_triangles[index] = c.csg_operand_triangles[index]
-            .saturating_add(a_tris as u64).saturating_add(b_tris as u64);
-    });
-    if let Ok(mut g) = CSG_CENSUS.lock() {
-        g.push(CsgOpRecord {
-            op,
-            a_tris: a_tris as u32,
-            b_tris: b_tris as u32,
-        });
     }
 }
 

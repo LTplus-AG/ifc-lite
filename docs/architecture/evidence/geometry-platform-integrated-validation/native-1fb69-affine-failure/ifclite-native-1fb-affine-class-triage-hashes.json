@@ -1,0 +1,40 @@
+{
+  "adapter_checkpoint": "1fb69c5fe0b433452fe7c0bf353bff3b8b650a26",
+  "sdk_checkpoint": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "sdk_sha256": {
+    "/tmp/ifclite-public-sdk-c9c5979/usd-brep/source/SM_API/src/SmApiPrimitives.cpp": "0581ab5e2ab2ea16ae55c481f2398e37a0f6720cceef986c2569a9764a6a6e8c",
+    "/tmp/ifclite-public-sdk-c9c5979/usd-brep/source/SM_API/src/SmApiQueries.cpp": "d6d3c79094a0e14af95233a0af1e038559b6433864979b95b23f4a060db2305a",
+    "/tmp/ifclite-public-sdk-c9c5979/usd-brep/source/SM_API/inc/SmApiPrimitives.h": "97dfdbc9c4922ffb102015560d9c6a8018b9d8d6656d9e7504b2202609d9c22d",
+    "/tmp/ifclite-public-sdk-c9c5979/usd-brep/source/SMLib/src/SmPrimitiveCreation.cpp": "38a15b60587059687c13923ba0b22a6a139b0b931997d0650898d866be8b692c",
+    "/tmp/ifclite-public-sdk-c9c5979/usd-brep/source/SMLib/src/SmCone.cpp": "74a065f859c430cfa2183798467a323f0692445831c94952f35b04cd5b6df8c2",
+    "/tmp/ifclite-public-sdk-c9c5979/usd-brep/source/SMLib/src/SmPlane.cpp": "5e554da57cd7b642ceb46c0528d582a906993fcde94779ab8a7a2328ec6e48e5",
+    "/tmp/ifclite-public-sdk-c9c5979/usd-brep/source/SMLib/src/SmBrep.cpp": "5d44d6ac347fa42e4e83fead8bbde82ce46c5ff48e0a973b5c7cddc778a2fca1",
+    "/tmp/ifclite-public-sdk-c9c5979/usd-brep/source/SMLib/src/SmBSplineSurface.cpp": "f99a3b406641889e17d117e7d76ef45e24a5ec3b291adbca963f9b773057598a",
+    "/tmp/ifclite-public-sdk-c9c5979/usd-brep/source/SMLib/src/SmFace.cpp": "6004846a29074d8f8923904caabc01e194eceaff7f57f33b68ecdbbec08c51f9",
+    "/tmp/ifclite-public-sdk-c9c5979/usd-brep/source/SMLib/inc/SmCone.h": "79d2d27689add5a69d3c932a3efa5a6026782e3f8fb6fac333e28abc1a62146e",
+    "/tmp/ifclite-public-sdk-c9c5979/usd-brep/source/SMLib/inc/SmPlane.h": "b6cc96275d55a7c7e627c618c2d44a7d86bde3121a01e4116d411d5d9f3117c4",
+    "/tmp/ifclite-public-sdk-c9c5979/usd-brep/source/SMLib/inc/SmTypes.h": "42914fcd713d0c27c2c22db13f69dd2d3158983f86359e98c28883e7aa2fb9cc"
+  },
+  "adapter_git_blobs": {
+    "native/smlib-adapter/tests/affine_tests.cpp": {
+      "blob": "c61a6258b71228c3a389b8e62bac7e6124ad2aa8",
+      "sha256": "1d69b15a733812f0bfae343e558082c4cf6a40ab086bc719c861f8a2303bb6d9"
+    },
+    "native/smlib-adapter/src/affine.cpp": {
+      "blob": "b210709104684a9179ce37030f52fedb8b8765ba",
+      "sha256": "f4be6693ee7d26fd6420e7ea3b348e24650a98c000cb0d3278f0ec04898c1445"
+    },
+    "native/smlib-adapter/src/adapter.cpp": {
+      "blob": "990d7ca2200c2b7a37e861b53d0818286e5bdad3",
+      "sha256": "7f937d6b815d3248548929d299deb4d3909229d0810e8b2800e8b11e74aede08"
+    },
+    "native/smlib-adapter/src/copy.cpp": {
+      "blob": "2bcfeee5d957e76e43cb1a6d36c48e0d35ca447d",
+      "sha256": "df3f6993cbc6fea0dd488891dc08a9ff595630e30adc1e8f31d988898c7b3a1b"
+    },
+    "native/smlib-adapter/include/ifclite_smlib.h": {
+      "blob": "8e8cad338c5a7fddc54111fa7a27b63485bfc248",
+      "sha256": "f67077face61a64176dbb0f155aa4d96a13124135728d7ff016f138cadaf6fa3"
+    }
+  }
+}

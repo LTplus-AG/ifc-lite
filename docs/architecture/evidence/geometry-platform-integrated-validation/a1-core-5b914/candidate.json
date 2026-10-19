@@ -1,0 +1,10 @@
+{
+  "base": "067ef8327b7238a5eef106df722ad7e705c8ed18",
+  "initial_source": "3e23a20bb88f451fa84dec9333063aaf5109617d",
+  "clarified_source": "5b9144113671ba7964c12137eeeecea5ca344b25",
+  "branch": "landing/a1-core-abf98a0d",
+  "worktree": "/home/louistrue/.t3/worktrees/ifc-lite/t3-abf98a0d",
+  "scope": "18 core paths, docs, invariants; no geometry/processing/session production dependency",
+  "qualification": "source review only; workspace and strictClippy submitted, no result yet",
+  "publication": "no PR/push yet; actual consumer/performance gates remain"
+}

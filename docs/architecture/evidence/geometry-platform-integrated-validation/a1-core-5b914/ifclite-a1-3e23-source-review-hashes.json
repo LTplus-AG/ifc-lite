@@ -1,0 +1,112 @@
+{
+  "candidate": "3e23a20bb88f451fa84dec9333063aaf5109617d",
+  "base": "067ef8327b7238a5eef106df722ad7e705c8ed18",
+  "status": "read-only static review; no build or execution qualification",
+  "files": [
+    {
+      "path": "docs/architecture/evidence/geometry-platform-a1-abf98a0d/assembly.md",
+      "blob": "48d4d4930a8451c5bad39827766dcdafd77ddda5",
+      "sha256": "606d3228bc0b80626199286f372c377eb35930998a118a9979f329081d0d0d0f"
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-a1-abf98a0d/source-manifest.json",
+      "blob": "bcfaf0d5ef996f4325c702010bb90f7a2bfcac64",
+      "sha256": "55abd28770b0d8c1c9207b8616348f9d885ed9eda35f91e2db68d72d373624c0"
+    },
+    {
+      "path": "docs/guide/parsing.md",
+      "blob": "433b907d965636ae1786d82268d4a2cc7916b272",
+      "sha256": "15b2311142c2b2c636a93882c34bc6f01d5d01feb2a379a617de56162d29e260"
+    },
+    {
+      "path": "rust/core/src/columnar_index.rs",
+      "blob": "5f87d469e2663cd63b6147c3daac74e506691df8",
+      "sha256": "ac4f93c8c0d7cdb2e7aa38102cb80eec822eb64ff6c0693633fd88abf70e306d"
+    },
+    {
+      "path": "rust/core/src/decoder.rs",
+      "blob": "8173235ae244a190769a54f1ae112717e9e7fd73",
+      "sha256": "90e96ca30bd72f0daa86e7aa5eacb81aef84a0c47c3222fd14417417b0aa66ee"
+    },
+    {
+      "path": "rust/core/src/decoder/caches.rs",
+      "blob": "d658afb50e763fa0580544309f9127e5b4eee380",
+      "sha256": "81ac177a8e0da46503399893f0872e7cec964ba028f6b86d7199f48d1e1144ed"
+    },
+    {
+      "path": "rust/core/src/decoder/execution.rs",
+      "blob": "7962f13e6ca8b68831c06e24abd2dcde99552fbd",
+      "sha256": "8148cf7a407985965305a91cc75c75342374ff4ad63c0cef0666307a631b521d"
+    },
+    {
+      "path": "rust/core/src/decoder/schema_layout.rs",
+      "blob": "269d15cf316225bd97acdaaccc6da3301263e03e",
+      "sha256": "012d72845deec3479f0b6bdce2476393b7f38a900fbdfa0aeebb329bc74ba475"
+    },
+    {
+      "path": "rust/core/src/decoder/source_caches.rs",
+      "blob": "7ffe4304c71d73afc7ccac99812c013eba708f55",
+      "sha256": "5690daa4d42cfe1199f958d58159d1d40eb1ff881992ed4a6e2c476488036c9e"
+    },
+    {
+      "path": "rust/core/src/decoder/source_caches_tests.rs",
+      "blob": "c790c91ee669c35db51b4c2f7e887bcd5ecd13ff",
+      "sha256": "9559d83811ef8f517284b561f8fe872824e69d8831ac6e5108902e6e64f8e2c6"
+    },
+    {
+      "path": "rust/core/src/decoder/styled_items.rs",
+      "blob": "9291c29cbb9522625e578da47998df2d7d01bfd8",
+      "sha256": "5aa00fa5e26ccf342de2881f86ccbcd9e9aa0e8c42ee0e71099996dabe8acf59"
+    },
+    {
+      "path": "rust/core/src/dense_index.rs",
+      "blob": "b253a65ed9e2b0736a5e41cdccd2b4a6c81aff49",
+      "sha256": "b4b3f62260e2c1bac1a9841c23e3871f651638e09822d9d35b1d4fabceca5829"
+    },
+    {
+      "path": "rust/core/src/execution_owner.rs",
+      "blob": "1b4551d84edef66d1bda4e3c77830f3ea9385aa9",
+      "sha256": "e38ffab725f51a3b047cdd77ee6a00716d3aac3c2e7f2901588406e4b86b9aca"
+    },
+    {
+      "path": "rust/core/src/execution_owner/resource_context.rs",
+      "blob": "eeb32ee514414c18a0988673bb909cb151c151e7",
+      "sha256": "e00ba5f784fff0d3bf42b13c579f8a5711eb453e0140ac80d30dce7421a555c3"
+    },
+    {
+      "path": "rust/core/src/execution_owner_tests.rs",
+      "blob": "f4cae98244c5440692f35fde7c5bc4eb71123051",
+      "sha256": "3f8944bb80fda6f0fe5843a0edaf457fd8e8cc19228b92120f5ef52b7cc6899c"
+    },
+    {
+      "path": "rust/core/src/lib.rs",
+      "blob": "045c3da2e04ae3835a80a4f2a55c76b36db4c68c",
+      "sha256": "ba0287dde720a1f97334e5e63f9d05f4add48fc9e712f8732754cf1799bf4a99"
+    },
+    {
+      "path": "rust/core/src/resource_stop.rs",
+      "blob": "7ef519cff1b4a5d63828c8b360bda22272dfedfd",
+      "sha256": "71e33810e5f7802b76e5ba89905460015ee3557a663555c8e371f391be4a486c"
+    },
+    {
+      "path": "rust/core/src/source_bundle.rs",
+      "blob": "e1a42ba0143457a8ce7a511f168d1c68d766b7fa",
+      "sha256": "ed174aa07af14f1647302f44095be34a2d3f6760e35d9a204e6a3524ca5518ad"
+    },
+    {
+      "path": "rust/core/src/source_bundle_tests.rs",
+      "blob": "fb7b3c2280ae613cf6800b5ac21c8687d3c0221e",
+      "sha256": "6e4ed7d2c85a947a7aff31347ddf063055a2df9eef6207f2a00892477f10338c"
+    },
+    {
+      "path": "rust/core/src/source_index.rs",
+      "blob": "1c98e52399947bf93fc1bd3fd32edbbccc319833",
+      "sha256": "03a55b573067cb260dd8378bb72ac976e900c2ade1acb717ea3ee47ef5d34f6d"
+    },
+    {
+      "path": "rust/core/src/source_index_tests.rs",
+      "blob": "4003eab56806b9d3b85dd46d41f43bd2ddaec3ec",
+      "sha256": "47848f460f63f583c81e5cff5f6332e67ce924dc16f2de3a2a69fc3e84b3d45c"
+    }
+  ]
+}

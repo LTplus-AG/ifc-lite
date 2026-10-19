@@ -1,0 +1,48 @@
+{
+  "source": "1fb69c5fe0b433452fe7c0bf353bff3b8b650a26",
+  "worker": "/home/louistrue/build-workers/worker-state/caches/1c8ef91bc19f507e5b98a277/ifclite-smlib/native-1fb69c5fe0b433452fe7c0bf353bff3b8b650a26-5ad70336481e/ifclite_smlib_worker",
+  "worker_sha256": "3e38eda1e773dc97d3503da56d9714f6ede891732239f1f079a71968c0a6e2ef",
+  "purpose": "small existing-binary protocol diagnostic, not qualification",
+  "elapsed_seconds": 0.021047709000413306,
+  "exit": 0,
+  "rows": [
+    {
+      "shape": "box",
+      "certificate_version": 1,
+      "representation": 1,
+      "source_classes": [
+        0,
+        12,
+        0,
+        0,
+        0,
+        0,
+        0,
+        6,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "shape": "cylinder",
+      "certificate_version": 1,
+      "representation": 1,
+      "source_classes": [
+        0,
+        1,
+        2,
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        1,
+        0,
+        0
+      ]
+    }
+  ]
+}

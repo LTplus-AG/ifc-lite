@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: MPL-2.0
 // ChromeDriver adapter for wasm-bindgen-test's .mjs HTTP MIME omission.
-// Geometry, module bytes, WebDriver commands and assertions are never mocked.
+// SDK/runtime module bytes, WebDriver commands and assertions are never mocked.
+// The runner bootstrap uses a static worker import so startup messages queue
+// until the actual worker module has installed its handler.
 import http from 'node:http';
 import { spawn, spawnSync } from 'node:child_process';
 import { isMainEntry } from './lib/is-main-entry.mjs';
@@ -15,6 +17,12 @@ function listen(server, port = 0) {
 function close(server) {
   return new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
 }
+export function repairWorkerBootstrap(source) {
+  const dynamic = "shim + 'await import(' + JSON.stringify(scriptUrl) + ');'";
+  const fixed = "shim + 'import ' + JSON.stringify(scriptUrl) + ';'";
+  if (!source.includes(dynamic)) throw new Error('unrecognized wasm-bindgen Worker bootstrap');
+  return source.replaceAll(dynamic, fixed);
+}
 function forward(request, response, target, body, moduleMime = false) {
   const url = new URL(request.url, target);
   const headers = { ...request.headers, host: url.host };
@@ -22,12 +30,37 @@ function forward(request, response, target, body, moduleMime = false) {
     delete headers['transfer-encoding'];
     headers['content-length'] = body.length;
   }
+  const bootstrap = moduleMime && url.pathname === '/run.js';
+  if (bootstrap) {
+    headers['accept-encoding'] = 'identity';
+    delete headers['if-none-match'];
+    delete headers['if-modified-since'];
+  }
   const started = Date.now();
   if (moduleMime && process.env.IFCLITE_WASM_HTTP_TRACE) console.error('wasm HTTP begin', request.method, url.href);
   const upstream = http.request(url, { method: request.method, headers, agent: false }, result => {
     const outputHeaders = { ...result.headers };
     if (moduleMime && ((result.statusCode >= 200 && result.statusCode < 300) || result.statusCode === 304) && url.pathname.endsWith('.mjs')) {
       outputHeaders['content-type'] = 'text/javascript; charset=utf-8';
+    }
+    if (bootstrap && result.statusCode === 200) {
+      const chunks = [];
+      result.on('data', chunk => chunks.push(chunk));
+      result.on('end', () => {
+        try {
+          const repaired = Buffer.from(repairWorkerBootstrap(Buffer.concat(chunks).toString()));
+          delete outputHeaders['transfer-encoding'];
+          delete outputHeaders.etag;
+          delete outputHeaders['last-modified'];
+          outputHeaders['cache-control'] = 'no-store';
+          outputHeaders['content-length'] = repaired.length;
+          response.writeHead(result.statusCode, outputHeaders); response.end(repaired);
+        } catch (error) {
+          console.error('wasm test Worker bootstrap repair failed:', error.message);
+          response.writeHead(502); response.end(error.message);
+        }
+      });
+      return;
     }
     response.writeHead(result.statusCode, outputHeaders);
     result.on('end', () => {

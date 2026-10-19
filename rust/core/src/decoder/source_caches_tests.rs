@@ -30,10 +30,29 @@ fn direct_duplicate_reads_cannot_override_canonical_id_cache() {
     let mut borrowed = EntityDecoder::new(source.bytes());
     borrowed.decode_at(start, end).unwrap();
     assert!(!source.bind_decoder(&mut borrowed));
-    let mut bound = source.decoder();
-    assert_eq!(bound.decode_at(start, end).unwrap().ifc_type.as_str(), "IFCWALL");
-    assert_eq!(bound.decode_by_id(1).unwrap().ifc_type.as_str(), "IFCBEAM");
-    assert!(source.owns_decoder(&bound));
+    // A1 source review of 3e23a20bb8: the known-ID fast path is cache-first;
+    // only decode_at promises the supplied earlier span after canonical warmup.
+    for known_id in [false, true] {
+        for warm in [false, true] {
+            let mut bound = source.decoder();
+            if warm {
+                assert_eq!(bound.decode_by_id(1).unwrap().ifc_type.as_str(), "IFCBEAM");
+            }
+            let earlier = if known_id {
+                bound.decode_at_with_id(1, start, end).unwrap()
+            } else {
+                bound.decode_at(start, end).unwrap()
+            };
+            assert_eq!(earlier.ifc_type.as_str(),
+                if known_id && warm { "IFCBEAM" } else { "IFCWALL" });
+            assert_eq!(bound.cache_size(), usize::from(warm),
+                "cold earlier-duplicate reads must not seed the canonical cache");
+            assert_eq!(bound.decode_by_id(1).unwrap().ifc_type.as_str(), "IFCBEAM");
+            assert_eq!(bound.decode_at(start, end).unwrap().ifc_type.as_str(), "IFCWALL");
+            assert_eq!(bound.decode_at_with_id(1, start, end).unwrap().ifc_type.as_str(), "IFCBEAM");
+            assert!(source.owns_decoder(&bound));
+        }
+    }
 }
 
 #[test]

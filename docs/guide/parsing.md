@@ -493,6 +493,35 @@ already resolved remain in the decoder's existing point cache even on failure.
 Both retain the behavior of their allocating convenience accessors. The caller
 controls scratch-vector lifetime; reuse does not promise physical memory release.
 
+### Native Rust source and execution ownership
+
+`ifc_lite_core::SourceBundle::new(bytes)` owns immutable original bytes and their
+canonical scanned index. `bundle.decoder()` borrows those bytes and retains the
+bundle's provenance without copying or rescanning. `columnar` builds a compact
+index; `with_columnar_index` validates delivered spans and completeness against
+the original scanner, including last-occurrence wins for duplicate IDs.
+`decode_at` reads an earlier duplicate's actual span without poisoning the
+authenticated decoder's canonical ID cache, even after canonical warmup.
+`decode_at_with_id` retains its cache-first contract: a cold read delegates to
+`decode_at`, but an already cached canonical entity wins over the supplied span.
+
+Move prewarmed decoded, point, and placement caches with `drain_source_cache`,
+`take_source_point_cache`, and `take_source_placement_cache`, then their matching
+`inject_source_cache` / `set_source_*` methods. A rejected foreign transfer leaves
+the destination unchanged. Existing raw cache setters keep their trusted-input
+contract and revoke authentication. `trusted_inputs()` records explicit caller
+trust in the current revision; it does not restore factory authentication.
+
+`EntityDecoder::try_execution_lease()` reserves an owner independently of its
+address. Configuration/cache replacement invalidates pending work; ordinary lazy
+decoding does not. A lease can move between threads and releases on drop. Trusted
+synchronous work explicitly commits its owner's fresh identity; unwind never
+acknowledges mutations. Child capabilities expire with ancestor work. Only an
+active source-borrow scope permits a joined worker to inherit authority through
+the actual mutable decoder. Its optional opaque resource context and stop handle
+carry resource data, without installing numerical or diagnostic thread state.
+Leases are opt-in and preserve existing decoder entry points.
+
 ## Parse Options
 
 ```typescript

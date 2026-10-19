@@ -9,6 +9,7 @@ import {
   FACE_FRAMES,
   directionKey,
   faceOfDirection,
+  facesOfDirection,
   isZoneHighlighted,
   zonesForFace,
 } from './viewcube-zones';
@@ -61,6 +62,12 @@ describe('viewcube zones', () => {
     assert.strictEqual(faceOfDirection({ x: 0, y: 0, z: -1 }), 'back');
     assert.strictEqual(faceOfDirection({ x: 1, y: 1, z: 0 }), null);
     assert.strictEqual(faceOfDirection({ x: 1, y: 1, z: 1 }), null);
+  });
+
+  it('lists the faces an edge or corner touches', () => {
+    assert.deepStrictEqual(facesOfDirection({ x: 0, y: 0, z: 1 }), ['front']);
+    assert.deepStrictEqual(facesOfDirection({ x: 1, y: 1, z: 0 }), ['right', 'top']);
+    assert.strictEqual(facesOfDirection({ x: -1, y: -1, z: -1 }).length, 3);
   });
 
   it('previews a whole face on face hover, only the shared cells on edge hover', () => {

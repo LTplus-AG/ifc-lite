@@ -4,10 +4,12 @@
 
 import { useState, useRef, useCallback, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 import { VIEW_CUBE_EDGE_BAND_PX, VIEW_CUBE_SIZE_PX } from './viewcube-box';
 import {
   CUBE_FACES,
   faceOfDirection,
+  facesOfDirection,
   isZoneHighlighted,
   zonesForFace,
   type CubeDirection,
@@ -52,6 +54,7 @@ const cubeTransform = (x: number, y: number) => `rotateX(${x}deg) rotateY(${y}de
 
 export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
   ({ onViewChange, onDirectionChange, onDrag, rotationX = -25, rotationY = 45 }, ref) => {
+    const { t } = useTranslation();
     const [hoveredKey, setHoveredKey] = useState<string | null>(null);
     const [isMouseDown, setIsMouseDown] = useState(false);
     const dragStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -187,7 +190,11 @@ export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
                   <button
                     key={zone.key}
                     type="button"
-                    aria-label={isFace ? `${id} view` : `${id} ${zone.kind} view`}
+                    aria-label={t('viewportLighting.viewCube.zoneAria', {
+                      faces: facesOfDirection(zone.direction)
+                        .map((f) => t(`viewportLighting.viewCube.face.${f}`))
+                        .join(' / '),
+                    })}
                     data-viewcube-zone={zone.kind}
                     className={cn(
                       'flex items-center justify-center text-2xs font-bold transition-colors cursor-pointer border',

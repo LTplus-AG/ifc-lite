@@ -99,3 +99,11 @@ export function isZoneHighlighted(zone: CubeZone, face: CubeFace, hoveredKey: st
   if (zone.key === hoveredKey) return true;
   return directionKey(FACE_FRAMES[face].normal) === hoveredKey;
 }
+
+/** The one to three faces a direction touches, in cube-face order. */
+export function facesOfDirection(d: CubeDirection): CubeFace[] {
+  return CUBE_FACES.filter((f) => {
+    const n = FACE_FRAMES[f].normal;
+    return n.x * d.x + n.y * d.y + n.z * d.z > 0;
+  });
+}

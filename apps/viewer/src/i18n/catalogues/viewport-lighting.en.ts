@@ -91,6 +91,14 @@ export const viewportLightingEn = {
   'viewportLighting.overlays.mobileNav.homeTooltip': 'Home (H)',
   'viewportLighting.overlays.mobileNav.zoomInAria': 'Zoom in',
   'viewportLighting.overlays.mobileNav.zoomOutAria': 'Zoom out',
+  // ── ViewCube.tsx — face, edge and corner buttons ─────────────────────
+  'viewportLighting.viewCube.zoneAria': 'View from {faces}',
+  'viewportLighting.viewCube.face.front': 'front',
+  'viewportLighting.viewCube.face.back': 'back',
+  'viewportLighting.viewCube.face.top': 'top',
+  'viewportLighting.viewCube.face.bottom': 'bottom',
+  'viewportLighting.viewCube.face.right': 'right',
+  'viewportLighting.viewCube.face.left': 'left',
   // ── ViewportOverlays.tsx — selected-storey count (the storeys' own
   // NAMEs are model content and are never routed through this key) ────
   'viewportLighting.overlays.storeyCount': { one: '{count} storey', other: '{count} storeys' },

@@ -1,0 +1,19 @@
+{
+  "commit": "8441381f544f9877450537609377f93b857c6548",
+  "base": "7fc91de869",
+  "sdk_commit": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "source_sha256": {
+    "native/smlib-adapter/include/ifclite_smlib.h": "44eac8e5fe2b1bedc7169d5a4d5e78450406cc74ee96fce6a7720803aabc104d",
+    "native/smlib-adapter/src/adapter.cpp": "ec0c75637a245d901336993f6577dbfb1326bddf326038583ccf5e0ab24872f4",
+    "native/smlib-adapter/src/empty.hpp": "d627469b5bbf069dbe8533a44d1117e4bf1bd5c244961143ab64825b98a230d9",
+    "native/smlib-adapter/src/mesh.cpp": "336fb6f3bf9b7d86010ad0ed15f16bf61e0dbf84de1e09d0820e7f4f7d213b26",
+    "native/smlib-adapter/tests/empty_tests.cpp": "c2e1810e069ebf8b0cbc6ccc3d74961963a87013d26b5cf3f0b68b1ff1af8596"
+  },
+  "sdk_sha256": {
+    "source/SMLib/src/SmBrep.cpp": "5d44d6ac347fa42e4e83fead8bbde82ce46c5ff48e0a973b5c7cddc778a2fca1",
+    "source/SMLib/inc/SmBrep.h": "7826cddbc8816cb51bba8349f5fedee42070ab63c0a33018c1875134c0d9ab73",
+    "source/SMLib/inc/SmRegion.h": "9db570d0b56267a2958bf43c06737ad0cdb92c66289929ea03c8aa07fbec8404",
+    "source/SMLib/inc/SmTypes.h": "42914fcd713d0c27c2c22db13f69dd2d3158983f86359e98c28883e7aa2fb9cc",
+    "source/SMLib/inc/SmOwningTopology.h": "299a00e47062b0f49a7a76499e9ef911adf736adf66e8441ea495536da39ec58"
+  }
+}

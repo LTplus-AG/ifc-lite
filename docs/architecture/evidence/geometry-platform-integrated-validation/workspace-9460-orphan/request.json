@@ -1,0 +1,20 @@
+{
+  "id": "auto-5794785ee2ed4fce822a6b02f55dea20",
+  "commit": "9460a3de7b4deddb643e81b66a9c172949f19063",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "/home/louistrue/build-workers/setup/projects-20261017/ifc-lite/env-exec.sh",
+    "bash",
+    "-c",
+    "pnpm fixtures || exit $?; cargo test --workspace --no-fail-fast; test_status=$?; cargo clippy --workspace --all-targets -- -D warnings; clippy_status=$?; printf \"workspace_test_exit=%s clippy_exit=%s\\n\" \"$test_status\" \"$clippy_status\"; if [ \"$test_status\" -ne 0 ]; then exit \"$test_status\"; fi; exit \"$clippy_status\""
+  ],
+  "storageTask": "ifclite-platform-rust-9460-20261019",
+  "pools": [],
+  "requestedHost": "pop-os"
+}

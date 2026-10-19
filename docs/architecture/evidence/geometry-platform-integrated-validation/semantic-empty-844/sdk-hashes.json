@@ -1,0 +1,17 @@
+{
+  "sdk_commit": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "sdk_tracked_status": "",
+  "root_head": "7fc91de8696b3db3fe750067b479e6e762357703",
+  "sha256": {
+    "/tmp/ifclite-public-sdk-c9c5979/usd-brep/source/SMLib/src/SmBrep.cpp": "5d44d6ac347fa42e4e83fead8bbde82ce46c5ff48e0a973b5c7cddc778a2fca1",
+    "/tmp/ifclite-public-sdk-c9c5979/usd-brep/source/SMLib/inc/SmBrep.h": "7826cddbc8816cb51bba8349f5fedee42070ab63c0a33018c1875134c0d9ab73",
+    "/tmp/ifclite-public-sdk-c9c5979/usd-brep/source/SMLib/inc/SmRegion.h": "9db570d0b56267a2958bf43c06737ad0cdb92c66289929ea03c8aa07fbec8404",
+    "/tmp/ifclite-public-sdk-c9c5979/usd-brep/source/SMLib/src/SmRegion.cpp": "bc0b497269566aeb9bb79388458afcfe08b7a35997dc77b523ea3869a5475e18",
+    "/tmp/ifclite-public-sdk-c9c5979/usd-brep/source/SMLib/inc/SmTypes.h": "42914fcd713d0c27c2c22db13f69dd2d3158983f86359e98c28883e7aa2fb9cc",
+    "/tmp/ifclite-public-sdk-c9c5979/usd-brep/source/SMLib/inc/SmOwningTopology.h": "299a00e47062b0f49a7a76499e9ef911adf736adf66e8441ea495536da39ec58",
+    "native/smlib-adapter/src/adapter.cpp": "f232278e74cf229426b6553d0f02b28ea2d63e7d7cc4d8a8bd54701ebfe1f4b5",
+    "native/smlib-adapter/src/mesh.cpp": "30252f5c644258f48808a0ffcc84a02763f5bcdf229345710e30b00c74a4b032",
+    "native/smlib-adapter/include/ifclite_smlib.h": "f20fb10bb10c776b7e86013ac065eb874651a1f4b541d7af1ec688c5b408c2ae",
+    "native/smlib-adapter/tests/empty_tests.cpp": "4cb81faa034fc2f5644311d08151f9f3abe8ec05cd0a7ba20f1f61999cddab25"
+  }
+}

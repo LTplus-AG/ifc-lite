@@ -1,0 +1,59 @@
+{
+  "id": "3361d04d-7fdb-4405-96fb-c32eaf56ae4f",
+  "host": {
+    "host": "pop-os",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 32,
+    "availableMemoryBytes": 114916397056,
+    "totalMemoryBytes": 134644969472,
+    "python": "3.12.3",
+    "time": 1792391414.6639144
+  },
+  "cwd": "/home/louistrue/build-workers/worker-state/checkouts/9460a3de7b4deddb643e81b66a9c172949f19063",
+  "sourceBefore": {
+    "commit": "9460a3de7b4deddb643e81b66a9c172949f19063",
+    "tree": "8be5bd143dbf3662d98077a8b16bf20b5d44de90",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "a0216e232726394c443842d9e60b8668a13bd4682d1ea21d6db5334c2f4dff47",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+    }
+  },
+  "command": [
+    "bash",
+    "/home/louistrue/build-workers/setup/projects-20261017/ifc-lite/env-exec.sh",
+    "bash",
+    "-c",
+    "pnpm fixtures || exit $?; cargo test --workspace --no-fail-fast; test_status=$?; cargo clippy --workspace --all-targets -- -D warnings; clippy_status=$?; printf \"workspace_test_exit=%s clippy_exit=%s\\n\" \"$test_status\" \"$clippy_status\"; if [ \"$test_status\" -ne 0 ]; then exit \"$test_status\"; fi; exit \"$clippy_status\""
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792391414.6603463,
+  "resources": [
+    "/home/louistrue/build-workers/worker-state/checkouts/9460a3de7b4deddb643e81b66a9c172949f19063",
+    "/home/louistrue/build-workers/worker-state/caches/639202c7130da081a34188ce"
+  ],
+  "state": "orphaned",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "storageTask": "ifclite-platform-rust-9460-20261019",
+  "storageTaskExplicit": true,
+  "storageResources": [
+    {
+      "path": "/home/louistrue/build-workers/worker-state/caches/639202c7130da081a34188ce",
+      "role": "cache",
+      "project": "ifc-lite",
+      "compatibilityKey": "639202c7130da081a34188ce"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/9460a3de7b4deddb643e81b66a9c172949f19063",
+      "role": "worktree"
+    }
+  ],
+  "exitCode": null,
+  "finishedAt": 1792391811.7736044,
+  "error": "Wrapper exited; no live child group remains. Command outcome is unknown."
+}

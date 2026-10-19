@@ -1,0 +1,105 @@
+{
+  "base": "ecdfb586758ea5d4d36e0546f883170e7b340aaf",
+  "source_commit": "47ac5a5bfa4228da2c8a83c5df5eaca5cbb184f8",
+  "sdk_commit": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "sdk_empty_query_source_sha256": "5d44d6ac347fa42e4e83fead8bbde82ce46c5ff48e0a973b5c7cddc778a2fca1",
+  "scope": "source implemented; protocol fixtures executed; actual SDK/native/browser witnesses UNRUN",
+  "files": [
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "sha256": "7de056363b059f48be42aea25953278ec906d37da056ca70722fc9a1098b2895"
+    },
+    {
+      "path": "native/smlib-adapter/browser/contract.mjs",
+      "sha256": "7d3a363ba81455d165cd26004ce6b28f2f9845ec88952658ce827306ee71655d"
+    },
+    {
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "sha256": "6cae570c411c5fcbde74c8e6849340f0b11b88d2e5ae6a85c120c10c1b0522c8"
+    },
+    {
+      "path": "native/smlib-adapter/src/adapter.cpp",
+      "sha256": "b54a0de14a61c5d960b5e0e3b514b4ae493ca8e9922c6bc0f4cd96ebc37cb25f"
+    },
+    {
+      "path": "native/smlib-adapter/src/mesh.cpp",
+      "sha256": "30252f5c644258f48808a0ffcc84a02763f5bcdf229345710e30b00c74a4b032"
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "sha256": "3f2c661bf5b53413bf8ee13482f79b255cd1e616991c82fc3602e1f7e1bdffed"
+    },
+    {
+      "path": "native/smlib-adapter/tests/adapter_tests.cpp",
+      "sha256": "5e8d50a8cd5cca05797929364fc9f2cbb4766a11d31901fc98307ff97380cc35"
+    },
+    {
+      "path": "native/smlib-adapter/tests/empty_tests.cpp",
+      "sha256": "6793a82a9cccadee02570270ae87eff280b43ed29a09e0bcafe765dc5088533b"
+    },
+    {
+      "path": "rust/geometry-runtime/js/retained-driver.mjs",
+      "sha256": "d042c805d0fabc61a9aa5f8751b2b92229c462ad1985122d7af02fbb686861b3"
+    },
+    {
+      "path": "rust/geometry-runtime/js/retained-driver.test.mjs",
+      "sha256": "08d8cb3c48b3909e617fd4215f03e6b26479c86323cc10dd317182861950c91e"
+    },
+    {
+      "path": "rust/geometry-runtime/src/browser_bridge.rs",
+      "sha256": "c9354cc4f989d1bd3a7cf275c1e64d32c27dc86056471cfb2975330e1b1fface"
+    },
+    {
+      "path": "rust/geometry-runtime/src/browser_bridge_tests.rs",
+      "sha256": "ea95c4a45ea1f85f277b57c67ba3710f6d95498311d0f5a9c1c6ad263b876c50"
+    },
+    {
+      "path": "rust/geometry-runtime/src/browser_dependencies.rs",
+      "sha256": "1e8a28fa4e24e6cb6c9b9ed403aa13418dc899400ea005ccf7322929a490a495"
+    },
+    {
+      "path": "rust/geometry-runtime/src/lib.rs",
+      "sha256": "44ab241adc4adf99d3dcdf3cf0159b170776844f56d013e70478613d667c3650"
+    },
+    {
+      "path": "rust/geometry-runtime/src/protocol.rs",
+      "sha256": "f03f498b9989117a1091f4026a94f9611cd7df3a1ce42137fcf10825be87af56"
+    },
+    {
+      "path": "rust/geometry-runtime/src/protocol_tests.rs",
+      "sha256": "c2e679e662ace936c7867ce7f0adbc95ac6a1fd46726914bf481a3f8369ca943"
+    },
+    {
+      "path": "rust/geometry-runtime/src/retained_values.rs",
+      "sha256": "affde2c90c5a91d087c2198261f9c12defe6cb08cf86082f2480e708625a93be"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_dependencies.rs",
+      "sha256": "6573aa60a810bfda23e715e9ce3de1c410c8606a8aa9b202567b68a1d6ff8505"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_mesh.rs",
+      "sha256": "991387ba3d19967690e6622eb8017698a4b516a4edeb4458bbb97a170665cd78"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_sweep.rs",
+      "sha256": "6366fead6f51646689193f2bd32ed3f4451f92c6a5420db6334af3b60e22e8b3"
+    },
+    {
+      "path": "rust/geometry-runtime/tests/empty_metadata.rs",
+      "sha256": "a0eb1625c0d3a8184bec9056b9168b0307c0032ef305b1ae74c7f15e4b0b1112"
+    },
+    {
+      "path": "rust/geometry-runtime/tests/fixtures/empty-metadata-peer.py",
+      "sha256": "76ba1934b9c5c5dbe41c6844d97d6c6dfe02fc40aa41069d2a43a86bd1ed7eab"
+    },
+    {
+      "path": "rust/geometry-runtime/tests/fixtures/mesh-release-peer.py",
+      "sha256": "35b163074abc57983dc0064700f79332a755462ca180dbaaf83e493e8393f9b2"
+    },
+    {
+      "path": "rust/geometry-runtime/tests/retained_receipt.rs",
+      "sha256": "6afa44182f301ddaac88b1b48d900dd876c87463aa092553544ad118fa0cb6ed"
+    }
+  ]
+}

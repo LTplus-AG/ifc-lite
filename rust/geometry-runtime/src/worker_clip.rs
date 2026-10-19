@@ -78,7 +78,7 @@ impl SmlibWorker {
             result => result?,
         };
         let certificate=Arc::new(PlaneCertificate::decode(&bytes,wire,plane,side,mode).map_err(|e|self.poison(e))?);
-        let solid=self.handle(certificate.output().to_bytes().to_vec())?;
+        let solid=self.handle(certificate.output_handle().to_bytes().to_vec())?;
         let lease=self.manage_object(solid)?;
         // The managed lease owns every later failure path. Typed refusal keeps
         // healthy inputs; uncertain/certificate failures retire the actual owner.

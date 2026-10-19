@@ -130,7 +130,6 @@ impl PlaneCertificate {
         Ok(Self { version,rectangles,input,output,method,faces,edges,coefficients,basis,domain,cutter,clearance,cylinders,
             outcome:if u(12)==1 {NumericalOutcome::Empty} else {NumericalOutcome::NonEmpty} })
     }
-    pub(crate) fn output(&self) -> WireHandle { self.output }
 }
 pub(crate) fn validate_plane(plane: &[f64;6]) -> Result<(), &'static str> {
     if !plane.iter().all(|v|v.is_finite()) || plane[3..].iter().all(|v|*v==0.) {

@@ -3,6 +3,7 @@
 #include "mesh.hpp"
 #include "sweep.hpp"
 #include "rigid.hpp"
+#include "affine.hpp"
 #include <SmApiBrep.h>
 #include <SmApiGeneral.h>
 #include <SmApiPrimitives.h>
@@ -274,7 +275,17 @@ int32_t ifclite_smlib_transform(uint64_t session, ifclite_smlib_handle handle,
         *out=store(session,std::move(result));
     });
 }
-uint32_t ifclite_smlib_capabilities(void) { return 1u|2u|8u|32u; }
+int32_t ifclite_smlib_copy_affine(uint64_t session, ifclite_smlib_handle handle,
+    const double* matrix, ifclite_smlib_handle* out, ifclite_smlib_affine_certificate* certificate) {
+    return boundary([&] {
+        output(out);
+        require(certificate,IFCLITE_SMLIB_INVALID_ARGUMENT,"null affine certificate");
+        *certificate={}; ifclite_smlib_affine_certificate prepared{};
+        auto result=copy_affine_rational(solid(session,handle),matrix,prepared);
+        *out=store(session,std::move(result)); *certificate=prepared;
+    });
+}
+uint32_t ifclite_smlib_capabilities(void) { return 1u|2u|8u|16u|32u; }
 int32_t ifclite_smlib_sweep_begin(uint64_t session, uint32_t format,
     uint32_t length, uint32_t loops, uint32_t segments, uint64_t* out) {
     return boundary([&] {

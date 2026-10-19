@@ -74,6 +74,7 @@ pub enum KernelCommand {
     SweepChunk { session: u64, upload: u64, offset: u32, bytes: Vec<u8> },
     SweepCommit { session: u64, upload: u64 },
     SweepAbort { session: u64, upload: u64 },
+    CopyAffine { session: u64, solid: WireHandle, column_major: [f64; 16] },
     CopyTransform { session: u64, solid: WireHandle, column_major: [f64; 16] },
     IsEmpty { session: u64, solid: WireHandle },
     CreateSession,
@@ -175,6 +176,7 @@ pub fn encode_request(request_id: u32, command: &KernelCommand) -> Result<Vec<u8
         KernelCommand::Capabilities => 12,
         KernelCommand::IsEmpty { .. } => 19,
         KernelCommand::CopyTransform { .. } => 17,
+        KernelCommand::CopyAffine { .. } => 18,
         KernelCommand::SweepBegin { .. } => 13,
         KernelCommand::SweepChunk { .. } => 14,
         KernelCommand::SweepCommit { .. } => 15,
@@ -219,7 +221,7 @@ fn encode_arguments(command: &KernelCommand, out: &mut Vec<u8>) -> Result<(), Pr
         SweepCommit { session, upload } | SweepAbort { session, upload } => {
             out.extend(session.to_le_bytes()); out.extend(upload.to_le_bytes());
         }
-        CopyTransform { session, solid, column_major } => {
+        CopyTransform { session, solid, column_major } | CopyAffine { session, solid, column_major } => {
             write_solid(out, *session, *solid);
             for value in column_major { out.extend(value.to_le_bytes()); }
         }

@@ -64,6 +64,18 @@ ifclite_smlib_status ifclite_smlib_transform(ifclite_smlib_session session,
  * Additive opcode 19, capability bit 5 (numeric 32). */
 ifclite_smlib_status ifclite_smlib_is_empty(ifclite_smlib_session session,
     ifclite_smlib_handle solid, uint32_t* out);
+/* Additive affine rational representation v1. Class counters are unique SDK
+ * geometry objects: curve BSpline/Line/Circle/Ellipse/Parabola/Hyperbola,
+ * surface BSpline/Plane/Cylinder/Cone/Sphere/Torus, in that order. This records
+ * exact rationalizable representation conversion, not exact arithmetic, durable
+ * face identity, product coverage or execution qualification. Unsupported source
+ * classes (including offsets) refuse before copying. See AFFINE_CONTRACT.md. */
+typedef struct ifclite_smlib_affine_certificate {
+    uint32_t version, representation, source_classes[12];
+} ifclite_smlib_affine_certificate;
+ifclite_smlib_status ifclite_smlib_copy_affine(ifclite_smlib_session session,
+    ifclite_smlib_handle solid, const double* matrix, ifclite_smlib_handle* out,
+    ifclite_smlib_affine_certificate* certificate);
 /* Relative numerical-integration tolerance, supported range [1e-8, 1e-1]. */
 ifclite_smlib_status ifclite_smlib_volume(ifclite_smlib_session session,
     ifclite_smlib_handle solid, double integration_tolerance, double* out);
@@ -88,6 +100,7 @@ ifclite_smlib_status ifclite_smlib_mesh_copy(ifclite_smlib_session session,
 /* Additive extension negotiation, independent of unchanged ABI/protocol v1.
  * Bit 1: staged format2 capped rational-path disk; bit3: copied rigid transform.
  * Format2 and its variable coefficient records: NUMERICAL_ROUND3.md.
+ * Bit4: copied affine rational representation with conversion certificate.
  * Capability indicates implementation, never execution qualification.
  * Bit 0: staged sweep recipe format 1. One upload/session; max 1MiB/8192 curves/128 loops.
  * Recipe LE: u32 format,loops,segments,reserved; f64 unit direction XYZ,depth;

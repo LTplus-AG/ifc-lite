@@ -320,3 +320,7 @@ must stay closed pending real target receipts. General rational profile regions,
 hollow disks, closed paths, fillets, periodic/unclamped splines, self-intersection
 certification, scale, shear and reflection remain unsupported. No provenance,
 appearance, UV, persistent face identity or process-heap bound is established.
+
+Candidate general affine copy uses separate opcode18 and capability bit4; see
+[AFFINE_CONTRACT.md](AFFINE_CONTRACT.md) for conversion certificates, numerical
+bounds, ownership, unresolved classes and explicit unqualified status.

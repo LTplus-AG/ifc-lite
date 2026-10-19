@@ -11,6 +11,9 @@ use std::io::{Read, Write};
 use std::process::{ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[path = "worker_affine.rs"]
+mod affine;
+pub use affine::{AffineCopyIdentity, RetainedAffineCopy};
 #[path = "worker_upload.rs"]
 mod upload;
 #[path = "worker_qualification.rs"]

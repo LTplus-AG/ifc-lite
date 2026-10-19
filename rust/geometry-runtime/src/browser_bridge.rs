@@ -21,6 +21,8 @@ extern "C" {
     pub(super) fn object_live(this: &Driver, object: &JsValue) -> bool;
     #[wasm_bindgen(method, js_name = releaseObject)]
     pub(super) fn release_object(this: &Driver, object: &JsValue);
+    #[wasm_bindgen(method, js_name = copyAffine)]
+    pub(super) fn copy_affine(this: &Driver, source: &JsValue, matrix: &[f64]) -> js_sys::Promise;
     #[wasm_bindgen(method, js_name = evaluateBoolean)]
     pub(super) fn evaluate_boolean(this: &Driver, left: &JsValue, right: &JsValue,
         relative: &[f64], operation: u32, chord: f64, angle: f64, max_bytes: u32) -> js_sys::Promise;

@@ -12,6 +12,9 @@ use std::sync::{
 mod bridge;
 #[path = "browser_dependencies.rs"]
 mod dependencies;
+#[path = "browser_affine.rs"]
+mod affine;
+pub use affine::{BrowserAffineCopy, BrowserAffineIdentity};
 pub use dependencies::{BrowserDependency, BrowserDependencyResult, BrowserOperationIdentity, BrowserObjectHandle};
 
 #[cfg(target_arch = "wasm32")]

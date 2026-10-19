@@ -110,7 +110,7 @@ export class RetainedDriver {
     const response = new DataView(result);
     if (response.getUint32(0, true) !== 1 || response.getUint32(4, true) !== id) throw new Error('retained response identity');
     const status = response.getInt32(8, true);
-    if (status !== 0) throw new Error(`retained status ${status}: ${new TextDecoder().decode(result.slice(12))}`);
+    if (status !== 0) throw Object.assign(new Error(`retained status ${status}: ${new TextDecoder().decode(result.slice(12))}`), { kernelStatus: status });
     return new Uint8Array(result.slice(12));
   }
   async qualify() { return this.#qualify(false); }
@@ -193,6 +193,50 @@ export class RetainedDriver {
       return await this.#seal(solid, chord, angle, maxBytes, true);
     } catch (error) { this.retire(); throw error; }
     finally { this.#busy = false; this.#scheduleReleases(); }
+  }
+  // Candidate opcode18 seam: no display sampling, no automatic qualification.
+  async copyAffine(source, matrixValues) {
+    const matrix = Array.from(matrixValues);
+    if (matrix.length !== 16 || matrix.some(x => !Number.isFinite(x) || Math.abs(x) > 1e9) ||
+        matrix[3] !== 0 || matrix[7] !== 0 || matrix[11] !== 0 || matrix[15] !== 1)
+      throw new Error('invalid affine matrix');
+    const determinant = matrix[0]*(matrix[5]*matrix[10]-matrix[9]*matrix[6]) -
+      matrix[4]*(matrix[1]*matrix[10]-matrix[9]*matrix[2]) + matrix[8]*(matrix[1]*matrix[6]-matrix[5]*matrix[2]);
+    if (determinant === 0) throw new Error('singular affine matrix');
+    await this.#ready;
+    await this.#awaitCleanup();
+    if (!this.live() || this.#busy || !this.#objects.has(source)) throw new Error('invalid affine source lease');
+    const input = this.#objects.get(source);
+    this.#busy = true;
+    try {
+      const capability = await this.#call(12);
+      if (capability.byteLength !== 8 || new DataView(capability.buffer).getUint32(0, true) !== 1)
+        throw new Error('invalid affine capability payload');
+      if (!(new DataView(capability.buffer).getUint32(4, true) & 16))
+        throw Object.assign(new Error('affine rational copy unavailable'), { kernelStatus: 7 });
+      const result = await this.#call(18, this.#session, input, ...matrix.map(f64));
+      if (result.byteLength !== 72) throw new Error('invalid affine response');
+      const solid = result.slice(0, 16), certificate = result.slice(16);
+      const sessionId = new DataView(this.#session.buffer).getBigUint64(0, true);
+      validateHandle(solid, sessionId);
+      const view = new DataView(certificate.buffer);
+      if (view.getUint32(0, true) !== 1 || view.getUint32(4, true) !== 1)
+        throw new Error('invalid affine representation certificate');
+      for (const base of [8, 32]) {
+        let count = 0;
+        for (let i = 0; i < 6; i++) count += view.getUint32(base + i*4, true);
+        if (count > 100000) throw new Error('invalid affine class budget');
+      }
+      this.#assertNewSolid(solid);
+      const object = Object.freeze({});
+      this.#objects.set(object, solid);
+      return { object, certificate };
+    } catch (error) {
+      // Synchronized typed refusal is transactional. Unknown/transport outcomes
+      // still retire the captured domain, and are never automatically retried.
+      if (!Number.isInteger(error.kernelStatus)) this.retire();
+      throw error;
+    } finally { this.#busy = false; this.#scheduleReleases(); }
   }
   #assertNewSolid(solid) {
     if (Array.from(this.#objects.values()).some(existing => sameHandle(existing, solid)))

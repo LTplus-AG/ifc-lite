@@ -5,6 +5,22 @@ centimetre candidate-search tolerance. The merge now requires exact coincidence
 on two axes and actual contact on the remaining axis. Exact adjacent tiling still
 coalesces; millimetre gaps and steps remain separate.
 
+The subsequent layered-wall repair prepares original coaxial cutters before
+depth slicing. Adjusting each generated slice independently had retracted an
+artificial seam at the render/core interface and left a membrane across the
+window in `rvt01` host 6305. Generated seams now remain coincident. The repair's
+real-fixture regression checks the complete window interior and the signed
+areas of the material interfaces, reveal, jambs, sill and head. All 163 broader
+void tests, including the authored NUS wall-step regression, and workspace
+Clippy with warnings denied pass on the repaired production source.
+
+The receipts below describe the earlier source identified in
+`qualification.json`. They are retained evidence for that source. Transferring
+them to the layered-wall repair requires fresh output identity or a new surface
+proof; the earlier WASM hash and determinism run do not qualify the repair.
+Fresh native and WASM qualification, changed-output checks, actual browser
+rendering, size and current-pair performance remain pending.
+
 `qualification.json` records the completed native whole-wall finite-surface
 comparison for NUS host 143268, using all seven original openings and every
 emitted material-layer mesh. All 2,016 candidate triangles and all 124 independent

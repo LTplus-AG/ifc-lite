@@ -254,4 +254,14 @@ describe('cap highlight (#7950)', () => {
     assert.ok(writes.length > before, 'the mutated map is rewritten');
     assert.deepEqual(colorAt(lastFill(writes, created)!.data, 3), [0, 1, 0, 1]);
   });
+
+  it('does not rewrite the buffer for a highlight that matches nothing on this cap', () => {
+    const { renderer, writes } = newRenderer();
+    const miss = new Map<string, readonly [number, number, number, number]>([['*:99', [1, 0, 0, 1]]]);
+    renderer.setCapHighlight(miss);
+    renderer.uploadDrawing(TWO, [], 'down', 1);
+    const before = writes.length;
+    renderer.setCapHighlight(new Map(miss));
+    assert.equal(writes.length, before);
+  });
 });

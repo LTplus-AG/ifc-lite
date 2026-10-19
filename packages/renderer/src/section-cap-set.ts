@@ -145,7 +145,8 @@ class CapGeometry {
       this.fillSource = fill.vertices;
       this.fillRanges = fill.ranges;
       const painted = recolorCapVertices(fill.vertices, fill.ranges, highlight);
-      this.appliedHighlight = painted && highlight && highlight.size > 0 ? new Map(highlight) : null;
+      // Cached even when nothing here matched, so the next frame's identical highlight is a no-op.
+      this.appliedHighlight = highlight && highlight.size > 0 ? new Map(highlight) : null;
       device.queue.writeBuffer(this.fillVertexBuffer, 0, painted ?? fill.vertices);
 
       this.fillIndexBuffer = device.createBuffer({

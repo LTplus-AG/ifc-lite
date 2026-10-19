@@ -58,11 +58,10 @@
 1 rust/geometry/src/processors/csg_primitive.rs
 4 rust/geometry/src/processors/extrusion_params.rs
 18 rust/geometry/src/processors/helpers.rs
-3 rust/geometry/src/processors/sectioned.rs
 17 rust/geometry/src/processors/sectioned_positions.rs
 3 rust/geometry/src/processors/structural_edge.rs
 1 rust/geometry/src/processors/structural_face.rs
-8 rust/geometry/src/processors/surface.rs
+3 rust/geometry/src/processors/surface.rs
 5 rust/geometry/src/processors/swept/disk.rs
 5 rust/geometry/src/processors/swept/surface_curve.rs
 2 rust/geometry/src/processors/tessellated/mod.rs

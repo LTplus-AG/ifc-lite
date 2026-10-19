@@ -1,0 +1,19 @@
+
+> ifc-lite@10.4.0 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source
+> turbo build --filter\=\@ifc-lite/regex-guard --only --concurrency\=1 --env-mode\=loose --cache-dir\=/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/turbo-cache
+
+
+   • Packages in scope: @ifc-lite/regex-guard
+   • Running build in 1 package
+   • Remote caching disabled
+
+@ifc-lite/regex-guard:build: cache miss, executing 9c9f92e23712beaf
+@ifc-lite/regex-guard:build: 
+@ifc-lite/regex-guard:build: > @ifc-lite/regex-guard@0.3.0 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/packages/regex-guard
+@ifc-lite/regex-guard:build: > pnpm exec tsc
+@ifc-lite/regex-guard:build: 
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    36.615s 
+

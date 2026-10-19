@@ -1,0 +1,44 @@
+{"jobId": "d8b7a5b1-940a-480d-8bb8-31fd2c344b3b", "receipt": "/home/louistrue/build-workers/worker-state/jobs/d8b7a5b1-940a-480d-8bb8-31fd2c344b3b/receipt.json"}
+START ts-dist-0-timing-ladder
+END ts-dist-0-timing-ladder 0
+START ts-dist-1-encoding
+END ts-dist-1-encoding 0
+START ts-dist-2-data
+END ts-dist-2-data 0
+START ts-dist-3-load-trace
+END ts-dist-3-load-trace 0
+START ts-dist-4-wasm-lifecycle
+END ts-dist-4-wasm-lifecycle 0
+START ts-dist-5-geometry
+END ts-dist-5-geometry 0
+START ts-dist-6-spatial
+END ts-dist-6-spatial 0
+START ts-dist-7-renderer
+END ts-dist-7-renderer 0
+START ts-dist-8-regex-guard
+END ts-dist-8-regex-guard 0
+START ts-dist-9-mutations
+END ts-dist-9-mutations 0
+START ts-dist-10-pointcloud
+END ts-dist-10-pointcloud 0
+START ts-dist-11-ifcx
+END ts-dist-11-ifcx 0
+START ts-dist-12-parser
+END ts-dist-12-parser 0
+START ts-dist-13-codegen
+END ts-dist-13-codegen 0
+START ts-dist-14-export
+END ts-dist-14-export 0
+START root-actual-contract
+END root-actual-contract 0
+START official-wasm-manifest
+END official-wasm-manifest 0
+START public-property-boundary
+END public-property-boundary 1
+Traceback (most recent call last):
+  File "/home/louistrue/build-workers/incoming/d47-raw-wasm-consumer-v2/qualify.py", line 88, in <module>
+    witness=phase('public-property-boundary',['node',str(P/'wasm-public-budget.mjs'),str(S)],timeout=1200);rows=[json.loads(l) for l in witness.splitlines() if l.startswith('{')];assert rows[-1]['state']=='PASS' and rows[-1]['budgetCases']==13 and rows[-1]['allSevenClasses'];save('public-witness-result.json',rows[-1])
+  File "/home/louistrue/build-workers/incoming/d47-raw-wasm-consumer-v2/qualify.py", line 47, in phase
+    assert code==0,(name,code,str(log));return log.read_text(errors='replace')
+           ^^^^^^^
+AssertionError: ('public-property-boundary', 1, '/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v2/evidence/public-property-boundary.log')

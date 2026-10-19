@@ -1,0 +1,135 @@
+🦀 Building IFC-Lite WASM...
+📦 Running wasm-pack...
+🟢 Building single-thread bundle → ../../packages/wasm/pkg
+[INFO]: 🎯  Checking for the Wasm target...
+[INFO]: 🌀  Compiling to Wasm...
+   Compiling compiler_builtins v0.1.160 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins)
+   Compiling core v0.0.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+   Compiling libc v0.2.177
+   Compiling object v0.37.3
+   Compiling std v0.0.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std)
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling rustc-std-workspace-core v1.99.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/rustc-std-workspace-core)
+   Compiling alloc v0.0.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc)
+   Compiling unwind v0.0.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/unwind)
+   Compiling adler2 v2.0.1
+   Compiling cfg-if v1.0.1
+   Compiling memchr v2.7.6
+   Compiling rustc-std-workspace-alloc v1.99.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/rustc-std-workspace-alloc)
+   Compiling gimli v0.32.0
+   Compiling addr2line v0.25.0
+   Compiling hashbrown v0.15.5
+   Compiling miniz_oxide v0.8.9
+   Compiling std_detect v0.1.5 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std_detect)
+   Compiling panic_unwind v0.0.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/panic_unwind)
+   Compiling dlmalloc v0.2.10
+   Compiling panic_abort v0.0.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/panic_abort)
+   Compiling rustc-demangle v0.1.26
+   Compiling wasm-bindgen-shared v0.2.126
+   Compiling autocfg v1.5.0
+   Compiling syn v3.0.2
+   Compiling rustc-std-workspace-std v1.99.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/rustc-std-workspace-std)
+   Compiling rustc-literal-escaper v0.0.5
+   Compiling proc_macro v0.0.0 (/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/proc_macro)
+   Compiling cfg-if v1.0.4
+   Compiling syn v2.0.117
+   Compiling rustversion v1.0.22
+   Compiling num-traits v0.2.19
+   Compiling once_cell v1.21.4
+   Compiling bumpalo v3.20.2
+   Compiling wasm-bindgen-macro-support v0.2.126
+   Compiling wasm-bindgen v0.2.126
+   Compiling pin-project-lite v0.2.17
+   Compiling futures-macro v0.3.34
+   Compiling slab v0.4.12
+   Compiling futures-task v0.3.34
+   Compiling futures-core v0.3.34
+   Compiling futures-util v0.3.34
+   Compiling typenum v1.20.0
+   Compiling crossbeam-utils v0.8.21
+   Compiling simd-adler32 v0.3.9
+   Compiling libm v0.2.16
+   Compiling serde_core v1.0.229
+   Compiling version_check v0.9.5
+   Compiling generic-array v0.14.7
+   Compiling num-integer v0.1.46
+   Compiling wasm-bindgen-macro v0.2.126
+   Compiling memchr v2.8.3
+   Compiling bytemuck v1.25.2
+   Compiling js-sys v0.3.103
+   Compiling crc32fast v1.5.0
+   Compiling crossbeam-epoch v0.9.18
+   Compiling web-sys v0.3.103
+   Compiling either v1.15.0
+   Compiling matrixmultiply v0.3.10
+   Compiling rayon-core v1.13.0
+   Compiling thiserror v2.0.21
+   Compiling serde v1.0.229
+   Compiling wasm_sync v0.1.2
+   Compiling i_float v4.1.0
+   Compiling crossbeam-deque v0.8.6
+   Compiling wide v1.4.0
+   Compiling miniz_oxide v0.9.1
+   Compiling num-bigint v0.4.6
+   Compiling num-complex v0.4.6
+   Compiling approx v0.5.1
+   Compiling thiserror-impl v2.0.21
+   Compiling serde_derive v1.0.229
+   Compiling rawpointer v0.2.1
+   Compiling minimal-lexical v0.2.1
+   Compiling bnum v0.14.4
+   Compiling zmij v1.0.21
+   Compiling nom v7.1.3
+   Compiling simba v0.10.0
+   Compiling num-rational v0.4.2
+   Compiling flate2 v1.1.10
+   Compiling i_shape v4.0.0
+   Compiling itertools v0.14.0
+   Compiling fdeflate v0.3.7
+   Compiling rustc-hash v2.1.3
+   Compiling bitflags v2.11.1
+   Compiling i_tree v0.19.0
+   Compiling i_key_sort v0.11.0
+   Compiling twox-hash v2.1.5
+   Compiling fast-float2 v0.2.4
+   Compiling serde_json v1.0.151
+   Compiling ifc-lite-core v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/rust/core)
+   Compiling i_overlay v8.1.2
+   Compiling png v0.18.1
+   Compiling earcutr v0.5.0
+   Compiling nalgebra v0.35.0
+   Compiling rayon v1.12.0
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling itoa v1.0.18
+   Compiling jpeg-decoder v0.3.2
+   Compiling geometry-predicates v0.3.0
+   Compiling smallvec v1.16.2
+   Compiling ifc-lite-geometry v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/rust/geometry)
+   Compiling digest v0.10.7
+   Compiling tracing-attributes v0.1.31
+   Compiling tracing-core v0.1.36
+   Compiling tracing v0.1.44
+   Compiling sha2 v0.10.9
+   Compiling ifc-lite-processing v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/rust/processing)
+   Compiling quick-xml v0.42.0
+   Compiling ifc-lite-landxml v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/rust/landxml)
+   Compiling ifc-lite-export v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/rust/export)
+   Compiling serde-wasm-bindgen v0.6.5
+   Compiling console_error_panic_hook v0.1.7
+   Compiling ifc-lite-clash v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/rust/clash)
+   Compiling ifc-lite-wasm v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/rust/wasm-bindings)
+    Finished `release` profile [optimized] target(s) in 3m 07s
+[INFO]: License key is set in Cargo.toml but no LICENSE file(s) were found; Please add the LICENSE file(s) to your project directory
+[INFO]: ✨   Done in 3m 09s
+[INFO]: 📦   Your wasm pkg is ready to publish at packages/wasm/pkg.
+ℹ️  wasm-opt disabled — using LLVM -O3 only
+🧹 stripped internal __wasm_bindgen_func_elem_* indices from packages/wasm/pkg/ifc-lite.d.ts
+
+📊 Bundle size:
+   WASM: 9.4M
+   ⚠️  Over 1100 KB (single-thread) target (9571KB)
+
+✨ Build complete!

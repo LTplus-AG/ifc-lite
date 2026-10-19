@@ -1,0 +1,25 @@
+
+> ifc-lite@10.4.0 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source
+> turbo build --filter\=\@ifc-lite/pointcloud --only --concurrency\=1 --env-mode\=loose --cache-dir\=/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/turbo-cache
+
+
+   • Packages in scope: @ifc-lite/pointcloud
+   • Running build in 1 package
+   • Remote caching disabled
+
+@ifc-lite/pointcloud:build: cache miss, executing e090d3ea408ea931
+@ifc-lite/pointcloud:build: 
+@ifc-lite/pointcloud:build: > @ifc-lite/pointcloud@0.12.0 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/packages/pointcloud
+@ifc-lite/pointcloud:build: > pnpm exec tsc && node ../../scripts/rewrite-worker-urls.mjs dist && node ../../scripts/verify-dist-worker-urls.mjs dist --scripts-only && node scripts/build-worker-bundle.mjs
+@ifc-lite/pointcloud:build: 
+@ifc-lite/pointcloud:build: rewrite-worker-urls: scanned 50 emitted file(s), rewrote 1.
+@ifc-lite/pointcloud:build:   streaming/worker-client.js: ./decode-worker.ts -> ./decode-worker.js
+@ifc-lite/pointcloud:build: verify-dist-worker-urls: 1 URL specifier(s) in 50 emitted file(s) all resolve.
+@ifc-lite/pointcloud:build: [build-worker-bundle] bundling decode-worker.js as IIFE…
+@ifc-lite/pointcloud:build: [build-worker-bundle] bundled worker is 312.4 KB
+@ifc-lite/pointcloud:build: [build-worker-bundle] wrote /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/packages/pointcloud/dist/streaming/inline-worker.js (323.6 KB total)
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    39.229s 
+

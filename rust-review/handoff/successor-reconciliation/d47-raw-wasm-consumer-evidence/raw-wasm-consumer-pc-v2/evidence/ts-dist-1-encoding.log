@@ -1,0 +1,19 @@
+
+> ifc-lite@10.4.0 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source
+> turbo build --filter\=\@ifc-lite/encoding --only --concurrency\=1 --env-mode\=loose --cache-dir\=/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/turbo-cache
+
+
+   • Packages in scope: @ifc-lite/encoding
+   • Running build in 1 package
+   • Remote caching disabled
+
+@ifc-lite/encoding:build: cache miss, executing c9f9fa0787e5f157
+@ifc-lite/encoding:build: 
+@ifc-lite/encoding:build: > @ifc-lite/encoding@2.3.0 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/packages/encoding
+@ifc-lite/encoding:build: > pnpm exec tsc
+@ifc-lite/encoding:build: 
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    36.859s 
+

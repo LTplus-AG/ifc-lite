@@ -1,0 +1,23 @@
+{
+  "source": "actual authenticated PC SSH response tool chunk4115ea",
+  "remoteIncomingEqualsCollectedLocal": {
+    "v1": {
+      "qualify.py": "90ff1fd2a9793284ab2032fc93264d71582bba4bd365064a341fbb59531a50b7",
+      "wasm-public-budget.mjs": "52ae6dfc637a37c9bdf9e557615a2bfab140e1a81c1bf46415a1c60dc4325eb7",
+      "checkpoint.json": "23d6b4050e75dfcc1b9053b15ccb6846a3df47f72fd4eb228e65d949f8c40320",
+      "ambiguous-parent02.ifc": "5f61730167174d308bbf011b8d1521c4d787aea6e4a32bf460bc1705e8044095"
+    },
+    "v2": {
+      "qualify.py": "f7ca4aced8519f3bb3689eb4bb4be5d28f5e235ed5c821ff859ad85e7f00783f",
+      "wasm-public-budget.mjs": "52ae6dfc637a37c9bdf9e557615a2bfab140e1a81c1bf46415a1c60dc4325eb7",
+      "checkpoint.json": "23d6b4050e75dfcc1b9053b15ccb6846a3df47f72fd4eb228e65d949f8c40320",
+      "ambiguous-parent02.ifc": "5f61730167174d308bbf011b8d1521c4d787aea6e4a32bf460bc1705e8044095"
+    },
+    "v3": {
+      "qualify.py": "151f606aa65a9d0ea12937bb810c4b54805dbcd69667e19b2e65c9fb7ab3ead7",
+      "wasm-public-budget.mjs": "8d388f3fa9abe18cc19c1134a7d547af8e5a5315ca79808e43d54539dd5d3999",
+      "checkpoint.json": "23d6b4050e75dfcc1b9053b15ccb6846a3df47f72fd4eb228e65d949f8c40320",
+      "ambiguous-parent02.ifc": "5f61730167174d308bbf011b8d1521c4d787aea6e4a32bf460bc1705e8044095"
+    }
+  }
+}

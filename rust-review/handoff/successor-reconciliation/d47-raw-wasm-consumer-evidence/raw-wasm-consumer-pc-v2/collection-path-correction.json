@@ -1,0 +1,8 @@
+{
+  "initialCopySource": "remote d47-raw-wasm-consumer-v1/evidence (wrong namespace; preserved)",
+  "initialCopyPreservedAt": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction",
+  "correctActualSource": "remote d47-raw-wasm-consumer-v2/evidence",
+  "actualWorkerReceiptAndOutputWereAlreadyV2": true,
+  "noWorkloadRerun": true,
+  "caughtBy": "lossless remote SHA inventory check before final handoff"
+}

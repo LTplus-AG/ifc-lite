@@ -1,0 +1,10 @@
+{
+  "taskId": "d47-raw7c8-wasm-missing-dist-cont-v2",
+  "jobId": "d8b7a5b1-940a-480d-8bb8-31fd2c344b3b",
+  "session": 73805,
+  "cpu": 2,
+  "memoryGiB": 12,
+  "driverSha256": "f7ca4aced8519f3bb3689eb4bb4be5d28f5e235ed5c821ff859ad85e7f00783f",
+  "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+  "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c"
+}

@@ -1,0 +1,77 @@
+[
+  {
+    "name": "@ifc-lite/timing-ladder",
+    "path": "packages/timing-ladder",
+    "script": "pnpm exec tsc"
+  },
+  {
+    "name": "@ifc-lite/encoding",
+    "path": "packages/encoding",
+    "script": "pnpm exec tsc"
+  },
+  {
+    "name": "@ifc-lite/data",
+    "path": "packages/data",
+    "script": "pnpm exec tsc"
+  },
+  {
+    "name": "@ifc-lite/load-trace",
+    "path": "packages/load-trace",
+    "script": "pnpm exec tsc"
+  },
+  {
+    "name": "@ifc-lite/wasm-lifecycle",
+    "path": "packages/wasm-lifecycle",
+    "script": "pnpm exec tsc"
+  },
+  {
+    "name": "@ifc-lite/geometry",
+    "path": "packages/geometry",
+    "script": "pnpm exec tsc && node ../../scripts/rewrite-worker-urls.mjs dist && node ../../scripts/verify-dist-worker-urls.mjs dist --scripts-only"
+  },
+  {
+    "name": "@ifc-lite/spatial",
+    "path": "packages/spatial",
+    "script": "pnpm exec tsc"
+  },
+  {
+    "name": "@ifc-lite/renderer",
+    "path": "packages/renderer",
+    "script": "pnpm exec tsc"
+  },
+  {
+    "name": "@ifc-lite/regex-guard",
+    "path": "packages/regex-guard",
+    "script": "pnpm exec tsc"
+  },
+  {
+    "name": "@ifc-lite/mutations",
+    "path": "packages/mutations",
+    "script": "pnpm exec tsc"
+  },
+  {
+    "name": "@ifc-lite/pointcloud",
+    "path": "packages/pointcloud",
+    "script": "pnpm exec tsc && node ../../scripts/rewrite-worker-urls.mjs dist && node ../../scripts/verify-dist-worker-urls.mjs dist --scripts-only && node scripts/build-worker-bundle.mjs"
+  },
+  {
+    "name": "@ifc-lite/ifcx",
+    "path": "packages/ifcx",
+    "script": "pnpm exec tsc && node ./scripts/verify-dist-hello-wall.mjs"
+  },
+  {
+    "name": "@ifc-lite/parser",
+    "path": "packages/parser",
+    "script": "pnpm exec tsc && node ../../scripts/rewrite-worker-urls.mjs dist && node ../../scripts/verify-dist-worker-urls.mjs dist"
+  },
+  {
+    "name": "@ifc-lite/codegen",
+    "path": "packages/codegen",
+    "script": "pnpm exec tsc && pnpm exec tsc -p tsconfig.generated.json"
+  },
+  {
+    "name": "@ifc-lite/export",
+    "path": "packages/export",
+    "script": "pnpm exec tsc"
+  }
+]

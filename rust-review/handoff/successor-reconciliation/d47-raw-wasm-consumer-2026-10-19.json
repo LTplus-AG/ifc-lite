@@ -1,0 +1,223 @@
+{
+  "at": "2026-10-19T02:31:22.960041+00:00",
+  "source": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+  "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+  "originalWorkers": [
+    {
+      "id": "8526c777-a74d-4321-a3ac-53c804871a27",
+      "terminal": "FAILED1",
+      "passed": [
+        "official build",
+        "exact committed dts",
+        "package21PASS0SKIP"
+      ],
+      "failure": "missing renderer dist before contract assertions"
+    },
+    {
+      "id": "d8b7a5b1-940a-480d-8bb8-31fd2c344b3b",
+      "terminal": "FAILED1",
+      "passed": [
+        "root contract212PASS0FAIL1optional historicalbaseline SKIP",
+        "wasm32 meshmanifest1PASS"
+      ],
+      "failure": "external witness per-value vs aggregate pin"
+    },
+    {
+      "id": "96c34613-e549-4445-ba7b-b8663b9641ad",
+      "terminal": "COMPLETED0",
+      "passed": [
+        "13publicbudgetgroups and7class ambiguity controls"
+      ],
+      "sourceUnchanged": true,
+      "quiescent": true
+    }
+  ],
+  "witnessCorrection": "Existing aggregate newline-joined normative pins applied per set; expected bytes/hash/classes unchanged",
+  "localManifestMembersVerified": 149,
+  "archivedMemberCount": 121,
+  "locallyRetainedMembers": [
+    {
+      "path": "raw-wasm-consumer-pc-v1/evidence/owned-cache-seeds.json",
+      "sha256": "28e0c644310706058f8f7a862204c0dfea4538e8b24b4b8e56b4ae151966b95c",
+      "size": 27305165,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v1/evidence/results.json",
+      "sha256": "4ee8f8ca33d34d48508786e406db1707e51ca9beea2f2f8f3ef9ca5f94ae0d88",
+      "size": 12128751,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/committed-ifc-lite.d.ts",
+      "sha256": "e2bf5dee93a6277acee5a814f0bab346ec3c270cbc01bc8a1d0ca75d1c2b65cb",
+      "size": 167397,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/strict-official-wasm.log",
+      "sha256": "58d1bb08b20869b8cf62be019c3248aaccd5b787c5d9146e38ebdf10239677a2",
+      "size": 6562,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/official-producer.json",
+      "sha256": "5cef21d620a649c47476474d50fbc4a23dc98dd65c8a4dc35989213230371bf2",
+      "size": 546066,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/tool-cargo.log",
+      "sha256": "22e1f3eae5a0d5029aa1b9238cad8c3849909fe39fa8cb1bb1dfcbc2f292da7b",
+      "size": 44,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/tool-wasm-pack.log",
+      "sha256": "f9f112a3a860c47f458ea768dbb85026be4bdcdc051efb7fbab251a92864d38d",
+      "size": 17,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/generated-ifc-lite.d.ts",
+      "sha256": "e2bf5dee93a6277acee5a814f0bab346ec3c270cbc01bc8a1d0ca75d1c2b65cb",
+      "size": 167397,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/package-result-lines.json",
+      "sha256": "4e5866b6b7b74300e9e94e21c1e4de59aeb1ae1d4f0f4b39968071cddaabf059",
+      "size": 46,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/tool-pnpm.log",
+      "sha256": "9564c3420fb31edf3f741378063af7aa0d9882147230e551e330dbb1921947c2",
+      "size": 7,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/failure.json",
+      "sha256": "2255c9375a7082092879ef8daa2f3069f9800ecfc12fb2efa747f0600018d838",
+      "size": 1184,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/root-wasm-package.log",
+      "sha256": "39fd9920af2ca08934cbe73b977de3291307dae9f381a201286f3e4e1cb63815",
+      "size": 5806,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/source-before.json",
+      "sha256": "456317656de3a3ecb6f8fd16fa140f336f4e2b3f406ce5b4444132a1560a7e78",
+      "size": 534953,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/root-offline-install.log",
+      "sha256": "feb41037faede35b2faefeb7667eca7eaed548e1069488ce41862bfc114ce50a",
+      "size": 6572,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/source-final.json",
+      "sha256": "9394655dbafa3a6ad41e68ddeab90329160713e49251d5548ae0ff6e3d72c7d7",
+      "size": 534953,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/tool-producer-inputs.json",
+      "sha256": "1ceae447364b99304840f075de1b5b4545e96942a7592e20208d4a442aaa1f96",
+      "size": 4966,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/owned-cache-seeds.json",
+      "sha256": "28e0c644310706058f8f7a862204c0dfea4538e8b24b4b8e56b4ae151966b95c",
+      "size": 27305165,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/tool-bindgen.log",
+      "sha256": "9665b51d243c180bb4c9c723552ddca2ee5a212f1dd5f4d27424266754321d91",
+      "size": 21,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/public-witness-syntax.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/tool-node.log",
+      "sha256": "f2ec568164f99546161909b0189b57bb5be3e80f8e2ccd8a51a4aed8c4055a04",
+      "size": 9,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/root-actual-contract.log",
+      "sha256": "5548ab97a98a9c150c71d07d27fe6daa7c9b3615be832feeb08d95f81d18afb3",
+      "size": 1406,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/committed-dts.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/results.json",
+      "sha256": "4ee8f8ca33d34d48508786e406db1707e51ca9beea2f2f8f3ef9ca5f94ae0d88",
+      "size": 12128751,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/fixtures-before.json",
+      "sha256": "8dac5bbf49214a3ca78aa01db6b70850973ea0f63e5a9815aaac91ed13a2de6f",
+      "size": 30672,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence-copied-v1-before-path-correction/tool-rustc.log",
+      "sha256": "f19ded8d6673f1878f1b9b1593903a6cd06e77f102f5edf6e867079830fe25f7",
+      "size": 212,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v2/evidence/results.json",
+      "sha256": "6a212704f8ad4a3e1d0bf8242a82c7974768090976c23bddd498b74609294edb",
+      "size": 19849649,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v3/evidence/results.json",
+      "sha256": "7d696d5226886aab13c1b290d8c5f7dabeea762bee074ed2ad6ea8149799cd1a",
+      "size": 2205395,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    },
+    {
+      "path": "raw-wasm-consumer-pc-v3/generated-pkg/ifc-lite_bg.wasm",
+      "sha256": "972b6ccb86c440eb125bbbdcd934940916ebc50b2f7ad777627dd7cfff9f6561",
+      "size": 9801282,
+      "reason": "Full byte-verified local artifact retained; archived manifest binds it"
+    }
+  ],
+  "evidenceDirectory": "d47-raw-wasm-consumer-evidence",
+  "wasmSha256": "972b6ccb86c440eb125bbbdcd934940916ebc50b2f7ad777627dd7cfff9f6561",
+  "wasmBytes": 9801282,
+  "sizeWarningTargetKiB": 1100,
+  "sizeVerdict": "warning retained, matched baseline not yet available",
+  "all182FixturesUnchanged": true,
+  "all50PriorPythonArtifactsUnchanged": true,
+  "scopeLimits": [
+    "Own/default public WASM export options only",
+    "No WASM inheritance or SingleValueOnly API",
+    "One optional historical baseline comparison skipped",
+    "No performance/RSS/firstcallback/currentmain/hosted/publication acceptance",
+    "No issue closure or Rust-charter acceptance"
+  ],
+  "next": "Existing owner v25 building exact public02 baseline only, then missing historical comparison/size input; no candidate build repeat or timed cohort"
+}

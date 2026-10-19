@@ -1,0 +1,32 @@
+{"jobId": "8526c777-a74d-4321-a3ac-53c804871a27", "receipt": "/home/louistrue/build-workers/worker-state/jobs/8526c777-a74d-4321-a3ac-53c804871a27/receipt.json"}
+START seed-owned-offline-caches
+END seed-owned-offline-caches 0
+START tool-node
+END tool-node 0
+START tool-rustc
+END tool-rustc 0
+START tool-cargo
+END tool-cargo 0
+START tool-wasm-pack
+END tool-wasm-pack 0
+START tool-bindgen
+END tool-bindgen 0
+START tool-pnpm
+END tool-pnpm 0
+START public-witness-syntax
+END public-witness-syntax 0
+START root-offline-install
+END root-offline-install 0
+START strict-official-wasm
+END strict-official-wasm 0
+START root-wasm-package
+END root-wasm-package 0
+START root-actual-contract
+END root-actual-contract 1
+Traceback (most recent call last):
+  File "/home/louistrue/build-workers/incoming/d47-raw-wasm-consumer-v1/qualify.py", line 104, in <module>
+    contract=phase('root-actual-contract',['pnpm','test:wasm-contract'],timeout=1800);skips=[l for l in contract.splitlines() if 'skip' in l.lower()];save('contract-result-lines.json',{'skips':skips,'summary':[l for l in contract.splitlines() if any(x in l.lower() for x in ['passed','failed','skipped','missing'])]});assert not any('missing' in l.lower() and ('fixture' in l.lower() or 'runtime' in l.lower()) for l in contract.splitlines()),'missing input contract skip'
+  File "/home/louistrue/build-workers/incoming/d47-raw-wasm-consumer-v1/qualify.py", line 47, in phase
+    assert code==0,(name,code,str(log));return log.read_text(errors='replace')
+           ^^^^^^^
+AssertionError: ('root-actual-contract', 1, '/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/evidence/root-actual-contract.log')

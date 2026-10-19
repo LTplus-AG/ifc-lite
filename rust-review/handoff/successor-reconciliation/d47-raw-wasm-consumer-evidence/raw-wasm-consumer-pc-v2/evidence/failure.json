@@ -1,0 +1,6 @@
+{
+  "type": "AssertionError",
+  "message": "('public-property-boundary', 1, '/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v2/evidence/public-property-boundary.log')",
+  "traceback": "Traceback (most recent call last):\n  File \"/home/louistrue/build-workers/incoming/d47-raw-wasm-consumer-v2/qualify.py\", line 88, in <module>\n    witness=phase('public-property-boundary',['node',str(P/'wasm-public-budget.mjs'),str(S)],timeout=1200);rows=[json.loads(l) for l in witness.splitlines() if l.startswith('{')];assert rows[-1]['state']=='PASS' and rows[-1]['budgetCases']==13 and rows[-1]['allSevenClasses'];save('public-witness-result.json',rows[-1])\n  File \"/home/louistrue/build-workers/incoming/d47-raw-wasm-consumer-v2/qualify.py\", line 47, in phase\n    assert code==0,(name,code,str(log));return log.read_text(errors='replace')\n           ^^^^^^^\nAssertionError: ('public-property-boundary', 1, '/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v2/evidence/public-property-boundary.log')\n",
+  "completedPhases": 18
+}

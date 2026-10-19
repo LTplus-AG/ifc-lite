@@ -1,0 +1,840 @@
+
+> ifc-lite@10.4.0 test:wasm-contract /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source
+> node scripts/test-wasm-contract.mjs
+
+🧪 WASM API Contract Tests
+
+📦 Loading WASM...
+using deprecated parameters for `initSync()`; pass a single object instead
+✅ WASM initialized
+
+[IFC-LITE] Opening classifier: rect=1 diag=0 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcBuildingElementProxy: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+[IFC-LITE] Opening classifier: rect=1 diag=0 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcBuildingElementProxy: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+  ✅ Reference-only openings preserve exact host image/UV binding (#4440)
+  ✅ PDF vector state preserves calibrated stroke transforms and reports omissions with oracle-frame extents (#4406)
+[IFC-LITE] 2 representation item(s) dropped (unsupported type or failed geometry) — these elements are missing or incomplete: IfcAnnotationFillArea=2
+[IFC-LITE] 2 representation item(s) dropped (unsupported type or failed geometry) — these elements are missing or incomplete: IfcAnnotationFillArea=2
+[IFC-LITE] 2 representation item(s) dropped (unsupported type or failed geometry) — these elements are missing or incomplete: IfcAnnotationFillArea=2
+[IFC-LITE] 2 representation item(s) dropped (unsupported type or failed geometry) — these elements are missing or incomplete: IfcAnnotationFillArea=2
+  ✅ annotation fills preserve holes, units and solid colour (#4406)
+  ✅ registered mesh transfer reports unknown coverage and binds prepared assets (#4381)
+  ✅ thin-wall, occluder and gap observations classify without painting through (#4381)
+  ✅ RGB point-cloud source keeps thin-wall faces apart under every orientation source (#4381)
+  ✅ proper rigid scan registration preserves held-out independence and frame binding (#4381)
+  ✅ scan segmentation recovers a seeded room, a round and a faceted column, order-invariantly, with strict options (#6870, #6893)
+  ✅ scan proposals turn a segmented room into walls, slabs and a column in the model frame (#6894)
+  ✅ bare style references cross the real WASM boundary (#4694)
+  ✅ LandXML raw-byte parser accepts UTF-8 and UTF-16LE source
+  ✅ LandXML raw-byte parser omits optional Units rather than returning null
+  ✅ LandXML real-WASM stream cursor credits output, finalizes metadata, and releases cancellation state (#5161)
+  ✅ LandXML WASM preserves namespace-selected schema provenance across source families (#5051)
+  ✅ LandXML plan adapter exposes Rust resolution, probes and bounded batches
+  ✅ LandXML plan adapter isolates malformed parcel children in the real WASM parser (#5046)
+  ✅ LandXML bulk resolver path-compresses hostile alias geometry and monuments (#5046)
+  ✅ LandXML real-WASM bulk parcel probes share bounded aliases and retain analytic measurements (#5046)
+  ✅ LandXML real-WASM bulk parcel probes preserve scoped, cyclic and dangling records (#5046)
+  ✅ LandXML real-WASM regular production parcel boundaries stay analytic (#5046)
+  ✅ LandXML real-WASM preserves an over-limit parcel without discarding sibling records (#5046)
+  ✅ LandXML real-WASM conservatively preserves multi-loop curve topology (#5046)
+  ✅ LandXML real-WASM limits single-loop curve fills to an arc and closing line (#5046)
+  ✅ LandXML raw-byte parser serializes validated pipe records with metre coordinates
+  ✅ LandXML raw-byte parser locally refuses scaled Center overflow
+  ✅ LandXML raw-byte parser preserves stable diagnostics
+  ✅ LandXML alignment WASM contract tags refused spirals and exposes authored inspection
+  ✅ LandXML raw-byte parser exposes profile review semantics through WASM
+  ✅ LandXML coordinate system crosses the boundary with name, epsg_code and datums (#7604)
+  ✅ LandXML assumed linear unit reaches the plan, alignment and pipe families (#7693)
+  ✅ parseLandXmlSourceBytesWithOptions returns what parseLandXmlSourceBytes returns (C9a-10)
+
+📋 exportStep with a mutation log (#5941)
+  ✅ writes every shared parity case as the TypeScript exporter does (52 cases)
+  ✅ a log does not combine with the older payload keys
+  ✅ a log does not combine with an isolation set
+  ✅ a log the TypeScript replay would throw on is refused, not exported
+  ✅ refuses every shared refused case (2 cases)
+  ✅ the older payload shape still applies its edits
+  ✅ #6587 canonical map plan crosses the real WASM boundary with complete entity IDs
+  ✅ #6587 direct WASM planner refuses unresolved, wrong-type, cyclic and malformed target units atomically
+  ✅ #6587 failed WASM planning releases its borrow so the same handle remains usable
+  ✅ #5770: authored line, radius and centreline length cross the WASM boundary
+  ✅ #5770: ordered arcs, bends and optional product IDs cross the WASM boundary
+[IFC-LITE] CSG diagnostics: 138 openings classified, 3 failures, 91 hosts tracked
+[IFC-LITE] Opening classifier: rect=0 diag=126 non_rect=12 (total=138)
+[IFC-LITE] CSG fallbacks: 3 failures across 3 products. Breakdown: [("NoBoundsOverlap", 2), ("KernelError", 1)].
+By host type:
+  IfcCovering: hosts=32 openings=51 (rect=0 diag=45 non_rect=6)
+  IfcWall: hosts=59 openings=87 (rect=0 diag=81 non_rect=6)
+Worst-failing hosts (top 10):
+  #38680 IfcWall — 1 openings [Diagonal], 1 CSG failure(s) (KernelError)
+  #11477 IfcCovering — 2 openings [NonRectangular,Diagonal], 1 CSG failure(s) (NoBoundsOverlap)
+  #7700 IfcWall — 1 openings [Diagonal], 1 CSG failure(s) (NoBoundsOverlap)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=101 not_through=0 off_face=23 near_edge=0
+  ✅ #6516: disjoint opening misses preserve closed Revit material-layer parts
+[ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)
+[IFC-LITE] Opening classifier: rect=29 diag=0 non_rect=2 (total=31)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 9 hosts with openings.
+  IfcSlab: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+  IfcWallStandardCase: hosts=8 openings=30 (rect=28 diag=0 non_rect=2)
+[IFC-LITE] rect_fast: fired=1 (cut 1 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)
+[IFC-LITE] Opening classifier: rect=29 diag=0 non_rect=2 (total=31)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 9 hosts with openings.
+  IfcSlab: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+  IfcWallStandardCase: hosts=8 openings=30 (rect=28 diag=0 non_rect=2)
+[IFC-LITE] rect_fast: fired=1 (cut 1 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+  ✅ geometry progress callback fires inside a batch call and leaves output unchanged
+  ✅ #7677 exportMerged refuses malformed lengths and leaves the handle usable and freeable
+  ✅ #7677 splitMeshByZones refuses a zone past the kernel coordinate bound instead of trapping
+[ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)
+[IFC-LITE] Opening classifier: rect=29 diag=0 non_rect=2 (total=31)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 9 hosts with openings.
+  IfcSlab: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+  IfcWallStandardCase: hosts=8 openings=30 (rect=28 diag=0 non_rect=2)
+[IFC-LITE] rect_fast: fired=1 (cut 1 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)
+[IFC-LITE] Opening classifier: rect=29 diag=0 non_rect=2 (total=31)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 9 hosts with openings.
+  IfcSlab: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+  IfcWallStandardCase: hosts=8 openings=30 (rect=28 diag=0 non_rect=2)
+[IFC-LITE] rect_fast: fired=1 (cut 1 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+  ✅ #7677 a progress callback that clears itself does not abort the instance
+  ✅ #7695 empty-export vectors at the wasm boundary: no-products
+  ✅ #7695 empty-export vectors at the wasm boundary: data-only
+  ✅ #7695 empty-export vectors at the wasm boundary: hello-wall
+  ✅ #7695 empty-export vectors at the wasm boundary: hello-wall-isolated-to-nothing
+  ✅ #7695: the instance keeps working after a NO_RENDER_GEOMETRY refusal
+
+📋 traceScanOutline (#6871)
+  ✅ a room slab gives an outer ring and a hole, wound and nested as documented
+  ✅ worldCoords maps every plane vertex through the frame
+  ✅ diagnostics come back as a camelCase object with the documented fields
+  ✅ a small cell budget coarsens the grid and reports it
+  ✅ empty and non-finite input give an empty outline, not a throw
+  ✅ malformed options and frames throw instead of tracing with defaults
+  ✅ non-finite options throw and undefined options mean the default
+  ✅ a cell budget below the padding floor is refused, never a trap
+  ✅ far-from-origin input reports degraded coordinate precision
+  ✅ #7540 PAGE operand: page-apostrophe retains real WASM byte/string scan boundaries
+  ✅ #7540 PAGE operand: page-leading-apostrophe retains real WASM byte/string scan boundaries
+  ✅ #7540 PAGE operand: page-next-to-closing-quote retains real WASM byte/string scan boundaries
+  ✅ #7540 PAGE operand: escaped-backslash-before-page retains real WASM byte/string scan boundaries
+  ✅ #7540 PAGE operand: page-backslash-operand retains real WASM byte/string scan boundaries
+  ✅ #7540 PAGE operand: hex-control retains real WASM byte/string scan boundaries
+  ✅ #7540 PAGE operand: doubled-quote-control retains real WASM byte/string scan boundaries
+  ✅ #7540 PAGE operand: structure-is-text retains real WASM byte/string scan boundaries
+  ✅ #7540 PAGE operand: page-and-doubled-quote retains real WASM byte/string scan boundaries
+  ✅ #7540 PAGE operand: multiline-page retains real WASM byte/string scan boundaries
+  ✅ #7540 PAGE operand: ordinary-control retains real WASM byte/string scan boundaries
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+  ✅ #7541 stray apostrophe: pair gives the shared ids and report on the real WASM scan
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+  ✅ #7541 stray apostrophe: one stray gives the shared ids and report on the real WASM scan
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+  ✅ #7541 stray apostrophe: two strays in one record gives the shared ids and report on the real WASM scan
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+  ✅ #7541 stray apostrophe: stray then space and paren gives the shared ids and report on the real WASM scan
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+  ✅ #7541 stray apostrophe: stray then backslash gives the shared ids and report on the real WASM scan
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+  ✅ #7541 stray apostrophe: stray then UTF-8 byte gives the shared ids and report on the real WASM scan
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+  ✅ #7541 stray apostrophe: stray then period gives the shared ids and report on the real WASM scan
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+  ✅ #7541 stray apostrophe: stray then comment gives the shared ids and report on the real WASM scan
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+  ✅ #7541 stray apostrophe: stray in a typed parameter gives the shared ids and report on the real WASM scan
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+  ✅ #7541 stray apostrophe: pair, every record on one line gives the shared ids and report on the real WASM scan
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+  ✅ #7541 stray apostrophe: pair, CRLF line ends gives the shared ids and report on the real WASM scan
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+  ✅ #7541 stray apostrophe: stray then comma gives the shared ids and report on the real WASM scan
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+  ✅ #7541 stray apostrophe: stray before the closing quote gives the shared ids and report on the real WASM scan
+  ✅ #7541 stray apostrophe: not seen: every quote followed by a separator gives the shared ids and report on the real WASM scan
+  ✅ #7541 stray apostrophe: control: both apostrophes escaped gives the shared ids and report on the real WASM scan
+  ✅ #7541 stray apostrophe: legal: PAGE operand pair (#7540) gives the shared ids and report on the real WASM scan
+  ✅ #7541 stray apostrophe: legal: doubled quote wrapped by LF gives the shared ids and report on the real WASM scan
+  ✅ #7541 stray apostrophe: legal: doubled quote wrapped by CR LF gives the shared ids and report on the real WASM scan
+  ✅ #7541 stray apostrophe: legal: trivia after a string gives the shared ids and report on the real WASM scan
+  ✅ #7541 stray apostrophe: legal: line break after a string gives the shared ids and report on the real WASM scan
+  ✅ #7541 stray apostrophe: legal: escaped quotes and structure in text gives the shared ids and report on the real WASM scan
+  ✅ #7541 stray apostrophe: legal: empty string and nested lists gives the shared ids and report on the real WASM scan
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+  ✅ #7541 stray apostrophe: string then semicolon, next record on the same line gives the shared ids and report on the real WASM scan
+[ifc-lite] scan: skipped 1 record(s) with an express id above 4294967295 (#3395)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+[ifc-lite] scan: skipped 1 record(s) with an express id above 4294967295 (#3395)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+  ✅ scanEntitiesFast/Bytes carry refusal counts on the result array (#7393)
+  ✅ #6306: processor returns null before initialization
+  ✅ #6306: IfcLiteBridge preserves authored Revit extrusion and two mapped placements
+  ✅ #6306: IfcLiteBridge distinguishes absent IDs from an empty selection
+  ✅ #6306: IfcLiteBridge retains millimetre source values while placing nested maps in metres
+  ✅ #6306: IfcLiteBridge reports an unsupported tapered profile explicitly
+  ✅ #6306: GeometryProcessor preserves authored Revit extrusion and two mapped placements
+  ✅ #6306: GeometryProcessor distinguishes absent IDs from an empty selection
+  ✅ #6306: GeometryProcessor retains millimetre source values while placing nested maps in metres
+  ✅ #6306: GeometryProcessor reports an unsupported tapered profile explicitly
+📋 IfcAPI initialization
+  ✅ should be ready after construction
+  ✅ should have a version string
+
+📋 exact overlay RTC frame boundary (#4799)
+  ✅ all overlay bindings accept and apply one explicit RTC frame
+  ✅ overlay frame validation rejects malformed inputs without standalone fallback
+
+📋 parseMeshes
+  ✅ should return a MeshCollection
+  ✅ should produce meshes with valid structure
+  ✅ should have consistent vertex/triangle counts
+  ✅ should handle empty/minimal IFC content gracefully
+  ✅ issue #1023: raw byte geometry and scans accept non-UTF-8 string bytes
+
+📋 setSourceBytes + *FromSource batch (byte-identical)
+  ✅ processGeometryBatchFromSource is byte-identical to processGeometryBatch
+  ✅ processGeometryBatchPartitionedFromSource matches processGeometryBatchPartitioned
+
+📋 #2985 instanced item id (wasm → wire)
+[ifc-lite layers] 80 sliceable buildup(s) of 99 association(s)
+[IFC-LITE] Opening classifier: rect=48 diag=0 non_rect=2 (total=50)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 29 hosts with openings.
+  IfcFurnishingElement: hosts=10 openings=10 (rect=8 diag=0 non_rect=2)
+  IfcSlab: hosts=1 openings=4 (rect=4 diag=0 non_rect=0)
+  IfcWallStandardCase: hosts=18 openings=36 (rect=36 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=14 (cut 18 openings) | deferred: host_not_box=8 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 50, 29 NOT sliced — #6132=skip:not-single-unshifted-item, #6247=skip:not-single-unshifted-item, #20792=skip:not-single-unshifted-item, #20903=skip:not-single-unshifted-item, #20958=skip:not-single-unshifted-item, #21013=skip:not-single-unshifted-item, #21080=skip:not-single-unshifted-item, #21147=skip:not-single-unshifted-item, #21195=skip:not-single-unshifted-item, #21336=skip:not-single-unshifted-item, #21401=skip:not-single-unshifted-item, #21449=skip:not-single-unshifted-item, #21497=skip:not-single-unshifted-item, #21545=skip:not-single-unshifted-item, #21610=skip:not-single-unshifted-item, #21658=skip:not-single-unshifted-item, #23671=skip:cut-produced-<2, #23768=skip:cut-produced-<2, #23826=skip:cut-produced-<2, #23884=skip:cut-produced-<2, #23992=skip:cut-produced-<2, #24060=skip:cut-produced-<2, #24128=skip:cut-produced-<2, #24186=skip:cut-produced-<2, #24268=skip:cut-produced-<2, #24326=skip:cut-produced-<2, #24408=skip:cut-produced-<2, #24476=skip:cut-produced-<2, #24544=skip:cut-produced-<2
+  ✅ the partitioned shard carries each occurrence's representation item
+  ✅ processGeometryBatchFromSource returns empty when no source is installed (defensive)
+  ✅ flat and instanced WASM triangles retain outward winding (#4056)
+  ✅ streaming affinity chunks retain complete ordered owned payloads (cold-load audit)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+  ✅ prepass full-source fingerprint preserves old entry points and malformed tails (#3985)
+  ✅ buildPrePassStreamingSharded preserves ordered discovery, filters and JS inputs (#6537)
+  ✅ buildPrePassStreamingSharded keeps JS columns owned after API free and WASM memory growth (#6537)
+  ✅ buildPrePassStreamingSharded refuses lengths before callbacks, diagnostic reset or cache replacement (#6537)
+  ✅ buildPrePassStreamingSharded propagates callbacks at the original cache-install boundaries (#6537)
+  ✅ buildPrePassStreamingShardedWithSourceFingerprint preserves ordered discovery, filters and JS inputs (#6537)
+  ✅ buildPrePassStreamingShardedWithSourceFingerprint keeps JS columns owned after API free and WASM memory growth (#6537)
+  ✅ buildPrePassStreamingShardedWithSourceFingerprint refuses lengths before callbacks, diagnostic reset or cache replacement (#6537)
+  ✅ buildPrePassStreamingShardedWithSourceFingerprint propagates callbacks at the original cache-install boundaries (#6537)
+  ⏭️  SKIP matched historical fingerprint fallback
+     set IFC_WASM_BASE_JS and IFC_WASM_BASE_BINARY to one retained baseline build
+  ✅ mesh getters own transferable backing after free and memory growth (#3989)
+  ✅ embedded texture getters own transferable backing (#3989)
+  ✅ external texture getters own transferable backing (#3989)
+  ✅ owned source spans scan, style assistance, replacement and cleanup (#3989)
+
+📋 buildPrePassOnce contract
+  ✅ pre-pass exposes every field the viewer consumes
+  ✅ unit scale resolves conversion-based units (inch fixture → 0.0254)
+  ✅ prepass resolves planeAngleToRadians on the wire
+  ✅ streaming meta resolves units with IFCPROJECT moved to the END of DATA
+  ✅ unit scale resolves plain SI metres (georef fixture → 1.0)
+  ✅ mesh output is metre-normalized (column fits a sane bbox)
+
+📋 RTC rebase (>1km)
+  ✅ national-grid coordinates (Swiss LV95) should trigger the RTC rebase
+  ✅ coordinates just under the 1km threshold should NOT trigger the shift
+  ✅ unmodified small-coordinate model keeps needsShift=false
+  ✅ exportGlbFromMeshes restores the frame it is given on the scene root (#7734)
+  ✅ #4934: a 1-10km survey-grid plant now gets an RTC anchor and sub-mm precision
+  ✅ #5749: LV95 site plus kilometre-local vertices preserves thin geometry through WASM
+
+📋 scanEntitiesFast
+  ✅ should return entity scan results
+
+📋 Error handling
+  ✅ should handle completely invalid content gracefully
+[ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+  ✅ should handle truncated IFC content gracefully
+
+📋 export (exportGlb)
+  ✅ exportGlb: an empty isolation array is an ACTIVE filter and fails closed (NO_RENDER_GEOMETRY), not "no filter"
+  ✅ exportGlb returns a binary glTF (GLB magic "glTF") with real meshes
+  ✅ exportGlbFromMeshes returns a GLB for valid flattened meshes
+  ✅ exportGlbFromMeshes fails closed on malformed inputs (MALFORMED_MESH_INPUT)
+
+📋 glTF conformance (Khronos glTF-Validator)
+  ✅ exportGlb output is spec-conformant glTF 2.0 (0 errors, 0 warnings)
+  ✅ the validator saw real geometry, not a vacuously clean empty GLB
+  ✅ exportGlbFromMeshes output is spec-conformant glTF 2.0 (0 errors, 0 warnings)
+
+📋 schema-local keyword labelling (Rust → JS, #4203)
+  ✅ a schema-local keyword crosses as its exact type, not "Unknown" (#4203)
+
+📋 geometryClass ordinals (Rust → TS contract)
+[ifc-lite layers] 80 sliceable buildup(s) of 99 association(s)
+[IFC-LITE] Opening classifier: rect=48 diag=0 non_rect=2 (total=50)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 29 hosts with openings.
+  IfcFurnishingElement: hosts=10 openings=10 (rect=8 diag=0 non_rect=2)
+  IfcSlab: hosts=1 openings=4 (rect=4 diag=0 non_rect=0)
+  IfcWallStandardCase: hosts=18 openings=36 (rect=36 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=14 (cut 18 openings) | deferred: host_not_box=8 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 50, 29 NOT sliced — #6132=skip:not-single-unshifted-item, #6247=skip:not-single-unshifted-item, #20792=skip:not-single-unshifted-item, #20903=skip:not-single-unshifted-item, #20958=skip:not-single-unshifted-item, #21013=skip:not-single-unshifted-item, #21080=skip:not-single-unshifted-item, #21147=skip:not-single-unshifted-item, #21195=skip:not-single-unshifted-item, #21336=skip:not-single-unshifted-item, #21401=skip:not-single-unshifted-item, #21449=skip:not-single-unshifted-item, #21497=skip:not-single-unshifted-item, #21545=skip:not-single-unshifted-item, #21610=skip:not-single-unshifted-item, #21658=skip:not-single-unshifted-item, #23671=skip:cut-produced-<2, #23768=skip:cut-produced-<2, #23826=skip:cut-produced-<2, #23884=skip:cut-produced-<2, #23992=skip:cut-produced-<2, #24060=skip:cut-produced-<2, #24128=skip:cut-produced-<2, #24186=skip:cut-produced-<2, #24268=skip:cut-produced-<2, #24326=skip:cut-produced-<2, #24408=skip:cut-produced-<2, #24476=skip:cut-produced-<2, #24544=skip:cut-produced-<2
+  ✅ a layered wall emits GEOM_CLASS_LAYER_SLICE === 3
+
+📋 source ids: representation item vs material layer (#3199)
+[ifc-lite layers] 80 sliceable buildup(s) of 99 association(s)
+[IFC-LITE] Opening classifier: rect=48 diag=0 non_rect=2 (total=50)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 29 hosts with openings.
+  IfcFurnishingElement: hosts=10 openings=10 (rect=8 diag=0 non_rect=2)
+  IfcSlab: hosts=1 openings=4 (rect=4 diag=0 non_rect=0)
+  IfcWallStandardCase: hosts=18 openings=36 (rect=36 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=14 (cut 18 openings) | deferred: host_not_box=8 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 50, 29 NOT sliced — #6132=skip:not-single-unshifted-item, #6247=skip:not-single-unshifted-item, #20792=skip:not-single-unshifted-item, #20903=skip:not-single-unshifted-item, #20958=skip:not-single-unshifted-item, #21013=skip:not-single-unshifted-item, #21080=skip:not-single-unshifted-item, #21147=skip:not-single-unshifted-item, #21195=skip:not-single-unshifted-item, #21336=skip:not-single-unshifted-item, #21401=skip:not-single-unshifted-item, #21449=skip:not-single-unshifted-item, #21497=skip:not-single-unshifted-item, #21545=skip:not-single-unshifted-item, #21610=skip:not-single-unshifted-item, #21658=skip:not-single-unshifted-item, #23671=skip:cut-produced-<2, #23768=skip:cut-produced-<2, #23826=skip:cut-produced-<2, #23884=skip:cut-produced-<2, #23992=skip:cut-produced-<2, #24060=skip:cut-produced-<2, #24128=skip:cut-produced-<2, #24186=skip:cut-produced-<2, #24268=skip:cut-produced-<2, #24326=skip:cut-produced-<2, #24408=skip:cut-produced-<2, #24476=skip:cut-produced-<2, #24544=skip:cut-produced-<2
+  ✅ every mesh carries exactly one source id, never both and never neither
+  ✅ a two-item element carries a distinct geometryItemId per piece, and no material id
+  ✅ a material-layered wall reports materialId, and geometryItemId undefined
+  ✅ geometryClass 3 does NOT imply a material id: a bailed slice keeps its item id
+[ifc-lite layers] 80 sliceable buildup(s) of 99 association(s)
+[IFC-LITE] Opening classifier: rect=48 diag=0 non_rect=2 (total=50)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 29 hosts with openings.
+  IfcFurnishingElement: hosts=10 openings=10 (rect=8 diag=0 non_rect=2)
+  IfcSlab: hosts=1 openings=4 (rect=4 diag=0 non_rect=0)
+  IfcWallStandardCase: hosts=18 openings=36 (rect=36 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=14 (cut 18 openings) | deferred: host_not_box=8 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 50, 29 NOT sliced — #6132=skip:not-single-unshifted-item, #6247=skip:not-single-unshifted-item, #20792=skip:not-single-unshifted-item, #20903=skip:not-single-unshifted-item, #20958=skip:not-single-unshifted-item, #21013=skip:not-single-unshifted-item, #21080=skip:not-single-unshifted-item, #21147=skip:not-single-unshifted-item, #21195=skip:not-single-unshifted-item, #21336=skip:not-single-unshifted-item, #21401=skip:not-single-unshifted-item, #21449=skip:not-single-unshifted-item, #21497=skip:not-single-unshifted-item, #21545=skip:not-single-unshifted-item, #21610=skip:not-single-unshifted-item, #21658=skip:not-single-unshifted-item, #23671=skip:cut-produced-<2, #23768=skip:cut-produced-<2, #23826=skip:cut-produced-<2, #23884=skip:cut-produced-<2, #23992=skip:cut-produced-<2, #24060=skip:cut-produced-<2, #24128=skip:cut-produced-<2, #24186=skip:cut-produced-<2, #24268=skip:cut-produced-<2, #24326=skip:cut-produced-<2, #24408=skip:cut-produced-<2, #24476=skip:cut-produced-<2, #24544=skip:cut-produced-<2
+  ✅ an air-gap layer reports NO material, not IfcMaterial #0
+[ifc-lite layers] 80 sliceable buildup(s) of 99 association(s)
+[IFC-LITE] Opening classifier: rect=48 diag=0 non_rect=2 (total=50)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 29 hosts with openings.
+  IfcFurnishingElement: hosts=10 openings=10 (rect=8 diag=0 non_rect=2)
+  IfcSlab: hosts=1 openings=4 (rect=4 diag=0 non_rect=0)
+  IfcWallStandardCase: hosts=18 openings=36 (rect=36 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=14 (cut 18 openings) | deferred: host_not_box=8 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 50, 29 NOT sliced — #6132=skip:not-single-unshifted-item, #6247=skip:not-single-unshifted-item, #20792=skip:not-single-unshifted-item, #20903=skip:not-single-unshifted-item, #20958=skip:not-single-unshifted-item, #21013=skip:not-single-unshifted-item, #21080=skip:not-single-unshifted-item, #21147=skip:not-single-unshifted-item, #21195=skip:not-single-unshifted-item, #21336=skip:not-single-unshifted-item, #21401=skip:not-single-unshifted-item, #21449=skip:not-single-unshifted-item, #21497=skip:not-single-unshifted-item, #21545=skip:not-single-unshifted-item, #21610=skip:not-single-unshifted-item, #21658=skip:not-single-unshifted-item, #23671=skip:cut-produced-<2, #23768=skip:cut-produced-<2, #23826=skip:cut-produced-<2, #23884=skip:cut-produced-<2, #23992=skip:cut-produced-<2, #24060=skip:cut-produced-<2, #24128=skip:cut-produced-<2, #24186=skip:cut-produced-<2, #24268=skip:cut-produced-<2, #24326=skip:cut-produced-<2, #24408=skip:cut-produced-<2, #24476=skip:cut-produced-<2, #24544=skip:cut-produced-<2
+  ✅ the prepass FACADE carries both ids, not just the raw collection
+[ifc-lite layers] 80 sliceable buildup(s) of 99 association(s)
+[IFC-LITE] Opening classifier: rect=48 diag=0 non_rect=2 (total=50)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 29 hosts with openings.
+  IfcFurnishingElement: hosts=10 openings=10 (rect=8 diag=0 non_rect=2)
+  IfcSlab: hosts=1 openings=4 (rect=4 diag=0 non_rect=0)
+  IfcWallStandardCase: hosts=18 openings=36 (rect=36 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=14 (cut 18 openings) | deferred: host_not_box=8 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 50, 29 NOT sliced — #6132=skip:not-single-unshifted-item, #6247=skip:not-single-unshifted-item, #20792=skip:not-single-unshifted-item, #20903=skip:not-single-unshifted-item, #20958=skip:not-single-unshifted-item, #21013=skip:not-single-unshifted-item, #21080=skip:not-single-unshifted-item, #21147=skip:not-single-unshifted-item, #21195=skip:not-single-unshifted-item, #21336=skip:not-single-unshifted-item, #21401=skip:not-single-unshifted-item, #21449=skip:not-single-unshifted-item, #21497=skip:not-single-unshifted-item, #21545=skip:not-single-unshifted-item, #21610=skip:not-single-unshifted-item, #21658=skip:not-single-unshifted-item, #23671=skip:cut-produced-<2, #23768=skip:cut-produced-<2, #23826=skip:cut-produced-<2, #23884=skip:cut-produced-<2, #23992=skip:cut-produced-<2, #24060=skip:cut-produced-<2, #24128=skip:cut-produced-<2, #24186=skip:cut-produced-<2, #24268=skip:cut-produced-<2, #24326=skip:cut-produced-<2, #24408=skip:cut-produced-<2, #24476=skip:cut-produced-<2, #24544=skip:cut-produced-<2
+  ✅ takeMesh reports the same ids as get, and stays read-once
+
+📋 energy model (exportHbjson / exportDfjson)
+  ✅ exportDfjson returns a Dragonfly Model JSON string across the real boundary
+  ✅ exportHbjson returns Honeybee JSON bytes across the real boundary
+  ✅ exportUsd returns a real Z-up USDA stage (/World, meshes, IFC metadata) with no non-finite coords
+  ✅ exportUsd is deterministic (byte-identical across two calls on the same input)
+  ✅ exportIfcx stamps the agreed header.ifcxVersion (pins Rust to the TS constant)
+  ✅ getPipelineDiagnostics: undefined before load, accumulates across batches, versioned, persists post-load, resets on the next load
+  ✅ setEntityIndex resets pipeline diagnostics like a fresh load, and installs a working entity-index cache
+
+📋 geometry-diff hashes + world AABB
+  ✅ geometryAabbValues is a Float64Array of exactly 6 values per hashed id
+  ✅ geometryAabbValues is in the viewer frame and encloses its own meshes
+  ✅ geometryVolumeValues is a Float64Array of exactly one value per hashed id
+  ✅ a volume is present exactly where geometryClosureFlags says 0x0F
+  ✅ a proved volume never exceeds the volume of its own world box
+  ✅ geometryVolumeValues is empty when setComputeGeometryHashes is off
+  ✅ geometryAabbValues is empty when setComputeGeometryHashes is off
+
+📋 2D boolean contour sets
+  ✅ Contours2D rejects coords that disagree with ringLengths
+  ✅ the constructor drops degenerate rings so accessors stay consistent
+  ✅ coords/ringLengths round-trip the constructor across the boundary
+  ✅ difference2d keeps every disjoint island
+  ✅ difference2d punches a hole and reports the holed shape as one region
+  ✅ intersection2d clips to the shared region
+  ✅ an empty operand has a defined answer, not a crash
+  ✅ Contours2D.fromMeshOutline feeds a real meshOutline2d result into a boolean
+  ✅ operations return new handles and leave their operands usable
+  ✅ splitMeshByZones cuts a wall at a known fraction and the pieces add up
+  ✅ splitMeshByZones keeps an element no zone reaches, as the remainder
+  ✅ splitMeshByZones cuts by a prism footprint, not by its bounding box
+
+📋 prepass class column (wasm <-> host)
+  ✅ scanEntityIndexShard delivers a Uint8Array class column aligned to the ids
+  ✅ every named prepass class reaches the host on the right record
+  ✅ a FLAG bit survives the wasm->host hop as an unsigned byte
+  ✅ no host-consumed code arrives flagged yet (the #2088 trigger)
+  ✅ the #1910 representation exception never flags a NAMED code
+  ✅ the real host span extractor reads the real class column
+  ✅ a flagged class column still lands in the right host span list
+  ✅ a flagged class column crosses back into wasm without changing discovery
+
+📋 #3395 refusal count (wasm <-> host)
+  ✅ scanEntityIndexShard hands back refusal OFFSETS, not a count
+  ✅ a file declaring nothing oversized yields no offsets from a shard at 0
+  ✅ a shard starting inside a quoted value refuses text the file never declared
+[ifc-lite] scan: skipped 1 record(s) with an express id above 4294967295 (#3395)
+  ✅ the serial pre-pass entity-index event carries oversizedIdCount
+
+📋 #5409 class-toggled classes stay off the instanced shard
+  ✅ every class the viewer toggles as a class renders flat, carrying its ifcType
+
+📋 EDGE-WASM-5 multi-colour mapped sources keep their palette on the don't-bake path
+  ✅ control: a uniform-palette repeated source instances (the fixture reaches don't-bake)
+  ✅ every occurrence of a multi-colour repeated source renders flat with both palette colours
+
+📋 Re-mesh from entity subgraph (#6232)
+[ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)
+[IFC-LITE] Opening classifier: rect=1 diag=0 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+[ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)
+[IFC-LITE] Opening classifier: rect=1 diag=0 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+  ✅ re-meshing each element from its subgraph matches the load: buildingsmart/wall-with-opening-and-window.ifc
+  ✅ re-meshing each element from its subgraph matches the load: buildingsmart/Building-Architecture.ifc
+[ifc-lite layers] 80 sliceable buildup(s) of 99 association(s)
+[IFC-LITE] Opening classifier: rect=48 diag=0 non_rect=2 (total=50)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 29 hosts with openings.
+  IfcFurnishingElement: hosts=10 openings=10 (rect=8 diag=0 non_rect=2)
+  IfcSlab: hosts=1 openings=4 (rect=4 diag=0 non_rect=0)
+  IfcWallStandardCase: hosts=18 openings=36 (rect=36 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=14 (cut 18 openings) | deferred: host_not_box=8 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 50, 29 NOT sliced — #6132=skip:not-single-unshifted-item, #6247=skip:not-single-unshifted-item, #20792=skip:not-single-unshifted-item, #20903=skip:not-single-unshifted-item, #20958=skip:not-single-unshifted-item, #21013=skip:not-single-unshifted-item, #21080=skip:not-single-unshifted-item, #21147=skip:not-single-unshifted-item, #21195=skip:not-single-unshifted-item, #21336=skip:not-single-unshifted-item, #21401=skip:not-single-unshifted-item, #21449=skip:not-single-unshifted-item, #21497=skip:not-single-unshifted-item, #21545=skip:not-single-unshifted-item, #21610=skip:not-single-unshifted-item, #21658=skip:not-single-unshifted-item, #23671=skip:cut-produced-<2, #23768=skip:cut-produced-<2, #23826=skip:cut-produced-<2, #23884=skip:cut-produced-<2, #23992=skip:cut-produced-<2, #24060=skip:cut-produced-<2, #24128=skip:cut-produced-<2, #24186=skip:cut-produced-<2, #24268=skip:cut-produced-<2, #24326=skip:cut-produced-<2, #24408=skip:cut-produced-<2, #24476=skip:cut-produced-<2, #24544=skip:cut-produced-<2
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=1 (cut 2 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=1 (cut 2 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=1 (cut 2 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=1 (cut 2 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[IFC-LITE] Opening classifier: rect=1 diag=0 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=1 (cut 1 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[IFC-LITE] Opening classifier: rect=1 diag=0 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=1 (cut 1 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)
+[ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)
+[ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)
+[ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)
+[ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)
+[ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)
+[ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[IFC-LITE] Opening classifier: rect=4 diag=0 non_rect=0 (total=4)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=4 (rect=4 diag=0 non_rect=0)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[IFC-LITE] Opening classifier: rect=5 diag=0 non_rect=0 (total=5)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=5 (rect=5 diag=0 non_rect=0)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[IFC-LITE] Opening classifier: rect=4 diag=0 non_rect=0 (total=4)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=4 (rect=4 diag=0 non_rect=0)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[IFC-LITE] Opening classifier: rect=5 diag=0 non_rect=0 (total=5)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=5 (rect=5 diag=0 non_rect=0)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[IFC-LITE] Opening classifier: rect=1 diag=0 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=1 (cut 1 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[IFC-LITE] Opening classifier: rect=1 diag=0 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=1 (cut 1 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[IFC-LITE] Opening classifier: rect=1 diag=0 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=1 (cut 1 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[IFC-LITE] Opening classifier: rect=1 diag=0 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=1 (cut 1 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[IFC-LITE] Opening classifier: rect=1 diag=0 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=1 (cut 1 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[IFC-LITE] Opening classifier: rect=1 diag=0 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=1 (cut 1 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[IFC-LITE] Opening classifier: rect=1 diag=0 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=1 (cut 1 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[IFC-LITE] Opening classifier: rect=1 diag=0 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=1 (cut 1 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+[ifc-lite layers] 1 sliceable buildup(s) of 1 association(s)
+[ifc-lite layers] batch: sliced 1 wall(s) into layers
+  ✅ re-meshing each element from its subgraph matches the load: ara3d/duplex.ifc
+[IFC-LITE] CSG diagnostics: 138 openings classified, 3 failures, 91 hosts tracked
+[IFC-LITE] Opening classifier: rect=0 diag=126 non_rect=12 (total=138)
+[IFC-LITE] CSG fallbacks: 3 failures across 3 products. Breakdown: [("NoBoundsOverlap", 2), ("KernelError", 1)].
+By host type:
+  IfcCovering: hosts=32 openings=51 (rect=0 diag=45 non_rect=6)
+  IfcWall: hosts=59 openings=87 (rect=0 diag=81 non_rect=6)
+Worst-failing hosts (top 10):
+  #38680 IfcWall — 1 openings [Diagonal], 1 CSG failure(s) (KernelError)
+  #11477 IfcCovering — 2 openings [NonRectangular,Diagonal], 1 CSG failure(s) (NoBoundsOverlap)
+  #7700 IfcWall — 1 openings [Diagonal], 1 CSG failure(s) (NoBoundsOverlap)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=101 not_through=0 off_face=23 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=3 non_rect=0 (total=3)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=3 (rect=0 diag=3 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=3 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=3 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=0 not_through=0 off_face=1 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=3 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=5 non_rect=0 (total=5)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=5 (rect=0 diag=5 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=3 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=3 non_rect=0 (total=3)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=3 (rect=0 diag=3 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=1 not_through=0 off_face=2 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=3 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] Opening classifier: rect=0 diag=2 non_rect=0 (total=2)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=2 (rect=0 diag=2 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=3 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=1 not_through=0 off_face=2 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=3 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=2 non_rect=0 (total=2)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=2 (rect=0 diag=2 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=1 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=2 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=1 not_through=0 off_face=2 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=3 non_rect=0 (total=3)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=3 (rect=0 diag=3 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=2 not_through=0 off_face=1 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=1 not_through=0 off_face=2 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=3 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] CSG diagnostics: 1 openings classified, 1 failures, 1 hosts tracked
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] CSG fallbacks: 1 failures across 1 products. Breakdown: [("NoBoundsOverlap", 1)].
+By host type:
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+Worst-failing hosts (top 10):
+  #7700 IfcWall — 1 openings [Diagonal], 1 CSG failure(s) (NoBoundsOverlap)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=0 not_through=0 off_face=2 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=2 non_rect=0 (total=2)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=2 (rect=0 diag=2 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=2 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=1 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=2 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=3 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=3 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=3 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=3 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=1 not_through=0 off_face=2 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] Opening classifier: rect=0 diag=0 non_rect=3 (total=3)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=3 (rect=0 diag=0 non_rect=3)
+[IFC-LITE] Opening classifier: rect=0 diag=2 non_rect=0 (total=2)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=2 (rect=0 diag=2 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=2 not_through=0 off_face=1 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=3 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=3 non_rect=0 (total=3)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=3 (rect=0 diag=3 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=2 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=3 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=3 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=3 non_rect=0 (total=3)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=3 (rect=0 diag=3 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=3 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] Opening classifier: rect=0 diag=2 non_rect=0 (total=2)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=2 (rect=0 diag=2 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=6 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=3 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=0 non_rect=3 (total=3)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=3 (rect=0 diag=0 non_rect=3)
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] Opening classifier: rect=0 diag=3 non_rect=0 (total=3)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=3 (rect=0 diag=3 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=1 not_through=0 off_face=2 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=2 non_rect=0 (total=2)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=2 (rect=0 diag=2 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=1 not_through=0 off_face=2 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] Opening classifier: rect=0 diag=2 non_rect=0 (total=2)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=2 (rect=0 diag=2 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=1 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=2 not_through=0 off_face=1 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=0 not_through=0 off_face=2 near_edge=0
+[IFC-LITE] CSG diagnostics: 1 openings classified, 1 failures, 1 hosts tracked
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] CSG fallbacks: 1 failures across 1 products. Breakdown: [("KernelError", 1)].
+By host type:
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+Worst-failing hosts (top 10):
+  #38680 IfcWall — 1 openings [Diagonal], 1 CSG failure(s) (KernelError)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=3 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=0 diag=1 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=0 diag=1 non_rect=0)
+[IFC-LITE] Opening classifier: rect=0 diag=2 non_rect=0 (total=2)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=2 (rect=0 diag=2 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=3 not_through=0 off_face=0 near_edge=0
+  ✅ re-meshing each element from its subgraph matches the load: various/rvt01.ifc
+[SpatialHierarchyBuilder] No storeys found in spatial hierarchy
+  ✅ re-meshing each element from its subgraph matches the load: ifc5/Georeferencing_georeferenced-bridge-deck.ifc
+  ✅ re-meshing each element from its subgraph matches the load: ifc5/Georeferencing_georeferenced-bridge-deck.ifc (forced RTC shift)
+[ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)
+[IFC-LITE] Opening classifier: rect=1 diag=0 non_rect=0 (total=1)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+  ✅ re-mesh with no target job meshes nothing and releases the pre-pass cache
+
+══════════════════════════════════════════════════
+📊 Results: 212 passed, 0 failed, 1 skipped
+══════════════════════════════════════════════════

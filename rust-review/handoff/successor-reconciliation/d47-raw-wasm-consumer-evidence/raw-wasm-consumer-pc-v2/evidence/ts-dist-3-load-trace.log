@@ -1,0 +1,19 @@
+
+> ifc-lite@10.4.0 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source
+> turbo build --filter\=\@ifc-lite/load-trace --only --concurrency\=1 --env-mode\=loose --cache-dir\=/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/turbo-cache
+
+
+   • Packages in scope: @ifc-lite/load-trace
+   • Running build in 1 package
+   • Remote caching disabled
+
+@ifc-lite/load-trace:build: cache miss, executing 4e52656acce078d9
+@ifc-lite/load-trace:build: 
+@ifc-lite/load-trace:build: > @ifc-lite/load-trace@0.3.0 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/packages/load-trace
+@ifc-lite/load-trace:build: > pnpm exec tsc
+@ifc-lite/load-trace:build: 
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    36.865s 
+

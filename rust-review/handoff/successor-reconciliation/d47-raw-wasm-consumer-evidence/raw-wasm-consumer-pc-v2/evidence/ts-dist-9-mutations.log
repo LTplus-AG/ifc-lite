@@ -1,0 +1,19 @@
+
+> ifc-lite@10.4.0 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source
+> turbo build --filter\=\@ifc-lite/mutations --only --concurrency\=1 --env-mode\=loose --cache-dir\=/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/turbo-cache
+
+
+   • Packages in scope: @ifc-lite/mutations
+   • Running build in 1 package
+   • Remote caching disabled
+
+@ifc-lite/mutations:build: cache miss, executing 34343b03e17af5a7
+@ifc-lite/mutations:build: 
+@ifc-lite/mutations:build: > @ifc-lite/mutations@3.2.0 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/packages/mutations
+@ifc-lite/mutations:build: > pnpm exec tsc
+@ifc-lite/mutations:build: 
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    38.217s 
+

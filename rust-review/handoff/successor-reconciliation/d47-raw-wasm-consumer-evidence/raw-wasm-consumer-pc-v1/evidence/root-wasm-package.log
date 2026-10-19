@@ -1,0 +1,77 @@
+
+> ifc-lite@10.4.0 test /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source
+> turbo test --filter\=\@ifc-lite/wasm --only --concurrency\=1 --env-mode\=loose --cache-dir\=/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/turbo-cache
+
+
+Attention:
+Turborepo now collects completely anonymous telemetry regarding usage.
+This information is used to shape the Turborepo roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://turborepo.dev/docs/telemetry
+
+
+   • Packages in scope: @ifc-lite/wasm
+   • Running test in 1 package
+   • Remote caching disabled
+
+@ifc-lite/wasm:test: cache bypass, force executing c98c9537b182ce0e
+@ifc-lite/wasm:test: 
+@ifc-lite/wasm:test: > @ifc-lite/wasm@10.4.0 test /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/packages/wasm
+@ifc-lite/wasm:test: > node --test test/*.test.mjs
+@ifc-lite/wasm:test: 
+@ifc-lite/wasm:test: ✔ retained WASM axis uses horizontal SI distance, exact EXPRESS metadata and f64 grade (#6603) (181.201592ms)
+@ifc-lite/wasm:test: ✔ real OIP circular alignment WASM sample matches independent analytic oracle (#6603) (146.042487ms)
+@ifc-lite/wasm:test: using deprecated parameters for `initSync()`; pass a single object instead
+@ifc-lite/wasm:test: ✔ issue #5784 exposes one exact mapped extrusion source with two placed instances (275.53557ms)
+@ifc-lite/wasm:test: using deprecated parameters for `initSync()`; pass a single object instead
+@ifc-lite/wasm:test: ▶ @ifc-lite/wasm constrained LandXML terrain (#5043)
+@ifc-lite/wasm:test:   ✔ returns generated faces and stable contributor provenance through the real binding (183.085336ms)
+@ifc-lite/wasm:test:   ✔ covers #5043 constrained topology acceptance through the real binding (127.679898ms)
+@ifc-lite/wasm:test:   ✔ refuses a crossing breakline through the real binding (92.156551ms)
+@ifc-lite/wasm:test:   ✔ refuses a boundary vertex touching a nonadjacent boundary edge through the real binding (65.974976ms)
+@ifc-lite/wasm:test:   ✔ keeps legal boundary breakline junctions and near-collinear elevations renderable (50.327132ms)
+@ifc-lite/wasm:test:   ✔ keeps SourceData-generated face references resolvable through the real binding (50.786506ms)
+@ifc-lite/wasm:test: ✔ @ifc-lite/wasm constrained LandXML terrain (#5043) (571.244338ms)
+@ifc-lite/wasm:test: ▶ @ifc-lite/wasm packaging
+@ifc-lite/wasm:test:   ✔ packs the core wasm files into the published tarball (1192.008692ms)
+@ifc-lite/wasm:test: ✔ @ifc-lite/wasm packaging (1192.580649ms)
+@ifc-lite/wasm:test: using deprecated parameters for `initSync()`; pass a single object instead
+@ifc-lite/wasm:test: ▶ @ifc-lite/wasm IfcIndexedColourMap per-triangle split (#858)
+@ifc-lite/wasm:test:   ✔ splits a face set into one sub-mesh per palette group on the processGeometryBatch path (238.200442ms)
+@ifc-lite/wasm:test: ✔ @ifc-lite/wasm IfcIndexedColourMap per-triangle split (#858) (239.022437ms)
+@ifc-lite/wasm:test: using deprecated parameters for `initSync()`; pass a single object instead
+@ifc-lite/wasm:test: ▶ @ifc-lite/wasm setTessellationQuality (#976)
+@ifc-lite/wasm:test:   ✔ unset quality is byte-for-byte identical to explicit medium (223.899617ms)
+@ifc-lite/wasm:test:   ✔ curved-pipe triangle counts rise monotonically across levels (111.620321ms)
+@ifc-lite/wasm:test:   ✔ rejects unknown levels and resets to default on null (89.306529ms)
+@ifc-lite/wasm:test: ✔ @ifc-lite/wasm setTessellationQuality (#976) (426.12691ms)
+@ifc-lite/wasm:test: using deprecated parameters for `initSync()`; pass a single object instead
+@ifc-lite/wasm:test: ▶ @ifc-lite/wasm surface textures on the viewer path (#961)
+@ifc-lite/wasm:test:   ✔ decodes + attaches a texture for tessellation-with-blob-texture.ifc (205.971982ms)
+@ifc-lite/wasm:test:   ✔ decodes + attaches a texture for tessellation-with-pixel-texture.ifc (152.17124ms)
+@ifc-lite/wasm:test: ✔ @ifc-lite/wasm surface textures on the viewer path (#961) (359.38892ms)
+@ifc-lite/wasm:test: ▶ @ifc-lite/wasm external image texture refs (#1781)
+@ifc-lite/wasm:test:   ✔ carries textureId + textureUrl + UVs for an occurrence face set (85.535975ms)
+@ifc-lite/wasm:test: ✔ @ifc-lite/wasm external image texture refs (#1781) (85.708908ms)
+@ifc-lite/wasm:test: using deprecated parameters for `initSync()`; pass a single object instead
+@ifc-lite/wasm:test: ▶ @ifc-lite/wasm type-only IfcRepresentationMap geometry (#957)
+@ifc-lite/wasm:test:   ✔ renders type-only geometry for tessellation-with-blob-texture.ifc on the processGeometryBatch path (239.979338ms)
+@ifc-lite/wasm:test:   ✔ renders type-only geometry for tessellation-with-image-texture.ifc on the processGeometryBatch path (126.354388ms)
+@ifc-lite/wasm:test:   ✔ renders type-only geometry for tessellation-with-pixel-texture.ifc on the processGeometryBatch path (105.478024ms)
+@ifc-lite/wasm:test: ✔ @ifc-lite/wasm type-only IfcRepresentationMap geometry (#957) (472.913938ms)
+@ifc-lite/wasm:test: ▶ @ifc-lite/wasm instanced-type geometry is tagged for the Model/Types switch (#957 follow-up)
+@ifc-lite/wasm:test:   ✔ emits the instanced type as geometryClass=2 and the occurrence as class 0 (50.361774ms)
+@ifc-lite/wasm:test: ✔ @ifc-lite/wasm instanced-type geometry is tagged for the Model/Types switch (#957 follow-up) (50.499635ms)
+@ifc-lite/wasm:test: ℹ tests 21
+@ifc-lite/wasm:test: ℹ suites 8
+@ifc-lite/wasm:test: ℹ pass 21
+@ifc-lite/wasm:test: ℹ fail 0
+@ifc-lite/wasm:test: ℹ cancelled 0
+@ifc-lite/wasm:test: ℹ skipped 0
+@ifc-lite/wasm:test: ℹ todo 0
+@ifc-lite/wasm:test: ℹ duration_ms 1278.35685
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    37.412s 
+

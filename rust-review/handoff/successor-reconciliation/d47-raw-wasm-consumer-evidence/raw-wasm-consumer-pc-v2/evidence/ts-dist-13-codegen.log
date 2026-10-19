@@ -1,0 +1,19 @@
+
+> ifc-lite@10.4.0 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source
+> turbo build --filter\=\@ifc-lite/codegen --only --concurrency\=1 --env-mode\=loose --cache-dir\=/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/turbo-cache
+
+
+   • Packages in scope: @ifc-lite/codegen
+   • Running build in 1 package
+   • Remote caching disabled
+
+@ifc-lite/codegen:build: cache miss, executing b67bfc46954a21ef
+@ifc-lite/codegen:build: 
+@ifc-lite/codegen:build: > @ifc-lite/codegen@1.18.1 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/packages/codegen
+@ifc-lite/codegen:build: > pnpm exec tsc && pnpm exec tsc -p tsconfig.generated.json
+@ifc-lite/codegen:build: 
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    45.377s 
+

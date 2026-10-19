@@ -1,0 +1,19 @@
+
+> ifc-lite@10.4.0 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source
+> turbo build --filter\=\@ifc-lite/renderer --only --concurrency\=1 --env-mode\=loose --cache-dir\=/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/turbo-cache
+
+
+   • Packages in scope: @ifc-lite/renderer
+   • Running build in 1 package
+   • Remote caching disabled
+
+@ifc-lite/renderer:build: cache miss, executing 9a911fb69330355f
+@ifc-lite/renderer:build: 
+@ifc-lite/renderer:build: > @ifc-lite/renderer@6.4.0 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/packages/renderer
+@ifc-lite/renderer:build: > pnpm exec tsc
+@ifc-lite/renderer:build: 
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    42.89s 
+

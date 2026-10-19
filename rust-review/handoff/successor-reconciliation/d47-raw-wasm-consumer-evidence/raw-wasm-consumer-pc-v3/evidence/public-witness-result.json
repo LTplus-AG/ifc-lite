@@ -1,0 +1,7 @@
+{
+  "state": "PASS",
+  "budgetCases": 13,
+  "allSevenClasses": true,
+  "wasmSha256": "972b6ccb86c440eb125bbbdcd934940916ebc50b2f7ad777627dd7cfff9f6561",
+  "scope": "own/default export options; no wasm inheritance/SingleValueOnly API exists"
+}

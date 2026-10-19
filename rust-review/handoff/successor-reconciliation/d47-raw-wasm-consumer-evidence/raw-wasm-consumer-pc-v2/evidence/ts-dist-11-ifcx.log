@@ -1,0 +1,19 @@
+
+> ifc-lite@10.4.0 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source
+> turbo build --filter\=\@ifc-lite/ifcx --only --concurrency\=1 --env-mode\=loose --cache-dir\=/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/turbo-cache
+
+
+   • Packages in scope: @ifc-lite/ifcx
+   • Running build in 1 package
+   • Remote caching disabled
+
+@ifc-lite/ifcx:build: cache miss, executing df515d6d2bfa3b5b
+@ifc-lite/ifcx:build: 
+@ifc-lite/ifcx:build: > @ifc-lite/ifcx@4.4.0 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/packages/ifcx
+@ifc-lite/ifcx:build: > pnpm exec tsc && node ./scripts/verify-dist-hello-wall.mjs
+@ifc-lite/ifcx:build: 
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    40.676s 
+

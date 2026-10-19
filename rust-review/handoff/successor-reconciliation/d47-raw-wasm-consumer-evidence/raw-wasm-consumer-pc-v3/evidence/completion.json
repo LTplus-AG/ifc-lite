@@ -1,0 +1,23 @@
+{
+  "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+  "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+  "parent": "02b8e1981158559fd4ec9b385d2d80729079a633",
+  "fixtures182BeforeAfterEqual": true,
+  "officialBuild": true,
+  "committedDtsEqual": true,
+  "publicWitness": {
+    "state": "PASS",
+    "budgetCases": 13,
+    "allSevenClasses": true,
+    "wasmSha256": "972b6ccb86c440eb125bbbdcd934940916ebc50b2f7ad777627dd7cfff9f6561",
+    "scope": "own/default export options; no wasm inheritance/SingleValueOnly API exists"
+  },
+  "allGeneratedUnchangedAfterTests": true,
+  "nativePythonGatesRepeated": false,
+  "perfPublication": "UNRUN/no claim",
+  "limits": [
+    "canonical prepass before first callback",
+    "persistent membership memory; not RSS neutral",
+    "no full adversarial or current-main final integration claim"
+  ]
+}

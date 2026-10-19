@@ -1,0 +1,19 @@
+
+> ifc-lite@10.4.0 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source
+> turbo build --filter\=\@ifc-lite/wasm-lifecycle --only --concurrency\=1 --env-mode\=loose --cache-dir\=/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/turbo-cache
+
+
+   • Packages in scope: @ifc-lite/wasm-lifecycle
+   • Running build in 1 package
+   • Remote caching disabled
+
+@ifc-lite/wasm-lifecycle:build: cache miss, executing 17e863abc8959db2
+@ifc-lite/wasm-lifecycle:build: 
+@ifc-lite/wasm-lifecycle:build: > @ifc-lite/wasm-lifecycle@0.2.0 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/packages/wasm-lifecycle
+@ifc-lite/wasm-lifecycle:build: > pnpm exec tsc
+@ifc-lite/wasm-lifecycle:build: 
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    36.982s 
+

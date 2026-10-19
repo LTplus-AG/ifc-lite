@@ -1,0 +1,19 @@
+
+> ifc-lite@10.4.0 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source
+> turbo build --filter\=\@ifc-lite/spatial --only --concurrency\=1 --env-mode\=loose --cache-dir\=/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/turbo-cache
+
+
+   • Packages in scope: @ifc-lite/spatial
+   • Running build in 1 package
+   • Remote caching disabled
+
+@ifc-lite/spatial:build: cache miss, executing 27213aea6a127cf6
+@ifc-lite/spatial:build: 
+@ifc-lite/spatial:build: > @ifc-lite/spatial@1.15.0 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/packages/spatial
+@ifc-lite/spatial:build: > pnpm exec tsc
+@ifc-lite/spatial:build: 
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    37.115s 
+

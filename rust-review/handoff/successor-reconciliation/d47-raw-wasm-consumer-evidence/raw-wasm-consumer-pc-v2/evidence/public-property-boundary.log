@@ -1,0 +1,23 @@
+using deprecated parameters for `initSync()`; pass a single object instead
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+522092 !== 522196
+
+    at pinValue (file:///home/louistrue/build-workers/incoming/d47-raw-wasm-consumer-v2/wasm-public-budget.mjs:36:17)
+    at file:///home/louistrue/build-workers/incoming/d47-raw-wasm-consumer-v2/wasm-public-budget.mjs:54:42
+    at Array.forEach (<anonymous>)
+    at check (file:///home/louistrue/build-workers/incoming/d47-raw-wasm-consumer-v2/wasm-public-budget.mjs:54:24)
+    at file:///home/louistrue/build-workers/incoming/d47-raw-wasm-consumer-v2/wasm-public-budget.mjs:87:5 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: 522092,
+  expected: 522196,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.21.0

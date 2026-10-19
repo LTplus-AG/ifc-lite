@@ -1,0 +1,84 @@
+{
+  "status": "PRIVATE EXACT RAW SOURCE PIN; NATIVE RUNTIME PENDING",
+  "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+  "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+  "parent": "02b8e1981158559fd4ec9b385d2d80729079a633",
+  "privateRef": "refs/heads/private/d47-raw-public02",
+  "files": {
+    "docs/api/python.md": {
+      "blob": "c1b9c2ed167aaa6326550322a4c3b185bbdb91b9",
+      "bytes": 35277,
+      "sha256": "ab0a2f1211c6d93cc3db90ae7f75402517a0504e2ed9cb1d94c8589d749040e0"
+    },
+    "docs/guide/exporting.md": {
+      "blob": "e6ec1a030610eab08397a6d6f7ea4b2aad359d2a",
+      "bytes": 65576,
+      "sha256": "917259ce6424df3a302c486541133d37f508939aa075c7a2cf38fc19fe501945"
+    },
+    "rust/export/tests/fixtures/shared_set_order_7895.json": {
+      "blob": "9737e7f77d147b27933fe9a97535b8f0051310d6",
+      "bytes": 3538,
+      "sha256": "1097e46fd2c70028faf10fc1bd9169a51d01c1f1d7abb5ea949910035d2539f8"
+    },
+    "rust/export/tests/issue_7895_shared_set_budget.rs": {
+      "blob": "f8ffa005bfb2a17def4dbe1ab6e66deb6f6a2d06",
+      "bytes": 20521,
+      "sha256": "692962a5f55111f104be4418c3a9a6853329f257038d3b2d01b481653533589d"
+    },
+    "rust/processing/src/data_model/mod.rs": {
+      "blob": "91f78d326b1aed0cf68349b8640d3d16bd24243a",
+      "bytes": 8630,
+      "sha256": "6380e99c7e7ea86f4298ca35feed8bd8a60731767c9ca073f7e6d79df425afd4"
+    },
+    "rust/processing/src/data_model/properties.rs": {
+      "blob": "e23af1bfb5bdc0298062aee4a2a9bac10c79fc51",
+      "bytes": 15122,
+      "sha256": "16deaf33926133cfcbce27e271b3fdba612457ed2f164dcd14d4c310cac6b225"
+    },
+    "rust/processing/src/data_model/property.rs": {
+      "blob": "43bdd5332167ca34dcf2d8831af1ed195848c9cb",
+      "bytes": 10058,
+      "sha256": "39e0d9154c31bf7c053bb7209740ea6a03e98ff9b38999cce9795d1297286e68"
+    },
+    "rust/processing/src/data_model/property_budget.rs": {
+      "blob": "ca1637ccff6f63a722119aefb70a6fb5f433d0d7",
+      "bytes": 3815,
+      "sha256": "72c38098d1a764cb6bcf1cfebc1034d0ae24a4f59a52e6dfcc9cf52b0b887311"
+    },
+    "rust/processing/src/data_model/property_tests.rs": {
+      "blob": "c3f777e3a60ba6f0d90391980aed9d22d7097e70",
+      "bytes": 10457,
+      "sha256": "6f1c8a156aa0918d0069dadd528eee8b4af206a3db6771b2c8613eb4e908a3d8"
+    },
+    "rust/processing/src/data_model/render/flat.rs": {
+      "blob": "30597eb3831001d60f221d81e818a9cbead92b76",
+      "bytes": 11750,
+      "sha256": "af2ed0f8b0b1d7f81a99716e870c91ed92f291e18ca9c6928e1df13c849401b2"
+    },
+    "rust/processing/src/data_model/rows/mod.rs": {
+      "blob": "c608c6fe6532da5248945d8a0811b22f83b662c5",
+      "bytes": 21797,
+      "sha256": "02ddf81c6fd4d6f03018bce2dd07ebe44a86315ad25f0732a1676033f7086eef"
+    },
+    "rust/processing/tests/function_length_allowlist.txt": {
+      "blob": "86121705892ce39c41ab0c68f6fd3aba264a8c61",
+      "bytes": 6981,
+      "sha256": "4474e3997261711ce65da8de0bf48e13dd2247967db72989086bf655aaa98570"
+    },
+    "rust/processing/tests/positional_read_allowlist.txt": {
+      "blob": "637bb5bff65e00a86501c659f4740681de612157",
+      "bytes": 7963,
+      "sha256": "a7848139d3c3d900b8be2c39bca4899ca37de6d69bed2146f02da2d931cf4883"
+    },
+    "rust/python/tests/test_shared_set_budget.py": {
+      "blob": "c28ce08b071aa9e42d912b2d6142348afd404770",
+      "bytes": 6440,
+      "sha256": "06c25d1b2aeec137eb1ec7d3ffddd7fb44e3c9359360130f2648f62bc6d7b90a"
+    }
+  },
+  "changedLines": 985,
+  "stat": "14 files changed, 892 insertions(+), 93 deletions(-)",
+  "noLedgerOrCurrentMainHistory": true,
+  "sourceBundleSha256": "7d685cad56f21bcb42ab6a69a38e412062907858c3e2c116b65ed36c832d89b8",
+  "rawPatchSha256": "96142584f7b8e8ceefc7b7d30c6332ab143eecf4315873ed312f75e2cf4a21b7"
+}

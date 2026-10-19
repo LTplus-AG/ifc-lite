@@ -1,0 +1,113 @@
+Scope: all 73 workspace projects
+(node:91794) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +901
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 901, reused 126, downloaded 0, added 0
+Progress: resolved 901, reused 218, downloaded 0, added 0
+Progress: resolved 901, reused 324, downloaded 0, added 0
+Progress: resolved 901, reused 407, downloaded 0, added 0
+Progress: resolved 901, reused 464, downloaded 0, added 0
+Progress: resolved 901, reused 490, downloaded 0, added 0
+Progress: resolved 901, reused 520, downloaded 0, added 0
+Progress: resolved 901, reused 624, downloaded 0, added 0
+Progress: resolved 901, reused 717, downloaded 0, added 0
+Progress: resolved 901, reused 780, downloaded 0, added 0
+Progress: resolved 901, reused 825, downloaded 0, added 0
+Progress: resolved 901, reused 887, downloaded 0, added 2
+Progress: resolved 901, reused 890, downloaded 0, added 15
+Progress: resolved 901, reused 893, downloaded 0, added 30
+Progress: resolved 901, reused 896, downloaded 0, added 48
+Progress: resolved 901, reused 897, downloaded 0, added 60
+Progress: resolved 901, reused 897, downloaded 0, added 77
+Progress: resolved 901, reused 898, downloaded 0, added 78
+Progress: resolved 901, reused 900, downloaded 0, added 78
+Progress: resolved 901, reused 900, downloaded 0, added 87
+Progress: resolved 901, reused 900, downloaded 0, added 112
+Progress: resolved 901, reused 900, downloaded 0, added 117
+Progress: resolved 901, reused 900, downloaded 0, added 124
+Progress: resolved 901, reused 900, downloaded 0, added 126
+Progress: resolved 901, reused 900, downloaded 0, added 135
+Progress: resolved 901, reused 900, downloaded 0, added 142
+Progress: resolved 901, reused 900, downloaded 0, added 153
+Progress: resolved 901, reused 901, downloaded 0, added 181
+Progress: resolved 901, reused 901, downloaded 0, added 212
+Progress: resolved 901, reused 901, downloaded 0, added 256
+Progress: resolved 901, reused 901, downloaded 0, added 302
+Progress: resolved 901, reused 901, downloaded 0, added 317
+Progress: resolved 901, reused 901, downloaded 0, added 335
+Progress: resolved 901, reused 901, downloaded 0, added 372
+Progress: resolved 901, reused 901, downloaded 0, added 431
+Progress: resolved 901, reused 901, downloaded 0, added 473
+Progress: resolved 901, reused 901, downloaded 0, added 487
+Progress: resolved 901, reused 901, downloaded 0, added 492
+Progress: resolved 901, reused 901, downloaded 0, added 493
+Progress: resolved 901, reused 901, downloaded 0, added 494
+Progress: resolved 901, reused 901, downloaded 0, added 499
+Progress: resolved 901, reused 901, downloaded 0, added 512
+Progress: resolved 901, reused 901, downloaded 0, added 536
+Progress: resolved 901, reused 901, downloaded 0, added 554
+Progress: resolved 901, reused 901, downloaded 0, added 559
+Progress: resolved 901, reused 901, downloaded 0, added 581
+Progress: resolved 901, reused 901, downloaded 0, added 610
+Progress: resolved 901, reused 901, downloaded 0, added 628
+Progress: resolved 901, reused 901, downloaded 0, added 633
+Progress: resolved 901, reused 901, downloaded 0, added 643
+Progress: resolved 901, reused 901, downloaded 0, added 693
+Progress: resolved 901, reused 901, downloaded 0, added 709
+Progress: resolved 901, reused 901, downloaded 0, added 717
+Progress: resolved 901, reused 901, downloaded 0, added 727
+Progress: resolved 901, reused 901, downloaded 0, added 732
+Progress: resolved 901, reused 901, downloaded 0, added 766
+Progress: resolved 901, reused 901, downloaded 0, added 778
+Progress: resolved 901, reused 901, downloaded 0, added 786
+Progress: resolved 901, reused 901, downloaded 0, added 796
+Progress: resolved 901, reused 901, downloaded 0, added 807
+Progress: resolved 901, reused 901, downloaded 0, added 825
+Progress: resolved 901, reused 901, downloaded 0, added 836
+Progress: resolved 901, reused 901, downloaded 0, added 870
+Progress: resolved 901, reused 901, downloaded 0, added 882
+Progress: resolved 901, reused 901, downloaded 0, added 886
+Progress: resolved 901, reused 901, downloaded 0, added 887
+Progress: resolved 901, reused 901, downloaded 0, added 889
+Progress: resolved 901, reused 901, downloaded 0, added 890
+Progress: resolved 901, reused 901, downloaded 0, added 891
+Progress: resolved 901, reused 901, downloaded 0, added 892
+Progress: resolved 901, reused 901, downloaded 0, added 893
+Progress: resolved 901, reused 901, downloaded 0, added 894
+Progress: resolved 901, reused 901, downloaded 0, added 895
+Progress: resolved 901, reused 901, downloaded 0, added 896
+Progress: resolved 901, reused 901, downloaded 0, added 897
+Progress: resolved 901, reused 901, downloaded 0, added 898
+Progress: resolved 901, reused 901, downloaded 0, added 899
+Progress: resolved 901, reused 901, downloaded 0, added 900
+Progress: resolved 901, reused 901, downloaded 0, added 901
+Progress: resolved 901, reused 901, downloaded 0, added 901, done
+ WARN  Failed to create bin at /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/apps/viewer/node_modules/.bin/ifc-lite-mcp. ENOENT: no such file or directory, open '/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/packages/mcp/dist/cli.js'
+ WARN  Failed to create bin at /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/apps/viewer-embed/node_modules/.bin/ifc-lite-mcp. ENOENT: no such file or directory, open '/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/packages/mcp/dist/cli.js'
+ WARN  Failed to create bin at /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/packages/cli/node_modules/.bin/ifc-lite-mcp. ENOENT: no such file or directory, open '/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/packages/mcp/dist/cli.js'
+
+dependencies:
++ @neondatabase/serverless 1.2.0
+
+devDependencies:
++ @axe-core/playwright 4.13.0
++ @changesets/changelog-github 1.0.1
++ @changesets/cli 3.0.3
++ @changesets/parse 1.0.0
++ @playwright/test 1.64.0
++ @posthog/cli 0.18.10
++ @types/node 26.6.5
++ @vercel/functions 3.9.11
++ gltf-validator 2.0.0-dev.3.10
++ knip 6.41.0
++ oxlint 1.87.0
++ tsx 4.23.15
++ turbo 2.11.7
++ typedoc 0.28.20
++ typescript 6.0.3
++ yaml 2.9.1
+
+Done in 2m 37.6s using pnpm v10.8.1

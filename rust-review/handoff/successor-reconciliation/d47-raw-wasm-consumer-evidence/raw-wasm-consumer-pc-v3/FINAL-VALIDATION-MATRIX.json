@@ -1,0 +1,50 @@
+[
+  {
+    "gate": "strict official single-thread build + committed dts exact diff",
+    "job": "8526c777-a74d-4321-a3ac-53c804871a27",
+    "actual": "PASS; original target fresh; source/dts/runtime hashes retained",
+    "scope": "not rerun in later jobs"
+  },
+  {
+    "gate": "root pnpm WASM-package tests",
+    "job": "8526c777-a74d-4321-a3ac-53c804871a27",
+    "actual": "21PASS/0FAIL/0SKIP, zero cached tasks",
+    "scope": "not rerun"
+  },
+  {
+    "gate": "root pnpm actual WASM contract",
+    "job": "d8b7a5b1-940a-480d-8bb8-31fd2c344b3b",
+    "actual": "212PASS/0FAIL/1SKIP",
+    "scope": "optional matched historical fingerprint fallback skipped because IFC_WASM_BASE_JS/BINARY pair not supplied; no current runtime/fixture skip"
+  },
+  {
+    "gate": "official wasm-pack node mesh_determinism",
+    "job": "d8b7a5b1-940a-480d-8bb8-31fd2c344b3b",
+    "actual": "mesh_output_matches_pinned_manifest_on_wasm32:1PASS/0FAIL/0IGNORE",
+    "scope": "CARGO_UNSTABLE_BUILD_STD=std,panic_abort; separate manifest-target; no repin"
+  },
+  {
+    "gate": "real external public export property witness",
+    "job": "96c34613-e549-4445-ba7b-b8663b9641ad",
+    "actual": "PASS:13 normative/order/unlinked groups + all7classes + ambiguous parent02 fixture",
+    "scope": "JSON/CSV/JSONLD call actual newly built public IfcAPI; own/default export options; no wasm inheritance/SingleValueOnly API"
+  },
+  {
+    "gate": "all182 actual fixture SHA+size",
+    "job": "full serialized arm",
+    "actual": "v1before=v2before=v3before=v3after, including844; all match raw manifest",
+    "scope": "failed earlier jobs stopped before fixture-after; their next continuation-before checks discharge identity across the chain"
+  },
+  {
+    "gate": "source/generated/tool/log identity",
+    "job": "all3",
+    "actual": "sourceUnchanged true all3; exact clean head/tree; generated unchanged; remote/local raw SHA match; tools/rust-src-lock retained",
+    "scope": "all50 retained v23 Python artifact hashes independently unchanged"
+  },
+  {
+    "gate": "terminal/quiescence",
+    "job": "96c34613-e549-4445-ba7b-b8663b9641ad/session52717",
+    "actual": "COMPLETED0/sourceUnchanged/resources released",
+    "scope": "previous two FAILED1 terminals honestly retained; no duplicate active jobs"
+  }
+]

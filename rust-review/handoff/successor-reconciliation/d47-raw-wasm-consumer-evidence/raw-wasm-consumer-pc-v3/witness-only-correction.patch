@@ -1,0 +1,58 @@
+--- v2-witness
++++ v3-witness
+@@ -30,10 +30,17 @@
+   }
+   return wrap([...lines,...c.relationships]);
+ }
+-function pinValue(value,pin,position) {
+-  assert.equal(typeof value,'string');
+-  if (pin.values) assert.equal(value,pin.values[position]);
+-  else { assert.equal(Buffer.byteLength(value),pin.length); assert.equal(sha(value),pin.sha256); }
++function pinValues(values,pin) {
++  assert.equal(values.length,pin.count);
++  values.forEach(value=>assert.equal(typeof value,'string'));
++  if (pin.values) assert.deepEqual(values,pin.values);
++  else {
++    // Normative pins describe the newline-joined property values of one set,
++    // exactly as assert_pins in the existing raw Python consumer fixture.
++    const joined=values.join('\n');
++    assert.equal(Buffer.byteLength(joined),pin.length);
++    assert.equal(sha(joined),pin.sha256);
++  }
+ }
+ const {initSync,IfcAPI} = await import(pathToFileURL(join(root,'packages/wasm/pkg/ifc-lite.js')).href);
+ const wasm = readFileSync(join(root,'packages/wasm/pkg/ifc-lite_bg.wasm'));
+@@ -51,7 +58,7 @@
+       assert.deepEqual(actualNames(row),expected.get(row.expressId) ?? []);
+       for (const set of row.propertySets ?? []) {
+         const pin = pins.get(set.name);assert.ok(pin);assert.equal(set.properties.length,pin.count);
+-        set.properties.forEach((prop,i)=>pinValue(prop.value,pin,i));
++        pinValues(set.properties.map(prop=>prop.value),pin);
+       }
+     }
+     const csv = decode(api.exportCsv(bytes,'properties','\t',false));
+@@ -60,9 +67,12 @@
+       const cells=line.replace(/\r$/,'').split('\t');assert.equal(cells.length,8);
+       const id=Number(cells[0]),name=cells[4],key=id+'|'+name;
+       assert.ok((expected.get(id) ?? []).includes(name));
+-      const i=positions.get(key) ?? 0;pinValue(cells[6],pins.get(name),i);positions.set(key,i+1);csvCount++;
++      const values=positions.get(key) ?? [];values.push(cells[6]);positions.set(key,values);csvCount++;
+     }
+     assert.equal(csvCount,shape.reduce((n,[,names])=>n+names.reduce((m,name)=>m+pins.get(name).count,0),0));
++    for (const [id,names] of shape) for (const name of names) {
++      pinValues(positions.get(id+'|'+name) ?? [],pins.get(name));
++    }
+     const doc=JSON.parse(decode(api.exportJsonld(bytes,'',true,true,false,undefined)));
+     assert.equal(doc['@graph'].length,rowCount);
+     for (const row of doc['@graph']) {
+@@ -71,8 +81,9 @@
+       for (const set of sets) {
+         const pin=pins.get(set['ifc:name']);assert.equal(set['ifc:hasProperties'].length,pin.count);
+         set['ifc:hasProperties'].forEach((prop,i)=>{
+-          assert.equal(prop['@type'],'ifc:IfcComplexProperty');pinValue(prop['ifc:nominalValue'],pin,i);
++          assert.equal(prop['@type'],'ifc:IfcComplexProperty');
+         });
++        pinValues(set['ifc:hasProperties'].map(prop=>prop['ifc:nominalValue']),pin);
+       }
+     }
+     assert.deepEqual(JSON.parse(decode(api.exportJsonld(bytes,'',true,true,false,new Uint32Array())))['@graph'],[]);

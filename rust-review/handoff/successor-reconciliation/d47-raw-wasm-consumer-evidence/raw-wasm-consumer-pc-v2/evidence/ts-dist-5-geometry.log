@@ -1,0 +1,23 @@
+
+> ifc-lite@10.4.0 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source
+> turbo build --filter\=\@ifc-lite/geometry --only --concurrency\=1 --env-mode\=loose --cache-dir\=/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/turbo-cache
+
+
+   • Packages in scope: @ifc-lite/geometry
+   • Running build in 1 package
+   • Remote caching disabled
+
+@ifc-lite/geometry:build: cache miss, executing 5f51c61c8336ad8a
+@ifc-lite/geometry:build: 
+@ifc-lite/geometry:build: > @ifc-lite/geometry@7.8.1 build /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/packages/geometry
+@ifc-lite/geometry:build: > pnpm exec tsc && node ../../scripts/rewrite-worker-urls.mjs dist && node ../../scripts/verify-dist-worker-urls.mjs dist --scripts-only
+@ifc-lite/geometry:build: 
+@ifc-lite/geometry:build: rewrite-worker-urls: scanned 70 emitted file(s), rewrote 2.
+@ifc-lite/geometry:build:   geometry-worker-pool.js: ./geometry.worker.ts -> ./geometry.worker.js
+@ifc-lite/geometry:build:   remesh/remesh-client.js: ./remesh.worker.ts -> ./remesh.worker.js
+@ifc-lite/geometry:build: verify-dist-worker-urls: 2 URL specifier(s) in 70 emitted file(s) all resolve.
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    39.309s 
+

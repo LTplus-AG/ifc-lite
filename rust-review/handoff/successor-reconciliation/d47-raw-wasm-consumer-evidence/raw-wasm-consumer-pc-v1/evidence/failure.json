@@ -1,0 +1,6 @@
+{
+  "type": "AssertionError",
+  "message": "('root-actual-contract', 1, '/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/evidence/root-actual-contract.log')",
+  "traceback": "Traceback (most recent call last):\n  File \"/home/louistrue/build-workers/incoming/d47-raw-wasm-consumer-v1/qualify.py\", line 104, in <module>\n    contract=phase('root-actual-contract',['pnpm','test:wasm-contract'],timeout=1800);skips=[l for l in contract.splitlines() if 'skip' in l.lower()];save('contract-result-lines.json',{'skips':skips,'summary':[l for l in contract.splitlines() if any(x in l.lower() for x in ['passed','failed','skipped','missing'])]});assert not any('missing' in l.lower() and ('fixture' in l.lower() or 'runtime' in l.lower()) for l in contract.splitlines()),'missing input contract skip'\n  File \"/home/louistrue/build-workers/incoming/d47-raw-wasm-consumer-v1/qualify.py\", line 47, in phase\n    assert code==0,(name,code,str(log));return log.read_text(errors='replace')\n           ^^^^^^^\nAssertionError: ('root-actual-contract', 1, '/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/evidence/root-actual-contract.log')\n",
+  "completedPhases": 11
+}

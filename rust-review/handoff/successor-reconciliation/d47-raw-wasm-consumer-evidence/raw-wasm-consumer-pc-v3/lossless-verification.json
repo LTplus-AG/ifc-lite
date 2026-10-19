@@ -1,0 +1,38 @@
+{
+  "all3EvidenceDirectoriesMatchRemoteSHAAndSize": true,
+  "all3OriginalWorkerReceiptAndOutputHashesMatch": true,
+  "collectedGeneratedFilesMatchActualOfficialProducer": true,
+  "allPinnedToolAndRustSrcLockHashesRetained": true,
+  "retainedV23ArtifactCount": 50,
+  "all50V23ArtifactHashesUnchanged": true,
+  "generated": {
+    "packages/wasm/pkg/.gitignore": {
+      "sha256": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1",
+      "size": 1
+    },
+    "packages/wasm/pkg/ifc-lite.d.ts": {
+      "sha256": "e2bf5dee93a6277acee5a814f0bab346ec3c270cbc01bc8a1d0ca75d1c2b65cb",
+      "size": 167397
+    },
+    "packages/wasm/pkg/ifc-lite.js": {
+      "sha256": "04c85b1449d8fee992f25f0685170ff03fb4360726fa4e4d2a2d180314c169c0",
+      "size": 308437
+    },
+    "packages/wasm/pkg/ifc-lite_bg.wasm": {
+      "sha256": "972b6ccb86c440eb125bbbdcd934940916ebc50b2f7ad777627dd7cfff9f6561",
+      "size": 9801282
+    },
+    "packages/wasm/pkg/ifc-lite_bg.wasm.d.ts": {
+      "sha256": "5b315a620ce5874a9e9462be688932bedbdf937cf3da439bc768c3f0a15204ef",
+      "size": 31884
+    },
+    "packages/wasm/pkg/package.json": {
+      "sha256": "9232de40962f329d8cc52bdee826ea878789839176dd446e4db30e2b6f1c381f",
+      "size": 559
+    },
+    "packages/wasm/pkg/README.md": {
+      "sha256": "dadf077f27062bef51e54c31b84fa91fe950c6e7746610888b8f3d3a614195d3",
+      "size": 16644
+    }
+  }
+}

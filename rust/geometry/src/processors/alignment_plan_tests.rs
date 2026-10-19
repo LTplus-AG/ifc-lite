@@ -71,3 +71,23 @@ fn alignment_without_axis_preserves_explicit_refusal() {
         .to_string()
         .contains("missing recognisable Axis curve"));
 }
+
+#[test]
+fn ribbon_is_ccw_from_plus_z_with_left_vertices_on_the_left() {
+    let mesh = lower(4.).evaluate();
+    // Heading +Y: left of the axis is -X, right is +X, per sample pair.
+    assert!(mesh.positions[0] < 0. && mesh.positions[3] > 0.);
+    for triangle in mesh.indices.chunks_exact(3) {
+        let point = |index: u32| {
+            let i = index as usize * 3;
+            nalgebra::Vector3::new(
+                mesh.positions[i] as f64,
+                mesh.positions[i + 1] as f64,
+                mesh.positions[i + 2] as f64,
+            )
+        };
+        let a = point(triangle[0]);
+        let normal = (point(triangle[1]) - a).cross(&(point(triangle[2]) - a));
+        assert!(normal.z > 0., "triangle {triangle:?} faces down");
+    }
+}

@@ -26,6 +26,24 @@ large corpus, and treat a lone single-fixture excursion as a rerun trigger, not 
 | --- | --- | --- | --- |
 | C2 #7969 boolean operand seams | identical | BWK +1.1% (±2), Holter −3.2% (±30), ISSUE_098 +0.7% (±10), ISSUE_068 −3.3% (±15), schependomlaan +2.3% (±4), ISSUE_129 +1.8% (±6) | neutral: no phase outside noise |
 
+## Exact rectangular opening union (#7941)
+
+**Native attribution complete; browser qualification remains pending.**
+Approximate box merging filled authored gaps and steps. Candidate discovery can
+retain a broad tolerance, but merging requires exact coincidence on the other
+two axes and genuine interval contact. The native base-versus-branch campaign
+completed on the small model, void-heavy regression, tower, school and large
+architectural model. Each side produced a stable ordered mesh fingerprint;
+only the small model retained the same complete output across the pair. The
+other changed outputs still require physical accounting. Native timings do not
+qualify end-to-end worker-pool behavior.
+
+The separate hardware-GPU browser campaign stopped during base-only controls
+after trusted input interfered with loading. Vulkan external-image import errors
+were also observed. No branch sample or completed comparison exists for that
+campaign. Preserve failed controls separately; use an isolated browser and
+retain the real adapter, rendered-frame, asset, payload and stability checks.
+
 ## Sloped coincident-sided differences (#7292)
 
 **Restored-O3 frozen-pair qualification complete; workload-dependent cost.**

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Deliberately closed fixture domain. A different source is an assertion failure.
 use super::analytic::{q, remaining, section, Oracle, Prism};
-use ifc_lite_core::{EntityDecoder, IfcType, SourceBundle};
+use ifc_lite_core::{slot, EntityDecoder, IfcType, SourceBundle};
 use ifc_lite_geometry::{placement::Axis2Placement, GeometryRouter};
 use nalgebra::Matrix4;
 
@@ -13,14 +13,14 @@ fn bits(values: &[f64], expected: &serde_json::Value) {
 }
 fn prism(d: &mut EntityDecoder<'_>, id: u32) -> Prism {
     let e=d.decode_by_id(id).unwrap();assert_eq!(e.ifc_type,IfcType::IfcExtrudedAreaSolid);
-    assert_eq!(d.direction3(e.get_ref(2).unwrap()).unwrap(),[0.,0.,1.]);
-    let p=d.decode_by_id(e.get_ref(0).unwrap()).unwrap();
+    assert_eq!(d.direction3(e.get_ref(slot::IfcExtrudedAreaSolid::EXTRUDED_DIRECTION.index()).unwrap()).unwrap(),[0.,0.,1.]);
+    let p=d.decode_by_id(e.get_ref(slot::IfcExtrudedAreaSolid::SWEPT_AREA.index()).unwrap()).unwrap();
     assert_eq!(p.ifc_type,IfcType::IfcRectangleProfileDef);
-    let profile=Axis2Placement::read_id(p.get_ref(2).unwrap(),d).unwrap();
-    let placement=Axis2Placement::read_id(e.get_ref(1).unwrap(),d).unwrap();
+    let profile=Axis2Placement::read_id(p.get_ref(slot::IfcRectangleProfileDef::POSITION.index()).unwrap(),d).unwrap();
+    let placement=Axis2Placement::read_id(e.get_ref(slot::IfcExtrudedAreaSolid::POSITION.index()).unwrap(),d).unwrap();
     let m=profile.matrix();let s=placement.matrix();
     let mut untranslated=s;untranslated[(2,3)]=0.;assert_eq!(untranslated,Matrix4::identity());
-    let [w,h,depth]=[p.get_float(3).unwrap(),p.get_float(4).unwrap(),e.get_float(3).unwrap()];
+    let [w,h,depth]=[p.get_float(slot::IfcRectangleProfileDef::X_DIM.index()).unwrap(),p.get_float(slot::IfcRectangleProfileDef::Y_DIM.index()).unwrap(),e.get_float(slot::IfcExtrudedAreaSolid::DEPTH.index()).unwrap()];
     assert!([w,h,depth].iter().all(|v|v.is_finite() && *v>0.));
     let table:serde_json::Value=serde_json::from_str(include_str!("decoded-bits.json")).unwrap();
     let expected=&table[(if id==126 {26} else {id}).to_string()];
@@ -57,12 +57,12 @@ pub(in super::super) fn oracle(source: &str) -> Oracle {
     if repeated {
         let second=prism(&mut d,126);assert_eq!(second.polygon,host.polygon);
         assert_eq!((&second.lo,&second.hi),(&host.lo,&host.hi));
-        let map=d.decode_by_id(200).unwrap();assert_eq!(map.get_ref(0),Some(5));
+        let map=d.decode_by_id(200).unwrap();assert_eq!(map.get_ref(slot::IfcRepresentationMap::MAPPING_ORIGIN.index()),Some(5));
         for id in [201,202] {
-            let item=d.decode_by_id(id).unwrap();assert_eq!(item.get_ref(0),Some(200));
+            let item=d.decode_by_id(id).unwrap();assert_eq!(item.get_ref(slot::IfcMappedItem::MAPPING_SOURCE.index()),Some(200));
             let frame=router.resolve_scaled_mapped_item_transform(&item,&map,&mut d).unwrap().unwrap();
-            let target=d.decode_by_id(item.get_ref(1).unwrap()).unwrap();
-            let translation=d.point3(target.get_ref(2).unwrap()).unwrap();
+            let target=d.decode_by_id(item.get_ref(slot::IfcMappedItem::MAPPING_TARGET.index()).unwrap()).unwrap();
+            let translation=d.point3(target.get_ref(slot::IfcCartesianTransformationOperator3D::LOCAL_ORIGIN.index()).unwrap()).unwrap();
             let mut expected=Matrix4::<f64>::identity();
             for i in 0..3 {expected[(i,3)]=translation[i];}
             assert_eq!(frame.as_slice(),expected.as_slice());

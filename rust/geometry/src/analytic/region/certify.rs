@@ -111,9 +111,7 @@ pub(super) fn certify(
         perimeter,
         source: None,
     };
-    let precision = source.declared_precision();
-    let clearance = precision.map_or(1e-9, |(_, max)| max.max(1e-9));
-    let join = precision.map_or(1e-9, |(min, _)| min.min(1e-9));
+    let (clearance, join) = super::super::profile::topology_tolerances(source.declared_precision());
     budget.tick(1)?;
     let (topology, spent) = super::super::profile_topology::validate_accounted_remaining(
         std::slice::from_ref(&boundary),

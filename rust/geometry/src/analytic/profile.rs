@@ -93,11 +93,18 @@ fn validate_profile_policy(profile:&DecodedEntity,decoder:&mut EntityDecoder,res
         IfcType::IfcArbitraryClosedProfileDef | IfcType::IfcArbitraryProfileDefWithVoids) {
         let declared=decoder.geometric_context_precision_range()
             .map_err(|error|format!("profile topology Precision: {error}"))?;
-        let clearance=declared.map_or(DEFAULT_TOPOLOGY_CLEARANCE,|(_,max)|max.max(DEFAULT_TOPOLOGY_CLEARANCE));
-        let join=declared.map_or(DEFAULT_TOPOLOGY_CLEARANCE,|(min,_)|min.min(DEFAULT_TOPOLOGY_CLEARANCE));
+        let (clearance,join)=topology_tolerances(declared);
         if accounted {super::profile_topology::validate_accounted(&result.loops,clearance,join)}
         else {super::profile_topology::validate(&result.loops,clearance,join)}
     } else {Ok(())}
+}
+
+// Shared raw-IFC-length Precision policy for original and derived boundaries.
+// A broad declared Precision widens clearance but cannot close an open join.
+pub(super) fn topology_tolerances(declared: Option<(f64, f64)>) -> (f64, f64) {
+    let clearance=declared.map_or(DEFAULT_TOPOLOGY_CLEARANCE,|(_,max)|max.max(DEFAULT_TOPOLOGY_CLEARANCE));
+    let join=declared.map_or(DEFAULT_TOPOLOGY_CLEARANCE,|(min,_)|min.min(DEFAULT_TOPOLOGY_CLEARANCE));
+    (clearance,join)
 }
 
 fn parse_profile(

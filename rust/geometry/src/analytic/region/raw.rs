@@ -7,7 +7,7 @@ use crate::analytic::{
     source::SourceCapture, AnalyticBoundarySource, AnalyticProfile, AnalyticStatus,
 };
 use crate::resource::{Cost, OwnedResourceContext};
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 use std::sync::atomic::{AtomicU64, Ordering};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RawChainId(u64);
@@ -150,7 +150,7 @@ fn preflight(
     })?
     .retain();
     let id = profile
-        .get_ref(2)
+        .get_ref(slot::IfcArbitraryClosedProfileDef::OUTER_CURVE.index())
         .ok_or_else(|| refused(RegionRefusal::SourceFamily))?;
     admit_record_read(decoder, id, permits)?;
     let curve = decoder
@@ -160,7 +160,7 @@ fn preflight(
         return Err(refused(RegionRefusal::SourceFamily));
     }
     let point_id = curve
-        .get_ref(0)
+        .get_ref(slot::IfcIndexedPolyCurve::POINTS.index())
         .ok_or_else(|| refused(RegionRefusal::SourceFamily))?;
     admit_record_read(decoder, point_id, permits)?;
     let points = decoder
@@ -177,8 +177,12 @@ fn preflight(
     ) {
         return Err(refused(RegionRefusal::SourceFamily));
     }
+    let coordinate_slot = match points.ifc_type {
+        IfcType::IfcCartesianPointList2D => slot::IfcCartesianPointList2D::COORD_LIST.index(),
+        _ => slot::IfcCartesianPointList3D::COORD_LIST.index(),
+    };
     let count = points
-        .get_list(0)
+        .get_list(coordinate_slot)
         .ok_or_else(|| refused(RegionRefusal::SourceFamily))?
         .len();
     if count > super::super::profile::MAX_LOOPS {
@@ -190,7 +194,7 @@ fn preflight(
         )
         .into());
     }
-    if let Some(items) = curve.get_list(1) {
+    if let Some(items) = curve.get_list(slot::IfcIndexedPolyCurve::SEGMENTS.index()) {
         if items.len() > super::super::profile::MAX_LOOPS {
             return Err(resource::overflow().into());
         }

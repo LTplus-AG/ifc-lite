@@ -1,0 +1,3 @@
+Fleet request: /home/louistrue/build-workers/worker-state/automatic-requests/auto-d1a4b398c4b946919b37895d6f2b263a.json
+error: Server does not allow request for unadvertised object 4066c2b830204a3c98bdcdb3f8d91003f3786801
+Command '['git', '-C', '/home/louistrue/build-workers/ifc-lite.git', 'fetch', 'origin', '4066c2b830204a3c98bdcdb3f8d91003f3786801']' returned non-zero exit status 1.

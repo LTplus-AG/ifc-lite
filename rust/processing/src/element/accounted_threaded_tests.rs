@@ -172,7 +172,7 @@ struct Fixture {
     child:Rc<RefCell<Option<ChildValue>>>,evidence:Arc<Evidence>,
 }
 impl Fixture {
-    fn new(mode:Mode,entry:Entry)->Self {Self::with_foreign_account(mode,entry,false)}
+    fn for_scoped_worker(mode:Mode,entry:Entry)->Self {Self::with_foreign_account(mode,entry,false)}
     fn with_foreign_account(mode:Mode,entry:Entry,foreign:bool)->Self {
         // Add an uncached mapped real slab plus a separate wall-map occurrence
         // used to establish an independent completed cache before cancellation.
@@ -248,7 +248,7 @@ fn account(mode:Mode)->ExecutionAccount {
 #[test]
 fn canonical_scoped_worker_success_preserves_both_complete_meshes_and_inherits_parent_work() {
     for entry in [Entry::Borrowed,Entry::FreshAccount] {
-        let mut fixture=Fixture::new(Mode::Success,entry);let account=account(Mode::Success);
+        let mut fixture=Fixture::for_scoped_worker(Mode::Success,entry);let account=account(Mode::Success);
         let output=fixture.produce(&account).unwrap();
         assert_same(output.output(),&canonical(10,false));
         let child=fixture.child.borrow_mut().take().expect("actual worker child completed");
@@ -260,7 +260,7 @@ fn canonical_scoped_worker_success_preserves_both_complete_meshes_and_inherits_p
 #[test]
 fn swallowed_worker_cancellation_is_sticky_at_actual_outer_owned_producer() {
     for entry in [Entry::Borrowed,Entry::FreshAccount] {
-        let mut fixture=Fixture::new(Mode::Cancel,entry);let account=account(Mode::Cancel);
+        let mut fixture=Fixture::for_scoped_worker(Mode::Cancel,entry);let account=account(Mode::Cancel);
         let result=fixture.produce(&account);
         assert!(matches!(result,Err(AccountedProductionError::Stopped(ProgramStop::Cancelled))));
         assert_eq!(account.check(),Err(ProgramStop::Cancelled));
@@ -270,7 +270,7 @@ fn swallowed_worker_cancellation_is_sticky_at_actual_outer_owned_producer() {
 #[test]
 fn worker_work_refusal_uses_parent_quota_even_with_fresh_supplied_account() {
     for entry in [Entry::Borrowed,Entry::FreshAccount] {
-        let mut fixture=Fixture::new(Mode::RefuseWork,entry);let account=account(Mode::RefuseWork);
+        let mut fixture=Fixture::for_scoped_worker(Mode::RefuseWork,entry);let account=account(Mode::RefuseWork);
         let result=fixture.produce(&account);
         assert!(matches!(result,Err(AccountedProductionError::Stopped(ProgramStop::ResourceRefused(
             ResourceFailure {dimension:Dimension::Work,..})))));
@@ -281,7 +281,7 @@ fn worker_work_refusal_uses_parent_quota_even_with_fresh_supplied_account() {
 #[test]
 fn accounted_scoped_worker_unwind_restores_tls_owners_and_expires_source_authority() {
     for entry in [Entry::Borrowed,Entry::FreshAccount] {
-        let mut fixture=Fixture::new(Mode::Panic,entry);let account=account(Mode::Panic);
+        let mut fixture=Fixture::for_scoped_worker(Mode::Panic,entry);let account=account(Mode::Panic);
         let result=catch_unwind(AssertUnwindSafe(||fixture.produce(&account)));
         assert!(result.is_err(),"actual worker panic reaches the owning canonical call");
         fixture.assert_released();
@@ -352,7 +352,7 @@ fn compatibility_outer_canonical_call_cannot_swallow_a_nested_fresh_bounded_refu
 #[test]
 fn compatibility_outer_receives_explicit_worker_cancellation_through_source_stop_authority() {
     for entry in [Entry::Borrowed,Entry::FreshAccount] {
-        let mut fixture=Fixture::new(Mode::CompatibilityCancel,entry);
+        let mut fixture=Fixture::for_scoped_worker(Mode::CompatibilityCancel,entry);
         let compatibility=ExecutionAccount::new(ExecutionPolicy::Compatibility);
         let result=fixture.produce(&compatibility);
         assert!(matches!(result,Err(AccountedProductionError::Stopped(ProgramStop::Cancelled))),
@@ -399,7 +399,7 @@ fn validated_source_scope_overrides_foreign_worker_account_and_restores_it_after
 fn compatibility_preexisting_ancestor_stop_admits_no_scoped_child_geometry() {
     for mode in [Mode::PreCancelled, Mode::PreRefused] {
         for entry in [Entry::Borrowed, Entry::FreshAccount] {
-            let mut fixture = Fixture::new(mode, entry);
+            let mut fixture = Fixture::for_scoped_worker(mode, entry);
             let compatibility = ExecutionAccount::new(ExecutionPolicy::Compatibility);
             let prior = fixture.evidence.cache.lock().unwrap().get(&29).unwrap().clone();
             let result = fixture.produce(&compatibility);
@@ -440,7 +440,7 @@ fn compatibility_preexisting_ancestor_stop_admits_no_scoped_child_geometry() {
 
 #[test]
 fn default_borrowed_scoped_worker_keeps_unbounded_real_geometry() {
-    let mut fixture = Fixture::new(Mode::UnboundedSuccess, Entry::Borrowed);
+    let mut fixture = Fixture::for_scoped_worker(Mode::UnboundedSuccess, Entry::Borrowed);
     let entity = fixture.decoder.decode_by_id(10).unwrap();
     let output = produce_element_meshes(&job(&entity, &metadata(10)),
         &Context::default().borrowed(), &options(), &mut fixture.decoder, &fixture.router);

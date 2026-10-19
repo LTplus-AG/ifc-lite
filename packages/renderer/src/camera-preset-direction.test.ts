@@ -56,11 +56,14 @@ describe('Camera.setPresetDirection', () => {
   });
 
   it('ignores a direction with no horizontal heading or no length', () => {
-    const camera = new Camera();
-    const before = camera.getPosition();
-    camera.setPresetDirection({ x: 0, y: 1, z: 0 }, BOUNDS);
-    camera.setPresetDirection({ x: 0, y: 0, z: 0 }, BOUNDS);
-    camera.setPresetDirection({ x: NaN, y: 1, z: 1 }, BOUNDS);
-    assert.deepStrictEqual(camera.getPosition(), before);
+    for (const bad of [{ x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: 0 }, { x: NaN, y: 1, z: 1 }]) {
+      const camera = new Camera();
+      const before = { position: camera.getPosition(), target: camera.getTarget() };
+      // Time is advanced past the tween like the accepting cases, so a missing
+      // guard would have moved the camera by now.
+      settle(camera, bad);
+      assert.deepStrictEqual(camera.getPosition(), before.position);
+      assert.deepStrictEqual(camera.getTarget(), before.target);
+    }
   });
 });

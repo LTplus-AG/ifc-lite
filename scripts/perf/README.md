@@ -25,6 +25,7 @@ large corpus, and treat a lone single-fixture excursion as a rerun trigger, not 
 | Slice | Fingerprints (6 models) | TOTAL deltas vs base (noise) | Verdict |
 | --- | --- | --- | --- |
 | C2 #7969 boolean operand seams | identical | BWK +1.1% (±2), Holter −3.2% (±30), ISSUE_098 +0.7% (±10), ISSUE_068 −3.3% (±15), schependomlaan +2.3% (±4), ISSUE_129 +1.8% (±6) | neutral: no phase outside noise |
+| B2 #7960 tessellated plans | identical | BWK 0.0% (±1), Holter −0.1% (±9), ISSUE_098 −2.5% (±8), ISSUE_068 +0.3% (±13), schependomlaan −1.0% (±4), ISSUE_129 +0.2% (±5) | neutral: no phase outside noise |
 
 ## Sloped coincident-sided differences (#7292)
 

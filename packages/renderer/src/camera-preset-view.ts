@@ -234,3 +234,51 @@ export function presetViewTarget(
     up: upVector,
   };
 }
+
+/**
+ * Pose for a diagonal preset: the camera sits along `direction`, expressed in
+ * the same face frame the named presets use (+X right, +Y top, +Z front), so
+ * an edge is the sum of its two faces and a corner the sum of its three.
+ *
+ * The building rotation turns the horizontal part exactly as the named
+ * horizontal presets do. Unlike `top`/`bottom` there is no pole to dodge: a
+ * diagonal always keeps a horizontal component, so `up` stays world Y and the
+ * view basis is well defined. Returns `null` for a zero or non-finite
+ * direction, which has no heading to look from.
+ *
+ * @param bounds Must already have passed {@link resolvePresetBounds}.
+ */
+export function presetDirectionTarget(
+  state: CameraInternalState,
+  direction: Vec3,
+  bounds: FramingBounds,
+  buildingRotation?: number,
+): { position: Vec3; target: Vec3; up: Vec3 } | null {
+  const length = Math.hypot(direction.x, direction.y, direction.z);
+  if (!Number.isFinite(length) || length < 1e-9) return null;
+  if (Math.hypot(direction.x, direction.z) < 1e-9) return null;
+
+  const rotationRadians = Number.isFinite(buildingRotation) ? (buildingRotation as number) : 0;
+  const cosR = Math.cos(rotationRadians);
+  const sinR = Math.sin(rotationRadians);
+  const offsetDir: Vec3 = {
+    x: (direction.x * cosR + direction.z * sinR) / length,
+    y: direction.y / length,
+    z: (-direction.x * sinR + direction.z * cosR) / length,
+  };
+  const upVector: Vec3 = { x: 0, y: 1, z: 0 };
+
+  const center = centerOf(bounds.min, bounds.max);
+  const basis = viewBasis(offsetDir, { x: 0, y: 0, z: 0 }, upVector);
+  const distance = fitDistanceFor(state, bounds, basis, CAMERA_CONSTANTS.ZOOM_EXTENT_PADDING);
+
+  return {
+    position: {
+      x: center.x - basis.forward.x * distance,
+      y: center.y - basis.forward.y * distance,
+      z: center.z - basis.forward.z * distance,
+    },
+    target: center,
+    up: upVector,
+  };
+}

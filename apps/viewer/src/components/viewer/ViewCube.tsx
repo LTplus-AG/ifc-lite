@@ -4,10 +4,21 @@
 
 import { useState, useRef, useCallback, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { cn } from '@/lib/utils';
-import { VIEW_CUBE_SIZE_PX } from './viewcube-box';
+import { VIEW_CUBE_EDGE_BAND_PX, VIEW_CUBE_SIZE_PX } from './viewcube-box';
+import {
+  CUBE_FACES,
+  faceOfDirection,
+  isZoneHighlighted,
+  zonesForFace,
+  type CubeDirection,
+  type CubeFace,
+  type CubeZone,
+} from './viewcube-zones';
 
 interface ViewCubeProps {
   onViewChange?: (view: string) => void;
+  /** An edge or corner was clicked: camera offset in the preset face frame. */
+  onDirectionChange?: (direction: CubeDirection) => void;
   onDrag?: (deltaX: number, deltaY: number) => void;
   rotationX?: number;
   rotationY?: number;
@@ -26,60 +37,50 @@ const FACE_VIEWS: Record<string, { rx: number; ry: number }> = {
   left: { rx: 0, ry: 90 },
 };
 
-const FACES = [
-  { id: 'front', label: 'FRONT', transform: (h: number) => `translateZ(${h}px)` },
-  { id: 'back', label: 'BACK', transform: (h: number) => `translateZ(${-h}px) rotateY(180deg)` },
-  { id: 'top', label: 'TOP', transform: (h: number) => `translateY(${-h}px) rotateX(90deg)` },
-  { id: 'bottom', label: 'BTM', transform: (h: number) => `translateY(${h}px) rotateX(-90deg)` },
-  { id: 'right', label: 'RIGHT', transform: (h: number) => `translateX(${h}px) rotateY(90deg)` },
-  { id: 'left', label: 'LEFT', transform: (h: number) => `translateX(${-h}px) rotateY(-90deg)` },
+const FACES: { id: CubeFace; label: string; transform: (h: number) => string }[] = [
+  { id: 'front', label: 'FRONT', transform: (h) => `translateZ(${h}px)` },
+  { id: 'back', label: 'BACK', transform: (h) => `translateZ(${-h}px) rotateY(180deg)` },
+  { id: 'top', label: 'TOP', transform: (h) => `translateY(${-h}px) rotateX(90deg)` },
+  { id: 'bottom', label: 'BTM', transform: (h) => `translateY(${h}px) rotateX(-90deg)` },
+  { id: 'right', label: 'RIGHT', transform: (h) => `translateX(${h}px) rotateY(90deg)` },
+  { id: 'left', label: 'LEFT', transform: (h) => `translateX(${-h}px) rotateY(-90deg)` },
 ];
 
+const ZONES_BY_FACE = Object.fromEntries(CUBE_FACES.map((f) => [f, zonesForFace(f)])) as Record<CubeFace, CubeZone[]>;
+
+const cubeTransform = (x: number, y: number) => `rotateX(${x}deg) rotateY(${y}deg)`;
+
 export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
-  ({ onViewChange, onDrag, rotationX = -25, rotationY = 45 }, ref) => {
-    const [hovered, setHovered] = useState<string | null>(null);
+  ({ onViewChange, onDirectionChange, onDrag, rotationX = -25, rotationY = 45 }, ref) => {
+    const [hoveredKey, setHoveredKey] = useState<string | null>(null);
     const [isMouseDown, setIsMouseDown] = useState(false);
     const dragStartRef = useRef<{ x: number; y: number } | null>(null);
     const didDragRef = useRef(false);
     const isDraggingRef = useRef(false);
     const onDragRef = useRef(onDrag);
     const rotationContainerRef = useRef<HTMLDivElement>(null);
-    const rafRef = useRef<number | null>(null);
-    const pendingRotationRef = useRef<{ x: number; y: number } | null>(null);
 
     // Keep onDrag ref up to date
     useEffect(() => {
       onDragRef.current = onDrag;
     }, [onDrag]);
 
-    // Expose updateRotation method via ref for direct updates (no React re-renders)
+    // Expose updateRotation for direct updates (no React re-renders). Applied
+    // synchronously: the caller already runs once per camera change (pointer
+    // move or animation-loop tick), and deferring to another animation frame
+    // is what made the cube trail the model by a frame while orbiting.
     useImperativeHandle(ref, () => ({
       updateRotation: (x: number, y: number) => {
-        if (!rotationContainerRef.current) return;
-
-        // Store pending rotation
-        pendingRotationRef.current = { x, y };
-
-        // Cancel any pending animation frame
-        if (rafRef.current !== null) {
-          cancelAnimationFrame(rafRef.current);
+        if (rotationContainerRef.current) {
+          rotationContainerRef.current.style.transform = cubeTransform(x, y);
         }
-
-        // Batch updates via requestAnimationFrame for smooth 60fps
-        rafRef.current = requestAnimationFrame(() => {
-          if (rotationContainerRef.current && pendingRotationRef.current) {
-            rotationContainerRef.current.style.transform = `rotateX(${pendingRotationRef.current.x}deg) rotateY(${pendingRotationRef.current.y}deg)`;
-            pendingRotationRef.current = null;
-          }
-          rafRef.current = null;
-        });
       },
     }), []);
 
     // Initial rotation from props (only on mount)
     useEffect(() => {
       if (rotationContainerRef.current) {
-        rotationContainerRef.current.style.transform = `rotateX(${rotationX}deg) rotateY(${rotationY}deg)`;
+        rotationContainerRef.current.style.transform = cubeTransform(rotationX, rotationY);
       }
     }, []); // Empty deps - only set initial rotation
 
@@ -141,12 +142,13 @@ export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
       };
     }, [isMouseDown]);
 
-    const handleFaceClick = useCallback((face: string) => {
+    const handleZoneClick = useCallback((zone: CubeZone) => {
       // Only trigger click if we didn't drag
-      if (!didDragRef.current) {
-        onViewChange?.(face);
-      }
-    }, [onViewChange]);
+      if (didDragRef.current) return;
+      const face = faceOfDirection(zone.direction);
+      if (face) onViewChange?.(face);
+      else onDirectionChange?.(zone.direction);
+    }, [onViewChange, onDirectionChange]);
 
     return (
       // Mouse dragging changes the cube orientation; the child face buttons provide keyboard views.
@@ -165,28 +167,45 @@ export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
           className="relative w-full h-full"
           style={{
             transformStyle: 'preserve-3d',
-            transform: `rotateX(${rotationX}deg) rotateY(${rotationY}deg)`,
+            transform: cubeTransform(rotationX, rotationY),
           }}
         >
           {FACES.map(({ id, label, transform }) => (
-            <button
+            <div
               key={id}
-              type="button"
-              className={cn(
-                'absolute w-full h-full flex items-center justify-center text-2xs font-bold transition-colors cursor-pointer',
-                'bg-card/95 border border-border/50',
-                hovered === id ? 'bg-primary/30 border-primary text-primary' : 'hover:bg-muted'
-              )}
+              className="absolute w-full h-full grid"
               style={{
                 transform: transform(half),
                 backfaceVisibility: 'hidden',
+                gridTemplate: `${VIEW_CUBE_EDGE_BAND_PX}px 1fr ${VIEW_CUBE_EDGE_BAND_PX}px / ${VIEW_CUBE_EDGE_BAND_PX}px 1fr ${VIEW_CUBE_EDGE_BAND_PX}px`,
               }}
-              onMouseEnter={() => setHovered(id)}
-              onMouseLeave={() => setHovered(null)}
-              onClick={() => handleFaceClick(id)}
             >
-              {label}
-            </button>
+              {ZONES_BY_FACE[id].map((zone) => {
+                const lit = isZoneHighlighted(zone, id, hoveredKey);
+                const isFace = zone.kind === 'face';
+                return (
+                  <button
+                    key={zone.key}
+                    type="button"
+                    aria-label={isFace ? `${id} view` : `${id} ${zone.kind} view`}
+                    data-viewcube-zone={zone.kind}
+                    className={cn(
+                      'flex items-center justify-center text-2xs font-bold transition-colors cursor-pointer border',
+                      lit
+                        ? 'bg-primary/40 border-primary text-primary'
+                        : isFace
+                          ? 'bg-card/95 border-border/50 hover:bg-muted'
+                          : 'bg-muted/70 border-border/50',
+                    )}
+                    onMouseEnter={() => setHoveredKey(zone.key)}
+                    onMouseLeave={() => setHoveredKey(null)}
+                    onClick={() => handleZoneClick(zone)}
+                  >
+                    {isFace ? label : null}
+                  </button>
+                );
+              })}
+            </div>
           ))}
         </div>
       </div>

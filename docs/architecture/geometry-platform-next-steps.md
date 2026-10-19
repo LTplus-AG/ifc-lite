@@ -1,6 +1,11 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 # Geometry platform: next implementation steps
 
+The [production landing plan](geometry-platform-production-plan.md) defines the
+current dependency order, preservation gates, artifact/consumer qualification,
+review stack and release/recovery process. It supersedes historical stage order
+below for scheduling; the original stage receipts retain their recorded scope.
+
 The [foundation](geometry-platform-foundation.md) is implemented. Continue the
 [whole-platform design](../../tools/smlib-evaluation/implementation-design.md)
 through the following dependency order. Exact arithmetic, supported formats,

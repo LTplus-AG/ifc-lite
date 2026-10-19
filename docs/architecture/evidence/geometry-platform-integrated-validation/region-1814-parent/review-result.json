@@ -1,0 +1,19 @@
+{
+  "taskId": "node:delegated-task:command%3Amcp%3A55805d56-4cbd-47f7-89c1-076c896c961c%3Adelegate-task%3Aregion-1814-closure-review-20261019-r2",
+  "childThreadId": "thread:delegated-task:command%3Amcp%3A55805d56-4cbd-47f7-89c1-076c896c961c%3Adelegate-task%3Aregion-1814-closure-review-20261019-r2",
+  "childRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A55805d56-4cbd-47f7-89c1-076c896c961c%253Adelegate-task%253Aregion-1814-closure-review-20261019-r2:ordinal:1",
+  "childNodeId": "node:delegated-task:command%3Amcp%3A55805d56-4cbd-47f7-89c1-076c896c961c%3Adelegate-task%3Aregion-1814-closure-review-20261019-r2",
+  "status": "completed",
+  "workState": "result_available",
+  "hasPendingChildRuns": false,
+  "latestTerminalRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A55805d56-4cbd-47f7-89c1-076c896c961c%253Adelegate-task%253Aregion-1814-closure-review-20261019-r2:ordinal:1",
+  "latestTerminalStatus": "completed",
+  "latestTerminalSummary": "R1/P2 is closed by static review of exact commit `18146351fb23ef83e946f6ab7c139cd1bc9f735b`. No new concrete blockers found; decoder destruction precedes permit refund or transfer.\n\n[Closure report](/tmp/region-r1-1814-independent-review.txt) · [Before/after hash manifest](/tmp/region-r1-1814-independent-source-hashes.json)\n\nAll 94 provenance checks matched; source remained unchanged. Builds and tests are **UNRUN**. Admitted compilation/execution, positive full-model #3641 validation, and production binding remain required.",
+  "latestTerminalResultContextTransferId": "context-transfer:type:subagent_result:source-thread:thread%3Adelegated-task%3Acommand%253Amcp%253A55805d56-4cbd-47f7-89c1-076c896c961c%253Adelegate-task%253Aregion-1814-closure-review-20261019-r2:target-thread:e53a6af1-6c4c-459f-9148-b672b674d40a:f0ab1f24-892e-470c-8b13-8bd778e58f1e",
+  "providerInstanceId": "codex",
+  "model": "gpt-6.1-sol",
+  "summary": "R1/P2 is closed by static review of exact commit `18146351fb23ef83e946f6ab7c139cd1bc9f735b`. No new concrete blockers found; decoder destruction precedes permit refund or transfer.\n\n[Closure report](/tmp/region-r1-1814-independent-review.txt) · [Before/after hash manifest](/tmp/region-r1-1814-independent-source-hashes.json)\n\nAll 94 provenance checks matched; source remained unchanged. Builds and tests are **UNRUN**. Admitted compilation/execution, positive full-model #3641 validation, and production binding remain required.",
+  "resultContextTransferId": "context-transfer:type:subagent_result:source-thread:thread%3Adelegated-task%3Acommand%253Amcp%253A55805d56-4cbd-47f7-89c1-076c896c961c%253Adelegate-task%253Aregion-1814-closure-review-20261019-r2:target-thread:e53a6af1-6c4c-459f-9148-b672b674d40a:f0ab1f24-892e-470c-8b13-8bd778e58f1e",
+  "hasPendingQuestion": false,
+  "waitTimedOut": false
+}

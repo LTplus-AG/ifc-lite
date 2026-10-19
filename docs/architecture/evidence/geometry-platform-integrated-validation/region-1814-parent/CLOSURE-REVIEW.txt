@@ -1,0 +1,113 @@
+Independent read-only closure review: region foundation R1 correction
+
+Decision: R1/P2 CLOSED BY STATIC SOURCE REVIEW. No concrete source blocker found
+in the exact corrected cut. Suitable for parent source integration subject to the
+still-required admitted compilation and execution. This is not production or
+full-model qualification; every test remains UNRUN.
+
+Exact reviewed commits
+- Original foundation 47d4c55dbc4424cd669e5b7e2be60a3a397da973
+  versus 3edd2e18624aaf350954cdc4c9ec7113dfd1702e.
+- Correction 18146351fb23ef83e946f6ab7c139cd1bc9f735b
+  versus exact base 6b70c507d5c0003c6110f718d7072b5db9a5427a.
+- Frozen evidence 452291fb0fbdffe2b78ddc2f5403603527818ba2.
+- Worktree /home/louistrue/.t3/worktrees/ifc-lite/t3-de845216,
+  clean at inspection and completion. Review used actual Rust bodies, decoder
+  caching and Reservation/OwnedResourceContext teardown, not only test text.
+
+Response to prior R1 (P2)
+The prior finding was valid. It is corrected at these source locations:
+- rust/geometry/src/analytic/region/raw.rs:53-67: InspectionOwner takes the
+  consumed decoder before the first fallible check. The fixed reservation is
+  installed before OwnedResourceContext allocation, metadata admission before
+  lazy decoder work, and read reservations before record decoding. The closure
+  borrows these fields; it no longer owns rollback cache reservations.
+- rust/geometry/src/analytic/region/inspection.rs:23-44: Drop runs
+  destroy_decoder before automatic field destruction. drop(self.decoder.take())
+  synchronously destroys the actual decoder; permits remain in self throughout.
+  A failed entry check/admission, preflight refusal, downstream Err, typed stop,
+  or stack unwind therefore destroys decoder caches before refunding these
+  reservations. The original account is carried in each Reservation, so restoring
+  TLS before owner destruction does not refund them or select another account.
+- inspection.rs:34-36 and raw.rs:119-130: success destroys the decoder, then
+  mem::take moves the unique permit bundle into the output. The owner now has
+  None plus empty permits, so subsequent Drop cannot double-drop or refund the
+  transferred reservations. Allocation/panic after finish cannot leave a live
+  inspection decoder with refunded backing. NLL ends the mutable decoder borrow
+  before finish; no unsafe/manual free, clone of a reservation or escaped borrow
+  was introduced. Rust compilation is still required to confirm the source cut.
+- raw.rs:14-23: raw payload fields precede their backing permits. The raw Arc
+  survives through UntrustedRegionCertificate.source (region/mod.rs:85-92).
+  Dropping a raw handle while a certificate retains it preserves that ownership.
+  Caller-owned inputs and previously materialized caches remain outside the
+  newly requested-backing contract, as in the reviewed foundation.
+
+Behavioral witnesses: meaningful, supplied but ALL UNRUN
+inspection_tests.rs:33-107 loads the committed real IFC fixture, decodes through
+SourceBundle, and queries an actual shared ExecutionAccount from a separate
+thread while the producer blocks at each observation. get_cached observes the
+actual Points entry; it does not decode/fill a missing cache. The probes bracket
+the real drop, with no retained entity clone across that boundary. Observer
+RefCell guards unwind before the owner's Drop calls the observer again.
+
+- Lines 110-133: valid 16 KiB wrong-type Points record reproduces the original
+  ordinary Unsupported path. The cached IfcPropertySingleValue must exist and
+  the exact admitted live-byte total must survive from ReachedPoints through
+  BeforeDecoder and AfterDecoder; the account must remain unstopped. This
+  detects the original refund-before-cache-destruction defect independently of
+  the final-zero assertion.
+- Lines 136-156: success checks cache teardown with live permits, equal charge
+  in the returned raw Arc, retained raw payload through a certificate after the
+  caller drops its raw Arc, and eventual release of both backing owners.
+- Lines 159-170: cancellation occurs after actual Points cache admission and
+  must return the typed Cancelled stop while preserving the teardown boundaries.
+- Lines 172-179: panic at that same populated-cache boundary must unwind through
+  decoder-first destruction. This witness is present only for panic=unwind;
+  panic=abort has no Rust unwind cleanup contract.
+
+These are real cache/account boundary observations rather than final-usage-only,
+mock-return or source-text assertions. They sample the destructor boundaries;
+they do not establish RSS accounting, allocator behavior, arbitrary interleaving
+coverage, or an executed concurrent competing allocation. Their positive runtime
+claims remain unproven until admitted execution against the reviewed source.
+
+Foundation scope retained
+The correction changes only raw.rs, region/mod.rs, inspection.rs and
+inspection_tests.rs. Original parsing, topology and SourceCapture files, exact.rs,
+arrange.rs, certify.rs and the original fixture are byte-identical to 47d4.
+The 47d4-versus-3edd parser factor still parses via the canonical decoder, checks
+Precision only after successful default parsing, retains the default topology
+formulas/work decrement/diagnostics, and clears rejected default loops. No default
+inspection preflight or resource hook was added by the factor or this correction.
+
+Reinspection found no concrete soundness blocker in the narrow endpoint-only
+mathematics: exact dyadic collinearity and rational parameters partition complete
+increasing [0,1] source edges at authored endpoints; reverse pairing refuses
+ambiguous/same-direction multiplicity; exhaustive incidence/traversal demands one
+cycle; exact nonzero area identity precedes unchanged Precision topology.
+Arithmetic has conservative pre-operation bit/work bounds and arrangement backing
+is admitted before its geometry allocations. The exact authored 870 mm reversed
+overlap is valid and does not warrant weakening the original refusal guard.
+
+This remains Untrusted inspection only. It supplies no reached ItemSource,
+selected decoder/cache generation, source epoch/revision, production authority,
+common transaction, runtime/native authority or positive full-model #3641 proof.
+Full positive #3641 preservation and production binding remain required.
+
+Constraints and provenance
+New Rust files have MPL-2.0 SPDX headers. inspection.rs is 83 lines; raw.rs is
+386 lines. The correction adds no file-reference walk or unbounded recursive
+path. No module-size/refwalk/CI gate was executed. No perf claim is made.
+The full review-scope before/after SHA-256 manifest covers 32 source, fixture,
+supporting and evidence paths across all five commits, plus 94 provenance checks.
+All declared hashes, source trees, both compressed/decompressed patches and their
+exact full-index git diffs match. Working bytes match evidence HEAD and are
+unchanged at the final snapshot. Prior review input hashes also match.
+Manifest: /tmp/region-r1-1814-independent-source-hashes.json.
+
+Compilation, clippy, the original 12 tests and new 4 tests, default equivalence
+execution, numerical/SDK/consumer qualification, perf and full production binding
+are UNRUN. Their absence is not relabelled as a pass or an executed R1 witness.
+Read-only fleet status found Pop and PC reachable with admission refused (78),
+Mac disabled. No source edits, builds, tests, jobs, git mutations, external messages
+or integration were performed. Only review artifacts were written under /tmp.

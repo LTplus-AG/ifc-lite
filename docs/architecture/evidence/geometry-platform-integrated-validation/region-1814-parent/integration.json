@@ -1,0 +1,23 @@
+{
+  "parent_integration": "265cc433a1",
+  "child_source": "18146351fb23ef83e946f6ab7c139cd1bc9f735b",
+  "child_base": "3edd2e18624aaf350954cdc4c9ec7113dfd1702e",
+  "source_paths": {
+    "docs/guide/geometry.md": "629c338b424bcfb6f60656bf2043a4eee5d3173ee9f3b7773340eff07f04de8b",
+    "rust/geometry/src/analytic/mod.rs": "e8ba27e7e737467c77c8fcd412865fd2a546c71172ecb55791406406d92b9c38",
+    "rust/geometry/src/analytic/profile.rs": "ebcdf840dd9856a3c7d7ee6129e6b1e8c6985d87e55fdb3b505bbe013f1c97ab",
+    "rust/geometry/src/analytic/profile_topology.rs": "fe73cb3f5633d72f34ad276947ed0497cf92121eafd737095858abe65594c105",
+    "rust/geometry/src/analytic/profile_topology_tests.rs": "1333a5ca3fd3b80ab11b5090e3ba039c22e76e65d3be348f72246d7cb030813e",
+    "rust/geometry/src/analytic/region/arrange.rs": "194d2c150ebaacdb297b03d4ef739d61ce988d653ba10f0eb683bbbc333e5ba9",
+    "rust/geometry/src/analytic/region/certify.rs": "c1df9bc36bf0157121c390bce99007b762df8d3095eb3869ffdef718b30a32a5",
+    "rust/geometry/src/analytic/region/exact.rs": "61688cbf26ffbb5328699dd3d25a1cdd9985b7b4d8e31d440eade8f8975b8171",
+    "rust/geometry/src/analytic/region/inspection.rs": "f7462c289a800536e3c9d40dd99ebc58a3254bb7b1b762a7a48df22401488e3d",
+    "rust/geometry/src/analytic/region/inspection_tests.rs": "872ecb582cca968f4046a99519b74c70f6e6be5d231f08963bf010d747d45f98",
+    "rust/geometry/src/analytic/region/mod.rs": "53826052ef698c20d82f58ee89bb2c5b8c7e3c15b28d4e7abe221057ea1e95ef",
+    "rust/geometry/src/analytic/region/raw.rs": "c488688d398c39c8459a8d5866db196f255a6195234018910566d8fa67a4859c",
+    "rust/geometry/src/analytic/region/tests.rs": "5eeac80e189a4c575c810925b6d1a63b2f7c5819489fec169a4bb9a99287ace1",
+    "rust/geometry/src/analytic/source.rs": "e35572f03f6af0c2b67e5123d1e72b650b9dd32e62b8486ba68308250c99bdcb"
+  },
+  "scope": "Inspection-only Untrusted raw chain and bounded exact single-line-chain cancellation certificate; no production source/epoch/common/runtime authority",
+  "checks": "14 source paths match reviewed child; whitespace and patch application pass; Rust compilation/tests/Clippy all UNRUN"
+}

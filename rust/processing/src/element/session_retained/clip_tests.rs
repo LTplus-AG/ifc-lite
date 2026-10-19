@@ -241,8 +241,10 @@ fn p2_sdk_actual_authoring_roof_walls_follow_existing_positive_volume_invariant(
 #[test]
 fn p2_sdk_difference_empty_captured_cancel_or_refusal_precedes_compatibility_hold() {
     use ifc_lite_geometry::resource::{self,Cost,ExecutionAccount,ExecutionPolicy,ResourceLimits};
-    let Some(mut worker)=worker() else {return};
     for cancelled in [true,false] {
+        // Cancellation owns retirement of this exact worker domain. The next
+        // independent first-fault scenario must start a fresh actual worker.
+        let Some(mut worker)=worker() else {return};
         let (_,context)=context("DIFFERENCE","T",10.,"");
         let mut decoder=context.source().unwrap().decoder();let router=router(&mut decoder);
         let limit=100_000;

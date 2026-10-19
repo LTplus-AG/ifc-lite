@@ -147,7 +147,13 @@ fn p1_type_product_uses_actual_one_and_three_products_and_orphan_mode_consumers(
                     assert!((frame[(axis,3)]-expected).abs()<1e-10,"actual product placement and mapping origin");
                 }
                 let binding=value.presentation().last().unwrap();
-                assert_eq!(binding.geometry_id,13);assert_eq!(binding.style_source_id,id+3);
+                // Flat occurrences retain the mapped item's presentation key;
+                // instanced templates/placeholders use the canonical solid key.
+                // The original leaf obligation remains separately authenticated.
+                assert_eq!(binding.geometry_id,if products>=2 {13} else {id+3});
+                assert_eq!(binding.style_source_id,id+3);
+                assert!(value.presentation().iter().any(|binding|binding.geometry_id==13
+                    && binding.style_source_id==13 && binding.representation_map.is_none()));
                 assert_eq!(binding.representation_map,Some(61));
                 assert_eq!(binding.placeholder,products>=2 && index>0);
                 product_slots.push(value.slot());product_definitions.push(value.definition().clone());

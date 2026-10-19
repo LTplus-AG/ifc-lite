@@ -1,0 +1,34 @@
+{
+  "base": "1089083da9be36b78eddca9d17e35bb666db8580",
+  "scope": "four processing test files only; no production changes",
+  "qualification": {
+    "rust_syntax_only": "PASS",
+    "git_diff_check": "PASS",
+    "compilation": "UNRUN",
+    "tests": "UNRUN",
+    "actual_SDK": "UNRUN"
+  },
+  "patch_sha256": "39722c09b1a5e19d543494a7a9f983fc47b5614ca4ff35e14bcaee709078e23b",
+  "files": [
+    {
+      "path": "rust/processing/src/element/session_retained/mapping_tests.rs",
+      "before_sha256": "58549cff2ad1fb3e3eb62ab4ae876e2068e590ef00ebc86ff2970086c6b44bc5",
+      "after_sha256": "cca242b5bd872492cb16c8f532509f8210517c85e833cf514f58b775da88be1a"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/operation_tests.rs",
+      "before_sha256": "f419038494d0312b6ec94c6ce88c0f3e510438c267c2fedae7fe78c9fc320aed",
+      "after_sha256": "a01e64d3ce86a504683ca7b359e1e3d0587287f5feb99929d27805074b816f02"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/resource_tests.rs",
+      "before_sha256": "6f7cc0ad6955f24f9dce78551fc5daa7a08c360c1ecd0abfdeb1643e1543ae87",
+      "after_sha256": "0369dc4c463e96aefd6b470491bf1478164b9e32b352737ad93e81610fd4731d"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/clip_tests.rs",
+      "before_sha256": "b9af9cf96fd0e82eaffeab52d3ca1786784aade34f49876e45704fd8a15a1f2b",
+      "after_sha256": "0ff95ef4b7fc7a979766e4fcf9e745e76c4063b38e93e69f77cfc50b2a422fb0"
+    }
+  ]
+}

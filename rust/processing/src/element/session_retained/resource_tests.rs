@@ -106,11 +106,18 @@ fn actual_sealed_acceptance_charges_ledger_backing_to_original_account_after_cal
     let mut execution = original.scope(|| execution(&context, &mut decoder, &router));
     let issued = execution.issue_next(&worker, &mut decoder, &router).unwrap().unwrap();
     let receipt = issued.execute(&mut worker, 0.001, 15., MeshLimits::default()).unwrap();
+    assert_eq!(execution.ledger.capacity(),0,"first acceptance must admit real ledger backing");
     let before = original.usage();
     let observer = original.clone(); drop(original);
     let foreign = account();
     foreign.scope(|| execution.accept(receipt, &mut decoder, &router)).unwrap();
-    assert!(observer.usage().live_bytes >= before.live_bytes + std::mem::size_of::<DischargedValue>() as u64);
+    // The first ledger entry admits its requested backing to the original
+    // account. Consuming the original unique reply simultaneously frees its
+    // Box and refunds that reply's owned live-byte reservation.
+    let ledger_bytes=std::mem::size_of::<DischargedValue>() as u64;
+    let reply_bytes=std::mem::size_of::<ifc_lite_geometry::program::ProgramReply>() as u64;
+    assert_eq!(observer.usage().live_bytes,before.live_bytes+ledger_bytes-reply_bytes);
+    assert!(execution.ledger.capacity()>=1);
     assert!(observer.usage().work > before.work);
     assert_eq!(foreign.usage(), resource::Usage::default());
     assert_eq!(execution.discharged_count(), 1);

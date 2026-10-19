@@ -79,12 +79,20 @@ fn p2_sdk_empty_host_avoids_unreached_invalid_cutter() {
 }
 
 fn affine_context() -> (ProductionModel,Arc<OwnedMeshProductionContext>) {
+    // A flat styled map transforms each direct child separately. Here the
+    // outer scale transforms ONE completed inner mapped child containing two
+    // distinct source definitions, so its one Range reply bakes both outputs.
     let source=SOURCE.replace("'SweptSolid',(#13)","'MappedRepresentation',(#93)")
         .replace("ENDSEC;END-ISO-10303-21;","
-        #90=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',(#13,#13));
+        #90=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#193));
         #91=IFCREPRESENTATIONMAP(#5,#90);
         #92=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#4,2.,$);
-        #93=IFCMAPPEDITEM(#91,#92);ENDSEC;END-ISO-10303-21;");
+        #93=IFCMAPPEDITEM(#91,#92);
+        #190=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',(#13,#113));
+        #113=IFCEXTRUDEDAREASOLID(#14,#5,#15,3.);
+        #191=IFCREPRESENTATIONMAP(#5,#190);
+        #192=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#4,1.,$);
+        #193=IFCMAPPEDITEM(#191,#192);ENDSEC;END-ISO-10303-21;");
     let model=ProductionModel::from_source(SourceBundle::new(source.into_bytes()));
     let context=model.snapshot(OwnedMeshProductionData::default());
     (model,context)
@@ -102,7 +110,17 @@ fn p1_sdk_affine_batch_rejects_swapped_actual_outputs_before_any_common_acceptan
         let mut work=issued.execute(&mut worker,0.001,15.,MeshLimits::default()).unwrap();
         if matches!(work.realizations()[0].kind(),RealizationKind::Affine(_)) {
             assert_eq!(work.realizations.len(),2);
+            assert_ne!(work.realizations[0].solid(),work.realizations[1].solid(),"independent actual affine outputs");
+            let operations=&execution.pending.as_ref().unwrap().operations;
+            assert_ne!(operations[0].expected().value().definition(),operations[1].expected().value().definition());
+            let sources:Vec<_>=operations.iter().map(|operation| {
+                let ifc_lite_geometry::program::RetainedOperationKind::Affine {input,..}=operation.expected().kind() else {panic!("all outputs are reached affine operations")};
+                let ifc_lite_geometry::program::LogicalRetainedDefinition::Source {source_id,..}=input.definition() else {panic!("actual authored source input")};
+                *source_id
+            }).collect();
+            assert_eq!(sources,[13,113]);
             let before=execution.discharged_count();
+            assert_eq!(before,2,"both distinct source constructions accepted before the one outer affine batch");
             work.realizations.swap(0,1);
             let rejected=execution.accept(work,&mut decoder,&router).unwrap_err();
             assert_eq!(execution.discharged_count(),before);
@@ -256,21 +274,47 @@ fn p2_sdk_nested_outcome_binding_exhaustion_is_typed_and_preserves_original_repl
 fn p1_sdk_stop_while_capturing_affine_input_is_typed_before_any_affine_issuance() {
     use ifc_lite_geometry::resource::{Dimension,ExecutionAccount,ExecutionPolicy,ResourceLimits};
     let Some(mut worker)=worker() else {return};
-    // One source-local value has no placement vector to copy. Publishing its
-    // definition therefore fits a zero-copy allowance. The reached scale appends
-    // a placement; capturing that input for the physical affine operation is the
-    // first positive placement-lineage copy and must refuse before SDK issuance.
+    // Presentation ownership already copies before the reached scale. Measure
+    // that authentic prefix with a successful control, then replay with exactly
+    // that allowance: the first physical bake input's placement copy must stop.
     let source=SOURCE.replace("'SweptSolid',(#13)","'MappedRepresentation',(#93)")
         .replace("ENDSEC;END-ISO-10303-21;","
         #90=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',(#13));
         #91=IFCREPRESENTATIONMAP(#5,#90);
         #92=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#4,2.,$);
         #93=IFCMAPPEDITEM(#91,#92);ENDSEC;END-ISO-10303-21;");
+    let (prefix,input_placement_bytes)= {
+        let model=ProductionModel::from_source(SourceBundle::new(source.as_bytes().to_vec()));
+        let context=model.snapshot(OwnedMeshProductionData::default());
+        let mut decoder=context.source().unwrap().decoder();let router=router(&mut decoder);
+        let control=ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+        let mut execution=control.scope(||execution(&context,&mut decoder,&router));
+        let issued=execution.issue_next(&worker,&mut decoder,&router).unwrap().expect("control construction");
+        let work=issued.execute(&mut worker,0.001,15.,MeshLimits::default()).unwrap();
+        assert!(work.realization().is_some());execution.accept(work,&mut decoder,&router).unwrap();
+        let before=control.usage().copy_bytes;
+        let issued=execution.issue_next(&worker,&mut decoder,&router).unwrap().expect("control affine admission");
+        let [PendingRetainedOperation::Affine {expected,..}]=execution.pending.as_ref().unwrap().operations.as_slice()
+            else {panic!("one reached actual affine input")};
+        let ifc_lite_geometry::program::RetainedOperationKind::Affine {input,..}=expected.kind() else {unreachable!()};
+        let placements=std::mem::size_of_val(input.placements()) as u64;
+        let presentation=std::mem::size_of_val(input.presentation()) as u64;
+        assert!(placements>0 && presentation>0);
+        // bake() copies this input and its output with the same owned history.
+        // Issued affine packets share the sealed input and fixed matrix only.
+        let prefix=control.usage().copy_bytes.checked_sub(2*(placements+presentation)).unwrap();
+        assert!(prefix>=before,"the successful prefix includes all earlier presentation work");
+        let work=issued.execute(&mut worker,0.001,15.,MeshLimits::default()).unwrap();
+        assert!(matches!(work.realizations[0].kind(),RealizationKind::Affine(_)));
+        execution.accept(work,&mut decoder,&router).unwrap();
+        assert!(execution.issue_next(&worker,&mut decoder,&router).unwrap().is_none());
+        (prefix,placements)
+    };
     let model=ProductionModel::from_source(SourceBundle::new(source.into_bytes()));
     let context=model.snapshot(OwnedMeshProductionData::default());
     let mut decoder=context.source().unwrap().decoder();
     let router=router(&mut decoder);
-    let account=ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits {copy_bytes:Some(0),..Default::default()}));
+    let account=ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits {copy_bytes:Some(prefix),..Default::default()}));
     let mut execution=account.scope(||execution(&context,&mut decoder,&router));
     let issued=execution.issue_next(&worker,&mut decoder,&router).unwrap().expect("real construction");
     let work=issued.execute(&mut worker,0.001,15.,MeshLimits::default()).unwrap();
@@ -281,11 +325,15 @@ fn p1_sdk_stop_while_capturing_affine_input_is_typed_before_any_affine_issuance(
         Err(error)=>error,Ok(_)=>panic!("affine input copying must stop before another runtime issuance"),
     };
     let stop=account.check().unwrap_err();
-    assert!(matches!(stop,ProgramStop::ResourceRefused(f) if f.dimension==Dimension::CopyBytes));
+    assert!(matches!(stop,ProgramStop::ResourceRefused(f) if f.dimension==Dimension::CopyBytes
+        && f.requested==input_placement_bytes && f.remaining==0));
+    assert_eq!(account.usage().copy_bytes,prefix,"earlier source/presentation prefix remains admitted");
     assert!(matches!(error,RetainedExecutionError::Stopped(actual) if actual==stop));
     assert_eq!(execution.discharged_count(),1);
     assert!(execution.pending.is_none(),"no replacement numerical receipt was manufactured");
-    assert!(execution.state.pending_geometry.is_some(),"original reached common continuation remains owned");
+    assert_eq!(execution.state.pending_geometry.as_mut().unwrap().program.request().unwrap_err(),
+        ifc_lite_geometry::program::ProgramError::Outstanding,
+        "the reached affine continuation remains outstanding after input-copy refusal");
     assert!(execution.traversal_plan().is_none());
     assert!(execution.issue_next(&worker,&mut decoder,&router).is_err());
     assert!((worker.volume(source_handle,1e-8).unwrap()-24.).abs()<1e-6,

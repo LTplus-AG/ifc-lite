@@ -1,0 +1,40 @@
+{
+  "root_head": "1aceb23744dd9d37b45a7b8354f57dabae4c6c23",
+  "changed_paths": [
+    "rust/processing/src/element/presentation_tests.rs"
+  ],
+  "cause": "incorrect test expectation; unchanged canonical policy starts transparent preference",
+  "failed_source": "082aab27df3b2a2550d29510798c0a7cea5a9b23",
+  "style_function_sha256": "8b58b7cf020140aaf4bb71128c784d150c12674d167d6d920d58db73f1356215",
+  "style_function_identical_across_base_failed_current": true,
+  "style_inputs": {
+    "base8acd": "9c84b096e9b15e6b46dcaa9a1ecd0597edc46752ae5c011f8a0fae9c559a4e5a",
+    "failed082": "9c84b096e9b15e6b46dcaa9a1ecd0597edc46752ae5c011f8a0fae9c559a4e5a",
+    "current": "9c84b096e9b15e6b46dcaa9a1ecd0597edc46752ae5c011f8a0fae9c559a4e5a"
+  },
+  "inspected_files": [
+    {
+      "path": "rust/processing/src/element/presentation_tests.rs",
+      "sha256": "10c12d2332b79d3e2653d0cbc6aa9209380aa6a987d0c55b2c44f32878908c44"
+    },
+    {
+      "path": "rust/processing/src/element/presentation_source.rs",
+      "sha256": "8ef40fbb2125406595873e63e395100b2376345c582fba3202298549bb6b119b"
+    },
+    {
+      "path": "rust/processing/src/element/assembly_submeshes.rs",
+      "sha256": "56c593dfa9b850ea63c67c47a78e5c3ad75418f000b1b21f021432203fd4d57d"
+    },
+    {
+      "path": "rust/geometry/src/program/product_control.rs",
+      "sha256": "de3be5ce6b67fc914d61a343dd213283ce84f5fb30f149ca3ca87164b75710de"
+    },
+    {
+      "path": "rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc",
+      "sha256": "3069997f0b7d555232180c88bea27d0f6ca4d9c309a9cf4b1c3a8c68bba166ad"
+    }
+  ],
+  "pre_phases_source_sha256": "5de39ea2ad2b9a682c309b6d2459064b5de0bf7f6903bf91671066d31c0bddaf",
+  "failure_receipt_sha256": "4725cf828c1491fcb1639c0d58d5bfe35e7f916687173953b1b224be2252b4b8",
+  "validation": "rustfmt parse-only and diff whitespace pass; no compilation/test/numerical rerun"
+}

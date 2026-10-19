@@ -116,16 +116,24 @@ fn presentation_one_material_cursor_crosses_real_instance_only_and_materialized_
         .unwrap();
         assert_eq!(result.meshes.len(), 2);
         assert_eq!(result.instance_occurrences.len(), 2);
+        // The canonical cursor starts with transparent preference, regardless
+        // of material-list order. Its next part prefers opaque, and both output
+        // channels advance that same cursor in the reached collection order.
         let (body, instance) = if items.starts_with("#32") {
-            (GLASS, RED)
-        } else {
             (RED, GLASS)
+        } else {
+            (GLASS, RED)
         };
-        assert!(result.meshes.iter().all(|mesh| mesh.color == body));
-        assert!(result
-            .instance_occurrences
-            .iter()
-            .all(|occurrence| occurrence.color == instance));
+        assert_eq!(
+            result.meshes.iter().map(|mesh| mesh.color).collect::<Vec<_>>(),
+            [body, body],
+            "{items}: materialized parts retain the shared material cursor"
+        );
+        assert_eq!(
+            result.instance_occurrences.iter().map(|occurrence| occurrence.color).collect::<Vec<_>>(),
+            [instance, instance],
+            "{items}: instance-only parts retain the shared material cursor"
+        );
         assert_eq!(
             result
                 .meshes

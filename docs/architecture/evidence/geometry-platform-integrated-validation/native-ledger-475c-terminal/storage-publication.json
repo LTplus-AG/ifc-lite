@@ -1,0 +1,20 @@
+{
+  "manifest": "pc-wsl-1128c53e-a923-4588-8dbf-ab6bc20adf85-ebd41a6cd585",
+  "name": "output.log",
+  "evidence": {
+    "backend": "local",
+    "bytes": 38602,
+    "encoding": "gzip",
+    "originalPath": "/home/louistrue/build-workers/worker-state/jobs/1128c53e-a923-4588-8dbf-ab6bc20adf85/output.log",
+    "originalSha256": "dfb627e7257503e43a79ed83fcfcaf1c6b94d2d2cba75c5e61ec79229482a13b",
+    "sha256": "5aadd193d8d3ffe64167b648f24736039f30cff203df87351e5805c3cca04c29",
+    "storedBytes": 4427,
+    "verified": true
+  },
+  "verified": true,
+  "owned_task_closure": {
+    "task": "ifclite-native-ledger-475c-20261019",
+    "state": "reclaimed",
+    "scope": "Only own completed checkout reclaimed; committed source and verified original log retained; shared compatibility cache preserved"
+  }
+}

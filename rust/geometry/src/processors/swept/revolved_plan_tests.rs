@@ -103,3 +103,26 @@ fn positional_axis_leniency_is_preserved_without_new_type_owner_assertions() {
     let mesh = lower(&source).unwrap().evaluate().unwrap();
     assert!((volume(&mesh) - 18. * std::f64::consts::PI).abs() < 1.);
 }
+
+#[test]
+fn authored_position_lifts_the_revolution_into_object_coordinates() {
+    let bounds = |mesh: &Mesh| {
+        let mut min = [f32::INFINITY; 3];
+        let mut max = [f32::NEG_INFINITY; 3];
+        for point in mesh.positions.chunks_exact(3) {
+            for axis in 0..3 {
+                min[axis] = min[axis].min(point[axis]);
+                max[axis] = max[axis].max(point[axis]);
+            }
+        }
+        (min, max)
+    };
+    let (base_min, base_max) = bounds(&lower(SOURCE).unwrap().evaluate().unwrap());
+    let placed = SOURCE.replace("#15=IFCREVOLVEDAREASOLID(#11,$,", "#16=IFCCARTESIANPOINT((10.,20.,30.));\n\
+        #17=IFCAXIS2PLACEMENT3D(#16,$,$);\n#15=IFCREVOLVEDAREASOLID(#11,#17,");
+    let (min, max) = bounds(&lower(&placed).unwrap().evaluate().unwrap());
+    for (axis, shift) in [10.0_f32, 20.0, 30.0].into_iter().enumerate() {
+        assert!((min[axis] - base_min[axis] - shift).abs() < 1e-3);
+        assert!((max[axis] - base_max[axis] - shift).abs() < 1e-3);
+    }
+}

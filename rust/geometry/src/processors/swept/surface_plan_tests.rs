@@ -69,3 +69,28 @@ fn owned_swept_area_preserves_missing_profile_refusal() {
         .unwrap_err();
     assert!(error.to_string().contains("SweptArea"));
 }
+
+#[test]
+fn composite_sweep_over_the_vertex_budget_is_refused_with_the_exact_count() {
+    let square = |x: f64| {
+        Profile2D::new(vec![
+            nalgebra::Point2::new(x, 0.0),
+            nalgebra::Point2::new(x + 1.0, 0.0),
+            nalgebra::Point2::new(x + 1.0, 1.0),
+            nalgebra::Point2::new(x, 1.0),
+        ])
+    };
+    // 2 regions x 4 ring points x 16385 stations = 131080 > 1 << 17.
+    let plan = SurfaceCurveSweepPlan {
+        regions: vec![square(0.0), square(3.0)],
+        points: (0..16385)
+            .map(|i| Point3::new(0.0, 0.0, i as f64 * 0.001))
+            .collect(),
+        entity_id: 77,
+    };
+    let error = plan.evaluate().unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "Geometry processing error: Sweep would place 131080 ring vertices, over 131072, at #77"
+    );
+}

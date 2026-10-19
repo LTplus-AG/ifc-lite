@@ -54,10 +54,10 @@ const ZONES_BY_FACE = Object.fromEntries(CUBE_FACES.map((f) => [f, zonesForFace(
 // the cube, then fade in very faintly. Each face draws its own outline on the
 // grid, so an idle cube is as clean as a plain one.
 const SEPARATORS = [
-  'group-hover/cube:border-l-foreground/10',
-  'group-hover/cube:border-r-foreground/10',
-  'group-hover/cube:border-t-foreground/10',
-  'group-hover/cube:border-b-foreground/10',
+  'group-hover/cube:border-l-foreground/[0.045]',
+  'group-hover/cube:border-r-foreground/[0.045]',
+  'group-hover/cube:border-t-foreground/[0.045]',
+  'group-hover/cube:border-b-foreground/[0.045]',
 ];
 
 const cubeTransform = (x: number, y: number) => `rotateX(${x}deg) rotateY(${y}deg)`;

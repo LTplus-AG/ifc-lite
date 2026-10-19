@@ -40,8 +40,6 @@ std::unique_ptr<SmBrep> checked_brep_copy(const SmBrep* source) {
     require(source && source->GetContext(),IFCLITE_SMLIB_INVALID_ARGUMENT,"copy source lacks context");
     SmTArray<SmFace*> faces; source->GetFaces(faces);
     SmTArray<SmEdge*> edges; source->GetEdges(edges);
-    require(faces.GetSize()<=100000 && edges.GetSize()<=100000,
-        IFCLITE_SMLIB_RESOURCE_LIMIT,"copy topology budget");
     for(auto* f:faces) require(f && f->GetType()==SmFace_TYPE,
         IFCLITE_SMLIB_UNSUPPORTED,"SDK MergeBrep cannot copy composite/specialized faces");
     for(auto* e:edges) require(e && e->GetType()==SmEdge_TYPE,

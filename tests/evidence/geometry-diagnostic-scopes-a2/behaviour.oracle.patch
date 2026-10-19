@@ -1,0 +1,54 @@
+diff --git b/rust/geometry/src/csg/census.rs a/rust/geometry/src/csg/census.rs
+index 9d78a08515..be0fc5f015 100644
+--- b/rust/geometry/src/csg/census.rs
++++ a/rust/geometry/src/csg/census.rs
+@@ -140,6 +140,8 @@ struct Scope {
+ }
+ impl Drop for Scope {
+     fn drop(&mut self) {
+-        let _ = self.previous.take();
++        ACTIVE.with(|current| {
++            current.replace(self.previous.take());
++        });
+     }
+ }
+diff --git b/rust/geometry/src/kernel/budget_state.rs a/rust/geometry/src/kernel/budget_state.rs
+index 9abf45d94b..5d4f39fe8e 100644
+--- b/rust/geometry/src/kernel/budget_state.rs
++++ a/rust/geometry/src/kernel/budget_state.rs
+@@ -93,6 +93,7 @@ impl Drop for PollScope<'_> {
+     fn drop(&mut self) {
+         *self.state = Image::current();
+         self.state.record_peaks();
++        self.caller.install();
+     }
+ }
+ 
+diff --git b/rust/geometry/src/pending_diagnostics.rs a/rust/geometry/src/pending_diagnostics.rs
+index 3ff724c613..72dc4323a5 100644
+--- b/rust/geometry/src/pending_diagnostics.rs
++++ a/rust/geometry/src/pending_diagnostics.rs
+@@ -86,7 +86,9 @@ struct Scope<'a> {
+ impl Drop for Scope<'_> {
+     fn drop(&mut self) {
+         self.owner.pending = Pending::take_current();
+-        let _ = self.caller.take();
++        if let Some(caller) = self.caller.take() {
++            caller.publish();
++        }
+     }
+ }
+ 
+diff --git b/rust/processing/src/element_degenerate.rs a/rust/processing/src/element_degenerate.rs
+index c8b2af21d4..90dd6d6f95 100644
+--- b/rust/processing/src/element_degenerate.rs
++++ a/rust/processing/src/element_degenerate.rs
+@@ -79,7 +79,7 @@ struct StateScope<'a> {
+ 
+ impl Drop for StateScope<'_> {
+     fn drop(&mut self) {
+-        DROPPED.with(|counter| counter.replace(self.saved));
++        self.state.dropped = DROPPED.with(|counter| counter.replace(self.saved));
+     }
+ }
+ 

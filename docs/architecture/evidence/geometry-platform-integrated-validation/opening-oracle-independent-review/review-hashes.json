@@ -1,0 +1,19 @@
+{
+  "license": "MPL-2.0",
+  "inspected_head": "31cce39bf84a5e0801fe24a1a3efe6ed55bb5b05",
+  "qualification": "read-only fixture arithmetic/source review; no build/SDK/canonical decoder qualification",
+  "files": {
+    "/tmp/ifclite-opening-oracle-independent-review.md": "08f13225291b14a5b44dab0a3cffea7c7c676242abd6138e42d1524cb14e925b",
+    "/tmp/ifclite-opening-independent-slab.py": "dae5e646f59f0d2e83a15ce45d2eb7e0f70efc634154032fdaa2cab0a138f9af",
+    "/tmp/ifclite-opening-independent-slab.json": "af591324b26697001aea1f1490a993db5038d38780f1c5fb67af40cc83755f32",
+    "/tmp/ifclite-opening-binary-volume.py": "68da32462f4909e0619381a14701b2ba9a3226cf1985d71126addee484098c47",
+    "/tmp/ifclite-opening-binary-volume.json": "b975782135dcbdfb1f59e5c6519812146dd30926310c0e0cc03c1e6f2164c099",
+    "rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc": "21625ddf0c241cd7562cc2b2fa0ab49a0d2218ba32da37b2ef4d34f1143c146f",
+    "rust/processing/src/element/session_retained/opening_witness.rs": "e9caac758e1fbffc68d716f4454e0153d13c379a1432b6fb0dc473caab7c7b7c",
+    "rust/processing/src/element/session_retained/opening_tests.rs": "9eb93277a7b72729cf625b00cd4efcfd6740c5ff9058fad1bb274bf91e3979b3",
+    "rust/geometry/src/placement/mod.rs": "acb7ef26200e28eb0f1ded0a1c5438d1027bf84af8a36c2ea20ad30e1ad6f54c",
+    "rust/geometry/src/analytic/profile.rs": "67f6a4f75ffa69ada81321e1191d011697fe49e0eafb432dc5a740f92f64f0f7",
+    "rust/geometry/src/kernel/mesh_bridge.rs": "fe1b3a0b3b1b67a4cf39667eb684c2a839a6220c9008def451b24e61303777ff",
+    "rust/geometry/src/program/openings/execute_tests.rs": "9f9e07205da46428213b4a7f8bc423193132d8f0a57ad9c56571cc3b687ab873"
+  }
+}

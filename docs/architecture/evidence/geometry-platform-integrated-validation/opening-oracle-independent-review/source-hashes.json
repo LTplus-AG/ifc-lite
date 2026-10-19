@@ -1,0 +1,18 @@
+{
+  "source_files": {
+    "rust/geometry/src/analytic/profile.rs": "67f6a4f75ffa69ada81321e1191d011697fe49e0eafb432dc5a740f92f64f0f7",
+    "rust/geometry/src/transform/placement_2d.rs": "3c716e92f4792b33adc9d0783cf6bac95560dfd539c2afb0d518d02a6e1a3ed7",
+    "rust/geometry/src/placement/mod.rs": "acb7ef26200e28eb0f1ded0a1c5438d1027bf84af8a36c2ea20ad30e1ad6f54c",
+    "rust/geometry/src/axis_projection.rs": "c10ae9baf162c8d148c0f1b2a9c8bca8702ae788b0a4c4c2080439e9a6411545",
+    "rust/core/src/parser/numeric_literal.rs": "45f84768ac45d020bb13c9fcc03bfe5dc61b3b5d4e734db66f2a7533fcf8a6bb",
+    "rust/geometry/src/kernel/mesh_bridge.rs": "fe1b3a0b3b1b67a4cf39667eb684c2a839a6220c9008def451b24e61303777ff",
+    "rust/processing/src/element/session_retained/opening_witness.rs": "e9caac758e1fbffc68d716f4454e0153d13c379a1432b6fb0dc473caab7c7b7c",
+    "rust/geometry/src/program/openings/execute_tests.rs": "9f9e07205da46428213b4a7f8bc423193132d8f0a57ad9c56571cc3b687ab873"
+  },
+  "artifacts": {
+    "/tmp/ifclite-opening-binary-volume.py": "68da32462f4909e0619381a14701b2ba9a3226cf1985d71126addee484098c47",
+    "/tmp/ifclite-opening-binary-volume.json": "b975782135dcbdfb1f59e5c6519812146dd30926310c0e0cc03c1e6f2164c099",
+    "/tmp/ifclite-opening-bab3-resolution.md": "8355880d522e68bbfe8efd82140ebee488e1f8b78426d2b7b997623465bcc43b",
+    "/tmp/ifclite-sdk-outward-bab3-final.log": "c723f0fa90da401da2426c8a11f32f08bd17da9aeb78813ff32d7dc8900f3af1"
+  }
+}

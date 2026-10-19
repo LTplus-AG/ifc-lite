@@ -1,0 +1,10 @@
+{
+  "manifest": "pc-wsl-753653ad-9e0f-4363-9e3a-f84c9fa5a6e8-ce453085a745",
+  "original_path": "/home/louistrue/build-workers/worker-state/jobs/753653ad-9e0f-4363-9e3a-f84c9fa5a6e8/output.log",
+  "original_sha256": "c723f0fa90da401da2426c8a11f32f08bd17da9aeb78813ff32d7dc8900f3af1",
+  "publication_verified": true,
+  "owned_task": "ifclite-sdk-outward-bab3-20261019",
+  "close_state": "released",
+  "reclaim_state": "reclaimed",
+  "closure": "Exact log publication verified before own task closure/reclamation; immutable source and root evidence retained; shared cache preserved"
+}

@@ -1,0 +1,25 @@
+{
+  "source": "f8ca9df5e7bc5f17674eebe49eff62245eb093d3",
+  "host": "pop-os",
+  "exitCode": 8,
+  "unchanged": true,
+  "observedSummaries": [
+    "75% tests passed, 2 tests failed out of 8",
+    "test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.68s",
+    "test result: FAILED. 766 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out; finished in 68.24s",
+    "qualification_ctest_exit=8 rust_consumer_exit=101",
+    "75% tests passed, 2 tests failed out of 8",
+    "wasm_ctest_exit=8 browser_runtime_exit=1 browser_processing_exit=1 browser_api_exit=1 canonical_build_exit=0 generated_types_exit=0 browser_js_exit=0",
+    "assembled_native_sdk_consumers_exit=8 assembled_wasm_sdk_actual_browser_exit=8"
+  ],
+  "nativeFailures": [
+    "smlib_owned_boundary",
+    "smlib_paired_copy_observability",
+    "actual_plane_runtime_box_survey_frame_chaining_and_independent_release",
+    "p2_sdk_issue_3641_actual_voiding_feature_chain_preserves_index_and_closed_solid_invariants"
+  ],
+  "browserRust": "All three lanes failed before test execution was detected; not numerical runtime qualification.",
+  "canonicalWasm": "Build and generated declaration identity passed.",
+  "canonicalJavaScript": "Actual browser/Worker contract passed (1 test).",
+  "scope": "SDK qualification on f8ca, not owner-feature qualification or platform readiness."
+}

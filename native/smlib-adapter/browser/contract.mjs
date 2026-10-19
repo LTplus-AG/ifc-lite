@@ -101,6 +101,10 @@ async function emptyContract(call) {
   };
   const disjoint = await call(5, session, a, b, u32(2));
   const removed = await call(5, session, a, a, u32(3));
+  for (const operation of [1,2,3]) {
+    const result = await call(5, session, disjoint, removed, u32(operation));
+    await classify(result, true); await call(8, session, result);
+  }
   for (const empty of [disjoint, removed]) {
     await classify(empty, true);
     for (const operation of [1,2,3]) for (const reverse of [false,true]) {

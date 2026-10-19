@@ -115,6 +115,11 @@ fn actual_sdk_sealed_empty_boolean_identities_preserve_independent_operands() {
     let removed = worker.evaluate_retained_boolean(source(&a, identity), source(&a, identity),
         Difference, 0.001, 5., MeshLimits::default()).unwrap();
     let mut results = Vec::new();
+    for operation in [Union, Intersection, Difference] {
+        let result = worker.evaluate_retained_boolean(RetainedDependency::Result(&empty),
+            RetainedDependency::Result(&removed), operation, 0.001, 5., MeshLimits::default()).unwrap();
+        assert!(result.is_empty()); result.validate_live().unwrap(); results.push(result);
+    }
     for zero in [&empty, &removed] {
         assert_eq!(zero.outcome(), NumericalOutcome::Empty);
         assert!(zero.is_empty()); assert!(zero.mesh().positions.is_empty());

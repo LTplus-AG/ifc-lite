@@ -35,6 +35,11 @@ void run_empty_tests() {
     ok(ifclite_smlib_boolean(session,a,b,IFCLITE_SMLIB_INTERSECTION,&empty));
     ok(ifclite_smlib_boolean(session,a,a,IFCLITE_SMLIB_DIFFERENCE,&removed));
     classify(session,empty,true); classify(session,removed,true);
+    for (uint32_t operation=1; operation<=3; ++operation) {
+        ifclite_smlib_handle result{};
+        ok(ifclite_smlib_boolean(session,empty,removed,operation,&result));
+        classify(session,result,true); ok(ifclite_smlib_release(session,result));
+    }
     for (auto zero : {empty,removed}) {
         for (uint32_t operation=1; operation<=3; ++operation) {
             for (bool reverse : {false,true}) {

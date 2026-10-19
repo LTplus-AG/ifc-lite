@@ -214,6 +214,12 @@ async fn actual_browser_sealed_empty_boolean_identities_and_independent_leases()
         Intersection, 0.001, 5., 1_048_576).await.unwrap();
     let removed = worker.evaluate_retained_boolean(source(&a, IDENTITY), source(&a, IDENTITY),
         Difference, 0.001, 5., 1_048_576).await.unwrap();
+    for operation in [Union, Intersection, Difference] {
+        let result = worker.evaluate_retained_boolean(BrowserDependency::Result(&empty),
+            BrowserDependency::Result(&removed), operation, 0.001, 5., 1_048_576).await.unwrap();
+        assert!(result.is_empty()); drop(result);
+        empty.validate_live().unwrap(); removed.validate_live().unwrap();
+    }
     for zero in [&empty, &removed] {
         assert_eq!(zero.outcome(), NumericalOutcome::Empty);
         assert!(zero.is_empty()); assert!(zero.mesh().positions.is_empty());

@@ -1,0 +1,24 @@
+{
+  "source": "f1689d65064ce333e4277bc6a6adc866221644b2",
+  "base": "42c4a874d5e8ab0bfc7dbb97853245d8cb221e4c",
+  "execution": "UNRUN",
+  "builds_tests_jobs_submitted": false,
+  "proof_classification": "Simulated delegated-boundary AllocError BEFORE Global, AFTER actual-account debit. No Global call, candidate block, candidate free or process OOM in injected attempt.",
+  "new_behavioral_cases": {
+    "SimulatedFresh": "actual Inner: attempted allocation charge retained, live/category rolled back, fresh capacity zero, payload unchanged, channels agree; fresh epoch cannot enter",
+    "SimulatedGrow": "actual Inner: full new Layout provisional debit and peak retained, exact old copy Layout retained, old pointer/capacity/values unchanged; channels agree and reentry refused",
+    "SimulatedSourceGrow": "actual original source F introduced after successful debit and before simulated error; source/account/observer/return/fresh epoch agree F",
+    "SimulatedPreStopped": "source F before operation; no debit, arm not consumed, old backing unchanged; reentry denied",
+    "simulated_grow_keeps_real_old_storage_until_free_before_refund": "Independent real Global old block and storage observer (fixture Budget, NOT combined actual-account authority); simulated failure has no storage events; later real old deallocate precedes refund",
+    "exact_storage_domain_survives_work_but_never_equates_separate_same_source_gates": "cfg(test) exact immutable GateInner identity, no charge or authority, separate same-source gates foreign"
+  },
+  "residuals": [
+    "simulated failure through allocate_zeroed/grow_zeroed/shrink entrypoints unexercised",
+    "actual process OOM/Global failure untested",
+    "actual-account Usage alone does not establish physical free ordering; independent storage observer retained",
+    "current source compile, unit execution, wasm, strict Clippy, feature and package matrix all UNRUN",
+    "no owner/parser/cache/ProductOwner/production activation or general allocation-failure qualification",
+    "default/exact output and performance qualification UNRUN"
+  ],
+  "parent_reported_prior_evidence": "adc55475 source4dd normal default/tracking/explicit library builds PASS; combined tests not executed due inherited borrow E0505; original receipt unchanged; not evidence for this source"
+}

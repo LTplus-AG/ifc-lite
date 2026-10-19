@@ -1,0 +1,102 @@
+{
+  "base": "42c4a874d5e8ab0bfc7dbb97853245d8cb221e4c",
+  "source": "f1689d65064ce333e4277bc6a6adc866221644b2",
+  "paths": [
+    {
+      "path": "rust/core/SOURCE_RESOURCE_GATE_TEST_SUPPORT.md",
+      "before_sha256": "4f635c653b2c5c5e37c68aecee819c78aed38d3928a9d91433766d9e73eeecb2",
+      "after_sha256": "fa587cd53717cab776fbd672663624d94846df626e6c0f08da8fa95f0528e939",
+      "before_git_blob": "9a5613280170da890d8bc6b7bdd94f882547af32",
+      "after_git_blob": "a114453dec887995b9c79b91eaab288ba8438ff6",
+      "lines": 179
+    },
+    {
+      "path": "rust/core/src/source_resources/actual_account_tests.rs",
+      "before_sha256": "0ffbfdc971d625be9737f16d066c08dbe14f948935e52510c6bdaa1a657c60d3",
+      "after_sha256": "a9e0da57b6be912b2932647ee6fecd222b9422fb537141d09eba9f415f8a1b83",
+      "before_git_blob": "f5adbd7fe831f758ed6e1549e2a61f2fb69bd4a7",
+      "after_git_blob": "32ebcfae5aaa85179526b9762bcdb34cb6608ce9",
+      "lines": 48
+    },
+    {
+      "path": "rust/core/src/source_resources/allocator.rs",
+      "before_sha256": "5b9d3c3dbb4602c38130a2b975f0f2c08bbcde959f33e7cbd2a44bcf77ea73ee",
+      "after_sha256": "a65cb0a9e33794c320c20d6da278265ed2a3e37f5cfc68051a32599a6149e29b",
+      "before_git_blob": "e2affa12a85de99acb1315becc8155a1d6ce7261",
+      "after_git_blob": "1db9456f6114d77dcb5b600105ae11a354f8078f",
+      "lines": 132
+    },
+    {
+      "path": "rust/core/src/source_resources/delegation_fixture.rs",
+      "before_sha256": null,
+      "after_sha256": "2801b836627f6fa2d594681a41c72ec7aded04f68da30cc023590bf2ee573313",
+      "before_git_blob": null,
+      "after_git_blob": "3522166d0bbc2081911914046fef3f61212bf799",
+      "lines": 54
+    },
+    {
+      "path": "rust/core/src/source_resources/gate.rs",
+      "before_sha256": "1eb5f9eec6bd014d37a9e383ef607d4455f73394abbba383749b46bb510f6180",
+      "after_sha256": "b9b2db2dd69832313618c3fab016ddd8ffe9de685134c80d46e639ecaf52619c",
+      "before_git_blob": "ae2cdfd1748bfe471455728cf8494bba0c38d552",
+      "after_git_blob": "91e855cc41e8018eae5c207a992492aece0f8762",
+      "lines": 189
+    },
+    {
+      "path": "rust/core/src/source_resources/lifetime_tests.rs",
+      "before_sha256": "48749382f73679d9d2acab535c904b32c51fbf6182670ae3933df73d4c243910",
+      "after_sha256": "8b57099fb4ad0c7eb24647d849a234bd46f0cc101fa4e11dd6122bc3b4afb0dc",
+      "before_git_blob": "1c4673d03213203e5ce94ea6ed34bbf1a9a2c043",
+      "after_git_blob": "38f3227c9389f2d7b22f08bd0bdb100a88f953ee",
+      "lines": 293
+    },
+    {
+      "path": "rust/core/src/source_resources/mod.rs",
+      "before_sha256": "34350e6df58a23d6b244c8615ff8a27e76f8146f59febddfd283751e016b08f0",
+      "after_sha256": "609489dc420645728a87e886e5f00be2fc212004f6c7d623bb08f280ae041f72",
+      "before_git_blob": "cecd0eab45cb410f8d9685fb45976579751e8d1d",
+      "after_git_blob": "a1dca0f05c41f45dac9b6e5bf5c48bf35a4418c2",
+      "lines": 33
+    },
+    {
+      "path": "rust/core/src/source_resources/witness.rs",
+      "before_sha256": "7c3a72d1acd98c3ea282221fc500569e0aa4b4e2d6aa31cc346fc6ba281698a9",
+      "after_sha256": "25f96d4eec2e05287d29770dffe0e153bc5890d322307d007d6f4d446db89dfe",
+      "before_git_blob": "2d6a6f3d597285cdf74858a326db6d0ce6f4805d",
+      "after_git_blob": "dfe5e724edc9bc85c6db33b6030efb1f819423bf",
+      "lines": 127
+    },
+    {
+      "path": "rust/core/src/source_resources/witness_operations.rs",
+      "before_sha256": "9a0056599f865941233169eb2f09bde638245081f4241abacdba9acb82b40be9",
+      "after_sha256": "e4af6a36f17c0087a39154ffc7fefdbd84dd20d0b5aa6cb68a4ee7e2be085e2d",
+      "before_git_blob": "63506be2407500cefa63c9fcc0b4b8aa9bf714b4",
+      "after_git_blob": "c656be1e45fc27bf60ff3020a51daada1b0d6c14",
+      "lines": 90
+    },
+    {
+      "path": "rust/geometry/src/resource/boundary_witnesses_tests.rs",
+      "before_sha256": "20f3c4afd27ef422f1356c259508337e2ea2dc6cad093f29920eb9fd55a44463",
+      "after_sha256": "620f2cd1785ef1f3a1b2b655940472c3a6fee7c3e573ceadaddb9e6129eda0a6",
+      "before_git_blob": "081ecb62e7642f12fe8d302d9557567fded4b446",
+      "after_git_blob": "a4423a95da0f87cdaa98383400eb37396d6b7c77",
+      "lines": 142
+    },
+    {
+      "path": "rust/geometry/src/resource/gate_boundary_witnesses_tests.rs",
+      "before_sha256": "0c2313fc8ae357afc6e81f8416e1537d702fddb2b81b3dd814836ee761654d3a",
+      "after_sha256": "4fdd42f05a3decfc3cc1b218af1dffe3b7b3d176e83abe761b476e92190ee3e4",
+      "before_git_blob": "414473c6ca99865a745f80bdfb09cc474aa60baa",
+      "after_git_blob": "d6242c5caad7d859a036114a48dcd809d52c52c8",
+      "lines": 258
+    },
+    {
+      "path": "rust/geometry/src/test_support.rs",
+      "before_sha256": "69a9b16718a5041e3c4e6d6d4db39780a5af1edfb3802814b2ec5b54b7ce4120",
+      "after_sha256": "7c1b252a6ac1b26504d1109450134fd9b23822bc81c124251adce79d1c8e247a",
+      "before_git_blob": "beb3471ba444fcd69124c60f3649151140383a1b",
+      "after_git_blob": "9b94316b5e4551571bedb0ea3aa113f512883532",
+      "lines": 156
+    }
+  ]
+}

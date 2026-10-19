@@ -1,0 +1,9 @@
+{
+  "scope": "Small fixture-only Python replay; not canonical Rust decoder, SDK or browser execution",
+  "source_fixture": "rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc",
+  "fixture_sha256": "21625ddf0c241cd7562cc2b2fa0ab49a0d2218ba32da37b2ef4d34f1143c146f",
+  "binary_result_sha256": "b975782135dcbdfb1f59e5c6519812146dd30926310c0e0cc03c1e6f2164c099",
+  "slab_result_sha256": "af591324b26697001aea1f1490a993db5038d38780f1c5fb67af40cc83755f32",
+  "both_recorded_results_reproduced": true,
+  "limitations": "Archived scripts preserve original absolute fixture and /tmp companion locations. The slab replay used the original hash-pinned binary script at /tmp/ifclite-opening-binary-volume.py. Portable canonical test helper is separately implemented and UNRUN."
+}

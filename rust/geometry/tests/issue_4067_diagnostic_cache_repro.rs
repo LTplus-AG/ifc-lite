@@ -5,14 +5,12 @@
 //! #4067 behavioral reproduction: CSG diagnostic counts depend on cache
 //! execution order.
 //!
-//! `ItemDedupCache` (the "structural boolean cache" #4067 names) stores only
-//! `(Mesh, Option<u128>)` — see `rust/geometry/src/router/mod.rs`'s
-//! `ItemDedupCache` alias and `router/processing.rs`'s
-//! `process_representation_item` — never the `BoolFailure` diagnostics the
+//! `ItemDedupCache` (the "structural boolean cache" #4067 names) used to store
+//! only `(Mesh, Option<u128>)`, never the `BoolFailure` diagnostics the
 //! uncached (MISS) build recorded via `record_topology_tear`
-//! (`csg/topology_diagnostic.rs`). A cache HIT for the same structural item
-//! therefore returns byte-identical geometry while silently omitting the
-//! diagnostic the first build recorded.
+//! (`csg/topology_diagnostic.rs`), so a HIT returned byte-identical geometry
+//! while omitting the diagnostic. The cache now keeps the winning miss's
+//! diagnostics and `router/processing.rs` replays them on a hit.
 //!
 //! `WALL_WITH_OPEN_UNION` below is a real, parsed `IfcWall` whose Body item is
 //! `IFCBOOLEANRESULT(.UNION., openFacetedBrep, extrudedBox)`, where
@@ -27,7 +25,8 @@
 //! result and `record_topology_tear` records a `KernelError` for it.
 
 use ifc_lite_core::EntityDecoder;
-use ifc_lite_geometry::{BoolFailureReason, GeometryRouter, ItemDedupCache};
+use ifc_lite_geometry::{BoolFailure, BoolFailureReason, GeometryRouter, ItemDedupCache};
+use rustc_hash::FxHashMap;
 use std::sync::Barrier;
 
 /// `IfcWall` #10, Body item #170 = `IFCBOOLEANRESULT(.UNION., #150, #164)`:
@@ -118,7 +117,11 @@ fn fresh_decoder(content: &'static str) -> EntityDecoder<'static> {
 /// qualifying record survived, else `0` (a raw count is not meaningful here:
 /// under a combined-gate build one tear can legitimately record twice).
 fn kernel_error_count(router: &GeometryRouter) -> usize {
-    let recorded = router.take_csg_failures().values().flatten().any(|f| {
+    kernel_error_count_in(&router.take_csg_failures())
+}
+
+fn kernel_error_count_in(failures: &FxHashMap<u32, Vec<BoolFailure>>) -> usize {
+    let recorded = failures.values().flatten().any(|f| {
         matches!(
             f.reason,
             BoolFailureReason::KernelError(_)
@@ -127,6 +130,17 @@ fn kernel_error_count(router: &GeometryRouter) -> usize {
         )
     });
     usize::from(recorded)
+}
+
+/// Every recorded failure as `(op, reason)`, for comparing a hit with its miss.
+fn failure_kinds(failures: &FxHashMap<u32, Vec<BoolFailure>>) -> Vec<String> {
+    let mut kinds: Vec<String> = failures
+        .values()
+        .flatten()
+        .map(|f| format!("{:?}/{:?}", f.op, f.reason))
+        .collect();
+    kinds.sort();
+    kinds
 }
 
 fn mesh_signature(mesh: &ifc_lite_geometry::Mesh) -> (usize, usize, u64) {
@@ -168,14 +182,9 @@ fn open_union_records_kernel_error_uncached() {
 /// on the second router is empty. Independent (unshared) caches do NOT show
 /// this: both builds MISS and BOTH record — proving the omission is caused
 /// specifically by cache SHARING, not by processing the wall twice.
-// #4083: this reproduces the STILL-OPEN determinism half of #4067 — it fails
-// against current code by design (see the module doc above) and is not a
-// regression this branch introduces or fixes. `#[ignore]`d so `cargo test
-// --workspace` (the default CI "Rust tests" job) stays green; run it
-// explicitly with `cargo test -p ifc-lite-geometry -- --ignored` to see the
-// live reproduction. Remove the attribute once #4083 lands a real fix.
+// #4083 omission half: the cache now carries the winning miss's diagnostics
+// and a hit replays them, so this passes; it stays as the regression guard.
 #[test]
-#[ignore = "known-bug reproduction for #4083 (open determinism half of #4067); fails by design until #4083 is fixed"]
 fn cache_hit_omits_the_kernel_error_the_cache_miss_recorded() {
     // Control: two INDEPENDENT (unshared) caches — both MISS, both record.
     {
@@ -213,7 +222,8 @@ fn cache_hit_omits_the_kernel_error_the_cache_miss_recorded() {
     let warm_mesh = warm_router
         .process_element(&warm_entity, &mut warm_decoder)
         .expect("mesh warm (cache-populating) build");
-    let warm_count = kernel_error_count(&warm_router);
+    let warm_failures = warm_router.take_csg_failures();
+    let warm_count = kernel_error_count_in(&warm_failures);
     assert_eq!(warm_count, 1, "warm (cache MISS) build must record the KernelError");
 
     // HIT: a second, fresh router sharing the SAME cache. Same structural
@@ -225,7 +235,8 @@ fn cache_hit_omits_the_kernel_error_the_cache_miss_recorded() {
     let hit_mesh = hit_router
         .process_element(&hit_entity, &mut hit_decoder)
         .expect("mesh hit (cache-served) build");
-    let hit_count = kernel_error_count(&hit_router);
+    let hit_failures = hit_router.take_csg_failures();
+    let hit_count = kernel_error_count_in(&hit_failures);
 
     assert_eq!(
         mesh_signature(&hit_mesh),
@@ -246,6 +257,12 @@ fn cache_hit_omits_the_kernel_error_the_cache_miss_recorded() {
          build (count={warm_count}) flagged, but recorded {hit_count} KernelError diagnostics \
          — the cache omits the diagnostic payload on a hit"
     );
+    assert_eq!(
+        failure_kinds(&hit_failures),
+        failure_kinds(&warm_failures),
+        "a cache HIT must replay exactly the diagnostics (op and reason, and how many) the \
+         MISS recorded"
+    );
 }
 
 /// #4067's second mechanism: "concurrent misses may compute outside the
@@ -259,9 +276,8 @@ fn cache_hit_omits_the_kernel_error_the_cache_miss_recorded() {
 /// (scheduling races are not guaranteed to reproduce on every run).
 ///
 /// Unlike its sibling `cache_hit_omits_the_kernel_error_the_cache_miss_recorded`
-/// (still `#[ignore]`d — that one exercises the still-open OMISSION half of
-/// #4067, a cache HIT never reaching the recording code at all), this test
-/// exercises the DOUBLE-COUNT half that #4083's `item_dedup_cache.rs`
+/// (the OMISSION half of #4067, a cache HIT never reaching the recording
+/// code), this test exercises the DOUBLE-COUNT half that #4083's `item_dedup_cache.rs`
 /// `claim_diagnostic` latch fixes directly: two racing MISSES of the same
 /// key. With the fix in place it is deterministic (25/25 single-counted,
 /// observed locally over multiple runs; the `Barrier` removes the scheduling

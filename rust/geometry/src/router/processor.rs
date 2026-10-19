@@ -93,6 +93,19 @@ pub trait GeometryProcessor {
     /// [`Self::take_bool_failures`]. Default: no-op, matching the 0 default
     /// above (nothing buffered, nothing to discard).
     fn truncate_bool_failures_to(&self, _since: usize) {}
+
+    /// Copy of the `BoolFailure` records buffered after index `since` (a prior
+    /// [`Self::bool_failure_count`]), without draining. Lets the router store
+    /// what one item's build recorded so a dedup-cache HIT can replay it.
+    /// Default: none.
+    fn bool_failures_since(&self, _since: usize) -> Vec<BoolFailure> {
+        Vec::new()
+    }
+
+    /// Append already-recorded failures to this processor's log, as if it had
+    /// just recorded them. Used to replay a dedup-cache miss's diagnostics on
+    /// a hit. Default: no-op, matching the empty defaults above.
+    fn replay_bool_failures(&self, _failures: Vec<BoolFailure>) {}
 }
 
 // The RTC-hook regression lives beside the trait on purpose: a test-only

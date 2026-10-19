@@ -46,6 +46,14 @@ impl GeometryProcessor for BooleanClippingProcessor {
     fn truncate_bool_failures_to(&self, since: usize) {
         self.rewind_to(since);
     }
+
+    fn bool_failures_since(&self, since: usize) -> Vec<BoolFailure> {
+        self.failures.borrow().get(since..).unwrap_or_default().to_vec()
+    }
+
+    fn replay_bool_failures(&self, failures: Vec<BoolFailure>) {
+        self.absorb_failures(failures);
+    }
 }
 
 impl BooleanClippingProcessor {

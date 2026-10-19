@@ -907,6 +907,15 @@ impl GeometryRouter {
                 .cloned();
             if let Some(entry) = hit {
                 let (mesh, rep) = (entry.0.clone(), entry.1);
+                // #4083 omission half: replay the diagnostics the miss kept, so
+                // a hit reports what the miss did. Once per hit; the double
+                // count the claim latch prevents is between racing MISSES.
+                let replay = cache.replay_diagnostics(key);
+                if !replay.is_empty() {
+                    if let Some(processor) = self.processor_for(&item.ifc_type) {
+                        processor.replay_bool_failures(replay);
+                    }
+                }
                 return Ok(self.stamp_direct_instance(mesh, rep));
             }
         }
@@ -933,17 +942,17 @@ impl GeometryRouter {
         // keep the diagnostic for one `item_dedup_key`; every other one
         // retracts its own copy of the same logical operation's record.
         //
-        // Fixes ONLY the double-count half of #4083: two racing MISSES each
-        // computing (and each initially recording) the same tear now collapse
-        // to one record. Does NOT fix the omission half — a cache HIT never
-        // reaches this code at all (it returns early above, before
-        // `process_representation_item_uncached` runs), so it still reports
-        // zero diagnostics regardless of what the warm MISS recorded.
+        // Two racing MISSES each computing (and each initially recording) the
+        // same tear collapse to one record. The winner's records are stored in
+        // the cache, and a later HIT (which returns early above, before
+        // `process_representation_item_uncached` runs) replays them.
         if let (Some(key), Some(before), Some(cache)) =
             (dedup_key, failure_mark, self.item_dedup_cache.as_ref())
         {
             if let Some(processor) = self.processor_for(&item.ifc_type) {
-                if processor.bool_failure_count() > before && !cache.claim_diagnostic(key) {
+                if processor.bool_failure_count() > before
+                    && !cache.claim_diagnostic(key, &processor.bool_failures_since(before))
+                {
                     processor.truncate_bool_failures_to(before);
                 }
             }

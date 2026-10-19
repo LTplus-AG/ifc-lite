@@ -94,8 +94,8 @@ fn assert_decoder_first(events: &[Event], expected: IfcType) {
     for event in &events[..2] {
         assert!(event.decoder_present);
         assert_eq!(
-            event.cached_type,
-            Some(expected),
+            event.cached_type.as_ref(),
+            Some(&expected),
             "real admitted cache must exist"
         );
     }

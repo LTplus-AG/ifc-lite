@@ -42,6 +42,8 @@ cache, nested entity/COW and borrowed-view migration remains a mandatory release
 requirement, as do regularized source binding, paired layers, appearance, final
 product publication, installed consumers, preservation, platform and performance.
 
+The remaining owner-wide migration has a dependency-ordered [coverage ledger](geometry-platform-owner-migration.md). It reuses the chosen standard-container allocator design and keeps production enrollment disabled until the complete owner, parser/cache/COW, authority and charge-partition gates pass. Test-support feasibility is not a partial production cutover.
+
 ## Outcome and non-negotiable contracts
 
 Land one Rust-owned plan/execute/assemble architecture for existing STEP geometry

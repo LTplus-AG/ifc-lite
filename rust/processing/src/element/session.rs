@@ -257,7 +257,6 @@ impl ProductState {
         Ok(())
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     pub(super) fn validate_retained_resources(&mut self, decoder: &EntityDecoder, router: &GeometryRouter) -> Result<(), WorkError> {
         if self.terminal.is_some() { return Err(WorkError::RetainedContract) }
         let owner = self.owner.as_mut().ok_or(WorkError::WrongOwner)?;

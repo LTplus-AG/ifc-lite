@@ -19,7 +19,7 @@ on:
       - 'rust/processing/src/element.rs'
       - 'rust/geometry/src/program/**'
       - 'rust/wasm-bindings/src/api/retained_product*'
-      - 'rust/wasm-bindings/src/api/retained_browser.rs'
+      - 'rust/wasm-bindings/src/api/retained_browser*'
       - 'rust/wasm-bindings/tests/retained-browser-contract.mjs'
       - 'rust/wasm-bindings/src/api/product_job.rs'
       - 'scripts/stage-retained-browser-assets.mjs'
@@ -97,5 +97,5 @@ jobs:
           WASM_BINDGEN_TEST_TIMEOUT: 180
         run: |
           wasm-pack test --headless --chrome rust/geometry-runtime --lib
-          wasm-pack test --headless --chrome rust/processing --lib session_retained::browser_tests
-          wasm-pack test --headless --chrome rust/wasm-bindings --lib retained_product
+          wasm-pack test --headless --chrome rust/processing --lib session_retained
+          wasm-pack test --headless --chrome rust/wasm-bindings --lib retained_

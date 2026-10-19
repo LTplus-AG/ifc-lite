@@ -204,3 +204,7 @@ impl IfcAPI {
 fn failure(error: impl std::fmt::Display) -> JsValue {
     JsValue::from_str(&error.to_string())
 }
+
+#[cfg(test)]
+#[path = "retained_browser_tests.rs"]
+mod tests;

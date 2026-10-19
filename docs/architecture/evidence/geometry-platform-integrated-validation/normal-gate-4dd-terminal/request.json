@@ -1,0 +1,18 @@
+{
+  "id": "auto-4389dce8229647d7805d16b98b6e84fe",
+  "commit": "4dd1854ddf4bff37a7f9bc02b69a42f2f5a895bf",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "-c",
+    "# SPDX-License-Identifier: MPL-2.0\nsource \"$HOME/build-workers/worker-env.sh\" || exit $?\nunset IFCLITE_SMLIB_WORKER\nresults=()\nrun_case() {\n  local case_name=\"$1\"\n  shift\n  printf '\\nCASE_START %s\\n' \"$case_name\"\n  \"$@\"\n  local result=$?\n  printf 'CASE_END %s exit=%s\\n' \"$case_name\" \"$result\"\n  results+=(\"$result\")\n}\nrun_case default_normal_core cargo build --locked -p ifc-lite-core --lib --no-default-features\nrun_case tracking_normal_core cargo build --locked -p ifc-lite-core --lib --no-default-features --features source-resource-tracking\nrun_case explicit_normal_core cargo build --locked -p ifc-lite-core --lib --no-default-features --features source-resource-gate-test-support\nrun_case core_combined_gate cargo test --locked -p ifc-lite-core --lib --features source-resource-gate-test-support normal_identity_actual_gate -- --nocapture\nrun_case all_core_resource cargo test --locked -p ifc-lite-core --lib --features source-resource-gate-test-support source_resources -- --nocapture\nrun_case geometry_combined_gate cargo test --locked -p ifc-lite-geometry --lib --features source-resource-gate-test-support gate_boundary_witnesses -- --nocapture\nrun_case geometry_resources cargo test --locked -p ifc-lite-geometry --lib --features source-resource-gate-test-support resource:: -- --nocapture\nrun_case wasm_core_test_compile cargo test --locked -p ifc-lite-core --lib --target wasm32-unknown-unknown --features source-resource-gate-test-support --no-run\nrun_case default_strict_clippy cargo clippy --workspace --all-targets -- -D warnings\nrun_case test_support_strict_clippy cargo clippy --workspace --all-targets --features ifc-lite-core/source-resource-gate-test-support -- -D warnings\nprintf 'SDK_ENV_UNSET_NOT_NUMERICAL_QUALIFICATION=1\\n'\nfor result in \"${results[@]}\"; do\n  if [ \"$result\" -ne 0 ]; then exit \"$result\"; fi\ndone\n"
+  ],
+  "storageTask": "ifclite-normal-gate-reviewed-20261019",
+  "pools": [],
+  "requestedHost": "pop-os"
+}

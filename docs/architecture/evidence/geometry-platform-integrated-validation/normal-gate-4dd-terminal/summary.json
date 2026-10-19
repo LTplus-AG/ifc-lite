@@ -1,0 +1,24 @@
+{
+  "source": "4dd1854ddf4bff37a7f9bc02b69a42f2f5a895bf",
+  "job": "adc55475-5405-48d6-9250-fbd0de0baa17",
+  "request": "auto-4389dce8229647d7805d16b98b6e84fe",
+  "host": "pop-os",
+  "exit": 101,
+  "sourceUnchanged": true,
+  "outputSha256": "4a6bd62bcf70def7603f531b72f34d867182bf49db6a53aa6ee124f3bc2cd249",
+  "cases": {
+    "default_normal_core": 0,
+    "tracking_normal_core": 0,
+    "explicit_normal_core": 0,
+    "core_combined_gate": 101,
+    "all_core_resource": 101,
+    "geometry_combined_gate": 101,
+    "geometry_resources": 101,
+    "wasm_core_test_compile": 101,
+    "default_strict_clippy": 0,
+    "test_support_strict_clippy": 101
+  },
+  "failure": "E0505 in inherited actual_owned_fault_witness: tuple cleanup moves lease and source while dependent borrows remain in tuple",
+  "correction": "85a44f0ca7 five sequential drops in same order; no assertion/resource/numeric change",
+  "executionBoundary": "No opted-in resource/gate/revision tests executed; three normal libraries and default strict workspace Clippy passed. wasm target failed before compile completion, no runtime claim. SDK deliberately unset."
+}

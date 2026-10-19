@@ -369,3 +369,30 @@ fn issue_7949_an_open_edge_joining_two_separate_fold_regions_is_a_tear_beyond_th
     let bridge = represented(&[[0., 0., 0.], [5., 0., 0.], [0., 1., 0.]], &[[0, 1, 2]]);
     assert!(tears_beyond_folds(&bridge, &buckets, &supported));
 }
+
+#[test]
+fn issue_7949_far_negative_coordinates_still_find_the_fold_edge() {
+    use super::super::{buckets::Buckets, plane_merge::PlaneTri, supported_cells::Supported};
+    use nalgebra::{Point3, Vector3};
+    // The f32 rounding allowance scales with the coordinate's MAGNITUDE; a
+    // signed maximum would be negative here and reject a point exactly on the edge.
+    let o = -5000.0;
+    let key = (0, 0, 0, 0);
+    let mut buckets = Buckets::new();
+    buckets.insert(
+        key,
+        vec![PlaneTri {
+            v: [Point3::new(o, o, o), Point3::new(o + 2., o, o), Point3::new(o, o + 2., o)],
+            normal: Vector3::z(),
+            tag: None,
+        }],
+    );
+    let mut supported = Supported::default();
+    supported.folded_buckets.push(key);
+    let split = represented(
+        &[[o as f32, o as f32, o as f32], [(o + 1.) as f32, o as f32, o as f32],
+          [(o + 2.) as f32, o as f32, o as f32], [o as f32, (o + 2.) as f32, o as f32]],
+        &[[0, 1, 3], [1, 2, 3]],
+    );
+    assert!(!tears_beyond_folds(&split, &buckets, &supported));
+}

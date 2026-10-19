@@ -86,7 +86,7 @@ pub(super) fn tears_beyond_folds(
         }
     }
     let on_fold_edge = |p: &Point3<f64>| {
-        let reach = TOLERANCE + F32_ROUNDING * p.coords.amax();
+        let reach = TOLERANCE + F32_ROUNDING * p.coords.abs().max();
         fold_edges.iter().any(|[a, b]| {
             let ab = b - a;
             let len2 = ab.norm_squared();

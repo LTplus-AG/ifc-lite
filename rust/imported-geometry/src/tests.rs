@@ -81,3 +81,14 @@ fn negative_and_fractional_face_counts_end_the_walk() {
     assert_eq!(fan(vec![3., 1e12]), vec![0, 1, 2]);
     assert_eq!(fan(vec![-1., 3.]), Vec::<u32>::new());
 }
+
+#[test]
+fn nan_points_pass_through_while_finite_points_check_w() {
+    // Organized PCD encodes invalid returns as NaN; they must not refuse the cloud.
+    let identity=vec![vec![vec![1.,0.,0.,0.],vec![0.,1.,0.,0.],vec![0.,0.,1.,0.],vec![0.,0.,0.,1.]]];
+    let p=math::points(&[0.,0.,0.,f64::NAN,f64::NAN,f64::NAN,1.,2.,3.],&identity).unwrap();
+    assert!(p.positions[3].is_nan());
+    assert_eq!(p.max,[1.,3.,-0.]);
+    let projective=vec![vec![vec![1.,0.,0.,1.],vec![0.,1.,0.,0.],vec![0.,0.,1.,0.],vec![0.,0.,0.,1.]]];
+    assert_eq!(math::points(&[0.,0.,0.,-1.,0.,0.],&projective).unwrap_err(),ImportError::HomogeneousPoints);
+}

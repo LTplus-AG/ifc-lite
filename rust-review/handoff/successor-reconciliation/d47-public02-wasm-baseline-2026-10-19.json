@@ -110,5 +110,9 @@
     "No latency, first callback, RSS or performance acceptance",
     "Current-main integration and publication pending",
     "Both existing bundle-size warnings retained"
-  ]
+  ],
+  "nextTask": {
+    "id": "node:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Athread-send%3Ad47-public02-raw7c8-build-executable-perf-prerequisites-only-20261019-v26",
+    "scope": "Same owner, ordinary matched profiling artifact builds only; no timed cohort queued"
+  }
 }

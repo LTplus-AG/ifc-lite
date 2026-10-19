@@ -172,8 +172,8 @@ struct Fixture {
     child:Rc<RefCell<Option<ChildValue>>>,evidence:Arc<Evidence>,
 }
 impl Fixture {
-    fn fixture(mode:Mode,entry:Entry)->Self {Self::fixture_with_foreign_account(mode,entry,false)}
-    fn fixture_with_foreign_account(mode:Mode,entry:Entry,foreign:bool)->Self {
+    fn new(mode:Mode,entry:Entry)->Self {Self::with_foreign_account(mode,entry,false)}
+    fn with_foreign_account(mode:Mode,entry:Entry,foreign:bool)->Self {
         // Add an uncached mapped real slab plus a separate wall-map occurrence
         // used to establish an independent completed cache before cancellation.
         static MAPPED_SOURCE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
@@ -248,7 +248,7 @@ fn account(mode:Mode)->ExecutionAccount {
 #[test]
 fn canonical_scoped_worker_success_preserves_both_complete_meshes_and_inherits_parent_work() {
     for entry in [Entry::Borrowed,Entry::FreshAccount] {
-        let mut fixture=Fixture::fixture(Mode::Success,entry);let account=account(Mode::Success);
+        let mut fixture=Fixture::new(Mode::Success,entry);let account=account(Mode::Success);
         let output=fixture.produce(&account).unwrap();
         assert_same(output.output(),&canonical(10,false));
         let child=fixture.child.borrow_mut().take().expect("actual worker child completed");
@@ -260,7 +260,7 @@ fn canonical_scoped_worker_success_preserves_both_complete_meshes_and_inherits_p
 #[test]
 fn swallowed_worker_cancellation_is_sticky_at_actual_outer_owned_producer() {
     for entry in [Entry::Borrowed,Entry::FreshAccount] {
-        let mut fixture=Fixture::fixture(Mode::Cancel,entry);let account=account(Mode::Cancel);
+        let mut fixture=Fixture::new(Mode::Cancel,entry);let account=account(Mode::Cancel);
         let result=fixture.produce(&account);
         assert!(matches!(result,Err(AccountedProductionError::Stopped(ProgramStop::Cancelled))));
         assert_eq!(account.check(),Err(ProgramStop::Cancelled));
@@ -270,7 +270,7 @@ fn swallowed_worker_cancellation_is_sticky_at_actual_outer_owned_producer() {
 #[test]
 fn worker_work_refusal_uses_parent_quota_even_with_fresh_supplied_account() {
     for entry in [Entry::Borrowed,Entry::FreshAccount] {
-        let mut fixture=Fixture::fixture(Mode::RefuseWork,entry);let account=account(Mode::RefuseWork);
+        let mut fixture=Fixture::new(Mode::RefuseWork,entry);let account=account(Mode::RefuseWork);
         let result=fixture.produce(&account);
         assert!(matches!(result,Err(AccountedProductionError::Stopped(ProgramStop::ResourceRefused(
             ResourceFailure {dimension:Dimension::Work,..})))));
@@ -281,7 +281,7 @@ fn worker_work_refusal_uses_parent_quota_even_with_fresh_supplied_account() {
 #[test]
 fn accounted_scoped_worker_unwind_restores_tls_owners_and_expires_source_authority() {
     for entry in [Entry::Borrowed,Entry::FreshAccount] {
-        let mut fixture=Fixture::fixture(Mode::Panic,entry);let account=account(Mode::Panic);
+        let mut fixture=Fixture::new(Mode::Panic,entry);let account=account(Mode::Panic);
         let result=catch_unwind(AssertUnwindSafe(||fixture.produce(&account)));
         assert!(result.is_err(),"actual worker panic reaches the owning canonical call");
         fixture.assert_released();
@@ -352,7 +352,7 @@ fn compatibility_outer_canonical_call_cannot_swallow_a_nested_fresh_bounded_refu
 #[test]
 fn compatibility_outer_receives_explicit_worker_cancellation_through_source_stop_authority() {
     for entry in [Entry::Borrowed,Entry::FreshAccount] {
-        let mut fixture=Fixture::fixture(Mode::CompatibilityCancel,entry);
+        let mut fixture=Fixture::new(Mode::CompatibilityCancel,entry);
         let compatibility=ExecutionAccount::new(ExecutionPolicy::Compatibility);
         let result=fixture.produce(&compatibility);
         assert!(matches!(result,Err(AccountedProductionError::Stopped(ProgramStop::Cancelled))),
@@ -368,7 +368,7 @@ fn compatibility_outer_receives_explicit_worker_cancellation_through_source_stop
 fn validated_source_scope_overrides_foreign_worker_account_and_restores_it_after_actual_child() {
     for mode in [Mode::Success,Mode::Cancel,Mode::RefuseWork,Mode::Panic,Mode::CompatibilityCancel] {
         for entry in [Entry::Borrowed,Entry::FreshAccount] {
-            let mut fixture=Fixture::fixture_with_foreign_account(mode,entry,true);
+            let mut fixture=Fixture::with_foreign_account(mode,entry,true);
             let account=if mode==Mode::CompatibilityCancel {
                 ExecutionAccount::new(ExecutionPolicy::Compatibility)
             } else {account(mode)};
@@ -399,7 +399,7 @@ fn validated_source_scope_overrides_foreign_worker_account_and_restores_it_after
 fn compatibility_preexisting_ancestor_stop_admits_no_scoped_child_geometry() {
     for mode in [Mode::PreCancelled, Mode::PreRefused] {
         for entry in [Entry::Borrowed, Entry::FreshAccount] {
-            let mut fixture = Fixture::fixture(mode, entry);
+            let mut fixture = Fixture::new(mode, entry);
             let compatibility = ExecutionAccount::new(ExecutionPolicy::Compatibility);
             let prior = fixture.evidence.cache.lock().unwrap().get(&29).unwrap().clone();
             let result = fixture.produce(&compatibility);
@@ -440,7 +440,7 @@ fn compatibility_preexisting_ancestor_stop_admits_no_scoped_child_geometry() {
 
 #[test]
 fn default_borrowed_scoped_worker_keeps_unbounded_real_geometry() {
-    let mut fixture = Fixture::fixture(Mode::UnboundedSuccess, Entry::Borrowed);
+    let mut fixture = Fixture::new(Mode::UnboundedSuccess, Entry::Borrowed);
     let entity = fixture.decoder.decode_by_id(10).unwrap();
     let output = produce_element_meshes(&job(&entity, &metadata(10)),
         &Context::default().borrowed(), &options(), &mut fixture.decoder, &fixture.router);
@@ -456,7 +456,7 @@ fn default_borrowed_scoped_worker_keeps_unbounded_real_geometry() {
 fn scoped_source_ancestor_fault_wins_over_distinct_foreign_terminal_and_restores_it() {
     for bounded in [false, true] {
         for mode in [Mode::PreCancelled, Mode::PreRefused] {
-            let mut fixture = Fixture::fixture_with_foreign_account(mode, Entry::FreshAccount, true);
+            let mut fixture = Fixture::with_foreign_account(mode, Entry::FreshAccount, true);
             let refusal = ProgramStop::ResourceRefused(ResourceFailure { dimension: Dimension::Work,
                 requested: 2, remaining: 1, reason: resource::RefusalReason::Limit });
             let source_stop = if mode == Mode::PreCancelled { ProgramStop::Cancelled } else { refusal };
@@ -482,7 +482,7 @@ fn scoped_source_ancestor_fault_wins_over_distinct_foreign_terminal_and_restores
 
 #[test]
 fn healthy_bounded_source_does_not_inherit_foreign_worker_fault_on_scope_exit() {
-    let mut fixture = Fixture::fixture_with_foreign_account(Mode::Success, Entry::FreshAccount, true);
+    let mut fixture = Fixture::with_foreign_account(Mode::Success, Entry::FreshAccount, true);
     *fixture.evidence.foreign_stop.lock().unwrap() = Some(ProgramStop::Cancelled);
     let account = account(Mode::Success);
     let output = fixture.produce(&account).unwrap();
@@ -492,4 +492,108 @@ fn healthy_bounded_source_does_not_inherit_foreign_worker_fault_on_scope_exit() 
     assert_eq!(account.check(), Ok(()));
     assert!(fixture.evidence.foreign_terminal_restored.load(Ordering::SeqCst));
     fixture.assert_released();
+}
+
+// Reply backing is admitted before the existing reached source/processor call.
+struct ReplyAdmissionExtrusion(Rc<Cell<usize>>);
+impl GeometryProcessor for ReplyAdmissionExtrusion {
+    fn supported_types(&self) -> Vec<IfcType> {vec![IfcType::IfcExtrudedAreaSolid]}
+    fn process(&self, entity:&DecodedEntity, decoder:&mut EntityDecoder, schema:&IfcSchema,
+        quality:TessellationQuality) -> ifc_lite_geometry::Result<Mesh> {
+        self.0.set(self.0.get()+1);
+        ExtrudedAreaSolidProcessor::new(schema.clone()).process(entity,decoder,schema,quality)
+    }
+}
+fn reply_admission_fixture() -> (EntityDecoder<'static>,GeometryRouter,Rc<Cell<usize>>) {
+    let mut decoder=EntityDecoder::new(SOURCE);
+    let mut router=admitted_router(&mut decoder);
+    let calls=Rc::new(Cell::new(0));
+    router.register(Box::new(ReplyAdmissionExtrusion(calls.clone())));
+    (decoder,router,calls)
+}
+fn reached_extrusion_reply_step() -> usize {
+    let (mut decoder,router,calls)=reply_admission_fixture();
+    let entity=decoder.decode_by_id(10).unwrap();let metadata=metadata(10);let context=Context::default();
+    let mut state=super::session::ProductState::new(&job(&entity,&metadata),&context.borrowed(),
+        &options(),&mut decoder,&router);
+    let mut steps=0;
+    while calls.get()==0 {
+        let request=state.request().unwrap().expect("real extrusion callback remains pending");
+        let reply=state.execute(request,&context.borrowed(),&mut decoder,&router).unwrap();
+        steps+=1;
+        state.accept(reply,&context.borrowed(),&mut decoder,&router).unwrap();
+    }
+    while state.advance(&context.borrowed(),&mut decoder,&router) {}
+    assert_same(&state.finish(&decoder,&router),&canonical(10,false));
+    assert_eq!(calls.get(),1,"the witness reaches the original real processor once");
+    steps
+}
+#[test]
+fn zero_reply_backing_allowance_stops_before_the_reached_real_processor() {
+    let callback_step=reached_extrusion_reply_step();
+    let (mut decoder,router,calls)=reply_admission_fixture();
+    let entity=decoder.decode_by_id(10).unwrap();let metadata=metadata(10);let context=Context::default();
+    let mut state=super::session::ProductState::new(&job(&entity,&metadata),&context.borrowed(),
+        &options(),&mut decoder,&router);
+    let limit=1_048_576;
+    let account=ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits {
+        live_bytes:Some(limit),..ResourceLimits::default() }));
+    account.scope(|| {
+        for _ in 1..callback_step {
+            let request=state.request().unwrap().unwrap();
+            let reply=state.execute(request,&context.borrowed(),&mut decoder,&router).unwrap();
+            state.accept(reply,&context.borrowed(),&mut decoder,&router).unwrap();
+        }
+        assert_eq!(calls.get(),0);
+        let request=state.request().unwrap().unwrap();assert!(request.inner.is_some());
+        // A still-live reservation for other work consumes the remaining
+        // allowance before this exact callback is admitted, without a new stop.
+        let held=resource::charge(Cost {live_bytes:limit-account.usage().live_bytes,..Cost::default()}).unwrap();
+        let cache=decoder.cache_size();let usage=account.usage();
+        let reply=state.execute(request,&context.borrowed(),&mut decoder,&router).unwrap();
+        assert!(matches!(&reply.payload,super::session_protocol::WorkPayload::Stopped(
+            ProgramStop::ResourceRefused(f)) if f.dimension==Dimension::LiveBytes && f.remaining==0
+                && f.requested==std::mem::size_of::<ifc_lite_geometry::program::ProgramReply>() as u64));
+        assert_eq!(reply.request,request);assert!(reply.registry_emitters.is_empty());
+        assert!(state.pending_geometry.is_some(),"terminal diagnostics retain the original dormant engine");
+        assert_eq!(calls.get(),0,"no new processor runs before reply storage admission");
+        assert_eq!(decoder.cache_size(),cache,"the refused work performs no source decode");
+        assert_eq!(account.usage(),usage,"a refused header creates no new allocation charge");
+        state.accept(reply,&context.borrowed(),&mut decoder,&router).unwrap();
+        assert!(state.request().unwrap().is_none());
+        let stopped=state.finish(&decoder,&router);
+        assert!(stopped.meshes.is_empty());assert!(stopped.instance_occurrences.is_empty());
+        drop(held);
+    });
+    assert!(decoder.try_execution_lease().is_ok());assert!(router.try_execution_lease().is_ok());
+    assert!(resource::current_account().is_none());
+}
+
+#[test]
+fn rejected_real_inner_reply_retains_its_admitted_box_until_packet_drop() {
+    use super::session_protocol::{WorkEmitter,WorkError};
+    let (mut decoder,router,calls)=reply_admission_fixture();
+    let entity=decoder.decode_by_id(10).unwrap();let metadata=metadata(10);let context=Context::default();
+    let mut state=super::session::ProductState::new(&job(&entity,&metadata),&context.borrowed(),
+        &options(),&mut decoder,&router);
+    let account=ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+    account.scope(|| {
+        let request=state.request().unwrap().unwrap();assert!(request.inner.is_some());
+        let before=account.usage().live_bytes;
+        let mut reply=state.execute(request,&context.borrowed(),&mut decoder,&router).unwrap();
+        assert!(matches!(&reply.payload,super::session_protocol::WorkPayload::GeometryStep(_,_)));
+        let resident=account.usage().live_bytes;
+        let header=std::mem::size_of::<ifc_lite_geometry::program::ProgramReply>() as u64;
+        assert!(resident>=before+header);
+        reply.emitter=match reply.emitter {WorkEmitter::PlainParts=>WorkEmitter::TexturedProduct,_=>WorkEmitter::PlainParts};
+        let rejected=state.accept(reply,&context.borrowed(),&mut decoder,&router).unwrap_err();
+        assert_eq!(rejected.error,WorkError::WrongEmitter);
+        assert_eq!(account.usage().live_bytes,resident,"rejection returns actual reply storage intact");
+        drop(rejected.reply);
+        assert!(account.usage().live_bytes<=resident-header,"dropping the packet refunds its owned box backing");
+        assert_eq!(calls.get(),0,"this real source admission precedes the constructor");
+        state.remember_stop(ProgramStop::Cancelled);
+        let stopped=state.finish(&decoder,&router);assert!(stopped.meshes.is_empty());
+    });
+    assert!(decoder.try_execution_lease().is_ok());assert!(router.try_execution_lease().is_ok());
 }

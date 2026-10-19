@@ -148,6 +148,17 @@ impl ProductState {
             let order = TriangleOrderScope::new(router, self.keep_order);
             let result = ifc_lite_geometry::ProcessorDispatchCapture::capture(|| {
                 let result=if let Some(inner)=request.inner {
+                    // Admit reply backing before any reached source/numerical
+                    // callback. Refusal retains the dormant engine for terminal
+                    // diagnostic cancellation instead of producing/dropping a reply.
+                    let reservation = match ifc_lite_geometry::resource::charge(ifc_lite_geometry::resource::Cost {
+                        live_bytes: std::mem::size_of::<ifc_lite_geometry::program::ProgramReply>() as u64,
+                        ..Default::default()
+                    }) {
+                        Ok(reservation) => reservation,
+                        Err(stop) => return Ok((request.kind.emitter(),
+                            super::session_protocol::WorkPayload::Stopped(stop))),
+                    };
                     let program = &mut self.pending_geometry.as_mut().expect("open geometry attempt").program;
                     let reply = if self.retained_contract.is_some() {
                         let (reply, operation) = program.admit_retained_with_inputs(inner, router, decoder,
@@ -157,7 +168,8 @@ impl ProductState {
                     } else {
                         program.execute_with_inputs(inner,router,decoder,Some(ctx.texture_index),Some(ctx.void_index)).expect("validated inner request")
                     };
-                    (request.kind.emitter(),super::session_protocol::WorkPayload::GeometryStep(reply,None))
+                    (request.kind.emitter(),super::session_protocol::WorkPayload::GeometryStep(
+                        super::session_protocol::AdmittedProgramReply::new(reply,reservation),None))
                 } else if let Some(attempt)=self.pending_geometry.take() {
                     (request.kind.emitter(),attempt.finish(&self.job,router))
                 } else { unreachable!("request owns an open geometry attempt") };
@@ -215,7 +227,7 @@ impl ProductState {
                     // accept the real inner reply before cancellation drains reports.
                     let stop=stop.or(entrance_stop).map(ifc_lite_geometry::resource::stop);
                     let program=&mut self.pending_geometry.as_mut().expect("open geometry attempt").program;
-                    program.accept(inner,router).expect("validated inner reply");
+                    program.accept(inner.into_reply(),router).expect("validated inner reply");
                     if stop.is_some() || ifc_lite_geometry::resource::check_current().is_err() {
                         program.cancel_with_reports(router).expect("validated cancellation router");
                     }

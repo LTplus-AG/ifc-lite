@@ -46,8 +46,30 @@ impl WorkKind {
     }
 }
 
+/// Backing admission travels with the unique engine reply, including rejection.
+/// The owned permit keeps its original account alive and refunds only on drop;
+/// it contains no thread-bound scope or source/router capability.
+pub(super) struct AdmittedProgramReply {
+    reply: Box<ifc_lite_geometry::program::ProgramReply>,
+    _reservation: ifc_lite_geometry::resource::Reservation,
+}
+impl AdmittedProgramReply {
+    pub fn new(reply: ifc_lite_geometry::program::ProgramReply,
+        reservation: ifc_lite_geometry::resource::Reservation) -> Self {
+        Self { reply: Box::new(reply), _reservation: reservation }
+    }
+    pub fn into_reply(self) -> ifc_lite_geometry::program::ProgramReply { *self.reply }
+}
+impl std::ops::Deref for AdmittedProgramReply {
+    type Target = ifc_lite_geometry::program::ProgramReply;
+    fn deref(&self) -> &Self::Target { &self.reply }
+}
+impl std::ops::DerefMut for AdmittedProgramReply {
+    fn deref_mut(&mut self) -> &mut Self::Target { &mut self.reply }
+}
+
 pub(super) enum WorkPayload {
-    GeometryStep(ifc_lite_geometry::program::ProgramReply,Option<ifc_lite_geometry::resource::ProgramStop>),
+    GeometryStep(AdmittedProgramReply,Option<ifc_lite_geometry::resource::ProgramStop>),
     Stopped(ifc_lite_geometry::resource::ProgramStop),
     Primary(PrimaryOutcome),
     TypeMap(Option<Vec<TypePart>>),

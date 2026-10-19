@@ -3,6 +3,7 @@
 // These do not implement or qualify a paired split. See PAIRED_PLANE_CONTRACT.md.
 #include "context_metadata.hpp"
 #include "copy.hpp"
+#include "sweep.hpp"
 #include <SmApiGeneral.h>
 #include <SmApiPrimitives.h>
 #include <SmApiQueries.h>
@@ -14,6 +15,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <vector>
+void run_face_lineage_tests();
 namespace {
 void require(bool value,const char* message) {
     if(!value) throw std::runtime_error(message);
@@ -151,9 +153,11 @@ void witness(bool cylinder,bool rational) {
 }
 }
 int main() {
-    try { witness(false,false); witness(true,false); witness(false,true); }
+    try { witness(false,false); witness(true,false); witness(false,true); run_face_lineage_tests(); }
     catch(const KernelDomainTainted& error) {
         std::fprintf(stderr,"paired prerequisite TAINTED: %s\n",error.message.c_str()); return 1;
+    } catch(const SweepFailure& error) {
+        std::fprintf(stderr,"paired prerequisite REFUSED status%d: %s\n",error.status,error.message); return 1;
     } catch(const std::exception& error) {
         std::fprintf(stderr,"paired prerequisite FAIL: %s\n",error.what()); return 1;
     }

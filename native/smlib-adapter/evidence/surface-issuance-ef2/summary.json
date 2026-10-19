@@ -1,0 +1,23 @@
+{
+  "base": "ef2b75163f3a24e65821c0ff8e7324c274f1a802",
+  "status": "UNRUN",
+  "syntax_only": "PASS C++17 -Wall -Wextra",
+  "heavy_submissions": 0,
+  "files": [
+    {
+      "path": "native/smlib-adapter/INITIAL_ROOT_ISSUANCE.md",
+      "before_sha256": "38443d360a843ecfcaf9be05bc7e63cc384683db7065972a05e497e9ee2230a7",
+      "after_sha256": "841a1320d26b65745906bfbe5b9ee426db7dbf927326d8aa697fe2b17f415515"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage_events.cpp",
+      "before_sha256": "dcb58ef5a9104b33964f7d78e62ab0992c0f95bc997a9c9376a393e80322148b",
+      "after_sha256": "e6bea8278229c52a6d88870d28d3adb1985fb727575cad75a13836da2d5d3e9d"
+    },
+    {
+      "path": "native/smlib-adapter/tests/root_issuance_tests.cpp",
+      "before_sha256": "90aabda14dec2688021ac79460a97caf0732e571929d8b68d586b1ab66c5bb9b",
+      "after_sha256": "f188acd7db78beadb8c854e8dec83d8c29cf2c08634bd35e3c63b2e323d37562"
+    }
+  ]
+}

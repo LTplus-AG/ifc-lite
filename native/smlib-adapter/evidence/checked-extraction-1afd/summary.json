@@ -1,0 +1,82 @@
+{
+  "base": "1afd9927873b98a9b4873acfff441c1c776534cf",
+  "sdk_revision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "sdk_source_unmodified": true,
+  "status": "UNRUN",
+  "syntax_only": "PASS C++17 -Wall -Wextra pinned SDK headers; no owned warnings",
+  "heavy_submissions": 0,
+  "tests": [
+    "smlib_checked_face_extraction --transfer",
+    "smlib_face_extraction_failure_boundary --terminal-failure"
+  ],
+  "files": [
+    {
+      "path": "native/smlib-adapter/CHECKED_FACE_EXTRACTION.md",
+      "before_sha256": null,
+      "after_sha256": "ad8c0daa24db1e3476a5654b87db1cd8e57c82dbf9260ae2e3991db8a5727d5f"
+    },
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "before_sha256": "ea68980ee0bce74c04106e514c8f5ec7350b42630f4098893467f15728a22920",
+      "after_sha256": "7c8311ebcc740bdda5e3274069a40e8e813ed4037b23ccca09a9f5366acfd080"
+    },
+    {
+      "path": "native/smlib-adapter/FACE_LINEAGE_CONTRACT.md",
+      "before_sha256": "144db5868262416b2ae35a5ef185a651ba21062a8d2383fef742654392b1c34b",
+      "after_sha256": "1076320f350768dcd9657b69d1a7a066f8610655eaaaa02c2c5e14119902d359"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_extraction.cpp",
+      "before_sha256": null,
+      "after_sha256": "556a3d1119e13161dea659bd49be090bf21dd64024bd18bd3ff04990f8b2d996"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_extraction.hpp",
+      "before_sha256": null,
+      "after_sha256": "35c7392c230f77f051b7f361db6c305710398e3e6b72b5276742a77832513c9e"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.cpp",
+      "before_sha256": "f2fc504d66afacfc8be0fd71eacc3c3598051dc00701dd84fc8503814778f9df",
+      "after_sha256": "523ab40d8276ad3c20f70478903ffb94ef4499541b5f422a052f788364563e3e"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_extraction_tests.cpp",
+      "before_sha256": null,
+      "after_sha256": "e941320500b0fb450c198c745a82fec3409d9e5be33a86886461fb069e769a3c"
+    }
+  ],
+  "unchanged_local_base_pins": [
+    {
+      "path": "native/smlib-adapter/qualify.sh",
+      "sha256": "ec797fc4b79e24e07e40e0502ee054d3a9b42d0f0edbab47c34b20f3f4389e43"
+    },
+    {
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "sha256": "f67077face61a64176dbb0f155aa4d96a13124135728d7ff016f138cadaf6fa3"
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "sha256": "800e18af50520867897d70b25e814428e78cd279bcd643fc8d68e70abf520a8a"
+    },
+    {
+      "path": "native/smlib-adapter/src/plane.cpp",
+      "sha256": "1c7ed1a9958693682696ca48b8cb6a893eb4c480d1192999b97974e51391cafe"
+    },
+    {
+      "path": "native/smlib-adapter/src/plane_domain.cpp",
+      "sha256": "3e500336a94fad265286eecaa3c6673c38a6a3752ac079b7b1032ef10a01357d"
+    },
+    {
+      "path": "native/smlib-adapter/tests/copy_failure_tests.cpp",
+      "sha256": "6bb0725029910d19eb7063f73ac43a744213db308d11b725465527ff4b198162"
+    },
+    {
+      "path": "native/smlib-adapter/src/copy.cpp",
+      "sha256": "fa96fc26b40565b8cfcce991a752be5fbaab67cd82f6566272b7d3f8c3e18357"
+    }
+  ],
+  "paired_split_implemented": false,
+  "opcode21_advertised": false,
+  "capability128_advertised": false
+}

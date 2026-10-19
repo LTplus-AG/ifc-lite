@@ -1,0 +1,43 @@
+{
+  "base": "9d5dc61e56f55e06e948285ae23f61e671b898b1",
+  "status": "UNRUN",
+  "syntax_only": "PASS C++17 -Wall -Wextra; no SDK execution",
+  "heavy_submissions": 0,
+  "files": [
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "before_sha256": "18a3819596b03bd53713c21cb9fa95e2b2c609dd455b942286647c795709cc7b",
+      "after_sha256": "ea68980ee0bce74c04106e514c8f5ec7350b42630f4098893467f15728a22920"
+    },
+    {
+      "path": "native/smlib-adapter/INITIAL_ROOT_ISSUANCE.md",
+      "before_sha256": null,
+      "after_sha256": "38443d360a843ecfcaf9be05bc7e63cc384683db7065972a05e497e9ee2230a7"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.cpp",
+      "before_sha256": "b4f9d3d065d3f34d33eadb739bd6866272a3d52b2c7cf4f2a709723eb46b1397",
+      "after_sha256": "f2fc504d66afacfc8be0fd71eacc3c3598051dc00701dd84fc8503814778f9df"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.hpp",
+      "before_sha256": "db34c92e10e395ab7f2d788259ffba181bbf6ca9c0d56bf933054ac21e57cb91",
+      "after_sha256": "838238ae87d0ea29df577836715feaae1e86085d64b825e684d9b5e0a76ee70f"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage_events.cpp",
+      "before_sha256": "300358c03e748efb53a886c17cfd2f9b86ee5276e19321973263970ffcd1c30c",
+      "after_sha256": "dcb58ef5a9104b33964f7d78e62ab0992c0f95bc997a9c9376a393e80322148b"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_lineage_tests.cpp",
+      "before_sha256": "9a5bd8a6149d34477988de431b40fa1fe8d7039060f1882dfd680e6ceb117749",
+      "after_sha256": "2337bbd87df3d3abca668c348b9774a013e6730d44c94badd65acbb7dabef52a"
+    },
+    {
+      "path": "native/smlib-adapter/tests/root_issuance_tests.cpp",
+      "before_sha256": null,
+      "after_sha256": "90aabda14dec2688021ac79460a97caf0732e571929d8b68d586b1ab66c5bb9b"
+    }
+  ]
+}

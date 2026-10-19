@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "base": "2915e1a3c4c4544f5da64044b2b06e45501ba667",
+  "scope": "private bounded continuous-observation face lineage and optional checked-copy integration",
+  "owned_files": [
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "before_sha256": "5a73c7d4d678493e6434164bbd23f05c7858892dc4d139ee22d11e975a6b44d9",
+      "after_sha256": "18a3819596b03bd53713c21cb9fa95e2b2c609dd455b942286647c795709cc7b"
+    },
+    {
+      "path": "native/smlib-adapter/src/copy.cpp",
+      "before_sha256": "df3f6993cbc6fea0dd488891dc08a9ff595630e30adc1e8f31d988898c7b3a1b",
+      "after_sha256": "fa96fc26b40565b8cfcce991a752be5fbaab67cd82f6566272b7d3f8c3e18357"
+    },
+    {
+      "path": "native/smlib-adapter/src/copy.hpp",
+      "before_sha256": "54aef2dc2ab5fe3b4e590b0f38a54b7d8a2c6f5b46795ac07f92d85ad6c1bbe8",
+      "after_sha256": "31ae1bafac659b528420b5cc769fee0e8dab869c6ec16bbb77d85815a4acc416"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.cpp",
+      "before_sha256": null,
+      "after_sha256": "b4f9d3d065d3f34d33eadb739bd6866272a3d52b2c7cf4f2a709723eb46b1397"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.hpp",
+      "before_sha256": null,
+      "after_sha256": "db34c92e10e395ab7f2d788259ffba181bbf6ca9c0d56bf933054ac21e57cb91"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage_events.cpp",
+      "before_sha256": null,
+      "after_sha256": "300358c03e748efb53a886c17cfd2f9b86ee5276e19321973263970ffcd1c30c"
+    },
+    {
+      "path": "native/smlib-adapter/tests/paired_plane_observability_tests.cpp",
+      "before_sha256": "bd7cc0cb2fe9be3f5f27a105caaa52b5414abf71652c12d8926de47f1451c0f1",
+      "after_sha256": "e6c742d94260facb9ddfcfb7c5ab90f1e99afe63c6f6a03f3dcc1b5ed9916b20"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_lineage_tests.cpp",
+      "before_sha256": null,
+      "after_sha256": "9a5bd8a6149d34477988de431b40fa1fe8d7039060f1882dfd680e6ceb117749"
+    },
+    {
+      "path": "native/smlib-adapter/FACE_LINEAGE_CONTRACT.md",
+      "before_sha256": null,
+      "after_sha256": "144db5868262416b2ae35a5ef185a651ba21062a8d2383fef742654392b1c34b"
+    }
+  ],
+  "unchanged_base_files": [
+    {
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "sha256": "f67077face61a64176dbb0f155aa4d96a13124135728d7ff016f138cadaf6fa3",
+      "changed": false
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "sha256": "800e18af50520867897d70b25e814428e78cd279bcd643fc8d68e70abf520a8a",
+      "changed": false
+    },
+    {
+      "path": "native/smlib-adapter/src/context_metadata.hpp",
+      "sha256": "c105a819bb1aa5d7e678aadca403a4174a0312621eb26cbc2d850eb0f3d4b407",
+      "changed": false
+    },
+    {
+      "path": "native/smlib-adapter/tests/copy_failure_tests.cpp",
+      "sha256": "6bb0725029910d19eb7063f73ac43a744213db308d11b725465527ff4b198162",
+      "changed": false
+    },
+    {
+      "path": "native/smlib-adapter/qualify.sh",
+      "sha256": "ec797fc4b79e24e07e40e0502ee054d3a9b42d0f0edbab47c34b20f3f4389e43",
+      "changed": false
+    },
+    {
+      "path": "native/smlib-adapter/PAIRED_PLANE_CONTRACT.md",
+      "sha256": "820a919ec8967306767d70d124883bb9ff8c8c99efc6422546203a075ab3a816",
+      "changed": false
+    }
+  ],
+  "qualification": {
+    "cpp17_syntax_only": "PASS",
+    "owned_warnings": 0,
+    "diff_check": "PASS",
+    "actual_sdk_tests": "UNRUN",
+    "native_and_browser_module": "UNRUN",
+    "paired_split": "NOT IMPLEMENTED",
+    "capability128": "RESERVED ONLY",
+    "opcode21": "RESERVED ONLY"
+  },
+  "sdk_revision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "heavy_submissions": [],
+  "runtime_authority": "No public wire/ABI authority; trusted actual object-revision issuance and parent runtime sealing still required",
+  "continuation": "Checked one-intersection status producer, exhaustive trimmed-face partition, shared mate transfer, opposite cap extraction and atomic pair publication remain required",
+  "qualify_script": "Excluded from patch; preserve parent eee60 independently"
+}

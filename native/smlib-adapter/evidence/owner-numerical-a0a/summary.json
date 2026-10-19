@@ -1,0 +1,172 @@
+{
+  "base": "a0a589cd78a7436a683bb8df679fed9913af8533",
+  "status": "UNRUN",
+  "syntax_only": "PASS C++17 -fsyntax-only -Wall -Wextra; 11 owned translation units; no owned warnings",
+  "sdk_revision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "sdk_source_unmodified": true,
+  "heavy_jobs_submitted": 0,
+  "files": [
+    {
+      "path": "native/smlib-adapter/CHECKED_FACE_EXTRACTION.md",
+      "before_sha256": "ad8c0daa24db1e3476a5654b87db1cd8e57c82dbf9260ae2e3991db8a5727d5f",
+      "after_sha256": "1383d9019b2fc31fa5a6969fa74d4f1c689f3262c49819b93d67667a81791b04"
+    },
+    {
+      "path": "native/smlib-adapter/CLOSED_WORLD_NUMERICAL_CONTRACT.md",
+      "before_sha256": null,
+      "after_sha256": "b6a7da379d62b89a88539ec7d7021f7598292ad621d9457c1ca36370dec78cb6"
+    },
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "before_sha256": "7c8311ebcc740bdda5e3274069a40e8e813ed4037b23ccca09a9f5366acfd080",
+      "after_sha256": "b069e603e44bf0c989e8831840669d9cee908a365c8671bb0aa9c35f5bb1f5ad"
+    },
+    {
+      "path": "native/smlib-adapter/FACE_LINEAGE_CONTRACT.md",
+      "before_sha256": "1076320f350768dcd9657b69d1a7a066f8610655eaaaa02c2c5e14119902d359",
+      "after_sha256": "b3005a79c0b4b1d33723c6bd905780edfc65161c3319d59fe7b80bdc79838c74"
+    },
+    {
+      "path": "native/smlib-adapter/src/copy.cpp",
+      "before_sha256": "fa96fc26b40565b8cfcce991a752be5fbaab67cd82f6566272b7d3f8c3e18357",
+      "after_sha256": "0cfc60da6dccd1f91a7140fe53e5ee8be975e21cb3e827895e359d48105072bf"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_extraction.cpp",
+      "before_sha256": "556a3d1119e13161dea659bd49be090bf21dd64024bd18bd3ff04990f8b2d996",
+      "after_sha256": "fc84454b17e0b422c4ae2665228a8b65e53e8da1d6f3b342e6265873d5e329dc"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.cpp",
+      "before_sha256": "523ab40d8276ad3c20f70478903ffb94ef4499541b5f422a052f788364563e3e",
+      "after_sha256": "9c9449b94367b9eb599bf9d31b951a69607330dc8075e49c0ce77b18437628ab"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.hpp",
+      "before_sha256": "838238ae87d0ea29df577836715feaae1e86085d64b825e684d9b5e0a76ee70f",
+      "after_sha256": "e82b8d86fafcbfcd0142317385921461a4e67549454caa55ff36b005e27e5a23"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage_events.cpp",
+      "before_sha256": "e6bea8278229c52a6d88870d28d3adb1985fb727575cad75a13836da2d5d3e9d",
+      "after_sha256": "357061768cc86b8285cbb30754111daf1dd24b95fa61716068b43e705fced0ee"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage_geometry.cpp",
+      "before_sha256": null,
+      "after_sha256": "84ba39920cdaa1fb4e3461867ce75813964579a19d5846b54f83a3e78d57a7ad"
+    },
+    {
+      "path": "native/smlib-adapter/src/representation_seal.cpp",
+      "before_sha256": null,
+      "after_sha256": "ba32d0a31a739bf48ab6c8084ac4a7fdb476830846cb08507ba2d8dc473455e4"
+    },
+    {
+      "path": "native/smlib-adapter/src/representation_seal.hpp",
+      "before_sha256": null,
+      "after_sha256": "50c67bef23e553bad6e58fb875a585438b69ce2564d31398b81bf9b42b37090b"
+    },
+    {
+      "path": "native/smlib-adapter/src/representation_seal_geometry.cpp",
+      "before_sha256": null,
+      "after_sha256": "a31dee2bb027cf92fc23dc40b70b6f4241def2b81d024bd829a4041ab208b2a5"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_extraction_tests.cpp",
+      "before_sha256": "e941320500b0fb450c198c745a82fec3409d9e5be33a86886461fb069e769a3c",
+      "after_sha256": "c75d6d570a090a75d0b58b4d26baa50b4ff09b9c10f5fe29bd40fedcf2d319fc"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_lineage_tests.cpp",
+      "before_sha256": "2337bbd87df3d3abca668c348b9774a013e6730d44c94badd65acbb7dabef52a",
+      "after_sha256": "998d3fd6c6ca373343c967a342dc2f9934d5284e20fe7de6edcb2c6ddcb0e034"
+    },
+    {
+      "path": "native/smlib-adapter/tests/root_issuance_tests.cpp",
+      "before_sha256": "f188acd7db78beadb8c854e8dec83d8c29cf2c08634bd35e3c63b2e323d37562",
+      "after_sha256": "8e85f5f6922c846d6bc09bcb84a14d3ec4bb7cc5fbfe877c4bdd3f3313d72935"
+    }
+  ],
+  "unchanged_local_base_pins": [
+    {
+      "path": "native/smlib-adapter/qualify.sh",
+      "sha256": "ec797fc4b79e24e07e40e0502ee054d3a9b42d0f0edbab47c34b20f3f4389e43"
+    },
+    {
+      "path": "native/smlib-adapter/src/plane.cpp",
+      "sha256": "1c7ed1a9958693682696ca48b8cb6a893eb4c480d1192999b97974e51391cafe"
+    },
+    {
+      "path": "native/smlib-adapter/src/plane_domain.cpp",
+      "sha256": "3e500336a94fad265286eecaa3c6673c38a6a3752ac079b7b1032ef10a01357d"
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "sha256": "800e18af50520867897d70b25e814428e78cd279bcd643fc8d68e70abf520a8a"
+    },
+    {
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "sha256": "f67077face61a64176dbb0f155aa4d96a13124135728d7ff016f138cadaf6fa3"
+    },
+    {
+      "path": "native/smlib-adapter/tests/copy_failure_tests.cpp",
+      "sha256": "6bb0725029910d19eb7063f73ac43a744213db308d11b725465527ff4b198162"
+    },
+    {
+      "path": "native/smlib-adapter/PAIRED_PLANE_CONTRACT.md",
+      "sha256": "820a919ec8967306767d70d124883bb9ff8c8c99efc6422546203a075ab3a816"
+    }
+  ],
+  "witnesses": [
+    {
+      "ctest": "smlib_paired_copy_observability",
+      "source": "tests/root_issuance_tests.cpp",
+      "cases": [
+        "unchanged generated patch/root/copy positive",
+        "5 notifying owner families before roots and same-frame after roots",
+        "silent face UV domain, retained-old-trim swap, raw trim control writes",
+        "missing/duplicate/relabel/unknown/expired/refreshed-surface refusals"
+      ],
+      "status": "UNRUN"
+    },
+    {
+      "ctest": "smlib_paired_copy_observability",
+      "source": "tests/face_lineage_tests.cpp",
+      "cases": [
+        "copy/release lifetime under exact source comparison",
+        "real split/merge origin sets",
+        "SUCCESS foreign callback with hidden restored writes refuses authority",
+        "foreign constructor return/exception chaining and restoration",
+        "terminal checked-copy event quota failure; no publication; unrelated handle status8"
+      ],
+      "status": "UNRUN"
+    },
+    {
+      "ctest": "smlib_checked_face_extraction",
+      "source": "tests/face_extraction_tests.cpp --transfer",
+      "cases": [
+        "box complete face transfer and already-mated repetition",
+        "analytic signed boundary volume8 and area24 assertions",
+        "original metadata/coordinate invariants",
+        "generated interface root/extraction/copy/release lifetime"
+      ],
+      "status": "UNRUN"
+    },
+    {
+      "ctest": "smlib_face_extraction_failure_boundary",
+      "source": "tests/face_extraction_tests.cpp --terminal-failure",
+      "cases": [
+        "real virtual surface-copy failure; primary error and status8",
+        "no returned evidence",
+        "callback slots restored; unrelated handle access/reset refuses"
+      ],
+      "status": "UNRUN"
+    }
+  ],
+  "general_numerical_authority": false,
+  "general_domain_authority": false,
+  "paired_partition_implemented": false,
+  "opcode21_advertised": false,
+  "capability128_advertised": false,
+  "review_boundary": "FROZEN for independent pinned review and parent actual SDK execution; no further seam expansion"
+}

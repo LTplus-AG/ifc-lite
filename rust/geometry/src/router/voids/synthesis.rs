@@ -6,6 +6,7 @@
 
 mod exit_cap;
 mod exit_cap_far_field;
+pub(super) mod host_vertices;
 mod membrane;
 
 use super::super::processing::SourceHygiene;
@@ -727,13 +728,17 @@ impl GeometryRouter {
         // inside the one helper every void path funnels through, means no current or
         // future call site can forget it. No-op for ordinary single-solid openings.
         let deseamed = Self::remove_internal_membrane(opening_mesh, dir);
-        let opening_mesh = &deseamed;
 
         let len = dir.norm();
         if len < NORMALIZE_EPSILON {
-            return opening_mesh.clone();
+            return deseamed;
         }
         let d = dir / len;
+        // #6940: a corner the file authored once for the host and once for the
+        // opening can reach this point one snap step apart. Make them one
+        // vertex again before anything is pushed along `d`.
+        let deseamed = host_vertices::reconcile_with_host_vertices(deseamed, host_mesh, d);
+        let opening_mesh = &deseamed;
 
         // Cutter extents in the penetration frame, and which caps the opening
         // actually EXITS through. Growing a cap the opening does not exit

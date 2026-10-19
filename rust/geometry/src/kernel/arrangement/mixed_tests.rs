@@ -133,9 +133,8 @@ fn issue_7292_global_coplanar_on_another_carrier_keeps_raw_seam_propagation() {
 #[test]
 fn issue_7292_new_work_budget_trip_discards_partial_arrangement_without_panic() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
-    struct Reset(Option<u64>);impl Drop for Reset{fn drop(&mut self){budget::set_cap(self.0);budget::begin();}}
-    let _reset=Reset(budget::cap());let _element=budget::enter_element();
-    budget::set_cap(Some(1));budget::begin();budget::note_escalation();
+    let profile=budget::TestProfile::new();let _element=budget::enter_element();
+    profile.set_cap(Some(1));budget::begin();budget::note_escalation();
     let before=budget::snapshot_counters();let _arr=arrange(&[host()],&[raw(),cop()]);
     assert!(budget::tripped());assert_eq!(before,budget::snapshot_counters());
     budget::begin();let _arr=arrange(&[host()],&[raw(),cop()]);assert!(budget::tripped());
@@ -215,12 +214,8 @@ fn propagate_unculled(tris: &[Tri], built: &Built, generated: &[ImplicitPoint]) 
 #[test]
 fn issue_7292_raw_only_propagation_culls_seams_before_support_work_with_identical_points() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
-    struct Reset(Option<u64>,Option<u64>);
-    impl Drop for Reset { fn drop(&mut self) {
-        budget::set_cap(self.0); budget::set_element_cap(self.1); budget::begin();
-    }}
-    let _reset=Reset(budget::cap(),budget::element_cap());
-    budget::set_cap(None);
+    let profile=budget::TestProfile::new();
+    profile.set_cap(None);
     let tris=vec![[[0.,0.,0.],[2000.,0.,0.],[0.,2000.,0.]];256];
     // Every carrier AABB contains every generated point, but the actual seams
     // are separated. No carrier-box shortcut can establish the saving.
@@ -242,8 +237,8 @@ fn issue_7292_raw_only_propagation_culls_seams_before_support_work_with_identica
         assert!(budget::element_count()>budget::DEFAULT_ELEMENT_CAP,
             "the uncullled reference must actually exceed the interactive work allowance");
     }
-    budget::set_cap(Some(budget::DEFAULT_CAP));
-    budget::set_element_cap(Some(budget::DEFAULT_ELEMENT_CAP));
+    profile.set_cap(Some(budget::DEFAULT_CAP));
+    profile.set_element_cap(Some(budget::DEFAULT_ELEMENT_CAP));
     let _element=budget::enter_element(); budget::begin();
     let mut built=build(&tris,&raw,&cop,&mut Vec::new(),true);
     let mut actual=vec![Vec::new();tris.len()];

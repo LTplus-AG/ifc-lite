@@ -106,9 +106,7 @@ fn issue_7292_lazy_build_unknown_invalid_candidates_never_fabricate_a_tpi() {
 #[test]
 fn issue_7292_lazy_build_budget_trip_during_candidate_validation_is_sticky() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
-    struct Reset(Option<u64>);
-    impl Drop for Reset { fn drop(&mut self) {budget::set_cap(self.0);budget::begin();} }
-    let _reset=Reset(budget::cap());budget::set_cap(Some(2));
+    let profile=budget::TestProfile::new();profile.set_cap(Some(2));
     let _element=budget::enter_element();budget::begin();
     let t=carrier();let x=-1./(2.*f64::EPSILON);
     let clips=vec![SupportedClip {a:uncertain_endpoint(),b:e([x+2.,0.,x+2.]),support:horizontal()},

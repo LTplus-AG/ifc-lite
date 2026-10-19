@@ -51,12 +51,8 @@ fn issue_7292_exact_boundary_work_reports_budget_and_returns_no_partial_faces() 
     budget::begin();
     let host = crate::kernel::arrangement::box_mesh([0.0; 3], [1.0; 3]);
     let arr = crate::kernel::arrangement::arrange(&host, &[]);
-    struct RestoreCap(Option<u64>);
-    impl Drop for RestoreCap {
-        fn drop(&mut self) { budget::set_cap(self.0); budget::begin(); }
-    }
-    let restore = RestoreCap(budget::cap());
-    budget::set_cap(Some(2));
+    let profile = budget::TestProfile::new();
+    profile.set_cap(Some(2));
     budget::begin();
     let c = BoundaryCentroid::new(&arr, arr.tris_a[0]).expect("centroid is within the real cap");
     assert!(!c.on_surface(&host), "stop boundary work when the configured cap is reached");
@@ -70,7 +66,7 @@ fn issue_7292_exact_boundary_work_reports_budget_and_returns_no_partial_faces() 
     let (exhausted, conforming) = crate::kernel::arrangement::boolean_with_conformity(
         &host, &host, super::super::BoolOp::Difference);
     assert!(exhausted.is_empty() && !conforming, "budget exhaustion is not a conforming empty result");
-    drop(restore);
+    drop(profile);
     let (empty, conforming) = crate::kernel::arrangement::boolean_with_conformity(
         &host, &host, super::super::BoolOp::Difference);
     assert!(empty.is_empty() && conforming && !budget::tripped(),

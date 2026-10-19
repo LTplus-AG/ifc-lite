@@ -31,7 +31,7 @@ impl AxisPlane {
 pub(super) fn complete_axis_rescue(
     mut point: [f64; 3],
     planes: &[AxisPlane],
-    host_vertices: &HashSet<[u64; 3]>,
+    host_vertices: &HashSet<[u64; 3], impl std::hash::BuildHasher>,
 ) -> [f64; 3] {
     let mut resolved = [false; 3];
     for plane in planes {

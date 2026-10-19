@@ -1,0 +1,8 @@
+{
+  "request": "auto-7164db46b072459bba8d38770e50354d",
+  "source": "a338ee79880c560ee1693db91ca68dbc58bc4f49",
+  "tests_executed": 0,
+  "result": "pre-execution routing refusal",
+  "resubmitted_original": false,
+  "future_work": "Await actual capacity change; no guard override"
+}

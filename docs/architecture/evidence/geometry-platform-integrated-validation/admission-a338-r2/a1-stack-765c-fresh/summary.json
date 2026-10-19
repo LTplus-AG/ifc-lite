@@ -1,0 +1,8 @@
+{
+  "request": "auto-69cae75f98f7477ea51601c7d5e02bd3",
+  "source": "765c10ee0e0bbf215be6458ed280cbb571a2d66b",
+  "tests_executed": 0,
+  "result": "host capacity guard refused admission before project command",
+  "resubmitted_original": false,
+  "future_work": "Await actual capacity change; no guard override"
+}

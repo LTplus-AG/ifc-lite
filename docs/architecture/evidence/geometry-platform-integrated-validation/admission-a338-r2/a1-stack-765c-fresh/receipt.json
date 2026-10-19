@@ -1,0 +1,71 @@
+{
+  "id": "b7d1cb99-a791-4503-a7d2-d28a36fcf41a",
+  "host": {
+    "host": "louistrue-pc",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 24,
+    "availableMemoryBytes": 63855923200,
+    "totalMemoryBytes": 67423580160,
+    "python": "3.14.4",
+    "time": 1792402390.561042
+  },
+  "cwd": "/home/louistrue/build-workers/worker-state/checkouts/765c10ee0e0bbf215be6458ed280cbb571a2d66b",
+  "sourceBefore": {
+    "commit": "765c10ee0e0bbf215be6458ed280cbb571a2d66b",
+    "tree": "a20342512dbc67f257ac3dc63061ab0b08db6fce",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "2e66a76b1f156a98db8ed64088735af2ff66a12a7357b0e977afe08ad2b5c169"
+    }
+  },
+  "command": [
+    "bash",
+    "-c",
+    "source \"$HOME/build-workers/worker-env.sh\" || exit $?; pnpm install --frozen-lockfile --prefer-offline || exit $?; pnpm fixtures || exit $?; cargo test --workspace --no-fail-fast; test_status=$?; cargo clippy --workspace --all-targets -- -D warnings; clippy_status=$?; printf \"workspace_test_exit=%s clippy_exit=%s\\n\" \"$test_status\" \"$clippy_status\"; if [ \"$test_status\" -ne 0 ]; then exit \"$test_status\"; fi; exit \"$clippy_status\""
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792402390.557417,
+  "resources": [
+    "/home/louistrue/build-workers/worker-state/checkouts/765c10ee0e0bbf215be6458ed280cbb571a2d66b",
+    "/home/louistrue/build-workers/worker-state/caches/465834aecd7ae9e461a66d1b"
+  ],
+  "state": "failed",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "storageTask": "ifclite-a1-stack-765c-fresh-20261019-r2",
+  "storageTaskExplicit": true,
+  "storageResources": [
+    {
+      "path": "/home/louistrue/build-workers/worker-state/caches/465834aecd7ae9e461a66d1b",
+      "role": "cache",
+      "project": "ifc-lite",
+      "compatibilityKey": "465834aecd7ae9e461a66d1b"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/765c10ee0e0bbf215be6458ed280cbb571a2d66b",
+      "role": "worktree"
+    }
+  ],
+  "error": "host capacity guard refused admission",
+  "exitCode": 1,
+  "finishedAt": 1792402390.733638,
+  "sourceAfter": {
+    "commit": "765c10ee0e0bbf215be6458ed280cbb571a2d66b",
+    "tree": "a20342512dbc67f257ac3dc63061ab0b08db6fce",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "2e66a76b1f156a98db8ed64088735af2ff66a12a7357b0e977afe08ad2b5c169"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {}
+}

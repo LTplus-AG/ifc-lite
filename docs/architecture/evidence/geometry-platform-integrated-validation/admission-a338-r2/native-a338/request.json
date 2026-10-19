@@ -1,0 +1,20 @@
+{
+  "id": "auto-7164db46b072459bba8d38770e50354d",
+  "commit": "a338ee79880c560ee1693db91ca68dbc58bc4f49",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "/home/louistrue/build-workers/setup/projects-20261017/ifc-lite/env-exec.sh",
+    "bash",
+    "-c",
+    "pnpm install --frozen-lockfile --prefer-offline || exit $?; pnpm fixtures || exit $?; unset IFCLITE_ADAPTER_BUILD; bash native/smlib-adapter/qualify.sh native --rust-consumers"
+  ],
+  "storageTask": "ifclite-native-a338-20261019-r2",
+  "pools": [],
+  "requestedHost": "pop-os"
+}

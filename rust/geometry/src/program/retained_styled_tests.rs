@@ -135,7 +135,7 @@ fn p1_exact_styled_textured_repeated_maps_have_real_uv_pixels_and_exclude_placeh
     for sub in &meshes.sub_meshes {
         assert_eq!(sub.geometry_id,5);assert_eq!(sub.mesh.indices.len(),6);
         assert_eq!(sub.uvs.as_ref().unwrap().len(),sub.mesh.vertex_count()*2);
-        assert!(sub.uvs.as_ref().unwrap().iter().any(|v|*v==1.));
+        assert!(sub.uvs.as_ref().unwrap().contains(&1.));
         assert_eq!(sub.texture.as_ref().unwrap().texture_id,41);
         assert!(!sub.mesh.positions.is_empty(),"textured source cannot emit an instance-only placeholder");
     }

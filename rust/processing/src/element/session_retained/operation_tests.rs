@@ -310,6 +310,7 @@ fn p2_sdk_rigid_mapped_boolean_uses_sealed_placement_without_affine_conversion()
             match realization.kind() {
                 RealizationKind::Construction(_)=>{},
                 RealizationKind::Affine(_)=>panic!("rigid mapped result must not rationalize through opcode18"),
+                RealizationKind::UnaryClip(_)=>panic!("solid-only fixture must not issue a halfspace clip"),
                 RealizationKind::Boolean(value)=> {
                     assert!((worker.volume(value.solid(),1e-8).unwrap()-24.).abs()<1e-6);
                     assert!(worker.is_manifold(value.solid()).unwrap());

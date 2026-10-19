@@ -8,31 +8,43 @@ use super::product_control::ProductConsumer;
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
+#[path="inner_voids_retained.rs"]
+mod retained;
 
 #[derive(Clone,Copy)]
 pub(super) enum VoidConsumer { Parts, Styled }
 enum ChildRole { Layer, PlainParts, BodyParts, BodyStyled, Context }
 struct Child { program:Box<GeometryProgram>, role:ChildRole }
-enum Action { Select, Child(ProgramRequest), ChildFinished, PrepareCut(HostPart), Cut(ReadyOperation), Finish(ReadyFinish) }
+enum Action { RetainedNext, RetainedCut(Box<super::retained::RetainedPlanOperation>), Select, Child(ProgramRequest), ChildFinished, PrepareCut(HostPart), Cut(ReadyOperation), Finish(ReadyFinish) }
 struct HostPart { mesh:Mesh, id:Option<u32> }
 enum Output { Parts(Vec<Mesh>), Styled(SubMeshCollection) }
 pub(super) struct ReadyFinish { part:HostPart, output:Output }
-pub(super) enum VoidReadyWork { Cut(ReadyOperation), Finish(ReadyFinish) }
+pub(super) enum VoidReadyWork { RetainedCut(Box<super::retained::RetainedPlanOperation>), Cut(ReadyOperation), Finish(ReadyFinish) }
 impl VoidReadyWork {
-    pub(super) fn tag(&self)->u16 {match self {Self::Cut(_)=>5,Self::Finish(_)=>6}}
+    pub(super) fn tag(&self)->u16 {match self {Self::RetainedCut(_)=>8,Self::Cut(_)=>5,Self::Finish(_)=>6}}
     pub(super) fn execute(self)->VoidReply {VoidReply(match self {
+        Self::RetainedCut(_)=>unreachable!("retained cut requires a sealed transaction"),
         Self::Cut(ready)=>Reply::Cut(ready.execute()),Self::Finish(ready)=>Reply::Finished(ready.execute()),
     })}
 }
 pub(super) struct VoidReply(Reply);
 enum Reply { Selected(Vec<u32>), Child(Box<ProgramReply>), ChildFinished(Result<GeometryOutput>),
+    RetainedNext(Result<Option<Box<super::retained::RetainedPlanOperation>>>),
+    RetainedCut(Result<super::retained::LogicalRetainedValue>),
     Prepared(ReadyOperation), Cut(NumericalOutcome), Finished(Result<Output>), Stopped(crate::Error) }
 impl VoidReply {
+    pub(super) fn child_reply_mut(&mut self)->Option<&mut ProgramReply> {
+        match &mut self.0 {Reply::Child(reply)=>Some(reply),_=>None}
+    }
+    pub(super) fn bind_retained_outcome(&mut self,slot:super::retained::LogicalRetainedSlot,empty:bool)->bool {
+        match &mut self.0 {Reply::RetainedCut(Ok(value)) if value.slot()==slot=>{value.empty=empty;true},_=>false}
+    }
     pub(super) fn wrap_child_reply(reply:ProgramReply)->Self {Self(Reply::Child(Box::new(reply)))}
-    pub(super) fn tag(&self)->u16 {match self.0 {Reply::Selected(_)=>0,Reply::Child(_)=>1,
+    pub(super) fn tag(&self)->u16 {match self.0 {Reply::RetainedNext(_)=>9,Reply::RetainedCut(_)=>8,Reply::Selected(_)=>0,Reply::Child(_)=>1,
         Reply::ChildFinished(_)=>2,Reply::Prepared(_)=>3,Reply::Cut(_)=>5,Reply::Finished(_)=>6,Reply::Stopped(_)=>7}}
 }
 pub(super) struct VoidControl {
+    retained:Option<Box<retained::RetainedState>>,
     element:DecodedEntity, consumer:VoidConsumer, ids:Vec<u32>, action:Option<Action>, child:Option<Child>,
     parts:std::vec::IntoIter<HostPart>, current_id:Option<u32>, context:Option<Arc<crate::router::voids::ReadyVoidContext>>,
     accumulated:Option<Output>, output:Option<Result<GeometryOutput>>,
@@ -41,7 +53,7 @@ impl VoidControl {
     pub(super) fn new(element:DecodedEntity,consumer:VoidConsumer)->Self {
         let child=matches!(consumer,VoidConsumer::Styled).then(||Child {
             program:Box::new(GeometryProgram::layer_attempt(element.clone(),true)),role:ChildRole::Layer });
-        Self {element,consumer,ids:Vec::new(),action:child.is_none().then_some(Action::Select),child,
+        Self {retained:None,element,consumer,ids:Vec::new(),action:child.is_none().then_some(Action::Select),child,
             parts:Vec::new().into_iter(),current_id:None,context:None,accumulated:None,output:None}
     }
     pub(super) fn poll(&mut self)->std::result::Result<Option<ProgramStage>,ProgramError> {
@@ -49,6 +61,9 @@ impl VoidControl {
         if self.action.is_none() {
             if let Some(child)=&mut self.child {
                 self.action=Some(match child.program.request()? {Some(request)=>Action::Child(request),None=>Action::ChildFinished});
+            } else if self.retained.is_some() {
+                if let Err(error)=self.retained_poll() {self.output=Some(Err(error));}
+                if self.output.is_some() {return Ok(None)}
             } else if let Some(part)=self.parts.next(){self.action=Some(Action::PrepareCut(part));}
             else {
                 self.output=Some(Ok(match self.accumulated.take().expect("completed void host") {
@@ -57,13 +72,14 @@ impl VoidControl {
             }
         }
         Ok(self.action.as_ref().map(|action|match action {
-            Action::Child(request)=>request.stage(),Action::Cut(_)|Action::Finish(_)=>ProgramStage::Numerical,
+            Action::Child(request)=>request.stage(),Action::RetainedCut(_)|Action::Cut(_)|Action::Finish(_)=>ProgramStage::Numerical,
             _=>ProgramStage::Source,
         }))
     }
     pub(super) fn take_ready(&mut self)->Option<VoidReadyWork> {
-        if !matches!(self.action,Some(Action::Cut(_)|Action::Finish(_))){return None}
+        if !matches!(self.action,Some(Action::RetainedCut(_)|Action::Cut(_)|Action::Finish(_))){return None}
         Some(match self.action.take().expect("void numerical recipe") {
+            Action::RetainedCut(operation)=>VoidReadyWork::RetainedCut(operation),
             Action::Cut(ready)=>VoidReadyWork::Cut(ready),Action::Finish(ready)=>VoidReadyWork::Finish(ready),_=>unreachable!(),
         })
     }
@@ -79,7 +95,20 @@ impl VoidControl {
         if let Some(ready)=self.take_ready(){return Ok(ready.execute())}
         if let Err(stop)=crate::resource::check_current(){return Ok(VoidReply(Reply::Stopped(stop.into())))}
         Ok(VoidReply(match self.action.take().expect("requested void action") {
-            Action::Select=>Reply::Selected(voids.and_then(|index|index.get(&self.element.id)).cloned().unwrap_or_default()),
+            Action::RetainedNext=>Reply::RetainedNext(self.retained_next().and_then(|operation| {
+                operation.map(|operation| {
+                    crate::resource::charge(crate::resource::Cost {live_bytes:std::mem::size_of_val(&operation) as u64,..Default::default()})?.retain();
+                    Ok(Box::new(operation))
+                }).transpose()
+            })),
+            Action::Select=> {
+                let ids=voids.and_then(|index|index.get(&self.element.id));
+                if self.retained.is_some() {
+                    match retained::copy_selected_ids(ids.map(Vec::as_slice).unwrap_or_default()) {
+                        Ok(ids)=>Reply::Selected(ids),Err(error)=>Reply::Stopped(error),
+                    }
+                } else {Reply::Selected(ids.cloned().unwrap_or_default())}
+            }
             Action::Child(request)=>Reply::Child(Box::new(self.child.as_mut().expect("void child").program
                 .execute_with_inputs(request,router,decoder,None,voids)?)),
             Action::ChildFinished=>{
@@ -92,7 +121,7 @@ impl VoidControl {
                 Reply::Prepared(ReadyOperation::new(part.mesh,Arc::clone(self.context.as_ref().expect("ready opening context")),
                     self.element.id,router.tessellation_quality(),crate::router::voids::numerical_configuration()))
             }
-            Action::Cut(_)|Action::Finish(_)=>unreachable!("numerical recipe extracted above"),
+            Action::RetainedCut(_)|Action::Cut(_)|Action::Finish(_)=>unreachable!("numerical recipe extracted above"),
         }))
     }
     pub(super) fn validate_reply(&self,reply:&VoidReply,router:&GeometryRouter)->std::result::Result<(),ProgramError> {
@@ -109,20 +138,26 @@ impl VoidControl {
     fn accept_inner(&mut self,reply:Reply,router:&GeometryRouter)->Result<()> {
         if !matches!(&reply,Reply::Child(_)|Reply::Cut(_)){crate::resource::check_current()?;}
         match reply {
+            Reply::RetainedNext(operation)=>if let Some(operation)=operation? {self.action=Some(Action::RetainedCut(operation));},
+            Reply::RetainedCut(value)=>self.accept_retained_cut(value?,router)?,
             Reply::Selected(ids)=>{
                 self.ids=ids;
                 let (program,role)=match self.consumer {
                     VoidConsumer::Parts if self.ids.is_empty()=>(GeometryProgram::product(self.element.clone(),ProductConsumer::Merged,SourceHygiene::Watertight),ChildRole::PlainParts),
                     VoidConsumer::Parts=>(GeometryProgram::opening_body(self.element.clone()),ChildRole::BodyParts),
-                    VoidConsumer::Styled if self.ids.is_empty()=>{self.output=Some(Ok(GeometryOutput::Submeshes(SubMeshCollection::new())));return Ok(())}
+                    VoidConsumer::Styled if self.ids.is_empty() && self.retained.is_none()=>{self.output=Some(Ok(GeometryOutput::Submeshes(SubMeshCollection::new())));return Ok(())}
                     VoidConsumer::Styled=>(GeometryProgram::product(self.element.clone(),ProductConsumer::Styled {allow_instancing:false},SourceHygiene::BooleanOperand),ChildRole::BodyStyled),
                 };
+                let mut program=program;
+                if let Some(state)=&self.retained {program.select_retained_product(state.contract);}
                 self.child=Some(Child {program:Box::new(program),role});
             }
             Reply::Child(reply)=>self.child.as_mut().expect("void child").program.accept(*reply,router).expect("validated void child reply"),
             Reply::ChildFinished(result)=>{
                 let role=self.child.take().expect("completed void child").role;
-                match (role,result?) {
+                let result=result?;
+                if self.retained.is_some() {return self.retained_child(role,result)}
+                match (role,result) {
                     (ChildRole::Layer,GeometryOutput::LayerCandidate(Some(meshes)))=>self.output=Some(Ok(GeometryOutput::Submeshes(meshes))),
                     (ChildRole::Layer,GeometryOutput::LayerCandidate(None))=>self.action=Some(Action::Select),
                     (ChildRole::PlainParts,GeometryOutput::Parts(parts))=>self.output=Some(Ok(GeometryOutput::Parts(parts))),
@@ -150,10 +185,14 @@ impl VoidControl {
         }
         crate::resource::check_current()?;Ok(())
     }
-    fn start_context(&mut self){self.child=Some(Child {program:Box::new(GeometryProgram::opening_context(self.element.clone(),std::mem::take(&mut self.ids))),role:ChildRole::Context});}
+    fn start_context(&mut self){
+        let mut program=GeometryProgram::opening_context(self.element.clone(),std::mem::take(&mut self.ids));
+        if let Some(state)=&self.retained {program.select_retained_opening_context(state.contract);}
+        self.child=Some(Child {program:Box::new(program),role:ChildRole::Context});
+    }
     pub(super) fn take_output(&mut self)->Option<Result<GeometryOutput>>{self.output.take()}
     pub(super) fn cancel_with_reports(&mut self,router:&GeometryRouter){if let Some(child)=&mut self.child{child.program.cancel_with_reports(router).expect("validated cancellation router");}self.cancel();}
-    pub(super) fn cancel(&mut self){if let Some(child)=&mut self.child{child.program.cancel();}self.child=None;self.action=None;self.context=None;self.accumulated=None;self.parts=Vec::new().into_iter();}
+    pub(super) fn cancel(&mut self){if let Some(child)=&mut self.child{child.program.cancel();}self.retained=None;self.child=None;self.action=None;self.context=None;self.accumulated=None;self.parts=Vec::new().into_iter();}
 }
 impl ReadyFinish {
     fn clean_part(&mut self) -> Result<()> {
@@ -175,3 +214,21 @@ impl ReadyFinish {
 #[cfg(test)]
 #[path = "inner_voids_tests.rs"]
 mod tests;
+
+impl VoidReadyWork {
+    pub(super) fn admit_retained(self)->Result<(VoidReply,Vec<super::retained::RetainedPlanOperation>)> {
+        match self {
+            Self::RetainedCut(operation)=> {
+                let value=operation.value().try_copy()?;
+                let mut operations=Vec::new();crate::resource::reserve_headers(&mut operations,1)?.retain();
+                operations.push(*operation);
+                Ok((VoidReply(Reply::RetainedCut(Ok(value))),operations))
+            }
+            _=>Err(crate::document::RetainedRefusal::UnsupportedSource("mesh-only void numerical packet".into()).into()),
+        }
+    }
+}
+
+#[cfg(test)]
+#[path="inner_voids_source_tests.rs"]
+mod source_tests;

@@ -10,6 +10,8 @@ use std::sync::Arc;
 
 pub(crate) enum OpeningOutput {
     Context(Arc<ReadyVoidContext>),
+    RetainedContext(Arc<super::retained::RetainedVoidContext>),
+    RetainedClassified(Vec<super::retained::RetainedOpening>),
     Classified(Vec<OpeningType>),
     Meshes(Vec<Mesh>),
     Bounds(OpeningBounds),
@@ -49,6 +51,12 @@ impl OpeningControl {
             reports: Default::default(),
         }
     }
+    pub(crate) fn select_retained(&mut self) {
+        match self.machine.as_mut().expect("opening machine") {
+            Machine::Host(machine)=>machine.select_retained(),
+            _=>unreachable!("retained opening probe requires analytic eligibility"),
+        }
+    }
     pub(crate) fn context(host: DecodedEntity, ids: Vec<u32>) -> Self {
         Self::new(Machine::Host(HostOpenings::from_owned(host, ids)))
     }
@@ -56,6 +64,9 @@ impl OpeningControl {
         Self::new(Machine::Classifier(Classifier::from_owned(
             host, ids, recording,
         )))
+    }
+    pub(super) fn classifier_for_contract(host:DecodedEntity,ids:Vec<u32>,recording:bool,retained:bool)->Self {
+        Self::new(Machine::Classifier(Classifier::for_contract(host,ids,recording,retained)))
     }
     pub(crate) fn probe(element: DecodedEntity, meshes: bool) -> Self {
         Self::new(Machine::Probe(OpeningProgram::new(element, meshes)))

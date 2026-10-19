@@ -1,0 +1,49 @@
+{
+  "source": "bcb0e55784f240c0081e36ff8dd126ebe29ff2b7",
+  "comparison": "719a7e4b2ad6ba8376c369a5fb6467950e66df21",
+  "verdict": "both prior P2 closed in source; no new scoped blockers identified",
+  "qualification": "UNCOMPILED/UNRUN",
+  "files": [
+    {
+      "path": "rust/geometry/src/program/inner_voids_retained.rs",
+      "before": "3a4705c1c807a5680fc303b3a1217fb833d36b0acebd20baff728e1b971b7af2",
+      "after": "1b057f7330671c19a13e91a8e13e0d01a984599767e1c436ee6bd122fdee9ca0"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_voids_source_tests.rs",
+      "before": "8f9b58b2706b49b2e6dcb2f9d028daae1613ecb020be3d40485a1f1b2443776a",
+      "after": "a3864e7a147773fadd3c83e4621fc3d5bb02a1a494158344e7d7aff28810e2aa"
+    },
+    {
+      "path": "rust/geometry/src/program/openings/classify.rs",
+      "before": "883771872e620469c39b03c12f62203d4239ee05f3ffdd6fa193a8845cc41499",
+      "after": "939686cd4e9b382c70e557d6bfed81c01738e48d934a8f17a2fd4b4b3bdfba4d"
+    },
+    {
+      "path": "rust/geometry/src/program/openings/classify_allocation_tests.rs",
+      "before": null,
+      "after": "2f5175c29e131d668cf403ec200128bf2a63ae72bc02d42c39b572a90c4f2596"
+    },
+    {
+      "path": "rust/geometry/src/program/openings/control.rs",
+      "before": "c235c0634667a5da91c2fd3cb7603dc454010d64907769ba0d6e94f01567fdfb",
+      "after": "02ab9aeae64568a4d451e2aeb3263986fa626fa92b573e667d80b7e41d793bd1"
+    },
+    {
+      "path": "rust/geometry/src/program/openings/mod.rs",
+      "before": "d54fc12bfaa2c73e2a641ff23eb6aece3cb1af77bb718b7ef3dfaf269118c617",
+      "after": "6a6202474c70ce2be061239d2beafcd6f37a012ba2383cec108dd1176ed333a5"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/opening_tests.rs",
+      "before": "f27943275df31e4328ace52e4bfd964984855b7be9a3b435251da26e39a3b358",
+      "after": "aea0765be3a034ee5322a3bbdcfd5b997361c9c6ef3dd5397f24ee7fe2c6426a"
+    }
+  ],
+  "report_sha256": "30262819c283cd990ff2143f8eb963b236594e554c321dbc47600943818cc12d",
+  "limitations": [
+    "read-only source review",
+    "no numerical/runtime/performance qualification",
+    "original feature residuals remain"
+  ]
+}

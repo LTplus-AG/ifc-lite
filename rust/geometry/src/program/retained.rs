@@ -113,10 +113,12 @@ impl LogicalRetainedValue {
 /// Immutable original source, captured before any sampled constructor is lowered.
 #[derive(Debug, Clone)]
 pub struct RetainedPlanOperation {
+    pub(super) opening: Option<super::retained_openings::RetainedOpeningCut>,
     pub(super) value: LogicalRetainedValue,
     pub(super) kind: RetainedOperationKind,
 }
 impl RetainedPlanOperation {
+    pub fn opening_cut(&self)->Option<&super::retained_openings::RetainedOpeningCut> {self.opening.as_ref()}
     pub fn value(&self) -> &LogicalRetainedValue {
         &self.value
     }
@@ -147,7 +149,7 @@ impl LogicalRetainedValue {
         self.slot = next_slot(self.slot.program)?;
         self.definition = LogicalRetainedDefinition::Operation(self.slot);
         self.object_frame = crate::math::mat4::col_major_array(&nalgebra::Matrix4::identity());
-        Ok(Some(RetainedPlanOperation { value: copy_values(std::slice::from_ref(self))?
+        Ok(Some(RetainedPlanOperation { opening:None, value: copy_values(std::slice::from_ref(self))?
             .pop().expect("one output"), kind: RetainedOperationKind::Affine {
                 input, matrix: crate::math::mat4::col_major_array(&matrix) } }))
     }
@@ -172,7 +174,7 @@ pub(super) fn boolean_operation(inputs: [LogicalRetainedValue; 2], operation: cr
     value.slot = next_slot(program)?;
     value.definition = LogicalRetainedDefinition::Operation(value.slot);
     value.empty=false;
-    Ok(RetainedPlanOperation {value,kind:RetainedOperationKind::Boolean {inputs,operation}})
+    Ok(RetainedPlanOperation {opening:None,value,kind:RetainedOperationKind::Boolean {inputs,operation}})
 }
 pub(super) fn clip_operation(input: LogicalRetainedValue, clip: super::retained_clip::RetainedUnaryClip,
     program: u64) -> crate::Result<RetainedPlanOperation> {
@@ -182,7 +184,7 @@ pub(super) fn clip_operation(input: LogicalRetainedValue, clip: super::retained_
     value.slot = next_slot(program)?;
     value.definition = LogicalRetainedDefinition::Operation(value.slot);
     value.empty = false;
-    Ok(RetainedPlanOperation {value,kind:RetainedOperationKind::UnaryClip {input,clip}})
+    Ok(RetainedPlanOperation {opening:None,value,kind:RetainedOperationKind::UnaryClip {input,clip}})
 }
 pub(super) fn validate_affine(matrix: &nalgebra::Matrix4<f64>) -> crate::Result<()> {
     if matrix.iter().any(|x| !x.is_finite())
@@ -196,6 +198,7 @@ pub(super) fn validate_affine(matrix: &nalgebra::Matrix4<f64>) -> crate::Result<
 /// Traversal completion is explicitly NOT final-net or runtime completion.
 #[derive(Debug)]
 pub struct RetainedProductPlan {
+    pub opening_completion: Option<super::retained_openings::RetainedOpeningCompletion>,
     pub values: Vec<LogicalRetainedValue>,
     pub remaining: Vec<RetainedRequirement>,
 }
@@ -212,7 +215,7 @@ impl RetainedProductPlan {
     /// Assembly of already-completed canonical type-map values, with unresolved
     /// product/presentation obligations retained. No runtime or display claim.
     pub fn from_type_values(values:Vec<LogicalRetainedValue>)->crate::Result<Self> {
-        Ok(Self {values,remaining:remaining_requirements()?})
+        Ok(Self {opening_completion:None,values,remaining:remaining_requirements()?})
     }
 }
 
@@ -268,7 +271,7 @@ pub(super) fn capture(
     let payload = construction.lower().map_err(crate::Error::from)?;
     let slot=next_slot(program)?;
     Ok(RetainedPlanOperation {
-        value: LogicalRetainedValue {
+        opening:None, value: LogicalRetainedValue {
             definition: LogicalRetainedDefinition::Source { slot, source_epoch: contract.source_epoch,
                 source_revision: contract.source_revision, source_id: item.id },
             length_unit_scale: scale, placements: Vec::new(), presentation: Vec::new(), product_placed: false, empty:false,

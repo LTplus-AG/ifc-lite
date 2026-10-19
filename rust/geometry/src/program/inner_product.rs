@@ -204,10 +204,12 @@ impl ProductMachine {
                     },
                     None => {
                         self.finished = true;
-                        self.next = Some(ProductMachinePoll::Complete(Ok(match self.consumer {
+                        self.next = Some(ProductMachinePoll::Complete(Ok(if self.retained.is_some() {
+                            CompletedProduct::Retained(Vec::new())
+                        } else {match self.consumer {
                             ProductConsumer::Merged => CompletedProduct::Merged(vec![Mesh::new()]),
                             ProductConsumer::Styled { .. } => CompletedProduct::Styled(SubMeshCollection::new()),
-                        })));
+                        }})));
                     }
                 },
                 ProductSourceReply::Items(reply) => self.control.as_mut().expect("traversal").accept_source(reply)?,

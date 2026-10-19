@@ -161,7 +161,7 @@ impl RetainedProductExecution {
             self.validate_definitions(worker)?;
             let request = self.state.request().map_err(|error|match error {
                 super::session_protocol::WorkError::Geometry(ifc_lite_geometry::program::ProgramError::TraversalStopped(stop))=>RetainedExecutionError::Stopped(stop),
-                super::session_protocol::WorkError::RetainedContract=>RetainedExecutionError::Unsupported("retained host-opening entry is not implemented".into()),
+                super::session_protocol::WorkError::RetainedContract=>RetainedExecutionError::Unsupported("retained selected work contract is unavailable".into()),
                 error=>protocol(error),
             })?;
             let Some(request)=request else {
@@ -185,7 +185,10 @@ impl RetainedProductExecution {
                 let plan=if let super::session_protocol::WorkKind::TypeMap {class,..}=attempt.kind {
                     attempt.program.finish_retained_type_map(self.state.job.id,class,self.state.element_color)}
                     else {attempt.program.finish_retained()}
-                    .map_err(|error| RetainedExecutionError::Unsupported(error.to_string()))?;
+                    .map_err(|error|match error {
+                        ifc_lite_geometry::Error::ProgramStopped(stop)=>RetainedExecutionError::Stopped(stop),
+                        other=>RetainedExecutionError::Unsupported(other.to_string()),
+                    })?;
                 self.validate_manifest(&plan)?;
                 self.state.protocol.executed(request, &[]);
                 self.state.protocol.accepted();
@@ -252,34 +255,6 @@ impl RetainedProductExecution {
             });
             return Ok(Some(issued));
         }
-    }
-
-    fn validate_definitions(&self, worker: &SelectedWorker) -> Result<(), RetainedExecutionError> {
-        for entry in &self.ledger {
-            ifc_lite_geometry::resource::charge(ifc_lite_geometry::resource::Cost {
-                work:1,..Default::default() }).map_err(RetainedExecutionError::Stopped)?.retain();
-            entry.receipt.validate_live().map_err(protocol)?;
-            if !entry.receipt.belongs_to(&target::capture(worker)) {
-                return Err(protocol("retained definition belongs to a different runtime generation"));
-            }
-        }
-        Ok(())
-    }
-    fn validate_manifest(&self, plan: &RetainedProductPlan) -> Result<(), RetainedExecutionError> {
-        let mut seen=Vec::new();
-        self.resources.reserve_headers(&mut seen,plan.values.len())
-            .map_err(RetainedExecutionError::Stopped)?.retain();
-        for value in &plan.values {
-            ifc_lite_geometry::resource::charge(ifc_lite_geometry::resource::Cost {
-                work:(seen.len()+self.ledger.len()) as u64,..Default::default()
-            }).map_err(RetainedExecutionError::Stopped)?.retain();
-            if seen.contains(&value.slot()) || !self.ledger.iter().any(|entry|
-                entry.operation.value().definition()==value.definition() && entry.receipt.validate_live().is_ok()) {
-                return Err(protocol("duplicate occurrence or undischarged retained definition"));
-            }
-            seen.push(value.slot());
-        }
-        Ok(())
     }
 
     /// Foreign rejection leaves both the input and this pending transaction
@@ -398,3 +373,9 @@ mod clip_tests;
 mod clip_browser_tests;
 
 #[cfg(test)] mod clip_witness;
+
+#[cfg(test)] mod opening_witness;
+#[cfg(all(test, not(target_arch = "wasm32")))] mod opening_tests;
+#[cfg(all(test, target_arch = "wasm32"))] mod opening_browser_tests;
+
+mod manifest;

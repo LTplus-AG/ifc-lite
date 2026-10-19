@@ -25,9 +25,15 @@ impl GeometryProgram {
         }
         match self.outcome {
             Some(Ok(super::inner::GeometryOutput::Retained(values))) if values.iter().all(|v| v.is_product_placed()) => Ok(RetainedProductPlan {
-                values,
+                opening_completion:None, values,
                 remaining: remaining_requirements()?,
             }),
+            Some(Ok(super::inner::GeometryOutput::RetainedVoided(values,completion))) if values.iter().all(|v|v.is_product_placed())=> {
+                let mut remaining=remaining_requirements()?;
+                // Only this product's terminal original void control owns this fact.
+                remaining.retain(|requirement|*requirement!=super::retained::RetainedRequirement::OpeningClosure);
+                Ok(RetainedProductPlan {values,remaining,opening_completion:Some(completion)})
+            }
             Some(Err(error)) => Err(error),
             _ => Err(crate::Error::geometry("retained product incomplete")),
         }
@@ -64,7 +70,7 @@ impl GeometryProgram {
                     let mut binding=super::retained_presentation::RetainedPresentation::occurrence(type_product,type_product,None,true);
                     binding.type_product=Some((type_product,class));binding.fallback_color=Some(color);value.present(binding)?;
                 }
-                Ok(RetainedProductPlan {values,remaining:remaining_requirements()?})},
+                Ok(RetainedProductPlan {opening_completion:None,values,remaining:remaining_requirements()?})},
             _=>Err(crate::Error::geometry("retained type-map incomplete")),
         }
     }
@@ -87,5 +93,35 @@ impl GeometryProgram {
                 result:Err(error),reports:Default::default(),emitter:None})),
         }
         program
+    }
+}
+
+impl GeometryProgram {
+    pub(super) fn select_retained_product(&mut self,contract:RetainedContract) {
+        self.retained=Some(contract);self.retained_walk=Some(super::retained_walk::RetainedWalk::wrapper());
+        self.product.as_mut().expect("product controller").select_retained(contract);
+    }
+    pub(super) fn retained_opening_body(element:DecodedEntity,contract:RetainedContract)->crate::Result<Self> {
+        let walk=super::retained_walk::RetainedWalk::child(element.id)?;
+        let mut program=Self::opening_body(element);program.select_retained_product(contract);
+        program.retained_walk=Some(walk);Ok(program)
+    }
+    pub(super) fn select_retained_opening_context(&mut self,contract:RetainedContract) {
+        self.retained=Some(contract);self.retained_walk=Some(super::retained_walk::RetainedWalk::wrapper());
+        self.opening.as_mut().expect("opening controller").select_retained(contract);
+    }
+    pub(super) fn select_retained_layer(&mut self,contract:RetainedContract) {
+        self.retained=Some(contract);self.retained_walk=Some(super::retained_walk::RetainedWalk::wrapper());
+        self.layers.as_mut().expect("layer controller").select_retained();
+    }
+    pub fn retained_voided_parts(element:DecodedEntity,contract:RetainedContract)->Self {
+        let walk=super::retained_walk::RetainedWalk::root(element.id);
+        let mut program=Self::voided_parts(element);program.retained=Some(contract);program.retained_walk=Some(walk);
+        program.voids.as_mut().expect("void controller").select_retained(contract,program.id);program
+    }
+    pub fn retained_voided_submeshes(element:DecodedEntity,contract:RetainedContract)->Self {
+        let walk=super::retained_walk::RetainedWalk::root(element.id);
+        let mut program=Self::voided_submeshes(element);program.retained=Some(contract);program.retained_walk=Some(walk);
+        program.voids.as_mut().expect("void controller").select_retained(contract,program.id);program
     }
 }

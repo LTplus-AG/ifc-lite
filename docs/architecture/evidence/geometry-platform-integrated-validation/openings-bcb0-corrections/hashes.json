@@ -1,0 +1,71 @@
+{
+  "frozen_review_source": "719a7e4b2ad6ba8376c369a5fb6467950e66df21",
+  "frozen_evidence_parent": "e532016a15ba58667b431f710c0468f3895c595d",
+  "corrected_source": "bcb0e55784f240c0081e36ff8dd126ebe29ff2b7",
+  "correction_files": [
+    {
+      "path": "rust/geometry/src/program/inner_voids_retained.rs",
+      "before719_sha256": "3a4705c1c807a5680fc303b3a1217fb833d36b0acebd20baff728e1b971b7af2",
+      "before_e532_identical": true,
+      "after_sha256": "1b057f7330671c19a13e91a8e13e0d01a984599767e1c436ee6bd122fdee9ca0"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_voids_source_tests.rs",
+      "before719_sha256": "8f9b58b2706b49b2e6dcb2f9d028daae1613ecb020be3d40485a1f1b2443776a",
+      "before_e532_identical": true,
+      "after_sha256": "a3864e7a147773fadd3c83e4621fc3d5bb02a1a494158344e7d7aff28810e2aa"
+    },
+    {
+      "path": "rust/geometry/src/program/openings/classify.rs",
+      "before719_sha256": "883771872e620469c39b03c12f62203d4239ee05f3ffdd6fa193a8845cc41499",
+      "before_e532_identical": true,
+      "after_sha256": "939686cd4e9b382c70e557d6bfed81c01738e48d934a8f17a2fd4b4b3bdfba4d"
+    },
+    {
+      "path": "rust/geometry/src/program/openings/classify_allocation_tests.rs",
+      "before719_sha256": null,
+      "before_e532_identical": true,
+      "after_sha256": "2f5175c29e131d668cf403ec200128bf2a63ae72bc02d42c39b572a90c4f2596"
+    },
+    {
+      "path": "rust/geometry/src/program/openings/control.rs",
+      "before719_sha256": "c235c0634667a5da91c2fd3cb7603dc454010d64907769ba0d6e94f01567fdfb",
+      "before_e532_identical": true,
+      "after_sha256": "02ab9aeae64568a4d451e2aeb3263986fa626fa92b573e667d80b7e41d793bd1"
+    },
+    {
+      "path": "rust/geometry/src/program/openings/mod.rs",
+      "before719_sha256": "d54fc12bfaa2c73e2a641ff23eb6aece3cb1af77bb718b7ef3dfaf269118c617",
+      "before_e532_identical": true,
+      "after_sha256": "6a6202474c70ce2be061239d2beafcd6f37a012ba2383cec108dd1176ed333a5"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/opening_tests.rs",
+      "before719_sha256": "f27943275df31e4328ace52e4bfd964984855b7be9a3b435251da26e39a3b358",
+      "before_e532_identical": true,
+      "after_sha256": "aea0765be3a034ee5322a3bbdcfd5b997361c9c6ef3dd5397f24ee7fe2c6426a"
+    }
+  ],
+  "preserved_control_sources": [
+    {
+      "path": "rust/geometry/src/program/retained_walk.rs",
+      "unchanged_from719": true,
+      "sha256": "de0b81768508243d9600699c3fbb1ef5377292de025dde9607c84c498cabba0b"
+    },
+    {
+      "path": "rust/processing/src/element/session_protocol.rs",
+      "unchanged_from719": true,
+      "sha256": "a2a699ca8e06efceb7d9a8de4c6a37c3986f7cb14fb4475f2ca60c2cb603becf"
+    },
+    {
+      "path": "rust/geometry/src/program/retained_clip.rs",
+      "unchanged_from719": true,
+      "sha256": "681308e1497d9fae2959fedd353a0260889dfe923758c7274a0960de10bbe7f7"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_type_map.rs",
+      "unchanged_from719": true,
+      "sha256": "c6d6c4c6a017371dfded019903b1ae86aa640b5140d69ad5c02c35cdbf8f91ff"
+    }
+  ]
+}

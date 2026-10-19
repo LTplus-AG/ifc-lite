@@ -14,6 +14,8 @@ pub(crate) struct Classifier {
     host: DecodedEntity,
     ids: std::vec::IntoIter<u32>,
     recording: bool,
+    retained: bool,
+    retained_output: Vec<super::retained::RetainedOpening>,
     requested: u32,
     current: Option<OpeningOccurrence>,
     phase: Phase,
@@ -49,17 +51,21 @@ impl Classifier {
         Self::from_owned(host.clone(), ids.to_vec(), recording)
     }
     pub(super) fn from_owned(host: DecodedEntity, ids: Vec<u32>, recording: bool) -> Self {
+        Self::for_contract(host, ids, recording, false)
+    }
+    pub(super) fn for_contract(host:DecodedEntity, ids:Vec<u32>, recording:bool, retained:bool)->Self {
         let capacity = ids.len();
         Self {
             host,
             ids: ids.into_iter(),
             recording,
+            retained, retained_output:Vec::new(),
             requested: 0,
             current: None,
             phase: Phase::Decode,
             next: None,
             output: Vec::new(),
-            diagnostic: Vec::with_capacity(capacity),
+            diagnostic: if retained {Vec::new()} else {Vec::with_capacity(capacity)},
             decision_id: 0,
             decision_vertices: 0,
         }
@@ -74,6 +80,9 @@ impl Classifier {
                 if let Some(id) = self.ids.next() {
                     self.requested = id;
                     Step::Poll(OpeningPoll::Source(OpeningSource::Decode(id)))
+                } else if self.retained {
+                    Step::Poll(OpeningPoll::Ready(OpeningReady::Finish(
+                        OpeningOutput::RetainedClassified(std::mem::take(&mut self.retained_output)))))
                 } else {
                     Step::Poll(OpeningPoll::Ready(OpeningReady::FinishClassifier {
                         output: std::mem::take(&mut self.output),
@@ -147,7 +156,8 @@ impl Classifier {
     pub(super) fn resume(&mut self, reply: OpeningReply, router: &GeometryRouter) -> Result<()> {
         match reply {
             OpeningReply::Decoded(reply) => {
-                self.current = super::source_option(reply)?.map(|entity| OpeningOccurrence {
+                let entity=if self.retained {Some(reply?)} else {super::source_option(reply)?};
+                self.current = entity.map(|entity| OpeningOccurrence {
                     requested_id: self.requested,
                     entity,
                     parts: Default::default(),
@@ -162,6 +172,15 @@ impl Classifier {
                     Phase::Decode
                 };
             }
+            OpeningReply::RetainedParts(reply) => {
+                let values=reply?;
+                let current=self.current.take().expect("retained opening occurrence");
+                crate::program::retained_walk::charge(values.len() as u64 + 1)?;
+                crate::resource::reserve_headers(&mut self.retained_output,1)?.retain();
+                self.retained_output.push(super::retained::RetainedOpening {requested_id:current.requested_id,values});
+                self.phase=Phase::Decode;
+            }
+            OpeningReply::Finished(output)=>self.next=Some(OpeningPoll::Complete(Ok(output))),
             OpeningReply::Parts(reply) => match super::source_option(reply)? {
                 Some(parts) => self.next = Some(OpeningPoll::Ready(OpeningReady::Metrics(parts))),
                 None => self.phase = Phase::Decode,
@@ -277,3 +296,7 @@ impl Classifier {
 #[cfg(test)]
 #[path = "requested_identity_tests.rs"]
 mod requested_identity_tests;
+
+#[cfg(test)]
+#[path="classify_allocation_tests.rs"]
+mod allocation_tests;

@@ -28,10 +28,12 @@ enum Reply {
     Admitted(Result<Child>),
     Child(Box<ProgramReply>),
     Parts(Result<Vec<Mesh>>),
+    RetainedParts(Result<Vec<super::retained::LogicalRetainedValue>>),
     Stopped(crate::Error),
 }
 pub(super) struct OpeningAdapter {
     control: OpeningControl,
+    retained: Option<super::retained::RetainedContract>,
     action: Option<Action>,
     child: Option<Child>,
     output: Option<Result<GeometryOutput>>,
@@ -40,10 +42,14 @@ impl OpeningAdapter {
     pub(super) fn new(element: DecodedEntity, ids: Vec<u32>) -> Self {
         Self {
             control: OpeningControl::context(element, ids),
+            retained:None,
             action: None,
             child: None,
             output: None,
         }
+    }
+    pub(super) fn select_retained(&mut self,contract:super::retained::RetainedContract) {
+        self.retained=Some(contract);self.control.select_retained();
     }
     pub(super) fn poll(&mut self) -> std::result::Result<Option<ProgramStage>, ProgramError> {
         if self.output.is_some() {
@@ -64,6 +70,7 @@ impl OpeningAdapter {
                 OpeningPoll::Geometry(child) => Action::Admit(child),
                 OpeningPoll::Complete(output) => {
                     self.output = Some(output.and_then(|output| match output {
+                        OpeningOutput::RetainedContext(context)=>Ok(GeometryOutput::RetainedOpeningContext(context)),
                         OpeningOutput::Context(context) => {
                             Ok(GeometryOutput::OpeningContext(context))
                         }
@@ -88,11 +95,15 @@ impl OpeningAdapter {
         if let Err(stop) = crate::resource::check_current() {
             return Ok(OpeningAdapterReply(Reply::Stopped(stop.into())));
         }
+        if self.retained.is_some() {super::retained_walk::charge(1).map_err(|error|match error {
+            crate::Error::ProgramStopped(stop)=>ProgramError::TraversalStopped(stop),_=>ProgramError::UnsupportedRetained,
+        })?;}
         let reply = match self.action.take().expect("requested opening action") {
             Action::Source(source) => Reply::Opening(source.execute(router, decoder)),
             Action::Ready(ready) => Reply::Opening(ready.execute()),
             Action::Admit(child) => {
-                Reply::Admitted(child.admit(router).map(|(program, mesh)| Child {
+                let admitted=match self.retained {Some(contract)=>child.admit_retained(router,contract),None=>child.admit(router)};
+                Reply::Admitted(admitted.map(|(program, mesh)| Child {
                     program: Box::new(program),
                     mesh,
                 }))
@@ -105,7 +116,13 @@ impl OpeningAdapter {
                     .execute_with_inputs(request, router, decoder, textures, voids)?,
             )),
             Action::ChildFinished => {
-                let child = self.child.take().expect("completed opening geometry child");
+                let mut child = self.child.take().expect("completed opening geometry child");
+                if self.retained.is_some() {
+                    return Ok(OpeningAdapterReply(Reply::RetainedParts(child.program.take_geometry_output().and_then(|output|match output {
+                        GeometryOutput::Retained(values)=>Ok(values),
+                        _=>Err(crate::Error::geometry("opening child did not return retained values")),
+                    }))));
+                }
                 Reply::Parts(if child.mesh {
                     (*child.program).finish().map(|mesh| vec![mesh])
                 } else {
@@ -134,7 +151,9 @@ impl OpeningAdapter {
             Reply::Opening(reply) => self.control.resume(reply, router),
             Reply::Admitted(reply) => match reply {
                 Ok(child) => self.child = Some(child),
-                Err(error) => self.control.resume(OpeningReply::Parts(Err(error)), router),
+                Err(error) => self.control.resume(if self.retained.is_some() {
+                    OpeningReply::RetainedParts(Err(error))
+                } else {OpeningReply::Parts(Err(error))}, router),
             },
             Reply::Child(reply) => self
                 .child
@@ -143,6 +162,7 @@ impl OpeningAdapter {
                 .program
                 .accept(*reply, router)
                 .expect("validated opening child reply"),
+            Reply::RetainedParts(reply)=>self.control.resume(OpeningReply::RetainedParts(reply),router),
             Reply::Parts(reply) => self.control.resume(OpeningReply::Parts(reply), router),
             Reply::Stopped(error) => {
                 self.cancel_with_reports(router);
@@ -227,9 +247,12 @@ impl OpeningAdapterReply {
             Reply::Opening(reply) => reply.numerical_tag().unwrap_or(0),
             Reply::Admitted(_) => 100,
             Reply::Child(_) => 101,
-            Reply::Parts(_) => 102,
+            Reply::Parts(_) | Reply::RetainedParts(_) => 102,
             Reply::Stopped(_) => 103,
         }
+    }
+    pub(super) fn child_reply_mut(&mut self)->Option<&mut ProgramReply> {
+        match &mut self.0 {Reply::Child(reply)=>Some(reply),_=>None}
     }
     pub(super) fn from_ready(reply: OpeningReply) -> Self {
         Self(Reply::Opening(reply))

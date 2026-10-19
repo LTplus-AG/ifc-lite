@@ -1,0 +1,52 @@
+{
+  "review_source": "719a7e4b2ad6ba8376c369a5fb6467950e66df21",
+  "review_inputs": {
+    "markdown": {
+      "input_path": "/tmp/ifclite-openings719-review.md",
+      "sha256": "23439919d77da5490c84d6578d88c922055aec830e766fdae7e04f962da6986f"
+    },
+    "json": {
+      "input_path": "/tmp/ifclite-openings719-review.json",
+      "sha256": "75462648e01fdf6e6f6578fe9238887449e60fda0f89d6e7819617fd32d64b56"
+    }
+  },
+  "correction_source": "bcb0e55784f240c0081e36ff8dd126ebe29ff2b7",
+  "findings": [
+    {
+      "id": "P2-plain-parts-empty-host",
+      "status": "source correction implemented; closure review pending",
+      "change": "derive empty_host from every PlainParts value before moving the vector, identical to BodyParts/BodyStyled",
+      "witnesses": [
+        "retained_no_related_source_empty_host_closes_with_empty_metadata_and_no_late_reads",
+        "p2_sdk_no_related_empty_common_parts_reports_sealed_empty_and_keeps_context_lazy"
+      ],
+      "semantics": "common source-empty witness invents no numerical outcome; SDK witness selects original no-index VoidedParts attempt and consumes actual sealed Boolean Empty through shared ledger; requires final Empty/true metadata/zero cuts/related0/no deferral/no late cutter reads"
+    },
+    {
+      "id": "P2-classifier-unused-diagnostic-backing",
+      "status": "source correction implemented; closure review pending",
+      "change": "shared Classifier::for_contract knows retained before diagnostic allocation; retained Vec::new, exact original Vec::with_capacity(ids.len()); removed late Classifier selection",
+      "witnesses": [
+        "retained_repeated_opening_classifier_has_no_unused_backing_before_typed_child_refusal",
+        "exact_classifier_preserves_original_diagnostic_capacity_before_any_source_poll"
+      ],
+      "semantics": "2053 real repeated source occurrences, selected index/source supplied before captured zero-live-byte child domain; actual diagnostic capacity is zero (account usage alone misses unadmitted allocation); original decode/body control reaches typed LiveBytes refusal before required child ancestry backing grows; same first fault remains and cutter source is unreached; exact capacity/timing positive control preserved"
+    }
+  ],
+  "qualification": {
+    "rust_compilation": "UNRUN",
+    "all_behavioral_tests": "UNRUN",
+    "sdk_execution_and_numerics": "UNRUN",
+    "browser_execution": "UNRUN",
+    "strict_clippy": "UNRUN",
+    "performance": "UNRUN",
+    "syntax_only_parse": "PASS",
+    "git_diff_whitespace": "PASS",
+    "heavy_submissions": 0,
+    "tests_executed": 0,
+    "new_runtime_or_native_math_changes": false,
+    "parent_latest": "eee60 described by parent as qualify verdict aggregation/docs only; not overlaid",
+    "parent_workspace": "501b/sourcea338 reported running, not this feature and not attributed here"
+  },
+  "scope": "only two reviewed P2 findings; no tolerance/old numerical assertion changes; frozen719/e532 source/evidence preserved; no broad ownership or walker changes"
+}

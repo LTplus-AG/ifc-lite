@@ -25,6 +25,8 @@ mod retained;
 mod retained_clip;
 pub use retained_clip::{RetainedPlaneCoefficients, RetainedPlaneSource, RetainedUnaryClip, RetainedClipMode};
 mod retained_entries;
+mod retained_openings;
+pub use retained_openings::{RetainedOpeningCompletion,RetainedOpeningCut};
 mod retained_presentation;
 pub use retained_presentation::RetainedPresentation;
 mod retained_walk;

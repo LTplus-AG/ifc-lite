@@ -134,6 +134,13 @@ impl ReadyOperation {
                 let (reply, operations) = ready.admit_retained().map_err(retained_admission_error)?;
                 (ReplyValue::Mapping(reply), operations)
             },
+            ReadyPayload::Voids(ready)=> {
+                let (reply,operations)=ready.admit_retained().map_err(retained_admission_error)?;
+                (ReplyValue::Voids(reply),operations)
+            }
+            ReadyPayload::Opening(super::openings::OpeningReady::Finish(output))=> (
+                ReplyValue::Opening(super::inner_opening::OpeningAdapterReply::from_ready(
+                    super::openings::OpeningReady::Finish(output).execute())),Vec::new()),
             ReadyPayload::TypeMap(ready) => (ReplyValue::TypeMap(ready.execute()), Vec::new()),
             ReadyPayload::Product(ready) if ready.is_retained_control() => (ReplyValue::Product(ready.execute()), Vec::new()),
             _ => return Err(ProgramError::UnsupportedRetained),

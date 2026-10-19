@@ -8,6 +8,7 @@ pub(crate) mod execute;
 mod planar;
 mod ready;
 mod rectangular;
+pub(in crate::program) mod retained;
 pub(in crate::program) mod requests;
 use crate::router::voids::VoidContext;
 use crate::Result;
@@ -27,6 +28,7 @@ pub(crate) struct HostOpenings {
     context: Option<VoidContext>,
     next: Option<OpeningPoll>,
     phase: Phase,
+    retained: bool,
 }
 #[derive(Clone, Copy)]
 enum Phase {
@@ -44,6 +46,7 @@ impl HostOpenings {
         Self {
             host,
             ids,
+            retained: false,
             context: Some(VoidContext {
                 openings: Vec::new(),
                 merged_openings: Vec::new(),
@@ -54,17 +57,17 @@ impl HostOpenings {
             phase: Phase::Classify,
         }
     }
+    pub(super) fn select_retained(&mut self) { self.retained = true; }
     pub(super) fn poll(&mut self) -> Step {
         if let Some(next) = self.next.take() {
             return Step::Poll(next);
         }
         let phase = std::mem::replace(&mut self.phase, Phase::Pending);
         match phase {
-            Phase::Classify => Step::Child(OpeningControl::classifier(
-                self.host.clone(),
-                self.ids.clone(),
-                true,
-            )),
+            Phase::Classify => {
+                let ids=if self.retained {std::mem::take(&mut self.ids)} else {self.ids.clone()};
+                Step::Child(OpeningControl::classifier_for_contract(self.host.clone(),ids,true,self.retained))
+            },
             Phase::Rectangular => Step::Child(OpeningControl::rectangle(
                 self.host.clone(),
                 self.ids.clone(),
@@ -118,6 +121,18 @@ impl HostOpenings {
     }
     pub(super) fn child_complete(&mut self, output: Result<OpeningOutput>) -> Result<()> {
         match output? {
+            OpeningOutput::RetainedClassified(openings) => {
+                // Defer before reaching mesh-only probes; source admissions and
+                // occurrence work are retained, with no provisional effects to refund.
+                crate::resource::charge(crate::resource::Cost {
+                    live_bytes:(std::mem::size_of::<retained::RetainedVoidContext>()+2*std::mem::size_of::<usize>()) as u64,
+                    work:1,..Default::default()
+                })?.retain();
+                self.next=Some(OpeningPoll::Ready(OpeningReady::Finish(
+                    OpeningOutput::RetainedContext(std::sync::Arc::new(retained::RetainedVoidContext {
+                        openings, grouping:retained::GroupEligibility::DeferredMeshOnlyProbes,
+                    })))));
+            }
             OpeningOutput::Classified(openings) => {
                 self.phase = Phase::Rectangular;
                 self.next = Some(OpeningPoll::Ready(OpeningReady::Merge(openings)));

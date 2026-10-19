@@ -914,9 +914,22 @@ remain unsupported by this entry; a unary clip does not close those obligations.
 operations and an f64 `world_from_evaluation()` frame. That frame applies file-unit
 conversion once before the ordered mappings and product placement. It does not
 certify display rounding, RTC assembly, appearance or persistent face provenance.
-Accepted product placement removes only its own remaining requirement. Opening,
-layer, appearance and persistent-face requirements still prohibit final mesh
-publication. Styled/type-map consumers, affine copies, ordered Boolean values,
+Accepted product placement removes only its own remaining requirement. The
+experimental `retained_voided_parts` / `retained_voided_submeshes` common entries
+carry original host and opening occurrences through ordered sealed Difference
+operations. Processing selects them through its existing voided attempt and
+immutable void index. Only a terminal original void control returns a
+product-specific `opening_completion` fact and discharges that plan's
+`OpeningClosure`; a successful intermediate cut does not. Each accepted operation's
+`opening_cut()` preserves the requested opening and ordered host/cutter occurrence
+provenance in the processing ledger, including when later work stops. Actual Empty
+hosts avoid late opening source/probe work.
+
+Mesh-only grouping/classification optimizations defer explicitly to ordered
+analytic cutters. Their diagnostics, callback and compatibility-policy preservation
+remain unqualified. Eligible material-layer attempts and mesh-only custom processors
+remain explicit retained holds. Layer, appearance and persistent-face requirements
+still prohibit final mesh publication. Styled/type-map consumers, affine copies, ordered Boolean values,
 independent native object leases and shared browser transactions have source
 implementations, but their current-target qualification and final-output fidelity
 remain incomplete. Unsupported retained work refuses rather than selecting exact

@@ -1,0 +1,22 @@
+{
+  "source": "bcb0e55784f240c0081e36ff8dd126ebe29ff2b7",
+  "expected_tree": "0501d795ee1eab16929193c57e341e6335d7f405",
+  "correction_patch_equals719_diff_for_changed_source_paths": true,
+  "assemblies": [
+    {
+      "base": "e532016a15ba58667b431f710c0468f3895c595d",
+      "patch": "correction.patch.gz",
+      "raw_patch_sha256": "9a9504ae122558cfb731c121cc8d7ab93ceb4872e459a22c7039c6609a8152f9",
+      "reconstructed_tree": "0501d795ee1eab16929193c57e341e6335d7f405",
+      "exact_source_tree_match": true
+    },
+    {
+      "base": "719a7e4b2ad6ba8376c369a5fb6467950e66df21",
+      "patch": "from719.patch.gz",
+      "raw_patch_sha256": "ed7f3826ddb959cb2f3c857ee6edfc81b0b4b89928ae30cead109f1d02ea5856",
+      "reconstructed_tree": "0501d795ee1eab16929193c57e341e6335d7f405",
+      "exact_source_tree_match": true
+    }
+  ],
+  "method": "temporary private Git index only; actual worktree/index unchanged"
+}

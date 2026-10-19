@@ -37,7 +37,7 @@ pub struct GeometryProgram {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProgramRequest { program: u64, sequence: u64, stage: ProgramStage }
 impl ProgramRequest { pub(super) fn stage(self)->ProgramStage {self.stage} }
-pub(super) enum GeometryOutput { Retained(Vec<super::retained::LogicalRetainedValue>), Mesh(Mesh), Parts(Vec<Mesh>), Submeshes(crate::SubMeshCollection), TypeParts(Vec<(Mesh,Vec<f32>,Option<crate::processors::texture::TextureAttachment>)>), LayerCandidate(Option<crate::SubMeshCollection>), OpeningContext(std::sync::Arc<crate::router::voids::ReadyVoidContext>) }
+pub(super) enum GeometryOutput { RetainedOpeningContext(std::sync::Arc<super::openings::retained::RetainedVoidContext>), RetainedVoided(Vec<super::retained::LogicalRetainedValue>,super::retained_openings::RetainedOpeningCompletion), Retained(Vec<super::retained::LogicalRetainedValue>), Mesh(Mesh), Parts(Vec<Mesh>), Submeshes(crate::SubMeshCollection), TypeParts(Vec<(Mesh,Vec<f32>,Option<crate::processors::texture::TextureAttachment>)>), LayerCandidate(Option<crate::SubMeshCollection>), OpeningContext(std::sync::Arc<crate::router::voids::ReadyVoidContext>) }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ProgramStage { Source, Extension, Numerical }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,6 +66,11 @@ impl ProgramReply {
             current=match &mut current.value {
                 ReplyValue::BooleanNumerical(reply)=>return if reply.bind_retained_outcome(slot,empty) {Ok(())}
                     else {Err(crate::Error::geometry("retained outcome slot mismatch"))},
+                ReplyValue::Voids(reply)=> {
+                    if reply.bind_retained_outcome(slot,empty) {return Ok(())}
+                    reply.child_reply_mut().ok_or_else(||crate::Error::geometry("retained outcome void slot mismatch"))?
+                }
+                ReplyValue::Opening(reply)=>reply.child_reply_mut().ok_or_else(||crate::Error::geometry("retained outcome opening mismatch"))?,
                 ReplyValue::ItemChild(reply) | ReplyValue::BooleanChild(reply)=>reply,
                 ReplyValue::Mapping(reply)=>reply.child_reply_mut().ok_or_else(||crate::Error::geometry("retained outcome mapping mismatch"))?,
                 ReplyValue::TypeMap(reply)=>reply.child_reply_mut().ok_or_else(||crate::Error::geometry("retained outcome type map mismatch"))?,

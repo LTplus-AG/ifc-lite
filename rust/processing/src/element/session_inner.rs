@@ -50,7 +50,9 @@ impl PendingGeometryAttempt {
             WorkKind::Primary { strategy: PrimaryStrategy::TexturedSubmeshes, .. } | WorkKind::PlainParts =>
                 Ok(Self { kind, program: GeometryProgram::retained_submeshes(job.entity.clone(), contract) }),
             WorkKind::TypeMap {map_id,..}=>Ok(Self {kind,program:GeometryProgram::retained_type_map_id(map_id,contract)}),
-            _ => Err(super::session_protocol::WorkError::RetainedContract),
+            WorkKind::Primary {strategy:PrimaryStrategy::VoidedSubmeshes,..}=>
+                Ok(Self {kind,program:GeometryProgram::retained_voided_submeshes(job.entity.clone(),contract)}),
+            WorkKind::VoidedParts=>Ok(Self {kind,program:GeometryProgram::retained_voided_parts(job.entity.clone(),contract)}),
         }
     }
 }

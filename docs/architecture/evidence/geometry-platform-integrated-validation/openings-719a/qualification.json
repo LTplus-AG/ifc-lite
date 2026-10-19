@@ -1,0 +1,64 @@
+{
+  "base": "68da7b8a966e0972fa41a0c5d9ab3a48ede19a4c",
+  "source": "719a7e4b2ad6ba8376c369a5fb6467950e66df21",
+  "recorded_utc": "2026-10-19T09:35:20.406375+00:00",
+  "scope": "retained common host/opening continuation implementation; no platform completion claim",
+  "qualification": "UNQUALIFIED",
+  "compilation": "UNRUN",
+  "rust_behavioral_tests": "UNRUN",
+  "native_sdk_numerics": "UNRUN",
+  "actual_module_worker": "UNRUN",
+  "strict_clippy": "UNRUN",
+  "exact_preservation": "UNRUN",
+  "performance": "UNRUN",
+  "lightweight_checks": [
+    {
+      "command": "rustfmt +nightly-2025-11-15 --edition 2021 --emit stdout --config skip_children=true <changed Rust files>",
+      "result": "PASS syntax parsing only; no compilation"
+    },
+    {
+      "command": "node scripts/check-module-size.mjs",
+      "result": "PASS; no allowance increased"
+    },
+    {
+      "command": "node scripts/check-refwalk-guards.mjs",
+      "result": "PASS; 29 candidate walks guarded,12 existing fan-out budget reviews"
+    },
+    {
+      "command": "git diff --check",
+      "result": "PASS"
+    },
+    {
+      "command": "node scripts/check-source-text-assertions.mjs",
+      "result": "BLOCKED before checking: ERR_MODULE_NOT_FOUND typescript; dependencies not installed"
+    }
+  ],
+  "coordination": {
+    "new_heavy_submissions": 0,
+    "fleet_at_start": "Pop and PC reachable, both admission false/guard78; Mac disabled",
+    "parent_workspace_job": "00939, source68da, reported running by parent; outcome not inspected or attributed to this source",
+    "prior_workspace_dispatch": "auto-ffa012a322de4d9b8798283d8309b5e3; parent-owned; no resubmission",
+    "nativeauto80e86": "parent reports pre-execution refusal; no retry"
+  },
+  "witnesses": {
+    "real_source_admission_tests": 4,
+    "native_sdk_gated_tests": 6,
+    "actual_worker_tests": 4,
+    "native_requirement": "configured actual IFCLITE_SMLIB_WORKER; missing worker explicitly skips and cannot qualify",
+    "browser_requirement": "canonical staged SDK module Worker assets; absence fails",
+    "anchors": [
+      "rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc",
+      "rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc"
+    ],
+    "oracles": "#2019 independently runs canonical exact source production for volume at new 1e-6 assertion; #3641 preserves existing bounded-index invariant and adds actual positive/closed solid checks. No existing numerical assertion or tolerance modified.",
+    "admission_scope": "common tests admit original immutable construction plans; no successful cut result or Empty classification is invented"
+  },
+  "remaining_holds": [
+    "mesh-only optimized grouping/classification diagnostics and callback/policy preservation need actual exact-contract evidence",
+    "mesh-only custom processors and scalar unsupported source bodies need retained admission contract",
+    "eligible layers: original layer eligibility reached; typed UnsupportedSource before unavailable retained split work",
+    "persistent-face provenance and IFC appearance",
+    "final publication and all consumer/runtime/artifact/platform/performance gates",
+    "shared retained mixed ancestry cap and iterative driver prerequisite remain unchanged preservation holds"
+  ]
+}

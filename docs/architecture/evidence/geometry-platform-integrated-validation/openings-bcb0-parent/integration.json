@@ -1,0 +1,133 @@
+{
+  "child_source": "bcb0e55784f240c0081e36ff8dd126ebe29ff2b7",
+  "integration_parent": "b0e08079b95068bffdd387645073945a464d8470",
+  "source_paths_verified": 25,
+  "changed_rust_parse": "PASS",
+  "syntax_only": true,
+  "compilation": "UNRUN",
+  "SDK_and_actual_Worker_numerics": "UNRUN",
+  "performance": "UNRUN",
+  "original_review": "two source findings",
+  "closure_review": "both repaired, no new scoped blocker",
+  "source_files": [
+    {
+      "path": "docs/guide/geometry.md",
+      "sha256": "5380d10fdf59d1319ac93d339be1bd5abe4c08014638105683b5dfa213684587"
+    },
+    {
+      "path": "rust/geometry/src/program/inner.rs",
+      "sha256": "911aa0edae2b63d53f47f32a392dad7984808b766b3e695d608380a92b5efafa"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_layers.rs",
+      "sha256": "520288d1c3365e6a5a3c1648596c23f558c1f62cb2345eafba66223af272494f"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_opening.rs",
+      "sha256": "118aa3dd4e97c789ab34787bcaeaeb79164a21fd669e371bff91ccac8d9dbe9f"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_product.rs",
+      "sha256": "183d32a40db2e40878f1000a4b449e447fd088c1332a1d74e0e30275d0028222"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_ready.rs",
+      "sha256": "c5ff4db38e24a9b38d2888cc25ea8de5d8207c37014b469f4296cd9d1fa74147"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_voids.rs",
+      "sha256": "5e654e52ca3ccfcee15c643b8f25c84f8698ab7be9c81826f1a7ecbbc0070e7d"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_voids_retained.rs",
+      "sha256": "1b057f7330671c19a13e91a8e13e0d01a984599767e1c436ee6bd122fdee9ca0"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_voids_source_tests.rs",
+      "sha256": "a3864e7a147773fadd3c83e4621fc3d5bb02a1a494158344e7d7aff28810e2aa"
+    },
+    {
+      "path": "rust/geometry/src/program/mod.rs",
+      "sha256": "661dc73a1e374959d8f25184a6931ddc2c9dabdac78aa0d02e5970cd5f3deddd"
+    },
+    {
+      "path": "rust/geometry/src/program/openings/classify.rs",
+      "sha256": "939686cd4e9b382c70e557d6bfed81c01738e48d934a8f17a2fd4b4b3bdfba4d"
+    },
+    {
+      "path": "rust/geometry/src/program/openings/classify_allocation_tests.rs",
+      "sha256": "2f5175c29e131d668cf403ec200128bf2a63ae72bc02d42c39b572a90c4f2596"
+    },
+    {
+      "path": "rust/geometry/src/program/openings/control.rs",
+      "sha256": "02ab9aeae64568a4d451e2aeb3263986fa626fa92b573e667d80b7e41d793bd1"
+    },
+    {
+      "path": "rust/geometry/src/program/openings/mod.rs",
+      "sha256": "6a6202474c70ce2be061239d2beafcd6f37a012ba2383cec108dd1176ed333a5"
+    },
+    {
+      "path": "rust/geometry/src/program/openings/requests.rs",
+      "sha256": "f939e50b391a467339cbf55d8fa5d7adc69df85661cfaf479679d63c4634ac84"
+    },
+    {
+      "path": "rust/geometry/src/program/openings/retained.rs",
+      "sha256": "4d8a6876a223a93b91940ea3b9e4b58b9a68b07ed33b00cee940ffbcf988b2c6"
+    },
+    {
+      "path": "rust/geometry/src/program/retained.rs",
+      "sha256": "9c30032386cf3a1cd5f819f9cd97dc355315cce0613c50277efd7e829a9b7b7d"
+    },
+    {
+      "path": "rust/geometry/src/program/retained_entries.rs",
+      "sha256": "c3be028dae0ba403bf1425caf56cf39f3bca48ff4c2478789528545724ec757b"
+    },
+    {
+      "path": "rust/geometry/src/program/retained_openings.rs",
+      "sha256": "fb37419b9ac664ad7e57cacba419658d41d769ceeed238d1a6fb857573b17a0c"
+    },
+    {
+      "path": "rust/processing/src/element/session_inner.rs",
+      "sha256": "0d96ef7c8314bf9c08b2ab52be5e30cf367da93b0543ad4a587e750bc82ae86e"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained.rs",
+      "sha256": "9b04ebc4a2ed5e8f5f7650a385bfb8899db1b2ec0677721bec9f430c934584d9"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/manifest.rs",
+      "sha256": "16d4d178b42a1a58ea2ab0cc3e8b611cd8e7c416d549197872d091db2b84abf8"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/opening_browser_tests.rs",
+      "sha256": "f2961fe04930d94cbf044b20e2f2ef54d063bc0052ee9c6378f354e06eaa2a8d"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/opening_tests.rs",
+      "sha256": "aea0765be3a034ee5322a3bbdcfd5b997361c9c6ef3dd5397f24ee7fe2c6426a"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/opening_witness.rs",
+      "sha256": "e9caac758e1fbffc68d716f4454e0153d13c379a1432b6fb0dc473caab7c7b7c"
+    }
+  ],
+  "metadata": {
+    "node_module_size": "PASS",
+    "reference_walk_guards": "PASS; 12 inherited fan-out reviews",
+    "source_text_assertions": "PASS; 0 new"
+  },
+  "review_copies": [
+    {
+      "path": "ifclite-openings719-review.md",
+      "original_sha256": "23439919d77da5490c84d6578d88c922055aec830e766fdae7e04f962da6986f",
+      "rendered_sha256": "0fd9f5c182ce5d3c7e6f46695835749295ce4eac5e358c97921e8742b0a3b6ad",
+      "original_archive": "ifclite-openings719-review.md.gz"
+    },
+    {
+      "path": "ifclite-openings-bcb0-closure-r2.md",
+      "original_sha256": "30262819c283cd990ff2143f8eb963b236594e554c321dbc47600943818cc12d",
+      "rendered_sha256": "364b319fa4cb3d03974a1c339f7c65c92fb7fe2e59ac744f639108f8423ed373",
+      "original_archive": "ifclite-openings-bcb0-closure-r2.md.gz"
+    }
+  ]
+}

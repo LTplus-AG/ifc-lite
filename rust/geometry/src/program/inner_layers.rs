@@ -46,11 +46,12 @@ impl LayerReply {
     }}
 }
 pub(super) struct LayerControl {
-    element: DecodedEntity, use_openings: bool, gateway: bool,
+    element: DecodedEntity, use_openings: bool, gateway: bool, retained:bool,
     action: Option<Action>, program: Option<LayerProgram>, child: Option<Box<GeometryProgram>>,
     output: Option<Result<GeometryOutput>>,
 }
 impl LayerControl {
+    pub(super) fn select_retained(&mut self) {self.retained=true;}
     pub(super) fn take_ready(&mut self)->Option<LayerReadyWork> {
         Some(match self.action.take()? {
             Action::Planes(ready)=>LayerReadyWork::Planes(ready),
@@ -72,7 +73,7 @@ impl LayerControl {
         Self::new(element, true, false, Some(buildup))
     }
     fn new(element: DecodedEntity, use_openings: bool, gateway: bool, buildup: Option<LayerBuildup>) -> Self {
-        Self { element, use_openings, gateway, action: Some(Action::Eligibility(buildup)),
+        Self { element, use_openings, gateway, retained:false, action: Some(Action::Eligibility(buildup)),
             program: None, child: None, output: None }
     }
     pub(super) fn poll(&mut self) -> std::result::Result<Option<ProgramStage>, ProgramError> {
@@ -133,6 +134,10 @@ impl LayerControl {
         match reply {
             Reply::Eligible(result) => match result? {
                 Ok(Some(program)) => {
+                    if self.retained {
+                        return Err(crate::document::RetainedRefusal::UnsupportedSource(
+                            "retained material layers require authenticated split/presentation continuations".into()).into());
+                    }
                     self.program = Some(program);
                     self.child = Some(Box::new(GeometryProgram::voided_parts(self.element.clone())));
                 }

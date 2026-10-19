@@ -1,0 +1,10 @@
+{
+  "base": "68da7b8a966e0972fa41a0c5d9ab3a48ede19a4c",
+  "source": "719a7e4b2ad6ba8376c369a5fb6467950e66df21",
+  "patch_sha256_uncompressed": "a2a464bcca9aec9a877c77804867935d79bba43bb81b165c80acc0660137af81",
+  "patch_sha256_gzip": "6499931813a1077942667f31365ca7ff3c1f50217abea98173e6720e76c80da4",
+  "reconstructed_tree": "fa4b6befcf07963b576c3c14061381f497fde39c",
+  "expected_source_tree": "fa4b6befcf07963b576c3c14061381f497fde39c",
+  "exact_tree_match": true,
+  "mechanism": "private temporary Git index: read-tree base, apply cached binary patch, write-tree; source worktree unchanged"
+}

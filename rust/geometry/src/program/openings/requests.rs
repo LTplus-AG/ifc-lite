@@ -21,6 +21,16 @@ pub(crate) enum OpeningChild {
     },
 }
 impl OpeningChild {
+    pub(in crate::program) fn admit_retained(self, router:&GeometryRouter,
+        contract:crate::program::retained::RetainedContract)->Result<(GeometryProgram,bool)> {
+        crate::resource::check_current()?;
+        match self {
+            Self::Body(element)=>Ok((GeometryProgram::retained_opening_body(element,contract)?,false)),
+            Self::Item {item,..} if item.ifc_type==ifc_lite_core::IfcType::IfcMappedItem=>
+                Ok((GeometryProgram::retained_mapped(&item,contract,router,Default::default())?,false)),
+            Self::Item {item,..}=>Ok((GeometryProgram::retained_item(item,contract),true)),
+        }
+    }
     /// Returns the actual child and whether its output is one mesh or parts.
     pub(crate) fn admit(self, router: &GeometryRouter) -> Result<(GeometryProgram, bool)> {
         crate::resource::check_current()?;
@@ -83,6 +93,7 @@ pub(crate) enum OpeningReply {
     Solids(Result<Option<Vec<ExtrudedSolidInfo>>>),
     Frame(f64, (f64, f64, f64)),
     Parts(Result<Vec<Mesh>>),
+    RetainedParts(Result<Vec<crate::program::retained::LogicalRetainedValue>>),
     Metrics(VecDeque<Mesh>, usize, usize),
     BoundsDecision(OpeningBounds, bool),
     Decision(Decisions, Option<OpeningType>),

@@ -50,7 +50,7 @@ pub(super) fn process_planar_face_rebased(face: &DecodedEntity, decoder: &mut En
 #[cfg(test)]
 pub(crate) fn process_bspline_face(bspline: &DecodedEntity, decoder: &mut EntityDecoder,
     weights: Option<&[Vec<f64>]>, quality: TessellationQuality, rtc: (f64, f64, f64)) -> Result<(Vec<f32>, Vec<u32>)> {
-    super::bspline_plan::lower_bspline(bspline, decoder, weights, quality, rtc)?.evaluate()
+    super::bspline_plan::lower_bspline(bspline, decoder, weights.map(<[Vec<f64>]>::to_vec), quality, rtc)?.evaluate()
 }
 
 pub(super) fn lower_cylindrical(

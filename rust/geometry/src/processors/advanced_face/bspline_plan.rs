@@ -47,7 +47,7 @@ impl BSplinePlan {
 pub(crate) fn lower_bspline(
     bspline: &DecodedEntity,
     decoder: &mut EntityDecoder,
-    weights: Option<&[Vec<f64>]>,
+    weights: Option<Vec<Vec<f64>>>,
     quality: TessellationQuality,
     rtc: (f64, f64, f64),
 ) -> Result<BSplinePlan> {
@@ -140,7 +140,7 @@ pub(crate) fn lower_bspline(
         point.z -= rtc.2;
     }
 
-    if let Some(weights) = weights {
+    if let Some(weights) = weights.as_deref() {
         check_weights_match(weights, &control_points)?;
     }
 
@@ -153,7 +153,7 @@ pub(crate) fn lower_bspline(
         control_points,
         u_knots,
         v_knots,
-        weights: weights.map(<[Vec<f64>]>::to_vec),
+        weights,
         u_segments,
         v_segments,
     })

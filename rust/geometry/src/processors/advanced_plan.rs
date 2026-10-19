@@ -168,7 +168,7 @@ pub(crate) fn lower_bspline_surface(
     let surface = lower_bspline(
         entity,
         decoder,
-        weights.as_deref(),
+        weights,
         quality,
         rtc_file_units.unwrap_or((0.0, 0.0, 0.0)),
     )?;

@@ -103,7 +103,7 @@ pub(crate) fn lower_face(
                     super::bspline_plan::lower_bspline(
                         &surface,
                         decoder,
-                        weights.as_deref(),
+                        weights,
                         quality,
                         rtc,
                     )

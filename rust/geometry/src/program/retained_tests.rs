@@ -2,6 +2,7 @@
 //! Continuation invariant for the retained migration (no runtime execution claim).
 use super::inner::ProgramStage;
 use super::*;
+use crate::GeometryRouter;
 use ifc_lite_core::EntityDecoder;
 
 const SOURCE: &str = "#1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCAXIS2PLACEMENT3D(#1,$,$);

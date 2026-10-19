@@ -5,6 +5,12 @@ set -euo pipefail
 mode=${1:-native}
 revision=c9c5979f04cea8c38213004d4f04df0dcfb40d05
 cache=${IFCLITE_SDK_CACHE:-/tmp/ifclite-public-sdk-c9c5979}
+# Fleet supplies its lifecycle-managed target. Keep compiled SDK objects under
+# that owner; the public source/tool cache is not a persistent build workspace.
+if [[ -z "${IFCLITE_ADAPTER_BUILD:-}" ]]; then
+  : "${CARGO_TARGET_DIR:?qualification requires the admitted fleet target or an explicitly owned IFCLITE_ADAPTER_BUILD}"
+  [[ "$CARGO_TARGET_DIR" == /* ]] || { printf 'CARGO_TARGET_DIR must be absolute\n' >&2; exit 2; }
+fi
 sdk=${SMLIB_SOURCE:-$cache/usd-brep}
 mkdir -p "$cache"
 # Respect the original mode lock before touching shared setup artifacts.
@@ -23,7 +29,7 @@ source_id=$(git rev-parse HEAD)
 # CMake caches bind to one absolute source path. Fleet checkouts differ by
 # commit; retain previous builds/evidence instead of reusing their cache.
 checkout_key=$(printf '%s' "$(pwd -P)" | sha256sum | cut -c1-12)
-build=${IFCLITE_ADAPTER_BUILD:-$cache/build-$mode-$source_id-$checkout_key}
+build=${IFCLITE_ADAPTER_BUILD:-$CARGO_TARGET_DIR/ifclite-smlib/$mode-$source_id-$checkout_key}
 # Lock the normalized physical build directory too: official overrides may
 # intentionally share one path across modes or through symlink aliases.
 mkdir -p "$build"

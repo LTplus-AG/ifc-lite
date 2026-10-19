@@ -37,23 +37,24 @@ is provided by this foundation yet.
 Prerequisites: CMake >= 3.20, Ninja, C/C++17 compilers, and an unmodified NVIDIA
 `usd-brep` checkout at `c9c5979f04cea8c38213004d4f04df0dcfb40d05`.
 The build checks the revision, tracked changes and untracked SMLib/SM_API files, and compiles the
-minimal core/API without TBB, OpenUSD or Python. No upstream patches are applied.
+minimal core/API without TBB, OpenUSD or Python. No upstream patches are applied. Run these build commands inside fleet admission;
+`CARGO_TARGET_DIR` below is the absolute managed target supplied by that launcher.
 
 ```sh
-cmake -S native/smlib-adapter -B /tmp/ifclite-smlib-adapter-native -G Ninja \
+cmake -S native/smlib-adapter -B "$CARGO_TARGET_DIR/ifclite-smlib-adapter-native" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release -DSMLIB_SOURCE=/path/to/usd-brep
-cmake --build /tmp/ifclite-smlib-adapter-native --parallel 4
-ctest --test-dir /tmp/ifclite-smlib-adapter-native --output-on-failure
+cmake --build "$CARGO_TARGET_DIR/ifclite-smlib-adapter-native" --parallel 4
+ctest --test-dir "$CARGO_TARGET_DIR/ifclite-smlib-adapter-native" --output-on-failure
 ```
 
 For wasm32, activate Emscripten 4.0.15 and use Node to run the same C ABI tests:
 
 ```sh
 . /path/to/emsdk/emsdk_env.sh
-emcmake cmake -S native/smlib-adapter -B /tmp/ifclite-smlib-adapter-wasm -G Ninja \
+emcmake cmake -S native/smlib-adapter -B "$CARGO_TARGET_DIR/ifclite-smlib-adapter-wasm" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release -DSMLIB_SOURCE=/path/to/usd-brep
-cmake --build /tmp/ifclite-smlib-adapter-wasm --parallel 4
-ctest --test-dir /tmp/ifclite-smlib-adapter-wasm --output-on-failure
+cmake --build "$CARGO_TARGET_DIR/ifclite-smlib-adapter-wasm" --parallel 4
+ctest --test-dir "$CARGO_TARGET_DIR/ifclite-smlib-adapter-wasm" --output-on-failure
 ```
 
 The CTest executable links a pure C translation unit to verify the public header
@@ -196,7 +197,7 @@ deadline and verifies the healthy transport still accepts work. Serve the build 
 
 ```sh
 python3 -m http.server 8766 --bind 127.0.0.1 \
-  --directory /tmp/ifclite-smlib-adapter-wasm
+  --directory "$CARGO_TARGET_DIR/ifclite-smlib-adapter-wasm"
 ```
 
 The machine-readable browser result is `window.probeResult`. A passing result
@@ -236,7 +237,11 @@ its success establishes no SDK geometry behavior. It is wired through CTest.
 For reproducible fleet qualification, `bash native/smlib-adapter/qualify.sh native`
 (or `wasm`) acquires the public SDK at the exact pin into a dedicated temporary
 cache and verifies its commit. Build directories are isolated by source commit
-and checkout path so CMake caches remain attributable across fleet runs. It bootstraps pinned public CMake/Ninja wheels
+and checkout path under the admitted fleet `CARGO_TARGET_DIR`, so compiled
+objects follow the worker storage lifecycle and CMake caches remain attributable
+across runs. The public SDK/tool cache holds no default build tree. An explicitly
+owned `IFCLITE_ADAPTER_BUILD` override retains its own lock and storage ownership.
+Without either target the script refuses before acquisition. It bootstraps pinned public CMake/Ninja wheels
 when necessary; WASM uses Emscripten 4.0.15. Run this script through `ifc-fleet run
 --cwd ABSOLUTE_CHECKOUT -- ...`. On the registered Pop host, invoke the environment
 wrapper with `bash` (the wrapper need not be executable):

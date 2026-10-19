@@ -79,9 +79,14 @@ impl RetainedWalk {
         self.check()?;
         Ok(WalkScope {prior:CURRENT.with(|slot|slot.replace(Some(self.clone())))})
     }
+    /// One entry debit per captured budget domain. Ancestor protocol wrappers
+    /// share the same traversal work; reinstall their own path without charging
+    /// the same request repeatedly. Actual child/output/copy work stays charged.
     #[cfg_attr(test,track_caller)]
     pub(super) fn scope(&self)->Result<WalkScope,ProgramStop> {
-        self.charge(1)?;
+        let nested=CURRENT.with(|slot|slot.borrow().as_ref()
+            .is_some_and(|active|Arc::ptr_eq(&active.budget,&self.budget)));
+        if nested {self.check()?;} else {self.charge(1)?;}
         Ok(WalkScope {prior:CURRENT.with(|slot|slot.replace(Some(self.clone())))})
     }
     #[cfg(test)]
@@ -121,3 +126,7 @@ impl Budget {
         }
     }
 }
+
+#[cfg(test)]
+#[path="retained_walk_scope_tests.rs"]
+mod scope_tests;

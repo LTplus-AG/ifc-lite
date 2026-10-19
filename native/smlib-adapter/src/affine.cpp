@@ -127,6 +127,12 @@ unsigned surface_class(SM_TYPE type) {
 void inspect(SmBrep* source, ifclite_smlib_affine_certificate* certificate, bool generic) {
     SmTArray<SmCurve*> curves; source->GetCurves(curves);
     SmTArray<SmSurface*> surfaces; source->GetSurfaces(surfaces);
+    SmTArray<SmFace*> faces; source->GetFaces(faces);
+    SmTArray<SmEdge*> edges; source->GetEdges(edges);
+    // SDK getters omit geometry not owned by that face/edge. Do not certify a
+    // subset while a shared or foreign-owned representation bypasses preflight.
+    require(curves.GetSize()==edges.GetSize() && surfaces.GetSize()==faces.GetSize(),
+        IFCLITE_SMLIB_UNSUPPORTED,"affine shared/foreign-owned geometry requires a separate copy certificate");
     require(curves.GetSize()<=100000 && surfaces.GetSize()<=100000,
         IFCLITE_SMLIB_RESOURCE_LIMIT,"affine source class budget");
     // Classify everything before touching representation data.

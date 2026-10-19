@@ -23,7 +23,9 @@ Ellipse, Parabola, Hyperbola; surface BSpline, Plane, Cylinder, Cone, Sphere,
 Torus. These supported analytic classes inherit SDK rational representations.
 All other classes, including offsets, curve-on-surface/composites, and specialized
 extrusion/revolution surfaces, refuse (status7) before copying/conversion. Missing
-materialized rational coefficients also refuse. These remain preservation gaps;
+materialized rational coefficients also refuse. Shared/foreign-owned face or
+edge geometry refuses: SDK GetCurves/GetSurfaces omit non-owning references, so
+a partial class enumeration cannot certify the entire source. These remain preservation gaps;
 no source tessellation, fitted substitute or automatic engine fallback is used.
 
 Pinned SDK primary sources inspected at clean

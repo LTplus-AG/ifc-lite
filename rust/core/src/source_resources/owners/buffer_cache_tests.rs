@@ -18,7 +18,7 @@ fn unit2_identical_source_and_account_with_distinct_gates_cannot_merge_backing()
                 let foreign_node = text(allocator, TextKind::String, "value");
                 let mut foreign_buffer = ok(OwnedBuffer::try_new(allocator));
                 built(foreign_buffer.try_push(Node::scalar(Scalar::Integer(11))));
-                let foreign_entity = built(SharedEntity::try_new(allocator, 4, IfcType::IfcWall,
+                let foreign_entity = built(SharedEntity::try_new(allocator, 4, &IfcType::IfcWall,
                     AttributeOwner::Owned(list(allocator, []))));
                 Ok((foreign_text, foreign_list, foreign_attrs, foreign_node, foreign_buffer, foreign_entity))
             }).unwrap();
@@ -33,7 +33,7 @@ fn unit2_identical_source_and_account_with_distinct_gates_cannot_merge_backing()
             let refused_list = Node::try_list(allocator, foreign_list).err().unwrap();
             assert_eq!(refused_list.error, OwnerError::ForeignDomain);
             assert_eq!(refused_list.donor.view().get(0).unwrap().as_int(), Some(3));
-            let refused_attrs = SharedEntity::try_new(allocator, 3, IfcType::IfcWall, foreign_attrs).err().unwrap();
+            let refused_attrs = SharedEntity::try_new(allocator, 3, &IfcType::IfcWall, foreign_attrs).err().unwrap();
             assert_eq!(refused_attrs.error, OwnerError::ForeignDomain);
             let refused_typed = Node::try_typed(allocator, name, foreign_node).err().unwrap();
             assert_eq!(refused_typed.error, OwnerError::ForeignDomain);
@@ -88,7 +88,7 @@ fn unit2_inline_arc_refusal_returns_complete_list_typed_and_entity_donors() {
                         assert_eq!(budget.stats().live, before.live);
                     }
                     _ => {
-                        let refused = SharedEntity::try_new(allocator, 1, IfcType::IfcWall, attrs).err().unwrap();
+                        let refused = SharedEntity::try_new(allocator, 1, &IfcType::IfcWall, attrs).err().unwrap();
                         assert!(matches!(refused.error, OwnerError::Stopped(_)));
                         assert_eq!(refused.donor.view().get(0).unwrap().as_int(), Some(7));
                         assert_eq!(budget.stats().live, before.live);
@@ -181,7 +181,7 @@ fn unit2_cache_failed_growth_returns_entity_donor_and_preserves_old_entries() {
     run(16384, |decoder, work, gate, budget, _| {
         let result = gate.scope(decoder, work, |_, allocator| {
             let mut cache = ok(CacheOwner::try_new(allocator));
-            let donor = built(SharedEntity::try_new(allocator, 8, IfcType::IfcWall,
+            let donor = built(SharedEntity::try_new(allocator, 8, &IfcType::IfcWall,
                 AttributeOwner::Owned(list(allocator, []))));
             built(cache.try_insert(0, donor.clone()));
             let capacity = cache.capacity();

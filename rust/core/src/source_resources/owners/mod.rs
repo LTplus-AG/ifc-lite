@@ -8,6 +8,7 @@ mod buffer;
 mod text;
 mod attribute;
 mod views;
+mod entity_type;
 mod shared_entity;
 mod cache;
 #[cfg(test)]

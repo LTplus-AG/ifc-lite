@@ -116,8 +116,9 @@ fn unit2_raw_root_is_shared_without_deep_conversion_and_refuses_tracked_enrollme
     assert_eq!(raw_typed.typed_value("ifclabel").unwrap().as_string(), Some("name"));
     assert_eq!(owner.view().get(1).unwrap().as_ref_members().unwrap().len(), 2);
     assert_eq!(owner.view().get(2).unwrap().as_ref_members().unwrap().len(), 1);
-    let entity = built(SharedEntity::try_new(&Global, 22, IfcType::IfcWall, alias));
-    assert_eq!((entity.id(), entity.ifc_type()), (22, IfcType::IfcWall));
+    let entity = built(SharedEntity::try_new(&Global, 22, &IfcType::IfcWall, alias));
+    assert_eq!((entity.id(), entity.ifc_type().id(), entity.ifc_type().as_str()),
+        (22, IfcType::IfcWall.id(), IfcType::IfcWall.as_str()));
     assert_eq!(entity.get(0).unwrap().as_string(), Some("name"));
     assert!(entity.get(3).is_none());
     drop(entity);
@@ -127,11 +128,60 @@ fn unit2_raw_root_is_shared_without_deep_conversion_and_refuses_tracked_enrollme
     run(4096, |decoder, work, gate, budget, _| {
         gate.scope(decoder, work, |_, allocator| {
             let raw = AttributeOwner::Raw(Arc::new(vec![Raw::Integer(4)]));
-            let refused = SharedEntity::try_new(allocator, 1, IfcType::IfcWall, raw)
+            let refused = SharedEntity::try_new(allocator, 1, &IfcType::IfcWall, raw)
                 .err().expect("Raw DTOs must not hide in tracked entities");
             assert_eq!(refused.error, OwnerError::ForeignDomain);
             assert_eq!(refused.donor.view().get(0).unwrap().as_int(), Some(4));
             assert_eq!(budget.stats().allocations, 0);
+            Ok(())
+        }).unwrap();
+        clean(budget);
+    });
+}
+
+// Unit-2 compiled review: IfcType::Unknown owns a Global String in the DTO.
+#[test]
+fn unit2_unknown_entity_keyword_uses_accounted_backing_and_borrowed_reads() {
+    run(16384, |decoder, work, gate, budget, _| {
+        let entity = gate.scope(decoder, work, |_, allocator| {
+            let keyword = IfcType::from_str("IfcVendorSpecificEntity");
+            assert!(matches!(keyword, IfcType::Unknown(_)));
+            let attrs = AttributeOwner::Owned(list(allocator, [Node::scalar(Scalar::Integer(19))]));
+            let entity = built(SharedEntity::try_new(allocator, 42, &keyword, attrs));
+            assert_eq!(entity.ifc_type().as_str(), keyword.as_str());
+            assert_eq!(entity.ifc_type().id(), keyword.id());
+            assert!(budget.stats().live >= keyword.as_str().len() as u64);
+            drop(keyword);
+            Ok(entity)
+        }).unwrap();
+        assert_eq!(entity.ifc_type().as_str(), "IFCVENDORSPECIFICENTITY");
+        let before = budget.stats();
+        let weak = entity.downgrade();
+        let alias = entity.clone();
+        let upgraded = weak.upgrade().unwrap();
+        assert_eq!(upgraded.ifc_type(), alias.ifc_type());
+        assert_eq!(budget.stats().allocations, before.allocations);
+        assert_eq!(budget.stats().copies, before.copies);
+        drop(entity); drop(alias); drop(upgraded);
+        assert!(weak.upgrade().is_none());
+        drop(weak);
+        clean(budget);
+    });
+}
+
+#[test]
+fn unit2_unknown_keyword_allocation_refusal_returns_original_attribute_owner() {
+    run(16384, |decoder, work, gate, budget, _| {
+        gate.scope(decoder, work, |_, allocator| {
+            let attrs = AttributeOwner::Owned(list(allocator, [Node::scalar(Scalar::Integer(19))]));
+            let before = budget.stats();
+            let keyword = IfcType::from_str("IFCVENDORSPECIFICENTITY");
+            budget.limit(before.live);
+            let failure = SharedEntity::try_new(allocator, 42, &keyword, attrs).err().unwrap();
+            assert!(matches!(failure.error, OwnerError::Stopped(_)));
+            assert_eq!(failure.donor.view().get(0).unwrap().scalar(), Some(Scalar::Integer(19)));
+            assert_eq!(budget.stats().live, before.live);
+            assert_eq!(keyword.as_str(), "IFCVENDORSPECIFICENTITY");
             Ok(())
         }).unwrap();
         clean(budget);

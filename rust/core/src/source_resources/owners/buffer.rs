@@ -27,7 +27,7 @@ impl<T: Stored<A>, A: Domain> OwnedBuffer<T, A> {
         if let Err(error) = self.values.try_reserve(1) {
             return Err(BuildError::new(allocator.reserve_error(error), value));
         }
-        self.values.push_within_capacity(value)
+        self.values.push_within_capacity(value).map(|_| ())
             .map_err(|donor| BuildError::new(OwnerError::Invariant, donor))
     }
     /// Cleanup-only mutations never grant permission for later growth.

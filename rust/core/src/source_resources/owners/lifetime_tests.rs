@@ -11,7 +11,7 @@ fn unit2_subtree_survives_entity_parent_and_weak_only_lifetime_retains_the_actua
         let child = gate.scope(decoder, work, |_, allocator| {
             let child = typed(allocator, "IFCLABEL", text(allocator, TextKind::String, "retained"));
             let attrs = AttributeOwner::Owned(list(allocator, [child]));
-            let entity = built(SharedEntity::try_new(allocator, 7, IfcType::IfcWall, attrs));
+            let entity = built(SharedEntity::try_new(allocator, 7, &IfcType::IfcWall, attrs));
             let entity_weak = entity.downgrade().clone();
             let child = entity.get(0).unwrap().share_owned().unwrap();
             drop(entity);
@@ -122,7 +122,7 @@ fn unit2_nested_backing_blocks_are_all_allocator_owned_without_double_inline_cha
             let value = typed(allocator, "IFCLABEL", text(allocator, TextKind::String, "hello"));
             let nested = built(Node::try_list(allocator, list(allocator, [value])));
             let attrs = AttributeOwner::Owned(list(allocator, [nested]));
-            let entity = built(SharedEntity::try_new(allocator, 1, IfcType::IfcWall, attrs));
+            let entity = built(SharedEntity::try_new(allocator, 1, &IfcType::IfcWall, attrs));
             // Two text Boxes + two text Arcs + typed Arc + two Vec blocks +
             // two list Arcs + entity Arc. Arc inline payload is charged by A.
             assert_eq!(budget.stats().allocations, 10);

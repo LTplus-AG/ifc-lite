@@ -22,6 +22,7 @@ mod item;
 mod inner;
 mod inner_ready;
 mod retained;
+mod retained_entries;
 mod retained_presentation;
 pub use retained_presentation::RetainedPresentation;
 mod retained_walk;

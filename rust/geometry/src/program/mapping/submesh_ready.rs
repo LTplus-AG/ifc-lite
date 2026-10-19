@@ -45,6 +45,28 @@ impl Range {
     }
 }
 impl SubmeshReady {
+    pub(crate) fn admit_retained(self)->Result<(SubmeshReply,Vec<crate::program::RetainedPlanOperation>)> {
+        // The template is captured before transformation by Range::execute.
+        // Only the reached occurrence range is physically baked; prior values
+        // and reusable source templates keep their original identities/frames.
+        let start=match &self {
+            Self::Range(range) if matches!(range.meshes,StyledValues::Retained(_))=> {
+                if range.placeholder.is_some() {Some(range.meshes.len())}
+                else if !range.finish {Some(range.start)} else {None}
+            }
+            _=>None,
+        };
+        let mut reply=self.execute();let mut operations=Vec::new();
+        if let (Some(start),Reply::Transformed {meshes:StyledValues::Retained(values),..})=(start,&mut reply.value) {
+            for value in &mut values[start..] {
+                crate::program::retained_walk::charge(1)?;
+                if let Some(operation)=value.bake()? {
+                    resource::reserve_headers(&mut operations,1)?.retain();operations.push(operation);
+                }
+            }
+        }
+        Ok((reply,operations))
+    }
     pub(crate) fn reply_tag(&self)->u8 {match self {
         Self::Range(_)=>20,Self::Append {..}=>21,Self::MergeShared {..}=>22,Self::FinishShared(_)=>23,
     }}

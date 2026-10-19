@@ -25,6 +25,7 @@ impl StyledValues {
                 v.sub_meshes.append(&mut incoming.sub_meshes);
             }
             (Self::Retained(v), Self::Retained(mut incoming))=> {
+                crate::program::retained_walk::charge(incoming.len() as u64)?;
                 resource::charge(resource::Cost {work:incoming.len() as u64,..Default::default()})?.retain();
                 resource::reserve_headers(v,incoming.len())?.retain(); v.append(&mut incoming);
             }

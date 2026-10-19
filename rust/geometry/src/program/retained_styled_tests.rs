@@ -21,7 +21,7 @@ pub(super) fn drive(program:&mut GeometryProgram,router:&GeometryRouter,decoder:
         polls+=1;assert!(polls<30000,"bounded real fixture");
         let (reply,op)=program.admit_retained_with_inputs(request,router,decoder,None,None)
             .expect("same common admission");
-        count+=usize::from(op.is_some());program.accept(reply,router).expect("original reply");
+        count+=op.len();program.accept(reply,router).expect("original reply");
     }
     Ok(count)
 }
@@ -197,7 +197,7 @@ fn p1_cancelled_first_claim_rolls_back_before_next_actual_template_execution() {
     let mut reached=false;
     while let Some(request)=cancelled.request().unwrap() {
         let (reply,operation)=cancelled.admit_retained_with_inputs(request,&router,&mut decoder,None,None).unwrap();
-        if operation.is_some() {drop(reply);reached=true;break;}
+        if !operation.is_empty() {drop(reply);reached=true;break;}
         cancelled.accept(reply,&router).unwrap();
     }
     assert!(reached);cancelled.cancel_with_reports(&router).unwrap();drop(cancelled);
@@ -223,4 +223,66 @@ fn p1_later_styled_refusal_preserves_an_independent_completed_template_entry() {
     let super::inner::GeometryOutput::Retained(cached)=cached.take_geometry_output().unwrap() else {panic!("retained cached source")};
     assert_eq!(cached.len(),1);assert_eq!(cached[0].definition(),first[0].definition());
     assert_ne!(cached[0].slot(),first[0].slot());assert!(cached[0].presentation().last().unwrap().placeholder);
+}
+
+#[test]
+fn p2_styled_affine_occurrences_bake_independently_from_the_original_cached_template() {
+    let source=SOURCE.replace("#8=IFCMAPPEDITEM(#7,$)","#8=IFCMAPPEDITEM(#7,#15)")
+        .replace("#14,1.,$","#14,2.,$")
+        .replace("#9=IFCMAPPEDITEM(#7,#15)","#9=IFCMAPPEDITEM(#7,#18)")
+        +"#17=IFCCARTESIANPOINT((20.,0.,0.));#18=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#17,3.,$);";
+    let mut router=GeometryRouter::new();
+    router.enable_output_instancing(Arc::new([(7,(2,8))].into_iter().collect()));
+    let mut decoder=EntityDecoder::new(&source);
+    let mut program=GeometryProgram::retained_submeshes(decoder.decode_by_id(10).unwrap(),CONTRACT);
+    let mut operations=Vec::new();
+    while let Some(request)=program.request().unwrap() {
+        let (reply,batch)=program.admit_retained_with_inputs(request,&router,&mut decoder,None,None).unwrap();
+        operations.extend(batch);program.accept(reply,&router).unwrap();
+    }
+    let plan=program.finish_retained().unwrap();
+    assert_eq!(operations.len(),3,"one source, two distinct physical occurrences");
+    assert!(matches!(operations[0].kind(),RetainedOperationKind::Construction(_)));
+    assert_eq!(plan.values.len(),2);
+    for (index,(scale,x)) in [(2.,10.),(3.,20.)].into_iter().enumerate() {
+        let RetainedOperationKind::Affine {input,matrix}=operations[index+1].kind() else {panic!("missing physical bake")};
+        assert_eq!(input.definition(),operations[0].value().definition(),"cache retains the original source definition");
+        let frame=nalgebra::Matrix4::from_column_slice(matrix);
+        assert_eq!(frame.fixed_view::<3,3>(0,0).determinant(),scale*scale*scale);
+        assert_eq!(frame[(0,3)],x);
+        assert_eq!(operations[index+1].value().definition(),plan.values[index].definition());
+        assert_eq!(plan.values[index].world_from_evaluation(),nalgebra::Matrix4::identity());
+        let binding=plan.values[index].presentation().last().unwrap();
+        assert_eq!(binding.style_source_id,8+index as u32);
+        assert_eq!(binding.placeholder,index==1);
+    }
+    assert_ne!(plan.values[0].slot(),plan.values[1].slot());
+    assert!(plan.remaining.contains(&RetainedRequirement::IfcAppearance));
+    // Logical operation/appearance proof only; no SDK numerical result is supplied.
+}
+
+#[test]
+fn p2_styled_and_type_map_roots_share_bounds_across_a_mapped_boolean_cycle() {
+    let source=SOURCE.replace("'SweptSolid',(#5)","'CSG',(#30)")
+        +"#30=IFCBOOLEANRESULT(.UNION.,#8,#5);";
+    for type_map in [false,true] {
+        let mut decoder=EntityDecoder::new(&source);let router=GeometryRouter::new();
+        let mut program=if type_map {GeometryProgram::retained_type_map_id(20,CONTRACT)}
+            else {GeometryProgram::retained_submeshes(decoder.decode_by_id(10).unwrap(),CONTRACT)};
+        let mut stopped=false;
+        for _ in 0..1000 {
+            let request=match program.request() {
+                Err(ProgramError::TraversalStopped(_))=>{stopped=true;break},
+                Ok(Some(request))=>request,Ok(None)=>break,other=>panic!("unexpected request {other:?}"),
+            };
+            match program.admit_retained_with_inputs(request,&router,&mut decoder,None,None) {
+                Err(ProgramError::TraversalStopped(_))=>{stopped=true;break},
+                Ok((reply,_))=>program.accept(reply,&router).unwrap(),
+                Err(error)=>panic!("unexpected admission {error:?}"),
+            }
+        }
+        assert!(stopped,"mixed controller cycle must report its shared bound");
+        if type_map {assert!(program.finish_retained_type_map(100,1,[1.;4]).is_err())}
+        else {assert!(program.finish_retained().is_err())}
+    }
 }

@@ -37,7 +37,9 @@ impl MappingReadyWork {
         match self {
             Self::Merged(ready) => ready.admit_retained().map(|(reply, operations)|
                 (MappingReply(Reply::Merged(reply)), operations)),
-            _ => Err(crate::Error::geometry("retained styled mapping operation unavailable")),
+            Self::Styled(ready) => ready.admit_retained().map(|(reply,operations)|
+                (MappingReply(Reply::Styled(reply)),operations)),
+            Self::Texture(_) => Err(crate::Error::geometry("retained texture numerical operation unavailable")),
         }
     }
     pub(super) fn execute(self)->MappingReply {

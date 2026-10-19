@@ -172,7 +172,7 @@ fn unit2_unknown_entity_keyword_uses_accounted_backing_and_borrowed_reads() {
 #[test]
 fn unit2_unknown_keyword_allocation_refusal_returns_original_attribute_owner() {
     run(16384, |decoder, work, gate, budget, _| {
-        gate.scope(decoder, work, |_, allocator| {
+        let result = gate.scope(decoder, work, |_, allocator| {
             let attrs = AttributeOwner::Owned(list(allocator, [Node::scalar(Scalar::Integer(19))]));
             let before = budget.stats();
             let keyword = IfcType::from_str("IFCVENDORSPECIFICENTITY");
@@ -183,7 +183,8 @@ fn unit2_unknown_keyword_allocation_refusal_returns_original_attribute_owner() {
             assert_eq!(budget.stats().live, before.live);
             assert_eq!(keyword.as_str(), "IFCVENDORSPECIFICENTITY");
             Ok(())
-        }).unwrap();
+        });
+        assert_eq!(result.unwrap_err(), budget.stats().terminal.unwrap());
         clean(budget);
     });
 }

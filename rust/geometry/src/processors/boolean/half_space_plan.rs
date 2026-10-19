@@ -6,8 +6,10 @@
 //! the plane clip. Reading the entity (and every default/refusal it carries)
 //! happens here; the mesh numerics consume the owned plan afterwards.
 
+use super::halfspace_cap::cap_half_space_clip;
+use crate::csg::{ClippingProcessor, Plane};
 use crate::processors::helpers::parse_axis2_placement_3d;
-use crate::{Error, Point3, Result, Vector3};
+use crate::{Error, Mesh, Point3, Result, Vector3};
 use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
 
 /// A half-space's clipping plane, in the representation item's local,
@@ -64,6 +66,39 @@ impl HalfSpacePlan {
             normal,
             agreement,
         })
+    }
+
+    pub(crate) fn new(point: Point3<f64>, normal: Vector3<f64>, agreement: bool) -> Self {
+        Self {
+            point,
+            normal,
+            agreement,
+        }
+    }
+
+    /// DIFFERENCE with this half-space on an owned mesh. `clip_mesh` KEEPS the
+    /// +`clip_normal` side (`csg/plane_eps.rs`). AgreementFlag .T. puts the
+    /// half-space material on the NEGATIVE side of the surface normal, .F. on
+    /// the positive side (as in the prism builder and `halfspace_cap.rs`), and
+    /// the material is what gets removed.
+    pub(crate) fn clip(self, mesh: &Mesh) -> Result<Mesh> {
+        let clip_normal = if self.agreement {
+            self.normal
+        } else {
+            -self.normal
+        };
+
+        let plane = Plane::new(self.point, clip_normal);
+        let processor = ClippingProcessor::new();
+        let mut clipped = processor.clip_mesh(mesh, &plane)?;
+        // The plane clip removes the half-space but leaves the cut cross-section
+        // OPEN (the BSP kernel's polygon cap was deleted with the BSP port in
+        // #1024). Re-close it. `cap_half_space_clip` reports whether it closed
+        // the cut; nothing consumes that yet, and the mesh is returned either
+        // way since an uncapped-but-otherwise-valid mesh is the least-bad
+        // output (see the fn's own doc).
+        let _capped = cap_half_space_clip(&mut clipped, self.point, clip_normal);
+        Ok(clipped)
     }
 
     pub(crate) fn components(self) -> (Point3<f64>, Vector3<f64>, bool) {

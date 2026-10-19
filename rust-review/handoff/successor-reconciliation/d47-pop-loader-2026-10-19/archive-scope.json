@@ -1,0 +1,87 @@
+{
+  "verifiedByParent": 76,
+  "archivedMembers": 60,
+  "localOnlyHashBoundMembers": [
+    {
+      "path": "authenticated-runtime-manifest.json",
+      "sha256": "674e1b9bea243112808f2fc34a24783ad92679a969305e89b8049e4f6a969177",
+      "size": 1096964
+    },
+    {
+      "path": "evidence/runtime-full-after.json",
+      "sha256": "674e1b9bea243112808f2fc34a24783ad92679a969305e89b8049e4f6a969177",
+      "size": 1096964
+    },
+    {
+      "path": "evidence/runtime-full-before.json",
+      "sha256": "674e1b9bea243112808f2fc34a24783ad92679a969305e89b8049e4f6a969177",
+      "size": 1096964
+    },
+    {
+      "path": "evidence/runtime-full-finally.json",
+      "sha256": "674e1b9bea243112808f2fc34a24783ad92679a969305e89b8049e4f6a969177",
+      "size": 1096964
+    },
+    {
+      "path": "payload/base/d47-public-probe",
+      "sha256": "6969782519015c3e1d4ee97e57317d69113cdd950dc617b2a51ad65595333507",
+      "size": 11119720
+    },
+    {
+      "path": "payload/base/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl",
+      "sha256": "2e998c4c234798b63c28700c739346f3aa4e96935ef1e512a0ee786abc3e716d",
+      "size": 9049728
+    },
+    {
+      "path": "payload/base/libd47_public_probe.so",
+      "sha256": "e5eb0380789390597a46c4267f8970915d2e8b6ab2a61f6d4590f3460ae183bd",
+      "size": 1598832
+    },
+    {
+      "path": "payload/base/venv/bin/python",
+      "sha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "size": 30913848
+    },
+    {
+      "path": "payload/base/venv/lib/python3.12/site-packages/ifclite_geom/ifclite_geom.abi3.so",
+      "sha256": "55355b5225aa4441fc73b77628b738ba1b30fe0fa62efdc80c97d02b7870f1a5",
+      "size": 31557592
+    },
+    {
+      "path": "payload/inputs/AC20-FZK-Haus.ifc",
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "size": 2526511
+    },
+    {
+      "path": "payload/raw/d47-public-probe",
+      "sha256": "66face4fc520b56881d238af868f7fd294c22c6dae05522363646ed476802f0f",
+      "size": 11176984
+    },
+    {
+      "path": "payload/raw/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl",
+      "sha256": "6a251330ae223466c20b552d3cd6571a7d72b09050cb13c135bf102ab4386c24",
+      "size": 9059317
+    },
+    {
+      "path": "payload/raw/libd47_public_probe.so",
+      "sha256": "71c36644d639460e5f2a23f12b723cfdeb2ff8dafaed724f8698544357ab7e39",
+      "size": 1598832
+    },
+    {
+      "path": "payload/raw/venv/bin/python",
+      "sha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "size": 30913848
+    },
+    {
+      "path": "payload/raw/venv/lib/python3.12/site-packages/ifclite_geom/ifclite_geom.abi3.so",
+      "sha256": "e6f2401a5be6b4f8ca6f614ada2dbe563e1d3ee015d2207286e4708f25e526b0",
+      "size": 31606368
+    },
+    {
+      "path": "ready-payload.tar.gz",
+      "sha256": "0a601699205f10e3676c6ccef587f839692ee347631231f18435dc5d5c3a2b0e",
+      "size": 25222100
+    }
+  ],
+  "claims": "ActualPopload/import only;21steps; no data/measurement/sourcebuild"
+}

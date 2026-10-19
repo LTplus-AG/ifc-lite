@@ -1,0 +1,476 @@
+{
+  "at": "2026-10-19T04:48:23.737406+00:00",
+  "finiteIssues": 17,
+  "closed7928": true,
+  "merged7930": "067ef8327b7238a5eef106df722ad7e705c8ed18",
+  "7911head": "859501aed3f6446432841d05c5d6f743a8377eb3",
+  "7911measured": true,
+  "7911verdict": "inconclusive timing; outputexact; no broaderacceptance",
+  "active": {
+    "at": "2026-10-18T21:12:05.673910+00:00",
+    "slots": [
+      {
+        "scope": "7911 actual matched comparison",
+        "state": "7911readyforreview; measurementcomplete andverdictrecorded, newdocumentation-onlyheadawaitsfinalchecks",
+        "maintenanceTaskId": "node:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Athread-send%3Ac4-own-terminal-test-executable-lossless-archive-pop-recovery-20261019-v24",
+        "maintenanceReceipt": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/two-item-delivery/7911-integration/disk-recovery-20261019/parent-authorization.json",
+        "maintenanceResult": {
+          "reclaimedAllocatedBytes": 53310435328,
+          "retainedFilesVerified": 38411,
+          "freeGiB": 203.982,
+          "requiredGiB": 316,
+          "remainingDeficitGiB": 112.018,
+          "exitCode": 0,
+          "session": 4298,
+          "scope": "Only own unpinned single-link compiler intermediates",
+          "receipt": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-owned-intermediate-retirement-pop-v1/RESULT.md",
+          "manifestSha256": "693c246cf7d347cca1deabfa82ccf257d7b5b526466744cf0c3de68860b0de84",
+          "verifiedMembers": 19,
+          "archiveRecord": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/durable-checkpoint-20261018/repo/rust-review/handoff/successor-reconciliation/owned-c4-intermediate-retirement-2026-10-19.json",
+          "archiveCommit": "b540defff84f77163f914565193d63669f5649d3"
+        },
+        "testExecutableArchiveResult": {
+          "at": "2026-10-19T04:22:24.259277+00:00",
+          "session": 24954,
+          "terminal": "COMPLETED0",
+          "archives": 22,
+          "executablesRelocated": 1403,
+          "netAllocatedBytesRecovered": 137437954048,
+          "closingFreeGiB": 329.236,
+          "originalPathsRelocated": true,
+          "restorationRequiredForOldTests": true,
+          "sourceAndArtifactPreservation": "Original owner verified37,008unmoved paths,55logs/receipts and182fixtures per source. Archive binaries preserved with full member byte/metadata verification.",
+          "parentVerification": "All bounded receipt/manifest hashes and22batch-manifest hashes plus totals verified; archive sizes checked,38GB content was already fully verified by original owner and is not reread.",
+          "archivedMembers": 189,
+          "localOnlyHashBoundMembers": [
+            {
+              "path": "archives/b001-3a9c872d829495e0751f.tar.zst",
+              "bytes": 1776156825,
+              "sha256": "2e3722a9e72ae64631284c9ebdd0c4a7f7ed4be29f09f92da3f2d99fd46db1e3",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b002-3a9c872d829495e0751f.tar.zst",
+              "bytes": 1854154907,
+              "sha256": "20a7377d19727477f8c7657cec270a57f5033f40d9c7dd434dedcc26b185092d",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b003-3a9c872d829495e0751f.tar.zst",
+              "bytes": 1788623265,
+              "sha256": "a280b49f05884b4b48be10acafcc35011bf80e178ba8ff7c11edd1d70044ec2c",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b004-3a9c872d829495e0751f.tar.zst",
+              "bytes": 1902063072,
+              "sha256": "45692f17ad1969233d44b5268b4ad81c88b168a239731ec5296ad20375c78b4e",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b005-3a9c872d829495e0751f.tar.zst",
+              "bytes": 1910092171,
+              "sha256": "ad4dac74c637b7498f9445fde9eadaa44e519f71d126b67eb02d2e6f35cb8f87",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b006-3a9c872d829495e0751f.tar.zst",
+              "bytes": 615385837,
+              "sha256": "a1d2afc59b19393ab8ace315c9d399b2e1124c670f6d84570511fc9e432ab107",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b007-49926200a29e09a7679b.tar.zst",
+              "bytes": 1506447721,
+              "sha256": "1ca8ee5913c252af611d16032d41b3130ae033dcf7929d41e6204d6de74dcb79",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b008-49926200a29e09a7679b.tar.zst",
+              "bytes": 1697371955,
+              "sha256": "9cb3af5f72b61611eeb219d76750f836d995312b7f0929a9a4d4be9e24e26ade",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b009-49926200a29e09a7679b.tar.zst",
+              "bytes": 1822352471,
+              "sha256": "96a320c93ca84cc1c49693ca210a4696447150e25472a186d0e680a32a2ed403",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b010-49926200a29e09a7679b.tar.zst",
+              "bytes": 1836295500,
+              "sha256": "785445b35ac8f81d2887dfe6f84d8a53e88efa689094c235e0cf1fd182f5d1bf",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b011-49926200a29e09a7679b.tar.zst",
+              "bytes": 1812423837,
+              "sha256": "09f45cd425b7dbc56ba631979c5421f6d693a3f1790d3beeecdea129c527952e",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b012-49926200a29e09a7679b.tar.zst",
+              "bytes": 1968319989,
+              "sha256": "4013f2bd3a0c72a9a26b10afdd4cf55c5ef463add9960740ffd6d88d9263108e",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b013-49926200a29e09a7679b.tar.zst",
+              "bytes": 1961575238,
+              "sha256": "ca85c59597b99f8543cef829a11bf1e6258d60beb2424f431863b58156ec8811",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b014-49926200a29e09a7679b.tar.zst",
+              "bytes": 1946427958,
+              "sha256": "206a5c3e97a7eee3f8e7c95adadbbbfcffbe9c910b0f0b7d0ce891e49f97cd69",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b015-49926200a29e09a7679b.tar.zst",
+              "bytes": 1930079064,
+              "sha256": "d6b8b6ea1d0e7cccfa7c9e413726d066c23c9e0418557fe5cea0a1d0daa24709",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b016-49926200a29e09a7679b.tar.zst",
+              "bytes": 1933919476,
+              "sha256": "0133e6c366639fd01768bc290a58d73e29071591f32aae5b489071919e9dadf7",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b017-49926200a29e09a7679b.tar.zst",
+              "bytes": 1925034744,
+              "sha256": "5f1293f890d65c1fa489c3cb0d2d3c4af723dc46b30f8372afeceae018d91b38",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b018-49926200a29e09a7679b.tar.zst",
+              "bytes": 1907915267,
+              "sha256": "345993caae915c3d14312068c8696f77a1db6308e4378594929861381296600c",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b019-49926200a29e09a7679b.tar.zst",
+              "bytes": 1828962281,
+              "sha256": "99b6b93f365d69233712e46aba4c2d98f8343015f3071f06885f73eec1e2ce8d",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b020-49926200a29e09a7679b.tar.zst",
+              "bytes": 1838779844,
+              "sha256": "f0050ec5aff1ec1ea8cf7547da171e7629b51530a4c3c2ee07b3d5d1dd5611b8",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b021-49926200a29e09a7679b.tar.zst",
+              "bytes": 526365866,
+              "sha256": "b30fbd8166aff77dcc2707c61966c69fecd05d4ef390479e2b2db82ed0a22834",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            },
+            {
+              "path": "archives/b022-899d43786f3f1d14e1ff.tar.zst",
+              "bytes": 1802278050,
+              "sha256": "e8cfac556f37295f8a44c97b43abf7d6a20734f89e03fb630b8107e560dbcc18",
+              "hashAuthority": "full archive hash checked during verified durable batch, before original removal; no later writes",
+              "parentVerification": "size checked; full content/member verification from original completed owner, not repeated"
+            }
+          ],
+          "manifestSha256": "ec0d983bf6b444ef5db3b2587c23f261d63249e46e9ce0f65cc65a8be76476cb",
+          "guardUnchanged": true,
+          "benchmarkDispatched": false,
+          "archiveCommit": "dc466d85ba528205fb448b302c48e50d50e68c37"
+        },
+        "latestReadiness": {
+          "at": 1792383767.215282,
+          "scope": "read-only observational readiness; no hold, no submission",
+          "managed": [],
+          "idleFraction": 0.9572192513368984,
+          "packageMilliC": 57000,
+          "freeGiB": 329.21662521362305,
+          "heavyProcesses": []
+        },
+        "benchmarkJob": {
+          "state": "COMPLETED0",
+          "worker": "c72bb237-d907-453b-92b7-b96ab2c116fd",
+          "originalSession": 44779,
+          "cpu": 8,
+          "memoryGiB": 24,
+          "runtimeRoot": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/two-item-delivery/7911-integration/benchmark-runtime-v1",
+          "sourceHead": "f04d4f621e2dd0b168ef298e116a25a827161995",
+          "base": "1bd0505602e0d650971d5cdc590bf780c56f8d5f",
+          "pathOnlyRebinding": "Original driver byteidentical; existingclean sourceclones sameheads/trees; originalbinaryhashes unchanged; no rebuild",
+          "checkpointIdleFraction": 0.9806955866658296,
+          "checkpointPackageMilliC": 55000,
+          "actualWorkerAdmission": "PASS57000milliC",
+          "noPriorMeasuredCommands": true,
+          "priorFailure": "Retained sourcepathmissing beforeworkerregistration; no workload",
+          "sourceUnchanged": true,
+          "result": {
+            "at": "2026-10-19T04:45:07.206371+00:00",
+            "job": "c72bb237-d907-453b-92b7-b96ab2c116fd",
+            "session": 44779,
+            "terminal": "COMPLETED0",
+            "sourceUnchanged": true,
+            "commands": 6,
+            "internalObservationsPerCommand": 5,
+            "pairedResults": [
+              {
+                "fixture": "AC20-FZK-Haus.ifc",
+                "bestBase": {
+                  "parseMs": 13,
+                  "geometryMs": 21,
+                  "totalMs": 34
+                },
+                "bestCandidate": {
+                  "parseMs": 12,
+                  "geometryMs": 19,
+                  "totalMs": 32
+                },
+                "bestDeltaPercent": {
+                  "parseMs": -7.692307692307687,
+                  "geometryMs": -9.523809523809524,
+                  "totalMs": -5.882352941176472
+                },
+                "medianTotalMs": [
+                  34,
+                  37
+                ],
+                "medianWallMs": [
+                  37.078123999999995,
+                  40.144116000000004
+                ],
+                "allTotalsMs": [
+                  [
+                    50,
+                    50,
+                    34,
+                    34,
+                    34
+                  ],
+                  [
+                    44,
+                    32,
+                    47,
+                    37,
+                    34
+                  ]
+                ],
+                "identity": {
+                  "entities": true,
+                  "meshes": true,
+                  "vertices": true,
+                  "triangles": true,
+                  "csgFailures": true,
+                  "degenerateDropped": true,
+                  "meshFingerprintsFnv1a64": true
+                }
+              },
+              {
+                "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+                "bestBase": {
+                  "parseMs": 34,
+                  "geometryMs": 3454,
+                  "totalMs": 3488
+                },
+                "bestCandidate": {
+                  "parseMs": 36,
+                  "geometryMs": 3524,
+                  "totalMs": 3560
+                },
+                "bestDeltaPercent": {
+                  "parseMs": 5.882352941176472,
+                  "geometryMs": 2.0266357845975635,
+                  "totalMs": 2.064220183486243
+                },
+                "medianTotalMs": [
+                  3616,
+                  3690
+                ],
+                "medianWallMs": [
+                  3635.137302,
+                  3708.2207280000002
+                ],
+                "allTotalsMs": [
+                  [
+                    3571,
+                    3488,
+                    3616,
+                    3735,
+                    3618
+                  ],
+                  [
+                    3560,
+                    3721,
+                    3759,
+                    3690,
+                    3626
+                  ]
+                ],
+                "identity": {
+                  "entities": true,
+                  "meshes": true,
+                  "vertices": true,
+                  "triangles": true,
+                  "csgFailures": true,
+                  "degenerateDropped": true,
+                  "meshFingerprintsFnv1a64": true
+                }
+              },
+              {
+                "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc",
+                "bestBase": {
+                  "parseMs": 773,
+                  "geometryMs": 1315,
+                  "totalMs": 2089
+                },
+                "bestCandidate": {
+                  "parseMs": 743,
+                  "geometryMs": 1568,
+                  "totalMs": 2312
+                },
+                "bestDeltaPercent": {
+                  "parseMs": -3.8809831824062058,
+                  "geometryMs": 19.23954372623573,
+                  "totalMs": 10.674964097654382
+                },
+                "medianTotalMs": [
+                  2378,
+                  2374
+                ],
+                "medianWallMs": [
+                  2760.2438700000002,
+                  2763.682956
+                ],
+                "allTotalsMs": [
+                  [
+                    2461,
+                    2378,
+                    2378,
+                    2089,
+                    2376
+                  ],
+                  [
+                    2374,
+                    2375,
+                    2383,
+                    2333,
+                    2312
+                  ]
+                ],
+                "identity": {
+                  "entities": true,
+                  "meshes": true,
+                  "vertices": true,
+                  "triangles": true,
+                  "csgFailures": true,
+                  "degenerateDropped": true,
+                  "meshFingerprintsFnv1a64": true
+                }
+              }
+            ],
+            "verdict": "Inconclusive timing; no speedup or neutrality claim. All ordered output hashes/counts/diagnostic counters exact. Native warm ProcessingStats best-selected phases and completeprocess_geometry wall arrays retained; no full-worker-pool/browser claim. Global charter performance obligations remain open.",
+            "pathCorrection": "Original saved worker checkout path had disappeared; exact existingclean clones same sourceheads/trees were substituted. Driver/binaries/fixtures/commandorder unchanged; priorfailure beforejobregistration/workload retained."
+          }
+        }
+      },
+      {
+        "scope": "D47 current-main fix integration and publication",
+        "state": "Existingowner v29 carries actualvalidatedfixonto currentmain and publishesPR; ordinaryPCchecks only, no newpreparationreviews",
+        "taskId": "node:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Athread-send%3Ad47-current-main-actual-fix-integration-publish-delivery-20261019-v29",
+        "source": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+        "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+        "runtimeResult": "Native, Python68 and scoped WASM consumers complete; matched root contract223PASS0FAIL0SKIP",
+        "preservedNativeWorker": "918bab6a-820b-4eff-ad4a-5e2bb3c5c2de",
+        "held": [
+          "latency/firstcallback/RSS performance",
+          "currentmain integration/publication"
+        ],
+        "previousDelivery": 7932,
+        "completedPython": {
+          "job": "b3eb8a59-13c1-401a-86b8-56e0fcb34e98",
+          "session": 24820,
+          "state": "COMPLETED0",
+          "sourceUnchanged": true,
+          "quiescent": true,
+          "all182FixtureIdentitiesUnchanged": true,
+          "archiveCommit": "018c04e5c3a691ad700382506d5b24e11e11c558"
+        },
+        "completedWasm": {
+          "packagePassed": 21,
+          "contractPassed": 212,
+          "contractSkipped": 1,
+          "wasmManifestPassed": 1,
+          "publicGroupsPassed": 13,
+          "allSevenClasses": true,
+          "archiveCommit": "e4c6b3f5e22e502a9e312b9d05a03841e8b5175e",
+          "matchedContractPassed": 223,
+          "matchedContractSkipped": 0,
+          "baselineJob": "9004d79e-ace6-4f66-9020-1574347a526b",
+          "sizeDeltaBytes": 4093,
+          "sizeDeltaPercent": 0.04177728938372017
+        },
+        "profilingPrerequisites": {
+          "state": "COMPLETED0",
+          "worker": "d873c278-a9a4-42a8-8a16-7497aa765494",
+          "session": 95027,
+          "sourceUnchanged": true,
+          "quiescent": true,
+          "stagesPassed": 22,
+          "verifiedArtifacts": 127,
+          "manifestSha256": "74308dfdeb79879f5ed1c12c3dc96e7c0e23e6735cf089c4a101b8211f5040b4",
+          "result": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-prerequisites-pc-v3/FINAL-HANDOFF.md",
+          "timedInvocationsPrepared": 150,
+          "timedInvocationsRun": 0,
+          "actualPopLoading": "UNRUN",
+          "performanceVerdict": null
+        },
+        "untimedOutputWitnesses": {
+          "state": "COMPLETED0",
+          "worker": "02741f0c-8583-4bc7-bb24-f2c679f99cd6",
+          "session": 38253,
+          "calls": 30,
+          "callsPassed": 30,
+          "semanticInputsPassed": 3,
+          "sourceUnchanged": true,
+          "quiescent": true,
+          "verifiedArtifacts": 65,
+          "verifiedOutputArchiveMembers": 30,
+          "manifestSha256": "cf5498321225be20d639f558073618ad3127831a7690355487fd491e4dd968ed",
+          "record": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/durable-checkpoint-20261018/repo/rust-review/handoff/successor-reconciliation/d47-untimed-profiling-outputs-2026-10-19.json",
+          "result": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/untimed-profiling-witness-pc-v1/FINAL-HANDOFF.md",
+          "hausByteIdenticalApis": 5,
+          "sharedIntendedChangesPerRowConsumer": 199,
+          "opposedIntendedChangesPerRowConsumer": 2,
+          "measuredInvocations": 0,
+          "PopExecution": false
+        }
+      }
+    ],
+    "C4": "Current/baseline capture work finished; performance/current-main/publication/laterphase duties remain durable pending; no new active C4 job/review",
+    "archiveCommit": "94b8d3c7429f368a57abdc5b193d54e7333ed2e5"
+  },
+  "eightProgramsAccepted": 0
+}

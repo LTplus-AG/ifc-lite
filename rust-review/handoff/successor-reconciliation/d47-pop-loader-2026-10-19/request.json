@@ -1,0 +1,72 @@
+{
+  "command": [
+    "/usr/bin/python3",
+    "/home/louistrue/build-workers/worker-current/worker.py",
+    "--state",
+    "/home/louistrue/build-workers/worker-state",
+    "run",
+    "--cwd",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-6a1ff028",
+    "--kind",
+    "ordinary",
+    "--cpu",
+    "2",
+    "--memory",
+    "4",
+    "--queue-timeout",
+    "600",
+    "--timeout",
+    "1800",
+    "--require-clean",
+    "--commit",
+    "525bf8e4b2f6daf99458783e081045e4117bc4f1",
+    "--resource",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1",
+    "--resource",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload",
+    "--resource",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/tmp",
+    "--resource",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/evidence",
+    "--resource",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/tools/python-reviewed-v1/runtime",
+    "--",
+    "/usr/bin/python3",
+    "-B",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/qualify.py"
+  ],
+  "env": {
+    "TMPDIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/tmp",
+    "TMP": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/tmp",
+    "TEMP": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/tmp",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "CARGO_TARGET_DIR": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/unused-target",
+    "CARGO_HOME": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/unused-cargo-home",
+    "PATH": "/usr/bin:/bin",
+    "XDG_CACHE_HOME": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/cache",
+    "XDG_DATA_HOME": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/data",
+    "XDG_CONFIG_HOME": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/config",
+    "XDG_STATE_HOME": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/state"
+  },
+  "cpu": 2,
+  "memoryGiB": 4,
+  "kind": "ordinary",
+  "resources": [
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/tmp",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/evidence",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/tools/python-reviewed-v1/runtime"
+  ],
+  "scope": "Pop LOADER ONLY; no data/witness/test/build/measured calls",
+  "administrativeCheckout": {
+    "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-6a1ff028",
+    "head": "525bf8e4b2f6daf99458783e081045e4117bc4f1",
+    "role": "own clean worker ownership anchor only; no source from this checkout is executed or compiled"
+  },
+  "artifactSourcePair": {
+    "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+    "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+  },
+  "driverSha256": "be3891e8b3a431b6eee15ec57ad27b94966eb683dcb58d10edb941d201e9e457"
+}

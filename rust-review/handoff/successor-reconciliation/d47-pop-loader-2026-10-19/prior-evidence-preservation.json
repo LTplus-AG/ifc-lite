@@ -1,0 +1,12 @@
+{
+  "perf-prerequisites-pc-v3": {
+    "files": 127,
+    "manifestSha256": "74308dfdeb79879f5ed1c12c3dc96e7c0e23e6735cf089c4a101b8211f5040b4",
+    "allExact": true
+  },
+  "untimed-profiling-witness-pc-v1": {
+    "files": 65,
+    "manifestSha256": "cf5498321225be20d639f558073618ad3127831a7690355487fd491e4dd968ed",
+    "allExact": true
+  }
+}

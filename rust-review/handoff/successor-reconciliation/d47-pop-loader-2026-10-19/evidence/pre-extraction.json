@@ -1,0 +1,17 @@
+{
+  "payloadPinned": true,
+  "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+  "payloadFreeBytes": 353460584448,
+  "payloadFreeInodes": 113364489,
+  "actualHost": "pop-os",
+  "actualMachine": "x86_64",
+  "actualLibc": [
+    "glibc",
+    "2.39"
+  ],
+  "sourcePair": {
+    "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+    "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+  },
+  "profilingSource": "retained source-matched v26build; no source compiled here"
+}

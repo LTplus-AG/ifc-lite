@@ -1,0 +1,13 @@
+{
+  "ownedRowGone": true,
+  "queueRows": [],
+  "matchingProcesses": [],
+  "terminal": {
+    "id": "40673942-4108-44ad-bca1-57c9b787f53d",
+    "state": "completed",
+    "exitCode": 0,
+    "sourceUnchanged": true,
+    "startedAt": 1792383933.10183,
+    "finishedAt": 1792383951.95725
+  }
+}

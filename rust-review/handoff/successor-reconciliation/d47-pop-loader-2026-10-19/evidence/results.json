@@ -1,0 +1,951 @@
+[
+  {
+    "name": "host-libc",
+    "argv": [
+      "/usr/bin/ldd",
+      "--version"
+    ],
+    "exitCode": 0,
+    "logSha256": "325afef188ab2d338c3d01353ff30bbb593c709e20027198fc9840230ae2936a",
+    "logBytes": 287,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353414283264,
+      "payloadFreeInodes": 113364472,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353414275072,
+      "payloadFreeInodes": 113364471,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  },
+  {
+    "name": "python-identity",
+    "argv": [
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/tools/python-reviewed-v1/runtime/bin/python3.12",
+      "-c",
+      "import sys,json;print(json.dumps({\"executable\":sys.executable,\"version\":sys.version,\"base_prefix\":sys.base_prefix}));assert sys.version_info[:3]==(3,12,14)"
+    ],
+    "exitCode": 0,
+    "logSha256": "d951a496eebee7c40e9a12bc2d11e46bc126274cb30ac11bbf26dcf2be411250",
+    "logBytes": 511,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353414270976,
+      "payloadFreeInodes": 113364470,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353414135808,
+      "payloadFreeInodes": 113364469,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  },
+  {
+    "name": "python-loader",
+    "argv": [
+      "/usr/bin/ldd",
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/tools/python-reviewed-v1/runtime/bin/python3.12"
+    ],
+    "exitCode": 0,
+    "logSha256": "3f39b43bf70835435e23a9c396e58629c43aadb6002d748cb05d1b7fdaf6226f",
+    "logBytes": 512,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353414135808,
+      "payloadFreeInodes": 113364469,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353414131712,
+      "payloadFreeInodes": 113364468,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  },
+  {
+    "name": "base-wrapper-identity",
+    "argv": [
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/d47-public-probe",
+      "--identity"
+    ],
+    "exitCode": 0,
+    "logSha256": "303a5805891077724ae08a5b47e1c247b4694fd9aef95febf527011a431724ae",
+    "logBytes": 143,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353414123520,
+      "payloadFreeInodes": 113364467,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353414119424,
+      "payloadFreeInodes": 113364466,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  },
+  {
+    "name": "base-wrapper-ldd",
+    "argv": [
+      "/usr/bin/ldd",
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/d47-public-probe"
+    ],
+    "exitCode": 0,
+    "logSha256": "efcc48db1f40b3cc9ba50efd3ffa6a3bc24087a4bea2b40009fb4d7a36d9630d",
+    "logBytes": 297,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353414119424,
+      "payloadFreeInodes": 113364466,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353414115328,
+      "payloadFreeInodes": 113364465,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  },
+  {
+    "name": "base-clock-ldd",
+    "argv": [
+      "/usr/bin/ldd",
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/libd47_public_probe.so"
+    ],
+    "exitCode": 0,
+    "logSha256": "614fd5b4a479b4540540f9e3290541ba6239ec8b716d005e13c57a046f1aafb3",
+    "logBytes": 230,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353414115328,
+      "payloadFreeInodes": 113364465,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353414111232,
+      "payloadFreeInodes": 113364464,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  },
+  {
+    "name": "base-private-venv",
+    "argv": [
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/tools/python-reviewed-v1/runtime/bin/python3.12",
+      "-m",
+      "venv",
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "logBytes": 0,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353414107136,
+      "payloadFreeInodes": 113364464,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353400569856,
+      "payloadFreeInodes": 113363490,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  },
+  {
+    "name": "base-install-exact-wheel",
+    "argv": [
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv/bin/python",
+      "-m",
+      "pip",
+      "install",
+      "--no-index",
+      "--no-deps",
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl"
+    ],
+    "exitCode": 0,
+    "logSha256": "ca26906cff411693ed620afb4445e956c16c1d5daf0e28ea9247ae4322469a44",
+    "logBytes": 169,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353400569856,
+      "payloadFreeInodes": 113363490,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353368756224,
+      "payloadFreeInodes": 113363472,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  },
+  {
+    "name": "base-import-only",
+    "argv": [
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv/bin/python",
+      "-c",
+      "import sys,json,pathlib,hashlib,ifclite_geom;print(json.dumps({\"python\":sys.executable,\"version\":sys.version,\"base_prefix\":sys.base_prefix,\"module\":ifclite_geom.__file__,\"native\":{str(pathlib.Path(m.__file__).resolve()):hashlib.sha256(pathlib.Path(m.__file__).read_bytes()).hexdigest() for n,m in sys.modules.items() if n.startswith(\"ifclite_geom\") and getattr(m,\"__file__\",\"\").endswith(\".so\")},\"stubs\":{str(f):hashlib.sha256(f.read_bytes()).hexdigest() for f in pathlib.Path(ifclite_geom.__file__).parent.glob(\"*.pyi\")}}))"
+    ],
+    "exitCode": 0,
+    "logSha256": "acb9b201f28baab37647335da862a6f4d2a0690c234c2f455ce629520b7d7981",
+    "logBytes": 1121,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353368752128,
+      "payloadFreeInodes": 113363472,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353368748032,
+      "payloadFreeInodes": 113363471,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  },
+  {
+    "name": "base-native-ldd",
+    "argv": [
+      "/usr/bin/ldd",
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv/lib/python3.12/site-packages/ifclite_geom/ifclite_geom.abi3.so"
+    ],
+    "exitCode": 0,
+    "logSha256": "1330ecf409230db84fe9552d2ce7265f0a8a68e39ceaa29c53a1ab3c9c35772f",
+    "logBytes": 297,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353368748032,
+      "payloadFreeInodes": 113363471,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353368743936,
+      "payloadFreeInodes": 113363470,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  },
+  {
+    "name": "base-clock-load-only",
+    "argv": [
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv/bin/python",
+      "-c",
+      "import ctypes,json,pathlib,hashlib; p=pathlib.Path('/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/libd47_public_probe.so');lib=ctypes.CDLL(str(p));assert hasattr(lib,\"d47_clock_now_ns\");print(json.dumps({\"library\":str(p),\"sha256\":hashlib.sha256(p.read_bytes()).hexdigest(),\"symbolResolved\":True,\"clockFunctionCalled\":False}))"
+    ],
+    "exitCode": 0,
+    "logSha256": "01b03386ddccb9cfa1252687702293f14eed6273301931c6d41bd2840111aa75",
+    "logBytes": 281,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353368743936,
+      "payloadFreeInodes": 113363470,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353368739840,
+      "payloadFreeInodes": 113363469,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  },
+  {
+    "name": "base-freeze",
+    "argv": [
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv/bin/python",
+      "-m",
+      "pip",
+      "freeze",
+      "--all"
+    ],
+    "exitCode": 0,
+    "logSha256": "9bcd419223dd13bc6f0ff7ab8ee2e657e6f85a9f9fb67df7086421142dbd07a2",
+    "logBytes": 273,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353368735744,
+      "payloadFreeInodes": 113363469,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353368731648,
+      "payloadFreeInodes": 113363468,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  },
+  {
+    "name": "raw-wrapper-identity",
+    "argv": [
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/d47-public-probe",
+      "--identity"
+    ],
+    "exitCode": 0,
+    "logSha256": "56bb8ed79134216bb28e8e681c9374620c029877d4cc7cdabc13d9a3529d012c",
+    "logBytes": 143,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353368727552,
+      "payloadFreeInodes": 113363467,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353368723456,
+      "payloadFreeInodes": 113363466,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  },
+  {
+    "name": "raw-wrapper-ldd",
+    "argv": [
+      "/usr/bin/ldd",
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/d47-public-probe"
+    ],
+    "exitCode": 0,
+    "logSha256": "a9e4a0192bf3924ba9c802485b4b68a6bdf97e79b4f04fc25cf2c5a367cbc8fc",
+    "logBytes": 297,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353368719360,
+      "payloadFreeInodes": 113363466,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353368715264,
+      "payloadFreeInodes": 113363465,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  },
+  {
+    "name": "raw-clock-ldd",
+    "argv": [
+      "/usr/bin/ldd",
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/libd47_public_probe.so"
+    ],
+    "exitCode": 0,
+    "logSha256": "3ed0c47d1eb7efc67480d791cc6213ac1aca84cca1d29715d0deb7d66c039e9b",
+    "logBytes": 230,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353368707072,
+      "payloadFreeInodes": 113363465,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353368702976,
+      "payloadFreeInodes": 113363464,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  },
+  {
+    "name": "raw-private-venv",
+    "argv": [
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/tools/python-reviewed-v1/runtime/bin/python3.12",
+      "-m",
+      "venv",
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/venv"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "logBytes": 0,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353368702976,
+      "payloadFreeInodes": 113363464,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353355182080,
+      "payloadFreeInodes": 113362490,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  },
+  {
+    "name": "raw-install-exact-wheel",
+    "argv": [
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/venv/bin/python",
+      "-m",
+      "pip",
+      "install",
+      "--no-index",
+      "--no-deps",
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl"
+    ],
+    "exitCode": 0,
+    "logSha256": "ba4c296cfb198d5559be38f4406c5545149eb7e651d644a6b2de93af3358864b",
+    "logBytes": 168,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353355177984,
+      "payloadFreeInodes": 113362490,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353323307008,
+      "payloadFreeInodes": 113362472,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  },
+  {
+    "name": "raw-import-only",
+    "argv": [
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/venv/bin/python",
+      "-c",
+      "import sys,json,pathlib,hashlib,ifclite_geom;print(json.dumps({\"python\":sys.executable,\"version\":sys.version,\"base_prefix\":sys.base_prefix,\"module\":ifclite_geom.__file__,\"native\":{str(pathlib.Path(m.__file__).resolve()):hashlib.sha256(pathlib.Path(m.__file__).read_bytes()).hexdigest() for n,m in sys.modules.items() if n.startswith(\"ifclite_geom\") and getattr(m,\"__file__\",\"\").endswith(\".so\")},\"stubs\":{str(f):hashlib.sha256(f.read_bytes()).hexdigest() for f in pathlib.Path(ifclite_geom.__file__).parent.glob(\"*.pyi\")}}))"
+    ],
+    "exitCode": 0,
+    "logSha256": "cb9b80ac2ef2da7b5ee9bc024a8814448f10908d79f60fea8020c6ec82979663",
+    "logBytes": 1117,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353323302912,
+      "payloadFreeInodes": 113362472,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353323245568,
+      "payloadFreeInodes": 113362468,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  },
+  {
+    "name": "raw-native-ldd",
+    "argv": [
+      "/usr/bin/ldd",
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/venv/lib/python3.12/site-packages/ifclite_geom/ifclite_geom.abi3.so"
+    ],
+    "exitCode": 0,
+    "logSha256": "e49795a0678501fc1a936f8d7ed5e68b097e4daafd60e192b937aed8c1bd6561",
+    "logBytes": 297,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353323241472,
+      "payloadFreeInodes": 113362468,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353323094016,
+      "payloadFreeInodes": 113362466,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  },
+  {
+    "name": "raw-clock-load-only",
+    "argv": [
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/venv/bin/python",
+      "-c",
+      "import ctypes,json,pathlib,hashlib; p=pathlib.Path('/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/libd47_public_probe.so');lib=ctypes.CDLL(str(p));assert hasattr(lib,\"d47_clock_now_ns\");print(json.dumps({\"library\":str(p),\"sha256\":hashlib.sha256(p.read_bytes()).hexdigest(),\"symbolResolved\":True,\"clockFunctionCalled\":False}))"
+    ],
+    "exitCode": 0,
+    "logSha256": "483f54f88c5d2064aa03df414b7e0019e81bf0f2253f94f791439f04cfef81e9",
+    "logBytes": 280,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353323077632,
+      "payloadFreeInodes": 113362466,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353323073536,
+      "payloadFreeInodes": 113362465,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  },
+  {
+    "name": "raw-freeze",
+    "argv": [
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/venv/bin/python",
+      "-m",
+      "pip",
+      "freeze",
+      "--all"
+    ],
+    "exitCode": 0,
+    "logSha256": "dce6b98f1753cfaf063adc851945621cba1a700e17a9372e52055e66f4960e3c",
+    "logBytes": 272,
+    "before": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353323008000,
+      "payloadFreeInodes": 113362465,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    },
+    "after": {
+      "payloadPinned": true,
+      "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "payloadFreeBytes": 353322983424,
+      "payloadFreeInodes": 113362464,
+      "actualHost": "pop-os",
+      "actualMachine": "x86_64",
+      "actualLibc": [
+        "glibc",
+        "2.39"
+      ],
+      "sourcePair": {
+        "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+      },
+      "profilingSource": "retained source-matched v26build; no source compiled here"
+    }
+  }
+]

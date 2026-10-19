@@ -1,0 +1,2 @@
+ifclite-geom @ file:///home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl#sha256=6a251330ae223466c20b552d3cd6571a7d72b09050cb13c135bf102ab4386c24
+pip==25.0.1

@@ -1,0 +1,34 @@
+{
+  "source": "02b8e1981158559fd4ec9b385d2d80729079a633",
+  "binary": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/d47-public-probe",
+  "binarySha256": "6969782519015c3e1d4ee97e57317d69113cdd950dc617b2a51ad65595333507",
+  "clockLibrary": {
+    "library": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/libd47_public_probe.so",
+    "sha256": "e5eb0380789390597a46c4267f8970915d2e8b6ab2a61f6d4590f3460ae183bd",
+    "symbolResolved": true,
+    "clockFunctionCalled": false
+  },
+  "venv": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv",
+  "python": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv/bin/python",
+  "wheel": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl",
+  "wheelSha256": "2e998c4c234798b63c28700c739346f3aa4e96935ef1e512a0ee786abc3e716d",
+  "archiveNative": {
+    "ifclite_geom/ifclite_geom.abi3.so": "55355b5225aa4441fc73b77628b738ba1b30fe0fa62efdc80c97d02b7870f1a5"
+  },
+  "archiveStubs": {
+    "ifclite_geom/__init__.pyi": "c1c678a6affaf1edb4c24a96760064c07cc3396bca42571a86707f118b9ffd5b",
+    "ifclite_geom.pyi": "c1c678a6affaf1edb4c24a96760064c07cc3396bca42571a86707f118b9ffd5b"
+  },
+  "imported": {
+    "python": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv/bin/python",
+    "version": "3.12.14 (main, Sep  1 2026, 14:16:52) [Clang 22.1.3 ]",
+    "base_prefix": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/tools/python-reviewed-v1/runtime",
+    "module": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv/lib/python3.12/site-packages/ifclite_geom/__init__.py",
+    "native": {
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv/lib/python3.12/site-packages/ifclite_geom/ifclite_geom.abi3.so": "55355b5225aa4441fc73b77628b738ba1b30fe0fa62efdc80c97d02b7870f1a5"
+    },
+    "stubs": {
+      "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv/lib/python3.12/site-packages/ifclite_geom/__init__.pyi": "c1c678a6affaf1edb4c24a96760064c07cc3396bca42571a86707f118b9ffd5b"
+    }
+  }
+}

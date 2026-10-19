@@ -1,0 +1,45 @@
+{"jobId": "40673942-4108-44ad-bca1-57c9b787f53d", "receipt": "/home/louistrue/build-workers/worker-state/jobs/40673942-4108-44ad-bca1-57c9b787f53d/receipt.json"}
+{"workerAdmission": "pass", "acOnline": true, "MemAvailableKiB": 112948612, "packageMilliC": 57000, "thermalFallback": false, "limits": {"CARGO_BUILD_JOBS": 8, "RAYON_NUM_THREADS": 8, "RUST_TEST_THREADS": 4, "TURBO_CONCURRENCY": 2}}
+START host-libc
+END host-libc 0
+START python-identity
+END python-identity 0
+START python-loader
+END python-loader 0
+START base-wrapper-identity
+END base-wrapper-identity 0
+START base-wrapper-ldd
+END base-wrapper-ldd 0
+START base-clock-ldd
+END base-clock-ldd 0
+START base-private-venv
+END base-private-venv 0
+START base-install-exact-wheel
+END base-install-exact-wheel 0
+START base-import-only
+END base-import-only 0
+START base-native-ldd
+END base-native-ldd 0
+START base-clock-load-only
+END base-clock-load-only 0
+START base-freeze
+END base-freeze 0
+START raw-wrapper-identity
+END raw-wrapper-identity 0
+START raw-wrapper-ldd
+END raw-wrapper-ldd 0
+START raw-clock-ldd
+END raw-clock-ldd 0
+START raw-private-venv
+END raw-private-venv 0
+START raw-install-exact-wheel
+END raw-install-exact-wheel 0
+START raw-import-only
+END raw-import-only 0
+START raw-native-ldd
+END raw-native-ldd 0
+START raw-clock-load-only
+END raw-clock-load-only 0
+START raw-freeze
+END raw-freeze 0
+D47_POP_LOADER_READY

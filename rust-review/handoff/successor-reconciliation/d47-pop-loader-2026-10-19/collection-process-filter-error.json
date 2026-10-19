@@ -1,0 +1,6 @@
+{
+  "initialCollectorExit": 1,
+  "error": "post-terminal broad text process filter assertion",
+  "correction": "match actual executable argv; exclude shell script text; no loader calls rerun",
+  "workerTerminalUnaffected": "COMPLETED0/sourceUnchanged"
+}

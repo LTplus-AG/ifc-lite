@@ -1,0 +1,23 @@
+{
+  "state": "AVAILABLE_AS_READONLY_INPUT_AFTER_TERMINAL_ONLY",
+  "runtime_root": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/tools/python-reviewed-v1/runtime",
+  "python_executable": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/tools/python-reviewed-v1/runtime/bin/python3.12",
+  "executable_sha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+  "archive_source_sha256": "65af2dc4e371c642a597bbce0ea2fde95f2668240c59ed25a898919296a35459",
+  "complete_runtime_entries": 5382,
+  "whole_before_after_exact": true,
+  "terminal_worker": "72b9af47-1b83-4024-a433-57631109ed07",
+  "terminal_exit": 0,
+  "owned_resources_released": true,
+  "proofs": {
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/output/runtime-extraction-proof.json": "253b3dcdd845493f6bd61d3ae04fa9b34c6db2152c0d044f40d7f3e3ba1b4c52",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/output/pinned-runtime-smoke.log": "78107381f1c2697a64f6abe87b69c7fc3ef0a329327dc36457b6a40f5b37bd0f",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/output/fresh-venv-runtime-smoke.log": "108c0b37549c140926ebfb8defeb97d14ae7fa7553035417d1dd2a0e9a0c575f",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/execution-allocated-v2/runtime-full-manifest-after.json": "674e1b9bea243112808f2fc34a24783ad92679a969305e89b8049e4f6a969177",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/execution-allocated-v2/runtime-full-before-after-diff.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/execution-allocated-v2/post-terminal-identities.json": "143610a09bc2fa145fc303a061199a719ec276dd0ae9c0c3c6110f32e02efded",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/execution-allocated-v2/terminal-quiescence.json": "0ca480db194009d83deed72a90238d07743c6daad502f24f1d18f2fc4def5ac6",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/execution-allocated-v2/original-worker-terminal.json": "deee0646e739220d97d4ec39d6f3d7f955cc637e0a3dd23d0029f6df0e7404ab"
+  },
+  "reuse_contract": "READ-ONLY input, not a readonly mount or changed filesystem permissions. No pip/venv/tool/cache writes into this root. Set PYTHONDONTWRITEBYTECODE and redirect consumer caches/tmp/output to its own resources. Use fresh own venv; no reuse of F3b wheel. Independently bind host/tool identities; no PC-environment or universal ABI claim."
+}

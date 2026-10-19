@@ -1,0 +1,11 @@
+{
+  "guardExit": 0,
+  "guardStdout": "export CARGO_BUILD_JOBS=8\nexport RAYON_NUM_THREADS=8\nexport RUST_TEST_THREADS=4\nexport TURBO_CONCURRENCY=2\n",
+  "guardStderr": "{\"workerAdmission\": \"pass\", \"acOnline\": true, \"MemAvailableKiB\": 112951472, \"packageMilliC\": 57000, \"thermalFallback\": false, \"limits\": {\"CARGO_BUILD_JOBS\": 8, \"RAYON_NUM_THREADS\": 8, \"RUST_TEST_THREADS\": 4, \"TURBO_CONCURRENCY\": 2}}\n",
+  "payloadFreeBytes": 353461989376,
+  "payloadInodes": 113364502,
+  "driverSha256": "be3891e8b3a431b6eee15ec57ad27b94966eb683dcb58d10edb941d201e9e457",
+  "queueRows": [],
+  "metadataWritable": true,
+  "runtimeManifestAuthenticated": true
+}

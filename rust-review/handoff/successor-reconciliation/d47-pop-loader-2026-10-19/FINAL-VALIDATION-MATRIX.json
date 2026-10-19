@@ -1,0 +1,297 @@
+{
+  "jobId": "40673942-4108-44ad-bca1-57c9b787f53d",
+  "originalSession": 69962,
+  "terminal": "COMPLETED0",
+  "sourceUnchangedAdministrativeCheckout": true,
+  "workerAdministrativeCheckout": {
+    "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-6a1ff028",
+    "head": "525bf8e4b2f6daf99458783e081045e4117bc4f1",
+    "role": "own clean worker ownership anchor only; no source from this checkout is executed or compiled"
+  },
+  "artifactSourcePair": {
+    "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+    "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+  },
+  "resources": {
+    "kind": "ordinary",
+    "cpu": 2,
+    "memoryGiB": 4,
+    "released": true,
+    "ownedRowGone": true,
+    "matchingProcesses": []
+  },
+  "stages": [
+    {
+      "name": "host-libc",
+      "argv": [
+        "/usr/bin/ldd",
+        "--version"
+      ],
+      "exitCode": 0,
+      "logSha256": "325afef188ab2d338c3d01353ff30bbb593c709e20027198fc9840230ae2936a"
+    },
+    {
+      "name": "python-identity",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/tools/python-reviewed-v1/runtime/bin/python3.12",
+        "-c",
+        "import sys,json;print(json.dumps({\"executable\":sys.executable,\"version\":sys.version,\"base_prefix\":sys.base_prefix}));assert sys.version_info[:3]==(3,12,14)"
+      ],
+      "exitCode": 0,
+      "logSha256": "d951a496eebee7c40e9a12bc2d11e46bc126274cb30ac11bbf26dcf2be411250"
+    },
+    {
+      "name": "python-loader",
+      "argv": [
+        "/usr/bin/ldd",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/tools/python-reviewed-v1/runtime/bin/python3.12"
+      ],
+      "exitCode": 0,
+      "logSha256": "3f39b43bf70835435e23a9c396e58629c43aadb6002d748cb05d1b7fdaf6226f"
+    },
+    {
+      "name": "base-wrapper-identity",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/d47-public-probe",
+        "--identity"
+      ],
+      "exitCode": 0,
+      "logSha256": "303a5805891077724ae08a5b47e1c247b4694fd9aef95febf527011a431724ae"
+    },
+    {
+      "name": "base-wrapper-ldd",
+      "argv": [
+        "/usr/bin/ldd",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/d47-public-probe"
+      ],
+      "exitCode": 0,
+      "logSha256": "efcc48db1f40b3cc9ba50efd3ffa6a3bc24087a4bea2b40009fb4d7a36d9630d"
+    },
+    {
+      "name": "base-clock-ldd",
+      "argv": [
+        "/usr/bin/ldd",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/libd47_public_probe.so"
+      ],
+      "exitCode": 0,
+      "logSha256": "614fd5b4a479b4540540f9e3290541ba6239ec8b716d005e13c57a046f1aafb3"
+    },
+    {
+      "name": "base-private-venv",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/tools/python-reviewed-v1/runtime/bin/python3.12",
+        "-m",
+        "venv",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv"
+      ],
+      "exitCode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "base-install-exact-wheel",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv/bin/python",
+        "-m",
+        "pip",
+        "install",
+        "--no-index",
+        "--no-deps",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl"
+      ],
+      "exitCode": 0,
+      "logSha256": "ca26906cff411693ed620afb4445e956c16c1d5daf0e28ea9247ae4322469a44"
+    },
+    {
+      "name": "base-import-only",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv/bin/python",
+        "-c",
+        "import sys,json,pathlib,hashlib,ifclite_geom;print(json.dumps({\"python\":sys.executable,\"version\":sys.version,\"base_prefix\":sys.base_prefix,\"module\":ifclite_geom.__file__,\"native\":{str(pathlib.Path(m.__file__).resolve()):hashlib.sha256(pathlib.Path(m.__file__).read_bytes()).hexdigest() for n,m in sys.modules.items() if n.startswith(\"ifclite_geom\") and getattr(m,\"__file__\",\"\").endswith(\".so\")},\"stubs\":{str(f):hashlib.sha256(f.read_bytes()).hexdigest() for f in pathlib.Path(ifclite_geom.__file__).parent.glob(\"*.pyi\")}}))"
+      ],
+      "exitCode": 0,
+      "logSha256": "acb9b201f28baab37647335da862a6f4d2a0690c234c2f455ce629520b7d7981"
+    },
+    {
+      "name": "base-native-ldd",
+      "argv": [
+        "/usr/bin/ldd",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv/lib/python3.12/site-packages/ifclite_geom/ifclite_geom.abi3.so"
+      ],
+      "exitCode": 0,
+      "logSha256": "1330ecf409230db84fe9552d2ce7265f0a8a68e39ceaa29c53a1ab3c9c35772f"
+    },
+    {
+      "name": "base-clock-load-only",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv/bin/python",
+        "-c",
+        "import ctypes,json,pathlib,hashlib; p=pathlib.Path('/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/libd47_public_probe.so');lib=ctypes.CDLL(str(p));assert hasattr(lib,\"d47_clock_now_ns\");print(json.dumps({\"library\":str(p),\"sha256\":hashlib.sha256(p.read_bytes()).hexdigest(),\"symbolResolved\":True,\"clockFunctionCalled\":False}))"
+      ],
+      "exitCode": 0,
+      "logSha256": "01b03386ddccb9cfa1252687702293f14eed6273301931c6d41bd2840111aa75"
+    },
+    {
+      "name": "base-freeze",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv/bin/python",
+        "-m",
+        "pip",
+        "freeze",
+        "--all"
+      ],
+      "exitCode": 0,
+      "logSha256": "9bcd419223dd13bc6f0ff7ab8ee2e657e6f85a9f9fb67df7086421142dbd07a2"
+    },
+    {
+      "name": "raw-wrapper-identity",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/d47-public-probe",
+        "--identity"
+      ],
+      "exitCode": 0,
+      "logSha256": "56bb8ed79134216bb28e8e681c9374620c029877d4cc7cdabc13d9a3529d012c"
+    },
+    {
+      "name": "raw-wrapper-ldd",
+      "argv": [
+        "/usr/bin/ldd",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/d47-public-probe"
+      ],
+      "exitCode": 0,
+      "logSha256": "a9e4a0192bf3924ba9c802485b4b68a6bdf97e79b4f04fc25cf2c5a367cbc8fc"
+    },
+    {
+      "name": "raw-clock-ldd",
+      "argv": [
+        "/usr/bin/ldd",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/libd47_public_probe.so"
+      ],
+      "exitCode": 0,
+      "logSha256": "3ed0c47d1eb7efc67480d791cc6213ac1aca84cca1d29715d0deb7d66c039e9b"
+    },
+    {
+      "name": "raw-private-venv",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/tools/python-reviewed-v1/runtime/bin/python3.12",
+        "-m",
+        "venv",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/venv"
+      ],
+      "exitCode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "raw-install-exact-wheel",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/venv/bin/python",
+        "-m",
+        "pip",
+        "install",
+        "--no-index",
+        "--no-deps",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl"
+      ],
+      "exitCode": 0,
+      "logSha256": "ba4c296cfb198d5559be38f4406c5545149eb7e651d644a6b2de93af3358864b"
+    },
+    {
+      "name": "raw-import-only",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/venv/bin/python",
+        "-c",
+        "import sys,json,pathlib,hashlib,ifclite_geom;print(json.dumps({\"python\":sys.executable,\"version\":sys.version,\"base_prefix\":sys.base_prefix,\"module\":ifclite_geom.__file__,\"native\":{str(pathlib.Path(m.__file__).resolve()):hashlib.sha256(pathlib.Path(m.__file__).read_bytes()).hexdigest() for n,m in sys.modules.items() if n.startswith(\"ifclite_geom\") and getattr(m,\"__file__\",\"\").endswith(\".so\")},\"stubs\":{str(f):hashlib.sha256(f.read_bytes()).hexdigest() for f in pathlib.Path(ifclite_geom.__file__).parent.glob(\"*.pyi\")}}))"
+      ],
+      "exitCode": 0,
+      "logSha256": "cb9b80ac2ef2da7b5ee9bc024a8814448f10908d79f60fea8020c6ec82979663"
+    },
+    {
+      "name": "raw-native-ldd",
+      "argv": [
+        "/usr/bin/ldd",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/venv/lib/python3.12/site-packages/ifclite_geom/ifclite_geom.abi3.so"
+      ],
+      "exitCode": 0,
+      "logSha256": "e49795a0678501fc1a936f8d7ed5e68b097e4daafd60e192b937aed8c1bd6561"
+    },
+    {
+      "name": "raw-clock-load-only",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/venv/bin/python",
+        "-c",
+        "import ctypes,json,pathlib,hashlib; p=pathlib.Path('/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/libd47_public_probe.so');lib=ctypes.CDLL(str(p));assert hasattr(lib,\"d47_clock_now_ns\");print(json.dumps({\"library\":str(p),\"sha256\":hashlib.sha256(p.read_bytes()).hexdigest(),\"symbolResolved\":True,\"clockFunctionCalled\":False}))"
+      ],
+      "exitCode": 0,
+      "logSha256": "483f54f88c5d2064aa03df414b7e0019e81bf0f2253f94f791439f04cfef81e9"
+    },
+    {
+      "name": "raw-freeze",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/venv/bin/python",
+        "-m",
+        "pip",
+        "freeze",
+        "--all"
+      ],
+      "exitCode": 0,
+      "logSha256": "dce6b98f1753cfaf063adc851945621cba1a700e17a9372e52055e66f4960e3c"
+    }
+  ],
+  "all21Pass": true,
+  "runtime5382AuthenticatedBeforeAfterFinallyExact": true,
+  "sourcePayloadFixtureProfileExact": true,
+  "installedNativeAndStubMatchArchive": true,
+  "wrapperIdentitySourcesCorrect": true,
+  "clockLibrariesLoadedWithoutFunctionCall": true,
+  "actualSystemLibrariesHashPreserved": {
+    "/usr/lib/x86_64-linux-gnu/libpthread.so.0": {
+      "sha256": "4472cde19acc87a431ad1eefe9e86f8238dd1f26f8dac692cff7040474d9d085",
+      "size": 14408
+    },
+    "/usr/lib/x86_64-linux-gnu/libdl.so.2": {
+      "sha256": "feee7549138dc862300b9ba9b2b02502059c838a6c0b92d2ea4c0a357e8e0b45",
+      "size": 14408
+    },
+    "/usr/lib/x86_64-linux-gnu/libutil.so.1": {
+      "sha256": "b88de5f440af504c5a7f7fa933ee7272c44e18e4613c44b2cc6b5ca40f99d6ba",
+      "size": 14408
+    },
+    "/usr/lib/x86_64-linux-gnu/libm.so.6": {
+      "sha256": "f06f2ce1f1833df5f41cf13b6447ff07bea993ad9b27297d3428c2f70ab3f0e7",
+      "size": 952616
+    },
+    "/usr/lib/x86_64-linux-gnu/librt.so.1": {
+      "sha256": "4b3a59575a0812a466235bc745814ca5b13825ef5f8ad5680637872ac64cc7ca",
+      "size": 14624
+    },
+    "/usr/lib/x86_64-linux-gnu/libc.so.6": {
+      "sha256": "511f825ee075610ac9c0f7f91e2c13de2000d0f7b859f6461137e809a0a009d0",
+      "size": 2125328
+    },
+    "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2": {
+      "sha256": "6222a16be7f2d458d6870efe6e715fc0c8d45766fb79cf7dcc3125538d703e28",
+      "size": 236616
+    },
+    "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1": {
+      "sha256": "02f3f192bf5f79b811f1e34a650fea443d407408703448906585232383957f60",
+      "size": 183024
+    }
+  },
+  "dataCalls": 0,
+  "witnessCalls": 0,
+  "measuredCalls": 0,
+  "builds": 0,
+  "measuredRequestSubmitted": false,
+  "150ObservationsAndEnvironmentUnchanged": true,
+  "priorEvidencePreserved": {
+    "perf-prerequisites-pc-v3": {
+      "files": 127,
+      "manifestSha256": "74308dfdeb79879f5ed1c12c3dc96e7c0e23e6735cf089c4a101b8211f5040b4",
+      "allExact": true
+    },
+    "untimed-profiling-witness-pc-v1": {
+      "files": 65,
+      "manifestSha256": "cf5498321225be20d639f558073618ad3127831a7690355487fd491e4dd968ed",
+      "allExact": true
+    }
+  }
+}

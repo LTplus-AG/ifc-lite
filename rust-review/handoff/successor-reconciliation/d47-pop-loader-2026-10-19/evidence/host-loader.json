@@ -1,0 +1,37 @@
+{
+  "host": {
+    "system": "Linux",
+    "node": "pop-os",
+    "release": "6.17.9-76061709-generic",
+    "version": "#202511241048~1764607909~24.04~df6b2b6 SMP PREEMPT_DYNAMIC Mon D",
+    "machine": "x86_64",
+    "processor": "x86_64"
+  },
+  "libc": [
+    "glibc",
+    "2.39"
+  ],
+  "pythonExecutable": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/tools/python-reviewed-v1/runtime/bin/python3.12",
+  "pythonExecutableSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+  "runtimeManifestEntries": 5382,
+  "archiveSha256": "0a601699205f10e3676c6ccef587f839692ee347631231f18435dc5d5c3a2b0e",
+  "profile": {
+    "name": "profiling",
+    "inherits": "release",
+    "opt-level": 3,
+    "lto": true,
+    "codegen-units": 1,
+    "strip": false,
+    "debug": "line-tables-only",
+    "panic": "unwind",
+    "overflow-checks": false,
+    "releasePackageStar": {
+      "opt-level": 3,
+      "strip": true
+    },
+    "flags": "No RUSTFLAGS/encoded flags; same effective profile applied through CLI to excluded Python crate"
+  },
+  "originalToolchain": "nightly-2025-11-15/rustc1.93.0-nightly b6d7ff3aa",
+  "readOnlyRuntimeReuse": true,
+  "workerAdministrativeCheckout": "original own525 only; no checkout code used; runtime sources are exact02/raw7c8 proven by v26artifact hashes and wrapper identity"
+}

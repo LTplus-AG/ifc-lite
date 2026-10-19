@@ -108,7 +108,8 @@ fn recut_carves_opening_and_preserves_wall_around_it() {
         axes: [Vector3::x(), Vector3::y(), Vector3::z()],
         half: [0.5, 0.079, 0.5],
     };
-    recut_malformed_openings(&mut host, std::slice::from_ref(&bx));
+    recut_malformed_openings(&mut host, std::slice::from_ref(&bx))
+        .expect("malformed opening recut succeeds");
     assert!(!host.is_empty(), "recut emptied the wall");
     // Wall extent preserved on every face axis (no over-cut of the wall
     // above/below/beside the opening).

@@ -164,24 +164,5 @@ impl ReadyProductJoin {
     }
 }
 
-impl ProductCompletion {
-    #[cfg(test)]
-    pub(crate) fn drain(mut self, router: &crate::GeometryRouter,
-        decoder: &mut ifc_lite_core::EntityDecoder<'_>) -> Result<CompletedProduct> {
-        loop {
-            crate::resource::check_current()?;
-            match self.poll() {
-                CompletionPoll::Prepare(ready) => self.accept_prepare(ready.execute()),
-                CompletionPoll::Source(request) => self.accept_source(request.admit(router, decoder)?),
-                CompletionPoll::Place(ready) => self.accept_place(ready.execute()),
-                CompletionPoll::Join(ready) => self.accept_join(ready.execute()?),
-                CompletionPoll::Complete(output) => return Ok(output),
-                CompletionPoll::Pending => return Err(crate::Error::geometry(
-                    "Product completion reached an unaccepted operation")),
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests;

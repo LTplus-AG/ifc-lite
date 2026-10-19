@@ -1,0 +1,18 @@
+{
+  "source": "5f39d485ed085dd6e4b21a5f519769b10f160987",
+  "job_id": "608af49c-4242-4f1b-956c-296811e67788",
+  "source_unchanged": true,
+  "exit_code": 8,
+  "output_sha256": "edd929bc31ec913606b17c5853ca74a19f1d5cf5928a9ecf3ae4531ce46f511c",
+  "build": "260 compilation/link steps PASS",
+  "ctest": {
+    "passed": 4,
+    "failed": 1,
+    "failing_test": "smlib_owned_boundary",
+    "detail": "empty outcome invariant failed before later affine and region witnesses"
+  },
+  "runtime_rust": "NOT RUN after CTest failure",
+  "storage_task": "ifclite-platform-sdk-5f39-20261019",
+  "diagnostic_source": "bd4c120476 adds exact failed-expression/line/status diagnostics only",
+  "qualification": "No broad SDK numerical or Rust/runtime/perf pass. Four executed CTests, including isolated copy failure and worker affine framing, passed at this exact source."
+}

@@ -1,0 +1,20 @@
+{
+  "id": "auto-9cbe5ff3550c499aa78e008e55a7136f",
+  "commit": "5f39d485ed085dd6e4b21a5f519769b10f160987",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "/home/louistrue/build-workers/setup/projects-20261017/ifc-lite/env-exec.sh",
+    "bash",
+    "-c",
+    "export IFCLITE_ADAPTER_BUILD=\"$CARGO_TARGET_DIR/ifclite-smlib/native\"; bash native/smlib-adapter/qualify.sh native || exit $?; export IFCLITE_SMLIB_WORKER=\"$IFCLITE_ADAPTER_BUILD/ifclite_smlib_worker\"; cargo test -p ifc-lite-geometry-runtime --all-targets --no-fail-fast"
+  ],
+  "storageTask": "ifclite-platform-sdk-5f39-20261019",
+  "pools": [],
+  "requestedHost": "pop-os"
+}

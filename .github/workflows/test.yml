@@ -1024,6 +1024,15 @@ jobs:
           # revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/imported-geometry/src/math.rs | grep -Fxq 'rust/imported-geometry/src/math.rs'; then
             oracle_args+=(--mutation tests/evidence/imported-geometry-i1/behaviour.oracle.patch)
+          # #7955 B5: owned advanced-face plans add advanced_face/plan.rs,
+          # advanced_plan.rs and the structural plans, which their tests name,
+          # so a whole-change revert cannot compile them (INCONCLUSIVE). Keep
+          # the types and break ONLY the behaviour: parameterized faces ignore
+          # a false SameSense and oriented edges ignore their orientation; the
+          # B3 and A2 mutations are stacked (this branch includes both). Once
+          # advanced_plan.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/advanced_plan.rs | grep -Fxq 'rust/geometry/src/processors/advanced_plan.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-advanced-face-b5/behaviour.oracle.patch)
           # #7955 B3: owned brep plans add faceted_plan.rs and
           # surface_model_plan.rs, which their tests name, so a whole-change
           # revert cannot compile them (INCONCLUSIVE). Keep the types and break

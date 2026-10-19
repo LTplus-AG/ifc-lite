@@ -1,0 +1,133 @@
+diff --git b/rust/geometry/src/processors/advanced_face/plan.rs a/rust/geometry/src/processors/advanced_face/plan.rs
+index 6982335f42..2beabcb460 100644
+--- b/rust/geometry/src/processors/advanced_face/plan.rs
++++ a/rust/geometry/src/processors/advanced_face/plan.rs
+@@ -42,7 +42,7 @@ impl FacePlan {
+     }
+     pub(crate) fn evaluate(self) -> Result<(Vec<f32>, Vec<u32>)> {
+         let result = self.geometry.evaluate().map(|(positions, mut indices)| {
+-            if false && self.reverse {
++            if self.reverse {
+                 for triangle in indices.chunks_exact_mut(3) {
+                     triangle.swap(0, 2);
+                 }
+diff --git b/rust/geometry/src/processors/structural_edge.rs a/rust/geometry/src/processors/structural_edge.rs
+index ec7362db69..3195602b54 100644
+--- b/rust/geometry/src/processors/structural_edge.rs
++++ a/rust/geometry/src/processors/structural_edge.rs
+@@ -126,7 +126,7 @@ fn resolve_edge_points(
+             let mut points =
+                 resolve_edge_points(&underlying, decoder, quality, depth + 1, visited)?;
+             let orientation = edge.get_bool(slot::IfcOrientedEdge::ORIENTATION.index()).unwrap_or(true);
+-            if false && !orientation {
++            if !orientation {
+                 points.reverse();
+             }
+             Ok(points)
+diff --git b/rust/geometry/src/csg/census.rs a/rust/geometry/src/csg/census.rs
+index 9d78a08515..be0fc5f015 100644
+--- b/rust/geometry/src/csg/census.rs
++++ a/rust/geometry/src/csg/census.rs
+@@ -140,6 +140,8 @@ struct Scope {
+ }
+ impl Drop for Scope {
+     fn drop(&mut self) {
+-        let _ = self.previous.take();
++        ACTIVE.with(|current| {
++            current.replace(self.previous.take());
++        });
+     }
+ }
+diff --git b/rust/geometry/src/kernel/budget_state.rs a/rust/geometry/src/kernel/budget_state.rs
+index 9abf45d94b..5d4f39fe8e 100644
+--- b/rust/geometry/src/kernel/budget_state.rs
++++ a/rust/geometry/src/kernel/budget_state.rs
+@@ -93,6 +93,7 @@ impl Drop for PollScope<'_> {
+     fn drop(&mut self) {
+         *self.state = Image::current();
+         self.state.record_peaks();
++        self.caller.install();
+     }
+ }
+ 
+diff --git b/rust/geometry/src/pending_diagnostics.rs a/rust/geometry/src/pending_diagnostics.rs
+index 3ff724c613..72dc4323a5 100644
+--- b/rust/geometry/src/pending_diagnostics.rs
++++ a/rust/geometry/src/pending_diagnostics.rs
+@@ -86,7 +86,9 @@ struct Scope<'a> {
+ impl Drop for Scope<'_> {
+     fn drop(&mut self) {
+         self.owner.pending = Pending::take_current();
+-        let _ = self.caller.take();
++        if let Some(caller) = self.caller.take() {
++            caller.publish();
++        }
+     }
+ }
+ 
+diff --git b/rust/geometry/src/processors/brep/faceted_plan.rs a/rust/geometry/src/processors/brep/faceted_plan.rs
+index d067850609..60d4b71b7a 100644
+--- b/rust/geometry/src/processors/brep/faceted_plan.rs
++++ a/rust/geometry/src/processors/brep/faceted_plan.rs
+@@ -152,7 +152,7 @@ pub(crate) fn lower(
+         // hole become the outline. Read bounds are the outer one, the
+         // holes (a demoted outer is among them) and the degenerate ones.
+         let read = hole_points.len() + usize::from(outer_bound_points.is_some()) + degenerate;
+-        if false && read < bound_count {
++        if read < bound_count {
+             note_face_refused(&IfcType::IfcFace);
+             continue;
+         }
+@@ -196,7 +196,7 @@ impl FacetedBrepPlan {
+         let mut positions = Vec::with_capacity(total_positions);
+         let mut indices = Vec::with_capacity(total_indices);
+         for result in face_results {
+-            if false && result.refused {
++            if result.refused {
+                 note_face_refused(&IfcType::IfcFace);
+             }
+             let base_idx = (positions.len() / 3) as u32;
+diff --git b/rust/geometry/src/processors/brep/surface_model_plan.rs a/rust/geometry/src/processors/brep/surface_model_plan.rs
+index 1b28d9e187..71e0c88290 100644
+--- b/rust/geometry/src/processors/brep/surface_model_plan.rs
++++ a/rust/geometry/src/processors/brep/surface_model_plan.rs
+@@ -121,7 +121,7 @@ impl SurfaceModelPlan {
+         let mut all_positions = Vec::new();
+         let mut all_indices = Vec::new();
+         for entry in self.faces {
+-            let _ = &entry.source_reports;
++            entry.source_reports.restore();
+             let Some(face) = entry.face else { continue };
+             let (positions, indices) = match face {
+                 SurfaceFace::Simple {
+@@ -140,7 +140,7 @@ impl SurfaceModelPlan {
+                         &face_data,
+                         self.rtc_file_units.unwrap_or((0.0, 0.0, 0.0)),
+                     );
+-                    if false && result.refused {
++                    if result.refused {
+                         note_face_refused(&face_type);
+                     }
+                     (result.positions, result.indices)
+@@ -161,7 +161,7 @@ impl SurfaceModelPlan {
+                 }
+             }
+         }
+-        if let Some(error) = self.terminal_collection_error.filter(|_| false) {
++        if let Some(error) = self.terminal_collection_error {
+             return Err(Error::geometry(error));
+         }
+         Ok(Mesh {
+diff --git b/rust/processing/src/element_degenerate.rs a/rust/processing/src/element_degenerate.rs
+index c8b2af21d4..90dd6d6f95 100644
+--- b/rust/processing/src/element_degenerate.rs
++++ a/rust/processing/src/element_degenerate.rs
+@@ -79,7 +79,7 @@ struct StateScope<'a> {
+ 
+ impl Drop for StateScope<'_> {
+     fn drop(&mut self) {
+-        DROPPED.with(|counter| counter.replace(self.saved));
++        self.state.dropped = DROPPED.with(|counter| counter.replace(self.saved));
+     }
+ }
+ 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 // Actual SDK witness shared by module-worker browser and independent WASM modules.
-import { regionWitnesses } from './region-recipes.mjs';
+import { regionWitnesses, rationalDiskRecipe, rationalDiskWitnesses } from './region-recipes.mjs';
 import { meshWitness } from './mesh-witness.mjs';
 import { uploadSweep } from './sweep.mjs';
 import { assert, request, response, u32, f64 } from './contract.mjs';
@@ -30,17 +30,7 @@ export function circleRecipe() {
     .forEach((value, i) => view.setFloat64(64 + i * 8, value, true));
   return bytes;
 }
-export function diskRecipe() {
-  const bytes = new Uint8Array(168), view = new DataView(bytes.buffer);
-  [2, 1, 1, 0].forEach((v, i) => view.setUint32(4 * i, v, true));
-  view.setFloat64(16, 0.25, true);
-  [4, 0, 1, 2, 2, 0].forEach((v, i) => view.setUint32(32 + 4 * i, v, true));
-  view.setFloat64(64, 1, true);
-  [0, 0, 0, 2, 0, 0, 5, 3].forEach((v, i) => view.setFloat64(72 + 8 * i, v, true));
-  view.setUint32(144, 2, true);
-  view.setFloat64(152, 1, true); view.setUint32(160, 2, true);
-  return bytes;
-}
+export function diskRecipe(curved = false) { return rationalDiskRecipe(curved); }
 export async function runSweepContract(transport, incarnation) {
   const batch = (frames) => transport.batch(frames, incarnation);
   const call = async (op, ...fields) => response((await batch([request(op, ...fields)]))[0]);
@@ -51,7 +41,7 @@ export async function runSweepContract(transport, incarnation) {
   const fixtures = [
     { name: 'subdivided-rectangle', recipe: rectangleRecipe(32), loops: 1, segments: 128, expected: 24, format: 1 },
     { name: 'circle', recipe: circleRecipe(), loops: 1, segments: 1, expected: 12 * Math.PI, format: 1 },
-    { name: 'rational-straight-pipe', recipe: diskRecipe(), loops: 1, segments: 1, expected: 5 * Math.PI / 16, format: 2 },
+    ...rationalDiskWitnesses(),
     ...regionWitnesses(),
   ];
   for (const fixture of fixtures) {
@@ -70,13 +60,15 @@ export async function runSweepContract(transport, incarnation) {
     const unchanged = new DataView((await call(6, session, solid, f64(1e-8))).buffer).getFloat64(0, true);
     assert(Math.abs(unchanged - expected) < 1e-5, 'authored operand immutable');
     const region = fixture.area === undefined ? undefined : fixture;
-    const originalMesh = await meshWitness(call, session, solid, expected, region);
-    const movedMesh = await meshWitness(call, session, moved, expected, region, true);
+    const shape = fixture.pipe ? fixture : region;
+    const originalMesh = await meshWitness(call, session, solid, expected, shape);
+    const movedMesh = await meshWitness(call, session, moved, expected, shape, true);
     for (const object of [moved, duplicate, solid]) await call(8, session, object);
     results.push({ name, expected, evidence: 'derived numerical recipe; not source IFC qualification',
       sdkVolume: volume, copiedSdkVolume: movedVolume, originalMesh, movedMesh,
       ...(region && { expectedProfileArea: region.area, expectedSectionLength: region.perimeter,
         expectedSurfaceArea: region.surface, expectedSectionLoops: region.loops }),
+      ...(fixture.pipe && { expectedPipeBounds: fixture.pipe.bounds, expectedSurfaceArea: fixture.pipe.surface }),
       analyticSurfaceIdentity: 'not exposed by protocol', analyticSection: 'not exposed by protocol' });
   }
   // Real worker cleanup contract: invalid offset discards, incomplete commit consumes.

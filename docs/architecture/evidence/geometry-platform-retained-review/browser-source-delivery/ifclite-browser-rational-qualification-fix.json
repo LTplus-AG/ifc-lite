@@ -1,0 +1,44 @@
+{
+  "status": "test-only Node witnesses passed; actual SDK/browser runtime UNRUN",
+  "node": "v24.22.0",
+  "command": [
+    "node",
+    "--test",
+    "native/smlib-adapter/browser/region-recipes.test.mjs",
+    "native/smlib-adapter/browser/mesh-witness.test.mjs",
+    "native/smlib-adapter/browser/sweep-transport.test.mjs"
+  ],
+  "tests": 26,
+  "pass": 26,
+  "fail": 0,
+  "skip": 0,
+  "log": "/tmp/ifclite-browser-rational-fixture-tests.log",
+  "log_sha256": "8a756e1e04bd377c9c2edcd1d58a313558ad9632ad11aafa8663521af55a21f7",
+  "files": [
+    {
+      "path": "native/smlib-adapter/browser/sweep-contract.mjs",
+      "sha256": "a9ad2211a376740f98370a7667d87a51ccd259d3d416c00f6afe63e27a835fd6",
+      "lines": 98
+    },
+    {
+      "path": "native/smlib-adapter/browser/region-recipes.mjs",
+      "sha256": "2aea314d380217d08114ce436af1c1fc965c07c6371a725c11b957472792bee8",
+      "lines": 91
+    },
+    {
+      "path": "native/smlib-adapter/browser/region-recipes.test.mjs",
+      "sha256": "fd432282faee18c0f45e0864b39d453c80155c653220b6c8cea2c5558ac28547",
+      "lines": 80
+    },
+    {
+      "path": "native/smlib-adapter/browser/mesh-witness.mjs",
+      "sha256": "7d4fc1910c15345c67b35326ed7e1728759f5bbb2d5982cf3d920adafdd6aa36",
+      "lines": 146
+    },
+    {
+      "path": "native/smlib-adapter/browser/mesh-witness.test.mjs",
+      "sha256": "0707929d95c59c3084f0452a41f69db266455b3c282c2d398d91670bf9eca453",
+      "lines": 98
+    }
+  ]
+}

@@ -6,14 +6,18 @@
   "review_pin": "4168d78f31e50b7cfdf9df7aaca70e9cd29ce816",
   "authority_fix": "155 checks document handle before source-expiry retirement and seals publication fields",
   "parent_corrections": [
-    "separate captured cancellation capability usable during async mutable executor borrow"
+    "separate captured cancellation capability usable during async mutable executor borrow",
+    "same-worker rational gate now requires both exact straight and curved quarter-circle numerical witnesses"
   ],
   "remaining": [
-    "same-worker curved rational qualification witness",
     "common ProgramRequest/ProductState retained continuation",
     "SDK browser asset staging",
     "canonical generated wasm dts",
     "all compile/runtime/platform/performance qualification"
   ],
-  "validation": "UNRUN except delivered source parse/metadata/JS syntax checks; no actual browser claim"
+  "validation": "UNRUN except delivered source parse/metadata/JS syntax checks; no actual browser claim",
+  "fixture_checks": {
+    "passed": 26,
+    "actual_sdk": false
+  }
 }

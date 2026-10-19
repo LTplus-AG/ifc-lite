@@ -61,3 +61,31 @@ export function regionWitnesses() {
     p => Math.min(radial(radius)(p), radial(inner)(p)), [[0, 0, inner]], [0, 0, 1], 1250 * mm);
   return cases;
 }
+
+// Same exact clamped rational coefficients as the native pipe witnesses.
+export function rationalDiskRecipe(curved = false) {
+  const controls = curved ? [4, 0, 0, 1, 4, 4, 0, Math.SQRT1_2, 0, 4, 0, 1]
+    : [0, 0, 0, 2, 0, 0, 5, 3];
+  const count = controls.length / 4, degree = curved ? 2 : 1;
+  const bytes = new Uint8Array(72 + 32 * count + 32), view = new DataView(bytes.buffer);
+  [2, 1, 1, 0].forEach((v, i) => view.setUint32(4 * i, v, true));
+  view.setFloat64(16, 0.25, true);
+  [4, 0, degree, count, 2, 0].forEach((v, i) => view.setUint32(32 + 4 * i, v, true));
+  view.setFloat64(64, 1, true);
+  controls.forEach((v, i) => view.setFloat64(72 + 8 * i, v, true));
+  for (let i = 0; i < 2; i++) {
+    const offset = 72 + 32 * count + 16 * i;
+    view.setFloat64(offset, i, true); view.setUint32(offset + 8, degree + 1, true);
+  }
+  return bytes;
+}
+export function rationalDiskWitnesses() {
+  return [
+    { name: 'rational-straight-pipe', recipe: rationalDiskRecipe(), loops: 1, segments: 1,
+      expected: 5 * Math.PI / 16, format: 2 },
+    { name: 'rational-quarter-circle-pipe', recipe: rationalDiskRecipe(true), loops: 1, segments: 1,
+      expected: Math.PI ** 2 / 8, format: 2, pipe: { radius: 0.25, pathRadius: 4,
+        bounds: [[0, 4.25], [0, 4.25], [-0.25, 0.25]],
+        surface: Math.PI ** 2 + Math.PI / 8 } },
+  ];
+}

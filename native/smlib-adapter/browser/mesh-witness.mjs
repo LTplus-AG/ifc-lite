@@ -19,6 +19,8 @@ function triangleDistance(p, triangle) {
   return Math.min(...triangle.map((a, i) => edgeDistance(p, a, triangle[(i + 1) % 3])));
 }
 export async function meshWitness(call, session, solid, expected, fixture, moved = false) {
+  const pipe = fixture?.pipe;
+  if (pipe) fixture = undefined;
   const mesh = await call(9, session, solid, f64(0.0001), f64(3));
   const info = new DataView((await call(10, session, mesh)).buffer);
   const vertices = info.getUint32(0, true), triangles = info.getUint32(4, true);
@@ -121,7 +123,24 @@ export async function meshWitness(call, session, solid, expected, fixture, moved
     if (fixture.surface !== undefined) assert(Math.abs(surface - fixture.surface) < fixture.surface * 0.002,
       `${fixture.name}: independent triangle surface area`);
   }
+  if (pipe) {
+    for (let axis = 0; axis < 3; axis++) {
+      const bounds = points.reduce(([lo, hi], p) => [Math.min(lo, p[axis]), Math.max(hi, p[axis])], [Infinity, -Infinity]);
+      assert(bounds.every((v, i) => Math.abs(v - pipe.bounds[axis][i]) < tolerance),
+        `rational quarter pipe: tight bounds axis ${axis}`);
+    }
+    for (const [x, y, z] of points) {
+      const distance = Math.hypot(Math.hypot(x, y) - pipe.pathRadius, z);
+      const cap = Math.abs(x) < tolerance || Math.abs(y) < tolerance;
+      assert(x >= -tolerance && y >= -tolerance && (cap
+        ? distance <= pipe.radius + tolerance : Math.abs(distance - pipe.radius) < tolerance),
+        'rational quarter pipe: vertex on tube or endpoint cap');
+    }
+    assert(Math.abs(surface - pipe.surface) < pipe.surface * 0.002,
+      'rational quarter pipe: independent tube and two-cap surface area');
+  }
   await call(8, session, mesh);
   return { vertices, triangles, triangleVolume: volume, triangleSurfaceArea: surface,
+    ...(pipe && { pipeShape: 'quarter-circle tube and endpoint caps' }),
     ...(fixture && { meshSectionLength: sectionLength, meshSectionArea: Math.abs(sectionTwiceArea) / 2 }) };
 }

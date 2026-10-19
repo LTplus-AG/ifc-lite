@@ -8,5 +8,13 @@
   "runtime_tests": "UNRUN; sixdriverprotocolfixtures do notqualifySDKgeometry",
   "common_product_continuation": "UNIMPLEMENTED: logicalslots/pendingacceptance/finalnet",
   "archive": "originalchecksumfilerefersoriginalbundle; archivedlogscompressedwithoriginaluncompressedbytes",
-  "parent_post_delivery_correction": "removed trailing blank line only from retained_values.rs after exact after-hash verification; original patch archived as gzip without changing its bytes"
+  "parent_post_delivery_correction": "removed trailing blank line only from retained_values.rs after exact after-hash verification; original patch archived as gzip without changing its bytes",
+  "parent_protocol_fixtures": {
+    "source": "53dafdcf7f",
+    "command": "node --experimental-vm-modules --test rust/geometry-runtime/js/retained-driver.test.mjs",
+    "passed": 6,
+    "failed": 0,
+    "skipped": 0,
+    "actual_sdk": false
+  }
 }

@@ -5,6 +5,8 @@ use ifc_lite_geometry::program::{LogicalRetainedValue, RetainedOperationKind};
 
 pub(super) enum IssuedRetainedOperation {
     Construction(RetainedRequest),
+    UnaryClip { input: Arc<CommonRetainedRealization>, value: Box<LogicalRetainedValue>,
+        clip: Box<ifc_lite_geometry::program::RetainedUnaryClip> },
     Affine { input: Arc<CommonRetainedRealization>, matrix: [f64;16] },
     Boolean { inputs: [Arc<CommonRetainedRealization>;2], values: Box<[LogicalRetainedValue;2]>,
         operation: ifc_lite_geometry::document::BooleanOperation },
@@ -41,6 +43,10 @@ impl RetainedProductExecution {
                         .map_err(|e|RetainedExecutionError::Unsupported(e.to_string()))?;
                     PendingRetainedOperation::Construction {expected,request,document}
                 }
+                RetainedOperationKind::UnaryClip {input,..} => {
+                    let input=self.input(input)?;
+                    PendingRetainedOperation::UnaryClip {expected,input}
+                }
                 RetainedOperationKind::Affine {input,matrix} => {
                     let input = self.input(input)?;
                     let matrix = *matrix;
@@ -63,6 +69,21 @@ impl RetainedProductExecution {
         for operation in operations {
             issued.push(match operation {
                 PendingRetainedOperation::Construction {request,..}=>IssuedRetainedOperation::Construction(request.clone()),
+                PendingRetainedOperation::UnaryClip {expected,input}=> {
+                    let RetainedOperationKind::UnaryClip {input:value,clip}=expected.kind() else {unreachable!()};
+                    // Admit both real Box backings. Keep the live-byte permit
+                    // refundable across the fallible logical lineage copy.
+                    let permit=ifc_lite_geometry::resource::charge(ifc_lite_geometry::resource::Cost {
+                        live_bytes:(std::mem::size_of::<LogicalRetainedValue>()+
+                            std::mem::size_of::<ifc_lite_geometry::program::RetainedUnaryClip>()) as u64,
+                        copy_bytes:std::mem::size_of::<ifc_lite_geometry::program::RetainedUnaryClip>() as u64,
+                        ..Default::default()
+                    }).map_err(RetainedExecutionError::Stopped)?;
+                    let value=value.try_copy().map_err(protocol)?;
+                    let packet=IssuedRetainedOperation::UnaryClip {input:input.clone(),value:Box::new(value),clip:Box::new(clip.clone())};
+                    permit.retain();
+                    packet
+                }
                 PendingRetainedOperation::Affine {input,matrix,..}=>IssuedRetainedOperation::Affine {input:input.clone(),matrix:*matrix},
                 PendingRetainedOperation::Boolean {expected,inputs}=> {
                     let RetainedOperationKind::Boolean {inputs:values,operation}=expected.kind() else {unreachable!()};
@@ -76,4 +97,16 @@ impl RetainedProductExecution {
         }
         Ok(issued)
     }
+}
+
+/// Both targets consume the same reached side/mode, never a second source policy.
+pub(super) fn clip_parameters(clip: &ifc_lite_geometry::program::RetainedUnaryClip)
+    -> (ifc_lite_geometry_runtime::PlaneSide, ifc_lite_geometry_runtime::PlaneClipMode) {
+    use ifc_lite_geometry_runtime::{PlaneSide, PlaneClipMode};
+    use ifc_lite_geometry::program::RetainedClipMode;
+    // IFC AgreementFlag true: the BaseSurface normal points AWAY from material.
+    // Both modes select the same occupied side; Difference removes that side.
+    (if clip.source.agreement {PlaneSide::Negative} else {PlaneSide::Positive},
+        match clip.mode {RetainedClipMode::Difference=>PlaneClipMode::Difference,
+            RetainedClipMode::Intersection=>PlaneClipMode::Intersection})
 }

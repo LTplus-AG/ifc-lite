@@ -1,0 +1,8 @@
+{
+  "parent_before": "82e3d39116",
+  "child_source": "20b605558c",
+  "base": "775567f2bd1360fdf239fe96818cf7b1d3184c4c",
+  "owned_patch_sha256": "f1540d0093b32f30b8f0ee2139c755de5e8557c6f286d69010bc2f4a119a14ba",
+  "composition": "Own incremental applied cleanly; all21 source hashes verified; parent499 reply admission and8828 shared-budget fix retained; borrowed runtime0b765 not reapplied because parent5468 present",
+  "checks": "Source reviews closed prior findings; parse/diff/refwalk only. All new compiled/SDK/browser/Clippy/numerical tests UNRUN. Native pointer validation failure and fleet guard78 remain blockers. Root full output/appearance/opening/layer coverage not complete."
+}

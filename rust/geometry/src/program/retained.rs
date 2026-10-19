@@ -129,6 +129,7 @@ impl RetainedPlanOperation {
 #[derive(Debug, Clone)]
 pub enum RetainedOperationKind {
     Construction(RetainedConstruction),
+    UnaryClip { input: LogicalRetainedValue, clip: super::retained_clip::RetainedUnaryClip },
     Affine { input: LogicalRetainedValue, matrix: [f64; 16] },
     Boolean { inputs: [LogicalRetainedValue; 2], operation: crate::document::BooleanOperation },
 }
@@ -172,6 +173,16 @@ pub(super) fn boolean_operation(inputs: [LogicalRetainedValue; 2], operation: cr
     value.definition = LogicalRetainedDefinition::Operation(value.slot);
     value.empty=false;
     Ok(RetainedPlanOperation {value,kind:RetainedOperationKind::Boolean {inputs,operation}})
+}
+pub(super) fn clip_operation(input: LogicalRetainedValue, clip: super::retained_clip::RetainedUnaryClip,
+    program: u64) -> crate::Result<RetainedPlanOperation> {
+    super::retained_walk::charge(1)?;
+    crate::resource::charge(crate::resource::Cost {work:1,occurrences:1,..Default::default()})?.retain();
+    let mut value = copy_values(std::slice::from_ref(&input))?.pop().expect("unary frame");
+    value.slot = next_slot(program)?;
+    value.definition = LogicalRetainedDefinition::Operation(value.slot);
+    value.empty = false;
+    Ok(RetainedPlanOperation {value,kind:RetainedOperationKind::UnaryClip {input,clip}})
 }
 pub(super) fn validate_affine(matrix: &nalgebra::Matrix4<f64>) -> crate::Result<()> {
     if matrix.iter().any(|x| !x.is_finite())

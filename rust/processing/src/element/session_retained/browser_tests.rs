@@ -12,7 +12,7 @@ use wasm_bindgen_test::*;
 wasm_bindgen_test_configure!(run_in_browser);
 
 const SOURCE: &str = super::super::session_tests::SOURCE;
-fn model(root: u32, statements: &str) -> (ProductionModel, Arc<OwnedMeshProductionContext>) {
+pub(super) fn model(root: u32, statements: &str) -> (ProductionModel, Arc<OwnedMeshProductionContext>) {
     let source=SOURCE.replace("'SweptSolid',(#13)",&format!("'CSG',(#{root})"))
         .replace("ENDSEC;END-ISO-10303-21;",&format!("
         #90=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',(#13));
@@ -23,17 +23,17 @@ fn model(root: u32, statements: &str) -> (ProductionModel, Arc<OwnedMeshProducti
     let context=model.snapshot(OwnedMeshProductionData::default());
     (model,context)
 }
-fn execution(context: &Arc<OwnedMeshProductionContext>, decoder: &mut EntityDecoder<'_>, router: &GeometryRouter)
+pub(super) fn execution(context: &Arc<OwnedMeshProductionContext>, decoder: &mut EntityDecoder<'_>, router: &GeometryRouter)
     -> RetainedProductExecution {
     let entity=decoder.decode_by_id(10).unwrap();
     RetainedProductExecution::new(&ElementMeshJob {id:10,ifc_type:entity.ifc_type.clone(),entity:&entity,
         kind:ElementJobKind::Product,element_color:None,metadata:None},context,&MeshProductionOptions::default(),decoder,router).unwrap()
 }
-fn router(decoder: &mut EntityDecoder<'_>) -> GeometryRouter {
+pub(super) fn router(decoder: &mut EntityDecoder<'_>) -> GeometryRouter {
     let scale=decoder.length_unit_scale();let angle=decoder.plane_angle_to_radians();
     decoder.seed_unit_scales(scale,angle); GeometryRouter::with_scale(scale)
 }
-async fn worker() -> BrowserWorker {
+pub(super) async fn worker() -> BrowserWorker {
     let mut worker=BrowserWorker::new_retained_execution().unwrap();
     worker.qualify().await.expect("actual same-module SDK qualification must execute");worker
 }
@@ -57,7 +57,7 @@ async fn reach(execution: &mut RetainedProductExecution, worker: &mut BrowserWor
         execution.accept(work,decoder,router).unwrap();
     }
 }
-fn volume(mesh: &ifc_lite_geometry::document::RetainedTessellation) -> f64 {
+pub(super) fn volume(mesh: &ifc_lite_geometry::document::RetainedTessellation) -> f64 {
     let p=|i:u32| {let i=i as usize*3;[mesh.positions[i],mesh.positions[i+1],mesh.positions[i+2]]};
     mesh.indices.chunks_exact(3).map(|t| {
         let [a,b,c]=[p(t[0]),p(t[1]),p(t[2])];

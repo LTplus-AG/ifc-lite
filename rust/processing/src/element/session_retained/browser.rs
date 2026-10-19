@@ -3,14 +3,15 @@
 use super::*;
 use super::issuance::IssuedRetainedOperation;
 use super::value::RealizationKind;
-use target::{ConstructionReceipt, AffineReceipt, BooleanReceipt};
+use target::{ConstructionReceipt, AffineReceipt, BooleanReceipt, ClipReceipt};
 
 enum NumericalReply {
-    Construction(ConstructionReceipt), Affine(AffineReceipt), Boolean(BooleanReceipt),
+    UnaryClip(ClipReceipt), Construction(ConstructionReceipt), Affine(AffineReceipt), Boolean(BooleanReceipt),
 }
 impl NumericalReply {
     fn seal(self, resources: OwnedResourceContext) -> CommonRetainedRealization {
         let kind = match self {
+            Self::UnaryClip(value)=>RealizationKind::UnaryClip(Box::new(value)),
             Self::Construction(value)=>RealizationKind::Construction(Box::new(value)),
             Self::Affine(value)=>RealizationKind::Affine(Box::new(value)),
             Self::Boolean(value)=>RealizationKind::Boolean(Box::new(value)),
@@ -46,6 +47,11 @@ impl IssuedCommonConstruction {
                 IssuedRetainedOperation::Construction(request) => {
                     let request = self.resources.with_scope(|| request.clone());
                     worker.evaluate(request, chord, angle, max_bytes).await.map(NumericalReply::Construction)
+                }
+                IssuedRetainedOperation::UnaryClip {input,value,clip}=> {
+                    let (side,mode)=super::issuance::clip_parameters(clip);
+                    worker.clip_retained_plane(input.dependency(value)?,clip.local_plane,side,mode,chord,angle,max_bytes)
+                        .await.map(NumericalReply::UnaryClip)
                 }
                 IssuedRetainedOperation::Affine { input, matrix } =>
                     worker.copy_retained_affine(input.transform_input(), *matrix).await.map(NumericalReply::Affine),

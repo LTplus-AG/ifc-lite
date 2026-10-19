@@ -10,6 +10,11 @@ impl IssuedRetainedOperation {
         let result = match self {
             Self::Construction(request)=>worker.evaluate_retained_extrusion(request.clone(),chord,angle,limits)
                 .map(|v|RealizationKind::Construction(Box::new(v))),
+            Self::UnaryClip {input,value,clip}=> {
+                let (side,mode)=super::issuance::clip_parameters(clip);
+                worker.clip_retained_plane(input.dependency(value)?,clip.local_plane,side,mode,chord,angle,limits)
+                    .map(|v|RealizationKind::UnaryClip(Box::new(v)))
+            }
             Self::Affine {input,matrix}=>worker.copy_retained_affine(input.transform_input(),*matrix)
                 .map(|v|RealizationKind::Affine(Box::new(v))),
             Self::Boolean {inputs,values,operation}=>worker.evaluate_retained_boolean(

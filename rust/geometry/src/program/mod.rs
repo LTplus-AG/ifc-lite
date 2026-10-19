@@ -22,6 +22,8 @@ mod item;
 mod inner;
 mod inner_ready;
 mod retained;
+mod retained_clip;
+pub use retained_clip::{RetainedPlaneCoefficients, RetainedPlaneSource, RetainedUnaryClip, RetainedClipMode};
 mod retained_entries;
 mod retained_presentation;
 pub use retained_presentation::RetainedPresentation;
@@ -111,3 +113,6 @@ mod retained_operation_tests;
 
 #[cfg(test)]
 mod retained_walk_tests;
+
+#[cfg(test)]
+mod retained_clip_tests;

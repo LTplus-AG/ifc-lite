@@ -63,6 +63,7 @@ fn p2_nested_mapping_boolean_preserves_order_definition_sharing_and_survey_frame
                     boolean_outputs.push(operation.value().slot());
                     definitions.insert(operation.value().definition().clone());
                 }
+                RetainedOperationKind::UnaryClip {..}=>panic!("unexpected unary clip"),
                 RetainedOperationKind::Affine {..}=>panic!("proper rigid mapping stays metadata"),
             }
         }
@@ -107,22 +108,6 @@ fn p2_actual_empty_control_binding_skips_unreached_rhs_and_rejects_foreign_outpu
     assert!(decoder.get_cached(999).is_none(),"empty difference never admits its later operand");
 }
 
-#[test]
-fn p2_halfspace_is_precise_residual_and_never_becomes_giant_retained_cutter() {
-    let source=format!("{}#60=IFCPLANE(#2);#61=IFCHALFSPACESOLID(#60,.T.);",
-        SOURCE.replace(".UNION.,#30,#24", ".DIFFERENCE.,#24,#61"));
-    let mut decoder=EntityDecoder::new(&source);
-    let router=crate::GeometryRouter::with_scale(0.001);
-    let mut program=GeometryProgram::retained_parts(decoder.decode_by_id(10).unwrap(),
-        RetainedContract {source_epoch:7,source_revision:11});
-    while let Some(request)=program.request().unwrap() {
-        let (reply,operations)=program.admit_retained_with_inputs(request,&router,&mut decoder,None,None).unwrap();
-        assert!(operations.iter().all(|operation|matches!(operation.kind(),RetainedOperationKind::Construction(_))));
-        program.accept(reply,&router).unwrap();
-    }
-    let error=program.finish_retained().unwrap_err().to_string();
-    assert!(error.contains("halfspace/clipping"),"{error}");
-}
 
 #[test]
 fn p2_rigid_mapped_boolean_keeps_original_operation_definition_and_explicit_frame() {
@@ -145,6 +130,7 @@ fn p2_rigid_mapped_boolean_keeps_original_operation_definition_and_explicit_fram
         for operation in operations {
             match operation.kind() {
                 RetainedOperationKind::Construction(_)=>{},
+                RetainedOperationKind::UnaryClip {..}=>panic!("unexpected unary clip"),
                 RetainedOperationKind::Affine {..}=>panic!("proper-rigid derived placement needs no rational conversion"),
                 RetainedOperationKind::Boolean {inputs,..}=> {
                     if outputs.is_empty() {

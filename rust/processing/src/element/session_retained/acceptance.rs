@@ -75,6 +75,22 @@ impl RetainedProductExecution {
 }
 
 impl RetainedProductExecution {
+    fn validate_clip_policy(&self,work:&CompletedCommonConstruction)->Result<(),RetainedExecutionError> {
+        let pending=self.pending.as_ref().expect("structurally validated transaction");
+        for (operation,realization) in pending.operations.iter().zip(&work.realizations) {
+            if let (ifc_lite_geometry::program::RetainedOperationKind::UnaryClip {clip,..},RealizationKind::UnaryClip(value))=
+                (operation.expected().kind(),realization.kind()) {
+                // Exact Difference-to-Empty can retain the host and report
+                // DifferenceEmptiedHost using near-coincident mesh AABB corners.
+                // A finite-domain certificate cannot authenticate that policy.
+                if value.is_empty() && clip.mode==ifc_lite_geometry::program::RetainedClipMode::Difference {
+                    return Err(RetainedExecutionError::Unsupported(
+                        "retained Difference Empty requires authenticated full-host-removal compatibility policy".into()));
+                }
+            }
+        }
+        Ok(())
+    }
     pub(super) fn accept_checked(
         &mut self,
         work: CompletedCommonConstruction,
@@ -83,6 +99,15 @@ impl RetainedProductExecution {
     ) -> Result<(), Box<RejectedCommonConstruction>> {
         if let Err(reason) = self.validate_intact(&work, decoder, router) {
             return Err(Box::new(RejectedCommonConstruction { reason, work }));
+        }
+        // Resource first-fault precedes compatibility policy. The policy hold
+        // must never hide an already captured cancellation/refusal, and must run
+        // before ledger allocation, outcome binding or the original reply take.
+        if let Err(stop)=self.resources.check() {
+            return Err(Box::new(RejectedCommonConstruction {reason:RetainedExecutionError::Stopped(stop),work}));
+        }
+        if let Err(reason)=self.validate_clip_policy(&work) {
+            return Err(Box::new(RejectedCommonConstruction {reason,work}));
         }
         let permit = match self.resources.reserve_headers(&mut self.ledger, work.realizations.len()) {
             Ok(permit) => permit,
@@ -111,19 +136,20 @@ impl RetainedProductExecution {
         // Actual semantic Empty classification resumes the original common step.
         // Validate every binding before taking the linear reply or publishing a value.
         let pending=self.pending.as_mut().expect("validated retained transaction");
-        let boolean = pending.operations.iter().zip(&work.realizations).filter_map(|(operation,realization)|
-            match realization.kind() {RealizationKind::Boolean(value)=>Some((operation,value)),_=>None});
+        let outcomes = pending.operations.iter().zip(&work.realizations).filter_map(|(operation,realization)|
+            match realization.kind() {RealizationKind::Boolean(value)=>Some((operation,value.is_empty())),
+                RealizationKind::UnaryClip(value)=>Some((operation,value.is_empty())),_=>None});
         // One original reached Boolean numerical continuation has exactly one
         // outcome slot. Reject a malformed multi-outcome packet before mutation.
-        if boolean.clone().count() > 1 {
-            return Err(Box::new(RejectedCommonConstruction {reason:protocol("multiple Boolean outcomes for one original reply"),work}));
+        if outcomes.clone().count() > 1 {
+            return Err(Box::new(RejectedCommonConstruction {reason:protocol("multiple retained outcomes for one original reply"),work}));
         }
-        for (operation,value) in boolean {
+        for (operation,empty) in outcomes {
             let engine = match &mut pending.reply.as_mut().expect("original common reply").payload {
                 super::super::session_protocol::WorkPayload::GeometryStep(reply,_)=>reply,
                 _=>return Err(Box::new(RejectedCommonConstruction {reason:protocol("missing original common engine reply"),work})),
             };
-            if let Err(error)=engine.bind_retained_outcome(operation.expected().value().slot(),value.is_empty()) {
+            if let Err(error)=engine.bind_retained_outcome(operation.expected().value().slot(),empty) {
                 let reason=match self.resources.check() {
                     Err(stop)=>RetainedExecutionError::Stopped(stop),
                     Ok(())=>match error {
@@ -193,6 +219,9 @@ impl PendingRetainedOperation {
             Self::Affine {expected,input,..}=>match expected.kind() {
                 RetainedOperationKind::Affine {input:value,..}=>[Some((value,input)),None],_=>[None,None],
             },
+            Self::UnaryClip {expected,input}=>match expected.kind() {
+                RetainedOperationKind::UnaryClip {input:value,..}=>[Some((value,input)),None],_=>[None,None],
+            },
             Self::Boolean {expected,inputs}=>match expected.kind() {
                 RetainedOperationKind::Boolean {inputs:values,..}=>[Some((&values[0],&inputs[0])),Some((&values[1],&inputs[1]))],_=>[None,None],
             },
@@ -228,6 +257,21 @@ impl PendingRetainedOperation {
                     || value.operation_identity().column_major != *matrix {
                     return Err(protocol("retained affine input/matrix mismatch"));
                 }
+            }
+            (Self::UnaryClip {expected,input}, RealizationKind::UnaryClip(value))=> {
+                let RetainedOperationKind::UnaryClip {input:logical,clip}=expected.kind() else {unreachable!()};
+                input.validate_live().map_err(protocol)?;
+                let identity=value.operation_identity();
+                let (side,mode)=super::issuance::clip_parameters(clip);
+                if identity.input!=input.solid() || identity.output!=realization.solid()
+                    || identity.plane.iter().zip(clip.local_plane).any(|(a,b)|a.to_bits()!=b.to_bits())
+                    || identity.side!=side || identity.mode!=mode
+                    || identity.world_from_evaluation!=*logical.object_frame()
+                    || clip.input_frame!=*logical.object_frame()
+                    || value.world_from_evaluation()!=expected.value().object_frame() {
+                    return Err(protocol("retained unary clip input/plane/side/mode/frame mismatch"));
+                }
+
             }
             (Self::Boolean {expected,inputs}, RealizationKind::Boolean(value)) => {
                 let RetainedOperationKind::Boolean {inputs:values,operation} = expected.kind() else {unreachable!()};

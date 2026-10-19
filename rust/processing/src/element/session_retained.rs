@@ -74,15 +74,16 @@ struct PendingRetainedTransaction {
 enum PendingRetainedOperation {
     Construction { expected: Box<RetainedPlanOperation>, request: RetainedRequest, document: GeometryDocument },
     Affine { expected: Box<RetainedPlanOperation>, input: Arc<CommonRetainedRealization>, matrix: [f64;16] },
+    UnaryClip { expected: Box<RetainedPlanOperation>, input: Arc<CommonRetainedRealization> },
     Boolean { expected: Box<RetainedPlanOperation>, inputs: [Arc<CommonRetainedRealization>;2] },
 }
 impl PendingRetainedOperation {
     fn into_expected(self) -> Box<RetainedPlanOperation> {
-        match self { Self::Construction {expected,..} | Self::Affine {expected,..} | Self::Boolean {expected,..}=>expected }
+        match self { Self::Construction {expected,..} | Self::Affine {expected,..} | Self::Boolean {expected,..} | Self::UnaryClip {expected,..}=>expected }
     }
 
     fn expected(&self) -> &RetainedPlanOperation {
-        match self { Self::Construction {expected,..} | Self::Affine {expected,..} | Self::Boolean {expected,..} => expected }
+        match self { Self::Construction {expected,..} | Self::Affine {expected,..} | Self::Boolean {expected,..} | Self::UnaryClip {expected,..} => expected }
     }
 }
 impl PendingRetainedTransaction {
@@ -98,9 +99,9 @@ struct DischargedValue {
 }
 
 /// Explicit opt-in execution of the existing reached product program. This
-/// checkpoint discharges constructions, physical affine copies and ordered binary
-/// Boolean operations from the existing common continuations. Proper rigid mapping
-/// and late product placement remain logical metadata. Halfspace, opening, layer
+/// checkpoint discharges constructions, physical affine copies, binary Booleans
+/// and plain planar unary clips from the existing common continuations. Proper
+/// rigid mapping and late product placement remain metadata. Bounded halfspaces, opening, layer
 /// and appearance closure remain explicit gaps. There is no mesh publication method.
 /// Captured resources cover reached work and ledger backing; source coefficient,
 /// SDK heap, numerical scratch and presentation allocations remain unqualified.
@@ -389,3 +390,11 @@ mod browser_tests;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod predispatch_native_tests;
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod clip_tests;
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod clip_browser_tests;
+
+#[cfg(test)] mod clip_witness;

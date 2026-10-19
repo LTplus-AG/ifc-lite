@@ -900,16 +900,28 @@ retained cache is scoped to the product and bound to source revision, decoder
 selected-cache generation and router configuration. An exact mesh cache never
 discharges retained work.
 
+Plain `IfcHalfSpaceSolid` operands with an `IfcPlane` `BaseSurface` now have a
+source implementation through the same pending product transaction. The original
+`AgreementFlag`, placement coefficients, units and source identity remain attached
+to the derived clip. The Difference side policy matches the existing kept side; Intersection
+adds finite-host halfspace intersection. These paths still require compiled SDK
+and browser qualification. Difference results that remove the entire host remain
+explicitly refused until the existing coincidence policy can be authenticated.
+Boxed or polygonally bounded halfspaces, unbounded Union and paired layer splits
+remain unsupported by this entry; a unary clip does not close those obligations.
+
 `traversal_plan()` exposes ordered column-major metre-domain mapping/product
 operations and an f64 `world_from_evaluation()` frame. That frame applies file-unit
 conversion once before the ordered mappings and product placement. It does not
 certify display rounding, RTC assembly, appearance or persistent face provenance.
 Accepted product placement removes only its own remaining requirement. Opening,
 layer, appearance and persistent-face requirements still prohibit final mesh
-publication. Styled/type-map retained consumers, affine mapping/display support,
-Boolean/opening dependencies, independent native object release and browser common
-transactions remain unfinished; a refusal does not count as capability coverage. Unsupported retained work refuses rather than selecting exact
-recovery. Ordinary producers continue to use the permanent exact kernel.
+publication. Styled/type-map consumers, affine copies, ordered Boolean values,
+independent native object leases and shared browser transactions have source
+implementations, but their current-target qualification and final-output fidelity
+remain incomplete. Unsupported retained work refuses rather than selecting exact
+recovery; a refusal does not count as capability coverage. Ordinary producers
+continue to use the permanent exact kernel.
 See the [consuming contract and remaining coverage](../architecture/geometry-platform-retained-program-continuation.md).
 Current-source compilation, actual SDK execution and preservation qualification
 remain required before this experimental entry can be treated as qualified.

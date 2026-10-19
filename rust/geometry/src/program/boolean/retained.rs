@@ -21,8 +21,13 @@ impl BooleanState {
         crate::resource::check_current()?;
         let second=second.ok_or_else(||Error::geometry("retained Boolean missing second operand"))?;
         if second.ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcHalfSpaceSolid) {
-            return Err(crate::document::RetainedRefusal::UnsupportedSource(
-                "retained halfspace/clipping requires finite exact primitive contract; no giant cutter".into()).into());
+            let (contract,program)=self.retained.expect("selected retained contract");
+            let scale=match services.router {Some(router)=>router.unit_scale(),None=>services.decoder.length_unit_scale()};
+            let context=crate::program::retained_clip::ClipSourceContext {scale,contract,operator,boolean_id:entity.id,program};
+            let clip=crate::program::retained_clip::capture(&second,services.decoder,&host,context)?;
+            let operation=retained::clip_operation(host,clip,program)?;
+            self.frames.push(Frame::Numerical(work::Ready::Retained(operation),work::Continuation::RetainedStep(steps)));
+            return Ok(());
         }
         let depth=steps.depth;
         self.frames.push(Frame::RetainedAfterStep {steps,operator,host});

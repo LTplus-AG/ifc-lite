@@ -179,16 +179,6 @@ impl<'a> EntityDecoder<'a> {
         decoder
     }
 
-    /// Install a pre-built index into this decoder. Used when the caller already
-    /// built the index during another pass (e.g. the processor scan loop) so the
-    /// decoder does not lazily rebuild it via `build_index`. Set it before any
-    /// `decode_by_id`/ref-resolving call; afterwards `build_index` no-ops.
-    pub fn set_entity_index(&mut self, index: Arc<EntityIndex>) {
-        self.execution_owner.changed();
-        self.source_bundle = None;
-        self.entity_index = Some(EntityIndexStore::Hash(index));
-    }
-
     /// Build entity index for O(1) lookups
     /// This scans the file once and maps entity IDs to byte offsets
     fn build_index(&mut self) {
@@ -487,6 +477,7 @@ impl<'a> EntityDecoder<'a> {
     /// decoder and seeds each worker decoder here.
     pub fn seed_unit_scales(&mut self, length_unit_scale: f64, plane_angle_to_radians: f64) {
         self.execution_owner.changed();
+        self.execution_owner.cache_changed();
         self.length_unit_scale_cache = Some(length_unit_scale);
         self.plane_angle_to_radians_cache = Some(plane_angle_to_radians);
     }

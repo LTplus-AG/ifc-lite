@@ -32,6 +32,7 @@ impl TrustedDecoderInputs {
 
 impl EntityDecoder<'_> {
     pub(crate) fn revoke_cache_authority(&mut self) {
+        self.execution_owner.publish_cache_source(None);
         static NEXT: AtomicU64 = AtomicU64::new(1);
         self.cache_revision = NEXT.fetch_update(Ordering::Relaxed, Ordering::Relaxed,
             |n| n.checked_add(1)).expect("decoder cache revision exhausted");
@@ -65,6 +66,7 @@ impl EntityDecoder<'_> {
     /// False leaves this decoder unchanged; the foreign cache is not installed.
     pub fn set_source_point_cache(&mut self, cache: SourceCache<(f64, f64, f64)>) -> bool {
         if !self.accepts_cache(&cache) { return false; }
+        self.execution_owner.cache_changed();
         self.execution_owner.changed();
         self.point_cache = cache.entries;
         true
@@ -77,6 +79,7 @@ impl EntityDecoder<'_> {
     /// this checks transfer provenance, not the correctness of extension code.
     pub fn set_source_placement_cache(&mut self, cache: SourceCache<[f64; 16]>) -> bool {
         if !self.accepts_cache(&cache) { return false; }
+        self.execution_owner.cache_changed();
         self.execution_owner.changed();
         self.placement_transform_cache = cache.entries;
         true
@@ -89,6 +92,7 @@ impl EntityDecoder<'_> {
     /// entry cloning cost is the same as the existing raw injection API.
     pub fn inject_source_cache(&mut self, cache: &SourceCache<Arc<DecodedEntity>>) -> bool {
         if !self.accepts_cache(cache) { return false; }
+        self.execution_owner.cache_changed();
         self.execution_owner.changed();
         self.cache.extend(cache.entries.iter().map(|(&id, entity)| (id, Arc::clone(entity))));
         true

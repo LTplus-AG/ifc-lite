@@ -101,12 +101,16 @@ impl Gate {
         }
         let previous = {
             let mut state = self.0.binding.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            if state.depth >= MAX_BINDINGS || state.current.as_ref().is_some_and(
+            if (cfg!(test) && state.depth >= MAX_BINDINGS) || state.current.as_ref().is_some_and(
                 |previous| previous.thread() != std::thread::current().id()) {
                 drop(state);
                 return Err(authority.stop(self.record(coverage())));
             }
-            state.depth += 1;
+            let Some(depth) = state.depth.checked_add(1) else {
+                drop(state);
+                return Err(authority.stop(self.record(coverage())));
+            };
+            state.depth = depth;
             state.current.replace(authority)
         };
         let _restore = Restore { gate: self.0.clone(), previous, _thread_bound: PhantomData };

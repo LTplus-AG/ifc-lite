@@ -95,6 +95,7 @@ impl SourceBundle {
         decoder.set_grid_axis_index(Arc::clone(&self.grid_axes));
         decoder.source_bundle = Some(Arc::clone(self));
         decoder.cache_revision = 0;
+        decoder.execution_owner.publish_cache_source(Some(self));
         true
     }
 
@@ -119,6 +120,7 @@ impl SourceBundle {
         decoder.set_grid_axis_index(Arc::clone(&self.grid_axes));
         decoder.source_bundle = Some(Arc::clone(self));
         decoder.cache_revision = 0;
+        decoder.execution_owner.publish_cache_source(Some(self));
         decoder
     }
 

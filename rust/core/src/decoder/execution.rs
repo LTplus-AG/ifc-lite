@@ -1,8 +1,21 @@
 // SPDX-License-Identifier: MPL-2.0
-use super::EntityDecoder;
+use super::{EntityDecoder, EntityIndexStore};
+use crate::EntityIndex;
+use std::sync::Arc;
 use crate::execution_owner::{ExecutionIdentity,ExecutionLease,ExecutionLeaseError};
 
 impl EntityDecoder<'_> {
+    /// Install a pre-built index into this decoder. Used when the caller already
+    /// built the index during another pass (e.g. the processor scan loop) so the
+    /// decoder does not lazily rebuild it via `build_index`. Set it before any
+    /// `decode_by_id`/ref-resolving call; afterwards `build_index` no-ops.
+    pub fn set_entity_index(&mut self, index: Arc<EntityIndex>) {
+        self.execution_owner.changed();
+        self.execution_owner.publish_cache_source(None);
+        self.source_bundle = None;
+        self.entity_index = Some(EntityIndexStore::Hash(index));
+    }
+
     /// Stable decoder/input owner and its explicit configuration generation.
     /// Lazy memo population does not change it; index/unit/cache replacement does.
     pub fn execution_identity(&self)->ExecutionIdentity { self.execution_owner.identity() }

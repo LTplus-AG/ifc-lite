@@ -29,3 +29,6 @@ mod lifetime_tests;
 mod actual_account_tests;
 #[cfg(test)]
 mod observer_tests;
+
+#[cfg(test)]
+mod revision_tests;

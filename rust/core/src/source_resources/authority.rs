@@ -6,8 +6,6 @@ use crate::{EntityDecoder, SourceBundle};
 use crate::resource_stop::ProgramStop;
 use std::sync::{Arc, atomic::Ordering};
 
-pub(crate) const MAX_EPOCHS: usize = 16;
-
 #[derive(Clone)]
 pub(crate) struct Authority {
     state: Arc<State>,
@@ -32,7 +30,7 @@ impl Authority {
         }
         let resources = published.resources.ok_or(ExecutionLeaseError::ExpiredWork)?;
         let result = Self { state: Arc::clone(&work.lease.state), epoch,
-            identity: decoder.execution_identity(), revision: decoder.cache_revision,
+            identity: decoder.execution_identity(), revision: decoder.execution_owner.cache_revision(),
             source: Arc::clone(source), resources };
         result.validate()?;
         Ok(result)
@@ -43,22 +41,19 @@ impl Authority {
         if self.state.generation.load(Ordering::Acquire) != self.identity.generation {
             return Err(ExecutionLeaseError::ConfigurationChanged);
         }
-        // Revision witness is captured from the actual decoder. Every existing
-        // revision-changing API also changes the live generation above. It is
-        // not a separately polled decoder field and grants no source authority.
-        if self.revision != 0 { return Err(ExecutionLeaseError::ConfigurationChanged); }
-        let mut cursor = Some(self.epoch.as_ref());
-        let mut source_borrow = false;
-        let mut count = 0;
-        while let Some(epoch) = cursor {
-            count += 1;
-            if count > MAX_EPOCHS || !epoch.active.load(Ordering::Acquire)
-                || (!source_borrow && epoch.thread != std::thread::current().id()) {
-                return Err(ExecutionLeaseError::ExpiredWork);
+        // Read actual owner state, independently of both configuration generation
+        // and the decoder's canonical/raw provenance marker.
+        {
+            let live = self.state.cache_authority.lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if live.revision != self.revision {
+                return Err(ExecutionLeaseError::ConfigurationChanged);
             }
-            source_borrow |= epoch.parent_source;
-            cursor = epoch.parent.as_deref();
+            if !live.source.upgrade().is_some_and(|source| Arc::ptr_eq(&source, &self.source)) {
+                return Err(ExecutionLeaseError::WrongOwner);
+            }
         }
+        self.epoch.validate(false)?;
         self.live_resources()?;
         Ok(())
     }
@@ -68,7 +63,9 @@ impl Authority {
         if !published.epoch.upgrade().is_some_and(|epoch| Arc::ptr_eq(&epoch, &self.epoch)) {
             return Err(ExecutionLeaseError::ExpiredWork);
         }
-        published.resources.ok_or(ExecutionLeaseError::ExpiredWork)
+        let resources = published.resources.ok_or(ExecutionLeaseError::ExpiredWork)?;
+        if !self.resources.same_account(&resources) { return Err(ExecutionLeaseError::WrongOwner); }
+        Ok(resources)
     }
     pub(crate) fn thread(&self) -> std::thread::ThreadId { self.epoch.thread }
     pub(crate) fn stop_handle(&self) -> SourceStopHandle {

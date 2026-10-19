@@ -34,6 +34,15 @@ struct State {
     reserved: AtomicBool,
     alive: AtomicBool,
     active_source: Mutex<ActiveSource>,
+    cache_authority: Mutex<CacheAuthority>,
+}
+
+// Baseline owner metadata, independent of configuration generation. A weak
+// source link cannot keep a source alive or form an owner/source cycle.
+#[derive(Debug, Clone, Default)]
+struct CacheAuthority {
+    revision: u64,
+    source: std::sync::Weak<crate::SourceBundle>,
 }
 
 /// Private state of one execution owner. Move preserves identity; construction
@@ -43,11 +52,13 @@ pub struct ExecutionOwner {
     instance: u64,
     generation: u64,
     state: OnceLock<Arc<State>>,
+    cache_authority: CacheAuthority,
 }
 impl Default for ExecutionOwner {
     fn default() -> Self {
         // Warm per-job decoder/router construction must remain allocation-free.
-        Self { instance: next_id(), generation: 0, state: OnceLock::new() }
+        Self { instance: next_id(), generation: 0, state: OnceLock::new(),
+            cache_authority: CacheAuthority::default() }
     }
 }
 impl ExecutionOwner {
@@ -61,12 +72,31 @@ impl ExecutionOwner {
             state.generation.store(self.generation, Ordering::Release);
         }
     }
+    /// Revoke captured cache work before a cache mutation. This does not change
+    /// configuration generation or the canonical/raw cache provenance marker.
+    pub(crate) fn cache_changed(&mut self) {
+        self.cache_authority.revision = self.cache_authority.revision.checked_add(1)
+            .expect("execution cache revision space exhausted");
+        if let Some(state) = self.state.get() {
+            let previous = std::mem::replace(
+                &mut *state.cache_authority.lock().expect("cache authority lock"),
+                self.cache_authority.clone());
+            drop(previous); // Final Weak destruction happens outside the lock.
+        }
+    }
+    pub(crate) fn publish_cache_source(&mut self, source: Option<&Arc<crate::SourceBundle>>) {
+        self.cache_authority.source = source.map_or_else(Default::default, Arc::downgrade);
+        self.cache_changed();
+    }
+    #[cfg(all(feature = "source-resource-tracking", any(test, feature = "source-resource-gate-test-support")))]
+    pub(crate) fn cache_revision(&self) -> u64 { self.cache_authority.revision }
     pub fn try_lease(&self) -> Result<ExecutionLease, ExecutionLeaseError> {
         let id = ExecutionLeaseId(next_id());
         let state = self.state.get_or_init(|| Arc::new(State {
             generation: AtomicU64::new(self.generation),
             reserved: AtomicBool::new(false), alive: AtomicBool::new(true),
             active_source: Mutex::new(ActiveSource::default()),
+            cache_authority: Mutex::new(self.cache_authority.clone()),
         }));
         state.reserved.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .map_err(|_| ExecutionLeaseError::AlreadyLeased)?;

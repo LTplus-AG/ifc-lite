@@ -1,0 +1,15 @@
+{
+  "job": "7ee38c91-87f4-4799-9a02-0f8770a4e45e",
+  "source": "775567f2bd1360fdf239fe96818cf7b1d3184c4c",
+  "exitCode": 8,
+  "sourceUnchanged": true,
+  "ctest": {
+    "passed": 4,
+    "failed": 1
+  },
+  "reached": "all affine/21region/disk/legacy C ABI transactions; context scenario explicit_context=0 source_defaults=0 checked copy then clip x0.5",
+  "failure": "finite plane Boolean: plane topology pointer validation reported failures",
+  "not_yet_known": "copied host versus derived cutter versus output report identity; stricter diagnostics committed56a64",
+  "output_sha256": "afc2ccda74f8de622dd6e2674463a57c3a5016332f8cc4c4fe5b347135e17760",
+  "actual_worker_Rust": "not reached"
+}

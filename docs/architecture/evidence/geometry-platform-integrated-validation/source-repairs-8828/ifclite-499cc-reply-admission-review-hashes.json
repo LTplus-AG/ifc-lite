@@ -1,0 +1,56 @@
+{
+  "source": "499cc7def119c20885b3b748d1d130a1193c4fd7",
+  "base": "6e232b4104e896bb5e1cdd8b4bdd1f75731440ff",
+  "files": [
+    {
+      "path": "rust/processing/src/element/session.rs",
+      "gitBlob": "2c39e2c8ee2b0a499f0002e1a4bd0de9e39a15f0",
+      "sha256": "365958fc516d957bbed7f21694dfbcfd6ab432f0086c72d5a795e04796612982"
+    },
+    {
+      "path": "rust/processing/src/element/session_protocol.rs",
+      "gitBlob": "34a895bf99fb0d7b71e79777984f0e627b0722fe",
+      "sha256": "a2a699ca8e06efceb7d9a8de4c6a37c3986f7cb14fb4475f2ca60c2cb603becf"
+    },
+    {
+      "path": "rust/processing/src/element/accounted_threaded_tests.rs",
+      "gitBlob": "f1f2ee9f15b15c55aa8c78202030bf9a062794a5",
+      "sha256": "5e2a53c0d1462d80ea7053389c0585e82c5cab76eb2a8fc061a1ca841f553c4f"
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/mod.rs",
+      "gitBlob": "41d41d3486abfb137748eed66703fd1d71d17a04",
+      "sha256": "466e7ef13385d4ff6609101c708c166b543e71dd0da74f0b3d14dbe982c03f02"
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/planning.rs",
+      "gitBlob": "e7ca4bcf5ebed34b94a579548b6834d837c5793a",
+      "sha256": "9aa267ae217f321fc490816d1c5b95a0d8afb1c6f06c9ffc56abee31db3b88fa"
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/evaluator.rs",
+      "gitBlob": "98166bfa313b6597c7decec163437fa05fb703d9",
+      "sha256": "6db76c83541a525de63f1c9ab2b614936217cd5e0acb84bdba927ac783690389"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/acceptance.rs",
+      "gitBlob": "32e74b804d68b21242d3eaa7e53f909b001d44fe",
+      "sha256": "9bc449e1634d097c7446e3b5f3bad8bb4fb2c590705d309569873b9b88122d82"
+    },
+    {
+      "path": "rust/geometry/src/resource/account.rs",
+      "gitBlob": "fb4d10585bb8507162e36ce39ad478d1555cde47",
+      "sha256": "8965a9948edf32fe36a86dde6dded7a02af987b25263a841c2ce6b807b705590"
+    },
+    {
+      "path": "rust/geometry/src/resource/mod.rs",
+      "gitBlob": "4439fc9ce095caca922f04519f85e844c16c3770",
+      "sha256": "e953c410c04c4d1bbc912d3595889d8d236baa7c0084cd4d2ee5181a39a3843e"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_cancel.rs",
+      "gitBlob": "81e5b6cee8b34509a0e54fbd7653551fcaac92bd",
+      "sha256": "5ee36dc758f054a9610e1b2a91452f44466818a589ecc9d4a37fd63d3ba7a278"
+    }
+  ]
+}

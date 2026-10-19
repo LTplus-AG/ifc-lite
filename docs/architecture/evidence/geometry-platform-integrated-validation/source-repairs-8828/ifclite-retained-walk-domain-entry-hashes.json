@@ -1,0 +1,8 @@
+{
+  "base_head": "56a64ed4992de2897ef3c48f48d6620b3ae8a6bf",
+  "sha256": {
+    "rust/geometry/src/program/retained_walk.rs": "de0b81768508243d9600699c3fbb1ef5377292de025dde9607c84c498cabba0b",
+    "rust/geometry/src/program/retained_walk_scope_tests.rs": "693f583d30d2c264f617502eb6f0ac253a50ea0786955b394b6482df19c730d3"
+  },
+  "validation": "targeted rustfmt stdout skip_children syntax parsing + git diff --check passed; no build/test/Clippy/job"
+}

@@ -1,0 +1,5 @@
+{
+  "source": "8828c182856bdb150c9b0d2146b36162b6d96b98",
+  "result": "Both requests refused before execution: Pop and PC job kind disabled by admission; no job or tests",
+  "policy": "No override/resubmission until capacity changes; original requests retained"
+}

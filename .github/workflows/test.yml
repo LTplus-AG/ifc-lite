@@ -686,9 +686,10 @@ jobs:
 
       # The generated IFCX imported-geometry kernel must match the Rust crate it
       # is built from. Regenerates into a temp dir and diffs; not a build gate for
-      # packages (their --verify is Rust-free). Runs only when its inputs may have changed.
+      # packages (their --verify is Rust-free). Needs cargo, so it shares the
+      # toolchain guard of 'Setup WASM build toolchain' (skipped on the prebuilt fast path).
       - name: Verify imported geometry artifacts are current
-        if: needs.changes.outputs.rust == 'true'
+        if: needs.changes.outputs.wasm_prebuilt != 'true' && needs.changes.outputs.rust == 'true'
         run: node scripts/build-imported-geometry.mjs --check
 
       # Build all workspace packages so their dist/ artifacts exist for

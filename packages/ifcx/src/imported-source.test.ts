@@ -126,8 +126,26 @@ it('preserves isolated UTF16 source paths, edges and dedup keys without replacem
     new Map([[root.path, 1]]));
   assert.equal(meshes.length, 2);
   const source = importedSourceFor(meshes);
-  assert.deepEqual(source?.occurrences.map(item => item.path), ['/\ufffd', '/second\ud800']);
-  assert.deepEqual(source?.occurrences.map(item => item.lineage[1].edgeName), ['edge\ud800', 'edge\ufffd']);
+  // Pair each path with its own edge so the check is independent of emission order.
+  const pairs = (source?.occurrences ?? []).map(item => [item.path, item.lineage[1].edgeName] as const)
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  assert.deepEqual(pairs, [['/second\ud800', 'edge\ufffd'], ['/\ufffd', 'edge\ud800']]);
+});
+
+it('dedupes aliases by resolved colour and keeps differently styled occurrences', () => {
+  const build = (colorB: number[]) => {
+    const root = node('root', { [ATTR.CLASS]: { code: 'IfcWall' } });
+    const a = node('a', { [ATTR.DIFFUSE_COLOR]: [1, 0, 0] });
+    const b = node('b', { [ATTR.DIFFUSE_COLOR]: colorB });
+    const shared = node('shared', { [ATTR.MESH]: triangle() });
+    root.children.set('a', a); root.children.set('b', b);
+    a.children.set('s', shared); b.children.set('s', shared);
+    return extractGeometry(new Map([root, a, b, shared].map(item => [item.path, item])), new Map([['root', 1]]));
+  };
+  assert.equal(build([1, 0, 0]).length, 1);
+  const styled = build([0, 0, 1]);
+  assert.equal(styled.length, 2);
+  assert.deepEqual(styled.map(m => m.color).sort(), [[0, 0, 1, 1], [1, 0, 0, 1]]);
 });
 
 it('matches the composed cycle stub seed order when an independent root exists', async () => {

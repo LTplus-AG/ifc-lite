@@ -12,7 +12,7 @@
 //! authored face order, exactly as the single-pass walk produced it.
 
 use super::super::advanced_face::note_face_refused;
-use super::super::advanced_face::{capture_reports, process_advanced_face, FaceReports};
+use super::super::advanced_face::{capture_reports, lower_face, FacePlan, FaceReports};
 use super::super::helpers::FaceData;
 use super::faceted::FacetedBrepProcessor;
 use super::surface_model::{read_simple_face_bounds, trace_capped_face};
@@ -25,10 +25,10 @@ enum SurfaceFace {
         outer: Vec<Point3<f64>>,
         holes: Vec<Vec<Point3<f64>>>,
     },
-    /// The advanced face's tessellation or its refusal, kept for ordered replay.
+    /// The advanced face's owned plan or its source refusal, kept for ordered replay.
     Advanced {
         face_id: u32,
-        outcome: Result<(Vec<f32>, Vec<u32>)>,
+        outcome: Result<FacePlan>,
     },
 }
 
@@ -103,7 +103,7 @@ fn lower_entry(
         // authoritative drain, and the captured report is replayed in order.
         return Some(SurfaceFace::Advanced {
             face_id,
-            outcome: process_advanced_face(&face, decoder, quality, rtc_file_units),
+            outcome: lower_face(&face, decoder, quality, rtc_file_units),
         });
     }
     let bound_ids = decoder.get_entity_ref_list_fast(face_id)?;
@@ -145,7 +145,9 @@ impl SurfaceModelPlan {
                     }
                     (result.positions, result.indices)
                 }
-                SurfaceFace::Advanced { face_id, outcome } => match outcome {
+                SurfaceFace::Advanced { face_id, outcome } => match outcome
+                    .and_then(FacePlan::evaluate)
+                {
                     Ok(result) => result,
                     Err(error) => {
                         trace_capped_face(face_id, &error);

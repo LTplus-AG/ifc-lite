@@ -12,7 +12,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use crate::router::GeometryProcessor;
 use super::advanced_face::{
-    note_face_refused, parse_rational_weights, process_advanced_face, process_bspline_face,
+    lower_bspline, lower_face, note_face_refused, parse_rational_weights, BSplinePlan, FacePlan,
 };
 
 /// A face that fails to triangulate (e.g. an un-triangulable holed planar
@@ -101,7 +101,8 @@ impl AdvancedBrepProcessor {
                 // degrades to a per-face loss instead of aborting the whole
                 // solid (#5053) — and is still recorded in `empty_faces`
                 // below so the loss isn't silent.
-                let face_mesh = process_advanced_face(&face, decoder, quality, rtc_file_units);
+                let face_mesh = lower_face(&face, decoder, quality, rtc_file_units)
+                    .and_then(FacePlan::evaluate);
                 let (positions, indices) = match face_mesh {
                     Ok(result) => result,
                     Err(ref e) => {
@@ -109,7 +110,7 @@ impl AdvancedBrepProcessor {
                         #[cfg(any(feature = "debug_geometry", feature = "observability"))]
                         {
                             let surface_kind = face
-                                .get(1)
+                                .get(ifc_lite_core::slot::IfcFaceSurface::FACE_SURFACE.index())
                                 .and_then(|a| decoder.resolve_ref(a).ok().flatten())
                                 .map(|s| s.ifc_type.as_str().to_string())
                                 .unwrap_or_else(|| "<unknown>".to_string());
@@ -130,7 +131,7 @@ impl AdvancedBrepProcessor {
                     #[cfg(any(feature = "debug_geometry", feature = "observability"))]
                     {
                         let surface_kind = face
-                            .get(1)
+                            .get(ifc_lite_core::slot::IfcFaceSurface::FACE_SURFACE.index())
                             .and_then(|a| decoder.resolve_ref(a).ok().flatten())
                             .map(|s| s.ifc_type.as_str().to_string())
                             .unwrap_or_else(|| "<unknown>".to_string());
@@ -229,13 +230,14 @@ impl BSplineSurfaceProcessor {
         } else {
             None
         };
-        let (positions, indices) = process_bspline_face(
+        let (positions, indices) = lower_bspline(
             entity,
             decoder,
             weights.as_deref(),
             quality,
             rtc_file_units.unwrap_or((0.0, 0.0, 0.0)),
-        )?;
+        )
+        .and_then(BSplinePlan::evaluate)?;
         Ok(Mesh {
             positions,
             normals: Vec::new(),

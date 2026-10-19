@@ -8,7 +8,7 @@ use crate::router::GeometryProcessor;
 use crate::{Error, Mesh, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
-use super::advanced_face::process_advanced_face;
+use super::advanced_face::{lower_face, FacePlan};
 
 pub struct IfcFaceSurfaceProcessor;
 
@@ -25,7 +25,7 @@ impl IfcFaceSurfaceProcessor {
         rtc_file_units: Option<(f64, f64, f64)>,
     ) -> Result<Mesh> {
         let surface_attribute = entity
-            .get(1)
+            .get(ifc_lite_core::slot::IfcFaceSurface::FACE_SURFACE.index())
             .ok_or_else(|| Error::geometry("FaceSurface missing FaceSurface"))?;
         let surface = decoder
             .resolve_ref(surface_attribute)?
@@ -39,7 +39,7 @@ impl IfcFaceSurfaceProcessor {
         // and is not flipped again, as for a Brep's planar faces (#7686,
         // PROC-S16).
         let (positions, indices) =
-            process_advanced_face(entity, decoder, quality, rtc_file_units)?;
+            lower_face(entity, decoder, quality, rtc_file_units).and_then(FacePlan::evaluate)?;
         Ok(Mesh {
             positions,
             normals: Vec::new(),

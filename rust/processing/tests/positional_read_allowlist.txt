@@ -42,17 +42,13 @@
 1 rust/geometry/src/placement/grid_frame.rs
 6 rust/geometry/src/placement/linear.rs
 2 rust/geometry/src/placement/validate.rs
-4 rust/geometry/src/processors/advanced.rs
+2 rust/geometry/src/processors/advanced.rs
 2 rust/geometry/src/processors/advanced_face/bounds.rs
-6 rust/geometry/src/processors/advanced_face/bspline_parse.rs
+2 rust/geometry/src/processors/advanced_face/bspline_parse.rs
 5 rust/geometry/src/processors/advanced_face/conics.rs
 12 rust/geometry/src/processors/advanced_face/curves.rs
 10 rust/geometry/src/processors/advanced_face/edge_loop.rs
-2 rust/geometry/src/processors/advanced_face/mod.rs
 23 rust/geometry/src/processors/advanced_face/polyline.rs
-12 rust/geometry/src/processors/advanced_face/revolution.rs
-5 rust/geometry/src/processors/advanced_face/surfaces.rs
-1 rust/geometry/src/processors/boolean/mod.rs
 2 rust/geometry/src/processors/boolean/operand.rs
 1 rust/geometry/src/processors/boolean/polygonal_boundary.rs
 1 rust/geometry/src/processors/csg_primitive.rs
@@ -60,7 +56,6 @@
 18 rust/geometry/src/processors/helpers.rs
 17 rust/geometry/src/processors/sectioned_positions.rs
 3 rust/geometry/src/processors/structural_edge.rs
-1 rust/geometry/src/processors/structural_face.rs
 3 rust/geometry/src/processors/surface.rs
 5 rust/geometry/src/processors/swept/disk.rs
 5 rust/geometry/src/processors/swept/surface_curve.rs

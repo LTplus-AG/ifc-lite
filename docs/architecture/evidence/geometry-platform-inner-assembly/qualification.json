@@ -1,0 +1,52 @@
+{
+  "verdict": "UNQUALIFIED",
+  "source": "dc5e9f8f2de6ab0803b36b2e8b62e27ddb5a3546",
+  "tree": "2023a0ca7aed11542dd23e252c807a587d2a6aaf",
+  "base": "a969cbcaf91c80c2133cbc23c54db6751fcbcd3e",
+  "compile_runtime": "UNQUALIFIED: no build or runtime execution of this exact source",
+  "performance": "UNQUALIFIED: no base/branch end-to-end worker-pool measurement or output identity",
+  "heavy_jobs_submitted": [],
+  "lightweight_checks": {
+    "parser": {
+      "source": "dc5e9f8f2de6ab0803b36b2e8b62e27ddb5a3546",
+      "rust_files": 146,
+      "errors": [],
+      "scope": "syntax only; emit stdout discarded; no formatting"
+    },
+    "module_size": "PASS final exact source; module-size.log",
+    "refwalk": "PASS final exact source;29 candidate walks guarded,12 existing fan-out review notices",
+    "diff_check": "PASS",
+    "patch_reconstruction": "PASS exact tree via temporary index"
+  },
+  "prior_receipts": "prior-source-receipts; each retains original source, host and outcome; none qualifies this tree",
+  "prior_9c_addendum": {
+    "source": "9c75470c82e04c3bd6228d8773158b2516a54c41",
+    "job": "68b22977-af2e-4b12-9956-b6f6cf118d17",
+    "exit": 101,
+    "geometry_library": {
+      "passed": 1618,
+      "failed": 5,
+      "ignored": 1
+    },
+    "clippy": "NOT RUN",
+    "source_unchanged": true,
+    "output_sha256": "c72a98f391b8d1c966f2d2d0fa4e8d4a551086affcc699c92aea4cd292557be8"
+  },
+  "remaining": [
+    "workspace tests",
+    "optimized Boolean active-path invariant with debug assertions disabled",
+    "all-target Clippy",
+    "canonical WASM regeneration/type surface/contracts",
+    "root TS consumer graph",
+    "PyO3 locked build/test",
+    "real scene/oracle/output identity",
+    "whole-pool A/B perf",
+    "contract-bearing retained source-plan/value continuation",
+    "processing-held retained ProgramRequest issuance/acceptance",
+    "browser sealed dependency-result/Boolean API",
+    "final-net representation/Boolean/opening/layer/appearance coverage"
+  ],
+  "fleet_limit": "No heavy submission: Pop guard_probe_unavailable/allowedKinds empty; PC recovery/coordination unverified",
+  "retained_common_issuance_acceptance": "NOT IMPLEMENTED; exact source design committed",
+  "source_only_publication": "NOT final-net"
+}

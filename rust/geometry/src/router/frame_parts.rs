@@ -20,11 +20,8 @@
 //! merge sequence. Callers that must keep a single `Mesh` get an explicit error
 //! from [`single_frame`] instead of silently rounded geometry.
 
-use super::processing::SourceHygiene;
 use super::transforms::LARGE_MAPPED_ORIGIN_M;
-use super::GeometryRouter;
 use crate::{Error, Mesh, Result};
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 /// Whether `Mesh::merge` may rebase a mesh framed at `b` into one framed at `a`
 /// without pushing its f32 positions past the mapped-origin precision limit.
@@ -38,7 +35,7 @@ pub(crate) fn frames_mergeable(a: [f64; 3], b: [f64; 3]) -> bool {
 /// Collapse frame parts to the single mesh a legacy single-mesh API returns.
 ///
 /// Refuses (rather than rounds) a product whose parts cannot share one frame.
-pub(super) fn single_frame(element_id: u32, mut parts: Vec<Mesh>) -> Result<Mesh> {
+pub(crate) fn single_frame(element_id: u32, mut parts: Vec<Mesh>) -> Result<Mesh> {
     if parts.len() <= 1 {
         return Ok(parts.pop().unwrap_or_default());
     }
@@ -132,7 +129,7 @@ impl FrameParts {
         }
     }
 
-    pub(super) fn into_parts(self) -> impl Iterator<Item = (Mesh, Option<[f32; 6]>)> {
+    pub(crate) fn into_parts(self) -> std::vec::IntoIter<(Mesh, Option<[f32; 6]>)> {
         self.parts.into_iter()
     }
 }
@@ -208,61 +205,6 @@ impl SourceParts {
             mesh.local_bounds = bounds;
             mesh
         }).collect()
-    }
-}
-
-impl GeometryRouter {
-    /// Finish `process_element_parts`: place each far part like the already
-    /// placed primary part, then fold the RTC-frame (`rebased`) items into the
-    /// first part sharing their placed frame, or keep them as their own part.
-    pub(super) fn place_frame_parts(
-        &self,
-        element: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        hygiene: SourceHygiene,
-        primary: Mesh,
-        far_parts: FrameParts,
-        (mut rebased, rebased_bounds): (Mesh, Option<[f32; 6]>),
-    ) -> Result<Vec<Mesh>> {
-        crate::resource::check_current()?;
-        let mut parts = if crate::resource::is_active() {
-            let mut parts = Vec::new();
-            crate::resource::reserve_headers(&mut parts, 1)?.retain();
-            parts.push(primary);
-            parts
-        } else { vec![primary] };
-        for (mut part, bounds) in far_parts.into_parts() {
-            part.local_bounds = bounds;
-            hygiene.for_router(self).apply(&mut part);
-            self.apply_placement(element, decoder, &mut part)?;
-            crate::resource::reserve_headers(&mut parts, 1)?.retain();
-            parts.push(part);
-        }
-        if rebased.positions.is_empty() {
-            return Ok(parts);
-        }
-        hygiene.for_router(self).apply(&mut rebased);
-        self.apply_placement(element, decoder, &mut rebased)?;
-        // Mesh::merge accounts for each mesh's f64 origin. Keep the local
-        // bucket's origin so a distant raw item cannot quantize it early;
-        // a raw item too far from every part stays its own part (#6349).
-        let index = matching_frame(parts.iter().map(|part| part.origin), rebased.origin)?;
-        match index.map(|index| &mut parts[index]) {
-            Some(part) => {
-                if crate::resource::is_active() {
-                    crate::resource::mesh::merge_mesh(part, &rebased)?.retain();
-                } else { part.merge(&rebased); }
-                if let Some(bounds) = rebased_bounds {
-                    union_bounds(&mut part.local_bounds, bounds);
-                }
-            }
-            None => {
-                rebased.local_bounds = rebased_bounds;
-                crate::resource::reserve_headers(&mut parts, 1)?.retain();
-                parts.push(rebased);
-            }
-        }
-        Ok(parts)
     }
 }
 

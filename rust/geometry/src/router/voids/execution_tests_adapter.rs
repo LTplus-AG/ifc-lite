@@ -3,6 +3,12 @@
 use super::*;
 
 impl GeometryRouter {
+    pub(in crate::router::voids) fn apply_void_context_borrowed(
+        &self, mesh: Mesh, context: &VoidContext, id: u32,
+    ) -> Result<Mesh> {
+        crate::program::openings::execute::execute_borrowed(mesh, context, id,
+            self.tessellation_quality, numerical_configuration()).publish(self)
+    }
     pub(in crate::router::voids) fn apply_void_context_inner(
         &self,
         mesh: Mesh,

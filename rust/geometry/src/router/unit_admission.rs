@@ -89,3 +89,13 @@ impl GeometryRouter {
         1.0
     }
 }
+
+impl GeometryRouter {
+    pub(crate) fn scale_mesh(&self,mesh:&mut crate::Mesh) { scale_mesh(mesh,self.unit_scale()); }
+}
+pub(crate) fn scale_mesh(mesh:&mut crate::Mesh,scale:f64) {
+    if scale != 1.0 {
+        let scale=scale as f32;
+        for position in &mut mesh.positions {*position *= scale;}
+    }
+}

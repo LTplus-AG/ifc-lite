@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Owned control flow and conditional source admission, without mesh execution.
 use super::*;
+use crate::processors::boolean::spine_plan::OperandRole;
 
 fn lower_owned(source: String, root: u32) -> BooleanSpinePlan {
     let mut decoder = EntityDecoder::new(&source).with_strict_reals();

@@ -17,6 +17,7 @@ pub(super) struct ProductState {
     pub(super) meshes: Vec<MeshData>,
     pub(super) occurrences: Vec<RawInstanceOccurrence>,
     pub(super) presentation_context: Option<std::sync::Arc<OwnedMeshProductionContext>>,
+    pub(super) pending_geometry:Option<super::session_inner::PendingGeometryAttempt>,
     protocol: Protocol,
     owner: Option<ProductOwner>,
     pending_adopted: bool,
@@ -77,7 +78,7 @@ impl ProductState {
         let scopes = scopes.complete();
         let mut state = Self { job: OwnedJob::new(job), stage, element_color: plan.element_color,
             keep_order, scopes: Some(scopes), hasher, meshes: Vec::new(), occurrences: Vec::new(),
-            presentation_context: None, protocol: Protocol::new(), owner, pending_adopted: false, terminal };
+            presentation_context: None, pending_geometry:None, protocol: Protocol::new(), owner, pending_adopted: false, terminal };
         if let Some(stop) = terminal { state.remember_stop(stop); }
         state
     }
@@ -88,6 +89,10 @@ impl ProductState {
         assert!(self.scopes.is_some(), "aborted product execution cannot resume");
         self.protocol.idle()?;
         if self.capture_stop() { return Ok(None); }
+        if let Some(attempt)=&mut self.pending_geometry {
+            let inner=attempt.request();
+            return Ok(Some(self.protocol.issue_inner(attempt.kind,inner)));
+        }
         let kind = match &mut self.stage {
             Stage::Complete => return Ok(None),
             Stage::Primary { strategy, layer_class } => WorkKind::Primary {
@@ -99,7 +104,10 @@ impl ProductState {
                 None => { self.stage = Stage::Complete; return Ok(None); }
             },
         };
-        Ok(Some(self.protocol.issue(kind)))
+        let mut attempt=super::session_inner::PendingGeometryAttempt::new(kind,&self.job);
+        let inner=attempt.request();
+        self.pending_geometry=Some(attempt);
+        Ok(Some(self.protocol.issue_inner(kind,inner)))
     }
 
     fn admit_owner(&mut self, decoder: &EntityDecoder, router: &GeometryRouter) -> Result<OwnerStamp, WorkError> {
@@ -126,8 +134,23 @@ impl ProductState {
         let mut scopes = session_state::ActiveScopes::new(self.scopes.take().expect("live scopes"));
         let execution = owner.work(decoder, router, |decoder, router| scopes.with_scope(|| {
             let order = TriangleOrderScope::new(router, self.keep_order);
-            let result = ifc_lite_geometry::ProcessorDispatchCapture::capture(||
-                session_work::execute(request.kind, &self.job, ctx, decoder, router));
+            let result = ifc_lite_geometry::ProcessorDispatchCapture::capture(|| {
+                let result=if let Some(inner)=request.inner {
+                    let reply=self.pending_geometry.as_mut().expect("open geometry attempt").program
+                        .execute_with_inputs(inner,router,decoder,Some(ctx.texture_index),Some(ctx.void_index)).expect("validated inner request");
+                    (request.kind.emitter(),super::session_protocol::WorkPayload::GeometryStep(reply,None))
+                } else if let Some(attempt)=self.pending_geometry.take() {
+                    (request.kind.emitter(),attempt.finish(&self.job,router))
+                } else { unreachable!("request owns an open geometry attempt") };
+                match ifc_lite_geometry::resource::check_current() {
+                    Ok(())=>result,
+                    Err(stop)=>match result {
+                        (emitter,super::session_protocol::WorkPayload::GeometryStep(reply,_))=>
+                            (emitter,super::session_protocol::WorkPayload::GeometryStep(reply,Some(stop))),
+                        (emitter,_) =>(emitter,super::session_protocol::WorkPayload::Stopped(stop)),
+                    },
+                }
+            });
             self.keep_order = order.finish();
             result
         }));
@@ -148,7 +171,7 @@ impl ProductState {
             return Err(Box::new(RejectedReply { error, reply }));
         }
         if let super::session_protocol::WorkPayload::Stopped(stop) = &reply.payload { self.remember_stop(*stop); }
-        if self.capture_stop() {
+        if !matches!(reply.payload,super::session_protocol::WorkPayload::GeometryStep(_,_)) && self.capture_stop() {
             self.protocol.accepted();
             return Ok(());
         }
@@ -156,7 +179,17 @@ impl ProductState {
         let mut scopes = session_state::ActiveScopes::new(self.scopes.take().expect("live scopes"));
         let (terminal, _) = owner.work(decoder, router, |decoder, router| scopes.with_scope(|| {
             let order = TriangleOrderScope::new(router, self.keep_order);
-            self.assemble_reply(reply, ctx, decoder, router);
+            match reply.payload {
+                super::session_protocol::WorkPayload::GeometryStep(inner,stop)=> {
+                    let program=&mut self.pending_geometry.as_mut().expect("open geometry attempt").program;
+                    program.accept(inner,router).expect("validated inner reply");
+                    if stop.is_some() || ifc_lite_geometry::resource::check_current().is_err() {
+                        program.cancel_with_reports(router).expect("validated cancellation router");
+                    }
+                    if let Some(stop)=stop {ifc_lite_geometry::resource::stop(stop);}
+                }
+                payload=>self.assemble_reply(WorkReply {payload,..reply},ctx,decoder,router),
+            }
             self.keep_order = order.finish();
             ifc_lite_geometry::resource::check_current().err()
         })).expect("accepted product assembly owner");
@@ -172,6 +205,10 @@ impl ProductState {
         self.protocol.before_accept(reply)?;
         let owner = self.owner.as_ref().ok_or(WorkError::WrongOwner)?.validate(decoder, router)?;
         if owner != reply.owner { return Err(WorkError::WrongOwner); }
+        if let super::session_protocol::WorkPayload::GeometryStep(inner,_)=&reply.payload {
+            self.pending_geometry.as_ref().ok_or(WorkError::WrongPayload)?.program
+                .validate_reply(inner,router).map_err(WorkError::Geometry)?;
+        }
         Ok(())
     }
 
@@ -184,7 +221,7 @@ impl ProductState {
     }
 
     pub fn finish(mut self, decoder: &EntityDecoder, router: &GeometryRouter) -> ProducedElementMeshes {
-        if self.capture_stop() { return self.finish_stopped(); }
+        if self.capture_stop() { return self.finish_stopped(decoder, router); }
         assert!(matches!(self.stage, Stage::Complete), "product work must finish before publication");
         assert!(self.scopes.is_some(), "aborted product execution cannot publish");
         self.protocol.idle().expect("outstanding product work cannot publish");
@@ -231,6 +268,8 @@ impl ProductState {
         let first = *self.terminal.get_or_insert(stop);
         ifc_lite_geometry::resource::stop(first);
         self.stage = Stage::Complete;
+        // Keep the dormant continuation until diagnostic-only cancellation
+        // can reinstall its actual product scopes and validate its owner.
         self.meshes.clear();
         self.occurrences.clear();
         self.hasher = None;
@@ -246,10 +285,23 @@ impl ProductState {
         }
         false
     }
-    fn finish_stopped(mut self) -> ProducedElementMeshes {
+    fn finish_stopped(mut self, decoder: &EntityDecoder, router: &GeometryRouter) -> ProducedElementMeshes {
         assert!(self.scopes.is_some(), "aborted product execution cannot publish");
         self.protocol.idle().expect("outstanding product work cannot publish");
-        if let Some(scopes) = &mut self.scopes { scopes.pending.publish_pending(); }
+        // Do not adopt ambient diagnostics here: this terminal continuation owns
+        // only the source evidence already accepted in its captured scopes.
+        let mut owner = self.owner.take().unwrap_or_else(||
+            ProductOwner::admit(decoder, router).expect("terminal diagnostic owner"));
+        let mut active = session_state::ActiveScopes::new(self.scopes.take().expect("terminal scopes"));
+        let mut attempt = self.pending_geometry.take();
+        let keep_order = self.keep_order;
+        owner.read_work(decoder, router, || active.with_scope(|| {
+            let order = TriangleOrderScope::new(router, keep_order);
+            if let Some(attempt) = &mut attempt { attempt.program.cancel_with_reports(router).expect("validated cancellation router"); }
+            let _ = order.finish();
+        })).expect("stable terminal diagnostic owner");
+        let mut scopes = active.complete();
+        scopes.pending.publish_pending();
         session_canonical::stopped_output()
     }
 

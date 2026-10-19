@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Actual packet admission and texture-channel invariants.
 use super::*;
-use std::sync::Arc;
+use std::{sync::Arc, cell::Cell, rc::Rc};
 use super::accounted_session_tests::{account, admitted_router};
 use super::session_tests::{SOURCE, assert_same, canonical, job, metadata, options};
 use ifc_lite_core::IfcSchema;
 use ifc_lite_geometry::{ExtrudedAreaSolidProcessor, GeometryProcessor, TessellationQuality};
 use ifc_lite_geometry::resource::{self, Cost, ResourceLimits};
 
-struct ChargedExtrusion;
+struct ChargedExtrusion { calls:Rc<Cell<usize>> }
 impl GeometryProcessor for ChargedExtrusion {
     fn supported_types(&self) -> Vec<IfcType> { vec![IfcType::IfcExtrudedAreaSolid] }
     fn process(&self, entity:&DecodedEntity, decoder:&mut EntityDecoder, schema:&IfcSchema,
         quality:TessellationQuality) -> ifc_lite_geometry::Result<Mesh> {
+        self.calls.set(self.calls.get()+1);
         resource::charge(Cost {work:1,..Cost::default()})?;
         ExtrudedAreaSolidProcessor::new(schema.clone()).process(entity,decoder,schema,quality)
     }
@@ -25,22 +26,31 @@ fn dormant_duplicate_and_rejected_actual_packets_do_not_double_charge_or_refund(
     let context=model.snapshot(OwnedMeshProductionData::default());
     let mut decoder=EntityDecoder::new(SOURCE);
     let mut router=admitted_router(&mut decoder);
-    router.register(Box::new(ChargedExtrusion));
+    let calls=Rc::new(Cell::new(0));
+    router.register(Box::new(ChargedExtrusion {calls:calls.clone()}));
     let entity=decoder.decode_by_id(10).unwrap();
     let expected=canonical(10,false);
     let account=account(ResourceLimits::default());
     account.scope(|| {
         let mut execution=OwnedProductExecution::new(&job(&entity,&metadata(10)),&context,
             &options(),&mut decoder,&router).unwrap();
-        let request=execution.request().unwrap().unwrap();
+        let mut request=execution.request().unwrap().unwrap();
         let dormant=account.usage();
         assert_eq!(execution.request().unwrap_err(),WorkError::Outstanding);
         assert_eq!(account.usage(),dormant);
-        let mut reply=execution.execute(request,&mut decoder,&router).unwrap();
+        let (mut reply,callback_dormant)=loop {
+            let before=account.usage();
+            let reply=execution.execute(request,&mut decoder,&router).unwrap();
+            if calls.get()==1 { break (reply,before) }
+            execution.accept(reply,&mut decoder,&router).unwrap();
+            request=execution.request().unwrap().expect("actual custom callback remains pending");
+        };
         let executed=account.usage();
-        assert!(executed.work>dormant.work,"actual canonical callback charged reached work");
+        assert!(executed.work>callback_dormant.work,"actual canonical callback charged reached work");
+        assert_eq!(calls.get(),1);
         assert_eq!(execution.execute(request,&mut decoder,&router).err(),Some(WorkError::AlreadyExecuted));
         assert_eq!(account.usage(),executed);
+        assert_eq!(calls.get(),1,"duplicate admission does not reenter the actual callback");
         let emitter=reply.emitter;
         reply.emitter=WorkEmitter::PlainParts;
         let rejected=execution.accept(reply,&mut decoder,&router).unwrap_err();

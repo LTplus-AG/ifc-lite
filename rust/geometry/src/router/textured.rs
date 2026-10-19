@@ -93,6 +93,12 @@ impl GeometryRouter {
             Option<crate::processors::texture::TextureAttachment>,
         )>,
     > {
-        crate::program::type_map::TypeMap::admit(rep_map, self, decoder)?.run(self, decoder, texture_index)
+        let mut program = crate::program::GeometryProgram::type_map_entity(rep_map.clone());
+        while let Some(request) = program.request().expect("synchronous TypeMap request") {
+            let reply = program.execute_with_textures(request, self, decoder, Some(texture_index))
+                .expect("synchronous TypeMap execution");
+            program.accept(reply, self).expect("synchronous TypeMap acceptance");
+        }
+        program.finish_type_parts()
     }
 }

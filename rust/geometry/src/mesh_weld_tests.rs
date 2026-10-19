@@ -235,7 +235,7 @@ fn deterministic_and_first_seen_order() {
     assert_eq!(i1, vec![0, 1, 0]);
 }
 
-/// #4122 — `weld_mesh` (called from `apply_placement`) is one of only two
+/// #4122 — `weld_mesh` (called from canonical product placement) is one of only two
 /// setters of `Mesh::welded_in_object_frame`, and it must stamp `true` even
 /// when the weld is a no-op (already-welded input): `build_mesh_data`'s
 /// debug_assert reads this bit to check the trust it places in

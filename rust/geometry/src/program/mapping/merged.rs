@@ -1,153 +1,182 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Merged-source consumer: errors remove path membership, child failures mark
-//! every enclosing source truncated, and cache admission precedes mapping bake.
-use super::{GeometryRouter, ItemIdentity, Path, representation, skipped, source};
-use crate::{Error, InstanceMeta, Mesh, Result, math::mat4};
-use crate::router::{frame_parts::SourceParts, transforms::instancing_enabled};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+//! Merged mapping control. Source, resources, merge, cache-copy and placement
+//! are separate consumed actions; polling performs owned control reductions.
+use super::{frames, GeometryRouter, ItemIdentity, Path, skipped};
+use crate::{Error, Mesh, Result};
+use crate::router::frame_parts::SourceParts;
+use ifc_lite_core::{DecodedEntity, IfcType};
+#[cfg(test)] use ifc_lite_core::EntityDecoder;
 use nalgebra::Matrix4;
-use crate::program::{ItemProgram, ItemListPolicy};
-use crate::resource::{self, Cost};
+use crate::program::ItemProgram;
+#[path = "merged_source.rs"] mod admission;
+#[path = "merged_ready.rs"] mod numerical;
+pub(crate) use admission::MergedSource;
+pub(crate) use numerical::MergedReady;
+use admission::{SourceAction, SourceValue};
+use numerical::{Place, Numerical};
 
 type Value = Result<(Vec<Mesh>, bool)>;
 struct Source {
-    id: u32, depth: usize, policy: bool,
-    transform: Option<Matrix4<f64>>,
-    items: ItemProgram,
-    parts: SourceParts, truncated: bool,
+    id:u32, depth:usize, policy:bool, transform:Option<Matrix4<f64>>,
+    items:ItemProgram, parts:SourceParts, truncated:bool,
 }
+struct Finish { id:u32, transform:Option<Matrix4<f64>>, truncated:bool }
 enum Frame {
-    Enter { item: DecodedEntity, depth: usize, policy: bool },
-    Exit { id: u32, policy: bool },
-    Source(Source),
-    AfterChild { parent: Source, item: ItemIdentity },
+    Enter { item:DecodedEntity, depth:usize, policy:bool }, Exit(u32), Source(Source),
+    AfterChild { parent:Source, item:ItemIdentity }, AwaitPlain { parent:Source, item:ItemIdentity },
 }
-impl Frame {
-    fn policy(&self) -> bool {
-        match self {
-            Self::Enter { policy, .. } | Self::Exit { policy, .. } => *policy,
-            Self::Source(source) | Self::AfterChild { parent: source, .. } => source.policy,
-        }
-    }
+enum Continuation { Merge(Source), Finish(Finish), Cache(Finish) }
+pub(crate) struct MergedWalk {
+    frames:frames::Frames<Frame>, value:Option<Value>, path:Path,
+    pending:Option<MergedSource>, ready:Option<MergedReady>, child:Option<(DecodedEntity,bool)>, continuation:Option<Continuation>,
 }
-pub(crate) struct MergedWalk { frames: Vec<Frame>, path: Path, value: Option<Value> }
+pub(crate) enum MergedPoll {
+    Source(MergedSource), Ready(MergedReady), Child { item:DecodedEntity, policy:bool }, Complete(Value),
+}
+pub(crate) struct MergedReply(Reply);
+enum Reply {
+    Admission(Result<frames::Admitted<Frame>>), Source { tag:u8, value:Result<SourceValue> },
+    Merged(Result<SourceParts>), Finished(Result<Vec<Mesh>>), Cloned(Result<Mesh>), Ready(Value),
+}
+impl MergedReply {
+    pub(crate) fn tag(&self) -> u8 { match &self.0 {
+        Reply::Admission(_) => 0, Reply::Source {tag,..} => 1+tag,
+        Reply::Merged(_) => 20, Reply::Finished(_) => 21, Reply::Cloned(_) => 22, Reply::Ready(_) => 23,
+    } }
+    #[cfg(test)]
+    pub(super) fn into_placed(self) -> Value { let Reply::Ready(value)=self.0 else {panic!("placement reply")};value }
+}
 impl MergedWalk {
-    pub(crate) fn new(item: &DecodedEntity, router: &GeometryRouter) -> Result<Self> {
-        resource::charge(Cost { work: 1, ..Cost::default() })?.retain();
-        let frames = if resource::is_active() {
-            let mut frames = Vec::new();
-            resource::reserve_headers(&mut frames, 1)?.retain();
-            frames.push(Frame::Enter { item: item.clone(), depth: 0, policy: router.unsupported_policy() });
-            frames
-        } else { vec![Frame::Enter { item: item.clone(), depth: 0, policy: router.unsupported_policy() }] };
-        Ok(Self { frames, path: Path::default(), value: None })
+    pub(crate) fn new(item:&DecodedEntity, router:&GeometryRouter) -> Result<Self> {
+        Ok(Self { frames:frames::Frames::new(Frame::Enter {item:item.clone(),depth:0,policy:router.unsupported_policy()}),
+            value:None,path:Path::default(),pending:None,ready:None,child:None,continuation:None })
     }
-    pub(crate) fn run(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>) -> Result<Vec<Mesh>> {
-        while self.advance(router, decoder) {
-            resource::check_current()?;
-        }
-        resource::check_current()?;
-        self.value.expect("completed mapped-source value").map(|(parts, _)| parts)
-    }
-    pub(super) fn advance(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>) -> bool {
-        let Some(frame) = self.frames.pop() else { return false };
-        if let Err(stop) = resource::check_current().and_then(|()| resource::charge(Cost { work: 1, ..Cost::default() }).map(|p| p.retain())) {
-            self.frames.clear(); self.value = Some(Err(stop.into())); return false;
-        }
-        router.with_unsupported_policy(frame.policy(), || self.step(frame, router, decoder));
-        true
-    }
-    fn push(&mut self, frame: Frame) {
-        if let Ok(permit) = resource::reserve_headers(&mut self.frames, 1) {
-            permit.retain(); self.frames.push(frame);
-        }
-    }
-    fn step(&mut self, frame: Frame, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>) {
-        match frame {
-            Frame::Enter { item, depth, policy } => {
-                if let Err(error) = resource::charge(Cost { occurrences: 1, ..Cost::default() }).map(|p| p.retain()).map_err(Error::from)
-                    .and_then(|()| Path::depth(depth, item.id)).and_then(|()| self.path.enter(item.id)) {
-                    self.value = Some(Err(error)); return;
-                }
-                self.push(Frame::Exit { id: item.id, policy });
-                if let Err(error) = self.enter(item, depth, router, decoder) { self.value = Some(Err(error)); }
+    pub(crate) fn poll(&mut self) -> MergedPoll {
+        loop {
+            // Backing/occurrence admission is explicit and precedes the next
+            // reached source, callback or numerical operation.
+            if let Some(admission)=self.frames.pending_admission() {
+                return MergedPoll::Source(MergedSource(SourceAction::Work(admission)));
             }
-            Frame::Exit { id, .. } => self.path.exit(id),
-            Frame::Source(mut state) => match state.items.next() {
-                Some(item) if item.ifc_type == IfcType::IfcMappedItem => {
-                    let depth = state.depth + 1;
-                    let policy = state.policy;
-                    self.push(Frame::AfterChild { parent: state, item: ItemIdentity::from(&item) });
-                    self.push(Frame::Enter { item, depth, policy });
+            if let Some(source)=self.pending.take() {return MergedPoll::Source(source)}
+            if let Some(ready)=self.ready.take() {return MergedPoll::Ready(ready)}
+            if let Some((item,policy))=self.child.take() {return MergedPoll::Child {item,policy}}
+            let frame=match self.frames.next(|frame|matches!(frame,Frame::Enter {..})) {
+                frames::Next::Admission(admission)=>return MergedPoll::Source(MergedSource(SourceAction::Work(admission))),
+                frames::Next::Frame(frame)=>Some(frame),frames::Next::Complete=>None,
+            };
+            let Some(frame)=frame else {return MergedPoll::Complete(self.value.take().expect("mapped source complete"))};
+            match frame {
+                Frame::Enter {item,depth,policy}=> {
+                    if let Err(error)=Path::depth(depth,item.id).and_then(|()|self.path.enter(item.id)) {
+                        self.value=Some(Err(error)); continue;
+                    }
+                    self.frames.push(Frame::Exit(item.id));
+                    self.pending=Some(MergedSource(SourceAction::MappingSource {item,depth,policy}));
                 }
-                Some(item) => {
-                    router.merge_source_item(&item, decoder, &mut state.parts, "mapped-source");
-                    self.push(Frame::Source(state));
+                Frame::Exit(id)=>self.path.exit(id),
+                Frame::Source(mut parent)=>match parent.items.next() {
+                    Some(item) if item.ifc_type==IfcType::IfcMappedItem=> {
+                        let depth=parent.depth+1;let policy=parent.policy;
+                        self.frames.push(Frame::AfterChild {parent,item:ItemIdentity::from(&item)});
+                        self.frames.push(Frame::Enter {item,depth,policy});
+                    }
+                    Some(item)=> {
+                        let policy=parent.policy;
+                        self.frames.push(Frame::AwaitPlain {parent,item:ItemIdentity::from(&item)});
+                        self.child=Some((item,policy));
+                    }
+                    None=> {
+                        self.continuation=Some(Continuation::Finish(Finish {id:parent.id,transform:parent.transform,truncated:parent.truncated}));
+                        self.ready=Some(MergedReady(Numerical::Finish(parent.parts)));
+                    }
+                },
+                Frame::AfterChild {mut parent,item}=>match self.value.take().expect("mapped child returned") {
+                    Ok((parts,truncated))=> {
+                        parent.truncated|=truncated;self.queue_merge(parent,parts,None);
+                    }
+                    Err(error)=> {
+                        parent.truncated=true;self.pending=Some(MergedSource(SourceAction::Dropped {parent,item,error}));
+                    }
+                },
+                Frame::AwaitPlain {..}=>panic!("mapping child must be accepted before polling"),
+            }
+        }
+    }
+    fn queue_merge(&mut self,mut parent:Source,incoming:Vec<Mesh>,rtc:Option<(f64,f64,f64)>) {
+        let parts=std::mem::take(&mut parent.parts);
+        self.continuation=Some(Continuation::Merge(parent));
+        self.ready=Some(MergedReady(Numerical::Merge {parts,incoming,rtc}));
+    }
+    pub(crate) fn accept(&mut self,reply:MergedReply,router:&GeometryRouter) {
+        match reply.0 {
+            Reply::Admission(value)=>if let Err(error)=self.frames.accept(value) {self.fail(error)},
+            Reply::Source {value:Err(error),..}=>self.value=Some(Err(error)),
+            Reply::Source {value:Ok(value),..}=>match value {
+                SourceValue::Next(source)=>self.pending=Some(source),
+                SourceValue::Source(mut source,representation)=> {
+                    source.policy=router.claim_unsupported_source(source.id,&representation);
+                    self.frames.push(Frame::Source(source));
                 }
-                None => self.value = Some(finish(state, router)),
+                SourceValue::Cached {mesh,id,transform}=> {
+                    self.continuation=Some(Continuation::Cache(Finish {id,transform,truncated:false}));
+                    self.ready=Some(MergedReady(Numerical::Clone(mesh)));
+                }
+                SourceValue::Place {finish,parts,instancing}=> {
+                    self.ready=Some(MergedReady(Numerical::Place(Place {parts,id:finish.id,transform:finish.transform,
+                        truncated:finish.truncated,instancing})));
+                }
+                SourceValue::Publish {finish,parts,instancing}=> {
+                    if parts.len()==1 {
+                        if let Err(error)=router.publish_mapped_source(finish.id,&parts[0],finish.truncated) {self.value=Some(Err(error));return}
+                    }
+                    self.ready=Some(MergedReady(Numerical::Place(Place {parts,id:finish.id,transform:finish.transform,
+                        truncated:finish.truncated,instancing})));
+                }
+                SourceValue::Dropped {parent,item,error}=> {
+                    router.with_unsupported_policy(parent.policy,||skipped(router,&item,&error,true));
+                    self.frames.push(Frame::Source(parent));
+                }
             },
-            Frame::AfterChild { mut parent, item } => {
-                match self.value.take().expect("mapped child returned") {
-                    Ok((parts, truncated)) => {
-                        parent.truncated |= truncated;
-                        for part in parts { parent.parts.merge(&part); }
-                    }
-                    Err(error) => {
-                        if resource::check_current().is_err() { return }
-                        parent.truncated = true; skipped(router, &item, &error, true);
-                    }
-                }
-                self.push(Frame::Source(parent));
+            Reply::Merged(Ok(parts))=> {
+                let Some(Continuation::Merge(mut parent))=self.continuation.take() else {panic!("merge continuation")};
+                parent.parts=parts;self.frames.push(Frame::Source(parent));
             }
+            Reply::Finished(Ok(parts))=> {
+                let Some(Continuation::Finish(finish))=self.continuation.take() else {panic!("finish continuation")};
+                self.pending=Some(MergedSource(SourceAction::Publish {finish,parts}));
+            }
+            Reply::Cloned(Ok(mesh))=> {
+                let Some(Continuation::Cache(finish))=self.continuation.take() else {panic!("cache continuation")};
+                self.pending=Some(MergedSource(SourceAction::PlaceCached {finish,mesh}));
+            }
+            Reply::Merged(Err(error))|Reply::Finished(Err(error))|Reply::Cloned(Err(error))=>self.fail(error),
+            Reply::Ready(value)=>self.value=Some(value),
         }
     }
-    fn enter(&mut self, item: DecodedEntity, depth: usize, router: &GeometryRouter,
-        decoder: &mut EntityDecoder<'_>) -> Result<()> {
-        resource::check_current()?;
-        let source = source(&item, decoder)?;
-        // Merged sources decode transforms BEFORE looking in either cache.
-        let transform = router.mapped_item_transform(&item, &source, decoder)?;
-        let cached = router.cached_mapped_source(source.id);
-        if let Some(mesh) = cached {
-            let cloned = if resource::is_active() {
-                let (mesh, permit) = resource::mesh::clone_mesh(&mesh)?; permit.retain(); mesh
-            } else { mesh.as_ref().clone() };
-            self.value = Some(Ok((place(vec![cloned], source.id, transform, router)?, false)));
-            return Ok(());
+    pub(crate) fn accept_child(&mut self,result:Result<Vec<Mesh>>,router:&GeometryRouter) {
+        // AwaitPlain is already admitted. Taking it is pure owned control.
+        let Some(Frame::AwaitPlain {parent,item})=self.frames.pop_control() else {panic!("pending mapped child")};
+        match result {
+            Ok(parts)=>self.queue_merge(parent,parts,Some(router.rtc_offset())),
+            Err(error)=>self.pending=Some(MergedSource(SourceAction::Dropped {parent,item,error})),
         }
-        let representation = representation(&source, decoder)?;
-        let items = ItemProgram::admit(&representation, decoder, ItemListPolicy::RequiredMap)?;
-        // Unlike the submesh consumer, claim AFTER this bulk item admission.
-        let policy = router.claim_unsupported_source(source.id, &representation);
-        self.push(Frame::Source(Source { id: source.id, depth, policy, transform,
-            items, parts: SourceParts::default(), truncated: false }));
-        Ok(())
     }
-}
-fn finish(state: Source, router: &GeometryRouter) -> Value {
-    resource::check_current()?;
-    let parts = state.parts.into_parts();
-    resource::check_current()?;
-    if parts.len() == 1 {
-        router.publish_mapped_source(state.id, &parts[0], state.truncated)?;
+    fn fail(&mut self,error:Error) {self.frames.clear();self.pending=None;self.ready=None;self.continuation=None;self.child=None;self.value=Some(Err(error));}
+    #[cfg(test)]
+    pub(crate) fn run(mut self,router:&GeometryRouter,decoder:&mut EntityDecoder<'_>)->Result<Vec<Mesh>> {
+        loop {match self.poll() {
+            MergedPoll::Source(source)=> {let reply=source.execute(router,decoder);self.accept(reply,router);}
+            MergedPoll::Ready(ready)=>self.accept(ready.execute(),router),
+            MergedPoll::Child {item,policy}=> {
+                let result=router.with_unsupported_policy(policy,||crate::program::GeometryProgram::item(item,router.rtc_offset()).drain(router,decoder));
+                self.accept_child(result.map(|mesh|vec![mesh]),router);
+            }
+            MergedPoll::Complete(value)=>{crate::resource::check_current()?;return value.map(|(parts,_)|parts)}
+        }}
     }
-    Ok((place(parts, state.id, state.transform, router)?, state.truncated))
-}
-fn place(mut parts: Vec<Mesh>, id: u32, transform: Option<Matrix4<f64>>, router: &GeometryRouter) -> Result<Vec<Mesh>> {
-    if resource::is_active() {
-        let work = parts.iter().try_fold(0u64, |n, mesh| n.checked_add(mesh.positions.len() as u64));
-        let work = work.ok_or_else(resource::overflow)?;
-        resource::charge(Cost { work, ..Cost::default() })?;
+    #[cfg(test)]
+    pub(super) fn advance(&mut self,router:&GeometryRouter,decoder:&mut EntityDecoder<'_>)->bool {
+        match self.poll() {MergedPoll::Source(source)=> {self.accept(source.execute(router,decoder),router);true},_=>panic!("source boundary")}
     }
-    let mut local_rm = None;
-    if let Some(mut transform) = transform {
-        router.scale_transform(&mut transform);
-        if instancing_enabled() { local_rm = Some(mat4::from_na(&transform)); }
-        for part in &mut parts { router.transform_mesh_local(part, &transform); }
-    }
-    if instancing_enabled() && parts.len() == 1 {
-        parts[0].instance_meta = Some(InstanceMeta { transform: mat4::IDENTITY,
-            local_transform: local_rm, canonical_transform: None, rep_identity: id as u128, instanceable: true });
-    }
-    Ok(parts)
 }

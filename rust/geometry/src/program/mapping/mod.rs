@@ -1,16 +1,20 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Demand-driven mapped-source control. Frames own decoded source and policy;
 //! each step borrows live execution owners and installs no retained guard.
+mod frames;
 mod merged;
 mod submeshes;
 mod occurrence;
+pub(crate) use occurrence::keep_rebase_in_origin;
+mod store;
+pub(crate) use store::MappingStore;
 use crate::{Error, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, MAX_MAPPED_ITEM_DEPTH, slot};
 use crate::GeometryRouter;
 use rustc_hash::FxHashSet;
 
-pub(crate) use merged::MergedWalk;
-pub(crate) use submeshes::SubmeshWalk;
+pub(crate) use merged::{MergedWalk, MergedPoll, MergedSource, MergedReady, MergedReply};
+pub(crate) use submeshes::{SubmeshWalk, SubmeshPoll, SubmeshSource, SubmeshReady, SubmeshReply, admit_styled_output};
 
 #[derive(Default)]
 struct Path { ids: FxHashSet<u32> }
@@ -42,7 +46,7 @@ pub(in crate::program) fn representation(source: &DecodedEntity, decoder: &mut E
     decoder.resolve_ref(attribute)?.ok_or_else(|| Error::geometry("Failed to resolve MappedRepresentation".to_string()))
 }
 
-struct ItemIdentity {
+pub(crate) struct ItemIdentity {
     // Retained for diagnostics; feature-off release builds compile out every read.
     #[cfg_attr(not(any(debug_assertions, feature = "observability")), allow(dead_code))]
     id: u32,

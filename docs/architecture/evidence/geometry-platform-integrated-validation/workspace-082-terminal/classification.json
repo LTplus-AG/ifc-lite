@@ -1,0 +1,28 @@
+{
+  "source": "082aab27df3b2a2550d29510798c0a7cea5a9b23",
+  "job": "3f4fe221-d5a8-43c9-95d6-dbd116545dc6",
+  "exit": 101,
+  "source_unchanged": true,
+  "output_sha256": "13233ef676632303736c445d579c3e73f4d70533f83052960800f65422c4972d",
+  "failed_targets": [
+    "geometry lib",
+    "router_construction_allocations",
+    "processing lib",
+    "function_length_ratchet",
+    "positional_read_ratchet",
+    "retained_admission_policy"
+  ],
+  "compile": "completed test profile in22m06s",
+  "latest_assembly": "not qualified by this older execution",
+  "sdk_geometry": "not qualified; no actualSDKworker environment supplied",
+  "triage": {
+    "epsilon": "498->480 preservation refactor committedfee20",
+    "boolean_and_opening_budget_setup": "source adaptations in innerdc5; UNRUN",
+    "duplicate_prewarm_test": "impossible premise corrected6f delivery; coreguardpreserved",
+    "positional_literal_source_read": "old literal no longer in current6f source",
+    "function_length": "inner source refactor; must rerun actualgate",
+    "allocation": "active production lazyownership investigation",
+    "resource_and_material_cursor": "active current-source investigation"
+  },
+  "clippy": "not part of this command; latest all-target Clippy UNRUN"
+}

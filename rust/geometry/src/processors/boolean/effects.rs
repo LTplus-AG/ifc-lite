@@ -2,17 +2,38 @@
 //! Source-free numerical effect recorder. It owns only the ordered Boolean log;
 //! kernel state and census remain in their existing caller scopes.
 use crate::{BoolFailure, BoolFailureReason, BoolOp};
-use std::cell::RefCell;
+use std::cell::{OnceCell,RefCell};
+use std::sync::{Arc,Mutex};
 
 #[derive(Default)]
 pub(crate) struct NumericalEffects {
     failures: RefCell<Vec<BoolFailure>>,
+    unwind:OnceCell<FailureSink>,
+}
+/// Owned diagnostic authority only. It contains no recorder/schema/source and
+/// holds no lock guard between polls or during numerical execution.
+#[derive(Clone,Default)]
+pub(crate) struct FailureSink(Arc<Mutex<Vec<BoolFailure>>>);
+impl FailureSink{
+    pub(crate) fn absorb_failures(&self,failures:Vec<BoolFailure>){
+        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner).extend(failures);
+    }
+    fn take(&self)->Vec<BoolFailure>{
+        std::mem::take(&mut*self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner))
+    }
 }
 impl NumericalEffects {
+    pub(crate) fn unwind_sink(&self)->FailureSink{self.unwind.get_or_init(FailureSink::default).clone()}
+    fn flush_unwind(&self){
+        if let Some(sink)=self.unwind.get(){let reached=sink.take();
+            if !reached.is_empty(){self.failures.borrow_mut().extend(reached);}}
+    }
     pub(crate) fn take_failures(&self) -> Vec<BoolFailure> {
+        self.flush_unwind();
         std::mem::take(&mut *self.failures.borrow_mut())
     }
     pub(crate) fn record_failure(&self, op: BoolOp, reason: BoolFailureReason) {
+        self.flush_unwind();
         self.failures.borrow_mut().push(BoolFailure::new(op, reason));
     }
 
@@ -22,11 +43,13 @@ impl NumericalEffects {
     /// with it. Takes the drained `Vec` rather than the producer, so one
     /// method covers every transient kind.
     pub(crate) fn absorb_failures(&self, failures: Vec<BoolFailure>) {
+        self.flush_unwind();
         self.failures.borrow_mut().extend(failures);
     }
 
     /// A mark in the failure log, for [`Self::rewind_to`].
     pub(crate) fn failure_mark(&self) -> usize {
+        self.flush_unwind();
         self.failures.borrow().len()
     }
 
@@ -48,6 +71,7 @@ impl NumericalEffects {
     /// `CutterUnionUnavailable` the union attempt alone can see) must be
     /// recorded AFTER the rewind, not before it.
     pub(crate) fn rewind_to(&self, mark: usize) {
+        self.flush_unwind();
         self.failures.borrow_mut().truncate(mark);
     }
 

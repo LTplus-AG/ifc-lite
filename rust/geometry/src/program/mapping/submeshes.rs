@@ -1,139 +1,277 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Submesh-source consumer. Failed descendants keep their admitted path ids as
-//! the previous source walk did; successful children receive mapping transforms
-//! over exactly the submesh range they appended, after their whole return.
-use super::{GeometryRouter, ItemIdentity, Path, occurrence, skipped};
-use crate::{Result, SubMeshCollection};
+//! Styled mapping continuation. Source admissions, child execution and numerical
+//! range transforms are distinct owned actions; no router borrow survives poll.
+use super::{frames, GeometryRouter, ItemIdentity, Path, occurrence, skipped, MappingStore};
+#[path="submesh_source.rs"] mod source_admission;
+#[path="submesh_ready.rs"] mod numerical;
+use crate::{Error, Mesh, Result, SubMeshCollection};
 use crate::processors::texture::ResolvedTextureMap;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rustc_hash::FxHashMap;
 use crate::program::{ItemProgram, ItemListPolicy};
 use crate::resource::{self, Cost};
+use crate::router::frame_parts::SourceParts;
+use nalgebra::Matrix4;
 
-struct Source {
+pub(crate) struct Source {
     item_id: u32, depth: usize, policy: bool, start: usize,
-    admission: occurrence::Admission,
-    items: ItemProgram,
+    admission: occurrence::Admission, items: ItemProgram,
 }
+struct Shared { source: Source, parts: SourceParts }
 enum Frame {
     Enter { item: DecodedEntity, depth: usize, policy: bool, allow_instancing: bool },
-    Source(Source),
-    AfterChild { parent: Source, item: ItemIdentity, start: usize },
+    Source(Source), AfterChild { parent: Source, item: ItemIdentity, start: usize },
+    AwaitPlain { item: ItemIdentity, depth: usize, policy: bool },
+    Shared(Shared), AwaitShared { shared: Shared, item: ItemIdentity },
 }
-impl Frame {
-    fn policy(&self) -> bool {
-        match self {
-            Self::Enter { policy, .. } => *policy,
-            Self::Source(source) | Self::AfterChild { parent: source, .. } => source.policy,
-        }
-    }
+pub(crate) enum SubmeshPoll {
+    Source(SubmeshSource), Ready(SubmeshReady),
+    Child { item: DecodedEntity, policy: bool, shared: bool },
+    Complete(Result<SubMeshCollection>),
 }
-pub(crate) struct SubmeshWalk { frames: Vec<Frame>, path: Path, value: Option<Result<()>> }
+pub(crate) struct SubmeshSource(SourceAction);
+struct Entering {
+    item:DecodedEntity,depth:usize,policy:bool,allow_instancing:bool,start:usize,
+    source:Option<DecodedEntity>,representation:Option<DecodedEntity>,transform:Option<Matrix4<f64>>,
+}
+enum SourceAction {
+    Work(frames::Admission<Frame>),
+    MappingSource(Entering), Representation(Entering), Transform(Entering), Eligibility(Entering), Template(Entering,Option<u32>),
+    Claim(Source), Items(Source), Placeholder(Source), SharedItems(Source), SharedFinished { source:Source, parts:Vec<Mesh> },
+    Finish { source: Source, nonempty: bool },
+    Dropped { parent: Source, item: ItemIdentity, error: Error },
+}
+pub(crate) struct Range { meshes: SubMeshCollection, transform: Option<Matrix4<f64>>, start: usize,
+    retag: Option<u32>, placeholder: Option<(u32, u32)>, finish: bool }
+pub(crate) enum SubmeshReady {
+    Range(Range), Append {meshes:SubMeshCollection,incoming:SubMeshCollection,rtc:Option<(f64,f64,f64)>},
+    MergeShared {parts:SourceParts,incoming:Vec<Mesh>,rtc:(f64,f64,f64)}, FinishShared(SourceParts),
+}
+enum ReadyNext { Source(Source), Finish(Source), Placeholder(u32), PlainDone, Shared(Source), SharedFinish(Source) }
+pub(crate) struct SubmeshReply { value:Reply, tag:u8 }
+impl SubmeshReply {pub(crate) fn tag(&self)->u8 {self.tag}}
+enum Reply { Next(SubmeshSource), Work(Result<frames::Admitted<Frame>>), SharedMerged(SourceParts), SharedFinished(Vec<Mesh>), Admitted(Source), Entered(Source), Claimed(Source), SharedClaim(Source), Source(Source), Shared(Shared),
+    Publish {source:Source,parts:Vec<Mesh>}, Commit { source: Source, nonempty: bool }, Dropped { parent: Source, item: ItemIdentity, error: Error },
+    Transformed { meshes: SubMeshCollection }, Fault(Error) }
+pub(crate) struct SubmeshWalk {
+    frames: frames::Frames<Frame>, path: Path, value: Option<Result<()>>, meshes: SubMeshCollection,
+    pending: Option<SubmeshSource>, ready: Option<SubmeshReady>, ready_next: Option<ReadyNext>, child:Option<(DecodedEntity,bool,bool)>,
+}
 impl SubmeshWalk {
     pub(crate) fn new(item: &DecodedEntity, allow_instancing: bool, router: &GeometryRouter) -> Result<Self> {
-        resource::charge(Cost { work: 1, ..Cost::default() })?.retain();
-        let frames = if resource::is_active() {
-            let mut frames = Vec::new();
-            resource::reserve_headers(&mut frames, 1)?.retain();
-            frames.push(Frame::Enter { item: item.clone(), depth: 0, policy: router.unsupported_policy(), allow_instancing });
-            frames
-        } else { vec![Frame::Enter { item: item.clone(), depth: 0, policy: router.unsupported_policy(), allow_instancing }] };
-        Ok(Self { frames, path: Path::default(), value: None })
+        Ok(Self { frames:frames::Frames::new(Frame::Enter {item:item.clone(),depth:0,policy:router.unsupported_policy(),allow_instancing}),
+            path:Path::default(),value:None,meshes:SubMeshCollection::new(),pending:None,ready:None,ready_next:None,child:None })
     }
-    pub(crate) fn run(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>,
-        meshes: &mut SubMeshCollection, textures: Option<&FxHashMap<u32, ResolvedTextureMap>>) -> Result<()> {
-        let start = meshes.len();
-        while self.advance(router, decoder, meshes, textures) {
-            if let Err(stop) = resource::check_current() { meshes.sub_meshes.truncate(start); return Err(stop.into()) }
-        }
-        if let Err(stop) = resource::check_current() { meshes.sub_meshes.truncate(start); return Err(stop.into()) }
-        self.value.expect("completed submesh-source value")
-    }
-    pub(super) fn advance(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>,
-        meshes: &mut SubMeshCollection, textures: Option<&FxHashMap<u32, ResolvedTextureMap>>) -> bool {
-        let Some(frame) = self.frames.pop() else { return false };
-        if let Err(stop) = resource::check_current().and_then(|()| resource::charge(Cost { work: 1, ..Cost::default() }).map(|p| p.retain())) {
-            self.frames.clear(); self.value = Some(Err(stop.into())); return false;
-        }
-        router.with_unsupported_policy(frame.policy(), || self.step(frame, router, decoder, meshes, textures));
-        true
-    }
-    fn push(&mut self, frame: Frame) {
-        if let Ok(permit) = resource::reserve_headers(&mut self.frames, 1) {
-            permit.retain(); self.frames.push(frame);
-        }
-    }
-    fn step(&mut self, frame: Frame, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>,
-        meshes: &mut SubMeshCollection, textures: Option<&FxHashMap<u32, ResolvedTextureMap>>) {
-        match frame {
-            Frame::Enter { item, depth, allow_instancing, .. } => {
-                let result = resource::charge(Cost { occurrences: 1, ..Cost::default() })
-                    .map(|p| p.retain()).map_err(crate::Error::from).and_then(|()| Path::depth(depth, item.id)).and_then(|()| {
-                    if item.ifc_type == IfcType::IfcMappedItem {
-                        self.path.enter(item.id)?;
-                        self.enter(item, depth, allow_instancing, router, decoder, meshes, textures)
-                    } else {
-                        plain(&item, depth, router, decoder, meshes, textures)?;
-                        self.value = Some(Ok(()));
-                        Ok(())
+    pub(crate) fn poll(&mut self) -> SubmeshPoll {
+        loop {
+            if let Some(work)=self.frames.pending_admission() {return SubmeshPoll::Source(SubmeshSource(SourceAction::Work(work)))}
+            if let Some(source)=self.pending.take() {return SubmeshPoll::Source(source)}
+            if let Some(ready)=self.ready.take() {return SubmeshPoll::Ready(ready)}
+            if let Some((item,policy,shared))=self.child.take() {return SubmeshPoll::Child {item,policy,shared}}
+            let frame=match self.frames.next(|frame|matches!(frame,Frame::Enter {..})) {
+                frames::Next::Admission(work)=>return SubmeshPoll::Source(SubmeshSource(SourceAction::Work(work))),
+                frames::Next::Frame(frame)=>frame,
+                frames::Next::Complete=>return SubmeshPoll::Complete(self.value.take().expect("completed styled source")
+                    .map(|()|std::mem::take(&mut self.meshes))),
+            };
+            match frame {
+                Frame::Enter { item, depth, policy, allow_instancing } => {
+                    let result=Path::depth(depth,item.id);
+                    if let Err(error) = result { self.value = Some(Err(error)); continue }
+                    if item.ifc_type != IfcType::IfcMappedItem {
+                        self.push(Frame::AwaitPlain { item: ItemIdentity::from(&item), depth, policy });
+                        self.child=Some((item,policy,false));continue;
                     }
-                });
-                // Compatibility: a failed mapped admission does not erase its
-                // path id. Later siblings can encounter it as a cycle.
-                if let Err(error) = result { self.value = Some(Err(error)); }
+                    if let Err(error) = self.path.enter(item.id) { self.value = Some(Err(error)); continue }
+                    return SubmeshPoll::Source(SubmeshSource(SourceAction::MappingSource(Entering {item,depth,policy,allow_instancing,
+                        start:self.meshes.len(),source:None,representation:None,transform:None})));
+                }
+                Frame::Source(mut parent) => match parent.items.next() {
+                    Some(item) => {
+                        let depth = parent.depth + 1; let policy = parent.policy;
+                        let start = self.meshes.len();
+                        self.push(Frame::AfterChild { parent, item: ItemIdentity::from(&item), start });
+                        self.push(Frame::Enter { item, depth, policy, allow_instancing: false });
+                    }
+                    None => {
+                        let mut transform = parent.admission.transform;
+                        // Already scaled at admission; Ready never owns the router.
+                        let retag = (parent.admission.solid_id.is_some() && parent.admission.template).then_some(parent.admission.source_id);
+                        if retag.is_none() { transform = None; }
+                        let start = parent.start;
+                        self.ready_next = Some(ReadyNext::Finish(parent));
+                        return SubmeshPoll::Ready(SubmeshReady::Range(Range { meshes: std::mem::take(&mut self.meshes), transform,
+                            start, retag, placeholder: None, finish: true }));
+                    }
+                },
+                Frame::AfterChild { parent, item, start } => match self.value.take().expect("submesh child returned") {
+                    Ok(()) => {
+                        let transform = parent.admission.transform;
+                        self.ready_next = Some(ReadyNext::Source(parent));
+                        return SubmeshPoll::Ready(SubmeshReady::Range(Range { meshes: std::mem::take(&mut self.meshes),
+                            transform, start, retag: None, placeholder: None, finish: false }));
+                    }
+                    Err(error) => return SubmeshPoll::Source(SubmeshSource(SourceAction::Dropped { parent, item, error })),
+                },
+                Frame::Shared(mut shared) => match shared.source.items.next() {
+                    Some(item) if item.ifc_type != IfcType::IfcMappedItem => {
+                        let policy = shared.source.policy;
+                        self.push(Frame::AwaitShared { shared, item: ItemIdentity::from(&item) });
+                        self.child=Some((item,policy,true));continue;
+                    }
+                    Some(_) => self.placeholder_ready(shared.source), // Explicit flat-source guard: no partial cache.
+                    None => {
+                        self.ready_next=Some(ReadyNext::SharedFinish(shared.source));
+                        return SubmeshPoll::Ready(SubmeshReady::FinishShared(shared.parts));
+                    }
+                },
+                Frame::AwaitPlain { .. } | Frame::AwaitShared { .. } => panic!("mapping child must be accepted before polling"),
             }
-            Frame::Source(mut parent) => match parent.items.next() {
-                Some(item) => {
-                    let depth = parent.depth + 1;
-                    let policy = parent.policy;
-                    self.push(Frame::AfterChild { parent, item: ItemIdentity::from(&item), start: meshes.len() });
-                    self.push(Frame::Enter { item, depth, policy, allow_instancing: false });
+        }
+    }
+    fn placeholder_ready(&mut self, source: Source) {
+        self.ready_next = Some(ReadyNext::Placeholder(source.item_id));
+        self.ready = Some(SubmeshReady::Range(Range { meshes: std::mem::take(&mut self.meshes), transform: source.admission.transform,
+            start: 0, retag: None, placeholder: Some((source.admission.solid_id.expect("placeholder solid"), source.admission.source_id)),
+            finish: false }));
+    }
+    pub(crate) fn accept(&mut self, reply: SubmeshReply, router: &GeometryRouter, store: &mut MappingStore) {
+        match reply.value {
+            Reply::Next(source)=>self.pending=Some(source),
+            Reply::Work(reply)=>if let Err(error)=self.frames.accept(reply) {self.fail(error)},
+            Reply::SharedMerged(parts)=> {
+                let Some(ReadyNext::Shared(source))=self.ready_next.take() else {panic!("shared merge continuation")};
+                self.push(Frame::Shared(Shared {source,parts}));
+            }
+            Reply::SharedFinished(parts)=> {
+                let Some(ReadyNext::SharedFinish(source))=self.ready_next.take() else {panic!("shared finish continuation")};
+                self.pending=Some(SubmeshSource(SourceAction::SharedFinished {source,parts}));
+            }
+            Reply::Admitted(source) if source.admission.solid_id.is_some() && !source.admission.template => {
+                self.pending = Some(SubmeshSource(SourceAction::Placeholder(source)));
+            }
+            Reply::Admitted(source) => self.pending = Some(SubmeshSource(SourceAction::Claim(source))),
+            Reply::Entered(source) if source.admission.solid_id.is_some() && !source.admission.template => {
+                // Initial placeholder admission needs the reached recovery-cache read.
+                // A returned empty item cursor means that read has completed.
+                self.placeholder_ready(source);
+            }
+            Reply::Entered(source) => self.pending = Some(SubmeshSource(SourceAction::Claim(source))),
+            Reply::Claimed(mut source) => {
+                source.policy = router.claim_unsupported_source(source.admission.source_id, &source.admission.representation);
+                self.pending = Some(SubmeshSource(SourceAction::Items(source)));
+            }
+            Reply::SharedClaim(mut source) => {
+                source.policy = router.claim_unsupported_source(source.admission.source_id, &source.admission.representation);
+                self.pending = Some(SubmeshSource(SourceAction::SharedItems(source)));
+            }
+            Reply::Publish {source,parts} => {
+                if let Err(error) = router.publish_shared_source_parts(source.admission.source_id, parts) {
+                    self.value = Some(Err(error)); return;
                 }
-                None => {
-                    if resource::check_current().is_err() { return }
-                    occurrence::retag_template(&parent.admission, parent.start, meshes, router);
-                    self.path.exit(parent.item_id);
-                    self.value = Some(Ok(()));
-                }
-            },
-            Frame::AfterChild { parent, item, start } => {
-                match self.value.take().expect("submesh child returned") {
-                    Ok(()) => occurrence::transform_children(parent.admission.transform, start, meshes, router),
-                    Err(error) => {
-                        if resource::check_current().is_err() { return }
-                        skipped(router, &item, &error, false);
-                    }
-                }
+                self.placeholder_ready(source);
+            }
+            Reply::Commit { source, nonempty } => {
+                occurrence::commit(&source.admission, nonempty, router, store);
+                occurrence::release(&source.admission, store);
+                self.path.exit(source.item_id); self.value = Some(Ok(()));
+            }
+            Reply::Dropped { parent, item, error } => {
+                router.with_unsupported_policy(parent.policy, || skipped(router, &item, &error, false));
                 self.push(Frame::Source(parent));
             }
+            Reply::Source(source) => self.push(Frame::Source(source)),
+            Reply::Shared(shared) => self.push(Frame::Shared(shared)),
+            Reply::Transformed { meshes } => {
+                self.meshes = meshes;
+                match self.ready_next.take().expect("pending mapping numerical continuation") {
+                    ReadyNext::Source(source) => self.push(Frame::Source(source)),
+                    ReadyNext::Finish(source) => {
+                        let nonempty = self.meshes.sub_meshes[source.start..].iter().any(|sub| !sub.mesh.is_empty());
+                        self.pending = Some(SubmeshSource(SourceAction::Finish { source, nonempty }));
+                    }
+                    ReadyNext::Placeholder(id) => { self.path.exit(id); self.value = Some(Ok(())); }
+                    ReadyNext::PlainDone=>self.value=Some(Ok(())),
+                    _=>panic!("wrong styled numerical result"),
+                }
+            }
+            Reply::Fault(error) => self.value = Some(Err(error)),
         }
     }
-    #[allow(clippy::too_many_arguments)] // Reached source admission borrows execution services only for this step.
-    fn enter(&mut self, item: DecodedEntity, depth: usize, allow_instancing: bool,
-        router: &GeometryRouter, decoder: &mut EntityDecoder<'_>, meshes: &mut SubMeshCollection,
-        textures: Option<&FxHashMap<u32, ResolvedTextureMap>>) -> Result<()> {
-        let admission = occurrence::admit(&item, depth, allow_instancing, textures, router, decoder)?;
-        if occurrence::placeholder(&admission, meshes, router, decoder)? {
-            self.path.exit(item.id);
-            self.value = Some(Ok(()));
-            return Ok(());
+    pub(crate) fn accept_child(&mut self,result:Result<SubMeshCollection>,router:&GeometryRouter) {
+        let Frame::AwaitPlain {item,depth,policy}=self.frames.pop_control().expect("pending styled child") else {panic!("wrong styled child")};
+        match result {
+            Ok(output)=> {
+                self.ready_next=Some(ReadyNext::PlainDone);
+                self.ready=Some(SubmeshReady::Append {meshes:std::mem::take(&mut self.meshes),incoming:output,
+                    rtc:(depth>0).then(||router.rtc_offset())});
+            }
+            Err(error)=> {
+                router.with_unsupported_policy(policy,||skipped(router,&item,&error,false));
+                self.value=Some(Ok(()));
+            }
         }
-        let start = meshes.len();
-        // Submeshes claim BEFORE their optional bulk item-list admission.
-        let policy = router.claim_unsupported_source(admission.source_id, &admission.representation);
-        let items = ItemProgram::admit(&admission.representation, decoder, ItemListPolicy::OptionalMap)?;
-        self.push(Frame::Source(Source { item_id: item.id, depth, policy, start, admission,
-            items }));
-        Ok(())
+    }
+    pub(crate) fn accept_shared_child(&mut self, result: Result<Vec<Mesh>>, router: &GeometryRouter) {
+        let Frame::AwaitShared { shared, item } = self.frames.pop_control().expect("pending shared child") else { panic!("wrong shared child") };
+        match result {
+            Ok(parts) => {
+                self.ready_next=Some(ReadyNext::Shared(shared.source));
+                self.ready=Some(SubmeshReady::MergeShared {parts:shared.parts,incoming:parts,rtc:router.rtc_offset()});return;
+            },
+            Err(error) => router.with_unsupported_policy(shared.source.policy, || skipped(router, &item, &error, false)),
+        }
+        self.push(Frame::Shared(shared));
+    }
+    fn push(&mut self,frame:Frame) {self.frames.push(frame)}
+    fn fail(&mut self,error:Error) {self.frames.clear();self.pending=None;self.ready=None;self.child=None;self.ready_next=None;self.value=Some(Err(error));}
+    #[cfg(test)]
+    pub(crate) fn run(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>, meshes: &mut SubMeshCollection,
+        textures: Option<&FxHashMap<u32, ResolvedTextureMap>>) -> Result<()> {
+        let mut store = MappingStore::default();
+        loop {
+            let reply = match self.poll() {
+                SubmeshPoll::Source(source) => source.execute(router, decoder, textures, &mut store),
+                SubmeshPoll::Ready(ready) => ready.execute(),
+                SubmeshPoll::Child { item, policy, shared } => {
+                    if shared {
+                        let result = router.with_unsupported_policy(policy, || {
+                            crate::program::GeometryProgram::item(item.clone(), router.rtc_offset()).drain(router, decoder).map(|mesh| vec![mesh])
+                        }); self.accept_shared_child(result, router);
+                    } else {
+                        let mut output = SubMeshCollection::new();
+                        let result = router.with_unsupported_policy(policy, || plain(&item, 0, router, decoder, &mut output, textures));
+                        self.accept_child(result.map(|()| output), router);
+                    }
+                    continue;
+                }
+                SubmeshPoll::Complete(result) => {
+                    resource::check_current()?;
+                    let mut output = result?;
+                    resource::reserve_headers(&mut meshes.sub_meshes, output.len())?.retain();
+                    meshes.sub_meshes.append(&mut output.sub_meshes); return Ok(())
+                }
+            }; self.accept(reply, router, &mut store);
+        }
+    }
+    #[cfg(test)]
+    pub(super) fn advance(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>,
+        _: &mut SubMeshCollection, textures: Option<&FxHashMap<u32, ResolvedTextureMap>>) -> bool {
+        match self.poll() {
+            SubmeshPoll::Source(source) => { let mut store = MappingStore::default();
+                self.accept(source.execute(router, decoder, textures, &mut store), router, &mut store); true }
+            _ => panic!("test advance requires source boundary"),
+        }
     }
 }
+#[cfg(test)]
 fn plain(item: &DecodedEntity, depth: usize, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>,
     meshes: &mut SubMeshCollection, textures: Option<&FxHashMap<u32, ResolvedTextureMap>>) -> Result<()> {
     resource::check_current()?;
     if let Some(map) = textures.and_then(|index| index.get(&item.id)) {
         if let Some((mut mesh, uvs)) = router.textured_face_set(item, decoder, map, Some(router.rtc_offset())) {
-            if depth > 0 { router.keep_rebase_in_origin(&mut mesh); }
-            admit_output(&mesh, uvs.len(), meshes)?;
+            if depth > 0 { super::keep_rebase_in_origin(&mut mesh,router.rtc_offset()); }
+            admit_styled_output(&mesh, uvs.len(), meshes)?;
             meshes.add_textured(item.id, mesh, uvs, map.attachment());
             resource::check_current()?;
             return Ok(());
@@ -144,8 +282,8 @@ fn plain(item: &DecodedEntity, depth: usize, router: &GeometryRouter, decoder: &
     resource::check_current()?;
     match result {
         Ok(mut mesh) => {
-            if depth > 0 { router.keep_rebase_in_origin(&mut mesh); }
-            if !mesh.is_empty() { admit_output(&mesh, 0, meshes)?; meshes.add(item.id, mesh); }
+            if depth > 0 { super::keep_rebase_in_origin(&mut mesh,router.rtc_offset()); }
+            if !mesh.is_empty() { admit_styled_output(&mesh, 0, meshes)?; meshes.add(item.id, mesh); }
         }
         Err(error) => {
             router.record_unsupported_item(item.ifc_type.clone());
@@ -162,7 +300,7 @@ fn plain(item: &DecodedEntity, depth: usize, router: &GeometryRouter, decoder: &
     Ok(())
 }
 
-fn admit_output(mesh: &crate::Mesh, uv_len: usize, meshes: &mut SubMeshCollection) -> Result<()> {
+pub(crate) fn admit_styled_output(mesh: &crate::Mesh, uv_len: usize, meshes: &mut SubMeshCollection) -> Result<()> {
     if !resource::is_active() { return Ok(()) }
     let bytes = resource::mesh::MeshLengths::of(mesh).bytes().map_err(|_| resource::overflow())?;
     let uv_bytes = uv_len.checked_mul(4).and_then(|n| u64::try_from(n).ok()).ok_or_else(resource::overflow)?;

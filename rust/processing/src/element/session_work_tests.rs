@@ -3,7 +3,7 @@
 //! mutate canonical product presentation and hashing.
 use super::*;
 use super::session::ProductState;
-use super::session_protocol::{WorkEmitter, WorkError, WorkKind, WorkPayload};
+use super::session_protocol::{WorkEmitter, WorkError, WorkKind, WorkPayload, WorkRequest, WorkReply};
 use super::session_tests::{Context, SOURCE, assert_same, canonical, job, metadata, options, router};
 use ifc_lite_core::IfcSchema;
 use ifc_lite_geometry::{GeometryProcessor, ProcessorEmitterOrigin, TessellationQuality};
@@ -36,6 +36,23 @@ impl Harness {
         ProductState::new(&job(&entity,&metadata),&self.context.borrowed(),&options(),
             &mut self.decoder,&self.router)
     }
+    fn callback_request(&mut self, session:&mut ProductState)->WorkRequest {
+        super::session_tests::request_after_custom_admission(session,&self.context.borrowed(),&mut self.decoder,&self.router)
+    }
+    fn callback_packet(&mut self, session:&mut ProductState)->(WorkRequest,WorkReply) {
+        let request=self.callback_request(session);
+        let reply=session.execute(request,&self.context.borrowed(),&mut self.decoder,&self.router).unwrap();
+        (request,reply)
+    }
+    fn dispatch_packet(&mut self, session:&mut ProductState)->WorkReply {
+        for _ in 0..512 {
+            let request=session.request().unwrap().unwrap();
+            let reply=session.execute(request,&self.context.borrowed(),&mut self.decoder,&self.router).unwrap();
+            if reply.registry_emitters.iter().any(|emitter|emitter.origin()==ProcessorEmitterOrigin::Custom) { return reply }
+            session.accept(reply,&self.context.borrowed(),&mut self.decoder,&self.router).unwrap();
+        }
+        panic!("actual selected custom source admission was not reached");
+    }
     fn complete(&mut self,mut session:ProductState,id:u32) {
         while session.advance(&self.context.borrowed(),&mut self.decoder,&self.router) {}
         let actual=session.finish(&self.decoder,&self.router);
@@ -53,7 +70,7 @@ fn unassembled(session:&ProductState) {
 fn forged_and_duplicate_execution_never_reenter_registered_geometry() {
     let mut h=Harness::new();
     let mut session=h.session(10);
-    let request=session.request().unwrap().unwrap();
+    let request=h.callback_request(&mut session);
     assert_eq!(session.request().unwrap_err(),WorkError::Outstanding);
     let mut forged=request;
     forged.sequence+=1;
@@ -74,8 +91,8 @@ fn forged_and_duplicate_execution_never_reenter_registered_geometry() {
 fn rejected_emitter_trace_and_payload_return_the_original_real_packet_for_retry() {
     let mut h=Harness::new();
     let mut session=h.session(10);
-    let request=session.request().unwrap().unwrap();
-    let mut reply=session.execute(request,&h.context.borrowed(),&mut h.decoder,&h.router).unwrap();
+    let mut reply=h.dispatch_packet(&mut session);
+    assert_eq!(h.calls.get(),0,"source admission precedes the process callback");
     assert!(!reply.registry_emitters.is_empty(),"capture must witness the actual delegate");
     assert!(reply.registry_emitters.iter().any(|e|e.origin()==ProcessorEmitterOrigin::Custom&&e.family().is_none()));
     let emitter=reply.emitter;
@@ -98,7 +115,10 @@ fn rejected_emitter_trace_and_payload_return_the_original_real_packet_for_retry(
     let mut reply=rejected.reply;
     reply.payload=payload;
     session.accept(reply,&h.context.borrowed(),&mut h.decoder,&h.router).unwrap();
-    assert_eq!(h.calls.get(),1);
+    let callback=session.request().unwrap().unwrap();
+    let reply=session.execute(callback,&h.context.borrowed(),&mut h.decoder,&h.router).unwrap();
+    assert_eq!(h.calls.get(),1,"only the subsequently admitted process callback constructs geometry");
+    session.accept(reply,&h.context.borrowed(),&mut h.decoder,&h.router).unwrap();
     h.complete(session,10);
 }
 
@@ -107,8 +127,7 @@ fn wrong_decoder_and_router_cannot_assemble_but_legitimate_owner_can_retry() {
     let mut h=Harness::new();
     let mut wrong=Harness::new();
     let mut session=h.session(10);
-    let request=session.request().unwrap().unwrap();
-    let reply=session.execute(request,&h.context.borrowed(),&mut h.decoder,&h.router).unwrap();
+    let (_request,reply)=h.callback_packet(&mut session);
     let rejected=session.accept(reply,&h.context.borrowed(),&mut wrong.decoder,&h.router).unwrap_err();
     assert_eq!(rejected.error,WorkError::WrongOwner);
     unassembled(&session);
@@ -124,8 +143,7 @@ fn wrong_decoder_and_router_cannot_assemble_but_legitimate_owner_can_retry() {
 fn changed_quality_invalidates_packet_before_hashing_and_drop_releases_owners() {
     let mut h=Harness::new();
     let mut session=h.session(10);
-    let request=session.request().unwrap().unwrap();
-    let reply=session.execute(request,&h.context.borrowed(),&mut h.decoder,&h.router).unwrap();
+    let (_request,reply)=h.callback_packet(&mut session);
     h.router.set_tessellation_quality(TessellationQuality::Low);
     let rejected=session.accept(reply,&h.context.borrowed(),&mut h.decoder,&h.router).unwrap_err();
     assert_eq!(rejected.error,WorkError::WrongOwner);
@@ -144,7 +162,7 @@ fn competing_live_product_is_rejected_before_callback_and_can_resume_after_drop(
     let mut h=Harness::new();
     let mut first=h.session(10);
     let mut second=h.session(20);
-    let first_request=first.request().unwrap().unwrap();
+    let first_request=h.callback_request(&mut first);
     let second_request=second.request().unwrap().unwrap();
     let reply=first.execute(first_request,&h.context.borrowed(),&mut h.decoder,&h.router).unwrap();
     let calls=h.calls.get();
@@ -163,13 +181,15 @@ fn partial_router_admission_error_releases_decoder_and_shared_decoder_reserves_n
     let mut other=Harness::new();
     let mut first=h.session(10);
     let mut second=other.session(20);
-    let request=first.request().unwrap().unwrap();
+    let request=h.callback_request(&mut first);
     let reply=first.execute(request,&h.context.borrowed(),&mut h.decoder,&h.router).unwrap();
     let request=second.request().unwrap().unwrap();
     assert_eq!(second.execute(request,&other.context.borrowed(),&mut other.decoder,&h.router).err(),Some(WorkError::OwnerBusy));
     // Failed acquisition of the occupied router must release the independently
     // acquired decoder; retry on its free router executes real slab geometry.
-    let packet=second.execute(request,&other.context.borrowed(),&mut other.decoder,&other.router).unwrap();
+    let admitted=second.execute(request,&other.context.borrowed(),&mut other.decoder,&other.router).unwrap();
+    second.accept(admitted,&other.context.borrowed(),&mut other.decoder,&other.router).unwrap();
+    let (_,packet)=other.callback_packet(&mut second);
     let mut third_decoder=EntityDecoder::new(SOURCE);
     let third_router=router(&mut third_decoder);
     let mut dormant={
@@ -195,7 +215,7 @@ fn stale_session_packet_and_previously_accepted_ticket_cannot_append_again() {
     let mut other=Harness::new();
     let mut first=h.session(10);
     let mut second=other.session(20);
-    let first_request=first.request().unwrap().unwrap();
+    let first_request=h.callback_request(&mut first);
     let second_request=second.request().unwrap().unwrap();
     assert_eq!(second.execute(first_request,&other.context.borrowed(),&mut other.decoder,&other.router).err(),Some(WorkError::StaleTicket));
     assert_eq!(other.calls.get(),0);
@@ -204,9 +224,14 @@ fn stale_session_packet_and_previously_accepted_ticket_cannot_append_again() {
     assert_eq!(rejected.error,WorkError::StaleTicket);
     unassembled(&second);
     first.accept(rejected.reply,&h.context.borrowed(),&mut h.decoder,&h.router).unwrap();
+    let completed=super::session_tests::request_coarse_completion(&mut first,&h.context.borrowed(),&mut h.decoder,&h.router);
+    let completed=first.execute(completed,&h.context.borrowed(),&mut h.decoder,&h.router).unwrap();
+    first.accept(completed,&h.context.borrowed(),&mut h.decoder,&h.router).unwrap();
     let positions=first.meshes[0].positions.clone();
     let count=first.meshes.len();
-    let mut reply=second.execute(second_request,&other.context.borrowed(),&mut other.decoder,&other.router).unwrap();
+    let admitted=second.execute(second_request,&other.context.borrowed(),&mut other.decoder,&other.router).unwrap();
+    second.accept(admitted,&other.context.borrowed(),&mut other.decoder,&other.router).unwrap();
+    let (second_request,mut reply)=other.callback_packet(&mut second);
     // Reusing an accepted ticket with another genuine packet must not append
     // anything. Restore its ticket afterwards and complete its rightful owner.
     reply.request=first_request;

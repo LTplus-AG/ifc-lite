@@ -128,7 +128,7 @@ export interface TexturedMesh {
    *
    * `[0, 0, 0]` for the #961 orphan type-geometry path, whose positions are
    * already absolute (`transform_mesh_local`); non-zero for the #1793
-   * occurrence path (`apply_submesh_placement` → `transform_mesh_world`), which
+   * occurrence path (canonical submesh placement → `transform_mesh_world`), which
    * is what real exporters write. Dropping it drew every textured occurrence
    * collapsed toward the world origin (#1973).
    */

@@ -1,0 +1,18 @@
+{
+  "base": "a969cbcaf91c80c2133cbc23c54db6751fcbcd3e",
+  "head": "dc5e9f8f2de6ab0803b36b2e8b62e27ddb5a3546",
+  "tree": "2023a0ca7aed11542dd23e252c807a587d2a6aaf",
+  "branch": "t3/integrate-inner-program-delivery",
+  "checkout": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bbf5dd77",
+  "clean": true,
+  "delivery_source": "488d3369e16a9e2989cf6fb65870ab5213a8734f",
+  "delivery_original_base": "0c0e5734569b19f48eedc21703cdbf75d241a313",
+  "patch_sha256": "5035a0421cf94f2856ca1a9b849f37bef8fbdd31796e1b0622286799bed40b37",
+  "before_fs_provenance": "Clean initial763 checkout; every owned path byte-identical between763 and final parent a969, checked individually; absence represented by null",
+  "commits": [
+    "dc5e9f8f2de6ab0803b36b2e8b62e27ddb5a3546 Match Boolean volume to kernel grid and arm real isolated element budgets",
+    "13a50c06f7ae7d367754433afbe76d7d0e7f3b4f Specify the missing retained common-program value and acceptance contracts",
+    "5782570d6351fe2e3c25506a29d98f2d2e5113ba Preserve terminal mesh hygiene and document integrated sibling scope",
+    "7612faefeb3ddc90e9c92bae4f7f340100d18213 Integrate owned inner geometry execution and repair reviewed protocol boundaries"
+  ]
+}

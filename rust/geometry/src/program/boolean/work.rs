@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Owned numerical inputs and typed, consuming effect assembly. No source services.
-use crate::processors::boolean::{BooleanClippingProcessor, NumericalEffects,
+use crate::processors::boolean::{BooleanClippingProcessor, NumericalEffects,FailureSink,
     half_space_plan::HalfSpacePlan, polygonal_prism::BoundedPrismPlan,
     single_cutter_gate::SingleCutterSubtract,
     solid_execution::{SolidAdmission, SolidBooleanPlan}};
@@ -13,10 +13,13 @@ use crate::program::OwnedConstructor;
 pub(super) trait Execute: Sized {
     type Output;
     fn evaluate(self, recorder: &NumericalEffects) -> Self::Output;
+    #[cfg(test)]
     fn execute(self, unwind_target: &NumericalEffects) -> Completed<Self> {
-        // This owns only an initially allocation-free Vec log: no schema,
-        // source dispatcher, mutable global diagnostics or census drain.
-        // Kernel calls still run in the caller's existing scopes.
+        self.execute_owned(unwind_target.unwind_sink())
+    }
+    fn execute_owned(self,unwind_target:FailureSink)->Completed<Self>{
+        // The owned sink grants diagnostic authority only; kernel calls remain
+        // in their caller's existing lexical scopes.
         let effects = PendingEffects { local: NumericalEffects::default(), unwind_target };
         let value = self.evaluate(&effects.local);
         Completed { value, failures: effects.local.take_failures(), operation: std::marker::PhantomData }
@@ -26,11 +29,11 @@ pub(super) trait Execute: Sized {
 /// The numerical sink is source-free. On unwind, preserve records already
 /// produced just as the original direct recorder did. Normal completion drains
 /// the log into its owned receipt first, so this guard publishes nothing then.
-struct PendingEffects<'a> {
+struct PendingEffects {
     local: NumericalEffects,
-    unwind_target: &'a NumericalEffects,
+    unwind_target: FailureSink,
 }
-impl Drop for PendingEffects<'_> {
+impl Drop for PendingEffects {
     fn drop(&mut self) {
         let failures = self.local.take_failures();
         if !failures.is_empty() { self.unwind_target.absorb_failures(failures); }
@@ -131,6 +134,21 @@ impl Execute for Single {
     }
 }
 
+pub(super) struct SolidCheck {
+    pub plan: SolidBooleanPlan,
+    pub first: Mesh,
+    pub second: Mesh,
+    pub loss_recorded: bool,
+}
+impl Execute for SolidCheck {
+    type Output = Solid;
+    fn evaluate(self, _: &NumericalEffects) -> Solid {
+        let admission = self.plan.admit(&self.first, &self.second);
+        Solid { plan: self.plan, first: self.first, second: self.second,
+            loss_recorded: self.loss_recorded, admission }
+    }
+}
+
 pub(super) struct Solid {
     pub plan: SolidBooleanPlan,
     pub admission: SolidAdmission,
@@ -175,4 +193,87 @@ impl Execute for Voids {
     fn evaluate(self, recorder: &NumericalEffects) -> Self::Output {
         self.ready.subtract(self.outer, self.length_unit_scale, recorder, self.op, &self.operand_type)
     }
+}
+
+pub(super) struct KeptSide { pub host: Mesh, pub plane: HalfSpacePlan }
+impl Execute for KeptSide {
+    type Output = (Mesh, bool);
+    fn evaluate(self, _: &NumericalEffects) -> Self::Output {
+        let kept = crate::processors::boolean::polygonal_prism::host_stays_on_kept_side(
+            &self.host, self.plane.point, self.plane.normal, self.plane.agreement);
+        (self.host, kept)
+    }
+}
+
+/// The complete set of numerical operations admitted by Boolean control.
+/// No variant contains an entity, decoder, callback or source authority.
+pub(super) enum Ready {
+    Constructor(OwnedConstructor),
+    Plane(Plane),
+    Kept(KeptSide),
+    Prism(Prism),
+    Single(Single),
+    Solid(Solid),
+    SolidAdmission(SolidCheck),
+    Group(Group),
+    Shell(crate::processors::boolean::brep_voids::plan::ShellPlan),
+    Voids(Voids),
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Kind { Constructor, Plane, Kept, Prism, Single, Solid, SolidAdmission, Group, Shell, Voids }
+pub(super) enum Reply {
+    Constructor(Completed<OwnedConstructor>),
+    Plane(Completed<Plane>),
+    Kept(Completed<KeptSide>),
+    Prism(Completed<Prism>),
+    Single(Completed<Single>),
+    Solid(Completed<Solid>),
+    SolidAdmission(Completed<SolidCheck>),
+    Group(Completed<Group>),
+    Shell(Completed<crate::processors::boolean::brep_voids::plan::ShellPlan>),
+    Voids(Completed<Voids>),
+}
+impl Ready {
+    pub fn kind(&self) -> Kind {
+        match self { Self::Constructor(_) => Kind::Constructor, Self::Plane(_) => Kind::Plane,
+            Self::Kept(_) => Kind::Kept, Self::Prism(_) => Kind::Prism,
+            Self::Single(_) => Kind::Single, Self::Solid(_) => Kind::Solid,
+            Self::SolidAdmission(_) => Kind::SolidAdmission,
+            Self::Group(_) => Kind::Group, Self::Shell(_) => Kind::Shell, Self::Voids(_) => Kind::Voids }
+    }
+    pub fn execute(self, target: FailureSink) -> Reply {
+        match self {
+            Self::Constructor(op) => Reply::Constructor(op.execute_owned(target)),
+            Self::Plane(op) => Reply::Plane(op.execute_owned(target)),
+            Self::Kept(op) => Reply::Kept(op.execute_owned(target)),
+            Self::Prism(op) => Reply::Prism(op.execute_owned(target)),
+            Self::Single(op) => Reply::Single(op.execute_owned(target)),
+            Self::Solid(op) => Reply::Solid(op.execute_owned(target)),
+            Self::SolidAdmission(op) => Reply::SolidAdmission(op.execute_owned(target)),
+            Self::Group(op) => Reply::Group(op.execute_owned(target)),
+            Self::Shell(op) => Reply::Shell(op.execute_owned(target)),
+            Self::Voids(op) => Reply::Voids(op.execute_owned(target)),
+        }
+    }
+}
+impl Reply {
+    pub fn kind(&self) -> Kind {
+        match self { Self::Constructor(_) => Kind::Constructor, Self::Plane(_) => Kind::Plane,
+            Self::Kept(_) => Kind::Kept, Self::Prism(_) => Kind::Prism,
+            Self::Single(_) => Kind::Single, Self::Solid(_) => Kind::Solid,
+            Self::SolidAdmission(_) => Kind::SolidAdmission,
+            Self::Group(_) => Kind::Group, Self::Shell(_) => Kind::Shell, Self::Voids(_) => Kind::Voids }
+    }
+}
+pub(super) enum Continuation {
+    Operand { operand: ifc_lite_core::DecodedEntity, op: BoolOp },
+    Step(super::state::Steps),
+    SolidAdmission(super::state::Steps),
+    Kept { steps: super::state::Steps, operand: ifc_lite_core::DecodedEntity, plane: HalfSpacePlan },
+    Prism { steps: super::state::Steps, plane: HalfSpacePlan },
+    Single { steps: super::state::Steps, plane: HalfSpacePlan },
+    GroupPrism(super::state::GroupState),
+    Group { walk: super::state::Walk, mark: usize },
+    Shell(super::state::VoidsState),
+    Value,
 }

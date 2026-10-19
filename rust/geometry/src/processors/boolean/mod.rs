@@ -19,7 +19,7 @@ pub(crate) mod brep_voids;
 mod cut_heuristics;
 mod failures;
 mod effects;
-pub(crate) use effects::NumericalEffects;
+pub(crate) use effects::{NumericalEffects,FailureSink};
 pub(crate) mod operand;
 mod halfspace_cap;
 pub(crate) mod half_space_plan;
@@ -30,7 +30,9 @@ pub(crate) mod single_cutter_gate;
 pub(crate) mod solid_execution;
 mod polygonal_union;
 mod polygonal_group_execution;
+#[cfg(test)]
 mod polygonal_candidate;
+pub(crate) mod source_read;
 mod polygonal_removal;
 #[cfg(test)]
 use halfspace_cap::cap_half_space_clip;

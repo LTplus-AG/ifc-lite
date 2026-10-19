@@ -4,7 +4,7 @@
 use super::*;
 use super::session::ProductState;
 use super::session_protocol::WorkError;
-use super::session_tests::{Context,SOURCE,assert_same,canonical,job,metadata,options,router};
+use super::session_tests::{Context,SOURCE,assert_same,canonical,job,metadata,options,router,request_after_custom_admission};
 use ifc_lite_core::IfcSchema;
 use ifc_lite_geometry::{ExtrudedAreaSolidProcessor,GeometryProcessor,TessellationQuality};
 use std::{cell::{Cell,RefCell},panic::{catch_unwind,AssertUnwindSafe},rc::{Rc,Weak},
@@ -171,8 +171,8 @@ fn waiting_reply_carries_no_source_borrow_authority_and_private_sibling_cannot_s
     let mut outer=fixture.session(10);
     let mut sibling=fixture.session(50);
     let sibling_request=sibling.request().unwrap().unwrap();
-    let request=outer.request().unwrap().unwrap();
     let context=Context::default();
+    let request=request_after_custom_admission(&mut outer,&context.borrowed(),&mut fixture.decoder,&fixture.router);
     let reply=outer.execute(request,&context.borrowed(),&mut fixture.decoder,&fixture.router).unwrap();
     assert!(fixture.decoder.try_source_execution_lease().unwrap().is_none());
     assert_eq!(sibling.execute(sibling_request,&context.borrowed(),&mut fixture.decoder,&fixture.router).err(),Some(WorkError::OwnerBusy));
@@ -203,7 +203,7 @@ fn source_borrow_cannot_unlock_an_independently_reserved_fresh_worker_router() {
 fn scoped_worker_panic_releases_child_router_preserves_parent_until_unwind_and_expires_source_authority() {
     let mut fixture=Fixture::new(Mode::PanicChild);
     let mut session=fixture.session(10);
-    let request=session.request().unwrap().unwrap();
+    let request=request_after_custom_admission(&mut session,&Context::default().borrowed(),&mut fixture.decoder,&fixture.router);
     let panic=catch_unwind(AssertUnwindSafe(|| {
         let _=session.execute(request,&Context::default().borrowed(),&mut fixture.decoder,&fixture.router);
     }));

@@ -133,7 +133,7 @@ impl crate::program::openings::execute::Execution {
         clipper: &ClippingProcessor,
     ) -> crate::Result<()> {
         crate::resource::check_current()?;
-        let enabled = (self.configuration.coaxial_union)();
+        let enabled = self.configuration.coaxial_union.read();
         crate::resource::check_current()?;
         if !enabled || all_openings.len() < 2 {
             return Ok(());

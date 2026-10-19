@@ -79,7 +79,7 @@ impl GeometryRouter {
     /// different-content collision effectively impossible. O(verts) once per item,
     /// only on the opt-in instancing path.
     #[inline]
-    pub(super) fn compute_mesh_hash_full(mesh: &Mesh) -> u128 {
+    pub(crate) fn compute_mesh_hash_full(mesh: &Mesh) -> u128 {
         use rustc_hash::FxHasher;
         let mut a = FxHasher::default();
         let mut b = FxHasher::default();

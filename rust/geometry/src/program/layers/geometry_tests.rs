@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Independent shell-area/frame invariants for the canonical layer child.
 use super::*;
+use rustc_hash::FxHashMap;
 use crate::material_layer_index::LayerInfo;
 
 fn wall(scale: f64, translation: [f64; 3], rotated: bool) -> String {

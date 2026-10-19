@@ -140,11 +140,17 @@ fn stopped_valid_reply_cannot_assemble_after_an_earlier_type_map_was_accepted() 
     let context = ProductionModel::new().snapshot(OwnedMeshProductionData::default());
     let mut execution = crate::element::owned_session::OwnedProductExecution::new(
         &job, &context, &options(), &mut decoder, &router).unwrap();
-    assert!(execution.advance(&mut decoder, &router).unwrap());
+    while execution.state.meshes.is_empty() {
+        assert!(execution.advance(&mut decoder, &router).unwrap());
+    }
     assert_eq!(execution.state.meshes.len(), 1, "the first real map was already presented");
     assert!(!execution.state.meshes[0].positions.is_empty());
-    let request = execution.request().unwrap().unwrap();
-    let reply = execution.execute(request, &mut decoder, &router).unwrap();
+    let reply = loop {
+        let request = execution.request().unwrap().unwrap();
+        let reply = execution.execute(request, &mut decoder, &router).unwrap();
+        if calls.borrow().len() == 2 { break reply }
+        execution.accept(reply, &mut decoder, &router).unwrap();
+    };
     let account = ExecutionAccount::new(ExecutionPolicy::Compatibility);
     account.scope(|| {
         resource::stop(ProgramStop::Cancelled);
@@ -185,4 +191,62 @@ fn compatibility_terminal_is_owned_before_private_planning_epoch_can_replace_its
     assert!(decoder.try_execution_lease().is_ok());
     assert!(router.try_execution_lease().is_ok());
     assert!(resource::check_current().is_ok());
+}
+
+struct TrackedRefusedFace { lowered: Rc<Cell<usize>> }
+impl GeometryProcessor for TrackedRefusedFace {
+    fn supported_types(&self)->Vec<IfcType> {vec![IfcType::IfcAdvancedBrep]}
+    fn lower_owned(&self, entity:&DecodedEntity, decoder:&mut EntityDecoder,
+        quality:TessellationQuality, rtc:Option<(f64,f64,f64)>)
+        ->Option<ifc_lite_geometry::Result<ifc_lite_geometry::program::OwnedConstructor>> {
+        let result=ifc_lite_geometry::AdvancedBrepProcessor::new().lower_owned(entity,decoder,quality,rtc);
+        if result.is_some() {self.lowered.set(self.lowered.get()+1);}
+        result
+    }
+    fn process(&self, entity:&DecodedEntity, decoder:&mut EntityDecoder,
+        schema:&IfcSchema, quality:TessellationQuality)->ifc_lite_geometry::Result<Mesh> {
+        ifc_lite_geometry::AdvancedBrepProcessor::new().process(entity,decoder,schema,quality)
+    }
+}
+
+#[test]
+fn stop_between_source_and_numerical_poll_keeps_reports_owned_until_terminal_cancel() {
+    let source=SOURCE.replace("#13=IFCEXTRUDEDAREASOLID(#14,#5,#15,3.);", "#13=IFCADVANCEDBREP(#90);
+#90=IFCCLOSEDSHELL((#91));#91=IFCADVANCEDFACE((),#92,.T.);
+#92=IFCBSPLINESURFACEWITHKNOTS(1000000,1,((#999)),.UNSPECIFIED.,.F.,.F.,.F.,(2,2),(2,2),(0.,1.),(0.,1.),.UNSPECIFIED.);");
+    let mut decoder=EntityDecoder::new(&source);
+    let mut router=router(&mut decoder);
+    router.disable_content_dedup();
+    let final_hooks=Rc::new(Cell::new(0));
+    router.register(Box::new(LateStop {calls:Rc::new(RefCell::new(Vec::new())),
+        final_hooks:final_hooks.clone(),final_stop:false}));
+    let lowered=Rc::new(Cell::new(0));
+    router.register(Box::new(TrackedRefusedFace {lowered:lowered.clone()}));
+    let entity=decoder.decode_by_id(60).unwrap();
+    let metadata=metadata(60);
+    let mut job=job(&entity,&metadata);
+    job.kind=ElementJobKind::TypeProduct {rep_maps:plan_type_geometry(
+        &[61],&FxHashSet::default(),false,TypeGeometryMode::EmitTagged)};
+    let context=Context::default();
+    let mut state=ProductState::new(&job,&context.borrowed(),&options(),&mut decoder,&router);
+    while lowered.get()==0 {
+        assert!(state.advance(&context.borrowed(),&mut decoder,&router), "real refused-face source must be reached");
+    }
+    assert!(router.take_unsupported_items().is_empty(), "the owned source report has not been published");
+    assert!(!router.set_preserve_triangle_order(true));
+    let account=ExecutionAccount::new(ExecutionPolicy::Compatibility);
+    account.scope(|| {
+        resource::stop(ProgramStop::Cancelled);
+        assert!(state.request().unwrap().is_none());
+    });
+    assert!(state.pending_geometry.is_some(), "poll retains the actual diagnostic continuation");
+    assert!(router.take_unsupported_items().is_empty(), "poll never drains the owned source log");
+    assert!(state.request().unwrap().is_none(), "stop persists across resource epochs");
+    assert_empty(&state.finish(&decoder,&router));
+    assert_eq!(router.take_unsupported_items().get("IfcAdvancedFace"),Some(&1));
+    assert!(router.take_unsupported_items().is_empty(), "terminal cancellation forwards the report once");
+    assert!(router.set_preserve_triangle_order(false), "terminal cleanup restores caller triangle order");
+    assert_eq!(final_hooks.get(),0,"diagnostic cancellation does not invoke final geometry hooks");
+    assert!(decoder.try_execution_lease().is_ok());
+    assert!(router.try_execution_lease().is_ok());
 }

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Opening extraction invariant: reached root kernel evidence survives unwind.
-use super::{Configuration, Execution, NumericalOutcome};
+use super::{Configuration, Execution, GatePolicy, NumericalOutcome};
 use crate::{kernel::budget, GeometryRouter, Mesh, Point3, TessellationQuality};
 use std::{panic::{catch_unwind, AssertUnwindSafe}, sync::Arc};
 
 fn disabled() -> bool { false }
 fn configuration() -> Configuration {
-    Configuration { parametric: disabled, rectangular: disabled,
-        prism: disabled, coaxial_union: disabled }
+    Configuration { parametric: GatePolicy::Test(disabled), rectangular: GatePolicy::Test(disabled),
+        prism: GatePolicy::Test(disabled), coaxial_union: GatePolicy::Test(disabled) }
 }
 
 // The same closed off-grid flanking solids as the existing capped-cut witness.
@@ -46,7 +46,9 @@ fn opening_root_unwind_drains_real_capped_failure_and_preserves_payload_once() {
     if std::env::var_os(CHILD).is_none() {
         let name = "program::openings::execute::unwind_tests::opening_root_unwind_drains_real_capped_failure_and_preserves_payload_once";
         let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", name, "--nocapture"]).env(CHILD, "1").output().unwrap();
+            .args(["--exact", name, "--nocapture"]).env(CHILD, "1")
+            .env_remove("IFC_LITE_CSG_BUDGET").env_remove("IFC_LITE_CSG_ELEMENT_BUDGET")
+            .output().unwrap();
         assert!(output.status.success(), "{}\n{}", String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr));
         assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed; 0 failed"));
@@ -54,7 +56,8 @@ fn opening_root_unwind_drains_real_capped_failure_and_preserves_payload_once() {
     }
     let _lock = budget::GLOBAL_CAP_LOCK.lock().unwrap();
     let _restore = RestoreBudget { cap: budget::cap(), element: budget::element_cap() };
-    budget::set_cap(None);
+    // An unbounded per-boolean profile also disables the element cap.
+    budget::set_cap(Some(budget::DEFAULT_CAP));
     budget::set_element_cap(Some(1));
     budget::begin_element();
     crate::csg::take_csg_census();

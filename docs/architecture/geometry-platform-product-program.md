@@ -1,19 +1,23 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
-# Planned common ProductProgram
+# Common ProductProgram integration
 
-This is a planned extension of the [owned source/execution
+This records the implementation and remaining qualification of the [owned source/execution
 design](geometry-platform-source-execution.md),
 [canonical product session](geometry-platform-product-session.md), and
 [synchronous work boundary](geometry-platform-work-boundary.md). The current
 [capability inventory](geometry-platform-capabilities.md) describes implemented
-coverage. The types below describe the target architecture. The
+coverage. The types below retain the design requirements; source implementation is
+not runtime qualification. The
 [representation and constructor phase](geometry-platform-product-program-phase-one.md)
 is now integrated, including owned mapping control and opening-item probe policies.
 Its [delivery and integration evidence](evidence/geometry-platform-program/) keeps
 child qualification separate from current assembled-source checks. The integrated
 layers now include the owned boolean child, layer admission/slicing and late
-presentation packets. They are private synchronous seams; complete detached
-execution and production cutover remain unqualified.
+presentation packets. The common `GeometryProgram` now owns the inner requests
+consumed by every coarse `ProductState` geometry attempt and the public router
+drivers. Its source-free numerical envelope retains concrete recipes while child
+continuations stay executor-held. Arbitrary detached execution, runtime
+preservation and complete platform cutover remain unqualified.
 
 | Capability | Current assembled implementation | Remaining evidence or integration |
 | --- | --- | --- |
@@ -21,20 +25,20 @@ execution and production cutover remain unqualified.
 | Boolean and CSG | Owned continuation, numerical payloads, consuming effects and unwind preservation | Compile and run final source; corpus, WASM, exact determinism and whole-pool performance |
 | Material layers | Owned eligibility, late frame admission and decoder-free slicing | Run real layer/opening/RTC invariants and model comparisons |
 | Appearance and presentation | Late source admission and source-free packets retaining derived palette/rotation Arcs | Run interleaving, mutation, context-release and complete output comparisons |
-| Opening classification and application | Item probes integrated; full owned child delivered and independently reviewed | Port typed terminal propagation and preserve lazy numerical gates, then compile and qualify |
-| Source coherence | SourceBundle factories, duplicate-ID prepass compatibility and authenticated cache transfer integrated | Qualify the final combined native/browser source and invalidation/rejection behavior |
-| Resource admission | Accounted canonical production, ancestor stop precedence, partial-output suppression and checked diagnostic drain integrated | Run final stop/cache/worker invariants; complete numerical/profile/decoder allocation coverage remains absent |
-| Retained execution | Explicit evaluation contracts and primitive workers; unintegrated rectangle-evaluator candidate reviewed | Correct lifecycle/upload/completion ownership, complete authored regions and qualify actual SDK/consumer behavior |
+| Opening classification and application | Actual source/ready/geometry children and Arc-owned context consumed by common void/layer control | Run final source with original rollback, lazy gates and ordered diagnostic contracts |
+| Source coherence | Source-bundle factory, lifecycle and cache-provenance capabilities retained in actual canonical owner | Run duplicate-ID, mutation, authenticated cache and owner-replacement invariants on final source |
+| Resource admission | Existing source-bound account scopes and sticky terminal contract consumed across inner operations | Run terminal ancestor/foreign-worker preservation; no complete heap envelope claim |
+| Retained execution | Native/browser source-bound curved document evaluation is integrated independently | Common ProgramRequest/ProductState retained issuance and acceptance remain absent; source-only publication is not final-net and exact remains the permanent default |
+| Imported IFCX/USD geometry | Parent integrates source-neutral owned import operations independently | Connect concrete imported requests/results to the common product continuation without STEP IDs or a second composer; qualify all consumers |
 
 The older successful native, browser, Python and scene receipts qualify only
 their recorded predecessor source. The integrated layer and presentation sources,
 and the corrected boolean program, have no final compiled qualification yet.
 Storage admission refusals are retained as refusals, never passing test results.
-The first admitted combined workspace run at `0c0e573456` failed test compilation
-with missing test imports and a callback error-type mismatch. Those corrections
-leave geometry assertions and numerical algorithms unchanged. The
-[original failed receipt](evidence/geometry-platform-integrated-validation/initial-native/receipt.json)
-and output hash are preserved; no runtime pass follows from that run.
+The [retained continuation source design](geometry-platform-retained-program-continuation.md)
+records the missing contract-bearing program entry, processing-held pending
+transaction and browser dependency receipts; these remain unimplemented.
+
 The current task records and integration manifests live beside each layer's
 architecture evidence. Source review and syntax parsing do not authorize cutover.
 
@@ -57,14 +61,16 @@ qualification receipts describe their recorded source and remain unchanged.
   revision }`. New same-source snapshots preserve prior snapshots; explicit invalidation expires the
   prior source epoch. The identity is process-local authority, not a content hash or transport/load
   protocol. `appearance/owned_context.rs` also consumes snapshots. Keep these actual consumers.
-* [`session_work.rs`](../../rust/processing/src/element/session_work.rs) still calls whole router
-  functions for primary submeshes, type maps and fallback parts. That is the remaining coarse
-  boundary to replace. Calling those same functions behind a newly named generic command is not an
-  implementation of this design.
+* [`session_inner.rs`](../../rust/processing/src/element/session_inner.rs) owns each pending
+  geometry attempt. `session.rs` issues, executes and accepts its reached inner requests;
+  `session_work.rs` now contains the original coarse outcome types only. A completed attempt
+  enters the existing recovery/presentation boundary. Source-matched runtime qualification
+  remains required.
 * [`router/mapped_item.rs`](../../rust/geometry/src/router/mapped_item.rs) now drives owned
   `mapping/{merged,submeshes,occurrence}.rs` frames under one architecture, with distinct consumer
   policies. No decoder/router guard is stored. These already implement real mapping control, but
-  their `advance` methods still both admit source and execute numerics in the same synchronous step.
+  the common adapter now separates source admissions, numerical packets and child programs.
+  Router-local claim storage owns provisional non-Send tokens; continuations retain owned IDs.
 * [The boolean/CSG child](../../rust/geometry/src/program/boolean/mod.rs) owns
   control frames, path membership, visit counts, host meshes, empty flags, recovery and diagnostic
   marks. A short-lived driver borrows decoder/recorder; the owned child retains neither. Its
@@ -279,7 +285,7 @@ commit.
 
 ## Layer/opening state machines and their distinct empty contracts
 
-`try_layered_sub_meshes` is first in both styled entry modes. Preserve its ordered checks: attached
+The common layer attempt runs first in both styled entry modes. Preserve its ordered checks: attached
 buildup/sliceable -> fewer than two layers -> single-unshifted representation probe -> merge thin
 visual layers -> fewer than two visual layers -> merged base product with voids -> empty base ->
 placement-based planes -> numeric slice -> fewer than two resulting submeshes -> original

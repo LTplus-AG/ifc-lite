@@ -21,6 +21,7 @@ pub(super) struct WorkRequest {
     pub sequence: usize,
     pub kind: WorkKind,
     pub context:Option<ProductionContextId>,
+    pub inner:Option<ifc_lite_geometry::program::ProgramRequest>,
 }
 
 /// Generated at the actual contextual dispatch site. Nested processor identity
@@ -46,6 +47,7 @@ impl WorkKind {
 }
 
 pub(super) enum WorkPayload {
+    GeometryStep(ifc_lite_geometry::program::ProgramReply,Option<ifc_lite_geometry::resource::ProgramStop>),
     Stopped(ifc_lite_geometry::resource::ProgramStop),
     Primary(PrimaryOutcome),
     TypeMap(Option<Vec<TypePart>>),
@@ -53,7 +55,9 @@ pub(super) enum WorkPayload {
     PlainParts(Vec<Mesh>),
 }
 impl WorkPayload {
-    fn matches(&self, kind: WorkKind) -> bool {
+    fn matches(&self, request: WorkRequest) -> bool {
+        if request.inner.is_some() { return matches!(self,Self::GeometryStep(_,_)|Self::Stopped(_)); }
+        let kind=request.kind;
         matches!((self, kind),
             (Self::Stopped(_), _) |
             (Self::Primary(_), WorkKind::Primary { .. }) |
@@ -86,7 +90,7 @@ impl std::fmt::Debug for RejectedReply {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum WorkError { Outstanding, StaleTicket, AlreadyExecuted, NotExecuted, WrongEmitter, WrongPayload, WrongOwner, OwnerBusy, WrongContext, StaleSource, MismatchedSource }
+pub(super) enum WorkError { Geometry(ifc_lite_geometry::program::ProgramError), Outstanding, StaleTicket, AlreadyExecuted, NotExecuted, WrongEmitter, WrongPayload, WrongOwner, OwnerBusy, WrongContext, StaleSource, MismatchedSource }
 
 pub(super) struct Protocol {
     session: usize,
@@ -112,8 +116,14 @@ impl Protocol {
     pub fn issue(&mut self, kind: WorkKind) -> WorkRequest {
         self.idle().expect("one outstanding product work item");
         self.sequence = self.sequence.checked_add(1).expect("product work sequence exhausted");
-        let request = WorkRequest { session: self.session, sequence: self.sequence, kind, context:self.context };
+        let request = WorkRequest { session: self.session, sequence: self.sequence, kind, context:self.context, inner:None };
         self.pending = Some((request, false));
+        request
+    }
+    pub fn issue_inner(&mut self,kind:WorkKind,inner:Option<ifc_lite_geometry::program::ProgramRequest>)->WorkRequest {
+        let mut request=self.issue(kind);
+        request.inner=inner;
+        self.pending=Some((request,false));
         request
     }
     pub fn before_execute(&self, request: WorkRequest) -> Result<(), WorkError> {
@@ -138,7 +148,7 @@ impl Protocol {
         }
         if reply.emitter != reply.request.kind.emitter() { return Err(WorkError::WrongEmitter); }
         if reply.registry_emitters != self.registry_emitters { return Err(WorkError::WrongEmitter); }
-        if !reply.payload.matches(reply.request.kind) { return Err(WorkError::WrongPayload); }
+        if !reply.payload.matches(reply.request) { return Err(WorkError::WrongPayload); }
         Ok(())
     }
     pub fn accepted(&mut self) { self.pending = None; self.registry_emitters.clear(); }

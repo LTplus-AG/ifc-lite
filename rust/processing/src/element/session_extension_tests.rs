@@ -64,10 +64,10 @@ ENDSEC;END-ISO-10303-21;";
     let mut session=ProductState::new(&job,&context,&MeshProductionOptions::default(),
         &mut decoder,&router);
     assert!(router.set_preserve_triangle_order(true),"planning restores ambient mode");
-    assert!(session.advance(&context,&mut decoder,&router));
+    while prior.borrow().is_empty() { assert!(session.advance(&context,&mut decoder,&router)); }
     assert_eq!(&*prior.borrow(),&[false]);
     assert!(router.set_preserve_triangle_order(true),"first map restores ambient mode");
-    assert!(session.advance(&context,&mut decoder,&router));
+    while prior.borrow().len()<2 { assert!(session.advance(&context,&mut decoder,&router)); }
     assert_eq!(&*prior.borrow(),&[false,true],"second map sees the first constructor's element-local mutation");
     assert!(router.set_preserve_triangle_order(true),"second map restores ambient mode");
     while session.advance(&context,&mut decoder,&router) {

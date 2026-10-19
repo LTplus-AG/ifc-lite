@@ -68,6 +68,18 @@ pub trait GeometryProcessor {
         None
     }
 
+    /// Admit an owned recursive program through the actual selected processor.
+    /// The default retains extension callback dispatch.
+    fn lower_program(&self, _entity: &DecodedEntity, _quality: TessellationQuality)
+        -> Option<crate::program::GeometryProgram> {
+        None
+    }
+
+    /// Actual Boolean effect emitter used by admitted recursive programs.
+    fn boolean_recorder(&self) -> Option<&crate::processors::BooleanClippingProcessor> {
+        None
+    }
+
     /// Get supported IFC types
     fn supported_types(&self) -> Vec<IfcType>;
 

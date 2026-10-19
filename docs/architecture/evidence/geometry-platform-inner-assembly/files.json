@@ -1,0 +1,1532 @@
+[
+  {
+    "path": "docs/architecture/geometry-platform-product-program.md",
+    "status": "M",
+    "before_git_blob": "d7489b3be9d45f682cd7c668ed513683b434d444",
+    "before_git_sha256": "932aba41b9acb825c2ae45ce58e3a16f090d55c44e3bdaf61ff52be63c6311d6",
+    "before_fs_sha256": "932aba41b9acb825c2ae45ce58e3a16f090d55c44e3bdaf61ff52be63c6311d6",
+    "after_git_blob": "e5cba1d541247846a16e5d8b79a97aaacfe416cb",
+    "after_git_sha256": "bcef8c5ae2514cfacf31e0c8a6a634ca411476f6078682d0f51729d7a0b503be",
+    "after_fs_sha256": "bcef8c5ae2514cfacf31e0c8a6a634ca411476f6078682d0f51729d7a0b503be"
+  },
+  {
+    "path": "docs/architecture/geometry-platform-retained-program-continuation.md",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "d55d6138d5d88ad2fd4c355199faf1f6f4359334",
+    "after_git_sha256": "5e5c918dd5e97b87a05f3089a1e9c588bdae15d85a63ed69c7eb809dfa809fc5",
+    "after_fs_sha256": "5e5c918dd5e97b87a05f3089a1e9c588bdae15d85a63ed69c7eb809dfa809fc5"
+  },
+  {
+    "path": "packages/renderer/src/scene.ts",
+    "status": "M",
+    "before_git_blob": "4335a3ca14d4d149233b330ce86126cd1f8d1711",
+    "before_git_sha256": "caebe27bcc305b2e9750b7f30a4d4f8dfe4573a31acd3552589ee21eb625bfd2",
+    "before_fs_sha256": "caebe27bcc305b2e9750b7f30a4d4f8dfe4573a31acd3552589ee21eb625bfd2",
+    "after_git_blob": "0a4b979064c31f6f2258779aa56fdb55bbbfb79f",
+    "after_git_sha256": "f9bd6388f4198f2f2ae4ab32f01b3ef7852e7df15add4713309d80d330cc9d96",
+    "after_fs_sha256": "f9bd6388f4198f2f2ae4ab32f01b3ef7852e7df15add4713309d80d330cc9d96"
+  },
+  {
+    "path": "rust/geometry/src/csg/plane_eps.rs",
+    "status": "M",
+    "before_git_blob": "9e44b6ee346d6bae1ace4bea8895752e4c92c486",
+    "before_git_sha256": "2973608ca5ac94275972fc8c8ce54b33e7c4cde47dbad2c5638c7c51e5827d2c",
+    "before_fs_sha256": "2973608ca5ac94275972fc8c8ce54b33e7c4cde47dbad2c5638c7c51e5827d2c",
+    "after_git_blob": "8e367508713396667903e305d0b7dd8c47055b9b",
+    "after_git_sha256": "18e5270899b4303ad07ee705dac3b7e02e764ea015d625250c1d264208279f60",
+    "after_fs_sha256": "18e5270899b4303ad07ee705dac3b7e02e764ea015d625250c1d264208279f60"
+  },
+  {
+    "path": "rust/geometry/src/mesh.rs",
+    "status": "M",
+    "before_git_blob": "c1bbd55575d329fd0b6173da23f8b32ad2b670aa",
+    "before_git_sha256": "3bdba7e0d78533a1b6f538fa132aa4a2ddd91e2f8070d7cdc048347a828090ac",
+    "before_fs_sha256": "3bdba7e0d78533a1b6f538fa132aa4a2ddd91e2f8070d7cdc048347a828090ac",
+    "after_git_blob": "8f8f2db862b88a56b454a51e2de802bb49b824c4",
+    "after_git_sha256": "261edb586db4fc9e43d0b288d49964580f7e85688ca046aaa29511e47e657f8f",
+    "after_fs_sha256": "261edb586db4fc9e43d0b288d49964580f7e85688ca046aaa29511e47e657f8f"
+  },
+  {
+    "path": "rust/geometry/src/mesh_weld.rs",
+    "status": "M",
+    "before_git_blob": "db4ebedba1aab719d9dd174c03587d0c4c005a05",
+    "before_git_sha256": "5adabaa788d0b1c0937f45f4197c870a51510e2878c8331f5442b0f04d6f92ac",
+    "before_fs_sha256": "5adabaa788d0b1c0937f45f4197c870a51510e2878c8331f5442b0f04d6f92ac",
+    "after_git_blob": "789d7ff4f1c44d524014be763781eb72373d2ae8",
+    "after_git_sha256": "8561585bf3c402cb0cb9d7fe7b6343e952ec03bd6420bb3d139fb67ece43e26b",
+    "after_fs_sha256": "8561585bf3c402cb0cb9d7fe7b6343e952ec03bd6420bb3d139fb67ece43e26b"
+  },
+  {
+    "path": "rust/geometry/src/mesh_weld_tests.rs",
+    "status": "M",
+    "before_git_blob": "0066aff90fcf714d1cc18c70b70e682615fa5183",
+    "before_git_sha256": "1d14d0a3d19c28c7704a031232750a177624c8e8c0ccbabd48c9d6f91a604a31",
+    "before_fs_sha256": "1d14d0a3d19c28c7704a031232750a177624c8e8c0ccbabd48c9d6f91a604a31",
+    "after_git_blob": "2d38bc19de131828197d05382e9eb8011d8ff346",
+    "after_git_sha256": "9dfb38d76f0018179691839e8259bec8d187c2a4ffbe39b0b50d3560d51853a8",
+    "after_fs_sha256": "9dfb38d76f0018179691839e8259bec8d187c2a4ffbe39b0b50d3560d51853a8"
+  },
+  {
+    "path": "rust/geometry/src/processors/boolean/effects.rs",
+    "status": "M",
+    "before_git_blob": "8b59de1f602e57a7a04461586b1837d134d5ea0a",
+    "before_git_sha256": "a5aabbb4b0d82e40e840958752bf586b0190472ec766d39b58dbea73712fcf09",
+    "before_fs_sha256": "a5aabbb4b0d82e40e840958752bf586b0190472ec766d39b58dbea73712fcf09",
+    "after_git_blob": "453d89026790aeda835958ea8393ad3b3afa2524",
+    "after_git_sha256": "22f24a3db8b32de198403f7f60ac70068f3cdb5f495f4ec06e67b767f7afa246",
+    "after_fs_sha256": "22f24a3db8b32de198403f7f60ac70068f3cdb5f495f4ec06e67b767f7afa246"
+  },
+  {
+    "path": "rust/geometry/src/processors/boolean/failures.rs",
+    "status": "M",
+    "before_git_blob": "f7835803666932091d75d083aba041a4ab850077",
+    "before_git_sha256": "22ea0d44fff0f8ed589d7589868b2a515d1f0fac3f945485df5350e91c9d3bf9",
+    "before_fs_sha256": "22ea0d44fff0f8ed589d7589868b2a515d1f0fac3f945485df5350e91c9d3bf9",
+    "after_git_blob": "d910f7dd94436130fbe968978c38d6cf37ca3df6",
+    "after_git_sha256": "11d33b012d403eba3d96182c7395d9c0ccaec6f7d3e5362bf69dfeb13b81ab57",
+    "after_fs_sha256": "11d33b012d403eba3d96182c7395d9c0ccaec6f7d3e5362bf69dfeb13b81ab57"
+  },
+  {
+    "path": "rust/geometry/src/processors/boolean/mod.rs",
+    "status": "M",
+    "before_git_blob": "95b0c5b378d0e519077be5cba541e17193af00ea",
+    "before_git_sha256": "7b7e0e196471d06306fc741e2a5c99b577bf4a241c270879ba754894270cfaab",
+    "before_fs_sha256": "7b7e0e196471d06306fc741e2a5c99b577bf4a241c270879ba754894270cfaab",
+    "after_git_blob": "d6be110535dbac5df68032686e0aeea9ca90d6f7",
+    "after_git_sha256": "8f735b58f67d2238266065e9ba2c07ff0dad41a6dfc491a87714918baeb479b9",
+    "after_fs_sha256": "8f735b58f67d2238266065e9ba2c07ff0dad41a6dfc491a87714918baeb479b9"
+  },
+  {
+    "path": "rust/geometry/src/processors/boolean/source_read.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "f5424abf1eaa6cb5c95894146b590e764f927bb4",
+    "after_git_sha256": "35d69e3d71405d715c1b8bf88169bd581efe53689235295600ca08560db08da3",
+    "after_fs_sha256": "35d69e3d71405d715c1b8bf88169bd581efe53689235295600ca08560db08da3"
+  },
+  {
+    "path": "rust/geometry/src/processors/boolean/spine_plan.rs",
+    "status": "M",
+    "before_git_blob": "061f5be7df78b10ac5ba5e6147256353e60c7650",
+    "before_git_sha256": "ee695f4f0ec48156f53648f5aac69c7e0b5b4431000281222b1840da59177a47",
+    "before_fs_sha256": "ee695f4f0ec48156f53648f5aac69c7e0b5b4431000281222b1840da59177a47",
+    "after_git_blob": "183de37c588c2458a6e0b2210bd1d7b9d6aa27b1",
+    "after_git_sha256": "ad957b4441e5259c755f6e9429c30db7b0134554fe0356d1f116bc9af473b7e1",
+    "after_fs_sha256": "ad957b4441e5259c755f6e9429c30db7b0134554fe0356d1f116bc9af473b7e1"
+  },
+  {
+    "path": "rust/geometry/src/processors/boolean/spine_plan_tests.rs",
+    "status": "M",
+    "before_git_blob": "fb9b4e14d562bde11577d18ccd6955d002c46b04",
+    "before_git_sha256": "934474b343df4b7840fecd1d7d11dfb43b05550aad76d34b74f1e4f203d8d7cd",
+    "before_fs_sha256": "934474b343df4b7840fecd1d7d11dfb43b05550aad76d34b74f1e4f203d8d7cd",
+    "after_git_blob": "1774878be4a2840cf67581c8205d131c10ed5f23",
+    "after_git_sha256": "3d789b3847fede09e5b0c71e95eee08b8052dedf0b8c4c5c129cda059e2e2d22",
+    "after_fs_sha256": "3d789b3847fede09e5b0c71e95eee08b8052dedf0b8c4c5c129cda059e2e2d22"
+  },
+  {
+    "path": "rust/geometry/src/processors/boolean/spine_snapshot.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "a3e95fc2775c8621f2e5b0ee008d141500c2ec4a",
+    "after_git_sha256": "be8514f8a6df2cfd122e5b81e8411dcbb6d45ed87bb40013023842c3e8266b34",
+    "after_fs_sha256": "be8514f8a6df2cfd122e5b81e8411dcbb6d45ed87bb40013023842c3e8266b34"
+  },
+  {
+    "path": "rust/geometry/src/processors/csg_primitive.rs",
+    "status": "M",
+    "before_git_blob": "2ec6bcfd65cc10bc2609377e75563a2e31c0fa72",
+    "before_git_sha256": "67f7a3914fba967770f47a74d69b7d1e5625e56a30fad35a6c7f3a4eab085152",
+    "before_fs_sha256": "67f7a3914fba967770f47a74d69b7d1e5625e56a30fad35a6c7f3a4eab085152",
+    "after_git_blob": "b4e40699dacb0f5c5546ddc6434c3005a889e0a5",
+    "after_git_sha256": "2409b342c37e8f19fa5dd1fa2ba4ef24314a7ef3b6103c965f2b02c615033e9f",
+    "after_fs_sha256": "2409b342c37e8f19fa5dd1fa2ba4ef24314a7ef3b6103c965f2b02c615033e9f"
+  },
+  {
+    "path": "rust/geometry/src/processors/diagnostic_capture.rs",
+    "status": "M",
+    "before_git_blob": "b33577ec3b3023accc8d8bdea892ed4d2e12b1e6",
+    "before_git_sha256": "3319f1b6e82d8daf0041452e343f81df0b2ea619fd37cee4707c2e55494d2d3c",
+    "before_fs_sha256": "3319f1b6e82d8daf0041452e343f81df0b2ea619fd37cee4707c2e55494d2d3c",
+    "after_git_blob": "b6bb3e9ef7263fbd65b03af30e941d93d4979eb8",
+    "after_git_sha256": "9b78916a2b6bb38df386efbcd66a6e85cb6b97127693fbe56ab2ac28525a395a",
+    "after_fs_sha256": "9b78916a2b6bb38df386efbcd66a6e85cb6b97127693fbe56ab2ac28525a395a"
+  },
+  {
+    "path": "rust/geometry/src/processors/tessellated/triangulated_plan.rs",
+    "status": "M",
+    "before_git_blob": "a302846fff7f13fbcfe44f1952bde86830c74e5f",
+    "before_git_sha256": "83792efb9501218f29be1cd76a689af80dbfb2881c645e34189f7d57a59cc9f8",
+    "before_fs_sha256": "83792efb9501218f29be1cd76a689af80dbfb2881c645e34189f7d57a59cc9f8",
+    "after_git_blob": "abe7d7fb48b69e498e012c7f6691f95660e65fd9",
+    "after_git_sha256": "5e7dd09aced0ba2792f657e8c34015a4b0064e96828116e06186e03e499ff217",
+    "after_fs_sha256": "5e7dd09aced0ba2792f657e8c34015a4b0064e96828116e06186e03e499ff217"
+  },
+  {
+    "path": "rust/geometry/src/program/boolean/batch.rs",
+    "status": "M",
+    "before_git_blob": "4b6eb624d7873aca0b3cb3ca41bbbc9893e4f596",
+    "before_git_sha256": "39164d6b8efc373258657dfc1bbd3457374b1aec8961bfa8d422a7469fbbb101",
+    "before_fs_sha256": "39164d6b8efc373258657dfc1bbd3457374b1aec8961bfa8d422a7469fbbb101",
+    "after_git_blob": "c62835c7d49c04b56c63308d99d9ad4f02f2225a",
+    "after_git_sha256": "c4c0ba7faa89e8db143cc9dce881801d5c905507a3b506e2c216c933fb7edb2a",
+    "after_fs_sha256": "c4c0ba7faa89e8db143cc9dce881801d5c905507a3b506e2c216c933fb7edb2a"
+  },
+  {
+    "path": "rust/geometry/src/program/boolean/dispatch_tests.rs",
+    "status": "M",
+    "before_git_blob": "67d39b650a808e409acc5aaa8ad6369606b61886",
+    "before_git_sha256": "7bcfe3334a5bb5b302a35621c9847fce66d636597f071ee6bb2181221e1f4135",
+    "before_fs_sha256": "7bcfe3334a5bb5b302a35621c9847fce66d636597f071ee6bb2181221e1f4135",
+    "after_git_blob": "6a6dbece2c23664c84d967d811faf768ab7e2120",
+    "after_git_sha256": "43a075ebf35ae4985ce98a7ccb91eff6811c58296062b45bfc918a1a161f4196",
+    "after_fs_sha256": "43a075ebf35ae4985ce98a7ccb91eff6811c58296062b45bfc918a1a161f4196"
+  },
+  {
+    "path": "rust/geometry/src/program/boolean/mod.rs",
+    "status": "M",
+    "before_git_blob": "82dd0e3eafabacbac9ac333367624a5373d99382",
+    "before_git_sha256": "46f21a894b78c2d30b718ff8e83e3c9ea89fa1b3ea5258b1bdd320d643c65531",
+    "before_fs_sha256": "46f21a894b78c2d30b718ff8e83e3c9ea89fa1b3ea5258b1bdd320d643c65531",
+    "after_git_blob": "63dc9ca8e642cb78965c990f14f5818c60dcfbe7",
+    "after_git_sha256": "cc6979e40cdf68e3d68d46cd3ea474c28ceab8504d5b6e5373d8e78addbbe0e7",
+    "after_fs_sha256": "cc6979e40cdf68e3d68d46cd3ea474c28ceab8504d5b6e5373d8e78addbbe0e7"
+  },
+  {
+    "path": "rust/geometry/src/program/boolean/operand.rs",
+    "status": "M",
+    "before_git_blob": "89ea39ba875174a01c2ec74b7acc87c8fa4d51d3",
+    "before_git_sha256": "5078f2e9511ac5640f55c078ab59901488a72191718cd009c07b37aad5805fb8",
+    "before_fs_sha256": "5078f2e9511ac5640f55c078ab59901488a72191718cd009c07b37aad5805fb8",
+    "after_git_blob": "889e619421598ef780e6d691dcbe60230230dcec",
+    "after_git_sha256": "6ad41d4f7ea8439b3bda404a3757be3afd3c2543447d0793e5b133473991e0dc",
+    "after_fs_sha256": "6ad41d4f7ea8439b3bda404a3757be3afd3c2543447d0793e5b133473991e0dc"
+  },
+  {
+    "path": "rust/geometry/src/program/boolean/protocol.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "73612d402e2c83850c0829b99a62319615d95b3c",
+    "after_git_sha256": "36ddfbf25aa0c194af8899fdf97e7325db0a29b0f5942623c0a30552cf140df6",
+    "after_fs_sha256": "36ddfbf25aa0c194af8899fdf97e7325db0a29b0f5942623c0a30552cf140df6"
+  },
+  {
+    "path": "rust/geometry/src/program/boolean/protocol_tests.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "4cfbda3a8ca8ff7ed1998ed1314a82cb9e509a62",
+    "after_git_sha256": "de6fd6403cf6a67d181808e89647970f2e8d086e72dd11368535d17807afd1f5",
+    "after_fs_sha256": "de6fd6403cf6a67d181808e89647970f2e8d086e72dd11368535d17807afd1f5"
+  },
+  {
+    "path": "rust/geometry/src/program/boolean/reports.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "7e5b10a14bca3426c6d5136cf8541b3e3a087ad8",
+    "after_git_sha256": "d317eec02824a7167ff28464738cbce9e2b391732ade156b5280f387b6075efc",
+    "after_fs_sha256": "d317eec02824a7167ff28464738cbce9e2b391732ade156b5280f387b6075efc"
+  },
+  {
+    "path": "rust/geometry/src/program/boolean/reports_tests.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "11c2f0668f8a56cd705a40945644eac5226424ee",
+    "after_git_sha256": "2e04226d724d32fae825614c3a7b792ed59bddd967a28da3ebff05fa3ad01250",
+    "after_fs_sha256": "2e04226d724d32fae825614c3a7b792ed59bddd967a28da3ebff05fa3ad01250"
+  },
+  {
+    "path": "rust/geometry/src/program/boolean/state.rs",
+    "status": "M",
+    "before_git_blob": "08cecf0c2fadcafd5e773fef98a4e69088fe6220",
+    "before_git_sha256": "978ed3cf350cb8a3428a9d5449957653b00192f3a490f7d6fa3868ffcd54889a",
+    "before_fs_sha256": "978ed3cf350cb8a3428a9d5449957653b00192f3a490f7d6fa3868ffcd54889a",
+    "after_git_blob": "17aea2fc8afe88f54c9978a0295459e439d07c3a",
+    "after_git_sha256": "682a2b24a0cb1bc3f8ae3b016121f19a94a026cf7b37031cb9f8a8a75268ae87",
+    "after_fs_sha256": "682a2b24a0cb1bc3f8ae3b016121f19a94a026cf7b37031cb9f8a8a75268ae87"
+  },
+  {
+    "path": "rust/geometry/src/program/boolean/step.rs",
+    "status": "M",
+    "before_git_blob": "f9257764febf2e1d12411c421a72a5e31b0e9fb0",
+    "before_git_sha256": "3e6288ff978d3ad97570f32a3adb29c5c3b3938ba1e29a161542020261a44120",
+    "before_fs_sha256": "3e6288ff978d3ad97570f32a3adb29c5c3b3938ba1e29a161542020261a44120",
+    "after_git_blob": "f97d7fb68ea271fc1939c678d2842a24cd5d7bb6",
+    "after_git_sha256": "aff8654d01b2013a725464f58d061a8f51e711bd4139f612ee2c3bf9ad01f33e",
+    "after_fs_sha256": "aff8654d01b2013a725464f58d061a8f51e711bd4139f612ee2c3bf9ad01f33e"
+  },
+  {
+    "path": "rust/geometry/src/program/boolean/step_tests.rs",
+    "status": "M",
+    "before_git_blob": "3b74d170444efbddb4f61807861bae6464151f83",
+    "before_git_sha256": "683cf08981dcdbbdb7ba27a2a398ae37e2a8a8ea71942c0b13a0092bd8913543",
+    "before_fs_sha256": "683cf08981dcdbbdb7ba27a2a398ae37e2a8a8ea71942c0b13a0092bd8913543",
+    "after_git_blob": "61d52fa96f95d4d23d4fdc12959fd2a0727cf196",
+    "after_git_sha256": "bd70edf5423b512a8a9c480158b555c7078b31a7c21b9a3e91d60454a51389b7",
+    "after_fs_sha256": "bd70edf5423b512a8a9c480158b555c7078b31a7c21b9a3e91d60454a51389b7"
+  },
+  {
+    "path": "rust/geometry/src/program/boolean/transitions.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "0d43691e537fb1dc2c72e9a6c35f682e23a59f54",
+    "after_git_sha256": "7d4c4ce59d9fb0848beaa126bc3e52cbaabea3c0c1a34e43f0de29bd91ffddfe",
+    "after_fs_sha256": "7d4c4ce59d9fb0848beaa126bc3e52cbaabea3c0c1a34e43f0de29bd91ffddfe"
+  },
+  {
+    "path": "rust/geometry/src/program/boolean/work.rs",
+    "status": "M",
+    "before_git_blob": "a0b00e41d6b54dfc0322e41965a0c1c6055c461c",
+    "before_git_sha256": "e82affa98ec93bde322bef9c3cbd968f641b72130534429cc1c689df5150bcec",
+    "before_fs_sha256": "e82affa98ec93bde322bef9c3cbd968f641b72130534429cc1c689df5150bcec",
+    "after_git_blob": "45887b95f0cfa5d5e2fe46904c98779fa89a13b6",
+    "after_git_sha256": "50d7cfe163420f0cc286dd9df8a41f1a9dc3d2948f7631186ba560bd251fa0f6",
+    "after_fs_sha256": "50d7cfe163420f0cc286dd9df8a41f1a9dc3d2948f7631186ba560bd251fa0f6"
+  },
+  {
+    "path": "rust/geometry/src/program/boolean/work_tests.rs",
+    "status": "M",
+    "before_git_blob": "3ecd6294c548e64a3c4bd05f001fc7e819887d31",
+    "before_git_sha256": "78e6556580b98704991c10fbe7ca812d6b6b1e3b1848abdd8abd857f2dc845ae",
+    "before_fs_sha256": "78e6556580b98704991c10fbe7ca812d6b6b1e3b1848abdd8abd857f2dc845ae",
+    "after_git_blob": "d82e11d2670efe6248c67e69f19a3ae2edd744fa",
+    "after_git_sha256": "780029da256204730f627f03dff3fc027e97cee80a088ebe378aca91089c6efb",
+    "after_fs_sha256": "780029da256204730f627f03dff3fc027e97cee80a088ebe378aca91089c6efb"
+  },
+  {
+    "path": "rust/geometry/src/program/inner.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "1c0ea4ff3aa5ad323c300960eb9ba3fc84d0a958",
+    "after_git_sha256": "5fd5a964170cebf984b718492055b6ce244f0df1d9e6ec18a98a2a127a7200ee",
+    "after_fs_sha256": "5fd5a964170cebf984b718492055b6ce244f0df1d9e6ec18a98a2a127a7200ee"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_boolean.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "28eee025c1992ccba45e8a365b2e74650f0eb674",
+    "after_git_sha256": "fd695f6587d566902a38a21f74176258307ece62876051ad49b58b8269371dca",
+    "after_fs_sha256": "fd695f6587d566902a38a21f74176258307ece62876051ad49b58b8269371dca"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_cache.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "4256c07f41c16b8dd60f407836d77a9ad8cc46a3",
+    "after_git_sha256": "65b48d305d91fccf4a0cb581114682e721617edc4e51d902a1544bb34afcde3f",
+    "after_fs_sha256": "65b48d305d91fccf4a0cb581114682e721617edc4e51d902a1544bb34afcde3f"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_cache_tests.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "26c56ab3a10a245c2c1f6da4c48dba2b1f497bf6",
+    "after_git_sha256": "40c14d029a27c198b6d41564a82d3f4c8781bdfcba44529a29bafa0b947edd55",
+    "after_fs_sha256": "40c14d029a27c198b6d41564a82d3f4c8781bdfcba44529a29bafa0b947edd55"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_cancel.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "ff0186e645a3ab139c504d2c3d8c6daf54c267aa",
+    "after_git_sha256": "714e383b8c6ac74ed1a79d9a3e125eaa147184c6a4a0ac75e00bb480ac3f9907",
+    "after_fs_sha256": "714e383b8c6ac74ed1a79d9a3e125eaa147184c6a4a0ac75e00bb480ac3f9907"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_entries.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "b4c176e330efb99e7c5e8541a8f0a8647027dedd",
+    "after_git_sha256": "c7ffae85193b650807969cc76fe63a1e1087252db1edd64d9fe182ff4602ef3a",
+    "after_fs_sha256": "c7ffae85193b650807969cc76fe63a1e1087252db1edd64d9fe182ff4602ef3a"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_item_reports_tests.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "d406cf107b621ffcbe0fa693f496a1ef0c86af33",
+    "after_git_sha256": "8d336c2a7d48ac97fdd4fc8dfd95b7ea8071166237dd2647858dcf5b50c67a6f",
+    "after_fs_sha256": "8d336c2a7d48ac97fdd4fc8dfd95b7ea8071166237dd2647858dcf5b50c67a6f"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_layers.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "f7f16c0942be179a2d4a5f9fea4d058a8c9c7db1",
+    "after_git_sha256": "1e9ee4e767cbbc25f0bcdf8c53f44077fedc8bc7d4ffa0d515c6f816534273c0",
+    "after_fs_sha256": "1e9ee4e767cbbc25f0bcdf8c53f44077fedc8bc7d4ffa0d515c6f816534273c0"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_layers_tests.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "428080636db80efff0b787d52369919de07671b1",
+    "after_git_sha256": "d6f96c0d5628a34b26d43ef4f086b4164cc7d766bbb186c39891319c9286b589",
+    "after_fs_sha256": "d6f96c0d5628a34b26d43ef4f086b4164cc7d766bbb186c39891319c9286b589"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_mapping.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "db26604d2d5ad44bec867beb63a6265b4f9dafe8",
+    "after_git_sha256": "3d55f04fc85542da61d6a99f402961aa17b1ffbbe6d21560384c6751900c83ff",
+    "after_fs_sha256": "3d55f04fc85542da61d6a99f402961aa17b1ffbbe6d21560384c6751900c83ff"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_mapping_tests.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "9697218f1be235e7c66389007e85c9c3a9977937",
+    "after_git_sha256": "9d34a50146d594e3e6eaa565558a46fff9098a128865243181b0ff087dc8d32c",
+    "after_fs_sha256": "9d34a50146d594e3e6eaa565558a46fff9098a128865243181b0ff087dc8d32c"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_opening.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "d534787ddc1b606976f59315e4822da62a84a5f4",
+    "after_git_sha256": "9c0e9981bea963d8cb08efb3c64b37fec6d2cec98f9e76a5fcade28fa3ec9020",
+    "after_fs_sha256": "9c0e9981bea963d8cb08efb3c64b37fec6d2cec98f9e76a5fcade28fa3ec9020"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_product.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "19adb9de428258d2b521569a6a5b32bd5435b8cb",
+    "after_git_sha256": "8ae912580ffa19299342df0aa7e83198a2acb46220bfb0017e51071db6865b8a",
+    "after_fs_sha256": "8ae912580ffa19299342df0aa7e83198a2acb46220bfb0017e51071db6865b8a"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_product/source.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "3b5e27dacf36cb6b20d18d629ac4cc0358edcf40",
+    "after_git_sha256": "454c3b52ab2d8b4a2b32fa2cc9a0551cbea0c5d15f325fa2199a7a40e9356245",
+    "after_fs_sha256": "454c3b52ab2d8b4a2b32fa2cc9a0551cbea0c5d15f325fa2199a7a40e9356245"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_product_adapter.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "f8d2827394bf0f43c60cee6568395d04a487a8fe",
+    "after_git_sha256": "f936e02154c3ec3367ae90ffb29c49e9b7734902452f0fda3fa12f3a9435aa21",
+    "after_fs_sha256": "f936e02154c3ec3367ae90ffb29c49e9b7734902452f0fda3fa12f3a9435aa21"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_product_prelude.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "e0e5114aa4bb92e3ba61b739294043c8be4d14ca",
+    "after_git_sha256": "3a1e85d36a09b8887c0b86a257099de1693ca58a613bd00b9f8c042102239ae9",
+    "after_fs_sha256": "3a1e85d36a09b8887c0b86a257099de1693ca58a613bd00b9f8c042102239ae9"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_product_prelude_tests.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "ad586a5ee3a5f26cf9a685e95ef83028bc4020ec",
+    "after_git_sha256": "ba6ce1b26175343150d0396df031cde8050a88f8c02bd1e13c927887b14e6901",
+    "after_fs_sha256": "ba6ce1b26175343150d0396df031cde8050a88f8c02bd1e13c927887b14e6901"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_ready.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "15b260c3f7718370f80f53f6c04731251f9c75d8",
+    "after_git_sha256": "cb004024ff352f9165d9c54e732b877988b78bdd6e6fd98f1ae990b51e5c0759",
+    "after_fs_sha256": "cb004024ff352f9165d9c54e732b877988b78bdd6e6fd98f1ae990b51e5c0759"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_tests.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "8f4fab59723ea2c1a295cdec44827501688cba10",
+    "after_git_sha256": "0e083a40be542115694d60e4aa9f49559280bcb80c527294729f6802e5f356b6",
+    "after_fs_sha256": "0e083a40be542115694d60e4aa9f49559280bcb80c527294729f6802e5f356b6"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_type_map.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "6af7e148d4d3e347cd6573623d26b38e85461d07",
+    "after_git_sha256": "d54bd16a77effd6c63cfef0dcd0bcf4a9f1e957fd4f52a593b74c5919b2b6dad",
+    "after_fs_sha256": "d54bd16a77effd6c63cfef0dcd0bcf4a9f1e957fd4f52a593b74c5919b2b6dad"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_type_map_tests.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "3ee87c2967db62299963149947a5778cf3568614",
+    "after_git_sha256": "f630570c0ee8d5f219942b32cdaa98ffd138aadfc5161d430fec56ba98e46b3b",
+    "after_fs_sha256": "f630570c0ee8d5f219942b32cdaa98ffd138aadfc5161d430fec56ba98e46b3b"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_unwind_tests.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "33d2fc580f6636bf588f0bf64835aea9914faf63",
+    "after_git_sha256": "9db11afa3dd94f168ff3526dee89062008937c279e050408e44e2ee2520d0ece",
+    "after_fs_sha256": "9db11afa3dd94f168ff3526dee89062008937c279e050408e44e2ee2520d0ece"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_voids.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "56297120d987f5fdd89c98ee30b094408240a1d9",
+    "after_git_sha256": "6e141188dc365396fd2b6da5fdf9d4bccf1a7d3b7375f21f04dba813c98b4d80",
+    "after_fs_sha256": "6e141188dc365396fd2b6da5fdf9d4bccf1a7d3b7375f21f04dba813c98b4d80"
+  },
+  {
+    "path": "rust/geometry/src/program/inner_voids_tests.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "a47ee1fe35246366806a32ec47065d717e55813b",
+    "after_git_sha256": "b24d750471d7b85e4c42fc23f673b6fb3d9f8a77107d0d5a96ae14cdaa358180",
+    "after_fs_sha256": "b24d750471d7b85e4c42fc23f673b6fb3d9f8a77107d0d5a96ae14cdaa358180"
+  },
+  {
+    "path": "rust/geometry/src/program/item.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "6adb366c3f78c09d368e53640106cf07f3f94009",
+    "after_git_sha256": "320e80a0478598561173bc6db7b715ed356f6acedea855f4b755198c08e9f563",
+    "after_fs_sha256": "320e80a0478598561173bc6db7b715ed356f6acedea855f4b755198c08e9f563"
+  },
+  {
+    "path": "rust/geometry/src/program/item_reports_tests.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "11864ea6cf1994131fb9de55c9c91775dfbda8e9",
+    "after_git_sha256": "babb3d8cc76357aa4f5e6b3e233165923573dd74b0955270077f4fbc26b732a3",
+    "after_fs_sha256": "babb3d8cc76357aa4f5e6b3e233165923573dd74b0955270077f4fbc26b732a3"
+  },
+  {
+    "path": "rust/geometry/src/program/layers/boundary_tests.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "ba0580b793e2e72df87b91096027c03edeb8d2a6",
+    "after_git_sha256": "705b6c2ec4adc30d9f9893f0ae745319572a2cc81df89408b82da2feda404d78",
+    "after_fs_sha256": "705b6c2ec4adc30d9f9893f0ae745319572a2cc81df89408b82da2feda404d78"
+  },
+  {
+    "path": "rust/geometry/src/program/layers/geometry_tests.rs",
+    "status": "M",
+    "before_git_blob": "28172c1b608790ada126360912906ea1e949d471",
+    "before_git_sha256": "8c0c52df56f48ef2e894a5218e66f8487db950e66e89377042ffc987f7786661",
+    "before_fs_sha256": "8c0c52df56f48ef2e894a5218e66f8487db950e66e89377042ffc987f7786661",
+    "after_git_blob": "661cb2ad17095a8716fa7148ae4222a9936912d2",
+    "after_git_sha256": "98996d42ef72daad0669bae076b62debaa515c302d71b36e2f44074aac0278c6",
+    "after_fs_sha256": "98996d42ef72daad0669bae076b62debaa515c302d71b36e2f44074aac0278c6"
+  },
+  {
+    "path": "rust/geometry/src/program/layers/mod.rs",
+    "status": "M",
+    "before_git_blob": "798b11d899d00e3db42aa4da081ee1044abcecfc",
+    "before_git_sha256": "8b41befe3e7d5cbb3233aa6c1d92b7067a80b6b408e4f350ecb5f41ece10ea35",
+    "before_fs_sha256": "8b41befe3e7d5cbb3233aa6c1d92b7067a80b6b408e4f350ecb5f41ece10ea35",
+    "after_git_blob": "4e6f9448866effa2c66a07e6045e67310378fe55",
+    "after_git_sha256": "680e647b54e06eaf092e079c66f35ccb7fafffef581958663af59f459a62066a",
+    "after_fs_sha256": "680e647b54e06eaf092e079c66f35ccb7fafffef581958663af59f459a62066a"
+  },
+  {
+    "path": "rust/geometry/src/program/mapping/frames.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "4cfbcde3a1e6ca5cdd3ecdcca51106ac4d87e69c",
+    "after_git_sha256": "4087e8414df8d5a678464c1bb9acdc62039b3ba220c70ab3b206d8f89a1477d0",
+    "after_fs_sha256": "4087e8414df8d5a678464c1bb9acdc62039b3ba220c70ab3b206d8f89a1477d0"
+  },
+  {
+    "path": "rust/geometry/src/program/mapping/merged.rs",
+    "status": "M",
+    "before_git_blob": "8890213c989feb4a1e651c544a5a36b6571c6d74",
+    "before_git_sha256": "0746d1a10959222bc443ebc7b2756c24da11bbba5d7fac002946ac02641b5af9",
+    "before_fs_sha256": "0746d1a10959222bc443ebc7b2756c24da11bbba5d7fac002946ac02641b5af9",
+    "after_git_blob": "4049c6585ab968a339b65e7824aaeb89a10f4f9a",
+    "after_git_sha256": "503f0570467224e51dd060dbbbc45fda4e531a3c1bc964762529727ca0759796",
+    "after_fs_sha256": "503f0570467224e51dd060dbbbc45fda4e531a3c1bc964762529727ca0759796"
+  },
+  {
+    "path": "rust/geometry/src/program/mapping/merged_ready.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "47b061205ff01bac8c3ad3d6c3293b7bdcda047c",
+    "after_git_sha256": "567b12b51c03ce050fe79b9378e60abf04ba014f403c0216508e5748d556bd50",
+    "after_fs_sha256": "567b12b51c03ce050fe79b9378e60abf04ba014f403c0216508e5748d556bd50"
+  },
+  {
+    "path": "rust/geometry/src/program/mapping/merged_source.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "2cf647ee69b06b20c6b45fd3014993577481da19",
+    "after_git_sha256": "cde4b11944035d394a3c2d7a531aee514829142ce844c449a2b0119efe04f594",
+    "after_fs_sha256": "cde4b11944035d394a3c2d7a531aee514829142ce844c449a2b0119efe04f594"
+  },
+  {
+    "path": "rust/geometry/src/program/mapping/mod.rs",
+    "status": "M",
+    "before_git_blob": "8241d7e09d38003cd732e4c560235b8691363f74",
+    "before_git_sha256": "760df450a8a548bded5074e644e4813c266f57645d58a96845cf5d8444e9aecf",
+    "before_fs_sha256": "760df450a8a548bded5074e644e4813c266f57645d58a96845cf5d8444e9aecf",
+    "after_git_blob": "53bf367a2864fe9eeffef009353dd16b8ae13217",
+    "after_git_sha256": "7afd316d9716b7e41b489b3fb3831224cbdfc239d2c7ad9d2f0fde687c348545",
+    "after_fs_sha256": "7afd316d9716b7e41b489b3fb3831224cbdfc239d2c7ad9d2f0fde687c348545"
+  },
+  {
+    "path": "rust/geometry/src/program/mapping/occurrence.rs",
+    "status": "M",
+    "before_git_blob": "224420bc8dff1c7f9762fa3f878151466b7ff6cb",
+    "before_git_sha256": "762be993f6757549bbfe60e1c023cd529185919b560279366815acfaaf50df59",
+    "before_fs_sha256": "762be993f6757549bbfe60e1c023cd529185919b560279366815acfaaf50df59",
+    "after_git_blob": "60544da45fcdc4c6fb26d3cbd8b1913b6e3ebb7b",
+    "after_git_sha256": "b2768e7be612015a6dfc6036b2eca3e93437380621cc9fba18dbc2d5346269f4",
+    "after_fs_sha256": "b2768e7be612015a6dfc6036b2eca3e93437380621cc9fba18dbc2d5346269f4"
+  },
+  {
+    "path": "rust/geometry/src/program/mapping/store.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "6cf71b2945785e2010d78641ece16d76d766bdb4",
+    "after_git_sha256": "f424404479cc0a73ffab8db5e9b39b3cec4c4bed93e3943b27000da428366f97",
+    "after_fs_sha256": "f424404479cc0a73ffab8db5e9b39b3cec4c4bed93e3943b27000da428366f97"
+  },
+  {
+    "path": "rust/geometry/src/program/mapping/submesh_ready.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "99f902267753c36cf2b6f7f8fa933bb682cbf486",
+    "after_git_sha256": "c1f2cca566fbd4db92bb8adebdb9501c367479a09409898e6861a0f8fa94a010",
+    "after_fs_sha256": "c1f2cca566fbd4db92bb8adebdb9501c367479a09409898e6861a0f8fa94a010"
+  },
+  {
+    "path": "rust/geometry/src/program/mapping/submesh_source.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "11f2919caf9dd91cd9c724c72dc3dfd45f545073",
+    "after_git_sha256": "3e1c1b0847486eb15cd5662263cd6185e5975404a5301bbd78656482beba71b7",
+    "after_fs_sha256": "3e1c1b0847486eb15cd5662263cd6185e5975404a5301bbd78656482beba71b7"
+  },
+  {
+    "path": "rust/geometry/src/program/mapping/submeshes.rs",
+    "status": "M",
+    "before_git_blob": "b3f54247ea57f5663e81398a73f8368ee659a2ba",
+    "before_git_sha256": "f43f882ebeb651176580808e5ace5902c66eaf20201c7dd796ebe4602c29cdb6",
+    "before_fs_sha256": "f43f882ebeb651176580808e5ace5902c66eaf20201c7dd796ebe4602c29cdb6",
+    "after_git_blob": "cd264b7362d5e9de2ed885f2743100992c40485d",
+    "after_git_sha256": "c68090ea3bc6351a8d3ae63b20d911d1c17e1aee0356cf655eff83d5a3d3aa43",
+    "after_fs_sha256": "c68090ea3bc6351a8d3ae63b20d911d1c17e1aee0356cf655eff83d5a3d3aa43"
+  },
+  {
+    "path": "rust/geometry/src/program/mapping/tests.rs",
+    "status": "M",
+    "before_git_blob": "648dff51a81fc7bc2c62d7fd0794da14325cfbf0",
+    "before_git_sha256": "e83bfaaff35ad14e24bb7354aaebe9abc90e965d220180699ccf61c8867755d0",
+    "before_fs_sha256": "e83bfaaff35ad14e24bb7354aaebe9abc90e965d220180699ccf61c8867755d0",
+    "after_git_blob": "cc8b903ad52e1f404133ba835a9620dc5d8adeb7",
+    "after_git_sha256": "45c0bd93408e4b5778c4051c5a53f5c212845a1a38ec9f19ab7d4dc2fbf9e7ad",
+    "after_fs_sha256": "45c0bd93408e4b5778c4051c5a53f5c212845a1a38ec9f19ab7d4dc2fbf9e7ad"
+  },
+  {
+    "path": "rust/geometry/src/program/mod.rs",
+    "status": "M",
+    "before_git_blob": "1c318575830302d17a7cc7baa72c6905794d9524",
+    "before_git_sha256": "729cd5172aacfdb8731f4a7014d6f749410bdef2d2415bf8163123564150ce3b",
+    "before_fs_sha256": "729cd5172aacfdb8731f4a7014d6f749410bdef2d2415bf8163123564150ce3b",
+    "after_git_blob": "dbb4e8558878cd1a0434716d6da5957cb4991e84",
+    "after_git_sha256": "1e399c6936c3bf7bd5fd406994d9cc9f803f7427457fcf07e330ad8cb84da34d",
+    "after_fs_sha256": "1e399c6936c3bf7bd5fd406994d9cc9f803f7427457fcf07e330ad8cb84da34d"
+  },
+  {
+    "path": "rust/geometry/src/program/opening.rs",
+    "status": "M",
+    "before_git_blob": "990cd72daf29a79db6df2c00848ddf5cf5d72224",
+    "before_git_sha256": "db75562cb9f70b231228bfce8e170b512e2a4065a13f87d6e522e3c7a9fdbe98",
+    "before_fs_sha256": "db75562cb9f70b231228bfce8e170b512e2a4065a13f87d6e522e3c7a9fdbe98",
+    "after_git_blob": "3467ce2333e609eecd4b3975ef842495034ce355",
+    "after_git_sha256": "956fb6caff29fe23ea697804141e0124f1fe8e72cfdd604b1bedd067089dc348",
+    "after_fs_sha256": "956fb6caff29fe23ea697804141e0124f1fe8e72cfdd604b1bedd067089dc348"
+  },
+  {
+    "path": "rust/geometry/src/program/openings/classify.rs",
+    "status": "M",
+    "before_git_blob": "c3a14b7738012078ccd3a8bcb46b30a76289f888",
+    "before_git_sha256": "a4947baa3b5f3d09616d9f2f5f3ef3b0d334e85d78f24464a9fe169bc3c03f9d",
+    "before_fs_sha256": "a4947baa3b5f3d09616d9f2f5f3ef3b0d334e85d78f24464a9fe169bc3c03f9d",
+    "after_git_blob": "7e61fb77e5b23e5325f2cf5c77be3a62f5200f5d",
+    "after_git_sha256": "1265f43d3b99de67dd1d6751e6ec1a8a39d427798cb3236cbe36ec8137ae71aa",
+    "after_fs_sha256": "1265f43d3b99de67dd1d6751e6ec1a8a39d427798cb3236cbe36ec8137ae71aa"
+  },
+  {
+    "path": "rust/geometry/src/program/openings/control.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "38444263c95b4d94d9ea05e33d314c2143720cf2",
+    "after_git_sha256": "387a1c6a1dcf9c5b34d3c7677031385392e59112467523dd31590728c8c0f9b2",
+    "after_fs_sha256": "387a1c6a1dcf9c5b34d3c7677031385392e59112467523dd31590728c8c0f9b2"
+  },
+  {
+    "path": "rust/geometry/src/program/openings/control_tests.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "ba0c9bea562aedeb003d5c5ac6bb4157d064539c",
+    "after_git_sha256": "ab355f3c3a03ac2475bc690746779361e3373e9f601ae9e0b84a8e6944e4651d",
+    "after_fs_sha256": "ab355f3c3a03ac2475bc690746779361e3373e9f601ae9e0b84a8e6944e4651d"
+  },
+  {
+    "path": "rust/geometry/src/program/openings/decision.rs",
+    "status": "M",
+    "before_git_blob": "a06791b4f0ac89ec96d3aa68e39bd0b1e05bef43",
+    "before_git_sha256": "6d370160ca86c0cd79a215ba80005d6e7062445e8d759a0c9498107d18d13494",
+    "before_fs_sha256": "6d370160ca86c0cd79a215ba80005d6e7062445e8d759a0c9498107d18d13494",
+    "after_git_blob": "0169dcd7c934be4be77f416b7831796427cbe866",
+    "after_git_sha256": "de1b222304f8bfa80b2acc85056ca3935cb9d59121488bd7e9d50b9c91c971bd",
+    "after_fs_sha256": "de1b222304f8bfa80b2acc85056ca3935cb9d59121488bd7e9d50b9c91c971bd"
+  },
+  {
+    "path": "rust/geometry/src/program/openings/execute.rs",
+    "status": "M",
+    "before_git_blob": "12374f6a9bcad1f27eed5338f060ee9dfd9f3dac",
+    "before_git_sha256": "e830ff8e9d2776a0a08bd9e05263a00562ab80344f72aa2b25b924b718530ab9",
+    "before_fs_sha256": "e830ff8e9d2776a0a08bd9e05263a00562ab80344f72aa2b25b924b718530ab9",
+    "after_git_blob": "d8434fa7ae55591835b1a3d6c634aef0428c01db",
+    "after_git_sha256": "589664a1d1168d30dbd8010609356eb7d7c52eff28440d5331e9768846e7ec6b",
+    "after_fs_sha256": "589664a1d1168d30dbd8010609356eb7d7c52eff28440d5331e9768846e7ec6b"
+  },
+  {
+    "path": "rust/geometry/src/program/openings/execute_tests.rs",
+    "status": "M",
+    "before_git_blob": "e52607ba5e731ca90df1ed53cc7b8f859fb2c035",
+    "before_git_sha256": "0d46616660454c9d2114af70e95fce42b249cd88f6a758148db0dccffebd3521",
+    "before_fs_sha256": "0d46616660454c9d2114af70e95fce42b249cd88f6a758148db0dccffebd3521",
+    "after_git_blob": "94d247fbb0515e7fa7cda295a4a1f0f1d1f4acaa",
+    "after_git_sha256": "814cde59d460ddbf75c16a7baedfd3625b6e2861a8046f030ca5392b3b11970c",
+    "after_fs_sha256": "814cde59d460ddbf75c16a7baedfd3625b6e2861a8046f030ca5392b3b11970c"
+  },
+  {
+    "path": "rust/geometry/src/program/openings/mod.rs",
+    "status": "M",
+    "before_git_blob": "7b82524788858a5016eebea03cc0fabec32a2e5c",
+    "before_git_sha256": "9a5e859ab9a16e0172e52db3762f6b7e6158bbbcb66c05dd12a2d7abddfca8b8",
+    "before_fs_sha256": "9a5e859ab9a16e0172e52db3762f6b7e6158bbbcb66c05dd12a2d7abddfca8b8",
+    "after_git_blob": "0bb0e5a690e507d6da9390cacd3bded943a9f5e0",
+    "after_git_sha256": "bc15fad3da622447fd87076fe59dfcd037f70dfcf52b4835828214adb758dee0",
+    "after_fs_sha256": "bc15fad3da622447fd87076fe59dfcd037f70dfcf52b4835828214adb758dee0"
+  },
+  {
+    "path": "rust/geometry/src/program/openings/planar.rs",
+    "status": "M",
+    "before_git_blob": "0380a9ad6ea27cbc6d744235c63d19c07b9b9978",
+    "before_git_sha256": "cab7aceb4ac9e6e5836978f092697cdc523cb083df423983e823a40e238162dc",
+    "before_fs_sha256": "cab7aceb4ac9e6e5836978f092697cdc523cb083df423983e823a40e238162dc",
+    "after_git_blob": "d54b6a5f91824bddb9657229b56f41c11718aeba",
+    "after_git_sha256": "9e9c19ee6070055a513efa1085673997c844eb2e4c60ff8b133fc187eb17de98",
+    "after_fs_sha256": "9e9c19ee6070055a513efa1085673997c844eb2e4c60ff8b133fc187eb17de98"
+  },
+  {
+    "path": "rust/geometry/src/program/openings/ready.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "f5cf3dd3acc6f477cc1c3d28de4e601324cd80f1",
+    "after_git_sha256": "2ebaafd273c3d084121fc52c5c07c737b44a928bd8fc1b17b3692db45be0331d",
+    "after_fs_sha256": "2ebaafd273c3d084121fc52c5c07c737b44a928bd8fc1b17b3692db45be0331d"
+  },
+  {
+    "path": "rust/geometry/src/program/openings/rectangular.rs",
+    "status": "M",
+    "before_git_blob": "517b5d16745d571cafe4ea6a29add066a83b5225",
+    "before_git_sha256": "4b0b71ceedc29af56f4f0598a6e30bd75d579717c1d4ab1a75dbbd6d63d1cefd",
+    "before_fs_sha256": "4b0b71ceedc29af56f4f0598a6e30bd75d579717c1d4ab1a75dbbd6d63d1cefd",
+    "after_git_blob": "6186b36763344c822e12be6ba018dea93724180c",
+    "after_git_sha256": "b85697d974b358497a272f27f1495453a54b0f2c10f8ee134e2d566430035474",
+    "after_fs_sha256": "b85697d974b358497a272f27f1495453a54b0f2c10f8ee134e2d566430035474"
+  },
+  {
+    "path": "rust/geometry/src/program/openings/requests.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "fc714277a5186f8d8bf755ebdabafbbb299ce328",
+    "after_git_sha256": "3af2ff9b5ef8abba23099f663164c4fb008726e1ae6ad8d2625d87ceb3b303a7",
+    "after_fs_sha256": "3af2ff9b5ef8abba23099f663164c4fb008726e1ae6ad8d2625d87ceb3b303a7"
+  },
+  {
+    "path": "rust/geometry/src/program/openings/tests.rs",
+    "status": "M",
+    "before_git_blob": "51f2565a074f0b9e411bd001f28f7e93594e5396",
+    "before_git_sha256": "ab48e0ce49076fc6bbcb79b921a22255241aeb518dcb00f64c69d85d6139faf2",
+    "before_fs_sha256": "ab48e0ce49076fc6bbcb79b921a22255241aeb518dcb00f64c69d85d6139faf2",
+    "after_git_blob": "d260b6921e0589a9dc9e9d17c56fe56cb453ae20",
+    "after_git_sha256": "ae49aa98db3ebdd1a17353fe0e8c31f12871c47d4d56032dcaf3a1415bb2ce68",
+    "after_fs_sha256": "ae49aa98db3ebdd1a17353fe0e8c31f12871c47d4d56032dcaf3a1415bb2ce68"
+  },
+  {
+    "path": "rust/geometry/src/program/openings/unwind_tests.rs",
+    "status": "M",
+    "before_git_blob": "4e80ae6f465b40805c7e32bbb64ad7a7c62cdc59",
+    "before_git_sha256": "6921fdc19c46c4b82e282dd3f0c09e07c16b3e8d196fd8723aeb81a9b124605e",
+    "before_fs_sha256": "6921fdc19c46c4b82e282dd3f0c09e07c16b3e8d196fd8723aeb81a9b124605e",
+    "after_git_blob": "e31c5a5f1ad9e9053fcf88b8b1a04c721fea0381",
+    "after_git_sha256": "dc67b6d3d3d8f280197ae5c05b50481a9c7c788d55dcb00c67b587b732a6b775",
+    "after_fs_sha256": "dc67b6d3d3d8f280197ae5c05b50481a9c7c788d55dcb00c67b587b732a6b775"
+  },
+  {
+    "path": "rust/geometry/src/program/product.rs",
+    "status": "D",
+    "before_git_blob": "5efe1b6f53e0d1623fa22b12a2167ff235ed5d2a",
+    "before_git_sha256": "050b7622fd42dbfc6f71446c56d6e35899bfdb73a779c73aa552782c84cf098a",
+    "before_fs_sha256": "050b7622fd42dbfc6f71446c56d6e35899bfdb73a779c73aa552782c84cf098a",
+    "after_git_blob": null,
+    "after_git_sha256": null,
+    "after_fs_sha256": null
+  },
+  {
+    "path": "rust/geometry/src/program/product_control.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "60372a3f452c3753dd6a1c9bc4c1201f8e7016e9",
+    "after_git_sha256": "de3be5ce6b67fc914d61a343dd213283ce84f5fb30f149ca3ca87164b75710de",
+    "after_fs_sha256": "de3be5ce6b67fc914d61a343dd213283ce84f5fb30f149ca3ca87164b75710de"
+  },
+  {
+    "path": "rust/geometry/src/program/product_control/completion.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "b8a3c6b8d6b9a1524fec4b2dbbe8dadfb01bf4a6",
+    "after_git_sha256": "6f52992a0ff2b891e60d20268b293aa0fbbe24e0da7209c55b8057dbc81b4e85",
+    "after_fs_sha256": "6f52992a0ff2b891e60d20268b293aa0fbbe24e0da7209c55b8057dbc81b4e85"
+  },
+  {
+    "path": "rust/geometry/src/program/product_control/completion/placement.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "1c52299799169db17c82d68f1d74b7691874a7ad",
+    "after_git_sha256": "654a7939eaf61856f648d9e833a93a851e2c5d5fb690419217f6ab7dadaf99e1",
+    "after_fs_sha256": "654a7939eaf61856f648d9e833a93a851e2c5d5fb690419217f6ab7dadaf99e1"
+  },
+  {
+    "path": "rust/geometry/src/program/product_control/completion/tests.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "0fb83d9c99152638b35626c2cc6b6e5ce532ffa8",
+    "after_git_sha256": "971e3ac7aad1bd2a6f119687e89f94e2fbc07d1e9362bbe6dde62a09f2fb14ae",
+    "after_fs_sha256": "971e3ac7aad1bd2a6f119687e89f94e2fbc07d1e9362bbe6dde62a09f2fb14ae"
+  },
+  {
+    "path": "rust/geometry/src/program/resources.rs",
+    "status": "M",
+    "before_git_blob": "b9a2e3e361c01f1d2e34124674b0137f99536845",
+    "before_git_sha256": "97825cdddb2943eb8ea26dc9fb2dc25b471f963d4c4517cbf82877c2a91b3bc0",
+    "before_fs_sha256": "97825cdddb2943eb8ea26dc9fb2dc25b471f963d4c4517cbf82877c2a91b3bc0",
+    "after_git_blob": "fca75ba018e943280255b53cbd30e512622c85be",
+    "after_git_sha256": "5b53146905ccc25133082dd57bb8379d6c78a49accc16d90489af7e7a8b4ca4e",
+    "after_fs_sha256": "5b53146905ccc25133082dd57bb8379d6c78a49accc16d90489af7e7a8b4ca4e"
+  },
+  {
+    "path": "rust/geometry/src/program/traversal.rs",
+    "status": "M",
+    "before_git_blob": "f3a7af350a0708ba6886618c14485951502fe217",
+    "before_git_sha256": "4e3cac3922c94f273c09c3e1d11df410f87fba6299bffb5ad8364009a601c54d",
+    "before_fs_sha256": "4e3cac3922c94f273c09c3e1d11df410f87fba6299bffb5ad8364009a601c54d",
+    "after_git_blob": "4c64917e0ffa7f85d7074c1eaec3cbdbb02a4802",
+    "after_git_sha256": "72471c90de65abf4795d7dc3fe1a08da49c3f90004ffb43dd789530c8e519f3f",
+    "after_fs_sha256": "72471c90de65abf4795d7dc3fe1a08da49c3f90004ffb43dd789530c8e519f3f"
+  },
+  {
+    "path": "rust/geometry/src/program/traversal_tests.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "128239a45feff46961031f333a41d858235e7ea3",
+    "after_git_sha256": "4b28d2d08c5c5acf244f74eb8d5c49634d3f8b2cbd2633590c88e7d3897dc37f",
+    "after_fs_sha256": "4b28d2d08c5c5acf244f74eb8d5c49634d3f8b2cbd2633590c88e7d3897dc37f"
+  },
+  {
+    "path": "rust/geometry/src/program/type_map.rs",
+    "status": "M",
+    "before_git_blob": "0e26844d4c01d8631aede857c84ba8f458098a0c",
+    "before_git_sha256": "382c54778a54018ec2f9ffc5d43b1e1d722c815ab7fd99b6404c3f0c0582b3cf",
+    "before_fs_sha256": "382c54778a54018ec2f9ffc5d43b1e1d722c815ab7fd99b6404c3f0c0582b3cf",
+    "after_git_blob": "51e2a7889e2fe910a45f51b6095f39c2c28546f0",
+    "after_git_sha256": "a7b66109de55e6ba0a4e41380bed8b0f8c1b8fada8e88aa73d65044be479cec6",
+    "after_fs_sha256": "a7b66109de55e6ba0a4e41380bed8b0f8c1b8fada8e88aa73d65044be479cec6"
+  },
+  {
+    "path": "rust/geometry/src/program/type_map/tests.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "a440548caa37cda7f6319b850fd0cb9710db7991",
+    "after_git_sha256": "eee1c84c1076cf49a3556d3d46cc6e04d4be83b13c6889058e73ba1b3c4ebb42",
+    "after_fs_sha256": "eee1c84c1076cf49a3556d3d46cc6e04d4be83b13c6889058e73ba1b3c4ebb42"
+  },
+  {
+    "path": "rust/geometry/src/router/annotation.rs",
+    "status": "M",
+    "before_git_blob": "8d628f1132ddccf8acb22693a96ebd564c1ebca6",
+    "before_git_sha256": "771ca7b9b1d3695c4dcbd8a7ba729c98bf0369f3bddc3180ac800433c0300798",
+    "before_fs_sha256": "771ca7b9b1d3695c4dcbd8a7ba729c98bf0369f3bddc3180ac800433c0300798",
+    "after_git_blob": "a6384afc9d99c4bc488372bcb79d8aeae496aeaf",
+    "after_git_sha256": "c427213ff10a7789a6d4b86559b16c7b19c7bd410bff710e2ee723ea02609ad7",
+    "after_fs_sha256": "c427213ff10a7789a6d4b86559b16c7b19c7bd410bff710e2ee723ea02609ad7"
+  },
+  {
+    "path": "rust/geometry/src/router/caching.rs",
+    "status": "M",
+    "before_git_blob": "ad497207296809499128ab33fc0f94068115c344",
+    "before_git_sha256": "e762e331b4071b25bd5e5705d990fdd0b195ec50bbfaea6b94990108c79bfddb",
+    "before_fs_sha256": "e762e331b4071b25bd5e5705d990fdd0b195ec50bbfaea6b94990108c79bfddb",
+    "after_git_blob": "29d6e0fe537205686f3e2ab06b24806b837ab7a9",
+    "after_git_sha256": "59ec405427a38a882d4042176c9c6898c0bc0bac286a9aad219064b44ee21854",
+    "after_fs_sha256": "59ec405427a38a882d4042176c9c6898c0bc0bac286a9aad219064b44ee21854"
+  },
+  {
+    "path": "rust/geometry/src/router/diagnostics/unsupported_items.rs",
+    "status": "M",
+    "before_git_blob": "635f6ef57453b05d2be04091a06333274f7c00dd",
+    "before_git_sha256": "0f0ca103adabe093199d836d306451ff9c3a72e3f67f393caa2ffa133381a069",
+    "before_fs_sha256": "0f0ca103adabe093199d836d306451ff9c3a72e3f67f393caa2ffa133381a069",
+    "after_git_blob": "8cb67a4308a554bc090cd7f2fec66993a5e2c9f2",
+    "after_git_sha256": "0c8d4c0ca2453ecfbc493bf11448c0707c4ce64304ad7b2b4d1386564672ca8e",
+    "after_fs_sha256": "0c8d4c0ca2453ecfbc493bf11448c0707c4ce64304ad7b2b4d1386564672ca8e"
+  },
+  {
+    "path": "rust/geometry/src/router/dispatch_recording.rs",
+    "status": "M",
+    "before_git_blob": "ac5272ddffdbe9ed98533ca7e1212cbd031a4035",
+    "before_git_sha256": "b3db719ce3604cddc5634a9ebbecc856a5bc2cafb65a60f2683622a26bac93b7",
+    "before_fs_sha256": "b3db719ce3604cddc5634a9ebbecc856a5bc2cafb65a60f2683622a26bac93b7",
+    "after_git_blob": "44b26e9894f8206c0ee41d512bde80b7109a8a7c",
+    "after_git_sha256": "19be184ade5f250e66ade627ec32f52ce1f5372009586e220076734c8aec2512",
+    "after_fs_sha256": "19be184ade5f250e66ade627ec32f52ce1f5372009586e220076734c8aec2512"
+  },
+  {
+    "path": "rust/geometry/src/router/frame_parts.rs",
+    "status": "M",
+    "before_git_blob": "07fe207b7764c21beef85f0f4011477cd41881d0",
+    "before_git_sha256": "d37c0b5fd5b3d3e77b3f6b0fa909acb6a8d58e56df3250539c151f6d94e79c60",
+    "before_fs_sha256": "d37c0b5fd5b3d3e77b3f6b0fa909acb6a8d58e56df3250539c151f6d94e79c60",
+    "after_git_blob": "7ede48b97fd0854d1a9c104fb59cd7b10e8dcb06",
+    "after_git_sha256": "c973f8cfeddcaffbdf301062e10f14c2e31f63b0ae64566e4cbf2643a75c51c3",
+    "after_fs_sha256": "c973f8cfeddcaffbdf301062e10f14c2e31f63b0ae64566e4cbf2643a75c51c3"
+  },
+  {
+    "path": "rust/geometry/src/router/instancing.rs",
+    "status": "M",
+    "before_git_blob": "2c523817a6f7102fe30ba2bce94ec235df7737bd",
+    "before_git_sha256": "00dc0dddb1a98dcc40f96f84ee10cc73648c457ad955eef293cd3f0302749ac1",
+    "before_fs_sha256": "00dc0dddb1a98dcc40f96f84ee10cc73648c457ad955eef293cd3f0302749ac1",
+    "after_git_blob": "fc985ef17623a787a5d48be7c433754e6280daf2",
+    "after_git_sha256": "e19a5a02f0f254df88c090ee9aa5b45e9056b15270591833d7e6fd6cf3003e05",
+    "after_fs_sha256": "e19a5a02f0f254df88c090ee9aa5b45e9056b15270591833d7e6fd6cf3003e05"
+  },
+  {
+    "path": "rust/geometry/src/router/item_cache_program.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "b80be1324f7f787221d801e0e5b21c5ff9639ee1",
+    "after_git_sha256": "0fcac1ca0423902ec8642108bf073a9bc598131c2ff153fa9d419c81a387bfd7",
+    "after_fs_sha256": "0fcac1ca0423902ec8642108bf073a9bc598131c2ff153fa9d419c81a387bfd7"
+  },
+  {
+    "path": "rust/geometry/src/router/layers.rs",
+    "status": "M",
+    "before_git_blob": "7eee2c37c0fafd4ad34f7dace7f98c5f1c3d835c",
+    "before_git_sha256": "6b34468660cadf60ffabed54c7c9176ba1d427b1d9702eb25abaac7cfc4a9aa0",
+    "before_fs_sha256": "6b34468660cadf60ffabed54c7c9176ba1d427b1d9702eb25abaac7cfc4a9aa0",
+    "after_git_blob": "9ef56876b6cd959bbda7fbe403e48e06306081ba",
+    "after_git_sha256": "28a215a9aec959fc50da19c97a5ce849daa2ed6a373ccbe2dbfdc4c3632b192d",
+    "after_fs_sha256": "28a215a9aec959fc50da19c97a5ce849daa2ed6a373ccbe2dbfdc4c3632b192d"
+  },
+  {
+    "path": "rust/geometry/src/router/mapped_item.rs",
+    "status": "M",
+    "before_git_blob": "efff13d47b634c580fa23404e39a4e0b84434cff",
+    "before_git_sha256": "f4973edf4544cd7846f229a18003d48a4197e298d86580d6b6eda2f125ef2716",
+    "before_fs_sha256": "f4973edf4544cd7846f229a18003d48a4197e298d86580d6b6eda2f125ef2716",
+    "after_git_blob": "98ceaa3cf998c94c2578f09364c98080d2f386ce",
+    "after_git_sha256": "2b1a64552957d06969fd920722469a3449fee91b8432f5e804574f1116b69fef",
+    "after_fs_sha256": "2b1a64552957d06969fd920722469a3449fee91b8432f5e804574f1116b69fef"
+  },
+  {
+    "path": "rust/geometry/src/router/mapped_walks_tests.rs",
+    "status": "M",
+    "before_git_blob": "83723ca0f055eacc773bcf07de2ea52d25db1d32",
+    "before_git_sha256": "6a3b23cf9642644cc4d668c38c49eb27aeda7da8bd68ad4674fe03f27b483d70",
+    "before_fs_sha256": "6a3b23cf9642644cc4d668c38c49eb27aeda7da8bd68ad4674fe03f27b483d70",
+    "after_git_blob": "a64ef88df8c3409575599607a93f86485c031966",
+    "after_git_sha256": "f69e0842190afd2d79a497058d2bddff8dc1768e72d4428635cc56a1e88e5ee7",
+    "after_fs_sha256": "f69e0842190afd2d79a497058d2bddff8dc1768e72d4428635cc56a1e88e5ee7"
+  },
+  {
+    "path": "rust/geometry/src/router/mapping_program_store.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "6835e3e493a10542c36a668a749d402007ee323f",
+    "after_git_sha256": "37e779de7e940a501129a41c1b8a4a6430f0b2eec127aedc457b591ad1d377ce",
+    "after_fs_sha256": "37e779de7e940a501129a41c1b8a4a6430f0b2eec127aedc457b591ad1d377ce"
+  },
+  {
+    "path": "rust/geometry/src/router/mod.rs",
+    "status": "M",
+    "before_git_blob": "f9ffbc2a208d3029a395b8f355d3552b5835c297",
+    "before_git_sha256": "3f8027b726a35f39098761c11e43c83604b179681bc481216e685e1b4b673adf",
+    "before_fs_sha256": "3f8027b726a35f39098761c11e43c83604b179681bc481216e685e1b4b673adf",
+    "after_git_blob": "de0dda079c6ae42fc0ff2474edb9da82899d60f1",
+    "after_git_sha256": "2422cc11e6751182d46a281c08007a8677ac335ecc4a6c0209cae9adf50fb04c",
+    "after_fs_sha256": "2422cc11e6751182d46a281c08007a8677ac335ecc4a6c0209cae9adf50fb04c"
+  },
+  {
+    "path": "rust/geometry/src/router/processing.rs",
+    "status": "M",
+    "before_git_blob": "d56301d480f412e9e3f6dc32dbcf8c471f179b7c",
+    "before_git_sha256": "4348039e0918cd0a484e3bdbbfc9d574e3996fb46fe8e028e5683f40579f26e3",
+    "before_fs_sha256": "4348039e0918cd0a484e3bdbbfc9d574e3996fb46fe8e028e5683f40579f26e3",
+    "after_git_blob": "15de54bd06630e74ac8d9f2ac9eb7fb197f98b53",
+    "after_git_sha256": "e55a474eff2df113b71cd352ce98e19e209cb5342ed632ce713c8113977b7485",
+    "after_fs_sha256": "e55a474eff2df113b71cd352ce98e19e209cb5342ed632ce713c8113977b7485"
+  },
+  {
+    "path": "rust/geometry/src/router/processing_items.rs",
+    "status": "M",
+    "before_git_blob": "2777751cf97dcf88b27787928c5269cb74c72126",
+    "before_git_sha256": "2da65cd2d38c817f29b83e7a54c42b749a28d93300cfe54112179fc8e90345a5",
+    "before_fs_sha256": "2da65cd2d38c817f29b83e7a54c42b749a28d93300cfe54112179fc8e90345a5",
+    "after_git_blob": "5e400e015a3bd17967b7896ae46f3030ff936ae1",
+    "after_git_sha256": "80eb33fbf7706073cd310081bc6ee4f3e1d11814d5c7148bf4648af8077f6300",
+    "after_fs_sha256": "80eb33fbf7706073cd310081bc6ee4f3e1d11814d5c7148bf4648af8077f6300"
+  },
+  {
+    "path": "rust/geometry/src/router/processor.rs",
+    "status": "M",
+    "before_git_blob": "b00d4b4e07f1c333711085b71a3a92fdeb8e2dd7",
+    "before_git_sha256": "f7873bf00046cb892d5e3975eccb2939b86b0618d4954022631967b33309b8ce",
+    "before_fs_sha256": "f7873bf00046cb892d5e3975eccb2939b86b0618d4954022631967b33309b8ce",
+    "after_git_blob": "b518d073930261e38afb7a074cb7a84085559536",
+    "after_git_sha256": "513340edc35c1f8642ed05b9a62fc9cf4cf3811289a9b0779863e8e21653e1bb",
+    "after_fs_sha256": "513340edc35c1f8642ed05b9a62fc9cf4cf3811289a9b0779863e8e21653e1bb"
+  },
+  {
+    "path": "rust/geometry/src/router/rtc_offset/raw_coordinate.rs",
+    "status": "M",
+    "before_git_blob": "efc0e4378c7e871ea0701ec454e90bd433d43631",
+    "before_git_sha256": "b263be1055e17cb0bbe8b0037b766c970404eee10ee03de148b48194071f0a12",
+    "before_fs_sha256": "b263be1055e17cb0bbe8b0037b766c970404eee10ee03de148b48194071f0a12",
+    "after_git_blob": "7db3a730f6e84812f54b8a6286052b8073ecaef7",
+    "after_git_sha256": "f4e53da543468c68ef9a851182df4ed127116a1f4f74aab6855c471d07e7af02",
+    "after_fs_sha256": "f4e53da543468c68ef9a851182df4ed127116a1f4f74aab6855c471d07e7af02"
+  },
+  {
+    "path": "rust/geometry/src/router/textured.rs",
+    "status": "M",
+    "before_git_blob": "1409241b5ec7bc4de08fcd54415bd8cc1a610895",
+    "before_git_sha256": "2008828481402f9a1bbc50ccb5e0bc08ecd29b811a941578eeac46d104b4da65",
+    "before_fs_sha256": "2008828481402f9a1bbc50ccb5e0bc08ecd29b811a941578eeac46d104b4da65",
+    "after_git_blob": "1ba594a9696e570da6bdd6049f19cabb6645675a",
+    "after_git_sha256": "96d1d1129b12f1fe3ec74d9752bb6552866f738b641262361f1892f6ce5cc286",
+    "after_fs_sha256": "96d1d1129b12f1fe3ec74d9752bb6552866f738b641262361f1892f6ce5cc286"
+  },
+  {
+    "path": "rust/geometry/src/router/transforms/mesh_local.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "021aa3baa63461b0e11054c13552ec8e871adac7",
+    "after_git_sha256": "269e307e022262f3e8ded8d10a1235dd525bb33b4d5af65a34e3694d9b32cfb5",
+    "after_fs_sha256": "269e307e022262f3e8ded8d10a1235dd525bb33b4d5af65a34e3694d9b32cfb5"
+  },
+  {
+    "path": "rust/geometry/src/router/transforms/mesh_world.rs",
+    "status": "M",
+    "before_git_blob": "0c8589ae7e2d7aaa1147e9fe10a5b8c4087bc3eb",
+    "before_git_sha256": "1fcf003f92837966f79e26e0a33937926d7ee82e067eaebb817631509f4b2e16",
+    "before_fs_sha256": "1fcf003f92837966f79e26e0a33937926d7ee82e067eaebb817631509f4b2e16",
+    "after_git_blob": "dd758f774850a86969298605dab0a4502a787a62",
+    "after_git_sha256": "5904286d8a987eb5d24c3cc56556df1338d2dbef9a3ecca4f5df55a8e744c528",
+    "after_fs_sha256": "5904286d8a987eb5d24c3cc56556df1338d2dbef9a3ecca4f5df55a8e744c528"
+  },
+  {
+    "path": "rust/geometry/src/router/transforms/mesh_world_tests.rs",
+    "status": "M",
+    "before_git_blob": "74d98ecd95626e9b2e49c1714314a40d11e06f7d",
+    "before_git_sha256": "43223c4a67282cf12d7d2a79c819beee7f86d7b9d4cc6f2fdfeaabd950deb4aa",
+    "before_fs_sha256": "43223c4a67282cf12d7d2a79c819beee7f86d7b9d4cc6f2fdfeaabd950deb4aa",
+    "after_git_blob": "e6a0c4aecc566e06b1655c8131f106a754c33278",
+    "after_git_sha256": "a07057323fee891d5edde5d0a22bad12dcd6457e154d0aa60486641fa9b5df4e",
+    "after_fs_sha256": "a07057323fee891d5edde5d0a22bad12dcd6457e154d0aa60486641fa9b5df4e"
+  },
+  {
+    "path": "rust/geometry/src/router/transforms/mod.rs",
+    "status": "M",
+    "before_git_blob": "bda520cc56fc3bcdd1ccf94d82f47e9813342dac",
+    "before_git_sha256": "9340bcf720e4696db799472fcb81c15e3ccfd28e80dd1927fdfd95cff85a2f86",
+    "before_fs_sha256": "9340bcf720e4696db799472fcb81c15e3ccfd28e80dd1927fdfd95cff85a2f86",
+    "after_git_blob": "766e5ae7c6585a907c854a426e2773a88ebaaf02",
+    "after_git_sha256": "0618cf0fb1e222c834520178e904c8965f15ba5cd337bceefb4cae9c6c0d00e8",
+    "after_fs_sha256": "0618cf0fb1e222c834520178e904c8965f15ba5cd337bceefb4cae9c6c0d00e8"
+  },
+  {
+    "path": "rust/geometry/src/router/transforms/walk.rs",
+    "status": "D",
+    "before_git_blob": "fe477fbb7f75129750e724eea0b680e3f47cfd7a",
+    "before_git_sha256": "b559a85eea02da46b8f62d27b90ccd1b6be02e4c834523acd0fd26d95d2bb6f2",
+    "before_fs_sha256": "b559a85eea02da46b8f62d27b90ccd1b6be02e4c834523acd0fd26d95d2bb6f2",
+    "after_git_blob": null,
+    "after_git_sha256": null,
+    "after_fs_sha256": null
+  },
+  {
+    "path": "rust/geometry/src/router/transforms/world_frame_tests.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "c24c55e1f3c22d20d073fae7d59ef4beb9cedaa4",
+    "after_git_sha256": "fc2e8cb9ed3328fd8b8cc9793f7017feac6aacc46d5208f7da8ebcb000c47dce",
+    "after_fs_sha256": "fc2e8cb9ed3328fd8b8cc9793f7017feac6aacc46d5208f7da8ebcb000c47dce"
+  },
+  {
+    "path": "rust/geometry/src/router/unit_admission.rs",
+    "status": "M",
+    "before_git_blob": "505301f2ec8de52adfb83fbe05c16b3ed91f384b",
+    "before_git_sha256": "8e448ad9e62d927b6dc0cf09cce627bdc99beb7e09f319e260505169a91379dd",
+    "before_fs_sha256": "8e448ad9e62d927b6dc0cf09cce627bdc99beb7e09f319e260505169a91379dd",
+    "after_git_blob": "b10a8d7f562d9b8ba5bc91b1481d068f63eb81a6",
+    "after_git_sha256": "94ff1b1e0e2f1d24c1acfabe2eb87df30fbeb8222ace1022212acdf43d64ef7b",
+    "after_fs_sha256": "94ff1b1e0e2f1d24c1acfabe2eb87df30fbeb8222ace1022212acdf43d64ef7b"
+  },
+  {
+    "path": "rust/geometry/src/router/voids/bool2d_kernel_rollback_tests.rs",
+    "status": "M",
+    "before_git_blob": "3429eba0536124374de65001dbbfb9390581d48e",
+    "before_git_sha256": "f49c0159387ae3682ce068a1e56e8e1f92356cc95481450a02729e524ad3f750",
+    "before_fs_sha256": "f49c0159387ae3682ce068a1e56e8e1f92356cc95481450a02729e524ad3f750",
+    "after_git_blob": "d406b0e49a8934c529c2c75b184b13958c25e2cf",
+    "after_git_sha256": "3fa9f6af38b8a44d9d7ab5ddb1143a7ee56430b5bcf16ff6de24faf03b5d330d",
+    "after_fs_sha256": "3fa9f6af38b8a44d9d7ab5ddb1143a7ee56430b5bcf16ff6de24faf03b5d330d"
+  },
+  {
+    "path": "rust/geometry/src/router/voids/bool2d_path_tests.rs",
+    "status": "M",
+    "before_git_blob": "83304faa3e5e3dfa8e48be9fde626b791ed43e17",
+    "before_git_sha256": "0caaab062c31070bbf0c5d7120db502de70867bf9abaf889ef52eba855a36238",
+    "before_fs_sha256": "0caaab062c31070bbf0c5d7120db502de70867bf9abaf889ef52eba855a36238",
+    "after_git_blob": "90fc54b4c023b0d4df0b07cc07250f1766626cf0",
+    "after_git_sha256": "65ab5a6831ae2f8ad00680e5abe18cb0f64b71a083f55738641af30ea4c4bf52",
+    "after_fs_sha256": "65ab5a6831ae2f8ad00680e5abe18cb0f64b71a083f55738641af30ea4c4bf52"
+  },
+  {
+    "path": "rust/geometry/src/router/voids/bool2d_transaction_tests.rs",
+    "status": "M",
+    "before_git_blob": "a301974d4b387f96e3dba497a64d4b28c3a5eefa",
+    "before_git_sha256": "7ea2d6daa07ea20a5619e87721c1a1b32d64efc5c4016a13d83c8fe0811d519d",
+    "before_fs_sha256": "7ea2d6daa07ea20a5619e87721c1a1b32d64efc5c4016a13d83c8fe0811d519d",
+    "after_git_blob": "5bd438b56e825dfbf1c2fc17c051e1e64b983142",
+    "after_git_sha256": "e5ab10d35c60f2f14f7e2e07220228e366146ce8fed3f92878147efc2f938394",
+    "after_fs_sha256": "e5ab10d35c60f2f14f7e2e07220228e366146ce8fed3f92878147efc2f938394"
+  },
+  {
+    "path": "rust/geometry/src/router/voids/coaxial_union.rs",
+    "status": "M",
+    "before_git_blob": "cd93cad5e79c15fe596215571aa95a394c1db772",
+    "before_git_sha256": "f831dd4671668d9901de9a3a86129d6e3effb92108107c6a1560a5ece0f4ca59",
+    "before_fs_sha256": "f831dd4671668d9901de9a3a86129d6e3effb92108107c6a1560a5ece0f4ca59",
+    "after_git_blob": "d93717fa609fac24898f550f732786ce08eeaa87",
+    "after_git_sha256": "bd54f2d9db5eb4891a16c171aa871418dddacd4de9133cd0b0c3f84da5cf6210",
+    "after_fs_sha256": "bd54f2d9db5eb4891a16c171aa871418dddacd4de9133cd0b0c3f84da5cf6210"
+  },
+  {
+    "path": "rust/geometry/src/router/voids/coaxial_union_tests.rs",
+    "status": "M",
+    "before_git_blob": "8e545447d8ca166272ffc972c4dc3e571fd7a344",
+    "before_git_sha256": "6d7fd32b358773d6b2d00372080cbff8b2bf7e7519687439661e1f55bde2ddc5",
+    "before_fs_sha256": "6d7fd32b358773d6b2d00372080cbff8b2bf7e7519687439661e1f55bde2ddc5",
+    "after_git_blob": "6cf6422d19dc35557602679e8b263a6b23b41f3a",
+    "after_git_sha256": "661b8abcdbd064583474ef4e722ce54799eadaacef18692558514d1bc8391b40",
+    "after_fs_sha256": "661b8abcdbd064583474ef4e722ce54799eadaacef18692558514d1bc8391b40"
+  },
+  {
+    "path": "rust/geometry/src/router/voids/cut_effect_count_tests.rs",
+    "status": "M",
+    "before_git_blob": "f26aec4f4ade8b16f3060bb32b84be11986f1ce8",
+    "before_git_sha256": "302885fec018912b422259c9bb3fb62458b0d3b39c9c0bc450504da64bca96f4",
+    "before_fs_sha256": "302885fec018912b422259c9bb3fb62458b0d3b39c9c0bc450504da64bca96f4",
+    "after_git_blob": "000513d72b21b79872bae0fa376849f49cd8c46b",
+    "after_git_sha256": "d281b46066992ef772a32333dbf80de71749321123eab72f55059274f619d4a2",
+    "after_fs_sha256": "d281b46066992ef772a32333dbf80de71749321123eab72f55059274f619d4a2"
+  },
+  {
+    "path": "rust/geometry/src/router/voids/execution_tests_adapter.rs",
+    "status": "M",
+    "before_git_blob": "4a4fba89ea2b3ed4f3458a42a1ed06a28bfe538b",
+    "before_git_sha256": "0c37c35d9e844751d9000ab7a9c08f0a90d9c474bcd95293e4d5bc661a93096c",
+    "before_fs_sha256": "0c37c35d9e844751d9000ab7a9c08f0a90d9c474bcd95293e4d5bc661a93096c",
+    "after_git_blob": "b55f733f755f2f3605934bfd8fbfaae8c68f1ff8",
+    "after_git_sha256": "cf09d7473db4fb148bba311f4dedd5f1b17986e405ad46d4b6dd7bf1181f4823",
+    "after_fs_sha256": "cf09d7473db4fb148bba311f4dedd5f1b17986e405ad46d4b6dd7bf1181f4823"
+  },
+  {
+    "path": "rust/geometry/src/router/voids/flap_clip_tests.rs",
+    "status": "M",
+    "before_git_blob": "49127753a54dad5c6b29a901877a60e04dc955ca",
+    "before_git_sha256": "13a91292d0e3919acea4009fc91d77cc026ac0750b175598b98985575fd9e3e9",
+    "before_fs_sha256": "13a91292d0e3919acea4009fc91d77cc026ac0750b175598b98985575fd9e3e9",
+    "after_git_blob": "a4b04fa05fc199817123ef2ffe414d94064f2c8e",
+    "after_git_sha256": "3e9fd902d358d1c8472541a45fcbd1c46bde67c1954afabb0ab39d3442babd35",
+    "after_fs_sha256": "3e9fd902d358d1c8472541a45fcbd1c46bde67c1954afabb0ab39d3442babd35"
+  },
+  {
+    "path": "rust/geometry/src/router/voids/mod.rs",
+    "status": "M",
+    "before_git_blob": "6c52805efb2a31c60d142cb77b0d1b17a40dd9ed",
+    "before_git_sha256": "f41525c944988bf3e3fd1f9c6f90118844cb00ea7178ed183cd328ab9fdab031",
+    "before_fs_sha256": "f41525c944988bf3e3fd1f9c6f90118844cb00ea7178ed183cd328ab9fdab031",
+    "after_git_blob": "de92e90ccc3e37a99b3b5b95b3f3bf61cadb0d8c",
+    "after_git_sha256": "f5ea585aa881e5e4d76135fc6fe775d703eb9129fca22aea8e4f8eafa806df4a",
+    "after_fs_sha256": "f5ea585aa881e5e4d76135fc6fe775d703eb9129fca22aea8e4f8eafa806df4a"
+  },
+  {
+    "path": "rust/geometry/src/router/voids/staged.rs",
+    "status": "M",
+    "before_git_blob": "857019b36498dbdb53100804748733e781098eb3",
+    "before_git_sha256": "52b9a32ed2212e724ed413c279da59a050b6e47c8c5d0358fa52466e475df13b",
+    "before_fs_sha256": "52b9a32ed2212e724ed413c279da59a050b6e47c8c5d0358fa52466e475df13b",
+    "after_git_blob": "a04abbb0afa165e597131345bee8de7eb8165e06",
+    "after_git_sha256": "2b393270964991668df70c6f2109be74df4920d458d3202a291755f59044c8e0",
+    "after_fs_sha256": "2b393270964991668df70c6f2109be74df4920d458d3202a291755f59044c8e0"
+  },
+  {
+    "path": "rust/geometry/src/router/voids/synthesis_tests.rs",
+    "status": "M",
+    "before_git_blob": "599c1abc8f39c43922b35760dbaca8464c7bd4ae",
+    "before_git_sha256": "af61b195076c4cb3610c1a6ad6c9303a3c932b9aa2060588e2946a8af1683783",
+    "before_fs_sha256": "af61b195076c4cb3610c1a6ad6c9303a3c932b9aa2060588e2946a8af1683783",
+    "after_git_blob": "201a70041e99c37a9d1b0a3559b25856573e5c3f",
+    "after_git_sha256": "5c2dc7dbbcd7949ddaec8eb004f38df6c4f151063534e859e1419bd0510d6fb2",
+    "after_fs_sha256": "5c2dc7dbbcd7949ddaec8eb004f38df6c4f151063534e859e1419bd0510d6fb2"
+  },
+  {
+    "path": "rust/geometry/tests/csg_clip_epsilon_scale_regression.rs",
+    "status": "M",
+    "before_git_blob": "7c1d00c4b9d6430fea05700f47cdda8d697d7a25",
+    "before_git_sha256": "86c22f4080ffec69b98215126d3427fa911968457662b00d2019f1169936192b",
+    "before_fs_sha256": "86c22f4080ffec69b98215126d3427fa911968457662b00d2019f1169936192b",
+    "after_git_blob": "2ce614001212d312f0da2483a0d3e03e8b648b46",
+    "after_git_sha256": "4c8de7b081cefd21720094b4de2b99d29eeb0dda4db90bc56e5407f5ad459e0b",
+    "after_fs_sha256": "4c8de7b081cefd21720094b4de2b99d29eeb0dda4db90bc56e5407f5ad459e0b"
+  },
+  {
+    "path": "rust/geometry/tests/material_layers_test.rs",
+    "status": "M",
+    "before_git_blob": "7cef64a094063b1a9450e6d9e2d8a29a873c4921",
+    "before_git_sha256": "8c5d0cb59102fe9fd52b469ed24122c63ac4ac8f7f2e36327aed73ef0d4ed265",
+    "before_fs_sha256": "8c5d0cb59102fe9fd52b469ed24122c63ac4ac8f7f2e36327aed73ef0d4ed265",
+    "after_git_blob": "a4339878d853d6792a2483822791c922e99d4296",
+    "after_git_sha256": "6cf29e7e5bd5298ec53f65987888114798495fe843a18761d345dffb84f97fbd",
+    "after_fs_sha256": "6cf29e7e5bd5298ec53f65987888114798495fe843a18761d345dffb84f97fbd"
+  },
+  {
+    "path": "rust/processing/src/element.rs",
+    "status": "M",
+    "before_git_blob": "677edceab3a369a8319d0309614692dd4272e56a",
+    "before_git_sha256": "029693ff73d4ebf1f737d9825b6d19dd458e2ddfbf56c79f3f891d5b22d520e8",
+    "before_fs_sha256": "029693ff73d4ebf1f737d9825b6d19dd458e2ddfbf56c79f3f891d5b22d520e8",
+    "after_git_blob": "ca47c0919878f6697bbe92697285614d1593295f",
+    "after_git_sha256": "1c2097c51f80b95ad31f2d394584ad0679cae0cd1848b5ecaaf3bf34cec55c3e",
+    "after_fs_sha256": "1c2097c51f80b95ad31f2d394584ad0679cae0cd1848b5ecaaf3bf34cec55c3e"
+  },
+  {
+    "path": "rust/processing/src/element/accounted_protocol_tests.rs",
+    "status": "M",
+    "before_git_blob": "f4b3c4ad48d42dd314439fbca5064abc2933d462",
+    "before_git_sha256": "6db4c84697f29b59a79338a762aac116788f2178dba3e33d9e07ad7026b6aacb",
+    "before_fs_sha256": "6db4c84697f29b59a79338a762aac116788f2178dba3e33d9e07ad7026b6aacb",
+    "after_git_blob": "d5d58d2eb5594adcae02c585d411864f10625515",
+    "after_git_sha256": "73828256cb2d7dbab75c4b45c9f6f8d4a33938695013b6fafdcfb68de20b68d6",
+    "after_fs_sha256": "73828256cb2d7dbab75c4b45c9f6f8d4a33938695013b6fafdcfb68de20b68d6"
+  },
+  {
+    "path": "rust/processing/src/element/accounted_session_tests.rs",
+    "status": "M",
+    "before_git_blob": "ad9a63d8f3c9eea5475c8bfd82b6f92418e765f9",
+    "before_git_sha256": "6d468b6317688a20bd658719d525ba6701ca30d130cfca05255f743e4290f7e8",
+    "before_fs_sha256": "6d468b6317688a20bd658719d525ba6701ca30d130cfca05255f743e4290f7e8",
+    "after_git_blob": "a20d410c399bb98ee792210153eebf992d50f5a6",
+    "after_git_sha256": "d98ac4b186e07de3b832964ae49c706872e8de6b83084dbc79cd48954c4bb301",
+    "after_fs_sha256": "d98ac4b186e07de3b832964ae49c706872e8de6b83084dbc79cd48954c4bb301"
+  },
+  {
+    "path": "rust/processing/src/element/owned_reply_tests.rs",
+    "status": "M",
+    "before_git_blob": "96ad81885cce42ac0edaff5f5a6cbd56ba49b131",
+    "before_git_sha256": "3c41a6677aa2077611062d6b58d5d6e8b50f6a3ec7299574a91123513612491f",
+    "before_fs_sha256": "3c41a6677aa2077611062d6b58d5d6e8b50f6a3ec7299574a91123513612491f",
+    "after_git_blob": "f4936ab3e1e493f7473c865eb871224faec35352",
+    "after_git_sha256": "2ff93de522d5d2450e9ddb424a6873cd9f7e247eab907b57d5da92b92ef4944b",
+    "after_fs_sha256": "2ff93de522d5d2450e9ddb424a6873cd9f7e247eab907b57d5da92b92ef4944b"
+  },
+  {
+    "path": "rust/processing/src/element/session.rs",
+    "status": "M",
+    "before_git_blob": "d3518562b0a369dcbaf9ef889f70849fb5afd5cb",
+    "before_git_sha256": "d533944b04b318eda4412f4615c0e852eb1c4480bea82775b0670ec17c7959f3",
+    "before_fs_sha256": "d533944b04b318eda4412f4615c0e852eb1c4480bea82775b0670ec17c7959f3",
+    "after_git_blob": "e7dc73b2ebbb5b0d32bebaaf08d19fb5697957fe",
+    "after_git_sha256": "742209ca2d00a02611ce73033757a9e7e7204ae65026357d0d6d19371360b9c4",
+    "after_fs_sha256": "742209ca2d00a02611ce73033757a9e7e7204ae65026357d0d6d19371360b9c4"
+  },
+  {
+    "path": "rust/processing/src/element/session_extension_tests.rs",
+    "status": "M",
+    "before_git_blob": "07bf8647278c47ec9a83cc34ec3deed06bcabf1e",
+    "before_git_sha256": "6d6d461e9473bc35e6e2116085286c04ed5f7e0fbc1893d6140e821534d7e801",
+    "before_fs_sha256": "6d6d461e9473bc35e6e2116085286c04ed5f7e0fbc1893d6140e821534d7e801",
+    "after_git_blob": "dee14e5f2b26d55ba84805a4ea5e0b78868dfa01",
+    "after_git_sha256": "a54fd2df9c6fdd15c1a508de0a660f7a4a7537ea5fb58bea23bdde1808766389",
+    "after_fs_sha256": "a54fd2df9c6fdd15c1a508de0a660f7a4a7537ea5fb58bea23bdde1808766389"
+  },
+  {
+    "path": "rust/processing/src/element/session_inner.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "141f9a55019b5692b878de58fab66fb854d8213c",
+    "after_git_sha256": "1dc62c537cba37e564d051d8ea11ebf3a718f5796809afce2d4cfd25fe91e08d",
+    "after_fs_sha256": "1dc62c537cba37e564d051d8ea11ebf3a718f5796809afce2d4cfd25fe91e08d"
+  },
+  {
+    "path": "rust/processing/src/element/session_inner_tests.rs",
+    "status": "A",
+    "before_git_blob": null,
+    "before_git_sha256": null,
+    "before_fs_sha256": null,
+    "after_git_blob": "e1614ff22f1a907d09df1cff2e6e1849fb26afa3",
+    "after_git_sha256": "60aa55bda31637fbc3ede68f4177cdc315880e7f196f939956e15e4497a27c1f",
+    "after_fs_sha256": "60aa55bda31637fbc3ede68f4177cdc315880e7f196f939956e15e4497a27c1f"
+  },
+  {
+    "path": "rust/processing/src/element/session_mutation_tests.rs",
+    "status": "M",
+    "before_git_blob": "f01ae4750734cd13eba8915d6cefaa02bccfea97",
+    "before_git_sha256": "20a2245de2bdad548e98bcd95be047e5302c2323e393f261460f40e7c3876b73",
+    "before_fs_sha256": "20a2245de2bdad548e98bcd95be047e5302c2323e393f261460f40e7c3876b73",
+    "after_git_blob": "4504ad5d8d7577ba3bc92fd8a6a4a14b6e343b05",
+    "after_git_sha256": "19f63835d1e80b81b219e946f4d0b2aa80dca0c91d6a5c5b169904b84ada2be9",
+    "after_fs_sha256": "19f63835d1e80b81b219e946f4d0b2aa80dca0c91d6a5c5b169904b84ada2be9"
+  },
+  {
+    "path": "rust/processing/src/element/session_protocol.rs",
+    "status": "M",
+    "before_git_blob": "2a5091fff0644e1667a182df24f65cb18fa0181d",
+    "before_git_sha256": "0adabf1f0fa994efba9f327ad7941c0da57aa407963143e0e989fa4e7b3dcd29",
+    "before_fs_sha256": "0adabf1f0fa994efba9f327ad7941c0da57aa407963143e0e989fa4e7b3dcd29",
+    "after_git_blob": "7d47d4cf333f61508d88aa78810c32db51f9ab58",
+    "after_git_sha256": "6fb256581c35e44a228b4960c89df80255b9368f3e6fb21983ebf979bec2fa99",
+    "after_fs_sha256": "6fb256581c35e44a228b4960c89df80255b9368f3e6fb21983ebf979bec2fa99"
+  },
+  {
+    "path": "rust/processing/src/element/session_terminal_tests.rs",
+    "status": "M",
+    "before_git_blob": "de7a72bc9fa04809e7b31ede8300b6fc30d5d4df",
+    "before_git_sha256": "c93449d8ee6533567e609e28645a30e75e6877cfe69b84a14557e6ccbba669b2",
+    "before_fs_sha256": "c93449d8ee6533567e609e28645a30e75e6877cfe69b84a14557e6ccbba669b2",
+    "after_git_blob": "7df8e42872276b0e0dcf3ecf433ce938102b2ce8",
+    "after_git_sha256": "0ba3a9e5c0172cd23829a6bea52e68746699e14df7d0a5993d3cb2a120b7944f",
+    "after_fs_sha256": "0ba3a9e5c0172cd23829a6bea52e68746699e14df7d0a5993d3cb2a120b7944f"
+  },
+  {
+    "path": "rust/processing/src/element/session_tests.rs",
+    "status": "M",
+    "before_git_blob": "c653fc6b62e11a3625bbce8d2d3ede24f9f51325",
+    "before_git_sha256": "681bb2f81be872ad22d9ceef42729d66aefe0186804809f8b599b8173642396d",
+    "before_fs_sha256": "681bb2f81be872ad22d9ceef42729d66aefe0186804809f8b599b8173642396d",
+    "after_git_blob": "729e22eb455e90e6c2d2e0494e9c3ec967789a23",
+    "after_git_sha256": "4cfbed4653726baf9edb510d90c2f90b3b6ed8d609fc7e781238165fe8e800ca",
+    "after_fs_sha256": "4cfbed4653726baf9edb510d90c2f90b3b6ed8d609fc7e781238165fe8e800ca"
+  },
+  {
+    "path": "rust/processing/src/element/session_threaded_tests.rs",
+    "status": "M",
+    "before_git_blob": "0103afdd6ee59189465ea6b11d288513cedebc6e",
+    "before_git_sha256": "6f393a263a38abb20e62e3dec74d59c0b51a5828f867beeaca7fc8b6070070b5",
+    "before_fs_sha256": "6f393a263a38abb20e62e3dec74d59c0b51a5828f867beeaca7fc8b6070070b5",
+    "after_git_blob": "47712e5a1b8e73432ee27f897be49a3d76345824",
+    "after_git_sha256": "b69dafd765ae3876bf5a2ece5d769a5f37d6b0c7bd5058f3063b79d1ff2c5564",
+    "after_fs_sha256": "b69dafd765ae3876bf5a2ece5d769a5f37d6b0c7bd5058f3063b79d1ff2c5564"
+  },
+  {
+    "path": "rust/processing/src/element/session_work.rs",
+    "status": "M",
+    "before_git_blob": "14753d420dd754d0ebca3049c14b06a4553403ea",
+    "before_git_sha256": "e22535184636846eda07975ae2e1e5a1b11dcdbe2883d34d2d4ef132677721ad",
+    "before_fs_sha256": "e22535184636846eda07975ae2e1e5a1b11dcdbe2883d34d2d4ef132677721ad",
+    "after_git_blob": "9a21bd69d5b3d6ce81e4ee5398d3d57e5eb36c3b",
+    "after_git_sha256": "9f30868600dbff6f76a2d708714cab6412a27c2ce4d4a96b46e86914b3b7fbc5",
+    "after_fs_sha256": "9f30868600dbff6f76a2d708714cab6412a27c2ce4d4a96b46e86914b3b7fbc5"
+  },
+  {
+    "path": "rust/processing/src/element/session_work_tests.rs",
+    "status": "M",
+    "before_git_blob": "59817790dbf66d2f0c70cbe15fa1449386826e12",
+    "before_git_sha256": "a276aa2c3e0ba143631bbece9ea68153b53e7fdfb7c03a9fbc45c4e84e89793c",
+    "before_fs_sha256": "a276aa2c3e0ba143631bbece9ea68153b53e7fdfb7c03a9fbc45c4e84e89793c",
+    "after_git_blob": "0bcabe37a026f4853c924630a7c6d6e4adf0bf3e",
+    "after_git_sha256": "f33db10de226312de5d3787efb5698e028b5ad9bb8bc0e00831250f46dce296b",
+    "after_fs_sha256": "f33db10de226312de5d3787efb5698e028b5ad9bb8bc0e00831250f46dce296b"
+  },
+  {
+    "path": "rust/processing/src/element_tests.rs",
+    "status": "M",
+    "before_git_blob": "7f4c6cfae21f92c02074a89752acefc6eeb0896e",
+    "before_git_sha256": "bc11a0c3552354e2cbe4d6da0c3d90448eff52556b16af54b38d90655a6e040f",
+    "before_fs_sha256": "bc11a0c3552354e2cbe4d6da0c3d90448eff52556b16af54b38d90655a6e040f",
+    "after_git_blob": "31283b04bea80895d6c47eb9ecc80549ff79ce63",
+    "after_git_sha256": "ada2235c32428a5b06763fe0c14ce2671885df537f25803b778d3552c08fa204",
+    "after_fs_sha256": "ada2235c32428a5b06763fe0c14ce2671885df537f25803b778d3552c08fa204"
+  },
+  {
+    "path": "rust/processing/tests/mesh_id_provenance.rs",
+    "status": "M",
+    "before_git_blob": "e73c573b4d03e6f5353eb1197ee2bd98ef9849eb",
+    "before_git_sha256": "bb4ded0112d7efc2be520bde773d06fccf912fac581cf3bf6f6097101ab968c4",
+    "before_fs_sha256": "bb4ded0112d7efc2be520bde773d06fccf912fac581cf3bf6f6097101ab968c4",
+    "after_git_blob": "37386f6a6c43ab606da2af85460ab75ee5da2c16",
+    "after_git_sha256": "c1ed28f1d365a926477669b00e230a39ea49f84e1eb357c10426219505d64738",
+    "after_fs_sha256": "c1ed28f1d365a926477669b00e230a39ea49f84e1eb357c10426219505d64738"
+  },
+  {
+    "path": "rust/wasm-bindings/src/api/mod.rs",
+    "status": "M",
+    "before_git_blob": "cb2d2dfc1ce2383e6e37aee76b34ee2bb667b911",
+    "before_git_sha256": "6a2582f83ee3b5843f21aab402f491802c5a57390929982125afc3798a63685f",
+    "before_fs_sha256": "6a2582f83ee3b5843f21aab402f491802c5a57390929982125afc3798a63685f",
+    "after_git_blob": "3af5d695a3cb5d5dd18b461bb0269cc1b9484023",
+    "after_git_sha256": "8f7577d6c0830805fba5330b6308afae72d60c728314bdd84035eeafdab3d9fa",
+    "after_fs_sha256": "8f7577d6c0830805fba5330b6308afae72d60c728314bdd84035eeafdab3d9fa"
+  },
+  {
+    "path": "scripts/perf/README.md",
+    "status": "M",
+    "before_git_blob": "02357648005f9733905d4e19cea1761ea9972254",
+    "before_git_sha256": "007a38a79eac74f0728e9dec0944f240d770c5e70e324c63a6f6c42cdd726026",
+    "before_fs_sha256": "007a38a79eac74f0728e9dec0944f240d770c5e70e324c63a6f6c42cdd726026",
+    "after_git_blob": "5b6683661d8eb1b1207ee9a38151f1617b6d68db",
+    "after_git_sha256": "006b9db22175e3a19c4ef94f8c912e9a1a1f4449b28d7f2bdc2d0ffbef7d00d3",
+    "after_fs_sha256": "006b9db22175e3a19c4ef94f8c912e9a1a1f4449b28d7f2bdc2d0ffbef7d00d3"
+  },
+  {
+    "path": "scripts/test-wasm-contract.mjs",
+    "status": "M",
+    "before_git_blob": "a242573a957b95485e3d89ae0143ea41fdad5aa7",
+    "before_git_sha256": "7459230e6000bedbc39ddc11cfa68a5b6aacf4e885e0a6a539fc4be10364e768",
+    "before_fs_sha256": "7459230e6000bedbc39ddc11cfa68a5b6aacf4e885e0a6a539fc4be10364e768",
+    "after_git_blob": "c98286445e49b349cd1e534cda6d342c88c70874",
+    "after_git_sha256": "a9a0d5ae42b1a593a387238267c159ed357381d47c072f6ab1d86b416c292a84",
+    "after_fs_sha256": "a9a0d5ae42b1a593a387238267c159ed357381d47c072f6ab1d86b416c292a84"
+  }
+]

@@ -7,10 +7,9 @@
 use super::frame_parts::{mesh_bounds, single_frame};
 use super::GeometryRouter;
 use crate::{Mesh, Result, SubMeshCollection};
-use crate::program::{EntryPolicy, ProductProgram};
+use crate::program::{GeometryProgram, product_control::ProductConsumer};
 
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
-use std::rc::Rc;
+use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 /// The nearest f32 that does not shrink the interval: rounds a minimum down
 /// and a maximum up, so an f32 box always encloses the f64 geometry.
@@ -31,7 +30,7 @@ pub(super) fn enclosing_f32(value: f64, is_min: bool) -> f32 {
 /// in f64 and then rounded OUTWARD to the enclosing f32 box: at a 5,000,000 m
 /// offset the f32 ULP is 0.5 m, so a 0.125 m face would otherwise round both
 /// faces onto one value and publish a zero extent (#5026 review).
-pub(super) fn publish_object_frame_bounds(mesh: &mut Mesh, offset: (f64, f64, f64)) {
+pub(crate) fn publish_object_frame_bounds(mesh: &mut Mesh, offset: (f64, f64, f64)) {
     if mesh.positions.is_empty() {
         return;
     }
@@ -52,7 +51,9 @@ pub(super) fn publish_object_frame_bounds(mesh: &mut Mesh, offset: (f64, f64, f6
 
 /// Which source hygiene an element's meshes get before placement (#5313).
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum SourceHygiene {
+pub(crate) enum SourceHygiene {
+    /// Dedicated alignment output historically skips source cleanup.
+    None,
     /// [`Mesh::clean_degenerate_watertight`]: drops slivers without opening a
     /// T-junction. The default for output meshes.
     Watertight,
@@ -66,12 +67,14 @@ pub(super) enum SourceHygiene {
 impl SourceHygiene {
     /// `self`, downgraded to `IndexOnly` while the router is told to keep
     /// triangle order (see `GeometryRouter::set_preserve_triangle_order`).
-    pub(super) fn for_router(self, router: &GeometryRouter) -> Self {
+    pub(crate) fn for_router(self, router: &GeometryRouter) -> Self {
+        if self == Self::None { return self }
         if router.preserve_triangle_order.get() { Self::IndexOnly } else { self }
     }
 
-    pub(super) fn apply(self, mesh: &mut Mesh) {
+    pub(crate) fn apply(self, mesh: &mut Mesh) {
         match self {
+            Self::None => {},
             Self::Watertight => mesh.clean_degenerate_watertight(),
             Self::IndexOnly => mesh.clean_degenerate(),
         }
@@ -113,35 +116,12 @@ impl GeometryRouter {
         hygiene: SourceHygiene,
     ) -> Result<Vec<Mesh>> {
         crate::resource::check_current()?;
-        // IfcAlignment carries its directrix curve in a dedicated `Axis`
-        // attribute (IFC4X1) instead of (or in addition to) a normal
-        // IfcShapeRepresentation. Route those through the alignment
-        // processor before the standard representation walk, since the
-        // Representation is often `$` in practice.
-        if element.ifc_type == IfcType::IfcAlignment {
-            if let Some(mesh) = self.try_alignment_mesh(element, decoder)? {
-                return Ok(vec![mesh]);
-            }
+        let mut program=GeometryProgram::product(element.clone(),ProductConsumer::Merged,hygiene);
+        while let Some(request)=program.request().expect("canonical product request") {
+            let reply=program.execute(request,self,decoder).expect("canonical product execution");
+            program.accept(reply,self).expect("canonical product acceptance");
         }
-
-        let Some(program) = ProductProgram::admit(element, EntryPolicy::MergedProduct, decoder)? else {
-            return Ok(vec![Mesh::new()]);
-        };
-
-        let (mut combined_mesh, far_parts, rebased) = program.merged(element, self, decoder)?;
-
-        // Source-triangle hygiene before placement (rigid transforms preserve
-        // degeneracy, while the element-local frame retains more f32 precision).
-        // This is the merged-mesh router's choke point: downstream facet weld /
-        // refinement passes canonicalize geometry but do not replace this input
-        // cleanup or promise hygienic output. See `SourceHygiene` (#5313).
-        // Cut-created candidates require separate, path-specific handling. See
-        // #4797.
-        hygiene.for_router(self).apply(&mut combined_mesh);
-
-        // Apply placement transformation
-        self.apply_placement(element, decoder, &mut combined_mesh)?;
-        self.place_frame_parts(element, decoder, hygiene, combined_mesh, far_parts, rebased)
+        program.finish_parts()
     }
 
     /// Process element and return sub-meshes with their geometry item IDs.
@@ -179,40 +159,12 @@ impl GeometryRouter {
         hygiene: SourceHygiene,
     ) -> Result<SubMeshCollection> {
         crate::resource::check_current()?;
-        // If a material-layer buildup is attached, try slicing single-solid
-        // elements (walls / slabs with IfcMaterialLayerSetUsage) first so each
-        // layer gets its own sub-mesh keyed by IfcMaterial id. An empty void
-        // index is passed — the caller's has_openings branch takes the
-        // voids-aware path below.
-        let layered = self.try_layered_sub_meshes(element, decoder, None)?;
-        crate::resource::check_current()?;
-        if let Some(layered) = layered {
-            return Ok(layered);
+        let mut program=GeometryProgram::product(element.clone(),ProductConsumer::Styled {allow_instancing},hygiene);
+        while let Some(request)=program.request().expect("canonical styled product request") {
+            let reply=program.execute_with_textures(request,self,decoder,texture_index).expect("canonical styled product execution");
+            program.accept(reply,self).expect("canonical styled product acceptance");
         }
-
-        let Some(program) = ProductProgram::admit(element, EntryPolicy::StyledProduct, decoder)? else {
-            return Ok(SubMeshCollection::new());
-        };
-
-        let mut sub_meshes = program.styled(element, self, decoder, allow_instancing, texture_index)?;
-
-        // Source-triangle hygiene before placement — the per-style counterpart
-        // to `process_element`'s choke point. Facet canonicalizers downstream do
-        // not replace this cleanup or promise hygienic output; cut-created
-        // candidates require path-specific handling. Positions are never
-        // removed, so unreferenced ones may remain. See `SourceHygiene`
-        // (#5313); a textured sub-mesh stays `IndexOnly` because an appended
-        // apex vertex would desynchronise its parallel UV array. The layered
-        // and textured early-return channels clean at their own sites and are
-        // not switched (#5313 left them unmeasured). See #4797.
-        for sub in &mut sub_meshes.sub_meshes {
-            let own =
-                if sub.uvs.is_some() { SourceHygiene::IndexOnly } else { hygiene.for_router(self) };
-            own.apply(&mut sub.mesh);
-        }
-
-        self.apply_submesh_placement(&mut sub_meshes, element, decoder)?;
-        Ok(sub_meshes)
+        program.finish_submeshes()
     }
 
     /// Process a single representation item (IfcExtrudedAreaSolid, etc.), with
@@ -230,7 +182,7 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Result<Mesh> {
         // The curve-capped flag (#4901) is drained where the processor runs,
-        // in `process_item_in_rtc_frame`, so every walk reports it once.
+        // in the common item program, so every walk reports it once.
         self.process_representation_item_in_frame(item, decoder, self.rtc_offset)
     }
 
@@ -245,40 +197,6 @@ impl GeometryRouter {
         offset_meters: (f64, f64, f64),
     ) -> Result<Mesh> {
         self.process_representation_item_body(item, decoder, offset_meters)
-    }
-
-    /// Mesh a raw-coordinate item (tessellated, Brep, surface model or
-    /// direct face) in an element-local RTC frame.
-    ///
-    /// Model RTC is world-space; subtracting it directly from object-space
-    /// coordinates is only correct for an identity placement. Pull the RTC
-    /// vector through the placement's inverse linear transform so the later
-    /// placement produces `M(p) - rtc` for rotated/scaled elements as well.
-    /// `None` when the item is not a raw-coordinate item beyond the RTC
-    /// threshold; the ordinary item path then handles it.
-    pub(crate) fn process_raw_item_for_element(
-        &self,
-        item: &DecodedEntity,
-        element: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Result<Option<Mesh>> {
-        if !self.has_rtc_offset()
-            || !self
-                .representation_item_first_vertex_meters(item, decoder)
-                .is_some_and(crate::coord_is_large)
-        {
-            return Ok(None);
-        }
-        if self.processor_for(&item.ifc_type).is_none() {
-            return Ok(None);
-        }
-        let Some(offset) = self.element_frame_rtc(element, decoder)? else {
-            return Ok(None);
-        };
-        // The ordinary item path, in the element's frame: it keeps content
-        // dedup and direct-solid instancing (keyed by the offset), and a
-        // declined rebase is decided in the right frame too (#5684).
-        self.process_representation_item_in_frame(item, decoder, offset).map(Some)
     }
 
     /// The model RTC offset expressed in `element`'s object frame (metres):
@@ -298,45 +216,6 @@ impl GeometryRouter {
                 * nalgebra::Vector3::new(self.rtc_offset.0, self.rtc_offset.1, self.rtc_offset.2);
             (rtc.x, rtc.y, rtc.z)
         }))
-    }
-
-    /// Run an `IfcAlignment` through the dedicated alignment processor, then
-    /// apply the standard unit scale + placement transform. Returns `None`
-    /// when the alignment has no recognisable directrix curve (the caller
-    /// falls back to normal representation processing).
-    fn try_alignment_mesh(
-        &self,
-        element: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Result<Option<Mesh>> {
-        let processor = match self.processor_for(&IfcType::IfcAlignment) {
-            Some(p) => Rc::clone(p),
-            None => return Ok(None),
-        };
-        crate::resource::check_current()?;
-        self.record_processor_dispatch(processor.as_ref());
-        let result = match processor.lower_owned(element, decoder, self.tessellation_quality, None) {
-            Some(plan) => plan.and_then(|plan| {
-                        crate::resource::check_current()?;
-                        plan.evaluate()
-                    }),
-            None => crate::resource::check_current().map_err(crate::Error::from).and_then(|()|
-                processor.process(element, decoder, self.schema, self.tessellation_quality)),
-        };
-        let mut mesh = match crate::resource::observe(result) {
-            Ok(m) => m,
-            Err(error @ crate::Error::ProgramStopped(_)) => return Err(error),
-            // Missing Axis or unparseable curve isn't fatal — fall back so
-            // the caller can still walk a normal representation if present.
-            Err(_) => return Ok(None),
-        };
-        if mesh.positions.is_empty() {
-            return Ok(None);
-        }
-        mesh.validate_indices();
-        self.scale_mesh(&mut mesh);
-        self.apply_placement(element, decoder, &mut mesh)?;
-        Ok(Some(mesh))
     }
 
     /// Drain refs the content-hash walk refused above `u32::MAX` (#3421/#3752).

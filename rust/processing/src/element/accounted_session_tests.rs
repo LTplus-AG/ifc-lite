@@ -98,24 +98,48 @@ fn zero_output_allowance_refuses_before_presentation_and_zero_work_before_proces
 #[test]
 fn every_recoverable_work_kind_preserves_a_typed_stop_instead_of_empty_retry() {
     use super::plan::PrimaryStrategy;
-    use super::session_protocol::{WorkKind,WorkPayload};
+    use super::session_protocol::WorkKind;
+    use super::session_state::Stage;
     let kinds = [
         WorkKind::Primary { strategy:PrimaryStrategy::TexturedSubmeshes, layer_class:0 },
         WorkKind::Primary { strategy:PrimaryStrategy::VoidedSubmeshes, layer_class:0 },
         WorkKind::VoidedParts, WorkKind::PlainParts, WorkKind::TypeMap { map_id:61, class:1 },
     ];
     for kind in kinds {
-        let mut decoder = EntityDecoder::new(SOURCE);
+        let source = SOURCE.replace("ENDSEC;END-ISO-10303-21;",
+            "#200=IFCOPENINGELEMENT('opening',$,$,$,$,#19,#21,$,$);ENDSEC;END-ISO-10303-21;");
+        let mut decoder = EntityDecoder::new(&source);
         let mut router = admitted_router(&mut decoder);
         let calls = Rc::new(Cell::new(0));
         router.register(Box::new(CatchStop { calls:calls.clone(), cancel:true }));
         let entity = decoder.decode_by_id(10).unwrap();
-        let owned_job = super::session_state::OwnedJob::new(&job(&entity,&metadata(10)));
         let context = super::session_tests::Context::default();
+        let openings = [(10, vec![200])].into_iter().collect();
+        let mut borrowed = context.borrowed();
+        borrowed.void_index = &openings;
         let account = account(ResourceLimits::default());
-        let (_,payload) = account.scope(||super::session_work::execute(kind,&owned_job,
-            &context.borrowed(),&mut decoder,&router));
-        assert!(matches!(payload,WorkPayload::Stopped(ProgramStop::Cancelled)),"{kind:?}");
+        let output = account.scope(|| {
+            let mut state = super::session::ProductState::new(&job(&entity,&metadata(10)),
+                &borrowed,&options(),&mut decoder,&router);
+            // Enter each genuine coarse recovery boundary; all reached source,
+            // selected callback, inner accepts and terminal finalization remain
+            // the canonical session implementation.
+            state.stage = match kind {
+                WorkKind::Primary { strategy, layer_class } => Stage::Primary { strategy, layer_class },
+                WorkKind::VoidedParts => Stage::VoidedParts,
+                WorkKind::PlainParts => Stage::PlainParts,
+                WorkKind::TypeMap { map_id, class } => Stage::TypeMaps(vec![(map_id,class)].into_iter()),
+            };
+            while let Some(request) = state.request().unwrap() {
+                assert_eq!(request.kind,kind,"terminal work cannot enter a later recovery strategy");
+                let reply = state.execute(request,&borrowed,&mut decoder,&router).unwrap();
+                state.accept(reply,&borrowed,&mut decoder,&router).unwrap();
+            }
+            state.finish(&decoder,&router)
+        });
+        assert_eq!(account.check(),Err(ProgramStop::Cancelled),"{kind:?}");
+        assert!(output.meshes.is_empty() && output.instance_occurrences.is_empty(),"{kind:?}");
+        assert!(output.geometry_hash.is_none() && output.geometry_volume.is_none(),"{kind:?}");
         assert_eq!(calls.get(),1,"a terminal callback is never reentered by recovery");
     }
 }

@@ -4,9 +4,8 @@
 
 //! Product-scoped polygonal annotation fills (#4406). Deliberately not a
 //! registry processor: type-level FootPrint/Annotation maps must remain absent.
-use super::GeometryRouter;
-use crate::{Error, Mesh, Result};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use crate::Error;
+use ifc_lite_core::{DecodedEntity, IfcType};
 
 pub(crate) fn accepts(product: &DecodedEntity, rep_type: &str) -> bool {
     product.ifc_type == IfcType::IfcAnnotation && matches!(rep_type, "Annotation2D" | "Surface2D")
@@ -23,21 +22,6 @@ pub(crate) fn is_fill_only_representation(product: &DecodedEntity, shape_rep: &D
         .is_some_and(|rep_type| accepts(product, rep_type))
 }
 
-impl GeometryRouter {
-    pub(crate) fn process_annotation_fill(
-        &self,
-        item: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Result<Mesh> {
-        let result = (|| {
-            crate::program::annotation::AnnotationFill::admit(item, decoder, self.unit_scale())?.evaluate()
-        })();
-        if result.is_err() {
-            self.record_unsupported_item(item.ifc_type.clone());
-        }
-        result
-    }
-}
 
 pub(crate) fn invalid(reason: &str) -> Error {
     Error::geometry(format!("IfcAnnotationFillArea: {reason}"))

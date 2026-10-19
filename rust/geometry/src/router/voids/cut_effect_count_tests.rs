@@ -31,7 +31,7 @@ fn prism_and_exact_paths_record_the_same_rect_box_count() {
     assert!(prism_cut::enabled(), "IFC_LITE_PRISM_CUT=0 turns off the path this test pins");
     let prism = GeometryRouter::new();
     assert!(prism.try_prism_cut(&host, &ctx).is_some(), "premise: the box cutter takes the prism path");
-    prism.apply_void_context(host.clone(), &ctx, 7).unwrap();
+    prism.apply_void_context_borrowed(host.clone(), &ctx, 7).unwrap();
 
     let exact = GeometryRouter::new();
     let bounds = world_host_bounds(&host);

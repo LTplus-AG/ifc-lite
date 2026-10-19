@@ -3,10 +3,10 @@
 use crate::router::frame_parts::{frames_mergeable, mesh_bounds, union_bounds, FrameParts};
 use crate::{InstanceMeta, Mesh};
 
-pub(super) type MergedParts = (Mesh, FrameParts, (Mesh, Option<[f32; 6]>));
+pub(crate) type MergedParts = (Mesh, FrameParts, (Mesh, Option<[f32; 6]>));
 
 #[derive(Default)]
-pub(super) struct MergedResources {
+pub(crate) struct MergedResources {
     combined: Mesh,
     rebased: Mesh,
     bounds: Option<[f32; 6]>,

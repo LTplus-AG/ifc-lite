@@ -202,3 +202,34 @@ fn independent_product_sessions_interleave_without_crossing_style_hash_frame_or_
     assert_ne!(wall.geometry_aabb,slab.geometry_aabb);
     assert_ambient();
 }
+
+/// These fixture extensions implement only process, with no RTC or owned
+/// lowering hook. Stop after their actual selected admission so the returned
+/// ticket reaches the callback, regardless of preceding inner source steps.
+pub(super) fn request_after_custom_admission(state: &mut super::session::ProductState,
+    context: &MeshProductionContext<'_>, decoder: &mut EntityDecoder,
+    router: &GeometryRouter) -> super::session_protocol::WorkRequest {
+    for _ in 0..512 {
+        let request = state.request().unwrap().expect("fixture reaches its selected custom processor");
+        let reply = state.execute(request, context, decoder, router).unwrap();
+        let selected = reply.registry_emitters.iter().any(|emitter|
+            emitter.origin() == ifc_lite_geometry::ProcessorEmitterOrigin::Custom);
+        state.accept(reply, context, decoder, router).unwrap();
+        if selected { return state.request().unwrap().expect("selected extension callback request"); }
+    }
+    panic!("fixture did not reach custom admission within its finite inner program");
+}
+
+/// An outer attempt remains open until every inner operation has returned.
+/// Retain its genuine completed geometry packet before presentation acceptance.
+pub(super) fn request_coarse_completion(state: &mut super::session::ProductState,
+    context: &MeshProductionContext<'_>, decoder: &mut EntityDecoder,
+    router: &GeometryRouter) -> super::session_protocol::WorkRequest {
+    for _ in 0..512 {
+        let request = state.request().unwrap().expect("fixture reaches completed attempt");
+        if request.inner.is_none() { return request }
+        let reply = state.execute(request, context, decoder, router).unwrap();
+        state.accept(reply, context, decoder, router).unwrap();
+    }
+    panic!("fixture did not complete its finite inner attempt");
+}

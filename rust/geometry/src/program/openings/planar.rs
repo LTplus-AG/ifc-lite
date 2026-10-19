@@ -1,184 +1,237 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Source profile capture followed by geometry-only footprint admission.
-use crate::router::voids::{
-    bool2d_path::{
-        footprint::{footprint_interior, opening_solid_footprint},
-        Bool2dCut,
-    },
-    probe::ExtrudedSolidInfo,
-    VoidContext,
-};
-use crate::{resource, GeometryRouter};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+//! Source solids, per-solid numerical eligibility, then quiet residual children.
+use super::control::{OpeningControl, OpeningOutput, OpeningPoll, Step};
+use super::requests::{OpeningReady, OpeningReply, OpeningSource};
+use crate::router::voids::{bool2d_path::Bool2dCut, probe::ExtrudedSolidInfo, VoidContext};
+use crate::Result;
+use ifc_lite_core::{DecodedEntity, IfcType};
 use nalgebra::{Matrix4, Point2, Vector3};
+use std::sync::Arc;
 
+pub(crate) struct PlanarHost {
+    pub(super) solid: ExtrudedSolidInfo,
+    pub(super) hm_inv: Matrix4<f64>,
+    pub(super) axis: Vector3<f64>,
+    pub(super) z_min: f64,
+    pub(super) z_max: f64,
+    pub(super) z_tol: f64,
+}
+impl PlanarHost {
+    pub(super) fn prepare(solid: ExtrudedSolidInfo) -> Option<Self> {
+        let hm_inv = solid.m.try_inverse()?;
+        let rotation = solid.m.fixed_view::<3, 3>(0, 0).into_owned();
+        let axis = (rotation * Vector3::new(0.0, 0.0, solid.dir_sign)).try_normalize(1e-9)?;
+        let (z_min, z_max) = if solid.dir_sign >= 0.0 {
+            (0.0, solid.depth)
+        } else {
+            (-solid.depth, 0.0)
+        };
+        let z_tol = 1.0e-6 * solid.depth.abs() + 1.0e-9;
+        Some(Self {
+            solid,
+            hm_inv,
+            axis,
+            z_min,
+            z_max,
+            z_tol,
+        })
+    }
+}
 pub(super) struct Capture {
-    host: ExtrudedSolidInfo,
+    element: DecodedEntity,
     ids: std::vec::IntoIter<u32>,
-    hm_inv: Matrix4<f64>,
-    host_axis: Vector3<f64>,
-    hz_min: f64,
-    hz_max: f64,
-    z_tol: f64,
+    host: Option<Arc<PlanarHost>>,
+    requested: u32,
+    solids: std::vec::IntoIter<ExtrudedSolidInfo>,
+    tentative: Vec<Vec<Point2<f64>>>,
     footprints: Vec<Vec<Point2<f64>>>,
     residual_ids: Vec<u32>,
+    wt: Option<Matrix4<f64>>,
+    residual: Option<Box<VoidContext>>,
+    next: Option<OpeningPoll>,
+    phase: Phase,
+}
+enum Phase {
+    Host,
+    Decode,
+    Footprints,
+    Residual,
+    Pending,
 }
 impl Capture {
-    pub(super) fn run(
-        element: &DecodedEntity,
-        ids: &[u32],
-        router: &GeometryRouter,
-        decoder: &mut EntityDecoder<'_>,
-    ) -> crate::Result<Option<Bool2dCut>> {
-        resource::check_current()?;
-        if ids.is_empty() {
-            return Ok(None);
-        }
-        let host = router.host_extruded_solid_checked(element, decoder)?;
-        resource::check_current()?;
-        let Some(host) = host else { return Ok(None) };
-        let Some(hm_inv) = host.m.try_inverse() else { return Ok(None) };
-        let host_rot = host.m.fixed_view::<3, 3>(0, 0).into_owned();
-        let Some(host_axis) = (host_rot * Vector3::new(0.0, 0.0, host.dir_sign)).try_normalize(1e-9) else {
-            return Ok(None);
-        };
-        // Host extrusion span in the solid's profile frame.
-        let (hz_min, hz_max) = if host.dir_sign >= 0.0 {
-            (0.0, host.depth)
-        } else {
-            (-host.depth, 0.0)
-        };
-        // Numerical-precision coincidence (1 ppm): near-through blind openings
-        // defer to the exact kernel instead of becoming a full-depth hole.
-        let z_tol = 1.0e-6 * host.depth.abs() + 1.0e-9;
-
-        let mut capture = Self {
-            host,
-            ids: ids.to_vec().into_iter(),
-            hm_inv,
-            host_axis,
-            hz_min,
-            hz_max,
-            z_tol,
+    pub(super) fn new(element: DecodedEntity, ids: Vec<u32>) -> Self {
+        Self {
+            element,
+            ids: ids.into_iter(),
+            host: None,
+            requested: 0,
+            solids: Vec::new().into_iter(),
+            tentative: Vec::new(),
             footprints: Vec::new(),
             residual_ids: Vec::new(),
+            wt: None,
+            residual: None,
+            next: None,
+            phase: Phase::Host,
+        }
+    }
+    pub(super) fn poll(&mut self) -> Step {
+        if let Some(next) = self.next.take() {
+            return Step::Poll(next);
+        }
+        match std::mem::replace(&mut self.phase, Phase::Pending) {
+            Phase::Host => {
+                if self.ids.len() == 0 {
+                    self.finish_none();
+                    return self.poll();
+                }
+                Step::Poll(OpeningPoll::Source(OpeningSource::SolidHost(
+                    self.element.clone(),
+                )))
+            }
+            Phase::Decode => {
+                if let Some(id) = self.ids.next() {
+                    self.requested = id;
+                    Step::Poll(OpeningPoll::Source(OpeningSource::Decode(id)))
+                } else if self.footprints.is_empty() {
+                    self.finish_none();
+                    self.poll()
+                } else {
+                    Step::Poll(OpeningPoll::Source(OpeningSource::Frame))
+                }
+            }
+            Phase::Footprints => {
+                if let Some(solid) = self.solids.next() {
+                    Step::Poll(OpeningPoll::Ready(OpeningReady::Footprint {
+                        host: Arc::clone(self.host.as_ref().expect("planar host")),
+                        solid,
+                    }))
+                } else {
+                    if self.tentative.is_empty() {
+                        self.residual_ids.push(self.requested)
+                    } else {
+                        self.footprints.append(&mut self.tentative)
+                    }
+                    self.phase = Phase::Decode;
+                    self.poll()
+                }
+            }
+            Phase::Residual => {
+                if self.residual_ids.is_empty() {
+                    self.finish();
+                    self.poll()
+                } else {
+                    Step::Child(OpeningControl::classifier(
+                        self.element.clone(),
+                        std::mem::take(&mut self.residual_ids),
+                        false,
+                    ))
+                }
+            }
+            Phase::Pending => Step::Poll(OpeningPoll::Pending),
+        }
+    }
+    fn finish_none(&mut self) {
+        self.next = Some(OpeningPoll::Ready(OpeningReady::Finish(
+            OpeningOutput::Planar(None),
+        )));
+    }
+    fn finish(&mut self) {
+        let host = Arc::into_inner(self.host.take().expect("planar host"))
+            .unwrap_or_else(|| panic!("pending planar recipe retains host"));
+        let cut = Bool2dCut {
+            host_profile: host.solid.profile,
+            depth: host.solid.depth,
+            dir_sign: host.solid.dir_sign,
+            wt: self.wt.take().expect("planar world transform"),
+            footprints: std::mem::take(&mut self.footprints),
+            residual: self.residual.take(),
         };
-        while let Some(id) = capture.ids.next() {
-            resource::check_current()?;
-            let decoded = decoder.decode_by_id(id);
-            resource::check_current()?;
-            match decoded {
-                Ok(opening) if opening.ifc_type == IfcType::IfcOpeningElement => {
-                    capture.opening(id, &opening, router, decoder)?
-                }
-                _ => capture.residual_ids.push(id),
-            }
-        }
-        capture.finish(element, router, decoder)
+        self.next = Some(OpeningPoll::Ready(OpeningReady::Finish(
+            OpeningOutput::Planar(Some(cut)),
+        )));
     }
-    fn opening(
-        &mut self,
-        oid: u32,
-        opening: &DecodedEntity,
-        router: &GeometryRouter,
-        decoder: &mut EntityDecoder<'_>,
-    ) -> crate::Result<()> {
-        resource::check_current()?;
-        // An opening is eligible only when EVERY constituent solid is a
-        // parallel through-cut whose hole-free footprint lands STRICTLY
-        // INTERIOR to the host profile. A footprint that touches / breaches
-        // the boundary, or lands in an existing profile hole, is routed to
-        // the residual so it never silently no-ops. Collect tentatively; any
-        // ineligible solid sends the
-        // whole opening (all its solids) to the residual so nothing is
-        // double-cut.
-        let mut opening_footprints: Vec<Vec<Point2<f64>>> = Vec::new();
-        let solids = router.opening_extruded_solids_checked(opening, decoder)?;
-        resource::check_current()?;
-        let mut eligible = solids.is_some();
-        if let Some(solids) = solids {
-            for op in &solids {
-                resource::check_current()?;
-                let footprint = opening_solid_footprint(
-                    op,
-                    &self.hm_inv,
-                    &self.host_axis,
-                    self.hz_min,
-                    self.hz_max,
-                    self.z_tol,
-                );
-                resource::check_current()?;
-                match footprint {
-                    Some(fp) if footprint_interior(&fp, &self.host.profile) => {
-                        resource::check_current()?;
-                        opening_footprints.push(fp);
-                    }
-                    _ => {
-                        eligible = false;
-                        break;
-                    }
+    pub(super) fn resume(&mut self, reply: OpeningReply) -> Result<()> {
+        match reply {
+            OpeningReply::SolidHost(reply) => match reply? {
+                Some(host) => self.next = Some(OpeningPoll::Ready(OpeningReady::PlanarHost(host))),
+                None => self.finish_none(),
+            },
+            OpeningReply::PlanarHost(host) => match host {
+                Some(host) => {
+                    self.host = Some(host);
+                    self.phase = Phase::Decode
                 }
+                None => self.finish_none(),
+            },
+            OpeningReply::Decoded(reply) => match super::source_option(reply)? {
+                Some(opening) if opening.ifc_type == IfcType::IfcOpeningElement => {
+                    self.next = Some(OpeningPoll::Source(OpeningSource::Solids(opening)))
+                }
+                _ => {
+                    self.residual_ids.push(self.requested);
+                    self.phase = Phase::Decode;
+                }
+            },
+            OpeningReply::Solids(reply) => match reply? {
+                Some(solids) => {
+                    self.solids = solids.into_iter();
+                    self.tentative.clear();
+                    self.phase = Phase::Footprints
+                }
+                None => {
+                    self.residual_ids.push(self.requested);
+                    self.phase = Phase::Decode;
+                }
+            },
+            OpeningReply::Footprint(footprint) => match footprint {
+                Some(footprint) => {
+                    self.tentative.push(footprint);
+                    self.phase = Phase::Footprints
+                }
+                None => {
+                    self.residual_ids.push(self.requested);
+                    self.tentative.clear();
+                    self.solids = Vec::new().into_iter();
+                    self.phase = Phase::Decode;
+                }
+            },
+            OpeningReply::Frame(scale, rtc) => {
+                self.next = Some(OpeningPoll::Ready(OpeningReady::PlanarTransform {
+                    host: Arc::clone(self.host.as_ref().expect("planar host")),
+                    scale,
+                    rtc,
+                }))
             }
-        }
-        resource::check_current()?;
-        if eligible && !opening_footprints.is_empty() {
-            self.footprints.append(&mut opening_footprints);
-        } else {
-            self.residual_ids.push(oid);
-        }
-        Ok(())
-    }
-    fn finish(
-        self,
-        element: &DecodedEntity,
-        router: &GeometryRouter,
-        decoder: &mut EntityDecoder<'_>,
-    ) -> crate::Result<Option<Bool2dCut>> {
-        resource::check_current()?;
-        if self.footprints.is_empty() {
-            return Ok(None);
-        }
-        // Profile-local → world metres, RTC-relative: world = scale·(m·p) − rtc.
-        // Scaling rows 0..3 (incl. their translation column) then subtracting the
-        // RTC offset reproduces `center_native · s − rtc` from the rect probe.
-        let s = router.unit_scale();
-        let (rx, ry, rz) = router.rtc_offset();
-        let mut wt = self.host.m;
-        for i in 0..3 {
-            for j in 0..4 {
-                wt[(i, j)] *= s;
+            OpeningReply::PlanarTransform(wt) => {
+                self.wt = Some(wt);
+                self.phase = Phase::Residual
             }
-        }
-        wt[(0, 3)] -= rx;
-        wt[(1, 3)] -= ry;
-        wt[(2, 3)] -= rz;
-
-        resource::check_current()?;
-        let residual = if self.residual_ids.is_empty() {
-            None
-        } else {
-            let openings =
-                super::Classifier::new(element, &self.residual_ids, false).run(router, decoder)?;
-            if openings.is_empty() {
-                None
-            } else {
-                let merged_openings = GeometryRouter::merge_rectangular_openings(&openings);
-                Some(Box::new(VoidContext {
+            OpeningReply::Merged(openings, merged_openings) => {
+                self.residual = Some(Box::new(VoidContext {
                     openings,
                     merged_openings,
                     param: None,
                     bool2d: None,
-                }))
+                }));
+                self.finish();
             }
-        };
-        resource::check_current()?;
-        Ok(Some(Bool2dCut {
-            host_profile: self.host.profile,
-            depth: self.host.depth,
-            dir_sign: self.host.dir_sign,
-            wt,
-            footprints: self.footprints,
-            residual,
-        }))
+            OpeningReply::Finished(output) => self.next = Some(OpeningPoll::Complete(Ok(output))),
+            _ => unreachable!("planar reply tag"),
+        }
+        Ok(())
+    }
+    pub(super) fn child_complete(&mut self, output: Result<OpeningOutput>) -> Result<()> {
+        match output? {
+            OpeningOutput::Classified(openings) => {
+                if openings.is_empty() {
+                    self.finish()
+                } else {
+                    self.next = Some(OpeningPoll::Ready(OpeningReady::Merge(openings)));
+                }
+            }
+            _ => unreachable!("quiet residual classifier output"),
+        }
+        Ok(())
     }
 }

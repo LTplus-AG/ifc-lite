@@ -65,11 +65,16 @@ impl TriangulatedFaceSetPlan {
     /// UV indexing remains authored-coordinate indexing when no explicit
     /// TexCoordIndex exists; remapped point IDs never substitute for UV IDs.
     pub(crate) fn evaluate_with_texture(self, map: &ResolvedTextureMap) -> (Mesh, Vec<f32>) {
+        self.evaluate_with_uvs(&map.tex_coords, map.tex_coord_index.clone())
+    }
+
+    /// Canonical numerical UV evaluation from an owned reached snapshot.
+    pub(crate) fn evaluate_with_uvs(self, tex_coords: &[[f32; 2]],
+        authored_texture_indices: Option<Vec<[u32; 3]>>) -> (Mesh, Vec<f32>) {
         let rtc_applied = self.rtc_applied;
         let (positions, indices, flipped, authored) = self.oriented();
-        let tex_coord_index = match &map.tex_coord_index {
-            Some(authored) => {
-                let mut index = authored.clone();
+        let tex_coord_index = match authored_texture_indices {
+            Some(mut index) => {
                 if flipped {
                     for triangle in &mut index {
                         triangle.swap(1, 2);
@@ -89,7 +94,7 @@ impl TriangulatedFaceSetPlan {
         let (mut mesh, uvs) = PolygonalFaceSetProcessor::build_flat_shaded_mesh_with_uvs(
             &positions,
             &indices,
-            &map.tex_coords,
+            tex_coords,
             &tex_coord_index,
         );
         mesh.validate_indices();

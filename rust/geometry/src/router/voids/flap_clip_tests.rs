@@ -189,7 +189,7 @@ fn nonzero_origin_host_records_world_space_bbox() {
     };
 
     let element_id = 4242u32;
-    let _ = router.apply_void_context(host, &ctx, element_id).unwrap();
+    let _ = router.apply_void_context_borrowed(host, &ctx, element_id).unwrap();
 
     let diags = router.take_host_opening_diagnostics();
     let hd = diags.get(&element_id).expect("host cut effect recorded");
@@ -311,7 +311,7 @@ fn budget_tripped_engulfing_cutter_skips_aabb_fallback() {
 
     let engulf_id = 91_109_u32;
     budget::begin_element(); // fresh element scope; element cap 1 is the trip
-    let engulf_result = router.apply_void_context(host.clone(), &engulf_ctx, engulf_id).unwrap();
+    let engulf_result = router.apply_void_context_borrowed(host.clone(), &engulf_ctx, engulf_id).unwrap();
 
     // Host PRESENT and UN-CUT: the engulfing AABB box-cut was suppressed, so the
     // result is the original host, not an empty (deleted) mesh.
@@ -366,7 +366,7 @@ fn budget_tripped_engulfing_cutter_skips_aabb_fallback() {
 
     let small_id = 91_635_u32;
     budget::begin_element();
-    let small_result = router.apply_void_context(host.clone(), &small_ctx, small_id).unwrap();
+    let small_result = router.apply_void_context_borrowed(host.clone(), &small_ctx, small_id).unwrap();
     assert!(
         !small_result.is_empty(),
         "a non-engulfing cut must keep the wall"

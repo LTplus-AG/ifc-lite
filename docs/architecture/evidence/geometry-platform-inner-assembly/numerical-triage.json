@@ -1,0 +1,12 @@
+{
+  "source": "dc5e9f8f2de6ab0803b36b2e8b62e27ddb5a3546",
+  "scope": "small arithmetic only; no kernel or test binary executed",
+  "grid": 1.52587890625e-05,
+  "authored_width": 0.01,
+  "snapped_width": 0.0099945068359375,
+  "reported_prior_volume": 7.999999001647044,
+  "computed_snapped_volume": 7.999999001647044,
+  "exact_match": true,
+  "opening_prior_actual_volume": "not printed; unresolved beyond explicit budget-setup defects",
+  "tests_run": false
+}

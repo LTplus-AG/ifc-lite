@@ -84,7 +84,7 @@ END-ISO-10303-21;
         instanceable: true,
     });
     // Deliberately left `false`: this mesh never went through
-    // `apply_placement`/`apply_submesh_placement`, matching probe.rs's shape.
+    // canonical product completion, matching probe.rs's shape.
     assert!(!mesh.welded_in_object_frame);
 
     let assembly_job = AssemblyJob::from(&job);

@@ -1,0 +1,8 @@
+{
+  "base": "a969cbcaf91c80c2133cbc23c54db6751fcbcd3e",
+  "head": "dc5e9f8f2de6ab0803b36b2e8b62e27ddb5a3546",
+  "expected_tree": "2023a0ca7aed11542dd23e252c807a587d2a6aaf",
+  "temporary_index_tree": "2023a0ca7aed11542dd23e252c807a587d2a6aaf",
+  "exact_match": true,
+  "scope": "Git index reconstruction only; no compilation/runtime"
+}

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Opening terminal-port invariants use real numerical cuts, with lazy policy probes.
-use super::{Configuration, ReadyOperation};
+use super::{Configuration, GatePolicy, ReadyOperation};
 use crate::router::voids::{OpeningType, ParamRectCut, RectParam, VoidContext};
 use crate::{resource, GeometryRouter, Mesh, Point3, TessellationQuality, Vector3};
 use std::cell::Cell;
@@ -14,8 +14,8 @@ fn forbidden_late_gate() -> bool {
     panic!("a successful parametric cut must never reach a later gate")
 }
 fn policy() -> Configuration {
-    Configuration { parametric: enabled, rectangular: forbidden_late_gate,
-        prism: forbidden_late_gate, coaxial_union: forbidden_late_gate }
+    Configuration { parametric: GatePolicy::Test(enabled), rectangular: GatePolicy::Test(forbidden_late_gate),
+        prism: GatePolicy::Test(forbidden_late_gate), coaxial_union: GatePolicy::Test(forbidden_late_gate) }
 }
 fn parametric_fixture() -> (Mesh, VoidContext) {
     let profile = crate::profile::Profile2D::new(vec![
@@ -41,7 +41,7 @@ fn opening_terminal_port_parametric_success_preserves_lazy_gate_order() {
     LATE_READS.with(|n| n.set(0));
     let (host, context) = parametric_fixture();
     let router = GeometryRouter::new();
-    let result = ReadyOperation::new(host, &context, 910, TessellationQuality::default(), policy())
+    let result = ReadyOperation::new(host, std::sync::Arc::new(context), 910, TessellationQuality::default(), policy())
         .execute().publish(&router).unwrap();
     assert!((crate::mesh_check::signed_volume(&result).abs() - 96.).abs() < 1e-5);
     assert_eq!(LATE_READS.with(Cell::get), 0);
@@ -57,7 +57,7 @@ fn opening_terminal_port_late_publish_stop_discards_current_host_effects() {
         let mesh = router.process_element(&host, &mut decoder).unwrap();
         let context = crate::program::ProductProgram::host_openings(&host, &[8])
             .run(&router, &mut decoder).unwrap();
-        let outcome = ReadyOperation::new(mesh, &context, 7, TessellationQuality::default(),
+        let outcome = ReadyOperation::new(mesh, std::sync::Arc::new(context), 7, TessellationQuality::default(),
             crate::router::voids::numerical_configuration()).execute();
         resource::stop(resource::ProgramStop::Cancelled);
         assert!(matches!(outcome.publish(&router), Err(crate::Error::ProgramStopped(resource::ProgramStop::Cancelled))));
@@ -92,7 +92,7 @@ fn opening_terminal_port_late_selected_callback_mutates_unreached_env_gates() {
     }
     let (host, context) = parametric_fixture();
     let router = GeometryRouter::new();
-    let first = ReadyOperation::new(host, &context, 910, TessellationQuality::default(),
+    let first = ReadyOperation::new(host, std::sync::Arc::new(context), 910, TessellationQuality::default(),
         crate::router::voids::numerical_configuration()).execute().publish(&router).unwrap();
     assert!((crate::mesh_check::signed_volume(&first).abs() - 96.).abs() < 1e-5);
     let configuration = crate::router::voids::numerical_configuration();
@@ -105,8 +105,8 @@ fn opening_terminal_port_late_selected_callback_mutates_unreached_env_gates() {
     let real = later.process_element(&element, &mut decoder).unwrap();
     assert!((crate::mesh_check::signed_volume(&real).abs() - 24.).abs() < 1e-5);
     assert_eq!(calls.get(), 1);
-    assert!(!(configuration.prism)(), "earlier success must not initialize the prism OnceLock");
-    assert!(!(configuration.coaxial_union)(), "earlier success must not initialize the union OnceLock");
+    assert!(!configuration.prism.read(), "earlier success must not initialize the prism OnceLock");
+    assert!(!configuration.coaxial_union.read(), "earlier success must not initialize the union OnceLock");
 }
 
 
@@ -139,7 +139,9 @@ fn opening_terminal_port_late_stop_retains_completed_root_kernel_failure() {
     if std::env::var_os(CHILD).is_none() {
         let name = "program::openings::execute::tests::opening_terminal_port_late_stop_retains_completed_root_kernel_failure";
         let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", name, "--nocapture"]).env(CHILD, "1").output().unwrap();
+            .args(["--exact", name, "--nocapture"]).env(CHILD, "1")
+            .env_remove("IFC_LITE_CSG_BUDGET").env_remove("IFC_LITE_CSG_ELEMENT_BUDGET")
+            .output().unwrap();
         assert!(output.status.success(), "{}\n{}", String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr));
         assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed; 0 failed"));
@@ -157,13 +159,14 @@ fn opening_terminal_port_late_stop_retains_completed_root_kernel_failure() {
         }
     }
     let _restore = RestoreBudget { cap: budget::cap(), element: budget::element_cap() };
+    budget::set_cap(Some(budget::DEFAULT_CAP));
     let router = GeometryRouter::new();
     // A real successful route creates success telemetry, which must remain
     // unpublished if acceptance is stopped (not merely stay zero on a miss).
     crate::rect_fast::take_param_fires();
     resource::ExecutionAccount::default().scope(|| {
         let (host, context) = parametric_fixture();
-        let outcome = ReadyOperation::new(host, &context, 91108,
+        let outcome = ReadyOperation::new(host, std::sync::Arc::new(context), 91108,
             TessellationQuality::default(), policy()).execute();
         let mesh = outcome.result.as_ref().unwrap().as_ref().unwrap();
         assert!((crate::mesh_check::signed_volume(mesh).abs() - 96.).abs() < 1e-5);
@@ -180,8 +183,8 @@ fn opening_terminal_port_late_stop_retains_completed_root_kernel_failure() {
     let opening = OpeningType::NonRectangular(cutter, lo.cast(), hi.cast(), None);
     let context = VoidContext { openings: vec![opening.clone()],
         merged_openings: vec![opening], param: None, bool2d: None };
-    let configuration = Configuration { parametric: disabled, rectangular: disabled,
-        prism: disabled, coaxial_union: disabled };
+    let configuration = Configuration { parametric: GatePolicy::Test(disabled), rectangular: GatePolicy::Test(disabled),
+        prism: GatePolicy::Test(disabled), coaxial_union: GatePolicy::Test(disabled) };
     crate::csg::take_csg_census();
     crate::router::voids::take_bool2d_stats();
     crate::router::voids::take_prism_stats();
@@ -189,12 +192,14 @@ fn opening_terminal_port_late_stop_retains_completed_root_kernel_failure() {
     budget::set_element_cap(Some(1));
     budget::begin_element();
     resource::ExecutionAccount::default().scope(|| {
-        let outcome = ReadyOperation::new(host, &context, 91109,
+        let outcome = ReadyOperation::new(host, std::sync::Arc::new(context), 91109,
             TessellationQuality::default(), configuration).execute();
         let completed = outcome.result.as_ref().expect("real numerical work did not panic")
             .as_ref().expect("kernel budget fallback completed before cancellation");
+        assert!(budget::tripped(), "the real numerical subtraction must exhaust the element cap");
         assert_eq!(completed.triangle_count(), 12);
-        assert!((crate::mesh_check::signed_volume(completed).abs() - 1.2).abs() < 1e-6);
+        assert!((crate::mesh_check::signed_volume(completed).abs() - 1.2).abs() < 1e-6,
+            "capped host volume {}, expected 1.2", crate::mesh_check::signed_volume(completed).abs());
         assert!(crate::mesh_check::closed_enough_to_emit(completed));
         assert_eq!(crate::csg::take_csg_census().len(), 1,
             "one actual capped subtraction, with no numerical retry");
@@ -256,4 +261,30 @@ fn opening_terminal_port_late_stop_retains_completed_root_kernel_failure() {
         assert!(!router.host_consumed_by_void(91110));
         assert_eq!(crate::csg::take_csg_census().len(), 1, "no fallback or retry work");
     });
+}
+
+#[test]
+fn opening_ready_packets_share_one_owned_context_across_independent_host_parts() {
+    let (host, context) = parametric_fixture();
+    let context = std::sync::Arc::new(context);
+    let retained = std::sync::Arc::downgrade(&context);
+    let first = ReadyOperation::new(host.clone(), std::sync::Arc::clone(&context), 911,
+        TessellationQuality::default(), policy());
+    let second = ReadyOperation::new(host, std::sync::Arc::clone(&context), 912,
+        TessellationQuality::default(), policy());
+    drop(context);
+    let router = GeometryRouter::new();
+    let first = first.execute().publish(&router).unwrap();
+    assert!((crate::mesh_check::signed_volume(&first).abs() - 96.).abs() < 1e-5);
+    assert!(retained.upgrade().is_some(), "the pending second real cut retains its immutable context");
+    let second = second.execute().publish(&router).unwrap();
+    assert!((crate::mesh_check::signed_volume(&second).abs() - 96.).abs() < 1e-5);
+    assert!(retained.upgrade().is_none(), "the final execution releases the shared context");
+}
+
+#[test]
+fn dormant_opening_numerical_packets_are_send() {
+    fn assert_send<T: Send>() {}
+    assert_send::<ReadyOperation>();
+    assert_send::<super::NumericalOutcome>();
 }

@@ -7,12 +7,14 @@
 //! per f64 frame (#6446).
 //! Split out of `processing.rs` to stay within its module-size budget (#3691).
 
-use super::frame_parts::{single_frame_source, SourceParts};
+use super::frame_parts::single_frame_source;
 use super::GeometryRouter;
-use crate::{Error, Mesh, Result, SubMeshCollection};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use crate::{Mesh, Result};
+#[cfg(test)]
+use crate::SubMeshCollection;
+use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
-use crate::program::mapping as control;
+use crate::program::GeometryProgram;
 
 impl GeometryRouter {
     /// Reached cache effects of the common mapping child program. Lookup and
@@ -47,6 +49,22 @@ impl GeometryRouter {
         Ok(std::sync::Arc::new(mesh))
     }
 
+    /// Placeholder recovery queries the actual shared registry without walking
+    /// descendants. Its one reached source child is driven by MappingProgram.
+    pub(crate) fn shared_mapped_source_needed(&self, id: u32) -> bool {
+        self.shared_mapped_item_cache.as_ref().is_some_and(|shared|
+            !shared.lock().unwrap_or_else(|e| e.into_inner()).contains_key(&id))
+    }
+    pub(crate) fn publish_shared_source_parts(&self, id: u32, mut parts: Vec<Mesh>) -> Result<()> {
+        crate::resource::check_current()?;
+        if parts.len() != 1 || parts[0].positions.is_empty() || crate::kernel::budget::tripped() { return Ok(()) }
+        let Some(shared) = &self.shared_mapped_item_cache else { return Ok(()) };
+        self.check_mapped_cache_coverage()?;
+        self.retain_mapped_cache_account(id)?;
+        shared.lock().unwrap_or_else(|e| e.into_inner()).insert(id, std::sync::Arc::new(parts.pop().unwrap_or_default()));
+        Ok(())
+    }
+
     /// Process MappedItem with caching for repeated geometry.
     ///
     /// Errors when the source's items cannot share one f64 frame (#6446); use
@@ -67,99 +85,36 @@ impl GeometryRouter {
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Vec<Mesh>> {
-        control::MergedWalk::new(item, self)?.run(self, decoder)
-    }
-
-    /// [`Self::process_representation_item`] as frame parts (#6446): only a
-    /// mapped item can yield more than one.
-    pub(crate) fn process_representation_item_parts(
-        &self,
-        item: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Result<Vec<Mesh>> {
-        if item.ifc_type != IfcType::IfcMappedItem {
-            return self.process_representation_item(item, decoder).map(|mesh| vec![mesh]);
+        let mut program = GeometryProgram::mapped_merged(item, self)?;
+        while let Some(request) = program.request().expect("synchronous mapping request") {
+            let reply = program.execute(request, self, decoder).expect("synchronous mapping execution");
+            program.accept(reply, self).expect("synchronous mapping acceptance");
         }
-        self.process_mapped_item_parts(item, decoder)
+        let result = program.finish_parts();
+        self.drain_mapping_cleanup();
+        result
     }
 
     /// The styled consumer shares the mapping continuation architecture but
     /// retains separate source ordering, error and occurrence policies.
+    #[cfg(test)]
     pub(crate) fn collect_submeshes_from_item(
         &self, item: &DecodedEntity, decoder: &mut EntityDecoder<'_>,
         sub_meshes: &mut SubMeshCollection, allow_instancing: bool,
         texture_index: Option<&rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>>,
     ) -> Result<()> {
-        control::SubmeshWalk::new(item, allow_instancing, self)?
-            .run(self, decoder, sub_meshes, texture_index)
+        let mut program = GeometryProgram::mapped_styled(item, allow_instancing, self)?;
+        while let Some(request) = program.request().expect("synchronous styled mapping request") {
+            let reply = program.execute_with_textures(request, self, decoder, texture_index)
+                .expect("synchronous styled mapping execution");
+            program.accept(reply, self).expect("synchronous styled mapping acceptance");
+        }
+        let result = program.finish_submeshes();
+        self.drain_mapping_cleanup();
+        let mut output = result?;
+        crate::resource::reserve_headers(&mut sub_meshes.sub_meshes, output.len())?.retain();
+        sub_meshes.sub_meshes.append(&mut output.sub_meshes);
+        Ok(())
     }
 
-    /// Mesh one plain (non-`IfcMappedItem`) item of a mapped source into
-    /// `source`. The one per-item step of the three source walks that do not
-    /// go through [`Self::process_representation_item`]: this file,
-    /// `ensure_shared_mapped_source` and the type-geometry walk (#7690).
-    ///
-    /// It rebases a raw-coordinate item by the model RTC in f64 before f32
-    /// narrowing (#5698, ROUTER-27), kept as the item's origin (see
-    /// [`Self::keep_rebase_in_origin`]), and, through
-    /// [`Self::process_item_in_rtc_frame`], drains the #4901 curve-capped flag
-    /// for this source rather than the next item on the thread (ROUTER-26). A
-    /// failed or unsupported item is recorded as dropped; `walk` only names
-    /// the caller in the debug message.
-    pub(crate) fn merge_source_item(
-        &self,
-        item: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        source: &mut SourceParts,
-        walk: &str,
-    ) {
-        let meshed = match self.processor_for(&item.ifc_type) {
-            Some(processor) => {
-                self.process_item_in_rtc_frame(processor.as_ref(), item, decoder, self.rtc_offset)
-            }
-            None => Err(Error::geometry("no processor")),
-        };
-        if crate::resource::check_current().is_err() { return }
-        match meshed {
-            Ok(mut mesh) => {
-                self.keep_rebase_in_origin(&mut mesh);
-                source.merge(&mesh);
-            }
-            Err(_e) => {
-                self.record_unsupported_item(item.ifc_type.clone());
-                let _ = walk;
-                crate::diag::diag_debug!(
-                    { item_id = item.id, ifc_type = ?item.ifc_type, walk, error = %_e,
-                      "skipping unsupported source item" }
-                    else {
-                        #[cfg(debug_assertions)]
-                        eprintln!(
-                            "[ifc-lite] Skipping unsupported {walk} item #{} ({:?}): {}",
-                            item.id, item.ifc_type, _e
-                        );
-                    }
-                );
-            }
-        }
-    }
-
-    /// Re-express a mapped-source item rebased by the model RTC (`rtc_applied`,
-    /// #5698) as positions relative to an f64 `origin` holding that offset.
-    ///
-    /// The model-frame rebase is right only for an item already in the model
-    /// frame. A source item still goes through its `MappingTarget` and the
-    /// occurrence placement, and `M (p - rtc)` is not `M p - rtc` once `M`
-    /// rotates: a 1 degree placement put an LV95 source 50 km away (#7690).
-    /// Every later transform carries `origin` exactly in f64, and the final
-    /// placement then subtracts the RTC once, so the item keeps its precision
-    /// at any rotation. A no-op for an item that was not rebased.
-    pub(crate) fn keep_rebase_in_origin(&self, mesh: &mut Mesh) {
-        if mesh.rtc_applied {
-            mesh.rtc_applied = false;
-            let rtc = [self.rtc_offset.0, self.rtc_offset.1, self.rtc_offset.2];
-            for (origin, offset) in mesh.origin.iter_mut().zip(rtc) {
-                *origin += offset;
-            }
-        }
-    }
 }

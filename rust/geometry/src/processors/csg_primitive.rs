@@ -14,7 +14,6 @@ use super::boolean::OperandPath;
 use crate::{BoolFailure, Mesh, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Point3;
-use std::cell::RefCell;
 
 use super::boolean::BooleanClippingProcessor;
 use crate::router::GeometryProcessor;
@@ -89,16 +88,9 @@ impl GeometryProcessor for BlockProcessor {
 /// resolves the reference and dispatches it to the matching leaf processor,
 /// so callers don't need to know that the geometry was wrapped.
 pub struct CsgSolidProcessor {
-    /// Per-build small-cut skip, forwarded to the nested
-    /// [`BooleanClippingProcessor`] this wraps so a CSG tree shares one scoped
-    /// value (see `BooleanClippingProcessor::skip_small_cuts`).
-    skip_small_cuts: bool,
-    /// Failures from the TRANSIENT [`BooleanClippingProcessor`] built per
-    /// `TreeRootExpression` and dropped on return. Held here so they leave
-    /// through [`GeometryProcessor::take_bool_failures`] — i.e. through the
-    /// router that owns THIS processor — instead of a thread-local a
-    /// different router could drain (#3821).
-    failures: RefCell<Vec<BoolFailure>>,
+    /// The actual configured emitter remains owned by this selected processor
+    /// while its canonical child is suspended between operations.
+    boolean: BooleanClippingProcessor,
 }
 
 impl CsgSolidProcessor {
@@ -109,16 +101,13 @@ impl CsgSolidProcessor {
     /// Construct with the per-build small-cut skip forwarded to the boolean
     /// processor at the root of the wrapped CSG tree.
     pub fn with_skip_small_cuts(skip_small_cuts: bool) -> Self {
-        Self {
-            skip_small_cuts,
-            failures: RefCell::new(Vec::new()),
-        }
+        Self { boolean: BooleanClippingProcessor::with_skip_small_cuts(skip_small_cuts) }
     }
 
     /// Drain failures recorded by canonical continuation execution at this
     /// router-held CSG entry point, including losses retained on errors.
     pub fn take_failures(&self) -> Vec<BoolFailure> {
-        std::mem::take(&mut *self.failures.borrow_mut())
+        self.boolean.take_failures()
     }
 }
 
@@ -129,6 +118,13 @@ impl Default for CsgSolidProcessor {
 }
 
 impl GeometryProcessor for CsgSolidProcessor {
+    fn lower_program(&self, entity: &DecodedEntity, quality: TessellationQuality)
+        -> Option<crate::program::GeometryProgram> {
+        Some(crate::program::GeometryProgram::boolean(
+            crate::program::boolean::BooleanProgram::new_csg(entity.clone(), quality)))
+    }
+    fn boolean_recorder(&self) -> Option<&BooleanClippingProcessor> { Some(&self.boolean) }
+
     fn process(
         &self,
         entity: &DecodedEntity,
@@ -139,11 +135,8 @@ impl GeometryProcessor for CsgSolidProcessor {
         // Top-level entry (the router registers this processor directly, so
         // this is the path a file whose Body item IS the IfcCsgSolid takes).
         let mut visited = OperandPath::default();
-        let boolean = BooleanClippingProcessor::with_skip_small_cuts(self.skip_small_cuts);
-        let result = boolean.execute_csg(entity, decoder, 0, quality, &mut visited, false);
-        // Drain the transient recorder even when a later continuation failed.
-        self.failures.borrow_mut().extend(boolean.take_failures());
-        result.map(|(mesh, _)| mesh)
+        self.boolean.execute_csg(entity, decoder, 0, quality, &mut visited, false)
+            .map(|(mesh, _)| mesh)
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

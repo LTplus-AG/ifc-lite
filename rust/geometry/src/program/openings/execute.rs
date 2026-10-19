@@ -4,22 +4,32 @@ use super::effects::{Effect, EffectSet};
 use crate::router::voids::ReadyVoidContext;
 use crate::{BoolFailure, Mesh, TessellationQuality};
 use std::cell::RefCell;
+use std::sync::Arc;
 
 /// Lazy numerical gate policy. Each gate is read only at its original reached
 /// route, after source callbacks; capturing this policy initializes no OnceLock.
 #[derive(Clone, Copy)]
+pub(crate) enum GatePolicy {
+    Parametric,
+    Rectangular,
+    Prism,
+    CoaxialUnion,
+    #[cfg(test)]
+    Test(fn() -> bool),
+}
+#[derive(Clone, Copy)]
 pub(crate) struct Configuration {
-    pub(crate) parametric: fn() -> bool,
-    pub(crate) rectangular: fn() -> bool,
-    pub(crate) prism: fn() -> bool,
-    pub(crate) coaxial_union: fn() -> bool,
+    pub(crate) parametric: GatePolicy,
+    pub(crate) rectangular: GatePolicy,
+    pub(crate) prism: GatePolicy,
+    pub(crate) coaxial_union: GatePolicy,
 }
 
 /// Linear operation over the actual placed host and admitted cutter context.
 /// The immutable context may be reused for another material layer/frame part.
-pub(crate) struct ReadyOperation<'a> {
+pub(crate) struct ReadyOperation {
     mesh: Mesh,
-    context: &'a ReadyVoidContext,
+    context: Arc<ReadyVoidContext>,
     id: u32,
     quality: TessellationQuality,
     configuration: Configuration,
@@ -51,10 +61,10 @@ impl NumericalOutcome {
         }
     }
 }
-impl<'a> ReadyOperation<'a> {
+impl ReadyOperation {
     pub(crate) fn new(
         mesh: Mesh,
-        context: &'a ReadyVoidContext,
+        context: Arc<ReadyVoidContext>,
         id: u32,
         quality: TessellationQuality,
         configuration: Configuration,
@@ -68,21 +78,29 @@ impl<'a> ReadyOperation<'a> {
         }
     }
     pub(crate) fn execute(self) -> NumericalOutcome {
-        let execution = Execution::new(self.quality, self.configuration);
-        let (result, telemetry) = crate::telemetry_transaction::capture(|| {
-            // Restore completed parent effects even when only the current
-            // speculative child unwinds; the child's capture guard discards
-            // its telemetry before this catch. No geometry-loss fallback.
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                execution.apply_void_context(self.mesh, self.context, self.id)
-            }))
-        });
-        NumericalOutcome {
-            result,
-            effects: execution.finish(),
-            telemetry,
-        }
+        execute(self.mesh, &self.context, self.id, self.quality, self.configuration)
     }
+}
+
+/// The borrowed context exists only during this numerical call. The owned
+/// packet retains its shared immutable context until execution has completed.
+fn execute(mesh: Mesh, context: &ReadyVoidContext, id: u32,
+    quality: TessellationQuality, configuration: Configuration,
+) -> NumericalOutcome {
+    let execution = Execution::new(quality, configuration);
+    let (result, telemetry) = crate::telemetry_transaction::capture(|| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            execution.apply_void_context(mesh, context, id)
+        }))
+    });
+    NumericalOutcome { result, effects: execution.finish(), telemetry }
+}
+
+#[cfg(test)]
+pub(crate) fn execute_borrowed(mesh: Mesh, context: &ReadyVoidContext, id: u32,
+    quality: TessellationQuality, configuration: Configuration,
+) -> NumericalOutcome {
+    execute(mesh, context, id, quality, configuration)
 }
 
 /// Interior mutability is request-owned; no RefCell borrow spans a child call.

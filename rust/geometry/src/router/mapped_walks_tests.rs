@@ -2,10 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! #7690: the don't-bake shared-source walk (`ensure_shared_mapped_source`)
-//! meshes its item through the same per-item step as `mapped_item.rs`, which
-//! writes the same model-wide cache entry. The public-API walks are covered by
-//! `tests/issue_7690_mapped_source_walks.rs`.
+//! #7690: actual don't-bake placeholder children share selected item execution,
+//! precise source frames and cache publication with the merged mapping machine.
 
 use crate::router::GeometryRouter;
 use ifc_lite_core::EntityDecoder;
@@ -42,9 +40,10 @@ fn cached_source(router: &GeometryRouter, source_id: u32) -> crate::Mesh {
 #[test]
 fn router_27_shared_source_rebases_like_the_mapped_item_walk() {
     let mut decoder = EntityDecoder::new(RAW_WORLD_MAP);
-    let router = shared_rtc_router();
-    let rep = decoder.decode_by_id(1000).unwrap();
-    router.ensure_shared_mapped_source(&rep, 1003, &mut decoder);
+    let mut router = shared_rtc_router();
+    let output=crate::router::instancing::drive_placeholder(&mut router,&mut decoder,1003,1005);
+    assert_eq!(output.len(),1);
+    assert!(output.sub_meshes[0].mesh.positions.is_empty());
     let shared = cached_source(&router, 1003);
     // Rebased before narrowing, with the offset kept as the f64 origin: the
     // mapping target and the placement still apply to a source (#7690).
@@ -83,12 +82,11 @@ fn router_26_capped_curve_in_a_shared_source_is_reported_for_that_source() {
         #54=IFCSHELLBASEDSURFACEMODEL((#53));#55=IFCSHAPEREPRESENTATION($,'Body','SurfaceModel',(#54));\
         #100=IFCCARTESIANPOINT((0.,0.));#101=IFCAXIS2PLACEMENT2D(#100,$);\
         #102=IFCRECTANGLEPROFILEDEF(.AREA.,'P',#101,1000.,1000.);#105=IFCAXIS2PLACEMENT3D(#3,$,$);\
-        #106=IFCEXTRUDEDAREASOLID(#102,#105,#9,1000.);";
+        #106=IFCEXTRUDEDAREASOLID(#102,#105,#9,1000.);        #60=IFCREPRESENTATIONMAP(#105,#55);#61=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#3,1.,$);        #62=IFCMAPPEDITEM(#60,#61);";
     let mut decoder = EntityDecoder::new(content);
     let mut router = GeometryRouter::new();
     router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
-    let rep = decoder.decode_by_id(55).unwrap();
-    router.ensure_shared_mapped_source(&rep, 60, &mut decoder);
+    crate::router::instancing::drive_placeholder(&mut router,&mut decoder,60,62);
     let after_source = router.take_unsupported_items();
     assert_eq!(after_source.get("IfcBSplineCurveWithKnots"), Some(&1), "{after_source:?}");
 

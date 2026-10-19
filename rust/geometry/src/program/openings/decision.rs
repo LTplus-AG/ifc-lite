@@ -42,7 +42,7 @@ type ItemBounds = (Point3<f64>, Point3<f64>, Option<Vector3<f64>>);
 
 /// Decide and publish one cutter at a time, retaining the original effect order
 /// if a later numerical predicate or allocation unwinds.
-pub(super) struct Decisions(Inputs);
+pub(crate) struct Decisions(Inputs);
 enum Inputs {
     Parts(std::collections::vec_deque::IntoIter<Mesh>),
     Bounds(std::vec::IntoIter<ItemBounds>),

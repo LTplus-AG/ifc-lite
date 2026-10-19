@@ -17,17 +17,19 @@ mod diagnostics_recording;
 pub(crate) mod frame_parts;
 mod instancing;
 mod item_dedup_cache;
+pub(crate) mod item_cache_program;
 mod layers;
 mod mapped_item;
+mod mapping_program_store;
 mod mapped_cache_ownership;
 pub use mapped_cache_ownership::AccountedMappedItemCache;
-mod processing;
+pub(crate) mod processing;
 mod processing_items;
 mod processor;
 mod rtc_offset;
 pub(crate) mod structural;
 mod textured;
-mod unit_admission;
+pub(crate) mod unit_admission;
 pub(crate) mod transforms;
 pub(crate) mod voids;
 
@@ -123,6 +125,7 @@ pub struct GeometryRouter {
     /// built per element, so this only dedups mapped sources WITHIN one element;
     /// the shared cache below promotes reuse to model-wide (#1623).
     mapped_item_cache: RefCell<FxHashMap<u32, Arc<Mesh>>>,
+    mapping_program_stores: mapping_program_store::MappingProgramStores,
     /// SHARED `IfcMappedItem` source cache (#1623). When present, takes precedence
     /// over the per-router `mapped_item_cache` so a source shared by many owning
     /// elements is meshed ONCE model-wide (the per-router RefCell above resets per
@@ -269,6 +272,7 @@ impl GeometryRouter {
             schema,
             processors: ProcessorRegistry::new(),
             mapped_item_cache: RefCell::new(FxHashMap::default()),
+            mapping_program_stores: Default::default(),
             mapped_cache_accounts: RefCell::new(Vec::new()),
             accounted_mapped_cache: None,
             shared_mapped_item_cache: None, // armed by `enable_shared_mapped_item_cache`
@@ -641,18 +645,6 @@ impl GeometryRouter {
     pub fn is_material_layer_sliceable(&self, element_id: u32) -> bool {
         self.material_layer_index()
             .is_some_and(|idx| idx.is_sliceable(element_id))
-    }
-
-    /// Scale mesh positions from file units to meters
-    /// Only applies scaling if unit_scale != 1.0
-    #[inline]
-    fn scale_mesh(&self, mesh: &mut Mesh) {
-        if self.unit_scale != 1.0 {
-            let scale = self.unit_scale as f32;
-            for pos in mesh.positions.iter_mut() {
-                *pos *= scale;
-            }
-        }
     }
 
     /// Scale the translation component of a transform matrix from file units to meters

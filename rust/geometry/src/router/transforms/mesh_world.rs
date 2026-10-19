@@ -5,7 +5,7 @@
 //! Final mesh world transform: f32 local-frame relativization + RTC fold + inverse-transpose normals.
 
 use super::super::GeometryRouter;
-use crate::{Mesh, Point3, Vector3};
+use crate::{Mesh, Point3};
 use nalgebra::Matrix4;
 
 // At 1 km an f32 coordinate has ~0.06 mm spacing; beyond this, folding a
@@ -30,94 +30,25 @@ fn source_point<const HAS_ORIGIN: bool>(chunk: &[f32], origin: [f64; 3]) -> Poin
     }
 }
 
-impl GeometryRouter {
-    /// Transform mesh by a local matrix without applying model RTC.
-    ///
-    /// Use this for nested representation transforms (for example IfcMappedItem
-    /// mapping targets). RTC belongs to the final model/world coordinate step, not
-    /// intermediate local transforms.
-    #[inline]
-    pub(crate) fn transform_mesh_local(&self, mesh: &mut Mesh, transform: &Matrix4<f64>) {
-        // Published object-frame bounds (set on RTC-rebased items, #5698)
-        // must follow the geometry into the mapped frame: the enclosing box
-        // of the transformed corners, rounded outward to f32.
-        if let Some(bounds) = mesh.local_bounds {
-            let mut min = [f64::INFINITY; 3];
-            let mut max = [f64::NEG_INFINITY; 3];
-            for corner in 0..8 {
-                let pick = |axis: usize| bounds[axis + 3 * ((corner >> axis) & 1)] as f64;
-                let t = transform.transform_point(&Point3::new(pick(0), pick(1), pick(2)));
-                for (axis, value) in [t.x, t.y, t.z].into_iter().enumerate() {
-                    min[axis] = min[axis].min(value);
-                    max[axis] = max[axis].max(value);
-                }
-            }
-            let down = |v: f64| {
-                let f = v as f32;
-                if (f as f64) > v { f.next_down() } else { f }
-            };
-            let up = |v: f64| {
-                let f = v as f32;
-                if (f as f64) < v { f.next_up() } else { f }
-            };
-            mesh.local_bounds = Some([
-                down(min[0]),
-                down(min[1]),
-                down(min[2]),
-                up(max[0]),
-                up(max[1]),
-                up(max[2]),
-            ]);
-        }
-        // #5792: a MappingTarget at georeferenced scale cannot be written into
-        // f32 positions before the final RTC step. Keep its f64 translation in
-        // the mesh origin and transform only small local vectors. Preserve the
-        // existing byte path for ordinary maps and their determinism snapshots.
-        let needs_origin = mesh.origin != [0.0; 3]
-            || (0..3).any(|axis| transform[(axis, 3)].abs() >= LARGE_MAPPED_ORIGIN_M);
-        if needs_origin {
-            let old_origin = Point3::new(mesh.origin[0], mesh.origin[1], mesh.origin[2]);
-            let new_origin = transform.transform_point(&old_origin);
-            mesh.positions.chunks_exact_mut(3).for_each(|chunk| {
-                let v = transform.transform_vector(&Vector3::new(
-                    chunk[0] as f64,
-                    chunk[1] as f64,
-                    chunk[2] as f64,
-                ));
-                chunk[0] = v.x as f32;
-                chunk[1] = v.y as f32;
-                chunk[2] = v.z as f32;
-            });
-            mesh.origin = [new_origin.x, new_origin.y, new_origin.z];
-        } else {
-            mesh.positions.chunks_exact_mut(3).for_each(|chunk| {
-                let point = Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
-                let t = transform.transform_point(&point);
-                chunk[0] = t.x as f32;
-                chunk[1] = t.y as f32;
-                chunk[2] = t.z as f32;
-            });
-        }
 
-        self.transform_normals(mesh, transform);
+/// Captured numerical world-frame policy. It retains no router or source
+/// authority; each placement admission captures it only at the reached point.
+#[derive(Clone, Copy)]
+pub(crate) struct WorldFrame {
+    pub(crate) rtc_offset: (f64, f64, f64),
+    pub(crate) local_frame_enabled: bool,
+}
+
+impl WorldFrame {
+    #[inline]
+    fn has_rtc_offset(&self) -> bool {
+        self.rtc_offset.0 != 0.0 || self.rtc_offset.1 != 0.0 || self.rtc_offset.2 != 0.0
     }
 
-    /// Transform mesh by the final world/object placement matrix.
-    ///
-    /// If a model RTC offset is active, subtract it uniformly for every mesh in
-    /// this final coordinate step. Meshes that already had RTC subtracted in f64
-    /// during raw world-coordinate triangulation are guarded by `rtc_applied`.
-    #[inline]
     pub(crate) fn transform_mesh_world(&self, mesh: &mut Mesh, transform: &Matrix4<f64>) {
-        // Native normally keeps absolute f32 vertices, but an intermediate
-        // mapped origin at this scale needs the same local frame as the viewer.
-        // Opening cutters also use this policy when their mapped origin is large.
         let needs_local_frame = self.needs_local_frame(mesh, transform);
-        self.transform_mesh_world_framed(
-            mesh,
-            transform,
-            self.local_frame_enabled() || needs_local_frame,
-        );
+        self.transform_mesh_world_framed(mesh, transform,
+            self.local_frame_enabled || needs_local_frame);
     }
 
     /// The RTC offset still to be subtracted from `mesh`: zero when it is
@@ -358,6 +289,45 @@ impl GeometryRouter {
     }
 }
 
+
+impl GeometryRouter {
+    pub(crate) fn world_frame(&self) -> WorldFrame {
+        WorldFrame { rtc_offset: self.rtc_offset, local_frame_enabled: self.local_frame_enabled() }
+    }
+
+    #[inline]
+    #[cfg(test)]
+    fn rtc_frame(&self) -> WorldFrame {
+        // Frame predicates and explicit framed transforms never consult the
+        // lazy local-frame setting. Only default world placement needs it.
+        WorldFrame { rtc_offset: self.rtc_offset, local_frame_enabled: false }
+    }
+
+    #[inline]
+    #[cfg(test)]
+    pub(crate) fn transform_mesh_world(&self, mesh: &mut Mesh, transform: &Matrix4<f64>) {
+        let needs_local_frame = self.needs_local_frame(mesh, transform);
+        self.rtc_frame().transform_mesh_world_framed(mesh, transform,
+            self.local_frame_enabled() || needs_local_frame);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn needs_local_frame(&self, mesh: &Mesh, transform: &Matrix4<f64>) -> bool {
+        self.rtc_frame().needs_local_frame(mesh, transform)
+    }
+
+    #[inline]
+    #[cfg(test)]
+    pub(crate) fn transform_mesh_world_framed(&self, mesh: &mut Mesh,
+        transform: &Matrix4<f64>, relativize: bool) {
+        self.rtc_frame().transform_mesh_world_framed(mesh, transform, relativize);
+    }
+}
+
 #[cfg(test)]
 #[path = "mesh_world_tests.rs"]
 mod local_bounds_tests;
+
+#[cfg(test)]
+#[path = "world_frame_tests.rs"]
+mod world_frame_tests;

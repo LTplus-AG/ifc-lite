@@ -1,32 +1,40 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Ordered opening occurrences. Source services are borrowed for one step only.
+//! Requested occurrences own canonical children and one numerical decision at a time.
 use super::super::opening::OpeningBounds;
-use crate::router::voids::{geom::spatial_cluster_count, OpeningType};
+use super::control::{OpeningControl, OpeningOutput, OpeningPoll, Step};
+use super::requests::{OpeningChild, OpeningReady, OpeningReply, OpeningSource};
+use crate::router::voids::OpeningType;
 use crate::router::OpeningDiagnostic;
-use crate::{resource, GeometryRouter, Mesh};
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
+use crate::{GeometryRouter, Mesh, Result};
+use ifc_lite_core::DecodedEntity;
+#[cfg(test)]
+use ifc_lite_core::EntityDecoder;
 
 pub(crate) struct Classifier {
     host: DecodedEntity,
     ids: std::vec::IntoIter<u32>,
     recording: bool,
-    occurrence: usize,
+    requested: u32,
     current: Option<OpeningOccurrence>,
     phase: Phase,
+    next: Option<OpeningPoll>,
     output: Vec<OpeningType>,
     diagnostic: Vec<OpeningDiagnostic>,
+    decision_id: u32,
+    decision_vertices: usize,
 }
+#[derive(Clone, Copy)]
 enum Phase {
     Decode,
     Body,
     Bounds,
-    FallbackBounds,
+    Fallback,
     ItemMeshes,
     Classify,
+    Pending,
     Complete,
 }
 struct OpeningOccurrence {
-    // Attribution follows the requested occurrence, including trusted cache aliases.
     requested_id: u32,
     entity: DecodedEntity,
     parts: std::collections::VecDeque<Mesh>,
@@ -36,41 +44,94 @@ struct OpeningOccurrence {
     vertices: usize,
 }
 impl Classifier {
+    #[cfg(test)]
     pub(crate) fn new(host: &DecodedEntity, ids: &[u32], recording: bool) -> Self {
+        Self::from_owned(host.clone(), ids.to_vec(), recording)
+    }
+    pub(super) fn from_owned(host: DecodedEntity, ids: Vec<u32>, recording: bool) -> Self {
+        let capacity = ids.len();
         Self {
-            host: host.clone(),
-            ids: ids.to_vec().into_iter(),
+            host,
+            ids: ids.into_iter(),
             recording,
-            occurrence: 0,
+            requested: 0,
             current: None,
             phase: Phase::Decode,
+            next: None,
             output: Vec::new(),
-            diagnostic: Vec::with_capacity(ids.len()),
+            diagnostic: Vec::with_capacity(capacity),
+            decision_id: 0,
+            decision_vertices: 0,
         }
     }
-
-    pub(crate) fn run(
-        mut self,
+    pub(super) fn poll(&mut self) -> Step {
+        if let Some(next) = self.next.take() {
+            return Step::Poll(next);
+        }
+        let phase = std::mem::replace(&mut self.phase, Phase::Pending);
+        match phase {
+            Phase::Decode => {
+                if let Some(id) = self.ids.next() {
+                    self.requested = id;
+                    Step::Poll(OpeningPoll::Source(OpeningSource::Decode(id)))
+                } else {
+                    Step::Poll(OpeningPoll::Ready(OpeningReady::FinishClassifier {
+                        output: std::mem::take(&mut self.output),
+                        diagnostic: std::mem::take(&mut self.diagnostic),
+                    }))
+                }
+            }
+            Phase::Body => Step::Poll(OpeningPoll::Geometry(OpeningChild::Body(
+                self.current
+                    .as_ref()
+                    .expect("opening occurrence")
+                    .entity
+                    .clone(),
+            ))),
+            Phase::Bounds | Phase::Fallback => {
+                self.phase = phase;
+                Step::Child(OpeningControl::probe(
+                    self.current
+                        .as_ref()
+                        .expect("opening occurrence")
+                        .entity
+                        .clone(),
+                    false,
+                ))
+            }
+            Phase::ItemMeshes => {
+                self.phase = phase;
+                Step::Child(OpeningControl::probe(
+                    self.current
+                        .as_ref()
+                        .expect("opening occurrence")
+                        .entity
+                        .clone(),
+                    true,
+                ))
+            }
+            Phase::Classify => {
+                let current = self.current.take().expect("opening occurrence");
+                self.decision_id = current.requested_id;
+                self.decision_vertices = current.vertices;
+                Step::Poll(OpeningPoll::Ready(OpeningReady::Decision(
+                    super::decision::classify(current.parts, current.bounds, current.meshes),
+                )))
+            }
+            Phase::Complete => Step::Poll(OpeningPoll::Complete(Ok(OpeningOutput::Classified(
+                std::mem::take(&mut self.output),
+            )))),
+            Phase::Pending => Step::Poll(OpeningPoll::Pending),
+        }
+    }
+    fn accept(
+        &mut self,
+        opening: OpeningType,
+        id: u32,
+        vertices: usize,
         router: &GeometryRouter,
-        decoder: &mut EntityDecoder<'_>,
-    ) -> crate::Result<Vec<OpeningType>> {
-        resource::check_current()?;
-        while !matches!(self.phase, Phase::Complete) {
-            self.step(router, decoder)?;
-        }
-        resource::check_current()?;
-        if self.recording && !self.diagnostic.is_empty() {
-            router.record_host_opening_diagnostic(
-                self.host.id,
-                &format!("{}", self.host.ifc_type),
-                self.diagnostic,
-            );
-        }
-        Ok(self.output)
-    }
-
-    fn accept(&mut self, opening: OpeningType, id: u32, vertices: usize, router: &GeometryRouter) -> crate::Result<()> {
-        resource::check_current()?;
+    ) -> Result<()> {
+        crate::resource::check_current()?;
         if self.recording {
             let (counter, kind) = super::decision::kind(&opening);
             router.bump_classification(counter);
@@ -83,123 +144,136 @@ impl Classifier {
         self.output.push(opening);
         Ok(())
     }
-
-    fn step(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>) -> crate::Result<()> {
-        resource::check_current()?;
+    pub(super) fn resume(&mut self, reply: OpeningReply, router: &GeometryRouter) -> Result<()> {
+        match reply {
+            OpeningReply::Decoded(reply) => {
+                self.current = super::source_option(reply)?.map(|entity| OpeningOccurrence {
+                    requested_id: self.requested,
+                    entity,
+                    parts: Default::default(),
+                    bounds: Vec::new(),
+                    meshes: Vec::new(),
+                    triangles: 0,
+                    vertices: 0,
+                });
+                self.phase = if self.current.is_some() {
+                    Phase::Body
+                } else {
+                    Phase::Decode
+                };
+            }
+            OpeningReply::Parts(reply) => match super::source_option(reply)? {
+                Some(parts) => self.next = Some(OpeningPoll::Ready(OpeningReady::Metrics(parts))),
+                None => self.phase = Phase::Decode,
+            },
+            OpeningReply::Metrics(parts, triangles, vertices) => {
+                if parts.is_empty() {
+                    self.phase = Phase::Decode
+                } else {
+                    let current = self.current.as_mut().expect("opening occurrence");
+                    current.parts = parts;
+                    current.triangles = triangles;
+                    current.vertices = vertices;
+                    self.phase = Phase::Bounds;
+                }
+            }
+            OpeningReply::BoundsDecision(bounds, separable) => {
+                let current = self.current.as_mut().expect("opening occurrence");
+                current.bounds = bounds;
+                self.phase = if current.triangles > 100 && !separable {
+                    Phase::Fallback
+                } else if !current.bounds.is_empty() {
+                    Phase::ItemMeshes
+                } else {
+                    Phase::Classify
+                };
+            }
+            OpeningReply::Fallback(opening) => {
+                let current = self.current.as_ref().expect("opening occurrence");
+                let id = current.requested_id;
+                let vertices = current.vertices;
+                let done = current.parts.is_empty();
+                self.accept(opening, id, vertices, router)?;
+                if done {
+                    self.current = None;
+                    self.phase = Phase::Decode
+                } else {
+                    self.phase = Phase::Fallback
+                }
+            }
+            OpeningReply::Decision(decisions, opening) => match opening {
+                Some(opening) => {
+                    self.accept(opening, self.decision_id, self.decision_vertices, router)?;
+                    self.next = Some(OpeningPoll::Ready(OpeningReady::Decision(decisions)));
+                }
+                None => self.phase = Phase::Decode,
+            },
+            OpeningReply::ClassifierFinished(output, diagnostic) => {
+                if self.recording && !diagnostic.is_empty() {
+                    router.record_host_opening_diagnostic(
+                        self.host.id,
+                        &format!("{}", self.host.ifc_type),
+                        diagnostic,
+                    );
+                }
+                self.output = output;
+                self.phase = Phase::Complete;
+            }
+            _ => unreachable!("classifier reply tag"),
+        }
+        Ok(())
+    }
+    pub(super) fn child_complete(&mut self, output: Result<OpeningOutput>) -> Result<()> {
+        let output = super::source_option(output)?;
         match self.phase {
-            Phase::Decode => self.decode(decoder),
-            Phase::Body => self.body(router, decoder),
-            Phase::Bounds => self.bounds(router, decoder),
-            Phase::FallbackBounds => self.fallback_bounds(router, decoder),
-            Phase::ItemMeshes => self.item_meshes(router, decoder),
-            Phase::Classify => self.classify(router),
-            Phase::Complete => Ok(())
-        }
-    }
-    fn decode(&mut self, decoder: &mut EntityDecoder<'_>) -> crate::Result<()> {
-        resource::check_current()?;
-        let Some(id) = self.ids.next() else {
-            self.phase = Phase::Complete;
-            return Ok(());
-        };
-        self.occurrence += 1;
-        let decoded = decoder.decode_by_id(id);
-        resource::check_current()?;
-        self.current = decoded.ok().map(|entity| OpeningOccurrence {
-            requested_id: id,
-            entity,
-            parts: Default::default(),
-            bounds: Vec::new(),
-            meshes: Vec::new(),
-            triangles: 0,
-            vertices: 0,
-        });
-        if self.current.is_some() {
-            self.phase = Phase::Body;
-        }
-        Ok(())
-    }
-    fn body(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>) -> crate::Result<()> {
-        resource::check_current()?;
-        let current = self.current.as_mut().expect("reached opening occurrence");
-        let parts = super::source_option(router.opening_body_parts(&current.entity, decoder))?;
-        let Some(parts) = parts else {
-            self.phase = Phase::Decode;
-            return Ok(());
-        };
-        current.parts = parts.into_iter().filter(|m| !m.is_empty()).collect();
-        if current.parts.is_empty() {
-            self.phase = Phase::Decode;
-            return Ok(());
-        }
-        current.triangles = current.parts.iter().map(Mesh::triangle_count).sum();
-        current.vertices = current.parts.iter().map(Mesh::vertex_count).sum();
-        self.phase = Phase::Bounds;
-        Ok(())
-    }
-    fn bounds(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>) -> crate::Result<()> {
-        resource::check_current()?;
-        let current = self.current.as_mut().expect("reached opening occurrence");
-        current.bounds = super::source_option(
-            router.get_opening_item_bounds_with_direction(&current.entity, decoder),
-        )?.unwrap_or_default();
-        let separable = current.bounds.len() > 1 && spatial_cluster_count(&current.bounds) > 1;
-        self.phase = if current.triangles > 100 && !separable {
-            Phase::FallbackBounds
-        } else if !current.bounds.is_empty() {
-            Phase::ItemMeshes
-        } else {
-            Phase::Classify
-        };
-        Ok(())
-    }
-    fn fallback_bounds(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>) -> crate::Result<()> {
-        resource::check_current()?;
-        let current = self.current.as_mut().expect("reached opening occurrence");
-        // Historically repeated once PER PART, including custom callbacks.
-        let bounds = super::source_option(
-            router.get_opening_item_bounds_with_direction(&current.entity, decoder),
-        )?.unwrap_or_default();
-        let direction = bounds.into_iter().find_map(|(_, _, d)| d);
-        let mesh = current.parts.pop_front().expect("reached frame part");
-        let (min, max) = super::decision::world_bounds(&mesh);
-        let done = current.parts.is_empty();
-        let opening = OpeningType::NonRectangular(mesh, min, max, direction);
-        let id = current.requested_id;
-        let vertices = current.vertices;
-        // Publication precedes the next part's callbacks, as before.
-        self.accept(opening, id, vertices, router)?;
-        if done {
-            self.current = None;
-            self.phase = Phase::Decode;
+            Phase::Bounds => {
+                let bounds = match output {
+                    Some(OpeningOutput::Bounds(bounds)) => bounds,
+                    None => Vec::new(),
+                    _ => unreachable!("opening bounds output"),
+                };
+                self.next = Some(OpeningPoll::Ready(OpeningReady::BoundsDecision(bounds)));
+            }
+            Phase::Fallback => {
+                let bounds = match output {
+                    Some(OpeningOutput::Bounds(bounds)) => bounds,
+                    None => Vec::new(),
+                    _ => unreachable!("opening bounds output"),
+                };
+                let mesh = self
+                    .current
+                    .as_mut()
+                    .expect("opening occurrence")
+                    .parts
+                    .pop_front()
+                    .expect("opening frame part");
+                self.next = Some(OpeningPoll::Ready(OpeningReady::Fallback { mesh, bounds }));
+            }
+            Phase::ItemMeshes => {
+                let meshes = match output {
+                    Some(OpeningOutput::Meshes(meshes)) => meshes,
+                    None => Vec::new(),
+                    _ => unreachable!("opening meshes output"),
+                };
+                self.current.as_mut().expect("opening occurrence").meshes = meshes;
+                self.phase = Phase::Classify;
+            }
+            _ => unreachable!("classifier child continuation"),
         }
         Ok(())
     }
-    fn item_meshes(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>) -> crate::Result<()> {
-        resource::check_current()?;
-        let current = self.current.as_mut().expect("reached opening occurrence");
-        current.meshes = super::source_option(
-            router.get_opening_item_meshes_world(&current.entity, decoder),
-        )?.unwrap_or_default();
-        self.phase = Phase::Classify;
-        Ok(())
-    }
-    fn classify(&mut self, router: &GeometryRouter) -> crate::Result<()> {
-        resource::check_current()?;
-        let current = self.current.take().expect("reached opening occurrence");
-        let id = current.requested_id;
-        let vertices = current.vertices;
-        let mut classified = super::decision::classify(current.parts, current.bounds, current.meshes);
-        loop {
-            resource::check_current()?;
-            let Some(opening) = classified.next() else { break };
-            self.accept(opening, id, vertices, router)?;
+    #[cfg(test)]
+    pub(crate) fn run(
+        self,
+        router: &GeometryRouter,
+        decoder: &mut EntityDecoder<'_>,
+    ) -> Result<Vec<OpeningType>> {
+        match OpeningControl::from_classifier(self).drain(router, decoder)? {
+            OpeningOutput::Classified(output) => Ok(output),
+            _ => unreachable!("classifier output"),
         }
-        self.phase = Phase::Decode;
-        Ok(())
     }
 }
-
 #[cfg(test)]
 #[path = "requested_identity_tests.rs"]
 mod requested_identity_tests;

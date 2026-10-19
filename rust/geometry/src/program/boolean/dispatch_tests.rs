@@ -62,7 +62,11 @@ fn configured_boolean_and_csg_roots_keep_their_selected_small_cut_policy() {
             router.set_skip_small_cuts(skip);
             let meshes = router.process_element_parts(&element, &mut decoder).unwrap();
             let actual: f64 = meshes.iter().map(|mesh| mesh_volume(mesh).abs()).sum();
-            let expected = if skip { 8. } else { 8. - dimension.powi(3) };
+            // The exact kernel evaluates snapped operands, not the authored
+            // decimal width. Keep this independent of the returned mesh.
+            let grid = crate::kernel::mesh_bridge::SNAP_GRID;
+            let snapped_dimension = (dimension / grid).round() * grid;
+            let expected = if skip { 8. } else { 8. - snapped_dimension.powi(3) };
             assert!((actual - expected).abs() < dimension.powi(3) * 1e-3,
                 "root #{root}, skip={skip}: volume {actual}, expected {expected}");
             assert!(router.take_csg_failures().is_empty());

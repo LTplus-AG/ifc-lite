@@ -1,95 +1,119 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Reached leaf admission uses fresh builtins, independently of router overrides.
-use super::{state::Value, work::{self, Execute}};
+use super::{BooleanState, Frame, Services, work};
+use super::state::VoidsState;
 use crate::processors::boolean::{BooleanClippingProcessor,
     brep_voids::{brep_with_voids_shell_kind, plan::{self, ShellKind, ShellPlan, VoidFault},
         void_evaluation}};
 use crate::router::builtin_processor;
-use crate::{BoolFailureReason, BoolOp, Error, Mesh, Result, TessellationQuality};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use crate::{BoolFailureReason, BoolOp, Error, Mesh, Result};
+use ifc_lite_core::{DecodedEntity, IfcType};
 
-pub(crate) fn evaluate(recorder: &BooleanClippingProcessor, op: BoolOp,
-    operand: &DecodedEntity, decoder: &mut EntityDecoder, quality: TessellationQuality,
-) -> Result<Value> {
-    crate::resource::check_current()?;
-    match &operand.ifc_type {
-        IfcType::IfcCsgSolid | IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
-            Err(Error::geometry("Recursive operand requires continuation dispatch"))
-        }
-        IfcType::IfcSurfaceOfLinearExtrusion => unsupported(recorder, op, &operand.ifc_type),
-        other => match builtin_processor(other.clone(), &recorder.schema) {
-            Some(processor) => {
-                // Never invoke a source-reading process callback as numeric work.
-                // Every non-recursive builtin has the shared owned constructor.
-                let admitted = processor.lower_owned(operand, decoder, quality, None);
+impl BooleanState {
+    pub(super) fn admit_operand(&mut self, operand: DecodedEntity, op: BoolOp,
+        services: &mut Services<'_, '_>,
+    ) -> Result<()> {
+        crate::resource::check_current()?;
+        match &operand.ifc_type {
+            IfcType::IfcCsgSolid | IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
+                return Err(Error::geometry("Recursive operand requires continuation dispatch"));
+            }
+            IfcType::IfcSurfaceOfLinearExtrusion => {}
+            other => if let Some(processor) = builtin_processor(other.clone(), &services.recorder.schema) {
+                let admitted = processor.lower_owned(&operand, services.decoder, self.quality, None);
                 crate::resource::check_current()?;
                 let plan = crate::resource::observe(admitted
                     .ok_or_else(|| Error::geometry("Builtin operand has no owned constructor"))?)?;
-                let outer = crate::resource::observe(plan.execute(&recorder.effects).assemble(recorder))?;
-                if op != BoolOp::Unknown {
-                    if let Some(kind) = brep_with_voids_shell_kind(other) {
-                        return without_voids(recorder, kind, op, operand, outer, decoder, quality);
-                    }
-                }
-                Ok((outer, false))
-            }
-            None => unsupported(recorder, op, other),
-        },
-    }
-}
-fn unsupported(recorder: &BooleanClippingProcessor, op: BoolOp, ty: &IfcType) -> Result<Value> {
-    recorder.record_failure(op, BoolFailureReason::UnsupportedOperand(ty.to_string()));
-    Ok((Mesh::new(), true))
-}
-
-pub(crate) fn without_voids(recorder: &BooleanClippingProcessor, shell_kind: IfcType,
-    op: BoolOp, operand: &DecodedEntity, outer: Mesh, decoder: &mut EntityDecoder,
-    quality: TessellationQuality,
-) -> Result<Value> {
-    crate::resource::check_current()?;
-    let Some(voids) = plan::void_refs(operand) else { return Ok((outer, false)); };
-    if voids.is_empty() || outer.is_empty() { return Ok((outer, false)); }
-    let Some(kind) = ShellKind::from_type(&shell_kind) else {
-        return Ok(void_evaluation::refuse_source(recorder, op, &operand.ifc_type, VoidFault::NoProcessor.message()));
-    };
-    let mut meshes = Vec::with_capacity(voids.len());
-    // Do not lower the next shell until the previous shell actually meshed.
-    for value in voids {
-        crate::resource::check_current()?;
-        let Some(id) = value.as_entity_ref() else {
-            return Ok(void_evaluation::refuse_source(recorder, op, &operand.ifc_type, VoidFault::NotReference.message()));
-        };
-        let admitted = crate::resource::observe(ShellPlan::lower(id, kind, decoder, quality));
-        let mesh = admitted.and_then(|plan|
-            crate::resource::observe(plan.execute(&recorder.effects).assemble(recorder)));
-        crate::resource::check_current()?;
-        match mesh {
-            Ok(mesh) if !mesh.is_empty() => meshes.push(mesh),
-            Err(error @ Error::ProgramStopped(_)) => return Err(error),
-            _ => return Ok(void_evaluation::refuse_source(recorder, op, &operand.ifc_type, VoidFault::ShellDidNotMesh.message())),
+                self.frames.push(Frame::Numerical(work::Ready::Constructor(plan),
+                    work::Continuation::Operand { operand, op }));
+                return Ok(());
+            },
         }
+        services.recorder.record_failure(op, BoolFailureReason::UnsupportedOperand(operand.ifc_type.to_string()));
+        self.value = Some((Mesh::new(), true));
+        Ok(())
     }
-    // Unit discovery stays after every required shell has succeeded.
-    crate::resource::check_current()?;
-    let units = decoder.length_unit_scale();
-    crate::resource::check_current()?;
-    let result = work::Voids { ready: void_evaluation::ReadyVoids::new(meshes), outer,
-        length_unit_scale: units, op, operand_type: operand.ifc_type.clone() }
-        .execute(&recorder.effects).assemble(recorder);
-    crate::resource::check_current()?;
-    Ok(result)
+    pub(super) fn begin_voids(&mut self, operand: DecodedEntity, op: BoolOp,
+        outer: Mesh, recorder: &BooleanClippingProcessor,
+    ) -> Result<()> {
+        crate::resource::check_current()?;
+        if op != BoolOp::Unknown {
+            if let Some(kind) = brep_with_voids_shell_kind(&operand.ifc_type) {
+                return self.begin_shells(kind, operand, op, outer, recorder);
+            }
+        }
+        self.value = Some((outer, false));
+        Ok(())
+    }
+    pub(super) fn begin_shells(&mut self, shell_kind: IfcType, operand: DecodedEntity,
+        op: BoolOp, outer: Mesh, recorder: &BooleanClippingProcessor,
+    ) -> Result<()> {
+        crate::resource::check_current()?;
+        let Some(voids) = plan::void_refs(&operand) else { self.value = Some((outer, false)); return Ok(()); };
+        if voids.is_empty() || outer.is_empty() { self.value = Some((outer, false)); return Ok(()); }
+        let Some(kind) = ShellKind::from_type(&shell_kind) else {
+            self.value = Some(void_evaluation::refuse_source(recorder, op, &operand.ifc_type,
+                VoidFault::NoProcessor.message()));
+            return Ok(());
+        };
+        let meshes = Vec::with_capacity(voids.len());
+        let refs = voids.to_vec().into_iter();
+        self.frames.push(Frame::VoidsSource(VoidsState { outer, refs, meshes, kind, op,
+            operand_type: operand.ifc_type }));
+        Ok(())
+    }
+    pub(super) fn voids_source(&mut self, mut voids: VoidsState,
+        services: &mut Services<'_, '_>,
+    ) -> Result<()> {
+        crate::resource::check_current()?;
+        let Some(value) = voids.refs.next() else {
+            let units = services.decoder.length_unit_scale();
+            crate::resource::check_current()?;
+            self.frames.push(Frame::Numerical(work::Ready::Voids(work::Voids {
+                ready: void_evaluation::ReadyVoids::new(voids.meshes), outer: voids.outer,
+                length_unit_scale: units, op: voids.op, operand_type: voids.operand_type }),
+                work::Continuation::Value));
+            return Ok(());
+        };
+        let Some(id) = value.as_entity_ref() else {
+            self.value = Some(void_evaluation::refuse_source(services.recorder, voids.op,
+                &voids.operand_type, VoidFault::NotReference.message()));
+            return Ok(());
+        };
+        match crate::resource::observe(ShellPlan::lower(id, voids.kind, services.decoder, self.quality)) {
+            Ok(plan) => self.frames.push(Frame::Numerical(work::Ready::Shell(plan), work::Continuation::Shell(voids))),
+            Err(error @ Error::ProgramStopped(_)) => return Err(error),
+            Err(_) => self.refuse_voids(&voids, services.recorder),
+        }
+        Ok(())
+    }
+    pub(super) fn refuse_voids(&mut self, voids: &VoidsState, recorder: &BooleanClippingProcessor) {
+        self.value = Some(void_evaluation::refuse_source(recorder, voids.op, &voids.operand_type,
+            VoidFault::ShellDidNotMesh.message()));
+    }
 }
 
-// Direct private test adapters use the same program, never the superseded path.
+// Private compatibility tests drain exactly the same owned transitions.
+#[cfg(test)]
+pub(crate) fn without_voids(recorder: &BooleanClippingProcessor, shell_kind: IfcType,
+    op: BoolOp, operand: &DecodedEntity, outer: Mesh,
+    decoder: &mut ifc_lite_core::EntityDecoder, quality: crate::TessellationQuality,
+) -> Result<super::Value> {
+    let first = Frame::BeginShells { shell_kind, operand: operand.clone(), op, outer };
+    super::run(recorder, decoder, &mut Default::default(), quality, first)
+}
 #[cfg(test)]
 impl BooleanClippingProcessor {
     pub(crate) fn process_operand_checked(&self, op: BoolOp, operand: &DecodedEntity,
-        decoder: &mut EntityDecoder, quality: TessellationQuality) -> Result<Value> {
-        evaluate(self, op, operand, decoder, quality)
+        decoder: &mut ifc_lite_core::EntityDecoder, quality: crate::TessellationQuality,
+    ) -> Result<super::Value> {
+        super::run(self, decoder, &mut Default::default(), quality,
+            Frame::Operand { entity: operand.clone(), operator: op, depth: 0 })
     }
     pub(crate) fn without_voids(&self, shell_kind: IfcType, op: BoolOp,
-        operand: &DecodedEntity, outer: Mesh, decoder: &mut EntityDecoder,
-        quality: TessellationQuality) -> Result<Value> {
+        operand: &DecodedEntity, outer: Mesh, decoder: &mut ifc_lite_core::EntityDecoder,
+        quality: crate::TessellationQuality,
+    ) -> Result<super::Value> {
         without_voids(self, shell_kind, op, operand, outer, decoder, quality)
     }
 }

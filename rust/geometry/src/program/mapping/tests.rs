@@ -269,3 +269,153 @@ fn repeated_diamond_dag_retains_all_256_authored_occurrences() {
     assert_eq!(styled.len(), 256);
     assert_eq!(styled.sub_meshes.iter().map(|sub| sub.mesh.indices.len() / 3).sum::<usize>(), 256 * 12);
 }
+
+/// The numerical mapping packet remains usable after all source and router
+/// owners are gone. Repeated authored IDs still reach two child admissions.
+#[test]
+fn inner_mapping_pauses_at_children_and_owns_source_free_placement() {
+    fn send<T: Send>() {}
+    send::<MergedWalk>(); send::<SubmeshWalk>(); send::<MergedReady>(); send::<SubmeshReady>();
+    let source = format!("{BASE}#20=IFCSHAPEREPRESENTATION($,'Body','CSG',(#10,#10));
+        #21=IFCREPRESENTATIONMAP(#2,#20);#22=IFCMAPPEDITEM(#21,#3);");
+    let router = GeometryRouter::new();
+    let mut decoder = EntityDecoder::new(&source);
+    let item = decoder.decode_by_id(22).unwrap();
+    let mut walk = MergedWalk::new(&item, &router).unwrap();
+    let mut children = Vec::new();
+    let ready = loop {
+        match walk.poll() {
+            MergedPoll::Source(source) => {
+                let reply = source.execute(&router, &mut decoder);
+                walk.accept(reply, &router);
+            }
+            MergedPoll::Child { item, policy } => {
+                assert!(router.cached_mapped_source(21).is_none());
+                children.push(item.id);
+                let result = router.with_unsupported_policy(policy, ||
+                    crate::program::GeometryProgram::item(item, router.rtc_offset()).drain(&router, &mut decoder));
+                walk.accept_child(result.map(|mesh| vec![mesh]), &router);
+            }
+            MergedPoll::Ready(ready) if router.cached_mapped_source(21).is_some() => break ready,
+            MergedPoll::Ready(ready) => walk.accept(ready.execute(), &router),
+            MergedPoll::Complete(_) => panic!("placement must precede completion"),
+        }
+    };
+    assert_eq!(children, vec![10, 10]);
+    assert!(router.cached_mapped_source(21).is_some(), "completed source publishes before placement");
+    drop(decoder); drop(source); drop(router); drop(walk);
+    let reply = std::thread::spawn(move || ready.execute()).join().unwrap();
+    let (parts,truncated)=reply.into_placed().expect("owned placement failed");
+    assert!(!truncated);
+    assert_eq!(triangles(&parts), 24);
+}
+
+#[test]
+fn styled_inner_claim_store_cancels_only_incomplete_materialization() {
+    use crate::resource::{ExecutionAccount, ExecutionPolicy, ResourceLimits};
+    let mut router = GeometryRouter::new();
+    router.enable_accounted_mapped_item_cache(crate::AccountedMappedItemCache::new());
+    router.enable_output_instancing(Arc::new([(12, (2, 13))].into_iter().collect()));
+    router.set_instancing_batch_local(true);
+    let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+    account.scope(|| {
+        let mut decoder = EntityDecoder::new(BASE);
+        let item = decoder.decode_by_id(13).unwrap();
+        let mut walk = SubmeshWalk::new(&item, true, &router).unwrap();
+        let mut store = MappingStore::default();
+        loop {
+            let SubmeshPoll::Source(source)=walk.poll() else {panic!("source before template child")};
+            let reply=source.execute(&router,&mut decoder,None,&mut store);
+            let claimed=router.materialized_source_handle().borrow().contains(&12);
+            walk.accept(reply,&router,&mut store);
+            if claimed {break}
+        }
+        // The frame is Send; authority and rollback stay in the leased store.
+        drop(walk);
+        store.cancel();
+        assert!(!router.materialized_source_handle().borrow().contains(&12));
+        assert!(router.cached_mapped_source(12).is_none());
+    });
+}
+
+#[test]
+fn common_mapping_abandonment_hands_claim_cleanup_back_to_its_router() {
+    use crate::resource::{ExecutionAccount, ExecutionPolicy, ResourceLimits};
+    let mut router = GeometryRouter::new();
+    router.enable_accounted_mapped_item_cache(crate::AccountedMappedItemCache::new());
+    router.enable_output_instancing(Arc::new([(12, (2, 13))].into_iter().collect()));
+    router.set_instancing_batch_local(true);
+    let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+    account.scope(|| {
+        let mut decoder = EntityDecoder::new(BASE);
+        let completed = parts(&router, &mut decoder, 13).remove(0);
+        assert!(router.cached_mapped_source(12).is_some());
+        let item = decoder.decode_by_id(13).unwrap();
+        let mut program = crate::program::GeometryProgram::mapped_styled(&item, true, &router).unwrap();
+        let reply=loop {
+            let request=program.request().unwrap().unwrap();
+            let reply=program.execute(request,&router,&mut decoder).unwrap();
+            if router.materialized_source_handle().borrow().contains(&12) {break reply}
+            program.accept(reply,&router).unwrap();
+        };
+        // No accepted reply and no retained router borrow are required to abandon.
+        drop(reply); drop(program);
+        router.drain_mapping_cleanup();
+        assert!(!router.materialized_source_handle().borrow().contains(&12));
+        let retained = router.cached_mapped_source(12).unwrap();
+        assert_eq!(retained.positions, completed.positions);
+        assert_eq!(retained.indices, completed.indices);
+    });
+}
+
+#[test]
+fn mapping_poll_defers_work_and_occurrence_admission_to_execution() {
+    use crate::resource::{ExecutionAccount,ExecutionPolicy,ResourceLimits,Dimension,ProgramStop};
+    let router=GeometryRouter::new();
+    let mut decoder=EntityDecoder::new(BASE);
+    let item=decoder.decode_by_id(13).unwrap();
+    for styled in [false,true] {
+        let account=ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits {work:Some(0),..Default::default()}));
+        account.scope(|| {
+            if styled {
+                let mut walk=SubmeshWalk::new(&item,false,&router).unwrap();
+                let SubmeshPoll::Source(source)=walk.poll() else {panic!("explicit work admission")};
+                assert_eq!(account.usage().work,0,"pure poll must not spend the active account");
+                let mut store=MappingStore::default();
+                walk.accept(source.execute(&router,&mut decoder,None,&mut store),&router,&mut store);
+                assert!(matches!(walk.poll(),SubmeshPoll::Complete(Err(_))));
+            } else {
+                let mut walk=MergedWalk::new(&item,&router).unwrap();
+                let MergedPoll::Source(source)=walk.poll() else {panic!("explicit work admission")};
+                assert_eq!(account.usage().work,0,"pure poll must not spend the active account");
+                walk.accept(source.execute(&router,&mut decoder),&router);
+                assert!(matches!(walk.poll(),MergedPoll::Complete(Err(_))));
+            }
+        });
+        assert!(matches!(account.check(),Err(ProgramStop::ResourceRefused(failure)) if failure.dimension==Dimension::Work));
+        assert!(router.cached_mapped_source(12).is_none());
+    }
+}
+
+#[test]
+fn merged_transform_fault_stays_dormant_until_its_reached_admission() {
+    let source=format!("{BASE}#30=IFCMAPPEDITEM(#12,#998);");
+    let router=GeometryRouter::new();
+    let mut decoder=EntityDecoder::new(&source);
+    let item=decoder.decode_by_id(30).unwrap();
+    let mut walk=MergedWalk::new(&item,&router).unwrap();
+    loop {
+        let MergedPoll::Source(source)=walk.poll() else {panic!("source admission before transform")};
+        let reply=source.execute(&router,&mut decoder);
+        let reached_source=reply.tag()==1;
+        walk.accept(reply,&router);
+        if reached_source {break}
+    }
+    assert!(router.cached_mapped_source(12).is_none());
+    // A real mutable-decoder repair between source and target admissions is
+    // observed. Eager transform lowering would already have failed at this point.
+    let repaired=decoder.decode_by_id(3).unwrap();
+    decoder.inject_shared_cache(&[(998,Arc::new(repaired))].into_iter().collect());
+    let result=walk.run(&router,&mut decoder).unwrap();
+    assert_eq!(triangles(&result),12);
+}

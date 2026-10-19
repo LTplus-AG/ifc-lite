@@ -38,7 +38,7 @@
 //! - `processors/boolean/mod.rs` (`IfcHalfSpaceSolid` /
 //!   `IfcPolygonalBoundedHalfSpace`) clips inside `BooleanProcessor::process`,
 //!   dispatched at `router/processing.rs:818`, before `scale_mesh` (:846) and
-//!   before `apply_placement`. Plane and mesh are both in the representation
+//!   before canonical product placement. Plane and mesh are both in the representation
 //!   item's LOCAL, pre-scale, file-unit coordinates — the plane f64 out of
 //!   `IfcAxis2Placement3D` (`parse_half_space_solid`), the vertices f32-native
 //!   in that same frame. This is the frame every fixture below models.

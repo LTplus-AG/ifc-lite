@@ -421,7 +421,7 @@ fn an_inward_wound_host_is_read_the_same_as_an_outward_one() {
 //
 //   - the `triangle_count > 100 && !separable_bodies` branch hands back
 //     `opening_mesh`, sourced from `self.process_element` — which runs
-//     through `apply_placement` and so arrives WELDED (#4103).
+//     through canonical product placement and so arrives WELDED (#4103).
 //   - the per-item else-branch (reached when that gate is false but the
 //     item isn't a clean box) hands back `item_mesh`, sourced from
 //     `get_opening_item_meshes_world` (`probe.rs`) — which bakes with

@@ -6,6 +6,7 @@
 //! publish diagnostics for discarded geometry. Each mode has its own process
 //! because route flags are read once and public counters are process-global.
 
+use crate::program::openings::execute::GatePolicy;
 use super::{tests::mixed_overlap_fixture, GeometryRouter, Mesh, VoidContext};
 use crate::kernel::budget;
 
@@ -56,7 +57,7 @@ fn run(host: Mesh, context: &VoidContext) -> (Mesh, Telemetry, Work) {
     take_work();
     budget::begin_element();
     budget::reset_peak();
-    let result = router.apply_void_context(host, context, 4617).unwrap();
+    let result = router.apply_void_context_borrowed(host, context, 4617).unwrap();
     (result, take(&router), take_work())
 }
 
@@ -291,10 +292,10 @@ fn opening_terminal_port_staged_residual_and_correction_stop_do_not_replay() {
     TERMINAL_GATE_READS.with(|reads| reads.set((0, 0)));
     account.scope(|| {
         let outcome = crate::program::openings::execute::ReadyOperation::new(
-            host, &context, 4617, crate::TessellationQuality::default(),
+            host, std::sync::Arc::new(context), 4617, crate::TessellationQuality::default(),
             crate::program::openings::execute::Configuration {
-                parametric: residual_stop_gate, prism: correction_stop_gate,
-                rectangular: no_gate, coaxial_union: no_gate,
+                parametric: GatePolicy::Test(residual_stop_gate), prism: GatePolicy::Test(correction_stop_gate),
+                rectangular: GatePolicy::Test(no_gate), coaxial_union: GatePolicy::Test(no_gate),
             }).execute();
         assert!(matches!(outcome.publish(&router),
             Err(crate::Error::ProgramStopped(crate::resource::ProgramStop::Cancelled))));
@@ -330,10 +331,10 @@ fn opening_terminal_port_empty_correction_preserves_lazy_prism() {
     STOP_IN_RESIDUAL.with(|stop| stop.set(false));
     let router = GeometryRouter::new();
     let result = crate::program::openings::execute::ReadyOperation::new(
-        host, &context, 4617, crate::TessellationQuality::default(),
+        host, std::sync::Arc::new(context), 4617, crate::TessellationQuality::default(),
         crate::program::openings::execute::Configuration {
-            parametric: residual_stop_gate, prism: residual_only_prism_gate,
-            rectangular: no_gate, coaxial_union: no_gate,
+            parametric: GatePolicy::Test(residual_stop_gate), prism: GatePolicy::Test(residual_only_prism_gate),
+            rectangular: GatePolicy::Test(no_gate), coaxial_union: GatePolicy::Test(no_gate),
         }).execute().publish(&router).unwrap();
     assert!((crate::mesh_check::signed_volume(&result).abs() - 90.5).abs() < 1e-5);
     assert_eq!(TERMINAL_GATE_READS.with(std::cell::Cell::get), (2, 1));

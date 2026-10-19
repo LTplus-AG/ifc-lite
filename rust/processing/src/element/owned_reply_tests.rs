@@ -17,6 +17,14 @@ fn foreign_context_request_and_reply_are_rejected_intact_before_geometry_or_hash
     let mut foreign=request;foreign.context=Some(b.id());
     assert_eq!(session.execute(foreign,&mut decoder,&router).err(),Some(WorkError::WrongContext));
     assert!(decoder.try_execution_lease().is_ok(),"forged request never reached owner/cache admission");
+    let admitted=session.execute(request,&mut decoder,&router).unwrap();
+    session.accept(admitted,&mut decoder,&router).unwrap();
+    let request=loop {
+        let request=session.request().unwrap().unwrap();
+        if request.inner.is_none() { break request }
+        let reply=session.execute(request,&mut decoder,&router).unwrap();
+        session.accept(reply,&mut decoder,&router).unwrap();
+    };
     let mut reply=session.execute(request,&mut decoder,&router).unwrap();
     let positions=match &reply.payload {super::session_protocol::WorkPayload::Primary(super::session_work::PrimaryOutcome::Candidate(parts))=>{
         assert!(!parts.sub_meshes.is_empty());true},_=>false};

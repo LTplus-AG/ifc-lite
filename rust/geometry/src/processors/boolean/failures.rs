@@ -16,6 +16,13 @@ use crate::{Mesh, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 impl GeometryProcessor for BooleanClippingProcessor {
+    fn lower_program(&self, entity: &DecodedEntity, quality: TessellationQuality)
+        -> Option<crate::program::GeometryProgram> {
+        Some(crate::program::GeometryProgram::boolean(
+            crate::program::boolean::BooleanProgram::new_boolean(entity.clone(), quality)))
+    }
+    fn boolean_recorder(&self) -> Option<&BooleanClippingProcessor> { Some(self) }
+
     fn process(
         &self,
         entity: &DecodedEntity,

@@ -13,7 +13,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 /// All dropped-representation-item state, behind one `RefCell` on the router:
 /// the counts themselves, the sources already counted, and the open
-/// [`GeometryRouter::enter_unsupported_source`] scopes. One struct rather than
+/// [`GeometryRouter::with_unsupported_policy`] scopes. One struct rather than
 /// three fields because `router/mod.rs` sits exactly at its module-size budget,
 /// and because the three are meaningless apart.
 #[derive(Default)]
@@ -91,6 +91,7 @@ impl GeometryRouter {
     /// sharing a TOTAL-LOSS source still contribute one each. Every source that
     /// yields any geometry is shared model-wide through
     /// `shared_mapped_item_cache` and walked once.
+    #[cfg(test)]
     pub(crate) fn enter_unsupported_source(
         &self,
         source_id: u32,
@@ -106,7 +107,7 @@ impl GeometryRouter {
         self.unsupported.borrow().scope.last().copied().unwrap_or(true)
     }
 
-    /// Claim at the same reached point as `enter_unsupported_source`. A later
+    /// Claim at the reached source admission. A later
     /// step reinstalls this decision; it must never claim the source again.
     pub(crate) fn claim_unsupported_source(
         &self, source_id: u32, mapped_repr: &DecodedEntity,
@@ -128,11 +129,11 @@ impl GeometryRouter {
     /// Record one dropped representation item (unsupported type, or its
     /// processor errored), keyed by `IfcType`.
     ///
-    /// Suppressed while inside an [`enter_unsupported_source`] scope that
+    /// Suppressed while inside a [`with_unsupported_policy`] scope that
     /// declined to record — a non-Body source, or one already counted. Outside
     /// any scope (an element's own representation item) it always records.
     ///
-    /// [`enter_unsupported_source`]: Self::enter_unsupported_source
+    /// [`with_unsupported_policy`]: Self::with_unsupported_policy
     pub(crate) fn record_unsupported_item(&self, ifc_type: ifc_lite_core::IfcType) {
         let mut state = self.unsupported.borrow_mut();
         if state.scope.last() == Some(&false) {
@@ -162,7 +163,7 @@ impl GeometryRouter {
     }
 }
 
-/// Guard returned by [`GeometryRouter::enter_unsupported_source`]. Pops on drop,
+/// Lexical guard for [`GeometryRouter::with_unsupported_policy`]. Pops on drop,
 /// so a `?` out of the middle of a source walk cannot leave the scope stack
 /// unbalanced. Nested maps stack: a drop is attributed to the INNERMOST source
 /// being walked, which is the one that owns the item.

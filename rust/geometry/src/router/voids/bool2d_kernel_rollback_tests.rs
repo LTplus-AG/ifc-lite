@@ -2,7 +2,7 @@
 //! Opening extraction invariant: rejected staged work owns its kernel evidence.
 use super::{tests::mixed_overlap_fixture, GeometryRouter, Mesh, VoidContext};
 use crate::kernel::budget;
-use crate::program::openings::execute::{Configuration, Execution};
+use crate::program::openings::execute::{Configuration, Execution, GatePolicy};
 use crate::{resource, TessellationQuality};
 use std::{cell::{Cell, RefCell}, panic::{catch_unwind, AssertUnwindSafe}, sync::Arc};
 
@@ -31,8 +31,8 @@ fn correction_gate() -> bool {
     })
 }
 fn configuration(prism: fn() -> bool) -> Configuration {
-    Configuration { parametric: disabled, rectangular: disabled,
-        prism, coaxial_union: disabled }
+    Configuration { parametric: GatePolicy::Test(disabled), rectangular: GatePolicy::Test(disabled),
+        prism: GatePolicy::Test(prism), coaxial_union: GatePolicy::Test(disabled) }
 }
 fn mesh_box() -> Mesh {
     let profile = crate::profile::Profile2D::new(vec![
@@ -84,6 +84,7 @@ fn positive_control(host: &Mesh, context: &VoidContext) -> Vec<(u8, u32, u32)> {
     assert!(crate::mesh_check::closed_enough_to_emit(&precursor));
     assert!((crate::mesh_check::signed_volume(&precursor).abs() - 96.).abs() < 1e-5);
     let residual = context.bool2d.as_ref().unwrap().residual.as_ref().unwrap();
+    budget::set_cap(Some(budget::DEFAULT_CAP));
     budget::set_element_cap(Some(1));
     budget::begin_element();
     crate::csg::take_csg_census();
@@ -137,7 +138,8 @@ fn staged_real_capped_child_failure_drops_on_correction_stop_or_unwind() {
             let name = "router::voids::bool2d_path::kernel_rollback_tests::staged_real_capped_child_failure_drops_on_correction_stop_or_unwind";
             let output = std::process::Command::new(std::env::current_exe().unwrap())
                 .args(["--exact", name, "--nocapture"]).env(CHILD, mode)
-                .env("IFC_LITE_VOID_2D", "1").env("IFC_LITE_CSG_BUDGET", "0")
+                .env("IFC_LITE_VOID_2D", "1")
+                .env_remove("IFC_LITE_CSG_BUDGET").env_remove("IFC_LITE_CSG_ELEMENT_BUDGET")
                 .output().unwrap();
             assert!(output.status.success(), "{mode}: {}\n{}",
                 String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
@@ -160,6 +162,7 @@ fn staged_real_capped_child_failure_drops_on_correction_stop_or_unwind() {
     let prior_failures = format!("{:?}", router.csg_failures.borrow());
     clear_telemetry(&router);
     crate::csg::take_csg_census();
+    budget::set_cap(Some(budget::DEFAULT_CAP));
     budget::set_element_cap(Some(1));
     budget::begin_element();
     GATES.with(|n| n.set(0));

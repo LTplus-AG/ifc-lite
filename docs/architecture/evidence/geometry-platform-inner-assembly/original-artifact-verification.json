@@ -1,0 +1,103 @@
+{
+  "original_checksum_entries": [
+    {
+      "path": "ASSEMBLY.md",
+      "sha256": "5ffd19bd3a51ba56838dafd3ec96a4d860659659b5c1733ad50dd1cc88d3e517",
+      "matches": true
+    },
+    {
+      "path": "clippy-664-output.log",
+      "sha256": "cf6834421bb6d0306dfc83aa6a2ba477c4e2917347fa27fc4a85572116597b93",
+      "matches": true
+    },
+    {
+      "path": "clippy-664-receipt.json",
+      "sha256": "c7c72bb5ba06a5060f58748ccb0bab8b5270aa1eb6aeb117431e1fda82b601d6",
+      "matches": true
+    },
+    {
+      "path": "coordination.json",
+      "sha256": "2cb02047a952f7322273b6ee710a9bcb88ef6b28cd1aacdd1f8036471c2855b3",
+      "matches": true
+    },
+    {
+      "path": "files.json",
+      "sha256": "96a87e70b2f8abe87e27f3aeba330066542e703f4aa3f058c18aec42eb83306e",
+      "matches": true
+    },
+    {
+      "path": "fixtures-db-output.log",
+      "sha256": "467947d5647efdbfc97598b323944335de2cc16a9e669f27438a123de532a279",
+      "matches": true
+    },
+    {
+      "path": "fixtures-db-receipt.json",
+      "sha256": "9ebe264557dc70d783abb1b1231ae740e39bfa2abad2eab9ff0e568863ea3b37",
+      "matches": true
+    },
+    {
+      "path": "fixtures-db-request.json",
+      "sha256": "59cf597e10d96d4fb57cee8d2351c2ce01e3e342a2957339a636976abfe9a7a8",
+      "matches": true
+    },
+    {
+      "path": "fleet-status-snapshot.json",
+      "sha256": "620869b3b3fc861ac844b4c00afb8660f9ab1505a5dbb23482067499dfbcc3ef",
+      "matches": true
+    },
+    {
+      "path": "incremental.patch",
+      "sha256": "0dceb5e57dab42fc995412c70c3518c6471d49c45b20aefa81c252dd1f7553dc",
+      "matches": true
+    },
+    {
+      "path": "module-size-final.log",
+      "sha256": "e348da1e1f5ae4761f0569eb520507381d65c636b532fc5db541cbf30a4c5912",
+      "matches": true
+    },
+    {
+      "path": "parser-final.json",
+      "sha256": "81565e4987f74d75de4e7799ecd783d84de9fb5ab1cd19ce422e7b39eb36efd6",
+      "matches": true
+    },
+    {
+      "path": "qualification.json",
+      "sha256": "9f866e266a470304b0cbb2584e509ea6f4a16d8f6c0600a9a6039fbd3130f6f3",
+      "matches": true
+    },
+    {
+      "path": "refwalk-final.log",
+      "sha256": "5755ade4c5c754cbad83b7ef2e15066344a1a324394288865f914c5cb36826c6",
+      "matches": true
+    },
+    {
+      "path": "source-identity.json",
+      "sha256": "1408a1783defceec8902ae284ced6602552de963b04edd123de6e9d8c087efca",
+      "matches": true
+    },
+    {
+      "path": "workspace-650-output.log",
+      "sha256": "495e85af47d66117115d08a39cea47f37cadf4e8118db0fb45c4faebba7bedd1",
+      "matches": true
+    },
+    {
+      "path": "workspace-650-receipt.json",
+      "sha256": "26ab8f281308aa3d4328b412f0d87eef7ed5615889b27041cd52280ba7682191",
+      "matches": true
+    },
+    {
+      "path": "workspace-650-request.json",
+      "sha256": "61f1ae755197ae24d8bd22a1e79e36d5d9e1365aea8b90b7e82b25223f7a6494",
+      "matches": true
+    },
+    {
+      "path": "workspace-664-receipt-snapshot.json",
+      "sha256": "a51e05c8731ed4951e215e8953680464605c4915f87bb6dc824c9559d74dc45f",
+      "matches": true
+    }
+  ],
+  "manifest": {
+    "manifest_errors": [],
+    "patch_sha256": "0dceb5e57dab42fc995412c70c3518c6471d49c45b20aefa81c252dd1f7553dc"
+  }
+}

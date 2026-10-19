@@ -3,13 +3,13 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Issue #1474: `local_bounds`/`local_to_world` must capture the mesh's
-//! object-space extent and the exact placement `apply_placement` resolved,
+//! object-space extent and the exact transform resolved by canonical product placement,
 //! independent of `origin` (a world-space AABB-centre translation captured
 //! by this same function for an unrelated reason — f32 precision).
 use crate::math::mat4::from_na as mat4_to_row_major;
 use super::*;
 use crate::Mesh;
-use nalgebra::{Rotation3, Translation3};
+use nalgebra::{Rotation3, Translation3, Vector3};
 
 /// A unit box [0,1]^3, un-rotated, in object space.
 fn unit_box() -> Mesh {

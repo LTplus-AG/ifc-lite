@@ -4,7 +4,7 @@
 use super::super::*;
 use super::super::session::ProductState;
 use super::super::session_protocol::WorkError;
-use super::super::session_tests::{Context, SOURCE, assert_same, canonical, job, metadata, options, router};
+use super::super::session_tests::{Context, SOURCE, assert_same, canonical, job, metadata, options, router, request_after_custom_admission};
 use ifc_lite_core::IfcSchema;
 use ifc_lite_geometry::{ExtrudedAreaSolidProcessor, GeometryProcessor, TessellationQuality};
 use std::{cell::Cell, panic::{catch_unwind, AssertUnwindSafe}, rc::Rc};
@@ -55,7 +55,7 @@ impl Harness {
 fn registered_constructor_can_clear_cache_and_reseed_equal_units_without_losing_geometry() {
     let mut h = Harness::new(Mutation::CacheAndUnits);
     let mut session = h.session();
-    let request = session.request().unwrap().unwrap();
+    let request = request_after_custom_admission(&mut session, &h.context.borrowed(), &mut h.decoder, &h.router);
     let before = h.decoder.execution_identity();
     let reply = session.execute(request, &h.context.borrowed(), &mut h.decoder, &h.router).unwrap();
     assert_ne!(h.decoder.execution_identity(), before, "real decoder maintenance changed its generation");
@@ -72,7 +72,7 @@ fn registered_constructor_can_clear_cache_and_reseed_equal_units_without_losing_
 fn external_cache_mutation_after_trusted_work_still_rejects_the_unconsumed_packet() {
     let mut h = Harness::new(Mutation::CacheAndUnits);
     let mut session = h.session();
-    let request = session.request().unwrap().unwrap();
+    let request = request_after_custom_admission(&mut session, &h.context.borrowed(), &mut h.decoder, &h.router);
     let reply = session.execute(request, &h.context.borrowed(), &mut h.decoder, &h.router).unwrap();
     h.decoder.clear_entity_cache();
     let rejected = session.accept(reply, &h.context.borrowed(), &mut h.decoder, &h.router).unwrap_err();
@@ -90,7 +90,7 @@ fn external_cache_mutation_after_trusted_work_still_rejects_the_unconsumed_packe
 fn replacing_decoder_inside_callback_is_terminal_and_cannot_re_admit_the_ticket() {
     let mut h = Harness::new(Mutation::Replace);
     let mut session = h.session();
-    let request = session.request().unwrap().unwrap();
+    let request = request_after_custom_admission(&mut session, &h.context.borrowed(), &mut h.decoder, &h.router);
     assert_eq!(session.execute(request, &h.context.borrowed(), &mut h.decoder, &h.router).err(),
         Some(WorkError::WrongOwner));
     assert!(session.scopes.is_none(), "owner commit failure poisons execution");
@@ -103,7 +103,7 @@ fn replacing_decoder_inside_callback_is_terminal_and_cannot_re_admit_the_ticket(
 fn callback_panic_never_commits_owner_changes_and_cannot_publish_or_resume() {
     let mut h = Harness::new(Mutation::Panic);
     let mut session = h.session();
-    let request = session.request().unwrap().unwrap();
+    let request = request_after_custom_admission(&mut session, &h.context.borrowed(), &mut h.decoder, &h.router);
     let panic = catch_unwind(AssertUnwindSafe(|| {
         let _ = session.execute(request, &h.context.borrowed(), &mut h.decoder, &h.router);
     }));

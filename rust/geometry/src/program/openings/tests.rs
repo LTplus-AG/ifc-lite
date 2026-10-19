@@ -74,7 +74,7 @@ fn ready_opening_operation_outlives_decoder_and_preserves_consumed_host() {
     };
     let result = execute::ReadyOperation::new(
         mesh,
-        &context,
+        std::sync::Arc::new(context),
         1,
         TessellationQuality::default(),
         crate::router::voids::numerical_configuration(),

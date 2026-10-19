@@ -3,7 +3,6 @@
 //! reached continuation; no recursive boolean/CSG operand evaluation remains.
 use crate::processors::boolean::{BooleanClippingProcessor, OperandPath, MAX_BOOLEAN_DEPTH,
     MAX_OPERAND_PATH_NODES, MAX_OPERAND_VISITS, boolean_operator};
-use step::StepAdmission;
 use crate::{BoolFailureReason, BoolOp, Error, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 mod state;
@@ -11,32 +10,33 @@ mod batch;
 mod step;
 mod work;
 mod operand;
+mod protocol;
+mod transitions;
+mod reports;
+pub(crate) use protocol::{BooleanProgram, BooleanPoll, BooleanTicket, BooleanSourceReply, BooleanNumericalReply, ReadyBoolean};
 use state::{Frame, Steps, Value, Walk};
 
 /// Ephemeral services borrowed only while driving a reached transition.
-struct Services<'a, 'source> {
+pub(super) struct Services<'a, 'source> {
     recorder: &'a BooleanClippingProcessor,
     decoder: &'a mut EntityDecoder<'source>,
 }
 
 /// Owned common-program child. No source service or runtime guard is retained.
-struct BooleanProgram {
+pub(super) struct BooleanState {
     visited: OperandPath,
     quality: TessellationQuality,
     frames: Vec<Frame>,
     active: Vec<u32>,
     value: Option<Value>,
+    reports: crate::construction::ConstructionReports,
+    skip_small_cuts: bool,
+    unwind_sink:Option<crate::processors::boolean::FailureSink>,
+    pending_reports:Option<reports::PendingReports>,
 }
-impl BooleanProgram {
+impl BooleanState {
     fn new(visited: OperandPath, quality: TessellationQuality, first: Frame) -> Self {
-        Self { visited, quality, frames: vec![first], active: Vec::new(), value: None }
-    }
-    fn run(&mut self, services: &mut Services<'_, '_>) -> Result<Value> {
-        let result = self.drive(services);
-        // Error skips queued exits. Release our admissions, preserving ancestors
-        // and the monotonic budget supplied by the enclosing caller.
-        for id in self.active.drain(..) { self.visited.remove(id); }
-        result
+        Self { visited, quality, frames: vec![first], active: Vec::new(), value: None, reports: Default::default(), skip_small_cuts: false, unwind_sink:None, pending_reports:None }
     }
     fn enter_path(&mut self, id: u32) -> Result<()> {
         if !self.visited.insert(id) {
@@ -47,6 +47,7 @@ impl BooleanProgram {
         Ok(())
     }
     fn enter_boolean(&mut self, entity: DecodedEntity, depth: u32, services: &mut Services<'_, '_>) -> Result<()> {
+        self.skip_small_cuts = services.recorder.skip_small_cuts;
         if self.visited.len() >= MAX_OPERAND_PATH_NODES {
             return Err(Error::geometry(format!(
                 "Boolean/CSG operand chain exceeds {MAX_OPERAND_PATH_NODES} nested nodes at #{}", entity.id)));
@@ -72,7 +73,7 @@ impl BooleanProgram {
                 self.frames.push(Frame::Boolean(root, depth));
             }
             // Root validation admits only these primitive constructors.
-            _ => self.value = Some(operand::evaluate(services.recorder, BoolOp::Unknown, &root, services.decoder, self.quality)?),
+            _ => self.frames.push(Frame::Operand { entity: root, operator: BoolOp::Unknown, depth }),
         }
         Ok(())
     }
@@ -84,44 +85,58 @@ impl BooleanProgram {
             IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
                 self.frames.push(Frame::Boolean(entity, depth + 1));
             }
-            _ => self.value = Some(operand::evaluate(services.recorder, operator, &entity, services.decoder, self.quality)?),
+            _ => self.admit_operand(entity, operator, services)?,
         }
         Ok(())
     }
-    fn drive(&mut self, services: &mut Services<'_, '_>) -> Result<Value> {
-        while let Some(frame) = self.frames.pop() {
-            crate::resource::check_current()?;
-            match frame {
-                Frame::Boolean(entity, depth) => self.enter_boolean(entity, depth, services)?,
-                Frame::Csg { entity, depth, guarded } => self.enter_csg(entity, depth, guarded, services)?,
-                Frame::Operand { entity, operator, depth } => self.operand(entity, operator, depth, services)?,
-                Frame::ExitPath(id) => {
-                    self.visited.remove(id);
-                    let exited = self.active.pop();
-                    debug_assert_eq!(exited, Some(id));
-                }
-                Frame::Walk(walk) => self.walk(walk, services)?,
-                Frame::AfterBase(walk) => {
-                    let value = self.value.take().expect("base continuation result");
-                    #[cfg(test)]
-                    unwind_tests::after_base(&value);
-                    #[cfg(test)]
-                    resource_tests::after_base(&value);
-                    self.frames.push(Frame::Steps(walk.steps(value, false)));
-                }
-                Frame::AfterBatch { walk, cutters, mark } => self.finish_batch(walk, cutters, mark, services)?,
-                Frame::Steps(steps) => self.steps(steps, services)?,
-                Frame::AfterStep { mut steps, operator, host } => {
-                    let second = self.value.take().expect("operand continuation result");
-                    let result = services.recorder.finish_solid_step(
-                        operator, host, second, services.decoder, self.quality)?;
-                    steps.accept(result);
-                    self.frames.push(Frame::Steps(steps));
-                }
-            }
-        }
+    fn source_frame(&mut self, frame: Frame, services: &mut Services<'_, '_>) -> Result<()> {
         crate::resource::check_current()?;
-        Ok(self.value.take().expect("completed operation result"))
+        match frame {
+            Frame::Boolean(entity, depth) => self.enter_boolean(entity, depth, services)?,
+            #[cfg(test)]
+            Frame::BeginShells { shell_kind, operand, op, outer } => self.begin_shells(shell_kind, operand, op, outer, services.recorder)?,
+            Frame::Csg { entity, depth, guarded } => self.enter_csg(entity, depth, guarded, services)?,
+            Frame::Operand { entity, operator, depth } => self.operand(entity, operator, depth, services)?,
+            Frame::ExitPath(id) => {
+                self.visited.remove(id);
+                let exited = self.active.pop();
+                debug_assert_eq!(exited, Some(id));
+            }
+            Frame::Walk(walk) => self.walk(walk)?,
+            Frame::Collect(collector) => self.collect(collector, services)?,
+            Frame::CollectFirst(collector) => self.collect_first(collector, services)?,
+            Frame::NextFirst(walk) => self.next_first(walk, services)?,
+            Frame::AfterBase(walk) => {
+                let value = self.value.take().expect("base continuation result");
+                #[cfg(test)]
+                unwind_tests::after_base(&value);
+                #[cfg(test)]
+                resource_tests::after_base(&value);
+                self.frames.push(Frame::Steps(walk.steps(value, false)));
+            }
+            Frame::AfterBatch { walk, cutters, mark } => self.finish_batch(walk, cutters, mark)?,
+            Frame::Steps(steps) => self.steps(steps, services)?,
+            Frame::AfterStep { steps, operator, host } => self.solid(steps, operator, host),
+            Frame::PlaneSource { steps, host, operand } => self.plane_source(steps, host, operand, services)?,
+            Frame::PrismSource { steps, host, operand, plane } => self.prism_source(steps, host, operand, plane, services)?,
+            Frame::SingleUnits { steps, host, cutter, plane } => {
+                let units = services.decoder.length_unit_scale();
+                crate::resource::check_current()?;
+                self.frames.push(Frame::Numerical(work::Ready::Single(work::Single {
+                    host, cutter, plane, solo_step: steps.solo_step, length_unit_scale: units }),
+                    work::Continuation::Single { steps, plane }));
+            }
+            Frame::SolidUnits { steps, mut operation } => {
+                operation.plan.length_unit_scale = services.decoder.length_unit_scale();
+                crate::resource::check_current()?;
+                self.frames.push(Frame::Numerical(work::Ready::Solid(operation), work::Continuation::Step(steps)));
+            }
+            Frame::GroupSource(group) => self.group_source(group, services)?,
+            Frame::GroupPrismSource { group, cutter, plane } => self.group_prism_source(group, cutter, plane, services)?,
+            Frame::VoidsSource(voids) => self.voids_source(voids, services)?,
+            Frame::Numerical(_, _) => unreachable!("numerical frame executed as source"),
+        }
+        Ok(())
     }
     fn steps(&mut self, mut steps: Steps, services: &mut Services<'_, '_>) -> Result<()> {
         let Some(node) = steps.nodes.pop() else {
@@ -142,18 +157,7 @@ impl BooleanProgram {
             }
         }
         let host = std::mem::take(&mut steps.mesh);
-        match services.recorder.begin_boolean_step(
-            &node, host, services.decoder, self.quality, steps.solo_step)? {
-            StepAdmission::Done(result) => {
-                steps.accept(result);
-                self.frames.push(Frame::Steps(steps));
-            }
-            StepAdmission::Solid { operator, first, operand } => {
-                let depth = steps.depth;
-                self.frames.push(Frame::AfterStep { steps, operator, host: first });
-                self.frames.push(Frame::Operand { entity: operand, operator, depth });
-            }
-        }
+        self.begin_step(node, host, steps, services)?;
         Ok(())
     }
 }
@@ -175,10 +179,10 @@ impl BooleanClippingProcessor {
 fn run(recorder: &BooleanClippingProcessor, decoder: &mut EntityDecoder,
     visited: &mut OperandPath, quality: TessellationQuality, first: Frame) -> Result<Value> {
     let mut restoring = RestoringProgram {
-        program: BooleanProgram::new(std::mem::take(visited), quality, first),
+        program: BooleanProgram::with_path(std::mem::take(visited), quality, first),
         caller: visited,
     };
-    restoring.program.run(&mut Services { recorder, decoder })
+    restoring.program.drain(recorder, decoder)
 }
 
 #[cfg(test)]
@@ -195,7 +199,8 @@ struct RestoringProgram<'a> {
 }
 impl Drop for RestoringProgram<'_> {
     fn drop(&mut self) {
-        *self.caller = std::mem::take(&mut self.program.visited);
+        crate::processors::diagnostic_capture::restore(&self.program.take_reports());
+        *self.caller = self.program.take_path();
     }
 }
 

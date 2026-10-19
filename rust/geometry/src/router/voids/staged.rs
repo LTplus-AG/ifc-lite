@@ -41,7 +41,7 @@ impl Execution {
             });
             // A mandatory correction cannot run in disabled-prism mode. Do not
             // spend an exact residual cut on a result we already must discard.
-            let correction_disabled = !corrections.is_empty() && !(self.configuration.prism)();
+            let correction_disabled = !corrections.is_empty() && !self.configuration.prism.read();
             crate::resource::check_current()?;
             if correction_disabled {
                 #[cfg(feature = "opening-perf-trace")]
@@ -57,7 +57,7 @@ impl Execution {
             });
             let candidate = provisional.apply_void_context(holed, residual, element_id)?;
             crate::resource::check_current()?;
-            let prism_enabled = corrections.is_empty() || (self.configuration.prism)();
+            let prism_enabled = corrections.is_empty() || self.configuration.prism.read();
             crate::resource::check_current()?;
             let corrected = prism_cut::correct_planar_overlap(
                 &candidate,

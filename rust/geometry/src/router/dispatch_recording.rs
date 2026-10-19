@@ -3,7 +3,10 @@
 use super::{dispatch_capture, GeometryProcessor, GeometryRouter};
 
 impl GeometryRouter {
-    pub(super) fn record_processor_dispatch(&self, processor: &dyn GeometryProcessor) {
+    pub(crate) fn processor_emitter(&self, processor: &dyn GeometryProcessor) -> Option<super::ProcessorEmitter> {
+        self.processors.emitter_for(processor)
+    }
+    pub(crate) fn record_processor_dispatch(&self, processor: &dyn GeometryProcessor) {
         if dispatch_capture::enabled() {
             if let Some(emitter) = self.processors.emitter_for(processor) {
                 dispatch_capture::record(emitter);

@@ -65,6 +65,7 @@ mod model_context;
 pub(crate) use model_context::ProductionLifecycle;
 pub use model_context::{OwnedMeshProductionData,OwnedMeshProductionContext,ProductionModel,ProductionContextId,ProductionContextError};
 mod session;
+mod session_inner;
 mod owned_session;
 mod accounted_session;
 pub use accounted_session::{produce_element_meshes_owned_accounted, AccountedElementMeshes, AccountedProductionError};
@@ -167,3 +168,6 @@ mod source_context_tests;
 
 #[cfg(test)]
 mod source_accounted_tests;
+
+#[cfg(test)]
+mod session_inner_tests;

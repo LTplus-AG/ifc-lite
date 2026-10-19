@@ -231,3 +231,34 @@ fn numerical_unwind_keeps_prior_and_reached_plane_losses_in_order() {
         BoolFailure::new(BoolOp::Difference,
             BoolFailureReason::PolygonalBoundedHalfSpaceFallback)]);
 }
+
+#[test]
+fn owned_unwind_sink_flushes_reached_numeric_failures_before_a_later_real_source_failure() {
+    struct PanicAfterCut(work::Plane);
+    impl Execute for PanicAfterCut {
+        type Output = ();
+        fn evaluate(self, effects: &crate::processors::boolean::NumericalEffects) {
+            let (mesh,lost)=self.0.evaluate(effects).unwrap();
+            assert!(!lost);
+            assert!((mesh_volume(&mesh).abs()-4.).abs()<1e-6);
+            std::panic::panic_any("owned sink after real clipping");
+        }
+    }
+    let recorder=BooleanClippingProcessor::new();
+    let host=block(&mut EntityDecoder::new("#1=IFCBLOCK($,2.,2.,2.);"),1);
+    let plane=HalfSpacePlan{point:crate::Point3::new(0.,0.,1.),normal:crate::Vector3::new(0.,0.,1.),agreement:false};
+    let panic=std::panic::catch_unwind(std::panic::AssertUnwindSafe(||{
+        PanicAfterCut(work::Plane{host,plane,fallback:true}).execute_owned(recorder.effects.unwind_sink());
+    })).unwrap_err();
+    assert_eq!(panic.downcast_ref::<&str>(),Some(&"owned sink after real clipping"));
+    let mut decoder=EntityDecoder::new("#1=IFCBLOCK($,2.,2.,2.);#2=IFCBOOLEANRESULT(.LATE_UNKNOWN.,#1,$);");
+    let entity=decoder.decode_by_id(2).unwrap();
+    let(mesh,lost)=recorder.execute_boolean(&entity,&mut decoder,0,TessellationQuality::Medium,&mut OperandPath::default()).unwrap();
+    assert!(!lost);
+    assert!((mesh_volume(&mesh).abs()-8.).abs()<1e-6);
+    assert_eq!(recorder.take_failures(),vec![
+        BoolFailure::new(BoolOp::Difference,BoolFailureReason::PolygonalBoundedHalfSpaceFallback),
+        BoolFailure::new(BoolOp::Unknown,BoolFailureReason::UnknownBooleanOperator("LATE_UNKNOWN".into())),
+    ]);
+    assert!(recorder.take_failures().is_empty(),"the owned mailbox drains once");
+}

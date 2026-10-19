@@ -1,0 +1,66 @@
+[
+  {
+    "path": "Cargo.lock",
+    "parent_git_blob": "ca35be958bc14b85e273450ae231a344aacdf5aa",
+    "assembled_git_blob": "ca35be958bc14b85e273450ae231a344aacdf5aa",
+    "sha256": "a0216e232726394c443842d9e60b8668a13bd4682d1ea21d6db5334c2f4dff47",
+    "filesystem_sha256": "a0216e232726394c443842d9e60b8668a13bd4682d1ea21d6db5334c2f4dff47",
+    "unchanged": true
+  },
+  {
+    "path": "rust/python/Cargo.lock",
+    "parent_git_blob": "ec1f0d53aff290833543358c68eff83a4007186f",
+    "assembled_git_blob": "ec1f0d53aff290833543358c68eff83a4007186f",
+    "sha256": "603dc887287a605080b8017f7d3527d70ee9a41ec0ed77fe00ee0eab51b3bf31",
+    "filesystem_sha256": "603dc887287a605080b8017f7d3527d70ee9a41ec0ed77fe00ee0eab51b3bf31",
+    "unchanged": true
+  },
+  {
+    "path": ".github/workflows/python-wheels.yml",
+    "parent_git_blob": "bcfb36c3bb5816e7352dc97736ff1c4dab68f0c7",
+    "assembled_git_blob": "bcfb36c3bb5816e7352dc97736ff1c4dab68f0c7",
+    "sha256": "3d49e305e2e4832c74033da42a2cb5f124022ff43fdb855d6ae079c9b619c402",
+    "filesystem_sha256": "3d49e305e2e4832c74033da42a2cb5f124022ff43fdb855d6ae079c9b619c402",
+    "unchanged": true
+  },
+  {
+    "path": "rust/geometry/src/lib.rs",
+    "parent_git_blob": "9ca9a234f64515be08222b5e0b9c4fc0cbacda20",
+    "assembled_git_blob": "9ca9a234f64515be08222b5e0b9c4fc0cbacda20",
+    "sha256": "a5f907f714a4cd0794dea84436502f82ee32a9e2b7b670f33fda9cabaf3544d9",
+    "filesystem_sha256": "a5f907f714a4cd0794dea84436502f82ee32a9e2b7b670f33fda9cabaf3544d9",
+    "unchanged": true
+  },
+  {
+    "path": "rust/geometry/src/imported.rs",
+    "parent_git_blob": null,
+    "assembled_git_blob": null,
+    "sha256": null,
+    "filesystem_sha256": null,
+    "unchanged": true
+  },
+  {
+    "path": "rust/wasm-bindings/src/lib.rs",
+    "parent_git_blob": "380f3c304b1c99504d758bbedd4b373216763487",
+    "assembled_git_blob": "380f3c304b1c99504d758bbedd4b373216763487",
+    "sha256": "8078da538b5c906eaf357ef892458d171b3e133bc2703f12fdbf07bb64503b10",
+    "filesystem_sha256": "8078da538b5c906eaf357ef892458d171b3e133bc2703f12fdbf07bb64503b10",
+    "unchanged": true
+  },
+  {
+    "path": "rust/processing/src/authored_geometry/bound.rs",
+    "parent_git_blob": "7ef2c608ff3866c38fb431e85154dbef9c2d0f7c",
+    "assembled_git_blob": "7ef2c608ff3866c38fb431e85154dbef9c2d0f7c",
+    "sha256": "f1b5956c8a9a0421ff969a30e6fb7cc99fb020c69ec964b1726470cd78b693e0",
+    "filesystem_sha256": "f1b5956c8a9a0421ff969a30e6fb7cc99fb020c69ec964b1726470cd78b693e0",
+    "unchanged": true
+  },
+  {
+    "path": "rust/processing/src/element/model_context.rs",
+    "parent_git_blob": "804d1c242d8ab6e678d192fda640dd878e19e8b4",
+    "assembled_git_blob": "804d1c242d8ab6e678d192fda640dd878e19e8b4",
+    "sha256": "0e12311a8d727575c811268e1964a8ccaf7631675e5aa4deefb0e2cf6e7f703b",
+    "filesystem_sha256": "0e12311a8d727575c811268e1964a8ccaf7631675e5aa4deefb0e2cf6e7f703b",
+    "unchanged": true
+  }
+]

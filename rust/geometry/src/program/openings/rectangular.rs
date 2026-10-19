@@ -1,110 +1,138 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Owned rectangle capture and reconciliation against actual runtime meshes.
-use crate::router::voids::{
-    geom::{mesh_signed_volume, signed_permutation_map},
-    ParamRectCut, RectParam,
-};
-use crate::{resource, GeometryRouter};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+//! Rectangle probes and actual-mesh reconciliation are independently consumed.
+use super::control::{OpeningControl, OpeningOutput, OpeningPoll, Step};
+use super::requests::{OpeningReady, OpeningReply, OpeningSource};
+use crate::router::voids::{ParamRectCut, RectParam};
+use crate::Result;
+use ifc_lite_core::{DecodedEntity, IfcType};
 
 pub(super) struct Capture {
-    host: RectParam,
+    element: DecodedEntity,
     ids: std::vec::IntoIter<u32>,
+    host: Option<RectParam>,
     openings: Vec<RectParam>,
     current: Option<DecodedEntity>,
     boxes: Vec<RectParam>,
+    next: Option<OpeningPoll>,
+    phase: Phase,
+}
+enum Phase {
+    Host,
+    Decode,
+    Meshes,
+    Pending,
 }
 impl Capture {
-    pub(super) fn run(
-        element: &DecodedEntity,
-        ids: &[u32],
-        router: &GeometryRouter,
-        decoder: &mut EntityDecoder<'_>,
-    ) -> crate::Result<Option<ParamRectCut>> {
-        resource::check_current()?;
-        if ids.is_empty() {
-            return Ok(None);
-        }
-        let host = router.parametric_rect_probe_checked(element, decoder)?;
-        resource::check_current()?;
-        let Some(host) = host else { return Ok(None) };
-        let mut capture = Self {
-            host,
-            ids: ids.to_vec().into_iter(),
-            openings: Vec::with_capacity(ids.len()),
+    pub(super) fn new(element: DecodedEntity, ids: Vec<u32>) -> Self {
+        let capacity = ids.len();
+        Self {
+            element,
+            ids: ids.into_iter(),
+            host: None,
+            openings: Vec::with_capacity(capacity),
             current: None,
             boxes: Vec::new(),
-        };
-        while let Some(id) = capture.ids.next() {
-            resource::check_current()?;
-            let opening = decoder.decode_by_id(id);
-            resource::check_current()?;
-            let Ok(opening) = opening else { return Ok(None) };
-            capture.current = Some(opening);
-            if capture.capture_boxes(router, decoder)?.is_none() {
-                return Ok(None);
-            }
-            if capture.reconcile(router, decoder)?.is_none() {
-                return Ok(None);
-            }
-            resource::check_current()?;
-            capture.openings.append(&mut capture.boxes);
-            capture.current = None;
+            next: None,
+            phase: Phase::Host,
         }
-        resource::check_current()?;
-        Ok(Some(ParamRectCut {
-            host: capture.host,
-            openings: capture.openings,
-        }))
     }
-    fn capture_boxes(
-        &mut self,
-        router: &GeometryRouter,
-        decoder: &mut EntityDecoder<'_>,
-    ) -> crate::Result<Option<()>> {
-        resource::check_current()?;
-        let Some(opening) = self.current.as_ref() else { return Ok(None) };
-        if opening.ifc_type != IfcType::IfcOpeningElement {
-            return Ok(None);
+    pub(super) fn poll(&mut self) -> Step {
+        if let Some(next) = self.next.take() {
+            return Step::Poll(next);
         }
-        let boxes = router.parametric_rect_probe_all_checked(opening, decoder)?;
-        resource::check_current()?;
-        let Some(boxes) = boxes else { return Ok(None) };
-        self.boxes = boxes;
-        let rt = self.host.r.transpose();
-        for op in &self.boxes {
-            resource::check_current()?;
-            if signed_permutation_map(&(rt * op.r), 1.0e-3).is_none() {
-                return Ok(None);
+        let phase = std::mem::replace(&mut self.phase, Phase::Pending);
+        match phase {
+            Phase::Host => {
+                if self.ids.len() == 0 {
+                    self.finish(None);
+                    return self.poll();
+                }
+                Step::Poll(OpeningPoll::Source(OpeningSource::RectHost(
+                    self.element.clone(),
+                )))
             }
+            Phase::Decode => {
+                if let Some(id) = self.ids.next() {
+                    Step::Poll(OpeningPoll::Source(OpeningSource::Decode(id)))
+                } else {
+                    let cut = ParamRectCut {
+                        host: self.host.take().expect("rectangle host"),
+                        openings: std::mem::take(&mut self.openings),
+                    };
+                    self.finish(Some(cut));
+                    self.poll()
+                }
+            }
+            Phase::Meshes => Step::Child(OpeningControl::probe(
+                self.current.as_ref().expect("rectangle opening").clone(),
+                true,
+            )),
+            Phase::Pending => Step::Poll(OpeningPoll::Pending),
         }
-        resource::check_current()?;
-        Ok(Some(()))
     }
-    fn reconcile(
-        &self,
-        router: &GeometryRouter,
-        decoder: &mut EntityDecoder<'_>,
-    ) -> crate::Result<Option<()>> {
-        resource::check_current()?;
-        if self.boxes.is_empty() {
-            return Ok(None);
+    fn finish(&mut self, output: Option<ParamRectCut>) {
+        self.next = Some(OpeningPoll::Ready(OpeningReady::Finish(
+            OpeningOutput::Rectangle(output),
+        )));
+    }
+    pub(super) fn resume(&mut self, reply: OpeningReply) -> Result<()> {
+        match reply {
+            OpeningReply::RectHost(reply) => match reply? {
+                Some(host) => {
+                    self.host = Some(host);
+                    self.phase = Phase::Decode
+                }
+                None => self.finish(None),
+            },
+            OpeningReply::Decoded(reply) => match super::source_option(reply)? {
+                Some(opening) if opening.ifc_type == IfcType::IfcOpeningElement => {
+                    self.next = Some(OpeningPoll::Source(OpeningSource::RectBoxes(
+                        opening.clone(),
+                    )));
+                    self.current = Some(opening);
+                }
+                _ => self.finish(None),
+            },
+            OpeningReply::RectBoxes(reply) => match reply? {
+                Some(boxes) => {
+                    self.next = Some(OpeningPoll::Ready(OpeningReady::RectOrientation {
+                        host: self.host.as_ref().expect("rectangle host").r,
+                        boxes,
+                    }))
+                }
+                None => self.finish(None),
+            },
+            OpeningReply::RectOrientation(boxes) => match boxes {
+                Some(boxes) if !boxes.is_empty() => {
+                    self.boxes = boxes;
+                    self.phase = Phase::Meshes;
+                }
+                _ => self.finish(None),
+            },
+            OpeningReply::RectReconciled(boxes) => match boxes {
+                Some(mut boxes) => {
+                    self.openings.append(&mut boxes);
+                    self.current = None;
+                    self.phase = Phase::Decode
+                }
+                None => self.finish(None),
+            },
+            OpeningReply::Finished(output) => self.next = Some(OpeningPoll::Complete(Ok(output))),
+            _ => unreachable!("rectangle reply tag"),
         }
-        let Some(opening) = self.current.as_ref() else { return Ok(None) };
-        let meshes = super::source_option(router.get_opening_item_meshes_world(opening, decoder))?;
-        let Some(meshes) = meshes else { return Ok(None) };
-        let mesh_vol: f64 = meshes.iter().map(|m| mesh_signed_volume(m).abs()).sum();
-        resource::check_current()?;
-        if mesh_vol < 1.0e-9 {
-            return Ok(None);
+        Ok(())
+    }
+    pub(super) fn child_complete(&mut self, output: Result<OpeningOutput>) -> Result<()> {
+        match super::source_option(output)? {
+            Some(OpeningOutput::Meshes(meshes)) => {
+                self.next = Some(OpeningPoll::Ready(OpeningReady::RectReconcile {
+                    boxes: std::mem::take(&mut self.boxes),
+                    meshes,
+                }))
+            }
+            None => self.finish(None),
+            _ => unreachable!("rectangle meshes output"),
         }
-        let box_vol: f64 = self
-            .boxes
-            .iter()
-            .map(|b| 8.0 * b.half[0] * b.half[1] * b.half[2])
-            .sum();
-        let ratio = box_vol / mesh_vol;
-        resource::check_current()?;
-        Ok((0.97..1.03).contains(&ratio).then_some(()))
+        Ok(())
     }
 }

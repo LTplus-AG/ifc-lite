@@ -1159,7 +1159,7 @@ if (LAYERED_AVAILABLE) {
     //
     // geometryClass is stamped from `is_material_layer_sliceable`, a STATIC
     // check on the material index made before any geometry runs.
-    // `try_layered_sub_meshes` can still bail at runtime (the cut produced
+    // The common layer attempt can still bail at runtime (the cut produced
     // fewer than two slabs, a void CSG errored) and fall through to the
     // representation-item path — under class 3. Deriving which id a mesh
     // carries from geometryClass would therefore hand back an IfcMaterial id

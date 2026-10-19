@@ -4296,3 +4296,24 @@ remain outstanding. Lesson: keep deterministic request allowances separate from
 shared resident admission, and do not describe partial requested-storage
 accounting as an allocator or process bound. The implementation coverage is in
 [the resource note](../../docs/architecture/geometry-platform-resource-accounting.md).
+
+## Inner operation continuations: qualification pending
+
+The common Rust program owns selected item lowering, explicit extension calls,
+constructor execution, boolean continuation replies, mapped children, product
+accumulation/placement, orphan maps, layers and opening source control. The
+owned processing session retains every coarse geometry attempt across its inner
+requests. Reached cache and diagnostic effects remain behind consuming
+acceptance; numerical packets retain derived inputs rather than a decoder or
+model source. Opening numerical context is shared by Arc, and terminal failure
+records remain separate from provisional success effects.
+
+Source-matched compilation, runtime and full-scene preservation remain
+unqualified. Compiler diagnostics have driven integration corrections; one
+private worker run also encountered disk-full output/receipt failures and must
+not be treated as a completed check. Retained dependency and source-neutral
+imported integration remain separate active holds. No whole-worker-pool
+base/branch measurement or complete output identity comparison has been run for
+this source. **Performance verdict: UNQUALIFIED.** Parser/whitespace checks and
+predecessor compiler failures are not runtime, memory or throughput
+qualification.

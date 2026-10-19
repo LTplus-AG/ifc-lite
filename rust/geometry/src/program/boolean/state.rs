@@ -38,12 +38,52 @@ impl Steps {
 
 pub(super) enum Frame {
     Boolean(DecodedEntity, u32),
+    #[cfg(test)]
+    BeginShells { shell_kind: ifc_lite_core::IfcType, operand: DecodedEntity, op: BoolOp, outer: Mesh },
     Csg { entity: DecodedEntity, depth: u32, guarded: bool },
     Operand { entity: DecodedEntity, operator: BoolOp, depth: u32 },
     ExitPath(u32),
     Walk(Walk),
+    Collect(Collector),
+    CollectFirst(Collector),
+    NextFirst(Walk),
     AfterBase(Walk),
     AfterBatch { walk: Walk, cutters: Vec<DecodedEntity>, mark: usize },
     Steps(Steps),
     AfterStep { steps: Steps, operator: BoolOp, host: Mesh },
+    PlaneSource { steps: Steps, host: Mesh, operand: DecodedEntity },
+    PrismSource { steps: Steps, host: Mesh, operand: DecodedEntity,
+        plane: crate::processors::boolean::half_space_plan::HalfSpacePlan },
+    SingleUnits { steps: Steps, host: Mesh, cutter: Mesh,
+        plane: crate::processors::boolean::half_space_plan::HalfSpacePlan },
+    SolidUnits { steps: Steps, operation: super::work::Solid },
+    GroupSource(GroupState),
+    GroupPrismSource { group: GroupState, cutter: DecodedEntity,
+        plane: crate::processors::boolean::half_space_plan::HalfSpacePlan },
+    VoidsSource(VoidsState),
+    Numerical(super::work::Ready, super::work::Continuation),
+}
+
+pub(super) struct GroupState {
+    pub walk: Walk,
+    pub cutters: std::vec::IntoIter<DecodedEntity>,
+    pub base: Mesh,
+    pub prisms: Vec<Mesh>,
+    pub mark: usize,
+}
+pub(super) struct VoidsState {
+    pub outer: Mesh,
+    pub refs: std::vec::IntoIter<ifc_lite_core::AttributeValue>,
+    pub meshes: Vec<Mesh>,
+    pub kind: crate::processors::boolean::brep_voids::plan::ShellKind,
+    pub op: BoolOp,
+    pub operand_type: ifc_lite_core::IfcType,
+}
+
+
+pub(super) struct Collector {
+    pub walk: Walk,
+    pub current: DecodedEntity,
+    pub seen: HashSet<u32>,
+    pub cutters: Vec<DecodedEntity>,
 }

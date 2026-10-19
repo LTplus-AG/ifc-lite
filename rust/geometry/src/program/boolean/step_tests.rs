@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Continuation boundaries preserve source admission and numerical policy.
 use super::*;
+use crate::{TessellationQuality, BoolFailureReason};
+use ifc_lite_core::EntityDecoder;
+use crate::processors::boolean::BooleanClippingProcessor;
 use crate::processors::BlockProcessor;
 
 fn host() -> Mesh {
@@ -18,9 +21,11 @@ fn volume(mesh: &Mesh) -> f64 {
         p(triangle[0]).dot(&p(triangle[1]).cross(&p(triangle[2]))) / 6.
     }).sum::<f64>().abs()
 }
-fn done(admission: StepAdmission) -> (Mesh, bool) {
-    let StepAdmission::Done(result) = admission else { panic!("expected terminal admission") };
-    result
+fn complete_step(processor: &BooleanClippingProcessor, entity: &DecodedEntity,
+    mesh: Mesh, decoder: &mut EntityDecoder, solo_step: bool) -> (Mesh, bool) {
+    let steps = Steps { nodes: vec![entity.clone()], depth: 0, solo_step, mesh, empty_recorded: false };
+    super::super::run(processor, decoder, &mut Default::default(), TessellationQuality::Medium,
+        Frame::Steps(steps)).unwrap()
 }
 
 #[test]
@@ -30,8 +35,7 @@ fn unknown_step_operator_keeps_host_without_resolving_its_malformed_operand() {
     let entity = decoder.decode_by_id(3).unwrap();
     let processor = BooleanClippingProcessor::new();
     let expected = host();
-    let (actual, lost) = done(processor.begin_boolean_step(&entity, expected.clone(), &mut decoder,
-        TessellationQuality::Medium, true).unwrap());
+    let (actual, lost) = complete_step(&processor, &entity, expected.clone(), &mut decoder, true);
     assert!(!lost);
     assert_eq!(actual.positions, expected.positions);
     assert_eq!(actual.indices, expected.indices);
@@ -50,8 +54,7 @@ fn unresolved_step_operand_retains_operation_specific_recovery_and_one_loss() {
         let mut decoder = EntityDecoder::new(&source);
         let entity = decoder.decode_by_id(3).unwrap();
         let processor = BooleanClippingProcessor::new();
-        let (mesh, lost) = done(processor.begin_boolean_step(&entity, host(), &mut decoder,
-            TessellationQuality::Medium, true).unwrap());
+        let (mesh, lost) = complete_step(&processor, &entity, host(), &mut decoder, true);
         assert_eq!(mesh.is_empty(), operator == BoolOp::Intersection);
         assert_eq!(lost, operator == BoolOp::Intersection);
         if !mesh.is_empty() { assert!((volume(&mesh) - 1.).abs() < 1e-12); }
@@ -70,13 +73,16 @@ fn solid_admission_hands_constructor_execution_to_the_continuation() {
     let mut decoder = EntityDecoder::new(source);
     let entity = decoder.decode_by_id(3).unwrap();
     let processor = BooleanClippingProcessor::new();
-    let StepAdmission::Solid { operator, first, operand } = processor.begin_boolean_step(
-        &entity, host(), &mut decoder, TessellationQuality::Medium, true).unwrap()
-        else { panic!("solid operand must return to the continuation") };
-    assert_eq!(operator, BoolOp::Difference);
-    assert_eq!(operand.id, 2);
-    assert!((volume(&first) - 1.).abs() < 1e-12);
+    let steps = Steps { nodes: vec![entity.clone()], depth: 0, solo_step: true,
+        mesh: host(), empty_recorded: false };
+    let mut program = super::super::BooleanProgram::with_path(Default::default(),
+        TessellationQuality::Medium, Frame::Steps(steps));
+    let super::super::BooleanPoll::Source(ticket) = program.request().unwrap() else { panic!("step source") };
+    let reply = program.execute_source(ticket, &processor, &mut decoder).unwrap();
+    program.accept_source(reply, &processor).unwrap_or_else(|_| panic!("own reply")).unwrap();
     assert!(processor.take_failures().is_empty());
+    // A constructor has not been lowered by the step's operand admission.
+    let operand = decoder.decode_by_id(2).unwrap();
     assert!(BlockProcessor::new().lower(&operand, &mut decoder).is_err());
 }
 
@@ -88,8 +94,7 @@ fn plane_step_completes_with_material_side_volume_and_cap_before_solid_continuat
     let mut decoder = EntityDecoder::new(source);
     let entity = decoder.decode_by_id(6).unwrap();
     let processor = BooleanClippingProcessor::new();
-    let (mesh, lost) = done(processor.begin_boolean_step(&entity, host(), &mut decoder,
-        TessellationQuality::Medium, true).unwrap());
+    let (mesh, lost) = complete_step(&processor, &entity, host(), &mut decoder, true);
     assert!(!lost);
     assert!((volume(&mesh) - 0.75).abs() < 1e-6);
     assert_eq!(mesh.bounds().0.x, 0.25);
@@ -106,8 +111,14 @@ fn empty_solid_completion_does_not_discover_an_unused_invalid_unit() {
 #105=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);";
     let mut decoder = EntityDecoder::new(source).with_strict_reals();
     let processor = BooleanClippingProcessor::new();
-    let (mesh, lost) = processor.finish_solid_step(BoolOp::Difference, host(), (Mesh::new(), true),
-        &mut decoder, TessellationQuality::Medium).unwrap();
+    let steps = Steps { nodes: Vec::new(), depth: 0, solo_step: true,
+        mesh: Mesh::new(), empty_recorded: false };
+    let mut state = BooleanState::new(Default::default(), TessellationQuality::Medium,
+        Frame::AfterStep { steps, operator: BoolOp::Difference, host: host() });
+    state.value = Some((Mesh::new(), true));
+    let mut program = super::super::BooleanProgram::from_test_state(state);
+    program.bind_test_emitter(&processor);
+    let (mesh, lost) = program.drain(&processor, &mut decoder).unwrap();
     assert!(!lost);
     assert!((volume(&mesh) - 1.).abs() < 1e-12);
     assert!(decoder.refused_record_ids().is_empty());

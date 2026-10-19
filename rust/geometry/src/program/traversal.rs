@@ -13,12 +13,12 @@ pub(crate) struct ReachedItem {
 
 /// Representation/item error and filtering policies retained by each entry.
 #[derive(Clone, Copy)]
-pub(crate) enum EntryPolicy { MergedProduct, StyledProduct, TypeMap, OpeningItemMeshes, OpeningItemBounds }
+pub(crate) enum EntryPolicy { MergedProduct, StyledProduct, OpeningItemMeshes, OpeningItemBounds }
 impl EntryPolicy {
     fn opening(self) -> bool { matches!(self, Self::OpeningItemMeshes | Self::OpeningItemBounds) }
 }
 
-/// Owns reached control; no decoder or borrowed scope survives `next`.
+/// Owns reached control; no decoder or borrowed scope survives `poll`.
 /// Descendants of a later item are never admitted early.
 pub(crate) struct ProductProgram {
     policy: EntryPolicy,
@@ -27,20 +27,27 @@ pub(crate) struct ProductProgram {
     items: ItemProgram,
     fill_only: bool,
     state: State,
-    resources: super::resources::MergedResources,
 }
 
-enum State { Representations, Items, Complete }
+enum State { Representations, AwaitItems(DecodedEntity), Items, Complete }
 
-enum SourceAdmission {
-    RepresentationItems(DecodedEntity),
+/// A poll performs no IFC reads, selected callbacks or numerical work.
+pub(crate) enum TraversalPoll {
+    Items(RepresentationItemsRequest),
+    Item(ReachedItem),
+    Pending,
+    Complete,
 }
 
-enum AdmissionValue {
-    Items(ItemProgram),
+pub(crate) struct RepresentationItemsRequest { representation: DecodedEntity }
+impl RepresentationItemsRequest {
+    pub(crate) fn admit(self, decoder: &mut EntityDecoder<'_>) -> Result<ItemProgram> {
+        ItemProgram::admit(&self.representation, decoder, ItemListPolicy::Product)
+    }
 }
 
 impl ProductProgram {
+    #[cfg(test)]
     pub(crate) fn host_openings(host: &DecodedEntity, ids: &[u32]) -> super::openings::HostOpenings {
         super::openings::HostOpenings::new(host, ids)
     }
@@ -53,7 +60,7 @@ impl ProductProgram {
     fn representations(element: &DecodedEntity, policy: EntryPolicy, reps: Vec<DecodedEntity>) -> Self {
         Self { element: element.clone(), policy, representations: reps.into_iter(),
             items: ItemProgram::empty(), fill_only: false, state: State::Representations,
-            resources: Default::default() }
+            }
     }
 
     pub(crate) fn opening(element: &DecodedEntity, policy: EntryPolicy, decoder: &mut EntityDecoder<'_>) -> Result<Option<Self>> {
@@ -62,55 +69,56 @@ impl ProductProgram {
             .map(|reps| Self::representations(element, policy, reps)))
     }
 
-    pub(super) fn type_map(rep_map: &DecodedEntity, representation: &DecodedEntity, decoder: &mut EntityDecoder<'_>) -> Result<Self> {
-        // Whole Items precede the source claim and every child, even for non-Body maps.
-        let items = ItemProgram::admit(representation, decoder, ItemListPolicy::RequiredMap)?;
-        let mut program = Self::representations(rep_map, EntryPolicy::TypeMap, Vec::new());
-        program.items = items;
-        program.state = State::Items;
-        Ok(program)
-    }
-
-    pub(crate) fn merge(&mut self, mesh: crate::Mesh, instancing: bool) {
-        self.resources.merge(mesh, instancing);
-    }
-
-    pub(crate) fn finish_merged(self, instancing: bool) -> super::resources::MergedParts {
-        self.resources.finish(instancing)
-    }
-
-    pub(crate) fn next(&mut self, decoder: &mut EntityDecoder<'_>) -> Result<Option<ReachedItem>> {
+    pub(crate) fn poll(&mut self) -> TraversalPoll {
         loop {
-            crate::resource::check_current()?;
-            match self.state {
+            match &self.state {
                 State::Representations => {
-                    let Some(rep) = self.representations.next() else { self.state = State::Complete; continue };
-                    // Historical whole-list admission precedes annotation policy
-                    // and the first child, even if the final child reference fails.
-                    let admitted = crate::resource::observe(self.admit_source(SourceAdmission::RepresentationItems(rep.clone()), decoder));
-                    let value = match admitted {
-                        Err(crate::Error::ProgramStopped(stop)) => return Err(stop.into()),
-                        Ok(value) => value,
-                        Err(_) if self.policy.opening() => continue,
-                        Err(error) => return Err(error),
+                    let Some(representation) = self.representations.next() else {
+                        self.state = State::Complete;
+                        continue;
                     };
-                    let AdmissionValue::Items(items) = value;
-                    self.fill_only = !self.policy.opening() && crate::router::annotation::is_fill_only_representation(&self.element, &rep);
-                    self.items = items;
-                    self.state = State::Items;
+                    self.state = State::AwaitItems(representation.clone());
+                    return TraversalPoll::Items(RepresentationItemsRequest { representation });
                 }
+                State::AwaitItems(_) => return TraversalPoll::Pending,
                 State::Items => match self.items.next() {
-                    Some(item) => return Ok(Some(ReachedItem { item, fill_only: self.fill_only })),
+                    Some(item) => return TraversalPoll::Item(ReachedItem {
+                        item, fill_only: self.fill_only }),
                     None => self.state = State::Representations,
                 },
-                State::Complete => return Ok(None),
+                State::Complete => return TraversalPoll::Complete,
             }
         }
     }
 
-    fn admit_source(&self, request: SourceAdmission, decoder: &mut EntityDecoder<'_>) -> Result<AdmissionValue> {
-        Ok(match request {
-            SourceAdmission::RepresentationItems(rep) => AdmissionValue::Items(ItemProgram::admit(&rep, decoder, ItemListPolicy::Product)?),
-        })
+    /// The common program authenticates the reply before this consuming
+    /// assembly. Annotation policy is evaluated only after the whole Items list
+    /// succeeds, as in the original reached source order.
+    pub(crate) fn accept_items(&mut self, reply: Result<ItemProgram>) -> Result<()> {
+        let State::AwaitItems(representation) =
+            std::mem::replace(&mut self.state, State::Complete) else {
+                return Err(crate::Error::geometry("No representation Items admission is pending"));
+            };
+        match crate::resource::observe(reply) {
+            Ok(items) => {
+                self.fill_only = !self.policy.opening()
+                    && crate::router::annotation::is_fill_only_representation(&self.element, &representation);
+                self.items = items;
+                self.state = State::Items;
+                Ok(())
+            }
+            Err(error @ crate::Error::ProgramStopped(_)) => Err(error),
+            Err(_) if self.policy.opening() => {
+                self.state = State::Representations;
+                Ok(())
+            }
+            Err(error) => Err(error),
+        }
     }
+
+
 }
+
+#[cfg(test)]
+#[path = "traversal_tests.rs"]
+mod tests;

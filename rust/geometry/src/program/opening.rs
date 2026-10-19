@@ -1,113 +1,197 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Lenient opening policies on the same reached representation/item program.
-use super::{EntryPolicy, ProductProgram, ReachedItem};
-use crate::router::voids::geom::{extract_rotation_columns, rotate_and_normalize};
+//! Opening probes are reached list/source admissions and canonical item children.
+use super::openings::control::{OpeningControl, OpeningOutput, OpeningPoll, Step};
+use super::openings::requests::{OpeningChild, OpeningReady, OpeningReply, OpeningSource};
+use super::traversal::TraversalPoll;
+use super::{EntryPolicy, ProductProgram};
+use crate::router::transforms::WorldFrame;
 use crate::{GeometryRouter, Mesh, Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 
 pub(crate) type OpeningBounds = Vec<(Point3<f64>, Point3<f64>, Option<Vector3<f64>>)>;
 pub(crate) struct OpeningProgram {
-    items: ProductProgram,
+    element: DecodedEntity,
+    meshes: bool,
+    items: Option<ProductProgram>,
     placement: Matrix4<f64>,
+    frame: Option<WorldFrame>,
+    item: Option<DecodedEntity>,
+    direction: Option<Vector3<f64>>,
+    output: Vec<Mesh>,
+    bounds: OpeningBounds,
+    next: Option<OpeningPoll>,
+    complete: bool,
 }
 impl OpeningProgram {
+    pub(crate) fn new(element: DecodedEntity, meshes: bool) -> Self {
+        let next = Some(OpeningPoll::Source(OpeningSource::Representations {
+            element: element.clone(),
+            meshes,
+        }));
+        Self {
+            element,
+            meshes,
+            items: None,
+            placement: Matrix4::identity(),
+            frame: None,
+            item: None,
+            direction: None,
+            output: Vec::new(),
+            bounds: Vec::new(),
+            next,
+            complete: false,
+        }
+    }
+    pub(super) fn poll(&mut self) -> Step {
+        if let Some(next) = self.next.take() {
+            return Step::Poll(next);
+        }
+        if self.complete {
+            return Step::Poll(OpeningPoll::Pending);
+        }
+        let Some(items) = &mut self.items else {
+            return Step::Poll(OpeningPoll::Pending);
+        };
+        match items.poll() {
+            TraversalPoll::Items(request) => {
+                Step::Poll(OpeningPoll::Source(OpeningSource::Items(request)))
+            }
+            TraversalPoll::Item(reached) => {
+                self.item = Some(reached.item.clone());
+                self.direction = None;
+                Step::Poll(OpeningPoll::Source(if self.meshes {
+                    OpeningSource::RawChoice {
+                        element: self.element.clone(),
+                        item: reached.item,
+                    }
+                } else {
+                    OpeningSource::Direction(reached.item)
+                }))
+            }
+            TraversalPoll::Complete => {
+                self.complete = true;
+                Step::Poll(OpeningPoll::Complete(Ok(if self.meshes {
+                    OpeningOutput::Meshes(std::mem::take(&mut self.output))
+                } else {
+                    OpeningOutput::Bounds(std::mem::take(&mut self.bounds))
+                })))
+            }
+            TraversalPoll::Pending => Step::Poll(OpeningPoll::Pending),
+        }
+    }
+    pub(super) fn resume(&mut self, reply: OpeningReply) -> Result<()> {
+        match reply {
+            OpeningReply::Representations(reply) => match reply? {
+                Some(items) => {
+                    self.items = Some(items);
+                    self.next = Some(OpeningPoll::Source(OpeningSource::Placement(
+                        self.element.clone(),
+                    )));
+                }
+                None => {
+                    self.complete = true;
+                    self.next = Some(OpeningPoll::Complete(Ok(if self.meshes {
+                        OpeningOutput::Meshes(Vec::new())
+                    } else {
+                        OpeningOutput::Bounds(Vec::new())
+                    })));
+                }
+            },
+            OpeningReply::Placement(reply) => {
+                let (placement, scale, frame) = reply?;
+                self.next = Some(OpeningPoll::Ready(OpeningReady::ProbePlacement {
+                    placement,
+                    scale,
+                    frame,
+                }));
+            }
+            OpeningReply::ProbePlacement(placement, frame) => {
+                self.placement = placement;
+                self.frame = Some(frame);
+            }
+            OpeningReply::Items(reply) => self
+                .items
+                .as_mut()
+                .expect("opening traversal")
+                .accept_items(reply)?,
+            OpeningReply::RawChoice(reply) => match crate::resource::observe(reply) {
+                Ok(offset) => {
+                    self.next = Some(OpeningPoll::Geometry(OpeningChild::Item {
+                        item: self.item.take().expect("reached opening item"),
+                        offset,
+                    }))
+                }
+                Err(error @ crate::Error::ProgramStopped(_)) => return Err(error),
+                Err(_) => {}
+            },
+            OpeningReply::Direction(reply) => {
+                let value = reply?;
+                self.next = Some(OpeningPoll::Ready(OpeningReady::ProbeDirection {
+                    value,
+                    placement: self.placement,
+                }));
+            }
+            OpeningReply::ProbeDirection(direction) => {
+                self.direction = direction;
+                self.next = Some(OpeningPoll::Geometry(OpeningChild::Item {
+                    item: self.item.take().expect("reached opening item"),
+                    offset: None,
+                }));
+            }
+            OpeningReply::Parts(reply) => match crate::resource::observe(reply) {
+                Ok(parts) => {
+                    self.next = Some(OpeningPoll::Ready(OpeningReady::ProbeParts {
+                        parts,
+                        placement: self.placement,
+                        frame: self.frame.expect("admitted placement frame"),
+                        meshes: self.meshes,
+                        direction: self.direction,
+                    }))
+                }
+                Err(error @ crate::Error::ProgramStopped(_)) => return Err(error),
+                Err(_) => {}
+            },
+            OpeningReply::ProbeParts(mut meshes, mut bounds) => {
+                self.output.append(&mut meshes);
+                self.bounds.append(&mut bounds);
+            }
+            _ => unreachable!("opening probe reply tag"),
+        }
+        Ok(())
+    }
+    /// Borrowed API compatibility: constructing control performs no IFC read.
     pub(crate) fn admit(
         element: &DecodedEntity,
         policy: EntryPolicy,
-        router: &GeometryRouter,
-        decoder: &mut EntityDecoder<'_>,
+        _router: &GeometryRouter,
+        _decoder: &mut EntityDecoder<'_>,
     ) -> Result<Option<Self>> {
         crate::resource::check_current()?;
-        let admitted = ProductProgram::opening(element, policy, decoder);
-        crate::resource::check_current()?;
-        let Some(items) = admitted? else {
-            return Ok(None);
-        };
-        // Whole representations have resolved; no Items have been requested yet.
-        let placement = crate::resource::observe(
-            router.get_placement_transform_from_element(element, decoder));
-        let mut placement = match placement {
-            Err(crate::Error::ProgramStopped(stop)) => return Err(stop.into()),
-            result => result.unwrap_or_else(|_| Matrix4::identity()),
-        };
-        router.scale_transform(&mut placement);
-        Ok(Some(Self { items, placement }))
+        Ok(Some(Self::new(
+            element.clone(),
+            matches!(policy, EntryPolicy::OpeningItemMeshes),
+        )))
     }
-
     pub(crate) fn meshes(
-        mut self,
-        element: &DecodedEntity,
+        self,
+        _element: &DecodedEntity,
         router: &GeometryRouter,
         decoder: &mut EntityDecoder<'_>,
     ) -> Result<Vec<Mesh>> {
-        let mut output = Vec::new();
-        while let Some(ReachedItem { item, .. }) = self.items.next(decoder)? {
-            crate::resource::check_current()?;
-            // Only the mesh policy attempts the raw-per-element route first.
-            let parts = match crate::resource::observe(router.process_raw_item_for_element(&item, element, decoder)) {
-                Ok(Some(mesh)) => Ok(vec![mesh]),
-                Ok(None) => crate::resource::observe(router.process_representation_item_parts(&item, decoder)),
-                Err(error) => Err(error),
-            };
-            let parts = crate::resource::observe(parts);
-            let parts = match parts {
-                Ok(parts) => parts,
-                Err(error @ crate::Error::ProgramStopped(_)) => return Err(error),
-                Err(_) => continue,
-            };
-            for mut mesh in parts.into_iter().filter(|mesh| !mesh.is_empty()) {
-                let framed = router.needs_local_frame(&mesh, &self.placement);
-                router.transform_mesh_world_framed(&mut mesh, &self.placement, framed);
-                crate::resource::check_current()?;
-                output.push(mesh);
-            }
+        match OpeningControl::from_probe(self).drain(router, decoder)? {
+            OpeningOutput::Meshes(meshes) => Ok(meshes),
+            _ => unreachable!("opening meshes output"),
         }
-        crate::resource::check_current()?;
-        Ok(output)
     }
-
     pub(crate) fn bounds(
-        mut self,
+        self,
         router: &GeometryRouter,
         decoder: &mut EntityDecoder<'_>,
     ) -> Result<OpeningBounds> {
-        let mut output = Vec::new();
-        while let Some(ReachedItem { item, .. }) = self.items.next(decoder)? {
-            crate::resource::check_current()?;
-            let direction = if let Some((local_dir, position_transform)) =
-                router.extract_extrusion_direction_recursive_checked(&item, decoder)?
-            {
-                // A zero-length IFCDIRECTION drops only THIS item's direction
-                // (coarser bounds), not `?`-abort every sibling item's bounds.
-                let element_rot = extract_rotation_columns(&self.placement);
-                if let Some(pos_transform) = position_transform {
-                    let pos_rot = extract_rotation_columns(&pos_transform);
-                    rotate_and_normalize(&pos_rot, &local_dir)
-                        .ok()
-                        .and_then(|world_dir| rotate_and_normalize(&element_rot, &world_dir).ok())
-                } else {
-                    rotate_and_normalize(&element_rot, &local_dir).ok()
-                }
-            } else {
-                None
-            };
-
-            crate::resource::check_current()?;
-            let parts = crate::resource::observe(router.process_representation_item_parts(&item, decoder));
-            let parts = match parts {
-                Ok(parts) => parts,
-                Err(error @ crate::Error::ProgramStopped(_)) => return Err(error),
-                Err(_) => continue,
-            };
-            for mesh in parts.into_iter().filter(|mesh| !mesh.is_empty()) {
-                let (min, max) =
-                    super::opening_bounds::evaluate(&mesh, &self.placement, router.rtc_offset());
-                crate::resource::check_current()?;
-                output.push((min, max, direction));
-            }
+        match OpeningControl::from_probe(self).drain(router, decoder)? {
+            OpeningOutput::Bounds(bounds) => Ok(bounds),
+            _ => unreachable!("opening bounds output"),
         }
-        crate::resource::check_current()?;
-        Ok(output)
     }
 }

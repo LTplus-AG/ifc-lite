@@ -1,0 +1,10 @@
+{
+  "parent_before": "043146c568",
+  "delivery": "dc5e9f8f2de6ab0803b36b2e8b62e27ddb5a3546",
+  "paths_verified": 153,
+  "patch_sha256": "5035a0421cf94f2856ca1a9b849f37bef8fbdd31796e1b0622286799bed40b37",
+  "before_git_fs_after": "PASS",
+  "qualification": "UNRUN on assembled source",
+  "original082_validation": "terminal101; separate original receipt archived; not later-source qualification",
+  "common_retained_continuation": "UNIMPLEMENTED; consuming design included"
+}

@@ -13,9 +13,9 @@
 //! coinciding (quantized) normal into one, then remaps indices.
 //!
 //! It runs AT LEAST once per element, in the OBJECT frame, at the last moment
-//! before the placement is baked in: [`weld_mesh`] from `apply_placement` and
-//! [`weld_sub_mesh`] from `apply_submesh_placement`. Every element — voided or
-//! not, faceted brep or swept solid, single-item or per-style sub-meshes —
+//! before the placement is baked in: [`weld_mesh`] and
+//! [`weld_sub_mesh`] both run in canonical product completion. Every element —
+//! voided or not, faceted brep or swept solid, single-item or per-style sub-meshes —
 //! therefore arrives welded in its `MeshData`. Some are welded a SECOND time,
 //! post-bake, by [`weld`] called from `build_mesh_data`; its doc says which and
 //! why. Because it keys on the quantized
@@ -55,8 +55,8 @@
 //! Three things survive, all narrower than the bug above but none zero.
 //!
 //! A per-occurrence `IfcMappedItem` MappingTarget is baked in by
-//! `router::mapped_item` BEFORE the mesh reaches `apply_placement`, so the weld
-//! still sees target-transformed coordinates. Occurrences of one
+//! the mapping program BEFORE canonical product placement, so the weld still
+//! sees target-transformed coordinates. Occurrences of one
 //! `IfcRepresentationMap` whose targets differ by enough to move the f32
 //! exponent still weld to different vertex counts, and `collate_refs` still
 //! refuses that group. Measured on the `issue_4103_shared_map_buffer_identity`
@@ -285,7 +285,7 @@ pub fn weld_indexed(
 ///   reached: CSG void-cut output, layer slices, the #858 palette-split parts.
 ///   This is the weld that collapses the kernel's per-face output for them.
 /// - Geometry already welded in the object frame that merely lost its
-///   `instance_meta` on the way there — a void host (welded in `apply_placement`,
+///   `instance_meta` on the way there — a void host (welded in canonical product placement,
 ///   then cut, then nulled at `voids::process_element_with_voids`), a multi-item
 ///   element (`processing.rs` keeps the metadata only for a single instanceable
 ///   item), a textured face-set sub-mesh. For these it is a SECOND weld: cheap
@@ -311,7 +311,7 @@ pub fn weld(mesh: &mut crate::Mesh, uvs: Option<Vec<f32>>) -> Option<Vec<f32>> {
     }
 }
 
-/// Weld a `Mesh`'s source vertices in place, from `apply_placement`, where the
+/// Weld a `Mesh`'s source vertices in canonical product completion, where the
 /// vertices are still in the object frame. See the module doc for why that is
 /// the frame that matters.
 ///

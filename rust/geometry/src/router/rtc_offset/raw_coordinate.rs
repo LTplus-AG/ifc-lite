@@ -9,7 +9,7 @@ use crate::coord_is_large;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
 impl GeometryRouter {
-    pub(in crate::router) fn representation_item_first_vertex_meters(
+    pub(crate) fn representation_item_first_vertex_meters(
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,

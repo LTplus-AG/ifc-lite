@@ -72,14 +72,14 @@ pub struct Mesh {
     /// Instancing side-channel (see [`InstanceMeta`]); `None` on the flat path.
     pub instance_meta: Option<InstanceMeta>,
     /// Local (pre-placement, object-space) AABB — `positions` bounds as they
-    /// were BEFORE `apply_placement`'s transform was baked in. `None` for an
-    /// empty mesh or one that never went through `transform_mesh_world_framed`
+    /// were BEFORE the canonical product placement transform was baked in.
+    /// `None` for an empty mesh or one that never went through `transform_mesh_world_framed`
     /// (e.g. synthetic/test meshes). Unrelated to `origin`, which is a
     /// *world*-space translation captured AFTER the transform, purely for f32
     /// precision — see issue #1474.
     pub local_bounds: Option<[f32; 6]>, // minX,minY,minZ,maxX,maxY,maxZ
-    /// The resolved `IfcLocalPlacement` chain applied to this mesh by
-    /// `apply_placement` (row-major, same convention as
+    /// The resolved `IfcLocalPlacement` chain applied to this mesh during
+    /// canonical product placement (row-major, same convention as
     /// [`InstanceMeta::transform`]). `None` when no placement was applied
     /// (synthetic/test meshes) — see issue #1474.
     pub local_to_world: Option<[f64; 16]>,
@@ -158,7 +158,7 @@ pub struct SubMeshCollection {
     /// Deliberately NOT `geometry_class == GEOM_CLASS_LAYER_SLICE`, which cannot
     /// answer it: that class is stamped from `is_material_layer_sliceable`, a
     /// static check made BEFORE the geometry runs, while
-    /// `try_layered_sub_meshes` can still return `None` and fall through to the
+    /// the common layer attempt can still return `None` and fall through to the
     /// rep-item path — so rep-item ids can carry class 3 (#3199).
     /// SCOPE: it decides only which FIELD `emit_sub_meshes` emits the id under —
     /// five style lookups in `element.rs` still read `geometry_id` as a rep item

@@ -9,17 +9,16 @@ mod stack;
 use crate::material_layer_index::{LayerAxis, LayerBuildup};
 use crate::{GeometryRouter, Mesh, Result, SubMeshCollection};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
-use rustc_hash::FxHashMap;
 use stack::{merge_thin_layers, VisualLayer};
 
-struct LayerProgram {
+pub(crate) struct LayerProgram {
     layers: Vec<VisualLayer>,
     axis: LayerAxis,
     direction_sense: f64,
     offset: f64,
 }
 
-enum LayerSkip {
+pub(crate) enum LayerSkip {
     TooFewLayers,
     ShiftedOrMultipleItems,
     ThinLayersCollapsed,
@@ -28,7 +27,7 @@ enum LayerSkip {
     NoPlanes,
 }
 impl LayerSkip {
-    fn reason(&self) -> &'static str {
+    pub(crate) fn reason(&self) -> &'static str {
         match self {
             Self::TooFewLayers => "skip:fewer-than-2-layers",
             Self::ShiftedOrMultipleItems => "skip:not-single-unshifted-item",
@@ -41,7 +40,7 @@ impl LayerSkip {
 }
 
 impl LayerProgram {
-    fn admit(element: &DecodedEntity, decoder: &mut EntityDecoder,
+    pub(crate) fn admit(element: &DecodedEntity, decoder: &mut EntityDecoder,
         buildup: &LayerBuildup, unit_scale: f64) -> std::result::Result<Option<Self>, LayerSkip> {
         let LayerBuildup::Sliceable { layers, axis, direction_sense,
             offset_from_reference_line } = buildup else { return Ok(None) };
@@ -55,7 +54,7 @@ impl LayerProgram {
             offset: *offset_from_reference_line }))
     }
 
-    fn accept_host(self, host: Mesh) -> std::result::Result<LayerPlaneRequest, LayerSkip> {
+    pub(crate) fn accept_host(self, host: Mesh) -> std::result::Result<LayerPlaneRequest, LayerSkip> {
         if host.is_empty() { return Err(LayerSkip::EmptyHost) }
         Ok(LayerPlaneRequest { program: self, host })
     }
@@ -64,64 +63,58 @@ impl LayerProgram {
 /// This continuation exists only after the original host (including openings)
 /// succeeds. It owns that host, so neither a source retry nor a second execution
 /// can accidentally replace the mesh whose origin determines the layer frame.
-struct LayerPlaneRequest { program: LayerProgram, host: Mesh }
+pub(crate) struct LayerPlaneRequest { program: LayerProgram, host: Mesh }
 impl LayerPlaneRequest {
-    fn accept_frame(self, frame: planes::LayerFrame)
-        -> std::result::Result<ReadyLayerSlice, LayerSkip> {
-        let planes = frame.evaluate(&self.program.layers, self.program.axis,
-            self.program.direction_sense, self.program.offset, self.host.origin)
+    /// This source admission is deliberately impossible before accept_host's
+    /// successful nonempty gate. Capturing it earlier observes stale placement
+    /// when a selected host callback mutates the decoder.
+    pub(crate) fn admit_frame(self, element: &DecodedEntity, decoder: &mut EntityDecoder,
+        router: &GeometryRouter) -> Result<std::result::Result<ReadyLayerPlanes, LayerSkip>> {
+        crate::resource::check_current()?;
+        let frame = source::admit_frame(element, decoder, router)?;
+        crate::resource::check_current()?;
+        Ok(frame.ok_or(LayerSkip::PlacementUnresolved)
+            .map(|frame| ReadyLayerPlanes { request: self, frame }))
+    }
+}
+
+pub(crate) struct ReadyLayerPlanes { request: LayerPlaneRequest, frame: planes::LayerFrame }
+impl ReadyLayerPlanes {
+    pub(crate) fn execute(self) -> std::result::Result<ReadyLayerSlice, LayerSkip> {
+        let LayerPlaneRequest { program, host } = self.request;
+        let planes = self.frame.evaluate(&program.layers, program.axis,
+            program.direction_sense, program.offset, host.origin)
             .ok_or(LayerSkip::PlacementUnresolved)?;
         if planes.is_empty() { return Err(LayerSkip::NoPlanes) }
-        Ok(ReadyLayerSlice { host: self.host, layers: self.program.layers, planes })
+        Ok(ReadyLayerSlice { host, layers: program.layers, planes })
     }
 }
 
 /// Complete numerical input. No decoder/router or source callback is retained.
-struct ReadyLayerSlice {
+pub(crate) struct ReadyLayerSlice {
     host: Mesh,
     layers: Vec<VisualLayer>,
     planes: Vec<crate::csg::Plane>,
 }
 impl ReadyLayerSlice {
-    fn evaluate(self) -> SubMeshCollection {
-        slice::slice_mesh_into_layers(&self.host, &self.layers, &self.planes)
+    pub(crate) fn execute(self) -> LayerSliceResult {
+        LayerSliceResult { collection: slice::slice_mesh_into_layers(
+            &self.host, &self.layers, &self.planes) }
     }
 }
 
-/// Public borrowed methods and canonical product callers drive the same child.
-/// Geometry callbacks run before frame admission; do not hoist placement lookup.
-pub(crate) fn drive(router: &GeometryRouter, element: &DecodedEntity,
-    decoder: &mut EntityDecoder, buildup: &LayerBuildup,
-    void_index: &FxHashMap<u32, Vec<u32>>) -> Result<Option<SubMeshCollection>> {
-    crate::resource::check_current()?;
-    let admitted = LayerProgram::admit(element, decoder, buildup, router.unit_scale());
-    crate::resource::check_current()?;
-    let program = match admitted {
-        Ok(Some(program)) => program,
-        Ok(None) => return Ok(None),
-        Err(skip) => { router.push_layer_slice_diag(element.id, skip.reason()); return Ok(None) }
-    };
-    let host = router.process_element_with_voids(element, decoder, void_index)?;
-    crate::resource::check_current()?;
-    let request = match program.accept_host(host) {
-        Ok(request) => request,
-        Err(skip) => { router.push_layer_slice_diag(element.id, skip.reason()); return Ok(None) }
-    };
-    let frame = source::admit_frame(element, decoder, router)?;
-    crate::resource::check_current()?;
-    let ready = frame
-        .ok_or(LayerSkip::PlacementUnresolved)
-        .and_then(|frame| request.accept_frame(frame));
-    let ready = match ready {
-        Ok(ready) => ready,
-        Err(skip) => { router.push_layer_slice_diag(element.id, skip.reason()); return Ok(None) }
-    };
-    let collection = ready.evaluate();
-    crate::resource::check_current()?;
-    router.push_layer_slice_diag(element.id,
-        if collection.sub_meshes.len() >= 2 { "ok:sliced" } else { "skip:cut-produced-<2" });
-    Ok(Some(collection))
+/// Numerical effects remain owned by the reply until authenticated acceptance.
+pub(crate) struct LayerSliceResult { collection: SubMeshCollection }
+impl LayerSliceResult {
+    pub(crate) fn publish(self, router: &GeometryRouter, element_id: u32) -> Result<SubMeshCollection> {
+        crate::resource::check_current()?;
+        router.push_layer_slice_diag(element_id, if self.collection.sub_meshes.len() >= 2 {
+            "ok:sliced"
+        } else { "skip:cut-produced-<2" });
+        Ok(self.collection)
+    }
 }
+
 
 #[cfg(test)]
 mod stack_tests;
@@ -129,3 +122,5 @@ mod stack_tests;
 mod source_tests;
 #[cfg(test)]
 mod geometry_tests;
+#[cfg(test)]
+mod boundary_tests;

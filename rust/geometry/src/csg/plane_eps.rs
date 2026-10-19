@@ -46,7 +46,7 @@
 //! - METRES (post-scale): `router/layers.rs:569-570` (layered-material band
 //!   splitting) clips a `base_mesh` returned by `process_element_with_voids`,
 //!   which routes through `process_element` and has therefore already run
-//!   `scale_mesh` and `apply_placement`. Its interface planes are built from
+//!   `scale_mesh` and canonical product placement. Its interface planes are built from
 //!   `thickness_m`, `offset * scale` and the metre-valued `rtc_offset`
 //!   (`layers.rs:246-273`). Both operands are in metres.
 //!

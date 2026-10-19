@@ -112,8 +112,17 @@ Bounds trim_domain(SmFace* face,PlaneDomain& domain) {
         for(auto* use:uses) {
             require(use && use->GetFace()==face,"foreign source trim");
             SmEdgeuse* owner=nullptr; auto* trim=use->GetUVTrimCurve(&owner);
-            require(owner && owner->GetFace()==face && trim && rational_curve(trim->GetType()),
-                "missing or uncertified existing UV trim");
+            const bool owned=owner && owner->GetFace()==face;
+            const bool supported=trim && rational_curve(trim->GetType());
+            if(!owned || !supported) {
+                // Read existing representation metadata only; never create or
+                // evaluate a missing trim to make this admission succeed.
+                std::fprintf(stderr,"plane trim refusal face_type=%ld surface_type=%ld has_owner=%d same_face=%d has_trim=%d trim_type=%ld materialized=%d\n",
+                    static_cast<long>(face->GetType()),static_cast<long>(face->GetSurface()->GetType()),
+                    owner!=nullptr,owned,trim!=nullptr,trim?static_cast<long>(trim->GetType()):-1L,
+                    supported && trim->GetGwNurbPointer()!=nullptr);
+            }
+            require(owned && supported,"missing or uncertified existing UV trim");
             include(uv,curve_hull(trim,2,use->GetEdge()->GetInterval(),domain),2);
         }
     }

@@ -66,6 +66,14 @@ export async function runExtrusionBridgeContracts(test, rootDir) {
         assert.equal('position_id' in definition.source, false);
         assert.equal('extruded_direction_id' in definition.source, false);
         assert.equal(definition.source.Depth, 0.06);
+        // The real-WASM 9b827 run rejected numeric provenance-map keys. The
+        // source graph must survive object serialization with its actual IDs.
+        const provenance = definition.source.source;
+        assert.equal(provenance.root_entity_id, 338107);
+        assert.equal(provenance.capture_status.type, 'complete');
+        assert.equal(provenance.records['338107'].id, 338107);
+        assert.equal(provenance.records['338107'].ifc_type_name, 'IfcExtrudedAreaSolid');
+        assert.deepEqual(provenance.records['338107'].attributes.Depth, { type: 'real', value: 0.06 });
         assert.equal(definition.source.profile.loops.length, 2);
         assert.equal(definition.source.profile.Position, null);
         assert.equal('position_id' in definition.source.profile, false);

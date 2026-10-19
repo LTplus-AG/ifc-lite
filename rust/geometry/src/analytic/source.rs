@@ -48,7 +48,15 @@ pub struct AnalyticBoundarySource {
     /// Reached profile/curve/composite/basis/placement/point records, indexed by source ID.
     /// Composite Segments order, SameSense and Transition define source traversal;
     /// the matching loop's segments contain the separate interpreted traversal.
+    #[serde(serialize_with = "serialize_source_records")]
     pub records: BTreeMap<u32, SourceRecord>,
+}
+
+// Object serializers require string keys. Keep each actual record borrowed and
+// its numeric source ID intact; JSON already represents these map keys as text.
+fn serialize_source_records<S: serde::Serializer>(records: &BTreeMap<u32, SourceRecord>,
+    serializer: S) -> std::result::Result<S::Ok, S::Error> {
+    serializer.collect_map(records.iter().map(|(id, record)| (id.to_string(), record)))
 }
 
 #[derive(Default)]

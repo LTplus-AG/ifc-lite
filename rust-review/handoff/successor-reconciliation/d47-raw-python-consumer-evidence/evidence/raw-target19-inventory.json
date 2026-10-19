@@ -1,0 +1,104 @@
+{
+  "count": 19,
+  "failures": 0,
+  "errors": 0,
+  "skips": 0,
+  "testIds": [
+    {
+      "classname": "tests.test_shared_set_budget",
+      "name": "test_issue_7895_all_shared_occurrences_keep_the_one_canonical_value",
+      "time": "0.117"
+    },
+    {
+      "classname": "tests.test_shared_set_budget",
+      "name": "test_issue_7895_distinct_set_exhaustion_and_keep_last_records",
+      "time": "0.013"
+    },
+    {
+      "classname": "tests.test_shared_set_budget",
+      "name": "test_issue_7895_canonical_source_order_independent_of_type_options[False-01-aligned]",
+      "time": "0.008"
+    },
+    {
+      "classname": "tests.test_shared_set_budget",
+      "name": "test_issue_7895_canonical_source_order_independent_of_type_options[False-02-opposed-products]",
+      "time": "0.008"
+    },
+    {
+      "classname": "tests.test_shared_set_budget",
+      "name": "test_issue_7895_canonical_source_order_independent_of_type_options[False-03-opposed-products-relations-reordered]",
+      "time": "0.008"
+    },
+    {
+      "classname": "tests.test_shared_set_budget",
+      "name": "test_issue_7895_canonical_source_order_independent_of_type_options[False-04-same-product-BA]",
+      "time": "0.008"
+    },
+    {
+      "classname": "tests.test_shared_set_budget",
+      "name": "test_issue_7895_canonical_source_order_independent_of_type_options[False-05-same-product-AB]",
+      "time": "0.008"
+    },
+    {
+      "classname": "tests.test_shared_set_budget",
+      "name": "test_issue_7895_canonical_source_order_independent_of_type_options[False-06-inherited-first]",
+      "time": "0.008"
+    },
+    {
+      "classname": "tests.test_shared_set_budget",
+      "name": "test_issue_7895_canonical_source_order_independent_of_type_options[False-07-orphan-last]",
+      "time": "0.008"
+    },
+    {
+      "classname": "tests.test_shared_set_budget",
+      "name": "test_issue_7895_canonical_source_order_independent_of_type_options[False-08-opposed-keep-last]",
+      "time": "0.008"
+    },
+    {
+      "classname": "tests.test_shared_set_budget",
+      "name": "test_issue_7895_canonical_source_order_independent_of_type_options[True-01-aligned]",
+      "time": "0.008"
+    },
+    {
+      "classname": "tests.test_shared_set_budget",
+      "name": "test_issue_7895_canonical_source_order_independent_of_type_options[True-02-opposed-products]",
+      "time": "0.008"
+    },
+    {
+      "classname": "tests.test_shared_set_budget",
+      "name": "test_issue_7895_canonical_source_order_independent_of_type_options[True-03-opposed-products-relations-reordered]",
+      "time": "0.008"
+    },
+    {
+      "classname": "tests.test_shared_set_budget",
+      "name": "test_issue_7895_canonical_source_order_independent_of_type_options[True-04-same-product-BA]",
+      "time": "0.008"
+    },
+    {
+      "classname": "tests.test_shared_set_budget",
+      "name": "test_issue_7895_canonical_source_order_independent_of_type_options[True-05-same-product-AB]",
+      "time": "0.008"
+    },
+    {
+      "classname": "tests.test_shared_set_budget",
+      "name": "test_issue_7895_canonical_source_order_independent_of_type_options[True-06-inherited-first]",
+      "time": "0.008"
+    },
+    {
+      "classname": "tests.test_shared_set_budget",
+      "name": "test_issue_7895_canonical_source_order_independent_of_type_options[True-07-orphan-last]",
+      "time": "0.008"
+    },
+    {
+      "classname": "tests.test_shared_set_budget",
+      "name": "test_issue_7895_canonical_source_order_independent_of_type_options[True-08-opposed-keep-last]",
+      "time": "0.008"
+    },
+    {
+      "classname": "tests.test_shared_set_budget",
+      "name": "test_issue_7895_unlinked_and_malformed_members_keep_canonical_charges",
+      "time": "0.017"
+    }
+  ],
+  "skipDetails": []
+}

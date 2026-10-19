@@ -1,0 +1,32 @@
+{
+  "rust/export/tests/issue_7895_shared_set_budget.rs": {
+    "sha256": "692962a5f55111f104be4418c3a9a6853329f257038d3b2d01b481653533589d",
+    "bytes": 20521,
+    "blob": "f8ffa005bfb2a17def4dbe1ab6e66deb6f6a2d06"
+  },
+  "rust/export/tests/fixtures/shared_set_order_7895.json": {
+    "sha256": "1097e46fd2c70028faf10fc1bd9169a51d01c1f1d7abb5ea949910035d2539f8",
+    "bytes": 3538,
+    "blob": "9737e7f77d147b27933fe9a97535b8f0051310d6"
+  },
+  "rust/python/tests/test_shared_set_budget.py": {
+    "sha256": "06c25d1b2aeec137eb1ec7d3ffddd7fb44e3c9359360130f2648f62bc6d7b90a",
+    "bytes": 6440,
+    "blob": "c28ce08b071aa9e42d912b2d6142348afd404770"
+  },
+  "rust/processing/src/data_model/property_tests.rs": {
+    "sha256": "6f1c8a156aa0918d0069dadd528eee8b4af206a3db6771b2c8613eb4e908a3d8",
+    "bytes": 10457,
+    "blob": "c3f777e3a60ba6f0d90391980aed9d22d7097e70"
+  },
+  "rust/export/tests/c6_data_model_pins.rs": {
+    "sha256": "f25dc0afd085d7ac1d51a2d2cf5388116b956b17513a3b828551499d34fe95c5",
+    "bytes": 7687,
+    "blob": "65f770af6ec108e31af94c4fc95529ee212394d6"
+  },
+  "rust/export/tests/issue_7895_jsonld_property_kinds.rs": {
+    "sha256": "bb3d901c016ea70483e72e8d848660a23797150953ff93ab52484bb11e8a4f23",
+    "bytes": 5967,
+    "blob": "2bc4615510281402869cb617dae859d8e3e91170"
+  }
+}

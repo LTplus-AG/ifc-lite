@@ -1,0 +1,7 @@
+ifclite-geom @ file:///mnt/c/Users/louistrue/ifc-private/d47-raw-python-consumer-v1/wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl#sha256=9e540b87c13c647268f97777fdc71f75b8271fd879519f3dbc22c449a2768777
+iniconfig==2.3.1
+packaging==26.3
+pip==25.0.1
+pluggy==1.7.0
+Pygments==2.21.0
+pytest==9.1.1

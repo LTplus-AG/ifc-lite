@@ -1,0 +1,29 @@
+{
+  "python": "/home/louistrue/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12",
+  "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+  "maturin": "/home/louistrue/.cache/uv/archive-v0/nEg85VyatxAAFRki/maturin-1.15.0.data/scripts/maturin",
+  "maturinSha256": "7770f6d9cbe0497f69b9b60f001a9a92784767651658e778b9664e6ef9b8a29a",
+  "target": "/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/target",
+  "targetProvenance": "OWN inactive raw7c8 native job918; no other target copied",
+  "profile": "release",
+  "environment": {
+    "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/target",
+    "CARGO_INCREMENTAL": "0",
+    "CARGO_PROFILE_DEV_DEBUG": "0",
+    "CARGO_PROFILE_TEST_DEBUG": "0",
+    "CARGO_BUILD_JOBS": "2",
+    "RAYON_NUM_THREADS": "2",
+    "RUST_TEST_THREADS": "1",
+    "TMPDIR": "/mnt/c/Users/louistrue/ifc-private/d47-raw-python-consumer-v1/tmp",
+    "TMP": "/mnt/c/Users/louistrue/ifc-private/d47-raw-python-consumer-v1/tmp",
+    "TEMP": "/mnt/c/Users/louistrue/ifc-private/d47-raw-python-consumer-v1/tmp",
+    "CI": "true"
+  },
+  "toolchain": "[toolchain]\nchannel = \"nightly-2025-11-15\"\ncomponents = [\"rust-src\", \"clippy\"]\ntargets = [\"wasm32-unknown-unknown\"]\n",
+  "cargoConfig": {
+    "/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/.cargo/config.toml": "[target.wasm32-unknown-unknown]\nrustflags = [\n  \"-C\", \"link-arg=--max-memory=4294967296\",\n  \"-C\", \"link-arg=-zstack-size=8388608\",\n  \"-C\", \"target-feature=+simd128\",\n]\n\n# `[unstable] build-std` intentionally lives OUTSIDE this file, not here.\n# `[unstable]` is a whole-invocation table, not scoped to `[target.*]` \u2014 if it\n# were set here it would apply to every `cargo` invocation in this workspace,\n# including plain host builds (`cargo test --release`, `cargo build`, etc.),\n# which have no `--target` and therefore no reason to rebuild `std` from\n# source. That collided with `[profile.release] panic = \"abort\"` in the\n# workspace `Cargo.toml` and made `cargo test --release` fail everywhere with\n# \"duplicate lang item in crate `core`\" \u2014 nothing to do with the code under\n# test.\n#\n# The wasm build needs `build-std` (it links a custom `panic_abort`-only\n# `std` for the single-thread bundle, and an atomics-enabled `std` for the\n# threaded bundle \u2014 see `scripts/build-wasm.sh`). It gets it by setting the\n# `CARGO_UNSTABLE_BUILD_STD` env var for that invocation only, so only the\n# wasm build pays for it. See `scripts/build-wasm.sh`.\n"
+  },
+  "mounts": "/mnt/c 9p rw,noatime,aname=drvfs;path=C:\\;uid=1000;gid=1000;symlinkroot=/mnt/,cache=5,access=client,msize=65536,trans=fd,rfd=5,wfd=5\n",
+  "coreFilemode": "false",
+  "driverSha256": "48dc5f741d69580b630844ce601a9aff4c88bdda7a6802b805231bd8e486b431"
+}

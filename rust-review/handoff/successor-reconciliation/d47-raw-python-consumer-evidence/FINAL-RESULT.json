@@ -1,0 +1,483 @@
+{
+  "taskId": "d47-raw7c8-python-consumer-pc-v1",
+  "jobId": "b3eb8a59-13c1-401a-86b8-56e0fcb34e98",
+  "session": 24820,
+  "state": "COMPLETED0",
+  "sourceUnchanged": true,
+  "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+  "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+  "parent": "02b8e1981158559fd4ec9b385d2d80729079a633",
+  "cpu": 2,
+  "memoryGiB": 8,
+  "driverSha256": "48dc5f741d69580b630844ce601a9aff4c88bdda7a6802b805231bd8e486b431",
+  "actualTests": {
+    "raw-target19": {
+      "count": 19,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "testIds": [
+        {
+          "classname": "tests.test_shared_set_budget",
+          "name": "test_issue_7895_all_shared_occurrences_keep_the_one_canonical_value",
+          "time": "0.117"
+        },
+        {
+          "classname": "tests.test_shared_set_budget",
+          "name": "test_issue_7895_distinct_set_exhaustion_and_keep_last_records",
+          "time": "0.013"
+        },
+        {
+          "classname": "tests.test_shared_set_budget",
+          "name": "test_issue_7895_canonical_source_order_independent_of_type_options[False-01-aligned]",
+          "time": "0.008"
+        },
+        {
+          "classname": "tests.test_shared_set_budget",
+          "name": "test_issue_7895_canonical_source_order_independent_of_type_options[False-02-opposed-products]",
+          "time": "0.008"
+        },
+        {
+          "classname": "tests.test_shared_set_budget",
+          "name": "test_issue_7895_canonical_source_order_independent_of_type_options[False-03-opposed-products-relations-reordered]",
+          "time": "0.008"
+        },
+        {
+          "classname": "tests.test_shared_set_budget",
+          "name": "test_issue_7895_canonical_source_order_independent_of_type_options[False-04-same-product-BA]",
+          "time": "0.008"
+        },
+        {
+          "classname": "tests.test_shared_set_budget",
+          "name": "test_issue_7895_canonical_source_order_independent_of_type_options[False-05-same-product-AB]",
+          "time": "0.008"
+        },
+        {
+          "classname": "tests.test_shared_set_budget",
+          "name": "test_issue_7895_canonical_source_order_independent_of_type_options[False-06-inherited-first]",
+          "time": "0.008"
+        },
+        {
+          "classname": "tests.test_shared_set_budget",
+          "name": "test_issue_7895_canonical_source_order_independent_of_type_options[False-07-orphan-last]",
+          "time": "0.008"
+        },
+        {
+          "classname": "tests.test_shared_set_budget",
+          "name": "test_issue_7895_canonical_source_order_independent_of_type_options[False-08-opposed-keep-last]",
+          "time": "0.008"
+        },
+        {
+          "classname": "tests.test_shared_set_budget",
+          "name": "test_issue_7895_canonical_source_order_independent_of_type_options[True-01-aligned]",
+          "time": "0.008"
+        },
+        {
+          "classname": "tests.test_shared_set_budget",
+          "name": "test_issue_7895_canonical_source_order_independent_of_type_options[True-02-opposed-products]",
+          "time": "0.008"
+        },
+        {
+          "classname": "tests.test_shared_set_budget",
+          "name": "test_issue_7895_canonical_source_order_independent_of_type_options[True-03-opposed-products-relations-reordered]",
+          "time": "0.008"
+        },
+        {
+          "classname": "tests.test_shared_set_budget",
+          "name": "test_issue_7895_canonical_source_order_independent_of_type_options[True-04-same-product-BA]",
+          "time": "0.008"
+        },
+        {
+          "classname": "tests.test_shared_set_budget",
+          "name": "test_issue_7895_canonical_source_order_independent_of_type_options[True-05-same-product-AB]",
+          "time": "0.008"
+        },
+        {
+          "classname": "tests.test_shared_set_budget",
+          "name": "test_issue_7895_canonical_source_order_independent_of_type_options[True-06-inherited-first]",
+          "time": "0.008"
+        },
+        {
+          "classname": "tests.test_shared_set_budget",
+          "name": "test_issue_7895_canonical_source_order_independent_of_type_options[True-07-orphan-last]",
+          "time": "0.008"
+        },
+        {
+          "classname": "tests.test_shared_set_budget",
+          "name": "test_issue_7895_canonical_source_order_independent_of_type_options[True-08-opposed-keep-last]",
+          "time": "0.008"
+        },
+        {
+          "classname": "tests.test_shared_set_budget",
+          "name": "test_issue_7895_unlinked_and_malformed_members_keep_canonical_charges",
+          "time": "0.017"
+        }
+      ],
+      "skipDetails": []
+    },
+    "raw-existing49": {
+      "count": 49,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "testIds": [
+        {
+          "classname": "tests.test_alignment_axes",
+          "name": "test_6600_graded_mm_axis_identity_endpoints_and_python_integer_keys",
+          "time": "0.016"
+        },
+        {
+          "classname": "tests.test_alignment_axes",
+          "name": "test_6600_bounds_and_invalid_parameters",
+          "time": "0.001"
+        },
+        {
+          "classname": "tests.test_alignment_axes",
+          "name": "test_7694_latin1_bytes_are_accepted_like_geometry_data",
+          "time": "0.001"
+        },
+        {
+          "classname": "tests.test_alignment_axes",
+          "name": "test_6600_real_infrastructure_multiple_axes",
+          "time": "0.017"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_5787_authored_quantity_binding_preserves_provenance_and_units",
+          "time": "0.002"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_5787_quantity_join_binding_mapped_sources_and_authored_values",
+          "time": "0.014"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_quality_is_monotonic_and_defaults_to_medium",
+          "time": "0.017"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_5784_extrusion_definitions_share_source_across_mapped_occurrences",
+          "time": "0.029"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_unknown_quality_raises_rather_than_falling_back",
+          "time": "0.006"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_quality_applies_to_the_json_path_too",
+          "time": "0.009"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_swept_disk_directrix_is_opt_in_and_analytic",
+          "time": "0.008"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_5754_rebar_directrix_metrics_use_world_metres_and_radians",
+          "time": "0.006"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_5787_nominal_quantities_use_world_metres_and_match_json",
+          "time": "0.007"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_swept_disk_directrix_respects_id_filter",
+          "time": "0.006"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_5758_swept_disk_checks_use_rust_source_geometry",
+          "time": "0.011"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_5758_swept_disk_checks_report_unsupported_and_modified_sources",
+          "time": "0.011"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_5759_rebar_schedule_separates_authored_and_derived_values",
+          "time": "0.006"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_5759_rebar_schedule_matches_repeated_solid_by_occurrence",
+          "time": "0.006"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_5759_rebar_schedule_type_fallback_conflict_and_missing_geometry",
+          "time": "0.007"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_5759_rebar_schedule_rejects_nonfinite_radius_before_json",
+          "time": "0.006"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_5801_rebar_schedule_omits_overflowed_authored_measure",
+          "time": "0.006"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_5801_rebar_schedule_handles_overflowed_total_length",
+          "time": "0.006"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_5759_rebar_schedule_retains_unsupported_source_reason",
+          "time": "0.006"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_6305_rebar_preflight_reports_values_and_skips",
+          "time": "0.006"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_5797_fabrication_policy_status_and_provenance",
+          "time": "0.006"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_5758_invalid_check_options_raise_even_when_no_ids_selected",
+          "time": "0.000"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_5785_reusable_source_definitions_keep_file_units_and_world_frame",
+          "time": "0.011"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_5810_source_schema_ignores_header_decoys",
+          "time": "0.006"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_4803_id_filter_none_empty_subset_and_unknown",
+          "time": "0.017"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_4803_buffers_and_json_filters_are_geometry_identical",
+          "time": "0.008"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_4803_filtered_host_keeps_unselected_opening_dependencies",
+          "time": "0.031"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_entity_data_reads_occurrence_property_sets",
+          "time": "0.014"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_entity_data_reads_quantity_sets_in_file_units",
+          "time": "0.012"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_entity_count_matches_the_entities_it_returns",
+          "time": "0.025"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_entity_data_keys_join_against_geometry",
+          "time": "0.008"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_placements_are_opt_in_and_do_not_disturb_properties",
+          "time": "0.007"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_placements_share_the_frame_of_the_geometry_vertices",
+          "time": "0.016"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_type_held_properties_reach_the_occurrences_that_inherit_them",
+          "time": "0.007"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_type_specific_attributes_are_returned",
+          "time": "0.006"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_attributes_can_be_turned_off",
+          "time": "0.006"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_type_properties_can_be_turned_off",
+          "time": "0.007"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_the_occurrence_wins_a_collision_on_the_corpus_fixture",
+          "time": "0.012"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_a_type_only_property_survives_a_set_name_collision",
+          "time": "0.000"
+        },
+        {
+          "classname": "tests.test_bindings",
+          "name": "test_issue_6601_per_face_colors_match_json_and_preserve_transparency",
+          "time": "0.008"
+        },
+        {
+          "classname": "tests.test_golden",
+          "name": "test_fnv1a64_matches_the_rust_vectors",
+          "time": "0.000"
+        },
+        {
+          "classname": "tests.test_golden",
+          "name": "test_geometry_data_json_matches_its_pins",
+          "time": "0.044"
+        },
+        {
+          "classname": "tests.test_golden_entity_data",
+          "name": "test_non_finite_values_keep_todays_tokens",
+          "time": "0.009"
+        },
+        {
+          "classname": "tests.test_golden_entity_data",
+          "name": "test_inheritance_and_attributes_are_on_by_default",
+          "time": "0.007"
+        },
+        {
+          "classname": "tests.test_golden_entity_data",
+          "name": "test_entity_data_matches_its_pins",
+          "time": "0.027"
+        }
+      ],
+      "skipDetails": []
+    }
+  },
+  "all182FixtureSHAAndSizeIdentical": true,
+  "normativeVectorSHA": "e1c313ac797ab05a7ea7c237d932d648d37872304987f4ea598363e3334dc988",
+  "wheel": {
+    "source": {
+      "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+      "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+      "parent": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "clean": true,
+      "payloadFreeBytes": 835761541120,
+      "payloadFreeInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 58228736,
+      "inputHashes": {
+        "Cargo.toml": "5e6ad1a0b2c9d2b683c554a4a7b3dafae28a1a29ed885afbfa78ae6b2a74bb1f",
+        "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+        "rust/python/Cargo.toml": "8013b50430437000518ec0f88ec1a09404a02fad2203343abd1cc664771815f2",
+        "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371",
+        "rust/python/ifclite_geom.pyi": "c1c678a6affaf1edb4c24a96760064c07cc3396bca42571a86707f118b9ffd5b",
+        "rust/python/src/entity_data.rs": "779011e4184bd3b02fe99b031d589ce13358c80bc2212440ffbf1287e668d5b2",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "tests/models/manifest.json": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+        "packages/parser/test/fixtures/complex-property-budget-7675.json": "e1c313ac797ab05a7ea7c237d932d648d37872304987f4ea598363e3334dc988",
+        "rust/export/tests/fixtures/shared_set_order_7895.json": "1097e46fd2c70028faf10fc1bd9169a51d01c1f1d7abb5ea949910035d2539f8",
+        ".cargo/config.toml": "648f6196c824ca8d5cb14f93105f57016d9c141fdf0c90c103b7c4250e87c679"
+      },
+      "testHashes": {
+        "rust/python/tests/golden/entity-data.json": "47939efd9a3abb07b186368d6692268243cef3079a8f4afa17187111f8f8626a",
+        "rust/python/tests/golden/geometry-data-json.json": "702932c13e676d52048956c2653e88c15cebbceeaf93b248f469312e7e780f70",
+        "rust/python/tests/test_alignment_axes.py": "9793100343c79e8d8d0da4aec1778e8f39b8bbdf35582e6ded0ad06be9aa7358",
+        "rust/python/tests/test_bindings.py": "e625826273a6254ab048f6550138dd8ffdc10268d0dd582bcc384545fc21d291",
+        "rust/python/tests/test_golden.py": "14dadc1acd910b296cfb8aa2058aa0e3364f8c95427545389ebe64f19a755e2b",
+        "rust/python/tests/test_golden_entity_data.py": "c1e43c51fdc22bd07f6fa3f09cfb91eee064ad9e42e3ca519e6fe9d3143720dd",
+        "rust/python/tests/test_shared_set_budget.py": "06c25d1b2aeec137eb1ec7d3ffddd7fb44e3c9359360130f2648f62bc6d7b90a"
+      }
+    },
+    "path": "/mnt/c/Users/louistrue/ifc-private/d47-raw-python-consumer-v1/wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl",
+    "size": 3828166,
+    "sha256": "9e540b87c13c647268f97777fdc71f75b8271fd879519f3dbc22c449a2768777",
+    "profile": "release",
+    "native": {
+      "ifclite_geom/ifclite_geom.abi3.so": "4b0dd3e1dcb0c673871aeebbd3a1e58e6c25f2cb42ef678771d19421c1a0f43b"
+    },
+    "stubs": {
+      "ifclite_geom/__init__.pyi": "c1c678a6affaf1edb4c24a96760064c07cc3396bca42571a86707f118b9ffd5b",
+      "ifclite_geom.pyi": "c1c678a6affaf1edb4c24a96760064c07cc3396bca42571a86707f118b9ffd5b"
+    },
+    "members": [
+      "ifclite_geom/__init__.py",
+      "ifclite_geom/__init__.pyi",
+      "ifclite_geom/ifclite_geom.abi3.so",
+      "ifclite_geom/py.typed",
+      "ifclite_geom.pyi",
+      "ifclite_geom-4.15.0.dist-info/METADATA",
+      "ifclite_geom-4.15.0.dist-info/WHEEL",
+      "ifclite_geom-4.15.0.dist-info/sboms/ifc-lite-python.cyclonedx.json",
+      "ifclite_geom-4.15.0.dist-info/RECORD"
+    ]
+  },
+  "loadedModule": {
+    "python": "/mnt/c/Users/louistrue/ifc-private/d47-raw-python-consumer-v1/venv/bin/python",
+    "version": "3.12.14 (main, Sep  1 2026, 14:16:52) [Clang 22.1.3 ]",
+    "module": "/mnt/c/Users/louistrue/ifc-private/d47-raw-python-consumer-v1/venv/lib/python3.12/site-packages/ifclite_geom/__init__.py",
+    "native": {
+      "ifclite_geom.ifclite_geom": {
+        "path": "/mnt/c/Users/louistrue/ifc-private/d47-raw-python-consumer-v1/venv/lib/python3.12/site-packages/ifclite_geom/ifclite_geom.abi3.so",
+        "sha256": "4b0dd3e1dcb0c673871aeebbd3a1e58e6c25f2cb42ef678771d19421c1a0f43b"
+      }
+    },
+    "stubs": {
+      "/mnt/c/Users/louistrue/ifc-private/d47-raw-python-consumer-v1/venv/lib/python3.12/site-packages/ifclite_geom/__init__.pyi": "c1c678a6affaf1edb4c24a96760064c07cc3396bca42571a86707f118b9ffd5b",
+      "/mnt/c/Users/louistrue/ifc-private/d47-raw-python-consumer-v1/venv/lib/python3.12/site-packages/ifclite_geom.pyi": "c1c678a6affaf1edb4c24a96760064c07cc3396bca42571a86707f118b9ffd5b"
+    },
+    "pytest": "9.1.1",
+    "sysPath": [
+      "",
+      "/home/louistrue/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python312.zip",
+      "/home/louistrue/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12",
+      "/home/louistrue/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/lib/python3.12/lib-dynload",
+      "/mnt/c/Users/louistrue/ifc-private/d47-raw-python-consumer-v1/venv/lib/python3.12/site-packages"
+    ]
+  },
+  "artifactArchiveRechecked": true,
+  "allRawLogHashesRechecked": true,
+  "sourceTestBytesUnchanged": true,
+  "quiescence": {
+    "job": "b3eb8a59-13c1-401a-86b8-56e0fcb34e98",
+    "sourceHead": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+    "sourceTree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+    "sourceClean": true,
+    "ownRowsResourcesGone": true,
+    "ownedProcesses": [],
+    "otherJobs": [],
+    "payloadFreeBytes": 835277787136,
+    "payloadFreeInodes": 1000000,
+    "linuxWorkerStateFreeBytes": 58224640,
+    "wheelStillHashVerified": true,
+    "wheelPath": "/mnt/c/Users/louistrue/ifc-private/d47-raw-python-consumer-v1/wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl"
+  },
+  "scope": "Raw7c8 Python consumer qualification only; old-base public02 parent; not current-main final integration",
+  "completedNative918Proof": "retained, never rerun",
+  "priorPrivateBASE19RED": "historical narrowly scoped evidence; no repeat",
+  "remaining": [
+    "official raw WASM consumer UNRUN/held",
+    "performance/RSS/firstcallback verdict UNRUN",
+    "hosted/publication/final integration unqualified"
+  ],
+  "retainedCosts": [
+    "canonical prepass before first callback",
+    "persistent O(source complex memberships + budgeted payload) storage",
+    "no RSS/latency neutrality or full adversarial parity claim"
+  ]
+}

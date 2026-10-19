@@ -1,0 +1,27 @@
+START rust-version
+END rust-version 0
+START cargo-version
+END cargo-version 0
+START maturin-version
+END maturin-version 0
+START private-venv
+END private-venv 0
+START no-old-extension
+END no-old-extension 0
+START raw-source-wheel
+END raw-source-wheel 0
+START install-own-wheel
+END install-own-wheel 0
+START loaded-module
+END loaded-module 0
+START collect-target19
+END collect-target19 0
+START collect-existing49
+END collect-existing49 0
+START raw-target19
+END raw-target19 0
+START raw-existing49
+END raw-existing49 0
+START pip-freeze
+END pip-freeze 0
+D47_RAW_PYTHON_COMPLETE 7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db

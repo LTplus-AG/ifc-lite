@@ -1,0 +1,31 @@
+{
+  "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+  "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+  "parent": "02b8e1981158559fd4ec9b385d2d80729079a633",
+  "clean": true,
+  "payloadFreeBytes": 835277893632,
+  "payloadFreeInodes": 1000000,
+  "linuxWorkerStateFreeBytes": 58224640,
+  "inputHashes": {
+    "Cargo.toml": "5e6ad1a0b2c9d2b683c554a4a7b3dafae28a1a29ed885afbfa78ae6b2a74bb1f",
+    "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+    "rust/python/Cargo.toml": "8013b50430437000518ec0f88ec1a09404a02fad2203343abd1cc664771815f2",
+    "rust/python/Cargo.lock": "bbda57f2c50ed62652924ecf3d2c88ab5f5acdb8235a62b2f4939c8e94869371",
+    "rust/python/ifclite_geom.pyi": "c1c678a6affaf1edb4c24a96760064c07cc3396bca42571a86707f118b9ffd5b",
+    "rust/python/src/entity_data.rs": "779011e4184bd3b02fe99b031d589ce13358c80bc2212440ffbf1287e668d5b2",
+    "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+    "tests/models/manifest.json": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+    "packages/parser/test/fixtures/complex-property-budget-7675.json": "e1c313ac797ab05a7ea7c237d932d648d37872304987f4ea598363e3334dc988",
+    "rust/export/tests/fixtures/shared_set_order_7895.json": "1097e46fd2c70028faf10fc1bd9169a51d01c1f1d7abb5ea949910035d2539f8",
+    ".cargo/config.toml": "648f6196c824ca8d5cb14f93105f57016d9c141fdf0c90c103b7c4250e87c679"
+  },
+  "testHashes": {
+    "rust/python/tests/golden/entity-data.json": "47939efd9a3abb07b186368d6692268243cef3079a8f4afa17187111f8f8626a",
+    "rust/python/tests/golden/geometry-data-json.json": "702932c13e676d52048956c2653e88c15cebbceeaf93b248f469312e7e780f70",
+    "rust/python/tests/test_alignment_axes.py": "9793100343c79e8d8d0da4aec1778e8f39b8bbdf35582e6ded0ad06be9aa7358",
+    "rust/python/tests/test_bindings.py": "e625826273a6254ab048f6550138dd8ffdc10268d0dd582bcc384545fc21d291",
+    "rust/python/tests/test_golden.py": "14dadc1acd910b296cfb8aa2058aa0e3364f8c95427545389ebe64f19a755e2b",
+    "rust/python/tests/test_golden_entity_data.py": "c1e43c51fdc22bd07f6fa3f09cfb91eee064ad9e42e3ca519e6fe9d3143720dd",
+    "rust/python/tests/test_shared_set_budget.py": "06c25d1b2aeec137eb1ec7d3ffddd7fb44e3c9359360130f2648f62bc6d7b90a"
+  }
+}

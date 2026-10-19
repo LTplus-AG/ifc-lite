@@ -1,0 +1,29 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.14, pytest-9.1.1, pluggy-1.7.0 -- /mnt/c/Users/louistrue/ifc-private/d47-raw-python-consumer-v1/venv/bin/python
+cachedir: /mnt/c/Users/louistrue/ifc-private/d47-raw-python-consumer-v1/evidence/pytest-cache
+rootdir: /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/rust/python
+configfile: pyproject.toml
+collecting ... collected 19 items
+
+../../d47-raw-native-v1/source/rust/python/tests/test_shared_set_budget.py::test_issue_7895_all_shared_occurrences_keep_the_one_canonical_value PASSED [  5%]
+../../d47-raw-native-v1/source/rust/python/tests/test_shared_set_budget.py::test_issue_7895_distinct_set_exhaustion_and_keep_last_records PASSED [ 10%]
+../../d47-raw-native-v1/source/rust/python/tests/test_shared_set_budget.py::test_issue_7895_canonical_source_order_independent_of_type_options[False-01-aligned] PASSED [ 15%]
+../../d47-raw-native-v1/source/rust/python/tests/test_shared_set_budget.py::test_issue_7895_canonical_source_order_independent_of_type_options[False-02-opposed-products] PASSED [ 21%]
+../../d47-raw-native-v1/source/rust/python/tests/test_shared_set_budget.py::test_issue_7895_canonical_source_order_independent_of_type_options[False-03-opposed-products-relations-reordered] PASSED [ 26%]
+../../d47-raw-native-v1/source/rust/python/tests/test_shared_set_budget.py::test_issue_7895_canonical_source_order_independent_of_type_options[False-04-same-product-BA] PASSED [ 31%]
+../../d47-raw-native-v1/source/rust/python/tests/test_shared_set_budget.py::test_issue_7895_canonical_source_order_independent_of_type_options[False-05-same-product-AB] PASSED [ 36%]
+../../d47-raw-native-v1/source/rust/python/tests/test_shared_set_budget.py::test_issue_7895_canonical_source_order_independent_of_type_options[False-06-inherited-first] PASSED [ 42%]
+../../d47-raw-native-v1/source/rust/python/tests/test_shared_set_budget.py::test_issue_7895_canonical_source_order_independent_of_type_options[False-07-orphan-last] PASSED [ 47%]
+../../d47-raw-native-v1/source/rust/python/tests/test_shared_set_budget.py::test_issue_7895_canonical_source_order_independent_of_type_options[False-08-opposed-keep-last] PASSED [ 52%]
+../../d47-raw-native-v1/source/rust/python/tests/test_shared_set_budget.py::test_issue_7895_canonical_source_order_independent_of_type_options[True-01-aligned] PASSED [ 57%]
+../../d47-raw-native-v1/source/rust/python/tests/test_shared_set_budget.py::test_issue_7895_canonical_source_order_independent_of_type_options[True-02-opposed-products] PASSED [ 63%]
+../../d47-raw-native-v1/source/rust/python/tests/test_shared_set_budget.py::test_issue_7895_canonical_source_order_independent_of_type_options[True-03-opposed-products-relations-reordered] PASSED [ 68%]
+../../d47-raw-native-v1/source/rust/python/tests/test_shared_set_budget.py::test_issue_7895_canonical_source_order_independent_of_type_options[True-04-same-product-BA] PASSED [ 73%]
+../../d47-raw-native-v1/source/rust/python/tests/test_shared_set_budget.py::test_issue_7895_canonical_source_order_independent_of_type_options[True-05-same-product-AB] PASSED [ 78%]
+../../d47-raw-native-v1/source/rust/python/tests/test_shared_set_budget.py::test_issue_7895_canonical_source_order_independent_of_type_options[True-06-inherited-first] PASSED [ 84%]
+../../d47-raw-native-v1/source/rust/python/tests/test_shared_set_budget.py::test_issue_7895_canonical_source_order_independent_of_type_options[True-07-orphan-last] PASSED [ 89%]
+../../d47-raw-native-v1/source/rust/python/tests/test_shared_set_budget.py::test_issue_7895_canonical_source_order_independent_of_type_options[True-08-opposed-keep-last] PASSED [ 94%]
+../../d47-raw-native-v1/source/rust/python/tests/test_shared_set_budget.py::test_issue_7895_unlinked_and_malformed_members_keep_canonical_charges PASSED [100%]
+
+- generated xml file: /mnt/c/Users/louistrue/ifc-private/d47-raw-python-consumer-v1/evidence/raw-target19.xml -
+============================== 19 passed in 0.53s ==============================

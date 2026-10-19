@@ -1,0 +1,38 @@
+{
+  "at": "2026-10-19T00:27:04.595768+00:00",
+  "source": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+  "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+  "parent": "02b8e1981158559fd4ec9b385d2d80729079a633",
+  "worker": "b3eb8a59-13c1-401a-86b8-56e0fcb34e98",
+  "session": 24820,
+  "terminal": "COMPLETED0",
+  "sourceUnchanged": true,
+  "quiescent": true,
+  "targetTests": 19,
+  "existingTests": 49,
+  "failures": 0,
+  "errors": 0,
+  "skips": 0,
+  "catalog844Included": true,
+  "all182FixtureIdentitiesUnchanged": true,
+  "loadedNativeAndStubMatchArchive": true,
+  "wheelSha256": "9e540b87c13c647268f97777fdc71f75b8271fd879519f3dbc22c449a2768777",
+  "localManifestMembersVerified": 50,
+  "archivedMemberCount": 49,
+  "omittedArchiveMembers": [
+    {
+      "path": "ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl",
+      "sha256": "9e540b87c13c647268f97777fdc71f75b8271fd879519f3dbc22c449a2768777",
+      "size": 3828166,
+      "reason": "Compiled wheel retained in original local qualification artifacts; hashes and load identity archived"
+    }
+  ],
+  "evidenceDirectory": "d47-raw-python-consumer-evidence",
+  "noNativeGateRepeats": true,
+  "remaining": [
+    "officialWASM",
+    "performanceRSSfirstcallback",
+    "hostedpublicationcurrentmainintegration"
+  ],
+  "acceptance": "Raw7c8 Python consumer only; no overallD47/Rustcharter acceptance or issueclosure"
+}

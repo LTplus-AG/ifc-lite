@@ -151,12 +151,12 @@ impl Gate {
         self.0.delegation_fixture.arm(source_fault);
     }
     #[cfg(feature = "source-resource-gate-test-support")]
-    pub fn simulated_error_state(&self) -> (usize, bool) {
-        (self.0.delegation_fixture.skipped(), self.0.delegation_fixture.armed())
+    pub fn simulated_error_state(&self) -> (usize, bool, usize) {
+        (self.0.delegation_fixture.skipped(), self.0.delegation_fixture.armed(), self.0.delegation_fixture.requested())
     }
     #[cfg(feature = "source-resource-gate-test-support")]
-    pub fn skip_global_for_fixture(&self) -> bool {
-        let mode = self.0.delegation_fixture.consume();
+    pub fn skip_global_for_fixture(&self, requested_layout_bytes: usize) -> bool {
+        let mode = self.0.delegation_fixture.consume(requested_layout_bytes);
         if mode == 2 {
             // Deterministic race witness: debit succeeded while healthy; source
             // F becomes first fault before the simulated delegation error.

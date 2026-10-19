@@ -27,6 +27,8 @@ pub struct GateWitnessReport {
     pub returned_stop: Option<ProgramStop>, pub original_stop: Option<ProgramStop>,
     pub fresh_stop: Option<ProgramStop>, pub observer_stop: Option<ProgramStop>,
     pub fresh_operation_entered: bool,
+    /// Actual requested Layout at the simulated boundary; no Global call.
+    pub requested_layout_bytes: usize,
     pub simulated_errors: usize, pub injection_still_armed: bool, pub fresh_backing_absent: bool,
 }
 /// Run one fixed, bounded fixture. The only resource input is the original paired
@@ -102,7 +104,7 @@ pub fn run_gate_witness(case: GateWitnessCase, context: SourceResourceContext,
             }).err();
             report.fresh_stop = fresh.check().err();
         }
-        (report.simulated_errors, report.injection_still_armed) = gate.simulated_error_state();
+        (report.simulated_errors, report.injection_still_armed, report.requested_layout_bytes) = gate.simulated_error_state();
         report.original_stop = original.check().err();
         report.observer_stop = observer.check().err();
         observe(GateWitnessStage::TerminalObserved);

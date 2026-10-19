@@ -11,10 +11,14 @@ use std::{cell::RefCell, rc::Rc};
 type ObserverSlot = Rc<RefCell<Option<AllocationObserverHandle>>>;
 #[derive(Clone, Copy)]
 struct Snapshot { usage: Usage, container: u64, metadata: u64 }
+#[derive(Default)]
+struct Captured {
+    account_stop: Option<ProgramStop>, before: Option<Snapshot>, after: Option<Snapshot>,
+}
 struct Instrumentation {
     account: Option<ExecutionAccount>, observer: ObserverSlot, pool: ModelResourcePool,
     foreign: ExecutionAccount, case: Case, cancelled: bool,
-    snapshots: [Option<Snapshot>; 13],
+    snapshots: [Option<Snapshot>; 13], captured: Rc<RefCell<Captured>>,
 }
 fn fault(dimension: Dimension, requested: u64) -> ProgramStop {
     ProgramStop::ResourceRefused(ResourceFailure { dimension, requested, remaining: 1, reason: RefusalReason::Limit })
@@ -34,8 +38,8 @@ impl Instrumentation {
                 assert!(after.usage.copy_bytes > before.usage.copy_bytes);
                 // Exact old Layout is derived independently at WeakOnly.
             }
-            assert!(after.usage.peak_live_bytes >= before.usage.live_bytes + 256 * 8,
-                "provisional full new Layout contributes to retained peak history");
+            // Exact peak is checked after the runner returns its independently
+            // recorded requested Layout; do not guess Vec growth/capacity here.
         }
     }
     fn observe(&mut self, stage: Stage) {
@@ -84,6 +88,8 @@ impl Instrumentation {
             }
             Stage::AfterGrow => {
                 let before = self.snapshot(Stage::BeforeGrow);
+                self.captured.borrow_mut().before = Some(before);
+                self.captured.borrow_mut().after = Some(current);
                 assert_eq!(metadata, before.metadata);
                 if is_simulated(self.case) {
                     self.simulated_ledger(before, current);
@@ -104,22 +110,28 @@ impl Instrumentation {
                 }
             }
             Stage::TerminalObserved => {
+                // Independent actual account observation, retained as scalars
+                // after every account/context clone must have been dropped.
+                let observed = account.check().err();
+                self.captured.borrow_mut().account_stop = observed;
                 let expected = match self.case {
-                    Case::Lifetime => None,
+                    Case::Lifetime => Some(None),
                     Case::ExpiredWork => {
                         assert_eq!(current.usage, self.snapshot(Stage::AfterGrow).usage,
                             "expired spare-capacity mutation must not reach allocation or admission");
-                        Some(ProgramStop::ResourceRefused(ResourceFailure { dimension: Dimension::Coverage,
-                            requested: 0, remaining: 0, reason: RefusalReason::UnsupportedCoverage }))
+                        Some(Some(ProgramStop::ResourceRefused(ResourceFailure { dimension: Dimension::Coverage,
+                            requested: 0, remaining: 0, reason: RefusalReason::UnsupportedCoverage })))
                     }
-                    Case::FreshFault | Case::PreStoppedEpoch => Some(if self.cancelled {
+                    Case::FreshFault | Case::PreStoppedEpoch => Some(Some(if self.cancelled {
                         ProgramStop::Cancelled
-                    } else { fault(Dimension::Work, 2) }),
-                    Case::PreStoppedObserver => Some(fault(Dimension::OutputBytes, 4)),
-                    Case::SimulatedSourceGrow | Case::SimulatedPreStopped => Some(fault(Dimension::Work, 2)),
-                    Case::RefusedGrowth | Case::SimulatedFresh | Case::SimulatedGrow => account.check().err(),
+                    } else { fault(Dimension::Work, 2) })),
+                    Case::PreStoppedObserver => Some(Some(fault(Dimension::OutputBytes, 4))),
+                    Case::SimulatedSourceGrow | Case::SimulatedPreStopped => Some(Some(fault(Dimension::Work, 2))),
+                    // Complete comparison to operation_stop occurs after return;
+                    // the expected value must never be this same account read.
+                    Case::RefusedGrowth | Case::SimulatedFresh | Case::SimulatedGrow => None,
                 };
-                assert_eq!(account.check().err(), expected);
+                if let Some(expected) = expected { assert_eq!(observed, expected); }
             }
             Stage::WeakOnly => {
                 let before = self.snapshot(Stage::AfterGrow);
@@ -154,8 +166,9 @@ fn run_case(case: Case, cancelled: bool) -> GateWitnessReport {
     let observer: ObserverSlot = Rc::new(RefCell::new(None));
     let factory_observer = observer.clone();
     let foreign = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+    let captured = Rc::new(RefCell::new(Captured::default()));
     let mut instrumentation = Instrumentation { account: Some(account), observer, pool: pool.clone(),
-        foreign: foreign.clone(), case, cancelled, snapshots: [None; 13] };
+        foreign: foreign.clone(), case, cancelled, snapshots: [None; 13], captured: captured.clone() };
     let report = foreign.scope(|| run_gate_witness(case, context, move |stop| {
         let owned = OwnedResourceContext::try_capture_accounted(&for_observer, stop)?;
         owned.check()?;
@@ -168,7 +181,29 @@ fn run_case(case: Case, cancelled: bool) -> GateWitnessReport {
     assert_eq!(resource::check_current(), Ok(()));
     assert!(report.values_preserved);
     assert!(report.weak_cannot_upgrade);
+    let captured = captured.borrow();
+    if matches!(case, Case::RefusedGrowth | Case::SimulatedFresh | Case::SimulatedGrow) {
+        assert_eq!(captured.account_stop, report.operation_stop,
+            "actual account must retain the complete operation stop independently of source/observer");
+    }
+    if is_simulated(case) {
+        exact_simulated_peak(case, &report, &captured);
+    }
     report
+}
+fn exact_simulated_peak(case: Case, report: &GateWitnessReport, captured: &Captured) {
+    let before = captured.before.unwrap();
+    let after = captured.after.unwrap();
+    if case == Case::SimulatedPreStopped {
+        assert_eq!(report.requested_layout_bytes, 0, "source refused before delegation boundary");
+        assert_eq!(after.usage, before.usage);
+    } else {
+        let requested = u64::try_from(report.requested_layout_bytes).unwrap();
+        assert!(requested > 0);
+        assert_eq!(after.usage.peak_live_bytes,
+            before.usage.peak_live_bytes.max(before.usage.live_bytes.checked_add(requested).unwrap()),
+            "peak retains the full actual requested Layout, including old/new overlap");
+    }
 }
 /// Actual container, gate and observer debits; sharing, growth, Weak and final pool release.
 pub fn actual_gate_lifetime_witness() {

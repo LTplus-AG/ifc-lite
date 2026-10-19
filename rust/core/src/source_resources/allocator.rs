@@ -55,7 +55,7 @@ impl ResourceAllocator {
     fn allocate_impl(&self, layout: Layout, zeroed: bool) -> Result<NonNull<[u8]>, AllocError> {
         let bytes = self.debit(layout, 0)?;
         #[cfg(feature = "source-resource-gate-test-support")]
-        let simulated = self.gate.skip_global_for_fixture();
+        let simulated = self.gate.skip_global_for_fixture(layout.size());
         #[cfg(not(feature = "source-resource-gate-test-support"))]
         let simulated = false;
         let result = if simulated { Err(AllocError) } else if zeroed { Global.allocate_zeroed(layout) } else { Global.allocate(layout) };
@@ -73,7 +73,7 @@ impl ResourceAllocator {
         let copies = match mode { Resize::Shrink => new.size(), _ => old.size() };
         let bytes = self.debit(new, copies)?;
         #[cfg(feature = "source-resource-gate-test-support")]
-        let simulated = self.gate.skip_global_for_fixture();
+        let simulated = self.gate.skip_global_for_fixture(new.size());
         #[cfg(not(feature = "source-resource-gate-test-support"))]
         let simulated = false;
         // SAFETY: delegated unchanged from this allocator's std trait methods.

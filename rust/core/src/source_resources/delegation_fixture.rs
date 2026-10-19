@@ -2,17 +2,23 @@
 //! Per-gate simulated boundary errors. Never substitutes a successful Global call.
 use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 #[derive(Default)]
-pub(super) struct DelegationFixture { armed: AtomicU8, skipped: AtomicUsize }
+pub(super) struct DelegationFixture { armed: AtomicU8, skipped: AtomicUsize, requested: AtomicUsize }
 impl DelegationFixture {
     pub fn arm(&self, source_fault: bool) {
         self.armed.store(if source_fault { 2 } else { 1 }, Ordering::SeqCst);
     }
-    pub fn consume(&self) -> u8 {
+    pub fn consume(&self, requested_layout_bytes: usize) -> u8 {
         let mode = self.armed.swap(0, Ordering::SeqCst);
-        if mode != 0 { self.skipped.fetch_add(1, Ordering::SeqCst); }
+        if mode != 0 {
+            // Actual Layout passed at the delegation boundary, never a guessed
+            // Vec capacity or authority/account input. No Global call occurred.
+            self.requested.store(requested_layout_bytes, Ordering::SeqCst);
+            self.skipped.fetch_add(1, Ordering::SeqCst);
+        }
         mode
     }
     pub fn skipped(&self) -> usize { self.skipped.load(Ordering::SeqCst) }
+    pub fn requested(&self) -> usize { self.requested.load(Ordering::SeqCst) }
     pub fn armed(&self) -> bool { self.armed.load(Ordering::SeqCst) != 0 }
 }
 

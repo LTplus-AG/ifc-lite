@@ -1,0 +1,23 @@
+{
+  "job": "c64d9201-df6c-46f4-9fa3-9aba691481d2",
+  "source": "23d68a60f47a538dd1a369958cf1a47755adc5c5",
+  "source_unchanged": true,
+  "exit": 101,
+  "workspace_test_exit": 101,
+  "clippy_exit": 101,
+  "output_sha256": "514cc48b8db732becbc04ec1a66620d8110cd55b36a7469ba6f279cdc45afc04",
+  "test_scope": "Compilation failure; no test-target result reported.",
+  "test_error": "E0599 bind_retained_outcome invoked on outer WorkReply; fixed separately at e1e7d3ec5c.",
+  "clippy_geometry_findings": [
+    "bool2d_path let_and_return",
+    "boolean operand unnecessary_to_owned (owned suspended refs required)",
+    "boolean protocol accept_source result_large_err",
+    "boolean protocol accept_numerical result_large_err",
+    "mapping frames mem_replace_with_default",
+    "inner validate_reply if_same_then_else",
+    "inner product prelude result_large_err"
+  ],
+  "clippy_simple_repairs": "62608a9b21",
+  "large_error_repairs": "in progress; rerun required",
+  "qualification": "FAIL; no current workspace/strict Clippy pass claimed"
+}

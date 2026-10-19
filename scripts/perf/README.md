@@ -12,6 +12,20 @@ that also dominate in the browser; the WASM-only concerns (per-worker file
 re-decode, no threads, memory bandwidth) are orchestration-level and are read
 off the viewer's own telemetry (below).
 
+## Geometry platform migration slices (#7955)
+
+**Behaviour-preserving refactor slices; measured neutral.** Each slice is a base-vs-branch
+`scripts/perf/ab.sh` run (interleaved, order-balanced, 7 rounds) on the large corpus models
+O-S1-BWK-BIM (327 MB), Holter (169 MB), ISSUE_098 (68 MB, georeferenced), ISSUE_068,
+schependomlaan and ISSUE_129 (CSG). FZK was dropped from timing: its ~47 ms total sits at timer
+noise and made every run "too noisy"; its mesh/vertex/triangle fingerprint still matched.
+Lesson: small fixtures cannot certify neutrality for per-element ownership changes; use the
+large corpus, and treat a lone single-fixture excursion as a rerun trigger, not a verdict.
+
+| Slice | Fingerprints (6 models) | TOTAL deltas vs base (noise) | Verdict |
+| --- | --- | --- | --- |
+| C2 #7969 boolean operand seams | identical | BWK +1.1% (±2), Holter −3.2% (±30), ISSUE_098 +0.7% (±10), ISSUE_068 −3.3% (±15), schependomlaan +2.3% (±4), ISSUE_129 +1.8% (±6) | neutral: no phase outside noise |
+
 ## Sloped coincident-sided differences (#7292)
 
 **Restored-O3 frozen-pair qualification complete; workload-dependent cost.**

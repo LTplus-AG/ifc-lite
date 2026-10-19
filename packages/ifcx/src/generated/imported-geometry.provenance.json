@@ -30,20 +30,20 @@
   ],
   "wasm2jsSha256": "fb4bc51da37e8ea8917552fdcb6edf8e1b77e9081c220579b78c50c429b29f2a",
   "wasm2jsVersion": "wasm2js version 124 (version_124-26-gcf756c929)",
-  "staticSha256": "ec7777240c819ab944cffbc1fd36bd4e64a818a69652f4c43ec80a1c2be72e11",
-  "staticBytes": 637744,
-  "wasmBytes": 91711,
-  "wasmSha256": "27e882a51ef86ab4a274cee12ff446b9db5d794325e560002f1ff0825eb8555d",
+  "staticSha256": "a3a5871116b4ab5f642772b19ea1adf4a81e839ef5a205863f3613b5b870b11a",
+  "staticBytes": 639938,
+  "wasmBytes": 92173,
+  "wasmSha256": "5436a9ab3590655b0887048850eca9d1d417284fedbef80b0b331f06c6db0c59",
   "sources": {
     ".cargo/config.toml": "648f6196c824ca8d5cb14f93105f57016d9c141fdf0c90c103b7c4250e87c679",
     "scripts/build-imported-geometry.mjs": "b37dcc08ba4c202550c8b447b84f876bdb4a242c778e81e6541d1f11ca899f15",
     "scripts/lib/imported-artifacts.mjs": "fe8b65cbbeb83f29bb4f6c7f7632ea01afb69675066beb4860684bfb5779026d",
     "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
     "rust/imported-geometry/Cargo.toml": "adddc152ed0a19cea23d756aebcceb412e4f32921f4ff417053ac3e74713f837",
-    "rust/imported-geometry/src/graph.rs": "0e226b2f9b2c95d95c94519e64f05f8014f46710fe7418a48af462ed5a9b76c1",
+    "rust/imported-geometry/src/graph.rs": "1e10acb9019c3e9523797e81c72e6d8a0999e32abfbf29a4488198519ccccacb",
     "rust/imported-geometry/src/graph_packet.rs": "df82407136c9a69a2568875777e9b20519c9f921569453f7639a92ca9707e9eb",
     "rust/imported-geometry/src/graph_packet_tests.rs": "e80f8b8fd2a22ce9360543b1dfbbbecc135254dc67639f19a28e16e3a689a9ab",
-    "rust/imported-geometry/src/graph_tests.rs": "d5385e81273f04a114fe51a19b5391ea5571a329a59710e7a89b684aa17d2b9a",
+    "rust/imported-geometry/src/graph_tests.rs": "0544f4e87590cc6401a60de0e397bdf5554f8019082d756880cd950c6e467a4c",
     "rust/imported-geometry/src/lib.rs": "2e0c6df5a77ac0a94d9b680a723f1182d8b170827f4b78350814034e24bb6d56",
     "rust/imported-geometry/src/math.rs": "a9cb080bd66ea72026f2037480c1f11274eb8cfa2fea17722065be9f8c0ad855",
     "rust/imported-geometry/src/packet.rs": "8a1d36701bd9e19ea699002550c03d8139061f45bddb4b6793509ff26416e3d1",
@@ -53,8 +53,8 @@
     "Cargo.toml#profile.release": "126fb1a643ac7ff044110025cded97ebcaa6010ed5f84c3b0689d5f075e1937e"
   },
   "artifacts": {
-    "imported-geometry.ts": "17ec5ab86bb576df7a556e1020f994b16f685898afc10f6c6e616f435c0f3532",
-    "imported-geometry-static.js": "ec7777240c819ab944cffbc1fd36bd4e64a818a69652f4c43ec80a1c2be72e11",
+    "imported-geometry.ts": "dff6fdd495f9bcee68cea5873b1ea65b88b9f33557300c5f242d02e8c6d2ef0b",
+    "imported-geometry-static.js": "a3a5871116b4ab5f642772b19ea1adf4a81e839ef5a205863f3613b5b870b11a",
     "imported-geometry-static.d.ts": "ef70966d6b82a701ed2f50479ecccbf7b06cd991f28fda9d93a314d300357cb2"
   }
 }

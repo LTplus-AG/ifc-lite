@@ -71,12 +71,15 @@ pub const MAX_DEPTH: usize = 4096;
 pub const MAX_FRAMES: u64 = 10_000_000;
 /// Bytes (estimated) held by queued, not yet visited, frames at any moment.
 pub const MAX_QUEUED_BYTES: usize = 256 << 20;
+/// Bytes (estimated) of transform stacks retained for admitted occurrences.
+/// Each occurrence keeps its own stack, so a deep chain grows with depth².
+pub const MAX_RETAINED_BYTES: usize = 512 << 20;
 /// A local transform is accepted only as at most 4 rows of at most 4 values.
 pub const MAX_TRANSFORM_ROWS: usize = 4;
 pub const MAX_TRANSFORM_COLUMNS: usize = 4;
 #[derive(Clone, Copy, Debug)]
-struct Limits { depth: usize, frames: u64, queued_bytes: usize }
-const LIMITS: Limits = Limits { depth: MAX_DEPTH, frames: MAX_FRAMES, queued_bytes: MAX_QUEUED_BYTES };
+struct Limits { depth: usize, frames: u64, queued_bytes: usize, retained_bytes: usize }
+const LIMITS: Limits = Limits { depth: MAX_DEPTH, frames: MAX_FRAMES, queued_bytes: MAX_QUEUED_BYTES, retained_bytes: MAX_RETAINED_BYTES };
 const FRAME_BYTES: usize = 160;
 const ENTRY_BYTES: usize = 32;
 fn matrix_bytes(matrix: &RawMatrix) -> usize {
@@ -97,7 +100,7 @@ pub struct GraphProgram {
     sequence: u32, occurrence: u64, emitted: HashSet<String>, retained: Vec<RetainedSource>, failure: Option<ImportError>,
     definitions: HashMap<(u64, bool), Arc<ImportedSource>>,
     point_metadata: HashMap<u64, Arc<PointMetadata>>,
-    limits: Limits, queued_bytes: usize,
+    limits: Limits, queued_bytes: usize, retained_bytes: usize,
 }
 
 fn seeds(nodes: &[Node], candidates: usize) -> Result<Vec<u32>, ImportError> {
@@ -175,7 +178,7 @@ impl GraphProgram {
         let seeds = seeds(&nodes, candidates)?;
         let passes = match mode { 1 => vec![true], 2 => vec![false], _ => vec![true, false] };
         let mut program = Self { store, revision, nodes, seeds, passes, pass: 0, queue: Vec::new(),
-            current: None, pending: None, sequence: 0, occurrence: 0, emitted: HashSet::new(), retained: Vec::new(), failure: None, definitions: HashMap::new(), point_metadata: HashMap::new(), limits: LIMITS, queued_bytes: 0 };
+            current: None, pending: None, sequence: 0, occurrence: 0, emitted: HashSet::new(), retained: Vec::new(), failure: None, definitions: HashMap::new(), point_metadata: HashMap::new(), limits: LIMITS, queued_bytes: 0, retained_bytes: 0 };
         program.seed_pass()?;
         Ok(program)
     }
@@ -297,7 +300,7 @@ impl GraphProgram {
         let ImportedAssembly { definition, output } = self.evaluate(ImportedSource::Mesh(source))?;
         let crate::ImportedOutput::Mesh(output) = output else { return Err(ImportError::IdentityMismatch); };
         let kind = EventKind::MeshOutput { output, color: self.current.as_ref().and_then(|frame| frame.color) };
-        self.retain(definition, None);
+        self.retain(definition, None)?;
         self.issue(kind)
     }
     pub fn points_reply(&mut self, sequence: u32, source: Option<PointsReply>) -> Result<(), ImportError> {
@@ -313,17 +316,22 @@ impl GraphProgram {
         let crate::ImportedOutput::Points(output) = output else { return Err(ImportError::IdentityMismatch); };
         let kind = EventKind::PointsOutput { output, colors: colors.as_deref().map(stage_values), count };
         let points = Some(PointMetadata { colors, count, precision, encoding });
-        self.retain(definition, points);
+        self.retain(definition, points)?;
         self.issue(kind)
     }
-    fn retain(&mut self, definition: ImportedDefinition, points: Option<PointMetadata>) {
+    /// Charges the occurrence's retained transform stack before keeping it.
+    fn retain(&mut self, definition: ImportedDefinition, points: Option<PointMetadata>) -> Result<(), ImportError> {
         let ImportedDefinition { identity, source, transform_stack } = definition;
+        let bytes = transform_stack.iter().map(matrix_bytes).sum::<usize>().saturating_add(ENTRY_BYTES);
+        self.retained_bytes = self.retained_bytes.saturating_add(bytes);
+        if self.retained_bytes > self.limits.retained_bytes { return Err(self.fail(ImportError::InvalidPacket)); }
         let is_points = matches!(source, ImportedSource::Points(_));
         let source = Arc::clone(self.definitions.entry((identity.definition, is_points))
             .or_insert_with(|| Arc::new(source)));
         let points = points.map(|metadata| Arc::clone(self.point_metadata.entry(identity.definition)
             .or_insert_with(|| Arc::new(metadata))));
         self.retained.push(RetainedSource { identity, transform_stack, source, points });
+        Ok(())
     }
     pub fn ack(&mut self, sequence: u32) -> Result<(), ImportError> {
         self.check_reply(sequence, 106)?;

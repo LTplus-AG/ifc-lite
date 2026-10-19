@@ -334,3 +334,34 @@ fn isolated_seeds_are_charged_before_they_are_queued() {
     // The production budget admits the same graph.
     assert!(GraphProgram::new(1, 1, 3, nodes).is_ok());
 }
+
+/// Drive a program, giving every node a mesh and a local transform, until it
+/// finishes or refuses. Each key is distinct, so every occurrence is retained.
+fn drive_meshes(p: &mut GraphProgram) -> Option<ImportError> {
+    let mut key = 0u32;
+    loop {
+        let request = match p.poll() { Ok(Some(request)) => request.clone(), Ok(None) => return None, Err(e) => return Some(e) };
+        let step = match request.kind {
+            EventKind::Node(_) => p.node_reply(request.sequence,
+                NodeReply { local_transform: Some(translation(1., 0., 0.)), ..attributes(true, true, false) }),
+            EventKind::Key { .. } => { key += 1; p.key_reply(request.sequence, format!("k{key}")) }
+            EventKind::MeshSource => p.mesh_reply(request.sequence, triangle()),
+            EventKind::PointsSource => unreachable!("no points in this graph"),
+            EventKind::MeshOutput { .. } | EventKind::PointsOutput { .. } => p.ack(request.sequence),
+        };
+        if let Err(e) = step { return Some(e); }
+    }
+}
+
+#[test]
+fn retained_transform_stacks_are_charged_against_a_budget() {
+    // A linear chain retains a stack of depth i at node i, so total grows ~n².
+    let chain: Vec<Node> = (0..40u32).map(|i| if i < 39 { node(&format!("n{i}"), &[("e", i + 1)]) } else { node("leaf", &[]) }).collect();
+    let mut p = GraphProgram::new(1, 1, 1, chain.clone()).unwrap();
+    assert_eq!(drive_meshes(&mut p), None);
+    assert_eq!(p.retained().len(), 40);
+    let mut p = GraphProgram::new(1, 1, 1, chain).unwrap();
+    p.limits.retained_bytes = 20_000;
+    assert_eq!(drive_meshes(&mut p), Some(ImportError::InvalidPacket));
+    assert!(p.retained().len() < 40);
+}

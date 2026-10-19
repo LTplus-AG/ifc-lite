@@ -80,6 +80,37 @@ typedef struct ifclite_smlib_affine_certificate {
 ifclite_smlib_status ifclite_smlib_copy_affine(ifclite_smlib_session session,
     ifclite_smlib_handle solid, const double* matrix, ifclite_smlib_handle* out,
     ifclite_smlib_affine_certificate* certificate);
+/* Unary derived finite clip, opcode20/capability64. Original local-metre plane
+ * is point XYZ, normal XYZ (finite, nonzero). side=1 means dot(n,x-p)>=0;
+ * side=-1 means <=0. mode is INTERSECTION or DIFFERENCE (opposite kept side).
+ * No UNION, authored IFC recipe, paired split or persistent face ancestry.
+ * Certificate is output evidence, never accepted as caller authority.
+ * frame=1 means unchanged input local metre frame; basis is the effective
+ * numerical orthonormal XYZ basis. Bounds arrays are loXYZ,hiXYZ.
+ * method is a domain-proof bitmask: 1=analytic planar UV hull,
+ * 2=generic positive clamped patch with existing UV containment,
+ * 4=bounded analytic cylinder formula; 0 is the canonical Empty domain.
+ * Cylinder records bind actual local coefficients and source GetFaces index,
+ * not persistent source ancestry. At most16 records; larger domains refuse.
+ * Empty is the canonical topology query, not a zero-volume heuristic.
+ * Unsupported domains refuse; capability is implementation, not qualification. */
+#define IFCLITE_SMLIB_PLANE_MAX_CYLINDERS 16u
+typedef struct ifclite_smlib_cylinder_domain {
+    uint32_t source_face, swap_uv, inside_out, reserved;
+    double origin[3], basis[9], radius, step_v[2];
+} ifclite_smlib_cylinder_domain;
+typedef struct ifclite_smlib_plane_certificate {
+    uint32_t version, method, frame, empty;
+    ifclite_smlib_handle input, output;
+    int32_t side;
+    uint32_t mode, faces, edges, coefficients;
+    double plane[6], basis[9], domain[6], cutter[6], clearance;
+    uint32_t cylinder_count;
+    ifclite_smlib_cylinder_domain cylinders[IFCLITE_SMLIB_PLANE_MAX_CYLINDERS];
+} ifclite_smlib_plane_certificate;
+ifclite_smlib_status ifclite_smlib_clip_plane(ifclite_smlib_session session,
+    ifclite_smlib_handle solid, const double* plane, int32_t side, uint32_t mode,
+    ifclite_smlib_handle* out, ifclite_smlib_plane_certificate* certificate);
 /* Relative numerical-integration tolerance, supported range [1e-8, 1e-1]. */
 ifclite_smlib_status ifclite_smlib_volume(ifclite_smlib_session session,
     ifclite_smlib_handle solid, double integration_tolerance, double* out);
@@ -105,6 +136,7 @@ ifclite_smlib_status ifclite_smlib_mesh_copy(ifclite_smlib_session session,
  * Bit 1: staged format2 capped rational-path disk; bit3: copied rigid transform.
  * Format2 and its variable coefficient records: NUMERICAL_ROUND3.md.
  * Bit4: copied affine rational representation with conversion certificate.
+ * Bit6: certified finite-domain unary plane clip (opcode20), not paired split.
  * Capability indicates implementation, never execution qualification.
  * Bit 0: staged sweep recipe format 1. One upload/session; max 1MiB/8192 curves/128 loops.
  * Recipe LE: u32 format,loops,segments,reserved; f64 unit direction XYZ,depth;

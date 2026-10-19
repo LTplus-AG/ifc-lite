@@ -6,6 +6,7 @@
 #include "affine.hpp"
 #include "copy.hpp"
 #include "empty.hpp"
+#include "plane.hpp"
 #include <SmApiBrep.h>
 #include <SmApiGeneral.h>
 #include <SmApiPrimitives.h>
@@ -306,7 +307,19 @@ int32_t ifclite_smlib_copy_affine(uint64_t session, ifclite_smlib_handle handle,
         *out=store(session,std::move(result)); *certificate=prepared;
     });
 }
-uint32_t ifclite_smlib_capabilities(void) { return 1u|2u|8u|16u|32u; }
+int32_t ifclite_smlib_clip_plane(uint64_t session, ifclite_smlib_handle handle,
+    const double* plane, int32_t side, uint32_t mode, ifclite_smlib_handle* out,
+    ifclite_smlib_plane_certificate* certificate) {
+    return boundary([&] {
+        output(out);
+        require(certificate,IFCLITE_SMLIB_INVALID_ARGUMENT,"null plane certificate");
+        *certificate={}; ifclite_smlib_plane_certificate prepared{};
+        auto result=clip_finite_plane(solid(session,handle),plane,side,mode,prepared);
+        *out=store(session,std::move(result));
+        prepared.input=handle; prepared.output=*out; *certificate=prepared;
+    });
+}
+uint32_t ifclite_smlib_capabilities(void) { return 1u|2u|8u|16u|32u|64u; }
 int32_t ifclite_smlib_sweep_begin(uint64_t session, uint32_t format,
     uint32_t length, uint32_t loops, uint32_t segments, uint64_t* out) {
     return boundary([&] {

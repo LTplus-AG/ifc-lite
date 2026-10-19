@@ -80,6 +80,33 @@ Writer dispatch(Reader& reader) {
             const auto solid = reader.handle(); reader.end(); uint32_t value = 0;
             status = ifclite_smlib_is_empty(session,solid,&value); payload.u32(value); break;
         }
+        case 20: {
+            const auto input=reader.handle(); std::array<double,6> plane{};
+            for(double& value:plane) value=reader.f64();
+            const uint32_t side=reader.u32(),mode=reader.u32(); reader.end();
+            ifclite_smlib_handle result{}; ifclite_smlib_plane_certificate c{};
+            const int32_t signed_side=side==UINT32_MAX?-1:side==1?1:0;
+            status=ifclite_smlib_clip_plane(session,input,plane.data(),signed_side,mode,&result,&c);
+            payload.handle(result); payload.u32(c.version); payload.u32(c.method);
+            payload.u32(c.frame); payload.u32(c.empty); payload.handle(c.input); payload.handle(c.output);
+            payload.u32(uint32_t(c.side)); payload.u32(c.mode); payload.u32(c.faces);
+            payload.u32(c.edges); payload.u32(c.coefficients);
+            for(auto value:c.plane) payload.f64(value);
+            for(auto value:c.basis) payload.f64(value);
+            for(auto value:c.domain) payload.f64(value);
+            for(auto value:c.cutter) payload.f64(value);
+            payload.f64(c.clearance); payload.u32(c.cylinder_count);
+            for(uint32_t i=0;i<c.cylinder_count;++i) {
+                const auto& cylinder=c.cylinders[i];
+                payload.u32(cylinder.source_face); payload.u32(cylinder.swap_uv);
+                payload.u32(cylinder.inside_out); payload.u32(cylinder.reserved);
+                for(auto value:cylinder.origin) payload.f64(value);
+                for(auto value:cylinder.basis) payload.f64(value);
+                payload.f64(cylinder.radius);
+                for(auto value:cylinder.step_v) payload.f64(value);
+            }
+            break;
+        }
         case 8: {
             const auto solid = reader.handle(); reader.end();
             status = ifclite_smlib_release(session,solid); break;

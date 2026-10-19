@@ -66,7 +66,7 @@ impl Event {
 /// small packet into gigabytes. Real IFCX models are far below all of these.
 /// Exceeding any limit refuses the program with `ImportError::InvalidPacket`.
 /// Deepest path of nested nodes (a frame's lineage length).
-pub const MAX_DEPTH: usize = 512;
+pub const MAX_DEPTH: usize = 4096;
 /// Total frames a program may visit across all passes.
 pub const MAX_FRAMES: u64 = 10_000_000;
 /// Bytes (estimated) held by queued, not yet visited, frames at any moment.

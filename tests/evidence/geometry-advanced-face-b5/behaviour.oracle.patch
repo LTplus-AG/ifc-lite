@@ -120,6 +120,49 @@ index ec7362db69..3195602b54 100644
                  points.reverse();
              }
              Ok(points)
+diff --git b/rust/geometry/src/processors/structural_face_plan.rs a/rust/geometry/src/processors/structural_face_plan.rs
+index 64c089e327..364e7fc233 100644
+--- b/rust/geometry/src/processors/structural_face_plan.rs
++++ a/rust/geometry/src/processors/structural_face_plan.rs
+@@ -19,16 +19,13 @@ pub(crate) fn lower(
+     let surface_attribute = entity
+         .get(slot::IfcFaceSurface::FACE_SURFACE.index())
+         .ok_or_else(|| Error::geometry("FaceSurface missing FaceSurface"))?;
+-    let Some(surface) = decoder.resolve_ref(surface_attribute).ok().flatten() else {
+-        return Ok(StructuralFacePlan {
+-            face: None,
+-            rtc_applied: false,
+-        });
+-    };
++    let surface = decoder
++        .resolve_ref(surface_attribute)?
++        .ok_or_else(|| Error::geometry("Failed to resolve FaceSurface"))?;
+     if surface.ifc_type != IfcType::IfcPlane {
+         return Ok(StructuralFacePlan {
+             face: None,
+-            rtc_applied: true,
++            rtc_applied: false,
+         });
+     }
+     // Loop winding already expresses the planar face normal, including when
+@@ -36,7 +33,7 @@ pub(crate) fn lower(
+     let face = lower_face(entity, decoder, quality, rtc_file_units)?;
+     Ok(StructuralFacePlan {
+         face: Some(face),
+-        rtc_applied: false,
++        rtc_applied: rtc_file_units.is_some(),
+     })
+ }
+ impl StructuralFacePlan {
+@@ -45,7 +42,7 @@ impl StructuralFacePlan {
+         if let Some(face) = self.face {
+             let (positions, indices) = face.evaluate()?;
+             mesh.positions = positions;
+-            mesh.indices = indices.into_iter().rev().collect();
++            mesh.indices = indices;
+         }
+         mesh.rtc_applied = self.rtc_applied;
+         Ok(mesh)
 diff --git b/rust/processing/src/element_degenerate.rs a/rust/processing/src/element_degenerate.rs
 index c8b2af21d4..90dd6d6f95 100644
 --- b/rust/processing/src/element_degenerate.rs

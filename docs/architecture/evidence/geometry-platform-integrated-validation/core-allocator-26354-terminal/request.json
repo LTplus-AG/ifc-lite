@@ -1,0 +1,18 @@
+{
+  "id": "auto-0885f839d0da4351a1876da870e56c85",
+  "commit": "26354b06cc798a36cd363b1ec9610334f03a7e33",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "-c",
+    "# SPDX-License-Identifier: MPL-2.0\nsource \"$HOME/build-workers/worker-env.sh\" || exit $?\nunset IFCLITE_SMLIB_WORKER\ncargo test --locked -p ifc-lite-core --lib --features source-resource-tracking source_resources -- --nocapture\ncore_status=$?\ncargo clippy --locked --workspace --all-targets --features ifc-lite-core/source-resource-tracking -- -D warnings\nclippy_status=$?\ncargo test --locked -p ifc-lite-core --lib --features source-resource-tracking --target wasm32-unknown-unknown --no-run\nwasm_compile_status=$?\nprintf 'core_allocator_tests_exit=%s feature_workspace_clippy_exit=%s wasm_test_compile_exit=%s\\n' \"$core_status\" \"$clippy_status\" \"$wasm_compile_status\"\nfor result in \"$core_status\" \"$clippy_status\" \"$wasm_compile_status\"; do\n  if [ \"$result\" -ne 0 ]; then exit \"$result\"; fi\ndone\n"
+  ],
+  "storageTask": "ifclite-core-allocator-26354-20261019",
+  "pools": [],
+  "requestedHost": "pc-wsl"
+}

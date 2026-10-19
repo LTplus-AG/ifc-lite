@@ -1,0 +1,26 @@
+{
+  "source": "26354b06cc798a36cd363b1ec9610334f03a7e33",
+  "request": "auto-0885f839d0da4351a1876da870e56c85",
+  "job": "5de20cec-ae4b-4a41-bfe5-70bc6f5ff620",
+  "host": "pc-wsl",
+  "exit": 101,
+  "sourceUnchanged": true,
+  "core_tests": {
+    "passed": 31,
+    "failed": 0,
+    "ignored": 0,
+    "filtered": 477,
+    "exit": 0
+  },
+  "feature_workspace_clippy": {
+    "exit": 101,
+    "defect": "Large RetainedLineage::PlaneClip variant; a15484afbd source repair unqualified"
+  },
+  "wasm32_opted_in_core_test_target": {
+    "compile_exit": 0,
+    "executed": false
+  },
+  "output_sha256": "b43295e690e9dcb778dc0f9bd34d10da73068371b211a76f5b05469810d9036a",
+  "output_bytes": 19115,
+  "scope": "Private prototype native tests and wasm32 compilation only; not production owner/cache migration or browser numerical qualification."
+}

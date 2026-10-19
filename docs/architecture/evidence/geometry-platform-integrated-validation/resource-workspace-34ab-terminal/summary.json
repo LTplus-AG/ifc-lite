@@ -1,0 +1,23 @@
+{
+  "source": "34ab0e45719f686ae3e056174812fb2eab2c65ff",
+  "job": "beadc973-369d-427f-9584-2d071e8cc6a2",
+  "host": "pc-wsl",
+  "exit": 101,
+  "sourceUnchanged": true,
+  "outputSha256": "358dfb415dcaa3d9d764c29722ff54afbe6fc1331c59ca8fdd457d5e79814ff3",
+  "defaultWorkspace": {
+    "exit": 0,
+    "passed": 6428,
+    "failed": 0,
+    "ignored": 47,
+    "summaries": 391
+  },
+  "defaultStrictClippy": 0,
+  "actualAccountCore": 101,
+  "geometryResourceFeature": 101,
+  "featureStrictClippy": 101,
+  "optedInWasmCoreTestCompile": 101,
+  "featureFailure": "E0432 canonical resource witness source included from test_support uses super rather than crate::resource",
+  "correction": "cab7783a10 one import; later source UNRUN",
+  "sdkEnvironment": "deliberately unset; framework early returns do not establish numerical SDK coverage"
+}

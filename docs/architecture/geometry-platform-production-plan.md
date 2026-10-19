@@ -60,6 +60,26 @@ planning-time state; each receipt remains bound to its original source.
   validation, cross-platform determinism and end-to-end performance are still
   required on the assembled release candidate.
 
+## Integration update after initial P0 repairs
+
+Source checkpoint `2deba6d5dd` integrates merged mapping/late placement, semantic
+empty results, managed native per-object cleanup and the bounded affine runtime.
+Parent assembly review caught a duplicated test; the checkpoint removes the stale
+copy and keeps the stronger lifetime witness. Affine assembly records are under
+`evidence/geometry-platform-integrated-validation/affine-parent-5ef7`.
+Twelve combined driver fixtures and changed Rust parsing pass; these checks do
+not qualify SDK numerical behavior or Rust types. Affine exclusions remain gaps.
+
+Baseline job `887916da-9ea2-4528-966a-8d90b4cca9e4` is bound to earlier source
+`9be1dcd3a0`: its first geometry suite passed 1,876 tests with one ignored, and
+workspace tests remain in progress. It does not qualify later integrated layers.
+Pop admission is currently refused by disk guard78; no replacement is submitted.
+Styled/type-map source `eafd759151` is under independent review. Common retained
+operation values, affine bake and Boolean continuation implementation is delegated
+from the assembled source; full opening/layer/browser/final publication closure,
+regenerated artifacts, consumer/platform/model/performance qualification and the
+remaining reviewable PR stack are still required.
+
 ## Release control and evidence
 
 Use the existing capability inventory as the preservation ledger. For every row,

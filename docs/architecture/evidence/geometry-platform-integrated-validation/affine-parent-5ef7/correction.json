@@ -1,0 +1,9 @@
+{
+  "source": "2deba6d5dd1034eecc6b9f9b83c03449d22e78cd",
+  "finding": "Frozen5ef7 assembly duplicated affine chain test and retained an older invalid equality assertion.",
+  "repair": "Removed stale duplicate, retained strengthened managed Drop/same_admission test, updated stale Drop comment.",
+  "file": "rust/geometry-runtime/tests/retained_receipt.rs",
+  "sha256": "445a48ce4e1b3e67ab2374212b90e7f7c89261322d39cf25b96bb8f3e61510a5",
+  "review_sha256": "ed31f5a69797118624e789addb5a6953595a5654680c6309a715d523558af055",
+  "checks": "Rust parsing and whitespace passed; compile and numerical execution still pending."
+}

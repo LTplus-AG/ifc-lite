@@ -998,6 +998,16 @@ jobs:
           # revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/imported-geometry/src/math.rs | grep -Fxq 'rust/imported-geometry/src/math.rs'; then
             oracle_args+=(--mutation tests/evidence/imported-geometry-i1/behaviour.oracle.patch)
+          # #7955 B3: owned brep plans add faceted_plan.rs and
+          # surface_model_plan.rs, which their tests name, so a whole-change
+          # revert cannot compile them (INCONCLUSIVE). Keep the types and break
+          # ONLY the behaviour: faces with unreadable bounds are no longer
+          # refused, surface-model reports are not replayed in order, the late
+          # collection error is dropped, and the A2 scope mutation is stacked
+          # (this branch includes A2). Once faceted_plan.rs is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/brep/faceted_plan.rs | grep -Fxq 'rust/geometry/src/processors/brep/faceted_plan.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-brep-plans-b3/behaviour.oracle.patch)
           # #7955 A2: diagnostic scopes add pending_diagnostics.rs,
           # budget_state.rs, CsgCensus and ElementState, which its tests name,
           # so a whole-change revert cannot compile them (INCONCLUSIVE). Keep

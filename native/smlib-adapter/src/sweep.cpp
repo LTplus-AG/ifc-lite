@@ -75,10 +75,11 @@ Segment read_segment(Reader& reader) {
         // so an interval of length <=2pi fits [-2pi,2pi] without changing sense.
         const double authored_start=std::remainder(v[10],2*pi);
         const double middle=std::remainder(authored_start+sweep*0.5,2*pi);
-        const double start=middle-sweep*0.5, end=start+sweep;
+        const double start=kind==2 ? authored_start : middle-sweep*0.5, end=start+sweep;
         SmBSplineCurve* raw=nullptr;
         const auto status=SmApiCreateArc(SmPoint3d(0,0,0),v[9],
-            std::min(start,end)*180/pi,std::max(start,end)*180/pi,raw);
+            kind==2 ? 0. : std::min(start,end)*180/pi,
+            kind==2 ? 360. : std::max(start,end)*180/pi,raw);
         segment.curve.reset(raw); checked(status);
         require(segment.curve!=nullptr,"null authored arc");
         if(sweep<0) {
@@ -88,7 +89,14 @@ Segment read_segment(Reader& reader) {
         // Preserve the authored circular frame, including normal/traversal.
         const double yx=-v[5]*v[7], yy=v[5]*v[6];
         SmAxis2Placement frame;
-        frame.SetCanonical(SmPoint3d(v[0],v[1],0),SmVector3d(v[6],v[7],0),SmVector3d(yx,yy,0));
+        // A full circle uses a well-conditioned canonical SDK knot interval.
+        // Carry its authored seam phase in the rigid frame instead of making
+        // tiny knot spans around quadrant boundaries (near-full regressions).
+        const double phase=kind==2 ? authored_start : 0.;
+        const double cosine=std::cos(phase),sine=std::sin(phase);
+        frame.SetCanonical(SmPoint3d(v[0],v[1],0),
+            SmVector3d(v[6]*cosine+yx*sine,v[7]*cosine+yy*sine,0),
+            SmVector3d(yx*cosine-v[6]*sine,yy*cosine-v[7]*sine,0));
         checked(segment.curve->Transform(frame));
         auto point=[&](double angle) -> Point {
             return {v[0]+v[9]*(v[6]*std::cos(angle)+yx*std::sin(angle)),

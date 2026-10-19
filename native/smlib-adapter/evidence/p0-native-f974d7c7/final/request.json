@@ -1,0 +1,20 @@
+{
+  "id": "auto-45c6490426dc4e239a0aa769db42c6e8",
+  "commit": "3af451ceeeadf226cb1c020e1c7248355215a630",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "/home/louistrue/build-workers/setup/projects-20261017/ifc-lite/env-exec.sh",
+    "bash",
+    "native/smlib-adapter/qualify.sh",
+    "native",
+    "."
+  ],
+  "pools": [],
+  "requestedHost": "pop-os"
+}

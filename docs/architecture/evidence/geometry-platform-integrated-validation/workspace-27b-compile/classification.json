@@ -1,0 +1,13 @@
+{
+  "source": "27b0e367e76c53c2066538deea92b297dd8732e8",
+  "job": "308b1829-18a1-4244-8210-d9c441a43d9d",
+  "request": "auto-f074931effc54bd9876311f8b1748540",
+  "exit": 101,
+  "sourceUnchanged": true,
+  "outputSha256": "98b64e7b5f741805420f27d6425896851ef67b10ed106e6860498d32c9886a67",
+  "tests": "NOT RUN: lib-test compilation failed",
+  "errors": [
+    "Six E0433 uses of GeometryRouter without import in program/retained_tests.rs"
+  ],
+  "correction": "0894a3f6f7 adds the missing actual router import. d751b09658 checks the returned layer cancellation Result reported as a warning. Neither corrected source has been qualified by this failed run."
+}

@@ -235,9 +235,27 @@ its success establishes no SDK geometry behavior. It is wired through CTest.
 
 For reproducible fleet qualification, `bash native/smlib-adapter/qualify.sh native`
 (or `wasm`) acquires the public SDK at the exact pin into a dedicated temporary
-cache and verifies its commit. It bootstraps pinned public CMake/Ninja wheels
+cache and verifies its commit. Build directories are isolated by source commit
+and checkout path so CMake caches remain attributable across fleet runs. It bootstraps pinned public CMake/Ninja wheels
 when necessary; WASM uses Emscripten 4.0.15. Run this script through `ifc-fleet run
---route fleet --cwd ABSOLUTE_CHECKOUT -- ...`. No OpenUSD/TBB dependency is needed.
+--cwd ABSOLUTE_CHECKOUT -- ...`. On the registered Pop host, invoke the environment
+wrapper with `bash` (the wrapper need not be executable):
+
+```sh
+/home/louistrue/build-workers/ifc-fleet run --host pop-os --cwd ABSOLUTE_CHECKOUT -- \
+  bash /home/louistrue/build-workers/setup/projects-20261017/ifc-lite/env-exec.sh \
+  bash native/smlib-adapter/qualify.sh native
+```
+
+Native surface witnesses count geometric planes for general extrusion surfaces
+using their complete positive-weight rational control hull and extrusion vector,
+then independently check evaluated surface points at the unchanged `1e-8`
+tolerance. The SDK's default `IsPlanar` query uses an expanded bounding box for
+these surfaces; its raw result is logged separately. Curved extrusion regressions
+must fail the same plane certificate. Analytic cylinder counts, volumes, bounds,
+section lengths and section boundary assertions remain required. Full circles
+use a canonical SDK interval and carry their authored seam phase in the rigid
+frame; this avoids tiny knot spans without changing circle geometry or traversal.
 
 ## Explicit browser asset staging
 

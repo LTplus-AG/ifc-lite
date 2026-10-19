@@ -12,8 +12,15 @@
 #include <vector>
 namespace {
 constexpr double pi=3.14159265358979323846;
-void expect(bool v) { if(!v) { std::fprintf(stderr,"disk/transform witness failed\n");std::abort(); } }
-void ok(int32_t s) { expect(s==0); }
+void expect_at(bool v,const char* expression,int line) {
+    if(!v) {
+        char error[512];ifclite_smlib_error_copy(error,sizeof(error));
+        std::fprintf(stderr,"disk/transform witness failed line=%d expression=%s error=%s\n",line,expression,error);
+        std::abort();
+    }
+}
+#define expect(value) expect_at((value),#value,__LINE__)
+#define ok(status) expect((status)==0)
 void u32(std::vector<uint8_t>& b,uint32_t v) { for(unsigned j=0;j<4;++j)b.push_back(uint8_t(v>>(8*j))); }
 void f64(std::vector<uint8_t>& b,double v) { uint64_t bits;std::memcpy(&bits,&v,8);
     for(unsigned j=0;j<8;++j)b.push_back(uint8_t(bits>>(8*j))); }
@@ -41,7 +48,10 @@ void run_disk_tests() {
     for(bool curved:{false,true}) {
         auto b=recipe(curved);const auto h=upload(s,b);
         const double expected=pi*0.25*0.25*(curved?2*pi:5);
-        expect(std::abs(volume(s,h)-expected)<expected*1e-4);
+        const double actual=volume(s,h);
+        std::fprintf(stderr,"disk witness curved=%d volume=%.17g expected=%.17g delta=%.17g\n",
+            int(curved),actual,expected,actual-expected);
+        expect(std::abs(actual-expected)<expected*1e-4);
         // Independent tight bounds on the straight cylinder made from a nonuniform rational parameterization.
         if(!curved) {
             auto direct=create_authored_disk(b);SmPoint3d low,high;
@@ -95,8 +105,14 @@ void run_disk_tests() {
         expect(out.session==0 && ifclite_smlib_sweep_commit(s,upload,&out)==3);
     }
     auto invalid=recipe(false);invalid.pop_back();
-    uint64_t token=0;ok(ifclite_smlib_sweep_begin(s,2,invalid.size(),1,1,&token));
+    // The shortest record is rejected by the declaration gate before upload.
+    uint64_t token=99;expect(ifclite_smlib_sweep_begin(s,2,invalid.size(),1,1,&token)==1 && token==0);
+    // A truncated longer record passes declaration size admission but must fail
+    // exact payload validation, consume its upload, and publish no handle.
+    invalid=recipe(true);invalid.pop_back();
+    ok(ifclite_smlib_sweep_begin(s,2,invalid.size(),1,1,&token));
     ok(ifclite_smlib_sweep_chunk(s,token,0,invalid.data(),invalid.size()));
     expect(ifclite_smlib_sweep_commit(s,token,&out)==1 && out.session==0);
+    expect(ifclite_smlib_sweep_commit(s,token,&out)==3);
     ok(ifclite_smlib_session_destroy(s));
 }

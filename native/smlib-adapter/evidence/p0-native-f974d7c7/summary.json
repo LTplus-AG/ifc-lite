@@ -1,0 +1,147 @@
+{
+  "verdict": "PASS: full native configure/build/link/CTest; 4/4 executed, no skipped CTests",
+  "base": "9e2f76f661ce5854ec8cbbb457dcffb9669419fb",
+  "qualified_source": "3af451ceeeadf226cb1c020e1c7248355215a630",
+  "qualified_tree": "33b49fa3a9377d7a527e45209d5b6485d6592284",
+  "sdk": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "host": "pop-os",
+  "final_request": "auto-45c6490426dc4e239a0aa769db42c6e8",
+  "final_job": "048a471f-9c0e-4a80-a441-9a36002fd03b",
+  "region_witnesses_executed": 21,
+  "current_source_files_sha256": {
+    "native/smlib-adapter/README.md": "b0a9bdad42c3c22060ce14a49d8c6f7621571c462be22f46838eaf238bde1324",
+    "native/smlib-adapter/qualify.sh": "35eba9eb678fe47c7f0dd236152aff60ff4d4415bd7db4779aefa4146c592765",
+    "native/smlib-adapter/src/sweep.cpp": "222549d865c29c28b334cb877de2091fed6c07f3ad3f5929cdc8848f2a0057cb",
+    "native/smlib-adapter/tests/disk_tests.cpp": "29a1ab87ef5669ab9ef2c3c1ca9b8a677a04a18d9e1dd3f1262bf6e21c0e4995",
+    "native/smlib-adapter/tests/surface_witness.hpp": "3b413eded175a3472ae2e102ed9e3a51ef2b0f66655721aeae98c8150bcde6a0",
+    "native/smlib-adapter/tests/sweep_region_tests.cpp": "b8b73e677c0167a081bb8796fa3d52f782a5e456121707574124c0cc6c3f15ed"
+  },
+  "code_patch_sha256": "567313283c97a0eedf96d76673a09fab5e7a1d7c983c23d7036987bc28f1eebd",
+  "runs": [
+    {
+      "directory": "attempt-1",
+      "request": "auto-5efb47329fa94ad8b6fd24e16e2062e8",
+      "job": "e79ea176-9106-4113-8c60-8f61bcb3e67c",
+      "source": "697b74499f8977c38836f207968af7f22f2f4872",
+      "state": "failed",
+      "exit_code": 8,
+      "sha256": {
+        "request.json": "0ec849a4cd4867ca3460c8907f84f6366aacdce9273124e3e1833d76d75cbead",
+        "receipt.json": "eb6ca5ab5689ea77ac424f546d4029d0a67c8b48907c1d772f2f2552057b5a82",
+        "output.log": "3582dcca6191f24ae99776793795418756317b43772da1dc02e5b0ad5ea0db3d"
+      }
+    },
+    {
+      "directory": "attempt-2",
+      "request": "auto-d822268138124ffaa4806040306aabad",
+      "job": "40fd3b9e-e9cb-471c-ae56-c7d15bc7b97e",
+      "source": "bd9c9280f6e1d79790c19b0a0548e18380326d1b",
+      "state": "failed",
+      "exit_code": 1,
+      "sha256": {
+        "request.json": "b9b846d9993685bf4f98885feaec6bb72fda61d6e37ee19b6b294dd9c2b17d3b",
+        "receipt.json": "72dc4069c3e446bd68492fd91c401f9fa8d61f2d83c0bd07bd0b9f89275eebb4",
+        "output.log": "43d2149c50024dc1673eba43e8cc148b8332649369fc3e2f5504ef5052aa5a75"
+      }
+    },
+    {
+      "directory": "attempt-3",
+      "request": "auto-c157245b55c14435a67a258a26a1598d",
+      "job": "2c376102-60e8-44bd-a249-7fefc9548440",
+      "source": "c7117d0f3805bce47760080804527a1b3fa0b00c",
+      "state": "failed",
+      "exit_code": 8,
+      "sha256": {
+        "request.json": "53ddc4412503b775f107c50a79a3c4450f73b7bdef52103b6fd21e14020ca139",
+        "receipt.json": "1b690a4806ffb645d31b2693419eb53b665eecc6b71b7ad411b35c26bc52e91a",
+        "output.log": "eca165a10dc24156478d5a53bd6376ea12c4ec12f55210a780013e601d5f71e0"
+      }
+    },
+    {
+      "directory": "diagnostic-1",
+      "request": "auto-a93dcbd133fc42f291b0779fc65df8f5",
+      "job": "dd94a1d9-810f-4ad1-8ada-a58508db666e",
+      "source": "3c738a5ffac6bc0809e3d67693fb661c9a10642c",
+      "state": "failed",
+      "exit_code": -6,
+      "sha256": {
+        "request.json": "dccf8ebaa647c38ed6fc125ae296a093e2523f5512a35ed6456c7fe573d301cc",
+        "receipt.json": "561aca37059076421c4038525e79866a9855789bc1b5ec07f304a103c22d3f04",
+        "output.log": "d6e41633150fbf1a56c8411980b0b976e9405108f078adb3fddaac646857386c"
+      }
+    },
+    {
+      "directory": "diagnostic-2",
+      "request": "auto-07f24f8c15f1419f98a1fd3fe5edab2d",
+      "job": "5f30fb6c-25aa-4b6b-9660-8d8989c08076",
+      "source": "19c0c976d9fa50f5698d93d30f76ab81d1088a41",
+      "state": "failed",
+      "exit_code": -6,
+      "sha256": {
+        "request.json": "cce17854f077135412fa1ef8d8af14059d92cd1a9d519345081efe6386e4310a",
+        "receipt.json": "27db45ce094d8e4c9d32dab52ca21c4ab05b21edfbcc43af67f06f670709b440",
+        "output.log": "36014927d0919947dc162692cea5a65cf34c57d4a97f96c11d5c50b1af8bb5b8"
+      }
+    },
+    {
+      "directory": "diagnostic-3",
+      "request": "auto-aa5e58be71d3405390c40b16ac7d4733",
+      "job": "23a8a30e-e9d3-4d71-bfab-ad5010c4f288",
+      "source": "bfffee02be18c16229046a44b8b74f26604292d8",
+      "state": "failed",
+      "exit_code": -6,
+      "sha256": {
+        "request.json": "64ed51821da7ae92e5c32d2a73693a72226299de49e74dd053cf541028a7e73c",
+        "receipt.json": "30660caa664f7c44d5e018e0576343b8333ffcf7c9dfb4b14a9464c3f1764b0f",
+        "output.log": "9517582dc63c5b1280e0620f458b4d64c12c6dfb0d179be02cbd5cfa5b265bd8"
+      }
+    },
+    {
+      "directory": "diagnostic-4",
+      "request": "auto-7f896a30aa854cbd817b09972349f70c",
+      "job": "2c762628-486e-4083-b09d-415d0a08133a",
+      "source": "3af451ceeeadf226cb1c020e1c7248355215a630",
+      "state": "completed",
+      "exit_code": 0,
+      "sha256": {
+        "request.json": "2dc93cb9c392049e2f0fd4ed3debd525164aaf2b07f92d53bcad3a444b71911a",
+        "receipt.json": "0edfd99d839845039253d2e352231533a119d90b3f4e45d1ea816d9f12989eaf",
+        "output.log": "01f311de1ef0ab8c24a741eb76811eca3a62b5d80551eb69d69f4946b2770ef2"
+      }
+    },
+    {
+      "directory": "final",
+      "request": "auto-45c6490426dc4e239a0aa769db42c6e8",
+      "job": "048a471f-9c0e-4a80-a441-9a36002fd03b",
+      "source": "3af451ceeeadf226cb1c020e1c7248355215a630",
+      "state": "completed",
+      "exit_code": 0,
+      "sha256": {
+        "request.json": "acd483d76d8b38c35bcd23450ef1cc09c4254c09a1a7437dd583f0dcdb7f8f7b",
+        "receipt.json": "255a0d257fff246930af2ee7baad619fa0cc62422d1f23daccccbc0033212f08",
+        "output.log": "007370d6649bcb610a8ecc568d2ee3a8d4cb6739390f16a121d86551e68f6372"
+      }
+    },
+    {
+      "directory": "prior-r1",
+      "request": "auto-359d868f3f7b40208e2d9ea9a80dc995",
+      "job": "365bee07-e8ab-42ed-91e8-d7eccf9acb38",
+      "source": "01abf2b4d940ac94eaddc58794d52767cc2984e0",
+      "state": "failed",
+      "exit_code": 1,
+      "sha256": {
+        "request.json": "c922367c38b8e2e603ff6d3bba69072b40a494be2b3621bd9797a27aa6805619",
+        "receipt.json": "df508202122fa355316fb0de2032eaac0880186ac2522043a0a4cf3135e72c8d",
+        "output.log": "c08cef202d7762bb54902314765990942ccff2b703b4572f75bad81c193f802d"
+      }
+    }
+  ],
+  "retained_evidence_sha256": {
+    "final/LastTest.log.gz": "0025d84b14a886da19afbddfebddb8f4f50ca11744691ab5bb7164b757bb387f",
+    "final/output.log.gz": "a228f9f18502350d14753a94da7dc7fe76c69d6502244dd668908c51f937beaa",
+    "final/receipt.json": "255a0d257fff246930af2ee7baad619fa0cc62422d1f23daccccbc0033212f08",
+    "final/request.json": "acd483d76d8b38c35bcd23450ef1cc09c4254c09a1a7437dd583f0dcdb7f8f7b",
+    "prior-attempts.tar.gz": "d840ee4b77e9e3a5e568fe7035241ecc13d9d47ef7c1bde42bde225cdb7b5851"
+  },
+  "limits": "Native only. Historical source331 abort fixture remains unknown. No browser/product/perf qualification; exact default unchanged."
+}

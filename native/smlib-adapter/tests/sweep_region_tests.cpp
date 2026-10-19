@@ -2,7 +2,10 @@
 // Independent actual-SDK witnesses for retained ordered circular regions.
 #include "sweep.hpp"
 #include "ifclite_smlib.h"
+#include "surface_witness.hpp"
 #include <SmApiIntersectors.h>
+#include <SmApiCurves.h>
+#include <SmApiGeneral.h>
 #include <SmApiQueries.h>
 #include <SmFace.h>
 #include <SmSurface.h>
@@ -24,7 +27,41 @@ void check(bool value,const char* label) {
     if(!value) { std::fprintf(stderr,"region witness failed: %s\n",label); std::abort(); }
 }
 void sdk(SmApiStatus status) { check(status==SM_SUCCESS,"SDK query"); }
-void near(double a,double b) { check(std::abs(a-b)<1e-5,"independent analytic value"); }
+void near(double a,double b) {
+    if(!(std::abs(a-b)<1e-5))
+        std::fprintf(stderr,"region analytic actual=%.17g expected=%.17g delta=%.17g\n",a,b,a-b);
+    check(std::abs(a-b)<1e-5,"independent analytic value");
+}
+void surface_query_regressions() {
+    // P0 native qualification: a general oblique line extrusion is planar,
+    // regardless of its concrete surface class or bounding-box inflation.
+    for(bool swap:{false,true}) {
+        SmBSplineCurve* raw=nullptr;
+        sdk(SmBSplineCurve::CreateLineSegment(*SmApiGetOrCreateContext(),3,
+            SmPoint3d(0,0,0),SmPoint3d(0,4,0),raw));
+        std::unique_ptr<SmBSplineCurve> curve(raw);
+        const auto domain=SmExtent2d(curve->GetSTEPInterval(),SmExtent1d(0,3));
+        // SDK geometry needs context allocation for cache notification and teardown.
+        std::unique_ptr<SmSurfOfExtrusion> surface(new(*SmApiGetOrCreateContext())
+            SmSurfOfExtrusion(curve.get(),SmPoint3d(0,0,0),SmVector3d(0.6,0,0.8),domain,swap));
+        curve.release(); // Surface owns its generator after successful construction.
+        double control=0,samples=0;
+        check(planar_extrusion(*surface,1e-8,control,samples),"oblique plane control-hull certificate");
+        std::fprintf(stderr,"surface oracle oblique swap=%d sdk_planar=%d control_deviation=%.17g sample_deviation=%.17g\n",
+            int(swap),int(surface->IsPlanar(1e-8)),control,samples);
+    }
+    SmBSplineCurve* raw=nullptr;
+    sdk(SmApiCreateArc(SmPoint3d(0,0,0),2,0,180,raw));
+    std::unique_ptr<SmBSplineCurve> curve(raw);
+    const auto domain=SmExtent2d(curve->GetSTEPInterval(),SmExtent1d(0,3));
+    std::unique_ptr<SmSurfOfExtrusion> surface(new(*SmApiGetOrCreateContext())
+        SmSurfOfExtrusion(curve.get(),SmPoint3d(2,0,0),SmVector3d(0,0,1),domain,FALSE));
+    curve.release();
+    double control=0,samples=0;
+    check(!planar_extrusion(*surface,1e-8,control,samples),"curved extrusion must fail plane certificate");
+    check(control>1e-8,"curved control hull has measured nonplanarity");
+    std::fprintf(stderr,"surface oracle curved control_deviation=%.17g\n",control);
+}
 Curve line(double x,double y,double xx,double yy) { return {1,{x,y,0,xx,yy,0,0,0,0,0,0,0}}; }
 Curve arc(double x,double y,double radius,double start,double sweep,bool full=false,double normal=1) {
     return {full?2u:3u,{x,y,0,0,0,normal,1,0,0,radius,start,sweep}};
@@ -49,6 +86,7 @@ std::vector<uint8_t> recipe(const std::vector<Loop>& loops,bool oblique=false) {
 }
 void witness(const char* name,const std::vector<Loop>& loops,double area,double perimeter,
     std::array<double,4> xy,unsigned planar,unsigned curved,bool oblique=false) {
+    std::fprintf(stderr,"region witness BEGIN %s\n",name);
     uint32_t count=0;for(const auto& loop:loops)count+=loop.size();
     auto bytes=recipe(loops,oblique);
     auto solid=create_authored_sweep(bytes,loops.size(),count);
@@ -61,7 +99,17 @@ void witness(const char* name,const std::vector<Loop>& loops,double area,double 
     unsigned actual_planar=0,actual_curved=0,cylinders=0,extrusions=0,expected_cylinders=0;
     for(const auto& loop:loops)for(const auto& c:loop)if(c.kind==2)++expected_cylinders;
     for(ULONG i=0;i<faces.GetSize();++i) {
-        if(faces[i]->GetSurface()->IsPlanar(1e-8))++actual_planar;
+        const auto* surface=faces[i]->GetSurface();
+        const bool sdk_planar=surface->IsPlanar(1e-8);
+        bool geometric_planar=sdk_planar;
+        if(surface->IsKindOf(SmSurfOfExtrusion_TYPE)) {
+            double control_deviation=0,sample_deviation=0;
+            geometric_planar=planar_extrusion(*static_cast<const SmSurfOfExtrusion*>(surface),
+                1e-8,control_deviation,sample_deviation);
+            std::fprintf(stderr,"region %s face=%lu extrusion sdk_planar=%d certified_planar=%d control_deviation=%.17g sample_deviation=%.17g\n",
+                name,static_cast<unsigned long>(i),int(sdk_planar),int(geometric_planar),control_deviation,sample_deviation);
+        }
+        if(geometric_planar)++actual_planar;
         else ++actual_curved;
         if(faces[i]->GetSurface()->IsKindOf(SmCylinder_TYPE))++cylinders;
         if(faces[i]->GetSurface()->IsKindOf(SmSurfOfExtrusion_TYPE))++extrusions;
@@ -121,6 +169,7 @@ void witness(const char* name,const std::vector<Loop>& loops,double area,double 
 }
 }
 void run_sweep_region_tests() {
+    surface_query_regressions();
     witness("rectangle",{rectangle(0,0,2,4)},8,12,{0,0,2,4},6,0);
     witness("circle",{{arc(0,0,2,0,2*pi,true)}},4*pi,4*pi,{-2,-2,2,2},2,1);
     witness("clockwise-circle",{{arc(0,0,2,0,-2*pi,true)}},4*pi,4*pi,{-2,-2,2,2},2,1);

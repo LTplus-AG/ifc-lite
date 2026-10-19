@@ -20,7 +20,10 @@ if [[ ! -d "$sdk" ]]; then
 fi
 [[ $(git -C "$sdk" rev-parse HEAD) == "$revision" ]]
 source_id=$(git rev-parse HEAD)
-build=${IFCLITE_ADAPTER_BUILD:-$cache/build-$mode}
+# CMake caches bind to one absolute source path. Fleet checkouts differ by
+# commit; retain previous builds/evidence instead of reusing their cache.
+checkout_key=$(printf '%s' "$(pwd -P)" | sha256sum | cut -c1-12)
+build=${IFCLITE_ADAPTER_BUILD:-$cache/build-$mode-$source_id-$checkout_key}
 # Lock the normalized physical build directory too: official overrides may
 # intentionally share one path across modes or through symlink aliases.
 mkdir -p "$build"

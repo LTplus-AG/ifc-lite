@@ -1,0 +1,170 @@
+diff --git a/rust/geometry/tests/issue_7795_polygonal_faces.rs b/rust/geometry/tests/issue_7795_polygonal_faces.rs
+index 78089ec31a..bbb99ae220 100644
+--- a/rust/geometry/tests/issue_7795_polygonal_faces.rs
++++ b/rust/geometry/tests/issue_7795_polygonal_faces.rs
+@@ -23,10 +23,20 @@ fn wrap(data: &str) -> String {
+ /// (entity lines for #10.., listed by `face_refs`). Returns the mesh and the
+ /// unsupported-item counts.
+ fn process(coords: &[[f64; 3]], faces: &str, face_refs: &str) -> (Mesh, Vec<(String, u64)>) {
++    process_closed(coords, faces, face_refs, false)
++}
++
++fn process_closed(
++    coords: &[[f64; 3]],
++    faces: &str,
++    face_refs: &str,
++    closed: bool,
++) -> (Mesh, Vec<(String, u64)>) {
+     let points: Vec<String> =
+         coords.iter().map(|[x, y, z]| format!("({x:.3},{y:.3},{z:.3})")).collect();
++    let closed = if closed { ".T." } else { ".F." };
+     let content = wrap(&format!(
+-        "#2=IFCCARTESIANPOINTLIST3D(({}));\n{faces}#1=IFCPOLYGONALFACESET(#2,.F.,({face_refs}),$);\n",
++        "#2=IFCCARTESIANPOINTLIST3D(({}));\n{faces}#1=IFCPOLYGONALFACESET(#2,{closed},({face_refs}),$);\n",
+         points.join(",")
+     ));
+     let index = build_entity_index(&content);
+@@ -85,6 +95,143 @@ fn convex_polygonal_quad_is_unchanged_7795() {
+     assert!((areas(&mesh).0 - 16.0).abs() < 1e-6);
+ }
+ 
++/// An open unit quad remains two real triangles with unit area.
++#[test]
++fn open_unit_quad_keeps_two_triangles_7795() {
++    let (mesh, counted) = process(
++        &[[0., 0., 0.], [1., 0., 0.], [1., 1., 0.], [0., 1., 0.]],
++        "#10=IFCINDEXEDPOLYGONALFACE((1,2,3,4));\n",
++        "#10",
++    );
++    assert_eq!(mesh.indices.len(), 6);
++    assert!((areas(&mesh).0 - 1.0).abs() < 1e-6);
++    assert!(counted.is_empty());
++}
++
++/// A missing independent face record drops only that entry and is reported
++/// through the public router path (#7779).
++#[test]
++fn dangling_polygonal_face_refuses_only_that_face_7779() {
++    let coords = [[0., 0., 0.], [1., 0., 0.], [1., 1., 0.], [0., 1., 0.]];
++    let authored = "#10=IFCINDEXEDPOLYGONALFACE((1,2,3));\n";
++    let (reference, clean) = process(&coords, authored, "#10");
++    assert!(clean.is_empty());
++    for refs in ["#10,#999", "#999,#10"] {
++        let (mesh, counted) = process(&coords, authored, refs);
++        assert_eq!(mesh.indices, reference.indices, "authored indices survive for {refs}");
++        assert_eq!(mesh.positions, reference.positions, "authored vertices survive for {refs}");
++        assert_eq!(mesh.normals, reference.normals, "authored normals survive for {refs}");
++        assert_eq!(mesh.indices.len(), 3, "the authored triangle survives for {refs}");
++        assert_eq!(areas(&mesh).0, 0.5);
++        assert_eq!(counted, vec![("IfcIndexedPolygonalFace".to_string(), 1)]);
++    }
++}
++
++/// A refusal is drained per representation item; it does not leak into the
++/// next valid direct item on the same router/thread (#7779).
++#[test]
++fn dangling_face_refusal_does_not_leak_to_next_router_item_7779() {
++    let content = wrap(
++        "#2=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(1.,1.,0.)));\n\
++         #10=IFCINDEXEDPOLYGONALFACE((1,2,3));\n\
++         #1=IFCPOLYGONALFACESET(#2,.F.,(#999),$);\n\
++         #3=IFCPOLYGONALFACESET(#2,.F.,(#10),$);\n",
++    );
++    let index = build_entity_index(&content);
++    let mut decoder = EntityDecoder::with_index(&content, index);
++    let router = GeometryRouter::new();
++
++    let missing = decoder.decode_by_id(1).expect("decode set");
++    let empty = router.process_representation_item(&missing, &mut decoder).expect("missing face is a partial success");
++    assert!(empty.indices.is_empty());
++    assert_eq!(router.take_unsupported_items().get("IfcIndexedPolygonalFace"), Some(&1));
++
++    let valid = decoder.decode_by_id(3).expect("decode following set");
++    let mesh = router.process_representation_item(&valid, &mut decoder).expect("valid following item");
++    assert_eq!(mesh.indices.len(), 3);
++    assert!(router.take_unsupported_items().is_empty(), "previous refusal must already be drained");
++}
++
++/// A missing or malformed Coordinates attribute remains a set-level error;
++/// face-local recovery must not invent a coordinate basis (#7779).
++#[test]
++fn polygonal_face_recovery_does_not_hide_bad_coordinates_7779() {
++    for coordinates in ["$", "'not-an-entity'"] {
++        let content = wrap(&format!(
++            "#1=IFCPOLYGONALFACESET({coordinates},.F.,(#999),$);\n"
++        ));
++        let index = build_entity_index(&content);
++        let mut decoder = EntityDecoder::with_index(&content, index);
++        let router = GeometryRouter::new();
++        let set = decoder.decode_by_id(1).expect("decode set");
++        assert!(router.process_representation_item(&set, &mut decoder).is_err(), "Coordinates={coordinates}");
++    }
++}
++
++/// Missing-only and repeated missing entries produce no fabricated geometry;
++/// the refusal signal is deduplicated by face type for this item (#7779).
++#[test]
++fn all_missing_polygonal_faces_are_empty_and_counted_7779() {
++    let coords = [[0., 0., 0.], [1., 0., 0.], [1., 1., 0.]];
++    let (mesh, counted) = process(&coords, "", "#999,#999");
++    assert!(mesh.indices.is_empty());
++    assert!(mesh.positions.is_empty());
++    assert_eq!(counted, vec![("IfcIndexedPolygonalFace".to_string(), 1)]);
++}
++
++fn cube_face_records() -> String {
++    [
++        "#10=IFCINDEXEDPOLYGONALFACE((1,4,3,2));\n",
++        "#11=IFCINDEXEDPOLYGONALFACE((5,6,7,8));\n",
++        "#12=IFCINDEXEDPOLYGONALFACE((1,2,6,5));\n",
++        "#13=IFCINDEXEDPOLYGONALFACE((2,3,7,6));\n",
++        "#14=IFCINDEXEDPOLYGONALFACE((3,4,8,7));\n",
++        "#15=IFCINDEXEDPOLYGONALFACE((4,1,5,8));\n",
++    ]
++    .concat()
++}
++
++fn signed_volume(mesh: &Mesh) -> f64 {
++    mesh.indices
++        .chunks_exact(3)
++        .map(|tri| {
++            let point = |i: u32| {
++                let i = i as usize * 3;
++                [mesh.positions[i] as f64, mesh.positions[i + 1] as f64, mesh.positions[i + 2] as f64]
++            };
++            let (a, b, c) = (point(tri[0]), point(tri[1]), point(tri[2]));
++            (a[0] * (b[1] * c[2] - b[2] * c[1])
++                + a[1] * (b[2] * c[0] - b[0] * c[2])
++                + a[2] * (b[0] * c[1] - b[1] * c[0]))
++                / 6.0
++        })
++        .sum()
++}
++
++/// Closed cube control and the same authored shell with one dangling entry
++/// retain the authored twelve triangles; no face is synthesized (#7779).
++#[test]
++fn closed_polygonal_cube_with_dangling_entry_keeps_authored_shell_7779() {
++    let coords = [
++        [0., 0., 0.], [1., 0., 0.], [1., 1., 0.], [0., 1., 0.],
++        [0., 0., 1.], [1., 0., 1.], [1., 1., 1.], [0., 1., 1.],
++    ];
++    let records = cube_face_records();
++    let refs = "#10,#11,#12,#13,#14,#15";
++    let (cube, clean) = process_closed(&coords, &records, refs, true);
++    assert!(clean.is_empty());
++    assert_eq!(cube.indices.len() / 3, 12);
++    assert!((signed_volume(&cube) - 1.0).abs() < 1e-6, "outward volume {}", signed_volume(&cube));
++
++    let (with_dangling, counted) = process_closed(&coords, &records, &format!("{refs},#999"), true);
++    assert_eq!(with_dangling.indices, cube.indices);
++    assert_eq!(with_dangling.positions, cube.positions);
++    assert_eq!(with_dangling.normals, cube.normals);
++    assert_eq!(with_dangling.indices.len() / 3, 12);
++    assert!((signed_volume(&with_dangling) - 1.0).abs() < 1e-6);
++    assert_eq!(counted, vec![("IfcIndexedPolygonalFace".to_string(), 1)]);
++}
++
+ /// A holed face whose triangulation fails (two overlapping openings) is
+ /// refused and counted under its real type; the sibling face still meshes.
+ /// It used to be a fan of the outer loop: filled over both openings.

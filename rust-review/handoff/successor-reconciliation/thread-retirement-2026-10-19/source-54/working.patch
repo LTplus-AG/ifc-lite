@@ -1,0 +1,80 @@
+diff --git a/rust/geometry/src/router/tests.rs b/rust/geometry/src/router/tests.rs
+index b12d92e1e7..a3656bcd2c 100644
+--- a/rust/geometry/src/router/tests.rs
++++ b/rust/geometry/src/router/tests.rs
+@@ -784,7 +784,7 @@ fn unsupported_mapped_source_item_is_dropped_and_counted_not_silent() {
+ #8=IFCGEOMETRICSET(());
+ #9=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#7,#8));
+ #10=IFCREPRESENTATIONMAP($,#9);
+-#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
++#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#5,$,$);
+ #12=IFCMAPPEDITEM(#10,#11);
+ #13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
+ #14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+@@ -913,7 +913,7 @@ fn a_non_body_representations_unsupported_item_is_not_counted_as_content_loss()
+ #8=IFCANNOTATIONFILLAREA(#1,());
+ #9=IFCSHAPEREPRESENTATION($,'FootPrint','Annotation2D',(#8));
+ #10=IFCREPRESENTATIONMAP($,#9);
+-#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
++#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,$,$);
+ #12=IFCMAPPEDITEM(#10,#11);
+ #13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
+ #14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+@@ -943,7 +943,7 @@ fn the_same_unsupported_item_under_a_body_representation_is_still_counted() {
+ #8=IFCANNOTATIONFILLAREA(#1,());
+ #9=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#8));
+ #10=IFCREPRESENTATIONMAP($,#9);
+-#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
++#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,$,$);
+ #12=IFCMAPPEDITEM(#10,#11);
+ #13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
+ #14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+@@ -1086,7 +1086,7 @@ const MIXED_SHARED_SOURCE: &str = r#"
+ #8=IFCGEOMETRICSET(());
+ #9=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#7,#8));
+ #10=IFCREPRESENTATIONMAP($,#9);
+-#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
++#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#5,$,$);
+ #12=IFCMAPPEDITEM(#10,#11);
+ #13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
+ #14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+@@ -1104,10 +1104,11 @@ const MIXED_SHARED_SOURCE: &str = r#"
+ /// [`MIXED_SHARED_SOURCE`] with the supported solid removed, so the source
+ /// meshes to EMPTY and neither cache will hold it.
+ const TOTAL_LOSS_SHARED_SOURCE: &str = r#"
++#1=IFCCARTESIANPOINT((0.,0.,0.));
+ #8=IFCGEOMETRICSET(());
+ #9=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#8));
+ #10=IFCREPRESENTATIONMAP($,#9);
+-#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
++#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,$,$);
+ #12=IFCMAPPEDITEM(#10,#11);
+ #13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
+ #14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+@@ -1138,7 +1139,7 @@ fn a_footprint_source_is_not_counted_on_the_occurrence_path_either() {
+ #8=IFCANNOTATIONFILLAREA(#1,());
+ #9=IFCSHAPEREPRESENTATION($,'FootPrint','Annotation2D',(#8));
+ #10=IFCREPRESENTATIONMAP($,#9);
+-#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
++#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,$,$);
+ #12=IFCMAPPEDITEM(#10,#11);
+ #13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
+ #14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+@@ -1166,7 +1167,7 @@ fn the_same_item_under_a_body_source_is_still_counted_on_the_occurrence_path() {
+ #8=IFCANNOTATIONFILLAREA(#1,());
+ #9=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#8));
+ #10=IFCREPRESENTATIONMAP($,#9);
+-#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
++#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,$,$);
+ #12=IFCMAPPEDITEM(#10,#11);
+ #13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
+ #14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+@@ -1227,7 +1228,7 @@ fn capped_curve_in_mapped_source_is_reported_and_not_misattributed_to_the_next_i
+ #54=IFCSHELLBASEDSURFACEMODEL((#53));
+ #55=IFCSHAPEREPRESENTATION($,'Body','SurfaceModel',(#54));
+ #60=IFCREPRESENTATIONMAP($,#55);
+-#61=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
++#61=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#3,$,$);
+ #62=IFCMAPPEDITEM(#60,#61);
+ #63=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#62));
+ #64=IFCPRODUCTDEFINITIONSHAPE($,$,(#63));

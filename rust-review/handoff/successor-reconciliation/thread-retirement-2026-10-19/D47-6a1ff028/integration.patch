@@ -1,0 +1,1233 @@
+diff --git a/docs/api/python.md b/docs/api/python.md
+index 107fe364ca..701b1e9fbf 100644
+--- a/docs/api/python.md
++++ b/docs/api/python.md
+@@ -545,7 +545,16 @@ its own mesh bounds.
+   nonblank `Identification`, else `#<id>`. For `IfcPropertySingleValue`,
+   `value_type` is the nominal value's rendered type tag (for example,
+   `IFCLABEL` or `IFCREAL`). For other property kinds, it is the members' shared
+-  type tag or else the property class (`IFCPROPERTYTABLEVALUE`, ...).
++  type tag or else the property class (`IFCPROPERTYTABLEVALUE`, ...). Complex listings use one model budget.
++  A canonical prepass admits last-record source sets in file order and their
++  members in `HasProperties` order, including unlinked/non-inherited sets.
++  Occurrence/type options reuse those decisions; distinct sets and duplicate
++  member positions still spend separately. This adds a full prepass before rows
++  and retains `O(source complex memberships + budgeted payload)` decisions, plus
++  the existing per-property memo and capped decoder cache. Collected output has
++  its own memory cost. This semantic budget is not an RSS bound, and no memory
++  or performance neutrality is implied.
++
+ ### Entity attributes
+ 
+ Note the two senses of "type" on this page. The section below concerns an
+diff --git a/docs/guide/exporting.md b/docs/guide/exporting.md
+index bb992c5fd1..e6ec1a0306 100644
+--- a/docs/guide/exporting.md
++++ b/docs/guide/exporting.md
+@@ -514,6 +514,20 @@ or else the property class (`IFCPROPERTYTABLEVALUE`, ...). Before this,
+ only single values were exported, and sets lost their other entries without
+ a warning.
+ 
++Complex values share one budget per model. Before the first row callback,
++complex memberships are admitted in canonical source-set record order, then
++`HasProperties` order. Only the last record of a duplicated set id participates;
++duplicate member positions and distinct sets still spend separately. Admission
++includes unlinked and non-inherited sets, so occurrence, inherited type and orphan
++type consumers reuse the same decisions as the server. Values retain file units.
++
++This full canonical prepass delays the first callback, even if the consumer then
++stops. It retains complex membership decisions, not whole sets or product rows:
++`O(source complex memberships + budgeted payload)`, in addition to the existing
++per-property memo and capped decoded-entity cache. Materialized exports also
++retain their requested output. The semantic budget is not an RSS bound; no memory
++neutrality or performance neutrality is implied.
++
+ Usage:
+ 
+ ```typescript
+diff --git a/rust/export/tests/fixtures/shared_set_order_7895.json b/rust/export/tests/fixtures/shared_set_order_7895.json
+new file mode 100644
+index 0000000000..9737e7f77d
+--- /dev/null
++++ b/rust/export/tests/fixtures/shared_set_order_7895.json
+@@ -0,0 +1,62 @@
++{
++  "secondSet": "#31=IFCPROPERTYSET('Second00000000000000000',$,'Pset_Second',$,(#22));",
++  "shadowSet": "#31=IFCPROPERTYSET('Stale00000000000000000',$,'STALE_MUST_NOT_APPEAR',$,(#22));",
++  "cases": [
++    {"name": "01-aligned",
++     "types": [],
++     "relationships": ["#40=IFCRELDEFINESBYPROPERTIES('Attach0000000000000000',$,$,$,(#100),#30);", "#41=IFCRELDEFINESBYPROPERTIES('Attach0000000000000001',$,$,$,(#101),#31);"],
++     "shadow": false,
++     "own": [[100, ["Pset_Shared"]], [101, ["Pset_Second"]]],
++     "inherited": [[100, ["Pset_Shared"]], [101, ["Pset_Second"]]],
++     "rowCount": 200},
++    {"name": "02-opposed-products",
++     "types": [],
++     "relationships": ["#40=IFCRELDEFINESBYPROPERTIES('Attach0000000000000000',$,$,$,(#101),#30);", "#41=IFCRELDEFINESBYPROPERTIES('Attach0000000000000001',$,$,$,(#100),#31);"],
++     "shadow": false,
++     "own": [[100, ["Pset_Second"]], [101, ["Pset_Shared"]]],
++     "inherited": [[100, ["Pset_Second"]], [101, ["Pset_Shared"]]],
++     "rowCount": 200},
++    {"name": "03-opposed-products-relations-reordered",
++     "types": [],
++     "relationships": ["#41=IFCRELDEFINESBYPROPERTIES('Attach0000000000000001',$,$,$,(#100),#31);", "#40=IFCRELDEFINESBYPROPERTIES('Attach0000000000000000',$,$,$,(#101),#30);"],
++     "shadow": false,
++     "own": [[100, ["Pset_Second"]], [101, ["Pset_Shared"]]],
++     "inherited": [[100, ["Pset_Second"]], [101, ["Pset_Shared"]]],
++     "rowCount": 200},
++    {"name": "04-same-product-BA",
++     "types": [],
++     "relationships": ["#41=IFCRELDEFINESBYPROPERTIES('Attach0000000000000001',$,$,$,(#100),#31);", "#40=IFCRELDEFINESBYPROPERTIES('Attach0000000000000000',$,$,$,(#100),#30);"],
++     "shadow": false,
++     "own": [[100, ["Pset_Second", "Pset_Shared"]]],
++     "inherited": [[100, ["Pset_Second", "Pset_Shared"]]],
++     "rowCount": 200},
++    {"name": "05-same-product-AB",
++     "types": [],
++     "relationships": ["#40=IFCRELDEFINESBYPROPERTIES('Attach0000000000000000',$,$,$,(#100),#30);", "#41=IFCRELDEFINESBYPROPERTIES('Attach0000000000000001',$,$,$,(#100),#31);"],
++     "shadow": false,
++     "own": [[100, ["Pset_Shared", "Pset_Second"]]],
++     "inherited": [[100, ["Pset_Shared", "Pset_Second"]]],
++     "rowCount": 200},
++    {"name": "06-inherited-first",
++     "types": ["#801=IFCWALLTYPE('Type000000000000000000',$,'Inherited',$,$,(#31),$,$,$,.NOTDEFINED.);"],
++     "relationships": ["#802=IFCRELDEFINESBYTYPE('Typed00000000000000000',$,$,$,(#100),#801);", "#40=IFCRELDEFINESBYPROPERTIES('Attach0000000000000000',$,$,$,(#101),#30);"],
++     "shadow": false,
++     "own": [[101, ["Pset_Shared"]]],
++     "inherited": [[100, ["Pset_Second"]], [101, ["Pset_Shared"]]],
++     "rowCount": 200},
++    {"name": "07-orphan-last",
++     "types": ["#803=IFCWALLTYPE('Orphan0000000000000000',$,'Orphan',$,$,(#30),(#804),$,$,.NOTDEFINED.);", "#804=IFCREPRESENTATIONMAP($,$);"],
++     "relationships": ["#41=IFCRELDEFINESBYPROPERTIES('Attach0000000000000001',$,$,$,(#100),#31);"],
++     "shadow": false,
++     "own": [[100, ["Pset_Second"]], [803, ["Pset_Shared"]]],
++     "inherited": [[100, ["Pset_Second"]], [803, ["Pset_Shared"]]],
++     "rowCount": 201},
++    {"name": "08-opposed-keep-last",
++     "types": [],
++     "relationships": ["#40=IFCRELDEFINESBYPROPERTIES('Attach0000000000000000',$,$,$,(#101),#30);", "#41=IFCRELDEFINESBYPROPERTIES('Attach0000000000000001',$,$,$,(#100),#31);"],
++     "shadow": true,
++     "own": [[100, ["Pset_Second"]], [101, ["Pset_Shared"]]],
++     "inherited": [[100, ["Pset_Second"]], [101, ["Pset_Shared"]]],
++     "rowCount": 200}
++  ]
++}
+diff --git a/rust/export/tests/issue_7895_shared_set_budget.rs b/rust/export/tests/issue_7895_shared_set_budget.rs
+new file mode 100644
+index 0000000000..f8ffa005bf
+--- /dev/null
++++ b/rust/export/tests/issue_7895_shared_set_budget.rs
+@@ -0,0 +1,412 @@
++// SPDX-License-Identifier: MPL-2.0
++//! D47/#7895: a canonical source set spends the model budget once, however
++//! many occurrence, inherited or orphan-type projections consume its values.
++use ifc_lite_core::limits::COMPLEX_PROPERTY_BUDGET_MARKER;
++use ifc_lite_export::{
++    build_export_model, build_export_model_with_options, export_csv, export_jsonld,
++    stream_export_model, CsvMode, CsvOptions, EntityRow, JsonLdOptions, ModelOptions,
++};
++use ifc_lite_processing::data_model::{extract_data_model, DataModel};
++use serde_json::Value;
++use sha2::{Digest, Sha256};
++
++fn vector_case(name: &str) -> Value {
++    let vector: Value = serde_json::from_str(include_str!(
++        "../../../packages/parser/test/fixtures/complex-property-budget-7675.json"
++    )).unwrap();
++    vector["cases"].as_array().unwrap().iter().find(|c| c["name"] == name).unwrap().clone()
++}
++
++fn ids(entries: &Value) -> Vec<u32> {
++    entries.as_array().unwrap().iter().flat_map(|entry| {
++        if let Some(id) = entry.as_u64() { return vec![id as u32]; }
++        let from = entry["from"].as_u64().unwrap() as u32;
++        (from..from + entry["count"].as_u64().unwrap() as u32).collect()
++    }).collect()
++}
++
++fn fixture(case: &Value, extra: &str) -> String {
++    let mut lines = Vec::new();
++    for line in case["dataLines"].as_array().unwrap() {
++        if let Some(line) = line.as_str() { lines.push(line.to_string()); continue; }
++        for i in ids(&serde_json::json!([line])) {
++            for template in line["repeat"].as_array().unwrap() {
++                lines.push(template.as_str().unwrap().replace("{i}", &i.to_string()));
++            }
++        }
++    }
++    format!("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n{}\n{extra}\nENDSEC;\nEND-ISO-10303-21;\n", lines.join("\n"))
++}
++
++fn assert_row(row: &EntityRow, server: &DataModel, case: &Value) {
++    let pins = case["psets"].as_array().unwrap();
++    assert_eq!(row.property_sets.len(), pins.len(), "#{}", row.express_id);
++    for (set, pin) in row.property_sets.iter().zip(pins) {
++        assert_eq!(set.name, pin["name"].as_str().unwrap());
++        let canonical = server.property_sets.iter().find(|s| s.pset_name == set.name).unwrap();
++        assert_eq!(set.properties.len(), canonical.properties.len());
++        for (value, expected) in set.properties.iter().zip(&canonical.properties) {
++            assert_eq!(value.name, expected.property_name);
++            assert_eq!(value.value, expected.property_value, "#{} {}", row.express_id, set.name);
++        }
++    }
++}
++
++fn assert_server_pins(server: &DataModel, case: &Value) {
++    for pin in case["psets"].as_array().unwrap() {
++        let set = server.property_sets.iter().find(|s| s.pset_name == pin["name"].as_str().unwrap()).unwrap();
++        let values: Vec<_> = set.properties.iter().map(|p| p.property_value.as_str()).collect();
++        assert_eq!(values.len() as u64, pin["count"].as_u64().unwrap());
++        if let Some(exact) = pin.get("values") {
++            assert_eq!(serde_json::json!(values), *exact);
++        } else {
++            let joined = values.join("\n");
++            assert_eq!(joined.len() as u64, pin["length"].as_u64().unwrap());
++            assert_eq!(format!("{:x}", Sha256::digest(joined.as_bytes())), pin["sha256"].as_str().unwrap());
++        }
++    }
++}
++
++fn assert_csv(input: &[u8], server: &DataModel, expected_rows: usize) {
++    // These vectors contain no tabs, newlines, quotes or formula prefixes.
++    // A tab delimiter lets us inspect the actual public CSV without a second
++    // implementation of its comma/quote escaping policy.
++    let csv = export_csv(input, CsvMode::Properties, &CsvOptions {
++        delimiter: "\t".into(), ..Default::default()
++    });
++    let mut count = 0;
++    let mut positions = std::collections::HashMap::new();
++    for line in csv.lines().skip(1) {
++        let cells: Vec<_> = line.split('\t').collect();
++        assert_eq!(cells.len(), 8);
++        let set = server.property_sets.iter().find(|s| s.pset_name == cells[4]).unwrap();
++        let position = positions.entry((cells[0], cells[4])).or_insert(0usize);
++        let prop = &set.properties[*position];
++        *position += 1;
++        assert_eq!(cells[5], prop.property_name);
++        assert_eq!(cells[6], prop.property_value, "CSV #{} {}", cells[0], cells[4]);
++        count += 1;
++    }
++    assert_eq!(count, expected_rows);
++}
++
++#[test]
++fn issue_7895_all_200_shared_set_occurrences_equal_the_canonical_server() {
++    let case = vector_case("shared-set");
++    assert_eq!(case["cuts"], 1, "the legitimate original cut is retained");
++    let input = fixture(&case, "");
++    let server = extract_data_model(&input);
++    assert_server_pins(&server, &case);
++    let expected_ids = ids(&case["entityIds"]);
++    assert_eq!(expected_ids.len(), 200);
++    let mut seen = Vec::new();
++    let streamed_units = stream_export_model(input.as_bytes(), |row| {
++        assert_row(&row, &server, &case);
++        seen.push(row.express_id);
++    });
++    assert_eq!(seen, expected_ids);
++    {
++        let built = build_export_model(input.as_bytes());
++        assert_eq!(built.units, streamed_units);
++        assert_eq!(built.entities.len(), 200);
++        for row in &built.entities { assert_row(row, &server, &case); }
++        assert_eq!(built.entities.first().unwrap().property_sets, built.entities.last().unwrap().property_sets);
++    }
++    assert_csv(input.as_bytes(), &server, 200);
++    // Filter only the output: the classified stream still resolves all 200
++    // occurrences, so the last node tests the cached value AND kind metadata.
++    let opts = JsonLdOptions { included: vec![100, 299], ..Default::default() };
++    let doc: Value = serde_json::from_str(&export_jsonld(input.as_bytes(), &opts)).unwrap();
++    let nodes = doc["@graph"].as_array().unwrap();
++    assert_eq!(nodes.len(), 2);
++    for node in nodes {
++        let props = node["ifc:hasPropertySets"][0]["ifc:hasProperties"].as_array().unwrap();
++        assert_eq!(props.len(), 1);
++        assert_eq!(props[0]["@type"], "ifc:IfcComplexProperty");
++        assert_eq!(props[0]["ifc:nominalValue"], server.property_sets[0].properties[0].property_value);
++    }
++}
++
++#[test]
++fn issue_7895_distinct_sets_still_exhaust_and_keep_last_records_still_win() {
++    for name in ["unnamed-member", "duplicated-set-record", "duplicate-records-differ"] {
++        let case = vector_case(name);
++        let input = fixture(&case, "");
++        let server = extract_data_model(&input);
++        assert_server_pins(&server, &case);
++        let built = build_export_model(input.as_bytes());
++        assert_eq!(built.entities.len(), 1);
++        assert_row(&built.entities[0], &server, &case);
++        let mut count = 0;
++        stream_export_model(input.as_bytes(), |row| { assert_row(&row, &server, &case); count += 1; });
++        assert_eq!(count, 1);
++        let n = built.entities[0].property_sets.iter().map(|s| s.properties.len()).sum();
++        assert_csv(input.as_bytes(), &server, n);
++        if name == "unnamed-member" {
++            assert_eq!(built.entities[0].property_sets.last().unwrap().properties[0].value, COMPLEX_PROPERTY_BUDGET_MARKER);
++        }
++    }
++}
++
++#[test]
++fn issue_7895_occurrence_inherited_and_orphan_consumers_reuse_one_decision() {
++    let case = vector_case("shared-set");
++    // Same source set reaches a normal occurrence first, then a different
++    // type's inheritance, then an orphan type product. Geometry is not run.
++    let extra = "#800=IFCWALL('extra',$,'Inherited',$,$,$,$,$,$);\n\
++        #801=IFCWALLTYPE('type',$,'Type',$,$,(#30),$,$,$,.NOTDEFINED.);\n\
++        #802=IFCRELDEFINESBYTYPE('typed',$,$,$,(#800),#801);\n\
++        #803=IFCWALLTYPE('orphan',$,'Orphan',$,$,(#30),(#804),$,$,.NOTDEFINED.);\n\
++        #804=IFCREPRESENTATIONMAP($,$);";
++    let input = fixture(&case, extra);
++    let server = extract_data_model(&input);
++    assert_server_pins(&server, &case);
++    let opts = ModelOptions::default().with_inherit_type_properties(true);
++    let built = build_export_model_with_options(input.as_bytes(), &opts);
++    assert_eq!(built.entities.len(), 202);
++    for row in &built.entities { assert_row(row, &server, &case); }
++    assert_eq!(built.entities[built.entities.len() - 2].express_id, 800);
++    assert_eq!(built.entities.last().unwrap().express_id, 803);
++}
++
++#[test]
++fn issue_7895_cached_and_omitted_complex_rows_preserve_positional_kind_metadata() {
++    use ifc_lite_processing::data_model::property::PropertyKind;
++    use ifc_lite_processing::data_model::rows::stream_export_model_with_property_kinds;
++    let case = vector_case("shared-set");
++    let input = fixture(&case, "#24=IFCPROPERTYSINGLEVALUE('Absent',$,$,$);\n\
++        #25=IFCPROPERTYLISTVALUE('List',$,(IFCLABEL('x')),$);\n\
++        #26=IFCCOMPLEXPROPERTY('',$,'Omitted',(#20));")
++        .replace("'Pset_Shared',$,(#22)", "'Pset_Shared',$,(#24,#22,#26,#25)");
++    let server = extract_data_model(&input);
++    let canonical = &server.property_sets[0].properties[1].property_value;
++    let mut count = 0;
++    stream_export_model_with_property_kinds(input.as_bytes(), |row, kinds| {
++        assert_eq!(kinds, &[vec![PropertyKind::Complex, PropertyKind::List]]);
++        assert_eq!(row.property_sets.len(), 1);
++        let props = &row.property_sets[0].properties;
++        assert_eq!(props.len(), 2);
++        assert_eq!(props[0].value, *canonical);
++        assert_eq!((props[1].name.as_str(), props[1].value.as_str()), ("List", "x"));
++        count += 1;
++    });
++    assert_eq!(count, 200);
++    let opts = JsonLdOptions { included: vec![100, 299], ..Default::default() };
++    let doc: Value = serde_json::from_str(&export_jsonld(input.as_bytes(), &opts)).unwrap();
++    for node in doc["@graph"].as_array().unwrap() {
++        let props = node["ifc:hasPropertySets"][0]["ifc:hasProperties"].as_array().unwrap();
++        assert_eq!(props.len(), 2);
++        assert_eq!(props[0]["@type"], "ifc:IfcComplexProperty");
++        assert_eq!(props[0]["ifc:nominalValue"], *canonical);
++        assert_eq!(props[1]["@type"], "ifc:IfcPropertyListValue");
++        assert_eq!(props[1]["ifc:nominalValue"], "x");
++    }
++}
++
++#[test]
++fn issue_7895_set_decisions_are_local_to_the_input_and_preserve_file_units() {
++    let input = b"ISO-10303-21;
++HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;
++DATA;
++#1=IFCPROJECT('project',$,'P',$,$,$,$,$,#3);
++#2=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
++#3=IFCUNITASSIGNMENT((#2));
++#10=IFCWALL('first',$,'First',$,$,$,$,$,$);
++#11=IFCWALL('last',$,'Last',$,$,$,$,$,$);
++#20=IFCPROPERTYSINGLEVALUE('P',$,IFCLENGTHMEASURE(1000.),$);
++#22=IFCCOMPLEXPROPERTY('Complex',$,'Usage',(#20));
++#30=IFCPROPERTYSET('set',$,'Pset_Shared',$,(#22));
++#40=IFCRELDEFINESBYPROPERTIES('rel',$,$,$,(#10,#11),#30);
++ENDSEC;END-ISO-10303-21;";
++    let first = build_export_model(input);
++    assert_eq!(first.units.length_unit_scale, 0.001);
++    for row in &first.entities {
++        assert_eq!(row.lookup("Pset_Shared", "Complex").as_deref(), Some("P: 1000"));
++    }
++    let other = std::str::from_utf8(input).unwrap().replace("1000.", "2000.");
++    assert_eq!(other.len(), input.len(), "input length is not an identity key");
++    let second = build_export_model(other.as_bytes());
++    assert_eq!(second.units, first.units);
++    for row in &second.entities {
++        assert_eq!(row.lookup("Pset_Shared", "Complex").as_deref(), Some("P: 2000"));
++    }
++    assert_eq!(build_export_model(input).entities, first.entities);
++}
++
++// The eight prepared order cases reuse the normative walk verbatim. Only
++// source-set, relationship and type references vary; no budget math is copied.
++fn order_cases() -> Value {
++    serde_json::from_str(include_str!("fixtures/shared_set_order_7895.json")).unwrap()
++}
++
++fn order_input(case: &Value) -> String {
++    let config = order_cases();
++    let vector = vector_case("shared-set");
++    let mut lines = Vec::new();
++    for line in vector["dataLines"].as_array().unwrap() {
++        let text = line.as_str().unwrap();
++        if text.starts_with("#40=") { continue; }
++        let set = text.starts_with("#30=");
++        if set && case["shadow"] == true { lines.push(config["shadowSet"].as_str().unwrap()); }
++        lines.push(text);
++        if set {
++            lines.push(config["secondSet"].as_str().unwrap());
++            lines.extend(case["types"].as_array().unwrap().iter().map(|t| t.as_str().unwrap()));
++        }
++    }
++    lines.extend(case["relationships"].as_array().unwrap().iter().map(|r| r.as_str().unwrap()));
++    format!("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n{}\nENDSEC;\nEND-ISO-10303-21;\n", lines.join("\n"))
++}
++
++fn order_server(input: &str) -> DataModel {
++    let server = extract_data_model(input);
++    assert_eq!(server.property_sets.iter().map(|s| s.pset_id).collect::<Vec<_>>(), [30, 31]);
++    let first = &server.property_sets[0].properties[0].property_value;
++    let pin = vector_case("shared-set");
++    assert_eq!(first.len() as u64, pin["psets"][0]["length"].as_u64().unwrap());
++    assert_eq!(format!("{:x}", Sha256::digest(first.as_bytes())), pin["psets"][0]["sha256"]);
++    assert_eq!(server.property_sets[1].properties[0].property_value, COMPLEX_PROPERTY_BUDGET_MARKER);
++    server
++}
++
++fn order_value<'a>(server: &'a DataModel, name: &str) -> &'a str {
++    &server.property_sets.iter().find(|s| s.pset_name == name).unwrap().properties[0].property_value
++}
++
++fn order_row(row: &EntityRow, server: &DataModel, case: &Value, inherit: bool) {
++    let shape = case[if inherit { "inherited" } else { "own" }].as_array().unwrap();
++    let names: Vec<_> = shape.iter().find(|r| r[0] == row.express_id)
++        .map(|r| r[1].as_array().unwrap().iter().map(|n| n.as_str().unwrap()).collect())
++        .unwrap_or_default();
++    assert_eq!(row.property_sets.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), names, "{}", case["name"]);
++    for set in &row.property_sets {
++        assert_eq!(set.properties.len(), 1);
++        assert_eq!(set.properties[0].value, order_value(server, &set.name), "{} #{} {}", case["name"], row.express_id, set.name);
++    }
++}
++
++#[test]
++fn issue_7895_canonical_order_build_and_type_options() {
++    for case in order_cases()["cases"].as_array().unwrap() {
++        let input = order_input(case);
++        let server = order_server(&input);
++        for inherit in [false, true] {
++            let opts = ModelOptions::default().with_inherit_type_properties(inherit);
++            let model = if inherit { build_export_model_with_options(input.as_bytes(), &opts) }
++                else { build_export_model(input.as_bytes()) };
++            assert_eq!(model.entities.len() as u64, case["rowCount"].as_u64().unwrap());
++            for row in &model.entities { order_row(row, &server, case, inherit); }
++        }
++    }
++}
++
++#[test]
++fn issue_7895_canonical_order_stream_and_callback_stop() {
++    for case in order_cases()["cases"].as_array().unwrap() {
++        let input = order_input(case);
++        let server = order_server(&input);
++        let mut seen = Vec::new();
++        stream_export_model(input.as_bytes(), |row| { order_row(&row, &server, case, false); seen.push(row.express_id); });
++        let mut expected: Vec<_> = (100..300u32).collect();
++        if case["rowCount"] == 201 { expected.push(803); }
++        assert_eq!(seen, expected);
++        let mut stopped = Vec::new();
++        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++            stream_export_model(input.as_bytes(), |row| { stopped.push(row.express_id); panic!("consumer stopped"); });
++        }));
++        assert!(result.is_err());
++        assert_eq!(stopped, [100], "no callbacks after the consumer stops");
++    }
++}
++
++#[test]
++fn issue_7895_canonical_order_csv() {
++    for case in order_cases()["cases"].as_array().unwrap() {
++        let input = order_input(case);
++        let server = order_server(&input);
++        assert_csv(input.as_bytes(), &server, if case["name"] == "06-inherited-first" { 1 } else { 2 });
++    }
++}
++
++#[test]
++fn issue_7895_canonical_order_jsonld_classes() {
++    for case in order_cases()["cases"].as_array().unwrap() {
++        let input = order_input(case);
++        let server = order_server(&input);
++        let opts = JsonLdOptions { included: vec![100, 101, 803], ..Default::default() };
++        let doc: Value = serde_json::from_str(&export_jsonld(input.as_bytes(), &opts)).unwrap();
++        let mut count = 0;
++        for node in doc["@graph"].as_array().unwrap() {
++            let Some(sets) = node["ifc:hasPropertySets"].as_array() else { continue };
++            for set in sets {
++                let props = set["ifc:hasProperties"].as_array().unwrap();
++                assert_eq!(props.len(), 1);
++                assert_eq!(props[0]["@type"], "ifc:IfcComplexProperty");
++                assert_eq!(props[0]["ifc:nominalValue"], order_value(&server, set["ifc:name"].as_str().unwrap()));
++                count += 1;
++            }
++        }
++        assert_eq!(count, if case["name"] == "06-inherited-first" { 1 } else { 2 });
++    }
++}
++
++#[test]
++fn issue_7895_canonical_unlinked_and_malformed_members_still_spend() {
++    let case = &order_cases()["cases"][1];
++    let input = order_input(case);
++    let unlinked = input.replace(case["relationships"][0].as_str().unwrap(), "");
++    let server = order_server(&unlinked);
++    let model = build_export_model(unlinked.as_bytes());
++    assert_eq!(model.entities[0].lookup("Pset_Second", "Wide").as_deref(), Some(order_value(&server, "Pset_Second")));
++    assert!(model.entities[1].property_sets.is_empty());
++    // An earlier type-only set still spends when inheritance is disabled.
++    let typed = &order_cases()["cases"][5];
++    let own_second = order_input(typed).replace("'Inherited',$,$,(#31)", "'Inherited',$,$,(#30)")
++        .replace(typed["relationships"][1].as_str().unwrap(),
++            &typed["relationships"][1].as_str().unwrap().replace(",#30);", ",#31);"));
++    let server = order_server(&own_second);
++    for inherit in [false, true] {
++        let opts = ModelOptions::default().with_inherit_type_properties(inherit);
++        let model = build_export_model_with_options(own_second.as_bytes(), &opts);
++        assert_eq!(model.entities[1].lookup("Pset_Second", "Wide").as_deref(), Some(order_value(&server, "Pset_Second")));
++    }
++    // Non-ref, dangling ref and non-property are skipped individually. Raw
++    // positions and duplicated valid memberships still pay separately.
++    let vector = vector_case("shared-set");
++    let invalid = vector["dataLines"].as_array().unwrap().iter().filter_map(Value::as_str)
++        .find(|line| line.starts_with("#22=")).unwrap()
++        .replacen("#22=IFCCOMPLEXPROPERTY('Wide',", "#23=IFCCOMPLEXPROPERTY($,", 1);
++    let malformed = input.replace("'Pset_Shared',$,(#22)", "'Pset_Shared',$,($,#999999,#1,#23,#22,#22)")
++        .replace("'Pset_Second',$,(#22)", "'Pset_Second',$,(#999999,#22)")
++        .replace("\nENDSEC;\nEND-ISO", &format!("\n{invalid}\nENDSEC;\nEND-ISO"));
++    let server = order_server(&malformed);
++    assert_eq!(server.property_sets[0].properties.len(), 2);
++    assert_eq!(server.property_sets[0].properties[1].property_value, COMPLEX_PROPERTY_BUDGET_MARKER);
++    let model = build_export_model(malformed.as_bytes());
++    for row in &model.entities {
++        for set in &row.property_sets {
++            let canonical = server.property_sets.iter().find(|s| s.pset_name == set.name).unwrap();
++            assert_eq!(set.properties.iter().map(|p| &p.value).collect::<Vec<_>>(),
++                canonical.properties.iter().map(|p| &p.property_value).collect::<Vec<_>>());
++        }
++    }
++    assert_eq!(model.entities[0].property_sets.len(), 1);
++    assert_eq!(model.entities[1].property_sets[0].properties.len(), 2);
++    assert_csv(malformed.as_bytes(), &server, 3);
++    let opts = JsonLdOptions { included: vec![100, 101], ..Default::default() };
++    let doc: Value = serde_json::from_str(&export_jsonld(malformed.as_bytes(), &opts)).unwrap();
++    let mut count = 0;
++    for node in doc["@graph"].as_array().unwrap() {
++        for set in node["ifc:hasPropertySets"].as_array().unwrap() {
++            let canonical = server.property_sets.iter().find(|s| s.pset_name == set["ifc:name"].as_str().unwrap()).unwrap();
++            let props = set["ifc:hasProperties"].as_array().unwrap();
++            assert_eq!(props.len(), canonical.properties.len());
++            for (prop, expected) in props.iter().zip(&canonical.properties) {
++                assert_eq!(prop["@type"], "ifc:IfcComplexProperty");
++                assert_eq!(prop["ifc:nominalValue"], expected.property_value);
++                count += 1;
++            }
++        }
++    }
++    assert_eq!(count, 3);
++}
+diff --git a/rust/processing/src/data_model/mod.rs b/rust/processing/src/data_model/mod.rs
+index 3029289bf4..91f78d326b 100644
+--- a/rust/processing/src/data_model/mod.rs
++++ b/rust/processing/src/data_model/mod.rs
+@@ -19,6 +19,7 @@ pub mod spatial_walk;
+ pub mod type_assignments;
+ mod inherit;
+ mod properties;
++mod property_budget;
+ mod property_value;
+ mod quantities;
+ mod relationships;
+diff --git a/rust/processing/src/data_model/properties.rs b/rust/processing/src/data_model/properties.rs
+index 204af47c6b..e23af1bfb5 100644
+--- a/rust/processing/src/data_model/properties.rs
++++ b/rust/processing/src/data_model/properties.rs
+@@ -5,16 +5,16 @@
+ //! Property set extraction.
+ 
+ use super::property_value::{
+-    fmt_number, infer_data_type, member_list, property_reference_label, shared_member_type, resolve_complex_property_value,
+-    resolve_single_value, spent_listing,
++    fmt_number, infer_data_type, member_list, property_reference_label, shared_member_type,
++    resolve_single_value,
+ };
+-use ifc_lite_core::limits::{complex_property_listing_bytes, ComplexPropertyBudget};
++use ifc_lite_core::limits::ComplexPropertyBudget;
++use super::property_budget::{admit_complex_set, apply_listing, canonical_sets, visit_members, ComplexMemo};
+ use ifc_lite_core::IfcType;
+ use super::jobs::SplitDecoder;
+ use super::types::{EntityJob, Property, PropertySet};
+ use ifc_lite_core::{DecodedEntity, EntityDecoder};
+ use rayon::prelude::*;
+-use std::collections::HashMap;
+ use std::sync::Arc;
+ 
+ /// Extract all property sets and their properties.
+@@ -30,14 +30,11 @@ pub(super) fn extract_properties(
+     // browser's store pass read it. An earlier record with the id is not a
+     // set, so it neither adds a second set nor spends the complex-property
+     // budget twice (#7675).
+-    let pset_jobs: Vec<_> = jobs
+-        .iter()
+-        .filter(|job| entity_index.get(&job.id).is_some_and(|&(start, _)| start == job.start))
+-        .collect();
++    let pset_jobs: Vec<_> = canonical_sets(jobs.iter().copied(), entity_index).collect();
+ 
+     tracing::debug!(count = pset_jobs.len(), "Extracting property sets");
+ 
+-    let mut sets: Vec<(PropertySet, Vec<(usize, u32)>)> = pset_jobs
++    let mut sets: Vec<(PropertySet, Vec<(usize, usize)>)> = pset_jobs
+         .par_iter()
+         .map_init(
+             || SplitDecoder::new(content, entity_index),
+@@ -61,24 +58,16 @@ pub(super) fn extract_properties(
+                 // falling through with an empty `properties`) rather than
+                 // discarding the pset outright. Match that: treat a missing/
+                 // malformed list as empty rather than bailing on `?`.
+-                let has_properties = entity.get_list(4).unwrap_or(&[]);
+-
+                 let mut properties = Vec::new();
+                 let mut complex = Vec::new();
+-
+-                // Extract properties from HasProperties list
+-                for prop_ref in has_properties.iter() {
+-                    if let Some(prop_id) = prop_ref.as_entity_ref() {
+-                        if let Ok(prop_entity) = local_decoder.decode_by_id(prop_id) {
+-                            if let Some(prop) = extract_property(&prop_entity, local_decoder) {
+-                                if prop_entity.ifc_type == IfcType::IfcComplexProperty {
+-                                    complex.push((properties.len(), prop_id));
+-                                }
+-                                properties.push(prop);
+-                            }
++                visit_members(&entity, local_decoder, |position, member, decoder| {
++                    if let Some(prop) = extract_property(member, decoder) {
++                        if member.ifc_type == IfcType::IfcComplexProperty {
++                            complex.push((properties.len(), position));
+                         }
++                        properties.push(prop);
+                     }
+-                }
++                });
+ 
+                 // A PropertySet with a real Name is real evidence the file links
+                 // this element to it, even when every member failed to resolve
+@@ -117,7 +106,7 @@ pub(super) fn extract_properties(
+ /// every run and in every copy. Real models carry few complex properties, so
+ /// the pass is sequential.
+ fn resolve_complex_properties(
+-    sets: &mut [(PropertySet, Vec<(usize, u32)>)],
++    sets: &mut [(PropertySet, Vec<(usize, usize)>)],
+     content: &[u8],
+     entity_index: &Arc<ifc_lite_core::EntityIndex>,
+ ) {
+@@ -130,9 +119,14 @@ fn resolve_complex_properties(
+     // charged what it keeps (`ComplexPropertyBudget::listing`).
+     let mut memo = ComplexMemo::new();
+     for (set, complex) in sets.iter_mut() {
+-        for &(index, prop_id) in complex.iter() {
+-            resolve_complex_into(&mut set.properties[index], prop_id, &mut decoder, &mut budget, &mut memo);
+-        }
++        if complex.is_empty() { continue; }
++        let Ok(def) = decoder.decode_by_id(set.pset_id) else { continue };
++        let mut targets = complex.iter();
++        admit_complex_set(&def, &mut decoder, &mut budget, &mut memo, |position, listing| {
++            let &(index, source_position) = targets.next().expect("same canonical membership pass");
++            debug_assert_eq!(position, source_position);
++            apply_listing(&mut set.properties[index], listing);
++        });
+     }
+     if budget.cuts() > 0 {
+         tracing::warn!(
+@@ -143,38 +137,6 @@ fn resolve_complex_properties(
+     }
+ }
+ 
+-/// A complex property's resolved listing, as the budget memoises it.
+-pub(super) type ComplexMemo = HashMap<u32, (ComplexListing, usize)>;
+-type ComplexListing = (String, String, Option<String>, Option<Vec<String>>);
+-
+-/// Resolve one `IfcComplexProperty` (`prop_id`) into `property` under the
+-/// model's `budget`. The one step both the server's ordered pass above and
+-/// `property::PropertyDecoder` take, so a complex value is charged and cut
+-/// the same way wherever it is read.
+-pub(super) fn resolve_complex_into(
+-    property: &mut Property,
+-    prop_id: u32,
+-    decoder: &mut EntityDecoder,
+-    budget: &mut ComplexPropertyBudget,
+-    memo: &mut ComplexMemo,
+-) {
+-    let Ok(entity) = decoder.decode_by_id(prop_id) else { return };
+-    let (value, kind, data_type, values) = budget.listing(
+-        memo,
+-        prop_id,
+-        |budget| {
+-            let resolved = resolve_complex_property_value(&entity, decoder, budget);
+-            let bytes = complex_property_listing_bytes(&resolved.0, resolved.3.as_deref().unwrap_or_default());
+-            (resolved, bytes)
+-        },
+-        spent_listing,
+-    );
+-    property.property_value = value;
+-    property.property_type = kind;
+-    property.data_type = data_type;
+-    property.values = values;
+-}
+-
+ /// Extract a single property from IfcProperty entity.
+ ///
+ /// Mirrors the WASM path's `parsePropertyValue`
+@@ -331,7 +293,7 @@ fn read_property(entity: &DecodedEntity, decoder: &mut EntityDecoder, property_n
+         // when no nested member resolves. Recurses into further nested
+         // IFCCOMPLEXPROPERTY members up to the same depth cap as the TS side.
+         //
+-        // Resolved by `resolve_complex_properties` after the parallel pass, in
++        // Resolved by canonical admission after the parallel pass, in
+         // set order, so the shared output budget cuts the same property on
+         // every run (#7675). Until then the value is empty.
+         "IFCCOMPLEXPROPERTY" => (String::new(), "null".into(), None, None),
+diff --git a/rust/processing/src/data_model/property.rs b/rust/processing/src/data_model/property.rs
+index cad2937b24..43bdd53321 100644
+--- a/rust/processing/src/data_model/property.rs
++++ b/rust/processing/src/data_model/property.rs
+@@ -18,10 +18,14 @@
+ //! [`ComplexPropertyBudget`] and its per-id memo, so no caller can walk an
+ //! `IfcComplexProperty` without them (the k^8 fan-out #7675 closed).
+ 
+-use super::properties::{extract_property, resolve_complex_into, ComplexMemo};
++use super::properties::extract_property;
++use super::property_budget::{
++    admit_complex_set, apply_listing, canonical_sets, resolve_listing, visit_members,
++    ComplexMemo, SetListingMemo, PSET_CACHE_CAP,
++};
+ use super::types::Property;
+ use ifc_lite_core::limits::ComplexPropertyBudget;
+-use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcType};
++use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, EntityIndex, EntityScanner, IfcType};
+ 
+ /// The seven `IfcProperty` subtypes a property set lists.
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+@@ -115,13 +119,25 @@ pub struct PropertyDecoder {
+     scope: PropertyScope,
+     budget: ComplexPropertyBudget,
+     memo: ComplexMemo,
++    // Only complex listings depend on the remaining model budget. Retain their
++    // decided values by (canonical set id, member position), not by consumer or
++    // property id: different sets (and duplicate members) still cost listings.
++    // Scope is immutable and this memo lives for one input/extraction only.
++    // No occurrence rows or non-complex values are retained; complex payloads
++    // are bounded by the existing model budget, plus refused-listing markers
++    // and one entry per source membership. Never evict a budget decision.
++    set_listings: SetListingMemo,
++    canonical_admitted: bool,
+ }
+ 
+ impl PropertyDecoder {
+     /// A decoder for a model of `input_len` bytes. The budget is per model,
+     /// so build one per export or extraction, not one per set.
+     pub fn for_input(input_len: usize, scope: PropertyScope) -> Self {
+-        Self { scope, budget: ComplexPropertyBudget::for_input(input_len), memo: ComplexMemo::new() }
++        Self {
++            scope, budget: ComplexPropertyBudget::for_input(input_len), memo: ComplexMemo::new(),
++            set_listings: SetListingMemo::new(), canonical_admitted: false,
++        }
+     }
+ 
+     pub fn scope(&self) -> PropertyScope {
+@@ -133,30 +149,52 @@ impl PropertyDecoder {
+         self.budget.cuts()
+     }
+ 
+-    /// Decode one `IfcPropertySet`. `None` when `HasProperties` (attribute 4)
+-    /// is absent or a member list does not resolve; a member that is not in
+-    /// scope, or does not decode, is left out and the set keeps the rest.
+-    ///
+-    /// Complex properties are charged to the budget in the order the sets
+-    /// are decoded, so the property a budget cuts is the same on every run
+-    /// for one decoding order.
++    /// Admit only complex source memberships, before any export callback. The
++    /// caller already owns these exact bytes/index; no core accessor/API is needed.
++    /// This full prepass includes unlinked and non-inherited sets. It retains
++    /// decisions, not set/product rows, and preserves the evictable cache cap.
++    pub(super) fn admit_canonical(
++        &mut self, content: &[u8], index: &EntityIndex, decoder: &mut EntityDecoder,
++    ) {
++        if self.canonical_admitted || self.scope == PropertyScope::SingleValueOnly { return; }
++        let mut scanner = EntityScanner::new(content);
++        let jobs = std::iter::from_fn(|| scanner.next_entity()).map(|(id, type_name, start, end)| {
++            super::types::EntityJob { id, type_name, start, end }
++        });
++        for job in canonical_sets(jobs, index) {
++            if let Ok(def) = decoder.decode_at_uncached(job.start, job.end) {
++                admit_complex_set(&def, decoder, &mut self.budget, &mut self.memo, |position, listing| {
++                    self.set_listings.insert((def.id, position), listing);
++                });
++            }
++            if decoder.cache_size() > PSET_CACHE_CAP { decoder.clear_entity_cache(); }
++        }
++        self.canonical_admitted = true;
++    }
++
++    /// Decode a canonical keep-last set from this input. `None` for missing or
++    /// non-list HasProperties; dangling/non-property members of a list are
++    /// skipped individually, in their original positions, like server extraction.
++    /// The row stream admits all complex listings in canonical source order
++    /// first. A standalone `for_input` decoder instead admits in its caller's
++    /// decoding order; reuse never charges a decided membership again.
+     pub fn decode_set(&mut self, decoder: &mut EntityDecoder, def: &DecodedEntity) -> Option<PropertySetRow> {
+         let name = def.string_at(slot::IfcPropertySet::NAME).map(str::to_string);
+-        let members = decoder.resolve_ref_list(def.attr(slot::IfcPropertySet::HAS_PROPERTIES)?).ok()?;
++        def.attr(slot::IfcPropertySet::HAS_PROPERTIES)?.as_list()?;
+         let mut properties = Vec::new();
+-        for member in &members {
+-            let Some(kind) = PropertyKind::of(&member.ifc_type) else { continue };
+-            if self.scope == PropertyScope::SingleValueOnly && kind != PropertyKind::Single {
+-                continue;
++        visit_members(def, decoder, |position, member, decoder| {
++            let Some(kind) = PropertyKind::of(&member.ifc_type) else { return };
++            if self.scope == PropertyScope::SingleValueOnly && kind != PropertyKind::Single { return; }
++            if let Some(row) = self.decode_property(decoder, member, kind, (def.id, position)) {
++                properties.push(row);
+             }
+-            let Some(row) = self.decode_property(decoder, member, kind) else { continue };
+-            properties.push(row);
+-        }
++        });
+         Some(PropertySetRow { id: def.id, name, properties })
+     }
+ 
+     fn decode_property(
+         &mut self, decoder: &mut EntityDecoder, entity: &DecodedEntity, kind: PropertyKind,
++        listing: (u32, usize),
+     ) -> Option<PropertyRow> {
+         if kind == PropertyKind::Single && self.scope != PropertyScope::AllKinds {
+             let name = entity.string_at(slot::IfcPropertySingleValue::NAME)?.to_string();
+@@ -164,7 +202,16 @@ impl PropertyDecoder {
+         }
+         let mut display = extract_property(entity, decoder)?;
+         if kind == PropertyKind::Complex {
+-            resolve_complex_into(&mut display, entity.id, decoder, &mut self.budget, &mut self.memo);
++            let decided = if let Some(value) = self.set_listings.get(&listing) {
++                value.clone()
++            } else if !self.canonical_admitted {
++                let value = resolve_listing(entity, decoder, &mut self.budget, &mut self.memo);
++                self.set_listings.insert(listing, value.clone());
++                value
++            } else {
++                return None; // No projection may admit a new listing after the canonical pass.
++            };
++            apply_listing(&mut display, decided);
+         }
+         let nominal = if kind == PropertyKind::Single { entity.attr(slot::IfcPropertySingleValue::NOMINAL_VALUE).cloned() } else { None };
+         Some(PropertyRow { name: display.property_name.clone(), kind, nominal, display: Some(display) })
+diff --git a/rust/processing/src/data_model/property_budget.rs b/rust/processing/src/data_model/property_budget.rs
+new file mode 100644
+index 0000000000..ca1637ccff
+--- /dev/null
++++ b/rust/processing/src/data_model/property_budget.rs
+@@ -0,0 +1,80 @@
++// SPDX-License-Identifier: MPL-2.0
++//! Canonical complex-membership admission, shared by tables and row projections.
++use super::properties::extract_property;
++use super::property_value::{resolve_complex_property_value, spent_listing};
++use super::types::{EntityJob, Property};
++use ifc_lite_core::limits::{complex_property_listing_bytes, ComplexPropertyBudget};
++use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, EntityIndex, IfcType};
++use std::borrow::Borrow;
++use std::collections::HashMap;
++
++// The existing row-decoder cap, also used during canonical admission. Decisions
++// below have a separate, non-evictable lifetime; clearing entities cannot recharge.
++pub(super) const PSET_CACHE_CAP: usize = 1 << 18;
++pub(super) type ComplexListing = (String, String, Option<String>, Option<Vec<String>>);
++pub(super) type ComplexMemo = HashMap<u32, (ComplexListing, usize)>;
++pub(super) type SetListingMemo = HashMap<(u32, usize), ComplexListing>;
++
++/// Preserve incoming source order, admitting only canonical LAST set records.
++/// Tables pass their existing job bucket; streaming passes a lazy source scan.
++pub(super) fn canonical_sets<'source: 'scan, 'scan, J>(
++    jobs: impl Iterator<Item = J> + 'scan, index: &'scan EntityIndex,
++) -> impl Iterator<Item = J> + 'scan
++where
++    J: Borrow<EntityJob<'source>> + 'scan,
++{
++    jobs.filter(move |candidate| {
++        let job: &EntityJob<'source> = candidate.borrow();
++        job.type_name.eq_ignore_ascii_case("IFCPROPERTYSET")
++            && index.get(&job.id).is_some_and(|&(start, _)| start == job.start)
++    })
++}
++
++/// One membership validity/order rule: skip failed refs individually, preserving
++/// raw HasProperties positions (including non-refs, omitted and duplicate members).
++pub(super) fn visit_members(
++    def: &DecodedEntity, decoder: &mut EntityDecoder,
++    mut visit: impl FnMut(usize, &DecodedEntity, &mut EntityDecoder),
++) {
++    let members = def.attr(slot::IfcPropertySet::HAS_PROPERTIES).and_then(|v| v.as_list()).unwrap_or(&[]);
++    for (position, member) in members.iter().enumerate() {
++        let Some(id) = member.as_entity_ref() else { continue };
++        let Ok(entity) = decoder.decode_by_id(id) else { continue };
++        visit(position, &entity, decoder);
++    }
++}
++
++/// Only complex values depend on the model budget. Validate through the existing
++/// property decoder before spending; an unnamed nested member still costs its
++/// walk, while an invalid top-level property is omitted just as in the tables.
++pub(super) fn admit_complex_set(
++    def: &DecodedEntity, decoder: &mut EntityDecoder,
++    budget: &mut ComplexPropertyBudget, memo: &mut ComplexMemo,
++    mut admit: impl FnMut(usize, ComplexListing),
++) {
++    visit_members(def, decoder, |position, entity, decoder| {
++        if entity.ifc_type == IfcType::IfcComplexProperty && extract_property(entity, decoder).is_some() {
++            admit(position, resolve_listing(entity, decoder, budget, memo));
++        }
++    });
++}
++
++/// The original listing/resolve/charge policy, once per canonical membership.
++/// Distinct sets and duplicate member positions still pay for retained listings.
++pub(super) fn resolve_listing(
++    entity: &DecodedEntity, decoder: &mut EntityDecoder,
++    budget: &mut ComplexPropertyBudget, memo: &mut ComplexMemo,
++) -> ComplexListing {
++    budget.listing(memo, entity.id, |budget| {
++        let resolved = resolve_complex_property_value(entity, decoder, budget);
++        let bytes = complex_property_listing_bytes(&resolved.0, resolved.3.as_deref().unwrap_or_default());
++        (resolved, bytes)
++    }, spent_listing)
++}
++
++pub(super) fn apply_listing(property: &mut Property, (value, kind, data_type, values): ComplexListing) {
++    property.property_value = value;
++    property.property_type = kind;
++    property.data_type = data_type;
++    property.values = values;
++}
+diff --git a/rust/processing/src/data_model/property_tests.rs b/rust/processing/src/data_model/property_tests.rs
+index 4ab94a89ca..c3f777e3a6 100644
+--- a/rust/processing/src/data_model/property_tests.rs
++++ b/rust/processing/src/data_model/property_tests.rs
+@@ -154,3 +154,62 @@ fn the_shared_budget_vector_reads_the_same_through_the_decoder() {
+         assert_eq!(decoded, server_sets(&extract_data_model(&ifc)), "{name}");
+     }
+ }
++
++/// #7895: repeating a source set must reuse its decided listings, including
++/// refused listings and duplicate HasProperties members. Different source
++/// sets still spend under the one global budget, as the vector pins.
++#[test]
++fn repeated_sets_do_not_spend_again_7895() {
++    let vector: serde_json::Value = serde_json::from_str(include_str!(
++        "../../../../packages/parser/test/fixtures/complex-property-budget-7675.json"
++    )).unwrap();
++    for scope in [PropertyScope::Flat, PropertyScope::AllKinds] {
++        for case in vector["cases"].as_array().unwrap() {
++            let ifc = file(&expand_budget_lines(&case["dataLines"]).join("\n"));
++            let (mut props, sets) = decode_all(&ifc, scope);
++            let cuts = props.cuts();
++            if let Some(expected) = case["cuts"].as_u64() {
++                assert_eq!(cuts as u64, expected, "{}", case["name"]);
++            }
++            let mut decoder = EntityDecoder::with_arc_index(ifc.as_bytes(), Arc::new(build_entity_index(ifc.as_bytes())));
++            for set in &sets {
++                let def = decoder.decode_by_id(set.id).unwrap();
++                let again = props.decode_set(&mut decoder, &def).unwrap();
++                assert_eq!(again.name, set.name);
++                assert_eq!(again.properties.len(), set.properties.len());
++                for (a, b) in again.properties.iter().zip(&set.properties) {
++                    assert_eq!(a.kind, b.kind);
++                    assert_eq!(a.display.as_ref().map(shown), b.display.as_ref().map(shown));
++                }
++            }
++            assert_eq!(props.cuts(), cuts, "reusing {} listings", case["name"]);
++        }
++    }
++}
++
++/// #7895: Name is not set identity, nor is the complex-property id. Two
++/// different sets listing the same complex property still pay twice even
++/// when both sets have the same Name.
++#[test]
++fn same_named_distinct_sets_still_pay_for_their_listings_7895() {
++    let vector: serde_json::Value = serde_json::from_str(include_str!(
++        "../../../../packages/parser/test/fixtures/complex-property-budget-7675.json"
++    )).unwrap();
++    let case = vector["cases"].as_array().unwrap().iter().find(|c| c["name"] == "shared-set").unwrap();
++    let mut lines = expand_budget_lines(&case["dataLines"]);
++    lines.push("#31=IFCPROPERTYSET('other',$,'Pset_Shared',$,(#22));".into());
++    let ifc = file(&lines.join("\n"));
++    let (mut props, sets) = decode_all(&ifc, PropertyScope::Flat);
++    assert_eq!(sets.len(), 2);
++    assert_eq!(sets[0].name, sets[1].name);
++    let value = |s: &PropertySetRow| s.properties[0].display.as_ref().unwrap().property_value.clone();
++    assert!(value(&sets[0]).len() > 500_000);
++    assert_eq!(value(&sets[1]), ifc_lite_core::limits::COMPLEX_PROPERTY_BUDGET_MARKER);
++    let cuts = props.cuts();
++    let mut decoder = EntityDecoder::with_arc_index(ifc.as_bytes(), Arc::new(build_entity_index(ifc.as_bytes())));
++    for set in &sets {
++        let def = decoder.decode_by_id(set.id).unwrap();
++        assert_eq!(value(&props.decode_set(&mut decoder, &def).unwrap()), value(set));
++    }
++    assert_eq!(props.cuts(), cuts);
++}
+diff --git a/rust/processing/src/data_model/render/flat.rs b/rust/processing/src/data_model/render/flat.rs
+index 460b34e1c2..30597eb383 100644
+--- a/rust/processing/src/data_model/render/flat.rs
++++ b/rust/processing/src/data_model/render/flat.rs
+@@ -141,8 +141,8 @@ pub fn ref_list(av: Option<&AttributeValue>) -> Vec<u32> {
+ /// display string the server and the viewer show, typed `kind = Text` with
+ /// `value_type` = the members' shared type tag, else the property class
+ /// keyword ([`flat_property`]). Complex properties are walked under the
+-/// model's one complex-property budget (#7675), charged in the order the
+-/// stream decodes the sets.
++/// model's one complex-property budget (#7675), admitted in canonical source
++/// set order before the first projected row.
+ pub const EXPORT_PROPERTY_SCOPE: PropertyScope = PropertyScope::Flat;
+ 
+ /// The model's property decoder: one per export, so one complex-property
+@@ -151,6 +151,15 @@ pub fn new_property_decoder(input_len: usize) -> PropertyDecoder {
+     PropertyDecoder::for_input(input_len, EXPORT_PROPERTY_SCOPE)
+ }
+ 
++/// The row stream's private constructor: values are independent of consumer order.
++pub(in crate::data_model) fn canonical_property_decoder(
++    content: &[u8], index: &ifc_lite_core::EntityIndex, decoder: &mut EntityDecoder,
++) -> PropertyDecoder {
++    let mut props = new_property_decoder(content.len());
++    props.admit_canonical(content, index, decoder);
++    props
++}
++
+ /// One decoded property in the flat exports' shape; `None` for a nameless
+ /// property or one with no value to show.
+ pub fn flat_property(row: &PropertyRow) -> Option<PropValue> {
+diff --git a/rust/processing/src/data_model/rows/mod.rs b/rust/processing/src/data_model/rows/mod.rs
+index 86e2d28e32..c608c6fe65 100644
+--- a/rust/processing/src/data_model/rows/mod.rs
++++ b/rust/processing/src/data_model/rows/mod.rs
+@@ -30,8 +30,9 @@ pub use options::{ModelOptions, Placement};
+ pub use ifc_lite_core::fmt_num::fmt_num;
+ use super::inherit::merge_inherited;
+ use super::type_assignments::TypeAssignments;
+-use super::render::flat::{new_property_decoder, opt_string, ref_list, render_attributes, resolve_pset_defs, resolve_pset_defs_with_kinds};
++use super::render::flat::{canonical_property_decoder, opt_string, ref_list, render_attributes, resolve_pset_defs, resolve_pset_defs_with_kinds};
+ use super::property::PropertyKind;
++use super::property_budget::PSET_CACHE_CAP;
+ 
+ mod classified;
+ pub use classified::{stream_export_model_with_options, stream_export_model_with_property_kinds};
+@@ -66,12 +67,13 @@ pub fn build_export_model_with_options(content: &[u8], opts: &ModelOptions) -> E
+ /// Stream one [`EntityRow`] per `IfcProduct` occurrence, in file order, invoking
+ /// `f` for each row and then dropping it.
+ ///
+-/// Unlike [`build_export_model`], this never retains all rows and never caches the
+-/// non-product entities (cartesian points, directions, index lists, …) that make
+-/// up the bulk of a STEP file. Peak working set is bounded by the entity index
+-/// plus the property side-map (both O(products)), so a model with tens of millions
+-/// of entities extracts in a few GB instead of exhausting memory. Output is the
+-/// caller's responsibility to stream onwards (e.g. to S3/Parquet) and drop.
++/// Decoded-entity retention is capped, and callback rows are dropped after
++/// delivery. Before the first callback, a complete canonical complex-membership
++/// prepass includes unlinked and non-inherited sets. This delays first delivery
++/// even when the consumer then stops. Persistent decisions cost
++/// `O(source complex memberships + budgeted payload)`, alongside the input index,
++/// link maps, type-set memo and capped decoder cache. Collecting callbacks adds
++/// output-proportional memory; the semantic budget is not an RSS bound.
+ pub fn stream_export_model(content: &[u8], f: impl FnMut(EntityRow)) -> UnitScales {
+     // Parallel on native (byte-identical to `build_entity_index`), serial on wasm.
+     let entity_index = Arc::new(crate::build_entity_index_parallel(content));
+@@ -111,10 +113,9 @@ fn stream_rows(
+     // speed. Cap that cache so it can't grow without bound across millions of
+     // products; clearing only forces a re-decode of a shared set, never affects
+     // correctness.
+-    const PSET_CACHE_CAP: usize = 1 << 18; // 262_144 entries
+ 
+     let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
+-    let mut props = new_property_decoder(content.len());
++    let mut props = canonical_property_decoder(content, entity_index, &mut decoder);
+     // Pass 1 — one scan that collects, uncached (each entity visited once here):
+     //   • object → attached property/quantity definitions (IfcRelDefinesByProperties),
+     //   • the #957/#1518 type-product orphan-geometry bookkeeping, mirroring the
+diff --git a/rust/processing/tests/function_length_allowlist.txt b/rust/processing/tests/function_length_allowlist.txt
+index 4077a39b54..70d3f9d3d6 100644
+--- a/rust/processing/tests/function_length_allowlist.txt
++++ b/rust/processing/tests/function_length_allowlist.txt
+@@ -29,7 +29,7 @@
+    159 rust/export/src/gltf.rs push_mesh_quantized
+    158 rust/export/src/gltf.rs write_bounded_glb
+    260 rust/export/src/merged/mod.rs export_merged_models
+-   328 rust/processing/src/data_model/rows/mod.rs stream_rows
++   321 rust/processing/src/data_model/rows/mod.rs stream_rows
+    269 rust/export/src/rebar_schedule_build.rs build_rebar_schedule_impl
+    238 rust/export/src/step.rs emit
+    178 rust/export/src/step_log/write.rs emit
+diff --git a/rust/processing/tests/positional_read_allowlist.txt b/rust/processing/tests/positional_read_allowlist.txt
+index bafa8cf34f..90443831c0 100644
+--- a/rust/processing/tests/positional_read_allowlist.txt
++++ b/rust/processing/tests/positional_read_allowlist.txt
+@@ -128,7 +128,7 @@
+ 14 rust/processing/src/data_model/documents.rs
+ 10 rust/processing/src/data_model/materials.rs
+ 1 rust/processing/src/data_model/mod.rs
+-19 rust/processing/src/data_model/properties.rs
++18 rust/processing/src/data_model/properties.rs
+ 3 rust/processing/src/data_model/property_value.rs
+ 5 rust/processing/src/data_model/quantities.rs
+ 1 rust/processing/src/data_model/relationships.rs
+diff --git a/rust/python/tests/test_shared_set_budget.py b/rust/python/tests/test_shared_set_budget.py
+new file mode 100644
+index 0000000000..c28ce08b07
+--- /dev/null
++++ b/rust/python/tests/test_shared_set_budget.py
+@@ -0,0 +1,143 @@
++# SPDX-License-Identifier: MPL-2.0
++"""D47/#7895: public wheel consumer of the normative complex budget vectors.
++
++The Rust public-consumer regression compares the same pins with canonical
++server extraction. No geometry or alternate property decoder runs here.
++"""
++import hashlib
++import json
++from pathlib import Path
++
++import ifclite_geom
++import pytest
++
++REPO = Path(__file__).resolve().parents[3]
++VECTOR = REPO / "packages/parser/test/fixtures/complex-property-budget-7675.json"
++MARKER = "(truncated: nested properties over the walk budget)"
++
++
++def budget_case(name):
++    cases = json.loads(VECTOR.read_text())["cases"]
++    return next(case for case in cases if case["name"] == name)
++
++
++def fixture(case):
++    lines = []
++    for line in case["dataLines"]:
++        if isinstance(line, str):
++            lines.append(line)
++        else:
++            for i in range(line["from"], line["from"] + line["count"]):
++                lines.extend(text.replace("{i}", str(i)) for text in line["repeat"])
++    return ("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n"
++            + "\n".join(lines) + "\nENDSEC;\nEND-ISO-10303-21;\n").encode()
++
++
++def assert_pins(row, case):
++    sets = row["property_sets"]
++    assert [s["name"] for s in sets] == [s["name"] for s in case["psets"]]
++    for pset, pin in zip(sets, case["psets"]):
++        values = [p["value"] for p in pset["properties"]]
++        assert len(values) == pin["count"]
++        if "values" in pin:
++            assert values == pin["values"]
++        else:
++            joined = "\n".join(values).encode()
++            assert len(joined) == pin["length"]
++            assert hashlib.sha256(joined).hexdigest() == pin["sha256"]
++
++
++def test_issue_7895_all_shared_occurrences_keep_the_one_canonical_value():
++    case = budget_case("shared-set")
++    assert case["cuts"] == 1  # The legitimate original cut remains allowed.
++    data = ifclite_geom.entity_data(fixture(case))
++    rows = data["entities"]
++    assert list(rows) == case["entityIds"]
++    first = rows[case["entityIds"][0]]["property_sets"]
++    assert_pins(rows[case["entityIds"][0]], case)
++    assert len(rows) == 200
++    for row in rows.values():
++        assert row["property_sets"] == first
++
++
++def test_issue_7895_distinct_set_exhaustion_and_keep_last_records():
++    for name in ("unnamed-member", "duplicated-set-record", "duplicate-records-differ"):
++        case = budget_case(name)
++        data = ifclite_geom.entity_data(fixture(case))
++        assert len(data["entities"]) == 1
++        for row in data["entities"].values():
++            assert_pins(row, case)
++            if name == "unnamed-member":
++                assert row["property_sets"][-1]["properties"][0]["value"] == MARKER
++
++
++ORDER = json.loads((REPO / "rust/export/tests/fixtures/shared_set_order_7895.json").read_text())
++
++
++def order_input(case):
++    lines = []
++    for line in budget_case("shared-set")["dataLines"]:
++        if line.startswith("#40="):
++            continue
++        is_set = line.startswith("#30=")
++        if is_set and case["shadow"]:
++            lines.append(ORDER["shadowSet"])
++        lines.append(line)
++        if is_set:
++            lines.extend([ORDER["secondSet"], *case["types"]])
++    lines.extend(case["relationships"])
++    return ("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n"
++            + "\n".join(lines) + "\nENDSEC;\nEND-ISO-10303-21;\n").encode()
++
++
++def canonical_value(value, set_name):
++    if set_name == "Pset_Second":
++        assert value == MARKER
++    else:
++        assert set_name == "Pset_Shared"
++        pin = budget_case("shared-set")["psets"][0]
++        assert len(value.encode()) == pin["length"]
++        assert hashlib.sha256(value.encode()).hexdigest() == pin["sha256"]
++
++
++@pytest.mark.parametrize("case", ORDER["cases"], ids=lambda case: case["name"])
++@pytest.mark.parametrize("type_properties", [False, True])
++def test_issue_7895_canonical_source_order_independent_of_type_options(case, type_properties):
++    data = ifclite_geom.entity_data(order_input(case), type_properties=type_properties, attributes=False)
++    ids = list(range(100, 300)) + ([803] if case["rowCount"] == 201 else [])
++    assert list(data["entities"]) == ids
++    shape = dict(case["inherited" if type_properties else "own"])
++    for entity_id, row in data["entities"].items():
++        assert [ps["name"] for ps in row["property_sets"]] == shape.get(entity_id, [])
++        for pset in row["property_sets"]:
++            assert len(pset["properties"]) == 1
++            assert pset["properties"][0]["name"] == "Wide"
++            canonical_value(pset["properties"][0]["value"], pset["name"])
++
++
++def test_issue_7895_unlinked_and_malformed_members_keep_canonical_charges():
++    case = ORDER["cases"][1]
++    raw = order_input(case).decode()
++    unlinked = raw.replace(case["relationships"][0], "").encode()
++    data = ifclite_geom.entity_data(unlinked)
++    assert data["entities"][100]["property_sets"][0]["properties"][0]["value"] == MARKER
++    assert data["entities"][101]["property_sets"] == []
++    typed = ORDER["cases"][5]
++    own_second = order_input(typed).decode().replace("'Inherited',$,$,(#31)", "'Inherited',$,$,(#30)")
++    own_second = own_second.replace(typed["relationships"][1], typed["relationships"][1].replace(",#30);", ",#31);"))
++    for inherit in [False, True]:
++        data = ifclite_geom.entity_data(own_second.encode(), type_properties=inherit)
++        assert data["entities"][101]["property_sets"][0]["properties"][0]["value"] == MARKER
++    invalid = next(line for line in budget_case("shared-set")["dataLines"] if line.startswith("#22="))
++    invalid = invalid.replace("#22=IFCCOMPLEXPROPERTY('Wide',", "#23=IFCCOMPLEXPROPERTY($,", 1)
++    malformed = raw.replace("'Pset_Shared',$,(#22)", "'Pset_Shared',$,($,#999999,#1,#23,#22,#22)")
++    malformed = malformed.replace("'Pset_Second',$,(#22)", "'Pset_Second',$,(#999999,#22)")
++    malformed = malformed.replace("\nENDSEC;\nEND-ISO", f"\n{invalid}\nENDSEC;\nEND-ISO")
++    data = ifclite_geom.entity_data(malformed.encode())
++    second = data["entities"][100]["property_sets"][0]
++    first = data["entities"][101]["property_sets"][0]
++    assert second["name"] == "Pset_Second" and len(second["properties"]) == 1
++    assert second["properties"][0]["value"] == MARKER
++    assert first["name"] == "Pset_Shared" and len(first["properties"]) == 2
++    canonical_value(first["properties"][0]["value"], first["name"])
++    assert first["properties"][1]["value"] == MARKER

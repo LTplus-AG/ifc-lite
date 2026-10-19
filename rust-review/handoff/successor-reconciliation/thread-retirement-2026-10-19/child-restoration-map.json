@@ -1,0 +1,131 @@
+[
+  {
+    "scope": "7711",
+    "threadId": "thread:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Adelegate-task%3Aclose-issues-bc9e57fa-7711-implementation-v1",
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-aa41e555",
+    "status": "",
+    "exists": true,
+    "head": "d23bdd08cc0869ace66e468c3befe39a59e96fe6",
+    "common": "/home/louistrue/build-workers/ifc-lite/.git",
+    "archiveRef": "refs/archive/bc9e57fa-retirement/child-00"
+  },
+  {
+    "scope": "7714",
+    "threadId": "thread:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Adelegate-task%3Aclose-issues-bc9e57fa-7714-implementation-v1",
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f62add46",
+    "status": "",
+    "exists": true,
+    "head": "599b154f4edd349a3361bd32ec74fb0490bb8396",
+    "common": "/home/louistrue/build-workers/ifc-lite/.git",
+    "archiveRef": "refs/archive/bc9e57fa-retirement/child-01"
+  },
+  {
+    "scope": "7655-lifecycle",
+    "threadId": "thread:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Adelegate-task%3Aclose-issues-bc9e57fa-7655-lifecycle-implementation-v1",
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-d29bff4f",
+    "status": "",
+    "exists": true,
+    "head": "b913d742a046ba1abf5758b8d9f3ec6e2b784ec6",
+    "common": "/home/louistrue/build-workers/ifc-lite/.git",
+    "archiveRef": "refs/archive/bc9e57fa-retirement/child-02"
+  },
+  {
+    "scope": "c2-published-stack",
+    "threadId": "thread:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Adelegate-task%3Aclose-issues-bc9e57fa-c2-published-stack-takeover-v1",
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-48191432",
+    "status": "",
+    "exists": true,
+    "head": "83b26885825547f5b968543ba0264bed3e40a0f2",
+    "common": "/home/louistrue/build-workers/ifc-lite/.git",
+    "archiveRef": "refs/archive/bc9e57fa-retirement/child-03"
+  },
+  {
+    "scope": "f3b-published-stack",
+    "threadId": "thread:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Adelegate-task%3Aclose-issues-bc9e57fa-f3b-published-stack-takeover-v1",
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-4768f06b",
+    "status": "",
+    "exists": true,
+    "head": "8a8d73b5b5c7405d338aabcaf7bb2bea1d86d84c",
+    "common": "/home/louistrue/build-workers/ifc-lite/.git",
+    "archiveRef": "refs/archive/bc9e57fa-retirement/child-04"
+  },
+  {
+    "scope": "c4-4b-recovery",
+    "threadId": "thread:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Adelegate-task%3Aclose-issues-bc9e57fa-c4-4b-recovery-v1",
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2b352d8c",
+    "status": "",
+    "exists": true,
+    "head": "b437a0f918cdf8c58a46f6abb50b5fb346f96848",
+    "common": "/home/louistrue/build-workers/ifc-lite/.git",
+    "archiveRef": "refs/archive/bc9e57fa-retirement/child-05"
+  },
+  {
+    "scope": "f3b-recovered-next",
+    "threadId": "thread:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Adelegate-task%3Aclose-issues-bc9e57fa-f3b-recovered-next-implementation-v1",
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-49919ff1",
+    "status": "",
+    "exists": true,
+    "head": "8dc407e240f4fa3abf6b41d744c19031a51bea63",
+    "common": "/home/louistrue/build-workers/ifc-lite/.git",
+    "archiveRef": "refs/archive/bc9e57fa-retirement/child-06"
+  },
+  {
+    "scope": "f4-trivia-edit-fix",
+    "threadId": "thread:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Adelegate-task%3Af4-trivia-edit-fix-20261017-v1",
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-165a525f",
+    "status": "",
+    "exists": true,
+    "head": "bf09dde9ffd238b7d3f44344b301126034cb2cc7",
+    "common": "/home/louistrue/build-workers/ifc-lite/.git",
+    "archiveRef": "refs/archive/bc9e57fa-retirement/child-07"
+  },
+  {
+    "scope": "entry-ceiling-additional",
+    "threadId": "thread:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Adelegate-task%3Aentry-ceiling-literal-dedup-luna-20261017-v1",
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-aa551470",
+    "status": "",
+    "exists": true,
+    "head": "4d7ebbe4e21450dd9604480562d20d0499d8cf66",
+    "common": "/home/louistrue/build-workers/ifc-lite/.git",
+    "archiveRef": "refs/archive/bc9e57fa-retirement/child-08"
+  },
+  {
+    "scope": "d47-shared-set-budget",
+    "threadId": "thread:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Adelegate-task%3Ad47-shared-pset-budget-source-fix-20261018-v1",
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-6a1ff028",
+    "status": "",
+    "exists": true,
+    "head": "525bf8e4b2f6daf99458783e081045e4117bc4f1",
+    "common": "/home/louistrue/build-workers/ifc-lite/.git",
+    "archiveRef": "refs/archive/bc9e57fa-retirement/child-09"
+  },
+  {
+    "scope": "c2-next-voids-recovery",
+    "threadId": "thread:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Adelegate-task%3Ac2-next-recovered-voids-source-prep-20261018-v1",
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f3a1d73b",
+    "status": "",
+    "exists": true,
+    "head": "94f18a3bc89e42d77df9487a58ce5cb37d5e7eb1",
+    "common": "/home/louistrue/build-workers/ifc-lite/.git",
+    "archiveRef": "refs/archive/bc9e57fa-retirement/child-10"
+  },
+  {
+    "scope": "polygonal-dangling-face",
+    "threadId": "thread:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Adelegate-task%3Af3b-polygonal-dangling-face-luna-source-20261018-v1",
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-d1f6ef60",
+    "status": "",
+    "exists": true,
+    "head": "c08456df48462344a93cd84dd84cc72c4d7930dc",
+    "common": "/home/louistrue/build-workers/ifc-lite/.git",
+    "archiveRef": "refs/archive/bc9e57fa-retirement/child-11"
+  },
+  {
+    "scope": "d47-current-main",
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/d47-live-v29",
+    "exists": true,
+    "head": "d2f07e41488178eb0688657fdde6e20c0d03d323",
+    "status": "",
+    "common": ".git",
+    "archiveRef": "refs/archive/bc9e57fa-retirement/child-12"
+  }
+]

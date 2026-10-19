@@ -1,0 +1,18 @@
+{
+  "at": "2026-10-19T05:04:31.527718+00:00",
+  "reason": "Explicit user instruction to retire thread and fully clean up",
+  "state": "retired; acceptance incomplete",
+  "handoff": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/HANDOFF.md",
+  "scratchCheckoutsRemoved": 69,
+  "uncommittedStatesPreserved": 4,
+  "rootCheckoutClean": true,
+  "scheduler": "deleted after saving disabled configuration",
+  "watches": "all stopped",
+  "delegatedOwners": "12 terminal, no pending child runs",
+  "D47Integration": "d2f07e41488178eb0688657fdde6e20c0d03d323; committed, unpublished, integration checks unrun",
+  "goal": "paused",
+  "retainedEvidence": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence",
+  "openIssues": 17,
+  "acceptedPrograms": 0,
+  "uncheckedConditions": 33
+}

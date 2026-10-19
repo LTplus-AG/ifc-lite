@@ -1,0 +1,143 @@
+diff --git a/rust/geometry/src/router/mapped_walks_tests.rs b/rust/geometry/src/router/mapped_walks_tests.rs
+index 83723ca0f0..c879fb206b 100644
+--- a/rust/geometry/src/router/mapped_walks_tests.rs
++++ b/rust/geometry/src/router/mapped_walks_tests.rs
+@@ -97,3 +97,61 @@ fn router_26_capped_curve_in_a_shared_source_is_reported_for_that_source() {
+     let after_plain = router.take_unsupported_items();
+     assert!(after_plain.is_empty(), "the plain item inherited a drop: {after_plain:?}");
+ }
++
++/// #7781 / #7873 r4303907552: refusing an unentered repeat of the current
++/// item must retain both earlier and later solid siblings in that frame.
++#[test]
++fn issue_7781_current_item_cycle_retains_solid_siblings() {
++    for items in ["#900,#1005", "#1005,#900"] {
++        let content = RAW_WORLD_MAP.replace("(#900)", &format!("({items})"));
++        let mut decoder = EntityDecoder::new(&content);
++        let router = shared_rtc_router();
++        let item = decoder.decode_by_id(1005).unwrap();
++        let parts = router.process_mapped_item_parts(&item, &mut decoder).unwrap();
++        assert_eq!(parts.len(), 1, "the valid tetrahedron was discarded: {items}");
++        assert_eq!(parts[0].indices.len(), 12, "one reachable tetrahedron: {items}");
++        let drops = router.take_unsupported_items();
++        assert_eq!(drops.get("IfcMappedItem"), Some(&1), "one cycle refusal: {drops:?}");
++        let cache = router.shared_mapped_item_cache.as_ref().unwrap().lock().unwrap();
++        assert!(!cache.contains_key(&1003), "a cycle-truncated source is not shared");
++    }
++}
++
++/// Positive control for #7781: reaching the same source down separate paths
++/// contributes twice; the cycle set is scoped to the active path.
++#[test]
++fn issue_7781_shared_source_siblings_both_contribute() {
++    let content = format!("{RAW_WORLD_MAP}#2000=IFCMAPPEDITEM(#2001,#1004);\
++        #2001=IFCREPRESENTATIONMAP(#2,#2002);\
++        #2002=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#1005,#1005));");
++    let mut decoder = EntityDecoder::new(&content);
++    let router = shared_rtc_router();
++    let item = decoder.decode_by_id(2000).unwrap();
++    let parts = router.process_mapped_item_parts(&item, &mut decoder).unwrap();
++    assert_eq!(parts.len(), 1);
++    assert_eq!(parts[0].indices.len(), 24, "both tetrahedron occurrences survive");
++    assert!(router.take_unsupported_items().is_empty());
++}
++
++/// The cycle correction must keep the entered-frame failure policy (#7781):
++/// missing Items fails the top call, or drops just that nested frame.
++#[test]
++fn issue_7781_entered_frame_missing_items_keeps_its_failure_scope() {
++    let content = RAW_WORLD_MAP.replace("'Tessellation',(#900)", "'Tessellation'");
++    let mut decoder = EntityDecoder::new(&content);
++    let router = shared_rtc_router();
++    let item = decoder.decode_by_id(1005).unwrap();
++    let error = router.process_mapped_item_parts(&item, &mut decoder).unwrap_err();
++    assert!(error.to_string().contains("missing Items"), "{error}");
++
++    let content = format!("{content}#2000=IFCMAPPEDITEM(#2001,#1004);\
++        #2001=IFCREPRESENTATIONMAP(#2,#2002);\
++        #2002=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#900,#1005));");
++    let mut decoder = EntityDecoder::new(&content);
++    let router = shared_rtc_router();
++    let item = decoder.decode_by_id(2000).unwrap();
++    let parts = router.process_mapped_item_parts(&item, &mut decoder).unwrap();
++    assert_eq!(parts.len(), 1);
++    assert_eq!(parts[0].indices.len(), 12);
++    assert_eq!(router.take_unsupported_items().get("IfcMappedItem"), Some(&1));
++}
+diff --git a/rust/geometry/tests/profile_extractor_walk.rs b/rust/geometry/tests/profile_extractor_walk.rs
+index d3263c4aba..49ab981150 100644
+--- a/rust/geometry/tests/profile_extractor_walk.rs
++++ b/rust/geometry/tests/profile_extractor_walk.rs
+@@ -13,69 +13,9 @@
+ use ifc_lite_core::MAX_MAPPED_ITEM_DEPTH;
+ use ifc_lite_geometry::extract_profiles_with_diagnostics;
+ 
+-/// One wall `#100` whose `IfcProductDefinitionShape` lists `reps`, plus the
+-/// extra `entities`. `#140` (4 x 0.3 x 2.5 m) and `#240` (1 x 1 x 1 m) are
+-/// extrusions; `#13` is the Body context.
+-fn wall(reps: &str, entities: &str) -> String {
+-    format!(
+-        r#"ISO-10303-21;
+-HEADER;
+-FILE_DESCRIPTION(('profile-extractor walk'),'2;1');
+-FILE_NAME('f.ifc','2026-10-17T00:00:00',(''),(''),'','','');
+-FILE_SCHEMA(('IFC4'));
+-ENDSEC;
+-DATA;
+-#1=IFCPROJECT('0ExtractorWalkProj00A',$,'P',$,$,$,$,(#10),#7);
+-#7=IFCUNITASSIGNMENT((#8));
+-#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+-#10=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#11,$);
+-#11=IFCAXIS2PLACEMENT3D(#12,$,$);
+-#12=IFCCARTESIANPOINT((0.,0.,0.));
+-#13=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#10,$,.MODEL_VIEW.,$);
+-#110=IFCLOCALPLACEMENT($,#111);
+-#111=IFCAXIS2PLACEMENT3D(#12,$,$);
+-#130=IFCRECTANGLEPROFILEDEF(.AREA.,'Wall',#131,4.,0.3);
+-#131=IFCAXIS2PLACEMENT2D(#132,#133);
+-#132=IFCCARTESIANPOINT((0.,0.));
+-#133=IFCDIRECTION((1.,0.));
+-#140=IFCEXTRUDEDAREASOLID(#130,#141,#142,2.5);
+-#141=IFCAXIS2PLACEMENT3D(#12,$,$);
+-#142=IFCDIRECTION((0.,0.,1.));
+-#230=IFCRECTANGLEPROFILEDEF(.AREA.,'Block',#131,1.,1.);
+-#240=IFCEXTRUDEDAREASOLID(#230,#141,#142,1.);
+-#151=IFCPRODUCTDEFINITIONSHAPE($,$,({reps}));
+-#100=IFCWALL('0ExtractorWalkWall00A',$,'Wall',$,$,#110,#151,$,$);
+-{entities}
+-ENDSEC;
+-END-ISO-10303-21;
+-"#
+-    )
+-}
+-
+-/// `IfcMappedItem` `#{item}` over map `#{item+1}` whose representation
+-/// `#{item+2}` holds `items`.
+-fn mapped(item: u32, items: &str) -> String {
+-    let (map, rep) = (item + 1, item + 2);
+-    format!(
+-        "#{item}=IFCMAPPEDITEM(#{map},#99);\n\
+-         #{map}=IFCREPRESENTATIONMAP(#11,#{rep});\n\
+-         #{rep}=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',({items}));\n"
+-    )
+-}
+-
+-const TARGET: &str = "#99=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#12,1.,$);";
+-
+-/// A chain of `levels` mapped items, `#1000`, `#1003`, ..., the innermost
+-/// holding `#240`. The wall's mapped representation is `#160`.
+-fn chain(levels: u32) -> String {
+-    let mut entities = format!("{TARGET}\n#160=IFCSHAPEREPRESENTATION(#13,'Body','MappedRepresentation',(#1000));\n");
+-    for level in 0..levels {
+-        let item = 1000 + 3 * level;
+-        let inner = if level + 1 == levels { "#240".to_string() } else { format!("#{}", item + 3) };
+-        entities.push_str(&mapped(item, &inner));
+-    }
+-    wall("#160", &entities)
+-}
++#[path = "support/profile_walk_model.rs"]
++mod model;
++use model::{chain, mapped, wall, TARGET};
+ 
+ /// An element whose body is carried both directly and as a mapped duplicate
+ /// renders once on the mesh path (the #4699 mapped-duplicate exclusion), so the

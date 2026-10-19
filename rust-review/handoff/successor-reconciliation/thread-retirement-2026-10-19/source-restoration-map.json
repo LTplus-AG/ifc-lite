@@ -1,0 +1,310 @@
+[
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-6a-site-filter/qualification/baseline",
+    "originalHead": "b437a0f918cdf8c58a46f6abb50b5fb346f96848",
+    "ref": "refs/archive/bc9e57fa-retirement/source-00"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/7711-section-export/phase2-2742/fix-be66/oracle-source",
+    "originalHead": "239c3c170f5ed089133b34189e47f4c06ff14466",
+    "ref": "refs/archive/bc9e57fa-retirement/source-01"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/jsonld-property-classes/worktree",
+    "originalHead": "58a8f7ed7b411bda3d6dfbb6a4c742977add5fcd",
+    "ref": "refs/archive/bc9e57fa-retirement/source-02"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/two-item-delivery/7911-integration/source-candidate",
+    "originalHead": "859501aed3f6446432841d05c5d6f743a8377eb3",
+    "ref": "refs/archive/bc9e57fa-retirement/source-03"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/two-item-delivery/7911-integration/source-base",
+    "originalHead": "1bd0505602e0d650971d5cdc590bf780c56f8d5f",
+    "ref": "refs/archive/bc9e57fa-retirement/source-04"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-recovered-next-implementation/stack-symbolic",
+    "originalHead": "bf7196c7b9b209c355eafcefc2808431252fb66b",
+    "ref": "refs/archive/bc9e57fa-retirement/source-05"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-recovered-next-implementation/stack-validation",
+    "originalHead": "8d461089258f430b204e47d0b6f245d17fcb86bc",
+    "ref": "refs/archive/bc9e57fa-retirement/source-06"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-recovered-next-implementation/publish-validation",
+    "originalHead": "2ed15338c6f1440141de931d7796def84f97f279",
+    "ref": "refs/archive/bc9e57fa-retirement/source-07"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-recovered-next-implementation/perf-base-source",
+    "originalHead": "aad703ac56b31ac254d6c6b929e45c562e472f88",
+    "ref": "refs/archive/bc9e57fa-retirement/source-08"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-recovered-next-implementation/publish-symbolic",
+    "originalHead": "05ae74bda805fe7a206071fd0841a8b16df75045",
+    "ref": "refs/archive/bc9e57fa-retirement/source-09"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-recovered-next-implementation/final-integration",
+    "originalHead": "0e725faaf4ee825b5fe7dac67c2b35b1f3bd887d",
+    "ref": "refs/archive/bc9e57fa-retirement/source-10"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-recovered-next-implementation/red-source",
+    "originalHead": "6f86ce021d7ac627908c48de02bf994aa30650d0",
+    "ref": "refs/archive/bc9e57fa-retirement/source-11"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-recovered-next-implementation/coverage-base-4d",
+    "originalHead": "4d295a31250703973a5f4185edb02b621f484b86",
+    "ref": "refs/archive/bc9e57fa-retirement/source-12"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-recovered-next-implementation/perf-base-c53",
+    "originalHead": "a24eb895f577b3047141080b9f40cc87b1f41dad",
+    "ref": "refs/archive/bc9e57fa-retirement/source-13"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-base61",
+    "originalHead": "61f9cb64803b37270fcc0603d97f5f47808212bf",
+    "ref": "refs/archive/bc9e57fa-retirement/source-14"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-prefix3",
+    "originalHead": "166f4e4c860aa3266f92463e80a2a736582b1782",
+    "ref": "refs/archive/bc9e57fa-retirement/source-15"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-prefix2",
+    "originalHead": "ca2b72aa7e51d61dc74121d55ccb3f11c9f23078",
+    "ref": "refs/archive/bc9e57fa-retirement/source-16"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/source-c4-4b-lifetime-v1",
+    "originalHead": "12157693a84d9495fafd14a0ade6a5939bf3e0b8",
+    "ref": "refs/archive/bc9e57fa-retirement/source-17"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-prefix1",
+    "originalHead": "45be7a0ac30e79a08acd81733ac48f87d24935e7",
+    "ref": "refs/archive/bc9e57fa-retirement/source-18"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-qualification-q1-pop-v1/sources/r2",
+    "originalHead": "d3e281e1a234f8bca23cd59fb8ddf85926264a2f",
+    "ref": "refs/archive/bc9e57fa-retirement/source-19"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-qualification-q1-pop-v1/sources/r3",
+    "originalHead": "c7cf41e902c20a99a828e952151e981f3cc2d048",
+    "ref": "refs/archive/bc9e57fa-retirement/source-20"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-qualification-q1-pop-v1/sources/r4",
+    "originalHead": "12157693a84d9495fafd14a0ade6a5939bf3e0b8",
+    "ref": "refs/archive/bc9e57fa-retirement/source-21"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r2",
+    "originalHead": "d3e281e1a234f8bca23cd59fb8ddf85926264a2f",
+    "ref": "refs/archive/bc9e57fa-retirement/source-22"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r3",
+    "originalHead": "c7cf41e902c20a99a828e952151e981f3cc2d048",
+    "ref": "refs/archive/bc9e57fa-retirement/source-23"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+    "originalHead": "12157693a84d9495fafd14a0ade6a5939bf3e0b8",
+    "ref": "refs/archive/bc9e57fa-retirement/source-24"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/preparation-corpus-base",
+    "originalHead": "d4e26ba579007a26951b8831e5c4a61871d00d97",
+    "ref": "refs/archive/bc9e57fa-retirement/source-25"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/7306-iterative-frame-ci/worktree",
+    "originalHead": "5da6bb4d147ba520a807ac7e3a57a23fa712264f",
+    "ref": "refs/archive/bc9e57fa-retirement/source-26"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c2-published-stack-takeover/integration-7881",
+    "originalHead": "5952f62dadaad032d575703f17265a15abd4569d",
+    "ref": "refs/archive/bc9e57fa-retirement/source-27"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c2-published-stack-takeover/integration-7873",
+    "originalHead": "464faad61c6f47bf4dc0aa725b115e781b2a0169",
+    "ref": "refs/archive/bc9e57fa-retirement/source-28"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c2-published-stack-takeover/current-main-7867",
+    "originalHead": "224fc5632bb20ae97687ea19f8535e7c3fc2c002",
+    "ref": "refs/archive/bc9e57fa-retirement/source-29"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c2-published-stack-takeover/current-main-7887-final",
+    "originalHead": "337538adb04be1b42f21b60d4ab4a029c4245182",
+    "ref": "refs/archive/bc9e57fa-retirement/source-30"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c2-published-stack-takeover/wasm-branch-head",
+    "originalHead": "83b26885825547f5b968543ba0264bed3e40a0f2",
+    "ref": "refs/archive/bc9e57fa-retirement/source-31"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c2-published-stack-takeover/perf-current-main-base",
+    "originalHead": "c53cfaa3a2034638f4c4ab40f7674b29e0528fed",
+    "ref": "refs/archive/bc9e57fa-retirement/source-32"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c2-published-stack-takeover/prior-head",
+    "originalHead": "50595fc94e34fc8b7fa5e06f969ed815c2fe07e6",
+    "ref": "refs/archive/bc9e57fa-retirement/source-33",
+    "snapshotCommit": "eeb32bdfa32cae5601c725b23fce4d1af3a8167b",
+    "untracked": [
+      "rust/geometry/tests/support/profile_walk_model.rs",
+      "rust/processing/tests/issue_7781_profile_mesh_depth.rs"
+    ]
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c2-published-stack-takeover/integration-7867",
+    "originalHead": "5864fde50589413b1cf0ced894eda29ecb2cd47e",
+    "ref": "refs/archive/bc9e57fa-retirement/source-34"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c2-published-stack-takeover/integration-7887",
+    "originalHead": "5cf6e05daf4ae07c96f0b43b937a6829f7d587dd",
+    "ref": "refs/archive/bc9e57fa-retirement/source-35"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c2-published-stack-takeover/current-main-7881",
+    "originalHead": "61f9cb64803b37270fcc0603d97f5f47808212bf",
+    "ref": "refs/archive/bc9e57fa-retirement/source-36"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c2-published-stack-takeover/perf-base",
+    "originalHead": "50595fc94e34fc8b7fa5e06f969ed815c2fe07e6",
+    "ref": "refs/archive/bc9e57fa-retirement/source-37"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c2-published-stack-takeover/current-main-7873",
+    "originalHead": "b907d6065cbe73d46c8b017b705c92f743346836",
+    "ref": "refs/archive/bc9e57fa-retirement/source-38"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c2-published-stack-takeover/current-main-7887",
+    "originalHead": "337538adb04be1b42f21b60d4ab4a029c4245182",
+    "ref": "refs/archive/bc9e57fa-retirement/source-39"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-polygonal-face-leftover/qualification/candidate",
+    "originalHead": "c08456df48462344a93cd84dd84cc72c4d7930dc",
+    "ref": "refs/archive/bc9e57fa-retirement/source-40"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-polygonal-face-leftover/qualification/base-red",
+    "originalHead": "c53cfaa3a2034638f4c4ab40f7674b29e0528fed",
+    "ref": "refs/archive/bc9e57fa-retirement/source-41",
+    "snapshotCommit": "92da2d0d10b2bbdebd2af0eb5cb916547e17087a",
+    "untracked": [
+      "rust/processing/tests/f3b_polygonal_face_refusal.rs"
+    ]
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-continuation-863-v1/owned-workloads/arm-a/source",
+    "originalHead": "863e8bae6fa4dc418c27c73fb36bb0cfb48fbfa5",
+    "ref": "refs/archive/bc9e57fa-retirement/source-42"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-continuation-863-v1/owned-workloads/arm-b/source",
+    "originalHead": "863e8bae6fa4dc418c27c73fb36bb0cfb48fbfa5",
+    "ref": "refs/archive/bc9e57fa-retirement/source-43"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/native-cost-preparation/source-863",
+    "originalHead": "863e8bae6fa4dc418c27c73fb36bb0cfb48fbfa5",
+    "ref": "refs/archive/bc9e57fa-retirement/source-44"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-canonical-leaf-cache-source/raw-success-memo/consumer-pop-A-mode-response-v2/owned-workloads/arm-a/source",
+    "originalHead": "863e8bae6fa4dc418c27c73fb36bb0cfb48fbfa5",
+    "ref": "refs/archive/bc9e57fa-retirement/source-45"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/phase2/owned-resources/baseline",
+    "originalHead": "02b8e1981158559fd4ec9b385d2d80729079a633",
+    "ref": "refs/archive/bc9e57fa-retirement/source-46",
+    "snapshotCommit": "c7399400a974253d517882424f0fb908c2b7f27f",
+    "untracked": [
+      "rust/export/tests/issue_7895_shared_set_budget.rs",
+      "rust/python/tests/test_shared_set_budget.py"
+    ]
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/canonical-admission-runtime-v2/source",
+    "originalHead": "71436f4ca6b39881dfb2211498731bef76f247d3",
+    "ref": "refs/archive/bc9e57fa-retirement/source-47"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/canonical-admission-source/worktree",
+    "originalHead": "897e3a67a704cae3e64de9a060cd7447beed021a",
+    "ref": "refs/archive/bc9e57fa-retirement/source-48"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/python-doc-contract-779-v1/source",
+    "originalHead": "3d2ef521dcead88104f13e6c7f532bbce8db4cfb",
+    "ref": "refs/archive/bc9e57fa-retirement/source-49"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/python-doc-runtime-7932-pop-v3/owned-workloads/source",
+    "originalHead": "e02f657dd877bc6aaa5864bada3994d940edf1fd",
+    "ref": "refs/archive/bc9e57fa-retirement/source-50"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-required-qualification-v1/source",
+    "originalHead": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "ref": "refs/archive/bc9e57fa-retirement/source-51"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-published-stack-takeover/perf-r2a-clean",
+    "originalHead": "5c55edfe685cc1ce328d318e44cf39d981724311",
+    "ref": "refs/archive/bc9e57fa-retirement/source-52"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-published-stack-takeover/perf-x3a-clean",
+    "originalHead": "27730b59a83eb0316e2a4caa693a8947354fa5a1",
+    "ref": "refs/archive/bc9e57fa-retirement/source-53"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-published-stack-takeover/prior-head",
+    "originalHead": "5c55edfe685cc1ce328d318e44cf39d981724311",
+    "ref": "refs/archive/bc9e57fa-retirement/source-54",
+    "snapshotCommit": "b21c085924eb9662d3202166cf5773f6f3c59e55",
+    "untracked": [
+      "rust/geometry/tests/placement_consumer_consistency.rs"
+    ]
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/durable-checkpoint-20261018/repo",
+    "originalHead": "16a7a83d42e62aba77591d7b9e57427ef6feefd5",
+    "ref": "refs/archive/bc9e57fa-retirement/source-55"
+  },
+  {
+    "path": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/6516-offline-fetch-repair",
+    "originalHead": "9d1f8759e83baccf3f9b24ae03e3a198f2e2fa7a",
+    "ref": "refs/archive/bc9e57fa-retirement/source-56"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa",
+    "originalHead": "d35a1ef2eb144b4d86553342cb6c5c72d2a0a02c",
+    "ref": "refs/archive/bc9e57fa-retirement/source-57"
+  }
+]

@@ -1,0 +1,67 @@
+diff --git a/rust/processing/src/data_model/property_tests.rs b/rust/processing/src/data_model/property_tests.rs
+index 4ab94a89ca..c3f777e3a6 100644
+--- a/rust/processing/src/data_model/property_tests.rs
++++ b/rust/processing/src/data_model/property_tests.rs
+@@ -154,3 +154,62 @@ fn the_shared_budget_vector_reads_the_same_through_the_decoder() {
+         assert_eq!(decoded, server_sets(&extract_data_model(&ifc)), "{name}");
+     }
+ }
++
++/// #7895: repeating a source set must reuse its decided listings, including
++/// refused listings and duplicate HasProperties members. Different source
++/// sets still spend under the one global budget, as the vector pins.
++#[test]
++fn repeated_sets_do_not_spend_again_7895() {
++    let vector: serde_json::Value = serde_json::from_str(include_str!(
++        "../../../../packages/parser/test/fixtures/complex-property-budget-7675.json"
++    )).unwrap();
++    for scope in [PropertyScope::Flat, PropertyScope::AllKinds] {
++        for case in vector["cases"].as_array().unwrap() {
++            let ifc = file(&expand_budget_lines(&case["dataLines"]).join("\n"));
++            let (mut props, sets) = decode_all(&ifc, scope);
++            let cuts = props.cuts();
++            if let Some(expected) = case["cuts"].as_u64() {
++                assert_eq!(cuts as u64, expected, "{}", case["name"]);
++            }
++            let mut decoder = EntityDecoder::with_arc_index(ifc.as_bytes(), Arc::new(build_entity_index(ifc.as_bytes())));
++            for set in &sets {
++                let def = decoder.decode_by_id(set.id).unwrap();
++                let again = props.decode_set(&mut decoder, &def).unwrap();
++                assert_eq!(again.name, set.name);
++                assert_eq!(again.properties.len(), set.properties.len());
++                for (a, b) in again.properties.iter().zip(&set.properties) {
++                    assert_eq!(a.kind, b.kind);
++                    assert_eq!(a.display.as_ref().map(shown), b.display.as_ref().map(shown));
++                }
++            }
++            assert_eq!(props.cuts(), cuts, "reusing {} listings", case["name"]);
++        }
++    }
++}
++
++/// #7895: Name is not set identity, nor is the complex-property id. Two
++/// different sets listing the same complex property still pay twice even
++/// when both sets have the same Name.
++#[test]
++fn same_named_distinct_sets_still_pay_for_their_listings_7895() {
++    let vector: serde_json::Value = serde_json::from_str(include_str!(
++        "../../../../packages/parser/test/fixtures/complex-property-budget-7675.json"
++    )).unwrap();
++    let case = vector["cases"].as_array().unwrap().iter().find(|c| c["name"] == "shared-set").unwrap();
++    let mut lines = expand_budget_lines(&case["dataLines"]);
++    lines.push("#31=IFCPROPERTYSET('other',$,'Pset_Shared',$,(#22));".into());
++    let ifc = file(&lines.join("\n"));
++    let (mut props, sets) = decode_all(&ifc, PropertyScope::Flat);
++    assert_eq!(sets.len(), 2);
++    assert_eq!(sets[0].name, sets[1].name);
++    let value = |s: &PropertySetRow| s.properties[0].display.as_ref().unwrap().property_value.clone();
++    assert!(value(&sets[0]).len() > 500_000);
++    assert_eq!(value(&sets[1]), ifc_lite_core::limits::COMPLEX_PROPERTY_BUDGET_MARKER);
++    let cuts = props.cuts();
++    let mut decoder = EntityDecoder::with_arc_index(ifc.as_bytes(), Arc::new(build_entity_index(ifc.as_bytes())));
++    for set in &sets {
++        let def = decoder.decode_by_id(set.id).unwrap();
++        assert_eq!(value(&props.decode_set(&mut decoder, &def).unwrap()), value(set));
++    }
++    assert_eq!(props.cuts(), cuts);
++}

@@ -6,13 +6,21 @@ on:
     paths:
       - 'native/smlib-adapter/**'
       - 'rust/geometry-runtime/**'
+      - 'rust/core/**'
+      - 'rust/geometry/src/analytic/**'
+      - 'rust/geometry/src/resource/**'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
       - 'rust/geometry/src/document/**'
       - 'rust/processing/src/authored_geometry/**'
       - 'rust/processing/src/retained_geometry.rs'
+      - 'rust/processing/tests/retained_*.rs'
       - 'rust/processing/src/element/**'
       - 'rust/processing/src/element.rs'
       - 'rust/geometry/src/program/**'
       - 'rust/wasm-bindings/src/api/retained_product*'
+      - 'rust/wasm-bindings/src/api/retained_browser.rs'
+      - 'rust/wasm-bindings/tests/retained-browser-contract.mjs'
       - 'rust/wasm-bindings/src/api/product_job.rs'
       - 'scripts/stage-retained-browser-assets.mjs'
       - '.github/workflows/geometry-platform.yml'
@@ -49,8 +57,10 @@ jobs:
         env:
           IFCLITE_SMLIB_WORKER: /tmp/smlib-native/ifclite_smlib_worker
         run: |
-          cargo test --locked -p ifc-lite-geometry-runtime
+          cargo test --locked -p ifc-lite-geometry-runtime --all-targets
           cargo test --locked -p ifc-lite-processing --lib session_retained
+          cargo test --locked -p ifc-lite-processing --test retained_authored_evaluator \
+            --test retained_curved_consumption --test retained_geometry
       - name: Checkout pinned Emscripten SDK
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:

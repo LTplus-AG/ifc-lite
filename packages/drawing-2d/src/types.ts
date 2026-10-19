@@ -194,14 +194,9 @@ export interface DrawingPolygon {
    *  layers each carry their `IfcMaterial`'s surface-style colour, or a
    *  frame+glass window. Renderers showing IFC materials use this so each
    *  layer fills with its own colour instead of one colour for the whole
-   *  element; absent for single-material elements (keep the existing
-   *  per-`ifcType` / per-entity fill). */
+   *  element; absent for single-material elements (keep the existing per-`ifcType` / per-entity fill). */
   color?: [number, number, number, number];
-  /** The source sub-mesh's RGBA, stamped on every cut polygon (unlike `color`,
-   *  which only a multi-material cut carries). The 3D section cap's "element
-   *  colour" fill reads it; 2D drawing renderers keep ignoring it so their
-   *  per-`ifcType` fills are unchanged. */
-  sourceColor?: [number, number, number, number];
+  sourceColor?: [number, number, number, number]; // source sub-mesh RGBA on every cut polygon (`color` is multi-material only); the 3D cap's element-colour fill reads it
   /** Set on the OPAQUE BASE polygon emitted for a multi-material entity: the
    *  entity's full closed cross-section (built from the watertight union of all
    *  its layer bands, so it always closes). It is drawn BEHIND the per-layer

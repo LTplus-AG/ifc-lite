@@ -52,11 +52,9 @@
 23 rust/geometry/src/processors/advanced_face/polyline.rs
 12 rust/geometry/src/processors/advanced_face/revolution.rs
 5 rust/geometry/src/processors/advanced_face/surfaces.rs
-1 rust/geometry/src/processors/boolean/brep_voids.rs
-5 rust/geometry/src/processors/boolean/mod.rs
+1 rust/geometry/src/processors/boolean/mod.rs
 2 rust/geometry/src/processors/boolean/operand.rs
 1 rust/geometry/src/processors/boolean/polygonal_boundary.rs
-1 rust/geometry/src/processors/boolean/polygonal_prism.rs
 1 rust/geometry/src/processors/brep/faceted.rs
 1 rust/geometry/src/processors/brep/surface_model.rs
 5 rust/geometry/src/processors/csg_primitive.rs

@@ -1,0 +1,42 @@
+{
+  "at": 1792384320.1447968,
+  "idleObservationSeconds": 10,
+  "scope": "Fresh readiness at same97percent idle/60C limits before exact saved six-command cohort",
+  "idleFraction": 0.88,
+  "managed": [
+    {
+      "id": "8c728169-842e-4e38-9eef-fc8a347e5e79",
+      "pid": 1551829,
+      "token": "15470858",
+      "pgid": 1551919,
+      "kind": "ordinary",
+      "cpu": 4,
+      "memory": 12,
+      "resources": "[\"/home/louistrue/.t3/artifacts/ifc-landing-51558969/wall-depth-fusion-v1\", \"/home/louistrue/build-workers/worker-state/targets/9a8b8081bfb5fe892fb6\"]",
+      "created": 1792384299.2938032,
+      "started": 1792384299.3067105,
+      "state": "running"
+    }
+  ],
+  "capacityGuardExit": 0,
+  "capacityGuardOutput": "export CARGO_BUILD_JOBS=8\nexport RAYON_NUM_THREADS=8\nexport RUST_TEST_THREADS=4\nexport TURBO_CONCURRENCY=2\n{\"workerAdmission\": \"pass\", \"acOnline\": true, \"MemAvailableKiB\": 112499620, \"packageMilliC\": 59000, \"thermalFallback\": false, \"limits\": {\"CARGO_BUILD_JOBS\": 8, \"RAYON_NUM_THREADS\": 8, \"RUST_TEST_THREADS\": 4, \"TURBO_CONCURRENCY\": 2}}\n",
+  "power": {
+    "/sys/class/power_supply/AC/online": "1"
+  },
+  "packageMilliC": 59000,
+  "memAvailableKiB": 112502480,
+  "heavyProcesses": [
+    {
+      "pid": 1551919,
+      "comm": "cargo"
+    },
+    {
+      "pid": 1553614,
+      "comm": "rustc"
+    }
+  ],
+  "legacyHoldersWaiters": [
+    "17: FLOCK  ADVISORY  READ 1551829 fc:01:90735587 0 EOF"
+  ],
+  "clear": false
+}

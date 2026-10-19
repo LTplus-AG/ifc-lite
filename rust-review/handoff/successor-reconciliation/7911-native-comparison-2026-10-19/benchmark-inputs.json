@@ -1,0 +1,77 @@
+{
+  "binaries": {
+    "base": {
+      "source": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/two-item-delivery/7911-integration/source-base",
+      "head": "1bd0505602e0d650971d5cdc590bf780c56f8d5f",
+      "tree": "0f664118c967422fd131dc02755b308c3be6e7ab",
+      "binary": "/home/louistrue/build-workers/worker-state/targets/03b9112e5cbd2336a644/profiling/examples/perf_probe",
+      "sha256": "b30c3d6da847d893a2d67c00dfffe2ab7b1e029b18cb20575a73b0b3eca1bf0a",
+      "bytes": 24835504,
+      "target": "/home/louistrue/build-workers/worker-state/targets/03b9112e5cbd2336a644",
+      "worker": "0ded6d41-c9cc-4836-8513-6b9f90d020b7"
+    },
+    "candidate": {
+      "source": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/two-item-delivery/7911-integration/source-candidate",
+      "head": "f04d4f621e2dd0b168ef298e116a25a827161995",
+      "tree": "e02f21cac0712bd626b5dd5226e04cafe8485e0e",
+      "binary": "/home/louistrue/build-workers/worker-state/targets/d3c2fbd987108361355b/profiling/examples/perf_probe",
+      "sha256": "5e678e576558ddafa6fa918518dcb09ca25c61a52717d59af07668f06d35c121",
+      "bytes": 24836840,
+      "target": "/home/louistrue/build-workers/worker-state/targets/d3c2fbd987108361355b",
+      "worker": "cdd8a980-48a8-42a6-afcc-b87f42f7b1fb"
+    }
+  },
+  "fixtures": [
+    {
+      "path": "ara3d/AC20-FZK-Haus.ifc",
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "size": 2526511,
+      "absolutePath": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-polygonal-face-leftover/qualification/candidate/tests/models/ara3d/AC20-FZK-Haus.ifc"
+    },
+    {
+      "path": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "sha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131",
+      "size": 12030684,
+      "absolutePath": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-polygonal-face-leftover/qualification/candidate/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+    },
+    {
+      "path": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+      "size": 177465622,
+      "absolutePath": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-polygonal-face-leftover/qualification/candidate/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc"
+    }
+  ],
+  "commands": [
+    {
+      "fixture": 0,
+      "arm": "base",
+      "iters": 5
+    },
+    {
+      "fixture": 0,
+      "arm": "candidate",
+      "iters": 5
+    },
+    {
+      "fixture": 1,
+      "arm": "candidate",
+      "iters": 5
+    },
+    {
+      "fixture": 1,
+      "arm": "base",
+      "iters": 5
+    },
+    {
+      "fixture": 2,
+      "arm": "base",
+      "iters": 5
+    },
+    {
+      "fixture": 2,
+      "arm": "candidate",
+      "iters": 5
+    }
+  ],
+  "protocol": "Six process commands; five internal observations each. Best native ProcessingStats selected by minimum total; all raw total/process_geometry wall arrays retained. No cold-load/whole-command pipeline claim. Ordered-mesh FNV scope excludes text/material definitions/UV/texture/instancing."
+}

@@ -1,0 +1,17 @@
+{
+  "originalInputSha256": "acf7e8397ddfdf4720ec0c0fd86f73b82b3c26725ca8d396ebc81a2bc344f01c",
+  "driverByteIdentical": true,
+  "changes": [
+    {
+      "arm": "base",
+      "old": "/home/louistrue/build-workers/worker-state/checkouts/1bd0505602e0d650971d5cdc590bf780c56f8d5f",
+      "new": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/two-item-delivery/7911-integration/source-base"
+    },
+    {
+      "arm": "candidate",
+      "old": "/home/louistrue/build-workers/worker-state/checkouts/f04d4f621e2dd0b168ef298e116a25a827161995",
+      "new": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/two-item-delivery/7911-integration/source-candidate"
+    }
+  ],
+  "scope": "Source-path-only correction; same exact source heads/trees, binaries, fixtures, commands and protocol; prior missing-checkout failure before job registration/no workload"
+}

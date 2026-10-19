@@ -1,0 +1,155 @@
+[
+  {
+    "fixture": "AC20-FZK-Haus.ifc",
+    "bestBase": {
+      "parseMs": 13,
+      "geometryMs": 21,
+      "totalMs": 34
+    },
+    "bestCandidate": {
+      "parseMs": 12,
+      "geometryMs": 19,
+      "totalMs": 32
+    },
+    "bestDeltaPercent": {
+      "parseMs": -7.692307692307687,
+      "geometryMs": -9.523809523809524,
+      "totalMs": -5.882352941176472
+    },
+    "medianTotalMs": [
+      34,
+      37
+    ],
+    "medianWallMs": [
+      37.078123999999995,
+      40.144116000000004
+    ],
+    "allTotalsMs": [
+      [
+        50,
+        50,
+        34,
+        34,
+        34
+      ],
+      [
+        44,
+        32,
+        47,
+        37,
+        34
+      ]
+    ],
+    "identity": {
+      "entities": true,
+      "meshes": true,
+      "vertices": true,
+      "triangles": true,
+      "csgFailures": true,
+      "degenerateDropped": true,
+      "meshFingerprintsFnv1a64": true
+    }
+  },
+  {
+    "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+    "bestBase": {
+      "parseMs": 34,
+      "geometryMs": 3454,
+      "totalMs": 3488
+    },
+    "bestCandidate": {
+      "parseMs": 36,
+      "geometryMs": 3524,
+      "totalMs": 3560
+    },
+    "bestDeltaPercent": {
+      "parseMs": 5.882352941176472,
+      "geometryMs": 2.0266357845975635,
+      "totalMs": 2.064220183486243
+    },
+    "medianTotalMs": [
+      3616,
+      3690
+    ],
+    "medianWallMs": [
+      3635.137302,
+      3708.2207280000002
+    ],
+    "allTotalsMs": [
+      [
+        3571,
+        3488,
+        3616,
+        3735,
+        3618
+      ],
+      [
+        3560,
+        3721,
+        3759,
+        3690,
+        3626
+      ]
+    ],
+    "identity": {
+      "entities": true,
+      "meshes": true,
+      "vertices": true,
+      "triangles": true,
+      "csgFailures": true,
+      "degenerateDropped": true,
+      "meshFingerprintsFnv1a64": true
+    }
+  },
+  {
+    "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc",
+    "bestBase": {
+      "parseMs": 773,
+      "geometryMs": 1315,
+      "totalMs": 2089
+    },
+    "bestCandidate": {
+      "parseMs": 743,
+      "geometryMs": 1568,
+      "totalMs": 2312
+    },
+    "bestDeltaPercent": {
+      "parseMs": -3.8809831824062058,
+      "geometryMs": 19.23954372623573,
+      "totalMs": 10.674964097654382
+    },
+    "medianTotalMs": [
+      2378,
+      2374
+    ],
+    "medianWallMs": [
+      2760.2438700000002,
+      2763.682956
+    ],
+    "allTotalsMs": [
+      [
+        2461,
+        2378,
+        2378,
+        2089,
+        2376
+      ],
+      [
+        2374,
+        2375,
+        2383,
+        2333,
+        2312
+      ]
+    ],
+    "identity": {
+      "entities": true,
+      "meshes": true,
+      "vertices": true,
+      "triangles": true,
+      "csgFailures": true,
+      "degenerateDropped": true,
+      "meshFingerprintsFnv1a64": true
+    }
+  }
+]

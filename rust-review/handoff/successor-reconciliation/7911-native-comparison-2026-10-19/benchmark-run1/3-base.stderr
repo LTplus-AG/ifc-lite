@@ -1,0 +1,17 @@
+perf_probe: 1 fixture(s), best-of-5
+
+=== /home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-polygonal-face-leftover/qualification/candidate/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc ===
+  11.5 MB | 202661 entities | 1402 meshes | 219404 verts | 136377 tris | 0.04 Mtris/s (geom)
+  best total 3488 ms  (runs: [3571, 3488, 3616, 3735, 3618] ms)
+  ordered mesh FNV-1a64 (per run): ["19b0b1c8ca8da958", "19b0b1c8ca8da958", "19b0b1c8ca8da958", "19b0b1c8ca8da958", "19b0b1c8ca8da958"]
+  phase                    ms        % total
+  full pipeline wall: [3589.358325, 3508.552793, 3635.137302, 3754.16169, 3637.14307] ms (includes final metadata)
+  parse (pre-geometry)        34     1.0%
+    - index-scan alone      16.1     0.5%
+    - entity_scan             33     0.9%
+    - lookup/styles            0     0.0%
+    - preprocess               1     0.0%
+  geometry                  3454    99.0%
+  brep point-cache      223090 hits / 27874 misses (88.9% memoized)
+  csg failures          18 across 6 products
+  degenerate dropped    7

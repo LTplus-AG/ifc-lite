@@ -1,0 +1,152 @@
+{
+  "inputSha256": "370f06fb1924fccf9742a9da34d8f1b8ac5e2213d1e18209416a099a625b27e7",
+  "commands": [
+    {
+      "index": 0,
+      "arm": "base",
+      "fixture": "ara3d/AC20-FZK-Haus.ifc",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/03b9112e5cbd2336a644/profiling/examples/perf_probe",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-polygonal-face-leftover/qualification/candidate/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "--iters",
+        "5",
+        "--json",
+        "--fingerprint"
+      ],
+      "stdout": "0-base.json",
+      "stderr": "0-base.stderr",
+      "startedAt": 1792384931.6688237,
+      "exitCode": 0,
+      "finishedAt": 1792384931.9347873,
+      "completeCommandWallSeconds": 0.26577417700900696
+    },
+    {
+      "index": 1,
+      "arm": "candidate",
+      "fixture": "ara3d/AC20-FZK-Haus.ifc",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/d3c2fbd987108361355b/profiling/examples/perf_probe",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-polygonal-face-leftover/qualification/candidate/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "--iters",
+        "5",
+        "--json",
+        "--fingerprint"
+      ],
+      "stdout": "1-candidate.json",
+      "stderr": "1-candidate.stderr",
+      "startedAt": 1792384932.363475,
+      "exitCode": 0,
+      "finishedAt": 1792384932.6338596,
+      "completeCommandWallSeconds": 0.26509863199316896
+    },
+    {
+      "index": 2,
+      "arm": "candidate",
+      "fixture": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/d3c2fbd987108361355b/profiling/examples/perf_probe",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-polygonal-face-leftover/qualification/candidate/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "--iters",
+        "5",
+        "--json",
+        "--fingerprint"
+      ],
+      "stdout": "2-candidate.json",
+      "stderr": "2-candidate.stderr",
+      "startedAt": 1792384933.066462,
+      "exitCode": 0,
+      "finishedAt": 1792384951.7034838,
+      "completeCommandWallSeconds": 18.6286516149994
+    },
+    {
+      "index": 3,
+      "arm": "base",
+      "fixture": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/03b9112e5cbd2336a644/profiling/examples/perf_probe",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-polygonal-face-leftover/qualification/candidate/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "--iters",
+        "5",
+        "--json",
+        "--fingerprint"
+      ],
+      "stdout": "3-base.json",
+      "stderr": "3-base.stderr",
+      "startedAt": 1792384952.1329951,
+      "exitCode": 0,
+      "finishedAt": 1792384970.423237,
+      "completeCommandWallSeconds": 18.28192750699236
+    },
+    {
+      "index": 4,
+      "arm": "base",
+      "fixture": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/03b9112e5cbd2336a644/profiling/examples/perf_probe",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-polygonal-face-leftover/qualification/candidate/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "--iters",
+        "5",
+        "--json",
+        "--fingerprint"
+      ],
+      "stdout": "4-base.json",
+      "stderr": "4-base.stderr",
+      "startedAt": 1792384970.8677702,
+      "exitCode": 0,
+      "finishedAt": 1792384987.6031585,
+      "completeCommandWallSeconds": 16.72707725202781
+    },
+    {
+      "index": 5,
+      "arm": "candidate",
+      "fixture": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "argv": [
+        "/home/louistrue/build-workers/worker-state/targets/d3c2fbd987108361355b/profiling/examples/perf_probe",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-polygonal-face-leftover/qualification/candidate/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "--iters",
+        "5",
+        "--json",
+        "--fingerprint"
+      ],
+      "stdout": "5-candidate.json",
+      "stderr": "5-candidate.stderr",
+      "startedAt": 1792384988.046606,
+      "exitCode": 0,
+      "finishedAt": 1792385004.9298964,
+      "completeCommandWallSeconds": 16.874851493019378
+    }
+  ],
+  "primaryError": null,
+  "finallyErrors": [],
+  "before": {
+    "base": {
+      "head": "1bd0505602e0d650971d5cdc590bf780c56f8d5f",
+      "binarySha256": "b30c3d6da847d893a2d67c00dfffe2ab7b1e029b18cb20575a73b0b3eca1bf0a"
+    },
+    "candidate": {
+      "head": "f04d4f621e2dd0b168ef298e116a25a827161995",
+      "binarySha256": "5e678e576558ddafa6fa918518dcb09ca25c61a52717d59af07668f06d35c121"
+    }
+  },
+  "lastIdentity": {
+    "base": {
+      "head": "1bd0505602e0d650971d5cdc590bf780c56f8d5f",
+      "binarySha256": "b30c3d6da847d893a2d67c00dfffe2ab7b1e029b18cb20575a73b0b3eca1bf0a"
+    },
+    "candidate": {
+      "head": "f04d4f621e2dd0b168ef298e116a25a827161995",
+      "binarySha256": "5e678e576558ddafa6fa918518dcb09ca25c61a52717d59af07668f06d35c121"
+    }
+  },
+  "after": {
+    "base": {
+      "head": "1bd0505602e0d650971d5cdc590bf780c56f8d5f",
+      "binarySha256": "b30c3d6da847d893a2d67c00dfffe2ab7b1e029b18cb20575a73b0b3eca1bf0a"
+    },
+    "candidate": {
+      "head": "f04d4f621e2dd0b168ef298e116a25a827161995",
+      "binarySha256": "5e678e576558ddafa6fa918518dcb09ca25c61a52717d59af07668f06d35c121"
+    }
+  },
+  "complete": true
+}

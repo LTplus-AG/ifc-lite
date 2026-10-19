@@ -1,0 +1,1097 @@
+{
+  "body": "Closes #7928.\n\nStrengthen seven confirmed sites from the bounded follow-up to #7925: seeded gym clash detection, MCP audit scoring, merge-battery rates, witness triangle attribution, list row presence, rebar check presence, and canonical FNV-1a vectors. The AB22 comment now records the investigated count history. Only tests and test comments change.\n\nBIMvoice reports that each strengthened assertion fails under its corresponding executed mutation and passes without it; the issue records the evidence and ruled-out candidates. I reviewed the complete branch diff before opening this PR for CI and review.\n\nValidation limitations remain explicit: the contributor reported CLI/MCP BCF publication failures without a clean-main comparison, and missing-fixture export-golden coverage. These must be distinguished from branch regressions by current CI or matched base runs before merging. No local validation is claimed by this PR submitter yet. No production behavior, API, or geometry output changes.\n\n\n<!-- This is an auto-generated comment: release notes by coderabbit.ai -->\n\n## Summary by CodeRabbit\n\n* **Tests**\n  * Strengthened checks for mesh witness points, clash scoring, audit results, merge metrics, and fabrication-precheck reports.\n  * Added coverage for canonical hash values and verified that geometry and zone tests return the expected number of rows, including when values are unavailable.\n\n<!-- end of auto-generated comment: release notes by coderabbit.ai -->",
+  "comments": [
+    {
+      "id": "IC_kwDOQ3UF-88AAAABdL6TMg",
+      "author": {
+        "login": "cursor"
+      },
+      "authorAssociation": "NONE",
+      "body": "<h3>Bugbot couldn't run - usage limit reached</h3>\n\nBugbot is counted against Cursor usage for this user or team, and this run hit a usage or spend limit.\n\nA user or team admin can review and increase usage limits in the [Cursor dashboard](https://www.cursor.com/dashboard/spending).\n\n(requestId: 1028619d-83b7-4871-b3c3-f3f2dc132404)\n\n",
+      "createdAt": "2026-10-18T18:36:17Z",
+      "includesCreatedEdit": false,
+      "isMinimized": false,
+      "minimizedReason": "",
+      "reactionGroups": [],
+      "url": "https://github.com/LTplus-AG/ifc-lite/pull/7930#issuecomment-6253613874",
+      "viewerDidAuthor": false
+    },
+    {
+      "id": "IC_kwDOQ3UF-88AAAABdL67NA",
+      "author": {
+        "login": "coderabbitai"
+      },
+      "authorAssociation": "NONE",
+      "body": "<!-- This is an auto-generated comment: summarize by coderabbit.ai -->\n<!-- review_stack_entry_start -->\n\n<a href=\"https://app.coderabbit.ai/change-stack/LTplus-AG/ifc-lite/pull/7930?scope=ghh_OusAJGA4HG8ljoOV0wJvVx8NmnZIjc2DdjmxOu0xZWA&amp;cs_source=review_comment\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://storage.googleapis.com/coderabbit_public_assets/review-stack-in-coderabbit-ui-dark.svg?v=3\"><source media=\"(prefers-color-scheme: light)\" srcset=\"https://storage.googleapis.com/coderabbit_public_assets/review-stack-in-coderabbit-ui.svg?v=3\"><img src=\"https://storage.googleapis.com/coderabbit_public_assets/review-stack-in-coderabbit-ui.svg?v=3\" alt=\"Review in Change Stack \u2192\" height=\"32\"></picture></a>\n\n<!-- review_stack_entry_end -->\n<!-- recent_review_start -->\n\nNo actionable comments were generated in the recent review. \ud83c\udf89\n\n<details>\n<summary><strong>\u2139\ufe0f Recent review info</strong></summary>\n<dl>\n<dd>\n\n<details>\n<summary><strong>\u2699\ufe0f Run configuration</strong></summary>\n<dl>\n<dd>\n\n- **Configuration used**: Repository: LTplus-AG/ifc-lite/.coderabbit.yaml\n- **Review profile**: CHILL\n- **Plan**: Team\n- **Run ID**: `a1ddd3f9-246b-4069-86a1-d138aa53f1fa`\n\n</dd>\n</dl>\n</details>\n\n<details>\n<summary><strong>\ud83d\udce5 Commits</strong></summary>\n<dl>\n<dd>\n\nReviewing files that changed from the base of the PR and between 779a431a28abac6da3e55ff536d74aee13ddce02 and 6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d.\n\n</dd>\n</dl>\n</details>\n\n<details>\n<summary><strong>\ud83d\udcd2 Files selected for processing: 8</strong></summary>\n<dl>\n<dd>\n\n* `packages/clash/src/contact/min-distance.test.ts`\n* `packages/cli/src/commands/gym.test.ts`\n* `packages/collab/test/color.test.ts`\n* `packages/lists/src/engine.geometry.test.ts`\n* `packages/lists/src/engine.zone.test.ts`\n* `packages/mcp/test/integration.test.ts`\n* `packages/provenance/test/merge-battery.test.ts`\n* `rust/export/src/rebar_fabrication_tests.rs`\n\n</dd>\n</dl>\n</details>\n\n**Included review availability:** This review used your included allowance. Your plan provides up to 10 included reviews per hour; 1 remain after this review.\n\n</dd>\n</dl>\n</details>\n\n\n\n\n\n<!-- recent_review_end -->\n<!-- walkthrough_start -->\n\n<details>\n<summary><strong>\ud83d\udcdd Walkthrough</strong></summary>\n<dl>\n<dd>\n\nThe pull request strengthens tests across clash geometry, gym scoring, collaboration hashing, list results, model audits, merge metrics, and Rust fabrication checks. The tests now verify expected values, counts, and relationships instead of relying only on permissive or vacuous assertions.\n\n**Changes: Test assertion strengthening**\n\n|Layer / File(s)|Summary|\n|:---|:---|\n|**Validate geometry witnesses and result rows** <br> `packages/clash/src/contact/min-distance.test.ts`, `packages/lists/src/engine.geometry.test.ts`, `packages/lists/src/engine.zone.test.ts`|The clash test checks that each witness point lies on its indexed triangle in both mesh argument orders. List tests assert expected row counts before checking for null values.|\n|**Check clash and audit metrics** <br> `packages/cli/src/commands/gym.test.ts`, `packages/mcp/test/integration.test.ts`, `packages/provenance/test/merge-battery.test.ts`|Gym tests check a seeded episode\u2019s clash count and score. Audit and merge-battery tests verify reported metric values and their relationships.|\n|**Pin FNV-1a reference values** <br> `packages/collab/test/color.test.ts`|The test checks `fnv1a` against three published 32-bit reference values.|\n|**Verify fabrication check coverage** <br> `rust/export/src/rebar_fabrication_tests.rs`|Fabrication tests check that reports exist and contain every check kind requested by `full_policy()`. |\n\n<!-- change_assessment_start -->\n**Priority:** \u2b07\ufe0f Low\n\n**Estimated code review effort:** 3 (Moderate) | ~20 minutes\n\n<!-- change_assessment_commit:\"6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d\" -->\n**Change:** Other\n<!-- change_assessment_end -->\n\n**Suggested reviewers:** `bimvoice`\n\n</dd>\n</dl>\n</details>\n\n<!-- walkthrough_end -->\n<details>\n<summary><strong>Merge Risk:</strong> <strong>\u26aa Minimal</strong> \u00b7 up to <code>6f85d</code></summary>\n<dl>\n<dd>\n\n<!-- final_review_risk_start -->\n<!-- final_review_risk_label\n**Merge Risk:** **\u26aa Minimal** \u00b7 up to `6f85d`\n-->\n<!-- final_review_risk_coverage:{\"sourceCommitId\":\"6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d\",\"coveredCommitId\":\"6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d\",\"kind\":\"reviewed\"} -->\n\nNo merge-blocking issue is established; merge after normal validation.\n<!-- final_review_risk_end -->\n\n</dd>\n</dl>\n</details>\n<!-- pre_merge_checks_walkthrough_start -->\n\n<details>\n<summary><strong>Pre-merge checks: <sup><picture><img src=\"https://storage.googleapis.com/coderabbit_public_assets/pre-merge-checks-counter-passed-14-v2.svg\" width=\"14\" height=\"14\" align=\"middle\" alt=\"Passed\" title=\"Passed\"></picture></sup> 6 \u00b7 <sup><picture><img src=\"https://storage.googleapis.com/coderabbit_public_assets/pre-merge-checks-counter-failed-14-v2.svg\" width=\"14\" height=\"14\" align=\"middle\" alt=\"Failed\" title=\"Failed\"></picture></sup> 2</strong></summary>\n<dl>\n<dd>\n\n<strong><sup><picture><img src=\"https://storage.googleapis.com/coderabbit_public_assets/pre-merge-checks-counter-failed-14-v2.svg\" width=\"14\" height=\"14\" align=\"middle\" alt=\"Failed\" title=\"Failed\"></picture></sup> Failed checks: 2 warnings</strong>\n\n|        Check name       |                                              Status                                              | Explanation                                                                                                                                                                                               | Resolution                                                                                                                                                                                                                                        |\n| :--------------------- | :----------------------------------------------------------------------------------------------: | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |\n|    Docstring Coverage   | ![Warning](https://storage.googleapis.com/coderabbit_public_assets/pre-merge-checks-warning.svg) | Docstring coverage is 50.00% which is insufficient. The required threshold is 80.00%. Docstring coverage is scoped to functions touched by this diff. Analyzed 4 functions across 8 files.                | Write docstrings for the functions missing them to satisfy the coverage threshold.                                                                                                                                                                |\n| One Defect Class Per Pr | ![Warning](https://storage.googleapis.com/coderabbit_public_assets/pre-merge-checks-warning.svg) | The PR fixes one broad defect class\u2014vacuous or non-discriminating test assertions\u2014at eight unrelated call-site groups: clash triangle ranges (`packages/clash/src/contact/min-distance.test.ts:262`), gy\u2026 | Add one shared test-quality gate for this defect class. The gate must exercise changed regression tests against representative constant, empty-result, dropped-output, and wrong-attribution mutations, and fail when a mutation remains green. \u2026 |\n\n<details>\n<summary><strong><sup><picture><img src=\"https://storage.googleapis.com/coderabbit_public_assets/pre-merge-checks-counter-passed-14-v2.svg\" width=\"14\" height=\"14\" align=\"middle\" alt=\"Passed\" title=\"Passed\"></picture></sup> Passed checks: 6 passed</strong></summary>\n<dl>\n<dd>\n\n|               Check name               |                                             Status                                             | Explanation                                                                                                                                                                                               |\n| :------------------------------------ | :--------------------------------------------------------------------------------------------: | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |\n|            Description Check           | ![Passed](https://storage.googleapis.com/coderabbit_public_assets/pre-merge-checks-passed.svg) | Check skipped - CodeRabbit\u2019s high-level summary is enabled.                                                                                                                                               |\n|               Title check              | ![Passed](https://storage.googleapis.com/coderabbit_public_assets/pre-merge-checks-passed.svg) | The title clearly identifies the primary change: strengthening seven vacuous regression test sites. It matches the PR objectives and changeset.                                                           |\n|           Linked Issues check          | ![Passed](https://storage.googleapis.com/coderabbit_public_assets/pre-merge-checks-passed.svg) | Issue `#7928` requires only the seven confirmed vacuous-test sites. The diff adds a seeded positive-clash assertion in `packages/cli/src/commands/gym.test.ts`, score and audit identities in `packages/mc\u2026 |\n|       Out of Scope Changes check       | ![Passed](https://storage.googleapis.com/coderabbit_public_assets/pre-merge-checks-passed.svg) | All changed files are test files or test comments. Each code change directly strengthens one of the seven sites named by issue `#7928`. The shared rebar test helper supports the required presence checks\u2026 |\n| Changeset Bump Matches The Api Surface | ![Passed](https://storage.googleapis.com/coderabbit_public_assets/pre-merge-checks-passed.svg) | The pull request changes eight test files only. It adds or edits no file under `.changeset/`, so this check is not applicable.                                                                            |\n|    Verification Evidence Is Present    | ![Passed](https://storage.googleapis.com/coderabbit_public_assets/pre-merge-checks-passed.svg) | The description reports what was run and observed: BIMvoice executed the corresponding mutations, each strengthened assertion failed under its mutation, and the tests passed without it. The PR makes t\u2026 |\n\n<details>\n<summary><strong>Full details: Linked Issues check</strong></summary>\n<dl>\n<dd>\n\n**Explanation**\n\nIssue `#7928` requires only the seven confirmed vacuous-test sites. The diff adds a seeded positive-clash assertion in `packages/cli/src/commands/gym.test.ts`, score and audit identities in `packages/mcp/test/integration.test.ts`, count-derived merge-battery rates in `packages/provenance/test/merge-battery.test.ts`, witness-point triangle checks in `packages/clash/src/contact/min-distance.test.ts`, non-empty row checks in the list tests, requested-check presence in `rust/export/src/rebar_fabrication_tests.rs`, and canonical FNV-1a vectors in `packages/collab/test/color.test.ts`. The AB22 comment records the count history without adding a production requirement. The diff contains no production-code change.\n\n</dd>\n</dl>\n</details>\n\n<details>\n<summary><strong>Full details: Out of Scope Changes check</strong></summary>\n<dl>\n<dd>\n\n**Explanation**\n\nAll changed files are test files or test comments. Each code change directly strengthens one of the seven sites named by issue `#7928`. The shared rebar test helper supports the required presence checks, and the AB22 comment documents the issue observation. No unrelated production, API, geometry-output, or sibling-site changes are present in the whole-PR diff.\n\n</dd>\n</dl>\n</details>\n\n<details>\n<summary><strong>Full details: Verification Evidence Is Present</strong></summary>\n<dl>\n<dd>\n\n**Explanation**\n\nThe description reports what was run and observed: BIMvoice executed the corresponding mutations, each strengthened assertion failed under its mutation, and the tests passed without it. The PR makes test-only changes, with self-evident executable assertions such as the seeded `--seed 42` clash case, canonical FNV-1a vectors, and recomputed audit and merge-battery values. It makes no user-visible behavior claim without evidence.\n\n</dd>\n</dl>\n</details>\n\n</dd>\n</dl>\n</details>\n\n<details>\n<summary><strong>Full details: One Defect Class Per Pr</strong></summary>\n<dl>\n<dd>\n\n**Explanation**\n\nThe PR fixes one broad defect class\u2014vacuous or non-discriminating test assertions\u2014at eight unrelated call-site groups: clash triangle ranges (`packages/clash/src/contact/min-distance.test.ts:262`), gym clash count (`packages/cli/src/commands/gym.test.ts:264` and `525`), FNV determinism (`packages/collab/test/color.test.ts:38`), four list `every` checks (`engine.geometry.test.ts:136` and `engine.zone.test.ts:99,202,218`), MCP score bounds (`packages/mcp/test/integration.test.ts:106`), merge-battery rate bounds (`packages/provenance/test/merge-battery.test.ts:58`), and rebar `all` checks (`rust/export/src/rebar_fabrication_tests.rs:80` and `99`). The diff adds only local assertions and local helpers. `distanceToTriangle` is specific to clash geometry, and `requested_kinds` is specific to rebar checks. No shared non-vacuity helper or repository-wide gate changes with the PR.\n\n**Resolution**\n\nAdd one shared test-quality gate for this defect class. The gate must exercise changed regression tests against representative constant, empty-result, dropped-output, and wrong-attribution mutations, and fail when a mutation remains green. Use shared non-vacuity helpers for collection assertions where applicable, and require the gate in CI so future unrelated call sites cannot add the same vacuous pattern without detection.\n\n</dd>\n</dl>\n</details>\n\n</dd>\n</dl>\n</details>\n\n<!-- pre_merge_checks_walkthrough_end -->\n\n- [ ] <!-- {\"checkboxId\":\"585bb3f6-faf5-4dbf-96d2-74e382adf19a\"} --> Fix all pre-merge checks with AI\n<!-- finishing_touch_checkbox_start -->\n\n<details>\n<summary><strong>\u2728 Finishing Touches: \ud83d\udca1 1</strong></summary>\n<dl>\n<dd>\n\n<!-- finishing_touch_suggestion:docstrings -->\n<details open>\n<summary><strong>\ud83d\udcdd Generate docstrings: \ud83d\udca1</strong></summary>\n<dl>\n<dd>\n\n- [ ] <!-- {\"checkboxId\":\"3e1879ae-f29b-4d0d-8e06-d12b7ba33d98\"} --> Commit to this branch\n- [ ] <!-- {\"checkboxId\":\"7962f53c-55bc-4827-bfbf-6a18da830691\"} --> Create a new PR\n\n</dd>\n</dl>\n</details>\n<details open>\n<summary><strong>\ud83e\uddea Generate unit tests (beta)</strong></summary>\n<dl>\n<dd>\n\n- [ ] <!-- {\"checkboxId\": \"6ba7b810-9dad-11d1-80b4-00c04fd430c8\", \"radioGroupId\": \"utg-output-choice-group-unknown_comment_id\"} --> Commit to this branch\n- [ ] <!-- {\"checkboxId\": \"f47ac10b-58cc-4372-a567-0e02b2c3d479\", \"radioGroupId\": \"utg-output-choice-group-unknown_comment_id\"} --> Create a new PR\n\n</dd>\n</dl>\n</details>\n\n</dd>\n</dl>\n</details>\n\n<!-- finishing_touch_checkbox_end -->\n\n<!-- autopilot:start -->\n- [ ] <!-- {\"checkboxId\":\"2708ad07-9f24-4260-9c11-7dc76a49f2e3\"} --> <strong title=\"Keep fixing CodeRabbit findings and required CI, and resolving merge conflicts\">Autofix</strong> \u00b7 Keep fixing CodeRabbit findings and required CI, and resolving merge conflicts\n<!-- autopilot:end -->\n<!-- tips_start -->\n\n\n\n\n\n\n<sub>Comment `@coderabbitai help` to get the list of available commands.</sub>\n\n<!-- tips_end -->",
+      "createdAt": "2026-10-18T18:37:16Z",
+      "includesCreatedEdit": true,
+      "isMinimized": false,
+      "minimizedReason": "",
+      "reactionGroups": [],
+      "url": "https://github.com/LTplus-AG/ifc-lite/pull/7930#issuecomment-6253624116",
+      "viewerDidAuthor": false
+    },
+    {
+      "id": "IC_kwDOQ3UF-88AAAABdL7omQ",
+      "author": {
+        "login": "github-actions"
+      },
+      "authorAssociation": "CONTRIBUTOR",
+      "body": "### Claude review - no findings for `6f85d6a51`\n\nReviewed this diff and found nothing to flag.\n\n<!-- ifc-lite-review sha=6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d verdict=clean count=0 -->",
+      "createdAt": "2026-10-18T18:38:24Z",
+      "includesCreatedEdit": false,
+      "isMinimized": false,
+      "minimizedReason": "",
+      "reactionGroups": [],
+      "url": "https://github.com/LTplus-AG/ifc-lite/pull/7930#issuecomment-6253635737",
+      "viewerDidAuthor": false
+    },
+    {
+      "id": "IC_kwDOQ3UF-88AAAABdL9-ew",
+      "author": {
+        "login": "louistrue"
+      },
+      "authorAssociation": "MEMBER",
+      "body": "Reviewed the two CodeRabbit pre-merge warnings. The scope matches the maintainer-approved bounded charter in #7928: finish triaging and strengthening the remaining #7925 candidates as one test-defect class. A repository-wide mutation-testing gate is additional infrastructure outside that charter; these distinct behavioral invariants do not share one useful assertion helper. I am not expanding this PR to add that gate. The docstring percentage concerns small test-local helpers, whose purpose is explained by the surrounding fixture comments; it is not a repository-required check. Neither warning establishes a correctness defect. Required CI, including the previously disclosed CLI/MCP validation limitations, still must pass before merge.",
+      "createdAt": "2026-10-18T18:42:10Z",
+      "includesCreatedEdit": false,
+      "isMinimized": false,
+      "minimizedReason": "",
+      "reactionGroups": [],
+      "url": "https://github.com/LTplus-AG/ifc-lite/pull/7930#issuecomment-6253674107",
+      "viewerDidAuthor": true
+    },
+    {
+      "id": "IC_kwDOQ3UF-88AAAABdMJbag",
+      "author": {
+        "login": "louistrue"
+      },
+      "authorAssociation": "MEMBER",
+      "body": "CI failure triage: viewer shard 12 reported 1,118 passing assertions, zero failed assertions, and one cancelled file. All four CesiumOverlay.custom-3dtiles tests passed in ~520 ms, but its file process subsequently hit the unchanged 120,000 ms timeout (testTimeoutFailure). The required aggregate correctly failed only because viewer-tests failed; all other aggregate dependencies passed or were intentionally skipped. This branch changes no viewer files. Retaining the failure logs and rerunning failed jobs once to distinguish a transient lingering-handle failure from a reproducible problem; no timeout or acceptance change.",
+      "createdAt": "2026-10-18T19:00:42Z",
+      "includesCreatedEdit": false,
+      "isMinimized": false,
+      "minimizedReason": "",
+      "reactionGroups": [],
+      "url": "https://github.com/LTplus-AG/ifc-lite/pull/7930#issuecomment-6253861738",
+      "viewerDidAuthor": true
+    }
+  ],
+  "headRefOid": "6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d",
+  "mergeStateStatus": "BLOCKED",
+  "number": 7930,
+  "reviewDecision": "REVIEW_REQUIRED",
+  "reviews": [],
+  "state": "OPEN",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:35:56Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885192/job/117755947235",
+      "name": "PR-Agent review (OpenRouter)",
+      "startedAt": "2026-10-18T18:35:56Z",
+      "status": "COMPLETED",
+      "workflowName": "PR-Agent review"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:38:29Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885111/job/117755944689",
+      "name": "Claude review",
+      "startedAt": "2026-10-18T18:35:59Z",
+      "status": "COMPLETED",
+      "workflowName": "Claude review"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:36:30Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154884989/job/117755943588",
+      "name": "parity (in-tree fixtures, committed reference)",
+      "startedAt": "2026-10-18T18:36:00Z",
+      "status": "COMPLETED",
+      "workflowName": "IfcOpenShell parity"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:36:27Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885064/job/117755944617",
+      "name": "Issue queue",
+      "startedAt": "2026-10-18T18:35:58Z",
+      "status": "COMPLETED",
+      "workflowName": "Issue queue"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:40:08Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157978/job/117756760486",
+      "name": "Issue queue",
+      "startedAt": "2026-10-18T18:39:35Z",
+      "status": "COMPLETED",
+      "workflowName": "Issue queue"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:45:47Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885031/job/117755944351",
+      "name": "PR review signal",
+      "startedAt": "2026-10-18T18:35:59Z",
+      "status": "COMPLETED",
+      "workflowName": "PR review signal"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:36:34Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885191/job/117755945559",
+      "name": "PR risk label",
+      "startedAt": "2026-10-18T18:35:59Z",
+      "status": "COMPLETED",
+      "workflowName": "PR risk label"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:41:36Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154884971/job/117755943753",
+      "name": "Run canary bundles",
+      "startedAt": "2026-10-18T18:35:58Z",
+      "status": "COMPLETED",
+      "workflowName": "SDK canary"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:42:40Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885088/job/117755944819",
+      "name": "Validate Server Binary (linux-x64)",
+      "startedAt": "2026-10-18T18:35:58Z",
+      "status": "COMPLETED",
+      "workflowName": "Server Binaries"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:36:35Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761524988",
+      "name": "Detect changes",
+      "startedAt": "2026-10-18T18:35:59Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761276254",
+      "name": "Detect changes",
+      "startedAt": "2026-10-18T18:59:44Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:39:46Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885241/job/117755945229",
+      "name": "wheel ubuntu-latest / x86_64",
+      "startedAt": "2026-10-18T18:35:59Z",
+      "status": "COMPLETED",
+      "workflowName": "python-wheels"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:35:55Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885111/job/117755945887",
+      "name": "Clear the stand-down label for this new head",
+      "startedAt": "2026-10-18T18:35:56Z",
+      "status": "COMPLETED",
+      "workflowName": "Claude review"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:35:55Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154884989/job/117755945512",
+      "name": "full corpus (latest stable reference engine)",
+      "startedAt": "2026-10-18T18:35:56Z",
+      "status": "COMPLETED",
+      "workflowName": "IfcOpenShell parity"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:35:55Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885064/job/117755945568",
+      "name": "Issue queue",
+      "startedAt": "2026-10-18T18:35:56Z",
+      "status": "COMPLETED",
+      "workflowName": "Issue queue"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:39:32Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157978/job/117756761428",
+      "name": "Issue queue",
+      "startedAt": "2026-10-18T18:39:33Z",
+      "status": "COMPLETED",
+      "workflowName": "Issue queue"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:35:55Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885031/job/117755945447",
+      "name": "PR review signal",
+      "startedAt": "2026-10-18T18:35:56Z",
+      "status": "COMPLETED",
+      "workflowName": "PR review signal"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:35:55Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885088/job/117755975181",
+      "name": "Validate Server Binary (${{ matrix.target }})",
+      "startedAt": "2026-10-18T18:36:04Z",
+      "status": "COMPLETED",
+      "workflowName": "Server Binaries"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761397950",
+      "name": "Build packages + WASM",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:35:56Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885241/job/117755946335",
+      "name": "wheel ${{ matrix.os }} / ${{ matrix.target }}",
+      "startedAt": "2026-10-18T18:35:56Z",
+      "status": "COMPLETED",
+      "workflowName": "python-wheels"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:36:05Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885192/job/117755946308",
+      "name": "PR-Agent local model run",
+      "startedAt": "2026-10-18T18:35:59Z",
+      "status": "COMPLETED",
+      "workflowName": "PR-Agent review"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:45:28Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761525825",
+      "name": "Build packages + WASM",
+      "startedAt": "2026-10-18T18:36:38Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:36:05Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885192/job/117755981492",
+      "name": "PR-Agent review (local model)",
+      "startedAt": "2026-10-18T18:36:05Z",
+      "status": "COMPLETED",
+      "workflowName": "PR-Agent review"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:35:55Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885088/job/117755945869",
+      "name": "Release Server Binary (${{ matrix.target }})",
+      "startedAt": "2026-10-18T18:35:56Z",
+      "status": "COMPLETED",
+      "workflowName": "Server Binaries"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761398231",
+      "name": "Rust tests",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:39:46Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885241/job/117756816579",
+      "name": "Open an issue when main is red",
+      "startedAt": "2026-10-18T18:39:47Z",
+      "status": "COMPLETED",
+      "workflowName": "python-wheels"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:39:42Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885111/job/117756525964",
+      "name": "Review posted",
+      "startedAt": "2026-10-18T18:38:32Z",
+      "status": "COMPLETED",
+      "workflowName": "Claude review"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:36:26Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154884989/job/117755943845",
+      "name": "cost parity (in-tree fixture, committed reference)",
+      "startedAt": "2026-10-18T18:35:58Z",
+      "status": "COMPLETED",
+      "workflowName": "IfcOpenShell parity"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:52:24Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761525943",
+      "name": "Rust tests",
+      "startedAt": "2026-10-18T18:36:38Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:35:55Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154884989/job/117755944576",
+      "name": "cost full corpus (latest stable reference engine)",
+      "startedAt": "2026-10-18T18:35:56Z",
+      "status": "COMPLETED",
+      "workflowName": "IfcOpenShell parity"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:42:40Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885088/job/117757478026",
+      "name": "Open an issue when main is red",
+      "startedAt": "2026-10-18T18:42:41Z",
+      "status": "COMPLETED",
+      "workflowName": "Server Binaries"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:36:35Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761525608",
+      "name": "Rust tests (feature builds)",
+      "startedAt": "2026-10-18T19:00:46Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761398675",
+      "name": "Rust tests (feature builds)",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:39:46Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885241/job/117756816063",
+      "name": "publish to PyPI",
+      "startedAt": "2026-10-18T18:39:47Z",
+      "status": "COMPLETED",
+      "workflowName": "python-wheels"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:35:55Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154884989/job/117755945133",
+      "name": "report-scheduled-failure",
+      "startedAt": "2026-10-18T18:35:56Z",
+      "status": "COMPLETED",
+      "workflowName": "IfcOpenShell parity"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:35:56Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885088/job/117755945955",
+      "name": "Verify release assets",
+      "startedAt": "2026-10-18T18:35:56Z",
+      "status": "COMPLETED",
+      "workflowName": "Server Binaries"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:36:35Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761525866",
+      "name": "Geometry watertightness census",
+      "startedAt": "2026-10-18T19:00:46Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761398390",
+      "name": "Geometry watertightness census",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:36:35Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761525712",
+      "name": "CSG accept gates (feature builds)",
+      "startedAt": "2026-10-18T19:00:46Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761398239",
+      "name": "CSG accept gates (feature builds)",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:36:35Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761525843",
+      "name": "Plato clash-math freshness",
+      "startedAt": "2026-10-18T19:00:46Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761397989",
+      "name": "Plato clash-math freshness",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:36:35Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761525919",
+      "name": "Docs checks (docs-only PRs)",
+      "startedAt": "2026-10-18T19:00:46Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761398613",
+      "name": "Docs checks (docs-only PRs)",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761397918",
+      "name": "Docs site build (mkdocs --strict)",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:39:45Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526386",
+      "name": "Docs site build (mkdocs --strict)",
+      "startedAt": "2026-10-18T18:36:38Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761398005",
+      "name": "Rust crate semver",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:41:52Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761525644",
+      "name": "Rust crate semver",
+      "startedAt": "2026-10-18T18:36:38Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:36:35Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761525945",
+      "name": "AGENTS.md ratchet",
+      "startedAt": "2026-10-18T19:00:46Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761398494",
+      "name": "AGENTS.md ratchet",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761398271",
+      "name": "MPL license headers",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:36:56Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526092",
+      "name": "MPL license headers",
+      "startedAt": "2026-10-18T18:36:38Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761398376",
+      "name": "Native instruction counts",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:38:39Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526027",
+      "name": "Native instruction counts",
+      "startedAt": "2026-10-18T18:36:38Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761398989",
+      "name": "Changed tests observe production",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:47:11Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526568",
+      "name": "Changed tests observe production",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761398462",
+      "name": "Typecheck",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:51:58Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526461",
+      "name": "Typecheck",
+      "startedAt": "2026-10-18T18:45:32Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761398951",
+      "name": "Lint",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:50:31Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526642",
+      "name": "Lint",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761398520",
+      "name": "Viewer tests (shard ${{ matrix.shard }})",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:58:43Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526507",
+      "name": "Viewer tests (shard 0)",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:53:47Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761527013",
+      "name": "Viewer tests (shard 1)",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:59:20Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761527267",
+      "name": "Viewer tests (shard 2)",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:58:06Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526574",
+      "name": "Viewer tests (shard 3)",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:58:48Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526917",
+      "name": "Viewer tests (shard 4)",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:58:50Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526938",
+      "name": "Viewer tests (shard 5)",
+      "startedAt": "2026-10-18T18:45:32Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:55:48Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761527424",
+      "name": "Viewer tests (shard 6)",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:59:02Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761527004",
+      "name": "Viewer tests (shard 7)",
+      "startedAt": "2026-10-18T18:45:32Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:58:25Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761527197",
+      "name": "Viewer tests (shard 8)",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:58:21Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761527730",
+      "name": "Viewer tests (shard 9)",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:58:52Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761527504",
+      "name": "Viewer tests (shard 10)",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:58:50Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761527929",
+      "name": "Viewer tests (shard 11)",
+      "startedAt": "2026-10-18T18:45:32Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:10:58Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526871",
+      "name": "Viewer tests (shard 12)",
+      "startedAt": "2026-10-18T19:00:49Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:53:34Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761528329",
+      "name": "Viewer tests (shard 13)",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:57:56Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761528234",
+      "name": "Viewer tests (shard 14)",
+      "startedAt": "2026-10-18T18:45:32Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:59:36Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761527936",
+      "name": "Viewer tests (shard 15)",
+      "startedAt": "2026-10-18T18:45:32Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761398382",
+      "name": "Node guards",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:55:53Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526668",
+      "name": "Node guards",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761398811",
+      "name": "Node tests (shard ${{ matrix.shard }}/4)",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:51:23Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526621",
+      "name": "Node tests (shard 1/4)",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:50:02Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761527185",
+      "name": "Node tests (shard 2/4)",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:49:33Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526765",
+      "name": "Node tests (shard 3/4)",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:51:59Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526853",
+      "name": "Node tests (shard 4/4)",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761398435",
+      "name": "Provenance tests",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:49:14Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526618",
+      "name": "Provenance tests",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761398662",
+      "name": "Viewer E2E smoke (${{ matrix.shard }}/4)",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:55:10Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526171",
+      "name": "Viewer E2E smoke (1/4)",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:49:39Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526485",
+      "name": "Viewer E2E smoke (2/4)",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:51:00Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526468",
+      "name": "Viewer E2E smoke (3/4)",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:53:50Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526949",
+      "name": "Viewer E2E smoke (4/4)",
+      "startedAt": "2026-10-18T18:45:31Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:14Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761398900",
+      "name": "Perf ratchet ceilings",
+      "startedAt": "2026-10-18T19:00:14Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:46:16Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117761526907",
+      "name": "Perf ratchet ceilings",
+      "startedAt": "2026-10-18T18:45:32Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:00:45Z",
+      "conclusion": "FAILURE",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39155157911/job/117761397898",
+      "name": "Build + WASM + Rust + Node",
+      "startedAt": "2026-10-18T19:00:17Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T19:11:06Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39154885006/job/117763887080",
+      "name": "Build + WASM + Rust + Node",
+      "startedAt": "2026-10-18T19:11:02Z",
+      "status": "COMPLETED",
+      "workflowName": "Test"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:36:17Z",
+      "conclusion": "NEUTRAL",
+      "detailsUrl": "https://cursor.com/docs/bugbot",
+      "name": "Cursor Bugbot",
+      "startedAt": "2026-10-18T18:36:16Z",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:35:56Z",
+      "conclusion": "NEUTRAL",
+      "detailsUrl": "https://vercel.com/github",
+      "name": "Vercel Agent Review",
+      "startedAt": "2026-10-18T18:35:56Z",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "__typename": "StatusContext",
+      "context": "CodeRabbit",
+      "startedAt": "2026-10-18T18:40:28Z",
+      "state": "SUCCESS",
+      "targetUrl": ""
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-18T18:33:04Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://vercel.com/github",
+      "name": "Vercel Preview Comments",
+      "startedAt": "2026-10-18T18:33:04Z",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "__typename": "StatusContext",
+      "context": "Vercel \u2013 ifc-lite",
+      "startedAt": "2026-10-18T18:33:04Z",
+      "state": "SUCCESS",
+      "targetUrl": "https://vercel.com/ltplus/ifc-lite/FcLFUF5NehAmW1rwJMNQghs821Xx"
+    },
+    {
+      "__typename": "StatusContext",
+      "context": "Vercel \u2013 ifc-lite-dev",
+      "startedAt": "2026-10-18T18:33:04Z",
+      "state": "SUCCESS",
+      "targetUrl": "https://vercel.com/ltplus/ifc-lite-dev/GhHwzSJ8x9VJndgiZFW8rUYhtB6Q"
+    },
+    {
+      "__typename": "StatusContext",
+      "context": "Vercel \u2013 ifc-lite-viewer-embed",
+      "startedAt": "2026-10-18T18:33:04Z",
+      "state": "SUCCESS",
+      "targetUrl": "https://vercel.com/ltplus/ifc-lite-viewer-embed/GaKewmV1dfjzrFTWEdMeVrDvtQqk"
+    }
+  ],
+  "title": "test: strengthen seven remaining vacuous regression sites (#7928)"
+}

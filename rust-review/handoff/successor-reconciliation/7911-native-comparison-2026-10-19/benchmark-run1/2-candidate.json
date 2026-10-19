@@ -1,0 +1,3 @@
+[
+  {"path":"/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-polygonal-face-leftover/qualification/candidate/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc","fileMb":11.473,"entities":202661,"meshes":1402,"vertices":219404,"triangles":136377,"indexBuildMs":16.35,"parseMs":36,"entityScanMs":35,"lookupMs":0,"preprocessMs":1,"geometryMs":3524,"facetedBrepMs":0,"totalMs":3560,"allTotalsMs":[3560, 3721, 3759, 3690, 3626],"allWallMs":[3579.232568, 3740.885636, 3778.40645, 3708.2207280000002, 3644.7353959999996],"pointCacheHits":223092,"pointCacheMisses":27872,"csgFailures":18,"degenerateDropped":7,"meshFingerprintsFnv1a64":["19b0b1c8ca8da958", "19b0b1c8ca8da958", "19b0b1c8ca8da958", "19b0b1c8ca8da958", "19b0b1c8ca8da958"]}
+]

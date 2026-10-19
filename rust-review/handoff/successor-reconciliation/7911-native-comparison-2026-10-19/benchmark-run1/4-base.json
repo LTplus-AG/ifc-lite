@@ -1,0 +1,3 @@
+[
+  {"path":"/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-polygonal-face-leftover/qualification/candidate/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc","fileMb":169.244,"entities":2807815,"meshes":109514,"vertices":4515161,"triangles":2895362,"indexBuildMs":352.80,"parseMs":773,"entityScanMs":609,"lookupMs":158,"preprocessMs":5,"geometryMs":1315,"facetedBrepMs":0,"totalMs":2089,"allTotalsMs":[2461, 2378, 2378, 2089, 2376],"allWallMs":[2860.911641, 2770.2477280000003, 2760.2438700000002, 2480.126244, 2753.7867459999998],"pointCacheHits":220634,"pointCacheMisses":41512,"csgFailures":0,"degenerateDropped":0,"meshFingerprintsFnv1a64":["500e89efcdd091fa", "500e89efcdd091fa", "500e89efcdd091fa", "500e89efcdd091fa", "500e89efcdd091fa"]}
+]

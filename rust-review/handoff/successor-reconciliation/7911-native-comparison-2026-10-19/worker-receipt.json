@@ -1,0 +1,95 @@
+{
+  "id": "c72bb237-d907-453b-92b7-b96ab2c116fd",
+  "host": {
+    "host": "pop-os",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 32,
+    "availableMemoryBytes": 116831334400,
+    "totalMemoryBytes": 134644969472,
+    "python": "3.12.3",
+    "time": 1792384930.2788184
+  },
+  "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/two-item-delivery/7911-integration/source-candidate",
+  "sourceBefore": {
+    "commit": "f04d4f621e2dd0b168ef298e116a25a827161995",
+    "tree": "e02f21cac0712bd626b5dd5226e04cafe8485e0e",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "command": [
+    "/usr/bin/python3",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/two-item-delivery/7911-integration/benchmark-runtime-v1/run-native-comparison.py"
+  ],
+  "kind": "benchmark",
+  "requestedAt": 1792384930.2777832,
+  "resources": [
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/two-item-delivery/7911-integration/source-candidate",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/two-item-delivery/7911-integration/source-base",
+    "/home/louistrue/build-workers/worker-state/targets/03b9112e5cbd2336a644",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/two-item-delivery/7911-integration/source-candidate",
+    "/home/louistrue/build-workers/worker-state/targets/d3c2fbd987108361355b",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/two-item-delivery/7911-integration/benchmark-runtime-v1",
+    "/home/louistrue/build-workers/worker-state/targets/f33fb4f475a1d663b11d"
+  ],
+  "state": "completed",
+  "cpu": 8,
+  "memoryGiB": 24,
+  "fixtures": {},
+  "tools": {
+    "git": {
+      "path": "/usr/bin/git",
+      "exitCode": 0,
+      "version": "git version 2.43.0"
+    },
+    "rustc": {
+      "path": "/home/louistrue/build-workers/toolchains/cargo/bin/rustc",
+      "exitCode": 0,
+      "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+    },
+    "cargo": {
+      "path": "/home/louistrue/build-workers/toolchains/cargo/bin/cargo",
+      "exitCode": 0,
+      "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+    },
+    "node": {
+      "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+      "exitCode": 0,
+      "version": "v24.22.0"
+    },
+    "pnpm": {
+      "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/pnpm",
+      "exitCode": 0,
+      "version": "10.8.1"
+    }
+  },
+  "runnerSha256": "3bebacb6e09e29cd0ee86c7d06dfef95062ab61ecc1b37601e5e53cc64aedce5",
+  "startedAt": 1792384930.9787097,
+  "queueSeconds": 0.7009267807006836,
+  "resourceScope": true,
+  "exitCode": 0,
+  "finishedAt": 1792385005.9040847,
+  "sourceAfter": {
+    "commit": "f04d4f621e2dd0b168ef298e116a25a827161995",
+    "tree": "e02f21cac0712bd626b5dd5226e04cafe8485e0e",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/two-item-delivery/7911-integration/benchmark-runtime-v1/benchmark-run1/collection.json": "aa3d3716ad93218982bf492941928d620b4e9071f3ab4d7e5e3474cc1800503f"
+  },
+  "outputSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

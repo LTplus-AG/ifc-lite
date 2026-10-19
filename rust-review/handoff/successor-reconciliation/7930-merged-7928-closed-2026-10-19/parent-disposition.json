@@ -1,0 +1,15 @@
+{
+  "pr": 7930,
+  "issue": 7928,
+  "scope": "Bounded vacuous-test candidates under original#7928 charter;7confirmed test classes fixed and other candidates dispositioned;AB22history explained",
+  "head": "6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d",
+  "mergeCommit": "067ef8327b7238a5eef106df722ad7e705c8ed18",
+  "mergedAt": "2026-10-19T04:40:38Z",
+  "closedAt": "2026-10-19T04:40:40Z",
+  "requiredChecks": "All4PASS at exacthead; fullTest run39154885006completedSUCCESS,0failedjobs",
+  "priorFailure": "Retained prior viewer lingeringhandle timeout and metadata duplicate aggregatefailure; actualfull rerun success confirmed",
+  "review": "Parent read full8test-file diff and originalissue/comments; no unresolved threads; no production/API/geometry changes",
+  "contribution": "BIMvoice original implementation and mutation evidence preserved; root reviewed and merged existingPR without branch/source edits",
+  "integrationVerification": "Actual merge changes exactly the8 reviewed test files; no claim mergedwhole-tree equals oldPRhead",
+  "acceptedIssueClosure": true
+}

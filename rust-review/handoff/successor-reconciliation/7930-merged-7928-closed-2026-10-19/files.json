@@ -1,0 +1,98 @@
+[
+  {
+    "sha": "aedd36518da0884632741ac93847aa0cbc8eddc7",
+    "filename": "packages/clash/src/contact/min-distance.test.ts",
+    "status": "modified",
+    "additions": 37,
+    "deletions": 8,
+    "changes": 45,
+    "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d/packages%2Fclash%2Fsrc%2Fcontact%2Fmin-distance.test.ts",
+    "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d/packages%2Fclash%2Fsrc%2Fcontact%2Fmin-distance.test.ts",
+    "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/packages%2Fclash%2Fsrc%2Fcontact%2Fmin-distance.test.ts?ref=6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d",
+    "patch": "@@ -14,7 +14,7 @@\n import { describe, expect, it } from 'vitest';\n import { PairHeap, minDistanceBetweenMeshes } from './min-distance.js';\n import { triangleAt, triangleCount } from './triangle.js';\n-import { triTriDistance } from '../math/triangle-distance.js';\n+import { closestPtPointTriangle, triTriDistance } from '../math/triangle-distance.js';\n import { triTriIntersect } from '../math/triangle-intersect.js';\n import type { Mesh } from './types.js';\n \n@@ -262,13 +262,42 @@ describe('minDistanceBetweenMeshes', () => {\n   });\n \n   it('names the triangles the witness points lie on', () => {\n-    const a = box('a', [0, 0, 0], [1, 1, 1]);\n-    const b = box('b', [3, 0, 0], [1, 1, 1]);\n-    const r = minDistanceBetweenMeshes(a, b);\n-    expect(r!.triangleA).toBeGreaterThanOrEqual(0);\n-    expect(r!.triangleA).toBeLessThan(triangleCount(a));\n-    expect(r!.triangleB).toBeGreaterThanOrEqual(0);\n-    expect(r!.triangleB).toBeLessThan(triangleCount(b));\n+    // A range check on the indices passes for a constant 0, so require that\n+    // each named triangle actually contains its witness point.\n+    //\n+    // A small box faces the middle of a large box's +X (or -X) face, clear of\n+    // the large face's diagonal. The witness point on the LARGE mesh is then\n+    // interior to one triangle, so its index is unambiguous; the witness on\n+    // the small mesh may sit on an edge it shares with other triangles. Run\n+    // both ways round so each mesh is the large one once.\n+    const big = (origin: [number, number, number]) => box('big', origin, [1, 1, 1]);\n+    const small = (origin: [number, number, number]) => box('small', origin, [1, 0.2, 0.2]);\n+    const distanceToTriangle = (mesh: Mesh, index: number, p: readonly [number, number, number]) => {\n+      const t = triangleAt(mesh, index);\n+      const mutable = (v: readonly [number, number, number]): [number, number, number] => [v[0], v[1], v[2]];\n+      const q = closestPtPointTriangle(mutable(p), mutable(t.v0), mutable(t.v1), mutable(t.v2));\n+      return Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]);\n+    };\n+\n+    const bigFirst = minDistanceBetweenMeshes(big([0, 0, 0]), small([3, 0.1, 0.4]))!;\n+    const a1 = big([0, 0, 0]);\n+    const b1 = small([3, 0.1, 0.4]);\n+    expect(bigFirst.distance).toBeCloseTo(2, 9);\n+    expect(bigFirst.triangleA).toBeLessThan(triangleCount(a1));\n+    expect(bigFirst.triangleB).toBeLessThan(triangleCount(b1));\n+    expect(distanceToTriangle(a1, bigFirst.triangleA, bigFirst.pointA)).toBeCloseTo(0, 9);\n+    expect(distanceToTriangle(b1, bigFirst.triangleB, bigFirst.pointB)).toBeCloseTo(0, 9);\n+    for (const v of Object.values(triangleAt(a1, bigFirst.triangleA))) expect(v[0]).toBe(1); // big +X face\n+\n+    const smallFirst = minDistanceBetweenMeshes(small([0, 0.1, 0.4]), big([3, 0, 0]))!;\n+    const a2 = small([0, 0.1, 0.4]);\n+    const b2 = big([3, 0, 0]);\n+    expect(smallFirst.distance).toBeCloseTo(2, 9);\n+    expect(smallFirst.triangleA).toBeLessThan(triangleCount(a2));\n+    expect(smallFirst.triangleB).toBeLessThan(triangleCount(b2));\n+    expect(distanceToTriangle(a2, smallFirst.triangleA, smallFirst.pointA)).toBeCloseTo(0, 9);\n+    expect(distanceToTriangle(b2, smallFirst.triangleB, smallFirst.pointB)).toBeCloseTo(0, 9);\n+    for (const v of Object.values(triangleAt(b2, smallFirst.triangleB))) expect(v[0]).toBe(3); // big -X face\n   });\n \n   it('returns null for a mesh with no triangles, rather than 0', () => {"
+  },
+  {
+    "sha": "99d20fcfeeeb976cf1d59bb83b3f2962394ddf68",
+    "filename": "packages/cli/src/commands/gym.test.ts",
+    "status": "modified",
+    "additions": 22,
+    "deletions": 3,
+    "changes": 25,
+    "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d/packages%2Fcli%2Fsrc%2Fcommands%2Fgym.test.ts",
+    "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d/packages%2Fcli%2Fsrc%2Fcommands%2Fgym.test.ts",
+    "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/packages%2Fcli%2Fsrc%2Fcommands%2Fgym.test.ts?ref=6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d",
+    "patch": "@@ -188,8 +188,11 @@ describe('clash reward shaping', () => {\n // slowest in the package. #1910 raised that cost legitimately: AB22 is an\n // infra model with ten IFCFACILITYPART entities that all carry a non-null\n // Representation, and generalising the container-geometry exception means\n-// those ten road-surface solids are now meshed instead of silently skipped\n-// (clash count 19 -> 75 for the same input). Locally that is ~0.4s, well\n+// those ten road-surface solids are now meshed instead of silently skipped.\n+// The default clash count on AB22 is no longer a useful signal: it rose from\n+// 19 to 75 with that change, fell back to 19 when spatial containers stopped\n+// being clash bodies (#2572), and is 0 since contact within f32 noise counts\n+// as touch (#5564). Locally that is ~0.4s, well\n // inside the 5s default, but CI runs this file roughly 5x slower and the\n // benign-property case began timing out there. The work is correct, so the\n // budget moves rather than the coverage.\n@@ -258,7 +261,10 @@ describe.skipIf(!MODEL_AVAILABLE)('gymCommand (fixture: AB22.ifc)', { timeout: A\n     // separate field so a maximizing agent is never rewarded for clashes.\n     expect(clash!.score).toBeGreaterThan(0);\n     expect(clash!.score).toBeLessThanOrEqual(1);\n-    expect(clash!.totalClashes).toBeGreaterThanOrEqual(0);\n+    // AB22 itself currently meshes to a clash-free set, so the count cannot\n+    // be pinned here; the seeded-episode test below drives a model with real\n+    // clashes through the same channel.\n+    expect(Number.isInteger(clash!.totalClashes)).toBe(true);\n     expect(clash!.score).toBe(clashScoreFromCount(clash!.totalClashes));\n     expect(typeof schema!.score).toBe('number');\n   });\n@@ -516,6 +522,19 @@ describe('gymCommand episode factory (--seed, B2.2)', () => {\n   });\n });\n \n+describe('gymCommand clash channel on a seeded episode', () => {\n+  it('reports the real clash count and a score below 1 when the model has clashes (#7925)', async () => {\n+    const lines = await runGym(['--seed', '42', '--checks', 'clash'], [{ type: 'close' }]);\n+    const clash = expectReset(lines.find(isReset)).channels.clash;\n+    expect(clash).toBeDefined();\n+    // A detector that silently reported zero clashes would score a perfect 1\n+    // and still satisfy `score === clashScoreFromCount(totalClashes)`.\n+    expect(clash!.totalClashes).toBeGreaterThan(0);\n+    expect(clash!.score).toBeLessThan(1);\n+    expect(clash!.score).toBe(clashScoreFromCount(clash!.totalClashes));\n+  });\n+});\n+\n describe('gymCommand GeometryProcessor disposal (#1959 P2 leak)', () => {\n   afterEach(() => {\n     vi.restoreAllMocks();"
+  },
+  {
+    "sha": "be641728178d8d8a3595b4cbd804438ed8f75a84",
+    "filename": "packages/collab/test/color.test.ts",
+    "status": "modified",
+    "additions": 10,
+    "deletions": 0,
+    "changes": 10,
+    "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d/packages%2Fcollab%2Ftest%2Fcolor.test.ts",
+    "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d/packages%2Fcollab%2Ftest%2Fcolor.test.ts",
+    "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/packages%2Fcollab%2Ftest%2Fcolor.test.ts?ref=6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d",
+    "patch": "@@ -35,6 +35,16 @@ describe('colorForUser', () => {\n     expect(sample.size).toBeGreaterThanOrEqual(3);\n   });\n \n+  it('fnv1a matches the canonical FNV-1a 32-bit vectors (#7925)', () => {\n+    // The module promises the same color for the same id \"across machines\",\n+    // which only holds while the hash itself is pinned. A determinism check\n+    // (f(x) equals f(x)) passes for any constants, so these are the published\n+    // reference vectors for offset basis 0x811c9dc5 and prime 16777619.\n+    expect(fnv1a('')).toBe(0x811c9dc5);\n+    expect(fnv1a('a')).toBe(0xe40c292c);\n+    expect(fnv1a('foobar')).toBe(0xbf9cf968);\n+  });\n+\n   it('fnv1a returns an unsigned 32-bit integer', () => {\n     const h = fnv1a('test');\n     expect(Number.isInteger(h)).toBe(true);"
+  },
+  {
+    "sha": "c140af12724d6c069107ef0ab89e7ef830c5f6fa",
+    "filename": "packages/lists/src/engine.geometry.test.ts",
+    "status": "modified",
+    "additions": 2,
+    "deletions": 0,
+    "changes": 2,
+    "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d/packages%2Flists%2Fsrc%2Fengine.geometry.test.ts",
+    "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d/packages%2Flists%2Fsrc%2Fengine.geometry.test.ts",
+    "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/packages%2Flists%2Fsrc%2Fengine.geometry.test.ts?ref=6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d",
+    "patch": "@@ -132,6 +132,8 @@ describe('geometry (World Coordinate) column/condition (#3671)', () => {\n     };\n     expect(provider.getWorldPosition).toBeUndefined();\n     const result = executeList(walls([{ id: 'g', source: 'geometry', propertyName: 'X' }]), provider);\n+    // Guard against a vacuous `every` over zero rows: the provider has 1 wall.\n+    expect(result.rows).toHaveLength(1);\n     expect(result.rows.every(r => r.values[0] === null)).toBe(true);\n     // No value ever resolved -> the column carries no derived quantityType.\n     expect(result.columns[0]!.quantityType).toBeUndefined();"
+  },
+  {
+    "sha": "f082b472adef2a2817a92196a6a61d756de075ea",
+    "filename": "packages/lists/src/engine.zone.test.ts",
+    "status": "modified",
+    "additions": 6,
+    "deletions": 0,
+    "changes": 6,
+    "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d/packages%2Flists%2Fsrc%2Fengine.zone.test.ts",
+    "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d/packages%2Flists%2Fsrc%2Fengine.zone.test.ts",
+    "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/packages%2Flists%2Fsrc%2Fengine.zone.test.ts?ref=6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d",
+    "patch": "@@ -95,6 +95,8 @@ describe('zone column/condition (#1810)', () => {\n       walls([{ id: 'z', source: 'zone', psetName: 'takt', propertyName: 'Zone' }]),\n       createProvider(assignments),\n     );\n+    // Guard against a vacuous `every` over zero rows: the provider has 4 walls.\n+    expect(result.rows).toHaveLength(4);\n     expect(result.rows.every(r => r.values[0] === null)).toBe(true);\n   });\n \n@@ -196,6 +198,8 @@ describe('zone volume columns (#2508)', () => {\n   it('is null until an apportionment exists, rather than clipping behind the user', () => {\n     // The provider returns null when nothing has been computed for the set.\n     const result = executeList(walls([volumeColumn]), volumeProvider(new Map()));\n+    // Guard against a vacuous `every` over zero rows: the provider has 4 walls.\n+    expect(result.rows).toHaveLength(4);\n     expect(result.rows.every(r => r.values[0] === null)).toBe(true);\n   });\n \n@@ -210,6 +214,8 @@ describe('zone volume columns (#2508)', () => {\n     const legacy = createProvider(new Map());\n     expect(legacy.getZoneVolumeShares).toBeUndefined();\n     const result = executeList(walls([volumeColumn]), legacy);\n+    // Guard against a vacuous `every` over zero rows: the provider has 4 walls.\n+    expect(result.rows).toHaveLength(4);\n     expect(result.rows.every(r => r.values[0] === null)).toBe(true);\n   });\n "
+  },
+  {
+    "sha": "93288c77809d940c2e41ba99b657d962d9c150e9",
+    "filename": "packages/mcp/test/integration.test.ts",
+    "status": "modified",
+    "additions": 15,
+    "deletions": 4,
+    "changes": 19,
+    "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d/packages%2Fmcp%2Ftest%2Fintegration.test.ts",
+    "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d/packages%2Fmcp%2Ftest%2Fintegration.test.ts",
+    "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/packages%2Fmcp%2Ftest%2Fintegration.test.ts?ref=6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d",
+    "patch": "@@ -95,13 +95,24 @@ describe('end-to-end MCP server with real IFC', () => {\n     expect(counts.structuredContent.groups.length).toBeGreaterThan(0);\n     expect(counts.structuredContent.groups.some((g) => /WALL/i.test(g.key))).toBe(true);\n \n-    // model_audit always returns a score in [0,100].\n-    const audit = await send<{ structuredContent: { overall: number } }>(\n+    // model_audit returns a score in [0,100] that is the rounded mean of its\n+    // three category scores. A range check alone passes for a constant 0.\n+    const audit = await send<{\n+      structuredContent: {\n+        overall: number;\n+        scores: { structure: number; identity: number; dataQuality: number };\n+        totals: { duplicateGlobalIds: number };\n+      };\n+    }>(\n       transport, 5, 'tools/call',\n       { name: 'model_audit', arguments: {} },\n     );\n-    expect(audit.structuredContent.overall).toBeGreaterThanOrEqual(0);\n-    expect(audit.structuredContent.overall).toBeLessThanOrEqual(100);\n+    const { overall, scores } = audit.structuredContent;\n+    expect(audit.structuredContent.totals.duplicateGlobalIds).toBe(0);\n+    expect(scores.identity).toBe(100);\n+    expect(overall).toBe(Math.round((scores.structure + scores.identity + scores.dataQuality) / 3));\n+    expect(overall).toBeGreaterThan(0);\n+    expect(overall).toBeLessThanOrEqual(100);\n \n     // resources/list should advertise the manifest.\n     const resources = await send<{ resources: Array<{ uri: string }> }>(transport, 6, 'resources/list');"
+  },
+  {
+    "sha": "dd514161f9a145075277341cee646954cba90df9",
+    "filename": "packages/provenance/test/merge-battery.test.ts",
+    "status": "modified",
+    "additions": 8,
+    "deletions": 1,
+    "changes": 9,
+    "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d/packages%2Fprovenance%2Ftest%2Fmerge-battery.test.ts",
+    "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d/packages%2Fprovenance%2Ftest%2Fmerge-battery.test.ts",
+    "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/packages%2Fprovenance%2Ftest%2Fmerge-battery.test.ts?ref=6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d",
+    "patch": "@@ -51,8 +51,15 @@ describe('runMergeBattery', () => {\n     expect(report.certificatesVerified).toBeGreaterThan(0);\n     // Rates are well-formed.\n     expect(report.conflictRate).toBeCloseTo(report.flaggedConflicts / SCHEDULES, 12);\n-    expect(report.falseConflictRate).toBeGreaterThanOrEqual(0);\n+    // A range check passes for a constant 0, so the rate is recomputed from\n+    // its counts. This seed produces false conflicts, so the guard keeps the\n+    // recomputation from degenerating to 0 === 0.\n+    expect(report.falseConflicts).toBeGreaterThan(0);\n+    expect(report.groundTruthConvergent).toBe(report.autoMerged + report.falseConflicts);\n+    expect(report.falseConflictRate).toBeCloseTo(report.falseConflicts / report.groundTruthConvergent, 12);\n+    expect(report.falseConflictRate).toBeGreaterThan(0);\n     expect(report.falseConflictRate).toBeLessThanOrEqual(1);\n+    expect(report.killCriterionPass).toBe(report.falseConflictRate < 0.2);\n   }, 120_000);\n \n   it('decomposes flagged schedules by which rule fired, exhaustively', async () => {"
+  },
+  {
+    "sha": "179021e4dbab80c367adebe652c61bb021dd97be",
+    "filename": "rust/export/src/rebar_fabrication_tests.rs",
+    "status": "modified",
+    "additions": 28,
+    "deletions": 1,
+    "changes": 29,
+    "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d/rust%2Fexport%2Fsrc%2Frebar_fabrication_tests.rs",
+    "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d/rust%2Fexport%2Fsrc%2Frebar_fabrication_tests.rs",
+    "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/rust%2Fexport%2Fsrc%2Frebar_fabrication_tests.rs?ref=6f85d6a51ebaa07cc645c7c8f941598b1ae1af4d",
+    "patch": "@@ -27,6 +27,24 @@ fn full_policy() -> RebarFabricationPolicy {\n     }\n }\n \n+/// One entry per check `full_policy()` requests. A source that cannot be\n+/// measured must still report each requested check as Uncheckable rather than\n+/// drop it, so the checks are compared by kind, not just counted.\n+const FULL_POLICY_KINDS: [&str; 5] = [\n+    \"bend_angle\",\n+    \"developed_centreline_length\",\n+    \"inside_bend_radius\",\n+    \"nominal_geometric_diameter_delta\",\n+    \"straight_segment_length\",\n+];\n+\n+fn requested_kinds(checks: &[RebarFabricationCheck]) -> Vec<&'static str> {\n+    let mut kinds: Vec<&'static str> = checks.iter().map(|check| check.kind).collect();\n+    kinds.sort_unstable();\n+    kinds.dedup();\n+    kinds\n+}\n+\n #[test]\n fn issue_5797_optional_policy_reports_arc_and_straight_provenance() {\n     let view = schedule(U_BAR, full_policy());\n@@ -62,9 +80,17 @@ fn issue_5797_modified_and_unsupported_sources_cannot_pass_geometry() {\n         \"#1001=IFCBOOLEANRESULT(.UNION.,#43,#43);\\n#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#1001));\",\n     );\n     let view = schedule(&modified, full_policy());\n-    let reports = view.rows[&50].sweeps.iter().map(|sweep| sweep.fabrication_precheck.as_ref().unwrap());\n+    let reports: Vec<_> = view.rows[&50]\n+        .sweeps\n+        .iter()\n+        .map(|sweep| sweep.fabrication_precheck.as_ref().unwrap())\n+        .collect();\n+    // `all` over nothing is true: require the sweeps and the requested checks\n+    // to be present before asserting that none of them passed.\n+    assert!(!reports.is_empty());\n     for report in reports {\n         assert!(report.source_modified);\n+        assert_eq!(requested_kinds(&report.checks), FULL_POLICY_KINDS);\n         assert!(report.checks.iter().all(|check| check.status == RebarFabricationCheckStatus::Uncheckable));\n     }\n     let unsupported = MAPPED.replace(\n@@ -73,6 +99,7 @@ fn issue_5797_modified_and_unsupported_sources_cannot_pass_geometry() {\n     );\n     let report = schedule(&unsupported, full_policy()).rows[&50].sweeps[0]\n         .fabrication_precheck.clone().unwrap();\n+    assert_eq!(requested_kinds(&report.checks), FULL_POLICY_KINDS);\n     assert!(report.checks.iter().all(|check| check.status == RebarFabricationCheckStatus::Uncheckable));\n     assert!(report.limitations.iter().any(|reason| reason.contains(\"unsupported\")));\n }"
+  }
+]

@@ -1,0 +1,15 @@
+perf_probe: 1 fixture(s), best-of-5
+
+=== /home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-polygonal-face-leftover/qualification/candidate/tests/models/ara3d/AC20-FZK-Haus.ifc ===
+  2.4 MB | 44249 entities | 285 meshes | 35940 verts | 20322 tris | 0.97 Mtris/s (geom)
+  best total 34 ms  (runs: [50, 50, 34, 34, 34] ms)
+  ordered mesh FNV-1a64 (per run): ["7377db33331a3523", "7377db33331a3523", "7377db33331a3523", "7377db33331a3523", "7377db33331a3523"]
+  phase                    ms        % total
+  full pipeline wall: [53.33309, 53.631012999999996, 36.435589, 37.078123999999995, 37.028756] ms (includes final metadata)
+  parse (pre-geometry)        13    38.2%
+    - index-scan alone       5.8    14.7%
+    - entity_scan              6    17.6%
+    - lookup/styles            2     5.9%
+    - preprocess               3     8.8%
+  geometry                    21    61.8%
+  brep point-cache      51820 hits / 9108 misses (85.1% memoized)

@@ -1,0 +1,15 @@
+perf_probe: 1 fixture(s), best-of-5
+
+=== /home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/f3b-polygonal-face-leftover/qualification/candidate/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc ===
+  169.2 MB | 2807815 entities | 109514 meshes | 4515161 verts | 2895362 tris | 1.85 Mtris/s (geom)
+  best total 2312 ms  (runs: [2374, 2375, 2383, 2333, 2312] ms)
+  ordered mesh FNV-1a64 (per run): ["500e89efcdd091fa", "500e89efcdd091fa", "500e89efcdd091fa", "500e89efcdd091fa", "500e89efcdd091fa"]
+  phase                    ms        % total
+  full pipeline wall: [2779.7045689999995, 2763.682956, 2773.270868, 2726.604292, 2721.6827860000003] ms (includes final metadata)
+  parse (pre-geometry)       743    32.1%
+    - index-scan alone     356.6    15.4%
+    - entity_scan            579    25.0%
+    - lookup/styles          158     6.8%
+    - preprocess               5     0.2%
+  geometry                  1568    67.8%
+  brep point-cache      205144 hits / 37556 misses (84.5% memoized)

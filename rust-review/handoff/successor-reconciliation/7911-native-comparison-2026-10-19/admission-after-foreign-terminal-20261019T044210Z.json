@@ -1,0 +1,17 @@
+{
+  "at": 1792384919.8765984,
+  "idleObservationSeconds": 10,
+  "scope": "Fresh readiness after authoritative foreignjobterminal0 andemptyqueue; original97percent/60C limits",
+  "idleFraction": 0.9806955866658296,
+  "managed": [],
+  "capacityGuardExit": 0,
+  "capacityGuardOutput": "export CARGO_BUILD_JOBS=8\nexport RAYON_NUM_THREADS=8\nexport RUST_TEST_THREADS=4\nexport TURBO_CONCURRENCY=2\n{\"workerAdmission\": \"pass\", \"acOnline\": true, \"MemAvailableKiB\": 114085080, \"packageMilliC\": 57000, \"thermalFallback\": false, \"limits\": {\"CARGO_BUILD_JOBS\": 8, \"RAYON_NUM_THREADS\": 8, \"RUST_TEST_THREADS\": 4, \"TURBO_CONCURRENCY\": 2}}\n",
+  "power": {
+    "/sys/class/power_supply/AC/online": "1"
+  },
+  "packageMilliC": 55000,
+  "memAvailableKiB": 114085080,
+  "heavyProcesses": [],
+  "legacyHoldersWaiters": [],
+  "clear": true
+}

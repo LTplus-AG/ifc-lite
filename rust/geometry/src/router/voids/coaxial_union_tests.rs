@@ -589,6 +589,68 @@ fn issue_6940_same_kernel_cell_depths_do_not_make_degenerate_slabs() {
 #[path = "rvt01_6305_tests.rs"]
 mod rvt01_6305;
 
+fn depth_boundary_candidates(limits: [f64; 2], axis: usize, upper_face: bool) -> Vec<UnionCand> {
+    limits.into_iter().enumerate().map(|(idx, limit)| {
+        let (mut lo, mut hi) = ([0.125; 3], [0.375; 3]);
+        lo[axis] = if upper_face { -0.5 } else { limit };
+        hi[axis] = if upper_face { limit } else { 0.5 };
+        // Overlapping, distinct footprints: neither opening may be discarded.
+        lo[(axis + 1) % 3] += idx as f64 * 0.125;
+        hi[(axis + 1) % 3] += idx as f64 * 0.125;
+        let mut dir = Vector3::zeros();
+        dir[axis] = 1.0;
+        UnionCand { idx, mesh: box_mesh(lo, hi), dir, lo, hi }
+    }).collect()
+}
+
+#[test]
+fn issue_7640_subgrid_depths_across_cell_boundary_defer_without_consuming_cutters() {
+    // Review r4310799293: adjacent f32 values on opposite sides of a kernel
+    // half-cell boundary must not introduce a nanometre-thick internal slab.
+    let grid = crate::kernel::mesh_bridge::SNAP_GRID;
+    let host = box_mesh([-1.0; 3], [1.0; 3]);
+    for sign in [-1.0, 1.0] {
+        let boundary = (sign * 7406.5 * grid) as f32;
+        let limits = [boundary.next_down() as f64, boundary.next_up() as f64];
+        assert!((limits[1] - limits[0]) > NORMALIZE_EPSILON);
+        assert!((limits[1] - limits[0]) < grid);
+        assert_ne!((limits[0] / grid).round(), (limits[1] / grid).round());
+        for axis in 0..3 {
+            for upper_face in [false, true] {
+                let cands = depth_boundary_candidates(limits, axis, upper_face);
+                for members in [[0, 1], [1, 0]] {
+                    assert!(GeometryRouter::new().build_coaxial_prisms(
+                        &host, &cands, &members, &cands[0].dir,
+                    ).is_none(), "defer the whole cluster, sign={sign}, axis={axis}, upper={upper_face}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn issue_7640_one_grid_step_authored_depths_remain_separate() {
+    let grid = crate::kernel::mesh_bridge::SNAP_GRID;
+    let limits = [7406.0 * grid, 7407.0 * grid];
+    let host = box_mesh([-1.0; 3], [1.0; 3]);
+    for axis in 0..3 {
+        let cands = depth_boundary_candidates(limits, axis, false);
+        let (prisms, multi_slab, contributors, _) = GeometryRouter::new()
+            .build_coaxial_prisms(&host, &cands, &[0, 1], &cands[0].dir)
+            .expect("one full kernel step remains a distinct authored band");
+        assert!(multi_slab);
+        assert_eq!(contributors, vec![0, 1]);
+        assert_eq!(prisms.len(), 2);
+        assert!(prisms.iter().all(mesh_is_closed_exact));
+        let bands: Vec<_> = prisms.iter().map(|p| {
+            let (lo, hi) = p.bounds();
+            (lo[axis] as f64, hi[axis] as f64)
+        }).collect();
+        assert_eq!(bands, vec![(limits[0], limits[1]), (limits[1], 0.5)],
+            "the small authored band must neither grow nor disappear");
+    }
+}
+
 #[test]
 fn issue_6940_depth_slice_seams_do_not_become_host_jambs() {
     // A 12 mm render layer in front of a 250 mm core. The through opening

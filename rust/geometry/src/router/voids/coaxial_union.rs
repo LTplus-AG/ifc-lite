@@ -364,6 +364,13 @@ impl GeometryRouter {
         if coalesced.len() < 2 || coalesced.len() > 9 {
             return None;
         }
+        // Neighbouring cells can straddle a rounding boundary only nanometres
+        // apart (#7640, review r4310799293). Do not re-extrude that thin slab
+        // or merge its distinct depths: the exact 3D union keeps both original
+        // cutters and decides their geometry on the unchanged kernel grid.
+        if coalesced.windows(2).any(|w| w[1] - w[0] < crate::kernel::mesh_bridge::SNAP_GRID) {
+            return None;
+        }
 
         // Frame → world: local (x, y, z) ↦ x·u + y·v + z·d (orthonormal basis
         // through the origin, so no translation column).

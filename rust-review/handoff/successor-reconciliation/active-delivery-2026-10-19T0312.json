@@ -1,0 +1,55 @@
+{
+  "at": "2026-10-19T03:12:38.086698+00:00",
+  "acceptedPrograms": 0,
+  "criteriaUnchecked": 33,
+  "activeDeliveryAllocation": {
+    "at": "2026-10-18T21:12:05.673910+00:00",
+    "slots": [
+      {
+        "scope": "7911",
+        "state": "Same C4 owner reclaims only own terminal compiler intermediates to restore Pop disk admission; #7911 benchmark remains unqueued",
+        "maintenanceTaskId": "node:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Athread-send%3Ac4-own-terminal-intermediates-pop-disk-recovery-for7911-20261019-v23",
+        "maintenanceReceipt": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/two-item-delivery/7911-integration/disk-recovery-20261019/parent-authorization.json"
+      },
+      {
+        "scope": "D47 matched API performance executable prerequisites",
+        "state": "Existing owner v26: ordinary source-matched artifact builds only; no timed cohort queued",
+        "taskId": "node:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Athread-send%3Ad47-public02-raw7c8-build-executable-perf-prerequisites-only-20261019-v26",
+        "source": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+        "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+        "runtimeResult": "Native, Python68 and scoped WASM consumers complete; matched root contract223PASS0FAIL0SKIP",
+        "preservedNativeWorker": "918bab6a-820b-4eff-ad4a-5e2bb3c5c2de",
+        "held": [
+          "latency/firstcallback/RSS performance",
+          "currentmain integration/publication"
+        ],
+        "previousDelivery": 7932,
+        "completedPython": {
+          "job": "b3eb8a59-13c1-401a-86b8-56e0fcb34e98",
+          "session": 24820,
+          "state": "COMPLETED0",
+          "sourceUnchanged": true,
+          "quiescent": true,
+          "all182FixtureIdentitiesUnchanged": true,
+          "archiveCommit": "018c04e5c3a691ad700382506d5b24e11e11c558"
+        },
+        "completedWasm": {
+          "packagePassed": 21,
+          "contractPassed": 212,
+          "contractSkipped": 1,
+          "wasmManifestPassed": 1,
+          "publicGroupsPassed": 13,
+          "allSevenClasses": true,
+          "archiveCommit": "e4c6b3f5e22e502a9e312b9d05a03841e8b5175e",
+          "matchedContractPassed": 223,
+          "matchedContractSkipped": 0,
+          "baselineJob": "9004d79e-ace6-4f66-9020-1574347a526b",
+          "sizeDeltaBytes": 4093,
+          "sizeDeltaPercent": 0.04177728938372017
+        }
+      }
+    ],
+    "C4": "Current/baseline capture work finished; performance/current-main/publication/laterphase duties remain durable pending; no new active C4 job/review"
+  },
+  "scope": "Operational continuation only; no acceptance status or source changes. No repeated validation or benchmark queued."
+}

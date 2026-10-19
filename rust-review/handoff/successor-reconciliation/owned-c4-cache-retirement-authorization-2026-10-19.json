@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-19T03:12:38.086698+00:00",
+  "freeBytes": 165864873984,
+  "requiredGiB": 316,
+  "task": "node:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Athread-send%3Ac4-own-terminal-intermediates-pop-disk-recovery-for7911-20261019-v23",
+  "scope": "Only own terminal C4 intermediate compiler caches; preserve all sources, evidence, executables, runtime/shared/profiling artifacts and foreign resources",
+  "targets": [
+    "49926200a29e09a7679b",
+    "899d43786f3f1d14e1ff",
+    "3a9c872d829495e0751f"
+  ],
+  "noBenchmarkQueued": true,
+  "guardUnchanged": true
+}

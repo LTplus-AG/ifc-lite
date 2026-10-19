@@ -45,10 +45,12 @@ export async function meshWitness(call, session, solid, expected, fixture, moved
   let sixVolume = 0, surface = 0, sectionLength = 0, sectionTwiceArea = 0;
   let sectionSegments = 0;
   const sectionGraph = new Map();
+  const sectionPoints = new Map();
   const sectionKey = p => p.map(v => v.toFixed(7)).join(',');
   function connect(a, b) {
     const key = sectionKey(a), value = sectionKey(b);
     if (!sectionGraph.has(key)) sectionGraph.set(key, []);
+    if (!sectionPoints.has(key)) sectionPoints.set(key, a);
     sectionGraph.get(key).push(value);
   }
   const tolerance = 0.0005;
@@ -105,7 +107,19 @@ export async function meshWitness(call, session, solid, expected, fixture, moved
     const visited = new Set();
     let loops = 0;
     for (const [key, neighbors] of sectionGraph) {
-      assert(neighbors.length === 2, `${fixture.name}: closed section boundary degree`);
+      if (neighbors.length !== 2) {
+        const point = sectionPoints.get(key);
+        let nearest;
+        for (const [otherKey, other] of sectionPoints) if (otherKey !== key) {
+          const distance = Math.hypot(...sub(point, other));
+          if (!nearest || distance < nearest.distance) nearest = {
+            key: otherKey, point: other, degree: sectionGraph.get(otherKey).length, distance,
+          };
+        }
+        assert(false, `${fixture.name}: closed section boundary degree ${JSON.stringify({
+          moved, key, point, degree: neighbors.length, neighbors, nearest,
+        })}`);
+      }
       if (visited.has(key)) continue;
       loops++;
       const pending = [key];

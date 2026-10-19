@@ -29,6 +29,11 @@ public:
     FixtureFace()=default;
     ~FixtureFace() override=default;
 };
+class FixtureVertex final:public SmVertex {
+public:
+    FixtureVertex()=default;
+    ~FixtureVertex() override=default;
+};
 void require(bool value,const char* message) { if(!value) throw std::runtime_error(message); }
 bool bits(double a,double b) { return std::memcmp(&a,&b,sizeof(a))==0; }
 struct Solids {
@@ -63,11 +68,16 @@ public:
     unsigned calls=0;
     bool refuse=false,throws=false;
     bool constructor_fault=false;
+    SmVertex* nested_vertex=nullptr;
     SmFace* hidden_mutation=nullptr;
     unsigned hidden_changes=0;
     SmNotifyCallback* replacement=nullptr;
     SmStatus Execute(SmNotifyOperation op,SmObject* object,SmObject*,SmObject*,SmObject*) override {
         ++calls;
+        if(op==SM_NO_CONSTRUCTION && nested_vertex) {
+            auto* vertex=nested_vertex; nested_vertex=nullptr;
+            vertex->SetPoint(vertex->GetPoint()); // Actual setter, identical bits.
+        }
         if(op==SM_NO_CONSTRUCTION && hidden_mutation) {
             const auto original=hidden_mutation->GetUVDomain();
             hidden_mutation->SetUVDomain(SmExtent2d(original.GetUMin(),original.GetVMin(),original.GetUMax()*0.75,original.GetVMax()));
@@ -322,12 +332,38 @@ void refusals() {
         require(foreign.calls>0 && foreign.hidden_changes==1 && context.GetUserNotifyCallback()==&foreign,
             "SUCCESS callback with restored silent intermediate edits remains unavailable and still chains/restores");
     }
+    for(bool depth_limit:{false,true}) {
+        // Unattached actual SDK vertex has no uses to propagate ahead of the
+        // vertex callback. It is allocated before this observation-only test.
+        auto* vertex=new (owned.source.get()) FixtureVertex();
+        vertex->SetPoint(SmPoint3d(0,0,0));
+        Limits limits; if(depth_limit) limits.callback_depth=1;
+        Ledger ledger(limits); Foreign foreign; foreign.nested_vertex=vertex;
+        foreign.constructor_fault=true; foreign.refuse=true;
+        ForeignSlot install(context,foreign); Scope phase(ledger,context);
+        const auto first=ledger.event_size();
+        auto* temporary=new (owned.source.get()) FixtureFace();
+        const auto origin=ledger.failure_origin();
+        require(origin.failure==(depth_limit?Failure::CallbackDepthLimit:Failure::ReentrantCallback) &&
+            origin.operation==SM_NO_CHANGE_GEOMETRY && origin.caller_type==SmVertex_TYPE &&
+            origin.event==first+2 && origin.frame==1,
+            "nested actual setter owns the first failure, not outer face construction or foreign status");
+        delete temporary; delete vertex; phase.finish();
+        const auto retained=ledger.failure_origin();
+        require(retained.failure==origin.failure && retained.operation==origin.operation &&
+            retained.caller_type==origin.caller_type && retained.event==origin.event && retained.frame==origin.frame,
+            "later SDK callbacks and outer foreign failure cannot overwrite nested first-failure origin");
+        require(context.GetUserNotifyCallback()==&foreign,"nested refusal restores the foreign callback slot");
+    }
     for(bool exception:{false,true}) {
         Ledger ledger; Foreign foreign; foreign.constructor_fault=true; foreign.throws=exception; foreign.refuse=!exception;
         ForeignSlot install(context,foreign); Scope phase(ledger,context);
         auto* temporary=new (owned.source.get()) FixtureFace();
         require(ledger.failed()==(exception?Failure::ForeignException:Failure::ForeignStatus),
             "real SDK construction returns while foreign status/exception is latched without crossing SDK");
+        const auto origin=ledger.failure_origin();
+        require(origin.operation==SM_NO_CONSTRUCTION && origin.caller_type==SmFace_TYPE && origin.event==1,
+            "outer foreign status/exception retains its actual constructor event context");
         delete temporary; phase.finish();
         require(context.GetUserNotifyCallback()==&foreign,"faulting caller callback restored on observation-only refusal");
     }

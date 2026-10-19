@@ -10,6 +10,7 @@ class RepresentationSeal {
     Ledger& ledger;
     SmBrep& source;
     Identity operation;
+    bool initial=false;
     std::vector<uint64_t> retained,scratch;
     std::vector<SmObject*> pending;
     uint32_t work=0;
@@ -25,5 +26,8 @@ public:
     RepresentationSeal(const RepresentationSeal&)=delete;
     RepresentationSeal& operator=(const RepresentationSeal&)=delete;
     void verify();
+private:
+    RepresentationSeal(Ledger&,SmBrep&,bool initial_creation);
+    friend class GeneratedPlane;
 };
 }

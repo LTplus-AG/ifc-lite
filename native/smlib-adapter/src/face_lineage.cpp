@@ -3,12 +3,14 @@
 #include "sweep.hpp"
 #include "ifclite_smlib.h"
 #include "empty.hpp"
+#include "representation_seal.hpp"
 #include <SmBrep.h>
 #include <SmCopyBrepMap.h>
 #include <SmFace.h>
 #include <algorithm>
 #include <atomic>
 #include <limits>
+#include <cstdio>
 namespace face_lineage {
 namespace {
 std::atomic<uint64_t> next_domain{1};
@@ -38,6 +40,7 @@ Ledger::Ledger(Limits requested):limits(requested),domain(0) {
     root_records.resize(limits.roots); events.resize(limits.events);
     visited.resize(limits.nodes);
 }
+Ledger::~Ledger()=default;
 const Ledger::Node* Ledger::node(Identity id) const noexcept {
     return id.domain==domain && id.sequence && id.sequence<=node_count?&nodes[id.sequence-1]:nullptr;
 }
@@ -76,6 +79,11 @@ bool Ledger::readonly(SmBrep* owner) const noexcept {
 }
 void Ledger::check() const {
     if(failure==Failure::None) return;
+    if(!failure_reported) {
+        failure_reported=true;
+        std::fprintf(stderr,"lineage first_failure=%u event=%u operation=%ld caller_type=%ld frame=%u nodes=%u\n",
+            unsigned(failure),failed_event,long(failed_operation),failed_type,failed_frame,failed_nodes);
+    }
     const bool resource=failure==Failure::NodeLimit || failure==Failure::EventLimit || failure==Failure::RootLimit ||
         failure==Failure::CallbackDepthLimit;
     throw SweepFailure{resource?IFCLITE_SMLIB_RESOURCE_LIMIT:IFCLITE_SMLIB_UNSUPPORTED,
@@ -118,12 +126,22 @@ void Ledger::admit_roots(SmBrep& source,const ObjectRevision& object,const Seed*
         require(seeds[i].kind==RootKind::SourceBoundary || object.operation,"generated root requires issued operation");
     }
     if(count>limits.nodes-node_count) { fail(Failure::NodeLimit); check(); }
+    if(creation.object==&source && creation_seal) {
+        require(count==1 && seeds[0].kind==RootKind::GeneratedInterface,
+            "generated plane receipt permits only its actual generated-interface root");
+        const auto& r=creation.revision;
+        require(object.incarnation==r.incarnation && object.session==r.session && object.slot==r.slot &&
+            object.generation==r.generation && object.revision==r.revision && object.operation==r.operation,
+            "generated construction receipt does not bind the actual issued object revision");
+        creation_seal->verify();
+    }
     context=const_cast<SmContext*>(source.GetContext());
     for(uint32_t i=0;i<count;++i) {
         auto* b=binding(seeds[i].face,true);
         const auto id=append(Change::Admit,{},{},root_count);
         root_records[root_count++]={id,object,seeds[i].kind}; replace(b,id); b->owner=&source; b->initial_issuance=false;
     }
+    if(creation.object==&source) { creation_seal.reset(); creation={}; }
     check();
 }
 Identity Ledger::identity(SmFace* face) const {

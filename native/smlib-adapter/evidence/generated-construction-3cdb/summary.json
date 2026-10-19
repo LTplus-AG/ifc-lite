@@ -1,0 +1,142 @@
+{
+  "base": "3cdbd93313a612d95792dfaa11cbd1884de56abc",
+  "scope": "fixed generated-plane constructor and authentic fault fixture repair; first-latch/stage diagnosis for unresolved seventh lane",
+  "qualification": "UNRUN: no SDK build/link/execution or heavy submission",
+  "syntax": {
+    "translation_units": 11,
+    "result": "PASS",
+    "flags": "-std=c++17 -fsyntax-only -Wall -Wextra -DSM_NO_DEBUG_CODE -DSM_NO_GFX_OUTPUT_CODE -DNDEBUG"
+  },
+  "actual_previous_qualification": {
+    "source": "475c5edca5ab4c8ba99a92874504240b2fecffe3",
+    "job": "1128c53e-a923-4588-8dbf-ab6bc20adf85",
+    "log_sha256": "dfb627e7257503e43a79ed83fcfcaf1c6b94d2d2cba75c5e61ec79229482a13b",
+    "result": "SDK build/link PASS; original5 PASS;6/7/8 FAIL; not this source"
+  },
+  "sdk": {
+    "revision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+    "status": ""
+  },
+  "changed_paths": [
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "before_sha256": "b069e603e44bf0c989e8831840669d9cee908a365c8671bb0aa9c35f5bb1f5ad",
+      "after_sha256": "00d0744bd073743477ec481276749d3c1593c613f2e5932901245d5a29cc65a6"
+    },
+    {
+      "path": "native/smlib-adapter/GENERATED_PLANE_TRANSACTION.md",
+      "before_sha256": null,
+      "after_sha256": "39433301b07d5919cded173c10f00b3794081e50e8f4ff9b412e8abbff9c0bdc"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.cpp",
+      "before_sha256": "9c9449b94367b9eb599bf9d31b951a69607330dc8075e49c0ce77b18437628ab",
+      "after_sha256": "ed03a318bbb3a7d4073be0d1ad1b9569ea0364f40c37c54228f1b69d64b1cb6d"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.hpp",
+      "before_sha256": "e82b8d86fafcbfcd0142317385921461a4e67549454caa55ff36b005e27e5a23",
+      "after_sha256": "bd6f3f01c9f645601d5ce297f3727936f942d53825a94758ca5306066f3f462e"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage_events.cpp",
+      "before_sha256": "357061768cc86b8285cbb30754111daf1dd24b95fa61716068b43e705fced0ee",
+      "after_sha256": "5ed4076b4ccf1405714fa407e8867c79275c3376da3db41f4bb0cda555ad3f48"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage_geometry.cpp",
+      "before_sha256": "84ba39920cdaa1fb4e3461867ce75813964579a19d5846b54f83a3e78d57a7ad",
+      "after_sha256": "55503c590951efe8b0a37dc7a84382ebc7223e56704a2202d11d4bbfe856ab64"
+    },
+    {
+      "path": "native/smlib-adapter/src/generated_plane.cpp",
+      "before_sha256": null,
+      "after_sha256": "a7279559e35260ddaa94e9d43507d69a50941ef984ad229b015339c6576cc8ed"
+    },
+    {
+      "path": "native/smlib-adapter/src/generated_plane.hpp",
+      "before_sha256": null,
+      "after_sha256": "75edcab37297c8152d9868b3594938f4e053624446dbc9ae31644caadd8e9416"
+    },
+    {
+      "path": "native/smlib-adapter/src/representation_seal.cpp",
+      "before_sha256": "ba32d0a31a739bf48ab6c8084ac4a7fdb476830846cb08507ba2d8dc473455e4",
+      "after_sha256": "82cc39b3793ebbd6b2ce84a8e53e0b9130eb8143ab879c2ec991ce9d20b7ed21"
+    },
+    {
+      "path": "native/smlib-adapter/src/representation_seal.hpp",
+      "before_sha256": "50c67bef23e553bad6e58fb875a585438b69ce2564d31398b81bf9b42b37090b",
+      "after_sha256": "d3b69151fa7b755c2ac730667279dd7133264be5de9ed72db03135cdd1279f2c"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_extraction_tests.cpp",
+      "before_sha256": "c75d6d570a090a75d0b58b4d26baa50b4ff09b9c10f5fe29bd40fedcf2d319fc",
+      "after_sha256": "e86e49cbea26f4aafacf11c9c1297a5e1be543cadea53a25387e362de8e0dbb3"
+    },
+    {
+      "path": "native/smlib-adapter/tests/root_issuance_tests.cpp",
+      "before_sha256": "8e85f5f6922c846d6bc09bcb84a14d3ec4bb7cc5fbfe877c4bdd3f3313d72935",
+      "after_sha256": "97b91be5a4f536dc45f30ab893e6e463d524a6f9d29715a2c3c5cfd0b4e11f34"
+    }
+  ],
+  "unchanged_local_safeguards": [
+    {
+      "path": "native/smlib-adapter/src/plane.cpp",
+      "sha256": "1c7ed1a9958693682696ca48b8cb6a893eb4c480d1192999b97974e51391cafe"
+    },
+    {
+      "path": "native/smlib-adapter/src/plane_domain.cpp",
+      "sha256": "3e500336a94fad265286eecaa3c6673c38a6a3752ac079b7b1032ef10a01357d"
+    },
+    {
+      "path": "native/smlib-adapter/src/copy.cpp",
+      "sha256": "0cfc60da6dccd1f91a7140fe53e5ee8be975e21cb3e827895e359d48105072bf"
+    },
+    {
+      "path": "native/smlib-adapter/src/context_metadata.hpp",
+      "sha256": "c105a819bb1aa5d7e678aadca403a4174a0312621eb26cbc2d850eb0f3d4b407"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_extraction.cpp",
+      "sha256": "fc84454b17e0b422c4ae2665228a8b65e53e8da1d6f3b342e6265873d5e329dc"
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "sha256": "800e18af50520867897d70b25e814428e78cd279bcd643fc8d68e70abf520a8a"
+    },
+    {
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "sha256": "f67077face61a64176dbb0f155aa4d96a13124135728d7ff016f138cadaf6fa3"
+    },
+    {
+      "path": "native/smlib-adapter/qualify.sh",
+      "sha256": "ec797fc4b79e24e07e40e0502ee054d3a9b42d0f0edbab47c34b20f3f4389e43"
+    }
+  ],
+  "holds": [
+    "seventh lane first-causal failure until actual instrumented parent run",
+    "genuine one-cut paired partition/classification/interface ancestry",
+    "runtime sealed root authority and public persistent-face authority"
+  ],
+  "failure_enum_ordinals": [
+    "None",
+    "NodeLimit",
+    "EventLimit",
+    "RootLimit",
+    "UnknownHistory",
+    "DuplicateInventory",
+    "InvalidInventory",
+    "InvalidEvent",
+    "ForeignStatus",
+    "ForeignException",
+    "CallbackReplaced",
+    "ReentrantCallback",
+    "CallbackDepthLimit",
+    "ReadOnlyMutation",
+    "UnreportedCopy",
+    "UnsupportedGeometryChange",
+    "ObservationGap",
+    "RepresentationChanged",
+    "UntrustedCallback"
+  ]
+}

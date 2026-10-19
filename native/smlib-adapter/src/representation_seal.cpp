@@ -39,7 +39,8 @@ void RepresentationSeal::object(SmObject* value) {
     if(pending.size()==objects) throw SweepFailure{IFCLITE_SMLIB_RESOURCE_LIMIT,"exact representation seal object budget"};
     pending.push_back(value);
 }
-RepresentationSeal::RepresentationSeal(Ledger& value,SmBrep& solid):ledger(value),source(solid) {
+RepresentationSeal::RepresentationSeal(Ledger& value,SmBrep& solid):RepresentationSeal(value,solid,false) {}
+RepresentationSeal::RepresentationSeal(Ledger& value,SmBrep& solid,bool creation):ledger(value),source(solid),initial(creation) {
     try {
         ledger.check(); operation=ledger.append(Change::AuditBoundary); ledger.check();
         retained.reserve(words); scratch.reserve(words); pending.reserve(objects);
@@ -47,7 +48,19 @@ RepresentationSeal::RepresentationSeal(Ledger& value,SmBrep& solid):ledger(value
     } catch(const std::bad_alloc&) { throw SweepFailure{IFCLITE_SMLIB_RESOURCE_LIMIT,"bounded exact representation seal allocation"}; }
 }
 void RepresentationSeal::capture() {
-    ledger.verify_inventory(source); scratch.clear(); pending.clear(); work=0;
+    if(!initial) ledger.verify_inventory(source);
+    else {
+        ledger.check();
+        require(ledger.creation.object==&source && ledger.creation.face && ledger.creation.frame==ledger.frame_count &&
+            !ledger.creation.active && source.GetNumFaces()==1,"expired or foreign generated construction receipt");
+        SmTArray<SmFace*> actual; source.GetFaces(actual);
+        require(actual.GetSize()==1 && actual[0]==ledger.creation.face && actual[0]->GetBrep()==&source,
+            "generated construction receipt requires its exact live face inventory");
+        auto* binding=ledger.binding(ledger.creation.face,false);
+        require(binding && binding->alive && !binding->retired && !binding->removed && binding->newborn && binding->initial_issuance &&
+            binding->current==ledger.creation.generation,"generated constructor history changed before issuance");
+    }
+    scratch.clear(); pending.clear(); work=0;
 #ifdef SM_USE_NEWTOL
     require(false,"new tolerance-model semantics need a separate exact seal audit");
 #endif
@@ -58,6 +71,11 @@ void RepresentationSeal::capture() {
     require(!context.GetAttributeCallbacks() && !context.GetSysNotifyCallback(),"foreign attribute/system callbacks cannot authorize sealed numerical phases");
     pointer(&source); pointer(&context);
     word(operation.domain); word(operation.sequence);
+    if(initial) {
+        word(ledger.creation.operation.domain); word(ledger.creation.operation.sequence);
+        const auto& r=ledger.creation.revision;
+        word(r.incarnation); word(r.session); word(r.slot); word(r.generation); word(r.revision); word(r.operation);
+    }
     for(auto metadata:{raw_context::Access<SmBrep>::get(source),raw_context::Access<SmContext>::get(context)}) {
         real(metadata.size); real(metadata.ratio); real(metadata.zone);
     }
@@ -98,8 +116,8 @@ void RepresentationSeal::capture() {
                 auto* f=static_cast<SmFace*>(t); auto uv=f->GetUVDomain();
                 real(f->GetTolerance()); word(f->GetRectangularTrim());
                 real(uv.GetUMin()); real(uv.GetUMax()); real(uv.GetVMin()); real(uv.GetVMax());
-                auto id=ledger.identity(f); word(id.domain); word(id.sequence);
-                std::array<Root,1024> roots{}; const auto count=ledger.roots(id,roots.data(),roots.size()); word(count);
+                auto id=initial?ledger.binding(f,false)->current:ledger.identity(f); word(id.domain); word(id.sequence);
+                std::array<Root,1024> roots{}; const auto count=initial?0:ledger.roots(id,roots.data(),roots.size()); word(count);
                 for(uint32_t r=0;r<count;++r) {
                     const auto& root=roots[r]; word(root.identity.domain); word(root.identity.sequence); word(uint64_t(root.kind));
                     word(root.object.incarnation); word(root.object.session); word(root.object.slot); word(root.object.generation);

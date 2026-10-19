@@ -76,6 +76,7 @@ void Ledger::guard_numerical(SmNotifyOperation op,SmObject* caller,SmObject* a,S
     if(!caller) return;
     const bool geometry=caller->IsKindOf(SmCurve_TYPE) || caller->IsKindOf(SmSurface_TYPE);
     if(op==SM_NO_CHANGE_OWNER && geometry) {
+        if(creation_owner(caller,a,c)) return;
         // Only these documented slots contain owner objects. First attachment
         // is distinct from transfer/detachment. UV SetOwner is silent in SDK.
         if(c) affect_numerical_owner(c,false);

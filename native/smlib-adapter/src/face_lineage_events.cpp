@@ -204,6 +204,16 @@ void Scope::finish() noexcept {
 }
 Scope::~Scope() { finish(); }
 SmStatus Scope::Execute(SmNotifyOperation op,SmObject* caller,SmObject* a,SmObject* b,SmObject* c) noexcept {
+    // Install incoming identity BEFORE depth/reentrancy can latch. Nested
+    // callbacks restore the exact outer event context, including early exits.
+    struct EventContext {
+        SmNotifyOperation& operation; long& type; uint32_t& event;
+        SmNotifyOperation old_operation; long old_type; uint32_t old_event;
+        ~EventContext() { operation=old_operation; type=old_type; event=old_event; }
+    } restore{ledger.current_operation,ledger.current_type,ledger.current_event,
+        ledger.current_operation,ledger.current_type,ledger.current_event};
+    ledger.current_operation=op; ledger.current_type=caller?long(caller->GetType()):0;
+    ledger.current_event=ledger.event_count+1;
     if(depth==ledger.limits.callback_depth) { ledger.fail(Failure::CallbackDepthLimit); return SM_ERR; }
     // Foreign hooks may query freely. Nested notifying edits/construction have
     // no issued operation authority here; preserve callback delivery, refuse

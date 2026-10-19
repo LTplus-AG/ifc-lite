@@ -9,6 +9,7 @@ class SmBrep;
 class SmFace;
 class SmObject;
 class SmCopyBrepMap;
+class SmSurface;
 namespace face_lineage {
 // Private adapter evidence only. Runtime sealing under the actual incarnation
 // and original issued source/operation remains mandatory; no wire authority.
@@ -35,6 +36,13 @@ enum class Failure {
     InvalidInventory,InvalidEvent,ForeignStatus,ForeignException,CallbackReplaced,
     ReentrantCallback,CallbackDepthLimit,ReadOnlyMutation,UnreportedCopy,UnsupportedGeometryChange,ObservationGap,RepresentationChanged,UntrustedCallback
 };
+// Scalar diagnostic evidence only; never an ancestry or operation credential.
+struct FailureOrigin {
+    Failure failure=Failure::None;
+    SmNotifyOperation operation=SM_NO_UNKNOWN;
+    long caller_type=0;
+    uint32_t event=0,frame=0,nodes=0;
+};
 enum class Change { Construct,Admit,Copy,Split,Merge,Remove,Add,Destroy,Edit,AuditBoundary };
 enum class Phase { Mutation,InitialConstruction };
 struct Event {
@@ -43,6 +51,16 @@ struct Event {
 };
 class Scope;
 class Ledger {
+    struct Creation {
+        SmBrep* object=nullptr;
+        SmSurface* surface=nullptr;
+        SmFace* face=nullptr;
+        Identity generation{},operation{};
+        ObjectRevision revision{};
+        uint32_t frame=0,transitions=0,owner_limit=11;
+        bool active=false;
+    } creation;
+    std::unique_ptr<class RepresentationSeal> creation_seal;
     struct Node {
         Identity parent[2]{};
         uint32_t root=UINT32_MAX;
@@ -60,6 +78,10 @@ class Ledger {
     uint64_t domain;
     SmContext* context=nullptr;
     Failure failure=Failure::None;
+    SmNotifyOperation current_operation=SM_NO_UNKNOWN,failed_operation=SM_NO_UNKNOWN;
+    long current_type=0,failed_type=0;
+    uint32_t current_event=0,failed_event=0,failed_frame=0,failed_nodes=0;
+    mutable bool failure_reported=false;
     uint32_t node_count=0,event_count=0,root_count=0;
     bool attached=false,closed=false;
     Scope* observer=nullptr;
@@ -83,12 +105,17 @@ class Ledger {
     void affect_numerical_owner(SmObject*,bool initialization);
     void affect_numerical_face(SmFace*,bool initialization);
     void replace(Binding*,Identity) noexcept;
-    void fail(Failure value) noexcept { if(failure==Failure::None) failure=value; }
+    void fail(Failure value) noexcept {
+        if(failure==Failure::None) { failure=value; failed_operation=current_operation; failed_type=current_type; failed_event=current_event?current_event:event_count; failed_frame=frame_count; failed_nodes=node_count; }
+    }
+    bool creation_owner(SmObject*,SmObject*,SmObject*) noexcept;
     void protect(SmBrep*);
     friend class Scope;
     friend class RepresentationSeal;
+    friend class GeneratedPlane;
 public:
     explicit Ledger(Limits={});
+    ~Ledger();
     Ledger(const Ledger&)=delete;
     Ledger& operator=(const Ledger&)=delete;
     // Under continuous Scope observation, only at explicit source/cutter issuance,
@@ -98,6 +125,9 @@ public:
     void admit_roots(SmBrep&,const ObjectRevision&,const Seed*,uint32_t count);
     void check() const;
     Failure failed() const noexcept { return failure; }
+    FailureOrigin failure_origin() const noexcept {
+        return {failure,failed_operation,failed_type,failed_event,failed_frame,failed_nodes};
+    }
     void verify_inventory(SmBrep&);
     void verify_copy(const SmBrep&,SmBrep&,const SmCopyBrepMap&,const SmCopyBrepMap&);
     Identity identity(SmFace*) const;
@@ -122,6 +152,7 @@ class Scope final:public SmNotifyCallback {
     uint32_t depth=0;
     Phase phase;
     friend class Ledger;
+    friend class GeneratedPlane;
 public:
     Scope(Ledger&,SmContext&,SmBrep* readonly_source=nullptr,Phase=Phase::Mutation);
     Scope(const Scope&)=delete;

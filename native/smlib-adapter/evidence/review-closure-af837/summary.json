@@ -1,0 +1,126 @@
+{
+  "base": "af837bcb731c56ff4bf64008ac1002e389ce704f",
+  "scope": "af837 P1 genuine-trim silent-edit fixture preparation and P2 scoped callback diagnostic origin",
+  "review_report_sha256": "05cde6d70d8ae054ae85abb020c59981fed481f042122f45ac9add0569f35b2a",
+  "review_hash_manifest_sha256": "907f10e0cad3f0074538a67c703c32e761a6a31e411c4495a240c2b5583435b4",
+  "changed_paths": [
+    {
+      "path": "native/smlib-adapter/src/face_lineage.hpp",
+      "before_sha256": "bd6f3f01c9f645601d5ce297f3727936f942d53825a94758ca5306066f3f462e",
+      "after_sha256": "49384c53198a62efeca24274c7d0b84c4b7c337fe6c947cd90513dd1d6725789"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage_events.cpp",
+      "before_sha256": "5ed4076b4ccf1405714fa407e8867c79275c3376da3db41f4bb0cda555ad3f48",
+      "after_sha256": "3b24a3dc0339cf10fb00a693ef746ca81c09ffd7276ddb52c001e2ff6570d8b5"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_lineage_tests.cpp",
+      "before_sha256": "998d3fd6c6ca373343c967a342dc2f9934d5284e20fe7de6edcb2c6ddcb0e034",
+      "after_sha256": "7132809c10dff8049d8f8d86da0527b872e4d959152fe9fc214717fc64c25d65"
+    },
+    {
+      "path": "native/smlib-adapter/tests/root_issuance_tests.cpp",
+      "before_sha256": "97b91be5a4f536dc45f30ab893e6e463d524a6f9d29715a2c3c5cfd0b4e11f34",
+      "after_sha256": "36984335fb36039db9255099463955047767495fcee4b58228dbb15b1e905cf8"
+    }
+  ],
+  "unchanged_local_safeguards": [
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "sha256": "00d0744bd073743477ec481276749d3c1593c613f2e5932901245d5a29cc65a6"
+    },
+    {
+      "path": "native/smlib-adapter/src/generated_plane.cpp",
+      "sha256": "a7279559e35260ddaa94e9d43507d69a50941ef984ad229b015339c6576cc8ed"
+    },
+    {
+      "path": "native/smlib-adapter/src/generated_plane.hpp",
+      "sha256": "75edcab37297c8152d9868b3594938f4e053624446dbc9ae31644caadd8e9416"
+    },
+    {
+      "path": "native/smlib-adapter/src/representation_seal.cpp",
+      "sha256": "82cc39b3793ebbd6b2ce84a8e53e0b9130eb8143ab879c2ec991ce9d20b7ed21"
+    },
+    {
+      "path": "native/smlib-adapter/src/representation_seal_geometry.cpp",
+      "sha256": "a31dee2bb027cf92fc23dc40b70b6f4241def2b81d024bd829a4041ab208b2a5"
+    },
+    {
+      "path": "native/smlib-adapter/src/plane.cpp",
+      "sha256": "1c7ed1a9958693682696ca48b8cb6a893eb4c480d1192999b97974e51391cafe"
+    },
+    {
+      "path": "native/smlib-adapter/src/plane_domain.cpp",
+      "sha256": "3e500336a94fad265286eecaa3c6673c38a6a3752ac079b7b1032ef10a01357d"
+    },
+    {
+      "path": "native/smlib-adapter/src/copy.cpp",
+      "sha256": "0cfc60da6dccd1f91a7140fe53e5ee8be975e21cb3e827895e359d48105072bf"
+    },
+    {
+      "path": "native/smlib-adapter/src/context_metadata.hpp",
+      "sha256": "c105a819bb1aa5d7e678aadca403a4174a0312621eb26cbc2d850eb0f3d4b407"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_extraction.cpp",
+      "sha256": "fc84454b17e0b422c4ae2665228a8b65e53e8da1d6f3b342e6265873d5e329dc"
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "sha256": "800e18af50520867897d70b25e814428e78cd279bcd643fc8d68e70abf520a8a"
+    },
+    {
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "sha256": "f67077face61a64176dbb0f155aa4d96a13124135728d7ff016f138cadaf6fa3"
+    },
+    {
+      "path": "native/smlib-adapter/qualify.sh",
+      "sha256": "ec797fc4b79e24e07e40e0502ee054d3a9b42d0f0edbab47c34b20f3f4389e43"
+    }
+  ],
+  "syntax": {
+    "result": "PASS",
+    "translation_units": 11,
+    "flags": "-std=c++17 -fsyntax-only -Wall -Wextra -DSM_NO_DEBUG_CODE -DSM_NO_GFX_OUTPUT_CODE -DNDEBUG"
+  },
+  "diff_check": "PASS",
+  "actual_sdk_witnesses": "UNRUN: no child SDK build/link/test or heavy submission",
+  "witnesses": [
+    {
+      "path": "native/smlib-adapter/tests/root_issuance_tests.cpp",
+      "function": "prepared_patch / run_root_issuance_tests",
+      "stages": [
+        "checked actual trim creation before adoption",
+        "complete actual UV inventory and exact unchanged face domain",
+        "unchanged seal verifies before each silent mutation",
+        "silent domain / trim pointer / control coefficient mutation",
+        "no notification then RepresentationChanged refusal",
+        "separate raw trimless fixture remains refused"
+      ],
+      "status": "UNRUN"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_lineage_tests.cpp",
+      "function": "Foreign::Execute / refusals",
+      "stages": [
+        "actual face construction callback",
+        "actual unconnected vertex SetPoint invokes nested CHANGE_GEOMETRY",
+        "inner ReentrantCallback / CallbackDepthLimit first-origin assertions",
+        "outer foreign SM_ERR and later destruction cannot overwrite first origin",
+        "caller callback restored",
+        "separate outer constructor foreign status/exception origin assertions"
+      ],
+      "status": "UNRUN"
+    }
+  ],
+  "sdk": {
+    "revision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+    "status": ""
+  },
+  "remaining_holds": [
+    "lane7 actual first-causal phase trace and repair",
+    "full single-intersection paired partition/classification/extraction/interface ancestry",
+    "native/runtime sealed authority and final persistent-face contract"
+  ]
+}

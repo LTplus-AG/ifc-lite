@@ -44,7 +44,7 @@ bytemuck = "1.25"
 thiserror.workspace = true
 
 [dev-dependencies]
-ifc-lite-geometry = { workspace = true, features = ["test-support"] }
+ifc-lite-geometry = { path = "../geometry" }
 tokio = { workspace = true, features = ["macros", "rt"] }
 # Test-only: parse the shared decode parity fixture.
 serde_json.workspace = true

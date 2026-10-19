@@ -146,6 +146,16 @@ fn raw_point_placement_and_grid_imports_revoke_authority_even_when_empty() {
     let mut grids = source.decoder();
     grids.set_grid_axis_index(Arc::new(GridAxisIndex::default()));
     assert!(!source.owns_decoder(&grids));
+    // Unbound decoders over the bundle's own bytes: binding is refused only
+    // because the raw import revoked authority, which the control proves.
+    let mut control = EntityDecoder::new(source.bytes());
+    assert!(source.bind_decoder(&mut control));
+    let mut points = EntityDecoder::new(source.bytes());
+    points.set_point_cache(FxHashMap::default());
+    let mut placements = EntityDecoder::new(source.bytes());
+    placements.set_placement_transform_cache(FxHashMap::default());
+    let mut grids = EntityDecoder::new(source.bytes());
+    grids.set_grid_axis_index(Arc::new(GridAxisIndex::default()));
     for decoder in [&mut points, &mut placements, &mut grids] {
         assert!(!source.bind_decoder(decoder));
     }

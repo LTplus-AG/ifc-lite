@@ -1,0 +1,21 @@
+{
+  "source": "475c5edca5ab4c8ba99a92874504240b2fecffe3",
+  "job": "1128c53e-a923-4588-8dbf-ab6bc20adf85",
+  "request": "auto-3356d8a823b14681b26b1fa24ee08ba3",
+  "host": "pc-wsl",
+  "exit_code": 8,
+  "source_unchanged": true,
+  "full_sdk_build_link": "PASS",
+  "ctest": {
+    "passed": 5,
+    "failed": 3,
+    "total": 8
+  },
+  "failed": [
+    "smlib_paired_copy_observability: first generated root refused",
+    "smlib_checked_face_extraction: history/callback verification failed",
+    "smlib_face_extraction_failure_boundary: missing UV trim before intended fault"
+  ],
+  "rust_browser_perf": "NOT RUN",
+  "output_sha256": "dfb627e7257503e43a79ed83fcfcaf1c6b94d2d2cba75c5e61ec79229482a13b"
+}

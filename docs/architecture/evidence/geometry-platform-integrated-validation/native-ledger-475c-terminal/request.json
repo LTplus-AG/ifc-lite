@@ -1,0 +1,17 @@
+{
+  "id": "auto-3356d8a823b14681b26b1fa24ee08ba3",
+  "commit": "475c5edca5ab4c8ba99a92874504240b2fecffe3",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "-c",
+    "source \"$HOME/build-workers/worker-env.sh\" || exit $?\nunset IFCLITE_ADAPTER_BUILD\nbash native/smlib-adapter/qualify.sh native"
+  ],
+  "storageTask": "ifclite-native-ledger-475c-20261019",
+  "pools": []
+}

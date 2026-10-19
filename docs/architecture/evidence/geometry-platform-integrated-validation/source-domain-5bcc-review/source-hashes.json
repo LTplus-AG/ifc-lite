@@ -1,0 +1,42 @@
+{
+  "base": "4e8274df6d04070ebd34ddeae633cfa674842cb0",
+  "source": "5bcc14113a4b90ef99728baaaca9fee4c8e41e1b",
+  "sdk_pin": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "files": {
+    "native/smlib-adapter/CMakeLists.txt": "3a37742035dbd9a81e70f6efe2359310ad2f3bd31b508ee8452ead7ae86abc7d",
+    "native/smlib-adapter/PLANE_CONTRACT.md": "d626a5858a5cc6a9f8fc2a023a3ba237221a6714db72a0e0177dbdfdde7dc068",
+    "native/smlib-adapter/src/plane_domain.cpp": "5bd90be02fa1b88265ad0627dca2c6b69cf4ea20cec46c68cf0750f392665507",
+    "native/smlib-adapter/src/plane_domain.hpp": "513b181b57670582cb2706bbc6c60431e3a14ed12b8ddfd02169a7f271455e0d",
+    "native/smlib-adapter/src/plane_dyadic.hpp": "aef1b0b09c2a4162d42b3523adbe2516fe77b919a519df3939b726a2e0554831",
+    "native/smlib-adapter/src/plane_source_domain.cpp": "4add7a2599ce54cc0e80f18f74d5bda6ef6c8eebc308dc496768cbd958ddeeec",
+    "native/smlib-adapter/src/plane_source_domain.hpp": "a0f5a7d4fb302fb78cf32b07d5e067599a219c1f3b77d4ede65b62f8f9de40f2",
+    "native/smlib-adapter/tests/plane_source_domain_tests.cpp": "8b2ad1a33223179b1eff60aff820d356803378fc5d619daa124ff57920920c6b",
+    "native/smlib-adapter/tests/plane_tests.cpp": "4d9744f3be347d0fa49a049e40edd57767da4dfab922b6c84ef0d3ed6970ed7c"
+  },
+  "sdk_files": {
+    "source/SMLib/src/SmBSplineSurface.cpp": "f99a3b406641889e17d117e7d76ef45e24a5ec3b291adbca963f9b773057598a",
+    "source/SMLib/src/SmBSplineSurfaceNLib.cpp": "b971fc6c381f25805d6b5fec6463359bd20850f0e50fb0c75510c4e563061b1b",
+    "source/SMLib/src/SmBSplineCurve.cpp": "93c905a12c4124f6761f63ca9dbe2e2ffe400eb32b493c3d514be42de2c41138",
+    "source/SMLib/src/SmLine.cpp": "bac43a837e3a675d78c7b7fd7504ae88d0808d2b1ae3e988471a3993ca0df58f",
+    "source/SMLib/src/SmEdge.cpp": "cb69520529d7e45c497478262cde2ed2fcbc2557f3a02bdf01a30017c8ead3a7",
+    "source/SMLib/src/SmEdgeuse.cpp": "d117c7b53f010a699a73384907d4c23fbc2bdb078f09a3e97dfaa5a8d685505e",
+    "source/SMLib/src/SmFace.cpp": "6004846a29074d8f8923904caabc01e194eceaff7f57f33b68ecdbbec08c51f9",
+    "source/SMLib/src/SmLoopuse.cpp": "88f8c7b8d2022eb3a74c81ffbb5e75b63e2ba9371027db4ec51a93f1357d92c1",
+    "source/SMLib/src/SmBrep.cpp": "5d44d6ac347fa42e4e83fead8bbde82ce46c5ff48e0a973b5c7cddc778a2fca1",
+    "source/SMLib/inc/SmEdgeuse.h": "293a6455c3e1e1d019625677795bb654706493482d35769bb81dead2d3e1f676",
+    "source/SMLib/inc/SmLoopuse.h": "90ce7e9b742d54741a55bb793ebb9367eba3d8c86bba3b23e32bda6d5b1be804",
+    "source/SMLib/inc/SmLoop.h": "1376ed0fec5ad2840a759eb62866055168917f974839fd6bcd4b6a27a7c63ac8",
+    "source/SMLib/inc/SmFace.h": "18f5e444999df0fe3508d3a9fb6922ea773620255b5f1db3b54715670bda38a3",
+    "source/SMLib/inc/SmTArray.h": "129f846f6b00f80a9a425f849094a39568f3668507ea2585de86909dfc47910b",
+    "source/SMLib/inc/SmCoreTypes.h": "bdefa75ef66caddf624d09f2e279e386e5c58db0f2becbace56f6569c3889f86"
+  },
+  "evidence": {
+    "/tmp/ifclite-source-domain-89ed4b23-5bcc14113a/parent-relative.patch": "e5b60ab33c23c887510a6565dc12754996d4feefb9412018eb6ba0b45780c537",
+    "/tmp/ifclite-source-domain-89ed4b23-5bcc14113a/qualification.json": "8a6c619dbe64a4e2d6d5cd11d4c1f6c522fdd2e7fbb0f8e0f37a7d66886cb012",
+    "/tmp/ifclite-source-domain-89ed4b23-5bcc14113a/files.sha256": "a36a7152e47cf26d0eb9c1e0ca0ac46a052ca7cc8f2445048eb5b4eed5e906a7"
+  },
+  "commands": "Read-only git/source inspection and SHA256 only; no build, test, SDK execution or jobs.",
+  "historical_failure_log": {
+    "/tmp/ifclite-native-openings-1cefd-current.log": "c2943ec036780ee96f3bd8cb8d26c0fbf8ef3623fb7ba426c650b849205b126f"
+  }
+}

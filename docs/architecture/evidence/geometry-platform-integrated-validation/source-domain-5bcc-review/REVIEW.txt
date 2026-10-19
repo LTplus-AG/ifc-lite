@@ -1,0 +1,138 @@
+Read-only pinned review: source-domain rectangle candidate
+Source: 5bcc14113a4b90ef99728baaaca9fee4c8e41e1b
+Base: 4e8274df6d04070ebd34ddeae633cfa674842cb0
+SDK: c9c5979f04cea8c38213004d4f04df0dcfb40d05
+Child: /home/louistrue/.t3/worktrees/ifc-lite/t3-89ed4b23
+
+VERDICT
+No demonstrated mathematical defect found in the PRIVATE, unit-weight,
+axis-aligned rectangle theorem under its stated SDK-owned valid-topology
+premise. This is conditional source-review acceptance of that restricted
+candidate, NOT production approval, compile qualification or chain closure.
+No new C++ compile defect was established by inspection. Compilation and ALL
+new numerical/positive/negative tests remain UNRUN. No builds, tests, SDK
+execution, worker jobs, source edits, publication or lock changes were made.
+Only the requested review and hash artifacts were written outside the repo.
+
+CONCRETE PRODUCTION BLOCKERS / INTEGRATION OBLIGATIONS
+1. native/smlib-adapter/src/plane_domain.cpp:179,305-328:
+   face_hull still enters trim_domain unconditionally for this generic surface;
+   the additive seam has no production caller. The missing-trim status7 route
+   therefore remains. Tests/plane_tests.cpp:121-145,344,349 are MUST-PASS
+   requirements, not accepted failures or supported skips. Do not claim these
+   witnesses passed because the candidate theorem is plausible.
+2. src/plane_source_domain.hpp:8,18-32 and src/plane_domain.cpp:318-328:
+   the returned private enum/record is not a wire method, input-incarnation
+   binding, output receipt, or native/runtime/parser agreement. Integration
+   must emit a distinct source-derived method and bind the actual source face
+   inventory/generation and records. uv_hull is the full conservative knot
+   rectangle; it is not authored UV data, nor a fitted/reconstructed trim.
+   Existing method2 must not be silently reused to describe this proof.
+3. src/plane_domain.cpp:321-324 and src/plane_source_domain.hpp:28:
+   scratch only accounts for present trim controls for this one invocation;
+   the fixed control_count=12 covers 4 surface + 8 boundary controls only.
+   Parent integration must charge these controls, present trims and records
+   to the shared whole-operation ceilings, not reset scratch per face and
+   regard that as the global ledger. Preserve the existing source/face/edge/
+   vertex tolerance aggregation and outward expansion at plane_domain.cpp:
+   281-300; Rectangle.bounds itself is not tolerance-expanded. These are
+   explicitly deferred integration duties, not a false claim that this
+   standalone private helper already implements global admission.
+4. CMakeLists.txt:42-52 and tests/plane_tests.cpp:273:
+   new translation unit and SDK tests enter the actual build/test target but
+   have never been compiled or run at this source. Native/C ABI/runtime and
+   browser qualification remain blockers. No browser Boost dependency is
+   introduced by the inspected exact arithmetic. Source inspection cannot
+   certify toolchain portability or the actual Boolean result's eligibility.
+
+MATHEMATICAL AND SDK REVIEW
+- plane_source_domain.cpp:99-146 authenticates the exact generic dispatch,
+  rejects power form, requires existing NURBS data, degree1 in both directions,
+  a 2x2 homogeneous net, unit positive or SDK nonrational-sentinel weights,
+  and finite clamped four-knot pairs. This is stricter than arbitrary positive
+  constant weights; nonunit constant weights and oblique/sheared
+  parallelograms are expressly unsupported, not qualified by this review.
+- Exact coordinate equalities make the mixed bilinear term vanish. Each of
+  U and V changes one distinct spatial coordinate, with a third constant.
+  The result is an injective affine rectangle map. Independent axis spans
+  and strictly increasing knot spans give a symbolic inverse. Comparisons
+  against the full spatial patch box prove inverse parameter containment
+  without rounded divisions or inferred clamp behavior.
+- SDK SmBSplineSurface.cpp:2857-2915 confirms P00/P01/P10/P11 tensor order
+  and lazy-capable raw coefficient getters. Existing-pointer checks precede
+  them. SmBSplineSurfaceNLib.cpp:8683-8747 explicitly disables EvaluatePoint
+  clamping; neither IsOutOfBoundsEnabled nor finite metadata supplies the
+  containment theorem here. The actual coefficient/topology proof does.
+- plane_source_domain.cpp:66-94,147-192 requires full degree1 two-control
+  boundary representations, strict actual intervals inside complete clamped
+  support, exact endpoint-to-vertex equations, coplanar complete control
+  hulls inside the patch, and complete straight sides. Four distinct start
+  corners, 00->10->11->01 progression, reciprocal CW/CCW links, geometric
+  closure and distinct edges imply a simple positive parameter rectangle.
+  One actual outer loop and no other loops exclude holes. Its bounded
+  interior maps inside support. No general curved-boundary or hole proof
+  is claimed. Full-patch returned bounds conservatively enclose the smaller
+  actual rectangle when the boundary is cropped.
+- SmLine is independently authenticated at plane_source_domain.cpp:39-64:
+  raw canonical origin, positive scale, exact signed coordinate axis, strict
+  finite bounded STEP interval, known reversal bit and non-nearzero NURBS
+  span; exact canonical equality at both natural knots identifies the same
+  affine map, including reverse parameterization. SDK SmLine.cpp:459-487,
+  796-804,838-857,1131-1143 supports this dispatch argument. The floating
+  nearzero check only rejects the special SDK branch; it is not an exact
+  zero or equivalence predicate.
+- plane_dyadic.hpp:11-59: finite binary64 unpacking has the right mantissa
+  and exponent; split 32x32 products retain shifted high bits, and carry
+  propagation is bounded. Product bit positions span -2148 through 2047;
+  sixteen-term sums need at most four extra carry bits. 136 32-bit limbs
+  exceed that requirement. Separate exact positive/negative sums make
+  equality exact, including underflow/overflow products and cancellation.
+  No heap, Boost, floating multiplication, FMA or epsilon inference is used
+  in these equality decisions. The is_iec559 condition is checked before
+  these predicates are used in the source certification entrypoint.
+- plane_domain.cpp:307-318 reuses whole-source representation preflight,
+  finite-material and non-evaluating manifold checks and source inventory
+  membership. Local checks authenticate loop/use/mate/edge face ownership.
+  This rests on SDK-owned valid graphs and the parent's unchanged handle/
+  validation boundary. It is NOT an arbitrary malformed-pointer validator:
+  SDK enumeration traverses/allocates before returned-size caps, and
+  IsManifoldSolid only checks regions/shell vertices/edgeuse cardinality.
+  The late CW/CCW checks cannot make enumeration safe for corrupted graphs.
+  That limitation is consistent with the candidate's explicit scope.
+- With SM_NO_DEBUG_CODE in the existing target, SDK GetUVTrimCurve and its
+  pointer getter only read current/mate pointers (SmEdgeuse.cpp:6420-6482).
+  Existing coefficient pointers are required before all lazy-capable
+  coefficient getters. Inspected manifold/inventory/loop methods do not
+  evaluate geometry or update source caches. No source mutation path was
+  found in the seam. Source Snapshot witnesses are UNRUN and do not turn
+  this inspection into runtime immutability evidence.
+- Present trim checks remain at plane_domain.cpp:323-326, using the previous
+  positive-weight/clamped hull obligation within surface support. The
+  candidate does not manufacture trims or infer cache existence from a
+  derived inverse. Any parent integration must preserve that separation.
+
+FAILURE EVIDENCE / PRESERVATION
+Historical /tmp/ifclite-native-openings-1cefd-current.log:503-504 establishes
+status7, "missing or uncertified existing UV trim", at the second Clip
+consumer. That log does not itself establish every failing representation
+field (including SmBSplineSurface15002), nor prove this candidate accepts
+that actual output. No new execution was done to fill those facts.
+Affine TurnToNURBS trim removal is a separate known path; it is not assumed
+to explain the direct Boolean output failure. The actual Boolean generic
+qualification in tests/plane_source_domain_tests.cpp remains UNRUN.
+
+The pinned diff does not modify the root outward cutter construction,
+context metadata implementation, operation ledger or existing validators.
+Keep those fixes and their qualification evidence. Full source preflight,
+old generic admission, generic interior-bulge negatives, authored trim
+checks, tolerances, global ceilings and source immutability remain required.
+No status7 skip-as-pass and no whole-product closure are accepted.
+
+SOURCE IDENTITY
+All nine files match both git show at the pinned source and the supplied
+files.sha256/qualification.json values. Inspected SDK source bytes also
+match git show at its exact pin. git diff --check was clean (whitespace
+check only). Patch SHA256:
+e5b60ab33c23c887510a6565dc12754996d4feefb9412018eb6ba0b45780c537
+Full hashes (source, SDK and original evidence) are in:
+/tmp/ifclite-source-domain-5bcc14113a-review-hashes.json

@@ -1,0 +1,181 @@
+{
+  "source_commit": "47d4c55dbc4424cd669e5b7e2be60a3a397da973",
+  "base_commit": "3edd2e18624aaf350954cdc4c9ec7113dfd1702e",
+  "evidence_commit": "6b70c507d5c0003c6110f718d7072b5db9a5427a",
+  "source_tree": "c866ed492391365e5b594a65576c90de62e24914",
+  "declared_tree_matches": true,
+  "decompressed_patch_sha256": "d649257782a114a3b6af86eaadaa9046afda630d6edc4eaf1cab7afa088ef2ed",
+  "patch_hash_matches": true,
+  "checks": [
+    {
+      "path": "docs/guide/geometry.md",
+      "commit": "3edd2e18624aaf350954cdc4c9ec7113dfd1702e",
+      "sha256": "5380d10fdf59d1319ac93d339be1bd5abe4c08014638105683b5dfa213684587",
+      "declared_sha256": "5380d10fdf59d1319ac93d339be1bd5abe4c08014638105683b5dfa213684587",
+      "matches": true
+    },
+    {
+      "path": "docs/guide/geometry.md",
+      "commit": "47d4c55dbc4424cd669e5b7e2be60a3a397da973",
+      "sha256": "629c338b424bcfb6f60656bf2043a4eee5d3173ee9f3b7773340eff07f04de8b",
+      "declared_sha256": "629c338b424bcfb6f60656bf2043a4eee5d3173ee9f3b7773340eff07f04de8b",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/mod.rs",
+      "commit": "3edd2e18624aaf350954cdc4c9ec7113dfd1702e",
+      "sha256": "7b8bc13c3bdfadbef43208f1b252ada4af356ad202868b91de319e678570435d",
+      "declared_sha256": "7b8bc13c3bdfadbef43208f1b252ada4af356ad202868b91de319e678570435d",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/mod.rs",
+      "commit": "47d4c55dbc4424cd669e5b7e2be60a3a397da973",
+      "sha256": "e8ba27e7e737467c77c8fcd412865fd2a546c71172ecb55791406406d92b9c38",
+      "declared_sha256": "e8ba27e7e737467c77c8fcd412865fd2a546c71172ecb55791406406d92b9c38",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/profile.rs",
+      "commit": "3edd2e18624aaf350954cdc4c9ec7113dfd1702e",
+      "sha256": "67f6a4f75ffa69ada81321e1191d011697fe49e0eafb432dc5a740f92f64f0f7",
+      "declared_sha256": "67f6a4f75ffa69ada81321e1191d011697fe49e0eafb432dc5a740f92f64f0f7",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/profile.rs",
+      "commit": "47d4c55dbc4424cd669e5b7e2be60a3a397da973",
+      "sha256": "ebcdf840dd9856a3c7d7ee6129e6b1e8c6985d87e55fdb3b505bbe013f1c97ab",
+      "declared_sha256": "ebcdf840dd9856a3c7d7ee6129e6b1e8c6985d87e55fdb3b505bbe013f1c97ab",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/profile_topology.rs",
+      "commit": "3edd2e18624aaf350954cdc4c9ec7113dfd1702e",
+      "sha256": "0ee99ccceaf9282504dcb244d66f794f61a008a29e6aafcb654958e75047951c",
+      "declared_sha256": "0ee99ccceaf9282504dcb244d66f794f61a008a29e6aafcb654958e75047951c",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/profile_topology.rs",
+      "commit": "47d4c55dbc4424cd669e5b7e2be60a3a397da973",
+      "sha256": "fe73cb3f5633d72f34ad276947ed0497cf92121eafd737095858abe65594c105",
+      "declared_sha256": "fe73cb3f5633d72f34ad276947ed0497cf92121eafd737095858abe65594c105",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/profile_topology_tests.rs",
+      "commit": "3edd2e18624aaf350954cdc4c9ec7113dfd1702e",
+      "sha256": "f52b7b1b9fa90e4cb625fd85ae599c42f8157e452577c3feb6df53596a4d7d0b",
+      "declared_sha256": "f52b7b1b9fa90e4cb625fd85ae599c42f8157e452577c3feb6df53596a4d7d0b",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/profile_topology_tests.rs",
+      "commit": "47d4c55dbc4424cd669e5b7e2be60a3a397da973",
+      "sha256": "1333a5ca3fd3b80ab11b5090e3ba039c22e76e65d3be348f72246d7cb030813e",
+      "declared_sha256": "1333a5ca3fd3b80ab11b5090e3ba039c22e76e65d3be348f72246d7cb030813e",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/region/arrange.rs",
+      "commit": "47d4c55dbc4424cd669e5b7e2be60a3a397da973",
+      "sha256": "194d2c150ebaacdb297b03d4ef739d61ce988d653ba10f0eb683bbbc333e5ba9",
+      "declared_sha256": "194d2c150ebaacdb297b03d4ef739d61ce988d653ba10f0eb683bbbc333e5ba9",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/region/certify.rs",
+      "commit": "47d4c55dbc4424cd669e5b7e2be60a3a397da973",
+      "sha256": "c1df9bc36bf0157121c390bce99007b762df8d3095eb3869ffdef718b30a32a5",
+      "declared_sha256": "c1df9bc36bf0157121c390bce99007b762df8d3095eb3869ffdef718b30a32a5",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/region/exact.rs",
+      "commit": "47d4c55dbc4424cd669e5b7e2be60a3a397da973",
+      "sha256": "61688cbf26ffbb5328699dd3d25a1cdd9985b7b4d8e31d440eade8f8975b8171",
+      "declared_sha256": "61688cbf26ffbb5328699dd3d25a1cdd9985b7b4d8e31d440eade8f8975b8171",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/region/mod.rs",
+      "commit": "47d4c55dbc4424cd669e5b7e2be60a3a397da973",
+      "sha256": "0675366e5caf948ab309c9b14d10242b64a9f6f9d5b8c614f92a920710a93d2f",
+      "declared_sha256": "0675366e5caf948ab309c9b14d10242b64a9f6f9d5b8c614f92a920710a93d2f",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/region/raw.rs",
+      "commit": "47d4c55dbc4424cd669e5b7e2be60a3a397da973",
+      "sha256": "5341b93d86441503c08d6ddd47505ad3c8066cfef5dab9f51208e951fb7fc16e",
+      "declared_sha256": "5341b93d86441503c08d6ddd47505ad3c8066cfef5dab9f51208e951fb7fc16e",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/region/tests.rs",
+      "commit": "47d4c55dbc4424cd669e5b7e2be60a3a397da973",
+      "sha256": "5eeac80e189a4c575c810925b6d1a63b2f7c5819489fec169a4bb9a99287ace1",
+      "declared_sha256": "5eeac80e189a4c575c810925b6d1a63b2f7c5819489fec169a4bb9a99287ace1",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/source.rs",
+      "commit": "3edd2e18624aaf350954cdc4c9ec7113dfd1702e",
+      "sha256": "a1b55c280e4c919d6af80d6ecfa24ef0293ff7128f8a4c72ca48a5ca2ddffab0",
+      "declared_sha256": "a1b55c280e4c919d6af80d6ecfa24ef0293ff7128f8a4c72ca48a5ca2ddffab0",
+      "matches": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/source.rs",
+      "commit": "47d4c55dbc4424cd669e5b7e2be60a3a397da973",
+      "sha256": "e35572f03f6af0c2b67e5123d1e72b650b9dd32e62b8486ba68308250c99bdcb",
+      "declared_sha256": "e35572f03f6af0c2b67e5123d1e72b650b9dd32e62b8486ba68308250c99bdcb",
+      "matches": true
+    },
+    {
+      "path": "rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc",
+      "commit": "3edd2e18624aaf350954cdc4c9ec7113dfd1702e",
+      "sha256": "da39f6cb98f56a9f9235e5f752213a9d4b56bd419ed867ccf7439b7d3b7a4eeb",
+      "declared_sha256": "da39f6cb98f56a9f9235e5f752213a9d4b56bd419ed867ccf7439b7d3b7a4eeb",
+      "matches": true
+    },
+    {
+      "path": "rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc",
+      "commit": "47d4c55dbc4424cd669e5b7e2be60a3a397da973",
+      "sha256": "da39f6cb98f56a9f9235e5f752213a9d4b56bd419ed867ccf7439b7d3b7a4eeb",
+      "declared_sha256": "da39f6cb98f56a9f9235e5f752213a9d4b56bd419ed867ccf7439b7d3b7a4eeb",
+      "matches": true
+    },
+    {
+      "artifact": "README.md",
+      "sha256": "9f711f2cfa4ca77e2a22c4de6f550d7a269850bfcf6bd5a3242b6ffdd45237c7",
+      "declared_sha256": "9f711f2cfa4ca77e2a22c4de6f550d7a269850bfcf6bd5a3242b6ffdd45237c7",
+      "matches": true
+    },
+    {
+      "artifact": "extractor-equivalence.md",
+      "sha256": "9f72720e0d7a513dbde40201f381061dd922faf5a9edf1de724ac0eb8df7d7c0",
+      "declared_sha256": "9f72720e0d7a513dbde40201f381061dd922faf5a9edf1de724ac0eb8df7d7c0",
+      "matches": true
+    },
+    {
+      "artifact": "incremental.patch.gz",
+      "sha256": "6dafd1f4a440067502cca2759e387f2f22b5ba63aa13daf9b7c2249ea22400a4",
+      "declared_sha256": "6dafd1f4a440067502cca2759e387f2f22b5ba63aa13daf9b7c2249ea22400a4",
+      "matches": true
+    },
+    {
+      "artifact": "qualification.json",
+      "sha256": "c0fc7ffb529030ef200173fede02ad5dd6c64e8bf5497cee7a2b35ff22eda20a",
+      "declared_sha256": "c0fc7ffb529030ef200173fede02ad5dd6c64e8bf5497cee7a2b35ff22eda20a",
+      "matches": true
+    },
+    {
+      "artifact": "source-hashes.json",
+      "sha256": "9b4b4718b6b898de717ca9be4c1ecc0f83e163f47faac4c184a93bd18f640b58",
+      "declared_sha256": "9b4b4718b6b898de717ca9be4c1ecc0f83e163f47faac4c184a93bd18f640b58",
+      "matches": true
+    }
+  ]
+}

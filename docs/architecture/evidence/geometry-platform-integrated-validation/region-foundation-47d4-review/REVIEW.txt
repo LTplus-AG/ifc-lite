@@ -1,0 +1,37 @@
+Independent read-only review: region foundation 47d4
+
+Reviewed source: 47d4c55dbc4424cd669e5b7e2be60a3a397da973
+Relative base: 3edd2e18624aaf350954cdc4c9ec7113dfd1702e
+Evidence HEAD: 6b70c507d5c0003c6110f718d7072b5db9a5427a
+Worktree: /home/louistrue/.t3/worktrees/ifc-lite/t3-de845216
+
+Verdict: one concrete resource-ownership blocker (P2).
+
+R1. Retain inspection cache permits until decoder destruction on failure.
+Location: rust/geometry/src/analytic/region/raw.rs:61-64, teardown at 132-135.
+
+decoder_permit and read_permits are closure locals, but decoder is an outer variable borrowed by the closure and only explicitly dropped at line 135. On an early Err after decoding, Rust destroys the closure-local reservations before returning from with_scope, leaving the newly populated decoder cache alive after its covering live-byte reservations have been refunded. This also applies during unwinding.
+
+Use a SourceBundle with the expected arbitrary profile and IndexedPolyCurve, but make its Points reference name a large valid record of the wrong IFC type. preflight admits and caches the record at lines 168-171, then returns Unsupported(SourceFamily) at lines 172-176. The closure drops read_permits and decoder_permit, and only afterward does line 135 destroy decoder and its retained cache. This Unsupported path does not stop the execution account, so another thread sharing that account can consume the refunded allowance while the cache remains allocated.
+
+The advertised requested-live-backing lifetime invariant and concurrent live-byte allowance are violated during rollback; final live_bytes==0 assertions cannot detect this ordering.
+
+Requested correction: Keep all cache/read reservations in an owner that outlives destruction of the consumed decoder on success, early refusal, typed stop and unwind. For example, arrange an explicit decoder-plus-permits owner with deterministic decoder-first destruction, transferring retained output permits only after decoder teardown. Add a behavioral drop-order/failure-path witness under the shared account; do not assert source text.
+
+Other reviewed properties and limits
+
+- The default extractor retains the canonical parse, successful-parse-only Precision lookup, same topology formulas/algorithm/work decrement, original diagnostics, and clearing of rejected loops. No concrete default behavior regression was found by static inspection. Moving loop clearing after the status assignment does not add an allocation. Execution equivalence and allocation/performance measurement remain UNRUN.
+- Exact authored-endpoint splitting yields full increasing [0,1] edge partitions. Exact collinearity and parameters precede splitting; equality of authored endpoints supports reverse pairing. Same-direction/ambiguous multiplicities refuse. Remaining incidence and exhaustive traversal require a single cycle; exact nonzero area identity and unchanged Precision validation follow. No concrete topology soundness blocker was found within that narrow scope.
+- Arithmetic checks conservative numerator/denominator growth and weighted work before rational operations, and arrangement reserves an arena before its geometry allocations. Source metadata admission precedes lazy units/Precision and is deliberately expensive. Requested backing coverage is not strict process/RSS accounting.
+- The provided tests exercise source-backed behavior rather than mocks or source-text matching. They cover useful positive/refusal/resource cases but are all UNRUN. Their final usage checks do not establish teardown ordering in R1. No new test was written or run.
+- The exact 870 mm reversed overlap proof remains valid. This review does not recommend changing the original simple-profile refusal guard.
+- This foundation confers no production reached-source, ItemSource, epoch, decoder/cache-generation, common transaction or runtime/native authority. Positive full-model #3641 behavior remains open. Those deliberately absent integration features are not reported as defects in this cut.
+
+Evidence verification
+
+All 25 declared before/after source/fixture and evidence artifact SHA-256 checks match. Source tree and decompressed patch hashes also match. Details: /tmp/region-foundation-47d4-independent-source-hashes.json.
+The evidence explicitly labels compilation, clippy, all 12 tests, default equivalence execution, numerical/SDK/consumer qualification and performance UNRUN; this review does not upgrade those statuses.
+
+Process
+
+Read applicable root/rust AGENTS and fleet policy. Fleet status only: Pop and PC reachable with admission refused (78), Mac disabled. No build, test, dev graph, worker job, SDK execution, source edit, git mutation or external message was performed. Only review reports/hash manifests were written under /tmp. Source working tree was clean when inspected.

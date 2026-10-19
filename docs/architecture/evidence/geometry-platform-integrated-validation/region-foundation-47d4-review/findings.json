@@ -1,0 +1,41 @@
+{
+  "source_commit": "47d4c55dbc4424cd669e5b7e2be60a3a397da973",
+  "base_commit": "3edd2e18624aaf350954cdc4c9ec7113dfd1702e",
+  "evidence_commit": "6b70c507d5c0003c6110f718d7072b5db9a5427a",
+  "worktree": "/home/louistrue/.t3/worktrees/ifc-lite/t3-de845216",
+  "verdict": "ONE_CONCRETE_RESOURCE_OWNERSHIP_BLOCKER",
+  "findings": [
+    {
+      "id": "R1",
+      "priority": "P2",
+      "title": "Retain inspection cache permits until the consumed decoder is destroyed on failure",
+      "file": "rust/geometry/src/analytic/region/raw.rs",
+      "line_start": 61,
+      "line_end": 64,
+      "related_lines": [
+        132,
+        135
+      ],
+      "problem": "decoder_permit and read_permits are closure locals, but decoder is an outer variable borrowed by the closure and only explicitly dropped at line 135. On an early Err after decoding, Rust destroys the closure-local reservations before returning from with_scope, leaving the newly populated decoder cache alive after its covering live-byte reservations have been refunded. This also applies during unwinding.",
+      "concrete_path": "Use a SourceBundle with the expected arbitrary profile and IndexedPolyCurve, but make its Points reference name a large valid record of the wrong IFC type. preflight admits and caches the record at lines 168-171, then returns Unsupported(SourceFamily) at lines 172-176. The closure drops read_permits and decoder_permit, and only afterward does line 135 destroy decoder and its retained cache. This Unsupported path does not stop the execution account, so another thread sharing that account can consume the refunded allowance while the cache remains allocated.",
+      "impact": "The advertised requested-live-backing lifetime invariant and concurrent live-byte allowance are violated during rollback; final live_bytes==0 assertions cannot detect this ordering.",
+      "requested_change": "Keep all cache/read reservations in an owner that outlives destruction of the consumed decoder on success, early refusal, typed stop and unwind. For example, arrange an explicit decoder-plus-permits owner with deterministic decoder-first destruction, transferring retained output permits only after decoder teardown. Add a behavioral drop-order/failure-path witness under the shared account; do not assert source text.",
+      "validation": "Static ownership and decoder cache inspection only; no reproduction or tests executed."
+    }
+  ],
+  "validation": {
+    "builds": "UNRUN",
+    "tests": "UNRUN (all 12 supplied tests)",
+    "jobs_submitted": [],
+    "source_edits": false,
+    "hash_checks": 25,
+    "hash_mismatches": 0,
+    "source_tree_matches": true,
+    "decompressed_patch_hash_matches": true
+  },
+  "scope_holds": [
+    "Inspection foundation only; no production ItemSource/epoch/cache authority, common/runtime/native integration or positive full-model #3641 qualification.",
+    "The source-derived exact 870 mm reversed overlap is valid and is not a finding; the original refusal guard remains.",
+    "No independent execution equivalence or performance verdict is established."
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "source": "475c5edca5ab4c8ba99a92874504240b2fecffe3",
+  "pid": 2486308,
+  "task": "ifclite-native-ledger-475c-20261019",
+  "command": [
+    "/home/louistrue/build-workers/ifc-fleet",
+    "run",
+    "--route",
+    "fleet",
+    "--storage-task",
+    "ifclite-native-ledger-475c-20261019",
+    "--cwd",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361",
+    "--",
+    "bash",
+    "-c",
+    "source \"$HOME/build-workers/worker-env.sh\" || exit $?\nunset IFCLITE_ADAPTER_BUILD\nbash native/smlib-adapter/qualify.sh native"
+  ],
+  "log": "/tmp/ifclite-native-ledger-475c-20261019.log",
+  "launched_at": 1792406458.8876727,
+  "scope": "Full native configure/build/link and eight isolated CTests only; no Rust/browser/performance claim"
+}

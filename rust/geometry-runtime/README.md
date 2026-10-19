@@ -116,7 +116,18 @@ node --experimental-vm-modules --test rust/geometry-runtime/js/retained-driver.t
 These tests load the actual driver with a fixture module transport. They prove
 protocol ordering and lease behavior, not SDK numerics. Actual browser Rust tests
 in `src/browser_bridge_tests.rs` require canonical `/smlib/` assets and a real
-module Worker; they have not been run for this checkpoint. Common
-`GeometryProgram` retained slots, the processing pending transaction, complete
-reached-branch/late-appearance closure and final-net publication are still
-unimplemented. There is no production engine cutover or performance claim.
+module Worker; they have not been run for this checkpoint. Processing now selects
+these sealed browser receipts in the same `session_retained` issuance, pending,
+acceptance and ledger used natively. Only numerical dispatch differs: native is
+synchronous and browser awaits the private Worker. `BrowserCancellation` and
+receipt `belongs_to` compare actual captured owner Arcs; liveness is checked
+separately. `observe_dispatch` observes actual dispatch only, granting no transport,
+response or qualification authority.
+
+The canonical `IfcAPI.admitRetainedProduct` consumer returns an inspection witness
+with explicit remaining requirements, never final product output. Its actual
+browser tests and the runtime tests are wired into `geometry-platform.yml` after
+canonical asset staging. Native compilation, WASM generation, actual browser
+execution, broader affine target qualification and performance remain UNRUN for
+this source. Halfspaces, openings, layers, final appearance/provenance and common
+final publication remain incomplete. There is no default engine cutover.

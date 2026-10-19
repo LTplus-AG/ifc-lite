@@ -955,3 +955,37 @@ source selection, millimetre conversion, survey placement, Worker retirement and
 source invalidation. Its source is not a successful execution receipt. The
 ordinary exact path remains the default; SDK assets are fetched only by explicit
 retained executor construction.
+
+### Explicit common-product browser transactions
+
+`IfcAPI.admitRetainedProduct(productId)` captures the installed coherent load and
+one immutable style, void, material, palette and texture snapshot. It uses the
+canonical product/type-map job selection and configured router. No SDK assets
+are requested by admission or ordinary exact loading.
+
+Construct `RetainedBrowserProductExecutor` explicitly and call
+`qualifyNumericalRoutes()` to execute its actual numerical witnesses. Capture
+`executor.cancellation()` before any awaited mutable executor borrow; calling
+`cancel()` retires that captured domain, including before Worker startup.
+`product.execute(executor, chordMetres, angleDegrees, maxBytes)` drives the same
+processing session, ordered Construction/Affine/Boolean batches, original replies
+and acceptance ledger used natively. One authenticated decoder and router remain
+reserved as ordinary locals throughout that future. Lexical source, resource and
+triangle-order scopes end before every numerical await. An abandoned batch
+retires its captured Worker; errors never select another engine.
+
+The return value and `product.witness()` are **transaction inspection witnesses**:
+`contract` is `common_product_transaction_only`; they report `product_id`,
+`discharged_operations`, `occurrences`, `remaining_requirements` and
+`final_product_available: false`. Source replacement, cancellation or a dead
+retained object invalidates the witness. There is no product mesh/display/export
+method at this checkpoint. The earlier source-only API remains separate.
+
+Supported reached constructions, mapped transforms and ordered Booleans can
+execute numerically, including actual Empty results. Halfspaces, external opening
+closure, material-layer execution, final placement, appearance/UV/texture fidelity
+and persistent face/final assembly closure remain requirements. Their presence
+in a snapshot or completed logical traversal does not discharge them. P4 final
+publication is still required. This source has not yet passed native compilation,
+canonical WASM generation or actual browser numerical/cancellation qualification;
+protocol fixtures and parsing checks do not provide that evidence.

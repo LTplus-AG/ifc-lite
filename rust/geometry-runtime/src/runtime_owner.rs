@@ -8,6 +8,9 @@ pub struct RuntimeOwner {
     incarnation: u64,
 }
 impl RuntimeOwner {
+    /// Compare the actual captured Child owner, never its numeric incarnation/PID.
+    pub fn same_domain(&self, other: &Self) -> bool { self.control.same_domain(&other.control) }
+
     pub(crate) fn new(control: ProcessControl, incarnation: u64) -> Self {
         Self {
             control,

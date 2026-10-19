@@ -48,12 +48,14 @@ impl RetainedProductExecution {
         }
         for (index, (operation, realization)) in pending.operations.iter().zip(&work.realizations).enumerate() {
             realization.validate_live().map_err(protocol)?;
-            let live = realization.owner().incarnation().unwrap_or(0);
-            if live == 0 || live != pending.cancellation.owner.incarnation().unwrap_or(0) {
+            let live = pending.cancellation.owner.incarnation().unwrap_or(0);
+            if live == 0 || !realization.belongs_to(&pending.cancellation.owner) {
                 return Err(protocol("retained runtime owner mismatch"));
             }
             operation.validate(realization, live)?;
             for (value,input) in operation.inputs().into_iter().flatten() {
+                input.validate_live().map_err(protocol)?;
+                if !input.belongs_to(&pending.cancellation.owner) { return Err(protocol("retained input domain mismatch")); }
                 self.resources.with_scope(|| ifc_lite_geometry::resource::charge(ifc_lite_geometry::resource::Cost {
                     work:self.ledger.len() as u64,..Default::default() }))
                     .map_err(RetainedExecutionError::Stopped)?.retain();
@@ -102,6 +104,9 @@ impl RetainedProductExecution {
             return Err(Box::new(RejectedCommonConstruction {
                 reason: RetainedExecutionError::Stopped(stop), work,
             }));
+        }
+        if let Err(reason) = self.validate_intact(&work, decoder, router) {
+            return Err(Box::new(RejectedCommonConstruction {reason, work}));
         }
         // Actual semantic Empty classification resumes the original common step.
         // Validate every binding before taking the linear reply or publishing a value.
@@ -166,12 +171,12 @@ impl RetainedProductExecution {
         }
         // A cancellation after commit admission still invalidates the entire
         // runtime/ledger; it must never be overwritten by an acceptance store.
-        let _ = pending.stage.compare_exchange(
-            ACCEPTING,
-            ACCEPTED,
-            Ordering::AcqRel,
-            Ordering::Acquire,
-        );
+        if pending.stage.compare_exchange(ACCEPTING, ACCEPTED, Ordering::AcqRel, Ordering::Acquire).is_err() {
+            self.failed = true;
+            return Err(Box::new(RejectedCommonConstruction {
+                reason: protocol("retained cancellation during acceptance"), work,
+            }));
+        }
         let pending=self.pending.take().expect("accepted retained transaction");
         for (operation, receipt) in pending.operations.into_iter().zip(work.realizations) {
             self.ledger.push(DischargedValue {operation:operation.into_expected(),receipt});

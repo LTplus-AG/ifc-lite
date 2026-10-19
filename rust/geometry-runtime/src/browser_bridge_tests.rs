@@ -250,3 +250,78 @@ async fn actual_browser_sealed_empty_boolean_identities_and_independent_leases()
     intact.validate_live().unwrap();
     assert_ne!(worker.incarnation(), 0);
 }
+
+#[wasm_bindgen_test(async)]
+async fn p3_actual_domain_membership_uses_captured_owner_and_live_object_leases() {
+    let mut first=BrowserWorker::new_retained_execution().unwrap();
+    let mut second=BrowserWorker::new_retained_execution().unwrap();
+    let a=first.evaluate(rectangle(&first),0.001,5.,1_048_576).await.unwrap();
+    let b=second.evaluate(rectangle(&second),0.001,5.,1_048_576).await.unwrap();
+    let domain=first.cancellation();let clone=domain.clone();let foreign=second.cancellation();
+    assert!(domain.same_domain(&clone));assert!(!domain.same_domain(&foreign));
+    assert!(a.belongs_to(&domain));assert!(!a.belongs_to(&foreign));assert!(b.belongs_to(&foreign));
+    domain.retire();assert!(domain.incarnation().is_none());assert!(a.validate_live().is_err());
+    assert!(a.belongs_to(&clone),"membership alone does not grant liveness");
+    b.validate_live().unwrap();assert!(foreign.incarnation().is_some());
+}
+
+#[wasm_bindgen_test(async)]
+async fn p3_actual_affine_copy_receipt_survives_source_drop_and_feeds_ordered_boolean() {
+    let mut worker=BrowserWorker::new_retained_execution().unwrap();worker.qualify().await.unwrap();
+    let original=worker.evaluate(rectangle(&worker),0.001,5.,1_048_576).await.unwrap();
+    let domain=worker.cancellation();let handle=original.handle().clone();let mut scale=IDENTITY;scale[0]=2.;
+    let copy=worker.copy_retained_affine(BrowserTransformInput::Source(&original),scale).await.unwrap();
+    assert_eq!(copy.operation_identity().input,handle);assert_eq!(copy.operation_identity().column_major,scale);
+    assert!(copy.belongs_to(&domain));drop(original);copy.validate_live().unwrap();
+    let result=worker.evaluate_retained_boolean(BrowserDependency::Affine {copy:&copy,world_from_affine:IDENTITY},
+        BrowserDependency::Affine {copy:&copy,world_from_affine:IDENTITY},
+        ifc_lite_geometry::document::BooleanOperation::Union,0.001,5.,1_048_576).await.unwrap();
+    assert!(result.belongs_to(&domain));assert!((volume(result.mesh())-2.).abs()<1e-6);
+    drop(copy);result.validate_live().unwrap();
+}
+
+#[wasm_bindgen_test(async)]
+async fn p3_retirement_after_observed_actual_release_isolated_from_replacement() {
+    let mut worker=BrowserWorker::new_retained_execution().unwrap();
+    let object=worker.evaluate(rectangle(&worker),0.001,5.,1_048_576).await.unwrap();
+    let survivor=worker.evaluate(rectangle(&worker),0.001,5.,1_048_576).await.unwrap();
+    let domain=worker.cancellation();let release=domain.observe_dispatch(8);
+    drop(object);
+    assert_eq!(JsFuture::from(release).await.unwrap().as_f64(),Some(8.));
+    // An uncertain in-flight release is terminal for only this captured domain.
+    // This is actual dispatch retirement, not a fixture's synthesized failure.
+    domain.retire();assert!(survivor.validate_live().is_err());
+    let mut replacement=BrowserWorker::new_retained_execution().unwrap();
+    let next=replacement.evaluate(rectangle(&replacement),0.001,5.,1_048_576).await.unwrap();
+    drop(survivor);drop(worker);domain.retire();next.validate_live().unwrap();
+    assert!((volume(&next.completion().tessellation)-1.).abs()<1e-6);
+}
+
+#[wasm_bindgen_test(async)]
+async fn p3_actual_released_object_is_stale_and_old_drop_cannot_release_reused_slot() {
+    let mut worker=BrowserWorker::new_retained_execution().unwrap();
+    let old=worker.evaluate(rectangle(&worker),0.001,5.,1_048_576).await.unwrap();
+    let sibling=worker.evaluate(rectangle(&worker),0.001,5.,1_048_576).await.unwrap();
+    let old_handle=old.handle().clone();
+    worker.owner.driver.release_object(&old.object);
+    assert!(old.validate_live().is_err());sibling.validate_live().unwrap();
+    let next=worker.evaluate(rectangle(&worker),0.001,5.,1_048_576).await.unwrap();
+    assert_ne!(*next.handle(),old_handle);
+    drop(old);next.validate_live().unwrap();sibling.validate_live().unwrap();
+    assert!((volume(&next.completion().tessellation)-1.).abs()<1e-6);
+}
+
+#[wasm_bindgen_test(async)]
+async fn p3_drop_after_actual_affine_dispatch18_retires_only_original_worker() {
+    let mut worker=BrowserWorker::new_retained_execution().unwrap();worker.qualify().await.unwrap();
+    let source=worker.evaluate(rectangle(&worker),0.001,5.,1_048_576).await.unwrap();
+    let observation=worker.cancellation().observe_dispatch(18);let mut scale=IDENTITY;scale[0]=2.;
+    let mut future=Box::pin(worker.copy_retained_affine(BrowserTransformInput::Source(&source),scale));
+    assert!(matches!(future.as_mut().poll(&mut Context::from_waker(Waker::noop())),Poll::Pending));
+    assert_eq!(JsFuture::from(observation).await.unwrap().as_f64(),Some(18.));
+    drop(future);assert_eq!(worker.incarnation(),0);assert!(source.validate_live().is_err());
+    let mut replacement=BrowserWorker::new_retained_execution().unwrap();
+    let next=replacement.evaluate(rectangle(&replacement),0.001,5.,1_048_576).await.unwrap();
+    drop(source);drop(worker);next.validate_live().unwrap();
+    assert!((volume(&next.completion().tessellation)-1.).abs()<1e-6);
+}

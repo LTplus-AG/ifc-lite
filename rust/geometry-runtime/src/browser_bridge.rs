@@ -30,7 +30,6 @@ extern "C" {
     fn qualify(this: &Driver) -> js_sys::Promise;
     #[wasm_bindgen(method, js_name = qualifyDependencies)]
     fn qualify_dependencies(this: &Driver) -> js_sys::Promise;
-    #[cfg(test)]
     #[wasm_bindgen(method, js_name = nextDispatch)]
     pub(super) fn next_dispatch(this: &Driver, opcode: u32) -> js_sys::Promise;
     #[wasm_bindgen(method)]

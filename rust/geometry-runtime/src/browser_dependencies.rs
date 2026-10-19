@@ -53,6 +53,8 @@ pub struct BrowserDependencyResult {
     identity: BrowserOperationIdentity,
 }
 impl BrowserDependencyResult {
+    pub fn belongs_to(&self, domain: &super::BrowserCancellation) -> bool { Arc::ptr_eq(&self.owner, &domain.owner) }
+
     pub fn handle(&self) -> &BrowserObjectHandle { &self.handle }
     pub fn outcome(&self) -> crate::NumericalOutcome { self.outcome }
     pub fn is_empty(&self) -> bool { self.outcome == crate::NumericalOutcome::Empty }

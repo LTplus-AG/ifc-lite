@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Bind each reached common operation to ordered live sealed operands.
 use super::*;
-use super::value::RealizationKind;
 use ifc_lite_geometry::program::{LogicalRetainedValue, RetainedOperationKind};
 
 pub(super) enum IssuedRetainedOperation {
@@ -22,7 +21,7 @@ impl RetainedProductExecution {
         }
         Err(protocol("undischarged retained operation input"))
     }
-    pub(super) fn prepare_operations(&self, operations: Vec<RetainedPlanOperation>, worker: &SmlibWorker)
+    pub(super) fn prepare_operations(&self, operations: Vec<RetainedPlanOperation>, worker: &SelectedWorker)
         -> Result<Vec<PendingRetainedOperation>, RetainedExecutionError> {
         let mut pending = Vec::new();
         self.resources.reserve_headers(&mut pending, operations.len())
@@ -76,21 +75,5 @@ impl RetainedProductExecution {
             });
         }
         Ok(issued)
-    }
-}
-impl IssuedRetainedOperation {
-    pub(super) fn execute(self, worker: &mut SmlibWorker, chord: f64, angle: f64,
-        limits: ifc_lite_geometry_runtime::MeshLimits, resources: OwnedResourceContext) -> Result<CommonRetainedRealization, RetainedExecutionError> {
-        let result = match self {
-            Self::Construction(request)=>worker.evaluate_retained_extrusion(request,chord,angle,limits)
-                .map(|v|RealizationKind::Construction(Box::new(v))),
-            Self::Affine {input,matrix}=>worker.copy_retained_affine(input.transform_input(),matrix)
-                .map(|v|RealizationKind::Affine(Box::new(v))),
-            Self::Boolean {inputs,values,operation}=>worker.evaluate_retained_boolean(
-                inputs[0].dependency(&values[0])?, inputs[1].dependency(&values[1])?,operation,chord,angle,limits)
-                .map(|v|RealizationKind::Boolean(Box::new(v))),
-        };
-        result.map(|kind|CommonRetainedRealization::new(kind,resources))
-            .map_err(|e|RetainedExecutionError::Runtime(e.to_string()))
     }
 }

@@ -54,6 +54,8 @@ pub struct BrowserAffineCopy {
     operations: usize,
 }
 impl BrowserAffineCopy {
+    pub fn belongs_to(&self, domain: &super::BrowserCancellation) -> bool { Arc::ptr_eq(&self.owner, &domain.owner) }
+
     pub fn handle(&self) -> &BrowserObjectHandle { &self.handle }
     pub fn operation_identity(&self) -> &BrowserAffineIdentity { &self.identity }
     pub fn lineage(&self) -> &RetainedLineage { &self.lineage }

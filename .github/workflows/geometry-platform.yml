@@ -9,6 +9,12 @@ on:
       - 'rust/geometry/src/document/**'
       - 'rust/processing/src/authored_geometry/**'
       - 'rust/processing/src/retained_geometry.rs'
+      - 'rust/processing/src/element/**'
+      - 'rust/processing/src/element.rs'
+      - 'rust/geometry/src/program/**'
+      - 'rust/wasm-bindings/src/api/retained_product*'
+      - 'rust/wasm-bindings/src/api/product_job.rs'
+      - 'scripts/stage-retained-browser-assets.mjs'
       - '.github/workflows/geometry-platform.yml'
   workflow_dispatch:
 
@@ -18,7 +24,7 @@ permissions:
 jobs:
   boundary:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
@@ -36,12 +42,15 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release -DSMLIB_SOURCE="$GITHUB_WORKSPACE/upstream-smlib"
           cmake --build /tmp/smlib-native --parallel 4
           ctest --test-dir /tmp/smlib-native --output-on-failure
-      - name: Pinned Rust toolchain
-        run: rustup show
+      - uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: geometry-platform
       - name: Real Rust subprocess integration
         env:
           IFCLITE_SMLIB_WORKER: /tmp/smlib-native/ifclite_smlib_worker
-        run: cargo test --locked -p ifc-lite-geometry-runtime
+        run: |
+          cargo test --locked -p ifc-lite-geometry-runtime
+          cargo test --locked -p ifc-lite-processing --lib session_retained
       - name: Checkout pinned Emscripten SDK
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
@@ -61,3 +70,22 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release -DSMLIB_SOURCE="$GITHUB_WORKSPACE/upstream-smlib"
           cmake --build /tmp/smlib-wasm --parallel 4
           ctest --test-dir /tmp/smlib-wasm --output-on-failure
+
+      - name: Stage canonical assets for actual module-Worker tests
+        shell: bash
+        run: |
+          # The runner serves /smlib relative to each test crate. Stage into new
+          # directories; the canonical publisher refuses every existing output.
+          node scripts/stage-retained-browser-assets.mjs --build /tmp/smlib-wasm \
+            --sdk "$GITHUB_WORKSPACE/upstream-smlib" --out "$GITHUB_WORKSPACE/rust/geometry-runtime/smlib"
+          node scripts/stage-retained-browser-assets.mjs --build /tmp/smlib-wasm \
+            --sdk "$GITHUB_WORKSPACE/upstream-smlib" --out "$GITHUB_WORKSPACE/rust/processing/smlib"
+          node scripts/stage-retained-browser-assets.mjs --build /tmp/smlib-wasm \
+            --sdk "$GITHUB_WORKSPACE/upstream-smlib" --out "$GITHUB_WORKSPACE/rust/wasm-bindings/smlib"
+      - name: Actual browser runtime and shared product transactions
+        env:
+          WASM_BINDGEN_TEST_TIMEOUT: 180
+        run: |
+          wasm-pack test --headless --chrome rust/geometry-runtime --lib
+          wasm-pack test --headless --chrome rust/processing --lib session_retained::browser_tests
+          wasm-pack test --headless --chrome rust/wasm-bindings --lib retained_product

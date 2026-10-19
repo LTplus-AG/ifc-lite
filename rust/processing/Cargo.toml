@@ -64,5 +64,10 @@ ifc-lite-testkit = { path = "../testkit" }
 # normal dependency of this crate; the feature is test-only.
 ifc-lite-geometry = { workspace = true, features = ["test-support"] }
 
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.76"
+wasm-bindgen-futures = "=0.4.76"
+rayon-core = { version = "1", features = ["web_spin_lock"] }
+
 [lints]
 workspace = true

@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Sealed native objects owned by the processing transaction, never geometry.
+//! Sealed target-selected objects owned by the processing transaction, never geometry.
 use super::*;
-use ifc_lite_geometry_runtime::{BrepHandle, RetainedAffineCopy, RetainedDependency,
-    RetainedDependencyResult, RetainedTransformInput, RuntimeOwner, WorkerError};
+use super::target::{ObjectIdentity as BrepHandle, AffineReceipt as RetainedAffineCopy, Dependency as RetainedDependency,
+    BooleanReceipt as RetainedDependencyResult, TransformInput as RetainedTransformInput, Domain, ReceiptError as WorkerError};
 
-#[derive(Debug)]
 pub(super) enum RealizationKind {
     Construction(Box<RetainedRealization>),
     Affine(Box<RetainedAffineCopy>),
@@ -30,11 +29,21 @@ impl CommonRetainedRealization {
     pub(super) fn new(kind:RealizationKind,resources:OwnedResourceContext) -> Self {Self {kind,_resources:resources}}
     pub(super) fn kind(&self) -> &RealizationKind {&self.kind}
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn solid(&self) -> BrepHandle {
         match &self.kind { RealizationKind::Construction(v)=>v.solid(), RealizationKind::Affine(v)=>v.solid(), RealizationKind::Boolean(v)=>v.solid() }
     }
-    pub fn owner(&self) -> &RuntimeOwner {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn owner(&self) -> &Domain {
         match &self.kind { RealizationKind::Construction(v)=>v.owner(), RealizationKind::Affine(v)=>v.owner(), RealizationKind::Boolean(v)=>v.owner() }
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub fn solid(&self) -> BrepHandle {
+        match &self.kind { RealizationKind::Construction(v)=>v.handle().clone(), RealizationKind::Affine(v)=>v.handle().clone(), RealizationKind::Boolean(v)=>v.handle().clone() }
+    }
+    pub(super) fn belongs_to(&self, domain: &Domain) -> bool {
+        match &self.kind { RealizationKind::Construction(v)=>target::construction_belongs(v,domain),
+            RealizationKind::Affine(v)=>target::affine_belongs(v,domain), RealizationKind::Boolean(v)=>target::boolean_belongs(v,domain) }
     }
     pub fn validate_live(&self) -> Result<(), WorkerError> {
         match &self.kind { RealizationKind::Construction(v)=>v.validate_live(), RealizationKind::Affine(v)=>v.validate_live(), RealizationKind::Boolean(v)=>v.validate_live() }

@@ -5,7 +5,7 @@ use super::super::session_tests::{job, metadata, options, router, SOURCE};
 use super::super::{OwnedMeshProductionData, ProductionModel};
 use super::*;
 use ifc_lite_core::SourceBundle;
-use ifc_lite_geometry_runtime::MeshLimits;
+use ifc_lite_geometry_runtime::{MeshLimits, SmlibWorker};
 
 pub(super) fn worker() -> Option<SmlibWorker> {
     let Some(path) = std::env::var_os("IFCLITE_SMLIB_WORKER") else {
@@ -396,4 +396,17 @@ fn common_retained_entry_uses_actual_source_root_instead_of_caller_edited_snapsh
             .accept_admission(reply, &context.borrowed(), &mut decoder, &router)
             .unwrap();
     }
+}
+
+#[test]
+fn p3_native_shared_batch_drop_before_execute_retires_captured_owner_only() {
+    let Some(worker)=worker() else {return};
+    let Some(replacement)=self::worker() else {return};
+    let (_,context)=context();let mut decoder=context.source().unwrap().decoder();let router=router(&mut decoder);
+    let mut execution=execution(&context,&mut decoder,&router);
+    let issued=execution.issue_next(&worker,&mut decoder,&router).unwrap().unwrap();
+    let stage=issued.stage.clone();drop(issued);
+    assert_eq!(stage.load(Ordering::Acquire),CANCELLED);assert_eq!(worker.retained_owner().incarnation(),None);
+    assert!(replacement.retained_owner().incarnation().is_some());
+    assert_eq!(execution.discharged_count(),0);assert!(execution.pending.as_ref().unwrap().reply.is_some());
 }

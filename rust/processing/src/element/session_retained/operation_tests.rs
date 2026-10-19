@@ -7,7 +7,7 @@ use super::tests::{execution,worker};
 use super::super::session_tests::{SOURCE,router};
 use super::super::{OwnedMeshProductionData,ProductionModel};
 use ifc_lite_core::SourceBundle;
-use ifc_lite_geometry_runtime::MeshLimits;
+use ifc_lite_geometry_runtime::{MeshLimits, SmlibWorker};
 
 fn operation_context(root: u32, operations: &str) -> (ProductionModel,Arc<OwnedMeshProductionContext>) {
     let source=SOURCE.replace("'SweptSolid',(#13)",&format!("'CSG',(#{root})"))

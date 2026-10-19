@@ -12,7 +12,7 @@ use ifc_lite_geometry::{
     document::{EvaluationContract, GeometryDocument, RetainedRequest},
     program::{RetainedContract, RetainedPlanOperation, RetainedProductPlan},
 };
-use ifc_lite_geometry_runtime::{RetainedRealization, SmlibWorker};
+use target::{ConstructionReceipt as RetainedRealization, Worker as SelectedWorker};
 use ifc_lite_geometry::resource::{OwnedResourceContext, ProgramStop};
 use std::sync::{
     atomic::{AtomicU8, Ordering},
@@ -21,11 +21,16 @@ use std::sync::{
 
 mod acceptance;
 mod entry;
+mod batch;
+#[cfg(not(target_arch = "wasm32"))]
 mod native;
+#[cfg(target_arch = "wasm32")]
+mod browser;
+mod target;
 mod value;
 mod issuance;
 pub use value::CommonRetainedRealization;
-pub use native::{
+pub use batch::{
     CompletedCommonConstruction, IssuedCommonConstruction, RejectedCommonConstruction,
     RetainedCancellation,
 };
@@ -81,7 +86,7 @@ impl PendingRetainedOperation {
     }
 }
 impl PendingRetainedTransaction {
-    #[cfg(test)]
+    #[cfg(all(test, not(target_arch = "wasm32")))]
     fn construction(&self) -> (&RetainedPlanOperation, &RetainedRequest, &GeometryDocument) {
         match &self.operations[0] { PendingRetainedOperation::Construction {expected,request,document} =>
             (expected,request,document), _=>panic!("construction test accessor") }
@@ -114,7 +119,7 @@ impl RetainedProductExecution {
     /// its next real operation batch. No authored inventory or second source walk.
     pub fn issue_next(
         &mut self,
-        worker: &SmlibWorker,
+        worker: &SelectedWorker,
         decoder: &mut EntityDecoder<'_>,
         router: &GeometryRouter,
     ) -> Result<Option<IssuedCommonConstruction>, RetainedExecutionError> {
@@ -146,7 +151,7 @@ impl RetainedProductExecution {
     }
     fn issue_inner(
         &mut self,
-        worker: &SmlibWorker,
+        worker: &SelectedWorker,
         decoder: &mut EntityDecoder<'_>,
         router: &GeometryRouter,
     ) -> Result<Option<IssuedCommonConstruction>, RetainedExecutionError> {
@@ -222,7 +227,7 @@ impl RetainedProductExecution {
             let stage = Arc::new(AtomicU8::new(ISSUED));
             let cancellation = RetainedCancellation {
                 stage: stage.clone(),
-                owner: worker.retained_owner(),
+                owner: target::capture(worker),
             };
             let issued = IssuedCommonConstruction {
                 ticket: ticket.clone(),
@@ -231,6 +236,7 @@ impl RetainedProductExecution {
                 lifecycle: self.context.lifecycle(),
                 cancellation: cancellation.clone(),
                 resources: self.resources.clone(),
+                armed: true,
             };
             self.pending = Some(PendingRetainedTransaction {
                 ticket,
@@ -247,12 +253,12 @@ impl RetainedProductExecution {
         }
     }
 
-    fn validate_definitions(&self, worker: &SmlibWorker) -> Result<(), RetainedExecutionError> {
+    fn validate_definitions(&self, worker: &SelectedWorker) -> Result<(), RetainedExecutionError> {
         for entry in &self.ledger {
             ifc_lite_geometry::resource::charge(ifc_lite_geometry::resource::Cost {
                 work:1,..Default::default() }).map_err(RetainedExecutionError::Stopped)?.retain();
             entry.receipt.validate_live().map_err(protocol)?;
-            if entry.receipt.owner().incarnation() != Some(worker.incarnation()) {
+            if !entry.receipt.belongs_to(&target::capture(worker)) {
                 return Err(protocol("retained definition belongs to a different runtime generation"));
             }
         }
@@ -293,6 +299,17 @@ impl RetainedProductExecution {
             self.accept_checked(work, decoder, router)
         })
     }
+    /// Validate an inspection witness without granting final-net publication.
+    pub fn validate_witness(&self) -> Result<(), RetainedExecutionError> {
+        self.resources.check().map_err(RetainedExecutionError::Stopped)?;
+        self.context.validate_source().map_err(|_| RetainedExecutionError::Source)?;
+        if self.failed || self.pending.is_some() { return Err(protocol("retained transaction incomplete or refused")); }
+        let plan = self.plan.as_ref().ok_or_else(||protocol("retained traversal incomplete"))?;
+        self.resources.with_scope(|| {
+            for entry in &self.ledger { entry.receipt.validate_live().map_err(protocol)?; }
+            self.validate_manifest(plan)
+        })
+    }
     /// Inspection only: nonempty remaining requirements prohibit final-net use.
     pub fn traversal_plan(&self) -> Option<&RetainedProductPlan> {
         self.plan.as_ref()
@@ -328,21 +345,20 @@ impl RetainedProductExecution {
             self.state.scopes.take().expect("retained scopes"),
         );
         let attempt = &mut self.state.pending_geometry;
-        resources.with_scope(|| owner
+        let result = resources.with_scope(|| owner
             .work(decoder, router, |_, router| {
                 scopes.with_scope(|| {
                     if let Some(attempt) = attempt {
                         attempt
                             .program
-                            .cancel_with_reports(router)
-                            .expect("validated retained cancellation");
+                            .cancel_with_reports(router).map_err(protocol)?;
                     }
+                    Ok(())
                 })
-            }))
-            .map_err(protocol)?;
+            }));
         self.state.scopes = Some(scopes.complete());
         self.failed = true;
-        Ok(())
+        result.map_err(protocol)?.0
     }
 }
 impl Drop for RetainedProductExecution {
@@ -353,17 +369,20 @@ impl Drop for RetainedProductExecution {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests;
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod resource_tests;
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod mapping_tests;
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod styled_tests;
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod operation_tests;
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod browser_tests;

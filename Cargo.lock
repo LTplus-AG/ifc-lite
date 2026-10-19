@@ -1618,11 +1618,14 @@ dependencies = [
  "nalgebra",
  "png",
  "rayon",
+ "rayon-core",
  "rustc-hash",
  "serde",
  "serde_json",
  "sha2",
  "tracing",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-test",
 ]
 
 [[package]]

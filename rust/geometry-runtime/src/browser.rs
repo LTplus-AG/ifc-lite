@@ -65,10 +65,22 @@ pub struct BrowserWorker {
 }
 /// A captured retirement capability independent of an executor's async borrow.
 /// It cannot create receipts, replace the worker or grant qualification.
+#[derive(Clone)]
 pub struct BrowserCancellation {
     owner: Arc<Owner>,
 }
 impl BrowserCancellation {
+    /// Observation of the actual captured owner and private driver liveness.
+    pub fn incarnation(&self) -> Option<u64> {
+        self.owner.validate().ok().map(|()| self.owner.identity)
+    }
+    pub fn same_domain(&self, other: &Self) -> bool { Arc::ptr_eq(&self.owner, &other.owner) }
+
+    /// Read-only actual-dispatch observation for boundary qualification. No
+    /// response object, transport or numerical submission authority is exposed.
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn observe_dispatch(&self, opcode: u32) -> js_sys::Promise { self.owner.driver.next_dispatch(opcode) }
     pub fn retire(&self) {
         self.owner.retire();
     }
@@ -113,6 +125,8 @@ pub struct BrowserRealization {
     object: wasm_bindgen::JsValue,
 }
 impl BrowserRealization {
+    pub fn belongs_to(&self, domain: &BrowserCancellation) -> bool { Arc::ptr_eq(&self.owner, &domain.owner) }
+
     pub fn handle(&self) -> &BrowserObjectHandle { &self.handle }
     pub fn completion(&self) -> &RetainedCompletion {
         &self.completion

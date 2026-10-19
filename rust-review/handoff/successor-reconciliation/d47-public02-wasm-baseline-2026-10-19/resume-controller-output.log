@@ -1,0 +1,8 @@
+{"jobId": "9004d79e-ace6-4f66-9020-1574347a526b", "receipt": "/home/louistrue/build-workers/worker-state/jobs/9004d79e-ace6-4f66-9020-1574347a526b/receipt.json"}
+START base-official-build
+END base-official-build 0
+START base-committed-dts
+END base-committed-dts 0
+START raw-root-contract-new-base
+END raw-root-contract-new-base 0
+D47_PUBLIC02_BASELINE_COMPLETE 02b8e1981158559fd4ec9b385d2d80729079a633

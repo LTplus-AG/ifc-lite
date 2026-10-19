@@ -1,0 +1,7 @@
+{
+  "exitCode": 1,
+  "command": "local git show raw7c8:scripts/build-wasm.sh source comparison",
+  "error": "path not available from this local object context",
+  "workload": false,
+  "resolution": "actual exact remote source build script/tool/hash guards captured producer-source identity without source mutation"
+}

@@ -1,0 +1,12 @@
+{
+  "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+  "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+  "rawHead": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+  "baseOfficialBuild": true,
+  "committedDtsEqual": true,
+  "rawRootContractWithNewBaseline": true,
+  "rawGeneratedUnchanged": true,
+  "all182Equal": true,
+  "exportBudgetComparison": false,
+  "performanceVerdict": "UNRUN"
+}

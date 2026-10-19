@@ -1,0 +1,15 @@
+{
+  "base": {
+    "sha256": "e64f3325ac0b17bfba9f8408b6ee1279d743d0612fcfc5bda01834ce8478dfe4",
+    "size": 9797189
+  },
+  "raw": {
+    "sha256": "972b6ccb86c440eb125bbbdcd934940916ebc50b2f7ad777627dd7cfff9f6561",
+    "size": 9801282
+  },
+  "deltaBytes": 4093,
+  "deltaPercent": 0.04177728938372017,
+  "warningThresholdKiB": 1100,
+  "warningRetained": true,
+  "notLatencyOrMemoryVerdict": true
+}

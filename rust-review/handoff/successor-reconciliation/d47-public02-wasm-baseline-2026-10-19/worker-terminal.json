@@ -1,0 +1,96 @@
+{
+  "id": "9004d79e-ace6-4f66-9020-1574347a526b",
+  "host": {
+    "host": "louistrue-pc",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 24,
+    "availableMemoryBytes": 65579204608,
+    "totalMemoryBytes": 67423580160,
+    "python": "3.14.4",
+    "time": 1792377442.4525497
+  },
+  "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/source",
+  "sourceBefore": {
+    "commit": "02b8e1981158559fd4ec9b385d2d80729079a633",
+    "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "command": [
+    "/home/louistrue/build-workers/worker-python",
+    "/home/louistrue/build-workers/incoming/d47-public02-wasm-baseline-v1/qualify.py"
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792377442.4023523,
+  "resources": [
+    "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/source",
+    "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1",
+    "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/source",
+    "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/target",
+    "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/evidence",
+    "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/tmp",
+    "/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source",
+    "/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1",
+    "/home/louistrue/build-workers/incoming/d47-public02-wasm-baseline-v1",
+    "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/target"
+  ],
+  "state": "completed",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "fixtures": {},
+  "tools": {
+    "git": {
+      "path": "/usr/local/bin/git",
+      "exitCode": 0,
+      "version": "git version 2.53.0"
+    },
+    "rustc": {
+      "path": "/home/louistrue/.cargo/bin/rustc",
+      "exitCode": 0,
+      "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+    },
+    "cargo": {
+      "path": "/home/louistrue/.cargo/bin/cargo",
+      "exitCode": 0,
+      "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+    },
+    "node": {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node",
+      "exitCode": 0,
+      "version": "v24.21.0"
+    },
+    "pnpm": {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/pnpm",
+      "exitCode": 1,
+      "version": ""
+    }
+  },
+  "runnerSha256": "5ddb5b867d31aae64d78d78e4e7d1407b28df4f06b0ab7db9ad40d0020df2657",
+  "startedAt": 1792377459.868571,
+  "queueSeconds": 17.466218948364258,
+  "resourceScope": false,
+  "exitCode": 0,
+  "finishedAt": 1792378186.4310048,
+  "sourceAfter": {
+    "commit": "02b8e1981158559fd4ec9b385d2d80729079a633",
+    "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {},
+  "outputSha256": "40d183573c14dcc19403fbc89acc3514ff1a4f68fe8a6a328c9b546d9a095afd"
+}

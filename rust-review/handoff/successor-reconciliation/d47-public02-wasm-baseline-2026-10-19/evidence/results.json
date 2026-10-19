@@ -1,0 +1,102 @@
+[
+  {
+    "name": "base-official-build",
+    "argv": [
+      "bash",
+      "scripts/build-wasm.sh"
+    ],
+    "envOverrides": {},
+    "exitCode": 0,
+    "before": {
+      "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+      "trackedStatus": "",
+      "rawHead": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+      "rawGeneratedUnchanged": true,
+      "payloadFreeBytes": 822846619648,
+      "payloadFreeInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 56225792
+    },
+    "after": {
+      "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+      "trackedStatus": "",
+      "rawHead": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+      "rawGeneratedUnchanged": true,
+      "payloadFreeBytes": 822261092352,
+      "payloadFreeInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 56221696
+    },
+    "logSha256": "50a12ad81f8fe0daf5215dbd0dac84386349fdcffa2992149748bce8db5849ef",
+    "logBytes": 6646
+  },
+  {
+    "name": "base-committed-dts",
+    "argv": [
+      "git",
+      "diff",
+      "--exit-code",
+      "HEAD",
+      "--",
+      "packages/wasm/pkg/ifc-lite.d.ts"
+    ],
+    "envOverrides": {},
+    "exitCode": 0,
+    "before": {
+      "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+      "trackedStatus": "",
+      "rawHead": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+      "rawGeneratedUnchanged": true,
+      "payloadFreeBytes": 822260191232,
+      "payloadFreeInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 56221696
+    },
+    "after": {
+      "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+      "trackedStatus": "",
+      "rawHead": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+      "rawGeneratedUnchanged": true,
+      "payloadFreeBytes": 822261354496,
+      "payloadFreeInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 56221696
+    },
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "logBytes": 0
+  },
+  {
+    "name": "raw-root-contract-new-base",
+    "argv": [
+      "pnpm",
+      "test:wasm-contract"
+    ],
+    "envOverrides": {
+      "IFC_WASM_BASE_JS": "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/source/packages/wasm/pkg/ifc-lite.js",
+      "IFC_WASM_BASE_BINARY": "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/source/packages/wasm/pkg/ifc-lite_bg.wasm"
+    },
+    "exitCode": 0,
+    "before": {
+      "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+      "trackedStatus": "",
+      "rawHead": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+      "rawGeneratedUnchanged": true,
+      "payloadFreeBytes": 822261469184,
+      "payloadFreeInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 56221696
+    },
+    "after": {
+      "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+      "trackedStatus": "",
+      "rawHead": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+      "rawGeneratedUnchanged": true,
+      "payloadFreeBytes": 822253379584,
+      "payloadFreeInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 56221696
+    },
+    "logSha256": "b293de62d25027b69f055e481e3653f74294fd34a70935689f09bf321761caf7",
+    "logBytes": 78150
+  }
+]

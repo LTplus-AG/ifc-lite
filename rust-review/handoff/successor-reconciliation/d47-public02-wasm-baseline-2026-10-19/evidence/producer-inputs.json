@@ -1,0 +1,91 @@
+{
+  "baseHead": "02b8e1981158559fd4ec9b385d2d80729079a633",
+  "baseTree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+  "rawHead": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+  "toolInputs": {
+    "wasm-pack": {
+      "source": "/home/louistrue/.nvm/versions/node/v24.21.0/lib/node_modules/wasm-pack/binary/wasm-pack",
+      "ownPath": "/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/tools/wasm-pack",
+      "sha256": "c6c3d54702f4bae4a1d51e37e19c2c61b130865dc3fabc745eebe8194b87b253"
+    },
+    "wasm-bindgen": {
+      "source": "/home/louistrue/.cache/.wasm-pack/wasm-bindgen-8b0e612a116397d6/wasm-bindgen",
+      "ownPath": "/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/tools/wasm-bindgen",
+      "sha256": "d8d94635b40d1d8a93562fc7ced6093488252600dba39ce1dbab410b89157d8b"
+    },
+    "wasm-bindgen-test-runner": {
+      "source": "/home/louistrue/.cache/.wasm-pack/wasm-bindgen-8b0e612a116397d6/wasm-bindgen-test-runner",
+      "ownPath": "/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/tools/wasm-bindgen-test-runner",
+      "sha256": "a34c86212510b24a67315528df5109587001f51175904871be21ceb30eaa01b3"
+    },
+    "rustc": {
+      "path": "/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/bin/rustc",
+      "sha256": "56ae45b0d36c8cf3c5c5f1a7a602f5fde12782e9d4b48a78e60bda3a3b11048c"
+    },
+    "cargo": {
+      "path": "/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/bin/cargo",
+      "sha256": "094ca6ad7b2f42fe32f08f93d89b27f075d675102e2eeb6e235fee7c318acfae"
+    },
+    "node": {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node",
+      "sha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c"
+    }
+  },
+  "environment": {
+    "USER": "louistrue",
+    "SSH_CLIENT": "127.0.0.1 46312 2222",
+    "IFC_WORKER_ACTIVE_STATE": "/home/louistrue/build-workers/worker-state",
+    "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/target",
+    "CARGO_PROFILE_TEST_DEBUG": "0",
+    "SHLVL": "0",
+    "XDG_CACHE_HOME": "/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/xdg/cache",
+    "RUSTUP_TOOLCHAIN": "nightly-2025-11-15",
+    "HOME": "/home/louistrue",
+    "RAYON_NUM_THREADS": "2",
+    "CARGO_INCREMENTAL": "0",
+    "IFC_WORKER_STATE": "/home/louistrue/build-workers/worker-state",
+    "XDG_STATE_HOME": "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/xdg/state",
+    "TMPDIR": "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/tmp",
+    "COREPACK_ENABLE_DOWNLOAD_PROMPT": "0",
+    "LOGNAME": "louistrue",
+    "COREPACK_ENABLE_NETWORK": "0",
+    "_": "/usr/bin/env",
+    "TEMP": "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/tmp",
+    "npm_config_cache": "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/npm-cache",
+    "NODE_COMPILE_CACHE": "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/node-cache",
+    "RUSTUP_HOME": "/home/louistrue/.rustup",
+    "COREPACK_HOME": "/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/corepack",
+    "PATH": "/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/tools:/home/louistrue/.cargo/bin:/home/louistrue/.nvm/versions/node/v24.21.0/bin:/usr/local/bin:/usr/bin:/bin",
+    "LANG": "C.UTF-8",
+    "CARGO_PROFILE_DEV_DEBUG": "0",
+    "TMP": "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/tmp",
+    "XDG_DATA_HOME": "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/xdg/data",
+    "XDG_CONFIG_HOME": "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/xdg/config",
+    "TURBO_CONCURRENCY": "2",
+    "SHELL": "/bin/bash",
+    "RUST_TEST_THREADS": "1",
+    "CARGO_NET_OFFLINE": "true",
+    "PWD": "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/source",
+    "SSH_CONNECTION": "127.0.0.1 46312 127.0.0.1 2222",
+    "CARGO_HOME": "/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/cargo-home",
+    "CARGO_BUILD_JOBS": "4",
+    "PNPM_HOME": "/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/pnpm-home",
+    "OMP_NUM_THREADS": "2",
+    "OPENBLAS_NUM_THREADS": "2",
+    "MKL_NUM_THREADS": "2",
+    "RUSTUP_AUTO_INSTALL": "0",
+    "BUILD_THREADED": "0",
+    "BUILD_WIDE": "0",
+    "CI": "true",
+    "IFC_STRICT_WASM": "1",
+    "IFC_LITE_REQUIRE_FIXTURES": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1",
+    "NODE_OPTIONS": "--max-old-space-size=3072",
+    "TURBO_CACHE_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/turbo-cache"
+  },
+  "compilerJobs": 4,
+  "rawCompilerJobs": 2,
+  "comparison": "size/contract only; no timings",
+  "sourceBuildScriptEqual": true
+}

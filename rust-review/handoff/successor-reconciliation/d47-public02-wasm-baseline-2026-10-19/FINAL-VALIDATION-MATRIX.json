@@ -1,0 +1,87 @@
+{
+  "jobId": "9004d79e-ace6-4f66-9020-1574347a526b",
+  "originalControllerSession": 35735,
+  "terminal": "COMPLETED0",
+  "sourceUnchanged": true,
+  "quiescent": true,
+  "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+  "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+  "gates": [
+    {
+      "name": "base-official-build",
+      "exitCode": 0,
+      "argv": [
+        "bash",
+        "scripts/build-wasm.sh"
+      ],
+      "logSha256": "50a12ad81f8fe0daf5215dbd0dac84386349fdcffa2992149748bce8db5849ef"
+    },
+    {
+      "name": "base-committed-dts",
+      "exitCode": 0,
+      "argv": [
+        "git",
+        "diff",
+        "--exit-code",
+        "HEAD",
+        "--",
+        "packages/wasm/pkg/ifc-lite.d.ts"
+      ],
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "raw-root-contract-new-base",
+      "exitCode": 0,
+      "argv": [
+        "pnpm",
+        "test:wasm-contract"
+      ],
+      "logSha256": "b293de62d25027b69f055e481e3653f74294fd34a70935689f09bf321761caf7"
+    }
+  ],
+  "rootContract": {
+    "passed": 223,
+    "failed": 0,
+    "skipped": 0,
+    "newHistoricalChecks": 11,
+    "reasonForAdditionalRootRun": "Existing runner has no isolation option; authorized new exact-BASE inputs",
+    "scope": "geometry/API/fingerprint compatibility; not property export budget comparison"
+  },
+  "fixtures": {
+    "count": 182,
+    "beforeAfterEqual": true
+  },
+  "prior149ArtifactsUnchanged": true,
+  "sizeComparison": {
+    "base": {
+      "sha256": "e64f3325ac0b17bfba9f8408b6ee1279d743d0612fcfc5bda01834ce8478dfe4",
+      "size": 9797189
+    },
+    "raw": {
+      "sha256": "972b6ccb86c440eb125bbbdcd934940916ebc50b2f7ad777627dd7cfff9f6561",
+      "size": 9801282
+    },
+    "deltaBytes": 4093,
+    "deltaPercent": 0.04177728938372017,
+    "warningThresholdKiB": 1100,
+    "warningRetained": true,
+    "notLatencyOrMemoryVerdict": true
+  },
+  "notRun": [
+    "raw candidate rebuild",
+    "BASE package/fullsuite/manifest",
+    "native/Python/workspace/clippy/parquet",
+    "latency/firstcallback/RSS/workerpool perf",
+    "publication"
+  ],
+  "retainedWarnings": [
+    "Both official bundles exceed existing1100KiB target",
+    "initSync deprecated argument warning",
+    "worker pnpm version discovery exit1; actual root pnpm contract command exit0"
+  ],
+  "limits": [
+    "CPU4 compilation vs retained candidateCPU2; no timing claim",
+    "Matched exactBASE exposes enhanced fingerprint method; no legacy missing-method branch claim",
+    "canonical prepass before first callback and persistent membership memory unchanged"
+  ]
+}

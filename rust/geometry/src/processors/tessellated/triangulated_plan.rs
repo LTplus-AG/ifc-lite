@@ -66,26 +66,25 @@ impl TriangulatedFaceSetPlan {
     /// TexCoordIndex exists; remapped point IDs never substitute for UV IDs.
     pub(crate) fn evaluate_with_texture(self, map: &ResolvedTextureMap) -> (Mesh, Vec<f32>) {
         let tex_coords = &map.tex_coords;
-        let authored_texture_indices = map.tex_coord_index.clone();
         let rtc_applied = self.rtc_applied;
         let (positions, indices, flipped, authored) = self.oriented();
-        let tex_coord_index = match authored_texture_indices {
-            Some(mut index) => {
-                if flipped {
-                    for triangle in &mut index {
-                        triangle.swap(1, 2);
-                    }
-                }
-                index
-            }
-            None => authored
-                .as_deref()
-                .unwrap_or(&indices)
-                .chunks_exact(3)
-                .map(|triangle| {
-                    [triangle[0], triangle[1], triangle[2]].map(|index| index.saturating_add(1))
-                })
-                .collect(),
+        // Borrow the authored UV index unless the shell winding was flipped;
+        // only a flip needs an owned, swapped copy.
+        let tex_coord_index: std::borrow::Cow<'_, [[u32; 3]]> = match &map.tex_coord_index {
+            Some(index) if flipped => std::borrow::Cow::Owned(
+                index.iter().map(|&[a, b, c]| [a, c, b]).collect(),
+            ),
+            Some(index) => std::borrow::Cow::Borrowed(index.as_slice()),
+            None => std::borrow::Cow::Owned(
+                authored
+                    .as_deref()
+                    .unwrap_or(&indices)
+                    .chunks_exact(3)
+                    .map(|triangle| {
+                        [triangle[0], triangle[1], triangle[2]].map(|index| index.saturating_add(1))
+                    })
+                    .collect(),
+            ),
         };
         let (mut mesh, uvs) = PolygonalFaceSetProcessor::build_flat_shaded_mesh_with_uvs(
             &positions,

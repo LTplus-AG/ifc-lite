@@ -1,0 +1,83 @@
+{
+  "source": "2915e1a3c4c4544f5da64044b2b06e45501ba667",
+  "base": "68da7b8a966e0972fa41a0c5d9ab3a48ede19a4c",
+  "sdk": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "sdkManifestHashesIndependentlyVerified": true,
+  "sourceFiles": [
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "gitBlob": "3742a03fde1a9d8643e3f51ad48b400c20c857b5",
+      "sha256": "5a73c7d4d678493e6434164bbd23f05c7858892dc4d139ee22d11e975a6b44d9"
+    },
+    {
+      "path": "native/smlib-adapter/PAIRED_PLANE_CONTRACT.md",
+      "gitBlob": "7d4f1d71de3c57dc48b45a6d068ccc4a6b624abc",
+      "sha256": "820a919ec8967306767d70d124883bb9ff8c8c99efc6422546203a075ab3a816"
+    },
+    {
+      "path": "native/smlib-adapter/tests/paired_plane_observability_tests.cpp",
+      "gitBlob": "1ae01234bc6b024c207bc700e50305cafbfc15a3",
+      "sha256": "bd7cc0cb2fe9be3f5f27a105caaa52b5414abf71652c12d8926de47f1451c0f1"
+    },
+    {
+      "path": "native/smlib-adapter/evidence/paired-plane-68da/summary.json",
+      "gitBlob": "c2d596b4f5f396ddaa6b85014f5d798ef84948a8",
+      "sha256": "cdf8e447fa2e17c4debbe48fbf377504f366bf10fe6411e0a693bd50f33047fd"
+    },
+    {
+      "path": "native/smlib-adapter/src/copy.cpp",
+      "gitBlob": "2bcfeee5d957e76e43cb1a6d36c48e0d35ca447d",
+      "sha256": "df3f6993cbc6fea0dd488891dc08a9ff595630e30adc1e8f31d988898c7b3a1b"
+    },
+    {
+      "path": "native/smlib-adapter/src/copy.hpp",
+      "gitBlob": "87fbd6c02bf6030d0f946296b091557c47fd6331",
+      "sha256": "54aef2dc2ab5fe3b4e590b0f38a54b7d8a2c6f5b46795ac07f92d85ad6c1bbe8"
+    },
+    {
+      "path": "native/smlib-adapter/src/context_metadata.hpp",
+      "gitBlob": "36a5bc0993b5a6641acaebc0ef610cea74e7f487",
+      "sha256": "c105a819bb1aa5d7e678aadca403a4174a0312621eb26cbc2d850eb0f3d4b407"
+    },
+    {
+      "path": "native/smlib-adapter/qualify.sh",
+      "gitBlob": "f4844366e6b22a7972ea392dec1e366dd3af308a",
+      "sha256": "ec797fc4b79e24e07e40e0502ee054d3a9b42d0f0edbab47c34b20f3f4389e43"
+    }
+  ],
+  "sdkFiles": [
+    {
+      "path": "source/SMLib/src/SmBrep.cpp",
+      "sha256": "5d44d6ac347fa42e4e83fead8bbde82ce46c5ff48e0a973b5c7cddc778a2fca1"
+    },
+    {
+      "path": "source/SMLib/src/SmMerge.cpp",
+      "sha256": "4e01eaf74c56c6d4b7b1515e82ce3e03c29a35fce3138b8bd7a21f535d4677b3"
+    },
+    {
+      "path": "source/SMLib/src/SmObject.cpp",
+      "sha256": "04e370628a7fbb903a0839edb78633ccd8dba9a996e2e22ea7666824faac54d4"
+    },
+    {
+      "path": "source/SMLib/src/SmTopology.cpp",
+      "sha256": "6eabe0b108831caeffa807eb6a70a9339883b51e4a64d308170262566ecbecde"
+    },
+    {
+      "path": "source/SMLib/inc/SmCopyBrepMap.h",
+      "sha256": "740852fa01a9b523df0104482e94147abba01d5a59e6bbc87c8118e870beb559"
+    },
+    {
+      "path": "source/SMLib/inc/SmMessages.h",
+      "sha256": "f5ff614fa94e265abe73b2f3a6a195f84bd499b39ab06381f673498542896b0c"
+    },
+    {
+      "path": "source/SMLib/inc/SmTrackTopologyChanges.h",
+      "sha256": "8b5d62935ff3e49c41e106cb8a1ac4586b5dcd0ba94f480a9ead48240ba081d9"
+    },
+    {
+      "path": "source/SMLib/inc/SmContext.h",
+      "sha256": "07cbae5016d3bee7df0afb12dbc957250dfc239a9300432f5e7e60b20e309134"
+    }
+  ],
+  "execution": "No builds/tests/probes/jobs"
+}

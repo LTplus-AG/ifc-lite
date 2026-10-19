@@ -1,0 +1,10 @@
+{
+  "child": "2915e1a3c4c4544f5da64044b2b06e45501ba667",
+  "integration_parent": "4397b575c4",
+  "three_changed_source_hashes_verified": true,
+  "source_review": "no scoped blocker",
+  "actual_sdk_execution": "UNRUN",
+  "paired_split": "UNIMPLEMENTED",
+  "capability128_advertised": false,
+  "qualification_script_note": "Parent separately added native --rust-consumers in473e; historical child review hashes remain pinned to2915, not current qualifier"
+}

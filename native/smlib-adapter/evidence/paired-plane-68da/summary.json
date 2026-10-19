@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "base": "68da7b8a966e0972fa41a0c5d9ab3a48ede19a4c",
+  "scope": "paired numerical seam blocker and actual SDK copy-observability prerequisite only",
+  "implementation": {
+    "paired_split": false,
+    "durable_source_generated_ancestry": false,
+    "opcode21": "reserved, not implemented or advertised",
+    "capability128": "reserved, not implemented or advertised",
+    "existing_capabilities": 123,
+    "unary_qualification": "red pending parent repaired-fixture rerun"
+  },
+  "owned_files": [
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "before_sha256": "2e20e2ab4fae5930a1f066fb61f1f1ce3a758ed87625c3c72338e4cafd551a7f",
+      "after_sha256": "5a73c7d4d678493e6434164bbd23f05c7858892dc4d139ee22d11e975a6b44d9"
+    },
+    {
+      "path": "native/smlib-adapter/PAIRED_PLANE_CONTRACT.md",
+      "before_sha256": null,
+      "after_sha256": "820a919ec8967306767d70d124883bb9ff8c8c99efc6422546203a075ab3a816"
+    },
+    {
+      "path": "native/smlib-adapter/tests/paired_plane_observability_tests.cpp",
+      "before_sha256": null,
+      "after_sha256": "bd7cc0cb2fe9be3f5f27a105caaa52b5414abf71652c12d8926de47f1451c0f1"
+    }
+  ],
+  "sdk": {
+    "revision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+    "source_modified": false,
+    "inspected_files": [
+      {
+        "path": "source/SMLib/src/SmBrep.cpp",
+        "sha256": "5d44d6ac347fa42e4e83fead8bbde82ce46c5ff48e0a973b5c7cddc778a2fca1"
+      },
+      {
+        "path": "source/SMLib/src/SmMerge.cpp",
+        "sha256": "4e01eaf74c56c6d4b7b1515e82ce3e03c29a35fce3138b8bd7a21f535d4677b3"
+      },
+      {
+        "path": "source/SMLib/src/SmObject.cpp",
+        "sha256": "04e370628a7fbb903a0839edb78633ccd8dba9a996e2e22ea7666824faac54d4"
+      },
+      {
+        "path": "source/SMLib/src/SmTopology.cpp",
+        "sha256": "6eabe0b108831caeffa807eb6a70a9339883b51e4a64d308170262566ecbecde"
+      },
+      {
+        "path": "source/SMLib/inc/SmCopyBrepMap.h",
+        "sha256": "740852fa01a9b523df0104482e94147abba01d5a59e6bbc87c8118e870beb559"
+      },
+      {
+        "path": "source/SMLib/inc/SmMessages.h",
+        "sha256": "f5ff614fa94e265abe73b2f3a6a195f84bd499b39ab06381f673498542896b0c"
+      },
+      {
+        "path": "source/SMLib/inc/SmTrackTopologyChanges.h",
+        "sha256": "8b5d62935ff3e49c41e106cb8a1ac4586b5dcd0ba94f480a9ead48240ba081d9"
+      }
+    ]
+  },
+  "validation": {
+    "cpp17_syntax_only": {
+      "status": "PASS",
+      "warnings_in_owned_source": 0,
+      "links_or_executes_sdk": false,
+      "flags": [
+        "-std=c++17",
+        "-fsyntax-only",
+        "-Wall",
+        "-Wextra",
+        "-DSM_NO_DEBUG_CODE",
+        "-DSM_NO_GFX_OUTPUT_CODE",
+        "-DNDEBUG"
+      ],
+      "sdk_headers": "pinned SDK inc directories via -isystem"
+    },
+    "git_diff_check": "PASS",
+    "smlib_paired_copy_observability": "UNRUN",
+    "paired_numeric_interface_and_publication_witnesses": "NOT IMPLEMENTED / UNRUN",
+    "native_and_module_worker_execution": "UNRUN"
+  },
+  "heavy_jobs_submitted": [],
+  "parent_live_job": "00939a61-7797-48a0-a104-cb7657915d72",
+  "no_pr_push_merge_or_cleanup": true
+}

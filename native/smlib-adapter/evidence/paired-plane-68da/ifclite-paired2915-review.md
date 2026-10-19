@@ -1,0 +1,31 @@
+# Paired-plane copy-event prerequisite source review
+
+Frozen child `2915e1a3c4c4544f5da64044b2b06e45501ba667` against `68da7b8a966e0972fa41a0c5d9ab3a48ede19a4c`, four owned paths. Pinned SDK `c9c5979f04cea8c38213004d4f04df0dcfb40d05` inspected read-only. No source edits, builds, tests, executable probes, jobs, PR actions or cleanup. No concrete blocker identified in this prerequisite's scoped source. All executable assertions remain UNRUN by this reviewer.
+
+## Callback relation and ownership
+
+Primary SmContext.h callback table identifies SM_NO_COPY caller as FromObj and data1 as ToObj. MergeBrep's actual per-face notifications at SmBrep.cpp23350 pass original face as caller and mapped copied face as data1 after topology relationships are installed. The witness observes exactly that relation, not a geometric nearest-face match. Each captured source face must map to one live independently owned output face; equal target cardinality plus injectivity makes the checked inventory a bijection. The second copy composes those event mappings while the first-copy faces are still alive. Only the surviving second-copy faces are dereferenced after dependencies are destroyed.
+
+SmObject.cpp249–269 invokes both user and system Execute without using their return statuses. Therefore the observer's deliberate SM_ERR plus separate callback_refused latch is an honest test of ignored callback status if the complete checked copy and assertions execute successfully. The observer body allocates nothing, throws nothing and only compares/stores addresses in fixed arrays. Verification and vector allocation occur after returning from SDK code. Missing events, duplicate events, foreign/absent targets or noninjective mappings fail the test rather than fabricating ancestry.
+
+CopyEvents requires a vacant user callback slot before installation. Its constructor performs all potentially failing inventory checks before assigning that slot; its destructor clears the slot on success, verification failure or checked-copy unwind. It never installs/overwrites the SDK system slot. This dedicated prerequisite does not claim a multiplexing production observer that can run through arbitrary foreign callbacks or asynchronous context sharing. The future event ledger still needs the contract's foreign-hook/restoration and failure-latch rules.
+
+## Failure and lifetime safety
+
+The existing checked-copy helper uses checked MergeBrep(FALSE), restores shared raw metadata immediately after empty target construction, checks topology count, and taints/abandons a partial target on uncertain copy failure. The new witness does not bypass it. Solids owns all three roots and, if the isolation is tainted, releases their unique_ptr ownership before ordinary destructors can traverse uncertain SDK topology. Primitive construction and TurnToNURBS failure also enter that taint path. CopyEvents destruction precedes Solids destruction, and the shared context remains alive for callback/metadata restoration. Ordinary post-success assertion failure may safely destroy completed copies and exits failure; no positive result or C ABI handle is published.
+
+The source/context raw-metadata and original source vertex identity/coordinate-bit checks occur after the first checked copy. The final object must survive release of both dependencies and then satisfy actual SDK manifold status and independent analytical volume: box8, cylinder2*pi, generic-NURBS box8 with fixed2e-5 relative tolerance. This is real topology/numerical witness source, not a mock's return-value assertion. A converted planar box is correctly described as generic representation coverage, not a positive nonunit-weight rational bulge or split proof. These checks do not claim coefficient preservation or complete topology ancestry after arbitrary edits.
+
+## Engineering holds remain honest
+
+The contract correctly distinguishes transient unchanged-graph copy mapping from durable ancestry; SmCopyBrepMap.h explicitly says mutation invalidates that map. Inspected primary SDK also confirms CopyFaces discards MakeFaceuse status (SmBrep.cpp2087), MakeFaceuse redirects a faceuse to the source infinite-region side (SmMerge.cpp6860–6869), imprint-classify clears DoingBoolean instead of restoring entry state (4148–4149), and local classification confusion can be discarded through release SE_MSG after duplicate/stale cleanup (4037–4054). This witness does not solve or conceal those issues.
+
+The proposed future operation must still provide one checked intersection, exhaustive trimmed-fragment classification, correctly oriented negative/positive extraction with shared interface incidence, durable event-time identities and atomic pair publication. Two independent unary clips, equal face counts, SAVE/DELETE flags alone or mesh volumes do not discharge that work. Opcode21/capability128 and paired numerical implementation remain absent. Existing17–20/capability123, exact default and final product/layer/opening/persistent-face holds are unchanged.
+
+## CTest and evidence scope
+
+CMake adds a separate executable and independent smlib_paired_copy_observability CTest, including the Emscripten/Node target. It does not alter/remove the existing five registrations or merge the poison witness into a healthy process. Existing qualify.sh invokes ordinary ctest without stop-on-failure; thus the new test remains scheduled even if owned_boundary fails first. No dependency on owned-boundary success was added. Independent test scheduling is not an executed six-test verdict.
+
+The four-path delta is limited to wiring, this contract, prerequisite test source and explicit UNRUN evidence. Existing SDK qualification remains red until the parent's repaired-zone source is actually executed. Source syntax-only status in child evidence is not compilation/linking/runtime qualification. No no-loss/ancestry/paired-product completion claim is justified by this prerequisite.
+
+Exact eight inspected adapter/evidence Git blobs and eight SDK file hashes: `/tmp/ifclite-paired2915-review.hashes.json`. All seven SDK hashes recorded in the child's summary were independently matched to the pinned local source; SmContext.h callback authority is additionally pinned there.

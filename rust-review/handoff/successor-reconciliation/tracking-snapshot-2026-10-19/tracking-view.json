@@ -1,6 +1,6 @@
 {
-  "updatedAt": "2026-10-19T02:55:39.408088+00:00",
-  "nextRunAt": "2026-10-19T03:10:43.270Z",
+  "updatedAt": "2026-10-19T03:41:34.069503+00:00",
+  "nextRunAt": "2026-10-19T04:10:48.707Z",
   "sharedLedgerUrl": "https://github.com/LTplus-AG/ifc-lite/discussions/7897",
   "duties": [
     {
@@ -11,7 +11,7 @@
       "issueTrackingState": "closed_tracking_migrated",
       "owner": "successor bc9e57fa; existing C6/D47 and F4 ownership retained",
       "existingPullRequests": [],
-      "nextAction": "Matched exact BASE02 contract passes 223 tests with zero skips; the WASM delta is +4,093 bytes (+0.0418%). The existing owner builds only the source-matched API profiling executables and wheels. Measure latency/RSS/first callback with genuine admission, then finish current-main integration, publication and retained findings.",
+      "nextAction": "Matched profiling executables and wheels are built on both sides (22 stages passed). The existing owner runs only 30 untimed output witnesses on PC. Finish Pop storage recovery and actual loading before the fixed150-call latency/RSS/first-callback cohort, then current-main integration and publication.",
       "dutyId": "rust_sweep_stop_line",
       "completionPredicates": [
         "Every one of the original 622 IDs has an evidence-backed disposition: `fixed` with PR, `fixed-by:<ID>`, `rejected` with evidence, `wontfix` with the required recorded decision, or an explicit `deferred` disposition only where D8 permits it. Optional eligibility alone is not a disposition. Preserve one work-package mapping per ID and all required work.",
@@ -212,5 +212,5 @@
     }
   ],
   "finiteOpenIssues": 18,
-  "finiteOpenIssuesObservedAt": "2026-10-19T02:55:39.408088+00:00"
+  "finiteOpenIssuesObservedAt": "2026-10-19T03:41:34.069503+00:00"
 }

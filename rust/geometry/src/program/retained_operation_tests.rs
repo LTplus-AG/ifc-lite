@@ -112,3 +112,46 @@ fn p2_halfspace_is_precise_residual_and_never_becomes_giant_retained_cutter() {
     let error=program.finish_retained().unwrap_err().to_string();
     assert!(error.contains("halfspace/clipping"),"{error}");
 }
+
+#[test]
+fn p2_rigid_mapped_boolean_keeps_original_operation_definition_and_explicit_frame() {
+    let source="#1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCAXIS2PLACEMENT3D(#1,$,$);
+        #3=IFCDIRECTION((0.,0.,1.));#4=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,2.,4.);
+        #5=IFCEXTRUDEDAREASOLID(#4,#2,#3,3.);
+        #10=IFCWALL('placed',$,$,$,$,$,#11,$,$);#11=IFCPRODUCTDEFINITIONSHAPE($,$,(#12));
+        #12=IFCSHAPEREPRESENTATION($,'Body','CSG',(#30));
+        #20=IFCBOOLEANRESULT(.UNION.,#5,#5);
+        #21=IFCSHAPEREPRESENTATION($,'Body','CSG',(#20));#22=IFCREPRESENTATIONMAP(#2,#21);
+        #23=IFCCARTESIANPOINT((10.,20.,30.));#24=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#23,1.,$);
+        #25=IFCMAPPEDITEM(#22,#24);#30=IFCBOOLEANRESULT(.UNION.,#25,#5);";
+    let mut decoder=EntityDecoder::new(source);let router=crate::GeometryRouter::new();
+    let mut program=GeometryProgram::retained_parts(decoder.decode_by_id(10).unwrap(),
+        RetainedContract {source_epoch:7,source_revision:11});
+    let mut outputs=Vec::new();let mut polls=0;
+    while let Some(request)=program.request().unwrap() {
+        polls+=1;assert!(polls<1000);
+        let (reply,operations)=program.admit_retained_with_inputs(request,&router,&mut decoder,None,None).unwrap();
+        for operation in operations {
+            match operation.kind() {
+                RetainedOperationKind::Construction(_)=>{},
+                RetainedOperationKind::Affine {..}=>panic!("proper-rigid derived placement needs no rational conversion"),
+                RetainedOperationKind::Boolean {inputs,..}=> {
+                    if outputs.is_empty() {
+                        assert_eq!(operation.value().world_from_evaluation(),
+                            nalgebra::Matrix4::new_translation(&nalgebra::Vector3::new(-1.,-2.,0.)));
+                    } else {
+                        assert_eq!(inputs[0].definition(),&LogicalRetainedDefinition::Operation(outputs[0]));
+                        assert_ne!(inputs[0].slot(),outputs[0],"mapping is a distinct occurrence");
+                        assert_eq!(inputs[0].world_from_evaluation(),
+                            nalgebra::Matrix4::new_translation(&nalgebra::Vector3::new(9.,18.,30.)));
+                        assert_eq!(inputs[0].placements().last().unwrap().matrix[12..15],[10.,20.,30.]);
+                    }
+                    outputs.push(operation.value().slot());
+                }
+            }
+        }
+        program.accept(reply,&router).unwrap();
+    }
+    let plan=program.finish_retained().unwrap();assert_eq!(outputs.len(),2);
+    assert_eq!(plan.values.len(),1);assert!(!plan.remaining.is_empty());
+}

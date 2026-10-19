@@ -136,7 +136,10 @@ impl LogicalRetainedValue {
     /// A physical bake resets object-frame metadata but preserves analytic ancestry.
     pub(super) fn bake(&mut self) -> crate::Result<Option<RetainedPlanOperation>> {
         let matrix = nalgebra::Matrix4::from_column_slice(&self.object_frame);
-        if proper_rigid(&matrix).is_ok() && !matches!(self.definition, LogicalRetainedDefinition::Operation(_)) { return Ok(None); }
+        // Both authored and derived objects may retain explicit proper-rigid
+        // occurrence frames; processing binds the sealed dependency at that
+        // admitted frame. Rational conversion is only needed for nonrigid maps.
+        if proper_rigid(&matrix).is_ok() { return Ok(None); }
         if matrix == nalgebra::Matrix4::identity() { return Ok(None); }
         validate_affine(&matrix)?;
         let input = copy_values(std::slice::from_ref(self))?.pop().expect("one value");

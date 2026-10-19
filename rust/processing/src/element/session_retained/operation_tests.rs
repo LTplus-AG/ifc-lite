@@ -231,9 +231,9 @@ fn p2_sdk_nested_outcome_binding_exhaustion_is_typed_and_preserves_original_repl
     execution.validate_intact(&work,&decoder,&router).unwrap();
     let validation_cost=account.usage().work-before;
     // Admit ledger backing first. Acceptance still charges one append; leave
-    // enough for both intact validations, that append, and one reply envelope.
+    // enough for all three intact validations, that append, and one reply envelope.
     execution.resources.reserve_headers(&mut execution.ledger,1).unwrap().retain();
-    let remaining=2*validation_cost+2;
+    let remaining=3*validation_cost+2;
     let burn=limit-account.usage().work-remaining;
     account.scope(||resource::charge(Cost {work:burn,..Default::default()}).unwrap().retain());
     let ledger_before=execution.discharged_count();

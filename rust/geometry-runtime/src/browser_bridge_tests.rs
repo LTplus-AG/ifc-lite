@@ -325,3 +325,48 @@ async fn p3_drop_after_actual_affine_dispatch18_retires_only_original_worker() {
     drop(source);drop(worker);next.validate_live().unwrap();
     assert!((volume(&next.completion().tessellation)-1.).abs()<1e-6);
 }
+
+// P3 follow-up to the parent's additive PlacedResult runtime variants. UNRUN.
+#[wasm_bindgen_test(async)]
+async fn actual_browser_placed_result_replaces_survey_frame_without_affine_conversion() {
+    use ifc_lite_geometry::document::BooleanOperation::Union;
+    use crate::RetainedLineage;
+    let mut worker=BrowserWorker::new_retained_execution().unwrap();worker.qualify().await.unwrap();
+    let a=worker.evaluate(rectangle(&worker),0.001,5.,1_048_576).await.unwrap();
+    let original=[1.,0.,0.,0.,0.,1.,0.,0.,0.,0.,1.,0.,1e9,2e9,3e9,1.];
+    let base=worker.evaluate_retained_boolean(source(&a,original),source(&a,original),Union,
+        0.001,5.,1_048_576).await.unwrap();
+    let original_frame=*base.world_from_evaluation();let base_handle=base.handle().clone();
+    // Actual private release invalidates only the original construction token.
+    worker.owner.driver.release_object(&a.object);
+    assert!(a.validate_live().is_err());base.validate_live().unwrap();
+    let b=worker.evaluate(rectangle(&worker),0.001,5.,1_048_576).await.unwrap();
+    let placed=[0.,1.,0.,0.,-1.,0.,0.,0.,0.,0.,1.,0.,3e8,4e8,5e8,1.];
+    let replacement=crate::retained_values::multiply(placed,b.completion().source_from_evaluation);
+    assert_ne!(original_frame,replacement);
+    for (index,value) in [(0,2.),(12,f64::INFINITY)] {
+        let mut invalid=replacement;invalid[index]=value;
+        assert!(worker.evaluate_retained_boolean(
+            BrowserDependency::PlacedResult {result:&base,world_from_result:invalid},source(&b,placed),
+            Union,0.001,5.,1_048_576).await.is_err());
+        base.validate_live().unwrap();b.validate_live().unwrap();
+    }
+    let result=worker.evaluate_retained_boolean(
+        BrowserDependency::PlacedResult {result:&base,world_from_result:replacement},source(&b,placed),
+        Union,0.001,5.,1_048_576).await.unwrap();
+    assert_eq!(base.world_from_evaluation(),&original_frame);assert_eq!(base.handle(),&base_handle);
+    assert_eq!(result.world_from_evaluation(),&replacement);
+    assert_eq!(result.operation_identity().left,base_handle);
+    assert_eq!(result.operation_identity().left_world_from_evaluation,replacement);
+    assert_eq!(result.operation_identity().right_world_from_evaluation,replacement);
+    let RetainedLineage::Boolean {left,..}=result.lineage() else {panic!("actual Boolean lineage")};
+    let RetainedLineage::Placed {value,world_from_evaluation}=left.as_ref() else {panic!("placed result lineage")};
+    assert_eq!(*world_from_evaluation,replacement);
+    assert!(std::ptr::eq(value.as_ref(),base.lineage()),"actual original Arc lineage is reused");
+    assert!(matches!(value.as_ref(),RetainedLineage::Boolean {..}));
+    assert!((volume(result.mesh())-1.).abs()<1e-6,"replacement frame, never composed with old survey frame");
+    drop(base);worker.owner.driver.release_object(&b.object);drop(a);drop(b);
+    // Await actual cleanup before checking the independent result again.
+    let probe=worker.evaluate(rectangle(&worker),0.001,5.,1_048_576).await.unwrap();drop(probe);
+    result.validate_live().unwrap();assert!((volume(result.mesh())-1.).abs()<1e-6);
+}

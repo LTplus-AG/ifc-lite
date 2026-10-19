@@ -65,7 +65,7 @@ impl CommonRetainedRealization {
             }
             RealizationKind::Affine(v)=>RetainedDependency::Affine {copy:v,world_from_affine:frame},
             RealizationKind::Boolean(v) if v.world_from_evaluation() == &frame => RetainedDependency::Result(v),
-            RealizationKind::Boolean(_)=>return Err(protocol("Boolean result frame requires explicit affine operation")),
+            RealizationKind::Boolean(v)=>RetainedDependency::PlacedResult {result:v,world_from_result:frame},
         })
     }
 }

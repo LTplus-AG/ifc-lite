@@ -1,0 +1,37 @@
+{
+  "lanes": [
+    {
+      "lane": "owners",
+      "request": "auto-e8ccc34781664fe79b88ff926fcb6eda",
+      "job": "877ba1b3-1f17-42b8-acc7-9a781a56fa84",
+      "source": "9927f482e8efa47bc6b0362a771bc2cdd2c226d6",
+      "exitCode": 0,
+      "unchanged": true,
+      "outputSha256": "ca11bce348ac29abfbcdc4080452ef6e854389fef2fccfa89e58fa3ffad810c3"
+    },
+    {
+      "lane": "tracking-clippy",
+      "request": "auto-bd7a146a0c8c431fb50b8d543b79a9f6",
+      "job": "a2c16262-6ece-4229-af14-68b1b2cd33ef",
+      "source": "9927f482e8efa47bc6b0362a771bc2cdd2c226d6",
+      "exitCode": 0,
+      "unchanged": true,
+      "outputSha256": "5e126bd971fbe8ece8b60573e4dac9c9894e97e2003daba2406467d77801cda4"
+    },
+    {
+      "lane": "default-clippy",
+      "request": "auto-4b9f6daf92d8427da63392e514529bf8",
+      "job": "23af0bef-882b-461f-96d9-4144cbf36efb",
+      "source": "2935434d8f0ed6fbc10b02f6712aa181872ed74f",
+      "exitCode": 0,
+      "unchanged": true,
+      "outputSha256": "3e4ae5fcc07c9a9a96c340138e65bdbeaf2787b674c0daf942bbc2ddcd400800"
+    }
+  ],
+  "ownerTests": {
+    "passed": 24,
+    "failed": 0,
+    "ignored": 0
+  },
+  "scope": "Private feature-gated owner implementation only. No production parser/cache enrollment; fixture lifetime proof is not actual geometry Pool proof."
+}

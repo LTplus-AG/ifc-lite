@@ -1,0 +1,155 @@
+{
+  "id": "auto-bd7a146a0c8c431fb50b8d543b79a9f6",
+  "claim": {
+    "request": {
+      "id": "auto-bd7a146a0c8c431fb50b8d543b79a9f6",
+      "commit": "9927f482e8efa47bc6b0362a771bc2cdd2c226d6",
+      "kind": "ordinary",
+      "cpu": 4,
+      "memoryGiB": 12,
+      "capabilities": [
+        "linux"
+      ],
+      "command": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--features",
+        "ifc-lite-core/source-resource-tracking",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "pools": [],
+      "requestedHost": "pc-wsl"
+    },
+    "state": "returned",
+    "at": 1792423202.4532459,
+    "jobId": "a2c16262-6ece-4229-af14-68b1b2cd33ef",
+    "receipt": "/home/louistrue/build-workers/worker-state/jobs/a2c16262-6ece-4229-af14-68b1b2cd33ef/receipt.json",
+    "exitCode": 0
+  },
+  "state": "completed",
+  "safeToResubmitAutomatically": false,
+  "storageLifecycle": {
+    "id": "pc-wsl-a2c16262-6ece-4229-af14-68b1b2cd33ef",
+    "manifestSha256": "370c98fc3ed4e0080804e5b66fa9cc01887d5cb6786470280a359bef86c21405",
+    "state": "published",
+    "task": "a2c16262-6ece-4229-af14-68b1b2cd33ef",
+    "verified": true
+  },
+  "jobId": "a2c16262-6ece-4229-af14-68b1b2cd33ef",
+  "receipt": "/home/louistrue/build-workers/worker-state/jobs/a2c16262-6ece-4229-af14-68b1b2cd33ef/receipt.json",
+  "execution": {
+    "id": "a2c16262-6ece-4229-af14-68b1b2cd33ef",
+    "host": {
+      "host": "louistrue-pc",
+      "os": "Linux",
+      "arch": "x86_64",
+      "cpus": 24,
+      "availableMemoryBytes": 64929665024,
+      "totalMemoryBytes": 67423580160,
+      "python": "3.14.4",
+      "time": 1792423161.1562316
+    },
+    "cwd": "/home/louistrue/build-workers/worker-state/checkouts/9927f482e8efa47bc6b0362a771bc2cdd2c226d6",
+    "sourceBefore": {
+      "commit": "9927f482e8efa47bc6b0362a771bc2cdd2c226d6",
+      "tree": "c7df423b4431f4f20362e2fac2378300ddbb91de",
+      "clean": true,
+      "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "toolchainInputs": {
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "Cargo.lock": "abc0c942046a3726b4a35fd14f5d98e047de490c1983f47109029e00ed659472",
+        "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+        "package.json": "4cf9cf1dc70cee40ab775df7d3d36665c55bd855514913fee9149209fc9b2edd"
+      }
+    },
+    "command": [
+      "cargo",
+      "clippy",
+      "--workspace",
+      "--all-targets",
+      "--features",
+      "ifc-lite-core/source-resource-tracking",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "kind": "ordinary",
+    "requestedAt": 1792423161.1544616,
+    "resources": [
+      "/home/louistrue/build-workers/worker-state/checkouts/9927f482e8efa47bc6b0362a771bc2cdd2c226d6",
+      "/home/louistrue/build-workers/worker-state/caches/c34add72ed173ef8655294b4"
+    ],
+    "state": "completed",
+    "cpu": 4,
+    "memoryGiB": 12,
+    "storageTask": "a2c16262-6ece-4229-af14-68b1b2cd33ef",
+    "storageTaskExplicit": false,
+    "storageResources": [
+      {
+        "path": "/home/louistrue/build-workers/worker-state/caches/c34add72ed173ef8655294b4",
+        "role": "cache",
+        "project": "ifc-lite",
+        "compatibilityKey": "c34add72ed173ef8655294b4"
+      },
+      {
+        "path": "/home/louistrue/build-workers/worker-state/checkouts/9927f482e8efa47bc6b0362a771bc2cdd2c226d6",
+        "role": "worktree"
+      }
+    ],
+    "fixtures": {},
+    "tools": {
+      "git": {
+        "path": "/usr/local/bin/git",
+        "exitCode": 0,
+        "version": "git version 2.53.0"
+      },
+      "rustc": {
+        "path": "/home/louistrue/.cargo/bin/rustc",
+        "exitCode": 0,
+        "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+      },
+      "cargo": {
+        "path": "/home/louistrue/.cargo/bin/cargo",
+        "exitCode": 0,
+        "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+      },
+      "node": {
+        "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node",
+        "exitCode": 0,
+        "version": "v24.21.0"
+      },
+      "pnpm": {
+        "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/pnpm",
+        "exitCode": 0,
+        "version": "10.8.1"
+      }
+    },
+    "runnerSha256": "e43e00e2d93ae926cf7369009285aa96f63d4722b8e3e0b266a1daa699fed7bb",
+    "startedAt": 1792423161.5660648,
+    "queueSeconds": 0.4116034507751465,
+    "resourceScope": false,
+    "exitCode": 0,
+    "finishedAt": 1792423197.2448022,
+    "sourceAfter": {
+      "commit": "9927f482e8efa47bc6b0362a771bc2cdd2c226d6",
+      "tree": "c7df423b4431f4f20362e2fac2378300ddbb91de",
+      "clean": true,
+      "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "toolchainInputs": {
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "Cargo.lock": "abc0c942046a3726b4a35fd14f5d98e047de490c1983f47109029e00ed659472",
+        "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+        "package.json": "4cf9cf1dc70cee40ab775df7d3d36665c55bd855514913fee9149209fc9b2edd"
+      }
+    },
+    "sourceUnchanged": true,
+    "artifacts": {},
+    "outputSha256": "5e126bd971fbe8ece8b60573e4dac9c9894e97e2003daba2406467d77801cda4"
+  },
+  "host": "pc-wsl",
+  "dispatchState": "returned"
+}

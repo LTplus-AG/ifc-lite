@@ -1061,6 +1061,13 @@ jobs:
           # whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/tessellated/indices.rs | grep -Fxq 'rust/geometry/src/processors/tessellated/indices.rs'; then
             oracle_args+=(--mutation tests/evidence/tessellation-indices-7689/index-rule.oracle.patch)
+          # #7955 B2: the owned tessellated plans add triangulated_plan.rs and
+          # polygonal_plan.rs, which their tests import, so a whole-change revert cannot
+          # compile them (INCONCLUSIVE). Keep the plan types and break ONLY the behaviour:
+          # closed shells are no longer oriented outward when a plan is evaluated. Once
+          # triangulated_plan.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/tessellated/triangulated_plan.rs | grep -Fxq 'rust/geometry/src/processors/tessellated/triangulated_plan.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-tessellated-plans-b2/behaviour.oracle.patch)
           # #7682: keep the new STEP-writer modules, StepStats fields and the TS
           # allocatedExpressId export loadable while disabling ONLY the guards the
           # changed tests pin (value/name/id-reuse refusals, the id-space refusal,

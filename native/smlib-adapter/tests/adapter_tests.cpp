@@ -9,6 +9,7 @@ extern "C" uint32_t header_works_in_c(void);
 void run_empty_tests();
 void run_mesh_tests();
 void run_affine_tests();
+void run_copy_failure_tests();
 void run_sweep_tests();
 namespace {
 void expect(bool value, const char* label) {
@@ -101,5 +102,6 @@ int main() {
     expect(ifclite_smlib_volume(session,out,1e-8,&value) == IFCLITE_SMLIB_INVALID_SESSION,
         "destroyed session invalidates all handles");
     ok(ifclite_smlib_session_destroy(other));
+    run_copy_failure_tests(); // Last: deliberately taints this process.
     std::puts("SMLib C ABI: volume, manifold, immutable transactions and handle lifetime passed");
 }

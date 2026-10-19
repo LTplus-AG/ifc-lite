@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "affine.hpp"
+#include "copy.hpp"
 #include "sweep.hpp"
 #include <SmApiGeneral.h>
 #include <SmApiQueries.h>
@@ -160,9 +161,8 @@ std::unique_ptr<SmBrep> copy_affine_rational(SmBrep* source, const double* matri
     ifclite_smlib_affine_certificate prepared{};
     prepared.version=1; prepared.representation=1;
     inspect(source,&prepared,false); // No copy or conversion before eligibility.
-    SmBrep* raw=nullptr; const auto status=SmApiBrepCopy(source,raw);
-    std::unique_ptr<SmBrep> result(raw); checked(status);
-    require(bool(result),IFCLITE_SMLIB_KERNEL_ERROR,"affine copy returned null");
+    auto result=checked_brep_copy(source);
+    try {
     ifclite_smlib_affine_certificate copied{};
     inspect(result.get(),&copied,false);
     for(unsigned i=0;i<12;++i) require(copied.source_classes[i]==prepared.source_classes[i],
@@ -176,4 +176,8 @@ std::unique_ptr<SmBrep> copy_affine_rational(SmBrep* source, const double* matri
     inspect(result.get(),nullptr,true);
     certificate=prepared;
     return result;
+    } catch(...) {
+        result.release();
+        rethrow_tainted_kernel_domain("affine copy conversion/transform");
+    }
 }

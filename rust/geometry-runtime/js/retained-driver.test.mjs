@@ -37,7 +37,7 @@ async function fixture() {
         } else if (op === 19) {
           bytes = new Uint8Array(4); new DataView(bytes.buffer).setUint32(0, this.emptyQuery ?? 0, true);
         } else if (op === 18 && this.refuseAffine) {
-          status = 7; bytes = new TextEncoder().encode("unsupported source class");
+          status = this.refuseAffine; bytes = new TextEncoder().encode("unsupported source class");
         } else if (op === 18) {
           assert.ok(this.objects.has(view.getUint32(28, true)));
           bytes = new Uint8Array(72);
@@ -286,7 +286,7 @@ test('affine transport fixture: invalid matrix is unsent; malformed certificate 
 test('affine transport fixture: synchronized representation refusal preserves independent leases', async () => {
   const { Driver, peers } = await fixture();
   const driver = new Driver(), source = await evaluate(driver), peer = peers[0];
-  peer.refuseAffine = true;
+  peer.refuseAffine = 7;
   await assert.rejects(driver.copyAffine(source.object, identity), /unsupported source class/);
   assert.equal(driver.objectLive(source.object), true);
   assert.equal(peer.retired, undefined);
@@ -294,4 +294,14 @@ test('affine transport fixture: synchronized representation refusal preserves in
   const result = await driver.copyAffine(source.object, identity);
   assert.equal(driver.objectLive(result.object), true);
   driver.retire();
+});
+
+
+test('affine transport fixture: tainted kernel status retires the captured worker', async () => {
+  const { Driver, peers } = await fixture();
+  const driver = new Driver(), source = await evaluate(driver), peer = peers[0];
+  peer.refuseAffine = 8;
+  await assert.rejects(driver.copyAffine(source.object, identity), /retained status 8/);
+  assert.equal(driver.objectLive(source.object), false);
+  assert.equal(peer.retired, true);
 });

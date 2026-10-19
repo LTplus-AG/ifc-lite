@@ -4,6 +4,7 @@
 #include "sweep.hpp"
 #include "rigid.hpp"
 #include "affine.hpp"
+#include "copy.hpp"
 #include <SmApiBrep.h>
 #include <SmApiGeneral.h>
 #include <SmApiPrimitives.h>
@@ -40,9 +41,16 @@ void checked(SmApiStatus status) {
     }
 }
 template<class Action> int32_t boundary(Action action) noexcept {
+    if(kernel_domain_is_tainted()) {
+        std::snprintf(last_error,sizeof(last_error),"kernel domain tainted; discard process/module");
+        return IFCLITE_SMLIB_TAINTED_DOMAIN;
+    }
     last_error[0] = '\0';
     try { action(); return IFCLITE_SMLIB_OK; }
-    catch (const Failure& error) {
+    catch (const KernelDomainTainted& error) {
+        std::snprintf(last_error,sizeof(last_error),"%s",error.message.c_str());
+        return IFCLITE_SMLIB_TAINTED_DOMAIN;
+    } catch (const Failure& error) {
         if (error.message) std::snprintf(last_error, sizeof(last_error), "%s", error.message);
         return error.status;
     } catch (const SweepFailure& error) {
@@ -125,12 +133,7 @@ void validate_primitive(SmBrep* solid, double expected) {
         IFCLITE_SMLIB_KERNEL_ERROR, "primitive failed manifold/volume invariant; rebase geometry");
 }
 Solid copy(SmBrep* original) {
-    SmBrep* raw = nullptr;
-    const auto status = SmApiBrepCopy(original, raw);
-    Solid result(raw);
-    checked(status);
-    require(result != nullptr, IFCLITE_SMLIB_KERNEL_ERROR, "copy returned null");
-    return result;
+    return checked_brep_copy(original);
 }
 }
 extern "C" {

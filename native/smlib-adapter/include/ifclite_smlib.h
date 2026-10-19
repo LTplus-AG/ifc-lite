@@ -26,6 +26,10 @@ typedef struct ifclite_smlib_mesh_info {
 #define IFCLITE_SMLIB_EXCEPTION 5
 #define IFCLITE_SMLIB_RESOURCE_LIMIT 6
 #define IFCLITE_SMLIB_UNSUPPORTED 7
+/* SDK failure may leave unlinked internal allocations: discard the entire
+ * process/module. No subsequent status-returning operation is permitted.
+ * Existing ABI/protocol layouts are unchanged; this is an additive status. */
+#define IFCLITE_SMLIB_TAINTED_DOMAIN 8
 #define IFCLITE_SMLIB_UNION 1u
 #define IFCLITE_SMLIB_INTERSECTION 2u
 #define IFCLITE_SMLIB_DIFFERENCE 3u

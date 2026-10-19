@@ -104,7 +104,7 @@ Solid cutter_for(SmBrep* source,const SmAxis2Placement& frame,const Bounds& b,co
         auto* front=face(result.get(),p+y*b[1].lo,x,z,b[0].lo,0,b[0].hi,b[2].hi);
         auto* rear=face(result.get(),p+y*b[1].hi,x,z,b[0].lo,0,b[0].hi,b[2].hi);
         checked(result->StitchAndOrient()); result->m_bEditingEnabled=FALSE;
-        validate_plane_solid(result.get());
+        validate_plane_solid(result.get(),"derived cutter");
         SmTArray<SmFace*> live; result->GetFaces(live);
         require(live.GetSize()==6,"derived cutter changed its face set",IFCLITE_SMLIB_KERNEL_ERROR);
         for(auto* expected:{base,back,left,right,front,rear}) {
@@ -164,7 +164,7 @@ std::unique_ptr<SmBrep> clip_finite_plane(SmBrep* source,const double* plane,
         a=checked_brep_copy(source);
         // Full SDK validators may evaluate/build trim data. Run them only on
         // the owned copy after source representation admission, never source.
-        validate_plane_solid(a.get());
+        validate_plane_solid(a.get(),"copied host before Boolean");
         bounded=cutter_for(source,frame,b,domain);
         SmBrep* raw=nullptr;
         const auto status=SmApiBoolean(a.get(),bounded.get(),SM_BO_INTERSECTION,raw);
@@ -172,7 +172,7 @@ std::unique_ptr<SmBrep> clip_finite_plane(SmBrep* source,const double* plane,
         // their destructors or publish a partially completed numerical object.
         checked(status); bounded.release();
         require(raw==a.get(),"unexpected clipping result ownership",IFCLITE_SMLIB_KERNEL_ERROR);
-        validate_plane_solid(a.get());
+        validate_plane_solid(a.get(),"Boolean output");
         c.empty=semantically_empty_brep(a.get())?1u:0u;
         certificate=c; return a;
     } catch(...) {

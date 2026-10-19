@@ -12,4 +12,4 @@ struct PlaneDomain {
 };
 // No tessellation, fitting, conversion, bounding cache or source writes.
 PlaneDomain certify_plane_domain(SmBrep* source);
-void validate_plane_solid(SmBrep* solid);
+void validate_plane_solid(SmBrep* solid,const char* stage);

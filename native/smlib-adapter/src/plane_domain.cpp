@@ -13,6 +13,7 @@
 #include <SmPlane.h>
 #include <SmVertex.h>
 #include <cfenv>
+#include <cstdio>
 namespace {
 using namespace plane_numeric;
 constexpr size_t budget=1000000;
@@ -201,14 +202,29 @@ Bounds face_hull(SmFace* face,uint32_t index,PlaneDomain& domain) {
 }
 }
 namespace {
-void validate_topology(SmBrep* solid) {
+void validate_topology(SmBrep* solid,const char* stage) {
     using namespace plane_numeric;
     require(solid && solid->GetInfiniteRegion() && solid->GetInfiniteRegion()->IsVoid()==TRUE,
         "plane operand/result has an unbounded material region",IFCLITE_SMLIB_UNSUPPORTED);
     // ValidatePointers may return SUCCESS while recording failed checks.
     // Its status AND its actual report collection must both be accepted.
     SmAssertArray reports;
-    checked(solid->ValidatePointers(&reports,SM_LEVEL_2));
+    const auto status=solid->ValidatePointers(&reports,SM_LEVEL_2);
+    if(status!=SM_SUCCESS || reports.GetSize()!=0) {
+        // Read report scalars only: do not dereference suspect owners, evaluate
+        // geometry again, heal, or suppress any failure. Bound diagnostic size.
+        std::fprintf(stderr,"plane validation stage=%s status=%ld reports=%lu brep_tol=%.17g\n",
+            stage,static_cast<long>(status),static_cast<unsigned long>(reports.GetSize()),solid->GetTolerance().val);
+        for(ULONG i=0;i<reports.GetSize() && i<16;++i) {
+            const auto* r=reports[i];
+            if(!r) { std::fprintf(stderr,"plane report[%lu] null\n",static_cast<unsigned long>(i)); continue; }
+            std::fprintf(stderr,"plane report[%lu] reporter=%ld list=%lu test=%lu owner_type=%ld other_type=%ld value=%.17g tol=%.17g\n",
+                static_cast<unsigned long>(i),r->m_lReportingType,
+                static_cast<unsigned long>(r->GetListIndex()),static_cast<unsigned long>(r->GetTestIndex()),
+                static_cast<long>(r->GetOwnerType()),static_cast<long>(r->GetOtherType()),r->GetValue(),r->GetTol3d().val);
+        }
+    }
+    checked(status);
     require(reports.GetSize()==0,"plane topology pointer validation reported failures",IFCLITE_SMLIB_KERNEL_ERROR);
     if(semantically_empty_brep(solid)) return;
     SmBoolean manifold=FALSE; checked(SmApiBrepIsManifoldSolid(solid,manifold));
@@ -216,9 +232,9 @@ void validate_topology(SmBrep* solid) {
     require(manifold && faces.GetSize()>0,"plane operand/result is not a closed manifold solid",IFCLITE_SMLIB_KERNEL_ERROR);
 }
 }
-void validate_plane_solid(SmBrep* solid) {
+void validate_plane_solid(SmBrep* solid,const char* stage) {
     using namespace plane_numeric;
-    validate_topology(solid);
+    validate_topology(solid,stage);
     if(semantically_empty_brep(solid)) return;
     // Preserve the previous geometric loop-closure oracle, but evaluate it
     // only here on owned copied/cutter/output geometry, never on the source.

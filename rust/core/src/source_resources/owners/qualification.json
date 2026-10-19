@@ -1,0 +1,41 @@
+{
+  "status": "UNRUN",
+  "unit": "2 private opaque backing/view candidate",
+  "frozen_base": "be54e20ef9a079993eb7e68e86827ad3cdf3efec",
+  "local_dependency_checkpoint": "cdabb914013fabf48fc6cc6de7713c7dd3be94f1",
+  "upstream_dependency": "f1689d65064ce333e4277bc6a6adc866221644b2 (only two cfg(test) same_storage_domain methods)",
+  "parent_dependency_assembly": "06209aac5d",
+  "original_r3_contract_sha256": "34ee5695c015c302ae250f13a6fcabb0b67ecd87021bf863de0f38768d75e25c",
+  "executed": [],
+  "unrun": [
+    "compilation",
+    "unit tests",
+    "Clippy",
+    "actual geometry account/pool witness",
+    "wasm32",
+    "consumers",
+    "performance"
+  ],
+  "scope": "cfg(test) private owners and direct tests only; no production enrollment or canonical Raw storage/parser change",
+  "source_sha256": {
+    "rust/core/src/source_resources/owners/attribute.rs": "496ca2c92eb2b7b3dcf8010f3884413fd516150527e56a63cae6346151f0a635",
+    "rust/core/src/source_resources/owners/attribute_tests.rs": "1a72ba614003aa0983da92ffa1eda13343536c47774e27547b2c90d46b077d81",
+    "rust/core/src/source_resources/owners/buffer.rs": "d961dae01eb75d17fb1849c0ca50cf3e9f55dcea8493d4e664c693456645049e",
+    "rust/core/src/source_resources/owners/buffer_cache_tests.rs": "b1bb7b58290067531b44bdd5a3ddccb68fec68c4e35afbc3ca0feed1e5d31438",
+    "rust/core/src/source_resources/owners/build_error.rs": "4853f2068a4be1c0f05481f52ed8fc72297b08fb3b568c0a6cf77c9dda6e33fc",
+    "rust/core/src/source_resources/owners/cache.rs": "46edcc9671b337fd972d2fba3ca8d60c2c8765855d453b8df6ff7c34251ae33a",
+    "rust/core/src/source_resources/owners/lifetime_tests.rs": "4cd4d27e6f63105a8c18301c1549735edf209383bbc2872aed237be2fc7f6650",
+    "rust/core/src/source_resources/owners/mod.rs": "32967262789a8f440ef3d07759229be6b3e310f63a8373b2cc52ae2bc659f155",
+    "rust/core/src/source_resources/owners/shared_entity.rs": "8c58aa70bcbbfb077f1f5fe9f8d66dd3314c9452af980f186f7fa86b09979311",
+    "rust/core/src/source_resources/owners/storage.rs": "6a415e0eb2e9c97c7faeb9fde25e027c797666c99f2fe0a7a198f1b66408be83",
+    "rust/core/src/source_resources/owners/text.rs": "d7a0efddf3f091d392ee951e0f5d4b9dd690f4d56b26c9b5905de6e364d98d18",
+    "rust/core/src/source_resources/owners/views.rs": "5c19d8536ecf109a80e8c8051a8500c18e3c3953a05076f0b1849f0a327b3fce",
+    "rust/core/src/source_resources/owners/README.md": "1bc61e7e918f5f6bb726e64ddb8c96514067396538137d6860a42d2505721741",
+    "rust/core/src/source_resources/mod.rs": "d66f8fa51ab4a703cf9408cfef30fdbb77ed30c3ba461ad09e6cf8f60e721754"
+  },
+  "focused_tests_declared": 17,
+  "static_inspection": [
+    "pinned Arc::try_new_uninit_in and assume_init implementations read; not executed",
+    "git diff --check only; no compiler/test result"
+  ]
+}

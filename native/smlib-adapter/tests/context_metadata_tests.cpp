@@ -71,13 +71,17 @@ void scenario(bool explicit_context,bool source_defaults) {
     std::unique_ptr<SmBrep> sibling(b);
     auto ctx=raw_context::Access<SmContext>::get(*context);
     ctx.size=explicit_context?1234:SM_USE_DEFAULT; ctx.ratio=explicit_context?321:SM_USE_DEFAULT;
-    ctx.zone=explicit_context?1.25e-4:SM_USE_DEFAULT; raw_context::Access<SmContext>::set(*context,ctx);
+    // DEFAULT applies to sizing fields, not the cached numerical zone value.
+    // Clone a finite calculated policy for actual geometry scenarios.
+    ctx.zone=explicit_context?SmZoneTol3d(1.25e-4):SmTol::SizeEstimateToZoneTol3d(SM_USE_DEFAULT);
+    require(std::isfinite(ctx.zone) && ctx.zone>0 && ctx.zone<1e-3,"finite shared context zone for two-unit geometry");
+    raw_context::Access<SmContext>::set(*context,ctx);
     auto metadata=raw_context::Access<SmBrep>::get(*source);
     metadata.size=source_defaults?SM_USE_DEFAULT:100;
     metadata.ratio=source_defaults?SM_USE_DEFAULT:99;
-    metadata.zone=source_defaults?SM_USE_DEFAULT:2e-4;
+    metadata.zone=source_defaults?ctx.zone:SmZoneTol3d(2e-4);
     raw_context::Access<SmBrep>::set(*source,metadata);
-    metadata.size=SM_USE_DEFAULT; metadata.ratio=SM_USE_DEFAULT; metadata.zone=SM_USE_DEFAULT;
+    metadata.size=SM_USE_DEFAULT; metadata.ratio=SM_USE_DEFAULT; metadata.zone=ctx.zone;
     raw_context::Access<SmBrep>::set(*sibling,metadata);
     Observation state(context,source.get(),sibling.get()); unsigned calls=0;
     SmTArray<SmEdgeuse*> uses; source->GetEdgeuses(uses);
@@ -114,7 +118,24 @@ void scenario(bool explicit_context,bool source_defaults) {
         same(empty_metadata,raw_context::Access<SmBrep>::get(*empty)),"empty-input copy preserves raw source policy");
     state.check();
 }
+void sentinel_zone_copy_only() {
+    // Raw metadata compatibility only:9876543.21 is NOT a valid inherited zone
+    // for clipping a two-unit model. Use empty SDK topology without geometry,
+    // and invoke no clipping, volume or positive geometry oracle here.
+    auto* context=SmApiGetOrCreateContext(); raw_context::Restore original(context);
+    auto source=raw_context::construct_brep(context);
+    auto metadata=raw_context::Access<SmBrep>::get(*source);
+    metadata.size=SM_USE_DEFAULT; metadata.ratio=SM_USE_DEFAULT; metadata.zone=SM_USE_DEFAULT;
+    raw_context::Access<SmBrep>::set(*source,metadata);
+    raw_context::Access<SmContext>::set(*context,metadata);
+    auto copy=checked_brep_copy(source.get());
+    require(same(metadata,raw_context::Access<SmBrep>::get(*copy)) &&
+        same(metadata,raw_context::Access<SmBrep>::get(*source)) &&
+        same(metadata,raw_context::Access<SmContext>::get(*context)),
+        "arbitrary raw zone sentinel survives actual topology copying without geometry claims");
+}
 }
 void run_context_metadata_tests() {
     for(bool context:{false,true}) for(bool defaults:{false,true}) scenario(context,defaults);
+    sentinel_zone_copy_only();
 }

@@ -196,6 +196,9 @@ export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
                         .join(' / '),
                     })}
                     data-viewcube-zone={zone.kind}
+                    // Keyboard users get the six face views (as before) plus the view shortcuts;
+                    // 20 more stops, many of them facing away, would bloat the tab order.
+                    tabIndex={isFace ? undefined : -1}
                     className={cn(
                       'flex items-center justify-center text-2xs font-bold transition-colors cursor-pointer border',
                       lit

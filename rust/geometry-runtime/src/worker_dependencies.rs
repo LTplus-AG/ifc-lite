@@ -12,6 +12,9 @@ use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
 pub enum RetainedDependency<'a> {
     Source { realization: &'a RetainedRealization, world_from_source: [f64; 16] },
     Result(&'a RetainedDependencyResult),
+    /// An explicitly admitted replacement object-local -> world frame. The
+    /// original result/frame remains immutable; this is not a relative matrix.
+    PlacedResult { result: &'a RetainedDependencyResult, world_from_result: [f64;16] },
     Affine { copy: &'a super::RetainedAffineCopy, world_from_affine: [f64;16] },
 }
 
@@ -81,6 +84,13 @@ impl RetainedDependency<'_> {
             Self::Result(result) => {
                 result.validate_live()?;
                 Ok((result.solid, result.world_from_evaluation, result.lineage.clone(), result.operations))
+            }
+            Self::PlacedResult {result,world_from_result} => {
+                result.validate_live()?;
+                rigid(*world_from_result).map_err(|e|WorkerError::Authored(e.into()))?;
+                Ok((result.solid,*world_from_result,Arc::new(RetainedLineage::Placed {
+                    value:result.lineage.clone(),world_from_evaluation:*world_from_result,
+                }),result.operations))
             }
         }
     }

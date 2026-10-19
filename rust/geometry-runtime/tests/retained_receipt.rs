@@ -270,3 +270,48 @@ fn actual_sdk_explicit_raw_release_invalidates_receipt_before_accept_and_preserv
     assert!(matches!(worker.release(old), Err(WorkerError::WrongWorker)));
     worker.release(replacement).unwrap();
 }
+
+#[test]
+fn actual_sdk_placed_result_uses_replacement_frame_without_rational_conversion_or_source_leases() {
+    use ifc_lite_geometry::document::BooleanOperation::Union;
+    use ifc_lite_geometry_runtime::{RetainedDependency,RetainedLineage};
+    let Some(mut worker)=worker() else {return};
+    let (_,req)=request(&worker);
+    let a=worker.evaluate_retained_extrusion(req,0.001,15.,MeshLimits::default()).unwrap();
+    let original=[1.,0.,0.,0.,0.,1.,0.,0.,0.,0.,1.,0.,1e9,2e9,3e9,1.];
+    let base=worker.evaluate_retained_boolean(
+        RetainedDependency::Source {realization:&a,world_from_source:original},
+        RetainedDependency::Source {realization:&a,world_from_source:original},
+        Union,0.001,15.,MeshLimits::default()).unwrap();
+    worker.release(a.solid()).unwrap();a.validate_live().unwrap_err();base.validate_live().unwrap();
+    let (_,req)=request(&worker);
+    let b=worker.evaluate_retained_extrusion(req,0.001,15.,MeshLimits::default()).unwrap();
+    // Quarter-turn and a DIFFERENT survey origin. Composing the original frame
+    // again would separate the operands and produce the wrong union volume.
+    let placed=[0.,1.,0.,0.,-1.,0.,0.,0.,0.,0.,1.,0.,3e8,4e8,5e8,1.];
+    for (index,value) in [(0,2.),(12,f64::INFINITY)] {
+        let mut invalid=placed;invalid[index]=value;
+        assert!(matches!(worker.evaluate_retained_boolean(
+            RetainedDependency::PlacedResult {result:&base,world_from_result:invalid},
+            RetainedDependency::Source {realization:&b,world_from_source:placed},
+            Union,0.001,15.,MeshLimits::default()),Err(WorkerError::Authored(_))));
+        base.validate_live().unwrap();b.validate_live().unwrap();
+    }
+    let result=worker.evaluate_retained_boolean(
+        RetainedDependency::PlacedResult {result:&base,world_from_result:placed},
+        RetainedDependency::Source {realization:&b,world_from_source:placed},
+        Union,0.001,15.,MeshLimits::default()).unwrap();
+    assert_eq!(base.world_from_evaluation(),&original);
+    assert_eq!(result.world_from_evaluation(),&placed);
+    assert_eq!(result.operation_identity().left,base.solid());
+    assert_eq!(result.operation_identity().left_world_from_evaluation,placed);
+    let RetainedLineage::Boolean {left,..}=result.lineage() else {panic!("actual Boolean lineage")};
+    let RetainedLineage::Placed {value,world_from_evaluation}=left.as_ref() else {panic!("explicit occurrence lineage")};
+    assert_eq!(*world_from_evaluation,placed);
+    assert!(matches!(value.as_ref(),RetainedLineage::Boolean {..}));
+    assert!((worker.volume(result.solid(),1e-8).unwrap()-24.).abs()<1e-6);
+    assert!(worker.is_manifold(result.solid()).unwrap());
+    drop(base);worker.release(b.solid()).unwrap();worker.flush_releases().unwrap();
+    result.validate_live().unwrap();
+    assert!((worker.volume(result.solid(),1e-8).unwrap()-24.).abs()<1e-6);
+}

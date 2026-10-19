@@ -21,6 +21,9 @@ impl BrowserObjectHandle {
 pub enum BrowserDependency<'a> {
     Source { realization: &'a BrowserRealization, world_from_source: [f64; 16] },
     Result(&'a BrowserDependencyResult),
+    /// Explicit replacement frame for this occurrence, never multiplied by the
+    /// result's original world frame. The sealed object and result stay intact.
+    PlacedResult { result: &'a BrowserDependencyResult, world_from_result: [f64;16] },
     Affine { copy: &'a super::BrowserAffineCopy, world_from_affine: [f64;16] },
 }
 
@@ -113,6 +116,13 @@ impl BrowserDependency<'_> {
                 result.validate_live()?;
                 Input { owner: result.owner.clone(), object: result.object.clone(), handle: result.handle.clone(),
                     frame: result.world_from_evaluation, lineage: result.lineage.clone(), operations: result.operations }
+            }
+            Self::PlacedResult {result,world_from_result} => {
+                result.validate_live()?;
+                Input {owner:result.owner.clone(),object:result.object.clone(),handle:result.handle.clone(),
+                    frame:*world_from_result,operations:result.operations,
+                    lineage:Arc::new(RetainedLineage::Placed {value:result.lineage.clone(),
+                        world_from_evaluation:*world_from_result})}
             }
         };
         crate::retained_values::rigid(input.frame).map_err(|e| RetainedRefusal::UnsupportedSource(e.into()))?;

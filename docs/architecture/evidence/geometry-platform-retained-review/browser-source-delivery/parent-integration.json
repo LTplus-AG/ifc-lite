@@ -7,17 +7,19 @@
   "authority_fix": "155 checks document handle before source-expiry retirement and seals publication fields",
   "parent_corrections": [
     "separate captured cancellation capability usable during async mutable executor borrow",
-    "same-worker rational gate now requires both exact straight and curved quarter-circle numerical witnesses"
+    "same-worker rational gate now requires both exact straight and curved quarter-circle numerical witnesses",
+    "authored actual Worker future-drop invariant now awaits request buffer detachment before dropping Rust future; source display rejection after JS cancellation also required"
   ],
   "remaining": [
     "common ProgramRequest/ProductState retained continuation",
-    "SDK browser asset staging",
     "canonical generated wasm dts",
-    "all compile/runtime/platform/performance qualification"
+    "all compile/runtime/platform/performance qualification",
+    "stage actual built SDK bundle and execute same-worker browser/source cancellation invariants"
   ],
   "validation": "UNRUN except delivered source parse/metadata/JS syntax checks; no actual browser claim",
   "fixture_checks": {
     "passed": 26,
     "actual_sdk": false
-  }
+  },
+  "asset_staging": "explicit CLI implemented and 3 packaging-only fixture invariants pass; actual compiled browser bundle not staged"
 }

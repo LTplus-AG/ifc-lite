@@ -176,3 +176,6 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# Explicit retained-browser adapter staging (SDK binaries, modules and manifest).
+/apps/viewer/public/smlib/

@@ -11,7 +11,10 @@ export class RetainedDriver {
   #sequence = 0;
   #session;
   #objects = new Map();
+  #firstDispatch;
+  #signalDispatch;
   constructor() {
+    this.#firstDispatch = new Promise(resolve => { this.#signalDispatch = resolve; });
     // This constructor is called only by explicit retained admission. In
     // particular, importing the default IFC wasm does not fetch an SDK module.
     this.#ready = import('/smlib/client.mjs').then(({ SmlibWorkerTransport }) => {
@@ -27,6 +30,9 @@ export class RetainedDriver {
     return !this.#retired && (!this.#transport || this.#transport.incarnation === this.#incarnation);
   }
   objectLive(object) { return this.live() && this.#objects.has(object); }
+  // Observation only, used by the actual Worker cancellation invariant. This
+  // Promise cannot submit work or change receipt/qualification authority.
+  firstDispatch() { return this.#firstDispatch; }
   retire() {
     if (this.#retired) return;
     this.#retired = true;
@@ -42,7 +48,11 @@ export class RetainedDriver {
     [1, id, opcode].forEach((v, i) => view.setUint32(i * 4, v, true));
     let offset = 12;
     for (const field of fields) { new Uint8Array(frame, offset, field.byteLength).set(field); offset += field.byteLength; }
-    const [result] = await this.#transport.batch([frame], this.#incarnation);
+    const pending = this.#transport.batch([frame], this.#incarnation);
+    // Actual postMessage transfers/detaches the request synchronously. A
+    // rejected unsent request never establishes this submission observation.
+    if (frame.byteLength === 0) this.#signalDispatch();
+    const [result] = await pending;
     if (!this.live()) throw new Error('worker expired during retained command');
     const response = new DataView(result);
     if (response.getUint32(0, true) !== 1 || response.getUint32(4, true) !== id) throw new Error('retained response identity');

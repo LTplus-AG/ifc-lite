@@ -239,6 +239,50 @@ cache and verifies its commit. It bootstraps pinned public CMake/Ninja wheels
 when necessary; WASM uses Emscripten 4.0.15. Run this script through `ifc-fleet run
 --route fleet --cwd ABSOLUTE_CHECKOUT -- ...`. No OpenUSD/TBB dependency is needed.
 
+## Explicit browser asset staging
+
+After building the browser adapter above, stage its existing outputs explicitly:
+
+```sh
+node scripts/stage-retained-browser-assets.mjs \
+  --build /absolute/path/to/ifclite-smlib-adapter-wasm \
+  --sdk /absolute/path/to/usd-brep \
+  --out /absolute/path/to/ifc-lite/apps/viewer/public/smlib
+```
+
+`--build` and `--sdk` are required absolute paths. `--out` defaults to this
+checkout's `apps/viewer/public/smlib`, matching the explicit browser driver's
+`/smlib/` asset URLs. The destination's parent must exist. The destination itself
+must not exist: choose a new directory or explicitly remove the previous generated
+bundle before restaging. Staging never replaces an existing asset tree. Serialize
+staging into a given destination. SDK, build and adapter source trees cannot be
+used as output destinations.
+
+The command checks the SDK against the adapter's pinned revision and refuses
+changed or untracked/ignored kernel/API inputs or license files. It validates the
+CMake build's adapter/SDK paths and compares each configured browser module with
+its current canonical source bytes, rejecting stale copies. It requires existing,
+nonempty `ifclite_smlib_browser.mjs` and version-1 `.wasm` outputs; it does not
+synthesize missing binaries. It publishes a complete directory only after all
+checks and copies succeed.
+
+The bundle contains `client.mjs`, `worker.mjs`, `module.mjs`, `sweep.mjs`,
+`sweep-contract.mjs`, `contract.mjs`, `mesh-witness.mjs`, `region-recipes.mjs`,
+the generated adapter module/binary, and the pinned SDK's `LICENSE` and
+`THIRD_PARTY_NOTICES.md`. `asset-manifest.json` records each asset's size, SHA-256
+and origin, plus the adapter source hashes and SDK pin. These identify the supplied
+files; they do **not** attest that the binary was compiled from those sources.
+Staging neither fetches nor builds the SDK, imports it, activates it in a default
+loader, nor establishes numerical/browser qualification. Generated viewer bundles
+are ignored by Git; retain any packaging manifest needed for a deployment receipt
+outside the ignored tree.
+
+This command is separate from `scripts/build-wasm.sh`, which generates the
+canonical Rust WASM bindings and committed `packages/wasm/pkg/ifc-lite.d.ts`.
+Staging adapter assets does not regenerate or validate those types. Run packaging
+invariants with `node --test scripts/stage-retained-browser-assets.test.mjs`;
+these use temporary inputs and make no SDK geometry claim.
+
 ## Additional numerical routes (unqualified)
 
 [Round3 contract](NUMERICAL_ROUND3.md) specifies additive staged format2 for a

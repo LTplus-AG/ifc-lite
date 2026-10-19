@@ -21,6 +21,9 @@ extern "C" {
     pub(super) fn object_live(this: &Driver, object: &JsValue) -> bool;
     #[wasm_bindgen(method)]
     fn qualify(this: &Driver) -> js_sys::Promise;
+    #[cfg(test)]
+    #[wasm_bindgen(method, js_name = firstDispatch)]
+    fn first_dispatch(this: &Driver) -> js_sys::Promise;
     #[wasm_bindgen(method)]
     fn evaluate(
         this: &Driver,

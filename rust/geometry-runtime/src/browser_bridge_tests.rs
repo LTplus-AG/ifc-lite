@@ -38,9 +38,14 @@ async fn abandoned_rust_future_retires_actual_worker_without_killing_replacement
             worker.incarnation(),
         )
         .unwrap();
+    let owner = worker.owner.clone();
     let mut future = Box::pin(worker.evaluate(request, 0.001, 5., 1024 * 1024));
     let mut context = Context::from_waker(Waker::noop());
     assert!(matches!(future.as_mut().poll(&mut context), Poll::Pending));
+    // Wait for a real transferred request, without polling the Rust operation
+    // to completion. Qualification alone or one initial poll proves no upload.
+    JsFuture::from(owner.driver.first_dispatch()).await.unwrap();
+    assert!(owner.validate().is_ok());
     drop(future);
     assert_eq!(worker.incarnation(), 0);
     let replacement = BrowserWorker::new().unwrap();

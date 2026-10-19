@@ -35,6 +35,7 @@ export async function runRetainedBrowserContract(wasm, fixture) {
       // executor borrow. It also covers cancellation before JS startup settles.
       cancellation.retire();
       await rejects(() => pending, 'captured cancellation rejects pending execution');
+      await rejects(() => source.display(), 'cancelled source cannot publish a display');
       source.free(); source = api.admitRetainedSource(key);
       executor.free(); executor = new wasm.RetainedBrowserExecutor();
       cancellation.retire(); // An old cancellation cannot retire this replacement.

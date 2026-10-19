@@ -42,6 +42,23 @@ async fn actual_browser_plane_box_survey_rotation_chaining_and_release() {
     let next=w.clip_retained_plane(Input::Clip(&c),[0.,0.,1.5,0.,0.,1.],PlaneSide::Positive,
         PlaneClipMode::Difference,0.001,5.,1_048_576).await.unwrap();
     assert!((volume(next.mesh())-2.).abs()<0.01);
+    let replacement=[1.,0.,0.,0.,0.,1.,0.,0.,0.,0.,1.,0.,7e7,8e7,9e7,1.];
+    let original_frame=*next.world_from_evaluation();
+    let replaced_clip=w.clip_retained_plane(Input::PlacedClip {clip:&next,world_from_clip:replacement},
+        [0.,0.,1.25,0.,0.,1.],PlaneSide::Positive,PlaneClipMode::Intersection,0.001,5.,1_048_576).await.unwrap();
+    assert!((volume(replaced_clip.mesh())-1.).abs()<0.01);
+    assert_eq!(replaced_clip.world_from_evaluation(),&replacement);
+    assert_eq!(next.world_from_evaluation(),&original_frame);
+    assert_eq!(replaced_clip.operation_identity().input,*next.handle());
+    let RetainedLineage::PlaneClip {input,..}=replaced_clip.lineage() else {panic!("clip lineage")};
+    assert!(matches!(input.as_ref(),RetainedLineage::Placed {value,world_from_evaluation}
+        if world_from_evaluation==&replacement && matches!(value.as_ref(),RetainedLineage::PlaneClip {..})));
+    for scale in [2.,-1.,f64::NAN] {
+        let mut invalid=replacement;invalid[0]=scale;
+        assert!(w.clip_retained_plane(Input::PlacedClip {clip:&next,world_from_clip:invalid},
+            [0.,0.,1.25,0.,0.,1.],PlaneSide::Positive,PlaneClipMode::Intersection,0.001,5.,1_048_576).await.is_err());
+        next.validate_live().unwrap();replaced_clip.validate_live().unwrap();
+    }
     let result=w.evaluate_retained_boolean(Input::Clip(&c),Input::Clip(&next),BooleanOperation::Intersection,
         0.001,5.,1_048_576).await.unwrap();
     let placed=w.clip_retained_plane(Input::PlacedResult {result:&result,world_from_result:frame},
@@ -57,6 +74,7 @@ async fn actual_browser_plane_box_survey_rotation_chaining_and_release() {
         PlaneClipMode::Intersection,0.001,5.,1_048_576).await.unwrap();
     assert!((volume(from_result.mesh())-1.).abs()<0.01);
     drop(s);drop(c);drop(next);drop(result);
+    replaced_clip.validate_live().unwrap();
     placed.validate_live().unwrap();copy.validate_live().unwrap();from_affine.validate_live().unwrap();from_result.validate_live().unwrap();
     let owner=w.cancellation();drop(placed);assert!(owner.incarnation().is_some());
 }

@@ -13,6 +13,8 @@ pub enum RetainedDependency<'a> {
     Source { realization: &'a RetainedRealization, world_from_source: [f64; 16] },
     Result(&'a RetainedDependencyResult),
     Clip(&'a super::RetainedPlaneClip),
+    /// Absolute proper-rigid occurrence frame for an unchanged sealed clip.
+    PlacedClip { clip: &'a super::RetainedPlaneClip, world_from_clip: [f64;16] },
     /// An explicitly admitted replacement object-local -> world frame. The
     /// original result/frame remains immutable; this is not a relative matrix.
     PlacedResult { result: &'a RetainedDependencyResult, world_from_result: [f64;16] },
@@ -85,6 +87,13 @@ impl RetainedDependency<'_> {
             Self::Clip(clip) => {
                 clip.validate_live()?;
                 Ok((clip.solid(), *clip.world_from_evaluation(), Arc::new(clip.lineage().clone()), clip.operation_count()))
+            }
+            Self::PlacedClip {clip,world_from_clip} => {
+                clip.validate_live()?;
+                rigid(*world_from_clip).map_err(|e|WorkerError::Authored(e.into()))?;
+                Ok((clip.solid(),*world_from_clip,Arc::new(RetainedLineage::Placed {
+                    value:Arc::new(clip.lineage().clone()),world_from_evaluation:*world_from_clip,
+                }),clip.operation_count()))
             }
             Self::Result(result) => {
                 result.validate_live()?;

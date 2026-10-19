@@ -47,6 +47,23 @@ fn actual_plane_runtime_box_survey_frame_chaining_and_independent_release() {
     let from_affine=w.clip_retained_plane(Input::Affine {copy:&affine,world_from_affine:frame},
         [0.,0.,1.25,0.,0.,1.],Side::Positive,Mode::Intersection,0.001,5.,MeshLimits::default()).unwrap();
     assert!((w.volume(from_affine.solid(),1e-8).unwrap()-1.).abs()<1e-5);
+    let replacement=[1.,0.,0.,0.,0.,1.,0.,0.,0.,0.,1.,0.,7e7,8e7,9e7,1.];
+    let original_frame=*next.world_from_evaluation();
+    let replaced_clip=w.clip_retained_plane(Input::PlacedClip {clip:&next,world_from_clip:replacement},
+        [0.,0.,1.25,0.,0.,1.],Side::Positive,Mode::Intersection,0.001,5.,MeshLimits::default()).unwrap();
+    assert!((w.volume(replaced_clip.solid(),1e-8).unwrap()-1.).abs()<1e-5);
+    assert_eq!(replaced_clip.world_from_evaluation(),&replacement);
+    assert_eq!(next.world_from_evaluation(),&original_frame);
+    assert_eq!(replaced_clip.operation_identity().input,next.solid());
+    let RetainedLineage::PlaneClip {input,..}=replaced_clip.lineage() else {panic!("clip lineage")};
+    assert!(matches!(input.as_ref(),RetainedLineage::Placed {value,world_from_evaluation}
+        if world_from_evaluation==&replacement && matches!(value.as_ref(),RetainedLineage::PlaneClip {..})));
+    for scale in [2.,-1.,f64::NAN] {
+        let mut invalid=replacement;invalid[0]=scale;
+        assert!(w.clip_retained_plane(Input::PlacedClip {clip:&next,world_from_clip:invalid},
+            [0.,0.,1.25,0.,0.,1.],Side::Positive,Mode::Intersection,0.001,5.,MeshLimits::default()).is_err());
+        next.validate_live().unwrap();replaced_clip.validate_live().unwrap();
+    }
     let result=w.evaluate_retained_boolean(Input::Clip(&c),Input::Clip(&next),BooleanOperation::Intersection,
         0.001,5.,MeshLimits::default()).unwrap();
     let placed=w.clip_retained_plane(Input::PlacedResult {result:&result,world_from_result:frame},
@@ -59,6 +76,7 @@ fn actual_plane_runtime_box_survey_frame_chaining_and_independent_release() {
     assert!((w.volume(from_result.solid(),1e-8).unwrap()-1.).abs()<1e-5);
     let old=c.solid();drop(s);drop(c);drop(next);drop(result);w.flush_releases().unwrap();
     assert!(matches!(w.volume(old,1e-8),Err(WorkerError::WrongWorker)));
+    replaced_clip.validate_live().unwrap();
     affine.validate_live().unwrap();placed.validate_live().unwrap();from_affine.validate_live().unwrap();
     w.release(placed.solid()).unwrap();assert!(placed.validate_live().is_err());from_result.validate_live().unwrap();
 }

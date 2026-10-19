@@ -22,6 +22,8 @@ pub enum BrowserDependency<'a> {
     Source { realization: &'a BrowserRealization, world_from_source: [f64; 16] },
     Result(&'a BrowserDependencyResult),
     Clip(&'a super::BrowserPlaneClip),
+    /// Absolute proper-rigid occurrence frame for an unchanged sealed clip.
+    PlacedClip { clip: &'a super::BrowserPlaneClip, world_from_clip: [f64;16] },
     /// Explicit replacement frame for this occurrence, never multiplied by the
     /// result's original world frame. The sealed object and result stay intact.
     PlacedResult { result: &'a BrowserDependencyResult, world_from_result: [f64;16] },
@@ -116,6 +118,13 @@ impl BrowserDependency<'_> {
                         value:parts.lineage,world_from_evaluation:*world_from_affine }) }
             }
             Self::Clip(clip) => clip.dependency_parts()?,
+            Self::PlacedClip {clip,world_from_clip} => {
+                let mut input=clip.dependency_parts()?;
+                input.frame=*world_from_clip;
+                input.lineage=Arc::new(RetainedLineage::Placed {value:input.lineage,
+                    world_from_evaluation:*world_from_clip});
+                input
+            }
             Self::Result(result) => {
                 result.validate_live()?;
                 Input { owner: result.owner.clone(), object: result.object.clone(), handle: result.handle.clone(),

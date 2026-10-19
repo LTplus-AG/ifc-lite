@@ -1044,6 +1044,15 @@ jobs:
           # resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/pending_diagnostics.rs | grep -Fxq 'rust/geometry/src/pending_diagnostics.rs'; then
             oracle_args+=(--mutation tests/evidence/geometry-diagnostic-scopes-a2/behaviour.oracle.patch)
+          # #7955 G1: the SMLib adapter adds the ifc-lite-geometry-runtime crate,
+          # whose protocol, supervisor and process-control tests name the new
+          # production types, so a whole-change revert cannot compile them
+          # (INCONCLUSIVE). Keep the types and break ONLY the behaviour: response
+          # request ids are no longer matched and oversized mesh chunk requests
+          # are encoded. Once rust/geometry-runtime/src/protocol.rs is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry-runtime/src/protocol.rs | grep -Fxq 'rust/geometry-runtime/src/protocol.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-runtime-g1/behaviour.oracle.patch)
           # #7676: the upload admission change adds ApiError::UploadTimeout, which
           # its tests name, so a whole-change revert cannot compile them
           # (INCONCLUSIVE). Keep the type and break ONLY the behaviour: the

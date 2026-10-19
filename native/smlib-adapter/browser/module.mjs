@@ -5,6 +5,8 @@ export function dispatchOwned(module, frame) {
   if (!(frame instanceof ArrayBuffer) || frame.byteLength < 12 || frame.byteLength > 4096) {
     throw new Error('invalid request frame');
   }
+  // Only opcode20 success may carry the bounded source-domain v2 extension.
+  const opcode = new DataView(frame).getUint32(8, true);
   const request = module._malloc(frame.byteLength);
   const outputs = module._malloc(8);
   let response = 0;
@@ -17,7 +19,11 @@ export function dispatchOwned(module, frame) {
     response = view.getUint32(outputs, true);
     const size = view.getUint32(outputs + 4, true);
     if (status !== 0) throw new Error(`malformed request or trapped dispatcher (${status})`);
-    if (!response || size < 12 || size > 4096) throw new Error('invalid response allocation');
+    const limit = opcode === 20 ? 24532 : 4096; // includes 12-byte header
+    if (!response || size < 12 || size > limit || response > module.HEAPU8.length - size)
+      throw new Error('invalid response allocation');
+    if (size > 4096 && view.getInt32(response + 8, true) !== 0)
+      throw new Error('oversized failure response');
     return module.HEAPU8.slice(response, response + size).buffer;
   } finally {
     if (response) module._free(response);

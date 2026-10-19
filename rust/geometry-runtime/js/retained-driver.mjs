@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 // Private wasm import. Deploy the canonical adapter assets at /smlib/.
+import { planeCertificate, validatePlane } from './plane-certificate.mjs';
 // No caller transport, result, incarnation or qualification flag enters here.
 export class RetainedDriver {
   #ready;
@@ -352,49 +353,3 @@ function properRigid(m) {
   if (cross.some((v, i) => Math.abs(v - m[8 + i]) > 1e-12)) throw new Error('reflected retained frame');
 }
 function sameHandle(a, b) { return a.byteLength === b.byteLength && a.every((value, i) => value === b[i]); }
-function validatePlane(plane, side, mode) {
-  if (plane.length !== 6 || !plane.every(Number.isFinite) || plane.slice(3).every(x => x === 0) ||
-      ![1, -1].includes(side) || ![2, 3].includes(mode)) throw new Error('invalid local metre plane');
-}
-function planeCertificate(bytes, input, plane, side, mode) {
-  validatePlane(plane, side, mode);
-  if (bytes.byteLength < 312 || bytes.byteLength > 2488) throw new Error('invalid plane response size');
-  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), u = i => v.getUint32(i, true), f = i => v.getFloat64(i, true);
-  const floats = (offset, count) => Array.from({ length: count }, (_, i) => f(offset + 8*i)), same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
-  const output = bytes.slice(0, 16), count = u(308), method = u(20), sameHandle = (offset, expected) => same(bytes.slice(offset, offset + 16), expected);
-  if (count > 16 || bytes.byteLength !== 312 + 136*count || u(16) !== 1 || u(24) !== 1 || u(28) > 1 ||
-      !sameHandle(32, input) || !sameHandle(48, output) || sameHandle(0, input) ||
-      !same(output.slice(0, 8), input.slice(0, 8)) || !u(12) || !new DataView(input.buffer, input.byteOffset).getUint32(12, true) ||
-      new DataView(input.buffer, input.byteOffset).getBigUint64(0, true) === 0n ||
-      u(64) !== (side >>> 0) || u(68) !== mode) throw new Error('invalid plane identity certificate');
-  const original = new Uint8Array(48), pv = new DataView(original.buffer); plane.forEach((x, i) => pv.setFloat64(8*i, x, true));
-  if (!same(bytes.slice(84, 132), original)) throw new Error('plane coefficient identity mismatch');
-  const faces = u(72), edges = u(76), coefficients = u(80);
-  if (method > 7 || faces > 100000 || edges > 100000 || coefficients > 1000000 ||
-      Boolean(method & 4) !== (count > 0) || count > faces) throw new Error('invalid plane domain budget/method');
-  const basis = floats(132, 9), domain = floats(204, 6), cutter = floats(252, 6), clearance = f(300);
-  if (![...basis, ...domain, ...cutter, clearance].every(Number.isFinite)) throw new Error('nonfinite plane certificate');
-  const scale = Math.max(...plane.slice(3).map(Math.abs)), n = plane.slice(3).map(x => x/scale), length = Math.hypot(...n), kept = side * (mode === 3 ? -1 : 1), eps = 64*Number.EPSILON;
-  if (n.some((x, i) => Math.abs(basis[6+i] - kept*x/length) > eps)) throw new Error('invalid effective plane normal');
-  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
-    const dot = [0,1,2].reduce((sum, k) => sum + basis[3*i+k]*basis[3*j+k], 0);
-    if (Math.abs(dot - (i === j ? 1 : 0)) > eps) throw new Error('invalid effective plane basis');
-  }
-  const cross = [basis[1]*basis[5]-basis[2]*basis[4], basis[2]*basis[3]-basis[0]*basis[5], basis[0]*basis[4]-basis[1]*basis[3]];
-  if (cross.some((x, i) => Math.abs(x-basis[6+i]) > eps)) throw new Error('reflected effective plane basis');
-  if (method === 0) {
-    if (u(28) !== 1 || faces || edges || coefficients || [...domain, ...cutter, clearance].some(x => x !== 0))
-      throw new Error('invalid canonical empty plane domain');
-  } else if (!faces || !edges || !coefficients || clearance <= 0 ||
-      ![0,1,2].every(i => domain[i] < domain[i+3] && cutter[i] < cutter[i+3]) ||
-      cutter[2] !== 0)
-    throw new Error('invalid finite plane domain/cutter');
-  const seen = new Set(); for (let i = 0; i < count; i++) {
-    const offset = 312 + 136*i, face = u(offset);
-    if (face >= faces || seen.has(face) || u(offset+4) > 1 || u(offset+8) > 1 || u(offset+12) !== 0 ||
-        !floats(offset+16, 15).every(Number.isFinite) || f(offset+112) <= 0 || f(offset+120) >= f(offset+128))
-      throw new Error('invalid cylinder conversion/domain certificate');
-    seen.add(face);
-  }
-  return Object.freeze({ output, empty: u(28) === 1 });
-}

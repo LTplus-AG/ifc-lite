@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Structural validation of actual opcode20 evidence, not numerical qualification.
 use crate::{protocol::WireHandle, NumericalOutcome};
+#[path="plane_source.rs"]
+mod source;
+pub use source::{SourceRectangleDomain, SourceRectangleEdge};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlaneSide { Positive, Negative }
@@ -36,6 +39,8 @@ impl CylinderDomain {
 /// Output-only evidence. No public constructor or receipt accepts this as input.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlaneCertificate {
+    version: u32,
+    rectangles: Vec<SourceRectangleDomain>,
     input: WireHandle,
     output: WireHandle,
     method: u32,
@@ -50,6 +55,8 @@ pub struct PlaneCertificate {
     cylinders: Vec<CylinderDomain>,
 }
 impl PlaneCertificate {
+    pub fn version(&self) -> u32 { self.version }
+    pub fn source_rectangles(&self) -> &[SourceRectangleDomain] { &self.rectangles }
     /// Wire identity evidence alone grants no lease or execution authority.
     pub fn input_handle(&self) -> WireHandle { self.input }
     pub fn output_handle(&self) -> WireHandle { self.output }
@@ -67,13 +74,16 @@ impl PlaneCertificate {
         mode: PlaneClipMode) -> Result<Self, &'static str>
     {
         validate_plane(&plane)?;
-        if bytes.len()<312 || bytes.len()>2488 { return Err("invalid plane response size"); }
+        if bytes.len()<312 || bytes.len()>crate::protocol::MAX_PLANE_PAYLOAD_BYTES { return Err("invalid plane response size"); }
         let output=WireHandle::from_bytes(&bytes[..16]).map_err(|_| "invalid plane output")?;
         let c=&bytes[16..];
         let u=|i| u32::from_le_bytes(c[i..i+4].try_into().expect("four bytes"));
         let handle=|i| WireHandle::from_bytes(&c[i..i+16]).expect("sixteen bytes");
         let count=u(292) as usize;
-        if count>16 || bytes.len()!=312+136*count || u(0)!=1 || u(8)!=1 || u(12)>1 ||
+        let version=u(0);
+        if count>16 { return Err("invalid cylinder count"); }
+        let base=312+136*count;
+        if base>bytes.len() || !matches!(version,1|2) || u(8)!=1 || u(12)>1 ||
             handle(16)!=input || handle(32)!=output || output.session!=input.session ||
             input.session==0 || input.generation==0 || output.generation==0 || output==input ||
             u(48)!=side.code() as u32 || u(52)!=mode.code() {
@@ -84,7 +94,7 @@ impl PlaneCertificate {
             return Err("plane coefficient identity mismatch");
         }
         let method=u(4); let faces=u(56); let edges=u(60); let coefficients=u(64);
-        if method>7 || faces>100000 || edges>100000 || coefficients>1000000 ||
+        if method>15 || faces>100000 || edges>100000 || coefficients>1000000 ||
             (method&4!=0)!=(count>0) || count>faces as usize {
             return Err("invalid plane domain budget/method");
         }
@@ -116,7 +126,8 @@ impl PlaneCertificate {
             cylinders.push(CylinderDomain {source_face,swap_uv:u(offset+4)==1,inside_out:u(offset+8)==1,
                 origin,basis,radius,step_v});
         }
-        Ok(Self { input,output,method,faces,edges,coefficients,basis,domain,cutter,clearance,cylinders,
+        let rectangles=source::decode(&bytes[base..],version,method,faces,edges,coefficients,&cylinders)?;
+        Ok(Self { version,rectangles,input,output,method,faces,edges,coefficients,basis,domain,cutter,clearance,cylinders,
             outcome:if u(12)==1 {NumericalOutcome::Empty} else {NumericalOutcome::NonEmpty} })
     }
     pub(crate) fn output(&self) -> WireHandle { self.output }

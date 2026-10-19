@@ -28,7 +28,9 @@ export class SmlibWorkerTransport {
       if (data.fatal) { this.#poison(new Error(data.fatal)); return; }
       const pending = this.#pending.get(data.id);
       if (!pending || !Array.isArray(data.frames) || data.frames.length !== pending.count ||
-          data.frames.some((frame) => !(frame instanceof ArrayBuffer) || frame.byteLength < 12 || frame.byteLength > 4096)) {
+          data.frames.some((frame, i) => !(frame instanceof ArrayBuffer) || frame.byteLength < 12 ||
+            frame.byteLength > pending.limits[i] ||
+            (frame.byteLength > 4096 && new DataView(frame).getInt32(8, true) !== 0))) {
         this.#poison(new Error('invalid worker response')); return;
       }
       clearTimeout(pending.timer);
@@ -68,10 +70,11 @@ export class SmlibWorkerTransport {
       return Promise.reject(new Error('invalid frame batch'));
     }
     if (this.#pending.size >= this.maxPending) return Promise.reject(Object.assign(new Error('pending batch limit exceeded'), { submitted: false }));
+    const limits = frames.map(frame => new DataView(frame).getUint32(8, true) === 20 ? 24532 : 4096);
     const id = ++this.#next;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => this.#poison(new Error('worker deadline exceeded')), this.timeout);
-      this.#pending.set(id, { resolve, reject, timer, count: frames.length });
+      this.#pending.set(id, { resolve, reject, timer, count: frames.length, limits });
       try { this.#worker.postMessage({ id, frames }, frames); }
       catch (error) { this.#poison(error); }
     });

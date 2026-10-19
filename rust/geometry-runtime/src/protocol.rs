@@ -7,7 +7,17 @@
 use ifc_lite_geometry::document::BooleanOperation;
 
 pub const VERSION: u32 = 1;
+/// Original request and legacy response frame bound, including the 12-byte header.
 pub const MAX_PAYLOAD_BYTES: usize = 4096;
+pub const MAX_REQUEST_BYTES: usize = MAX_PAYLOAD_BYTES;
+pub const MAX_LEGACY_RESPONSE_BYTES: usize = MAX_PAYLOAD_BYTES;
+/// 324 fixed + 16*136 cylinders + 16 extension + 16*1376 rectangles.
+pub const MAX_PLANE_RESPONSE_BYTES: usize = 24532;
+pub const MAX_PLANE_PAYLOAD_BYTES: usize = MAX_PLANE_RESPONSE_BYTES - 12;
+pub fn response_limit(command: &KernelCommand) -> usize {
+    if matches!(command, KernelCommand::ClipPlane { .. }) { MAX_PLANE_RESPONSE_BYTES }
+    else { MAX_LEGACY_RESPONSE_BYTES }
+}
 pub const MAX_MESH_CHUNK_SCALARS: u32 = 480;
 
 /// Kernel-side token. Execution clients must separately enforce worker affinity.
@@ -197,7 +207,7 @@ pub fn encode_request(request_id: u32, command: &KernelCommand) -> Result<Vec<u8
     };
     out.extend(opcode.to_le_bytes());
     encode_arguments(command, &mut out)?;
-    if out.len() > MAX_PAYLOAD_BYTES {
+    if out.len() > MAX_REQUEST_BYTES {
         return Err(ProtocolError::PayloadSize);
     }
     Ok(out)
@@ -317,7 +327,17 @@ fn write_solid(out: &mut Vec<u8>, session: u64, solid: WireHandle) {
 
 /// Validate response framing fields before any result bytes are trusted.
 pub fn decode_response(request_id: u32, bytes: &[u8]) -> Result<KernelResponse<'_>, ProtocolError> {
-    if !(12..=MAX_PAYLOAD_BYTES).contains(&bytes.len()) {
+    decode_bounded_response(request_id, bytes, MAX_LEGACY_RESPONSE_BYTES)
+}
+
+/// Only the authenticated command may select the larger opcode20 success bound.
+pub fn decode_command_response<'a>(request_id: u32, command: &KernelCommand, bytes: &'a [u8])
+    -> Result<KernelResponse<'a>, ProtocolError>
+{
+    decode_bounded_response(request_id, bytes, response_limit(command))
+}
+fn decode_bounded_response(request_id: u32, bytes: &[u8], limit: usize) -> Result<KernelResponse<'_>, ProtocolError> {
+    if !(12..=limit).contains(&bytes.len()) {
         return Err(ProtocolError::PayloadSize);
     }
     if bytes[..4] != VERSION.to_le_bytes() {
@@ -330,6 +350,7 @@ pub fn decode_response(request_id: u32, bytes: &[u8]) -> Result<KernelResponse<'
     if status == 0 {
         return Ok(KernelResponse::Success(&bytes[12..]));
     }
+    if bytes.len() > MAX_LEGACY_RESPONSE_BYTES { return Err(ProtocolError::PayloadSize); }
     let message = std::str::from_utf8(&bytes[12..]).map_err(|_| ProtocolError::InvalidUtf8)?;
     Ok(KernelResponse::Failure { status, message })
 }

@@ -7,6 +7,14 @@ use ifc_lite_geometry::document::{
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 
+// Register this static driver dependency with wasm-bindgen's local module copier.
+// The canonical package closure validator then checks and ships both snippets.
+#[wasm_bindgen(module = "/js/plane-certificate.mjs")]
+extern "C" {
+    #[wasm_bindgen(catch, js_name = validatePlane)]
+    pub(super) fn validate_plane_arguments(plane: &[f64], side: i32, mode: u32) -> Result<(), JsValue>;
+}
+
 #[wasm_bindgen(module = "/js/retained-driver.mjs")]
 extern "C" {
     #[wasm_bindgen(js_name = RetainedDriver)]

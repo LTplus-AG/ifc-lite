@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Protocol/lifetime fixtures only. These are not SDK numerical qualification.
 import test from 'node:test';
+import { sourceExtension } from './fixtures/plane-packets.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { SourceTextModule, SyntheticModule, createContext } from 'node:vm';
@@ -60,7 +61,9 @@ async function fixture() {
             [0,4,8].forEach(j => cert.setFloat64(base+40+8*j,1,true));
             cert.setFloat64(base+112,1,true); cert.setFloat64(base+128,1,true);
           }
-          if (this.corruptPlane) this.corruptPlane(bytes, cert);
+          if (this.sourceRecords) bytes = sourceExtension(bytes,this.sourceRecords);
+          if (this.corruptPlane) this.corruptPlane(bytes, new DataView(bytes.buffer));
+          if (this.planeLengthDelta) bytes = bytes.slice(0,bytes.length + this.planeLengthDelta);
         } else if (op === 18 && this.refuseAffine) {
           status = this.refuseAffine; bytes = new TextEncoder().encode("unsupported source class");
         } else if (op === 18) {
@@ -131,7 +134,12 @@ async function fixture() {
       return modules.get(specifier);
     },
   });
-  await driver.link(() => { throw new Error('unexpected static import'); });
+  await driver.link(async specifier => {
+    assert.equal(specifier, './plane-certificate.mjs');
+    const parser = new SourceTextModule(await readFile(new URL(specifier, import.meta.url), 'utf8'), { context });
+    await parser.link(() => { throw new Error('unexpected parser import'); });
+    return parser;
+  });
   await driver.evaluate();
   return { Driver: driver.namespace.RetainedDriver, peers, errors };
 }
@@ -411,4 +419,24 @@ test('plane lifetime fixture: pending release generations cannot alias newly acc
   };
   await assert.rejects(clip(driver, source), /aliases live input lease/);
   assert.equal(driver.live(), false);
+});
+
+test('v2 actual private parser seals captured bytes, and malformed extension retires before mesh work', async () => {
+  for (const malformed of [false,true]) {
+    const { Driver, peers } = await fixture(); const driver = new Driver(), source = await evaluate(driver), peer = peers[0];
+    peer.sourceRecords = 16;
+    if (malformed) peer.corruptPlane = (bytes,v) => v.setUint32(324,1,true);
+    const before = peer.commands.filter(c => c.op === 9).length;
+    if (malformed) {
+      await assert.rejects(clip(driver,source), /extension/);
+      assert.equal(peer.commands.filter(c => c.op === 9).length,before);
+      assert.equal(driver.objectLive(source.object),false);assert.equal(driver.live(),false);
+    } else {
+      const result = await clip(driver,source);
+      assert.equal(result.certificate.length,22344);assert.ok(Object.isFrozen(result.certificate));
+      driver.releaseObject(source.object);await flush();
+      await assert.rejects(clip(driver,source), /foreign/);
+      assert.equal(driver.objectLive(result.object),true);driver.retire();
+    }
+  }
 });

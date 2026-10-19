@@ -77,6 +77,7 @@ impl super::BrowserWorker {
         use wasm_bindgen::JsValue;
         let error=|e:RetainedRefusal|JsValue::from_str(&e.to_string());
         crate::plane::validate_plane(&plane).map_err(JsValue::from_str)?;
+        super::bridge::validate_plane_arguments(&plane,side.code(),mode.code())?;
         super::evaluation_limits(chord,angle,max_bytes).map_err(error)?;
         self.owner.validate().map_err(error)?;
         let source=source.input().map_err(error)?;

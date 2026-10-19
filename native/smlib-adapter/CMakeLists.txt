@@ -7,10 +7,12 @@ if(NODE_TRANSPORT_EXECUTABLE)
   add_test(NAME smlib_sweep_upload_transport COMMAND "${NODE_TRANSPORT_EXECUTABLE}" --test
     "${CMAKE_CURRENT_SOURCE_DIR}/browser/sweep-transport.test.mjs"
     "${CMAKE_CURRENT_SOURCE_DIR}/browser/client.test.mjs"
+    "${CMAKE_CURRENT_SOURCE_DIR}/browser/response-caps.test.mjs"
     "${CMAKE_CURRENT_SOURCE_DIR}/browser/region-recipes.test.mjs"
     "${CMAKE_CURRENT_SOURCE_DIR}/browser/mesh-witness.test.mjs")
   add_test(NAME retained_driver_protocol_lifetimes COMMAND "${NODE_TRANSPORT_EXECUTABLE}" --experimental-vm-modules --test
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../rust/geometry-runtime/js/retained-driver.test.mjs")
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../rust/geometry-runtime/js/retained-driver.test.mjs"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../rust/geometry-runtime/js/plane-certificate.test.mjs")
 endif()
 set(IFCLITE_SMLIB_REVISION c9c5979f04cea8c38213004d4f04df0dcfb40d05)
 if(NOT IS_DIRECTORY "${SMLIB_SOURCE}/source/SMLib/src")

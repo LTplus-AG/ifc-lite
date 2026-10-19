@@ -179,3 +179,20 @@ fn affine18_is_additive_and_preserves_input_matrix_bits_without_changing_rigid17
         }
     }
 }
+
+#[test]
+fn only_opcode20_success_can_exceed_legacy_response_bound() {
+    let solid=WireHandle { session:42,slot:1,generation:1 };
+    let clip=KernelCommand::ClipPlane {session:42,solid,plane:[0.,0.,0.,0.,0.,1.],side:1,mode:2};
+    let mut bytes=vec![0;MAX_PLANE_RESPONSE_BYTES];
+    bytes[..4].copy_from_slice(&VERSION.to_le_bytes());bytes[4..8].copy_from_slice(&7u32.to_le_bytes());
+    assert!(decode_command_response(7,&clip,&bytes).is_ok());
+    assert!(decode_response(7,&bytes).is_err());
+    assert!(decode_command_response(7,&KernelCommand::AbiVersion,&bytes).is_err());
+    bytes[8..12].copy_from_slice(&8i32.to_le_bytes());
+    assert!(decode_command_response(7,&clip,&bytes).is_err());
+    bytes[8..12].fill(0);bytes.push(0);
+    assert!(decode_command_response(7,&clip,&bytes).is_err());
+    assert_eq!(encode_request(7,&clip).unwrap().len(),92);
+    assert_eq!(MAX_REQUEST_BYTES,4096);
+}

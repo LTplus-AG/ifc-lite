@@ -3,7 +3,7 @@
 
 use crate::process_control::ProcessControl;
 use crate::protocol::{
-    self, KernelCommand, KernelResponse, WireHandle, MAX_PAYLOAD_BYTES, VERSION,
+    self, KernelCommand, KernelResponse, WireHandle, VERSION,
 };
 use ifc_lite_geometry::document::BooleanOperation;
 use std::ffi::OsStr;
@@ -319,12 +319,12 @@ impl SmlibWorker {
         let mut size = [0; 4];
         self.output.read_exact(&mut size)?;
         let size = u32::from_le_bytes(size) as usize;
-        if !(12..=MAX_PAYLOAD_BYTES).contains(&size) {
+        if !(12..=protocol::response_limit(command)).contains(&size) {
             return Err(WorkerError::Protocol("invalid response length"));
         }
         let mut body = vec![0; size];
         self.output.read_exact(&mut body)?;
-        match protocol::decode_response(self.sequence, &body)
+        match protocol::decode_command_response(self.sequence, command, &body)
             .map_err(|error| WorkerError::Protocol(error.as_str()))?
         {
             KernelResponse::Success(data) => Ok(data.to_vec()),

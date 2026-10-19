@@ -7,7 +7,7 @@ pub mod browser;
 mod retained_values;
 mod affine;
 mod plane;
-pub use plane::{PlaneCertificate, CylinderDomain, PlaneClipMode, PlaneSide};
+pub use plane::{PlaneCertificate, CylinderDomain, SourceRectangleDomain, SourceRectangleEdge, PlaneClipMode, PlaneSide};
 pub use affine::AffineCertificate;
 pub use retained_values::{RetainedLineage, NumericalOutcome};
 

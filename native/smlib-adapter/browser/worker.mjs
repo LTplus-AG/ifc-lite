@@ -10,7 +10,8 @@ self.onmessage = ({ data }) => {
     if (poisoned) return;
     try {
       if (!Number.isSafeInteger(data.id) || !Array.isArray(data.frames) ||
-          data.frames.length === 0 || data.frames.length > 256) throw new Error('invalid command batch');
+          data.frames.length === 0 || data.frames.length > 256 ||
+          data.frames.some(frame => !(frame instanceof ArrayBuffer) || frame.byteLength < 12 || frame.byteLength > 4096)) throw new Error('invalid command batch');
       const module = await ready;
       const frames = data.frames.map((frame) => dispatchOwned(module, frame));
       self.postMessage({ id: data.id, frames }, frames);

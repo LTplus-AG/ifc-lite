@@ -13,7 +13,8 @@ pub struct BrowserPlaneClipIdentity {
     pub side: PlaneSide,
     pub mode: PlaneClipMode,
     pub world_from_evaluation: [f64;16],
-    pub certificate: PlaneCertificate,
+    /// Shared immutable evidence, also retained by the numerical lineage.
+    pub certificate: Arc<PlaneCertificate>,
 }
 pub struct BrowserPlaneClip {
     owner: Arc<Owner>,
@@ -102,7 +103,7 @@ impl super::BrowserWorker {
         // by any public caller. Decoder also checks the echoed input and output.
         let input=crate::protocol::WireHandle::from_bytes(&js_sys::Uint8Array::new(&get("input")?).to_vec())
             .map_err(|_|JsValue::from_str("invalid captured plane input"))?;
-        let certificate=PlaneCertificate::decode(&bytes,input,plane,side,mode).map_err(JsValue::from_str)?;
+        let certificate=Arc::new(PlaneCertificate::decode(&bytes,input,plane,side,mode).map_err(JsValue::from_str)?);
         let mesh=super::bridge::mesh(&value)?;
         let outcome=super::bridge::outcome(&value,&mesh)?;
         if outcome!=certificate.outcome() { return Err(error(RetainedRefusal::Contract)); }
@@ -110,7 +111,7 @@ impl super::BrowserWorker {
         let result=BrowserPlaneClip {owner:self.owner.clone(),handle:handle.clone(),live:AtomicBool::new(true),object,
             operations,mesh,outcome,
             identity:BrowserPlaneClipIdentity {input:source.handle,output:handle,plane,side,mode,
-                world_from_evaluation:source.frame,certificate:certificate.clone()},
+                world_from_evaluation:source.frame,certificate:Arc::clone(&certificate)},
             lineage:Arc::new(RetainedLineage::PlaneClip {input:source.lineage,plane,side,mode,
                 world_from_evaluation:source.frame,certificate})};
         result.validate_live().map_err(error)?;

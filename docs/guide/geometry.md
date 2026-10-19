@@ -910,6 +910,10 @@ explicitly refused until the existing coincidence policy can be authenticated.
 Boxed or polygonally bounded halfspaces, unbounded Union and paired layer splits
 remain unsupported by this entry; a unary clip does not close those obligations.
 
+Low-level native and browser Rust clip identities expose their output-only
+certificate as `Arc<PlaneCertificate>`, shared with `RetainedLineage::PlaneClip`.
+The certificate stays immutable and supplies evidence, not execution authority.
+
 `traversal_plan()` exposes ordered column-major metre-domain mapping/product
 operations and an f64 `world_from_evaluation()` frame. That frame applies file-unit
 conversion once before the ordered mappings and product placement. It does not

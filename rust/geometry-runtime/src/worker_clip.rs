@@ -13,7 +13,8 @@ pub struct PlaneClipIdentity {
     pub side: PlaneSide,
     pub mode: PlaneClipMode,
     pub world_from_evaluation: [f64;16],
-    pub certificate: PlaneCertificate,
+    /// Shared immutable evidence, also retained by the numerical lineage.
+    pub certificate: Arc<PlaneCertificate>,
 }
 /// Immutable operation-derived value, never an authored completion or recipe.
 #[derive(Debug)]
@@ -76,7 +77,7 @@ impl SmlibWorker {
             }
             result => result?,
         };
-        let certificate=PlaneCertificate::decode(&bytes,wire,plane,side,mode).map_err(|e|self.poison(e))?;
+        let certificate=Arc::new(PlaneCertificate::decode(&bytes,wire,plane,side,mode).map_err(|e|self.poison(e))?);
         let solid=self.handle(certificate.output().to_bytes().to_vec())?;
         let lease=self.manage_object(solid)?;
         // The managed lease owns every later failure path. Typed refusal keeps
@@ -86,7 +87,7 @@ impl SmlibWorker {
         self.object_liveness(input)?;
         let result=RetainedPlaneClip { solid, owner:self.retained_owner(),live:self.object_liveness(solid)?,
             _lease:lease,mesh,operations,
-            identity:PlaneClipIdentity {input,output:solid,plane,side,mode,world_from_evaluation:frame,certificate:certificate.clone()},
+            identity:PlaneClipIdentity {input,output:solid,plane,side,mode,world_from_evaluation:frame,certificate:Arc::clone(&certificate)},
             lineage:Arc::new(RetainedLineage::PlaneClip {input:lineage,plane,side,mode,
                 world_from_evaluation:frame,certificate}) };
         result.validate_live()?;

@@ -26,20 +26,39 @@ the enclosing product's openings, layers, appearance or final output by itself.
 
 ## Current starting point
 
+Integration checkpoint: `4628a3c6f5` (2026-10-19). These observations supersede
+planning-time state; each receipt remains bound to its original source.
+
 - Common exact-side product/inner control, source ownership, late presentation,
   Boolean/opening control and canonical consumer integration exist in source.
-- Native and browser retained construction/dependency runtimes exist in source,
-  with sealed identities, object leases and cancellation. Actual qualification
-  remains incomplete; a real native SDK surface-count test has failed.
-- The current native common construction transaction is uncommitted and unrun.
-  Resource authority and alignment-prelude review corrections need assembled
-  review and execution. Mapped/Boolean/opening/browser product consumption and
-  final publication remain incomplete.
-- Imported geometry has Rust graph ownership and a generated synchronous target,
-  but its current generated artifact is stale. Canonical WASM types also require
-  regeneration after the source/API work settles.
-- Prior workspace failures have source triage, not a latest-tree passing verdict.
-  Packaging/protocol fixtures provide narrower evidence only.
+- Native SDK repairs are integrated. Qualified native source `3af451ceee` completed
+  all 254 build/link steps, four CTests and 21 actual SDK region witnesses, with
+  unchanged source. Evidence is under
+  `native/smlib-adapter/evidence/p0-native-f974d7c7`. This does not qualify Rust
+  product execution, browser execution or performance.
+- Imported Rust graph ownership and the synchronous compiled target are integrated
+  with reproducible provisioning. Seven authenticated pre-migration scene captures
+  and eight direct raw-bit cases compare exactly; the child root lane passed 229
+  IFCX tests without skips. Evidence and scope limits are under
+  `evidence/geometry-platform-imported-current`. Its immediate-parent committed
+  artifact is incompatible with its graph protocol; admitted regeneration of that
+  parent is still needed for immediate-parent attribution.
+- The full workspace at `edaefca319` executed and failed: 86 targets, including 82
+  stack-overflow aborts, four geometry assertions and three guard targets. Its clean,
+  unchanged-source receipt and hashed output are under
+  `evidence/geometry-platform-integrated-validation/workspace-eda-terminal`.
+  Compiled debug evidence identifies 34 KiB continuation values and at least
+  64–140 KiB execution frames. Lazy owned controller storage and behavioral
+  assertion corrections are committed at `4628a3c6f5`; reruns remain pending.
+- Common native retained construction exists; full mapped/Boolean/opening/layer
+  continuations, browser product transactions and final publication remain open.
+  Isolated P1 implementation is underway. It cannot qualify or ship the affected
+  default path before P0 is green.
+- The independent packaging PR is #7940. Its focused tests pass; full CI and
+  approving review are tracked separately. It does not represent platform release.
+- Canonical WASM declarations, final artifact regeneration, all-consumer runtime
+  validation, cross-platform determinism and end-to-end performance are still
+  required on the assembled release candidate.
 
 ## Release control and evidence
 

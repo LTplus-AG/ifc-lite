@@ -534,3 +534,54 @@ fn accept_cut_reads_before_and_after_about_one_point_on_an_open_far_host_4632() 
     assert!(run(rod_volume * (1.0 + 1e-6)), "a bound just above the rod's volume admits the cut");
     assert!(!run(rod_volume * (1.0 - 1e-3)), "a bound just below the rod's volume refuses it");
 }
+
+#[test]
+fn issue_6940_distinct_recess_depths_preserve_the_intervening_pier() {
+    // ISSUE_126 #73349: a long through cutter makes 1%-span coalescing
+    // swallow the two ends of a shallow opposite-face recess. Selecting it
+    // by the enlarged slab's midpoint fills the authored 50 mm solid pier.
+    let host = box_mesh([26.077, 0.0, 0.0], [26.307, 2.0, 2.143]);
+    let bounds = [
+        ([11.007, 0.4, 1.629], [26.387, 1.6, 2.143]),
+        ([24.027, 0.4, 1.543], [26.167, 1.6, 1.629]),
+        ([26.217, 0.4, 1.543], [26.307, 1.6, 1.629]),
+    ];
+    let cands: Vec<_> = bounds.into_iter().enumerate().map(|(idx, (lo, hi))| UnionCand {
+        idx, mesh: box_mesh(lo, hi), dir: Vector3::x(), lo, hi,
+    }).collect();
+    let router = GeometryRouter::new();
+    let (prisms, _, _, _) = router.build_coaxial_prisms(
+        &host, &cands, &[0, 1, 2], &Vector3::x(),
+    ).expect("bounded coaxial source prisms");
+    let inside = |mesh: &Mesh, x, z| super::super::geom::point_inside_mesh_agreed(
+        mesh, Point3::new(x, 1.0, z),
+    );
+    assert!(prisms.iter().all(|mesh| inside(mesh, 26.19, 1.58) == Some(false)),
+        "a recess must not grow across the intervening solid pier");
+    for (x, z) in [(26.12, 1.58), (26.25, 1.58), (26.19, 1.8)] {
+        assert!(prisms.iter().any(|mesh| inside(mesh, x, z) == Some(true)),
+            "the authored recesses and through cut must remain represented");
+    }
+}
+
+#[test]
+fn issue_6940_same_kernel_cell_depths_do_not_make_degenerate_slabs() {
+    // Real dental #167/#207: transforms leave two copies of one authored
+    // boundary 15 nm apart. The exact kernel cannot represent the sliver.
+    let host = box_mesh([0.0, 0.0, 0.0], [1.0, 1.0, 0.5]);
+    let cands: Vec<_> = [0.11299999803304672, 0.11300001293420792]
+        .into_iter().enumerate().map(|(idx, z)| {
+            let lo = [0.2, 0.2, z];
+            let hi = [0.8, 0.8, 0.3799999952316284];
+            UnionCand { idx, mesh: box_mesh(lo, hi), dir: Vector3::z(), lo, hi }
+        }).collect();
+    let (prisms, multi_slab, contributors, _) = GeometryRouter::new()
+        .build_coaxial_prisms(&host, &cands, &[0, 1], &Vector3::z())
+        .expect("same-cell source boundaries must yield a representable cutter");
+    assert!(!multi_slab, "numerical copies must not add an internal interface");
+    assert_eq!(contributors, vec![0, 1], "both authored cutters remain consumed");
+    assert_eq!(prisms.len(), 1, "identical footprints form one connected cutter");
+    assert!(mesh_is_closed_exact(&prisms[0]));
+    assert_eq!(super::super::geom::point_inside_mesh_agreed(
+        &prisms[0], Point3::new(0.5, 0.5, 0.2)), Some(true));
+}

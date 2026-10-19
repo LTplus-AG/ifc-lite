@@ -25,14 +25,14 @@ fn faces(tris: &[Tri]) -> Vec<Face> {
     let mut band = NearBand::default();
     band.observe_tris(tris);
     tris.iter()
-        .map(|t| Face::new(t, &band).expect("non-degenerate"))
+        .map(|t| Face::new(*t, &band).expect("non-degenerate"))
         .collect()
 }
 
 /// Would the weld of a vertex exactly on the faces `on` to `w`, on
 /// `tris[target]`'s plane, be refused against the host `tris`?
 fn refused(tris: &[Tri], w: &[f64; 3], target: usize, on: &[usize]) -> bool {
-    Guard::new(&faces(tris)).refuses(w, target, on).expect("normal guard work")
+    Guard::new(&faces(tris), tris).refuses(w, target, on).expect("normal guard work")
 }
 
 /// `g`: a wall in the plane `y = 0`. The vertex `v` is exactly on it.
@@ -139,8 +139,9 @@ fn one_guard_answers_each_question_on_its_own() {
     // ONE guard: the answer remembered for the last question must not stand
     // in for the next.
     let hinge: Tri = [[3.0, -G, 0.0], [3.0, -G, 1.0], V];
-    let f = faces(&[WALL, CROSSING, hinge]);
-    let mut guard = Guard::new(&f);
+    let host = [WALL, CROSSING, hinge];
+    let f = faces(&host);
+    let mut guard = Guard::new(&f, &host);
     assert!(guard.refuses(&OFF, 1, &[0]).expect("normal guard work"));
     assert!(!guard.refuses(&OFF, 1, &[0, 2]).expect("normal guard work"));
     assert!(guard.refuses(&OFF, 1, &[0]).expect("normal guard work"));
@@ -342,7 +343,7 @@ fn high_valence_joined_walk_expands_each_vertex_adjacency_once_7024() {
         // to establish that its surface is separate from this face.
         host.push([[3.0, 0.0, 0.0], [4.0, 0.0, 0.0], [3.0, 1.0, 0.0]]);
         let f = faces(&host);
-        let mut guard = Guard::new(&f);
+        let mut guard = Guard::new(&f, &host);
         for _ in 0..2 {
             assert!(!guard.joined(0, &[count]).expect("normal star work"));
             assert_eq!(guard.adjacency_entries, 3 * count,
@@ -367,7 +368,7 @@ fn incidence_large_left_stops_without_answer_or_cache_7024() {
         host.len() - 1
     }).collect();
     let f = faces(&host);
-    let mut guard = Guard::new(&f);
+    let mut guard = Guard::new(&f, &host);
     incidence_work::with_limit(1024, || {
         budget::begin();
         assert!(guard.joined(0, &left).is_err(), "actual many-plane work must exhaust");
@@ -383,8 +384,9 @@ fn incidence_large_left_stops_without_answer_or_cache_7024() {
 #[test]
 fn incidence_budget_abort_does_not_cache_a_refusal_7024() {
     use crate::kernel::budget::{self, incidence_work};
-    let f = faces(&[WALL, CROSSING]);
-    let mut guard = Guard::new(&f);
+    let host = [WALL, CROSSING];
+    let f = faces(&host);
+    let mut guard = Guard::new(&f, &host);
     incidence_work::with_limit(0, || {
         budget::begin();
         assert!(guard.refuses(&OFF, 1, &[0]).is_err());

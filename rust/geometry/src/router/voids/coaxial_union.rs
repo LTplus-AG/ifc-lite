@@ -274,7 +274,7 @@ impl GeometryRouter {
             {
                 if self.subtract_prisms(result, &prisms, multi_slab, max_removed, clipper) {
                     // Consume ONLY cutters that fed an emitted slab prism; one whose
-                    // band coalesced below `z_tol` spans no slab (removed nothing) and
+                    // band below the geometry epsilon spans no slab (removed nothing) and
                     // stays for the exact path rather than being silently dropped.
                     for &i in &contributors {
                         consumed[cands[members[i]].idx] = true;
@@ -310,15 +310,14 @@ impl GeometryRouter {
     /// too many distinct depths, or a re-extrude/watertight check fails.
     ///
     /// The third tuple element lists the `members`-relative indices that fed ≥ 1
-    /// emitted slab prism; a cutter whose band coalesced below `z_tol` spans no slab
+    /// emitted slab prism; a cutter below the geometry epsilon spans no slab
     /// and is absent, so the caller leaves it for the exact path (never dropped).
     ///
     /// The fourth tuple element is an UPPER BOUND on the volume this cut may remove
     /// from the host: Σ over contributing cutters of `footprint_area × depth`. Since
     /// the true removal is `union(cutters) ∩ host ≤ Σ (cutter ∩ host) ≤ Σ area·depth`,
-    /// a subtract that removes MORE than this bound (e.g. a `z_tol` depth-band that
-    /// bridged distinct bands and over-cut) is REJECTED by `subtract_prisms`, which
-    /// then defers the cluster to the exact 3D union.
+    /// A subtract removing more is rejected by `subtract_prisms`, which defers
+    /// the cluster to the exact 3D union.
     fn build_coaxial_prisms(
         &self,
         result: &Mesh,
@@ -332,21 +331,23 @@ impl GeometryRouter {
             fps.push(cutter_footprint(&cands[m].mesh, &u, &v, &d)?);
         }
 
-        // Total depth span + a tolerance for coalescing near-identical z-boundaries.
+        // Reject an invalid total depth span before constructing source slabs.
         let span_lo = fps.iter().map(|f| f.z_lo).fold(f64::INFINITY, f64::min);
         let span_hi = fps.iter().map(|f| f.z_hi).fold(f64::NEG_INFINITY, f64::max);
         if !span_lo.is_finite() || !span_hi.is_finite() || (span_hi - span_lo) <= NORMALIZE_EPSILON {
             return None;
         }
-        let z_tol = (span_hi - span_lo) * 0.01 + 1.0e-3; // 1% of span + 1 mm; the >=1mm floor is what makes the later slab-depth check defensive
 
-        // Depth breakpoints = every cutter's z_lo / z_hi, sorted and coalesced
-        // within z_tol. The intervals between consecutive breakpoints are the slabs.
+        // Preserve distinct source depths at the exact kernel's resolution.
+        // A model-span tolerance can swallow a real recess (#6940, ISSUE_126),
+        // while distinct f32 copies of one face can differ by nanometres (dental
+        // #167/#207). Those same-cell limits must not create a degenerate slab.
+        let depth_cell = |z: f64| (z / crate::kernel::mesh_bridge::SNAP_GRID).round();
         let mut breaks: Vec<f64> = fps.iter().flat_map(|f| [f.z_lo, f.z_hi]).collect();
         breaks.sort_by(f64::total_cmp);
         let mut coalesced: Vec<f64> = Vec::with_capacity(breaks.len());
         for b in breaks {
-            if coalesced.last().is_none_or(|&p| (b - p).abs() > z_tol) {
+            if coalesced.last().is_none_or(|&p| depth_cell(b) != depth_cell(p)) {
                 coalesced.push(b);
             }
         }
@@ -371,16 +372,15 @@ impl GeometryRouter {
         let mut contributed = vec![false; fps.len()];
         for w in coalesced.windows(2) {
             let (slab_lo, slab_hi) = (w[0], w[1]);
-            let slab_depth = slab_hi - slab_lo; // coalesced breakpoints already differ by > `z_tol`
+            let slab_depth = slab_hi - slab_lo; // distinct source breakpoints
             if slab_depth <= NORMALIZE_EPSILON {
                 continue;
             }
-            let mid = 0.5 * (slab_lo + slab_hi);
-            // Cutters that FULLY span this slab; record each as a contributor so only
-            // cutters this pass actually removed are consumed by the caller.
+            // Cutters must fully span this slab in the same kernel cells used
+            // above; record only cutters that actually contribute to a slab.
             let mut contours: Vec<Vec<Point2<f64>>> = Vec::new();
             for (i, f) in fps.iter().enumerate() {
-                if f.z_lo <= mid && f.z_hi >= mid {
+                if depth_cell(f.z_lo) <= depth_cell(slab_lo) && depth_cell(f.z_hi) >= depth_cell(slab_hi) {
                     contours.extend(f.contours.iter().cloned());
                     contributed[i] = true;
                 }
@@ -600,7 +600,7 @@ fn cutter_footprint(
         z_lo = z_lo.min(s);
         z_hi = z_hi.max(s);
     }
-    if !z_lo.is_finite() || !z_hi.is_finite() || (z_hi - z_lo) <= NORMALIZE_EPSILON { // no `z_tol` here; the caller applies it when coalescing breakpoints
+    if !z_lo.is_finite() || !z_hi.is_finite() || (z_hi - z_lo) <= NORMALIZE_EPSILON { // distinct limits remain available to the slab builder
         return None;
     }
     for t in mesh.indices.chunks_exact(3) {
@@ -647,7 +647,7 @@ fn cutter_footprint(
         .sum();
     let area = 0.5 * cap_area_sum;
     let depth = z_hi - z_lo;
-    if area <= NORMALIZE_EPSILON || depth <= NORMALIZE_EPSILON { // `z_tol` bounds depth only; area guard stays separate
+    if area <= NORMALIZE_EPSILON || depth <= NORMALIZE_EPSILON { // depth and area guards stay separate
         return None;
     }
     // PRISM RECONCILIATION: a true prism along `d` satisfies `area × depth ==

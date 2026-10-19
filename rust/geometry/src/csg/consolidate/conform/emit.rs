@@ -60,6 +60,12 @@ pub(in crate::csg::consolidate) fn emit_plans(
             // the CDT it saves. The quality CDT with Ruppert refinement dominates a
             // consolidate, and re-running it on untouched regions is what made the
             // second emit a +61% geometry regression on ISSUE_129.
+            if !conformed {
+                if let Some((pts, idx)) = &region.cached {
+                    emit_region(&mut output, basis, pts, idx);
+                    continue;
+                }
+            }
             if conformed && !region.changed {
                 match &region.cached {
                     Some((pts, idx)) => {

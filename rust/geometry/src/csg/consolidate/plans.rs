@@ -5,11 +5,10 @@
 //! Build ordered plane plans and retain certified cells as seam sources.
 use super::{
     buckets::{BucketKey, Buckets},
-    conform::{PlanBucket, PlanRegion},
+    conform::PlanBucket,
     supported_cells,
 };
-use crate::{mesh::Mesh, triangulation::project_to_2d_with_basis};
-use i_overlay::{core::{fill_rule::FillRule, overlay_rule::OverlayRule}, float::single::SingleFloatOverlay};
+use crate::mesh::Mesh;
 use nalgebra::Vector3;
 use rustc_hash::FxHashSet;
 use std::collections::HashSet;
@@ -55,6 +54,12 @@ pub(super) fn build(
         }
         crate::progress::tick();
         let bid = bid as u32;
+        if !supported.buckets.contains(bucket_key) {
+            let mut next_bid = bid;
+            super::plan::append_baseline_plan(tris, merged_bucket_keys.contains(bucket_key),
+                &mut next_bid, length_unit_scale, &mut plans);
+            continue;
+        }
         // Use the FIRST triangle's normal/anchor for a stable 2D basis;
         // all tris in this bucket share the plane by construction. EXCEPT
         // (#3914): a bucket the merge pass above just folded a straddling
@@ -94,68 +99,17 @@ pub(super) fn build(
             raw: Vec::new(),
             raw_conformed: None,
             regions: Vec::new(),
+            retry: None,
         };
 
-        // Project each triangle to 2D and build i_overlay paths.
-        if supported.buckets.contains(bucket_key) {
-            supported_bids.insert(bid);
-            // Retained needles remain as ghost seam sources. The ordinary
-            // emitter drops them; one retained copy is appended afterward.
-            for t in tris {
-                if supported.cells.contains(&supported_cells::cell_key(&t.v)) {
-                    supported_cells::append(&mut retained_cells, &t.v, &normal);
-                }
-                plan.raw.push(t.v);
+        supported_bids.insert(bid);
+        // Keep main's certified cells as ghost seam sources and append one exact copy.
+        for t in tris {
+            if supported.cells.contains(&supported_cells::cell_key(&t.v)) {
+                supported_cells::append(&mut retained_cells, &t.v, &normal);
             }
-            plans.push(plan);
-            continue;
+            plan.raw.push(t.v);
         }
-        if tris.len() == 1 {
-            // Single triangle — skip the union round-trip entirely. Its three
-            // corners are hard corners by definition, so they are valid
-            // insertion sources for the buckets that abut them (recorded
-            // lazily, in `build_seam_map`).
-            plan.raw.push(tris[0].v);
-            plans.push(plan);
-            continue;
-        }
-        let mut subject: Vec<Vec<[f64; 2]>> = Vec::with_capacity(1);
-        let mut clip: Vec<Vec<[f64; 2]>> = Vec::with_capacity(tris.len() - 1);
-        // The plane's total area, for `ring_is_noise`'s share test.
-        let mut plane_area = 0.0_f64;
-        for (idx, tri) in tris.iter().enumerate() {
-            let pts_2d = project_to_2d_with_basis(&tri.v, &u_axis, &v_axis, &origin);
-            // Force CCW for i_overlay's NonZero fill — kernel output
-            // fragments can carry inconsistent winding, and mixed-winding
-            // subject + clip cancel out instead of unioning.
-            let signed_area = (pts_2d[1].x - pts_2d[0].x)
-                * (pts_2d[2].y - pts_2d[0].y)
-                - (pts_2d[2].x - pts_2d[0].x)
-                    * (pts_2d[1].y - pts_2d[0].y);
-            plane_area += 0.5 * signed_area.abs();
-            let path: Vec<[f64; 2]> = if signed_area >= 0.0 {
-                pts_2d.iter().map(|p| [p.x, p.y]).collect()
-            } else {
-                pts_2d.iter().rev().map(|p| [p.x, p.y]).collect()
-            };
-            if idx == 0 {
-                subject.push(path);
-            } else {
-                clip.push(path);
-            }
-        }
-
-        let shapes = subject.overlay(&clip, OverlayRule::Union, FillRule::NonZero);
-        if shapes.is_empty() {
-            // Union collapsed everything — emit originals to avoid loss.
-            for t in tris {
-                plan.raw.push(t.v);
-            }
-            plans.push(plan);
-            continue;
-        }
-
-        plan.regions = PlanRegion::from_shapes(&shapes, plane_area, length_unit_scale);
         plans.push(plan);
     }
     Planned { plans, supported_bids, retained_cells }

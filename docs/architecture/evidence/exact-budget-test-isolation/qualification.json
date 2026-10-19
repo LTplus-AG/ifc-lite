@@ -1,0 +1,23 @@
+{
+  "source": "6c7edd4d4cd7a0a5b1e60a5dc52809bbbca53da2",
+  "job": "52782339-371a-4004-8487-9c8cce9ff312",
+  "sourceUnchanged": true,
+  "exitCode": 0,
+  "passed": 5662,
+  "failed": 0,
+  "ignored": 47,
+  "target_summaries": 368,
+  "clippy": "cargo clippy --workspace --all-targets -- -D warnings passed",
+  "output_sha256": "e926781ec972f1a941c690d4084a89edc8fcb6b2d2bec9405fb90687b083086d",
+  "scope": "Rust workspace and strict Clippy; ignored coverage, actual WASM/browser/PyO3/performance not claimed",
+  "verdict": "test-only cap isolation; production numerical functions/defaults unchanged after cfg(test) removal",
+  "commands": [
+    "pnpm install --frozen-lockfile --prefer-offline",
+    "pnpm fixtures",
+    "cargo test --workspace --no-fail-fast",
+    "cargo clippy --workspace --all-targets -- -D warnings"
+  ],
+  "host": "pc-wsl x86_64",
+  "receipt_manifest": "pc-wsl-52782339-371a-4004-8487-9c8cce9ff312-7c11464bc612",
+  "qualification_scope": "Source6c7; later evidence-only commit does not change any source hash. Full original request, receipt and output are preserved in the private SHA256 worker evidence vault and parent integration archive."
+}

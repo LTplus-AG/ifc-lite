@@ -933,6 +933,34 @@ jobs:
           # RED. Once the script is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/viewer-test-shards.mjs | grep -Fxq 'scripts/viewer-test-shards.mjs'; then
             oracle_args+=(--mutation tests/evidence/ci-viewer-test-shards/selection.oracle.patch)
+          # #7633: the new facet_weld component/eligibility/fit modules carry
+          # the changed tests, so a whole-change revert cannot compile them
+          # (INCONCLUSIVE). Keep the modules and disable ONLY the edge-connected
+          # split: every admitted cluster again shares one fit, so remote patches
+          # lose their source corners and the remote-patch tests turn RED. Once
+          # components.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/facet_weld/components.rs | grep -Fxq 'rust/geometry/src/facet_weld/components.rs'; then
+            oracle_args+=(--mutation tests/evidence/issue-7633/connected-patches.oracle.patch)
+          # #7638 (#7633): the new consolidate plan/recovery modules carry the
+          # changed plan/closure tests, so a whole-change revert cannot compile
+          # them (INCONCLUSIVE). Keep the modules, the retry plumbing and the
+          # closure certificate, and break ONLY the projected-gap proof:
+          # separated_groups never certifies independent groups, so no bucket
+          # regroups onto its own source plane and the prior single-plane union
+          # stays. The partition/noise and remote-prism plan tests turn RED. Once
+          # plan/disjoint.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/csg/consolidate/plan/disjoint.rs | grep -Fxq 'rust/geometry/src/csg/consolidate/plan/disjoint.rs'; then
+            oracle_args+=(--mutation tests/evidence/issue-7633/disjoint-plane.oracle.patch)
+          # #7635: the new finite-incidence and exit-cap-local modules carry the
+          # changed tests, so a whole-change revert cannot compile them
+          # (INCONCLUSIVE). Keep both modules and disable ONLY the new behaviour:
+          # the opening weld drops its finite arris refusal, every coplanar host
+          # facet counts as local jamb contact, and coaxial depths coalesce again
+          # within 1% of span. The closed-edge production refusal, remote-floor
+          # recess, crossing-contact and intervening-pier tests turn RED. Once
+          # finite.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/kernel/plane_weld/finite.rs | grep -Fxq 'rust/geometry/src/kernel/plane_weld/finite.rs'; then
+            oracle_args+=(--mutation tests/evidence/issue-7635/finite-incidence.oracle.patch)
           # #7673: the new large-stack geometry pool module carries its own
           # tests, so a whole-file revert deletes them (INCONCLUSIVE). Keep the
           # module and remove ONLY the large worker stack: the deep par_iter

@@ -1,0 +1,13 @@
+diff --git b/rust/geometry/src/csg/consolidate/plan/disjoint.rs a/rust/geometry/src/csg/consolidate/plan/disjoint.rs
+index a699fe2bbf..9ed2fe5e33 100644
+--- b/rust/geometry/src/csg/consolidate/plan/disjoint.rs
++++ a/rust/geometry/src/csg/consolidate/plan/disjoint.rs
+@@ -57,7 +57,7 @@ pub(super) fn separated_groups(
+             }
+             groups.last_mut().expect("a group was started").push(i);
+         }
+-        if groups.len() > paths.len() {
++        if groups.len() > 1 {
+             for group in &mut groups {
+                 group.sort_unstable();
+             }

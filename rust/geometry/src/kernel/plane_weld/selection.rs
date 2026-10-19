@@ -17,7 +17,7 @@ use std::collections::HashSet;
 pub(super) struct Face {
     pub(super) t: Tri,
     n: [f64; 3],
-    nn: f64,
+    pub(super) nn: f64,
     pub(super) band2: f64,
 }
 
@@ -42,10 +42,14 @@ impl Face {
         })
     }
 
-    fn distance(&self, point: [f64; 3]) -> (f64, f64) {
-        let d = (point[0] - self.t[0][0]) * self.n[0]
+    pub(super) fn raw_offset(&self, point: &[f64; 3]) -> f64 {
+         (point[0] - self.t[0][0]) * self.n[0]
             + (point[1] - self.t[0][1]) * self.n[1]
-            + (point[2] - self.t[0][2]) * self.n[2];
+            + (point[2] - self.t[0][2]) * self.n[2]
+    }
+
+    fn distance(&self, point: [f64; 3]) -> (f64, f64) {
+        let d = self.raw_offset(&point);
         (d * d / self.nn, d)
     }
 

@@ -1,0 +1,23 @@
+{
+  "source": "a338ee79880c560ee1693db91ca68dbc58bc4f49",
+  "job": "501b9566-c29c-48de-ac87-b0c91332d6ee",
+  "host": "pc-wsl",
+  "state": "completed",
+  "exitCode": 0,
+  "sourceUnchanged": true,
+  "output_sha256": "0501588c0751c261ce1d723dc93ebdc0b6e3f9e5b34bf78089c0525572679403",
+  "target_summaries": 391,
+  "tests": {
+    "passed": 6385,
+    "failed": 0,
+    "ignored": 47
+  },
+  "strict_all_target_clippy": "PASS",
+  "known_regression_witnesses": {
+    "reply_storage_teardown": "PASS",
+    "exact_and_retained_42_node_spine_admission": "PASS"
+  },
+  "actual_sdk_numerics": "NOT ESTABLISHED by this run; explicit worker consumer qualification required",
+  "subsequent_source": "0468365905 integrates new retained openings after this run; NOT covered",
+  "ignored_tests": "47 ignored remain coverage inventory, not passing evidence"
+}

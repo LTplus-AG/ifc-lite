@@ -129,6 +129,17 @@ impl GeometryProgram {
         self.pending = Some((request, false));
         Ok(Some(request))
     }
+    pub(super) fn validate_execution_inputs(&self, router: &GeometryRouter,
+        decoder: &EntityDecoder<'_>) -> std::result::Result<(), ProgramError> {
+        if self.expected_decoder.is_some_and(|owner| owner != decoder.execution_identity()) {
+            return Err(ProgramError::WrongOwner);
+        }
+        if !self.selected_matches(router) { return Err(ProgramError::WrongEmitter); }
+        if self.expected_router.is_some_and(|owner| owner != router.execution_identity()) {
+            return Err(ProgramError::WrongOwner);
+        }
+        Ok(())
+    }
     pub(crate) fn execute(&mut self, request: ProgramRequest, router: &GeometryRouter,
         decoder: &mut EntityDecoder<'_>) -> std::result::Result<ProgramReply, ProgramError> {
         self.execute_with_textures(request,router,decoder,None)
@@ -142,9 +153,7 @@ impl GeometryProgram {
         textures:Option<&rustc_hash::FxHashMap<u32,crate::ResolvedTextureMap>>,void_index:Option<&rustc_hash::FxHashMap<u32,Vec<u32>>>)
         ->std::result::Result<ProgramReply,ProgramError> {
         self.before_execute(request)?;
-        if self.expected_decoder.is_some_and(|owner|owner!=decoder.execution_identity()){return Err(ProgramError::WrongOwner)}
-        if !self.selected_matches(router){return Err(ProgramError::WrongEmitter)}
-        if self.expected_router.is_some_and(|owner|owner!=router.execution_identity()) {return Err(ProgramError::WrongOwner)}
+        self.validate_execution_inputs(router, decoder)?;
         if request.stage==ProgramStage::Numerical {
             self.expected_router = Some(router.execution_identity());
             self.expected_decoder=Some(decoder.execution_identity());

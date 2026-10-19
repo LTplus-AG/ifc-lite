@@ -130,10 +130,7 @@ impl GeometryProgram {
         if self.retained.is_none() { return Err(ProgramError::UnsupportedRetained) }
         if request.stage() == ProgramStage::Numerical {
             self.before_execute(request)?;
-            if self.expected_router.is_some_and(|owner| owner != router.execution_identity())
-                || self.expected_decoder.is_some_and(|owner| owner != decoder.execution_identity()) {
-                return Err(ProgramError::WrongOwner);
-            }
+            self.validate_execution_inputs(router, decoder)?;
             self.take_ready(request)?.admit_retained()
         } else {
             self.execute_with_inputs(request, router, decoder, textures, voids).map(|reply| (reply, None))

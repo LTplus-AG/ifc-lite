@@ -118,6 +118,30 @@ fn common_retained_foreign_admission_reply_is_returned_intact() {
     assert!(first.request().unwrap().is_some());
 }
 
+#[test]
+fn retained_numerical_rejects_foreign_execution_owners_without_consuming_recipe() {
+    let mut decoder = EntityDecoder::new(SOURCE);
+    let mut foreign_decoder = EntityDecoder::new(SOURCE);
+    let router = GeometryRouter::new();
+    let foreign_router = GeometryRouter::new();
+    let mut program = program(&mut decoder);
+    let mut operations = 0;
+    while let Some(request) = program.request().unwrap() {
+        if request.stage() == ProgramStage::Numerical {
+            assert_eq!(program.admit_retained_with_inputs(request, &router,
+                &mut foreign_decoder, None, None).err(), Some(ProgramError::WrongOwner));
+            assert_eq!(program.admit_retained_with_inputs(request, &foreign_router,
+                &mut decoder, None, None).err(), Some(ProgramError::WrongOwner));
+        }
+        let (reply, operation) = program.admit_retained_with_inputs(request, &router,
+            &mut decoder, None, None).unwrap();
+        operations += usize::from(operation.is_some());
+        program.accept(reply, &router).unwrap();
+    }
+    assert_eq!(operations, 2);
+    assert_eq!(program.finish_retained().unwrap().values.len(), 2);
+}
+
 struct CountedAlignment {
     lower: std::rc::Rc<std::cell::Cell<usize>>,
     process: std::rc::Rc<std::cell::Cell<usize>>,

@@ -1,0 +1,19 @@
+{
+  "source": "55f3d3aa28507058dca262455c78c5cd8eca12e8",
+  "job": "06772e38-04f8-48ab-ade4-d74a18c7f7b6",
+  "request": "auto-e08724fed81d41dc994f6ecf9e1e181d",
+  "exit": 101,
+  "sourceUnchanged": true,
+  "outputSha256": "4c4c4f7e866ab0eef602356a865b207840ee84cf93b5dbc5e027d3cd8231da7a",
+  "fixtures": {
+    "fetched": 182,
+    "skipped": 0,
+    "errors": 0
+  },
+  "tests": "NOT RUN: compilation failed",
+  "errors": [
+    "E0616 inner_ready.rs expected_router",
+    "E0616 inner_ready.rs expected_decoder"
+  ],
+  "correction": "Private shared validate_execution_inputs method; original owner checks preserved, retained numerical admission now also checks selected emitter. Behavioral foreign-owner/intact-recipe regression added; rerun pending."
+}

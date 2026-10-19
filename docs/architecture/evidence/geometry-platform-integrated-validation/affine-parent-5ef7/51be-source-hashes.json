@@ -1,0 +1,141 @@
+{
+  "reviewed_commit": "51be982755442ed8e5889430adf7292dfbd92f5c",
+  "base_commit": "e98406f5dffe4591e41b80d8fc841e29a1b056ab",
+  "scope": "19 exact Git objects; no execution qualification; later 6cb45f3aed and working changes excluded",
+  "sdk_pin": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "files": [
+    {
+      "path": "native/smlib-adapter/AFFINE_CONTRACT.md",
+      "sha256": "7685f075e1d98d4941437988f80aab53f696a370e1f05dd73a2400b9220646f9",
+      "git_blob": "fa8657839c10faf5f222afd6a2f6755f48867fcb"
+    },
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "sha256": "3935dcb2a7469194cef40e6b7b3f9c2944a74eb50301bc734befc927aafc1a24",
+      "git_blob": "325df68eb027e5ac0b7455079d70aa2ff1152731"
+    },
+    {
+      "path": "native/smlib-adapter/README.md",
+      "sha256": "64493b10ca0fd3f6f7f40e273371edc865271dfcb8a1656b9b10c3bc3ee87b59",
+      "git_blob": "377460a6fa73f1a84826aa65190f12f5d42e249d"
+    },
+    {
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "sha256": "7631691acd4e85d3458a56bce95d04fd3ef8c9421452023e44c892a8792cb00e",
+      "git_blob": "44ccbab462868167dac41abbfb8f25a3e1303ecb"
+    },
+    {
+      "path": "native/smlib-adapter/src/adapter.cpp",
+      "sha256": "1cbb7f618cedb301ac7a9c02a173a2e0298d8849684d3f12d2c1218ed192b1cf",
+      "git_blob": "debbe668564235e7ae5ca14adeec7a154fffbc76"
+    },
+    {
+      "path": "native/smlib-adapter/src/affine.cpp",
+      "sha256": "b3f75e312466e875edd3c15ebf73e8f1bf803947303ec858925284f3adf3f8f8",
+      "git_blob": "9c543b8847135eb2ab97371d644310d632ea5a21"
+    },
+    {
+      "path": "native/smlib-adapter/src/affine.hpp",
+      "sha256": "51c3008cd684d5e8342077fd603de358bf8fa1611f97095a0740117c21e3bffa",
+      "git_blob": "44620dd1c7b826f1eeb089a2ac5402edcbead9ce"
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "sha256": "280436a06817f2456846961334c576bb434f2dc5283401ccc58764c404def581",
+      "git_blob": "2acc3afc01cc5a623b8c4fe6ffef5acb0662959b"
+    },
+    {
+      "path": "native/smlib-adapter/tests/adapter_tests.cpp",
+      "sha256": "2c5bf02397ee990f56c46f088343b81bc29682b221c4a1dfd5300e2e293d77fc",
+      "git_blob": "efd83fd9db6464113fb48dc7b0e228f50463a129"
+    },
+    {
+      "path": "native/smlib-adapter/tests/affine_tests.cpp",
+      "sha256": "6aa244ef2a999a85a79ef64ceae4dd8afcc7709fbbeb42c698489f001e795707",
+      "git_blob": "444920c2905dd367da93f1ea8c7e81fb01c2f9c6"
+    },
+    {
+      "path": "rust/geometry-runtime/js/retained-driver.mjs",
+      "sha256": "694c33d597caea85c9973a9cbb4518028de7132e4b9403b4129b1ac921d42821",
+      "git_blob": "13430281795ec42518dc1acb0c7d3490dec942d9"
+    },
+    {
+      "path": "rust/geometry-runtime/src/affine.rs",
+      "sha256": "fa5532798bd4d61f0edafea90c488e5976663840a6a109254eb395ef4db064ae",
+      "git_blob": "ed01ab433f4886a5d62350676f866751587122da"
+    },
+    {
+      "path": "rust/geometry-runtime/src/browser.rs",
+      "sha256": "533bb2acbcd131b43965b903821729ef295e85b7bffc3bd54b91c2e961d66831",
+      "git_blob": "37ca16e4eb5f908b9df289962d850eab5f29600b"
+    },
+    {
+      "path": "rust/geometry-runtime/src/browser_affine.rs",
+      "sha256": "20b6b2aa268f5cfad9e5808c7bdef7b2858d96e4c8d46f858d2dbd4c19092351",
+      "git_blob": "3ae6536c4308ea89ebdd74a6d99021f0c283da42"
+    },
+    {
+      "path": "rust/geometry-runtime/src/browser_bridge.rs",
+      "sha256": "388ac01c4675027e84c95ca38d1041bb3995320ffe19d18aba309a9ead6b8d5b",
+      "git_blob": "d7ffaf30e5983672f4006c6b54069764ee3dd953"
+    },
+    {
+      "path": "rust/geometry-runtime/src/lib.rs",
+      "sha256": "fffac044ef04c223b66c8fdf8d49935bfb226a800bef7ea4cba877e05afb7d1b",
+      "git_blob": "e7d5126bbcc09fe7c5626d1c7c36b4b2d27064ee"
+    },
+    {
+      "path": "rust/geometry-runtime/src/protocol.rs",
+      "sha256": "522f3bd76f2647d158704ba3eadb288dd1f29d8892ea66573223a64ab2d1612f",
+      "git_blob": "a38a732781499e99eb2ecb89fe1ee939dfbb816b"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker.rs",
+      "sha256": "cf244a0980aa6edac4d5dfb16894d79bf1692399be7682d1f366b354227c3336",
+      "git_blob": "8629b98be40e5b621115f1edb2c2e07c4cd1c3b3"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_affine.rs",
+      "sha256": "b6329aa0239f290ac09907df8ca655e0aba3fab7e23cda60efe399334b500d13",
+      "git_blob": "90507d66e567016d52c0bd7c46366e6c8147de7e"
+    }
+  ],
+  "sdk_files": [
+    {
+      "path": "source/SM_API/src/SmApiQueries.cpp",
+      "sha256": "d6d3c79094a0e14af95233a0af1e038559b6433864979b95b23f4a060db2305a"
+    },
+    {
+      "path": "source/SMLib/src/SmBrep.cpp",
+      "sha256": "5d44d6ac347fa42e4e83fead8bbde82ce46c5ff48e0a973b5c7cddc778a2fca1"
+    },
+    {
+      "path": "source/SMLib/inc/SmMessages.h",
+      "sha256": "f5ff614fa94e265abe73b2f3a6a195f84bd499b39ab06381f673498542896b0c"
+    },
+    {
+      "path": "source/SMLib/inc/SmBrep.h",
+      "sha256": "7826cddbc8816cb51bba8349f5fedee42070ab63c0a33018c1875134c0d9ab73"
+    },
+    {
+      "path": "source/SMLib/src/SmAxis2Placement.cpp",
+      "sha256": "56fb9937cdac6a241662b21cd1e4fd9cebd119a34826f48493f945c7f5c0cef4"
+    },
+    {
+      "path": "source/SMLib/src/SmMatrix.cpp",
+      "sha256": "56ddef008b910b033c2c49596b04fcf82ac49b3359575d747366caf5b1cd9118"
+    },
+    {
+      "path": "source/SMLib/src/SmBSplineCurve.cpp",
+      "sha256": "93c905a12c4124f6761f63ca9dbe2e2ffe400eb32b493c3d514be42de2c41138"
+    },
+    {
+      "path": "source/SMLib/src/SmBSplineSurface.cpp",
+      "sha256": "f99a3b406641889e17d117e7d76ef45e24a5ec3b291adbca963f9b773057598a"
+    },
+    {
+      "path": "source/SMLib/src/SmNurbsCrv.cpp",
+      "sha256": "cdab92fa3f9565bb17c9703d1846a9625565f8177c0285f41e4b0653b2e229f7"
+    }
+  ]
+}

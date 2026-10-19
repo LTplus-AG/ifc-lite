@@ -1,0 +1,199 @@
+{
+  "reviewed_commit": "994d4dd7a399136f153cf6c5e0ea549e592b9c25",
+  "base_commit": "e98406f5dffe4591e41b80d8fc841e29a1b056ab",
+  "sdk_pin": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "files": [
+    {
+      "path": "native/smlib-adapter/AFFINE_CONTRACT.md",
+      "sha256": "7d355aef75b7f126d710c356d114c026ab9a11e6e602992b4476a40d4edac1d6",
+      "git_blob": "c511bb52ab803180698b498402f25d93362a8b94"
+    },
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "sha256": "87959107e97ba6739003062660fd3dfd18c4c51144205f947affe0a5b19b1386",
+      "git_blob": "59cf557a2aeef6ca1a132c3ad4f2864f7fc7903a"
+    },
+    {
+      "path": "native/smlib-adapter/README.md",
+      "sha256": "64493b10ca0fd3f6f7f40e273371edc865271dfcb8a1656b9b10c3bc3ee87b59",
+      "git_blob": "377460a6fa73f1a84826aa65190f12f5d42e249d"
+    },
+    {
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "sha256": "ac319c2a952832fbf72357b5384f7464c41e240dfce43f2af037722cdeec4e7f",
+      "git_blob": "1fdd637bddffce0c544d269e7fcb86ecb72242aa"
+    },
+    {
+      "path": "native/smlib-adapter/src/adapter.cpp",
+      "sha256": "6fa1b025b63ac3125bdb50613fd9a6e000a7c9cbb453c7f0c249af06947163e1",
+      "git_blob": "6257edd54a6521cbe5fe0988381c5c471b135b40"
+    },
+    {
+      "path": "native/smlib-adapter/src/affine.cpp",
+      "sha256": "1bf9a343669059aec03146d3cc6f3c57436d5320359defbf7025d7e5e27b1a0e",
+      "git_blob": "bf0f17912ecaa33e1163a47c730126e058df9d5c"
+    },
+    {
+      "path": "native/smlib-adapter/src/affine.hpp",
+      "sha256": "51c3008cd684d5e8342077fd603de358bf8fa1611f97095a0740117c21e3bffa",
+      "git_blob": "44620dd1c7b826f1eeb089a2ac5402edcbead9ce"
+    },
+    {
+      "path": "native/smlib-adapter/src/copy.cpp",
+      "sha256": "f43c4b90d2ac8fc88bf783d004ff492a308cb6c9561c1a466e1d57d82593a940",
+      "git_blob": "6a26f8858da04bcb57c114d1fa35572b143b6b92"
+    },
+    {
+      "path": "native/smlib-adapter/src/copy.hpp",
+      "sha256": "54aef2dc2ab5fe3b4e590b0f38a54b7d8a2c6f5b46795ac07f92d85ad6c1bbe8",
+      "git_blob": "87fbd6c02bf6030d0f946296b091557c47fd6331"
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "sha256": "280436a06817f2456846961334c576bb434f2dc5283401ccc58764c404def581",
+      "git_blob": "2acc3afc01cc5a623b8c4fe6ffef5acb0662959b"
+    },
+    {
+      "path": "native/smlib-adapter/tests/adapter_tests.cpp",
+      "sha256": "a5bcc68baa5543fdaf9912c8f0573d6a63ada4f9b17cde7b65897e57de6da9f8",
+      "git_blob": "eeddc36f5f0f208eebf36b1905eeab797933e20b"
+    },
+    {
+      "path": "native/smlib-adapter/tests/affine_tests.cpp",
+      "sha256": "1d69b15a733812f0bfae343e558082c4cf6a40ab086bc719c861f8a2303bb6d9",
+      "git_blob": "c61a6258b71228c3a389b8e62bac7e6124ad2aa8"
+    },
+    {
+      "path": "native/smlib-adapter/tests/copy_failure_tests.cpp",
+      "sha256": "d355f9b82d53c84451ce1d7ecdd3e393976e7daa2fe2b7e840a07cbb1d38d065",
+      "git_blob": "5a4bde0bd2cb4c62ade3c715b550fcc6e5c80d5d"
+    },
+    {
+      "path": "native/smlib-adapter/tests/worker_tests.py",
+      "sha256": "1a7fe7be13c6073352673767f2eee3c0df9875d4ed2e6e1e033fce06ac26d946",
+      "git_blob": "b69debbd57c1a7962dfaa1f3a2c1a5751106a65a"
+    },
+    {
+      "path": "rust/geometry-runtime/js/retained-driver.mjs",
+      "sha256": "5270d32836579294eef911a9d6bbb8c7ddadb571e6ea7223264d7d70f6faf8ad",
+      "git_blob": "5211c5441ff58582abdda03e3b853e1d8727e71e"
+    },
+    {
+      "path": "rust/geometry-runtime/js/retained-driver.test.mjs",
+      "sha256": "7a2571f0514fd9c9170bf39b920a387e735f24d5cb8bbce40aff5cdd0a65ccf9",
+      "git_blob": "19050303adec8b934de40811afc7749b5c3d385a"
+    },
+    {
+      "path": "rust/geometry-runtime/src/affine.rs",
+      "sha256": "fa5532798bd4d61f0edafea90c488e5976663840a6a109254eb395ef4db064ae",
+      "git_blob": "ed01ab433f4886a5d62350676f866751587122da"
+    },
+    {
+      "path": "rust/geometry-runtime/src/browser.rs",
+      "sha256": "27d17af8fc15f3d325da71aa2776c4c13ad4c6e0b26cf9df9ca3a2a008e9891e",
+      "git_blob": "d46840940f40b25a2be5d577a1a6b888cdd90d7d"
+    },
+    {
+      "path": "rust/geometry-runtime/src/browser_affine.rs",
+      "sha256": "1be60fc73a12d89d8cc489e32928dcf2bd4e3f277a0eb6db1d6f051744d1826c",
+      "git_blob": "76471641b729abee15a9026381d1a9193b2d19b1"
+    },
+    {
+      "path": "rust/geometry-runtime/src/browser_bridge.rs",
+      "sha256": "388ac01c4675027e84c95ca38d1041bb3995320ffe19d18aba309a9ead6b8d5b",
+      "git_blob": "d7ffaf30e5983672f4006c6b54069764ee3dd953"
+    },
+    {
+      "path": "rust/geometry-runtime/src/browser_dependencies.rs",
+      "sha256": "9b215e187abe9c004e1dfc2ca1af95a327632f0417e327048a8774badad2f213",
+      "git_blob": "27195ceb086270d80a053f138524f6aeb8a45eba"
+    },
+    {
+      "path": "rust/geometry-runtime/src/lib.rs",
+      "sha256": "deaa56fbcef5190b48784e7e48d249486c024700b60d1210b80a3062c21f03e8",
+      "git_blob": "36bdb17a994c9046f93d90b39aac42b8e3996626"
+    },
+    {
+      "path": "rust/geometry-runtime/src/protocol.rs",
+      "sha256": "522f3bd76f2647d158704ba3eadb288dd1f29d8892ea66573223a64ab2d1612f",
+      "git_blob": "a38a732781499e99eb2ecb89fe1ee939dfbb816b"
+    },
+    {
+      "path": "rust/geometry-runtime/src/protocol_tests.rs",
+      "sha256": "6197d8615933cc838aa6f6e960fc59d6a32ad3a32e9128860e1962e063aeae4c",
+      "git_blob": "036925dbd5ed3ba5b029c696259cecc39f184998"
+    },
+    {
+      "path": "rust/geometry-runtime/src/retained_values.rs",
+      "sha256": "00922a20e3d355b3f224f4471215b2e593031d940e14f96e11e61a7b6cfcb885",
+      "git_blob": "b655a16a2c50129673f0892d1623aba9e0eeee6a"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker.rs",
+      "sha256": "20fd8385a14527998e491f0a7e656388ce3dc282376683748aec8b12579bbc24",
+      "git_blob": "37e3914967847a05f946e25e224618912d2b545b"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_affine.rs",
+      "sha256": "bc3c48cdf81aa384fad7b6fc70eaab2d30fe01c7d13aeb1daa1ccfecbf2037f3",
+      "git_blob": "e72415e78023bacb087e481d11438c557beea1be"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_dependencies.rs",
+      "sha256": "13b94449aadd9d0db1890ad27c7967465b32f6230a6d74fa94eb857036f8d16d",
+      "git_blob": "5e98b3e3a60b21b3411c4634858b9cd03c8acf53"
+    },
+    {
+      "path": "rust/geometry-runtime/tests/retained_receipt.rs",
+      "sha256": "c8aef18e6326fcb9d92b165f4812f84f82c899baac898b447c0e90d341192bfd",
+      "git_blob": "0303a157eec93cd748949835129a3bd9b68e77f7"
+    }
+  ],
+  "sdk_files": [
+    {
+      "path": "source/SM_API/src/SmApiQueries.cpp",
+      "sha256": "d6d3c79094a0e14af95233a0af1e038559b6433864979b95b23f4a060db2305a"
+    },
+    {
+      "path": "source/SMLib/src/SmBrep.cpp",
+      "sha256": "5d44d6ac347fa42e4e83fead8bbde82ce46c5ff48e0a973b5c7cddc778a2fca1"
+    },
+    {
+      "path": "source/SMLib/inc/SmBrep.h",
+      "sha256": "7826cddbc8816cb51bba8349f5fedee42070ab63c0a33018c1875134c0d9ab73"
+    },
+    {
+      "path": "source/SMLib/inc/SmContext.h",
+      "sha256": "07cbae5016d3bee7df0afb12dbc957250dfc239a9300432f5e7e60b20e309134"
+    },
+    {
+      "path": "source/SMLib/inc/SmMessages.h",
+      "sha256": "f5ff614fa94e265abe73b2f3a6a195f84bd499b39ab06381f673498542896b0c"
+    },
+    {
+      "path": "source/SMLib/src/SmAxis2Placement.cpp",
+      "sha256": "56fb9937cdac6a241662b21cd1e4fd9cebd119a34826f48493f945c7f5c0cef4"
+    },
+    {
+      "path": "source/SMLib/src/SmMatrix.cpp",
+      "sha256": "56ddef008b910b033c2c49596b04fcf82ac49b3359575d747366caf5b1cd9118"
+    },
+    {
+      "path": "source/SMLib/src/SmBSplineCurve.cpp",
+      "sha256": "93c905a12c4124f6761f63ca9dbe2e2ffe400eb32b493c3d514be42de2c41138"
+    },
+    {
+      "path": "source/SMLib/src/SmBSplineSurface.cpp",
+      "sha256": "f99a3b406641889e17d117e7d76ef45e24a5ec3b291adbca963f9b773057598a"
+    },
+    {
+      "path": "source/SMLib/src/SmNurbsCrv.cpp",
+      "sha256": "cdab92fa3f9565bb17c9703d1846a9625565f8177c0285f41e4b0653b2e229f7"
+    }
+  ],
+  "unapplied_hunk": {
+    "path": "/tmp/ifclite-affine-delivery-994d4dd7a3/managed-affine-lease-after-owner.patch",
+    "sha256": "525f0690ac157dd379935eb9b1eea9727350fe44a20f304886f1cfcca82503d7",
+    "status": "Read-only seam review; dependency b20 not reviewed or integrated here"
+  }
+}

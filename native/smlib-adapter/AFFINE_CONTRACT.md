@@ -81,7 +81,9 @@ copy/conversion work starts taints the entire captured isolation domain: additiv
 C ABI status8 preserves the initiating error, every subsequent status-returning
 C ABI call rejects8, native clients terminate/reap the captured process and the
 browser driver retires the Worker. Unlinked allocations are deliberately left
-untouched until process/module disposal reclaims them. Ordinary synchronized
+untouched until process/module disposal reclaims them. Tainted session solids
+are abandoned to that boundary so later C++ static destruction cannot resume
+SDK topology cleanup. Ordinary synchronized
 geometric status4 does not acquire blanket retirement semantics. ABI/protocol v1
 layouts and rigid17 accepted matrices remain unchanged; status8 is an additive
 failure extension. Unsupported/invalid preflight statuses remain7/1. A

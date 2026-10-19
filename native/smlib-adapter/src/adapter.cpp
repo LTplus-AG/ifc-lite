@@ -40,14 +40,22 @@ void checked(SmApiStatus status) {
         throw Failure{IFCLITE_SMLIB_KERNEL_ERROR, nullptr};
     }
 }
+void abandon_tainted_solids() noexcept {
+    // SDK failure may leave internal topology inconsistent. Once this module is
+    // terminal, even later static destruction must not invoke SDK destructors.
+    // The native process / browser module owns reclamation of this memory.
+    for(auto& entry:sessions) for(auto& slot:entry.second.slots) slot.solid.release();
+}
 template<class Action> int32_t boundary(Action action) noexcept {
     if(kernel_domain_is_tainted()) {
+        abandon_tainted_solids();
         std::snprintf(last_error,sizeof(last_error),"kernel domain tainted; discard process/module");
         return IFCLITE_SMLIB_TAINTED_DOMAIN;
     }
     last_error[0] = '\0';
     try { action(); return IFCLITE_SMLIB_OK; }
     catch (const KernelDomainTainted& error) {
+        abandon_tainted_solids();
         std::snprintf(last_error,sizeof(last_error),"%s",error.message.c_str());
         return IFCLITE_SMLIB_TAINTED_DOMAIN;
     } catch (const Failure& error) {
@@ -64,7 +72,11 @@ template<class Action> int32_t boundary(Action action) noexcept {
     } catch (...) {
         std::snprintf(last_error, sizeof(last_error), "%s", "unknown C++ exception");
     }
-    return kernel_domain_is_tainted() ? IFCLITE_SMLIB_TAINTED_DOMAIN : IFCLITE_SMLIB_EXCEPTION;
+    if(kernel_domain_is_tainted()) {
+        abandon_tainted_solids();
+        return IFCLITE_SMLIB_TAINTED_DOMAIN;
+    }
+    return IFCLITE_SMLIB_EXCEPTION;
 }
 Session& lookup(uint64_t id) {
     auto found = sessions.find(id);

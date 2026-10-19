@@ -61,6 +61,7 @@ void run_copy_failure_tests() {
         "tainted C ABI module rejects subsequent access even to unrelated handles");
     require(ifclite_smlib_session_destroy(session)==IFCLITE_SMLIB_TAINTED_DOMAIN,
         "tainted module cannot resume after session reset");
+    source.release(); // Avoid SDK destruction after the domain became tainted.
     // All SDK allocations, including unlinked partial copies, are reclaimed by
     // process exit. Do not claim destructor-only recovery or continue this lane.
 }

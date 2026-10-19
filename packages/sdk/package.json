@@ -48,7 +48,7 @@
   "devDependencies": {
     "@ifc-lite/export": "workspace:^",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3",
+    "vitest": "^5.0.5",
     "@ifc-lite/wasm": "workspace:^"
   },
   "license": "MPL-2.0",

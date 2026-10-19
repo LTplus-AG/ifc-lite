@@ -72,7 +72,11 @@ pub fn actual_owned_fault_witness() {
             assert_eq!(resource::check_current(), Ok(()));
         });
         assert_eq!(account.check(), Err(ProgramStop::Cancelled), "account keeps its independent first fault");
-        drop((scope, work, lease, decoder, source));
+        drop(scope);
+        drop(work);
+        drop(lease);
+        drop(decoder);
+        drop(source);
         assert_eq!(observer.check(), Err(expected), "captured terminal outlives work without granting it");
         drop((owned, observer));
         assert_eq!(account.allocation_usage(), (0, 0));

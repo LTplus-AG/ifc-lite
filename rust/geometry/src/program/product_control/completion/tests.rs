@@ -34,7 +34,7 @@ fn merged_completion_welds_before_late_source_and_places_after_source_disposal()
     drop(decoder);
     drop(router);
     let CompletionPoll::Place(place) = completion.poll() else { panic!("owned placement operation") };
-    completion.accept_place(place.execute());
+    completion.accept_place(place.execute().unwrap());
     let CompletionPoll::Join(join) = completion.poll() else { panic!("owned output join") };
     completion.accept_join(join.execute().unwrap());
     let CompletionPoll::Complete(CompletedProduct::Merged(parts)) = completion.poll()

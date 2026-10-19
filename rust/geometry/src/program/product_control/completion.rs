@@ -11,11 +11,12 @@ type Bounds = Option<[f32; 6]>;
 type FarParts = std::vec::IntoIter<(Mesh, Bounds)>;
 
 pub(crate) enum CompletedProduct { Retained(Vec<super::super::retained::LogicalRetainedValue>), Merged(Vec<Mesh>), Styled(SubMeshCollection) }
-pub(crate) enum Geometry { Single(Mesh), Styled(SubMeshCollection) }
+pub(crate) enum Geometry { Retained(Vec<super::super::retained::LogicalRetainedValue>), Single(Mesh), Styled(SubMeshCollection) }
 #[derive(Clone, Copy)]
 enum AppendPolicy { Ordinary, Rebased(Bounds) }
 
 enum Sequence {
+    Retained(Option<Vec<super::super::retained::LogicalRetainedValue>>),
     Merged { primary: Option<Mesh>, far: FarParts, rebased: Option<(Mesh, Bounds)>, output: Vec<Mesh> },
     Styled(Option<SubMeshCollection>),
 }
@@ -41,7 +42,7 @@ pub(crate) enum CompletionPoll {
 impl ProductCompletion {
     pub(crate) fn new(element: DecodedEntity, output: ProductOutput, hygiene: SourceHygiene) -> Self {
         let sequence = match output {
-            ProductOutput::Retained(_) => panic!("retained product cannot enter exact mesh completion"),
+            ProductOutput::Retained(values) => Sequence::Retained(Some(values)),
             ProductOutput::Merged((primary, far, rebased)) => Sequence::Merged {
                 primary: Some(primary), far: far.into_parts(), rebased: Some(rebased), output: Vec::new() },
             ProductOutput::Styled(collection) => Sequence::Styled(Some(collection)),
@@ -55,6 +56,7 @@ impl ProductCompletion {
             State::Next => self.next(),
             State::Prepared(geometry) => {
                 let has_meshes = match &geometry {
+                    Geometry::Retained(values) => !values.is_empty(),
                     Geometry::Single(_) => true,
                     Geometry::Styled(collection) => !collection.sub_meshes.is_empty(),
                 };
@@ -66,6 +68,7 @@ impl ProductCompletion {
                 CompletionPoll::Place(ReadyProductPlace { geometry, admission })
             }
             State::Joining(geometry) => match geometry {
+                Geometry::Retained(values) => CompletionPoll::Complete(CompletedProduct::Retained(values)),
                 Geometry::Styled(collection) => CompletionPoll::Complete(CompletedProduct::Styled(collection)),
                 Geometry::Single(mesh) => {
                     let Sequence::Merged { output, .. } = &mut self.sequence else { unreachable!("merged sequence") };
@@ -80,6 +83,10 @@ impl ProductCompletion {
 
     fn next(&mut self) -> CompletionPoll {
         let (geometry, bounds) = match &mut self.sequence {
+            Sequence::Retained(values) => match values.take() {
+                Some(values) => (Geometry::Retained(values), None),
+                None => return CompletionPoll::Pending,
+            },
             Sequence::Styled(collection) => match collection.take() {
                 Some(collection) => (Geometry::Styled(collection), None),
                 None => return CompletionPoll::Pending,
@@ -117,6 +124,7 @@ pub(crate) struct ReadyProductPrepare { geometry: Geometry, hygiene: SourceHygie
 impl ReadyProductPrepare {
     pub(crate) fn execute(mut self) -> Geometry {
         match &mut self.geometry {
+            Geometry::Retained(_) => {},
             Geometry::Single(mesh) => {
                 if let Some(bounds) = self.bounds { mesh.local_bounds = bounds; }
                 self.hygiene.apply(mesh);

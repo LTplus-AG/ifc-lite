@@ -2,6 +2,8 @@
 //! Demand-driven mapped-source control. Frames own decoded source and policy;
 //! each step borrows live execution owners and installs no retained guard.
 mod frames;
+mod values;
+pub(crate) use values::{MappedValues, RetainedCache, SharedRetainedCache};
 mod merged;
 mod submeshes;
 mod occurrence;

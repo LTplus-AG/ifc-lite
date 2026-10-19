@@ -197,7 +197,7 @@ fn common_retained_wrong_original_admission_rejects_before_consumption_then_dupl
         .issue_next(&worker, &mut decoder, &router)
         .unwrap()
         .unwrap();
-    let original_request = execution.pending.as_ref().unwrap().request.clone();
+    let original_request = execution.pending.as_ref().unwrap().construction().1.clone();
     let work = issued
         .execute(&mut worker, 0.001, 15., MeshLimits::default())
         .unwrap();
@@ -212,11 +212,13 @@ fn common_retained_wrong_original_admission_rejects_before_consumption_then_dupl
             worker.incarnation(),
         )
         .unwrap();
-    execution.pending.as_mut().unwrap().request = wrong_request;
+    let PendingRetainedOperation::Construction {request, ..} = &mut execution.pending.as_mut().unwrap().operation;
+    *request = wrong_request;
     let rejected = execution.accept(work, &mut decoder, &router).unwrap_err();
     assert!(execution.pending.as_ref().unwrap().reply.is_some());
     assert_eq!(execution.discharged_count(), 0);
-    execution.pending.as_mut().unwrap().request = original_request.clone();
+    let PendingRetainedOperation::Construction {request, ..} = &mut execution.pending.as_mut().unwrap().operation;
+    *request = original_request.clone();
     // Internal hostile replay uses a second actual SDK result, never forged buffers.
     let duplicate = CompletedCommonConstruction {
         ticket: rejected.work.ticket.clone(),

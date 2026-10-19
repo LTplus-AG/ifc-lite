@@ -14,6 +14,7 @@ pub(crate) struct PlacementAdmission {
     transform: Matrix4<f64>,
     frame: Option<WorldFrame>,
     stamp_instance: bool,
+    product_id: u32,
 }
 impl ProductPlacementRequest {
     pub(crate) fn admit(self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>) -> Result<PlacementAdmission> {
@@ -32,7 +33,7 @@ impl ProductPlacementRequest {
         // An empty styled collection resolves its placement but performs no
         // world transform and must not eagerly initialize the lazy policy.
         let frame = self.has_meshes.then(|| router.world_frame());
-        Ok(PlacementAdmission { transform, frame, stamp_instance })
+        Ok(PlacementAdmission { transform, frame, stamp_instance, product_id:self.element.id })
     }
 }
 
@@ -41,9 +42,19 @@ pub(crate) struct ReadyProductPlace {
     pub(super) admission: PlacementAdmission,
 }
 impl ReadyProductPlace {
-    pub(crate) fn execute(mut self) -> Geometry {
+    pub(crate) fn execute(mut self) -> Result<Geometry> {
         let admission = self.admission;
         match &mut self.geometry {
+            Geometry::Retained(values) => {
+                // Analytic world frames are f64. WorldFrame/RTC display assembly
+                // remains a separate unqualified requirement, never an f32 bake.
+                let mut output=Vec::new();
+                crate::resource::reserve_headers(&mut output,values.len())?.retain();
+                for value in std::mem::take(values) {
+                    output.push(value.placed(&admission.transform,0,crate::program::retained::RetainedPlacementStage::Product {product_id:admission.product_id})?);
+                }
+                *values=output;
+            }
             Geometry::Single(mesh) => {
                 if admission.stamp_instance {
                     if let Some(instance) = &mut mesh.instance_meta {
@@ -66,6 +77,6 @@ impl ReadyProductPlace {
                 }
             }
         }
-        self.geometry
+        Ok(self.geometry)
     }
 }

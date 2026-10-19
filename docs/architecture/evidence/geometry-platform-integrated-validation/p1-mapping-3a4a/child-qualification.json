@@ -1,0 +1,74 @@
+{
+  "source_commit": "3a4a016498c21ef531f191931e05ce13bef4494b",
+  "status": "IMPLEMENTED_PARTIAL_UNCOMPILED_UNQUALIFIED",
+  "checks": [
+    {
+      "name": "diff-check",
+      "command": [
+        "git",
+        "diff",
+        "--check",
+        "4628a3c6f55d1f062b19eb3f938ac953a619f96b",
+        "3a4a016498c21ef531f191931e05ce13bef4494b"
+      ],
+      "exit_code": 0,
+      "scope": "lightweight source/metadata only"
+    },
+    {
+      "name": "refwalk-guards",
+      "command": [
+        "node",
+        "scripts/check-refwalk-guards.mjs"
+      ],
+      "exit_code": 0,
+      "scope": "lightweight source/metadata only"
+    },
+    {
+      "name": "rust-source-text-assertions",
+      "command": [
+        "node",
+        "scripts/check-rust-source-text-assertions.mjs"
+      ],
+      "exit_code": 0,
+      "scope": "lightweight source/metadata only"
+    },
+    {
+      "name": "rust-syntax",
+      "command": [
+        "rustfmt",
+        "--edition",
+        "2021",
+        "--emit",
+        "stdout",
+        "--config",
+        "skip_children=true",
+        "<each changed .rs file>"
+      ],
+      "exit_code": 0,
+      "scope": "parse only; stdout discarded without edits"
+    }
+  ],
+  "heavy_validation_submitted": false,
+  "heavy_validation_reason": "Parent coordinates capacity and owns original baseline request auto-75bdd3bf62164776888b9cb5f8a247e3; no child duplicate or guard bypass.",
+  "not_executed": [
+    "cargo test --workspace",
+    "cargo clippy --workspace --all-targets -- -D warnings",
+    "actual SDK mapped tests",
+    "exact base-vs-branch worker-pool performance",
+    "browser/WASM and styled/type-map fixtures"
+  ],
+  "skipped_tests": null,
+  "skip_note": "No test runner executed; this is not a skipped-test pass.",
+  "review_fixes": {
+    "fa871_two_findings": "3a4a016498 repairs inline epsilon count and detached Finish terminal propagation; regression fixtures UNRUN"
+  },
+  "remaining": [
+    "styled SubmeshWalk contract variants and styled metadata/UV provenance",
+    "type-map retained consumption",
+    "general affine occurrence/display and physical bake integration",
+    "managed native per-object lifetime integration",
+    "browser common pending transaction",
+    "opening/layer/appearance/persistent-face closure",
+    "assembled independent review and execution"
+  ]
+}

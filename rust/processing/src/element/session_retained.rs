@@ -10,7 +10,7 @@ use super::{
 };
 use ifc_lite_geometry::{
     document::{EvaluationContract, GeometryDocument, RetainedRequest},
-    program::{LogicalRetainedSlot, RetainedContract, RetainedPlanOperation, RetainedProductPlan},
+    program::{LogicalRetainedDefinition, RetainedContract, RetainedPlanOperation, RetainedProductPlan},
 };
 use ifc_lite_geometry_runtime::{RetainedRealization, SmlibWorker};
 use ifc_lite_geometry::resource::{OwnedResourceContext, ProgramStop};
@@ -59,21 +59,32 @@ struct PendingRetainedTransaction {
     common: ifc_lite_geometry::program::ProgramRequest,
     context: ProductionContextId,
     owner: OwnerStamp,
-    operation: RetainedPlanOperation,
-    request: RetainedRequest,
-    document: GeometryDocument,
+    operation: PendingRetainedOperation,
     reply: Option<WorkReply>,
     cancellation: RetainedCancellation,
 }
+/// Only constructions cross the SDK seam in P1. Source-free append/mapping/
+/// product operations execute under their original common request and account.
+/// Physical affine/dependency operations need their own expected input leases
+/// and matrices here; a construction receipt cannot authenticate those results.
+enum PendingRetainedOperation {
+    Construction { expected: RetainedPlanOperation, request: RetainedRequest, document: GeometryDocument },
+}
+impl PendingRetainedTransaction {
+    fn construction(&self) -> (&RetainedPlanOperation, &RetainedRequest, &GeometryDocument) {
+        match &self.operation { PendingRetainedOperation::Construction {expected,request,document} =>
+            (expected,request,document) }
+    }
+}
 struct DischargedValue {
-    slot: LogicalRetainedSlot,
+    definition: LogicalRetainedDefinition,
     receipt: CompletedCommonConstruction,
 }
 
 /// Explicit opt-in execution of the existing reached product program. This
 /// checkpoint can discharge constructions and accumulate logical product values.
-/// Mapping/Boolean/opening families still refuse; appearance and placement remain
-/// explicit plan requirements. There is deliberately no mesh publication method.
+/// Merged proper-rigid mapping and late product placement produce logical
+/// occurrences. Boolean/opening and appearance remain explicit requirements. There is deliberately no mesh publication method.
 /// Captured resources cover reached work and ledger backing; source coefficient,
 /// SDK heap, numerical scratch and presentation allocations remain unqualified.
 pub struct RetainedProductExecution {
@@ -128,6 +139,7 @@ impl RetainedProductExecution {
     ) -> Result<Option<IssuedCommonConstruction>, RetainedExecutionError> {
         loop {
             self.resources.check().map_err(RetainedExecutionError::Stopped)?;
+            self.validate_definitions(worker)?;
             let request = self
                 .state
                 .request()
@@ -156,17 +168,7 @@ impl RetainedProductExecution {
                     .program
                     .finish_retained()
                     .map_err(|error| RetainedExecutionError::Unsupported(error.to_string()))?;
-                // Every reached value must have its own live, sealed discharge.
-                if plan.values.len() != self.ledger.len()
-                    || plan.values.iter().any(|value| {
-                        !self.ledger.iter().any(|entry| {
-                            entry.slot == value.slot()
-                                && entry.receipt.realization.validate_live().is_ok()
-                        })
-                    })
-                {
-                    return Err(protocol("undischarged common retained value"));
-                }
+                self.validate_manifest(&plan)?;
                 self.state.protocol.executed(request, &[]);
                 self.state.protocol.accepted();
                 self.state.stage = Stage::Complete;
@@ -184,6 +186,7 @@ impl RetainedProductExecution {
             self.state
                 .validate_reply(&reply, decoder, router)
                 .map_err(protocol)?;
+            self.validate_definitions(worker)?;
             let Some(operation) = operation else {
                 self.state
                     .accept_admission(reply, &self.context.borrowed(), decoder, router)
@@ -222,14 +225,41 @@ impl RetainedProductExecution {
                 common: request.inner.expect("reached common construction"),
                 context: self.context.id(),
                 owner: reply.owner,
-                operation,
-                request: runtime_request,
-                document,
+                operation: PendingRetainedOperation::Construction {expected:operation,
+                    request:runtime_request,document},
                 reply: Some(reply),
                 cancellation,
             });
             return Ok(Some(issued));
         }
+    }
+
+    fn validate_definitions(&self, worker: &SmlibWorker) -> Result<(), RetainedExecutionError> {
+        for entry in &self.ledger {
+            ifc_lite_geometry::resource::charge(ifc_lite_geometry::resource::Cost {
+                work:1,..Default::default() }).map_err(RetainedExecutionError::Stopped)?.retain();
+            entry.receipt.realization.validate_live().map_err(protocol)?;
+            if entry.receipt.realization.owner().incarnation() != Some(worker.incarnation()) {
+                return Err(protocol("retained definition belongs to a different runtime generation"));
+            }
+        }
+        Ok(())
+    }
+    fn validate_manifest(&self, plan: &RetainedProductPlan) -> Result<(), RetainedExecutionError> {
+        let mut seen=Vec::new();
+        self.resources.reserve_headers(&mut seen,plan.values.len())
+            .map_err(RetainedExecutionError::Stopped)?.retain();
+        for value in &plan.values {
+            ifc_lite_geometry::resource::charge(ifc_lite_geometry::resource::Cost {
+                work:(seen.len()+self.ledger.len()) as u64,..Default::default()
+            }).map_err(RetainedExecutionError::Stopped)?.retain();
+            if seen.contains(&value.slot()) || !self.ledger.iter().any(|entry|
+                &entry.definition==value.definition() && entry.receipt.realization.validate_live().is_ok()) {
+                return Err(protocol("duplicate occurrence or undischarged retained definition"));
+            }
+            seen.push(value.slot());
+        }
+        Ok(())
     }
 
     /// Foreign rejection leaves both the input and this pending transaction
@@ -315,3 +345,6 @@ mod tests;
 
 #[cfg(test)]
 mod resource_tests;
+
+#[cfg(test)]
+mod mapping_tests;

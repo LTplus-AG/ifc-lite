@@ -41,8 +41,9 @@ impl RetainedProductExecution {
         self.state
             .validate_reply(reply, decoder, router)
             .map_err(protocol)?;
+        let (operation,request,document)=pending.construction();
         let completion = work.realization.completion();
-        if !pending.request.same_admission(completion.request()) {
+        if !request.same_admission(completion.request()) {
             return Err(protocol("retained construction admission mismatch"));
         }
         work.realization
@@ -52,17 +53,15 @@ impl RetainedProductExecution {
         if live != pending.cancellation.owner.incarnation().unwrap_or(0) {
             return Err(protocol("retained runtime owner mismatch"));
         }
-        pending
-            .document
-            .validate_retained_completion(completion, live)
+        document.validate_retained_completion(completion, live)
             .map_err(protocol)?;
-        if completion.source_from_evaluation != *pending.operation.value().source_from_evaluation()
+        if completion.source_from_evaluation != *operation.value().source_from_evaluation()
             || completion.evaluation_from_source
-                != *pending.operation.value().evaluation_from_source()
+                != *operation.value().evaluation_from_source()
             || self
                 .ledger
                 .iter()
-                .any(|entry| entry.slot == pending.operation.value().slot())
+                .any(|entry| &entry.definition == operation.value().definition())
         {
             return Err(protocol("retained frame or slot mismatch"));
         }
@@ -145,7 +144,7 @@ impl RetainedProductExecution {
             Ordering::Acquire,
         );
         self.ledger.push(DischargedValue {
-            slot: pending.operation.value().slot(),
+            definition: pending.construction().0.value().definition().clone(),
             receipt: work,
         });
         self.pending = None;

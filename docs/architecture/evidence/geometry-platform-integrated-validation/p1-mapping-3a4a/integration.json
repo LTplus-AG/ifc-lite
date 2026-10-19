@@ -1,0 +1,113 @@
+{
+  "childBase": "4628a3c6f55d1f062b19eb3f938ac953a619f96b",
+  "childSource": "3a4a016498c21ef531f191931e05ce13bef4494b",
+  "integrationParent": "8bb8898197ac724c968594910dd469e089ff0e3c",
+  "method": "git apply --3way --index; all delivered file bytes equal frozen child source; named placement slot retained",
+  "status": "source integrated; compilation, SDK, browser and performance unqualified",
+  "files": [
+    {
+      "path": "docs/architecture/geometry-platform-retained-program-continuation.md",
+      "sha256": "88ee7d4509415d1a7d5e6601c79953a04aa734a37fde315c9f7cba1a3715a6dc"
+    },
+    {
+      "path": "docs/guide/geometry.md",
+      "sha256": "4ab230a0c34095872a1f8105ad1f226da53c25e0b2ede5d61cd505e0d7844568"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_mapping.rs",
+      "sha256": "3e24adefd289150922d73999d1e0caeafc67df7c1a376d442725a4c55612fbdb"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_product.rs",
+      "sha256": "700fddf0799982394a0425e18fae8357eac91998f781f8455f4a50b8fe4b41c2"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_product/source.rs",
+      "sha256": "8a162b1cc583e7850569faee8beeade7b2c1a00542a8197697ef483784041de4"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_product_adapter.rs",
+      "sha256": "7e337d582b555ff7239219b831e4b690e8729614cc4daaea9826696deb19c7d9"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_product_prelude.rs",
+      "sha256": "d33b4c8a5cb407a8f793937aef8df1a0ed7d0d9235cacc3226b10f77b1bb6434"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_ready.rs",
+      "sha256": "b177836cf1d4e74419764b4e0892c8b3e6b8db98407c649d5a5a9a324377f5ac"
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/merged.rs",
+      "sha256": "4755c567c4b995b901d5914340122a55b4b77d51b97ccd1793a35c33fa43278e"
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/merged_ready.rs",
+      "sha256": "880d74b10b82a1669200ffc3e6208333dc42f2ed8f337d7a2d37215d0c1d3222"
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/merged_source.rs",
+      "sha256": "d5ca6927881528989b188661feff54837451eb71bbecb07b688e4d39cce78b69"
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/merged_tests.rs",
+      "sha256": "2a93ec87ab21948ecc74a33c1286e99bbbf0146f5a7cae4a0cc60b6c4ff563c3"
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/mod.rs",
+      "sha256": "e4dd7aedcab409b26abdc509ff6a339d0dac2e72ecbda7ac517fbc0b8fb0c66d"
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/values.rs",
+      "sha256": "4dca7373b15b32a3ffec758a5a107d2ff3074e81f21d50255cfd27da76e998be"
+    },
+    {
+      "path": "rust/geometry/src/program/mod.rs",
+      "sha256": "c1901d8f3ba1c92d7c0ba40c959435ee16e372aa269efb9f93f6bb377bb061ac"
+    },
+    {
+      "path": "rust/geometry/src/program/product_control.rs",
+      "sha256": "33cbe70940e63a28b1eaa12072f18d7b1537137ef23af94810c1173f0a3a6dec"
+    },
+    {
+      "path": "rust/geometry/src/program/product_control/completion.rs",
+      "sha256": "61d9b309fb59943f57c038faefec67fd6d822cb0e2543b08ebd1d29279601f01"
+    },
+    {
+      "path": "rust/geometry/src/program/product_control/completion/placement.rs",
+      "sha256": "1d1372d97ce9bd280d84f3fd3b0afb28c816bee9b000b113af9e114cd6727e88"
+    },
+    {
+      "path": "rust/geometry/src/program/product_control/completion/tests.rs",
+      "sha256": "a607af3cde560f86697e81dc49c462a5d3c566ae1a351cdff2b7bb5348630841"
+    },
+    {
+      "path": "rust/geometry/src/program/retained.rs",
+      "sha256": "69e1b5c840ca47d447b90dd42df91e70b6cce5b4b0af1a4f2ab6c112f7b2bacb"
+    },
+    {
+      "path": "rust/geometry/src/program/retained_mapping_tests.rs",
+      "sha256": "35b0f9e2d18caa1bc59ecb5b9f30ff17ea1cccb74838a985dc81b3675c991475"
+    },
+    {
+      "path": "rust/geometry/src/program/retained_tests.rs",
+      "sha256": "a98d4dbd1f99d7dbc2aec871b7cc4cffff2206ae0685bd8ba7ee7ee7b2b9a38e"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained.rs",
+      "sha256": "926049b8a634d9ecbf3d0ccd87b6a922acea4f844ccfea9f6ccc164dac04a9b1"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/acceptance.rs",
+      "sha256": "b681045450b0929fbc7506c33f07c9a7b2bbe44c383fc76195e0c96bc9a2da8e"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/mapping_tests.rs",
+      "sha256": "8934fc17d6cb90faffb2d27527556d3654336af6e04a1740a9b1bffd5ca78a7b"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/tests.rs",
+      "sha256": "5eeaa4463737c50ce9412e1b92ee086dcecdf0691587b0e24f460dea7c4218ba"
+    }
+  ]
+}

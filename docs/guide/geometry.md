@@ -892,11 +892,23 @@ returns decoder-free work. Pass its sealed worker result to `accept` before
 requesting the next operation. Caller-created geometry cannot discharge the
 pending request.
 
-This entry currently consumes extrusion and supported swept-disk constructions.
-Mapped occurrences, Boolean/opening dependencies and browser transactions remain
-unfinished. `traversal_plan()` reports logical values and unresolved placement,
-opening, layer, appearance and persistent-face requirements; it provides no final
-mesh publication. Unsupported retained work refuses rather than selecting exact
+This experimental entry has source implementations for extrusion and supported
+swept-disk construction, merged proper-rigid mapped occurrences, and reached late
+product placement. Definitions and occurrences have separate logical identities;
+only actual reached retained-cache publication permits definition reuse. The
+retained cache is scoped to the product and bound to source revision, decoder
+selected-cache generation and router configuration. An exact mesh cache never
+discharges retained work.
+
+`traversal_plan()` exposes ordered column-major metre-domain mapping/product
+operations and an f64 `world_from_evaluation()` frame. That frame applies file-unit
+conversion once before the ordered mappings and product placement. It does not
+certify display rounding, RTC assembly, appearance or persistent face provenance.
+Accepted product placement removes only its own remaining requirement. Opening,
+layer, appearance and persistent-face requirements still prohibit final mesh
+publication. Styled/type-map retained consumers, affine mapping/display support,
+Boolean/opening dependencies, independent native object release and browser common
+transactions remain unfinished; a refusal does not count as capability coverage. Unsupported retained work refuses rather than selecting exact
 recovery. Ordinary producers continue to use the permanent exact kernel.
 See the [consuming contract and remaining coverage](../architecture/geometry-platform-retained-program-continuation.md).
 Current-source compilation, actual SDK execution and preservation qualification

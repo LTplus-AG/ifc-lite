@@ -4,6 +4,7 @@
 use super::{Source,Finish,Frame,MergedReply,Reply};
 use super::super::{source,representation,frames,GeometryRouter,ItemIdentity};
 use crate::{Mesh,Result,Error};
+use super::super::values::{MappedValues, RetainedCache};
 use ifc_lite_core::{DecodedEntity,EntityDecoder};
 use nalgebra::Matrix4;
 use crate::program::{ItemProgram,ItemListPolicy};
@@ -18,18 +19,24 @@ pub(super) enum SourceAction {
     Representation {source:DecodedEntity,depth:usize,policy:bool,transform:Option<Matrix4<f64>>},
     WholeItems {id:u32,representation:DecodedEntity,depth:usize,policy:bool,transform:Option<Matrix4<f64>>},
     Claim {source:Source,representation:DecodedEntity},
-    Publish {finish:Finish,parts:Vec<Mesh>}, PlaceCached {finish:Finish,mesh:Mesh},
+    Publish {finish:Finish,parts:MappedValues}, PlaceCached {finish:Finish,mesh:Mesh},
     Dropped {parent:Source,item:ItemIdentity,error:Error},
 }
 pub(super) enum SourceValue {
     Next(MergedSource), Source(Source,DecodedEntity),
+    RetainedCached {values:Vec<crate::program::retained::LogicalRetainedValue>,id:u32,transform:Option<Matrix4<f64>>},
     Cached {mesh:Arc<Mesh>,id:u32,transform:Option<Matrix4<f64>>},
-    Publish {finish:Finish,parts:Vec<Mesh>,instancing:bool},
-    Place {finish:Finish,parts:Vec<Mesh>,instancing:bool},
+    Publish {finish:Finish,parts:MappedValues,instancing:bool},
+    Place {finish:Finish,parts:MappedValues,instancing:bool},
     Dropped {parent:Source,item:ItemIdentity,error:Error},
 }
 impl MergedSource {
+    #[cfg(test)]
     pub(crate) fn execute(self,router:&GeometryRouter,decoder:&mut EntityDecoder<'_>)->MergedReply {
+        self.execute_contract(router,decoder,None)
+    }
+    pub(crate) fn execute_contract(self,router:&GeometryRouter,decoder:&mut EntityDecoder<'_>,
+        retained:Option<&RetainedCache>)->MergedReply {
         if let SourceAction::Work(work)=self.0 {return MergedReply(Reply::Admission(work.execute()))}
         let tag=match &self.0 {
             SourceAction::MappingSource {..}=>0,SourceAction::Transform {..}=>1,SourceAction::Cache {..}=>2,
@@ -47,8 +54,15 @@ impl MergedSource {
                 SourceAction::Transform {item,source,depth,policy}=> {
                     let mut transform=router.mapped_item_transform(&item,&source,decoder)?;
                     if let Some(matrix)=&mut transform {router.scale_transform(matrix)}
+                    if retained.is_some() {
+                        crate::program::retained::proper_rigid(&transform.unwrap_or_else(Matrix4::identity))?;
+                    }
                     SourceValue::Next(Self(SourceAction::Cache {source,depth,policy,transform}))
                 }
+                SourceAction::Cache {source,depth,policy,transform} if retained.is_some()=>match retained.expect("retained cache").get(source.id)? {
+                    Some(values)=>SourceValue::RetainedCached {values,id:source.id,transform},
+                    None=>SourceValue::Next(Self(SourceAction::Representation {source,depth,policy,transform})),
+                },
                 SourceAction::Cache {source,depth,policy,transform}=>match router.cached_mapped_source(source.id) {
                     Some(mesh)=>SourceValue::Cached {mesh,id:source.id,transform},
                     None=>SourceValue::Next(Self(SourceAction::Representation {source,depth,policy,transform})),
@@ -65,7 +79,7 @@ impl MergedSource {
                 SourceAction::Claim {source,representation}=>SourceValue::Source(source,representation),
                 SourceAction::Publish {finish,parts}=>SourceValue::Publish {finish,parts,
                     instancing:crate::router::transforms::instancing_enabled()},
-                SourceAction::PlaceCached {finish,mesh}=>SourceValue::Place {finish,parts:vec![mesh],
+                SourceAction::PlaceCached {finish,mesh}=>SourceValue::Place {finish,parts:MappedValues::Mesh(vec![mesh]),
                     instancing:crate::router::transforms::instancing_enabled()},
                 SourceAction::Dropped {parent,item,error}=>SourceValue::Dropped {parent,item,error},
                 SourceAction::Work(_)=>unreachable!(),

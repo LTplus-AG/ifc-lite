@@ -15,7 +15,7 @@ pub(in crate::program) enum ProductSource {
     Begin { element: DecodedEntity, consumer: ProductConsumer },
     Items(RepresentationItemsRequest), Annotation { item: DecodedEntity },
     Texture { element: DecodedEntity, item: DecodedEntity, enabled: bool },
-    Raw { element: DecodedEntity, item: DecodedEntity, consumer: ProductConsumer },
+    Raw { element: DecodedEntity, item: DecodedEntity, consumer: ProductConsumer, retained_cache: Option<super::super::mapping::SharedRetainedCache> },
     Hygiene { requested: SourceHygiene, output: ProductOutput }, Placement(ProductPlacementRequest),
 }
 pub(in crate::program) enum ProductSourceReply {
@@ -40,7 +40,7 @@ impl ProductSource {
                 AnnotationFill::admit(&item, decoder, router.unit_scale())),
             Self::Texture { element, item, enabled } => ProductSourceReply::Texture(
                 texture(&element, &item, enabled, router, decoder, textures)),
-            Self::Raw { element, item, consumer } => ProductSourceReply::Child(
+            Self::Raw { element, item, consumer, .. } => ProductSourceReply::Child(
                 child(element, item, consumer, router, decoder)),
             Self::Hygiene { requested, output } => ProductSourceReply::Hygiene(requested.for_router(router), output),
             Self::Placement(request) => ProductSourceReply::Placement(request.admit(router, decoder)),
@@ -121,15 +121,16 @@ impl ProductSource {
     pub(in crate::program) fn execute_retained(self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>,
         textures: Option<&FxHashMap<u32, ResolvedTextureMap>>, contract: super::super::retained::RetainedContract) -> ProductSourceReply {
         match self {
-            Self::Begin { .. } | Self::Items(_) => self.execute(router, decoder, textures),
+            Self::Begin { .. } | Self::Items(_) | Self::Hygiene { .. } | Self::Placement(_) => self.execute(router, decoder, textures),
             Self::Texture { item, .. } => ProductSourceReply::Texture(
                 if textures.is_some_and(|index| index.contains_key(&item.id)) {
                     Err(crate::Error::geometry("retained UV/appearance contract unavailable"))
                 } else { Ok(None) }),
-            Self::Raw { item, .. } => ProductSourceReply::Child(Ok((
-                GeometryProgram::retained_item(item, contract), ChildKind::Mesh { raw: false }))),
+            Self::Raw { item, retained_cache, .. } => ProductSourceReply::Child(
+                if item.ifc_type == IfcType::IfcMappedItem {
+                    GeometryProgram::retained_mapped(&item,contract,router,retained_cache.expect("retained product cache")).map(|program|(program,ChildKind::Parts))
+                } else { Ok((GeometryProgram::retained_item(item,contract),ChildKind::Mesh {raw:false})) }),
             Self::Annotation { .. } => ProductSourceReply::Annotation(Err(crate::Error::geometry("retained annotation contract unavailable"))),
-            Self::Hygiene { .. } | Self::Placement(_) => ProductSourceReply::Child(Err(crate::Error::geometry("retained final presentation contract unavailable"))),
         }
     }
 }

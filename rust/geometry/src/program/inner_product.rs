@@ -23,6 +23,7 @@ pub(super) struct ProductMachine {
     next: Option<ProductMachinePoll>,
     finished: bool,
     pub(super) retained: Option<super::retained::RetainedContract>,
+    pub(super) retained_cache: Option<super::mapping::SharedRetainedCache>,
 }
 pub(super) enum ProductMachinePoll {
     Source(ProductSource), Ready(ProductReady), Child { program: Box<GeometryProgram>, kind: ChildKind },
@@ -34,7 +35,7 @@ pub(super) enum ProductReply {
     Source(ProductSourceReply), Merge(Result<ProductResources>), Finish(ProductOutput),
     Annotation(Result<Mesh>), Texture(Result<Option<TexturePart>>),
     Child(Result<ChildOutput>), Prepare(Geometry),
-    Place(Geometry), Join(Result<Vec<Mesh>>),
+    Place(Result<Geometry>), Join(Result<Vec<Mesh>>),
 }
 pub(super) enum ChildOutput { Retained(Vec<super::retained::LogicalRetainedValue>), Parts(Vec<Mesh>), Styled(SubMeshCollection), Mesh(Mesh, bool) }
 pub(super) enum ProductReady {
@@ -95,7 +96,7 @@ impl ProductMachine {
     pub(super) fn begin(element: DecodedEntity, consumer: ProductConsumer, hygiene: SourceHygiene) -> Self {
         let source = ProductSource::Begin { element: element.clone(), consumer };
         Self { element, consumer, hygiene, control: None, completion: None, child: None,
-            next: Some(ProductMachinePoll::Source(source)), finished: false, retained: None }
+            next: Some(ProductMachinePoll::Source(source)), finished: false, retained: None, retained_cache: None }
     }
 
     pub(super) fn poll(&mut self) -> ProductMachinePoll {
@@ -138,6 +139,7 @@ impl ProductMachine {
     }
 
     fn empty_child(&self) -> ProductItemOutput {
+        if self.retained.is_some() { return ProductItemOutput::Retained(Vec::new()) }
         match self.consumer {
             ProductConsumer::Merged => ProductItemOutput::Merged(Vec::new()),
             ProductConsumer::Styled { .. } => ProductItemOutput::Styled(SubMeshCollection::new()),
@@ -165,7 +167,7 @@ impl ProductMachine {
     }
     fn raw_source(&self) -> ProductSource {
         let child = self.child.as_ref().expect("reached item");
-        ProductSource::Raw { element: child.element.clone(), item: child.item.clone(), consumer: child.consumer }
+        ProductSource::Raw { element: child.element.clone(), item: child.item.clone(), consumer: child.consumer, retained_cache: self.retained_cache.clone() }
     }
     fn mesh_output(&self, mesh: Mesh, filter_empty: bool) -> ProductItemOutput {
         match self.consumer {
@@ -232,11 +234,6 @@ impl ProductMachine {
             }
             ProductReply::Finish(output) => {
                 self.control = None;
-                if let ProductOutput::Retained(values) = output {
-                    self.finished = true;
-                    self.next = Some(ProductMachinePoll::Complete(Ok(CompletedProduct::Retained(values))));
-                    return Ok(());
-                }
                 self.next = Some(ProductMachinePoll::Source(ProductSource::Hygiene { requested: self.hygiene, output }));
             }
             ProductReply::Annotation(reply) => match reply {
@@ -253,13 +250,8 @@ impl ProductMachine {
             },
             ProductReply::Child(reply) => {
                 let reply = reply?;
-                if let ChildOutput::Retained(values) = reply {
-                    self.control.as_mut().expect("traversal").accept_retained(values)?;
-                    self.child = None;
-                    return Ok(());
-                }
                 let output = match reply {
-                    ChildOutput::Retained(_) => unreachable!(),
+                    ChildOutput::Retained(values) => ProductItemOutput::Retained(values),
                     ChildOutput::Parts(parts) => ProductItemOutput::Merged(parts),
                     ChildOutput::Styled(collection) => ProductItemOutput::Styled(collection),
                     ChildOutput::Mesh(mesh, raw) => self.mesh_output(mesh, raw),
@@ -267,7 +259,7 @@ impl ProductMachine {
                 self.next = Some(self.queue_merge(output));
             }
             ProductReply::Prepare(geometry) => self.completion.as_mut().expect("completion").accept_prepare(geometry),
-            ProductReply::Place(geometry) => self.completion.as_mut().expect("completion").accept_place(geometry),
+            ProductReply::Place(geometry) => self.completion.as_mut().expect("completion").accept_place(geometry?),
             ProductReply::Join(reply) => self.completion.as_mut().expect("completion").accept_join(reply?),
         }
         Ok(())

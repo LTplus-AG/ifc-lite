@@ -1,0 +1,101 @@
+P1 merged retained occurrences + actual late product placement
+SPDX-License-Identifier: MPL-2.0
+
+Exact source: 3a4a016498c21ef531f191931e05ce13bef4494b
+Owned base: 4628a3c6f55d1f062b19eb3f938ac953a619f96b
+Checkout: /home/louistrue/.t3/worktrees/ifc-lite/t3-b8276355
+Branch: t3/retained-mapped-occurrences
+State: incremental implementation; uncompiled; unqualified; P1 NOT complete.
+
+Incremental commits, oldest first:
+  e73775d965  retained values in SAME mapping/product completion + definition ledger
+  fa871c46a0  cache provenance and real source/native receipt fixtures
+  a9a2e1bb43  coverage documentation corrections
+  3a4a016498  independent review: epsilon catalogue + detached Finish stop repair
+
+Assembly:
+Apply those commits or owned-increment.patch to the parent's assembled source.
+Use the incremental hunks; never copy these full files over newer parent files.
+The named slot import/expression in completion/placement.rs matches parent e984.
+Keep all later parent graph/void/slot/fixture/browser/runtime fixes. This delta
+contains no SDK, package snapshots, Python, inherited evidence or generated wasm.
+No push, PR or baseline job was created by this implementation task.
+
+Implemented source boundaries:
+- MappingControl/MergedWalk share existing stack/path/SourceAction ordering;
+  Mesh/Retained accumulators pass child completion, merge, finish and placement.
+- Exact cache stays unchanged; explicit retained cache is product-scoped and
+  separate. It binds router identity/configuration, decoder instance/selected-cache
+  generation and RetainedContract revision. Definitions publish source-local,
+  before occurrence placement. A repeated uncached STEP leaf is NOT memoized.
+- Definition identities, occurrence IDs and original transaction tickets differ.
+  Each occurrence preserves ordered input/output slots, map-source/product IDs,
+  and column-major metre-domain matrices. World frame is maps * S_file_to_metres
+  * source_from_evaluation, then product placement. It does not bake RTC or f32.
+- ProductResources and ProductCompletion now own retained variants. Existing
+  late ProductPlacementRequest resolves source and initializes frame policy at
+  its historical point. Only actual accepted placement clears its requirement.
+- Processing owns one original sealed construction receipt per definition.
+  Occurrences borrow logical references. No receipt cloning, transformed shared
+  source mutation or alternate mapping evaluator/loader was added.
+- Pending external operation is explicitly Construction. Source-free common
+  append/place uses original common reply/request/resource admission. Physical
+  affine baking needs its own expected operation+sealed receipt, not a forged
+  construction success or copied numeric handle.
+- Retained allocation/copy/occurrence/search work uses captured resource scope.
+  Typed stops terminate retained walks. Post-SourceParts conversion check is
+  restored for detached exact Finish; a reservation cannot return Ok(empty).
+
+Source fixtures added (UNRUN):
+Nested mm extrusion with nonidentity solid Position, far map origin, two target
+rotations/translations, product survey placement and RTC; independent corners,
+volume determinant and inverse world frame; 256-edge diamond with distinct slots
+and one cache-published definition; uncached repeated leaves; exact-warm versus
+retained-cold malformed representation; retained warm distinct targets/target
+fault; changed selected-cache provenance; empty product/late source fault;
+resource-stop cache publication and earlier entry preservation; proper rigid,
+reflection/shear/nonunit/nonfinite policy; detached real Block Finish live_bytes=0;
+actual SDK mapped shared-definition ledger and foreign/source-expired receipt.
+SDK cases explicitly skip if the real worker is unavailable. They have NOT run.
+
+Independent review status:
+fa871 frozen review evidence remains unchanged. Reviewer reported inline epsilon
+count 482>480 and missing post-into_parts stop check. 3a4 fixes both. Lightweight
+lexical reproduction now counts 480; ceiling unchanged. The rigidity policy uses
+existing dimensionless RETAINED_RIGID_DOT_EPS for whole Gram Frobenius residual
+and determinant residual; it is neither a length tolerance nor affine support.
+Regressions are source additions awaiting execution. Further review may remain.
+
+Unresolved P1 and external seams (requirements, not optional deferrals):
+- Styled SubmeshWalk Range/Append/MergeShared/FinishShared contract variants,
+  template/placeholder claim behavior, UV/palette/geometry/material provenance.
+- Type-map consumer using those SAME common values, no alternate traversal.
+- General affine mapping/display behavior and SDK affine-copy integration:
+  reflection/nonuniform/singular/nonfinite behavior is not qualified by refusal.
+  Runtime owner is implementing sealed CopyAffine full input lineage, exact local
+  metre matrix, output lease and source/conversion certificate, then an explicit
+  rigid world_from_affine. File-domain frames/RTC must not enter that matrix.
+- Managed native object lifetimes. Current construction/dependency wrappers can
+  retire the whole worker on Drop. This ledger retains them once scope-wide;
+  that does NOT prove dropping/cancelling one product preserves siblings. A
+  separately owned managed-native-lifetime patch must integrate registered
+  per-object leases/deferred release; do not duplicate its queue here.
+- Browser common pending transactions, not merely source-only transport.
+- Openings, layers, IFC appearance, persistent faces and final display assembly
+  remain unresolved. No final-net publication or full-platform coverage claim.
+
+Qualification:
+qualification.json binds lightweight checks to exactly 3a4a source. Rust parser,
+diff-check, refwalk and source-text metadata guards exited 0. Refwalk reports
+12 inherited fan-out budget review notes; its pass is not a choice-of-guard proof.
+No Cargo build, test, Clippy, SDK, browser or perf run was submitted here. Parent
+owns request auto-75bdd3bf62164776888b9cb5f8a247e3 against 9be; its reported geometry
+lib pass is NOT evidence for this source or a full P0 pass. Respect capacity and
+inspect that original request/receipt; do not resubmit it.
+
+After parent review and capacity coordination, execute affected actual-source
+geometry/processing fixtures, workspace tests and strict all-target Clippy via
+ifc-fleet. SDK worker must actually execute; skip is not a pass. Compare permanent
+exact behavior to base, including warm cache/source effects, and obtain required
+full-worker-pool perf verdict. Assemble managed lifetime/affine/styled/type-map
+and browser work before any claim that P1 or the full retained program is done.

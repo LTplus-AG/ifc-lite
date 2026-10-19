@@ -5,6 +5,7 @@ use super::inner::{GeometryOutput, GeometryProgram, ProgramError, ProgramReply, 
 use super::mapping::{MergedPoll, MergedReady, MergedReply, MergedSource, MergedWalk,
     SubmeshPoll, SubmeshReady, SubmeshReply, SubmeshSource, SubmeshWalk};
 use crate::{GeometryRouter, Mesh, Result, SubMeshCollection, ResolvedTextureMap};
+use super::mapping::MappedValues;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rustc_hash::FxHashMap;
 use std::sync::{Arc, Mutex};
@@ -43,7 +44,7 @@ impl MappingReadyWork {
 pub(super) struct MappingReply(Reply);
 enum Reply {
     Merged(MergedReply), Styled(SubmeshReply), Child(Box<ProgramReply>), Stopped(crate::Error),
-    ChildFinished { mode: ChildMode, result: Result<Mesh> }, TextureLowered(Option<TextureRecipe>),
+    ChildFinished { mode: ChildMode, result: Result<GeometryOutput> }, TextureLowered(Option<TextureRecipe>),
     TextureExecuted(Result<Option<SubMeshCollection>>),
 }
 impl MappingReply {
@@ -59,15 +60,21 @@ pub(super) struct MappingControl {
     id: u64, walk: Walk, action: Option<Action>, child: Option<Child>,
     output: Option<Result<GeometryOutput>>, offset: (f64, f64, f64),
     cleanup: Option<Arc<Mutex<Vec<u64>>>>,
+    retained: Option<super::retained::RetainedContract>,
 }
 impl MappingControl {
     pub(super) fn merged(item: &DecodedEntity, router: &GeometryRouter, id: u64) -> Result<Self> {
         Ok(Self { id, walk:Walk::Merged(MergedWalk::new(item, router)?), action:None, child:None,
-            output:None, offset:router.rtc_offset(), cleanup:None })
+            output:None, offset:router.rtc_offset(), cleanup:None,retained:None })
+    }
+    pub(super) fn select_retained(&mut self, contract: super::retained::RetainedContract, cache: super::mapping::SharedRetainedCache) {
+        self.retained=Some(contract);
+        let Walk::Merged(walk)=&mut self.walk else { unreachable!("retained merged walk") };
+        walk.select_retained(self.id,contract,cache);
     }
     pub(super) fn styled(item: &DecodedEntity, allow_instancing: bool, router: &GeometryRouter, id: u64) -> Result<Self> {
         Ok(Self { id, walk:Walk::Styled(SubmeshWalk::new(item, allow_instancing, router)?), action:None,
-            child:None, output:None, offset:router.rtc_offset(), cleanup:None })
+            child:None, output:None, offset:router.rtc_offset(), cleanup:None,retained:None })
     }
     pub(super) fn poll(&mut self) -> std::result::Result<Option<ProgramStage>, ProgramError> {
         if self.output.is_some() { return Ok(None) }
@@ -83,10 +90,10 @@ impl MappingControl {
                 MergedPoll::Source(source) => Action::MergedSource(source),
                 MergedPoll::Ready(ready) => Action::MergedReady(ready),
                 MergedPoll::Child { item, policy } => {
-                    self.child = Some(Child { program:Box::new(GeometryProgram::item(item, self.offset)), mode:ChildMode::Merged, policy });
+                    self.child = Some(Child { program:Box::new(match self.retained {Some(contract)=>GeometryProgram::retained_item(item,contract),None=>GeometryProgram::item(item,self.offset)}), mode:ChildMode::Merged, policy });
                     return self.poll();
                 }
-                MergedPoll::Complete(result) => { self.output = Some(result.map(|(parts, _)| GeometryOutput::Parts(parts))); return Ok(None) }
+                MergedPoll::Complete(result) => { self.output = Some(result.map(|(parts, _)| match parts {MappedValues::Mesh(parts)=>GeometryOutput::Parts(parts),MappedValues::Retained(values)=>GeometryOutput::Retained(values)})); return Ok(None) }
             },
             Walk::Styled(walk) => match walk.poll() {
                 SubmeshPoll::Source(source) => Action::StyledSource(source),
@@ -125,7 +132,10 @@ impl MappingControl {
         if let Some(ready)=self.take_ready() {return Ok(ready.execute())}
         if let Err(stop) = crate::resource::check_current() { return Ok(MappingReply(Reply::Stopped(stop.into()))) }
         Ok(MappingReply(match self.action.take().expect("requested mapping action") {
-            Action::MergedSource(source) => Reply::Merged(source.execute(router, decoder)),
+            Action::MergedSource(source) => {
+                let Walk::Merged(walk)=&self.walk else {unreachable!()};
+                Reply::Merged(walk.execute_source(source,router,decoder))
+            },
             Action::MergedReady(_) | Action::StyledReady(_) | Action::TextureReady(_) => unreachable!("numerical action extracted above"),
             Action::StyledSource(source) => Reply::Styled(router.with_mapping_program_store(self.id,
                 |store| source.execute(router, decoder, textures, store))),
@@ -135,8 +145,10 @@ impl MappingControl {
                     child.program.execute_with_textures(request, router, decoder, textures))?))
             }
             Action::ChildFinished => {
-                let child = self.child.take().expect("completed mapping child");
-                Reply::ChildFinished { mode:child.mode, result:(*child.program).finish() }
+                let mut child = self.child.take().expect("completed mapping child");
+                let result = if self.retained.is_some() { child.program.take_geometry_output() }
+                    else { (*child.program).finish().map(GeometryOutput::Mesh) };
+                Reply::ChildFinished { mode:child.mode, result }
             },
             Action::TextureSource(item) => {
                 let recipe = if matches!(item.ifc_type, IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork) {
@@ -186,10 +198,14 @@ impl MappingControl {
             }
             Reply::ChildFinished { mode, result } => {
                 match (&mut self.walk, mode) {
-                    (Walk::Merged(walk), ChildMode::Merged) => walk.accept_child(result.map(|mesh| vec![mesh]), router),
-                    (Walk::Styled(walk), ChildMode::Shared) => walk.accept_shared_child(result.map(|mesh| vec![mesh]), router),
+                    (Walk::Merged(walk), ChildMode::Merged) => walk.accept_values(result.and_then(|value| match value {
+                        GeometryOutput::Retained(values)=>Ok(MappedValues::Retained(values)),
+                        GeometryOutput::Mesh(mesh)=>Ok(MappedValues::Mesh(vec![mesh])),
+                        _=>Err(crate::Error::geometry("mapped child contract mismatch")),
+                    }), router),
+                    (Walk::Styled(walk), ChildMode::Shared) => walk.accept_shared_child(result.and_then(exact_child).map(|mesh|vec![mesh]), router),
                     (Walk::Styled(walk), ChildMode::Styled(id)) => {
-                        let result = result.and_then(|mesh| {
+                        let result = result.and_then(exact_child).and_then(|mesh| {
                             let mut meshes = SubMeshCollection::new();
                             if !mesh.is_empty() { super::mapping::admit_styled_output(&mesh, 0, &mut meshes)?; meshes.add(id, mesh); }
                             Ok(meshes)
@@ -252,3 +268,8 @@ impl MappingControl {
 #[cfg(test)]
 #[path="inner_mapping_tests.rs"]
 mod tests;
+
+fn exact_child(value: GeometryOutput) -> Result<Mesh> {
+    match value { GeometryOutput::Mesh(mesh)=>Ok(mesh),
+        _=>Err(crate::Error::geometry("styled mapped child requires exact mesh")) }
+}

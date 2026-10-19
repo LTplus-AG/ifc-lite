@@ -27,15 +27,60 @@ ledger capacity, accepts the same reply and retains the actual sealed object in
 the private ledger. Ordinary `ProductState::execute`/`accept`/mesh publication
 cannot consume this contract.
 
-This is **not** the complete requested retained implementation. Repeated mapped
-DAG contexts, rigid occurrence/product placement, common Boolean/group/opening
-operations and their owned operands, browser transaction acceptance, complete
-resource accounting and appearance closure remain required. Unsupported reached
-source families refuse this selected contract without exact retry. A completed
-construction-only traversal still carries explicit placement, opening, layer,
-appearance and persistent-face requirements; it provides no final-product
-execution or coverage authority. See the
+This is **not** the complete requested retained implementation. Styled/type-map
+contexts, affine occurrence semantics, common Boolean/group/opening operations
+and their owned operands, browser transaction acceptance, managed native object
+release, complete resource accounting and appearance closure remain required.
+Unsupported reached source families refuse this selected contract without exact
+retry. A completed traversal still carries opening, layer, appearance and
+persistent-face requirements; it provides no final-product execution or coverage
+authority. Only accepted late placement clears the placement requirement. See the
 [checkpoint evidence](evidence/geometry-platform-retained-program-continuation/common-construction-checkpoint/README.md).
+
+## P1 merged occurrence and placement source checkpoint
+
+The common `MappingControl`/`MergedWalk` now has contract-disjoint mesh and
+retained accumulators through child completion, append, finish, source cache
+publication and placement. It keeps the existing frame stack, path guard and
+source action order. The exact cache and its warm-hit timing remain separate.
+The retained cache belongs to one product, binds its first router/decoder
+execution identities and source revision, and rejects changed selected-cache
+provenance. Templates contain immutable logical definition references in source
+space, published before occurrence placement. They contain no SDK object.
+Uncached repeated leaves remain separate definitions; cached DAG edges remain
+separate occurrences. Resource admission charges emitted occurrences, retained
+backing, cache copies and repeated search/append work.
+
+`LogicalRetainedDefinition`, `LogicalRetainedSlot` and the original pending ticket
+are different identities. Ordered `RetainedPlacement` records carry exact input
+and output slots, source-map/product IDs and column-major metre matrices.
+`world_from_evaluation()` composes each mapping after file-unit scaling of the
+constructor's evaluation-to-source frame, then reached product placement. It
+retains f64 survey translations without claiming mesh byte identity or folding
+RTC into the analytic placement. Current proper-rigid checks do not implement
+reflection, nonuniform scale or singular/nonfinite mapping semantics.
+
+Retained values now use `ProductResources` and `ProductCompletion`, including the
+existing late `ProductPlacementRequest`, source errors and world-frame admission.
+Only accepted completion clears `ProductPlacement`. Processing keeps one original
+sealed construction receipt per definition and validates all occurrence references
+against that ledger, including runtime liveness. Source-free common operations
+execute under their original request/resource context; physical affine baking
+needs a separate immutable expected operation and sealed runtime receipt.
+
+This is an incremental implementation, not complete P1 coverage or qualification.
+Styled `SubmeshWalk`/type-map consumers, affine display/baking, native managed
+object release, browser common transactions and behavioral execution are still
+required. Existing native common wrappers retire the worker on drop; keeping
+one wrapper per definition in a scoped ledger does not prove independent release.
+Opening/layer/appearance/persistent-face requirements remain unresolved, and no
+final-net API is provided. The source fixtures add nested millimetre/solid-position/
+map-origin/product survey frames, a 256-edge diamond, cache-contract separation,
+changed source-cache provenance, late placement errors, resource stops and actual
+native mapped receipt cases. Their presence is not an execution receipt.
+
+The following obstruction/design sections describe the broader migration and
+must not be read as claiming that every accumulation family has been completed.
 
 ## Concrete obstruction in the assembled source
 
@@ -43,8 +88,8 @@ execution or coverage authority. See the
 `GeometryProgram` across every reached request. However, its `finish` methods
 still consume meshes on the default contract. `ItemResult` and common product
 accumulation now additionally carry logical construction values on the explicit
-contract. Boolean `Value`, mapping, layers and opening host parts remain mesh
-values: they still need consuming retained continuations. `inner_ready.rs` now
+contract. Boolean `Value`, styled/type-map mapping, layers and opening host
+parts remain mesh values: they still need consuming retained continuations. `inner_ready.rs` now
 admits original-source construction operations through nested common replies;
 this admission alone makes no remote-execution claim.
 
@@ -209,8 +254,9 @@ The construction checkpoint supplies a real-SDK fixture that issues a reached
 construction, executes its original analytic recipe, accepts the sealed receipt
 and resumes the original common request through product accumulation. It is
 unrun under the current capacity restriction. Next qualify that fixture, then
-connect repeated mapped occurrences and real Boolean/opening dependencies using
-actual sealed operands; preserve explicit refusals throughout.
+qualify the merged mapped checkpoint and connect styled/type-map occurrences
+and real Boolean/opening dependencies using actual sealed operands; preserve
+explicit refusals throughout.
 Final-net coverage remains withheld until representation/layer/appearance closure
 is established across all reached branches.
 

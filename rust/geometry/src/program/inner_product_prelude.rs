@@ -24,7 +24,7 @@ pub(super) enum PreludeAction {
 pub(super) struct PreludeReply { value: PreludeValue, reports: crate::construction::ConstructionReports }
 enum PreludeValue {
     Lower(Result<AlignmentAdmission>), Extended(Result<Mesh>, f64), Aligned(Result<Option<Mesh>>),
-    Prepared(Geometry), Placement(Result<PlacementAdmission>), Placed(Geometry), Joined(Result<Vec<Mesh>>),
+    Prepared(Geometry), Placement(Result<PlacementAdmission>), Placed(Result<Geometry>), Joined(Result<Vec<Mesh>>),
 }
 pub(super) enum AlignmentAdmission { Absent, Owned(ReadyAlignment), Extension(AlignmentExtension) }
 pub(super) struct AlignmentExtension { element: DecodedEntity, emitter: ProcessorEmitter, scale: f64 }
@@ -101,7 +101,7 @@ impl PreludeControl {
                 },
                 PreludeValue::Prepared(geometry) => self.completion.as_mut().expect("alignment completion").accept_prepare(geometry),
                 PreludeValue::Placement(reply) => self.completion.as_mut().expect("alignment completion").accept_source(reply?),
-                PreludeValue::Placed(geometry) => self.completion.as_mut().expect("alignment completion").accept_place(geometry),
+                PreludeValue::Placed(geometry) => self.completion.as_mut().expect("alignment completion").accept_place(geometry?),
                 PreludeValue::Joined(reply) => self.completion.as_mut().expect("alignment completion").accept_join(reply?),
             }
             crate::resource::check_current()?;

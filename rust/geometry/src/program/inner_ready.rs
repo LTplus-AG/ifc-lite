@@ -113,6 +113,7 @@ impl ReadyOperation {
                 let (reply, operation) = ready.admit_retained()?;
                 (envelope.wrap(reply), operation)
             }
+            ReadyPayload::Mapping(ready) => (ReplyValue::Mapping(ready.execute()), None),
             ReadyPayload::Product(ready) if ready.is_retained_control() => (ReplyValue::Product(ready.execute()), None),
             _ => return Err(ProgramError::UnsupportedRetained),
         };

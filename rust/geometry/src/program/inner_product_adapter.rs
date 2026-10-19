@@ -279,10 +279,11 @@ impl ProductRootAdapter {
     pub(super) fn select_retained(&mut self, contract: super::retained::RetainedContract) {
         self.retained = Some(contract);
         self.machine.retained = Some(contract);
+        self.machine.retained_cache = Some(std::sync::Arc::new(std::sync::Mutex::new(super::mapping::RetainedCache::default())));
     }
 }
 impl ProductReadyWork {
     pub(super) fn is_retained_control(&self) -> bool {
-        matches!(self, Self::Product(ProductReady::Merge(_) | ProductReady::Finish(_)))
+        matches!(self, Self::Product(ProductReady::Merge(_) | ProductReady::Finish(_) | ProductReady::Prepare(_) | ProductReady::Place(_)))
     }
 }

@@ -1,0 +1,42 @@
+{
+  "commit": "3a4a016498c21ef531f191931e05ce13bef4494b",
+  "epsilon_lexical_count": 480,
+  "paths": {
+    "docs/architecture/geometry-platform-retained-program-continuation.md": {
+      "git_blob": "1bfe22b372e16c06230892b3747f4ffedda38ea0",
+      "sha256": "88ee7d4509415d1a7d5e6601c79953a04aa734a37fde315c9f7cba1a3715a6dc"
+    },
+    "rust/geometry/src/program/mapping/merged.rs": {
+      "git_blob": "ea35aeb9c3888b6e85a92d633e19e2bada0f42fa",
+      "sha256": "4755c567c4b995b901d5914340122a55b4b77d51b97ccd1793a35c33fa43278e"
+    },
+    "rust/geometry/src/program/mapping/merged_tests.rs": {
+      "git_blob": "cca2c52b4915b0491b2d46059d22d075cfb33ebf",
+      "sha256": "2a93ec87ab21948ecc74a33c1286e99bbbf0146f5a7cae4a0cc60b6c4ff563c3"
+    },
+    "rust/geometry/src/program/mapping/values.rs": {
+      "git_blob": "8278d5fee037d464f6539b7f82b38debab55b08d",
+      "sha256": "4dca7373b15b32a3ffec758a5a107d2ff3074e81f21d50255cfd27da76e998be"
+    },
+    "rust/geometry/src/program/retained.rs": {
+      "git_blob": "e1054517184fc90ad4346325d501b8c5d83a636a",
+      "sha256": "69e1b5c840ca47d447b90dd42df91e70b6cce5b4b0af1a4f2ab6c112f7b2bacb"
+    },
+    "rust/geometry/src/program/retained_mapping_tests.rs": {
+      "git_blob": "749ae7fd2e50c9451861f521baae4159317d02f6",
+      "sha256": "35b0f9e2d18caa1bc59ecb5b9f30ff17ea1cccb74838a985dc81b3675c991475"
+    },
+    "rust/geometry/src/math/tol.rs": {
+      "git_blob": "fbd54ccf8ae9265b404dd730edfab4b67d367fa3",
+      "sha256": "e3cc9ebbaf4fb52b23b784835a3764fa38ff54e34c08c37e14cb036b47864c17"
+    },
+    "rust/geometry/src/math/tol_tests.rs": {
+      "git_blob": "00b4a3d2e02e2f97188567a163353616805d014b",
+      "sha256": "4c2e6d3e2b67de5285945ca57dd8707a65ed9a04c30faad8440b1a8b29e12ca6"
+    },
+    "rust/geometry/src/router/frame_parts.rs": {
+      "git_blob": "7ede48b97fd0854d1a9c104fb59cd7b10e8dcb06",
+      "sha256": "c973f8cfeddcaffbdf301062e10f14c2e31f63b0ae64566e4cbf2643a75c51c3"
+    }
+  }
+}

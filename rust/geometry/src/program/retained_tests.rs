@@ -65,20 +65,14 @@ fn common_retained_reached_construction_resumes_same_request_and_accumulates_dis
         slots[0], slots[1],
         "repeated STEP id is two common occurrences"
     );
-    assert_eq!(
-        plan.values
-            .iter()
-            .map(LogicalRetainedValue::slot)
-            .collect::<Vec<_>>(),
-        slots
-    );
+    assert_eq!(plan.values.iter().map(|v|v.placements().last().unwrap().input).collect::<Vec<_>>(),slots);
+    assert_ne!(plan.values[0].slot(),plan.values[1].slot());
     assert!(plan.remaining.contains(&RetainedRequirement::IfcAppearance));
     assert!(plan
         .remaining
         .contains(&RetainedRequirement::OpeningClosure));
-    assert!(plan
-        .remaining
-        .contains(&RetainedRequirement::ProductPlacement));
+    assert!(!plan.remaining.contains(&RetainedRequirement::ProductPlacement));
+    assert!(plan.values.iter().all(LogicalRetainedValue::is_product_placed));
 }
 #[test]
 fn common_retained_later_unsupported_branch_refuses_whole_traversal() {

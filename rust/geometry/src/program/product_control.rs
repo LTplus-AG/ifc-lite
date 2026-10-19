@@ -30,8 +30,8 @@ pub(crate) enum ProductOutput {
     Styled(SubMeshCollection),
 }
 
-pub(crate) enum ProductItemOutput { Merged(Vec<Mesh>), Styled(SubMeshCollection) }
-pub(crate) enum ProductResources { Merged(MergedResources), Styled(SubMeshCollection) }
+pub(crate) enum ProductItemOutput { Retained(Vec<super::retained::LogicalRetainedValue>), Merged(Vec<Mesh>), Styled(SubMeshCollection) }
+pub(crate) enum ProductResources { Retained(Vec<super::retained::LogicalRetainedValue>), Merged(MergedResources), Styled(SubMeshCollection) }
 enum State { Traversal, Child, Merge, Finish }
 
 pub(crate) struct ProductControl {
@@ -40,7 +40,6 @@ pub(crate) struct ProductControl {
     consumer: ProductConsumer,
     resources: Option<ProductResources>,
     state: State,
-    retained: Option<Vec<super::retained::LogicalRetainedValue>>,
 }
 impl ProductControl {
     pub(crate) fn new(traversal: ProductProgram, element: DecodedEntity,
@@ -49,7 +48,7 @@ impl ProductControl {
             ProductConsumer::Merged => ProductResources::Merged(MergedResources::default()),
             ProductConsumer::Styled { .. } => ProductResources::Styled(SubMeshCollection::new()),
         };
-        Self { traversal, element, consumer, resources: Some(resources), state: State::Traversal, retained: None }
+        Self { traversal, element, consumer, resources: Some(resources), state: State::Traversal }
     }
 
     pub(crate) fn poll(&mut self) -> ProductPoll {
@@ -66,7 +65,7 @@ impl ProductControl {
             TraversalPoll::Pending => ProductPoll::Pending,
             TraversalPoll::Complete => {
                 self.state = State::Finish;
-                ProductPoll::Finish(ReadyProductFinish { resources: self.resources.take().expect("owned product resources"), retained: self.retained.take() })
+                ProductPoll::Finish(ReadyProductFinish { resources: self.resources.take().expect("owned product resources") })
             }
         }
     }
@@ -98,6 +97,12 @@ pub(crate) struct ReadyProductMerge {
 impl ReadyProductMerge {
     pub(crate) fn execute(mut self) -> Result<ProductResources> {
         match (&mut self.resources, self.output) {
+            (ProductResources::Retained(values), ProductItemOutput::Retained(mut incoming)) => {
+                crate::resource::charge(crate::resource::Cost { work: incoming.len() as u64,
+                    ..Default::default() })?.retain();
+                crate::resource::reserve_headers(values,incoming.len())?.retain();
+                values.append(&mut incoming);
+            }
             (ProductResources::Merged(resources), ProductItemOutput::Merged(parts)) => {
                 for mesh in parts { resources.merge(mesh, crate::router::transforms::instancing_enabled()); }
             }
@@ -111,11 +116,11 @@ impl ReadyProductMerge {
     }
 }
 
-pub(crate) struct ReadyProductFinish { resources: ProductResources, retained: Option<Vec<super::retained::LogicalRetainedValue>> }
+pub(crate) struct ReadyProductFinish { resources: ProductResources }
 impl ReadyProductFinish {
     pub(crate) fn execute(self) -> ProductOutput {
-        if let Some(values) = self.retained { return ProductOutput::Retained(values) }
         match self.resources {
+            ProductResources::Retained(values) => ProductOutput::Retained(values),
             ProductResources::Merged(resources) => ProductOutput::Merged(
                 resources.finish(crate::router::transforms::instancing_enabled())),
             ProductResources::Styled(collection) => ProductOutput::Styled(collection),
@@ -124,13 +129,5 @@ impl ReadyProductFinish {
 }
 
 impl ProductControl {
-    pub(super) fn select_retained(&mut self) { self.retained = Some(Vec::new()); }
-    pub(super) fn accept_retained(&mut self, values: Vec<super::retained::LogicalRetainedValue>) -> Result<()> {
-        if !matches!(self.state, State::Child) { return Err(Error::geometry("retained child stage mismatch")) }
-        let output = self.retained.as_mut().ok_or_else(|| Error::geometry("exact product rejects retained child"))?;
-        crate::resource::reserve_headers(output, values.len())?.retain();
-        output.extend(values);
-        self.state = State::Traversal;
-        Ok(())
-    }
+    pub(super) fn select_retained(&mut self) { self.resources=Some(ProductResources::Retained(Vec::new())); }
 }

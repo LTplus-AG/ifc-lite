@@ -31,7 +31,6 @@
 10 rust/geometry/src/analytic/curve.rs
 7 rust/geometry/src/analytic/extrusion.rs
 1 rust/geometry/src/analytic/helpers.rs
-7 rust/geometry/src/analytic/mod.rs
 7 rust/geometry/src/analytic/profile.rs
 12 rust/geometry/src/curve_segment.rs
 19 rust/geometry/src/curve_source.rs
@@ -69,12 +68,12 @@
 3 rust/geometry/src/representation/mod.rs
 1 rust/geometry/src/representation/select.rs
 3 rust/geometry/src/representation/walk.rs
-2 rust/geometry/src/router/instancing.rs
+1 rust/geometry/src/router/instancing.rs
 1 rust/geometry/src/router/mod.rs
 17 rust/geometry/src/router/rtc_offset.rs
 2 rust/geometry/src/router/rtc_offset/raw_coordinate.rs
 2 rust/geometry/src/router/transforms/mapped.rs
-3 rust/geometry/src/router/transforms/mod.rs
+1 rust/geometry/src/router/transforms/mod.rs
 15 rust/geometry/src/router/transforms/operator.rs
 9 rust/geometry/src/router/voids/probe.rs
 21 rust/geometry/src/router/voids/probe_rectangle.rs

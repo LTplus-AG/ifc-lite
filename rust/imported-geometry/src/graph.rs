@@ -202,7 +202,7 @@ impl GraphProgram {
         if let Some(visibility) = reply.visibility { frame.invisible = visibility.eq_ignore_ascii_case("invisible"); }
         if let Some(color) = reply.diffuse {
             frame.color = Some([color.first().copied().unwrap_or(f64::NAN),
-                color.get(1).copied().unwrap_or(f64::NAN), color.get(2).copied().unwrap_or(f64::NAN), reply.opacity]);
+                color.get(1).copied().unwrap_or(f64::NAN), color.get(2).copied().unwrap_or(f64::NAN), reply.opacity]); // not-an-attribute: diffuse RGB Vec<f64> components, not IFC entity attributes.
         }
         if let Some(local) = reply.local_transform { frame.stack.push(local); }
         // Stage on every frame, including hidden frames and nodes without geometry.

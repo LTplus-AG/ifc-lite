@@ -8,7 +8,7 @@ use super::{
 };
 use crate::{Error, Result};
 use crate::math::tol;
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType, slot};
 
 /// Extract an exact directrix where supported. Unsupported curve types return a
 /// status and no partial segments; malformed required attributes return an error.
@@ -20,26 +20,26 @@ pub fn extract_swept_disk(
         return Err(Error::geometry("expected IfcSweptDiskSolid".to_string()));
     }
     let directrix_id = entity
-        .get_ref(0)
+        .get_ref(slot::IfcSweptDiskSolid::DIRECTRIX.index())
         .ok_or_else(|| Error::geometry("IfcSweptDiskSolid missing Directrix".to_string()))?;
-    let radius = read_optional_numeric(entity.get(1), "Radius")?
+    let radius = read_optional_numeric(entity.get(slot::IfcSweptDiskSolid::RADIUS.index()), "Radius")?
         .filter(|r| r.is_finite() && *r > 0.0)
         .ok_or_else(|| Error::geometry("IfcSweptDiskSolid has invalid Radius".to_string()))?;
-    let inner_radius = read_optional_numeric(entity.get(2), "InnerRadius")?;
+    let inner_radius = read_optional_numeric(entity.get(slot::IfcSweptDiskSolid::INNER_RADIUS.index()), "InnerRadius")?;
     if inner_radius.is_some_and(|r| !r.is_finite() || r <= 0.0 || r >= radius) {
         return Err(Error::geometry(
             "IfcSweptDiskSolid has invalid InnerRadius".to_string(),
         ));
     }
     let directrix = decoder
-        .resolve_ref(entity.get(0).unwrap())?
+        .resolve_ref(entity.get(slot::IfcSweptDiskSolid::DIRECTRIX.index()).unwrap())?
         .ok_or_else(|| {
             Error::geometry("IfcSweptDiskSolid Directrix cannot be resolved".to_string())
         })?;
     let mut walk = curve::CurveWalk::with_source();
     walk.source.record(entity, decoder);
-    let start = read_optional_numeric(entity.get(3), "StartParam")?;
-    let end = read_optional_numeric(entity.get(4), "EndParam")?;
+    let start = read_optional_numeric(entity.get(slot::IfcSweptDiskSolid::START_PARAM.index()), "StartParam")?;
+    let end = read_optional_numeric(entity.get(slot::IfcSweptDiskSolid::END_PARAM.index()), "EndParam")?;
     let has_trim = start.is_some() || end.is_some();
     let extracted = if directrix.ifc_type == IfcType::IfcLine && (start.is_none() || end.is_none())
     {
@@ -201,7 +201,7 @@ fn trimmed_line_solid_bounds_redundant(
     else {
         return Ok(false);
     };
-    let Some(basis_attr) = directrix.get(0) else {
+    let Some(basis_attr) = directrix.get(slot::IfcTrimmedCurve::BASIS_CURVE.index()) else {
         return Ok(false);
     };
     let Some(basis) = decoder.resolve_ref(basis_attr)? else {

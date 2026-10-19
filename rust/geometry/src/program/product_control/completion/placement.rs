@@ -3,7 +3,7 @@
 use super::Geometry;
 use crate::router::transforms::WorldFrame;
 use crate::{GeometryRouter, Result};
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, slot};
 use nalgebra::Matrix4;
 
 pub(crate) struct ProductPlacementRequest {
@@ -17,7 +17,7 @@ pub(crate) struct PlacementAdmission {
 }
 impl ProductPlacementRequest {
     pub(crate) fn admit(self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>) -> Result<PlacementAdmission> {
-        let placement = match self.element.get(5).filter(|attribute| !attribute.is_null()) {
+        let placement = match self.element.get(slot::IfcProduct::OBJECT_PLACEMENT.index()).filter(|attribute| !attribute.is_null()) {
             Some(attribute) => decoder.resolve_ref(attribute)?,
             None => None,
         };

@@ -104,14 +104,13 @@ fn retained_round3_actual_copied_frames_and_boolean_opening_preserve_shared_sour
 fn retained_round3_actual_authoring_fixture_sources_obey_analytic_sweep_volume() {
     use ifc_lite_geometry::analytic::{AnalyticStatus, ProfileLoopKind};
     use ifc_lite_processing::authored_geometry::AuthoredDefinition;
-    let path=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/models/ara3d/AC20-FZK-Haus.ifc");
-    if !path.exists() {
-        eprintln!("SKIP authoring fixture: pnpm fixtures ara3d/AC20-FZK-Haus.ifc");return;
-    }
+    let Some(content)=ifc_lite_testkit::fixture_bytes("ara3d/AC20-FZK-Haus.ifc") else {
+        return;
+    };
     let Some(executable)=std::env::var_os("IFCLITE_SMLIB_WORKER") else {
         eprintln!("SKIP actual authoring fixture SDK consumption: set IFCLITE_SMLIB_WORKER");return;
     };
-    let source=SourceBundle::new(std::fs::read(path).unwrap());
+    let source=SourceBundle::new(content);
     let model=ProductionModel::from_source(source.clone());
     let context=model.snapshot(OwnedMeshProductionData::default());
     let mut decoder=source.decoder();let plan=context.admit_authored_plan(&mut decoder).unwrap();

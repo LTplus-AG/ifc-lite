@@ -1,0 +1,41 @@
+{
+  "source": "639582e0a4c6847bc9e710881856e13e208a3e9f",
+  "job": "a0d6e9ee-54f0-4027-ada8-58e6eb4e2a42",
+  "request": "auto-c5c23963bfd549f3b32d37d709ac3c1e",
+  "host": "pop-os",
+  "exit": 1,
+  "sourceUnchanged": true,
+  "outputSha256": "112acaaab29ecbd70eb19273625d64316e87601e53f73a194c4a33a31fc13bd7",
+  "repeatImportedGeneration": 0,
+  "importedVerify": 0,
+  "canonicalWasm": 0,
+  "generatedIdentity": 0,
+  "actualWasmContracts": {
+    "passed": 212,
+    "failed": 0,
+    "skipped": 1,
+    "skip": "Historical matched-fingerprint comparison requires paired retained baseline JS and WASM inputs"
+  },
+  "rootBuild": {
+    "exit": 1,
+    "tasksSuccessful": 70,
+    "tasksTotal": 72,
+    "failure": "viewer-embed optional SDK literal deployment imports unresolved",
+    "correction": "32f2d206ca class-wide lazy SDK module helper; later source unqualified"
+  },
+  "rootTypecheck": {
+    "exit": 134,
+    "tasksSuccessful": 124,
+    "tasksTotal": 127,
+    "failure": "viewer V8 heap exhaustion at 3 GiB; no full typecheck verdict",
+    "nextCommand": "Root Turbo concurrency1 and six-GiB V8 heap within ordinary 12-GiB reservation"
+  },
+  "rootTest": {
+    "exit": 1,
+    "tasksSuccessful": 133,
+    "tasksTotal": 137,
+    "failure": "Same viewer-embed build dependency; unfinished/killed test tasks not passed",
+    "noWholeGraphPass": true
+  },
+  "builtApiMetadata": "Fresh built declarations report exactly seven intentional added WASM exports, no removals; snapshot migration remains pending"
+}

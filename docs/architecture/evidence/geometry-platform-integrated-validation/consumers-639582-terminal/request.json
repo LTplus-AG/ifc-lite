@@ -1,0 +1,18 @@
+{
+  "id": "auto-c5c23963bfd549f3b32d37d709ac3c1e",
+  "commit": "639582e0a4c6847bc9e710881856e13e208a3e9f",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "-c",
+    "# SPDX-License-Identifier: MPL-2.0\nsource \"$HOME/build-workers/worker-env.sh\" || exit $?\n# Two Turbo children at 3 GiB each remain within this 12 GiB ordinary reservation.\nexport NODE_OPTIONS=\"${NODE_OPTIONS:-} --max-old-space-size=3072\"\nnode -e \"console.log('node_heap_limit_bytes='+require('node:v8').getHeapStatistics().heap_size_limit)\"\npnpm install --frozen-lockfile || exit $?\npnpm fixtures || exit $?\npnpm fixtures:check || exit $?\npnpm build:imported-geometry\nimported_status=$?\nnode scripts/build-imported-geometry.mjs --verify\nverify_status=$?\npnpm build:wasm\nwasm_status=$?\ngit diff --exit-code -- packages/ifcx/src/generated packages/wasm/pkg/ifc-lite.d.ts\ngenerated_status=$?\npnpm build\nbuild_status=$?\npnpm test:wasm-contract\ncontract_status=$?\npnpm typecheck\ntypecheck_status=$?\npnpm test\ntest_status=$?\nprintf 'repeat_imported_exit=%s imported_verify_exit=%s canonical_wasm_exit=%s generated_diff_exit=%s root_build_exit=%s wasm_contract_exit=%s root_typecheck_exit=%s root_test_exit=%s\\n' \"$imported_status\" \"$verify_status\" \"$wasm_status\" \"$generated_status\" \"$build_status\" \"$contract_status\" \"$typecheck_status\" \"$test_status\"\nfor result in \"$imported_status\" \"$verify_status\" \"$wasm_status\" \"$generated_status\" \"$build_status\" \"$contract_status\" \"$typecheck_status\" \"$test_status\"; do\n  if [ \"$result\" -ne 0 ]; then exit \"$result\"; fi\ndone\n"
+  ],
+  "storageTask": "ifclite-consumers-639582-20261019",
+  "pools": [],
+  "requestedHost": "pop-os"
+}

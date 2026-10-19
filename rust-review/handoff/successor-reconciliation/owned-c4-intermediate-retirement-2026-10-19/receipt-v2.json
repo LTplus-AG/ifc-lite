@@ -1,0 +1,126 @@
+{
+  "startedAt": 1792379874.5861478,
+  "scope": "Only3 owned terminal C4 debug incremental caches and unpinned nonexecutable single-link compiler deps; all other files preserved",
+  "removed": [],
+  "errors": [
+    {
+      "error": "AssertionError('unexpected executable/link in incremental')",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-owned-intermediate-retirement-pop-v1/retire-owned-v2.py\", line 73, in <module>\n    s=p.lstat();assert stat.S_ISREG(s.st_mode) and not s.st_mode&0o111 and s.st_nlink==1,'unexpected executable/link in incremental'\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: unexpected executable/link in incremental\n"
+    }
+  ],
+  "complete": false,
+  "freeBefore": 165847785472,
+  "requiredResumeBytes": 339302416384,
+  "activeJobsBefore": [],
+  "sourcesBefore": {
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4": {
+      "head": "12157693a84d9495fafd14a0ade6a5939bf3e0b8",
+      "tree": "4c512c747f2aa6f364200f2415a609c1ce425248",
+      "status": ""
+    }
+  },
+  "fixturesBefore": {
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4": {
+      "count": 182,
+      "manifestSha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+      "allSizeShaMatch": true
+    }
+  },
+  "owners": {
+    "49926200a29e09a7679b": [
+      {
+        "id": "0a8da302-6f26-4d60-ab40-9e62bbe1b7a0",
+        "kind": "ordinary",
+        "state": "failed",
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+        "finishedAt": 1792325764.2402859
+      },
+      {
+        "id": "16460322-6835-4e49-a718-00e6df4fa528",
+        "kind": "ordinary",
+        "state": "failed",
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+        "finishedAt": 1792335117.3646874
+      },
+      {
+        "id": "de3ed15c-fd6d-41b1-811a-539c75bafc0e",
+        "kind": "ordinary",
+        "state": "completed",
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+        "finishedAt": 1792329909.2712967
+      },
+      {
+        "id": "2fae89ce-8575-40b6-bfd1-5a0d5caf39f7",
+        "kind": "ordinary",
+        "state": "failed",
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+        "finishedAt": 1792342115.8893852
+      },
+      {
+        "id": "a20de8e4-9ea9-41af-b7ff-a75b964283a3",
+        "kind": "ordinary",
+        "state": "failed",
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+        "finishedAt": 1792329991.9752164
+      },
+      {
+        "id": "87cdfa4c-8d54-40a0-9735-c3edccaf87f0",
+        "kind": "ordinary",
+        "state": "failed",
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+        "finishedAt": 1792325695.8409562
+      },
+      {
+        "id": "4ef392b9-98d8-4993-bf11-254e2bc4b1cd",
+        "kind": "ordinary",
+        "state": "completed",
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+        "finishedAt": 1792336902.8792741
+      },
+      {
+        "id": "48b9f953-994b-4ac3-bf2f-27a80d54c026",
+        "kind": "ordinary",
+        "state": "failed",
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+        "finishedAt": 1792342744.7621822
+      },
+      {
+        "id": "05031469-9c72-4c10-9778-9a0c97623200",
+        "kind": "ordinary",
+        "state": "completed",
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+        "finishedAt": 1792334075.3902156
+      },
+      {
+        "id": "da9a82a3-da11-4bd7-9be4-d944dac05ac5",
+        "kind": "ordinary",
+        "state": "completed",
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4",
+        "finishedAt": 1792332826.76203
+      }
+    ]
+  },
+  "targetAllocatedBefore": {
+    "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b": 159976517632
+  },
+  "maintenanceToolsBefore": {
+    "/home/louistrue/build-workers/machine-health/retention.py": {
+      "sha256": "b92476f18cd71d3c455703521ae04f2a1bd2b85c3580720bbf96967caa3a4366",
+      "bytes": 14892
+    },
+    "/home/louistrue/build-workers/machine-health/build_cleanup.py": {
+      "sha256": "613d99fc9f779a198239edcc36cfb76756f65bfdbac829e4e1e1fd9b294228a4",
+      "bytes": 7288
+    },
+    "/home/louistrue/build-workers/machine-health/health.py": {
+      "sha256": "705aa531a778c6a7d46fa0d627d6753ed579f2a73284099bfc07c2ce183adf43",
+      "bytes": 32458
+    },
+    "/home/louistrue/build-workers/machine-health/config.json": {
+      "sha256": "746f08bead8e8e2810262a3ea51f30bf2d2d2e4d1c3a8dd24d31b8dc9d95f8f5",
+      "bytes": 254
+    }
+  },
+  "finishedAt": 1792379886.5046816,
+  "maintenanceOwnershipReleased": true
+}

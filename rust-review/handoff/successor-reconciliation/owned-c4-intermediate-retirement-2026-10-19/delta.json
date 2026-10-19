@@ -1,0 +1,58 @@
+{
+  "state": "COMPLETE_OWNED_INTERMEDIATES_RETIRED;DISK_ADMISSION_STILL_BLOCKED",
+  "originalSession": 4298,
+  "exitCode": 0,
+  "targets": [
+    {
+      "target": "49926200a29e09a7679b",
+      "allocatedBefore": 159976517632,
+      "allocatedAfter": 128523956224,
+      "allocatedBytesRemoved": 31452561408
+    },
+    {
+      "target": "899d43786f3f1d14e1ff",
+      "allocatedBefore": 60305321984,
+      "allocatedAfter": 49579798528,
+      "allocatedBytesRemoved": 10725523456
+    },
+    {
+      "target": "3a9c872d829495e0751f",
+      "allocatedBefore": 61080440832,
+      "allocatedAfter": 49948090368,
+      "allocatedBytesRemoved": 11132350464
+    }
+  ],
+  "allocatedBytesRemoved": 53310435328,
+  "allocatedGiBRemoved": 49.64921188354492,
+  "freeBefore": 165845172224,
+  "freeAfterRemoval": 219077312512,
+  "currentFreeBytes": 219023724544,
+  "currentFreeGiB": 203.98173904418945,
+  "requiredResumeGiB": 316,
+  "remainingDeficitBytes": 120278691840,
+  "remainingDeficitGiB": 112.01826095581055,
+  "retiredCompilerFiles": 162668,
+  "retainedFileIdentitiesVerified": 38411,
+  "retainedUniqueContentBytesHashedBeforeAfter": 227908454677,
+  "linkedEvidenceHashesVerified": 55,
+  "sourcesFixturesToolsUnchanged": true,
+  "maintenanceOwnershipReleased": true,
+  "originalReadOnlyPreflights": {
+    "20193": {
+      "exitCode": 1,
+      "mutations": 0,
+      "receipt": "receipt.json"
+    },
+    "93225": {
+      "exitCode": 1,
+      "mutations": 0,
+      "receipt": "receipt-v2.json"
+    }
+  },
+  "noBroadening": true,
+  "noBenchmarkDispatch": true,
+  "acceptanceUnchanged": true,
+  "result": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-owned-intermediate-retirement-pop-v1/RESULT.md",
+  "receipt": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-owned-intermediate-retirement-pop-v1/receipt-v3.json",
+  "release": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-owned-intermediate-retirement-pop-v1/ownership-release.json"
+}

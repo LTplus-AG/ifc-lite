@@ -1,0 +1,18 @@
+{
+  "/home/louistrue/build-workers/machine-health/retention.py": {
+    "sha256": "b92476f18cd71d3c455703521ae04f2a1bd2b85c3580720bbf96967caa3a4366",
+    "bytes": 14892
+  },
+  "/home/louistrue/build-workers/machine-health/build_cleanup.py": {
+    "sha256": "613d99fc9f779a198239edcc36cfb76756f65bfdbac829e4e1e1fd9b294228a4",
+    "bytes": 7288
+  },
+  "/home/louistrue/build-workers/machine-health/health.py": {
+    "sha256": "705aa531a778c6a7d46fa0d627d6753ed579f2a73284099bfc07c2ce183adf43",
+    "bytes": 32458
+  },
+  "/home/louistrue/build-workers/machine-health/config.json": {
+    "sha256": "746f08bead8e8e2810262a3ea51f30bf2d2d2e4d1c3a8dd24d31b8dc9d95f8f5",
+    "bytes": 254
+  }
+}

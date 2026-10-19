@@ -1,0 +1,9 @@
+{
+  "originalSession": 93225,
+  "originalExit": 1,
+  "originalReceipt": "receipt-v2.json",
+  "mutations": 0,
+  "finding": "Incremental metadata.rmeta has aliases outside incremental; keep ALL multiple-link files rather than deleting cache wholesale. Internal r2 object aliases retained too.",
+  "finalSelection": "Only individual regular nonexecutable single-link compiler files, with metadata/ownership/pin/process/lock guards; every other file retains full identity. Incremental directories remain.",
+  "scriptSha256": "b436c1b44536f1a602c8bcf5e189cf28c21fe8f9d4bf32f8fddd9cbe34b3a8c7"
+}

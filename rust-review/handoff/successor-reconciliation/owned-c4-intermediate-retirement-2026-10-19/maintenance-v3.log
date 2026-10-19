@@ -1,0 +1,7 @@
+PREPARED 49926200a29e09a7679b preserved 17294 incrementalBytes 25875685376
+PREPARED 899d43786f3f1d14e1ff preserved 10410 incrementalBytes 8130547712
+PREPARED 3a9c872d829495e0751f preserved 10707 incrementalBytes 8682668032
+PRESERVED_SHA_PASS 49926200a29e09a7679b 17294
+PRESERVED_SHA_PASS 899d43786f3f1d14e1ff 10410
+PRESERVED_SHA_PASS 3a9c872d829495e0751f 10707
+{"complete": true, "allocatedBytesRemoved": 53310435328, "freeBefore": 165845172224, "freeAfter": 219077312512, "remainingResumeDeficitBytes": 120225103872, "preservedFileCount": 38411, "errors": [], "maintenanceOwnershipReleased": true}

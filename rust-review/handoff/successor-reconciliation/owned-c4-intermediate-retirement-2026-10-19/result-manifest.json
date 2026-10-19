@@ -1,0 +1,78 @@
+{
+  "RESULT.md": {
+    "bytes": 3673,
+    "sha256": "3707af10cf8477be5f4b8337e4427d19c1028e4a8ff84f6865d4f1369070581a"
+  },
+  "delta.json": {
+    "bytes": 1977,
+    "sha256": "4d8607d0a433bf9d5546f2ba41df4eebee80eccd4bf0f2eb3ebc3bae20f9bf11"
+  },
+  "deps-candidate-metadata.json": {
+    "bytes": 69749411,
+    "sha256": "0d84c0df33edadc73862ddd0508be04eb87c3e8f268920cf2d0ca113a70dc3b4"
+  },
+  "evidence-reference-files.txt": {
+    "bytes": 4996,
+    "sha256": "00466c3e23cba54508ce3b303c4adc00ede85bce82844dc06a8b9f1dfc2d66cb"
+  },
+  "evidence-referenced-preserve-paths.json": {
+    "bytes": 6301,
+    "sha256": "ff954f0da6f929427e1169141d93fc9dc3aaaa1aa2799b28bc226eae3f96dc83"
+  },
+  "hardlink-preservation-correction.json": {
+    "bytes": 590,
+    "sha256": "6d48f488c5e22421fd07b9751d21efa51a4706efb934eb2d3462609eb234702f"
+  },
+  "maintenance-tools.json": {
+    "bytes": 684,
+    "sha256": "7bfdcd37e00770cfd75fa5c7a75ea8d0aaedc873af031091d3092206216717f0"
+  },
+  "maintenance-v2.log": {
+    "bytes": 1241,
+    "sha256": "9e8e7be5267ad2ea874937f6ea739fdd0e0d7b6b2d7dd606ef6d7edd52f2ea3d"
+  },
+  "maintenance-v3.log": {
+    "bytes": 599,
+    "sha256": "a1b70661caf7830a9d6643d0849f28ee1431f10bf7e810367a444e20f44ee1d7"
+  },
+  "maintenance.log": {
+    "bytes": 1825,
+    "sha256": "f1db5871c9a1937071808205d9e1f7b1e10e25e659d08fb38b0a0fa62ce2ab54"
+  },
+  "ownership-release.json": {
+    "bytes": 1513,
+    "sha256": "7242eadf91ec44625248a82529ae71960ca7098fb17b9bbe4e2e0149b983c567"
+  },
+  "preflight-correction.json": {
+    "bytes": 541,
+    "sha256": "26060d5037e6ad3cd09e1f184db14428bc6002e09ad0b2c0bd8b4b4966fe8427"
+  },
+  "preserved-artifact-identities-before.json": {
+    "bytes": 15986800,
+    "sha256": "0210f2d8f2a8106c329b7c1b4830c16ba3cc3d973f0d75031ff509fde143c96d"
+  },
+  "receipt-v2.json": {
+    "bytes": 5772,
+    "sha256": "75bae7190f4cb32633be326d950686f74f42c998b5d4433f7045ab2bb995081f"
+  },
+  "receipt-v3.json": {
+    "bytes": 27712,
+    "sha256": "9e533eb1999ee5646f2700874cd42eba216941fe0c8f25a4adbf89fd445efe4e"
+  },
+  "receipt.json": {
+    "bytes": 6158,
+    "sha256": "563d64330427fc1727115fab317d2ac748f06434899daaf7bd3b2daaa7a3bd55"
+  },
+  "retire-owned-v2.py": {
+    "bytes": 10265,
+    "sha256": "91191fc6ca38ad9ff900eb60b45e1e7ee36b834ea530664731181df3ee8a1ab4"
+  },
+  "retire-owned-v3.py": {
+    "bytes": 10200,
+    "sha256": "b436c1b44536f1a602c8bcf5e189cf28c21fe8f9d4bf32f8fddd9cbe34b3a8c7"
+  },
+  "retire-owned.py": {
+    "bytes": 10237,
+    "sha256": "a8f32ae14bfa7604c5b076619198fbe5117b6f22df8c50f5246338db194eb503"
+  }
+}

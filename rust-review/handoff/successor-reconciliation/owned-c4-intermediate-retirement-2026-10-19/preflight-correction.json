@@ -1,0 +1,10 @@
+{
+  "originalSession": 20193,
+  "originalExit": 1,
+  "originalReceipt": "receipt.json",
+  "originalLog": "maintenance.log",
+  "mutations": 0,
+  "change": "Only include actual compiler ThinLTO index thin-lto-past-keys.bin in named incremental files; existing metadata/process/source/pin/exclusion guards unchanged; separate completion receipt/log",
+  "originalScriptSha256": "a8f32ae14bfa7604c5b076619198fbe5117b6f22df8c50f5246338db194eb503",
+  "continuationScriptSha256": "91191fc6ca38ad9ff900eb60b45e1e7ee36b834ea530664731181df3ee8a1ab4"
+}

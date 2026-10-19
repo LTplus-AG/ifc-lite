@@ -1,0 +1,38 @@
+{
+  "observedAt": 1792381049.498338,
+  "operation": "owned C4 intermediate retirement supporting7911 only",
+  "originalSession": 4298,
+  "originalExitCode": 0,
+  "originalTerminalToolChunk": "0c06d4",
+  "originalPid": 1520593,
+  "originalStartToken": "15038948",
+  "originalProcessGone": true,
+  "targetResourceLocks": [
+    {
+      "target": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+      "lock": "/home/louistrue/build-workers/worker-state/resource-eeac6e0232422bf08f17f57f92c0ebccce7bb183c7903a97d544b6c735b0c807",
+      "inode": 91395161,
+      "availableAfterTask": true
+    },
+    {
+      "target": "/home/louistrue/build-workers/worker-state/targets/899d43786f3f1d14e1ff",
+      "lock": "/home/louistrue/build-workers/worker-state/resource-7b4347c71f112e3d83b026e6dd2258bd932fc0cc01ad5f1491ff46bdb9841adc",
+      "inode": 91395163,
+      "availableAfterTask": true
+    },
+    {
+      "target": "/home/louistrue/build-workers/worker-state/targets/3a9c872d829495e0751f",
+      "lock": "/home/louistrue/build-workers/worker-state/resource-d5f9834ecc65b5afb820cf1613d2aeb27b045e918b6813b964dbb177ef0e0bbc",
+      "inode": 91395159,
+      "availableAfterTask": true
+    }
+  ],
+  "maintenanceLocksReleased": true,
+  "workerJobSubmitted": false,
+  "benchmarkSubmittedOrQueuedByThisTask": false,
+  "sourceOrAcceptanceChange": false,
+  "currentFreeBytes": 219023724544,
+  "requiredBytes": 339302416384,
+  "currentRemainingDeficitBytes": 120278691840,
+  "ownershipReleased": true
+}

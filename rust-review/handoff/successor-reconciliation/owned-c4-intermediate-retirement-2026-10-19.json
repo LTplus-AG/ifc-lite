@@ -1,0 +1,30 @@
+{
+  "at": "2026-10-19T03:39:11.121655+00:00",
+  "terminal": "COMPLETED0",
+  "session": 4298,
+  "reclaimedAllocatedBytes": 53310435328,
+  "reclaimedGiB": 49.6492,
+  "retainedFilesVerified": 38411,
+  "freeGiBAfter": 203.982,
+  "requiredGiB": 316,
+  "remainingDeficitGiB": 112.018,
+  "verifiedMembers": 19,
+  "archivedMembers": 17,
+  "localOnlyHashBoundMembers": [
+    {
+      "path": "deps-candidate-metadata.json",
+      "bytes": 69749411,
+      "sha256": "0d84c0df33edadc73862ddd0508be04eb87c3e8f268920cf2d0ca113a70dc3b4"
+    },
+    {
+      "path": "preserved-artifact-identities-before.json",
+      "bytes": 15986800,
+      "sha256": "0210f2d8f2a8106c329b7c1b4830c16ba3cc3d973f0d75031ff509fde143c96d"
+    }
+  ],
+  "manifestSha256": "693c246cf7d347cca1deabfa82ccf257d7b5b526466744cf0c3de68860b0de84",
+  "scope": "Three own terminal C4 targets; unpinned single-link nonexecutable compiler intermediates only",
+  "acceptanceChanged": false,
+  "noBenchmarkQueued": true,
+  "guardUnchanged": true
+}

@@ -235,3 +235,37 @@ fn issue_6316_revit_outside_hole_propagates_to_source_status() {
     assert!(matches!(invalid_profile.status,AnalyticStatus::Unsupported(_)));
     assert!(invalid_profile.loops.is_empty());
 }
+
+
+#[test]
+fn issue_3641_original_opening_profile_has_positive_length_authored_backtrack() {
+    let source=include_str!("../../../processing/tests/fixtures/issue_3641_voiding_trap.ifc");
+    let mut decoder=EntityDecoder::new(source);
+    let context=decoder.decode_by_id(4).unwrap();
+    assert_eq!(context.get_float(3),Some(0.2),"original raw millimetre Precision is unchanged");
+    let profile=decoder.decode_by_id(61272).unwrap();
+    assert_eq!(profile.get_ref(2),Some(61273));
+    let curve=decoder.decode_by_id(61273).unwrap();
+    assert_eq!(curve.get_ref(0),Some(61274));
+    // Use the production original-coefficient curve extractor, before profile
+    // admission. No mesh, synthetic boundary, snapping or regularization.
+    let segments=crate::analytic::curve::CurveWalk::default().extract(&curve,&mut decoder).unwrap().unwrap();
+    assert_eq!(segments.len(),5);
+    let AnalyticCurveSegment::Line {start:a0,end:a1}=&segments[0] else {panic!("original first line")};
+    let AnalyticCurveSegment::Line {start:b0,end:b1}=&segments[4] else {panic!("original closing line")};
+    assert_eq!((*a0,*a1),([0.,0.,0.],[870.,0.,0.]));
+    assert_eq!((*b0,*b1),([4500.,0.,0.],[0.,0.,0.]));
+    // Integer coefficients are exactly representable. The shared endpoint at
+    // zero is accompanied by an entire retraced interval, not a roundoff gap.
+    assert_eq!((a0[0].max(b1[0]),a1[0].min(b0[0])),(0.,870.));
+    assert!((a1[0]-a0[0])*(b1[0]-b0[0])<0.);
+    let extracted=crate::analytic::extract_analytic_profile(&profile,&mut decoder);
+    assert!(matches!(extracted.status,AnalyticStatus::Unsupported(ref reason) if reason.contains("segments 0/4")));
+    assert!(extracted.loops.is_empty(),"rejected boundary must not escape as a partial accepted profile");
+    let solid=decoder.decode_by_id(61271).unwrap();
+    let extrusion=extract_analytic_extrusion(&solid,&mut decoder);
+    assert_eq!(extrusion.swept_area_id,Some(61272));
+    assert!(matches!(extrusion.status,AnalyticStatus::Unsupported(ref reason) if reason.contains("SweptArea #61272") && reason.contains("segments 0/4")));
+    // This refusal regression does NOT replace or qualify the existing positive
+    // end-to-end #3641 SDK/Worker preservation witness, which remains unchanged.
+}

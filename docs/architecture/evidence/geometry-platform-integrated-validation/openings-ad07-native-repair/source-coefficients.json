@@ -1,0 +1,133 @@
+{
+  "fixture": "rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc",
+  "fixture_sha256": "da39f6cb98f56a9f9235e5f752213a9d4b56bd419ed867ccf7439b7d3b7a4eeb",
+  "records": {
+    "4": "#4=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,0.2,#5,#9);",
+    "61271": "#61271=IFCEXTRUDEDAREASOLID(#61272,#61275,#529,25632.);",
+    "61272": "#61272=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,'BL25632',#61273);",
+    "61273": "#61273=IFCINDEXEDPOLYCURVE(#61274,(IFCLINEINDEX((1,2,3,4,5,1))),$);",
+    "61274": "#61274=IFCCARTESIANPOINTLIST2D(((0.,0.),(870.,0.),(1400.,-900.),(4500.,-900.00001),(4500.,0.)),$);",
+    "141835": "#141835=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);"
+  },
+  "method": "targeted immutable source-record coefficient inspection with exact Fraction arithmetic on decoded f64 values; metadata proof only, no geometry executor or source walker",
+  "points": [
+    {
+      "xy": [
+        0.0,
+        0.0
+      ],
+      "f64_hex": [
+        "0x0.0p+0",
+        "0x0.0p+0"
+      ],
+      "binary_rational_xy": [
+        "0",
+        "0"
+      ]
+    },
+    {
+      "xy": [
+        870.0,
+        0.0
+      ],
+      "f64_hex": [
+        "0x1.b300000000000p+9",
+        "0x0.0p+0"
+      ],
+      "binary_rational_xy": [
+        "870",
+        "0"
+      ]
+    },
+    {
+      "xy": [
+        1400.0,
+        -900.0
+      ],
+      "f64_hex": [
+        "0x1.5e00000000000p+10",
+        "-0x1.c200000000000p+9"
+      ],
+      "binary_rational_xy": [
+        "1400",
+        "-900"
+      ]
+    },
+    {
+      "xy": [
+        4500.0,
+        -900.00001
+      ],
+      "f64_hex": [
+        "0x1.1940000000000p+12",
+        "-0x1.c2000053e2d62p+9"
+      ],
+      "binary_rational_xy": [
+        "4500",
+        "-3958241903974065/4398046511104"
+      ]
+    },
+    {
+      "xy": [
+        4500.0,
+        0.0
+      ],
+      "f64_hex": [
+        "0x1.1940000000000p+12",
+        "0x0.0p+0"
+      ],
+      "binary_rational_xy": [
+        "4500",
+        "0"
+      ]
+    }
+  ],
+  "source_order_one_based": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    1
+  ],
+  "segment0": {
+    "from": [
+      0,
+      0
+    ],
+    "to": [
+      870,
+      0
+    ]
+  },
+  "segment4": {
+    "from": [
+      4500,
+      0
+    ],
+    "to": [
+      0,
+      0
+    ]
+  },
+  "overlap_raw_interval": [
+    0,
+    870
+  ],
+  "overlap_raw_length": 870,
+  "raw_length_unit": "millimetre",
+  "physical_overlap_metres": "0.87",
+  "source_context_precision_raw": "0.2",
+  "classification": "positive-length collinear retracing in opposite directions; not a precision-only near contact",
+  "derived_boundary_candidate_one_based": [
+    2,
+    3,
+    4,
+    5,
+    2
+  ],
+  "original_signed_area_binary_rational": "6659741963524092375/2199023255552",
+  "candidate_signed_area_binary_rational": "6659741963524092375/2199023255552",
+  "area_equality_is_only_coefficient_proof": "not topology, SDK result, accepted-domain admission, or final product qualification",
+  "production_region_regularization": "NOT IMPLEMENTED; original source and refusal unchanged"
+}

@@ -1,0 +1,22 @@
+{
+  "base_source": "bcb0e55784f240c0081e36ff8dd126ebe29ff2b7",
+  "apply_to_evidence_parent": "50da6f5862f1bbc7745e6778b1fe40ff3709c9dc",
+  "repair_source": "ad07f72a56e44cab0a3e1881d252a04c02bc469d",
+  "files": [
+    {
+      "path": "rust/geometry/src/analytic/profile_topology_tests.rs",
+      "before_bcb0_sha256": "901e4b1166481323fd34fd9af9392fe2e3c7d0b3307101c51a0a4fe851c680f3",
+      "after_sha256": "f52b7b1b9fa90e4cb625fd85ae599c42f8157e452577c3feb6df53596a4d7d0b"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/opening_tests.rs",
+      "before_bcb0_sha256": "aea0765be3a034ee5322a3bbdcfd5b997361c9c6ef3dd5397f24ee7fe2c6426a",
+      "after_sha256": "215a08698268640c04086f95a319c040176cc96658725cb5ea4c01cecae453e6"
+    }
+  ],
+  "raw_patch_sha256": "218a2898bbf670249f8dc11ab404d15185bcc85d22229fb92ad5b9ebfb93f2a0",
+  "reconstructed_tree": "409c371dba592b1f19207652679f8d4e7b7292e4",
+  "expected_tree": "409c371dba592b1f19207652679f8d4e7b7292e4",
+  "exact_tree_match": true,
+  "bcb0_relative_scoped_patch_identical": true
+}

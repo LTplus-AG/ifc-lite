@@ -1,0 +1,26 @@
+1024: test element::session_retained::mapping_tests::p1_type_product_uses_actual_one_and_three_products_and_orphan_mode_consumers ... FAILED
+1025: test element::session_retained::opening_tests::p2_sdk_empty_host_stops_before_late_opening_body_or_probe_admission ... ok
+1026:
+1027: thread 'element::session_retained::clip_tests::p2_sdk_issue_5314_source_edge_clip_obeys_existing_prism_integral' (4023) panicked at rust/processing/src/element/session_retained/clip_tests.rs:206:80:
+1030:
+1031: thread 'element::session_retained::opening_tests::p2_sdk_issue_3641_actual_voiding_feature_chain_preserves_index_and_closed_solid_invariants' (4047) panicked at rust/processing/src/element/session_retained/opening_tests.rs:205:10:
+1032: called `Result::unwrap()` on an `Err` value: Unsupported("Retained contract refused: UnsupportedSource(\"SweptArea #61272: loop 0, segments 0/4: profile boundaries touch, intersect, or cannot be separated at context Precision\")")
+1033: test element::session_retained::opening_tests::p2_sdk_issue_3641_actual_voiding_feature_chain_preserves_index_and_closed_solid_invariants ... FAILED
+1034:
+1035: thread 'element::session_retained::opening_tests::p2_sdk_issue_2019_original_opening_control_cuts_overlapping_ordered_sources' (4045) panicked at rust/processing/src/element/session_retained/opening_tests.rs:30:61:
+1036: called `Result::unwrap()` on an `Err` value: Kernel { status: 1, message: "relative volume tolerance must be in [1e-8, 1e-1]" }
+1037: test element::session_retained::opening_tests::p2_sdk_issue_2019_original_opening_control_cuts_overlapping_ordered_sources ... FAILED
+1038:
+1039: thread 'element::session_retained::opening_tests::p2_sdk_mixed_reference_opening_keeps_original_no_cutter_eligibility' (4049) panicked at rust/processing/src/element/session_retained/opening_tests.rs:244:61:
+1040: called `Result::unwrap()` on an `Err` value: Kernel { status: 1, message: "relative volume tolerance must be in [1e-8, 1e-1]" }
+1041: test element::session_retained::opening_tests::p2_sdk_mixed_reference_opening_keeps_original_no_cutter_eligibility ... FAILED
+1042: test element::session_retained::opening_tests::p2_sdk_no_related_empty_common_parts_reports_sealed_empty_and_keeps_context_lazy ... ok
+1043: test element::session_retained::opening_tests::p2_sdk_stop_after_completed_opening_retains_original_reply_and_prior_ledger ... ok
+1044:
+1045: thread 'element::session_retained::operation_tests::p1_sdk_affine_batch_rejects_swapped_actual_outputs_before_any_common_acceptance' (4057) panicked at rust/processing/src/element/session_retained/operation_tests.rs:104:13:
+1212:
+1213: thread 'element::session_retained::opening_tests::p2_sdk_repeated_mapped_opening_parts_keep_distinct_occurrences_and_host_styles' (4053) panicked at rust/processing/src/element/session_retained/opening_tests.rs:77:69:
+1214: called `Result::unwrap()` on an `Err` value: Kernel { status: 1, message: "relative volume tolerance must be in [1e-8, 1e-1]" }
+1215: test element::session_retained::opening_tests::p2_sdk_repeated_mapped_opening_parts_keep_distinct_occurrences_and_host_styles ... FAILED
+1216: [ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)
+1217: [ifc-lite] scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, comment, or truncated file); the entities returned may be an incomplete view of this file (#3695)

@@ -1,0 +1,31 @@
+{
+  "repair_source": "ad07f72a56e44cab0a3e1881d252a04c02bc469d",
+  "executed_parent_source": "1cefdab4966118967195422cd317ae38dd7b9922",
+  "parent_log": {
+    "path": "/tmp/ifclite-native-openings-1cefd-current.log",
+    "captured_bytes": 244391,
+    "captured_sha256": "c2943ec036780ee96f3bd8cb8d26c0fbf8ef3623fb7ba426c650b849205b126f",
+    "status": "parent-owned run ongoing; excerpt is one read snapshot, no overall outcome attributed"
+  },
+  "actual_parent_observation": "native opening Empty/laziness/no-related Empty/partial-stop tests reached actual SDK and reported ok; overlap/repeated/reference tests failed invalid volume request; trap source admission refused original overlapping boundary",
+  "repair": "four opening witness API volume arguments set to existing adapter minimum1e-8, including latent trap call; separate1e-6 oracle comparisons unchanged",
+  "source_backtrack": "870mm exact retracing proof captured; positive SDK/Worker trap gate stays red/unqualified and is not replaced by negative source regression",
+  "new_production_math_or_region_seam": false,
+  "new_source_test": "issue_3641_original_opening_profile_has_positive_length_authored_backtrack",
+  "source_test_status": "UNRUN",
+  "syntax_only_parse": "PASS",
+  "diff_whitespace": "PASS",
+  "repair_compilation": "UNRUN",
+  "repair_native_sdk": "UNRUN",
+  "repair_browser": "UNRUN",
+  "repair_tests": "UNRUN",
+  "repair_clippy": "UNRUN",
+  "performance": "UNRUN",
+  "new_heavy_submissions": 0,
+  "parent_owned_out_of_scope": [
+    "mapping",
+    "affine",
+    "resource acceptance failures"
+  ],
+  "dedicated_region_plan": "REGION-REGULARIZATION-PLAN.md; planned, not implemented or qualified"
+}

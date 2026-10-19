@@ -27,7 +27,7 @@ fn p2_sdk_issue_2019_original_opening_control_cuts_overlapping_ordered_sources()
         if let RealizationKind::Boolean(value) = work.realizations[0].kind() {
             assert!(!value.is_empty());
             assert!(worker.is_manifold(value.solid()).unwrap());
-            last = Some(worker.volume(value.solid(), 1e-10).unwrap());
+            last = Some(worker.volume(value.solid(), 1e-8).unwrap());
             cuts += 1;
         }
         execution.accept(work, &mut decoder, &router).unwrap();
@@ -74,7 +74,7 @@ fn p2_sdk_repeated_mapped_opening_parts_keep_distinct_occurrences_and_host_style
         if let RealizationKind::Boolean(value) = work.realizations[0].kind() {
             cuts += 1;
             if cuts % 4 == 0 {
-                final_volume += worker.volume(value.solid(), 1e-10).unwrap();
+                final_volume += worker.volume(value.solid(), 1e-8).unwrap();
             }
         }
         execution.accept(work, &mut decoder, &router).unwrap();
@@ -209,7 +209,7 @@ fn p2_sdk_issue_3641_actual_voiding_feature_chain_preserves_index_and_closed_sol
             .unwrap();
         if let RealizationKind::Boolean(value) = work.realizations[0].kind() {
             assert!(worker.is_manifold(value.solid()).unwrap());
-            assert!(worker.volume(value.solid(), 1e-10).unwrap() > 0.);
+            assert!(worker.volume(value.solid(), 1e-8).unwrap() > 0.);
             assert!(value
                 .mesh()
                 .indices
@@ -241,7 +241,7 @@ fn p2_sdk_mixed_reference_opening_keeps_original_no_cutter_eligibility() {
             .execute(&mut worker, 0.00001, 15., MeshLimits::default())
             .unwrap();
         if let RealizationKind::Boolean(value) = work.realizations[0].kind() {
-            last = Some(worker.volume(value.solid(), 1e-10).unwrap());
+            last = Some(worker.volume(value.solid(), 1e-8).unwrap());
             cuts += 1;
         }
         execution.accept(work, &mut decoder, &router).unwrap();

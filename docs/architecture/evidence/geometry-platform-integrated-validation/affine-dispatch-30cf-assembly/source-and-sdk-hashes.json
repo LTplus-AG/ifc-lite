@@ -1,0 +1,90 @@
+{
+  "commit": "30cf377a579e95fef8315d4e9c8fbff95bf18109",
+  "frozen_parent": "8cdb8c12d7bf9a2c17eac8b7172eb28bea217ab3",
+  "changed": {
+    "native/smlib-adapter/PLANE_CONTRACT.md": "2890394e8609f8a41a979a89ce263f4e4de935a396eb2a9d691b338d6a339bf4",
+    "native/smlib-adapter/src/plane_identity_uv.hpp": "f0556a98fa11113dfbb90dfae495f5c7ca413d8a2926f39937abf1b946967591",
+    "native/smlib-adapter/tests/plane_source_domain_tests.cpp": "e75a5abfa193d59b12a79c95e167319b7f177eee8e3b214ef35318ac2380e35c"
+  },
+  "preserved_from_8cdb": {
+    "native/smlib-adapter/src/affine.cpp": {
+      "sha256": "dcf135421af752bcd83264ad235c470eaa40ecafaae4c99db1e033de619d119d",
+      "identical": true
+    },
+    "native/smlib-adapter/tests/plane_tests.cpp": {
+      "sha256": "88b2edb1d22aa4b296bee361911d546812e4a05b29ef8c5f3d9c91bb28639fef",
+      "identical": true
+    },
+    "native/smlib-adapter/src/plane_source_domain.cpp": {
+      "sha256": "aa2b70f251fc48ee59262c9be76dfe0bfb6d53e8bf2cda3550ab4423bf5a44c7",
+      "identical": true
+    },
+    "native/smlib-adapter/src/plane_dyadic.hpp": {
+      "sha256": "aef1b0b09c2a4162d42b3523adbe2516fe77b919a519df3939b726a2e0554831",
+      "identical": true
+    },
+    "native/smlib-adapter/src/plane_domain.cpp": {
+      "sha256": "4e0873e84f285a799527fd39f913f4210cb749c0d4b00e5be7ba6ff5193a6af0",
+      "identical": true
+    },
+    "native/smlib-adapter/src/plane.cpp": {
+      "sha256": "504adb61bf330dabd78c376729e72e5c43febf9d3655407e83b733650e5bc91a",
+      "identical": true
+    },
+    "native/smlib-adapter/src/copy.cpp": {
+      "sha256": "df3f6993cbc6fea0dd488891dc08a9ff595630e30adc1e8f31d988898c7b3a1b",
+      "identical": true
+    },
+    "native/smlib-adapter/CMakeLists.txt": {
+      "sha256": "dd87ba63a4beaa2983410a62741374d5f45a1b4f54d9ce8aa968587b57093de1",
+      "identical": true
+    }
+  },
+  "sdk_commit": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "sdk": {
+    "source/SMLib/src/SmLine.cpp": {
+      "sha256": "bac43a837e3a675d78c7b7fd7504ae88d0808d2b1ae3e988471a3993ca0df58f",
+      "matches_pin": true
+    },
+    "source/SMLib/src/SmPlane.cpp": {
+      "sha256": "5e554da57cd7b642ceb46c0528d582a906993fcde94779ab8a7a2328ec6e48e5",
+      "matches_pin": true
+    },
+    "source/SMLib/src/SmSurface.cpp": {
+      "sha256": "218a360a80b68d4dec70a7b3e1cab5d8d89a375f41cd5564e2e058c6629740be",
+      "matches_pin": true
+    },
+    "source/SMLib/src/SmCurve.cpp": {
+      "sha256": "f0c0a7fb5a6d800556bb206a5f0e80ac2c6f0a65edb101c1629ae2a2b33a6b24",
+      "matches_pin": true
+    },
+    "source/SMLib/src/SmBSplineCurve.cpp": {
+      "sha256": "93c905a12c4124f6761f63ca9dbe2e2ffe400eb32b493c3d514be42de2c41138",
+      "matches_pin": true
+    },
+    "source/SMLib/src/SmBrep.cpp": {
+      "sha256": "5d44d6ac347fa42e4e83fead8bbde82ce46c5ff48e0a973b5c7cddc778a2fca1",
+      "matches_pin": true
+    },
+    "source/SMLib/src/SmFace.cpp": {
+      "sha256": "6004846a29074d8f8923904caabc01e194eceaff7f57f33b68ecdbbec08c51f9",
+      "matches_pin": true
+    },
+    "source/SMLib/inc/SmLine.h": {
+      "sha256": "64277fbf1f04223013f59745fb21140efd0c090d505597ca6b02ad1a25e2544c",
+      "matches_pin": true
+    },
+    "source/SMLib/inc/SmPlane.h": {
+      "sha256": "b6cc96275d55a7c7e627c618c2d44a7d86bde3121a01e4116d411d5d9f3117c4",
+      "matches_pin": true
+    },
+    "source/SMLib/inc/SmSurface.h": {
+      "sha256": "36277a74e9508d0670bbf62098f93b9548e366ad049e73ab8f2cb0e09dc4ff0c",
+      "matches_pin": true
+    },
+    "source/SMLib/inc/SmCurve.h": {
+      "sha256": "b60407a833be0ee6744bff247d1ea00dfd21e55c4ca4fb311dc5976cb50598e8",
+      "matches_pin": true
+    }
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "submission": "NONE; all rows UNRUN; parent must coordinate fleet/environment and actual assembled source pin",
+  "source_commit": "42c4a874d5e8ab0bfc7dbb97853245d8cb221e4c",
+  "commands": [
+    {
+      "case": "default-normal-library",
+      "command": "cargo build -p ifc-lite-core --lib --no-default-features",
+      "expected_scope": "Private source_resources and public runner absent by cfg; actual absence compiler probe UNRUN",
+      "result": "UNRUN"
+    },
+    {
+      "case": "ordinary-tracking-normal-library",
+      "command": "cargo build -p ifc-lite-core --lib --no-default-features --features source-resource-tracking",
+      "expected_scope": "Metadata account API present; private gate/runner absent in normal library",
+      "result": "UNRUN"
+    },
+    {
+      "case": "ordinary-tracking-unit-regressions",
+      "command": "cargo test -p ifc-lite-core --lib --features source-resource-tracking source_resources -- --nocapture",
+      "expected_scope": "Existing private unit gate/fixtures; combined runner is not enabled",
+      "result": "UNRUN"
+    },
+    {
+      "case": "explicit-normal-library",
+      "command": "cargo build -p ifc-lite-core --lib --no-default-features --features source-resource-gate-test-support",
+      "expected_scope": "Same private implementation and bounded public test-only runner compiled normally",
+      "result": "UNRUN"
+    },
+    {
+      "case": "combined-core-scalar-wrappers",
+      "command": "cargo test -p ifc-lite-core --lib --features source-resource-gate-test-support normal_identity_actual_gate -- --nocapture",
+      "expected_scope": "Four wrappers invoking real geometry -> normal-core private gate; seven fixed case executions",
+      "result": "UNRUN"
+    },
+    {
+      "case": "all-core-resource-tests",
+      "command": "cargo test -p ifc-lite-core --lib --features source-resource-gate-test-support source_resources -- --nocapture",
+      "expected_scope": "Existing regressions plus combined actual-account wrappers",
+      "result": "UNRUN"
+    },
+    {
+      "case": "geometry-combined-witnesses",
+      "command": "cargo test -p ifc-lite-geometry --lib --features source-resource-gate-test-support gate_boundary_witnesses -- --nocapture",
+      "expected_scope": "Same real-account/pool/observer witnesses directly in geometry test target",
+      "result": "UNRUN"
+    },
+    {
+      "case": "geometry-resource-regressions",
+      "command": "cargo test -p ifc-lite-geometry --lib --features source-resource-gate-test-support resource:: -- --nocapture",
+      "expected_scope": "Existing direct ledger/owned/resource cases plus combined witnesses",
+      "result": "UNRUN"
+    },
+    {
+      "case": "wasm-test-target-compile",
+      "command": "cargo test -p ifc-lite-core --lib --target wasm32-unknown-unknown --features source-resource-gate-test-support --no-run",
+      "expected_scope": "Compile only; not wasm execution or browser qualification",
+      "result": "UNRUN"
+    },
+    {
+      "case": "workspace-default-strict-clippy",
+      "command": "cargo clippy --workspace --all-targets -- -D warnings",
+      "expected_scope": "Repository CI default command, parent composed source",
+      "result": "UNRUN"
+    },
+    {
+      "case": "workspace-test-support-strict-clippy",
+      "command": "cargo clippy --workspace --all-targets --features ifc-lite-core/source-resource-gate-test-support -- -D warnings",
+      "expected_scope": "New feature/unified consumers, parent composed source",
+      "result": "UNRUN"
+    },
+    {
+      "case": "core-normalized-package",
+      "command": "cargo package -p ifc-lite-core --no-verify",
+      "expected_scope": "Package/feature graph qualification; not publish; matching unpublished geometry feature may require coordinated release",
+      "result": "UNRUN"
+    },
+    {
+      "case": "geometry-normalized-package",
+      "command": "cargo package -p ifc-lite-geometry --no-verify",
+      "expected_scope": "Package/feature graph qualification; not publish; matching core feature requires coordinated release",
+      "result": "UNRUN"
+    }
+  ],
+  "negative_feature_exposure": "Parent may add an external compile probe importing the public runner module in default/ordinary tracking builds; it must fail name resolution. No source-text test is provided or executed.",
+  "root_note": "Do not relabel this a293-based child checkpoint as parent 15aa/34ab. Parent owns runtime/ledger source composition and active receipts; do not repeat or cancel those jobs."
+}

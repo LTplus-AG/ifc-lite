@@ -1,0 +1,211 @@
+{
+  "base_commit": "a29301deb12411fa7753c2569df090caa0db8c74",
+  "source_commit": "42c4a874d5e8ab0bfc7dbb97853245d8cb221e4c",
+  "changed_file_count": 19,
+  "files": [
+    {
+      "path": "rust/core/Cargo.toml",
+      "before_sha256": "9a41a2817cf819506bf36545ca5e56596c19e08b2f23d17edb71d4f8db4ad2c3",
+      "after_sha256": "78c139eb4e5c48a972fa033204f802c6c254456271223d26928ddb8eedaee55e",
+      "before_git_blob": "42e1e43bbcf3b408fb9d2e595f55837d8213e47f",
+      "after_git_blob": "56b1d55de48f33f9c06f60e05aee9338ca970e88",
+      "lines": 59
+    },
+    {
+      "path": "rust/core/SOURCE_RESOURCE_GATE_TEST_SUPPORT.md",
+      "before_sha256": null,
+      "after_sha256": "4f635c653b2c5c5e37c68aecee819c78aed38d3928a9d91433766d9e73eeecb2",
+      "before_git_blob": null,
+      "after_git_blob": "9a5613280170da890d8bc6b7bdd94f882547af32",
+      "lines": 137
+    },
+    {
+      "path": "rust/core/src/execution_owner.rs",
+      "before_sha256": "bdd63999711b46ff67882af56647f03e326b9ba9bc8e405dd6e1df73e888294a",
+      "after_sha256": "5b7280d8b06060423f37de48a1fb1425dc46be414364458f5056e53169f53a5e",
+      "before_git_blob": "3cb6501721c47cb9080f7a9b4c00992848e03598",
+      "after_git_blob": "8a790f49fc854db91bc5851b129d7f7e37cd19f2",
+      "lines": 301
+    },
+    {
+      "path": "rust/core/src/execution_owner/accounted_arc.rs",
+      "before_sha256": "92f6960209f012c417ac9db960bfc89b8e4356ec4ca870fb79fad91fcc6dfc69",
+      "after_sha256": "f14e696da2da128b0d515baf73821dddd97c91a87833c8e03062d98ca1c3bbc0",
+      "before_git_blob": "433761ff853b243f130ece1c6452ad79769aebdd",
+      "after_git_blob": "96ab18b3ce78ec5d20d2550d751553de4d7f3f0d",
+      "lines": 115
+    },
+    {
+      "path": "rust/core/src/execution_owner/resource_context.rs",
+      "before_sha256": "8c018fac074d66377d32ed21a7cfdeadd3f37dbcbde7addd688b6b06ad6e3789",
+      "after_sha256": "4c8a22f7b778a4ce08aed96d8e43950590760f5da1ed4cea86980a6322ce96ea",
+      "before_git_blob": "30bfd294b122c2a33091f20b6cc5e74178e5d0ab",
+      "after_git_blob": "878082b4209fef6ca8f5b6d70c26a4e455bdeba7",
+      "lines": 71
+    },
+    {
+      "path": "rust/core/src/lib.rs",
+      "before_sha256": "1b1d021b9b9dd617cf256b32f8dd8abfe0ae6f50f79b74ed110e211da1868ec9",
+      "after_sha256": "c0d0006eb719120bfbb5d234e542dd6744199920e7e5459fc638d2f6bac5ebe5",
+      "before_git_blob": "cf6af0e20b5a63b02f8170a9ff9632f745e1ca84",
+      "after_git_blob": "d10dec8da74b139f2bafa9df9f36eabf7b42b631",
+      "lines": 169
+    },
+    {
+      "path": "rust/core/src/source_resources/actual_account_tests.rs",
+      "before_sha256": "6c051e9b93c60d008807c68316bfd8ea89139e1fc76724f146524e14b3fb30c9",
+      "after_sha256": "0ffbfdc971d625be9737f16d066c08dbe14f948935e52510c6bdaa1a657c60d3",
+      "before_git_blob": "3ecca6a238f6059b86cc698671c34476d4243766",
+      "after_git_blob": "f5adbd7fe831f758ed6e1549e2a61f2fb69bd4a7",
+      "lines": 42
+    },
+    {
+      "path": "rust/core/src/source_resources/authority.rs",
+      "before_sha256": "8210ce3f84a2947f4c82e058ea145604032e00a67c86804706fe0c22dbddc521",
+      "after_sha256": "0b6d2d48fc1123d3ad27ad49d3c4692a37002c3c46d1b0a992d7588127ac2ab3",
+      "before_git_blob": "a8535c32e442367fc8d1e59dc9bf39a731defe73",
+      "after_git_blob": "287aa5b8fb84b7dbb4cc093604c6cb8fa8e76dd7",
+      "lines": 98
+    },
+    {
+      "path": "rust/core/src/source_resources/backend.rs",
+      "before_sha256": "7b7471613326992fec5414231dcc1084b65cb11c738d441adf7b54c359e19c5a",
+      "after_sha256": "483fac3ca381844597b6ca1266fd607aa5e9280ac3ca39fc754b9b179b43b24c",
+      "before_git_blob": "60990afc79faff992ff91c38f5575d24059e0111",
+      "after_git_blob": "be3285dfe3ca355096b3e303ceb607e57e6c862f",
+      "lines": 12
+    },
+    {
+      "path": "rust/core/src/source_resources/backend_fixture.rs",
+      "before_sha256": null,
+      "after_sha256": "b4c677f98b5bcc3d1ec0800a8a8ad15cd729f5fbedd9a659cd8fcaffbd2e5fa9",
+      "before_git_blob": null,
+      "after_git_blob": "95a40e400f1c6c0119fd3e5ef334f609c6d88af4",
+      "lines": 50
+    },
+    {
+      "path": "rust/core/src/source_resources/gate.rs",
+      "before_sha256": "d0d699d357a8adbb2ca8ec9e5f6747542d7b8294c315c1fdfbc0143771dd68b5",
+      "after_sha256": "1eb5f9eec6bd014d37a9e383ef607d4455f73394abbba383749b46bb510f6180",
+      "before_git_blob": "e203e99cb37f25fc23354357db8ceb6a045d543d",
+      "after_git_blob": "ae2cdfd1748bfe471455728cf8494bba0c38d552",
+      "lines": 161
+    },
+    {
+      "path": "rust/core/src/source_resources/mod.rs",
+      "before_sha256": "a16b00ccf9a1d230c3d8aca5a49cc578c7f5d77b3ac7baa4f8143749a6f55fe7",
+      "after_sha256": "34350e6df58a23d6b244c8615ff8a27e76f8146f59febddfd283751e016b08f0",
+      "before_git_blob": "caeaa2c74f372d0873448eff8d3eddecfa3ca48f",
+      "after_git_blob": "cecd0eab45cb410f8d9685fb45976579751e8d1d",
+      "lines": 31
+    },
+    {
+      "path": "rust/core/src/source_resources/witness.rs",
+      "before_sha256": null,
+      "after_sha256": "7c3a72d1acd98c3ea282221fc500569e0aa4b4e2d6aa31cc346fc6ba281698a9",
+      "before_git_blob": null,
+      "after_git_blob": "2d6a6f3d597285cdf74858a326db6d0ce6f4805d",
+      "lines": 112
+    },
+    {
+      "path": "rust/core/src/source_resources/witness_operations.rs",
+      "before_sha256": null,
+      "after_sha256": "9a0056599f865941233169eb2f09bde638245081f4241abacdba9acb82b40be9",
+      "before_git_blob": null,
+      "after_git_blob": "63506be2407500cefa63c9fcc0b4b8aa9bf714b4",
+      "lines": 57
+    },
+    {
+      "path": "rust/geometry/Cargo.toml",
+      "before_sha256": "f896cea50a5735dac7c8f1415a7c4fffd0318d3b57265eb0e94f02c46c0bfd5c",
+      "after_sha256": "33a78111d244b3d1719f21f86cdb5916272175629f5ad4bf17a4e58566dab33c",
+      "before_git_blob": "aa7a67a4a93f488f18174105db264b9fe9decdd0",
+      "after_git_blob": "d747c4af5b84fdcffc0c70b2e7841f259438dd5e",
+      "lines": 190
+    },
+    {
+      "path": "rust/geometry/src/resource/boundary_witnesses_tests.rs",
+      "before_sha256": "c131d595ac5d94be6631b54878b9ab0980238fdf9cd305ac12113b2ef9e09b82",
+      "after_sha256": "20f3c4afd27ef422f1356c259508337e2ea2dc6cad093f29920eb9fd55a44463",
+      "before_git_blob": "6eb8b09a734e0165060f3bd81545a85663d928b8",
+      "after_git_blob": "081ecb62e7642f12fe8d302d9557567fded4b446",
+      "lines": 138
+    },
+    {
+      "path": "rust/geometry/src/resource/gate_boundary_witnesses_tests.rs",
+      "before_sha256": null,
+      "after_sha256": "0c2313fc8ae357afc6e81f8416e1537d702fddb2b81b3dd814836ee761654d3a",
+      "before_git_blob": null,
+      "after_git_blob": "414473c6ca99865a745f80bdfb09cc474aa60baa",
+      "lines": 205
+    },
+    {
+      "path": "rust/geometry/src/resource/mod.rs",
+      "before_sha256": "1c8fa1d85ed1457a927e3c49daa70188e576b79dbcd671f0f0949705a9b98bf9",
+      "after_sha256": "5eedd1ac27ee5d320ac97a0881495df22190a09c612106ce812cd2049e095a9d",
+      "before_git_blob": "29645b74fa4ffa1f7704ddf7820119278787de5e",
+      "after_git_blob": "a113d52cfb5c92a841fd92018c0ad1ff51883dd4",
+      "lines": 139
+    },
+    {
+      "path": "rust/geometry/src/test_support.rs",
+      "before_sha256": "b6b672daa127e328f2e568498d41b43d7c8229c0a5f545ffbf86645465a91123",
+      "after_sha256": "69a9b16718a5041e3c4e6d6d4db39780a5af1edfb3802814b2ec5b54b7ce4120",
+      "before_git_blob": "158348e45ab381f65a1e577ea8f3066f14b99256",
+      "after_git_blob": "beb3471ba444fcd69124c60f3649151140383a1b",
+      "lines": 156
+    }
+  ],
+  "patches": {
+    "incremental-a293.patch": "07fd232db25ff7a20eecf40ee7f30262004ac308b6fa5fc0f5feda9d26e2db1a",
+    "test-seam-without-canonical-import.patch": "eb80ceeb6b8b75175f60f7a5b225c729dcfaaf0f44fa389c3049d74d6fc17d62",
+    "canonical-import-fix.patch": "339a76d02d11c131b38375df8da6965db8a6f8c0a2a989e887189b1ee9e3d4ce"
+  },
+  "added_test_functions": [
+    {
+      "path": "rust/core/src/source_resources/actual_account_tests.rs",
+      "name": "normal_identity_actual_gate_container_metadata_and_weak_pool_lifetime"
+    },
+    {
+      "path": "rust/core/src/source_resources/actual_account_tests.rs",
+      "name": "normal_identity_actual_gate_refused_growth_keeps_original_backing"
+    },
+    {
+      "path": "rust/core/src/source_resources/actual_account_tests.rs",
+      "name": "normal_identity_actual_gate_fresh_and_independently_stopped_faults"
+    },
+    {
+      "path": "rust/core/src/source_resources/actual_account_tests.rs",
+      "name": "normal_identity_actual_gate_expired_work_refuses_spare_capacity_mutation"
+    },
+    {
+      "path": "rust/geometry/src/resource/gate_boundary_witnesses_tests.rs",
+      "name": "actual_gate_lifetime"
+    },
+    {
+      "path": "rust/geometry/src/resource/gate_boundary_witnesses_tests.rs",
+      "name": "actual_gate_refused_growth"
+    },
+    {
+      "path": "rust/geometry/src/resource/gate_boundary_witnesses_tests.rs",
+      "name": "actual_gate_expired_work"
+    },
+    {
+      "path": "rust/geometry/src/resource/gate_boundary_witnesses_tests.rs",
+      "name": "actual_gate_first_fault"
+    }
+  ],
+  "frozen_manifest_sha256": {
+    ".source-cache-retention-delivery": "51399453c222e9d90b88abe435aaa43600ba8fc38d20c09c03092e26bea940d1",
+    ".source-cache-owner-design": "affeb7d1e097f9ef8801ebf01d4c9a5e920a9971fa81f096a248ea7ecb323249",
+    ".source-cache-owner-r3": "cbb2de21ba1947441d01f5810293d531ae2bb2084c832fee7199218bf8a6951d",
+    ".source-cache-owner-r4": "5e9614c50bfff58d484def4d394cfb549bea37591176964477b6320474766f59",
+    ".source-cache-owner-p2-coverage": "53aadb69ffdcf8149ad2d7061b37e911785cd55235081d8bf3320ac77ce914d7",
+    ".source-resource-account-boundary-r7": "2b39b8a496853280161f57d00193a41d0f7a52d4c7fdc5003d60116cd771d832",
+    ".source-resource-account-r1-p2": "851ffcdede31453a4e4c3da9735917cae0543d63c43a7c4279cbbb4e2a699d58"
+  },
+  "canonical_parent_correction": {
+    "path": "rust/geometry/src/resource/boundary_witnesses_tests.rs",
+    "change": "Exact one-line import replacement: super -> crate::resource; parent already corrected this independently. Excluding-import patch is supplied for that assembled root."
+  }
+}

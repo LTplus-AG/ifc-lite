@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Real-account witnesses callable from core's opted-in unit-test target.
-use super::{self as resource, ExecutionAccount, ExecutionPolicy, ResourceLimits,
+use crate::resource::{self as resource, ExecutionAccount, ExecutionPolicy, ResourceLimits,
     ModelResourcePool, RequestAdmission, OwnedResourceContext, ProgramStop, Cost,
     Dimension, RefusalReason, ResourceFailure};
 use ifc_lite_core::{SourceBundle, execution_owner::AccountedArc};

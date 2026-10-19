@@ -147,7 +147,13 @@ impl GeometryProgram {
         if request.stage() == ProgramStage::Numerical {
             self.before_execute(request)?;
             self.validate_execution_inputs(router, decoder)?;
-            self.take_ready(request)?.admit_retained()
+            let _walk=self.retained_walk.as_ref().map(|walk|walk.scope())
+                .transpose().map_err(ProgramError::TraversalStopped)?;
+            let result=self.take_ready(request)?.admit_retained();
+            if let Some(walk)=&self.retained_walk {
+                if let Err(stop)=walk.check() {return Err(ProgramError::TraversalStopped(stop));}
+            }
+            result
         } else {
             self.execute_with_inputs(request, router, decoder, textures, voids).map(|reply| (reply, Vec::new()))
         }

@@ -20,6 +20,7 @@ impl Accumulator {
                 crate::resource::check_current()?;
             },
             (Self::Retained(parts), MappedValues::Retained(mut incoming)) => {
+                crate::program::retained_walk::charge(incoming.len() as u64)?;
                 crate::resource::charge(crate::resource::Cost { work: incoming.len() as u64,
                     ..Default::default() })?.retain();
                 crate::resource::reserve_headers(parts, incoming.len())?.retain();
@@ -64,6 +65,7 @@ impl RetainedCache {
     }
     pub(crate) fn get(&self, id: u32) -> Result<Option<Vec<LogicalRetainedValue>>> {
         for (key,values) in &self.entries {
+            crate::program::retained_walk::charge(1)?;
             crate::resource::charge(crate::resource::Cost {work:1,..Default::default()})?.retain();
             if *key==id {return copy_values(values).map(Some)}
         }
@@ -78,6 +80,7 @@ impl RetainedCache {
     }
     pub(super) fn publish(&mut self, id: u32, values: &[LogicalRetainedValue]) -> Result<()> {
         for (key,_) in &self.entries {
+            crate::program::retained_walk::charge(1)?;
             crate::resource::charge(crate::resource::Cost {work:1,..Default::default()})?.retain();
             if *key==id {return Ok(())}
         }

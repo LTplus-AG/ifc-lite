@@ -56,7 +56,9 @@ impl GeometryProgram {
             return match child.request() {
                 Ok(Some(request))=>{state.action=Some(BooleanAction::Child(request));Some(request.stage())}
                 Ok(None)=>{state.action=Some(BooleanAction::ChildFinished);Some(ProgramStage::Source)}
-                Err(error)=>{self.step=Some(ItemStep::Complete(ItemResult {result:Err(crate::Error::geometry(format!("retained Boolean child protocol: {error:?}"))),
+                Err(error)=>{let error=match error {ProgramError::TraversalStopped(stop)=>crate::Error::ProgramStopped(stop),
+                    other=>crate::Error::geometry(format!("retained Boolean child protocol: {other:?}"))};
+                    self.step=Some(ItemStep::Complete(ItemResult {result:Err(error),
                     reports:state.program.take_reports(),emitter:state.emitter()}));self.boolean=None;None}
             };
         }

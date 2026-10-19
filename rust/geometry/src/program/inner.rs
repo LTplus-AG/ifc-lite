@@ -11,6 +11,7 @@ pub struct GeometryProgram {
     pub(super) id: u64,
     sequence: u64,
     pub(super) retained: Option<super::retained::RetainedContract>,
+    pub(super) retained_walk: Option<super::retained_walk::RetainedWalk>,
     pub(super) step: Option<ItemStep>,
     // Only the selected controller owns storage. Keeping every alternative inline
     // made even an item program 34 KiB and inflated every nested source reply.
@@ -40,7 +41,7 @@ pub(super) enum GeometryOutput { Retained(Vec<super::retained::LogicalRetainedVa
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ProgramStage { Source, Extension, Numerical }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProgramError { UnsupportedRetained, WrongPayload, WrongOwner, Outstanding, StaleRequest, AlreadyExecuted, NotExecuted, WrongEmitter, Cancelled }
+pub enum ProgramError { TraversalStopped(crate::resource::ProgramStop), UnsupportedRetained, WrongPayload, WrongOwner, Outstanding, StaleRequest, AlreadyExecuted, NotExecuted, WrongEmitter, Cancelled }
 pub use super::inner_ready::ReadyOperation;
 pub struct ProgramReply { pub(super) request: ProgramRequest, pub(super) value: ReplyValue, pub(super) emitter: Option<ProcessorEmitter> }
 pub(super) enum ReplyValue { BooleanChild(Box<ProgramReply>), BooleanChildFinished(crate::Result<super::retained::LogicalRetainedValue>), ItemChild(Box<ProgramReply>), Opening(super::inner_opening::OpeningAdapterReply), Layers(super::inner_layers::LayerReply), Voids(super::inner_voids::VoidReply), TypeMap(super::inner_type_map::TypeMapReply), Product(super::inner_product_adapter::ProductAdapterReply), Mapping(super::inner_mapping::MappingReply), Cache(super::inner_cache::CacheReply), Item(ItemStep), BooleanSource(super::boolean::BooleanSourceReply), BooleanNumerical(super::boolean::BooleanNumericalReply) }
@@ -82,13 +83,16 @@ impl GeometryProgram {
         static NEXT: AtomicU64 = AtomicU64::new(1);
         let id = NEXT.fetch_update(Ordering::Relaxed, Ordering::Relaxed,
             |id| id.checked_add(1)).expect("geometry program identities exhausted");
-        Self { id, sequence: 0, retained: None, step, pending: None, expected_emitter: None,
+        Self { id, sequence: 0, retained: None, retained_walk:None, step, pending: None, expected_emitter: None,
             cancelled: false, boolean: None, selected_binding:None, pending_item_reports:None, expected_decoder:None, expected_router: None, expected_payload: None, cache: None, mapping: None, outcome: None, product: None, type_map: None,layers:None,voids:None,opening:None }
     }
-    /// Reduce control without borrowing source, router callbacks or a live scope.
+    /// Reduce owned control without borrowing source or router callbacks. The
+    /// logical ancestry scope is restored before returning a request or error.
     pub fn request(&mut self) -> std::result::Result<Option<ProgramRequest>, ProgramError> {
         if self.cancelled { return Err(ProgramError::Cancelled) }
         if self.pending.is_some() { return Err(ProgramError::Outstanding) }
+        let _walk=self.retained_walk.as_ref().map(|walk|walk.scope())
+            .transpose().map_err(ProgramError::TraversalStopped)?;
         let stage = loop {
             if self.outcome.is_some() {return Ok(None)}
             if let Some(opening)=&mut self.opening {
@@ -176,6 +180,8 @@ impl GeometryProgram {
         ->std::result::Result<ProgramReply,ProgramError> {
         self.before_execute(request)?;
         self.validate_execution_inputs(router, decoder)?;
+        let _walk=self.retained_walk.as_ref().map(|walk|walk.scope())
+            .transpose().map_err(ProgramError::TraversalStopped)?;
         if request.stage==ProgramStage::Numerical {
             self.expected_router = Some(router.execution_identity());
             self.expected_decoder=Some(decoder.execution_identity());

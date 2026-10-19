@@ -80,6 +80,7 @@ impl LogicalRetainedValue {
     pub(super) fn place_in_place(&mut self,transform:&nalgebra::Matrix4<f64>,program:u64,
         stage:RetainedPlacementStage)->crate::Result<()> {
         validate_affine(transform)?;
+        super::retained_walk::charge(1)?;
         crate::resource::charge(crate::resource::Cost { work: 1, occurrences: 1,
             ..Default::default() })?.retain();
         crate::resource::reserve_headers(&mut self.placements, 1)?.retain();
@@ -161,6 +162,7 @@ pub(super) fn next_slot(program: u64) -> crate::Result<LogicalRetainedSlot> {
 }
 pub(super) fn boolean_operation(inputs: [LogicalRetainedValue; 2], operation: crate::document::BooleanOperation,
     program: u64) -> crate::Result<RetainedPlanOperation> {
+    super::retained_walk::charge(1)?;
     crate::resource::charge(crate::resource::Cost {work:1,occurrences:1,..Default::default()})?.retain();
     let mut value = copy_values(&inputs[..1])?.pop().expect("left frame");
     value.slot = next_slot(program)?;
@@ -218,8 +220,10 @@ impl GeometryProgram {
     /// Explicit logical contract on the same product/representation admissions.
     /// Processing alone may bind sealed runtime results to its admitted slots.
     pub fn retained_parts(element: DecodedEntity, contract: RetainedContract) -> Self {
+        let walk=super::retained_walk::RetainedWalk::root(element.id);
         let mut program = Self::parts(element);
         program.retained = Some(contract);
+        program.retained_walk=Some(walk);
         program
             .product
             .as_mut()
@@ -228,6 +232,7 @@ impl GeometryProgram {
         program
     }
     pub fn finish_retained(self) -> crate::Result<RetainedProductPlan> {
+        if let Some(walk)=&self.retained_walk {walk.check()?;}
         if self.pending.is_some() {
             return Err(crate::Error::geometry("retained request outstanding"));
         }
@@ -267,14 +272,22 @@ impl GeometryProgram {
     }
     pub(super) fn retained_mapped(item: &DecodedEntity, contract: RetainedContract,
         router: &crate::GeometryRouter, cache: super::mapping::SharedRetainedCache) -> crate::Result<Self> {
+        let walk=super::retained_walk::RetainedWalk::child(item.id)?;
         let mut program=Self::mapped_merged(item,router)?;
         program.retained=Some(contract);
+        program.retained_walk=Some(walk);
         program.mapping.as_mut().expect("mapped root").select_retained(contract,cache);
         Ok(program)
     }
     pub(super) fn retained_item(item: DecodedEntity, contract: RetainedContract) -> Self {
+        let walk=super::retained_walk::RetainedWalk::child(item.id);
         let mut program = Self::item(item, (0., 0., 0.));
         program.retained = Some(contract);
+        match walk {
+            Ok(walk)=>program.retained_walk=Some(walk),
+            Err(error)=>program.step=Some(super::item::ItemStep::Complete(super::item::ItemResult {
+                result:Err(error),reports:Default::default(),emitter:None})),
+        }
         program
     }
 }
@@ -286,6 +299,7 @@ pub(super) fn capture(
     contract: RetainedContract,
     program: u64,
 ) -> crate::Result<RetainedPlanOperation> {
+    super::retained_walk::charge(1)?;
     let construction = match item.ifc_type {
         IfcType::IfcExtrudedAreaSolid => {
             RetainedConstruction::Extrusion(Box::new(RetainedExtrusion {
@@ -352,9 +366,11 @@ pub(super) fn proper_rigid(matrix: &nalgebra::Matrix4<f64>) -> crate::Result<()>
 
 /// A bounded copy of logical references; no runtime receipt or object is cloned.
 pub(super) fn copy_values(values: &[LogicalRetainedValue]) -> crate::Result<Vec<LogicalRetainedValue>> {
+    super::retained_walk::charge(values.len() as u64)?;
     let mut output = Vec::new();
     crate::resource::reserve_headers(&mut output, values.len())?.retain();
     for value in values {
+        super::retained_walk::charge(value.placements.len() as u64)?;
         crate::resource::charge(crate::resource::Cost { work: 1,
             copy_bytes: std::mem::size_of_val(value.placements.as_slice()) as u64,
             ..Default::default() })?.retain();

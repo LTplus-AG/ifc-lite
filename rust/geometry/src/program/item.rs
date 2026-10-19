@@ -214,6 +214,9 @@ impl ItemSource {
             if let Some(mut child) = processor.lower_program(&self.item,router.tessellation_quality()) {
                 child.bind_processor(self.item.ifc_type.clone(),emitter);
                 child.retained=Some(contract);
+                // This wrapper is the SAME reached Boolean occurrence, not a
+                // second source entry. Mapped/operand children fork the path.
+                child.retained_walk=super::retained_walk::current();
                 if let Some(boolean)=&mut child.boolean {boolean.program.select_retained(contract,program);}
                 return Ok((None, emitter, Some(child)));
             }

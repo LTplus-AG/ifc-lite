@@ -154,6 +154,7 @@ impl RetainedProductExecution {
             self.resources.check().map_err(RetainedExecutionError::Stopped)?;
             self.validate_definitions(worker)?;
             let request = self.state.request().map_err(|error|match error {
+                super::session_protocol::WorkError::Geometry(ifc_lite_geometry::program::ProgramError::TraversalStopped(stop))=>RetainedExecutionError::Stopped(stop),
                 super::session_protocol::WorkError::RetainedContract=>RetainedExecutionError::Unsupported("retained host-opening entry is not implemented".into()),
                 error=>protocol(error),
             })?;
@@ -196,7 +197,13 @@ impl RetainedProductExecution {
             let (reply, operation) = self
                 .state
                 .execute_admission(request, &self.context.borrowed(), decoder, router)
-                .map_err(protocol)?;
+                .map_err(|error| match self.resources.check() {
+                    Err(stop)=>RetainedExecutionError::Stopped(stop),
+                    Ok(())=>match error {
+                        super::session_protocol::WorkError::Geometry(ifc_lite_geometry::program::ProgramError::TraversalStopped(stop))=>RetainedExecutionError::Stopped(stop),
+                        other=>protocol(other),
+                    },
+                })?;
             self.resources.check().map_err(RetainedExecutionError::Stopped)?;
             self.state
                 .validate_reply(&reply, decoder, router)

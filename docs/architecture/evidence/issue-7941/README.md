@@ -14,7 +14,18 @@ partitions reuse hash-bound exact-checker receipts; sampling and floating-area
 checks cannot approve coverage. The full receipt and donor records are retained
 under the recorded hashes.
 
-This evidence covers the named native output. Browser output identity, other
-changed hosts, the alternate-triangulation census, engine size and current-pair
-performance remain separate qualification requirements. It grants no stack merge
-or runtime approval. See the PR for current qualification status.
+The real source-built WASM browser-batch API was also executed in Node.
+All 16 selected source/cut cases match their native filled triangle multisets
+exactly in binary64 world coordinates, preserving every indexed triangle
+occurrence and multiplicity. `native-wasm-identity.json` records that join,
+including the unmatched-edge diagnostics: filled-surface identity does not
+establish topology or winding. This transfers the named whole-wall surface
+proof to the identical WASM geometry output. It is not a browser-render test.
+The separate MiniBIM battery passes all 27 cases with zero unmatched or
+collapsed triangles on the kernel snap grid.
+
+The linked determinism workflow passes both arm64 and wasm32 jobs for the
+same geometry source. Other changed hosts, the alternate-triangulation census,
+actual browser rendering, engine size and current-pair performance remain
+separate qualification requirements. These receipts grant no stack merge or
+runtime approval. See the PR for current qualification status.

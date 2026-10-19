@@ -286,3 +286,49 @@ fn p2_styled_and_type_map_roots_share_bounds_across_a_mapped_boolean_cycle() {
         else {assert!(program.finish_retained().is_err())}
     }
 }
+
+#[test]
+fn p2_mapped_affine_admission_preserves_reflections_and_refuses_singular_before_source_work() {
+    // The same canonical paths must reach physical reflection work, while a
+    // singular target must fail before even looking up its malformed source.
+    for styled in [false,true] {
+        for singular in [false,true] {
+            let scale=if singular {"0."} else {"-1."};
+            let mut source=SOURCE.replace("(#8,#9)","(#8)")
+                .replace("#8=IFCMAPPEDITEM(#7,$)","#8=IFCMAPPEDITEM(#7,#15)")
+                .replace("#14,1.,$",&format!("#14,{scale},$"));
+            if singular {source=source.replace("'SweptSolid',(#5)","'SweptSolid',(#999)");}
+            let mut decoder=EntityDecoder::new(&source);let router=GeometryRouter::new();
+            let element=decoder.decode_by_id(10).unwrap();
+            let mut program=if styled {GeometryProgram::retained_submeshes(element,CONTRACT)}
+                else {GeometryProgram::retained_parts(element,CONTRACT)};
+            let mut constructions=0;let mut reflections=0;let mut polls=0;
+            while let Some(request)=program.request().unwrap() {
+                polls+=1;assert!(polls<1000,"bounded actual source fixture");
+                let (reply,operations)=program.admit_retained_with_inputs(request,&router,&mut decoder,None,None).unwrap();
+                for operation in operations {
+                    match operation.kind() {
+                        RetainedOperationKind::Construction(_)=>constructions+=1,
+                        RetainedOperationKind::Affine {matrix,..}=> {
+                            assert!(!singular);
+                            let matrix=nalgebra::Matrix4::from_column_slice(matrix);
+                            assert_eq!(matrix.fixed_view::<3,3>(0,0).determinant(),-1.);
+                            assert_eq!(matrix[(0,3)],10.);reflections+=1;
+                        }
+                        _=>panic!("mapping fixture contains no Boolean"),
+                    }
+                }
+                program.accept(reply,&router).unwrap();
+            }
+            let result=program.finish_retained();
+            if singular {
+                let error=result.unwrap_err().to_string();
+                assert!(error.contains("nonsingular affine"),"must refuse the target before missing source #999: {error}");
+                assert_eq!((constructions,reflections),(0,0));
+            } else {
+                assert_eq!(result.unwrap().values.len(),1);
+                assert_eq!((constructions,reflections),(1,1));
+            }
+        }
+    }
+}

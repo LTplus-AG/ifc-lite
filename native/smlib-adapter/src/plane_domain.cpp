@@ -5,7 +5,7 @@
 #include <SmAssertArray.h>
 #include <SmBSplineCurve.h>
 #include <SmBSplineSurface.h>
-#include <SmCylinder.h>
+#include <SmCone.h>
 #include <SmEdge.h>
 #include <SmEdgeuse.h>
 #include <SmFace.h>
@@ -69,11 +69,19 @@ void preflight_existing_data(SmBrep* source,const SmTArray<SmFace*>& faces,const
     for(auto* face:faces) {
         require(face && face->GetType()==SmFace_TYPE && face->GetSurface(),"unsupported source face");
         auto* surface=face->GetSurface(); const auto type=surface->GetType();
-        require(type==SmPlane_TYPE || type==SmBSplineSurface_TYPE || type==SmCylinder_TYPE,
+        require(type==SmPlane_TYPE || type==SmBSplineSurface_TYPE || type==SmCylinder_TYPE || type==SmCone_TYPE,
             "unsupported source surface representation");
+        if(type==SmCone_TYPE || type==SmCylinder_TYPE) {
+            // The BRep cylinder API creates a genuine SmCone with equal radii.
+            // Class alone is insufficient: inspect the actual canonical angle.
+            SmAxis2Placement frame; double radius=0,angle=0;
+            checked(static_cast<SmCone*>(surface)->GetCanonical(frame,radius,angle));
+            require(angle==0 && std::isfinite(radius) && radius>0,
+                "method4 requires an exactly zero-angle positive-radius cone/cylinder");
+        }
         require(static_cast<SmBSplineSurface*>(surface)->GetGwNurbPointer(),"unmaterialized source surface");
-        if(type==SmCylinder_TYPE) {
-            auto* generator=static_cast<SmCylinder*>(surface)->GetGenCurve();
+        if(type==SmCylinder_TYPE || type==SmCone_TYPE) {
+            auto* generator=static_cast<SmCone*>(surface)->GetGenCurve();
             require(generator && rational_curve(generator->GetType()) && generator->GetGwNurbPointer(),
                 "unknown or unmaterialized cylinder generator");
         }
@@ -112,7 +120,8 @@ Bounds trim_domain(SmFace* face,PlaneDomain& domain) {
     // Its bounded interior (and any holes removed from it) lies there too.
     return uv;
 }
-Bounds cylinder_hull(SmCylinder* c,SmFace* face,uint32_t index,PlaneDomain& domain) {
+Bounds cylinder_hull(SmCone* c,SmFace* face,uint32_t index,PlaneDomain& domain) {
+    require(c->GetType()==SmCone_TYPE || c->GetType()==SmCylinder_TYPE,"unknown cylindrical surface dispatch");
     require(c->GetGwNurbPointer() && c->GetGenCurve() && c->GetGenCurve()->GetGwNurbPointer() &&
         c->IsBounded() && c->IsOutOfBoundsEnabled()==FALSE,"cylinder is not a finite clamped analytic surface");
     require(domain.cylinder_count<IFCLITE_SMLIB_PLANE_MAX_CYLINDERS,"cylinder certificate record budget",IFCLITE_SMLIB_RESOURCE_LIMIT);
@@ -155,7 +164,8 @@ Bounds cylinder_hull(SmCylinder* c,SmFace* face,uint32_t index,PlaneDomain& doma
 Bounds face_hull(SmFace* face,uint32_t index,PlaneDomain& domain) {
     require(face && face->GetType()==SmFace_TYPE && face->GetSurface(),"unsupported source face");
     auto* surface=face->GetSurface();
-    if(surface->GetType()==SmCylinder_TYPE) return cylinder_hull(static_cast<SmCylinder*>(surface),face,index,domain);
+    if(surface->GetType()==SmCylinder_TYPE || surface->GetType()==SmCone_TYPE)
+        return cylinder_hull(static_cast<SmCone*>(surface),face,index,domain);
     auto uv=trim_domain(face,domain);
     if(surface->GetType()==SmPlane_TYPE) {
         // Plane UVs use the analytic STEP map, not a sampled boundary or an

@@ -7,7 +7,7 @@
 #include "protocol.h"
 #include <SmApiPrimitives.h>
 #include <SmBSplineSurface.h>
-#include <SmCylinder.h>
+#include <SmCone.h>
 #include <SmEdgeuse.h>
 #include <SmFace.h>
 #include <algorithm>
@@ -137,8 +137,15 @@ void protocol_witness(uint64_t s,ifclite_smlib_handle input) {
 void cylinder_domains() {
     SmBrep* raw=nullptr; require(SmApiCreateCylinder(SmVector3d(-4,7,-5),2,3,raw)==SM_SUCCESS,"actual bounded cylinder domain fixture");
     std::unique_ptr<SmBrep> source(raw); SmTArray<SmFace*> faces; raw->GetFaces(faces);
-    for(auto* face:faces) if(face->GetSurface()->GetType()==SmCylinder_TYPE) {
-        auto* cylinder=static_cast<SmCylinder*>(face->GetSurface());
+    unsigned reached=0,endpoints=0,swaps=0;
+    for(auto* face:faces) {
+        const auto type=face->GetSurface()->GetType();
+        if(type!=SmCylinder_TYPE && type!=SmCone_TYPE) continue;
+        auto* cylinder=static_cast<SmCone*>(face->GetSurface());
+        SmAxis2Placement frame; double radius=0,angle=0;
+        require(cylinder->GetCanonical(frame,radius,angle)==SM_SUCCESS && angle==0 && radius==2,
+            "actual BRep cylinder has exactly zero canonical cone angle");
+        ++reached;
         for(unsigned swapped=0;swapped<2;++swapped) {
             const auto domain=certify_plane_domain(raw);
             require(domain.cylinder_count==1 && (domain.methods&4),"separate analytic cylinder method and actual coefficient record");
@@ -150,18 +157,39 @@ void cylinder_domains() {
                 SmPoint3d actual; require(cylinder->EvaluatePoint(SmPoint2d(u,v),actual)==SM_SUCCESS,"actual converted cylinder endpoint evaluation");
                 for(unsigned d=0;d<3;++d) require(actual[d]>=domain.bounds[d].lo && actual[d]<=domain.bounds[d].hi,
                     "analytic enclosure covers actual UV-converted endpoints");
+                ++endpoints;
             }
             if(!swapped) {
                 const auto before=record.swap_uv;
                 require(face->SwapUV()==SM_SUCCESS,"actual cylinder UV swap");
                 const auto after=certify_plane_domain(raw);
                 require(after.cylinders[0].swap_uv!=before,"certificate records actual changed UV conversion flag");
+                ++swaps;
             }
         }
         cylinder->SetOutOfBoundsEnabled(TRUE); bool refused=false;
         try { certify_plane_domain(raw); } catch(const SweepFailure& e) { refused=e.status==7; }
         require(refused,"analytic cylinder extrapolation explicitly refuses"); cylinder->SetOutOfBoundsEnabled(FALSE);
     }
+    require(reached==1 && endpoints==8 && swaps==1,
+        "actual cylindrical side, both UV endpoint passes and swap comparison all executed");
+    // A real unequal-radius cone shares the dynamic SDK class but not the
+    // constant-radius formula. It must never receive method4 admission.
+    SmBrep* tapered_raw=nullptr;
+    require(SmApiCreateCone(SmVector3d(-4,7,-5),2,1,3,tapered_raw)==SM_SUCCESS && tapered_raw,
+        "actual nonzero-angle cone fixture");
+    std::unique_ptr<SmBrep> tapered(tapered_raw); tapered->GetFaces(faces);
+    unsigned nonzero=0;
+    for(auto* face:faces) if(face->GetSurface()->GetType()==SmCone_TYPE) {
+        SmAxis2Placement frame; double radius=0,angle=0;
+        require(static_cast<SmCone*>(face->GetSurface())->GetCanonical(frame,radius,angle)==SM_SUCCESS,
+            "read actual tapered cone coefficients");
+        if(std::isfinite(angle) && angle!=0) ++nonzero;
+    }
+    require(nonzero==1,"negative fixture reaches a real nonzero-angle cone");
+    bool refused=false;
+    try { certify_plane_domain(tapered.get()); } catch(const SweepFailure& e) { refused=e.status==7; }
+    require(refused,"nonzero-angle cone remains outside method4 finite cylinder proof");
 }
 void control_net_interior() {
     // Domain invariant: a curved face interior can exceed every vertex/edge

@@ -71,7 +71,8 @@ The certificate's method field is a bitmask of actual source proofs:
   multiplicity is degree+1; knot count equals controls+degree+1, with finite
   nondecreasing knots and a nonzero interval. Thus the knot array's first/last
   values are also the supported clamped interval endpoints.
-- **4, bounded analytic cylinder:** Exact dynamic type `SmCylinder`, live
+- **4, bounded analytic cylinder:** Exact dynamic type `SmCylinder` or
+  `SmCone` with actual canonical angle **exactly0**, live
   materialized conversion data and bounded generator, disabled extrapolation,
   finite nonzero actual natural/face UV domains and finite STEP interval,
   actual canonical cone angle exactly0, positive finite radius and known UV
@@ -191,6 +192,34 @@ source/context metadata, topology counts and vertex scalar bits, and no taint.
 A second present derived trim observes that MakeNurb is never invoked; it
 supplies no successful geometry. These are rejection witnesses, not positive
 geometry completion evidence, and remain UNRUN until parent execution.
+
+## Actual BRep cylinder overload correction
+
+The pinned `SmApiPrimitives.cpp383-393` BRep overload of
+`SmApiCreateCylinder` delegates to `SmApiCreateCone` with equal base/top radii.
+That overload at461-503 calls `SmPrimitiveCreation::CreateCone`; the analytic
+creation path (`SmPrimitiveCreation.cpp738-768`, with `USE_NEW_ANALYTICS`
+defined at35) selects the helper at647, which creates `SmCone` at662. By contrast,
+the surface-only overload at401-453 directly creates `SmCylinder`. The parent's
+actual existing-worker diagnostic confirmed that the C ABI cylinder BRep has
+one SmCone side and two planar caps. This child did not execute that diagnostic.
+
+Method4 now admits exactly those two dynamic SDK types only when the actual
+canonical angle is exactly zero and the radius is positive finite. Nonzero
+angles remain refused without a tolerance comparison or approximate conversion.
+Both types use the same inspected SmCone EvaluatePoint/UV conversion/EvaluateSTEP
+clamp and constant-radius formula. Materialized generator/UV, boundedness,
+extrapolation, finite domains, coefficient records and outward enclosure checks
+are unchanged; no wire layout, capability or runtime contract changed.
+
+The actual BRep cylinder-domain witness visits both exact types, verifies the
+zero angle, and requires one reached side, eight endpoint evaluations across
+the two UV orientations and one observed UV swap. It can no longer pass by
+skipping the side. An actual unequal-radius cone must reach one nonzero-angle
+side and refuse method4. All previous volume, section, finite containment and
+cutter oracles remain intact. The parent owns the separate affine source-class
+oracle correction. These new plane witnesses remain UNRUN by this child;
+syntax-only compilation against the pinned SDK passes.
 
 ## Primary-source findings and remaining split work
 

@@ -92,3 +92,19 @@ fn nan_points_pass_through_while_finite_points_check_w() {
     let projective=vec![vec![vec![1.,0.,0.,1.],vec![0.,1.,0.,0.],vec![0.,0.,1.,0.],vec![0.,0.,0.,1.]]];
     assert_eq!(math::points(&[0.,0.,0.,-1.,0.,0.],&projective).unwrap_err(),ImportError::HomogeneousPoints);
 }
+
+#[test]
+fn packet_stack_refuses_oversized_transforms_like_the_graph_path() {
+    // Header: version, kind 1, stack length 1, then the matrix (row count + rows).
+    let encode=|matrix:Vec<Vec<f64>>|{
+        let mut b=Vec::new();
+        for w in [1u32,1,1] {b.extend(w.to_le_bytes());}
+        b.extend((matrix.len() as u32).to_le_bytes());
+        for row in &matrix {b.extend((row.len() as u32).to_le_bytes());for v in row {b.extend(v.to_le_bytes());}}
+        b
+    };
+    let status=|input:&[u8]|u32::from_le_bytes(process_packet(input)[4..8].try_into().unwrap());
+    assert_eq!(status(&encode(vec![vec![0.;4];4])),0);
+    assert_eq!(status(&encode(vec![vec![0.;4];5])),1);
+    assert_eq!(status(&encode(vec![vec![0.;100_000]])),1);
+}

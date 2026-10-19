@@ -237,9 +237,7 @@ fn imported_definition_cannot_change_source_or_codec_metadata_within_one_revisio
                 assert_eq!(p.poll().unwrap_err(), ImportError::IdentityMismatch);
             }
         }
-        assert_eq!(p.retained().len(), 1);
-        let ImportedSource::Points(raw) = p.retained()[0].source.as_ref() else { panic!("points source"); };
-        assert_eq!(raw, &[1., 2., 3.]);
+        assert!(p.retained().is_empty(), "the mismatch refuses the whole program");
     }
 }
 
@@ -363,5 +361,24 @@ fn retained_transform_stacks_are_charged_against_a_budget() {
     let mut p = GraphProgram::new(1, 1, 1, chain).unwrap();
     p.limits.retained_bytes = 20_000;
     assert_eq!(drive_meshes(&mut p), Some(ImportError::InvalidPacket));
-    assert!(p.retained().len() < 40);
+    assert!(p.retained().is_empty(), "a refused program must not expose a partial import");
+}
+
+#[test]
+fn a_later_failure_clears_earlier_retained_occurrences() {
+    let mut p = GraphProgram::new(1, 1, 1, vec![node("a", &[]), node("b", &[])]).unwrap();
+    let request = event(&mut p);
+    p.node_reply(request.sequence, attributes(true, true, false)).unwrap();
+    let key = event(&mut p); p.key_reply(key.sequence, "a".into()).unwrap();
+    let source = event(&mut p); p.mesh_reply(source.sequence, triangle()).unwrap();
+    let output = event(&mut p); p.ack(output.sequence).unwrap();
+    assert_eq!(p.retained().len(), 1);
+    let mut malformed = translation(0., 0., 0.); malformed[3][3] = 0.;
+    let request = event(&mut p);
+    p.node_reply(request.sequence, NodeReply { local_transform: Some(malformed), ..attributes(true, true, false) }).unwrap();
+    let key = event(&mut p); p.key_reply(key.sequence, "b".into()).unwrap();
+    let source = event(&mut p);
+    assert_eq!(p.mesh_reply(source.sequence, triangle()), Err(ImportError::HomogeneousMesh));
+    assert!(p.retained().is_empty());
+    assert_eq!(p.retained_bytes, 0);
 }

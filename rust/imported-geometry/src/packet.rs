@@ -26,7 +26,7 @@ impl Reader<'_> {
     fn stack(&mut self)->Result<Vec<RawMatrix>,ImportError>{
         let n=self.u32()? as usize;
         if n>(self.data.len()-self.offset)/4 {return Err(ImportError::InvalidPacket);}
-        (0..n).map(|_|self.rows()).collect()
+        (0..n).map(|_|{let m=self.rows()?; if crate::graph::oversized_transform(&m) {Err(ImportError::InvalidPacket)} else {Ok(m)}}).collect()
     }
 }
 fn length(value:usize)->Result<u32,ImportError> {u32::try_from(value).map_err(|_|ImportError::InvalidPacket)}

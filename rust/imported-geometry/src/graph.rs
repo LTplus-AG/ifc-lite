@@ -82,6 +82,10 @@ struct Limits { depth: usize, frames: u64, queued_bytes: usize, retained_bytes: 
 const LIMITS: Limits = Limits { depth: MAX_DEPTH, frames: MAX_FRAMES, queued_bytes: MAX_QUEUED_BYTES, retained_bytes: MAX_RETAINED_BYTES };
 const FRAME_BYTES: usize = 160;
 const ENTRY_BYTES: usize = 32;
+/// True when a raw local transform exceeds the accepted 4x4 shape.
+pub(crate) fn oversized_transform(matrix: &RawMatrix) -> bool {
+    matrix.len() > MAX_TRANSFORM_ROWS || matrix.iter().any(|row| row.len() > MAX_TRANSFORM_COLUMNS)
+}
 fn matrix_bytes(matrix: &RawMatrix) -> usize {
     24 + matrix.iter().map(|row| 24 + row.len() * 8).sum::<usize>()
 }
@@ -236,8 +240,7 @@ impl GraphProgram {
     }
     pub fn node_reply(&mut self, sequence: u32, reply: NodeReply) -> Result<(), ImportError> {
         self.check_reply(sequence, 102)?;
-        if reply.local_transform.as_ref().is_some_and(|m| m.len() > MAX_TRANSFORM_ROWS
-            || m.iter().any(|row| row.len() > MAX_TRANSFORM_COLUMNS)) {
+        if reply.local_transform.as_ref().is_some_and(crate::graph::oversized_transform) {
             return Err(self.fail(ImportError::InvalidPacket));
         }
         let frame = self.current.as_mut().ok_or(ImportError::IdentityMismatch)?;
@@ -282,6 +285,11 @@ impl GraphProgram {
         self.pending = None;
         self.current = None;
         self.queue.clear();
+        // A failed program is terminal: nothing admitted so far may be observed.
+        self.retained.clear();
+        self.definitions.clear();
+        self.point_metadata.clear();
+        self.retained_bytes = 0;
         error
     }
     fn evaluate(&mut self, source: ImportedSource) -> Result<ImportedAssembly, ImportError> {

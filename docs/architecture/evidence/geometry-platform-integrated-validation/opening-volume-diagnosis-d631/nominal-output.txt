@@ -1,0 +1,6 @@
+original 52/25 2.0800000000000001
+reference 1766053/800000 2.2075662500000002
+repeated 104/25 4.1600000000000001
+A host intersection area 1/5
+B host intersection area 2/15
+C host intersection area 1/8

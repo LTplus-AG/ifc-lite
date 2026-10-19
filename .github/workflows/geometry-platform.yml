@@ -25,6 +25,7 @@ on:
       - 'rust/wasm-bindings/tests/retained-browser-contract.*'
       - 'rust/wasm-bindings/src/api/product_job.rs'
       - 'scripts/stage-retained-browser-assets.mjs'
+      - 'scripts/wasm-test-mime-driver*'
       - 'scripts/verify-source-resource-feature-boundary.mjs'
       - 'scripts/perf/browser-static-server.ts'
       - 'scripts/perf/browser-cold-server-path.ts'
@@ -138,12 +139,18 @@ jobs:
             --sdk "$GITHUB_WORKSPACE/upstream-smlib" --out "$GITHUB_WORKSPACE/rust/processing/smlib"
           node scripts/stage-retained-browser-assets.mjs --build /tmp/smlib-wasm \
             --sdk "$GITHUB_WORKSPACE/upstream-smlib" --out "$GITHUB_WORKSPACE/rust/wasm-bindings/smlib"
+      - name: Authenticate the real ChromeDriver behind the MIME adapter
+        shell: bash
+        run: |
+          driver=$(command -v chromedriver)
+          "$driver" --version
+          echo "IFCLITE_REAL_CHROMEDRIVER=$driver" >> "$GITHUB_ENV"
       - name: Actual browser runtime
         id: browser-runtime
         continue-on-error: true
         env:
           WASM_BINDGEN_TEST_TIMEOUT: 180
-        run: wasm-pack test --headless --chrome rust/geometry-runtime --lib
+        run: wasm-pack test --headless --chrome --chromedriver "$GITHUB_WORKSPACE/scripts/wasm-test-mime-driver.mjs" rust/geometry-runtime --lib
       - name: Actual browser shared product continuations
         id: browser-processing
         continue-on-error: true
@@ -151,13 +158,13 @@ jobs:
           WASM_BINDGEN_TEST_TIMEOUT: 180
         # wasm-pack also invokes cargo build; only test-runner arguments belong
         # after this separator, so the filter never reaches cargo build.
-        run: wasm-pack test --headless --chrome rust/processing --lib -- session_retained
+        run: wasm-pack test --headless --chrome --chromedriver "$GITHUB_WORKSPACE/scripts/wasm-test-mime-driver.mjs" rust/processing --lib -- session_retained
       - name: Actual browser canonical source and product APIs
         id: browser-api
         continue-on-error: true
         env:
           WASM_BINDGEN_TEST_TIMEOUT: 180
-        run: wasm-pack test --headless --chrome rust/wasm-bindings --lib -- retained_
+        run: wasm-pack test --headless --chrome --chromedriver "$GITHUB_WORKSPACE/scripts/wasm-test-mime-driver.mjs" rust/wasm-bindings --lib -- retained_
       - name: Build canonical package for the actual JavaScript export contract
         run: pnpm build:wasm
       - name: Verify committed canonical declarations

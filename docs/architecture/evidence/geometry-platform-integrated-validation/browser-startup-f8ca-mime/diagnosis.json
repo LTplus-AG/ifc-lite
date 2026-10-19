@@ -1,0 +1,9 @@
+{
+  "artifactSource": "f8ca9df5e7bc5f17674eebe49eff62245eb093d3",
+  "artifactWasmSha256": "f7b13d9fec4bc134105418e77ef6e35d0d2a418a75020bf172b3f67ceef3b929",
+  "driverLogSha256": "b958fe43f1a56f3c078d2b8e182c3c673cb147459a960748d991aa545ee08f8d",
+  "selectedLog": "Actual Chrome DevTools Log.entryAdded errors for two private wasm imports; repeated polling and unrelated browser traffic omitted.",
+  "cause": "The wasm-bindgen test HTTP server serves .mjs as application/octet-stream; Chrome refuses private static imports before the Rust test harness initializes.",
+  "repair": "Correct MIME at the local browser-test HTTP boundary for both private wasm snippets and staged SDK .mjs modules. Preserve production module names, syntax, bytes and exports.",
+  "runtimeQualification": "Still pending rebuilt Rust browser execution."
+}

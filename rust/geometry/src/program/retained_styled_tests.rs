@@ -249,7 +249,14 @@ fn p2_styled_affine_occurrences_bake_independently_from_the_original_cached_temp
         assert_eq!(input.definition(),operations[0].value().definition(),"cache retains the original source definition");
         let frame=nalgebra::Matrix4::from_column_slice(matrix);
         assert_eq!(frame.fixed_view::<3,3>(0,0).determinant(),scale*scale*scale);
-        assert_eq!(frame[(0,3)],x);
+        // The source rectangle is centred at (0,0), while worker coordinates
+        // start at its first authored corner (-1,-2). Bake that frame once.
+        assert_eq!(frame[(0,3)],x-scale);
+        assert_eq!(frame[(1,3)],-2.*scale);
+        for u in [0.,2.] {for v in [0.,4.] {for w in [0.,3.] {
+            let corner=frame*nalgebra::Vector4::new(u,v,w,1.);
+            assert_eq!(corner,nalgebra::Vector4::new(x+scale*(u-1.),scale*(v-2.),scale*w,1.));
+        }}}
         assert_eq!(operations[index+1].value().definition(),plan.values[index].definition());
         assert_eq!(plan.values[index].world_from_evaluation(),nalgebra::Matrix4::identity());
         let binding=plan.values[index].presentation().last().unwrap();
@@ -313,7 +320,13 @@ fn p2_mapped_affine_admission_preserves_reflections_and_refuses_singular_before_
                             assert!(!singular);
                             let matrix=nalgebra::Matrix4::from_column_slice(matrix);
                             assert_eq!(matrix.fixed_view::<3,3>(0,0).determinant(),-1.);
-                            assert_eq!(matrix[(0,3)],10.);reflections+=1;
+                            assert_eq!(matrix[(0,3)],11.);
+                            assert_eq!(matrix[(1,3)],2.);
+                            for u in [0.,2.] {for v in [0.,4.] {for w in [0.,3.] {
+                                let corner=matrix*nalgebra::Vector4::new(u,v,w,1.);
+                                assert_eq!(corner,nalgebra::Vector4::new(11.-u,2.-v,-w,1.));
+                            }}}
+                            reflections+=1;
                         }
                         _=>panic!("mapping fixture contains no Boolean"),
                     }

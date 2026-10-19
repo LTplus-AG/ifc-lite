@@ -33,7 +33,9 @@ fn p2_sdk_issue_2019_original_opening_control_cuts_overlapping_ordered_sources()
         execution.accept(work, &mut decoder, &router).unwrap();
     }
     assert_eq!(cuts, 3);
-    assert!((last.unwrap() - oracle).abs() < 1e-6);
+    let actual=last.unwrap();
+    assert!((actual - oracle).abs() < 1e-6,
+        "actual ordered SDK opening volume={actual:.17}, exact mesh oracle={oracle:.17}, cuts={cuts}");
     assert_plan(&execution, 30, 1, 3);
     let fact = execution
         .traversal_plan()
@@ -80,7 +82,8 @@ fn p2_sdk_repeated_mapped_opening_parts_keep_distinct_occurrences_and_host_style
         execution.accept(work, &mut decoder, &router).unwrap();
     }
     assert_eq!(cuts, 8);
-    assert!((final_volume - oracle).abs() < 1e-6);
+    assert!((final_volume - oracle).abs() < 1e-6,
+        "actual repeated SDK opening volume={final_volume:.17}, exact mesh oracle={oracle:.17}, cuts={cuts}");
     assert_eq!(&right_slots[..4], &right_slots[4..]);
     assert_eq!(
         right_slots[..4]
@@ -247,7 +250,10 @@ fn p2_sdk_mixed_reference_opening_keeps_original_no_cutter_eligibility() {
         execution.accept(work, &mut decoder, &router).unwrap();
     }
     assert_eq!(cuts, 2);
-    assert!((last.unwrap() - exact_volume(&source, 30)).abs() < 1e-6);
+    let actual=last.unwrap();
+    let oracle=exact_volume(&source,30);
+    assert!((actual - oracle).abs() < 1e-6,
+        "actual Reference-filtered SDK opening volume={actual:.17}, exact mesh oracle={oracle:.17}, cuts={cuts}");
     assert!(decoder.get_cached(46).is_none());
     assert_plan(&execution, 30, 1, 2);
 }

@@ -115,7 +115,10 @@ Workspace request `auto-abd0a88232854244a0f35583cca7f525` pins earlier source
 binding, followed independently by seven strict Clippy findings. No workspace
 test result was produced. Evidence is under `workspace-23d68-terminal`.
 Corrections `62608a9b21` and `61f8f00dd0` address those Clippy findings without
-weakening gates. Corrected-source execution remains pending.
+weakening gates. Corrected source61f8f00dd0 executed on PC and reached later compilation: four
+retained processing test API/type errors and two runtime Clippy lints. No test
+target result was produced. Source6fb72cbe17 repairs those errors and lints; actual
+rerun is required. Exact receipts/output are under `workspace-61f8-terminal`.
 Source identities, reviews and remaining implementation contracts are under
 `evidence/geometry-platform-integrated-validation/p2-common-a860`.
 

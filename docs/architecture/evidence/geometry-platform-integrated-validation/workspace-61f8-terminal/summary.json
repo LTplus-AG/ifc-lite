@@ -1,0 +1,26 @@
+{
+  "source": "61f8f00dd0e5ff33a2475c693b4f53200612f0b1",
+  "host": {
+    "host": "louistrue-pc",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 24,
+    "availableMemoryBytes": 64382664704,
+    "totalMemoryBytes": 67423580160,
+    "python": "3.14.4",
+    "time": 1792396462.0099468
+  },
+  "state": "failed",
+  "exit": 101,
+  "sourceUnchanged": true,
+  "output_sha256": "a1cb7207a6243d6978fe606932f106724d4649cd110910f1258ff3acd16b6d8c",
+  "workspace": "compile failed: four test errors, no executed test target results",
+  "clippy": "two question_mark findings in runtime; former seven geometry findings passed this stage",
+  "compile_errors": [
+    "mapping_tests.rs137 and175 Option realization needs construction assertion",
+    "mapping_tests.rs198 removed realization field must validate common receipt",
+    "operation_tests.rs317 first sealed handle/frame accumulator needs explicit type"
+  ],
+  "warning": "predispatch_native_tests.rs76 unnecessary worker mut",
+  "repair": "6fb72cbe17; parsing only, rerun required"
+}

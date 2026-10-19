@@ -110,7 +110,14 @@ impl RetainedProductExecution {
             let RealizationKind::Boolean(value)=realization.kind() else {continue};
             if let Err(error)=pending.reply.as_mut().expect("original common reply")
                 .bind_retained_outcome(operation.expected().value().slot(),value.is_empty()) {
-                return Err(Box::new(RejectedCommonConstruction {reason:protocol(error),work}));
+                let reason=match self.resources.check() {
+                    Err(stop)=>RetainedExecutionError::Stopped(stop),
+                    Ok(())=>match error {
+                        ifc_lite_geometry::Error::ProgramStopped(stop)=>RetainedExecutionError::Stopped(stop),
+                        other=>protocol(other),
+                    },
+                };
+                return Err(Box::new(RejectedCommonConstruction {reason,work}));
             }
         }
         if self

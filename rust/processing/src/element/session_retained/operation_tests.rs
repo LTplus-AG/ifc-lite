@@ -213,3 +213,40 @@ fn p2_sdk_original_resource_stop_after_boolean_delivery_prevents_linear_acceptan
     assert!(execution.pending.as_ref().unwrap().reply.is_some());
     assert!(execution.traversal_plan().is_none());
 }
+
+#[test]
+fn p2_sdk_nested_outcome_binding_exhaustion_is_typed_and_preserves_original_reply() {
+    use ifc_lite_geometry::resource::{self,Cost,Dimension,ExecutionAccount,ExecutionPolicy,ResourceLimits};
+    let Some(mut worker)=worker() else {return};
+    let (_,context)=operation_context(100,"#100=IFCBOOLEANRESULT(.DIFFERENCE.,#93,#93);");
+    let mut decoder=context.source().unwrap().decoder();
+    let router=router(&mut decoder);
+    let limit=100_000;
+    let account=ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits {work:Some(limit),..Default::default()}));
+    let mut execution=account.scope(||execution(&context,&mut decoder,&router));
+    let issued=reach_boolean(&mut execution,&mut worker,&mut decoder,&router);
+    let work=issued.execute(&mut worker,0.001,15.,MeshLimits::default()).unwrap();
+    assert!(matches!(work.realizations[0].kind(),RealizationKind::Boolean(_)));
+    let before=account.usage().work;
+    execution.validate_intact(&work,&decoder,&router).unwrap();
+    let validation_cost=account.usage().work-before;
+    // Admit ledger backing first. Acceptance still charges one append; leave
+    // enough for both intact validations, that append, and one reply envelope.
+    execution.resources.reserve_headers(&mut execution.ledger,1).unwrap().retain();
+    let remaining=2*validation_cost+2;
+    let burn=limit-account.usage().work-remaining;
+    account.scope(||resource::charge(Cost {work:burn,..Default::default()}).unwrap().retain());
+    let ledger_before=execution.discharged_count();
+    let outer=execution.pending.as_ref().unwrap().outer;
+    let rejected=execution.accept(work,&mut decoder,&router).unwrap_err();
+    let stop=account.check().unwrap_err();
+    assert!(matches!(stop,ProgramStop::ResourceRefused(f) if f.dimension==Dimension::Work && f.requested==1));
+    assert!(matches!(rejected.reason,RetainedExecutionError::Stopped(actual) if actual==stop));
+    let pending=execution.pending.as_ref().unwrap();
+    assert_eq!(pending.outer,outer);
+    assert!(pending.reply.is_some());
+    assert_eq!(pending.stage.load(Ordering::Acquire),DELIVERED);
+    assert_eq!(execution.discharged_count(),ledger_before);
+    assert!(execution.traversal_plan().is_none());
+    assert!(execution.issue_next(&worker,&mut decoder,&router).is_err());
+}

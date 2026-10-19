@@ -105,6 +105,13 @@ Common typed construction/affine/Boolean operations are now integrated through
 templates, presentation histories and TypeMap stages. Review repairs cover typed
 stops, captured acceptance authority and finite styled/history/bulk accounting.
 Eight new real-source acceptance regressions are committed but unexecuted.
+Follow-up `b8ee3847fc` lets nonrigid maps reach physical affine admission rather
+than failing the inherited rigid-only source gate. Repair `e1e7d3ec5c` binds
+semantic outcomes on the original inner GeometryStep reply and rejects multiple
+Boolean outcomes before mutation. Independent source review closes those
+acceptance findings; compilation and behavioral execution remain pending.
+Workspace request `auto-abd0a88232854244a0f35583cca7f525` pins earlier source
+`23d68a60f4`, remains queued, and excludes these two later corrections.
 Source identities, reviews and remaining implementation contracts are under
 `evidence/geometry-platform-integrated-validation/p2-common-a860`.
 

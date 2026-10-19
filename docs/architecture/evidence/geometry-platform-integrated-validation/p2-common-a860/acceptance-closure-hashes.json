@@ -1,0 +1,18 @@
+{
+  "acceptance_scope_commit": "a860781f0b47ff40128f9b6e4abf4861e15300a9",
+  "sha256": {
+    "rust/geometry/src/program/inner.rs": "4ddbd00c5f83e6910dae08aee131ab767ee186de3832f1c9cae842356baa6782",
+    "rust/geometry/src/program/inner_boolean.rs": "720830a4346f70498220c2a19e45b0ad98427b6f7230deaf6cdd1f9bfdf4f370",
+    "rust/geometry/src/program/mapping/occurrence.rs": "4adf5e25bbd495c2c27d2513b968d1d3edf25c0de872b1b7b4fd1de645f203e3",
+    "rust/geometry/src/program/mapping/values.rs": "e409f09c56a9eb193e1504108e4038a0d4ac91e57300e90c77215098ae6918ee",
+    "rust/geometry/src/program/product_control.rs": "655570aa9353112c8d6f798cfef0edd3407f99abe0cab0253e8019c6c3ae08a5",
+    "rust/geometry/src/program/retained.rs": "d2fa4357dc19def912f11eb4245daf1b42181558f7dfdc7c6896d5b51df672d9",
+    "rust/geometry/src/program/retained_walk.rs": "74f4414a876560aee2cfbec80ba16054d45d2c77d2b13350798035596c04d1da",
+    "rust/geometry/src/program/retained_walk_accept_tests.rs": "5c0ab207f5aa017f861df2f5072c208412050d7adacc3ab7291c2d18e36d8bf7",
+    "rust/geometry/src/program/type_map.rs": "12b11c97ef8e5771776ef7cbe2b088e5852ec298a3a37ab9d8d0525286cda97b"
+  },
+  "later_processing_commit": "e1e7d3ec5cb22446094dfb1be0fac9db63eae190",
+  "later_sha256": {
+    "rust/processing/src/element/session_retained/acceptance.rs": "b01ebd2c1ed8762054e3cce534ffcc73f3ee62ba8ebde43e5b10b3bfbfcf9cc9"
+  }
+}

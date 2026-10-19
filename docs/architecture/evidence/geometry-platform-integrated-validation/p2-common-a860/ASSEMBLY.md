@@ -31,3 +31,21 @@ mapping/Boolean limits. That remains a preservation obligation; a refusal is not
 completion. The remaining implementation plan records iterative common dispatch
 and the layer interface-provenance requirement, not independent capped slab
 meshes. No exact fallback, second loader or automatic retry is introduced.
+
+## Follow-up source closure
+
+The independent acceptance closure review pins `a860781f0b` and original-reply
+repair `e1e7d3ec5c`, with no remaining concrete blocker in that reviewed slice.
+It is a source verdict, not a compilation or behavioral pass. Additional mapping
+repair `b8ee3847fc` replaces inherited proper-rigid-only source admission with
+finite, nonsingular affine admission in both mapping paths. Physical bake and
+actual runtime capability/conversion checks remain mandatory. Existing nonrigid
+source/SDK tests cover this path but remain unexecuted. Authored solid-placement
+rigidity policy is separate and unchanged.
+
+Normal workspace request `auto-abd0a88232854244a0f35583cca7f525`, job
+`c64d9201-df6c-46f4-9fa3-9aba691481d2`, pins source `23d68a60f4` and remains
+queued. It includes the guard source repair but predates both later fixes above.
+Its command runs full workspace tests and strict all-target Clippy independently,
+retaining both statuses. The original request is immutable; no result is claimed.
+A later assembled-source run remains required.

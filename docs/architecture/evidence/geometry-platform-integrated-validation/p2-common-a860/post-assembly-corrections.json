@@ -1,0 +1,15 @@
+{
+  "source": "e1e7d3ec5cb22446094dfb1be0fac9db63eae190",
+  "mapping_gate_source": "b8ee3847fc",
+  "original_reply_source": "e1e7d3ec5c",
+  "executed": false,
+  "changes": [
+    "Retained mapping source admissions validate finite nonsingular affine structure; proper-rigid classification stays in bake and runtime.",
+    "Actual WorkPayload::GeometryStep contains the original ProgramReply to bind; reject multiple Boolean outcomes before mutation."
+  ],
+  "files": {
+    "rust/geometry/src/program/mapping/merged_source.rs": "67bd991f56f449d90543b6ff4531e0965c6eb70d971efc7bd1befc2ded23728a",
+    "rust/geometry/src/program/mapping/submesh_source.rs": "280c8e3d8357652393500490d13e7761f5291ac0f23e21b6670ae8c0ea4dd728",
+    "rust/processing/src/element/session_retained/acceptance.rs": "b01ebd2c1ed8762054e3cce534ffcc73f3ee62ba8ebde43e5b10b3bfbfcf9cc9"
+  }
+}

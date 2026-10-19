@@ -14,7 +14,7 @@ use std::f64::consts::TAU;
 // the canonical profile XY plane, allowing the same authored-axis roundoff.
 const PROFILE_XY_AXIS_EPS: f64 = 1e-9;
 
-const MAX_LOOPS: usize = 100_000;
+pub(super) const MAX_LOOPS: usize = 100_000;
 // Application baseline in raw IFC length units. IFC does not prescribe a
 // default Precision. Declared values may tighten joins or widen clearance;
 // keep closure separate so a broad context cannot close an open boundary.
@@ -57,35 +57,47 @@ pub struct AnalyticProfile {
 /// Read supported exact profile loops, preserving an unsupported reason on
 /// the source record rather than publishing a partial or tessellated contour.
 pub fn extract_analytic_profile(profile: &DecodedEntity, decoder: &mut EntityDecoder) -> AnalyticProfile {
+    let mut result = parse_original_profile(profile, decoder);
+    if matches!(result.status, AnalyticStatus::Complete) {
+        if let Err(reason) = validate_original_profile(profile, decoder, &result) {
+            result.status = AnalyticStatus::Unsupported(reason);
+        }
+    }
+    if matches!(result.status, AnalyticStatus::Unsupported(_)) { result.loops.clear(); }
+    result
+}
+
+// Shared canonical parsing; raw capture retains the original rejected chain.
+// This helper introduces no resource hook or extra traversal on default extraction.
+pub(super) fn parse_original_profile(profile: &DecodedEntity, decoder: &mut EntityDecoder) -> AnalyticProfile {
     let mut result = AnalyticProfile {
         profile_id: profile.id, ifc_type_name: profile.ifc_type.name().to_string(),
         profile_type: profile.get(0).and_then(|value| value.as_enum()).map(str::to_owned),
         position_id: None, profile_position: None,
         loops: Vec::new(), status: AnalyticStatus::Complete,
     };
-    let parsed = parse_profile(profile, decoder, &mut result);
-    let validated = parsed.and_then(|()| {
-        if matches!(profile.ifc_type,
-            IfcType::IfcArbitraryClosedProfileDef | IfcType::IfcArbitraryProfileDefWithVoids)
-        {
-            let declared = decoder.geometric_context_precision_range()
-                .map_err(|error| format!("profile topology Precision: {error}"))?;
-            let clearance = declared.map_or(DEFAULT_TOPOLOGY_CLEARANCE, |(_, max)| {
-                max.max(DEFAULT_TOPOLOGY_CLEARANCE)
-            });
-            let join_precision = declared.map_or(DEFAULT_TOPOLOGY_CLEARANCE, |(min, _)| {
-                min.min(DEFAULT_TOPOLOGY_CLEARANCE)
-            });
-            super::profile_topology::validate(&result.loops, clearance, join_precision)
-        } else {
-            Ok(())
-        }
-    });
-    if let Err(reason) = validated {
-        result.loops.clear();
+    if let Err(reason) = parse_profile(profile, decoder, &mut result) {
         result.status = AnalyticStatus::Unsupported(reason);
     }
     result
+}
+
+pub(super) fn validate_original_profile(profile:&DecodedEntity,decoder:&mut EntityDecoder,
+    result:&AnalyticProfile)->Result<(),String> {
+    validate_profile_policy(profile,decoder,result,false)
+}
+pub(super) fn validate_original_profile_accounted(profile:&DecodedEntity,decoder:&mut EntityDecoder,
+    result:&AnalyticProfile)->Result<(),String> {validate_profile_policy(profile,decoder,result,true)}
+fn validate_profile_policy(profile:&DecodedEntity,decoder:&mut EntityDecoder,result:&AnalyticProfile,accounted:bool)->Result<(),String> {
+    if matches!(profile.ifc_type,
+        IfcType::IfcArbitraryClosedProfileDef | IfcType::IfcArbitraryProfileDefWithVoids) {
+        let declared=decoder.geometric_context_precision_range()
+            .map_err(|error|format!("profile topology Precision: {error}"))?;
+        let clearance=declared.map_or(DEFAULT_TOPOLOGY_CLEARANCE,|(_,max)|max.max(DEFAULT_TOPOLOGY_CLEARANCE));
+        let join=declared.map_or(DEFAULT_TOPOLOGY_CLEARANCE,|(min,_)|min.min(DEFAULT_TOPOLOGY_CLEARANCE));
+        if accounted {super::profile_topology::validate_accounted(&result.loops,clearance,join)}
+        else {super::profile_topology::validate(&result.loops,clearance,join)}
+    } else {Ok(())}
 }
 
 fn parse_profile(

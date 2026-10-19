@@ -9,12 +9,18 @@
 use super::{AnalyticProfileLoop, AnalyticCurveSegment};
 use super::topology_interval::{self as iv, Box2, Curve};
 
-const MAX_WORK: usize = 1_000_000;
+pub(super) const MAX_WORK: usize = 1_000_000;
 const MAX_REFINEMENT: u8 = 48;
 
-struct Budget(usize);
+struct Budget(usize, bool);
 impl Budget {
     fn spend(&mut self) -> Result<(), String> {
+        if self.1 {
+            if self.0==0 {return Err(crate::resource::refused(crate::resource::Dimension::Work,1,0,
+                crate::resource::RefusalReason::Limit).to_string());}
+            crate::resource::charge(crate::resource::Cost {work:1,..Default::default()})
+                .map_err(|stop|stop.to_string())?.retain();
+        }
         self.0 = self.0.checked_sub(1)
             .ok_or("profile topology validation exceeded work budget")?;
         Ok(())
@@ -25,7 +31,23 @@ pub(super) fn validate(loops: &[AnalyticProfileLoop], clearance: f64, join_preci
     validate_bounded(loops, clearance, join_precision, MAX_WORK)
 }
 
+pub(super) fn validate_accounted(loops:&[AnalyticProfileLoop],precision:f64,join_precision:f64)->Result<(),String> {
+    validate_policy(loops,precision,join_precision,MAX_WORK,true)
+}
 fn validate_bounded(loops: &[AnalyticProfileLoop], precision: f64, join_precision: f64, work: usize) -> Result<(), String> {
+    validate_policy(loops,precision,join_precision,work,false)
+}
+fn validate_policy(loops: &[AnalyticProfileLoop], precision: f64, join_precision: f64, work: usize, accounted:bool) -> Result<(), String> {
+    let mut budget=Budget(work,accounted);
+    validate_with_budget(loops,precision,join_precision,&mut budget)
+}
+pub(super) fn validate_accounted_remaining(loops:&[AnalyticProfileLoop],precision:f64,join:f64,work:u64)
+    ->(Result<(),String>,u64) {
+    let bounded=work.min(MAX_WORK as u64) as usize;let mut budget=Budget(bounded,true);
+    let result=validate_with_budget(loops,precision,join,&mut budget);
+    (result,(bounded-budget.0) as u64)
+}
+fn validate_with_budget(loops:&[AnalyticProfileLoop],precision:f64,join_precision:f64,budget:&mut Budget)->Result<(),String> {
     if !precision.is_finite() || precision < 0.0 || !join_precision.is_finite() || join_precision < 0.0 {
         return Err("invalid profile topology precision".into());
     }
@@ -35,7 +57,6 @@ fn validate_bounded(loops: &[AnalyticProfileLoop], precision: f64, join_precisio
         AnalyticCurveSegment::Line { start, .. } => [start[0], start[1]],
         AnalyticCurveSegment::Arc { center, .. } => [center[0], center[1]],
     };
-    let mut budget = Budget(work);
     let curves: Vec<Vec<_>> = loops.iter().map(|boundary| boundary.segments.iter()
         .map(|segment| Curve::new(segment, origin)).collect::<Result<_, _>>())
         .collect::<Result<_, _>>()?;
@@ -62,14 +83,14 @@ fn validate_bounded(loops: &[AnalyticProfileLoop], precision: f64, join_precisio
                 let mut joins = Vec::with_capacity(2);
                 if k == j + 1 { joins.push((1.0, 0.0)); }
                 if j == 0 && k + 1 == boundary.len() { joins.push((0.0, 1.0)); }
-                separate(a, b, &joins, precision, join_precision, &mut budget)
+                separate(a, b, &joins, precision, join_precision, budget)
                     .map_err(|reason| format!("loop {i}, segments {j}/{k}: {reason}"))?;
             }
         }
         for (other_index, other) in curves.iter().enumerate().take(i) {
             for a in boundary { for b in other {
                 budget.spend()?;
-                separate(a, b, &[], precision, join_precision, &mut budget)
+                separate(a, b, &[], precision, join_precision, budget)
                     .map_err(|reason| format!("loops {other_index}/{i}: {reason}"))?;
             }}
         }
@@ -78,12 +99,12 @@ fn validate_bounded(loops: &[AnalyticProfileLoop], precision: f64, join_precisio
     // have been established does one boundary point decide containment.
     for i in 1..curves.len() {
         let query = curves[i][0].at(0.0)?;
-        if !contains(&curves[0], query, &mut budget)? {
+        if !contains(&curves[0], query, budget)? {
             return Err(format!("InnerCurves loop {i} is outside OuterCurve"));
         }
         for j in 1..i {
-            if contains(&curves[j], query, &mut budget)?
-                || contains(&curves[i], curves[j][0].at(0.0)?, &mut budget)? {
+            if contains(&curves[j], query, budget)?
+                || contains(&curves[i], curves[j][0].at(0.0)?, budget)? {
                 return Err(format!("InnerCurves loops {j}/{i} are nested"));
             }
         }

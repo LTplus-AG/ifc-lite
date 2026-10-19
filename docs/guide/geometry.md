@@ -939,6 +939,25 @@ See the [consuming contract and remaining coverage](../architecture/geometry-pla
 Current-source compilation, actual SDK execution and preservation qualification
 remain required before this experimental entry can be treated as qualified.
 
+The Rust `analytic::region` foundation exposes immutable `UntrustedProfileChain`
+and `UntrustedRegionCertificate` inspection data for bounded line-span
+regularization. Raw capture consumes a separate inspection decoder, reuses the canonical profile/curve parser and retains
+the original source coefficients, source records, units, Precision and refused
+simple-profile status. The exact derived certificate partitions original edge
+ranges, pairs opposite spans, proves cycle incidence and area identity, and runs
+the existing topology gate at unchanged Precision. Current scope is a single
+indexed line outer chain with SourceBundle-backed decoder resource coverage; curves,
+crossings, ambiguous multiplicity, branching and
+unresolved fill/hole policies remain explicit refusals.
+
+These constructors grant no authenticated source or runtime authority. Their local
+ids and captured resource accounts cannot discharge common operations or product
+requirements. Original source ownership/epoch/decoder binding, derived extrusion,
+sealed native/browser transactions and all actual-model qualification remain
+unimplemented integration work. Inspection caches cannot replace the original selected
+decoder or confer model/epoch/cache-generation authority. The exact default extractor still clears refused
+loops; a derived region never relabels the original profile as accepted.
+
 ### Explicit retained source execution in a browser
 
 The low-level WASM API has an explicit source-only retained consumer. Install

@@ -102,7 +102,7 @@ fn issue_6316_near_join_does_not_hide_remote_nearly_parallel_crossing() {
     let b = AnalyticCurveSegment::Line { start: [0.0,-5e-10,0.0],end: [-1.0,1e-4,0.0] };
     let a = Curve::new(&a,[0.0,0.0]).unwrap();
     let b = Curve::new(&b,[0.0,0.0]).unwrap();
-    assert!(separate(&a,&b,&[(1.0,0.0)],1e-9,1e-9,&mut Budget(MAX_WORK)).is_err());
+    assert!(separate(&a,&b,&[(1.0,0.0)],1e-9,1e-9,&mut Budget(MAX_WORK,false)).is_err());
 }
 
 #[test]

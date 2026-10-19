@@ -18,6 +18,7 @@ mod frame;
 mod helpers;
 mod profile;
 mod profile_topology;
+pub mod region;
 mod topology_interval;
 pub use profile::{extract_analytic_profile, AnalyticProfile, AnalyticProfileLoop, ProfileLoopKind};
 mod extrusion;

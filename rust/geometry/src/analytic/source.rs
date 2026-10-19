@@ -7,6 +7,8 @@ use crate::{Error, Result};
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+pub(super) const MAX_SOURCE_VALUE_DEPTH:usize=32;
+pub(super) const MAX_SOURCE_VALUES:usize=1_000_000;
 
 /// Original selector types, typed wrappers and source references survive intact.
 /// Reals are decoded f64 values, not original STEP lexical spellings.
@@ -117,6 +119,8 @@ impl SourceCapture {
             IfcType::IfcRectangleProfileDef => {
                 &["ProfileType", "ProfileName", "Position", "XDim", "YDim"]
             }
+            IfcType::IfcArbitraryClosedProfileDef => &["ProfileType", "ProfileName", "OuterCurve"],
+            IfcType::IfcArbitraryProfileDefWithVoids => &["ProfileType", "ProfileName", "OuterCurve", "InnerCurves"],
             IfcType::IfcCircleProfileDef => &["ProfileType", "ProfileName", "Position", "Radius"],
             IfcType::IfcPolyline => &["Points"],
             IfcType::IfcIndexedPolyCurve => &["Points", "Segments", "SelfIntersect"],
@@ -241,7 +245,7 @@ impl SourceCapture {
 
     fn value(&mut self, value: &AttributeValue, depth: usize) -> Result<SourceValue> {
         self.values += 1;
-        if depth >= 32 || self.values > 1_000_000 {
+        if depth >= MAX_SOURCE_VALUE_DEPTH || self.values > MAX_SOURCE_VALUES {
             return Err(invalid("source values exceed work budget"));
         }
         Ok(match value {

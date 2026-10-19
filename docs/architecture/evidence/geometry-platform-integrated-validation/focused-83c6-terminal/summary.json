@@ -1,0 +1,25 @@
+{
+  "job": "5e7a727b-757e-4d60-8ffd-ecfb0303bf77",
+  "source": "83c6d6043753fda5897d39c3742274f916a4d35e",
+  "exitCode": 101,
+  "sourceUnchanged": true,
+  "output_sha256": "7ecc314d529c2deb6f9ffe9eb0ebb41d84b03d70cc9550974943591c40996421",
+  "qualification": "FAILED; later source changes require new executed checks",
+  "geometry": {
+    "passed": 1926,
+    "failed": 1,
+    "ignored": 1
+  },
+  "processing": {
+    "passed": 749,
+    "failed": 0,
+    "ignored": 1
+  },
+  "positional_ratchet": {
+    "passed": 20,
+    "failed": 0,
+    "ignored": 1
+  },
+  "failure": "Default 256-occurrence retained styled diamond exhausts shared work 32768; no limit/expected output change",
+  "clippy": "failed same three processing findings; later source fixes not qualified by this run"
+}

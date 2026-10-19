@@ -1,0 +1,14 @@
+{
+  "job": "bba0be8e-1522-4894-ad25-5fbc77650573",
+  "source": "5b9144113671ba7964c12137eeeecea5ca344b25",
+  "exitCode": 101,
+  "sourceUnchanged": true,
+  "output_sha256": "04d8cb8686096559eb0cbd1db46dac654a439b5e2f219dcb0ed7a4917a5f3698",
+  "qualification": "FAILED; later source changes require new executed checks",
+  "passed": 5691,
+  "failed": 1,
+  "ignored": 47,
+  "clippy": "passed strict workspace all-targets",
+  "failure": "Existing exact issue3353 nary near-coplanar union; actual source overlap with global test caps was not observed. Separate test-isolation prerequisite being prepared",
+  "scope": "standalone A1 source5b914; no integration geometry changes"
+}

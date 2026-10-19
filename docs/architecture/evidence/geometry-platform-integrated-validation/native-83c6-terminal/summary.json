@@ -1,0 +1,15 @@
+{
+  "job": "8d288125-269e-46c3-a59f-f8271e72fcc6",
+  "source": "83c6d6043753fda5897d39c3742274f916a4d35e",
+  "exitCode": 8,
+  "sourceUnchanged": true,
+  "output_sha256": "1a984018343afead34f550260a358dbd4d0c89cdbf48f70fd2710485f6c8ac2f",
+  "qualification": "FAILED; later source changes require new executed checks",
+  "ctest": {
+    "passed": 4,
+    "failed": 1
+  },
+  "observed": "All ten affine class/numerical cases, direct surface regressions, all21 region witnesses and disk volumes reached; owned boundary then aborted with uncaught KernelDomainTainted",
+  "unreached": "Full plane/context witnesses and subsequent actual-worker Rust tests not qualified",
+  "poison_boundary": "separate fifth CTest passed"
+}

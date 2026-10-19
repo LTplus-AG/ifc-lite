@@ -1,0 +1,28 @@
+{
+  "source_commit": "6e313d755f2e0c032e31a81b663c59753fdf85d1",
+  "timestamp_utc": "2026-10-19T08:33:11.671304+00:00",
+  "classification": "FIXTURE SETUP SOURCE REPAIR ONLY; NO NEW NUMERICAL EVIDENCE",
+  "checks": [
+    {
+      "command": "rustfmt +nightly-2025-11-15 --edition 2021 --config skip_children=true --emit stdout rust/geometry-runtime/tests/plane_faults.rs",
+      "result": "syntax parsing passed; no writes/typecheck/codegen"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    },
+    {
+      "command": "git apply --reverse --check (both patch contents via stdin)",
+      "result": "passed at exact source checkout"
+    }
+  ],
+  "native_tests": "UNCOMPILED/UNEXECUTED",
+  "sdk_runtime": "UNEXECUTED",
+  "actual_browser": "UNEXECUTED",
+  "clippy": "UNRUN",
+  "heavy_jobs_submitted": 0,
+  "numerical_changes": false,
+  "pushed": false,
+  "pr": false,
+  "generated_bindings": false
+}

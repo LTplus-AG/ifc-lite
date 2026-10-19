@@ -1,0 +1,216 @@
+{
+  "source_commit": "6e313d755f2e0c032e31a81b663c59753fdf85d1",
+  "reviewed_checkpoint_immutable": "f95d10b96b9e5096bd232dda205ae2eac2c69eb7",
+  "patches": [
+    {
+      "path": "after-f95.increment.patch.gz",
+      "base": "f95d10b96b9e5096bd232dda205ae2eac2c69eb7",
+      "source_commit": "6e313d755f2e0c032e31a81b663c59753fdf85d1",
+      "sha256": "86e986d0a74a667f6d15d4d97aa01ee46284f4201b51434503bfcc00c05ac46c",
+      "files": [
+        {
+          "path": "rust/geometry-runtime/tests/plane_faults.rs",
+          "base_sha256": "bdf5df1ca0bd0f4f91bdc87a6c558dcbfcc33e3d3073e7ef7bb3e4c7e04d965d",
+          "source_sha256": "8e47a23c2793fe3ce80ba82c5c1cadf4f3276253e2d97210cbb332ffa775eccf",
+          "bytes": 5807,
+          "lines": 96,
+          "git_mode": "100644"
+        }
+      ]
+    },
+    {
+      "path": "combined-owned-from-c050.patch.gz",
+      "base": "c05004953082dad0fc3213940d44f9a4456d3f6c",
+      "source_commit": "6e313d755f2e0c032e31a81b663c59753fdf85d1",
+      "sha256": "95baa3365f8a035d1c4f6deb013d9f6b457ddf0511623c918254db6005a9315c",
+      "files": [
+        {
+          "path": "rust/geometry-runtime/PLANE_RUNTIME_CONTRACT.md",
+          "base_sha256": null,
+          "source_sha256": "fe15252111647e1b349063574f17f54556e2c39452da4198c811958af8c16bcb",
+          "bytes": 4357,
+          "lines": 63,
+          "git_mode": "100644"
+        },
+        {
+          "path": "rust/geometry-runtime/js/retained-driver.mjs",
+          "base_sha256": "92ce43a4f88e93c8ec9b4b466c67c570f9624cc0a0bb51b4fe47cf9cfad3ed04",
+          "source_sha256": "500c1b923eabc674da3b59e5af9d25eff0c4e786d8e8829fdb215679f94dc709",
+          "bytes": 23948,
+          "lines": 400,
+          "git_mode": "100644"
+        },
+        {
+          "path": "rust/geometry-runtime/js/retained-driver.test.mjs",
+          "base_sha256": "b81086d92cd14b4bf60066ec630d0163307bdbf9f3fe026e5007ad2ee818a5ab",
+          "source_sha256": "9d38255ce798510926025b18963f5937c5ce27aa14362d73471c3a4e68c0085a",
+          "bytes": 21582,
+          "lines": 414,
+          "git_mode": "100644"
+        },
+        {
+          "path": "rust/geometry-runtime/src/browser.rs",
+          "base_sha256": "2f48c2302b46ef318699f091c2921279525f2ff708fc5bb4f336223359e36619",
+          "source_sha256": "512806375649c1f420b3ef5a32b8d701e19c69c5af502675037715c02a206231",
+          "bytes": 6172,
+          "lines": 196,
+          "git_mode": "100644"
+        },
+        {
+          "path": "rust/geometry-runtime/src/browser_affine.rs",
+          "base_sha256": "a468761fef8f38328320e44cee3e04274c78297fad7185115622be3c3a0e0e63",
+          "source_sha256": "e80086ea718d841d518c50a4505f02e6e037f5ff1e2f42cb0431a879189ae86a",
+          "bytes": 5878,
+          "lines": 125,
+          "git_mode": "100644"
+        },
+        {
+          "path": "rust/geometry-runtime/src/browser_bridge.rs",
+          "base_sha256": "c0322dae94c81139b48e73c3d85718371c720a86b71c8b6e351884e6977ca10a",
+          "source_sha256": "f07c3455c4fad574c6c937b537e4be0b5f824161e5e238ed9f9625586ece3047",
+          "bytes": 7588,
+          "lines": 181,
+          "git_mode": "100644"
+        },
+        {
+          "path": "rust/geometry-runtime/src/browser_clip.rs",
+          "base_sha256": null,
+          "source_sha256": "19a78ba3dcd4299e88e2506c7a425ee82d36b9fdc6fc50e9ef03987f5c05baa4",
+          "bytes": 6392,
+          "lines": 121,
+          "git_mode": "100644"
+        },
+        {
+          "path": "rust/geometry-runtime/src/browser_clip_tests.rs",
+          "base_sha256": null,
+          "source_sha256": "24138b748696c9aaeaeadba51e8b00538d263efdcdce944863087474254b8d3c",
+          "bytes": 7233,
+          "lines": 95,
+          "git_mode": "100644"
+        },
+        {
+          "path": "rust/geometry-runtime/src/browser_dependencies.rs",
+          "base_sha256": "c65ba4e1428403cb3626cee9eb20dbb41c13ee587ac421b8d23b110291674939",
+          "source_sha256": "b9254d117c3d66529cc2331f54fe221045a263279f646ca9ff3d8cc3823ac146",
+          "bytes": 9496,
+          "lines": 183,
+          "git_mode": "100644"
+        },
+        {
+          "path": "rust/geometry-runtime/src/lib.rs",
+          "base_sha256": "a83f4706f347476ed11853b8ab9ca04e4e474dbb1bb15e1757780b742687db5c",
+          "source_sha256": "4c879c9f8e39e6103055e3ba60c978ef8288c8bffbd1d88de497d6cc8d7a1e92",
+          "bytes": 1199,
+          "lines": 27,
+          "git_mode": "100644"
+        },
+        {
+          "path": "rust/geometry-runtime/src/plane.rs",
+          "base_sha256": null,
+          "source_sha256": "292ffeee83f49adaa38177c9ad30a9f49e4349c589fc4846dd926d505fae624f",
+          "bytes": 7339,
+          "lines": 152,
+          "git_mode": "100644"
+        },
+        {
+          "path": "rust/geometry-runtime/src/plane_tests.rs",
+          "base_sha256": null,
+          "source_sha256": "4654d6ceef67ae16dcf6a9f9292db85e63b1548cac1f6d569899a4f6ed61d1a6",
+          "bytes": 3870,
+          "lines": 65,
+          "git_mode": "100644"
+        },
+        {
+          "path": "rust/geometry-runtime/src/protocol.rs",
+          "base_sha256": "f64f765b625018729e1d965feb7d669cd1d05c82861eafc634f4613209d7ea8f",
+          "source_sha256": "11b743ca2451b4655c1838b96fa9d5db27695f0868f10f91545508ca03d7cac0",
+          "bytes": 11605,
+          "lines": 339,
+          "git_mode": "100644"
+        },
+        {
+          "path": "rust/geometry-runtime/src/retained_values.rs",
+          "base_sha256": "614097b9a620ddf3b5df5614578e8e0cedc2c5731402d08b4d517388fcd1f629",
+          "source_sha256": "b6e720df2137126d0ccc5e96949570648be90ea6961a5ccff70d80d9cc33ffe1",
+          "bytes": 2678,
+          "lines": 49,
+          "git_mode": "100644"
+        },
+        {
+          "path": "rust/geometry-runtime/src/worker.rs",
+          "base_sha256": "b4d05ee8709124eea9d70e1b878eb2c7f8bb88e2d94e2a2bf4bb6bd7a824abdc",
+          "source_sha256": "af83e1dffd52aef6c198c3b307bf6bf404e59f5e00fb1f7e97146cc367a579fd",
+          "bytes": 12654,
+          "lines": 362,
+          "git_mode": "100644"
+        },
+        {
+          "path": "rust/geometry-runtime/src/worker_affine.rs",
+          "base_sha256": "869088fc523edd287ece682caf61b2fee7ee2e9f35dc890c7022914fd5140246",
+          "source_sha256": "c1f83b97c26080fef9ae8124f9a99ddbf08c79572d2bd74bae23587de5b8ca10",
+          "bytes": 5114,
+          "lines": 102,
+          "git_mode": "100644"
+        },
+        {
+          "path": "rust/geometry-runtime/src/worker_clip.rs",
+          "base_sha256": null,
+          "source_sha256": "02aa2df4db51d58a3f739d3cbbe8a65e2dca403863fcdeea42c1a1a0560edd1f",
+          "bytes": 5145,
+          "lines": 95,
+          "git_mode": "100644"
+        },
+        {
+          "path": "rust/geometry-runtime/src/worker_dependencies.rs",
+          "base_sha256": "87306b4460f9bedf968af70c61a239d358c5614bf4a2319ae0575a6e6664551b",
+          "source_sha256": "47dd3a120a1f7dded8c0dc9f198e1585e31b03df1d73b844b5486f244d8a3e07",
+          "bytes": 8773,
+          "lines": 169,
+          "git_mode": "100644"
+        },
+        {
+          "path": "rust/geometry-runtime/src/worker_objects.rs",
+          "base_sha256": "cf2132f0c5cb14daecb32c46ada6c42f3bd955c2d1012a5eee66ad1547e215e2",
+          "source_sha256": "4a09ca5279e86cb6771c8f01bcc667378fb4fa4b5bdeea06bcbcd9bfa497ccb3",
+          "bytes": 6878,
+          "lines": 198,
+          "git_mode": "100644"
+        },
+        {
+          "path": "rust/geometry-runtime/tests/fixtures/plane-fault-peer.py",
+          "base_sha256": null,
+          "source_sha256": "2af1b9f3e80707e70c6f968fb0909b1f008d2be91c031ba911d2702757e4e1b4",
+          "bytes": 3815,
+          "lines": 107,
+          "git_mode": "100755"
+        },
+        {
+          "path": "rust/geometry-runtime/tests/plane_clip.rs",
+          "base_sha256": null,
+          "source_sha256": "2e470e04dfedb94708e36c8932cca436fa6cfa681f17c7f74e962d72921d851d",
+          "bytes": 7136,
+          "lines": 95,
+          "git_mode": "100644"
+        },
+        {
+          "path": "rust/geometry-runtime/tests/plane_faults.rs",
+          "base_sha256": null,
+          "source_sha256": "8e47a23c2793fe3ce80ba82c5c1cadf4f3276253e2d97210cbb332ffa775eccf",
+          "bytes": 5807,
+          "lines": 96,
+          "git_mode": "100644"
+        }
+      ]
+    }
+  ],
+  "repair": "Process-wide AtomicU64 suffix prevents same-PID/same-case concurrent fixture directory collisions.",
+  "unchanged": [
+    "Fixture::drop",
+    "all fault cases/assertions",
+    "native production code",
+    "browser code",
+    "C++",
+    "geometry/common/processing",
+    "original a1bc/f95 commits and prior delivery artifacts"
+  ]
+}

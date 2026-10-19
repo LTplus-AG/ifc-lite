@@ -1,0 +1,49 @@
+{
+  "source": "f95d10b96b9e5096bd232dda205ae2eac2c69eb7",
+  "original": "a1bc0a61c783215624d09f090b4198958ae5fe5a",
+  "delivery": "77d7ef591b41aef59d7c8c53c87f6c1fcae5f7b8",
+  "files": [
+    {
+      "path": "rust/geometry-runtime/src/worker.rs",
+      "gitBlob": "8331c9b04985f35e8128681f3e477ed98ad6b2f0",
+      "sha256": "af83e1dffd52aef6c198c3b307bf6bf404e59f5e00fb1f7e97146cc367a579fd",
+      "unchangedFromA1bc": false
+    },
+    {
+      "path": "rust/geometry-runtime/tests/plane_faults.rs",
+      "gitBlob": "f4be302315f01d8afc8c95721011d1000c4687f2",
+      "sha256": "bdf5df1ca0bd0f4f91bdc87a6c558dcbfcc33e3d3073e7ef7bb3e4c7e04d965d",
+      "unchangedFromA1bc": false
+    },
+    {
+      "path": "rust/geometry-runtime/tests/fixtures/plane-fault-peer.py",
+      "gitBlob": "eeb908fde01d0087a0cdc03b01c2017d6f85bf74",
+      "sha256": "2af1b9f3e80707e70c6f968fb0909b1f008d2be91c031ba911d2702757e4e1b4",
+      "unchangedFromA1bc": false
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_mesh.rs",
+      "gitBlob": "7e652ed8390decc492477c617260b13c6a20545e",
+      "sha256": "991387ba3d19967690e6622eb8017698a4b516a4edeb4458bbb97a170665cd78",
+      "unchangedFromA1bc": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_clip.rs",
+      "gitBlob": "4b358c1a9159d2463d43a07efe8e868e7877503c",
+      "sha256": "02aa2df4db51d58a3f739d3cbbe8a65e2dca403863fcdeea42c1a1a0560edd1f",
+      "unchangedFromA1bc": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_objects.rs",
+      "gitBlob": "7196939e0197d40cc3a3488cfd654f4b79889977",
+      "sha256": "4a09ca5279e86cb6771c8f01bcc667378fb4fa4b5bdeea06bcbcd9bfa497ccb3",
+      "unchangedFromA1bc": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_dependencies.rs",
+      "gitBlob": "185426766c6538dee241e93ca88c39ae0ae4582f",
+      "sha256": "47dd3a120a1f7dded8c0dc9f198e1585e31b03df1d73b844b5486f244d8a3e07",
+      "unchangedFromA1bc": true
+    }
+  ]
+}

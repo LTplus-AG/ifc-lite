@@ -1,0 +1,15 @@
+{
+  "source": "6e313d755f2e0c032e31a81b663c59753fdf85d1",
+  "base": "c05004953082dad0fc3213940d44f9a4456d3f6c",
+  "parent_before": "5cf2bb965f",
+  "composition": "combined incremental applied cleanly; retained parent Boolean result/cleanup primary-error order from6fb; independent f95 production retirement finding closed; unique fixture suffix inspected",
+  "lightweight_checks": {
+    "driver_protocol_tests": {
+      "pass": 17,
+      "skip": 0,
+      "command": "node --experimental-vm-modules --test rust/geometry-runtime/js/retained-driver.test.mjs"
+    },
+    "initial_without_vm_flag": "setup failure: node:vm SourceTextModule unavailable; corrected using existing CMake command flag"
+  },
+  "actual_sdk_rust_browser": "UNCOMPILED/UNEXECUTED; SDK geometry and common product plane orchestration remain residual"
+}

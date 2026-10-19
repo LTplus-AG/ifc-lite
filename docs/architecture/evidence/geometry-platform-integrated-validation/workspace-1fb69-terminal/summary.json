@@ -1,0 +1,13 @@
+{
+  "job": "42d2a4f9-488e-4055-8264-4cf66586d867",
+  "source": "1fb69c5fe0b433452fe7c0bf353bff3b8b650a26",
+  "exitCode": 101,
+  "sourceUnchanged": true,
+  "output_sha256": "a758ca8c831dd34abca2593c324795f1d06b4ee5f7ccfd67691d8b69c5bf5af5",
+  "qualification": "FAILED; later source changes require new executed checks",
+  "passed": 6341,
+  "failed": 12,
+  "ignored": 47,
+  "scope": "full Rust workspace with no-fail-fast; strict Clippy executed independently and failed three processing findings",
+  "sdk": "SDK-gated Rust tests lack IFCLITE_SMLIB_WORKER; early-return tests are not actual SDK coverage"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "auto-15594e8b7c7c4fd2bfc5aaf9f3a93bb3",
+  "commit": "83c6d6043753fda5897d39c3742274f916a4d35e",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "-c",
+    "source \"$HOME/build-workers/worker-env.sh\"; cargo test -p ifc-lite-geometry --lib --no-fail-fast; geometry_status=$?; cargo test -p ifc-lite-processing --lib --test positional_read_ratchet --no-fail-fast; processing_status=$?; cargo clippy --workspace --all-targets -- -D warnings; clippy_status=$?; printf \"geometry_exit=%s processing_exit=%s clippy_exit=%s\\n\" \"$geometry_status\" \"$processing_status\" \"$clippy_status\"; if [ \"$geometry_status\" -ne 0 ]; then exit \"$geometry_status\"; fi; if [ \"$processing_status\" -ne 0 ]; then exit \"$processing_status\"; fi; exit \"$clippy_status\""
+  ],
+  "storageTask": "ifclite-platform-focused-83c6-20261019",
+  "pools": []
+}

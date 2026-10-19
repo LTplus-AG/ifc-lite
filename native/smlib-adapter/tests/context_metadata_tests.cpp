@@ -6,6 +6,7 @@
 #include "copy.hpp"
 #include "empty.hpp"
 #include "plane.hpp"
+#include "plane_domain.hpp"
 #include "sweep.hpp"
 #include <SmApiGeneral.h>
 #include <SmApiPrimitives.h>
@@ -73,17 +74,19 @@ void scenario(bool explicit_context,bool source_defaults) {
     std::unique_ptr<SmBrep> sibling(b);
     auto ctx=raw_context::Access<SmContext>::get(*context);
     ctx.size=explicit_context?1234:SM_USE_DEFAULT; ctx.ratio=explicit_context?321:SM_USE_DEFAULT;
-    // DEFAULT applies to sizing fields, not the cached numerical zone value.
-    // Clone a finite calculated policy for actual geometry scenarios.
-    ctx.zone=explicit_context?SmZoneTol3d(1.25e-4):SmTol::SizeEstimateToZoneTol3d(SM_USE_DEFAULT);
+    // Keep the actual box creation policy. SDK ValidatePointers tests6/60/83
+    // require face/edge/vertex zones >0.99*BRep zone. Replacing only the BRep
+    // zone after creation makes valid topology inconsistent (actual job483755e8
+    // reported six test6 failures and edge test60 failures).
+    // Size/ratio DEFAULT inheritance is independent of this cached zone.
     require(std::isfinite(ctx.zone) && ctx.zone>0 && ctx.zone<1e-3,"finite shared context zone for two-unit geometry");
     raw_context::Access<SmContext>::set(*context,ctx);
     auto metadata=raw_context::Access<SmBrep>::get(*source);
     metadata.size=source_defaults?SM_USE_DEFAULT:100;
     metadata.ratio=source_defaults?SM_USE_DEFAULT:99;
-    metadata.zone=source_defaults?ctx.zone:SmZoneTol3d(2e-4);
     raw_context::Access<SmBrep>::set(*source,metadata);
-    metadata.size=SM_USE_DEFAULT; metadata.ratio=SM_USE_DEFAULT; metadata.zone=ctx.zone;
+    metadata=raw_context::Access<SmBrep>::get(*sibling);
+    metadata.size=SM_USE_DEFAULT; metadata.ratio=SM_USE_DEFAULT;
     raw_context::Access<SmBrep>::set(*sibling,metadata);
     Observation state(context,source.get(),sibling.get()); unsigned calls=0;
     SmTArray<SmEdgeuse*> uses; source->GetEdgeuses(uses);
@@ -96,6 +99,10 @@ void scenario(bool explicit_context,bool source_defaults) {
         require(calls>0,"context observed inside actual MergeBrep trim copy"); state.check();
         require(same(state.source_raw,raw_context::Access<SmBrep>::get(*copy)) &&
             same(state.source_effective,effective(*copy)),"copy retains raw and effective source policy");
+        // Evaluate only an owned copy, retaining every strict topology/volume
+        // check before the positive clip fixture is allowed to proceed.
+        validate_plane_solid(copy.get(),"context metadata fixture owned copy");
+        state.check();
     }
     state.check();
     for(double x:{0.5,3.}) {

@@ -1,0 +1,489 @@
+{
+  "license": "MPL-2.0",
+  "source": "a338ee79880c560ee1693db91ca68dbc58bc4f49",
+  "output_sha256": "0501588c0751c261ce1d723dc93ebdc0b6e3f9e5b34bf78089c0525572679403",
+  "ignored_count": 47,
+  "same_ignored_test_names_and_reasons_as_68da": true,
+  "categories": {
+    "correctness_or_resource_stress": 9,
+    "covered_by_parent_subprocess_tests": 1,
+    "existing_known_failure_reproduction": 4,
+    "fixture_writer_or_metadata_helper": 4,
+    "illustrative_doctest": 5,
+    "manual_measurement_or_diagnostic": 14,
+    "unmanifested_local_fixture": 10
+  },
+  "scope": "Inventory only; does not waive missing tests or transfer SDK-absent workspace successes to actual SDK qualification. Source line positions are navigation hints; hashes bind immutable contents.",
+  "entries": [
+    {
+      "test": "instancing::tests::dump_instanced_fixture",
+      "category": "fixture_writer_or_metadata_helper",
+      "source": "rust/geometry/src/instancing/tests.rs",
+      "line_at_audit": 316,
+      "source_sha256_a338": "93d12f901e5a63c24281bef71a364390d5e1514fa88eb8331048898e57d609c4",
+      "ignored_reason": "",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Not an independent correctness gate. Isolate generated outputs; do not overwrite references or re-pin budgets merely to obtain a pass."
+    },
+    {
+      "test": "test_ar_wall_geometry",
+      "category": "unmanifested_local_fixture",
+      "source": "rust/geometry/tests/ar_wall_test.rs",
+      "line_at_audit": 151,
+      "source_sha256_a338": "cad1bfc5d47f0af167581be863335439c1152392246fdb683a7d24e78fa4a35e",
+      "ignored_reason": "fixture tests/models/local/AR.ifc is not in the manifest and is not downloadable; supply it locally and run with --ignored",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Requires authorized local model availability. Absence is missing coverage; never copy private models into this public repository."
+    },
+    {
+      "test": "test_ar_wall_nan_normals_diagnosis",
+      "category": "unmanifested_local_fixture",
+      "source": "rust/geometry/tests/ar_wall_test.rs",
+      "line_at_audit": 264,
+      "source_sha256_a338": "cad1bfc5d47f0af167581be863335439c1152392246fdb683a7d24e78fa4a35e",
+      "ignored_reason": "fixture tests/models/local/AR.ifc is not in the manifest and is not downloadable; supply it locally and run with --ignored",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Requires authorized local model availability. Absence is missing coverage; never copy private models into this public repository."
+    },
+    {
+      "test": "test_csg_subtraction_preserves_normals",
+      "category": "unmanifested_local_fixture",
+      "source": "rust/geometry/tests/ar_wall_test.rs",
+      "line_at_audit": 425,
+      "source_sha256_a338": "cad1bfc5d47f0af167581be863335439c1152392246fdb683a7d24e78fa4a35e",
+      "ignored_reason": "fixture tests/models/local/AR.ifc is not in the manifest and is not downloadable; supply it locally and run with --ignored",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Requires authorized local model availability. Absence is missing coverage; never copy private models into this public repository."
+    },
+    {
+      "test": "intersection_solid_on_the_infra_bridge_model",
+      "category": "correctness_or_resource_stress",
+      "source": "rust/geometry/tests/clash_intersection_real_model.rs",
+      "line_at_audit": 246,
+      "source_sha256_a338": "2fc5d2b474a72ff43b7ba295a81f61be42151ed88378256f224ce819320bd35e",
+      "ignored_reason": "parses a 1.9 MB IFC and runs an exact CSG boolean per clash pair",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Run explicitly under fleet admission with required fixture/environment. Heavy census requires triangulation-alt and one test thread, as its workflow specifies."
+    },
+    {
+      "test": "profile_model",
+      "category": "manual_measurement_or_diagnostic",
+      "source": "rust/geometry/tests/csg_model_profile.rs",
+      "line_at_audit": 84,
+      "source_sha256_a338": "98889e7ff0c48ff6763b5a17ee23703ece13d075c7476b984f8726e2595fa019",
+      "ignored_reason": "manual; needs IFCLT_MODEL",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Prepare the source-documented fixture/environment and classification. Timed runs require exclusive benchmark admission; these probes do not replace end-to-end worker-pool A/B performance."
+    },
+    {
+      "test": "advanced_model_wall_553010_no_spike_triangles",
+      "category": "existing_known_failure_reproduction",
+      "source": "rust/geometry/tests/csg_quality_regression.rs",
+      "line_at_audit": 246,
+      "source_sha256_a338": "b5c5841ac8a287d1704c159b8c4a5179745fd4b55c0a458e57a2d56b3918e430",
+      "ignored_reason": "pre-existing: 8 spike tris from `cut_multiple_rectangular_openings`, not the CSG kernel",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Execute base and candidate with the same fixture/options and compare the known failure; do not widen assertions, remove ignore or call it a pass without an actual repair."
+    },
+    {
+      "test": "advanced_model_wall_612315_no_spike_triangles",
+      "category": "existing_known_failure_reproduction",
+      "source": "rust/geometry/tests/csg_quality_regression.rs",
+      "line_at_audit": 260,
+      "source_sha256_a338": "b5c5841ac8a287d1704c159b8c4a5179745fd4b55c0a458e57a2d56b3918e430",
+      "ignored_reason": "pre-existing: 23 spike tris (worst 3077:1) in the opening-cut helper, not the CSG kernel",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Execute base and candidate with the same fixture/options and compare the known failure; do not widen assertions, remove ignore or call it a pass without an actual repair."
+    },
+    {
+      "test": "duplex_window_6426_no_spike_triangles",
+      "category": "existing_known_failure_reproduction",
+      "source": "rust/geometry/tests/csg_quality_regression.rs",
+      "line_at_audit": 234,
+      "source_sha256_a338": "b5c5841ac8a287d1704c159b8c4a5179745fd4b55c0a458e57a2d56b3918e430",
+      "ignored_reason": "pre-existing: 72 spike tris from multi-extrusion profile tessellation, not the CSG kernel",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Execute base and candidate with the same fixture/options and compare the known failure; do not widen assertions, remove ignore or call it a pass without an actual repair."
+    },
+    {
+      "test": "analyze_affinity_partition",
+      "category": "manual_measurement_or_diagnostic",
+      "source": "rust/geometry/tests/dedup_validate.rs",
+      "line_at_audit": 106,
+      "source_sha256_a338": "dfcc32c732224069158293899be1fe1c095bb416d8d51cdd35648be1925fac23",
+      "ignored_reason": "manual; needs IFCLT_MODEL",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Prepare the source-documented fixture/environment and classification. Timed runs require exclusive benchmark admission; these probes do not replace end-to-end worker-pool A/B performance."
+    },
+    {
+      "test": "dedup_byte_identical_and_faster",
+      "category": "manual_measurement_or_diagnostic",
+      "source": "rust/geometry/tests/dedup_validate.rs",
+      "line_at_audit": 579,
+      "source_sha256_a338": "dfcc32c732224069158293899be1fe1c095bb416d8d51cdd35648be1925fac23",
+      "ignored_reason": "manual; needs IFCLT_MODEL",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Prepare the source-documented fixture/environment and classification. Timed runs require exclusive benchmark admission; these probes do not replace end-to-end worker-pool A/B performance."
+    },
+    {
+      "test": "void_ordering_probe",
+      "category": "manual_measurement_or_diagnostic",
+      "source": "rust/geometry/tests/issue_068_void_ordering_probe.rs",
+      "line_at_audit": 181,
+      "source_sha256_a338": "601617e54e6d18435cb30e4d897010396c68738a55d62a31ba34b22438c8886f",
+      "ignored_reason": "manual probe (#3435): does void-application order explain the ISSUE_068 boolean tears",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Prepare the source-documented fixture/environment and classification. Timed runs require exclusive benchmark admission; these probes do not replace end-to-end worker-pool A/B performance."
+    },
+    {
+      "test": "real_schependomlaan_window_has_no_bridging_triangle",
+      "category": "correctness_or_resource_stress",
+      "source": "rust/geometry/tests/issue_1007_real_opening_no_bridge.rs",
+      "line_at_audit": 382,
+      "source_sha256_a338": "17c374f55e7b59e3e89c5b40c7c36335b9499a3e5f0182defbd673ffa97d356b",
+      "ignored_reason": "manual; needs SCHEP_HOST=<wall entity id> (e.g. 534371)",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Run explicitly under fleet admission with required fixture/environment. Heavy census requires triangulation-alt and one test thread, as its workflow specifies."
+    },
+    {
+      "test": "large_scale_wall_clock",
+      "category": "manual_measurement_or_diagnostic",
+      "source": "rust/geometry/tests/issue_1909_large_single_brep_dedup.rs",
+      "line_at_audit": 155,
+      "source_sha256_a338": "8e8125b958695bcc3aaeba92db008edde5e803370da647c74598f43d11c10bc8",
+      "ignored_reason": "manual sanity check, not a perf verdict -- see doc comment. Run: cargo test -p ifc-lite-geometry --release --test issue_1909_large_single_brep_dedup -- --ignored --nocapture large_scale",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Prepare the source-documented fixture/environment and classification. Timed runs require exclusive benchmark admission; these probes do not replace end-to-end worker-pool A/B performance."
+    },
+    {
+      "test": "torn_vs_unrecovered_crosstab",
+      "category": "manual_measurement_or_diagnostic",
+      "source": "rust/geometry/tests/issue_3353_unrecovered_crosstab.rs",
+      "line_at_audit": 272,
+      "source_sha256_a338": "27e19849d9727b1844b142bb25f44e433b2bf24391368f2c869a4e6d4c90d71d",
+      "ignored_reason": "diagnostic sweep for issue #3353 (classification half); prints a torn x unrecovered crosstab, not a pass/fail gate \u2014 see module doc",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Prepare the source-documented fixture/environment and classification. Timed runs require exclusive benchmark admission; these probes do not replace end-to-end worker-pool A/B performance."
+    },
+    {
+      "test": "classify_probe",
+      "category": "manual_measurement_or_diagnostic",
+      "source": "rust/geometry/tests/issue_3435_classify_probe.rs",
+      "line_at_audit": 459,
+      "source_sha256_a338": "4d0fc6d18dd5174ae6ff3eaf07e7a8649e188b02d06466a1549247d703e43abb",
+      "ignored_reason": "manual probe (#3435): classify torn hosts by fast-path vs general cutter and T-junction vs other",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Prepare the source-documented fixture/environment and classification. Timed runs require exclusive benchmark admission; these probes do not replace end-to-end worker-pool A/B performance."
+    },
+    {
+      "test": "cache_hit_omits_the_kernel_error_the_cache_miss_recorded",
+      "category": "existing_known_failure_reproduction",
+      "source": "rust/geometry/tests/issue_4067_diagnostic_cache_repro.rs",
+      "line_at_audit": 179,
+      "source_sha256_a338": "6493401a18da264252f61eaf52c5264d36cd2ff118c9b8beeb1c7df24f079834",
+      "ignored_reason": "known-bug reproduction for #4083 (open determinism half of #4067); fails by design until #4083 is fixed",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Execute base and candidate with the same fixture/options and compare the known failure; do not widen assertions, remove ignore or call it a pass without an actual repair."
+    },
+    {
+      "test": "issue_584_smiley_west_doors_and_walls_present",
+      "category": "unmanifested_local_fixture",
+      "source": "rust/geometry/tests/issue_584_smiley_west_test.rs",
+      "line_at_audit": 98,
+      "source_sha256_a338": "e0b9de56934e0b4461e1bacc6ce69ef15b1ab3f7ba2ecf8bdecf723c28a2c385",
+      "ignored_reason": "fixture AC-20-Smiley-West-10-Bldg.ifc is not in the manifest; source it manually (see module header) and run with --ignored",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Requires authorized local model availability. Absence is missing coverage; never copy private models into this public repository."
+    },
+    {
+      "test": "issue_584_smiley_west_no_csg_failures",
+      "category": "unmanifested_local_fixture",
+      "source": "rust/geometry/tests/issue_584_smiley_west_test.rs",
+      "line_at_audit": 128,
+      "source_sha256_a338": "e0b9de56934e0b4461e1bacc6ce69ef15b1ab3f7ba2ecf8bdecf723c28a2c385",
+      "ignored_reason": "fixture AC-20-Smiley-West-10-Bldg.ifc is not in the manifest; source it manually (see module header) and run with --ignored",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Requires authorized local model availability. Absence is missing coverage; never copy private models into this public repository."
+    },
+    {
+      "test": "issue_584_smiley_west_total_mesh_complexity_above_floor",
+      "category": "unmanifested_local_fixture",
+      "source": "rust/geometry/tests/issue_584_smiley_west_test.rs",
+      "line_at_audit": 141,
+      "source_sha256_a338": "e0b9de56934e0b4461e1bacc6ce69ef15b1ab3f7ba2ecf8bdecf723c28a2c385",
+      "ignored_reason": "fixture AC-20-Smiley-West-10-Bldg.ifc is not in the manifest; source it manually (see module header) and run with --ignored",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Requires authorized local model availability. Absence is missing coverage; never copy private models into this public repository."
+    },
+    {
+      "test": "parametric_rect_census",
+      "category": "manual_measurement_or_diagnostic",
+      "source": "rust/geometry/tests/rect_param_census.rs",
+      "line_at_audit": 90,
+      "source_sha256_a338": "ac671007bbf974c15cd133b03eddd1188749b1ab1f32577cff832eeb94de0f14",
+      "ignored_reason": "phase-0 census -- run explicitly with MEASURE_FIXTURE",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Prepare the source-documented fixture/environment and classification. Timed runs require exclusive benchmark admission; these probes do not replace end-to-end worker-pool A/B performance."
+    },
+    {
+      "test": "parametric_cut_matches_exact_kernel",
+      "category": "correctness_or_resource_stress",
+      "source": "rust/geometry/tests/rect_param_parity.rs",
+      "line_at_audit": 168,
+      "source_sha256_a338": "1e37974c7cf8c19781c3ba7c94d3db48cacb20f053ef28761f4ac06fbb4df9bb",
+      "ignored_reason": "phase-1 parity -- run explicitly with MEASURE_FIXTURE",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Run explicitly under fleet admission with required fixture/environment. Heavy census requires triangulation-alt and one test thread, as its workflow specifies."
+    },
+    {
+      "test": "param_fast_path_fires_in_production_and_is_watertight",
+      "category": "correctness_or_resource_stress",
+      "source": "rust/geometry/tests/rect_param_production.rs",
+      "line_at_audit": 138,
+      "source_sha256_a338": "05b4a518334400f0ee7640fa2c75eb25afeabada6c2d253c7970ddf21188f111",
+      "ignored_reason": "production wiring test -- run explicitly with MEASURE_FIXTURE",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Run explicitly under fleet admission with required fixture/environment. Heavy census requires triangulation-alt and one test thread, as its workflow specifies."
+    },
+    {
+      "test": "rect_param_ab_validate",
+      "category": "manual_measurement_or_diagnostic",
+      "source": "rust/geometry/tests/rect_param_validate.rs",
+      "line_at_audit": 267,
+      "source_sha256_a338": "347cb71655adf350312a648f2fbca991bdf7ee5c32b00414401c0a3d9e710df7",
+      "ignored_reason": "manual corpus A/B; needs IFCLT_MODEL",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Prepare the source-documented fixture/environment and classification. Timed runs require exclusive benchmark admission; these probes do not replace end-to-end worker-pool A/B performance."
+    },
+    {
+      "test": "test_real_infra_federation_alignment",
+      "category": "unmanifested_local_fixture",
+      "source": "rust/geometry/tests/test_infra_rtc.rs",
+      "line_at_audit": 145,
+      "source_sha256_a338": "28ff58dab1224a880b22d7ef5dd46c625cc03f80cbdc48dd99e37b863572db8f",
+      "ignored_reason": "",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Requires authorized local model availability. Absence is missing coverage; never copy private models into this public repository."
+    },
+    {
+      "test": "test_real_infra_rtc_application",
+      "category": "unmanifested_local_fixture",
+      "source": "rust/geometry/tests/test_infra_rtc.rs",
+      "line_at_audit": 80,
+      "source_sha256_a338": "28ff58dab1224a880b22d7ef5dd46c625cc03f80cbdc48dd99e37b863572db8f",
+      "ignored_reason": "",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Requires authorized local model availability. Absence is missing coverage; never copy private models into this public repository."
+    },
+    {
+      "test": "test_real_infra_rtc_detection",
+      "category": "unmanifested_local_fixture",
+      "source": "rust/geometry/tests/test_infra_rtc.rs",
+      "line_at_audit": 38,
+      "source_sha256_a338": "28ff58dab1224a880b22d7ef5dd46c625cc03f80cbdc48dd99e37b863572db8f",
+      "ignored_reason": "",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Requires authorized local model availability. Absence is missing coverage; never copy private models into this public repository."
+    },
+    {
+      "test": "heavy_fixture_issue_053_is_watertight",
+      "category": "correctness_or_resource_stress",
+      "source": "rust/geometry/tests/triangulation_invariance.rs",
+      "line_at_audit": 2263,
+      "source_sha256_a338": "00ea6a801d5d6e41effd097826240eeed43e85ee3e64e743fc934975b1240738",
+      "ignored_reason": "heavy-fixture lane (#3434), run by .github/workflows/geometry-census-heavy.yml: ISSUE_053 is 169 MB, excluded from the default sweep by MAX_FIXTURE_BYTES",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Run explicitly under fleet admission with required fixture/environment. Heavy census requires triangulation-alt and one test thread, as its workflow specifies."
+    },
+    {
+      "test": "heavy_fixture_issue_068_carries_the_known_3435_tear",
+      "category": "correctness_or_resource_stress",
+      "source": "rust/geometry/tests/triangulation_invariance.rs",
+      "line_at_audit": 2294,
+      "source_sha256_a338": "00ea6a801d5d6e41effd097826240eeed43e85ee3e64e743fc934975b1240738",
+      "ignored_reason": "heavy-fixture lane (#3434), run by .github/workflows/geometry-census-heavy.yml: ISSUE_068 is 54 MB, excluded from the default sweep by MAX_FIXTURE_BYTES",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Run explicitly under fleet admission with required fixture/environment. Heavy census requires triangulation-alt and one test thread, as its workflow specifies."
+    },
+    {
+      "test": "issue_5012_intermediate_difference_keeps_host_53374_watertight",
+      "category": "correctness_or_resource_stress",
+      "source": "rust/geometry/tests/triangulation_invariance.rs",
+      "line_at_audit": 2053,
+      "source_sha256_a338": "00ea6a801d5d6e41effd097826240eeed43e85ee3e64e743fc934975b1240738",
+      "ignored_reason": "focused ISSUE_068 fixture regression (#5012); fetch with `pnpm fixtures`",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Run explicitly under fleet admission with required fixture/environment. Heavy census requires triangulation-alt and one test thread, as its workflow specifies."
+    },
+    {
+      "test": "production_smiley_all_host_walls_have_holes",
+      "category": "unmanifested_local_fixture",
+      "source": "rust/geometry/tests/voids_production_test.rs",
+      "line_at_audit": 182,
+      "source_sha256_a338": "6fbd59cdf69abd91c3cd5d55da06b61d5cbfe8a63a8522e45e3c7138f08246b9",
+      "ignored_reason": "fixture AC-20-Smiley-West-10-Bldg.ifc is not in the manifest; source it manually (see issue_584_smiley_west_test.rs) and run with --ignored",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Requires authorized local model availability. Absence is missing coverage; never copy private models into this public repository."
+    },
+    {
+      "test": "corpus_work_boundary",
+      "category": "correctness_or_resource_stress",
+      "source": "rust/landxml/tests/landxml_pull_probe.rs",
+      "line_at_audit": 78,
+      "source_sha256_a338": "d69bc8efd29fb1de3341f466369f1320eb95c969746cb7b1fb393f5c5c39c0cf",
+      "ignored_reason": "probe; run with --ignored --nocapture",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Run explicitly under fleet admission with required fixture/environment. Heavy census requires triangulation-alt and one test thread, as its workflow specifies."
+    },
+    {
+      "test": "pull_document_wall_time",
+      "category": "manual_measurement_or_diagnostic",
+      "source": "rust/landxml/tests/landxml_pull_probe.rs",
+      "line_at_audit": 52,
+      "source_sha256_a338": "d69bc8efd29fb1de3341f466369f1320eb95c969746cb7b1fb393f5c5c39c0cf",
+      "ignored_reason": "perf probe; run with --release --ignored --nocapture",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Prepare the source-documented fixture/environment and classification. Timed runs require exclusive benchmark admission; these probes do not replace end-to-end worker-pool A/B performance."
+    },
+    {
+      "test": "issue_5050_streaming_acceptance_benchmark",
+      "category": "manual_measurement_or_diagnostic",
+      "source": "rust/landxml/tests/landxml_streaming_bench_5050.rs",
+      "line_at_audit": 78,
+      "source_sha256_a338": "c7e7c5c8cb84d850d9cfa4eaa4f6cec4e580bd7a69260db9edec930b42c6cda7",
+      "ignored_reason": "generated production-scale acceptance benchmark; run explicitly",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Prepare the source-documented fixture/environment and classification. Timed runs require exclusive benchmark admission; these probes do not replace end-to-end worker-pool A/B performance."
+    },
+    {
+      "test": "analytic_export::walk::tests::issue_6442_analytic_cache_process_measurement",
+      "category": "manual_measurement_or_diagnostic",
+      "source": "rust/processing/src/analytic_export/walk_bench_tests.rs",
+      "line_at_audit": 73,
+      "source_sha256_a338": "b8981755d2bbe30180e388db3a6f5f1f58542a5c8b2d7a49cac409c3edcfe0dc",
+      "ignored_reason": "opt-in #6442 measurement; use scripts/perf/analytic-cache-ab.py",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Prepare the source-documented fixture/environment and classification. Timed runs require exclusive benchmark admission; these probes do not replace end-to-end worker-pool A/B performance."
+    },
+    {
+      "test": "print_current_offenders",
+      "category": "fixture_writer_or_metadata_helper",
+      "source": "rust/processing/tests/function_length_ratchet.rs",
+      "line_at_audit": 222,
+      "source_sha256_a338": "a39c0a5c3bfc3ae10f36aae4954dc2db0573bd68f96a1ed03348f7e693b5396a",
+      "ignored_reason": "",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Not an independent correctness gate. Isolate generated outputs; do not overwrite references or re-pin budgets merely to obtain a pass."
+    },
+    {
+      "test": "print_current_counts",
+      "category": "fixture_writer_or_metadata_helper",
+      "source": "rust/processing/tests/positional_read_ratchet.rs",
+      "line_at_audit": 186,
+      "source_sha256_a338": "9d543ad3ad5f444cc4e538c503eba2d80664053874fbacd540ff94ee08579934",
+      "ignored_reason": "re-seed helper: run with --ignored --nocapture",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Not an independent correctness gate. Isolate generated outputs; do not overwrite references or re-pin budgets merely to obtain a pass."
+    },
+    {
+      "test": "full_matrix",
+      "category": "correctness_or_resource_stress",
+      "source": "rust/processing/tests/scan_cylinder_acceptance.rs",
+      "line_at_audit": 313,
+      "source_sha256_a338": "0aefd52cdb07426319851865abb6024c58e735ec78843a7d826e495260a6d7c2",
+      "ignored_reason": "",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Run explicitly under fleet admission with required fixture/environment. Heavy census requires triangulation-alt and one test thread, as its workflow specifies."
+    },
+    {
+      "test": "issue_6870_throughput_at_two_million_points",
+      "category": "manual_measurement_or_diagnostic",
+      "source": "rust/processing/tests/scan_segmentation_planes.rs",
+      "line_at_audit": 288,
+      "source_sha256_a338": "96e24aa3b6b1aa2193ff25f921ad9254c1b333d139901ec994175ee1d4f3edae",
+      "ignored_reason": "",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Prepare the source-documented fixture/environment and classification. Timed runs require exclusive benchmark admission; these probes do not replace end-to-end worker-pool A/B performance."
+    },
+    {
+      "test": "parity_tests::route_golden_tests::data_model_probe",
+      "category": "manual_measurement_or_diagnostic",
+      "source": "apps/server/src/route_golden_tests.rs",
+      "line_at_audit": 294,
+      "source_sha256_a338": "6189ce891f61d9dc6728370dcad7644e06f542745954c0e10ad2ae0b4f8a7044",
+      "ignored_reason": "timing probe: run explicitly, see the doc comment",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Prepare the source-documented fixture/environment and classification. Timed runs require exclusive benchmark admission; these probes do not replace end-to-end worker-pool A/B performance."
+    },
+    {
+      "test": "routes::parse::parquet_stream::parquet_stream_tests::cross_batch::write_server_client_stream_fixtures",
+      "category": "fixture_writer_or_metadata_helper",
+      "source": "apps/server/src/routes/parse/parquet_stream_cross_batch_tests.rs",
+      "line_at_audit": 339,
+      "source_sha256_a338": "b6ceaaa987e0ff7710b8ad66c9b854401add3ce97100ff881f713fac267272cd",
+      "ignored_reason": "",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Not an independent correctness gate. Isolate generated outputs; do not overwrite references or re-pin budgets merely to obtain a pass."
+    },
+    {
+      "test": "child_skips_a_fixture_that_does_not_exist",
+      "category": "covered_by_parent_subprocess_tests",
+      "source": "rust/testkit/tests/fixture_gate.rs",
+      "line_at_audit": 76,
+      "source_sha256_a338": "82a0bfd99d643934684a44205935832dd0b8c15bab15eb671268e2ae063ca8a3",
+      "ignored_reason": "child of the env-wiring tests; run via --ignored --exact",
+      "coverage": "executed indirectly by passing parent tests",
+      "required_action": "Parent env_gate_off_lets_a_missing_fixture_skip and env_gate_on_fails_a_test_whose_fixture_is_missing both passed and invoked this exact ignored child."
+    },
+    {
+      "test": "rust/core/src/lib.rs - (line 21)",
+      "category": "illustrative_doctest",
+      "source": "rust/core/src/lib.rs",
+      "line_at_audit": 21,
+      "source_sha256_a338": "ba0287dde720a1f97334e5e63f9d05f4add48fc9e712f8732754cf1799bf4a99",
+      "ignored_reason": "",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Illustrative ignored Rust documentation; not executed by the green workspace. Establish executable API examples before treating them as doc coverage."
+    },
+    {
+      "test": "rust/core/src/lib.rs - (line 42)",
+      "category": "illustrative_doctest",
+      "source": "rust/core/src/lib.rs",
+      "line_at_audit": 42,
+      "source_sha256_a338": "ba0287dde720a1f97334e5e63f9d05f4add48fc9e712f8732754cf1799bf4a99",
+      "ignored_reason": "",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Illustrative ignored Rust documentation; not executed by the green workspace. Establish executable API examples before treating them as doc coverage."
+    },
+    {
+      "test": "rust/geometry/src/lib.rs - (line 34)",
+      "category": "illustrative_doctest",
+      "source": "rust/geometry/src/lib.rs",
+      "line_at_audit": 34,
+      "source_sha256_a338": "2810498ee9ecb2ae015ba5873a769c24f1420d8fdb727dccff5dfb1181765be5",
+      "ignored_reason": "",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Illustrative ignored Rust documentation; not executed by the green workspace. Establish executable API examples before treating them as doc coverage."
+    },
+    {
+      "test": "rust/geometry/src/lib.rs - (line 54)",
+      "category": "illustrative_doctest",
+      "source": "rust/geometry/src/lib.rs",
+      "line_at_audit": 54,
+      "source_sha256_a338": "2810498ee9ecb2ae015ba5873a769c24f1420d8fdb727dccff5dfb1181765be5",
+      "ignored_reason": "",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Illustrative ignored Rust documentation; not executed by the green workspace. Establish executable API examples before treating them as doc coverage."
+    },
+    {
+      "test": "rust/geometry/src/lib.rs - diag (line 149)",
+      "category": "illustrative_doctest",
+      "source": "rust/geometry/src/lib.rs",
+      "line_at_audit": 149,
+      "source_sha256_a338": "2810498ee9ecb2ae015ba5873a769c24f1420d8fdb727dccff5dfb1181765be5",
+      "ignored_reason": "",
+      "coverage": "not executed by the workspace harness",
+      "required_action": "Illustrative ignored Rust documentation; not executed by the green workspace. Establish executable API examples before treating them as doc coverage."
+    }
+  ]
+}

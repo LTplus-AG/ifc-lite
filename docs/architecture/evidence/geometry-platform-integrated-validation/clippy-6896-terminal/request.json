@@ -1,0 +1,18 @@
+{
+  "id": "auto-0417979f575c4afca958cf5e984620cf",
+  "commit": "6896c7425af7e670b37817c86f65e9bf20beaf9f",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "-c",
+    "# SPDX-License-Identifier: MPL-2.0\nsource \"$HOME/build-workers/worker-env.sh\" || exit $?\npnpm fixtures || exit $?\npnpm fixtures:check || exit $?\nunset IFCLITE_SMLIB_WORKER\ncargo clippy --workspace --all-targets -- -D warnings\ndefault_status=$?\ncargo clippy --workspace --all-targets --features ifc-lite-core/source-resource-tracking -- -D warnings\nfeature_status=$?\nprintf 'default_clippy_exit=%s allocator_feature_clippy_exit=%s\\n' \"$default_status\" \"$feature_status\"\nif [ \"$default_status\" -ne 0 ]; then exit \"$default_status\"; fi\nexit \"$feature_status\"\n"
+  ],
+  "storageTask": "ifclite-clippy-6896-20261019",
+  "pools": [],
+  "requestedHost": "pop-os"
+}

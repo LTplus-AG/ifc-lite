@@ -1,0 +1,16 @@
+{
+  "source": "6896c7425af7e670b37817c86f65e9bf20beaf9f",
+  "job": "ac9f1cb1-dde3-4d53-a378-55698ed85f64",
+  "request": "auto-0417979f575c4afca958cf5e984620cf",
+  "host": "pop-os",
+  "exit": 0,
+  "sourceUnchanged": true,
+  "default_workspace_all_target_clippy_exit": 0,
+  "allocator_feature_workspace_all_target_clippy_exit": 0,
+  "rust_source_delta_to_parent": [],
+  "output_bytes": 13365,
+  "output_sha256": "3ecb41c9df160d36d13b22e09b546232db833afa00aca244c43a9d1b171a3818",
+  "vault_manifest": "pop-os-ac9f1cb1-dde3-4d53-a378-55698ed85f64-196be63367b7",
+  "independent_decoded_readback_sha256": "3ecb41c9df160d36d13b22e09b546232db833afa00aca244c43a9d1b171a3818",
+  "not_runtime_evidence": true
+}

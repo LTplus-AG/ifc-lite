@@ -13,13 +13,15 @@ index 9d78a08515..be0fc5f015 100644
      }
  }
 diff --git b/rust/geometry/src/kernel/budget_state.rs a/rust/geometry/src/kernel/budget_state.rs
-index 9abf45d94b..5d4f39fe8e 100644
+index 3ddf630868..5d4f39fe8e 100644
 --- b/rust/geometry/src/kernel/budget_state.rs
 +++ a/rust/geometry/src/kernel/budget_state.rs
-@@ -93,6 +93,7 @@ impl Drop for PollScope<'_> {
+@@ -92,7 +92,8 @@ impl<'a> PollScope<'a> {
+ impl Drop for PollScope<'_> {
      fn drop(&mut self) {
          *self.state = Image::current();
-         self.state.record_peaks();
+-        if false { self.state.record_peaks(); }
++        self.state.record_peaks();
 +        self.caller.install();
      }
  }

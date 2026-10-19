@@ -36,7 +36,7 @@ fn inner_boolean_source_rejection_preserves_reply_and_defers_reached_effects() {
     let reply = program.execute_source(ticket, &recorder, &mut decoder).unwrap();
     assert_eq!(recorder.failure_mark(), 1, "source execution cannot publish its effect");
     assert!(program.execute_source(ticket, &recorder, &mut decoder).is_err(), "identity cannot reexecute");
-    let reply = foreign.accept_source(reply, &recorder).err().expect("wrong program returns reply");
+    let reply = *foreign.accept_source(reply, &recorder).err().expect("wrong program returns reply");
     assert_eq!(recorder.failure_mark(), 1);
     program.accept_source(reply, &recorder).unwrap_or_else(|_| panic!("valid reply")).unwrap();
     assert_eq!(recorder.failure_mark(), 2);
@@ -61,11 +61,11 @@ fn inner_boolean_wrong_sequence_and_kind_numerical_replies_publish_no_effects() 
     let mut reply = ready.execute();
     assert_eq!(recorder.failure_mark(), 0, "numerical execution owns its reached fallback record");
     reply.ticket.sequence += 1;
-    let mut reply = program.accept_numerical(reply, &recorder).err().expect("wrong sequence");
+    let mut reply = *program.accept_numerical(reply, &recorder).err().expect("wrong sequence");
     assert_eq!(recorder.failure_mark(), 0);
     reply.ticket.sequence -= 1;
     reply.kind = work::Kind::Solid;
-    let mut reply = program.accept_numerical(reply, &recorder).err().expect("wrong kind");
+    let mut reply = *program.accept_numerical(reply, &recorder).err().expect("wrong kind");
     assert_eq!(recorder.failure_mark(), 0);
     reply.kind = work::Kind::Plane;
     program.accept_numerical(reply, &recorder).unwrap_or_else(|_| panic!("valid numeric reply")).unwrap();

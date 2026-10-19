@@ -165,9 +165,9 @@ impl BooleanProgram {
     }
     pub(crate) fn accept_source(&mut self, reply: BooleanSourceReply,
         recorder: &BooleanClippingProcessor,
-    ) -> std::result::Result<Result<()>, BooleanSourceReply> {
+    ) -> std::result::Result<Result<()>, Box<BooleanSourceReply>> {
         if !matches!(self.pending, Some(Pending::SourceReply(expected)) if expected == reply.ticket) {
-            return Err(reply);
+            return Err(Box::new(reply));
         }
         self.pending = None;
         recorder.rewind_to(reply.failures.keep);
@@ -178,10 +178,10 @@ impl BooleanProgram {
     }
     pub(crate) fn accept_numerical(&mut self, reply: BooleanNumericalReply,
         recorder: &BooleanClippingProcessor,
-    ) -> std::result::Result<Result<()>, BooleanNumericalReply> {
+    ) -> std::result::Result<Result<()>, Box<BooleanNumericalReply>> {
         if !matches!(&self.pending, Some(Pending::Numerical { ticket, kind, .. })
             if *ticket == reply.ticket && *kind == reply.kind
-                && reply.value.as_ref().map_or(true, |value| value.kind() == *kind)) { return Err(reply); }
+                && reply.value.as_ref().map_or(true, |value| value.kind() == *kind)) { return Err(Box::new(reply)); }
         let Some(Pending::Numerical { next, .. }) = self.pending.take() else { unreachable!() };
         let state=self.state.as_mut().expect("numerical Boolean state");
         if let Some(reports)=state.pending_reports.take(){state.reports.merge(reports.take());}

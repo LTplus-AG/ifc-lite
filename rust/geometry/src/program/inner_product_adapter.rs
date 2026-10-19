@@ -4,7 +4,7 @@ use super::inner::{GeometryOutput, GeometryProgram, ProgramError, ProgramReply, 
 use super::inner_product::{ChildKind, ChildOutput, ProductMachine, ProductMachinePoll,
     ProductReady, ProductReply, ProductSource};
 use super::product_control::{ProductConsumer, completion::CompletedProduct};
-use super::inner_product_prelude::{PreludeControl, PreludePoll, PreludeAction, PreludeReply, PreludeReadyWork};
+use super::inner_product_prelude::{PreludeControl, PreludePoll, PreludeAction, PreludeReply, PreludeReadyWork, PreludeWork};
 use crate::router::processing::SourceHygiene;
 use crate::{GeometryRouter, ResolvedTextureMap, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
@@ -133,9 +133,9 @@ impl ProductRootAdapter {
         let action=self.action.take()?;
         match action {
             Action::Ready(ready)=>Some(ProductReadyWork::Product(ready)),
-            Action::Prelude(action)=>match action.into_ready() {
-                Ok(ready)=>Some(ProductReadyWork::Prelude(ready)),
-                Err(source)=>{self.action=Some(Action::Prelude(source));None}
+            Action::Prelude(action)=>match action.into_work() {
+                PreludeWork::Numerical(ready)=>Some(ProductReadyWork::Prelude(ready)),
+                PreludeWork::Source(source)=>{self.action=Some(Action::Prelude(source));None}
             },
             source=>{self.action=Some(source);None}
         }

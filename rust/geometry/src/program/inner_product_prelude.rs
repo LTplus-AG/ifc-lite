@@ -31,6 +31,8 @@ pub(super) struct AlignmentExtension { element: DecodedEntity, emitter: Processo
 pub(super) struct ReadyAlignment { recipe: AlignmentRecipe, scale: f64 }
 enum AlignmentRecipe { Owned(OwnedConstructor), Mesh(Mesh) }
 
+pub(super) enum PreludeWork { Numerical(PreludeReadyWork), Source(PreludeAction) }
+
 /// Numerical recipes only. Entity snapshots, emitters and continuations stay
 /// in the executor's source/control states while this packet runs.
 pub(super) enum PreludeReadyWork {
@@ -112,13 +114,13 @@ impl PreludeControl {
     pub(super) fn cancel(&mut self) { self.action = None; self.completion = None; self.output = None; self.done = true; }
 }
 impl PreludeAction {
-    pub(super) fn into_ready(self) -> std::result::Result<PreludeReadyWork,Self> {
-        Ok(match self {
+    pub(super) fn into_work(self) -> PreludeWork {
+        PreludeWork::Numerical(match self {
             Self::AlignmentReady(ready)=>PreludeReadyWork::Alignment(ready),
             Self::Prepare(ready)=>PreludeReadyWork::Prepare(ready),
             Self::Place(ready)=>PreludeReadyWork::Place(ready),
             Self::Join(ready)=>PreludeReadyWork::Join(ready),
-            source=>return Err(source),
+            source=>return PreludeWork::Source(source),
         })
     }
     pub(super) fn stage(&self) -> ProgramStage {
@@ -130,7 +132,7 @@ impl PreludeAction {
     }
     pub(super) fn execute(self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>)
         -> std::result::Result<PreludeReply, ProgramError> {
-        let source = match self.into_ready() { Ok(ready)=>return Ok(ready.execute()), Err(source)=>source };
+        let source = match self.into_work() { PreludeWork::Numerical(ready)=>return Ok(ready.execute()), PreludeWork::Source(source)=>source };
         let (reply, reports) = crate::processors::diagnostic_capture::capture(|| {
             Ok(match source {
             Self::AlignmentLower(element) => PreludeValue::Lower((|| {

@@ -1,0 +1,18 @@
+{
+  "id": "auto-4cdb3cc8bdbb4d50aa6cccd4fd17293c",
+  "commit": "a2040ef13e279e8cb4dc93cfe53713b04d1412aa",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "-c",
+    "# SPDX-License-Identifier: MPL-2.0\nsource \"$HOME/build-workers/worker-env.sh\" || exit $?\npnpm install --frozen-lockfile || exit $?\npnpm fixtures || exit $?\npnpm fixtures:check || exit $?\nsource_id=$(git rev-parse HEAD)\ncheckout_key=$(printf '%s' \"$(pwd -P)\" | sha256sum | cut -c1-12)\nexport IFCLITE_ADAPTER_BUILD=\"$CARGO_TARGET_DIR/ifclite-smlib/wasm-$source_id-$checkout_key\"\nbash native/smlib-adapter/qualify.sh wasm\nwasm_status=$?\ntest -f \"$IFCLITE_ADAPTER_BUILD/ifclite_smlib_browser.mjs\" || exit 2\nsdk=${SMLIB_SOURCE:-${IFCLITE_SDK_CACHE:-/tmp/ifclite-public-sdk-c9c5979}/usd-brep}\nfor crate in rust/geometry-runtime rust/processing rust/wasm-bindings; do\n  node scripts/stage-retained-browser-assets.mjs --build \"$IFCLITE_ADAPTER_BUILD\" --sdk \"$sdk\" --out \"$PWD/$crate/smlib\" || exit $?\ndone\ncase \"$(google-chrome --version)\" in\n  'Google Chrome 153.0.8010.'*) ;;\n  *) printf 'Pinned driver requires Chrome build 153.0.8010; no tests executed\\n' >&2; exit 2 ;;\nesac\nbrowser_tools=\"$CARGO_TARGET_DIR/ifclite-browser-tools/chromedriver-153.0.8010.52\"\nmkdir -p \"$browser_tools\"\ncurl --fail --silent --show-error https://storage.googleapis.com/chrome-for-testing-public/153.0.8010.52/linux64/chromedriver-linux64.zip -o \"$browser_tools/archive.zip\" || exit $?\nprintf '7726029da262768fd8770212ac54296f4d31afe790a951f98d5580437da533b1  %s\\n' \"$browser_tools/archive.zip\" | sha256sum --check --strict || exit $?\npython3 - \"$browser_tools\" <<'DRIVER'\nimport sys,zipfile\nfrom pathlib import Path\nroot=Path(sys.argv[1])\nwith zipfile.ZipFile(root/'archive.zip') as archive:\n    (root/'chromedriver').write_bytes(archive.read('chromedriver-linux64/chromedriver'))\n(root/'chromedriver').chmod(0o755)\nDRIVER\nbrowser_driver=\"$browser_tools/chromedriver\"\n\"$browser_driver\" --version || exit $?\nsha256sum \"$browser_driver\"\nexport WASM_BINDGEN_TEST_TIMEOUT=180\nexport RUST_BACKTRACE=1\nexport RUST_LOG=wasm_bindgen_test_runner=debug\nwasm-pack test --headless --chromedriver \"$browser_driver\" rust/geometry-runtime --lib\nruntime_status=$?\nwasm-pack test --headless --chromedriver \"$browser_driver\" rust/processing --lib -- session_retained\nprocessing_status=$?\nwasm-pack test --headless --chromedriver \"$browser_driver\" rust/wasm-bindings --lib -- retained_\napi_status=$?\npnpm build:wasm\nbuild_status=$?\ngit diff --exit-code -- packages/wasm/pkg/ifc-lite.d.ts\ntypes_status=$?\nnode scripts/stage-retained-browser-assets.mjs --build \"$IFCLITE_ADAPTER_BUILD\" --sdk \"$sdk\" --out \"$PWD/apps/viewer/public/smlib\" || exit $?\npnpm exec playwright install chromium || exit $?\npnpm test:retained-browser\njs_status=$?\npnpm typecheck\ntypecheck_status=$?\nprintf 'wasm_ctest_exit=%s browser_runtime_exit=%s browser_processing_exit=%s browser_api_exit=%s canonical_build_exit=%s generated_types_exit=%s browser_js_exit=%s root_typecheck_exit=%s\\n' \"$wasm_status\" \"$runtime_status\" \"$processing_status\" \"$api_status\" \"$build_status\" \"$types_status\" \"$js_status\" \"$typecheck_status\"\nfor result in \"$wasm_status\" \"$runtime_status\" \"$processing_status\" \"$api_status\" \"$build_status\" \"$types_status\" \"$js_status\" \"$typecheck_status\"; do\n  if [ \"$result\" -ne 0 ]; then exit \"$result\"; fi\ndone\n"
+  ],
+  "storageTask": "ifclite-browser-corrected-a204-20261019",
+  "pools": [],
+  "requestedHost": "pc-wsl"
+}

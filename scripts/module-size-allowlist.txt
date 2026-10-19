@@ -255,6 +255,7 @@
   1032 packages/provenance/src/merge-model.ts
    609 packages/provenance/src/node-hash.ts
    529 packages/query/src/duckdb-integration.ts
+   412 packages/renderer/src/camera-animation.ts
    583 packages/renderer/src/camera-controls.ts
    684 packages/renderer/src/camera.ts
   3699 packages/renderer/src/index.ts

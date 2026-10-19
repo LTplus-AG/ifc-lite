@@ -1,0 +1,59 @@
+{
+  "id": "9a733441-6688-4c33-ba4a-abe97a0b5c45",
+  "host": {
+    "host": "pop-os",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 32,
+    "availableMemoryBytes": 113104793600,
+    "totalMemoryBytes": 134644969472,
+    "python": "3.12.3",
+    "time": 1792391915.424266
+  },
+  "cwd": "/home/louistrue/build-workers/worker-state/checkouts/8441381f544f9877450537609377f93b857c6548",
+  "sourceBefore": {
+    "commit": "8441381f544f9877450537609377f93b857c6548",
+    "tree": "7561758ace16f0c64fa9d1f9776dda8c1ceb93ef",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "a0216e232726394c443842d9e60b8668a13bd4682d1ea21d6db5334c2f4dff47",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+    }
+  },
+  "command": [
+    "bash",
+    "/home/louistrue/build-workers/setup/projects-20261017/ifc-lite/env-exec.sh",
+    "bash",
+    "-c",
+    "unset IFCLITE_ADAPTER_BUILD; bash native/smlib-adapter/qualify.sh native || exit $?; source_id=$(git rev-parse HEAD); checkout_key=$(printf \"%s\" \"$(pwd -P)\" | sha256sum | cut -c1-12); export IFCLITE_SMLIB_WORKER=\"$CARGO_TARGET_DIR/ifclite-smlib/native-$source_id-$checkout_key/ifclite_smlib_worker\"; cargo test -p ifc-lite-geometry-runtime --all-targets --no-fail-fast"
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792391915.4213622,
+  "resources": [
+    "/home/louistrue/build-workers/worker-state/checkouts/8441381f544f9877450537609377f93b857c6548",
+    "/home/louistrue/build-workers/worker-state/caches/639202c7130da081a34188ce"
+  ],
+  "state": "orphaned",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "storageTask": "ifclite-platform-sdk-5f39-20261019",
+  "storageTaskExplicit": true,
+  "storageResources": [
+    {
+      "path": "/home/louistrue/build-workers/worker-state/caches/639202c7130da081a34188ce",
+      "role": "cache",
+      "project": "ifc-lite",
+      "compatibilityKey": "639202c7130da081a34188ce"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/8441381f544f9877450537609377f93b857c6548",
+      "role": "worktree"
+    }
+  ],
+  "exitCode": null,
+  "finishedAt": 1792392330.928465,
+  "error": "Wrapper exited; no live child group remains. Command outcome is unknown."
+}

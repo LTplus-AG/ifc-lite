@@ -92,17 +92,27 @@ and region witnesses; the isolated copy-failure CTest passed. Raw SDK IsEmptyMod
 checks cleared list pointers and reports false even for a valid vacant BRep.
 Shared query/tessellation certificate repair `8441381f54` uses actual topology and
 strict void-region flags, with default-vacant/full-space/unknown/wire regressions.
-It passed independent source review. Fresh normal SDK request
-`auto-78be6c8f65c14c6fa827b54c54f7a2fb`, job `9a733441-6688-4c33-ba4a-abe97a0b5c45`,
-is queued on that exact source, followed by real-worker Rust runtime tests only if
-CTest passes. These observations are under the `sdk-5f39-empty-failure` and
-`semantic-empty-844` evidence directories. No complete SDK numerical pass is claimed.
+It passed independent source review. The queued SDK request at `8441381f54` was orphaned before admission with no
+start time, output or numerical verdict; its original receipt is preserved under
+`sdk-844-orphan`. Distinct normal request `auto-895582117bbf44bfbbc9bc38550d22ae`,
+job `d9732438-f7d2-477f-98d7-bf893a697174`, runs source `80a8cc307a` with the same
+numerical repair and subsequent integration records. Its durable launcher remains
+alive and the job is queued. The command runs actual-worker Rust runtime tests
+only after full native CTest passes. No complete SDK pass is claimed.
 
-Common retained operation values, affine bake and Boolean continuations remain in
-isolated implementation. Full opening/layer/browser/final publication closure,
-regenerated artifacts, all-consumer/platform/model/performance qualification and
-the remaining reviewable PR stack are still required. Historical passes never
-qualify these later integrated layers.
+Common typed construction/affine/Boolean operations are now integrated through
+`a860781f0b`. Parent composition preserves Styled affine ranges, cached source
+templates, presentation histories and TypeMap stages. Review repairs cover typed
+stops, captured acceptance authority and finite styled/history/bulk accounting.
+Eight new real-source acceptance regressions are committed but unexecuted.
+Source identities, reviews and remaining implementation contracts are under
+`evidence/geometry-platform-integrated-validation/p2-common-a860`.
+
+Full opening/layer/browser/final publication closure, regenerated artifacts,
+all-consumer/platform/model/performance qualification and the remaining reviewable
+PR stack are still required. The current mixed-controller ancestry cap must also
+be reconciled with preservation of existing valid nesting. Historical passes
+never qualify these later integrated layers.
 
 ## Release control and evidence
 

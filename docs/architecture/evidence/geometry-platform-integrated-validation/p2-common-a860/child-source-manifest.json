@@ -1,0 +1,498 @@
+{
+  "base": "2deba6d5dd1034eecc6b9f9b83c03449d22e78cd",
+  "source": "98e441819dec5402ce59bd0b2d1f74a14a40f053",
+  "source_files": [
+    {
+      "path": "rust/geometry/src/program/boolean/batch.rs",
+      "before_sha256": "c4c0ba7faa89e8db143cc9dce881801d5c905507a3b506e2c216c933fb7edb2a",
+      "after_sha256": "a1d0a818f008920143aac96649742552f7252fc7fb0490b94f6731821b8d41fd"
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/mod.rs",
+      "before_sha256": "cc6979e40cdf68e3d68d46cd3ea474c28ceab8504d5b6e5373d8e78addbbe0e7",
+      "after_sha256": "e0e3f9d96625b4614df03c79d7064aea56281ad530160209695da6cd5200ea7d"
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/operand.rs",
+      "before_sha256": "6ad41d4f7ea8439b3bda404a3757be3afd3c2543447d0793e5b133473991e0dc",
+      "after_sha256": "3c0365bc71b509ac634932f444a4d3bd701e1d9e8e1e66c258501695682ece33"
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/protocol.rs",
+      "before_sha256": "36ddfbf25aa0c194af8899fdf97e7325db0a29b0f5942623c0a30552cf140df6",
+      "after_sha256": "63b7c16bbebb8552b165da8ebdfbb50cea3eaace34b27e2af9ddc7d0ed49a4ea"
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/protocol_tests.rs",
+      "before_sha256": "de6fd6403cf6a67d181808e89647970f2e8d086e72dd11368535d17807afd1f5",
+      "after_sha256": "e8dad3dc954ef32bad7fc259dbe7419e3a51525a62113058613408e44fd4999c"
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/retained.rs",
+      "before_sha256": null,
+      "after_sha256": "dab1ea81e548379a5fe3dba2dd3f999f4ce2a4cfe80f591e14146598b27592e4"
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/state.rs",
+      "before_sha256": "682a2b24a0cb1bc3f8ae3b016121f19a94a026cf7b37031cb9f8a8a75268ae87",
+      "after_sha256": "c3bd8dc3b98c056295d71e502459af31ab90f0a4cce58527a68d8422f4aa97d2"
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/step_tests.rs",
+      "before_sha256": "bd70edf5423b512a8a9c480158b555c7078b31a7c21b9a3e91d60454a51389b7",
+      "after_sha256": "d6167e7d8d7afe5cec5f2affb8d135e96812d8fb0e827bd8dccb0b34ef57fce7"
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/transitions.rs",
+      "before_sha256": "7d4c4ce59d9fb0848beaa126bc3e52cbaabea3c0c1a34e43f0de29bd91ffddfe",
+      "after_sha256": "ea21d170254a897673cabc7320548581170f8ace58b356f428b35d16a1934663"
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/work.rs",
+      "before_sha256": "50d7cfe163420f0cc286dd9df8a41f1a9dc3d2948f7631186ba560bd251fa0f6",
+      "after_sha256": "89ce258a0668683609de3824338de12327339f4d91fa4c9314c1ae45b1cc9a2e"
+    },
+    {
+      "path": "rust/geometry/src/program/inner.rs",
+      "before_sha256": "f0c00cbb9013bcb975ad4d008c1a5ffd84e8280642f9b8dc541b81a17162c2b0",
+      "after_sha256": "a8472ee0b11966ccf9eb21e7f88868763229c71ce99e832d08b93ebc32a6c000"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_boolean.rs",
+      "before_sha256": "49882a7fa837f449297f99ec1f6195312ef6e4983f4f98aaceb1c357477c5adb",
+      "after_sha256": "d32348c037516ac9731714395bd17227b9097ebff42cd8bdad85844348d0c8b5"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_cancel.rs",
+      "before_sha256": "714e383b8c6ac74ed1a79d9a3e125eaa147184c6a4a0ac75e00bb480ac3f9907",
+      "after_sha256": "5ee36dc758f054a9610e1b2a91452f44466818a589ecc9d4a37fd63d3ba7a278"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_mapping.rs",
+      "before_sha256": "3e24adefd289150922d73999d1e0caeafc67df7c1a376d442725a4c55612fbdb",
+      "after_sha256": "fda1c806e4f35594abd3e547d03e67989f40ca27474904499b6ddbfcd1a98c9f"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_product_adapter.rs",
+      "before_sha256": "7e337d582b555ff7239219b831e4b690e8729614cc4daaea9826696deb19c7d9",
+      "after_sha256": "a8d4982de65ac5a0f97ca8cbfb366ebf2d5e4e36b44f7fa7bf158d331b9bcfc6"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_ready.rs",
+      "before_sha256": "b177836cf1d4e74419764b4e0892c8b3e6b8db98407c649d5a5a9a324377f5ac",
+      "after_sha256": "25b31048d455fa76cb66f06927916b4dc8896d2e013885b0f3922007b165d5c8"
+    },
+    {
+      "path": "rust/geometry/src/program/inner_type_map.rs",
+      "before_sha256": "d54bd16a77effd6c63cfef0dcd0bcf4a9f1e957fd4f52a593b74c5919b2b6dad",
+      "after_sha256": "8177d6559a5dcc2e890813b28a913a4393e8464c4f9b204cf4ad888ce78dc52a"
+    },
+    {
+      "path": "rust/geometry/src/program/item.rs",
+      "before_sha256": "5e29cb025dc4afaebeecf87d5b28d462584a298183b7781d88777013cdd1602c",
+      "after_sha256": "8ea6252ee4743eb0e63121e60842fd07b6ae30ae204afd6ff488f5348da36a2b"
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/merged_ready.rs",
+      "before_sha256": "880d74b10b82a1669200ffc3e6208333dc42f2ed8f337d7a2d37215d0c1d3222",
+      "after_sha256": "502e91f9d4416e76d048422c2f97eac696b7c8deae87f893df306c410c4a7088"
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/values.rs",
+      "before_sha256": "4dca7373b15b32a3ffec758a5a107d2ff3074e81f21d50255cfd27da76e998be",
+      "after_sha256": "dffa8d6f020cae998d6bcf1aba3d40159e4f32d1388080ff73e7316d90a4c9bf"
+    },
+    {
+      "path": "rust/geometry/src/program/mod.rs",
+      "before_sha256": "c1901d8f3ba1c92d7c0ba40c959435ee16e372aa269efb9f93f6bb377bb061ac",
+      "after_sha256": "5112b94b389916fd9422458ac471ee3a82f55a5119c2210c1c4d3880c0736284"
+    },
+    {
+      "path": "rust/geometry/src/program/retained.rs",
+      "before_sha256": "69e1b5c840ca47d447b90dd42df91e70b6cce5b4b0af1a4f2ab6c112f7b2bacb",
+      "after_sha256": "71a00c6d22a127010d222563908b365802d66b06fb83ea2042da5ba6303f0632"
+    },
+    {
+      "path": "rust/geometry/src/program/retained_mapping_tests.rs",
+      "before_sha256": "35b0f9e2d18caa1bc59ecb5b9f30ff17ea1cccb74838a985dc81b3675c991475",
+      "after_sha256": "73b6a9e89b52efbdae1829944866c11ef09765257aa9b5711f888d24faaa05b5"
+    },
+    {
+      "path": "rust/geometry/src/program/retained_operation_tests.rs",
+      "before_sha256": null,
+      "after_sha256": "d1d781ceb4b514e93b210542956d3c4e559b44212934fcc7c6f7994fe37e874a"
+    },
+    {
+      "path": "rust/geometry/src/program/retained_tests.rs",
+      "before_sha256": "a98d4dbd1f99d7dbc2aec871b7cc4cffff2206ae0685bd8ba7ee7ee7b2b9a38e",
+      "after_sha256": "8b5de3f7a02196c11a6541ab6900d9ee002028ef47b5c3b73f8414bf73c58396"
+    },
+    {
+      "path": "rust/geometry/src/program/retained_walk.rs",
+      "before_sha256": null,
+      "after_sha256": "24ed2f76b1c381d68d751302b12011740ff482f630d0c7adb501a4ee8c73b91b"
+    },
+    {
+      "path": "rust/geometry/src/program/retained_walk_tests.rs",
+      "before_sha256": null,
+      "after_sha256": "e48ece0f200142a1e01def186e2f7ee30f21d195928c5232495c662dda9a26ae"
+    },
+    {
+      "path": "rust/processing/src/element.rs",
+      "before_sha256": "c80fd978d00a419b2c4e5002148d1dfaf6a872397607da12dde8908215219477",
+      "after_sha256": "ca78067e9440916623b5ad0b863e3771c8c561e4e4b2560c85b321e90f4ee2ce"
+    },
+    {
+      "path": "rust/processing/src/element/session.rs",
+      "before_sha256": "b4d5a0324e9a77fbda8f68821d8511b354acce1417f7e1c32d6d44d5610d1e68",
+      "after_sha256": "7ddc286dba2b141f939c69d06acc50159fb1c01b66bd924ade79099766dad8c9"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained.rs",
+      "before_sha256": "926049b8a634d9ecbf3d0ccd87b6a922acea4f844ccfea9f6ccc164dac04a9b1",
+      "after_sha256": "51db6ee9ba6b6753bb44911bc1d83145a62f6222231399a48a61e7256d2a69e6"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/acceptance.rs",
+      "before_sha256": "b681045450b0929fbc7506c33f07c9a7b2bbe44c383fc76195e0c96bc9a2da8e",
+      "after_sha256": "586086c77d6620f63fd593dfa004c00b7deeef56e17f4c4fa5dbec3c473cbf27"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/issuance.rs",
+      "before_sha256": null,
+      "after_sha256": "59b36fc155b1a09d3ad3da815ce694f851f296f9229121e5249cd3e9c692db27"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/mapping_tests.rs",
+      "before_sha256": "8934fc17d6cb90faffb2d27527556d3654336af6e04a1740a9b1bffd5ca78a7b",
+      "after_sha256": "b378007372849664e749700a4bccbbea1441653a7e039269fefd4f94768df006"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/native.rs",
+      "before_sha256": "0aeaee57872cdfb37b9881a62cc1fb6d47ad78a1a320d13d086d22ae68533006",
+      "after_sha256": "1f4717e0596ed51385318a4be7b3c9a1fe7f11dab957ea3e3fdc1056f18a3136"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/operation_tests.rs",
+      "before_sha256": null,
+      "after_sha256": "c0839244ec163ce07f888310a16ad2f40334f71fe8c9804a51b012559d7e0175"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/resource_tests.rs",
+      "before_sha256": "97b66ca1383369db4dde33dec021edf771b17f5570afdeba8ac46f30ad226090",
+      "after_sha256": "e292fb949fd25baed0f7f9ca5bc9fbdda29a896b78cb4e5d31359cfea358c2a5"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/tests.rs",
+      "before_sha256": "5eeaa4463737c50ce9412e1b92ee086dcecdf0691587b0e24f460dea7c4218ba",
+      "after_sha256": "2ae0889d0815f4be613ed177e1872b38e591f1c7dd733e557b4a8f4821246ee6"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/value.rs",
+      "before_sha256": null,
+      "after_sha256": "6af94219bfdf051f3b739e37c706fb11c041005f74338bbcee7a7f238d0199aa"
+    }
+  ],
+  "layers": [
+    {
+      "base": "2deba6d5dd1034eecc6b9f9b83c03449d22e78cd",
+      "source": "3aafa73f7392400d0c74c68a2510fef31bc20ba0",
+      "patch": "/tmp/ifc-lite-retained-d840a7f5-delivery/01-type-map-forwarder.patch",
+      "patch_sha256": "02b661354d48c672a5003c841d7abe44e81b2694f96504afb5d38c4f214a3d64",
+      "files": [
+        {
+          "path": "rust/geometry/src/program/inner_type_map.rs",
+          "before_sha256": "d54bd16a77effd6c63cfef0dcd0bcf4a9f1e957fd4f52a593b74c5919b2b6dad",
+          "after_sha256": "8177d6559a5dcc2e890813b28a913a4393e8464c4f9b204cf4ad888ce78dc52a"
+        }
+      ]
+    },
+    {
+      "base": "3aafa73f7392400d0c74c68a2510fef31bc20ba0",
+      "source": "818a51829ada20435410cdc28e4eed09ec990d1f",
+      "patch": "/tmp/ifc-lite-retained-d840a7f5-delivery/02-common-operations.patch",
+      "patch_sha256": "55832122310bdb71058b2dd6c77981b578a1e0b69ead9f6286d6950692184745",
+      "files": [
+        {
+          "path": "rust/geometry/src/program/boolean/batch.rs",
+          "before_sha256": "c4c0ba7faa89e8db143cc9dce881801d5c905507a3b506e2c216c933fb7edb2a",
+          "after_sha256": "a1d0a818f008920143aac96649742552f7252fc7fb0490b94f6731821b8d41fd"
+        },
+        {
+          "path": "rust/geometry/src/program/boolean/mod.rs",
+          "before_sha256": "cc6979e40cdf68e3d68d46cd3ea474c28ceab8504d5b6e5373d8e78addbbe0e7",
+          "after_sha256": "e0e3f9d96625b4614df03c79d7064aea56281ad530160209695da6cd5200ea7d"
+        },
+        {
+          "path": "rust/geometry/src/program/boolean/operand.rs",
+          "before_sha256": "6ad41d4f7ea8439b3bda404a3757be3afd3c2543447d0793e5b133473991e0dc",
+          "after_sha256": "3c0365bc71b509ac634932f444a4d3bd701e1d9e8e1e66c258501695682ece33"
+        },
+        {
+          "path": "rust/geometry/src/program/boolean/protocol.rs",
+          "before_sha256": "36ddfbf25aa0c194af8899fdf97e7325db0a29b0f5942623c0a30552cf140df6",
+          "after_sha256": "63b7c16bbebb8552b165da8ebdfbb50cea3eaace34b27e2af9ddc7d0ed49a4ea"
+        },
+        {
+          "path": "rust/geometry/src/program/boolean/protocol_tests.rs",
+          "before_sha256": "de6fd6403cf6a67d181808e89647970f2e8d086e72dd11368535d17807afd1f5",
+          "after_sha256": "e8dad3dc954ef32bad7fc259dbe7419e3a51525a62113058613408e44fd4999c"
+        },
+        {
+          "path": "rust/geometry/src/program/boolean/retained.rs",
+          "before_sha256": null,
+          "after_sha256": "dab1ea81e548379a5fe3dba2dd3f999f4ce2a4cfe80f591e14146598b27592e4"
+        },
+        {
+          "path": "rust/geometry/src/program/boolean/state.rs",
+          "before_sha256": "682a2b24a0cb1bc3f8ae3b016121f19a94a026cf7b37031cb9f8a8a75268ae87",
+          "after_sha256": "c3bd8dc3b98c056295d71e502459af31ab90f0a4cce58527a68d8422f4aa97d2"
+        },
+        {
+          "path": "rust/geometry/src/program/boolean/step_tests.rs",
+          "before_sha256": "bd70edf5423b512a8a9c480158b555c7078b31a7c21b9a3e91d60454a51389b7",
+          "after_sha256": "d6167e7d8d7afe5cec5f2affb8d135e96812d8fb0e827bd8dccb0b34ef57fce7"
+        },
+        {
+          "path": "rust/geometry/src/program/boolean/transitions.rs",
+          "before_sha256": "7d4c4ce59d9fb0848beaa126bc3e52cbaabea3c0c1a34e43f0de29bd91ffddfe",
+          "after_sha256": "ea21d170254a897673cabc7320548581170f8ace58b356f428b35d16a1934663"
+        },
+        {
+          "path": "rust/geometry/src/program/boolean/work.rs",
+          "before_sha256": "50d7cfe163420f0cc286dd9df8a41f1a9dc3d2948f7631186ba560bd251fa0f6",
+          "after_sha256": "89ce258a0668683609de3824338de12327339f4d91fa4c9314c1ae45b1cc9a2e"
+        },
+        {
+          "path": "rust/geometry/src/program/inner.rs",
+          "before_sha256": "f0c00cbb9013bcb975ad4d008c1a5ffd84e8280642f9b8dc541b81a17162c2b0",
+          "after_sha256": "774b1973b380b9ba6bc6da163df782951eef418a798ddf5bf3526945806f3f16"
+        },
+        {
+          "path": "rust/geometry/src/program/inner_boolean.rs",
+          "before_sha256": "49882a7fa837f449297f99ec1f6195312ef6e4983f4f98aaceb1c357477c5adb",
+          "after_sha256": "2c49c1c9c417189610bf9dcc2ae4e76df4376599d21527f933845c64e2e48d21"
+        },
+        {
+          "path": "rust/geometry/src/program/inner_cancel.rs",
+          "before_sha256": "714e383b8c6ac74ed1a79d9a3e125eaa147184c6a4a0ac75e00bb480ac3f9907",
+          "after_sha256": "5ee36dc758f054a9610e1b2a91452f44466818a589ecc9d4a37fd63d3ba7a278"
+        },
+        {
+          "path": "rust/geometry/src/program/inner_mapping.rs",
+          "before_sha256": "3e24adefd289150922d73999d1e0caeafc67df7c1a376d442725a4c55612fbdb",
+          "after_sha256": "fda1c806e4f35594abd3e547d03e67989f40ca27474904499b6ddbfcd1a98c9f"
+        },
+        {
+          "path": "rust/geometry/src/program/inner_product_adapter.rs",
+          "before_sha256": "7e337d582b555ff7239219b831e4b690e8729614cc4daaea9826696deb19c7d9",
+          "after_sha256": "a8d4982de65ac5a0f97ca8cbfb366ebf2d5e4e36b44f7fa7bf158d331b9bcfc6"
+        },
+        {
+          "path": "rust/geometry/src/program/inner_ready.rs",
+          "before_sha256": "b177836cf1d4e74419764b4e0892c8b3e6b8db98407c649d5a5a9a324377f5ac",
+          "after_sha256": "4590f553623fdb16a6f0db7c3215d69f46f236689c702baacfd5e792e8e85436"
+        },
+        {
+          "path": "rust/geometry/src/program/item.rs",
+          "before_sha256": "5e29cb025dc4afaebeecf87d5b28d462584a298183b7781d88777013cdd1602c",
+          "after_sha256": "a509db1e6e836533a00e20dce6caca926b4f43dcc29e54f02f8a8abb10b45082"
+        },
+        {
+          "path": "rust/geometry/src/program/mapping/merged_ready.rs",
+          "before_sha256": "880d74b10b82a1669200ffc3e6208333dc42f2ed8f337d7a2d37215d0c1d3222",
+          "after_sha256": "502e91f9d4416e76d048422c2f97eac696b7c8deae87f893df306c410c4a7088"
+        },
+        {
+          "path": "rust/geometry/src/program/mod.rs",
+          "before_sha256": "c1901d8f3ba1c92d7c0ba40c959435ee16e372aa269efb9f93f6bb377bb061ac",
+          "after_sha256": "cac44cb722c62b6faa942b130e60d93a4d1a15731b5327a097466f2a532d464b"
+        },
+        {
+          "path": "rust/geometry/src/program/retained.rs",
+          "before_sha256": "69e1b5c840ca47d447b90dd42df91e70b6cce5b4b0af1a4f2ab6c112f7b2bacb",
+          "after_sha256": "8087e412909a3f887b6e5b2e9ff35fce5b9410e7a8b14fa4c8a923a5037bd0f1"
+        },
+        {
+          "path": "rust/geometry/src/program/retained_mapping_tests.rs",
+          "before_sha256": "35b0f9e2d18caa1bc59ecb5b9f30ff17ea1cccb74838a985dc81b3675c991475",
+          "after_sha256": "b6a6d16a2ea765c98ccad6cf766e67c5d363dd1c058999bac71de3522247fd0e"
+        },
+        {
+          "path": "rust/geometry/src/program/retained_operation_tests.rs",
+          "before_sha256": null,
+          "after_sha256": "d1d781ceb4b514e93b210542956d3c4e559b44212934fcc7c6f7994fe37e874a"
+        },
+        {
+          "path": "rust/geometry/src/program/retained_tests.rs",
+          "before_sha256": "a98d4dbd1f99d7dbc2aec871b7cc4cffff2206ae0685bd8ba7ee7ee7b2b9a38e",
+          "after_sha256": "8b5de3f7a02196c11a6541ab6900d9ee002028ef47b5c3b73f8414bf73c58396"
+        },
+        {
+          "path": "rust/processing/src/element.rs",
+          "before_sha256": "c80fd978d00a419b2c4e5002148d1dfaf6a872397607da12dde8908215219477",
+          "after_sha256": "ca78067e9440916623b5ad0b863e3771c8c561e4e4b2560c85b321e90f4ee2ce"
+        },
+        {
+          "path": "rust/processing/src/element/session.rs",
+          "before_sha256": "b4d5a0324e9a77fbda8f68821d8511b354acce1417f7e1c32d6d44d5610d1e68",
+          "after_sha256": "7ddc286dba2b141f939c69d06acc50159fb1c01b66bd924ade79099766dad8c9"
+        },
+        {
+          "path": "rust/processing/src/element/session_retained.rs",
+          "before_sha256": "926049b8a634d9ecbf3d0ccd87b6a922acea4f844ccfea9f6ccc164dac04a9b1",
+          "after_sha256": "bfc333301ff85966f120d7030326c162eba81e29c28c0ec39a0c042075268726"
+        },
+        {
+          "path": "rust/processing/src/element/session_retained/acceptance.rs",
+          "before_sha256": "b681045450b0929fbc7506c33f07c9a7b2bbe44c383fc76195e0c96bc9a2da8e",
+          "after_sha256": "6705195a58be7f3b860803764c82a6a4953273a7f5fd3acec25bb9053de748a3"
+        },
+        {
+          "path": "rust/processing/src/element/session_retained/issuance.rs",
+          "before_sha256": null,
+          "after_sha256": "59b36fc155b1a09d3ad3da815ce694f851f296f9229121e5249cd3e9c692db27"
+        },
+        {
+          "path": "rust/processing/src/element/session_retained/mapping_tests.rs",
+          "before_sha256": "8934fc17d6cb90faffb2d27527556d3654336af6e04a1740a9b1bffd5ca78a7b",
+          "after_sha256": "b378007372849664e749700a4bccbbea1441653a7e039269fefd4f94768df006"
+        },
+        {
+          "path": "rust/processing/src/element/session_retained/native.rs",
+          "before_sha256": "0aeaee57872cdfb37b9881a62cc1fb6d47ad78a1a320d13d086d22ae68533006",
+          "after_sha256": "1f4717e0596ed51385318a4be7b3c9a1fe7f11dab957ea3e3fdc1056f18a3136"
+        },
+        {
+          "path": "rust/processing/src/element/session_retained/operation_tests.rs",
+          "before_sha256": null,
+          "after_sha256": "75e67b75131df4c67e323c61a40408278f1888f084bacfddd5db117ef6064eae"
+        },
+        {
+          "path": "rust/processing/src/element/session_retained/resource_tests.rs",
+          "before_sha256": "97b66ca1383369db4dde33dec021edf771b17f5570afdeba8ac46f30ad226090",
+          "after_sha256": "e292fb949fd25baed0f7f9ca5bc9fbdda29a896b78cb4e5d31359cfea358c2a5"
+        },
+        {
+          "path": "rust/processing/src/element/session_retained/tests.rs",
+          "before_sha256": "5eeaa4463737c50ce9412e1b92ee086dcecdf0691587b0e24f460dea7c4218ba",
+          "after_sha256": "2ae0889d0815f4be613ed177e1872b38e591f1c7dd733e557b4a8f4821246ee6"
+        },
+        {
+          "path": "rust/processing/src/element/session_retained/value.rs",
+          "before_sha256": null,
+          "after_sha256": "6af94219bfdf051f3b739e37c706fb11c041005f74338bbcee7a7f238d0199aa"
+        }
+      ]
+    },
+    {
+      "base": "818a51829ada20435410cdc28e4eed09ec990d1f",
+      "source": "c8b05e05f8e5f1fa0ad253a6075cd6018238d5ed",
+      "patch": "/tmp/ifc-lite-retained-d840a7f5-delivery/03-typed-binding-stop.patch",
+      "patch_sha256": "4092471a47bce92ef8056c2b9ceff8d315920cd9a6846fa206698d67233bde2e",
+      "files": [
+        {
+          "path": "rust/processing/src/element/session_retained/acceptance.rs",
+          "before_sha256": "6705195a58be7f3b860803764c82a6a4953273a7f5fd3acec25bb9053de748a3",
+          "after_sha256": "586086c77d6620f63fd593dfa004c00b7deeef56e17f4c4fa5dbec3c473cbf27"
+        },
+        {
+          "path": "rust/processing/src/element/session_retained/operation_tests.rs",
+          "before_sha256": "75e67b75131df4c67e323c61a40408278f1888f084bacfddd5db117ef6064eae",
+          "after_sha256": "da6a9ff135b6adaae00633ba25779ad0b775ad8167b6c7ad61350996e0bc61a9"
+        }
+      ]
+    },
+    {
+      "base": "c8b05e05f8e5f1fa0ad253a6075cd6018238d5ed",
+      "source": "d788eef544670cc3c0d958902cced86d93005a95",
+      "patch": "/tmp/ifc-lite-retained-d840a7f5-delivery/04-shared-traversal-guards.patch",
+      "patch_sha256": "f11a5c905725156f8ffa0fdd0d9d90292529efb64b8699d0e7543138c044146f",
+      "files": [
+        {
+          "path": "rust/geometry/src/program/inner.rs",
+          "before_sha256": "774b1973b380b9ba6bc6da163df782951eef418a798ddf5bf3526945806f3f16",
+          "after_sha256": "a8472ee0b11966ccf9eb21e7f88868763229c71ce99e832d08b93ebc32a6c000"
+        },
+        {
+          "path": "rust/geometry/src/program/inner_boolean.rs",
+          "before_sha256": "2c49c1c9c417189610bf9dcc2ae4e76df4376599d21527f933845c64e2e48d21",
+          "after_sha256": "d32348c037516ac9731714395bd17227b9097ebff42cd8bdad85844348d0c8b5"
+        },
+        {
+          "path": "rust/geometry/src/program/inner_ready.rs",
+          "before_sha256": "4590f553623fdb16a6f0db7c3215d69f46f236689c702baacfd5e792e8e85436",
+          "after_sha256": "a715c83233fa9e1a8a298fb98fdc09dd19bd51d46ec5967c3f20e688dfe186c1"
+        },
+        {
+          "path": "rust/geometry/src/program/item.rs",
+          "before_sha256": "a509db1e6e836533a00e20dce6caca926b4f43dcc29e54f02f8a8abb10b45082",
+          "after_sha256": "8ea6252ee4743eb0e63121e60842fd07b6ae30ae204afd6ff488f5348da36a2b"
+        },
+        {
+          "path": "rust/geometry/src/program/mapping/values.rs",
+          "before_sha256": "4dca7373b15b32a3ffec758a5a107d2ff3074e81f21d50255cfd27da76e998be",
+          "after_sha256": "dffa8d6f020cae998d6bcf1aba3d40159e4f32d1388080ff73e7316d90a4c9bf"
+        },
+        {
+          "path": "rust/geometry/src/program/mod.rs",
+          "before_sha256": "cac44cb722c62b6faa942b130e60d93a4d1a15731b5327a097466f2a532d464b",
+          "after_sha256": "5112b94b389916fd9422458ac471ee3a82f55a5119c2210c1c4d3880c0736284"
+        },
+        {
+          "path": "rust/geometry/src/program/retained.rs",
+          "before_sha256": "8087e412909a3f887b6e5b2e9ff35fce5b9410e7a8b14fa4c8a923a5037bd0f1",
+          "after_sha256": "71a00c6d22a127010d222563908b365802d66b06fb83ea2042da5ba6303f0632"
+        },
+        {
+          "path": "rust/geometry/src/program/retained_walk.rs",
+          "before_sha256": null,
+          "after_sha256": "24ed2f76b1c381d68d751302b12011740ff482f630d0c7adb501a4ee8c73b91b"
+        },
+        {
+          "path": "rust/geometry/src/program/retained_walk_tests.rs",
+          "before_sha256": null,
+          "after_sha256": "e48ece0f200142a1e01def186e2f7ee30f21d195928c5232495c662dda9a26ae"
+        },
+        {
+          "path": "rust/processing/src/element/session_retained.rs",
+          "before_sha256": "bfc333301ff85966f120d7030326c162eba81e29c28c0ec39a0c042075268726",
+          "after_sha256": "23feacb59014e0f110d8dccb76f8dcc26dc6cb9c704999e5377af19538f67ae9"
+        }
+      ]
+    },
+    {
+      "base": "e785256d6841b6945b380b4a32e51d564b99ca25",
+      "source": "98e441819dec5402ce59bd0b2d1f74a14a40f053",
+      "patch": "/tmp/ifc-lite-retained-d840a7f5-delivery/05-typed-affine-admission-stop.patch",
+      "patch_sha256": "3576ff2e124daf9fbc272e65ec99ef14ca89ae0df77f2f96347dd938c3d890b6",
+      "files": [
+        {
+          "path": "rust/geometry/src/program/inner_ready.rs",
+          "before_sha256": "a715c83233fa9e1a8a298fb98fdc09dd19bd51d46ec5967c3f20e688dfe186c1",
+          "after_sha256": "25b31048d455fa76cb66f06927916b4dc8896d2e013885b0f3922007b165d5c8"
+        },
+        {
+          "path": "rust/geometry/src/program/retained_mapping_tests.rs",
+          "before_sha256": "b6a6d16a2ea765c98ccad6cf766e67c5d363dd1c058999bac71de3522247fd0e",
+          "after_sha256": "73b6a9e89b52efbdae1829944866c11ef09765257aa9b5711f888d24faaa05b5"
+        },
+        {
+          "path": "rust/processing/src/element/session_retained.rs",
+          "before_sha256": "23feacb59014e0f110d8dccb76f8dcc26dc6cb9c704999e5377af19538f67ae9",
+          "after_sha256": "51db6ee9ba6b6753bb44911bc1d83145a62f6222231399a48a61e7256d2a69e6"
+        },
+        {
+          "path": "rust/processing/src/element/session_retained/operation_tests.rs",
+          "before_sha256": "da6a9ff135b6adaae00633ba25779ad0b775ad8167b6c7ad61350996e0bc61a9",
+          "after_sha256": "c0839244ec163ce07f888310a16ad2f40334f71fe8c9804a51b012559d7e0175"
+        }
+      ]
+    }
+  ],
+  "full_patch": {
+    "path": "/tmp/ifc-lite-retained-d840a7f5-delivery/full-source-increment-98e441819d.patch",
+    "sha256": "32a88f45a649dc71a72aaeae775258c456b54d0e64058d4a3e7dc75f543141bb",
+    "scope": "Changed Rust source only; excludes metadata-only assembly records."
+  }
+}

@@ -1,0 +1,21 @@
+# P2 typed stop source closure
+
+Reviewed immutable child corrections c8b05e05f8e5f1fa0ad253a6075cd6018238d5ed and98e441819dec5402ce59bd0b2d1f74a14a40f053, plus composed root b98e6282a015a9cee7bd0ce2d562d1de9de0ea77. Source-only inspection. No edits, builds, job submissions or test execution. Actual SDK tests remain gated and UNRUN; this review closes the identified source defect, not numerical qualification.
+
+## Outcome-binding blocker closed
+
+acceptance.rs now queries the captured OwnedResourceContext on binding error before translating anything. An actual source/account stop therefore remains authoritative over the error's local value and ambient state. If that context is healthy but the direct error is Error::ProgramStopped, the same typed stop survives as RetainedExecutionError::Stopped. Only nonterminal mismatches become Protocol. The fix remains before DELIVERED->ACCEPTING and original reply.take; it neither changes operands nor replaces/copies the original reply or appends ledger entries.
+
+The new SDK-gated test reaches a real A-A Boolean via the production retained executor, obtains its actual sealed runtime result, measures intact-validation work cost, and preadmits real ledger backing. It burns the original bounded account down to two validations plus one append charge and one reply-envelope charge. reserve_headers charges additional=1 even with sufficient capacity; the common nested Boolean reply has more than one envelope. Thus the intended stop occurs during binding rather than before receipt validation. Assertions require the account's exact Work refusal/requested1, typed Stopped with that same fault, original outer request/reply retained, stage still DELIVERED, unchanged discharged ledger, no traversal manifest and refusal of next issuance. No fabricated BoolFailure, result geometry or source text assertion is used. Runtime still must confirm the accounting arithmetic and path.
+
+## Admission typed stops closed in declared paths
+
+inner_ready's retained_admission_error preserves Error::ProgramStopped as ProgramError::TraversalStopped for real Item, Boolean and Mapping admission. The direct operation-vector reserve also uses TraversalStopped; nested envelopes propagate it. Processing issue_inner first checks captured resource authority when execute_admission fails, then translates TraversalStopped to RetainedExecutionError::Stopped; ordinary unsupported retained contracts remain explicitly Unsupported. No exact retry or degraded success is added. Parent's styled mapping wrapper continues returning crate::Result so the same central typed translation covers its new affine path.
+
+The core invariant test runs real source decoding and common retained mapping with copy_bytes0 and a nonidentity scale; source-local construction has no placement vector copy, then reached affine admission must stop on the first positive placement-lineage copy. It requires exactly one admitted construction, exact CopyBytes typed fault and inability to finish traversal. The processing SDK-gated test additionally executes/accepts that first genuine source, confirms there is no new pending runtime issuance after the affine admission fault, keeps original reached geometry continuation and prior ledger entry, prohibits final plan/next issuance, and independently queries real source volume24 afterward. These are meaningful staged positive/negative controls, pending execution.
+
+## Composition and remaining scope
+
+Root session.rs still contains bf9f's entrance_stop snapshot after validation and the stop.or(entrance_stop).map(resource::stop) before real inner acceptance/cancellation; this correction did not erase that observed regression repair. Captured resource precedence/first-fault policy was not changed by these narrow translations. Actual source-ancestor precedence itself remains covered by separate owned-resource tests, not newly proved by these two path tests.
+
+No remaining concrete blocker found in the reviewed typed-stop closure. Unsupported halfspaces/openings/layers/browser/final-net obligations, numerical SDK qualification, ordinary exact behavior and heap accounting remain separate. Immutable source hashes: /tmp/ifclite-p2-98-typed-stop-closure-hashes.json.

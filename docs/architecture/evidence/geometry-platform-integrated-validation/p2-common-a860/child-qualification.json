@@ -1,0 +1,43 @@
+{
+  "source": "98e441819dec5402ce59bd0b2d1f74a14a40f053",
+  "implementation": "CHECKPOINTED_SOURCE",
+  "independent_review": "PENDING_ON_ASSEMBLED_PARENT; isolated review findings addressed by source corrections, unexecuted",
+  "qualification": "UNCOMPILED_UNEXECUTED_NOT_READY",
+  "checks": [
+    {
+      "name": "pinned-rustfmt-syntax-only",
+      "exit_code": 0,
+      "rust_files": 38,
+      "limitation": "No type checking or execution."
+    },
+    {
+      "name": "git-diff-check",
+      "exit_code": 0
+    },
+    {
+      "name": "check-module-size.mjs",
+      "exit_code": 0
+    },
+    {
+      "name": "check-refwalk-guards.mjs",
+      "exit_code": 0,
+      "existing_fanout_review_warnings": 12,
+      "limitation": "Lexical metadata gate, not behavioral proof."
+    }
+  ],
+  "unexecuted": [
+    "cargo test --workspace",
+    "cargo clippy --workspace --all-targets -- -D warnings",
+    "IFCLITE_SMLIB_WORKER numerical/product witnesses",
+    "Browser transactions and all-consumer qualification",
+    "Base/branch worker-pool performance and output identity"
+  ],
+  "heavy_jobs_submitted": 0,
+  "publication_actions": [],
+  "assembly_obligations": "ASSEMBLY.md",
+  "sdk_skips": {
+    "executed": false,
+    "count": null,
+    "note": "Tests not invoked. No passing/skipped numerical coverage is claimed."
+  }
+}

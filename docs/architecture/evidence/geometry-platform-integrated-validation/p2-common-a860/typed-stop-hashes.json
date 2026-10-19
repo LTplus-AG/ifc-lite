@@ -1,0 +1,20 @@
+{
+  "reviewed_corrections": [
+    "c8b05e05f8e5f1fa0ad253a6075cd6018238d5ed",
+    "98e441819dec5402ce59bd0b2d1f74a14a40f053"
+  ],
+  "composed_root": "b98e6282a015a9cee7bd0ce2d562d1de9de0ea77",
+  "sha256": {
+    "rust/processing/src/element/session_retained/acceptance.rs": "586086c77d6620f63fd593dfa004c00b7deeef56e17f4c4fa5dbec3c473cbf27",
+    "rust/processing/src/element/session_retained/operation_tests.rs": "c0839244ec163ce07f888310a16ad2f40334f71fe8c9804a51b012559d7e0175",
+    "rust/processing/src/element/session_retained.rs": "8f1edce636f1c27a08c8b7de6fdc06b9f97c947bfb8f60a9758e095bc8b72241",
+    "rust/processing/src/element/session.rs": "39cf0aacfac0b2c775f9e9abec2b3d25a5fa523847efc2636e8819aa2aa3c144",
+    "rust/geometry/src/program/inner_ready.rs": "17d326d778f75143cbf1ad49b913f7184ba21ec01f3e54bc0df6cfde4c2093f6",
+    "rust/geometry/src/program/retained_mapping_tests.rs": "73b6a9e89b52efbdae1829944866c11ef09765257aa9b5711f888d24faaa05b5",
+    "rust/geometry/src/program/inner.rs": "a8472ee0b11966ccf9eb21e7f88868763229c71ce99e832d08b93ebc32a6c000",
+    "rust/geometry/src/resource/owned.rs": "aeb79db1ff63b859df1903ec33c94cdc7cf386cb603b707de158f9dc4f840d6f",
+    "rust/geometry/src/resource/storage.rs": "44d279e0d4333a1a1901e3bb6afdbaf4177c216b59e8ea491216f8bd721fcc4a",
+    "rust/geometry/src/program/mapping/submesh_ready.rs": "bfa3274c8b2bdd37407ad01bb8591a958255f5cae794a468804de00b90d8fa9f",
+    "rust/geometry/src/program/inner_mapping.rs": "bd1a02ecc0be415fdc0723ae7e6d948dc29a1ab6d8e1851f1d945ecf606653e5"
+  }
+}

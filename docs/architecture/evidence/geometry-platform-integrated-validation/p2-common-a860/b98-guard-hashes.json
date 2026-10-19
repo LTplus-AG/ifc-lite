@@ -1,0 +1,68 @@
+{
+  "root": "b98e6282a015a9cee7bd0ce2d562d1de9de0ea77",
+  "child": "98e441819d",
+  "original": "818a51829a",
+  "git_objects_only": true,
+  "paths": {
+    "rust/geometry/src/program/inner.rs": {
+      "blob": "9f0819a79d05f9f35ae55a263ee1e6b6d32ec8cf",
+      "sha256": "a8472ee0b11966ccf9eb21e7f88868763229c71ce99e832d08b93ebc32a6c000"
+    },
+    "rust/geometry/src/program/inner_ready.rs": {
+      "blob": "7af06b43949a5ab75995c89aade9798847c5c0cb",
+      "sha256": "17d326d778f75143cbf1ad49b913f7184ba21ec01f3e54bc0df6cfde4c2093f6"
+    },
+    "rust/geometry/src/program/item.rs": {
+      "blob": "5e131fc7855299f0c9aae141256b75f828c0fb37",
+      "sha256": "8ea6252ee4743eb0e63121e60842fd07b6ae30ae204afd6ff488f5348da36a2b"
+    },
+    "rust/geometry/src/program/inner_boolean.rs": {
+      "blob": "7195c4da2acc00422daaa485081960bc25150d4a",
+      "sha256": "d32348c037516ac9731714395bd17227b9097ebff42cd8bdad85844348d0c8b5"
+    },
+    "rust/geometry/src/program/retained.rs": {
+      "blob": "bebf2dca264835b6c9fb8df42b68a97079c301b9",
+      "sha256": "30a3da2a0875e01a3033614574822646d524511b8c81507cd055c9818d4319fe"
+    },
+    "rust/geometry/src/program/retained_entries.rs": {
+      "blob": "f0270d96232caa8e18f932779b9bee4c467ea90f",
+      "sha256": "d279170da62f818d44e9e76acb6773529dafb00b9dc9b0faabf66de0c6c44bdc"
+    },
+    "rust/geometry/src/program/retained_walk.rs": {
+      "blob": "c961eeadb8cd7b08dfda45729f6d00e0beca6c8e",
+      "sha256": "24ed2f76b1c381d68d751302b12011740ff482f630d0c7adb501a4ee8c73b91b"
+    },
+    "rust/geometry/src/program/retained_walk_tests.rs": {
+      "blob": "e936f53c37b04cb8cb41593453a5adff1c73d7eb",
+      "sha256": "e48ece0f200142a1e01def186e2f7ee30f21d195928c5232495c662dda9a26ae"
+    },
+    "rust/geometry/src/program/retained_styled_tests.rs": {
+      "blob": "ac3a5667128dff089ae10af068ccdc4cf2c3dbe8",
+      "sha256": "f417e9d2c06185e3a36ac1e1b1a455a4ecc218ca379d6648f75bb4b4c73ad008"
+    },
+    "rust/geometry/src/program/mapping/values.rs": {
+      "blob": "b69d79103bc708498de97e2d996cb8f7349ef69c",
+      "sha256": "b45f384f879395206b2de21f3b2571689d8624c735f7b213e13dd89219b4c270"
+    },
+    "rust/geometry/src/program/mapping/styled_values.rs": {
+      "blob": "e01d4a34f73325ee4ada3057ecd94522f4dc5df2",
+      "sha256": "184dbff19d1044eba9ac5927f1c5343368e5ef65ae2a9ec4134e2b9b1828c109"
+    },
+    "rust/geometry/src/program/mapping/submesh_ready.rs": {
+      "blob": "0619fe0e95cca5ccf069abd69baf472171a7e6e9",
+      "sha256": "bfa3274c8b2bdd37407ad01bb8591a958255f5cae794a468804de00b90d8fa9f"
+    },
+    "rust/geometry/src/program/mapping/submeshes.rs": {
+      "blob": "343b8b0f091eae85f067d1ce40df902bc79d8428",
+      "sha256": "7653ee07bf71be965448f471318c290bea1eebf46c165259614b9b12e728c5cf"
+    },
+    "rust/geometry/src/program/product_control.rs": {
+      "blob": "318219b6c02d0a9b3d71b6390a1c2378ac496634",
+      "sha256": "33cbe70940e63a28b1eaa12072f18d7b1537137ef23af94810c1173f0a3a6dec"
+    },
+    "rust/geometry/src/program/type_map.rs": {
+      "blob": "433a2710e488dacadd4daf68c169e7581f0551a0",
+      "sha256": "9876c3a908c6e261c278b25c3efa71c0522d771c5104017e44eeb041507b4ce6"
+    }
+  }
+}

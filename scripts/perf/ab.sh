@@ -121,7 +121,9 @@ echo "ab.sh: base=$BASE_SHA ($BASE_REF)  branch=$BRANCH_DESC  iters=$ITERS" >&2
 # --- Build the branch (working-tree) probe --------------------------------
 echo "ab.sh: building branch perf_probe (working tree)…" >&2
 cargo build --profile profiling -p ifc-lite-processing --example perf_probe >&2
-BRANCH_BIN="$ROOT/target/profiling/examples/perf_probe"
+# Honour an inherited CARGO_TARGET_DIR (fleet workers set one): cargo wrote
+# the branch binary there, not under $ROOT/target.
+BRANCH_BIN="${CARGO_TARGET_DIR:-$ROOT/target}/profiling/examples/perf_probe"
 
 # --- Build the base probe in a throwaway worktree -------------------------
 # build-at-ref.sh gives it its own CARGO_TARGET_DIR so the base build never

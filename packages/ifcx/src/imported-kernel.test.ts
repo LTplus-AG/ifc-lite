@@ -64,10 +64,10 @@ test('imported normal helpers preserve perpendicularity and degenerate fallback'
 
 test('a mesh without faceVertexIndices presents empty indices instead of throwing', () => {
   const points = [[0, 0, 0], [1, 0, 0], [0, 1, 0]];
-  const bare = executeMesh({ points } as Parameters<typeof executeMesh>[0], []);
+  const bare = executeMesh({ points } as unknown as Parameters<typeof executeMesh>[0], []);
   assert.equal(bare.indices.length, 0);
   assert.equal(bare.positions.length, 9);
-  const counted = executeMesh({ points, faceVertexCounts: [], normals: undefined } as Parameters<typeof executeMesh>[0], []);
+  const counted = executeMesh({ points, faceVertexCounts: [], normals: undefined } as unknown as Parameters<typeof executeMesh>[0], []);
   assert.equal(counted.indices.length, 0);
 });
 

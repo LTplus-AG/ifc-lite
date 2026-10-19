@@ -1,0 +1,30 @@
+{
+  "base_commit": "8af4994f3f5227b0135ec4219dbfaf5c59e9a162",
+  "source_commit": "a29301deb12411fa7753c2569df090caa0db8c74",
+  "changed_file_count": 2,
+  "files": [
+    {
+      "path": "rust/core/src/source_resources/gate.rs",
+      "before_sha256": "4f7e479bccd4e955b5e064c1b705a63bca1e8157779399c655066c1b4b318194",
+      "after_sha256": "d0d699d357a8adbb2ca8ec9e5f6747542d7b8294c315c1fdfbc0143771dd68b5",
+      "before_git_blob": "22df5ef1ac587ec91f49ab610c32fce701fc15f6",
+      "after_git_blob": "e203e99cb37f25fc23354357db8ceb6a045d543d"
+    },
+    {
+      "path": "rust/core/src/source_resources/observer_tests.rs",
+      "before_sha256": "dc183b77af3820bcb674d6fa8244dc8709e36539f24fb999b8dfa663cebf85af",
+      "after_sha256": "4b47a2d46c5b0470978e70ec126fe075209e5e21df796b501dff31649296b66c",
+      "before_git_blob": "52436f07e63f1adf01f6f6a444d042e2072597b0",
+      "after_git_blob": "3d61edbcaa503a1d7b02dbaa4169e56945f712c5"
+    }
+  ],
+  "patch_sha256": "261b2c4755f787c38a9c9e99a532f673b950fdb401d1780dfa5789f8b31aa819",
+  "frozen_manifest_sha256": {
+    ".source-cache-owner-design": "affeb7d1e097f9ef8801ebf01d4c9a5e920a9971fa81f096a248ea7ecb323249",
+    ".source-cache-owner-r3": "cbb2de21ba1947441d01f5810293d531ae2bb2084c832fee7199218bf8a6951d",
+    ".source-cache-owner-r4": "5e9614c50bfff58d484def4d394cfb549bea37591176964477b6320474766f59",
+    ".source-cache-owner-p2-coverage": "53aadb69ffdcf8149ad2d7061b37e911785cd55235081d8bf3320ac77ce914d7",
+    ".source-resource-account-boundary-r7": "2b39b8a496853280161f57d00193a41d0f7a52d4c7fdc5003d60116cd771d832"
+  },
+  "regression": "fresh_epoch_reentry_forwards_retained_source_fault_before_independent_account_cancellation"
+}

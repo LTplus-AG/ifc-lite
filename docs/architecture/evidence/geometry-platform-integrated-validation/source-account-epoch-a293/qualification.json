@@ -1,0 +1,31 @@
+{
+  "source_commit": "a29301deb12411fa7753c2569df090caa0db8c74",
+  "base_commit": "8af4994f3f5227b0135ec4219dbfaf5c59e9a162",
+  "build": "UNRUN",
+  "tests": "UNRUN",
+  "clippy": "UNRUN",
+  "wasm": "UNRUN",
+  "all_features_and_packaging": "UNRUN",
+  "default_preservation": "UNRUN",
+  "performance": "UNRUN",
+  "Global_OOM": "UNRUN",
+  "heavy_jobs_submitted": false,
+  "root_overlays": false,
+  "github_actions": false,
+  "static_checks": [
+    "git diff --check",
+    "exact incremental patch reverse applicability",
+    "frozen R2/R3/R4/P2/8af delivery hash integrity"
+  ],
+  "regression_backend": "Historical Budget fixture only; not an actual geometry account through private Gate",
+  "remaining_coverage": "Geometry account/metadata/observer/pool/joined witnesses and private Budget Gate tests remain separate. Normal-type-identity end-to-end seam is proposed only, not implemented.",
+  "production_activation": false,
+  "limitations": [
+    "Current compilation/test execution outstanding",
+    "Default/all-features/package/performance qualification outstanding",
+    "Actual Global OOM not forced",
+    "Existing baseline backing not funded by this repair",
+    "Generation-coupled cache authority, Raw/cache/COW/escape migration and full production activation remain open"
+  ],
+  "parent_state_reported": "Root integrated 8af exact 24 files as dc7b2545ba; existing 38fac jobs are parent-owned. Pop/PC guard78. No submission attempted."
+}

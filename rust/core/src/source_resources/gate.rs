@@ -82,17 +82,19 @@ impl Gate {
             || !self.0.source.upgrade().is_some_and(|source| Arc::ptr_eq(&authority.source, &source)) {
             return Err(self.record(coverage()));
         }
-        // Forward through the NEW actual epoch even on an early account fault.
-        self.0.account.check().map_err(|stop| self.record(authority.stop(stop)))?;
+        // Select retained source/account/observer precedence before committing
+        // the fresh epoch's irreversible first fault. No binding exists yet.
+        self.0.original.check().map_err(|stop| authority.stop(self.record(stop)))?;
+        self.0.account.check().map_err(|stop| authority.stop(self.record(stop)))?;
         if let Some(observer) = &self.0.observer {
-            observer.check().map_err(|stop| self.record(authority.stop(stop)))?;
+            observer.check().map_err(|stop| authority.stop(self.record(stop)))?;
         }
         let previous = {
             let mut state = self.0.binding.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             if state.depth >= MAX_BINDINGS || state.current.as_ref().is_some_and(
                 |previous| previous.thread() != std::thread::current().id()) {
                 drop(state);
-                return Err(self.record(authority.stop(coverage())));
+                return Err(authority.stop(self.record(coverage())));
             }
             state.depth += 1;
             state.current.replace(authority)

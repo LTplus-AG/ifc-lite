@@ -1,0 +1,510 @@
+{
+  "perf-prerequisites-pc-v1/main.rs": {
+    "sha256": "8dd655461a9353d5b29e96ca87c1bb3cf637bb06c730fe84f295768f341fb6c9",
+    "size": 4147
+  },
+  "perf-prerequisites-pc-v1/request.json": {
+    "sha256": "7eca66f456148dcde151a412f8aa3f94ede1e20c35b1dd93e760dac678a5cc9b",
+    "size": 3632
+  },
+  "perf-prerequisites-pc-v1/qualify.py": {
+    "sha256": "0e6695578dc18e5f2ae40db688d39a38093a1299efde6e02cd477ff0a6e68458",
+    "size": 11897
+  },
+  "perf-prerequisites-pc-v1/resume-controller-output.log": {
+    "sha256": "8ae5f340a545aef3f69ddd1ca1ac63b598db7e566ba840637b06c7b7511e9344",
+    "size": 727
+  },
+  "perf-prerequisites-pc-v1/input-pins.json": {
+    "sha256": "2068582d6165c63437256b4a0e628809e74334cc935b7681ff8fd499d2dd001c",
+    "size": 398
+  },
+  "perf-prerequisites-pc-v1/entity_data_probe.py": {
+    "sha256": "4fd0ad29292bc6fcce8b974647f4da854c57e8cbeb2eb481394417388cd50d18",
+    "size": 1480
+  },
+  "perf-prerequisites-pc-v1/controller.py": {
+    "sha256": "3ddfd845773bdfe985705bc794fc426747e1bbac8bc79ad0146554d28278fc14",
+    "size": 575
+  },
+  "perf-prerequisites-pc-v1/input-identity.json": {
+    "sha256": "0512f0c41cffbf96c7251a0ca70f67607614ee74a765beba156e0c6751abbae8",
+    "size": 653
+  },
+  "perf-prerequisites-pc-v1/preconditions-fresh.json": {
+    "sha256": "49cff9cbcfcd05315696ceeda6056fb028678933d7bc51af7c3fe5e59728de54",
+    "size": 399
+  },
+  "perf-prerequisites-pc-v1/worker-terminal.json": {
+    "sha256": "9744caceb0070e9b2dd706b9449df041f33302a8b8e8fde4c6fdadeb82c42e62",
+    "size": 3710
+  },
+  "perf-prerequisites-pc-v1/UNTIMED-WITNESS-INVOCATIONS.json": {
+    "sha256": "d7d74c594562b03ad054429a1eb45323f0122e4e85f7e2be851a3a9282bf5e89",
+    "size": 19805
+  },
+  "perf-prerequisites-pc-v1/original-worker-output.log": {
+    "sha256": "e10f2b8ac0cb989f5583080f4c875b899a3b39512835ca43f513880c8862a4d0",
+    "size": 565
+  },
+  "perf-prerequisites-pc-v1/resume-controller-terminal.json": {
+    "sha256": "8e7809cb1aeb64726fc9d50e49e37661bfc8b1b1f47b0947a81cb82f6b4104fe",
+    "size": 178
+  },
+  "perf-prerequisites-pc-v1/terminal-quiescence.json": {
+    "sha256": "08a8f6c49c40b0c6d7c01ff4ac26bbdfc4ca1d05ca907af237ed35bceee56c43",
+    "size": 43
+  },
+  "perf-prerequisites-pc-v1/lib.rs": {
+    "sha256": "ced7287ca2fb4bb5425fe74f8ffcc943831306767c65f2872e67bc9119dcb5af",
+    "size": 521
+  },
+  "perf-prerequisites-pc-v1/FINITE-150-INVOCATIONS.json": {
+    "sha256": "b3a300ea6ad79ccb29e4031bcb5ec6f92ca56870f08c0070aa22681bd922ded6",
+    "size": 109352
+  },
+  "perf-prerequisites-pc-v1/prework-discovery-stopped.json": {
+    "sha256": "1360df2e00714b2947fcb6556667b890ba051355270dddd317ea7bc7a36e2707",
+    "size": 259
+  },
+  "perf-prerequisites-pc-v1/evidence/failure.json": {
+    "sha256": "28f5ab5ffba57f723ee7efcffd78f0bf071d5615fbf880d465a5f53e20527650",
+    "size": 568
+  },
+  "perf-prerequisites-pc-v1/evidence/missing-python-archive-reuse.json": {
+    "sha256": "8639bc864f0facd2bb7f3466b0205e147b6058255bf8167dbc46149c96768444",
+    "size": 8005
+  },
+  "perf-prerequisites-pc-v1/evidence/source-file-hashes-before.json": {
+    "sha256": "6a9e3648285110458f2f91b9234af293263db6d73a78f312afffee1c37908c6c",
+    "size": 484788
+  },
+  "perf-prerequisites-pc-v1/evidence/base-external-lock.log": {
+    "sha256": "37804e40f6f6c7dbb78dad06e4c079785621e7f2d913c9dbf56ca0c56d4074cc",
+    "size": 55
+  },
+  "perf-prerequisites-pc-v1/evidence/source-before.json": {
+    "sha256": "3203c6a1998b05bce32d8cf7328dff5689008568bfa18e5edc01e3253b19df94",
+    "size": 434
+  },
+  "perf-prerequisites-pc-v1/evidence/source-finally.json": {
+    "sha256": "db3eb51d3ad2fbb337348102f54879a2bd1251cfea5bf08d91ccfb1e414a3e09",
+    "size": 434
+  },
+  "perf-prerequisites-pc-v1/evidence/results.json": {
+    "sha256": "197bffffb6690e8f1163b0f9bbf8524a24d599563604ce6526fb7d2583b4d723",
+    "size": 1681
+  },
+  "perf-prerequisites-pc-v1/evidence/fixtures-before.json": {
+    "sha256": "9866329e4918a7bc76c47ef909a0ab221eb5e51df57f6a29e74c0bc5f6ae87e5",
+    "size": 47028
+  },
+  "perf-prerequisites-pc-v1/evidence/selected-profile.json": {
+    "sha256": "2af355778a51dca17287002fc386d547437401d7ba624e7d886eceef95ed05a0",
+    "size": 5294
+  },
+  "perf-prerequisites-pc-v1/inputs/02-opposed-products.ifc": {
+    "sha256": "fe5748939628705334cfaa562265580559e5fb13edb78341786eec1faef8a1f0",
+    "size": 26776
+  },
+  "perf-prerequisites-pc-v1/inputs/shared-set.ifc": {
+    "sha256": "6595832ebf581a7483749dbcf0dbfecffd5bd6218a3772350aaad32aed560fa8",
+    "size": 27628
+  },
+  "perf-prerequisites-pc-v2/preconditions.stderr": {
+    "sha256": "c7c2739177fac35b391117ae6f30c48ec8675e24c77afba115b6bd751f9ab97f",
+    "size": 627
+  },
+  "perf-prerequisites-pc-v2/main.rs": {
+    "sha256": "8dd655461a9353d5b29e96ca87c1bb3cf637bb06c730fe84f295768f341fb6c9",
+    "size": 4147
+  },
+  "perf-prerequisites-pc-v2/request.json": {
+    "sha256": "c4c33e789553cd6aac25af1890532dff993083a55ad1633646175fe83e2dd5be",
+    "size": 3885
+  },
+  "perf-prerequisites-pc-v2/qualify.py": {
+    "sha256": "a3dc42bdda959734e0c95e180db266b7fa85564fd8689d9613bbe513a4b3f603",
+    "size": 12096
+  },
+  "perf-prerequisites-pc-v2/resume-controller-output.log": {
+    "sha256": "74f2dc82acc31f2acaa8532de76140e4e56cc16ccf8a6a576351e85f086d2ced",
+    "size": 1136
+  },
+  "perf-prerequisites-pc-v2/input-pins.json": {
+    "sha256": "2068582d6165c63437256b4a0e628809e74334cc935b7681ff8fd499d2dd001c",
+    "size": 398
+  },
+  "perf-prerequisites-pc-v2/entity_data_probe.py": {
+    "sha256": "4fd0ad29292bc6fcce8b974647f4da854c57e8cbeb2eb481394417388cd50d18",
+    "size": 1480
+  },
+  "perf-prerequisites-pc-v2/controller.py": {
+    "sha256": "3ddfd845773bdfe985705bc794fc426747e1bbac8bc79ad0146554d28278fc14",
+    "size": 575
+  },
+  "perf-prerequisites-pc-v2/input-identity.json": {
+    "sha256": "0512f0c41cffbf96c7251a0ca70f67607614ee74a765beba156e0c6751abbae8",
+    "size": 653
+  },
+  "perf-prerequisites-pc-v2/preconditions-fresh.json": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0
+  },
+  "perf-prerequisites-pc-v2/worker-terminal.json": {
+    "sha256": "0de0882f581a4c93e72a71107c5d89f54c1765befa2960925efd36387f0879db",
+    "size": 3710
+  },
+  "perf-prerequisites-pc-v2/UNTIMED-WITNESS-INVOCATIONS.json": {
+    "sha256": "d7d74c594562b03ad054429a1eb45323f0122e4e85f7e2be851a3a9282bf5e89",
+    "size": 19805
+  },
+  "perf-prerequisites-pc-v2/original-worker-output.log": {
+    "sha256": "13faba6bba792ec84c9d4e0d7ddf6d5979b2bf83411f56051de6d9798c907bb2",
+    "size": 974
+  },
+  "perf-prerequisites-pc-v2/resume-controller-terminal.json": {
+    "sha256": "19a0a8addc4a622242174ddd6334f571e4b143adef26997b60b6cfd4fabf4fc9",
+    "size": 178
+  },
+  "perf-prerequisites-pc-v2/lib.rs": {
+    "sha256": "ced7287ca2fb4bb5425fe74f8ffcc943831306767c65f2872e67bc9119dcb5af",
+    "size": 521
+  },
+  "perf-prerequisites-pc-v2/FINITE-150-INVOCATIONS.json": {
+    "sha256": "b3a300ea6ad79ccb29e4031bcb5ec6f92ca56870f08c0070aa22681bd922ded6",
+    "size": 109352
+  },
+  "perf-prerequisites-pc-v2/evidence/source-finally-error.json": {
+    "sha256": "c5a2003fbee4d256a778592c1f401f1a2b520af7fcee529dd2d4f3c5bdb71e5d",
+    "size": 2197
+  },
+  "perf-prerequisites-pc-v2/evidence/failure.json": {
+    "sha256": "083eeb2f7ef782683014fb23cd2408be2a9dc68faff81bf7616c577257ed1137",
+    "size": 1037
+  },
+  "perf-prerequisites-pc-v2/inputs/02-opposed-products.ifc": {
+    "sha256": "fe5748939628705334cfaa562265580559e5fb13edb78341786eec1faef8a1f0",
+    "size": 26776
+  },
+  "perf-prerequisites-pc-v2/inputs/shared-set.ifc": {
+    "sha256": "6595832ebf581a7483749dbcf0dbfecffd5bd6218a3772350aaad32aed560fa8",
+    "size": 27628
+  },
+  "perf-prerequisites-pc-v3/ready-payload.tar.gz": {
+    "sha256": "0a601699205f10e3676c6ccef587f839692ee347631231f18435dc5d5c3a2b0e",
+    "size": 25222100
+  },
+  "perf-prerequisites-pc-v3/preconditions.stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0
+  },
+  "perf-prerequisites-pc-v3/lossless-verification.json": {
+    "sha256": "6ac2bbe4c4b01b098f6c849d2273376e905e00fab8603c2292e6e0c439e40277",
+    "size": 184
+  },
+  "perf-prerequisites-pc-v3/main.rs": {
+    "sha256": "8dd655461a9353d5b29e96ca87c1bb3cf637bb06c730fe84f295768f341fb6c9",
+    "size": 4147
+  },
+  "perf-prerequisites-pc-v3/request.json": {
+    "sha256": "6998eac4f1772f24b1eb906761385f1be37d9596fe0eb14b633ce6d25a5ca501",
+    "size": 4018
+  },
+  "perf-prerequisites-pc-v3/qualify.py": {
+    "sha256": "530c04058d182097a2532adf43296415fd2b63854d1c910e4c1492df829a4162",
+    "size": 12099
+  },
+  "perf-prerequisites-pc-v3/resume-controller-output.log": {
+    "sha256": "09985fa0cb1a2988e2c219b415b846fd988ca283586893a0fb6e098c6f8aa8f9",
+    "size": 1213
+  },
+  "perf-prerequisites-pc-v3/input-pins.json": {
+    "sha256": "2068582d6165c63437256b4a0e628809e74334cc935b7681ff8fd499d2dd001c",
+    "size": 398
+  },
+  "perf-prerequisites-pc-v3/entity_data_probe.py": {
+    "sha256": "4fd0ad29292bc6fcce8b974647f4da854c57e8cbeb2eb481394417388cd50d18",
+    "size": 1480
+  },
+  "perf-prerequisites-pc-v3/remote-lossless-inventory.json": {
+    "sha256": "02011957ee0d1a119fee8a4b26eef9b6bcba273bbe029d3d5a54c7313908341b",
+    "size": 8869
+  },
+  "perf-prerequisites-pc-v3/FINAL-VALIDATION-MATRIX.json": {
+    "sha256": "74347c0f07ed743a02b269bc2151acec14cea7fc957134c622484efb7bb194de",
+    "size": 25254
+  },
+  "perf-prerequisites-pc-v3/prior-artifact-preservation.json": {
+    "sha256": "991c1e19b65efa8f26965a2fb99c76106b26eda5f1427f867642626f7c660f6d",
+    "size": 505
+  },
+  "perf-prerequisites-pc-v3/FINAL-HANDOFF.md": {
+    "sha256": "8d3e6780b20af1862f293c81cd576be2bb29ddf13a28c4204cf0e7b36aed2ded",
+    "size": 5703
+  },
+  "perf-prerequisites-pc-v3/controller.py": {
+    "sha256": "3ddfd845773bdfe985705bc794fc426747e1bbac8bc79ad0146554d28278fc14",
+    "size": 575
+  },
+  "perf-prerequisites-pc-v3/input-identity.json": {
+    "sha256": "0512f0c41cffbf96c7251a0ca70f67607614ee74a765beba156e0c6751abbae8",
+    "size": 653
+  },
+  "perf-prerequisites-pc-v3/READY-ARTIFACTS.json": {
+    "sha256": "e7388177cc9e031f76f03b21e2cff883813af02415b01503c8686ea7c3acd456",
+    "size": 3526
+  },
+  "perf-prerequisites-pc-v3/ELF-LOADER-REQUIREMENTS.json": {
+    "sha256": "f699fdffea279aa5b0abc2f576e6fe4987c33a461a047201148ebf957038fdec",
+    "size": 3627
+  },
+  "perf-prerequisites-pc-v3/preconditions-fresh.json": {
+    "sha256": "dc78dfcf6272cda593cc566a49399b50e06f5619dc55fdb62d63727be5d0a74e",
+    "size": 257
+  },
+  "perf-prerequisites-pc-v3/ORACLE-BINDINGS.json": {
+    "sha256": "6b68dd0081b258cc7dfd79716009906dddd1259def1bee8fc45aa2ddf160a27b",
+    "size": 2905
+  },
+  "perf-prerequisites-pc-v3/worker-terminal.json": {
+    "sha256": "553b9eb70f8801f17c4f4e679bc90ad0bb64039d31d83165d9290cbd13462563",
+    "size": 3785
+  },
+  "perf-prerequisites-pc-v3/UNTIMED-WITNESS-INVOCATIONS.json": {
+    "sha256": "d7d74c594562b03ad054429a1eb45323f0122e4e85f7e2be851a3a9282bf5e89",
+    "size": 19805
+  },
+  "perf-prerequisites-pc-v3/original-worker-output.log": {
+    "sha256": "f0c94a94c856c3623131b5be6954d1d3db5192146de9534b001f7b1ceef4df70",
+    "size": 1051
+  },
+  "perf-prerequisites-pc-v3/resume-controller-terminal.json": {
+    "sha256": "9d2f739e1db6df60860196620ed939081c575e206fad5af495e4ae703ced751c",
+    "size": 178
+  },
+  "perf-prerequisites-pc-v3/lib.rs": {
+    "sha256": "ced7287ca2fb4bb5425fe74f8ffcc943831306767c65f2872e67bc9119dcb5af",
+    "size": 521
+  },
+  "perf-prerequisites-pc-v3/FINITE-150-INVOCATIONS.json": {
+    "sha256": "b3a300ea6ad79ccb29e4031bcb5ec6f92ca56870f08c0070aa22681bd922ded6",
+    "size": 109352
+  },
+  "perf-prerequisites-pc-v3/remote-lossless-inventory.stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0
+  },
+  "perf-prerequisites-pc-v3/evidence/base-freeze.log": {
+    "sha256": "7fa094b97c853212c88a4f34c2d04e3a811345a818b9ba65d93d064a07230649",
+    "size": 235
+  },
+  "perf-prerequisites-pc-v3/evidence/raw-loaded-native.log": {
+    "sha256": "4a3530a0accfcef2402db4931617a9adcec80daa437b9e36edabbe3df499da9f",
+    "size": 379
+  },
+  "perf-prerequisites-pc-v3/evidence/fixtures-after.json": {
+    "sha256": "9866329e4918a7bc76c47ef909a0ab221eb5e51df57f6a29e74c0bc5f6ae87e5",
+    "size": 47028
+  },
+  "perf-prerequisites-pc-v3/evidence/raw-private-venv.log": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0
+  },
+  "perf-prerequisites-pc-v3/evidence/source-file-hashes-after.json": {
+    "sha256": "6a9e3648285110458f2f91b9234af293263db6d73a78f312afffee1c37908c6c",
+    "size": 484788
+  },
+  "perf-prerequisites-pc-v3/evidence/base-private-venv.log": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0
+  },
+  "perf-prerequisites-pc-v3/evidence/raw-artifacts.json": {
+    "sha256": "d6f9882d6abcd055ca4c65523fc8ba7e8e1bf4afcc2adb7cb5abdfba3e401870",
+    "size": 2049
+  },
+  "perf-prerequisites-pc-v3/evidence/raw-profiling-wheel.log": {
+    "sha256": "dc45874557f1d777c35dfa1983a6c467c8c6f627968fe334c5da8923863b572e",
+    "size": 2982
+  },
+  "perf-prerequisites-pc-v3/evidence/raw-wrapper-identity.log": {
+    "sha256": "56bb8ed79134216bb28e8e681c9374620c029877d4cc7cdabc13d9a3529d012c",
+    "size": 143
+  },
+  "perf-prerequisites-pc-v3/evidence/base-elf-0.log": {
+    "sha256": "3203eee2439ce2aa2c86cb1e9bb4297183d7e700fd2325b1c2bc4fe39a0843a3",
+    "size": 7293
+  },
+  "perf-prerequisites-pc-v3/evidence/base-elf-3.log": {
+    "sha256": "ef515e86841973fff7fe000132fb6f049d235d34100a0fb8b2cd3b0ad536b019",
+    "size": 8658
+  },
+  "perf-prerequisites-pc-v3/evidence/raw-freeze.log": {
+    "sha256": "80e184836a5d846fe1d8976e223b122c08a8c55c30f02bba7b0985b84492f9f8",
+    "size": 234
+  },
+  "perf-prerequisites-pc-v3/evidence/missing-python-archive-reuse.json": {
+    "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "size": 3
+  },
+  "perf-prerequisites-pc-v3/evidence/base-loaded-native.log": {
+    "sha256": "a42fb82e7463151e500c9538c2c453e54b22c9533d73c1256cb9df4f6b5c044b",
+    "size": 381
+  },
+  "perf-prerequisites-pc-v3/evidence/source-file-hashes-before.json": {
+    "sha256": "6a9e3648285110458f2f91b9234af293263db6d73a78f312afffee1c37908c6c",
+    "size": 484788
+  },
+  "perf-prerequisites-pc-v3/evidence/base-external-lock.log": {
+    "sha256": "228ba20def316f71e15c5c961f7b7824a680f60633ce14b3dee9f438af35bfb0",
+    "size": 555023
+  },
+  "perf-prerequisites-pc-v3/evidence/source-before.json": {
+    "sha256": "9661a32b639c6b7de2c314942b9f416b4aaef9f77a1d951398a92ef9080d6cce",
+    "size": 434
+  },
+  "perf-prerequisites-pc-v3/evidence/base-native-wrapper.log": {
+    "sha256": "0b8652da2b3f5f0646a7aba72580410d4ae5af89d4e1ab07680df7d1a7f1f036",
+    "size": 3127
+  },
+  "perf-prerequisites-pc-v3/evidence/raw-install-profiling-wheel.log": {
+    "sha256": "ced5d0591f8cbeb2113ca68726bb970d04bdc82e27b496175ad7942806db259d",
+    "size": 163
+  },
+  "perf-prerequisites-pc-v3/evidence/completion.json": {
+    "sha256": "41ca65cf0aacf7f9c38ede8b6af0e928fa552ab75baf975160acf5f7e0045c3e",
+    "size": 349
+  },
+  "perf-prerequisites-pc-v3/evidence/base-artifacts.json": {
+    "sha256": "c7318a795afbeab843f8f4d6a45da3c454aec7e8911c1abe18ab095d286489ef",
+    "size": 2055
+  },
+  "perf-prerequisites-pc-v3/evidence/base-profiling-wheel.log": {
+    "sha256": "82128e343b2888e0c82a507b105ae006beffc28897afc2e8cdf8c1b65100a1f4",
+    "size": 3074
+  },
+  "perf-prerequisites-pc-v3/evidence/source-finally.json": {
+    "sha256": "8a64a253c992ff9aa9db88c6043d40dbb4bd0699540c0d7887081bfb904484bf",
+    "size": 434
+  },
+  "perf-prerequisites-pc-v3/evidence/raw-native-wrapper.log": {
+    "sha256": "0ea13935ba80f8381f494ddc192de61745fccc9bd327d7966d7e5612c1dc8aae",
+    "size": 3078
+  },
+  "perf-prerequisites-pc-v3/evidence/raw-elf-3.log": {
+    "sha256": "bc62186c0a631dd473f5c07c52b46d56b9082e2f56a5f571fa566b13efc0fc02",
+    "size": 8658
+  },
+  "perf-prerequisites-pc-v3/evidence/raw-elf-0.log": {
+    "sha256": "aae7a79c468b805bb2c85c12a5bd09a3cd2579e779a04d2de3dcb19ac234faf8",
+    "size": 7293
+  },
+  "perf-prerequisites-pc-v3/evidence/source-final.json": {
+    "sha256": "8d67a05da1990d49f2e0068853817d82d1ec85ccf44c37013b42d6abdced06c7",
+    "size": 434
+  },
+  "perf-prerequisites-pc-v3/evidence/base-wrapper-identity.log": {
+    "sha256": "303a5805891077724ae08a5b47e1c247b4694fd9aef95febf527011a431724ae",
+    "size": 143
+  },
+  "perf-prerequisites-pc-v3/evidence/base-install-profiling-wheel.log": {
+    "sha256": "ced5d0591f8cbeb2113ca68726bb970d04bdc82e27b496175ad7942806db259d",
+    "size": 163
+  },
+  "perf-prerequisites-pc-v3/evidence/base-elf-1.log": {
+    "sha256": "840c7b9d42d8f220f11924ebc72baeded7619dacb734df8c2c020f9d77e5a468",
+    "size": 5962
+  },
+  "perf-prerequisites-pc-v3/evidence/raw-external-lock.log": {
+    "sha256": "f0091a3b16db247f0eb49b933589ba29c1d0b2ba59d87317c05ba6fe77d4dd48",
+    "size": 550782
+  },
+  "perf-prerequisites-pc-v3/evidence/raw-elf-1.log": {
+    "sha256": "9b78564e13003ff10c9ef2e67b690707af3bdc53489bfc5b43281570dc4a4f73",
+    "size": 5962
+  },
+  "perf-prerequisites-pc-v3/evidence/results.json": {
+    "sha256": "d55c8e26d7f74a38014a3e0e58075ee7e87fab09d55d72790ec76533695f9f31",
+    "size": 44184
+  },
+  "perf-prerequisites-pc-v3/evidence/fixtures-before.json": {
+    "sha256": "9866329e4918a7bc76c47ef909a0ab221eb5e51df57f6a29e74c0bc5f6ae87e5",
+    "size": 47028
+  },
+  "perf-prerequisites-pc-v3/evidence/selected-profile.json": {
+    "sha256": "a7663f942bd68fbe0004157fe002e34aac552964b025343ff4e190190aee9c8a",
+    "size": 5294
+  },
+  "perf-prerequisites-pc-v3/payload/entity_data_probe.py": {
+    "sha256": "4fd0ad29292bc6fcce8b974647f4da854c57e8cbeb2eb481394417388cd50d18",
+    "size": 1480
+  },
+  "perf-prerequisites-pc-v3/payload/inputs/AC20-FZK-Haus.ifc": {
+    "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+    "size": 2526511
+  },
+  "perf-prerequisites-pc-v3/payload/inputs/02-opposed-products.ifc": {
+    "sha256": "fe5748939628705334cfaa562265580559e5fb13edb78341786eec1faef8a1f0",
+    "size": 26776
+  },
+  "perf-prerequisites-pc-v3/payload/inputs/shared-set.ifc": {
+    "sha256": "6595832ebf581a7483749dbcf0dbfecffd5bd6218a3772350aaad32aed560fa8",
+    "size": 27628
+  },
+  "perf-prerequisites-pc-v3/payload/base/libd47_public_probe.so": {
+    "sha256": "e5eb0380789390597a46c4267f8970915d2e8b6ab2a61f6d4590f3460ae183bd",
+    "size": 1598832
+  },
+  "perf-prerequisites-pc-v3/payload/base/d47-public-probe": {
+    "sha256": "6969782519015c3e1d4ee97e57317d69113cdd950dc617b2a51ad65595333507",
+    "size": 11119720
+  },
+  "perf-prerequisites-pc-v3/payload/base/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl": {
+    "sha256": "2e998c4c234798b63c28700c739346f3aa4e96935ef1e512a0ee786abc3e716d",
+    "size": 9049728
+  },
+  "perf-prerequisites-pc-v3/payload/raw/libd47_public_probe.so": {
+    "sha256": "71c36644d639460e5f2a23f12b723cfdeb2ff8dafaed724f8698544357ab7e39",
+    "size": 1598832
+  },
+  "perf-prerequisites-pc-v3/payload/raw/d47-public-probe": {
+    "sha256": "66face4fc520b56881d238af868f7fd294c22c6dae05522363646ed476802f0f",
+    "size": 11176984
+  },
+  "perf-prerequisites-pc-v3/payload/raw/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl": {
+    "sha256": "6a251330ae223466c20b552d3cd6571a7d72b09050cb13c135bf102ab4386c24",
+    "size": 9059317
+  },
+  "perf-prerequisites-pc-v3/wrapper-sources/base/Cargo.lock": {
+    "sha256": "f7f639845919fc686ad1571b57048fc7119ab7ab0745cde2047f67c86be4dfa6",
+    "size": 20169
+  },
+  "perf-prerequisites-pc-v3/wrapper-sources/base/Cargo.toml": {
+    "sha256": "af142bb696fa5d880360e2e5d0582821863ea372f05162b833e034fcb80b6fcc",
+    "size": 1750
+  },
+  "perf-prerequisites-pc-v3/wrapper-sources/raw/Cargo.lock": {
+    "sha256": "f7f639845919fc686ad1571b57048fc7119ab7ab0745cde2047f67c86be4dfa6",
+    "size": 20169
+  },
+  "perf-prerequisites-pc-v3/wrapper-sources/raw/Cargo.toml": {
+    "sha256": "17dd0052ce9fa7bcc4f6e87424df0b6ee9ae6d361c0b1e784c547e459660292a",
+    "size": 1726
+  },
+  "perf-prerequisites-pc-v3/wrapper-sources/base/src/main.rs": {
+    "sha256": "8dd655461a9353d5b29e96ca87c1bb3cf637bb06c730fe84f295768f341fb6c9",
+    "size": 4147
+  },
+  "perf-prerequisites-pc-v3/wrapper-sources/base/src/lib.rs": {
+    "sha256": "ced7287ca2fb4bb5425fe74f8ffcc943831306767c65f2872e67bc9119dcb5af",
+    "size": 521
+  },
+  "perf-prerequisites-pc-v3/wrapper-sources/raw/src/main.rs": {
+    "sha256": "8dd655461a9353d5b29e96ca87c1bb3cf637bb06c730fe84f295768f341fb6c9",
+    "size": 4147
+  },
+  "perf-prerequisites-pc-v3/wrapper-sources/raw/src/lib.rs": {
+    "sha256": "ced7287ca2fb4bb5425fe74f8ffcc943831306767c65f2872e67bc9119dcb5af",
+    "size": 521
+  }
+}

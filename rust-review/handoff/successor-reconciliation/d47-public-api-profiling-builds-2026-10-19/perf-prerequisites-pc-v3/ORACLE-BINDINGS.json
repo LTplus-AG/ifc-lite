@@ -1,0 +1,42 @@
+{
+  "status": "Existing immutable oracles retained; no new semantic call executed during build-only arm",
+  "sources": {
+    "packages/parser/test/fixtures/complex-property-budget-7675.json": {
+      "retainedPath": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/raw-consumer-preparation-v1/raw-static/packages/parser/test/fixtures/complex-property-budget-7675.json",
+      "sha256": "e1c313ac797ab05a7ea7c237d932d648d37872304987f4ea598363e3334dc988"
+    },
+    "rust/export/tests/fixtures/shared_set_order_7895.json": {
+      "retainedPath": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/raw-consumer-preparation-v1/raw-static/rust/export/tests/fixtures/shared_set_order_7895.json",
+      "sha256": "1097e46fd2c70028faf10fc1bd9169a51d01c1f1d7abb5ea949910035d2539f8"
+    },
+    "rust/export/tests/issue_7895_shared_set_budget.rs": {
+      "retainedPath": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/raw-consumer-preparation-v1/raw-static/rust/export/tests/issue_7895_shared_set_budget.rs",
+      "sha256": "692962a5f55111f104be4418c3a9a6853329f257038d3b2d01b481653533589d"
+    },
+    "rust/python/tests/test_shared_set_budget.py": {
+      "retainedPath": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/raw-consumer-preparation-v1/raw-static/rust/python/tests/test_shared_set_budget.py",
+      "sha256": "06c25d1b2aeec137eb1ec7d3ffddd7fb44e3c9359360130f2648f62bc6d7b90a"
+    }
+  },
+  "sharedSet": {
+    "inputHelper": "existing Rust fixture(case, empty extra), including double separator newline",
+    "inputBytes": 27628,
+    "inputSha256": "6595832ebf581a7483749dbcf0dbfecffd5bd6218a3772350aaad32aed560fa8",
+    "canonicalFBytes": 532946,
+    "canonicalFSha256": "92a974b8fddd650169101d999d3acb2ed120243559a60a8a28ae8cb2a157efeb",
+    "rawExpectation": "all200occurrences equal actual canonicalserver; cuts1 legitimate",
+    "baseExpectation": "original repeated listing charge defect; retain changed locations, do not demand byte identity"
+  },
+  "opposed": {
+    "inputBytes": 26776,
+    "inputSha256": "fe5748939628705334cfaa562265580559e5fb13edb78341786eec1faef8a1f0",
+    "rawExpectation": "Pset_Shared canonicalF; Pset_Second canonicalM marker, source-order policy; retain ordering",
+    "baseExpectation": "original encounter-order budget defect; exact values compare to retained canonicalserver oracle"
+  },
+  "haus": {
+    "inputBytes": 2526511,
+    "inputSha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+    "rule": "Compare all row metadata/order/units/noncomplex outputs; complex values to actual canonicalserver on each source. Enumerate any changed fields; no unexplained drift waived."
+  },
+  "semanticExecution": "Pending separate untimed witness calls in eventual eligible cohort; no budget calculator added"
+}

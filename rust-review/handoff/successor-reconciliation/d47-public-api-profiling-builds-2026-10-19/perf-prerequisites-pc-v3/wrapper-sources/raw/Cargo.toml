@@ -1,0 +1,45 @@
+[package]
+name="d47-public-probe"
+version="0.1.0"
+edition="2021"
+[workspace]
+[lib]
+crate-type=["cdylib"]
+[dependencies]
+ifc-lite-export={path="/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/rust/export",default-features=false}
+ifc-lite-processing={path="/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/rust/processing"}
+serde_json="1"
+[profile.release]
+opt-level = 3           # Optimize for speed
+lto = true              # Link-time optimization
+codegen-units = 1       # Better optimization (slower compile)
+strip = true            # Strip symbols
+panic = 'abort'         # Smaller panic handler
+overflow-checks = false # Remove overflow checks in release
+
+[profile.release.package."*"]
+opt-level = 3
+strip = true
+
+# Server-only release profile: re-enables stack unwinding so a panic while
+# parsing untrusted, attacker-supplied IFC bytes on a `spawn_blocking` thread
+# becomes a per-request `JoinError` (mapped to HTTP 500) instead of aborting
+# the whole multi-tenant process. The default `release` profile keeps
+# `panic = 'abort'` so the wasm bundle stays small.
+# Built via `cargo build --profile server-release` (see apps/server/Dockerfile).
+[profile.server-release]
+inherits = "release"
+panic = "unwind"
+
+# Profiling profile: release-grade optimization with symbols retained and
+# panic=unwind, so `samply record` on a profiled binary produces a symbolized
+# flamegraph and per-element `catch_unwind` isolation still fires. Used by the
+# `perf_probe` harness and `scripts/perf/flame.sh` (see `scripts/perf/README.md`).
+# `strip`/`debug` override the release defaults; the rest is inherited.
+[profile.profiling]
+inherits = "release"
+strip = false
+debug = "line-tables-only"
+panic = "unwind"
+
+

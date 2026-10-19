@@ -1,0 +1,67 @@
+{
+  "at": "2026-10-19T03:41:12.371085+00:00",
+  "result": {
+    "state": "COMPLETED0",
+    "worker": "d873c278-a9a4-42a8-8a16-7497aa765494",
+    "session": 95027,
+    "sourceUnchanged": true,
+    "quiescent": true,
+    "stagesPassed": 22,
+    "verifiedArtifacts": 127,
+    "manifestSha256": "74308dfdeb79879f5ed1c12c3dc96e7c0e23e6735cf089c4a101b8211f5040b4",
+    "result": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-prerequisites-pc-v3/FINAL-HANDOFF.md",
+    "timedInvocationsPrepared": 150,
+    "timedInvocationsRun": 0,
+    "actualPopLoading": "UNRUN",
+    "performanceVerdict": null
+  },
+  "manifestSha256": "74308dfdeb79879f5ed1c12c3dc96e7c0e23e6735cf089c4a101b8211f5040b4",
+  "verifiedMembers": 127,
+  "archivedMembers": 119,
+  "localOnlyHashBoundMembers": [
+    {
+      "path": "perf-prerequisites-pc-v3/ready-payload.tar.gz",
+      "sha256": "0a601699205f10e3676c6ccef587f839692ee347631231f18435dc5d5c3a2b0e",
+      "size": 25222100
+    },
+    {
+      "path": "perf-prerequisites-pc-v3/payload/inputs/AC20-FZK-Haus.ifc",
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "size": 2526511
+    },
+    {
+      "path": "perf-prerequisites-pc-v3/payload/base/libd47_public_probe.so",
+      "sha256": "e5eb0380789390597a46c4267f8970915d2e8b6ab2a61f6d4590f3460ae183bd",
+      "size": 1598832
+    },
+    {
+      "path": "perf-prerequisites-pc-v3/payload/base/d47-public-probe",
+      "sha256": "6969782519015c3e1d4ee97e57317d69113cdd950dc617b2a51ad65595333507",
+      "size": 11119720
+    },
+    {
+      "path": "perf-prerequisites-pc-v3/payload/base/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl",
+      "sha256": "2e998c4c234798b63c28700c739346f3aa4e96935ef1e512a0ee786abc3e716d",
+      "size": 9049728
+    },
+    {
+      "path": "perf-prerequisites-pc-v3/payload/raw/libd47_public_probe.so",
+      "sha256": "71c36644d639460e5f2a23f12b723cfdeb2ff8dafaed724f8698544357ab7e39",
+      "size": 1598832
+    },
+    {
+      "path": "perf-prerequisites-pc-v3/payload/raw/d47-public-probe",
+      "sha256": "66face4fc520b56881d238af868f7fd294c22c6dae05522363646ed476802f0f",
+      "size": 11176984
+    },
+    {
+      "path": "perf-prerequisites-pc-v3/payload/raw/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl",
+      "sha256": "6a251330ae223466c20b552d3cd6571a7d72b09050cb13c135bf102ab4386c24",
+      "size": 9059317
+    }
+  ],
+  "parentInspection": "Read both API wrappers and clock bridge in full; checked finite150 coverage75source pairs. Source builds/import/identity only; data calls unrun. Shared fixture IFC27628bytes distinguished from resolved532946byte F value. No timing/RSS verdict.",
+  "nextTask": "node:delegated-task:command%3Amcp%3Ab6887845-af8d-47bc-b5e6-257c444a9934%3Athread-send%3Ad47-public02-raw7c8-existing-profiling-untimed-output-witnesses-pc-20261019-v27",
+  "noBenchmarkQueued": true,
+  "acceptedPrograms": 0
+}

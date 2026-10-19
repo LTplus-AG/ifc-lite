@@ -1,0 +1,1254 @@
+[
+  {
+    "name": "base-external-lock",
+    "argv": [
+      "cargo",
+      "metadata",
+      "--offline",
+      "--format-version",
+      "1",
+      "--manifest-path",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/wrapper/Cargo.toml"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/wrapper",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+      "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "228ba20def316f71e15c5c961f7b7824a680f60633ce14b3dee9f438af35bfb0",
+    "logBytes": 555023,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 822168965120,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56070144
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 822168154112,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "base-native-wrapper",
+    "argv": [
+      "cargo",
+      "build",
+      "--locked",
+      "--offline",
+      "--profile",
+      "profiling",
+      "--manifest-path",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/wrapper/Cargo.toml"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/wrapper",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+      "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "0b8652da2b3f5f0646a7aba72580410d4ae5af89d4e1ab07680df7d1a7f1f036",
+    "logBytes": 3127,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 822168870912,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821771194368,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "base-wrapper-identity",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/d47-public-probe",
+      "--identity"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+      "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "303a5805891077724ae08a5b47e1c247b4694fd9aef95febf527011a431724ae",
+    "logBytes": 143,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821770866688,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821770301440,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "base-private-venv",
+    "argv": [
+      "/home/louistrue/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12",
+      "-m",
+      "venv",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+      "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "logBytes": 0,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821770031104,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821757603840,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "base-profiling-wheel",
+    "argv": [
+      "/home/louistrue/.cache/uv/archive-v0/nEg85VyatxAAFRki/maturin-1.15.0.data/scripts/maturin",
+      "build",
+      "--locked",
+      "--offline",
+      "--profile",
+      "profiling",
+      "--config",
+      "profile.release.opt-level=3",
+      "--config",
+      "profile.release.lto=true",
+      "--config",
+      "profile.release.codegen-units=1",
+      "--config",
+      "profile.release.strip=true",
+      "--config",
+      "profile.release.panic=\"abort\"",
+      "--config",
+      "profile.release.overflow-checks=false",
+      "--config",
+      "profile.release.package.\"*\".opt-level=3",
+      "--config",
+      "profile.release.package.\"*\".strip=true",
+      "--config",
+      "profile.profiling.inherits=\"release\"",
+      "--config",
+      "profile.profiling.strip=false",
+      "--config",
+      "profile.profiling.debug=\"line-tables-only\"",
+      "--config",
+      "profile.profiling.panic=\"unwind\"",
+      "--manifest-path",
+      "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/source/rust/python/Cargo.toml",
+      "--interpreter",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python",
+      "--out",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/wheels"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/source",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+      "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "82128e343b2888e0c82a507b105ae006beffc28897afc2e8cdf8c1b65100a1f4",
+    "logBytes": 3074,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821757341696,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821294592000,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "base-install-profiling-wheel",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python",
+      "-m",
+      "pip",
+      "install",
+      "--no-index",
+      "--no-deps",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+      "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "ced5d0591f8cbeb2113ca68726bb970d04bdc82e27b496175ad7942806db259d",
+    "logBytes": 163,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821295472640,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821264437248,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "base-loaded-native",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python",
+      "-c",
+      "import ifclite_geom,sys,pathlib,hashlib,json;print(json.dumps({\"python\":sys.executable,\"version\":sys.version,\"native\":{str(pathlib.Path(m.__file__).resolve()):hashlib.sha256(pathlib.Path(m.__file__).read_bytes()).hexdigest() for n,m in sys.modules.items() if n.startswith(\"ifclite_geom\") and getattr(m,\"__file__\",\"\").endswith(\".so\")}}))"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+      "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "a42fb82e7463151e500c9538c2c453e54b22c9533d73c1256cb9df4f6b5c044b",
+    "logBytes": 381,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821264039936,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821263642624,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "base-freeze",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python",
+      "-m",
+      "pip",
+      "freeze",
+      "--all"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+      "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "7fa094b97c853212c88a4f34c2d04e3a811345a818b9ba65d93d064a07230649",
+    "logBytes": 235,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821264371712,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821263978496,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "base-elf-0",
+    "argv": [
+      "readelf",
+      "-l",
+      "-d",
+      "--version-info",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/d47-public-probe"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+      "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "3203eee2439ce2aa2c86cb1e9bb4297183d7e700fd2325b1c2bc4fe39a0843a3",
+    "logBytes": 7293,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821263581184,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821263175680,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "base-elf-1",
+    "argv": [
+      "readelf",
+      "-l",
+      "-d",
+      "--version-info",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/libd47_public_probe.so"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+      "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "840c7b9d42d8f220f11924ebc72baeded7619dacb734df8c2c020f9d77e5a468",
+    "logBytes": 5962,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821263949824,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821263396864,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "base-elf-3",
+    "argv": [
+      "readelf",
+      "-l",
+      "-d",
+      "--version-info",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/lib/python3.12/site-packages/ifclite_geom/ifclite_geom.abi3.so"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+      "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "ef515e86841973fff7fe000132fb6f049d235d34100a0fb8b2cd3b0ad536b019",
+    "logBytes": 8658,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821263069184,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821262548992,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "raw-external-lock",
+    "argv": [
+      "cargo",
+      "metadata",
+      "--offline",
+      "--format-version",
+      "1",
+      "--manifest-path",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/wrapper/Cargo.toml"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/wrapper",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+      "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "f0091a3b16db247f0eb49b933589ba29c1d0b2ba59d87317c05ba6fe77d4dd48",
+    "logBytes": 550782,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821263216640,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821263478784,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "raw-native-wrapper",
+    "argv": [
+      "cargo",
+      "build",
+      "--locked",
+      "--offline",
+      "--profile",
+      "profiling",
+      "--manifest-path",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/wrapper/Cargo.toml"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/wrapper",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+      "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "0ea13935ba80f8381f494ddc192de61745fccc9bd327d7966d7e5612c1dc8aae",
+    "logBytes": 3078,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 821262622720,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 820866203648,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "raw-wrapper-identity",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/d47-public-probe",
+      "--identity"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+      "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "56bb8ed79134216bb28e8e681c9374620c029877d4cc7cdabc13d9a3529d012c",
+    "logBytes": 143,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 820865814528,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 820866519040,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "raw-private-venv",
+    "argv": [
+      "/home/louistrue/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12",
+      "-m",
+      "venv",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+      "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "logBytes": 0,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 820866125824,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 820853682176,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "raw-profiling-wheel",
+    "argv": [
+      "/home/louistrue/.cache/uv/archive-v0/nEg85VyatxAAFRki/maturin-1.15.0.data/scripts/maturin",
+      "build",
+      "--locked",
+      "--offline",
+      "--profile",
+      "profiling",
+      "--config",
+      "profile.release.opt-level=3",
+      "--config",
+      "profile.release.lto=true",
+      "--config",
+      "profile.release.codegen-units=1",
+      "--config",
+      "profile.release.strip=true",
+      "--config",
+      "profile.release.panic=\"abort\"",
+      "--config",
+      "profile.release.overflow-checks=false",
+      "--config",
+      "profile.release.package.\"*\".opt-level=3",
+      "--config",
+      "profile.release.package.\"*\".strip=true",
+      "--config",
+      "profile.profiling.inherits=\"release\"",
+      "--config",
+      "profile.profiling.strip=false",
+      "--config",
+      "profile.profiling.debug=\"line-tables-only\"",
+      "--config",
+      "profile.profiling.panic=\"unwind\"",
+      "--manifest-path",
+      "/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/rust/python/Cargo.toml",
+      "--interpreter",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python",
+      "--out",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/wheels"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+      "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "dc45874557f1d777c35dfa1983a6c467c8c6f627968fe334c5da8923863b572e",
+    "logBytes": 2982,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 820853415936,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 820422828032,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "raw-install-profiling-wheel",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python",
+      "-m",
+      "pip",
+      "install",
+      "--no-index",
+      "--no-deps",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+      "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "ced5d0591f8cbeb2113ca68726bb970d04bdc82e27b496175ad7942806db259d",
+    "logBytes": 163,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 820424646656,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 820392128512,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "raw-loaded-native",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python",
+      "-c",
+      "import ifclite_geom,sys,pathlib,hashlib,json;print(json.dumps({\"python\":sys.executable,\"version\":sys.version,\"native\":{str(pathlib.Path(m.__file__).resolve()):hashlib.sha256(pathlib.Path(m.__file__).read_bytes()).hexdigest() for n,m in sys.modules.items() if n.startswith(\"ifclite_geom\") and getattr(m,\"__file__\",\"\").endswith(\".so\")}}))"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+      "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "4a3530a0accfcef2402db4931617a9adcec80daa437b9e36edabbe3df499da9f",
+    "logBytes": 379,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 820392136704,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 820392644608,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "raw-freeze",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python",
+      "-m",
+      "pip",
+      "freeze",
+      "--all"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+      "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "80e184836a5d846fe1d8976e223b122c08a8c55c30f02bba7b0985b84492f9f8",
+    "logBytes": 234,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 820392738816,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 820391231488,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "raw-elf-0",
+    "argv": [
+      "readelf",
+      "-l",
+      "-d",
+      "--version-info",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/d47-public-probe"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+      "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "aae7a79c468b805bb2c85c12a5bd09a3cd2579e779a04d2de3dcb19ac234faf8",
+    "logBytes": 7293,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 820155244544,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 820155744256,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "raw-elf-1",
+    "argv": [
+      "readelf",
+      "-l",
+      "-d",
+      "--version-info",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/libd47_public_probe.so"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+      "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "9b78564e13003ff10c9ef2e67b690707af3bdc53489bfc5b43281570dc4a4f73",
+    "logBytes": 5962,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 820155539456,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 820155072512,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  },
+  {
+    "name": "raw-elf-3",
+    "argv": [
+      "readelf",
+      "-l",
+      "-d",
+      "--version-info",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/lib/python3.12/site-packages/ifclite_geom/ifclite_geom.abi3.so"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+      "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+      "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+      "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+    },
+    "exitCode": 0,
+    "logSha256": "bc62186c0a631dd473f5c07c52b46d56b9082e2f56a5f571fa566b13efc0fc02",
+    "logBytes": 8658,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 820155600896,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 820121673728,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56066048
+    }
+  }
+]

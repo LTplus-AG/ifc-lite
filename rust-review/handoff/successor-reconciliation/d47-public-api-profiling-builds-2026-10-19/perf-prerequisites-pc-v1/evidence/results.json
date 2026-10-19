@@ -1,0 +1,54 @@
+[
+  {
+    "name": "base-external-lock",
+    "argv": [
+      "cargo",
+      "generate-lockfile",
+      "--offline",
+      "--manifest-path",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v1/base/wrapper/Cargo.toml"
+    ],
+    "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v1/base/wrapper",
+    "envOverrides": {
+      "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v1/base/target",
+      "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633"
+    },
+    "exitCode": 0,
+    "logSha256": "37804e40f6f6c7dbb78dad06e4c079785621e7f2d913c9dbf56ca0c56d4074cc",
+    "logBytes": 55,
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 822174932992,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56172544
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": true
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": true
+        }
+      },
+      "payloadFreeBytes": 822174605312,
+      "payloadInodes": 1000000,
+      "linuxStateFreeBytes": 56168448
+    }
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/raw-wasm-consumer-pc-v3/ARTIFACT-HASHES.json": {
+    "verified": 149,
+    "manifestSha256": "d176e6cc44b748ef16b2381a6edcb0c638c668f1c68c6eaf9495b7280886d912"
+  },
+  "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/public02-wasm-baseline-pc-v1/ARTIFACT-HASHES.json": {
+    "verified": 39,
+    "manifestSha256": "92081ece5ade61752f1871acc01bb3320becfeef88f096e1cc46dc9629637e68"
+  }
+}

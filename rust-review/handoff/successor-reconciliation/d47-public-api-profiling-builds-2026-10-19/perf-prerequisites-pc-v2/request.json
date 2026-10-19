@@ -1,0 +1,49 @@
+{
+  "scope": "BUILD ONLY profiling public wrappers+Python wheels; no public data calls/timed cohort",
+  "cpu": 2,
+  "memoryGiB": 12,
+  "kind": "ordinary",
+  "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+  "resources": [
+    "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2",
+    "/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/cargo-home",
+    "/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source",
+    "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/source",
+    "/home/louistrue/build-workers/incoming/d47-perf-prerequisites-v2"
+  ],
+  "overrides": {
+    "CARGO_HOME": "/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/cargo-home",
+    "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+    "TMPDIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/tmp",
+    "TMP": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/tmp",
+    "TEMP": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/tmp",
+    "RUSTUP_TOOLCHAIN": "nightly-2025-11-15",
+    "RUSTUP_HOME": "/home/louistrue/.rustup",
+    "CARGO_INCREMENTAL": "0",
+    "CARGO_PROFILE_DEV_DEBUG": "0",
+    "CARGO_PROFILE_TEST_DEBUG": "0",
+    "CARGO_NET_OFFLINE": "true",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PATH": "/home/louistrue/.cargo/bin:/home/louistrue/.nvm/versions/node/v24.21.0/bin:/usr/local/bin:/usr/bin:/bin"
+  },
+  "targets": {
+    "base": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+    "raw": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target"
+  },
+  "driverSha256": "a3dc42bdda959734e0c95e180db266b7fa85564fd8689d9613bbe513a4b3f603",
+  "command": [
+    "ssh",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "StrictHostKeyChecking=yes",
+    "-o",
+    "ConnectTimeout=10",
+    "-o",
+    "ForwardAgent=no",
+    "ifc-pc-worker",
+    "env CARGO_HOME=/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/cargo-home CARGO_TARGET_DIR=/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target TMPDIR=/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/tmp TMP=/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/tmp TEMP=/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/tmp RUSTUP_TOOLCHAIN=nightly-2025-11-15 RUSTUP_HOME=/home/louistrue/.rustup CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_NET_OFFLINE=true PYTHONDONTWRITEBYTECODE=1 PATH=/home/louistrue/.cargo/bin:/home/louistrue/.nvm/versions/node/v24.21.0/bin:/usr/local/bin:/usr/bin:/bin /home/louistrue/build-workers/worker-python /home/louistrue/build-workers/worker-current/worker.py --state /home/louistrue/build-workers/worker-state run --cwd /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source --kind ordinary --cpu 2 --memory 12 --queue-timeout 3600 --timeout 21600 --require-clean --commit 7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db --resource /mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2 --resource /mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/cargo-home --resource /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source --resource /mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/source --resource /home/louistrue/build-workers/incoming/d47-perf-prerequisites-v2 --resource /mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target --resource /mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target -- /home/louistrue/build-workers/worker-python /home/louistrue/build-workers/incoming/d47-perf-prerequisites-v2/qualify.py"
+  ],
+  "previousOriginalFailedJob": "a5955a88-86ab-4a57-9b5d-92cfd33a8e36",
+  "repair": "Only external lock bootstrap: exact source lock plus external package; offline metadata honors retained versions; strict checksum/version equality before locked build"
+}

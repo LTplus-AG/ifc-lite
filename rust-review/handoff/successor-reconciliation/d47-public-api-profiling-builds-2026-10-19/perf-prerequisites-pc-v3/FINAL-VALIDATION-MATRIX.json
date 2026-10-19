@@ -1,0 +1,570 @@
+{
+  "terminal": {
+    "jobId": "d873c278-a9a4-42a8-8a16-7497aa765494",
+    "state": "completed",
+    "exitCode": 0,
+    "sourceUnchanged": true,
+    "originalSession": 95027
+  },
+  "buildStages": [
+    {
+      "name": "base-external-lock",
+      "argv": [
+        "cargo",
+        "metadata",
+        "--offline",
+        "--format-version",
+        "1",
+        "--manifest-path",
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/wrapper/Cargo.toml"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/wrapper",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+        "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "228ba20def316f71e15c5c961f7b7824a680f60633ce14b3dee9f438af35bfb0"
+    },
+    {
+      "name": "base-native-wrapper",
+      "argv": [
+        "cargo",
+        "build",
+        "--locked",
+        "--offline",
+        "--profile",
+        "profiling",
+        "--manifest-path",
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/wrapper/Cargo.toml"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/wrapper",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+        "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "0b8652da2b3f5f0646a7aba72580410d4ae5af89d4e1ab07680df7d1a7f1f036"
+    },
+    {
+      "name": "base-wrapper-identity",
+      "argv": [
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/d47-public-probe",
+        "--identity"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+        "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "303a5805891077724ae08a5b47e1c247b4694fd9aef95febf527011a431724ae"
+    },
+    {
+      "name": "base-private-venv",
+      "argv": [
+        "/home/louistrue/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12",
+        "-m",
+        "venv",
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+        "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "base-profiling-wheel",
+      "argv": [
+        "/home/louistrue/.cache/uv/archive-v0/nEg85VyatxAAFRki/maturin-1.15.0.data/scripts/maturin",
+        "build",
+        "--locked",
+        "--offline",
+        "--profile",
+        "profiling",
+        "--config",
+        "profile.release.opt-level=3",
+        "--config",
+        "profile.release.lto=true",
+        "--config",
+        "profile.release.codegen-units=1",
+        "--config",
+        "profile.release.strip=true",
+        "--config",
+        "profile.release.panic=\"abort\"",
+        "--config",
+        "profile.release.overflow-checks=false",
+        "--config",
+        "profile.release.package.\"*\".opt-level=3",
+        "--config",
+        "profile.release.package.\"*\".strip=true",
+        "--config",
+        "profile.profiling.inherits=\"release\"",
+        "--config",
+        "profile.profiling.strip=false",
+        "--config",
+        "profile.profiling.debug=\"line-tables-only\"",
+        "--config",
+        "profile.profiling.panic=\"unwind\"",
+        "--manifest-path",
+        "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/source/rust/python/Cargo.toml",
+        "--interpreter",
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python",
+        "--out",
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/wheels"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/source",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+        "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "82128e343b2888e0c82a507b105ae006beffc28897afc2e8cdf8c1b65100a1f4"
+    },
+    {
+      "name": "base-install-profiling-wheel",
+      "argv": [
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python",
+        "-m",
+        "pip",
+        "install",
+        "--no-index",
+        "--no-deps",
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+        "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "ced5d0591f8cbeb2113ca68726bb970d04bdc82e27b496175ad7942806db259d"
+    },
+    {
+      "name": "base-loaded-native",
+      "argv": [
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python",
+        "-c",
+        "import ifclite_geom,sys,pathlib,hashlib,json;print(json.dumps({\"python\":sys.executable,\"version\":sys.version,\"native\":{str(pathlib.Path(m.__file__).resolve()):hashlib.sha256(pathlib.Path(m.__file__).read_bytes()).hexdigest() for n,m in sys.modules.items() if n.startswith(\"ifclite_geom\") and getattr(m,\"__file__\",\"\").endswith(\".so\")}}))"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+        "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "a42fb82e7463151e500c9538c2c453e54b22c9533d73c1256cb9df4f6b5c044b"
+    },
+    {
+      "name": "base-freeze",
+      "argv": [
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python",
+        "-m",
+        "pip",
+        "freeze",
+        "--all"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+        "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "7fa094b97c853212c88a4f34c2d04e3a811345a818b9ba65d93d064a07230649"
+    },
+    {
+      "name": "base-elf-0",
+      "argv": [
+        "readelf",
+        "-l",
+        "-d",
+        "--version-info",
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/d47-public-probe"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+        "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "3203eee2439ce2aa2c86cb1e9bb4297183d7e700fd2325b1c2bc4fe39a0843a3"
+    },
+    {
+      "name": "base-elf-1",
+      "argv": [
+        "readelf",
+        "-l",
+        "-d",
+        "--version-info",
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/libd47_public_probe.so"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+        "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "840c7b9d42d8f220f11924ebc72baeded7619dacb734df8c2c020f9d77e5a468"
+    },
+    {
+      "name": "base-elf-3",
+      "argv": [
+        "readelf",
+        "-l",
+        "-d",
+        "--version-info",
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/lib/python3.12/site-packages/ifclite_geom/ifclite_geom.abi3.so"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target",
+        "D47_SOURCE_HEAD": "02b8e1981158559fd4ec9b385d2d80729079a633",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "ef515e86841973fff7fe000132fb6f049d235d34100a0fb8b2cd3b0ad536b019"
+    },
+    {
+      "name": "raw-external-lock",
+      "argv": [
+        "cargo",
+        "metadata",
+        "--offline",
+        "--format-version",
+        "1",
+        "--manifest-path",
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/wrapper/Cargo.toml"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/wrapper",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+        "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "f0091a3b16db247f0eb49b933589ba29c1d0b2ba59d87317c05ba6fe77d4dd48"
+    },
+    {
+      "name": "raw-native-wrapper",
+      "argv": [
+        "cargo",
+        "build",
+        "--locked",
+        "--offline",
+        "--profile",
+        "profiling",
+        "--manifest-path",
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/wrapper/Cargo.toml"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/wrapper",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+        "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "0ea13935ba80f8381f494ddc192de61745fccc9bd327d7966d7e5612c1dc8aae"
+    },
+    {
+      "name": "raw-wrapper-identity",
+      "argv": [
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/d47-public-probe",
+        "--identity"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+        "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "56bb8ed79134216bb28e8e681c9374620c029877d4cc7cdabc13d9a3529d012c"
+    },
+    {
+      "name": "raw-private-venv",
+      "argv": [
+        "/home/louistrue/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12",
+        "-m",
+        "venv",
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+        "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "raw-profiling-wheel",
+      "argv": [
+        "/home/louistrue/.cache/uv/archive-v0/nEg85VyatxAAFRki/maturin-1.15.0.data/scripts/maturin",
+        "build",
+        "--locked",
+        "--offline",
+        "--profile",
+        "profiling",
+        "--config",
+        "profile.release.opt-level=3",
+        "--config",
+        "profile.release.lto=true",
+        "--config",
+        "profile.release.codegen-units=1",
+        "--config",
+        "profile.release.strip=true",
+        "--config",
+        "profile.release.panic=\"abort\"",
+        "--config",
+        "profile.release.overflow-checks=false",
+        "--config",
+        "profile.release.package.\"*\".opt-level=3",
+        "--config",
+        "profile.release.package.\"*\".strip=true",
+        "--config",
+        "profile.profiling.inherits=\"release\"",
+        "--config",
+        "profile.profiling.strip=false",
+        "--config",
+        "profile.profiling.debug=\"line-tables-only\"",
+        "--config",
+        "profile.profiling.panic=\"unwind\"",
+        "--manifest-path",
+        "/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source/rust/python/Cargo.toml",
+        "--interpreter",
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python",
+        "--out",
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/wheels"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+        "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "dc45874557f1d777c35dfa1983a6c467c8c6f627968fe334c5da8923863b572e"
+    },
+    {
+      "name": "raw-install-profiling-wheel",
+      "argv": [
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python",
+        "-m",
+        "pip",
+        "install",
+        "--no-index",
+        "--no-deps",
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+        "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "ced5d0591f8cbeb2113ca68726bb970d04bdc82e27b496175ad7942806db259d"
+    },
+    {
+      "name": "raw-loaded-native",
+      "argv": [
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python",
+        "-c",
+        "import ifclite_geom,sys,pathlib,hashlib,json;print(json.dumps({\"python\":sys.executable,\"version\":sys.version,\"native\":{str(pathlib.Path(m.__file__).resolve()):hashlib.sha256(pathlib.Path(m.__file__).read_bytes()).hexdigest() for n,m in sys.modules.items() if n.startswith(\"ifclite_geom\") and getattr(m,\"__file__\",\"\").endswith(\".so\")}}))"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+        "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "4a3530a0accfcef2402db4931617a9adcec80daa437b9e36edabbe3df499da9f"
+    },
+    {
+      "name": "raw-freeze",
+      "argv": [
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python",
+        "-m",
+        "pip",
+        "freeze",
+        "--all"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+        "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "80e184836a5d846fe1d8976e223b122c08a8c55c30f02bba7b0985b84492f9f8"
+    },
+    {
+      "name": "raw-elf-0",
+      "argv": [
+        "readelf",
+        "-l",
+        "-d",
+        "--version-info",
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/d47-public-probe"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+        "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "aae7a79c468b805bb2c85c12a5bd09a3cd2579e779a04d2de3dcb19ac234faf8"
+    },
+    {
+      "name": "raw-elf-1",
+      "argv": [
+        "readelf",
+        "-l",
+        "-d",
+        "--version-info",
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/libd47_public_probe.so"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+        "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "9b78564e13003ff10c9ef2e67b690707af3bdc53489bfc5b43281570dc4a4f73"
+    },
+    {
+      "name": "raw-elf-3",
+      "argv": [
+        "readelf",
+        "-l",
+        "-d",
+        "--version-info",
+        "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/lib/python3.12/site-packages/ifclite_geom/ifclite_geom.abi3.so"
+      ],
+      "cwd": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw",
+      "envOverrides": {
+        "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+        "D47_SOURCE_HEAD": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+        "VIRTUAL_ENV": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv",
+        "PYO3_PYTHON": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python"
+      },
+      "exitCode": 0,
+      "logSha256": "bc62186c0a631dd473f5c07c52b46d56b9082e2f56a5f571fa566b13efc0fc02"
+    }
+  ],
+  "semanticPublicCallsExecuted": 0,
+  "timedSamplesExecuted": 0,
+  "noTimedRequest": true,
+  "loaderScope": "PC identity/import proof and static requirements; actual Pop loading UNRUN",
+  "artifacts": {
+    "entity_data_probe.py": {
+      "sha256": "4fd0ad29292bc6fcce8b974647f4da854c57e8cbeb2eb481394417388cd50d18",
+      "size": 1480,
+      "mode": "0o664"
+    },
+    "inputs/AC20-FZK-Haus.ifc": {
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "size": 2526511,
+      "mode": "0o775"
+    },
+    "inputs/02-opposed-products.ifc": {
+      "sha256": "fe5748939628705334cfaa562265580559e5fb13edb78341786eec1faef8a1f0",
+      "size": 26776,
+      "mode": "0o775"
+    },
+    "inputs/shared-set.ifc": {
+      "sha256": "6595832ebf581a7483749dbcf0dbfecffd5bd6218a3772350aaad32aed560fa8",
+      "size": 27628,
+      "mode": "0o775"
+    },
+    "base/libd47_public_probe.so": {
+      "sha256": "e5eb0380789390597a46c4267f8970915d2e8b6ab2a61f6d4590f3460ae183bd",
+      "size": 1598832,
+      "mode": "0o777"
+    },
+    "base/d47-public-probe": {
+      "sha256": "6969782519015c3e1d4ee97e57317d69113cdd950dc617b2a51ad65595333507",
+      "size": 11119720,
+      "mode": "0o777"
+    },
+    "base/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl": {
+      "sha256": "2e998c4c234798b63c28700c739346f3aa4e96935ef1e512a0ee786abc3e716d",
+      "size": 9049728,
+      "mode": "0o777"
+    },
+    "raw/libd47_public_probe.so": {
+      "sha256": "71c36644d639460e5f2a23f12b723cfdeb2ff8dafaed724f8698544357ab7e39",
+      "size": 1598832,
+      "mode": "0o777"
+    },
+    "raw/d47-public-probe": {
+      "sha256": "66face4fc520b56881d238af868f7fd294c22c6dae05522363646ed476802f0f",
+      "size": 11176984,
+      "mode": "0o777"
+    },
+    "raw/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl": {
+      "sha256": "6a251330ae223466c20b552d3cd6571a7d72b09050cb13c135bf102ab4386c24",
+      "size": 9059317,
+      "mode": "0o777"
+    }
+  },
+  "payloadArchiveSha256": "0a601699205f10e3676c6ccef587f839692ee347631231f18435dc5d5c3a2b0e",
+  "oldArtifactsPreserved": {
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/raw-wasm-consumer-pc-v3/ARTIFACT-HASHES.json": {
+      "verified": 149,
+      "manifestSha256": "d176e6cc44b748ef16b2381a6edcb0c638c668f1c68c6eaf9495b7280886d912"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/public02-wasm-baseline-pc-v1/ARTIFACT-HASHES.json": {
+      "verified": 39,
+      "manifestSha256": "92081ece5ade61752f1871acc01bb3320becfeef88f096e1cc46dc9629637e68"
+    }
+  },
+  "limits": [
+    "No performance verdict",
+    "No RSS/firstcallback neutrality",
+    "No broad adversarial parity/current-main integration",
+    "Optional mesh control omitted as inapplicable"
+  ],
+  "priorFailedJobs": [
+    "a5955a88-86ab-4a57-9b5d-92cfd33a8e36",
+    "0f608e94-dd22-408b-b33f-94311de10cd2"
+  ]
+}

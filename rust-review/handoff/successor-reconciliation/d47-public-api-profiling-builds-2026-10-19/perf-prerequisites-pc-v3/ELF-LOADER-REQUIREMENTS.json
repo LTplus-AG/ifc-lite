@@ -1,0 +1,170 @@
+{
+  "artifacts": {
+    "base-elf-0.log": {
+      "requiredVersions": [
+        "GCC_3.0",
+        "GCC_3.3",
+        "GCC_4.2.0",
+        "GLIBC_2.14",
+        "GLIBC_2.16",
+        "GLIBC_2.17",
+        "GLIBC_2.18",
+        "GLIBC_2.2.5",
+        "GLIBC_2.25",
+        "GLIBC_2.28",
+        "GLIBC_2.3",
+        "GLIBC_2.3.4",
+        "GLIBC_2.30",
+        "GLIBC_2.32",
+        "GLIBC_2.33",
+        "GLIBC_2.34"
+      ],
+      "maxGLIBC": "2.34",
+      "needed": [
+        "libgcc_s.so.1",
+        "libm.so.6",
+        "libc.so.6"
+      ],
+      "interpreter": [
+        "/lib64/ld-linux-x86-64.so.2"
+      ],
+      "rpathRunpath": []
+    },
+    "base-elf-3.log": {
+      "requiredVersions": [
+        "GCC_3.0",
+        "GCC_3.3",
+        "GCC_4.2.0",
+        "GLIBC_2.14",
+        "GLIBC_2.17",
+        "GLIBC_2.18",
+        "GLIBC_2.2.5",
+        "GLIBC_2.25",
+        "GLIBC_2.28",
+        "GLIBC_2.3",
+        "GLIBC_2.3.4",
+        "GLIBC_2.30",
+        "GLIBC_2.33",
+        "GLIBC_2.34",
+        "GLIBC_2.35"
+      ],
+      "maxGLIBC": "2.35",
+      "needed": [
+        "libgcc_s.so.1",
+        "libm.so.6",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "interpreter": [],
+      "rpathRunpath": []
+    },
+    "base-elf-1.log": {
+      "requiredVersions": [
+        "GCC_3.0",
+        "GCC_3.3",
+        "GCC_4.2.0",
+        "GLIBC_2.14",
+        "GLIBC_2.17",
+        "GLIBC_2.2.5",
+        "GLIBC_2.28",
+        "GLIBC_2.3",
+        "GLIBC_2.3.4",
+        "GLIBC_2.30",
+        "GLIBC_2.33"
+      ],
+      "maxGLIBC": "2.33",
+      "needed": [
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "interpreter": [],
+      "rpathRunpath": []
+    },
+    "raw-elf-3.log": {
+      "requiredVersions": [
+        "GCC_3.0",
+        "GCC_3.3",
+        "GCC_4.2.0",
+        "GLIBC_2.14",
+        "GLIBC_2.17",
+        "GLIBC_2.18",
+        "GLIBC_2.2.5",
+        "GLIBC_2.25",
+        "GLIBC_2.28",
+        "GLIBC_2.3",
+        "GLIBC_2.3.4",
+        "GLIBC_2.30",
+        "GLIBC_2.33",
+        "GLIBC_2.34",
+        "GLIBC_2.35"
+      ],
+      "maxGLIBC": "2.35",
+      "needed": [
+        "libgcc_s.so.1",
+        "libm.so.6",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "interpreter": [],
+      "rpathRunpath": []
+    },
+    "raw-elf-0.log": {
+      "requiredVersions": [
+        "GCC_3.0",
+        "GCC_3.3",
+        "GCC_4.2.0",
+        "GLIBC_2.14",
+        "GLIBC_2.16",
+        "GLIBC_2.17",
+        "GLIBC_2.18",
+        "GLIBC_2.2.5",
+        "GLIBC_2.25",
+        "GLIBC_2.28",
+        "GLIBC_2.3",
+        "GLIBC_2.3.4",
+        "GLIBC_2.30",
+        "GLIBC_2.32",
+        "GLIBC_2.33",
+        "GLIBC_2.34"
+      ],
+      "maxGLIBC": "2.34",
+      "needed": [
+        "libgcc_s.so.1",
+        "libm.so.6",
+        "libc.so.6"
+      ],
+      "interpreter": [
+        "/lib64/ld-linux-x86-64.so.2"
+      ],
+      "rpathRunpath": []
+    },
+    "raw-elf-1.log": {
+      "requiredVersions": [
+        "GCC_3.0",
+        "GCC_3.3",
+        "GCC_4.2.0",
+        "GLIBC_2.14",
+        "GLIBC_2.17",
+        "GLIBC_2.2.5",
+        "GLIBC_2.28",
+        "GLIBC_2.3",
+        "GLIBC_2.3.4",
+        "GLIBC_2.30",
+        "GLIBC_2.33"
+      ],
+      "maxGLIBC": "2.33",
+      "needed": [
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "interpreter": [],
+      "rpathRunpath": []
+    }
+  },
+  "retainedPopContext": "x86_64 Linux GLIBC2.39; not queried in this arm",
+  "staticVersionBlockerObserved": false,
+  "actualPopLoaderExecution": "UNRUN",
+  "noCompatibilityProvisioningOrWaiver": true
+}

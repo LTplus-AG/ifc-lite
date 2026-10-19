@@ -1,0 +1,73 @@
+🐍 Found CPython 3.12 at /mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python
+🔗 Found pyo3 bindings with abi3-py3.9 support
+📡 Using build options features from pyproject.toml
+   Compiling proc-macro2 v1.0.106
+   Compiling autocfg v1.5.1
+   Compiling quote v1.0.46
+   Compiling num-traits v0.2.19
+   Compiling syn v2.0.118
+   Compiling target-lexicon v0.13.5
+   Compiling typenum v1.20.1
+   Compiling crossbeam-utils v0.8.21
+   Compiling bytemuck v1.25.0
+   Compiling num-integer v0.1.46
+   Compiling serde_core v1.0.228
+   Compiling generic-array v0.14.7
+   Compiling pyo3-build-config v0.29.0
+   Compiling crossbeam-epoch v0.9.18
+   Compiling safe_arch v1.0.0
+   Compiling matrixmultiply v0.3.10
+   Compiling either v1.16.0
+   Compiling thiserror v2.0.18
+   Compiling memchr v2.8.2
+   Compiling rayon-core v1.13.0
+   Compiling wide v1.5.0
+   Compiling crossbeam-deque v0.8.6
+   Compiling thiserror-impl v2.0.18
+   Compiling futures-macro v0.3.32
+   Compiling num-bigint v0.4.6
+   Compiling approx v0.5.1
+   Compiling num-complex v0.4.6
+   Compiling futures-core v0.3.32
+   Compiling serde v1.0.228
+   Compiling futures-task v0.3.32
+   Compiling nom v7.1.3
+   Compiling futures-util v0.3.32
+   Compiling simba v0.10.0
+   Compiling num-rational v0.4.2
+   Compiling serde_derive v1.0.228
+   Compiling flate2 v1.1.9
+   Compiling itertools v0.14.0
+   Compiling pyo3-ffi v0.29.0
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling fast-float2 v0.2.3
+   Compiling rustc-hash v2.1.2
+   Compiling libc v0.2.186
+   Compiling twox-hash v2.1.3
+   Compiling serde_json v1.0.150
+   Compiling bitflags v2.13.0
+   Compiling i_overlay v8.1.1
+   Compiling png v0.18.1
+   Compiling ifc-lite-core v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/source/rust/core)
+   Compiling digest v0.10.7
+   Compiling earcutr v0.5.0
+   Compiling rayon v1.12.0
+   Compiling nalgebra v0.35.0
+   Compiling bnum v0.14.4
+   Compiling tracing-attributes v0.1.31
+   Compiling smallvec v1.15.2
+   Compiling heck v0.5.0
+   Compiling ifc-lite-geometry v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/source/rust/geometry)
+   Compiling tracing v0.1.44
+   Compiling pyo3-macros-backend v0.29.0
+   Compiling sha2 v0.10.9
+   Compiling pyo3 v0.29.0
+   Compiling ifc-lite-processing v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/source/rust/processing)
+   Compiling pyo3-macros v0.29.0
+   Compiling ifc-lite-export v21.4.0 (/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/source/rust/export)
+   Compiling ifc-lite-python v4.15.0 (/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/source/rust/python)
+    Finished `profiling` profile [optimized + debuginfo] target(s) in 2m 29s
+📦 Including files matching "ifclite_geom.pyi"
+📖 Found type stub file at ifclite_geom.pyi
+📦 Built wheel for abi3 Python ≥ 3.9 to /mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl

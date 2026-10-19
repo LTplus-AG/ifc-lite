@@ -1,0 +1,8 @@
+{"jobId": "a5955a88-86ab-4a57-9b5d-92cfd33a8e36", "receipt": "/home/louistrue/build-workers/worker-state/jobs/a5955a88-86ab-4a57-9b5d-92cfd33a8e36/receipt.json"}
+START base-external-lock
+END base-external-lock 0
+Traceback (most recent call last):
+  File "/home/louistrue/build-workers/incoming/d47-perf-prerequisites-v1/qualify.py", line 88, in <module>
+    if 'checksum' in x:assert original.get((x['name'],x['version']))==x['checksum'],x
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: {'name': 'autocfg', 'version': '1.5.1', 'source': 'registry+https://github.com/rust-lang/crates.io-index', 'checksum': 'f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53'}

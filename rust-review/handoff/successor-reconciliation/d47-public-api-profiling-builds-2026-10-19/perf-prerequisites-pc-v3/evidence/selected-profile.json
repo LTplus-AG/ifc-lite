@@ -1,0 +1,126 @@
+{
+  "profiles": {
+    "release": {
+      "opt-level": 3,
+      "lto": true,
+      "codegen-units": 1,
+      "strip": true,
+      "panic": "abort",
+      "overflow-checks": false,
+      "package": {
+        "*": {
+          "opt-level": 3,
+          "strip": true
+        }
+      }
+    },
+    "server-release": {
+      "inherits": "release",
+      "panic": "unwind"
+    },
+    "profiling": {
+      "inherits": "release",
+      "strip": false,
+      "debug": "line-tables-only",
+      "panic": "unwind"
+    },
+    "dev": {
+      "package": {
+        "bnum": {
+          "opt-level": 3
+        },
+        "num-bigint": {
+          "opt-level": 3
+        },
+        "num-rational": {
+          "opt-level": 3
+        },
+        "ifc-lite-geometry": {
+          "opt-level": 3
+        }
+      }
+    }
+  },
+  "nativeClockSource": "std::time::Instant (perf_probe/measurement.rs)",
+  "rssSource": "proc_kib from analytic_export/walk_bench_tests.rs; VmRSS/VmHWM",
+  "pythonClock": "same std::time::Instant via external C ABI bridge; origin initialized before public call",
+  "environment": {
+    "USER": "louistrue",
+    "SSH_CLIENT": "127.0.0.1 45840 2222",
+    "IFC_WORKER_ACTIVE_STATE": "/home/louistrue/build-workers/worker-state",
+    "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target",
+    "CARGO_PROFILE_TEST_DEBUG": "0",
+    "SHLVL": "0",
+    "RUSTUP_TOOLCHAIN": "nightly-2025-11-15",
+    "HOME": "/home/louistrue",
+    "RAYON_NUM_THREADS": "2",
+    "CARGO_INCREMENTAL": "0",
+    "IFC_WORKER_STATE": "/home/louistrue/build-workers/worker-state",
+    "TMPDIR": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/tmp",
+    "LOGNAME": "louistrue",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "_": "/usr/bin/env",
+    "TEMP": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/tmp",
+    "RUSTUP_HOME": "/home/louistrue/.rustup",
+    "PATH": "/home/louistrue/.cargo/bin:/home/louistrue/.nvm/versions/node/v24.21.0/bin:/usr/local/bin:/usr/bin:/bin",
+    "LANG": "C.UTF-8",
+    "CARGO_PROFILE_DEV_DEBUG": "0",
+    "TMP": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/tmp",
+    "TURBO_CONCURRENCY": "2",
+    "SHELL": "/bin/bash",
+    "RUST_TEST_THREADS": "1",
+    "CARGO_NET_OFFLINE": "true",
+    "PWD": "/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source",
+    "SSH_CONNECTION": "127.0.0.1 45840 127.0.0.1 2222",
+    "CARGO_HOME": "/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/cargo-home",
+    "CARGO_BUILD_JOBS": "2",
+    "OMP_NUM_THREADS": "2",
+    "OPENBLAS_NUM_THREADS": "2",
+    "MKL_NUM_THREADS": "2",
+    "RUSTUP_AUTO_INSTALL": "0",
+    "PYTHONNOUSERSITE": "1",
+    "PIP_NO_INDEX": "1",
+    "PIP_NO_CACHE_DIR": "1",
+    "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+    "XDG_CACHE_HOME": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/xdg/cache",
+    "XDG_DATA_HOME": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/xdg/data",
+    "XDG_CONFIG_HOME": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/xdg/config",
+    "XDG_STATE_HOME": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/xdg/state",
+    "npm_config_cache": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/npm-cache",
+    "COREPACK_HOME": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/corepack",
+    "NODE_COMPILE_CACHE": "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/node-cache"
+  },
+  "toolInputs": {
+    "wasm-pack": {
+      "source": "/home/louistrue/.nvm/versions/node/v24.21.0/lib/node_modules/wasm-pack/binary/wasm-pack",
+      "ownPath": "/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/tools/wasm-pack",
+      "sha256": "c6c3d54702f4bae4a1d51e37e19c2c61b130865dc3fabc745eebe8194b87b253"
+    },
+    "wasm-bindgen": {
+      "source": "/home/louistrue/.cache/.wasm-pack/wasm-bindgen-8b0e612a116397d6/wasm-bindgen",
+      "ownPath": "/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/tools/wasm-bindgen",
+      "sha256": "d8d94635b40d1d8a93562fc7ced6093488252600dba39ce1dbab410b89157d8b"
+    },
+    "wasm-bindgen-test-runner": {
+      "source": "/home/louistrue/.cache/.wasm-pack/wasm-bindgen-8b0e612a116397d6/wasm-bindgen-test-runner",
+      "ownPath": "/mnt/c/Users/louistrue/ifc-private/d47-raw-wasm-consumer-v1/tools/wasm-bindgen-test-runner",
+      "sha256": "a34c86212510b24a67315528df5109587001f51175904871be21ceb30eaa01b3"
+    },
+    "rustc": {
+      "path": "/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/bin/rustc",
+      "sha256": "56ae45b0d36c8cf3c5c5f1a7a602f5fde12782e9d4b48a78e60bda3a3b11048c"
+    },
+    "cargo": {
+      "path": "/home/louistrue/.rustup/toolchains/nightly-2025-11-15-x86_64-unknown-linux-gnu/bin/cargo",
+      "sha256": "094ca6ad7b2f42fe32f08f93d89b27f075d675102e2eeb6e235fee7c318acfae"
+    },
+    "node": {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node",
+      "sha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c"
+    }
+  },
+  "pythonSha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+  "maturinSha256": "7770f6d9cbe0497f69b9b60f001a9a92784767651658e778b9664e6ef9b8a29a",
+  "meshControl": "OMITTED: process_geometry does not execute changed rows",
+  "noTimedCohort": true
+}

@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "/home/louistrue/build-workers/incoming/d47-perf-prerequisites-v2/qualify.py", line 76, in <module>
+    assert os.environ.get('IFC_WORKER_ACTIVE_STATE');O.mkdir();save('source-before.json',guard());SNAP=snapshot();save('source-file-hashes-before.json',SNAP);before=fixtures('before')
+                                                                                         ~~~~~^^
+  File "/home/louistrue/build-workers/incoming/d47-perf-prerequisites-v2/qualify.py", line 27, in guard
+    f=R/'inputs'/n;assert f.stat().st_size==pin['size'] and sha(f)==pin['sha256'],n
+                          ~~~~~~^^
+  File "/usr/lib/python3.14/pathlib/__init__.py", line 655, in stat
+    return os.stat(self, follow_symlinks=follow_symlinks)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/AC20-FZK-Haus.ifc'

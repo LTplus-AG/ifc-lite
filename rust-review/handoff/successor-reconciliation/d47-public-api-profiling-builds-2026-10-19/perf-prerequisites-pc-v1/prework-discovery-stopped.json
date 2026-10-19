@@ -1,0 +1,8 @@
+{
+  "originalSession": 91352,
+  "terminal": 255,
+  "ownReadOnlyPreworkPid": 8168,
+  "reason": "recursive target discovery too broad; stopped own read before any managed submission",
+  "knownExactProfilingArtifacts": false,
+  "noSourceOrCacheMutation": true
+}

@@ -1,0 +1,17 @@
+{
+  "shared-set": {
+    "inputBytes": 27628,
+    "inputSha256": "6595832ebf581a7483749dbcf0dbfecffd5bd6218a3772350aaad32aed560fa8",
+    "construction": "Exact existing Rust fixture(case, empty extra) expansion/header/separators; no parser or property calculator",
+    "FResolvedValueBytes": 532946,
+    "FResolvedValueSha256": "92a974b8fddd650169101d999d3acb2ed120243559a60a8a28ae8cb2a157efeb"
+  },
+  "02-opposed-products": {
+    "bytes": 26776,
+    "sha256": "fe5748939628705334cfaa562265580559e5fb13edb78341786eec1faef8a1f0"
+  },
+  "haus": {
+    "bytes": 2526511,
+    "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5"
+  }
+}

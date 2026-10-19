@@ -1,0 +1,2 @@
+ifclite-geom @ file:///mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/wheels/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl#sha256=6a251330ae223466c20b552d3cd6571a7d72b09050cb13c135bf102ab4386c24
+pip==25.0.1

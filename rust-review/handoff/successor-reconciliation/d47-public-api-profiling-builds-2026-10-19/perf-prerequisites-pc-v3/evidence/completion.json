@@ -1,0 +1,10 @@
+{
+  "buildOnly": true,
+  "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+  "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+  "all182Equal": true,
+  "sourceExactBeforeAfter": true,
+  "rawGeneratedUnchanged": true,
+  "noPerformanceMeasurement": true,
+  "popLoaderExecution": "UNRUN; review actual readelf requirements before transfer/cohort"
+}

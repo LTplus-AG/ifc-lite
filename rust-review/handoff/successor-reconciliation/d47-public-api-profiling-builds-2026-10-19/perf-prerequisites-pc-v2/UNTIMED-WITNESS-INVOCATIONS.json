@@ -1,0 +1,373 @@
+{
+  "status": "PREPARED ONLY; not run",
+  "count": 30,
+  "purpose": "Separate semantic outputs, never timing/RSS evidence. Streaming witness intentionally collects; measure mode drops rows. Full rows duplicated in debug+structured witness; output can be large.",
+  "calls": [
+    {
+      "input": "shared-set.ifc",
+      "api": "stream",
+      "side": "base",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/d47-public-probe",
+        "witness",
+        "stream",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/shared-set.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/shared-set.ifc.stream.base.json"
+      ]
+    },
+    {
+      "input": "shared-set.ifc",
+      "api": "stream",
+      "side": "raw",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/d47-public-probe",
+        "witness",
+        "stream",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/shared-set.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/shared-set.ifc.stream.raw.json"
+      ]
+    },
+    {
+      "input": "shared-set.ifc",
+      "api": "build",
+      "side": "base",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/d47-public-probe",
+        "witness",
+        "build",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/shared-set.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/shared-set.ifc.build.base.json"
+      ]
+    },
+    {
+      "input": "shared-set.ifc",
+      "api": "build",
+      "side": "raw",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/d47-public-probe",
+        "witness",
+        "build",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/shared-set.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/shared-set.ifc.build.raw.json"
+      ]
+    },
+    {
+      "input": "shared-set.ifc",
+      "api": "csv",
+      "side": "base",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/d47-public-probe",
+        "witness",
+        "csv",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/shared-set.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/shared-set.ifc.csv.base.json"
+      ]
+    },
+    {
+      "input": "shared-set.ifc",
+      "api": "csv",
+      "side": "raw",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/d47-public-probe",
+        "witness",
+        "csv",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/shared-set.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/shared-set.ifc.csv.raw.json"
+      ]
+    },
+    {
+      "input": "shared-set.ifc",
+      "api": "entity_data",
+      "side": "base",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv/bin/python",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/entity_data_probe.py",
+        "witness",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/libd47_public_probe.so",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/shared-set.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/shared-set.ifc.entity_data.base.json"
+      ]
+    },
+    {
+      "input": "shared-set.ifc",
+      "api": "entity_data",
+      "side": "raw",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/venv/bin/python",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/entity_data_probe.py",
+        "witness",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/libd47_public_probe.so",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/shared-set.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/shared-set.ifc.entity_data.raw.json"
+      ]
+    },
+    {
+      "input": "shared-set.ifc",
+      "api": "server",
+      "side": "base",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/d47-public-probe",
+        "witness",
+        "server",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/shared-set.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/shared-set.ifc.server.base.json"
+      ]
+    },
+    {
+      "input": "shared-set.ifc",
+      "api": "server",
+      "side": "raw",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/d47-public-probe",
+        "witness",
+        "server",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/shared-set.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/shared-set.ifc.server.raw.json"
+      ]
+    },
+    {
+      "input": "02-opposed-products.ifc",
+      "api": "stream",
+      "side": "base",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/d47-public-probe",
+        "witness",
+        "stream",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/02-opposed-products.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/02-opposed-products.ifc.stream.base.json"
+      ]
+    },
+    {
+      "input": "02-opposed-products.ifc",
+      "api": "stream",
+      "side": "raw",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/d47-public-probe",
+        "witness",
+        "stream",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/02-opposed-products.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/02-opposed-products.ifc.stream.raw.json"
+      ]
+    },
+    {
+      "input": "02-opposed-products.ifc",
+      "api": "build",
+      "side": "base",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/d47-public-probe",
+        "witness",
+        "build",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/02-opposed-products.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/02-opposed-products.ifc.build.base.json"
+      ]
+    },
+    {
+      "input": "02-opposed-products.ifc",
+      "api": "build",
+      "side": "raw",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/d47-public-probe",
+        "witness",
+        "build",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/02-opposed-products.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/02-opposed-products.ifc.build.raw.json"
+      ]
+    },
+    {
+      "input": "02-opposed-products.ifc",
+      "api": "csv",
+      "side": "base",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/d47-public-probe",
+        "witness",
+        "csv",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/02-opposed-products.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/02-opposed-products.ifc.csv.base.json"
+      ]
+    },
+    {
+      "input": "02-opposed-products.ifc",
+      "api": "csv",
+      "side": "raw",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/d47-public-probe",
+        "witness",
+        "csv",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/02-opposed-products.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/02-opposed-products.ifc.csv.raw.json"
+      ]
+    },
+    {
+      "input": "02-opposed-products.ifc",
+      "api": "entity_data",
+      "side": "base",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv/bin/python",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/entity_data_probe.py",
+        "witness",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/libd47_public_probe.so",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/02-opposed-products.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/02-opposed-products.ifc.entity_data.base.json"
+      ]
+    },
+    {
+      "input": "02-opposed-products.ifc",
+      "api": "entity_data",
+      "side": "raw",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/venv/bin/python",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/entity_data_probe.py",
+        "witness",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/libd47_public_probe.so",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/02-opposed-products.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/02-opposed-products.ifc.entity_data.raw.json"
+      ]
+    },
+    {
+      "input": "02-opposed-products.ifc",
+      "api": "server",
+      "side": "base",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/d47-public-probe",
+        "witness",
+        "server",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/02-opposed-products.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/02-opposed-products.ifc.server.base.json"
+      ]
+    },
+    {
+      "input": "02-opposed-products.ifc",
+      "api": "server",
+      "side": "raw",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/d47-public-probe",
+        "witness",
+        "server",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/02-opposed-products.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/02-opposed-products.ifc.server.raw.json"
+      ]
+    },
+    {
+      "input": "AC20-FZK-Haus.ifc",
+      "api": "stream",
+      "side": "base",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/d47-public-probe",
+        "witness",
+        "stream",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/AC20-FZK-Haus.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/AC20-FZK-Haus.ifc.stream.base.json"
+      ]
+    },
+    {
+      "input": "AC20-FZK-Haus.ifc",
+      "api": "stream",
+      "side": "raw",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/d47-public-probe",
+        "witness",
+        "stream",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/AC20-FZK-Haus.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/AC20-FZK-Haus.ifc.stream.raw.json"
+      ]
+    },
+    {
+      "input": "AC20-FZK-Haus.ifc",
+      "api": "build",
+      "side": "base",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/d47-public-probe",
+        "witness",
+        "build",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/AC20-FZK-Haus.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/AC20-FZK-Haus.ifc.build.base.json"
+      ]
+    },
+    {
+      "input": "AC20-FZK-Haus.ifc",
+      "api": "build",
+      "side": "raw",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/d47-public-probe",
+        "witness",
+        "build",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/AC20-FZK-Haus.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/AC20-FZK-Haus.ifc.build.raw.json"
+      ]
+    },
+    {
+      "input": "AC20-FZK-Haus.ifc",
+      "api": "csv",
+      "side": "base",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/d47-public-probe",
+        "witness",
+        "csv",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/AC20-FZK-Haus.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/AC20-FZK-Haus.ifc.csv.base.json"
+      ]
+    },
+    {
+      "input": "AC20-FZK-Haus.ifc",
+      "api": "csv",
+      "side": "raw",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/d47-public-probe",
+        "witness",
+        "csv",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/AC20-FZK-Haus.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/AC20-FZK-Haus.ifc.csv.raw.json"
+      ]
+    },
+    {
+      "input": "AC20-FZK-Haus.ifc",
+      "api": "entity_data",
+      "side": "base",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/venv/bin/python",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/entity_data_probe.py",
+        "witness",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/libd47_public_probe.so",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/AC20-FZK-Haus.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/AC20-FZK-Haus.ifc.entity_data.base.json"
+      ]
+    },
+    {
+      "input": "AC20-FZK-Haus.ifc",
+      "api": "entity_data",
+      "side": "raw",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/venv/bin/python",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/entity_data_probe.py",
+        "witness",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/libd47_public_probe.so",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/AC20-FZK-Haus.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/AC20-FZK-Haus.ifc.entity_data.raw.json"
+      ]
+    },
+    {
+      "input": "AC20-FZK-Haus.ifc",
+      "api": "server",
+      "side": "base",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/base/d47-public-probe",
+        "witness",
+        "server",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/AC20-FZK-Haus.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/AC20-FZK-Haus.ifc.server.base.json"
+      ]
+    },
+    {
+      "input": "AC20-FZK-Haus.ifc",
+      "api": "server",
+      "side": "raw",
+      "argv": [
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/raw/d47-public-probe",
+        "witness",
+        "server",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/inputs/AC20-FZK-Haus.ifc",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/perf-runtime-v1/payload/witnesses/AC20-FZK-Haus.ifc.server.raw.json"
+      ]
+    }
+  ]
+}

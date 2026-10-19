@@ -319,3 +319,26 @@ fn issue_7949_open_edges_off_the_fold_are_a_tear_beyond_it() {
     let closed = tris_to_mesh(&box_mesh([0.; 3], [1.; 3]));
     assert!(!tears_beyond_folds(&closed, &buckets, &no_fold), "a closed host tears nothing");
 }
+
+#[test]
+fn issue_7949_an_open_sub_edge_split_along_a_fold_edge_is_not_a_tear_beyond_it() {
+    use super::super::{buckets::Buckets, plane_merge::PlaneTri, supported_cells::Supported};
+    use nalgebra::{Point3, Vector3};
+    // One retained fold triangle. A peer seam splits its bottom and left edges
+    // at (1,0) and (0,1): vertices the fold never owned, but which lie on it.
+    let key = (0, 0, 0, 0);
+    let (a, b, c) = (Point3::new(0., 0., 0.), Point3::new(2., 0., 0.), Point3::new(0., 2., 0.));
+    let mut buckets = Buckets::new();
+    buckets.insert(key, vec![PlaneTri { v: [a, b, c], normal: Vector3::z(), tag: None }]);
+    let mut supported = Supported::default();
+    supported.folded_buckets.push(key);
+
+    // All three corners sit on the fold's edges, so every open edge is the
+    // fold's own boundary.
+    let on_edges = represented(&[[1., 0., 0.], [0., 2., 0.], [0., 1., 0.]], &[[0, 1, 2]]);
+    assert!(!tears_beyond_folds(&on_edges, &buckets, &supported));
+    // One corner in the fold's interior, off every edge: that boundary is not
+    // the fold's.
+    let off_edges = represented(&[[1., 0., 0.], [0., 2., 0.], [0.5, 0.5, 0.]], &[[0, 1, 2]]);
+    assert!(tears_beyond_folds(&off_edges, &buckets, &supported));
+}

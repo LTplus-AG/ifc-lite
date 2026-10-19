@@ -56,24 +56,46 @@ pub(super) fn signed_boundary_worse(candidate: &Mesh, baseline: &Mesh) -> bool {
 
 /// Does `candidate` leave boundary open anywhere other than along a retained
 /// fold? A healthy fold keeps its own finite support, and that support may stay
-/// open against the cleaned neighbours (#7292). An open edge that touches no
-/// fold or fold-support vertex is a tear the fold did not need, and the
-/// fold-free result is the better host (#7949: the ISSUE_068 opening-dense
-/// walls, where a noise-level fold turned the whole wall into hairline cracks).
+/// open against the cleaned neighbours (#7292). An open edge whose endpoints do
+/// not lie on a fold or fold-support triangle is a tear the fold did not need,
+/// and the fold-free result is the better host (#7949: the ISSUE_068
+/// opening-dense walls, where a noise-level fold turned the whole wall into
+/// hairline cracks).
+///
+/// An endpoint counts as on the fold when it is one of those triangles' corners
+/// or lies on one of their edges: a peer seam conform splits a retained edge at
+/// a vertex the fold never owned, and the open sub-edge that leaves is still the
+/// fold's own boundary.
 pub(super) fn tears_beyond_folds(
     candidate: &Mesh,
     buckets: &super::buckets::Buckets,
     supported: &super::supported_cells::Supported,
 ) -> bool {
     const SCALE: f64 = 1.0e4;
+    // Two grid cells: the candidate's f32 positions land within one of a seam.
+    const TOLERANCE: f64 = 2.0 / SCALE;
     let grid = |v: f64| (f64::from(v as f32) * SCALE).round() as i64;
-    let mut fold_points = rustc_hash::FxHashSet::default();
+    let mut corners = rustc_hash::FxHashSet::default();
+    let mut edges: Vec<[nalgebra::Point3<f64>; 2]> = Vec::new();
     for key in supported.folded_buckets.iter().chain(&supported.fold_support_buckets) {
         for tri in buckets.get(key).into_iter().flatten() {
-            fold_points.extend(tri.v.iter().map(|p| (grid(p.x), grid(p.y), grid(p.z))));
+            corners.extend(tri.v.iter().map(|p| (grid(p.x), grid(p.y), grid(p.z))));
+            edges.extend((0..3).map(|k| [tri.v[k], tri.v[(k + 1) % 3]]));
         }
     }
+    let on_fold = |end: &(i64, i64, i64)| {
+        if corners.contains(end) {
+            return true;
+        }
+        let p = nalgebra::Point3::new(end.0 as f64, end.1 as f64, end.2 as f64) / SCALE;
+        edges.iter().any(|[a, b]| {
+            let ab = b - a;
+            let len2 = ab.norm_squared();
+            let t = if len2 > 0.0 { ((p - a).dot(&ab) / len2).clamp(0.0, 1.0) } else { 0.0 };
+            (p - (a + ab * t)).norm() <= TOLERANCE
+        })
+    };
     super::open_edge_endpoints_at(candidate, SCALE)
         .iter()
-        .any(|edge| !edge.iter().all(|end| fold_points.contains(end)))
+        .any(|edge| !edge.iter().all(on_fold))
 }

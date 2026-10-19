@@ -39,7 +39,9 @@ impl GeometryProgram {
     }
     pub(super) fn retained_styled(item:&DecodedEntity,allow_instancing:bool,contract:RetainedContract,
         router:&crate::GeometryRouter,cache:super::mapping::SharedRetainedCache)->crate::Result<Self> {
-        let walk=super::retained_walk::RetainedWalk::child(item.id)?;
+        let walk=if item.ifc_type==ifc_lite_core::IfcType::IfcMappedItem {
+            super::retained_walk::RetainedWalk::child(item.id)?
+        } else {super::retained_walk::RetainedWalk::wrapper()};
         let mut program=Self::mapped_styled(item,allow_instancing,router)?;program.retained=Some(contract);program.retained_walk=Some(walk);
         program.mapping.as_mut().expect("styled mapping root").select_retained(contract,cache);Ok(program)
     }

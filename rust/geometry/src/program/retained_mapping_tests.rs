@@ -218,12 +218,18 @@ fn p1_cache_publication_resource_stop_keeps_earlier_source_local_definition() {
         copy_bytes:Some(0),..Default::default()
     }));
     let mut constructions=0;
+    let mut earlier_published=false;
     while let Some(request)=program.request().unwrap() {
-        let (reply,operation)=account.scope(||program.admit_retained_with_inputs(
-            request,&router,&mut decoder,None,None)).unwrap();
+        let mut execute=||program.admit_retained_with_inputs(request,&router,&mut decoder,None,None);
+        let (reply,operation)=if earlier_published {account.scope(execute)} else {execute()}.unwrap();
         constructions+=operation.len();
-        account.scope(||program.accept(reply,&router)).unwrap();
+        if earlier_published {account.scope(||program.accept(reply,&router)).unwrap();}
+        else {program.accept(reply,&router).unwrap();}
+        // Install the later-branch refusal only AFTER real independent source
+        // publication; earlier presentation copies are now explicitly charged.
+        earlier_published |= cache.lock().unwrap().get(23).unwrap().is_some();
     }
+    assert!(earlier_published,"actual independent source publication precedes the bounded parent");
     assert_eq!(constructions,1);
     assert!(matches!(account.check(),Err(ProgramStop::ResourceRefused(f)) if f.dimension==Dimension::CopyBytes));
     assert!(program.take_geometry_output().is_err());
@@ -284,26 +290,46 @@ fn p1_rigidity_policy_bounds_gram_error_and_excludes_reflection() {
 fn p1_affine_admission_copy_stop_survives_the_common_ready_boundary() {
     use crate::resource::{ExecutionAccount,ExecutionPolicy,ResourceLimits,ProgramStop,Dimension};
     let source=NESTED_MM.replace("#24,1.,#3","#24,2.,#3");
-    let router=GeometryRouter::with_scale(0.001);
-    let mut decoder=EntityDecoder::new(&source);
+    // Calibrate the reached prefix on actual owned source work. Zero from the
+    // beginning would refuse earlier presentation copies, before affine work.
+    let control=ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+    let (prefix,ordinal)= {
+        let router=GeometryRouter::with_scale(0.001);let mut decoder=EntityDecoder::new(&source);
+        let mut program=GeometryProgram::retained_parts(decoder.decode_by_id(10).unwrap(),
+            RetainedContract {source_epoch:7,source_revision:11});
+        let mut ordinal=0;let mut constructions=0;
+        loop {
+            let request=program.request().unwrap().expect("positive affine admission");ordinal+=1;
+            let prefix=control.usage().copy_bytes;
+            let (reply,operations)=control.scope(||program.admit_retained_with_inputs(request,&router,&mut decoder,None,None)).unwrap();
+            if operations.iter().any(|operation|matches!(operation.kind(),RetainedOperationKind::Affine {..})) {
+                assert_eq!(constructions,1);assert_eq!(request.stage(),super::inner::ProgramStage::Numerical);
+                assert!(control.usage().copy_bytes>prefix,"actual affine admission copies owned logical inputs");
+                break (prefix,ordinal);
+            }
+            assert!(operations.iter().all(|operation|operation.construction().is_some()));
+            constructions+=operations.len();control.scope(||program.accept(reply,&router)).unwrap();
+        }
+    };
+    let router=GeometryRouter::with_scale(0.001);let mut decoder=EntityDecoder::new(&source);
     let mut program=GeometryProgram::retained_parts(decoder.decode_by_id(10).unwrap(),
         RetainedContract {source_epoch:7,source_revision:11});
-    let account=ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits {copy_bytes:Some(0),..Default::default()}));
-    let mut constructions=0;
+    let account=ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits {copy_bytes:Some(prefix),..Default::default()}));
+    let mut constructions=0;let mut reached=0;
     loop {
-        let request=program.request().unwrap().expect("affine admission must be reached");
+        let request=program.request().unwrap().expect("same real affine admission must be reached");reached+=1;
         match account.scope(||program.admit_retained_with_inputs(request,&router,&mut decoder,None,None)) {
             Ok((reply,operations))=> {
+                assert!(reached<ordinal,"bounded replay cannot emit the control's affine packet");
                 assert!(operations.iter().all(|operation|operation.construction().is_some()));
-                constructions+=operations.len();
-                account.scope(||program.accept(reply,&router)).unwrap();
+                constructions+=operations.len();account.scope(||program.accept(reply,&router)).unwrap();
             }
             Err(ProgramError::TraversalStopped(stop))=> {
+                assert_eq!(reached,ordinal,"the refusal belongs to affine admission, not earlier presentation");
+                assert_eq!(request.stage(),super::inner::ProgramStage::Numerical);
                 assert!(matches!(stop,ProgramStop::ResourceRefused(f) if f.dimension==Dimension::CopyBytes));
-                assert_eq!(account.check().unwrap_err(),stop);
-                assert_eq!(constructions,1);
-                assert!(program.finish_retained().is_err(),"no partial traversal result after failed affine admission");
-                break;
+                assert_eq!(account.check().unwrap_err(),stop);assert_eq!(constructions,1);
+                assert!(program.finish_retained().is_err(),"no partial traversal after failed affine admission");break;
             }
             Err(error)=>panic!("resource stop must not become unsupported/protocol: {error:?}"),
         }

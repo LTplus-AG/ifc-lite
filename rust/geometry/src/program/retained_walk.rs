@@ -18,10 +18,14 @@ impl Drop for WalkScope {
     fn drop(&mut self) {CURRENT.with(|slot|{slot.replace(self.prior.take());});}
 }
 impl RetainedWalk {
-    pub(super) fn root(id:u32)->Self {
+    fn fresh(path:Vec<u32>)->Self {
         Self {budget:Arc::new(Mutex::new(Budget {spent:0,limit:WORK_LIMIT,terminal:None})),
-            path:Arc::new(vec![id])}
+            path:Arc::new(path)}
     }
+    pub(super) fn root(id:u32)->Self { Self::fresh(vec![id]) }
+    /// A styled plain-item wrapper delegates to the same reached leaf. Only
+    /// that leaf enters its id; a standalone wrapper still owns a finite budget.
+    pub(super) fn wrapper()->Self { current().unwrap_or_else(||Self::fresh(Vec::new())) }
     pub(super) fn child(id:u32)->crate::Result<Self> {
         let Some(parent)=current() else {return Ok(Self::root(id))};
         parent.charge(1)?;

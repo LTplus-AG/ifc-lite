@@ -38,7 +38,12 @@ fn run(source:&str,work_limit:Option<u64>)->crate::Result<RetainedProductPlan> {
             Err(ProgramError::TraversalStopped(stop))=>return stopped(program,stop),
             Err(error)=>panic!("unexpected retained admission error: {error:?}"),
         };
-        program.accept(reply,&router).expect("original common reply");
+        if let Err(rejected)=program.accept(reply,&router) {
+            match rejected.error {
+                ProgramError::TraversalStopped(stop)=>return stopped(program,stop),
+                error=>panic!("unexpected original reply rejection: {error:?}"),
+            }
+        }
     }
     program.finish_retained()
 }
@@ -103,10 +108,54 @@ fn p2_shared_guards_preserve_every_real_diamond_and_repeated_boolean_occurrence(
     let plan=run(&diamond(4),None).unwrap();
     assert_eq!(plan.values.len(),16);
     assert_eq!(plan.values.iter().map(LogicalRetainedValue::slot).collect::<HashSet<_>>().len(),16);
-    assert_eq!(plan.values.iter().map(LogicalRetainedValue::definition).collect::<HashSet<_>>().len(),1);
+    // The lowest source contains (#5,#5), two reached uncached leaves. Its
+    // completed map is then reused, preserving both definitions eight times.
+    let definitions=plan.values.iter().map(LogicalRetainedValue::definition).collect::<HashSet<_>>();
+    assert_eq!(definitions.len(),2);
+    for definition in definitions {
+        assert_eq!(plan.values.iter().filter(|value|value.definition()==definition).count(),8);
+    }
     let input=source(30,"#20=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#5));
         #21=IFCREPRESENTATIONMAP(#2,#20);#22=IFCMAPPEDITEM(#21,$);
         #30=IFCBOOLEANRESULT(.UNION.,#22,#22);");
     assert_eq!(run(&input,None).unwrap().values.len(),1,
         "a repeated operand is another valid path occurrence, not a cycle");
+}
+
+#[test]
+fn retained_plain_styled_leaf_enters_ancestry_once_and_mapped_cycles_still_stop() {
+    let input=source(5,"");
+    let mut decoder=EntityDecoder::new(&input);let router=GeometryRouter::new();
+    let contract=RetainedContract {source_epoch:7,source_revision:11};
+    let mut program=GeometryProgram::retained_submeshes(decoder.decode_by_id(10).unwrap(),contract);
+    let mut constructions=0;
+    while let Some(request)=program.request().unwrap() {
+        let (reply,operations)=program.admit_retained_with_inputs(request,&router,&mut decoder,None,None).unwrap();
+        for operation in &operations {
+            let construction=operation.construction().expect("plain extrusion source");
+            assert_eq!(construction.solid_id(),5);
+            let extrusion=construction.extrusion().expect("owned authored extrusion");
+            assert_eq!(extrusion.source.depth,Some(3.));
+            assert_eq!(extrusion.length_unit_scale,1.);
+        }
+        constructions+=operations.len();program.accept(reply,&router).unwrap();
+    }
+    let plan=program.finish_retained().unwrap();
+    assert_eq!(constructions,1);assert_eq!(plan.values.len(),1);
+    assert!(plan.values[0].is_product_placed());assert!(!plan.values[0].presentation().is_empty());
+    assert!(super::retained_walk::current().is_none());
+    let cache=std::sync::Arc::new(std::sync::Mutex::new(super::mapping::RetainedCache::default()));
+    let mut standalone=GeometryProgram::retained_styled(&decoder.decode_by_id(5).unwrap(),false,contract,&router,cache).unwrap();
+    let mut standalone_constructions=0;
+    while let Some(request)=standalone.request().unwrap() {
+        let (reply,operations)=standalone.admit_retained_with_inputs(request,&router,&mut decoder,None,None).unwrap();
+        standalone_constructions+=operations.len();standalone.accept(reply,&router).unwrap();
+    }
+    let super::inner::GeometryOutput::Retained(values)=standalone.take_geometry_output().unwrap() else {panic!("logical leaf")};
+    assert_eq!(standalone_constructions,1);assert_eq!(values.len(),1);
+    assert!(!values[0].is_product_placed(),"a standalone styled wrapper cannot invent product placement");
+    let cycle=source(22,"#20=IFCSHAPEREPRESENTATION($,'Body','CSG',(#30));
+        #21=IFCREPRESENTATIONMAP(#2,#20);#22=IFCMAPPEDITEM(#21,$);
+        #30=IFCBOOLEANRESULT(.UNION.,#5,#22);");
+    bound(run(&cycle,None).unwrap_err(),Dimension::Representation);
 }

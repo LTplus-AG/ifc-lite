@@ -213,6 +213,10 @@ void run_root_issuance_tests() {
         try { RepresentationSeal missing(ledger,*owned.source); }
         catch(const SweepFailure& error) { refused=std::strcmp(error.message,"missing actual UV trim in seal")==0; }
         require(refused,"authentic trimless fixture remains unavailable for a representation seal");
+        refused=false;
+        try { NumericalRead::face(ledger,*face,SM_OT_SAME,1e-8,SmPoint3d(0,0,0),4.); }
+        catch(const SweepFailure& error) { refused=std::strcmp(error.message,"missing actual UV trim in seal")==0; }
+        require(refused && !kernel_domain_is_tainted(),"fixed numerical read refuses missing representation before its SDK call");
         owned.source.reset(); ledger.check(); lifetime.finish(); ledger.check();
     }
     // Silent setter breach simulation at a private source-read boundary. The

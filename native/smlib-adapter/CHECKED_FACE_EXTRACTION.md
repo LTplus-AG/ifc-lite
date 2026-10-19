@@ -42,6 +42,13 @@ or ancestry check abandons the isolation through existing status8 and preserves
 the primary error. Caller-owned operands AND relation owner must be abandoned.
 There is no destructor-only allocation cleanup claim and no handle publication.
 
+The later [fixed numerical-read repair](CHECKED_NUMERICAL_READ.md) transfers
+actual source UV representation through complete unique edge/use/endpoint
+incidence and exact coefficient/class/domain comparisons. It requires the
+normal complete target seal before returning, so later numerical reads cannot
+silently construct missing trims. Its actual repaired-source witnesses remain
+UNRUN; earlier parent execution is recorded separately in that contract.
+
 ## Source-backed failure boundary
 
 At immutable SDK `SmMerge.cpp:2087`, `CopyFaces` uses `SE(MakeFaceuse(...))` and
@@ -73,7 +80,9 @@ alone in an eighth CTest, `smlib_face_extraction_failure_boundary`, so a positiv
 transfer failure cannot mask its result. Original five CTests and sixth stay
 independent. Both new lanes share an executable but run in separate processes.
 
-These SDK witnesses are **UNRUN**. C++17 syntax-only parsing against the pinned
+The repaired-source SDK witnesses are **UNRUN**. Parent execution of earlier
+source reached the documented numerical-read failures; see the repair above.
+C++17 syntax-only parsing against the pinned
 unchanged SDK passes with `-Wall -Wextra`. No build, CTest, numerical result,
 module qualification or performance claim is inferred from that parsing.
 

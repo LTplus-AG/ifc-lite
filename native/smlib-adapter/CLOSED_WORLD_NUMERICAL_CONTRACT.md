@@ -1,6 +1,11 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 # Bounded owner mutation and source-read seals
 
+The later [fixed numerical-read repair](CHECKED_NUMERICAL_READ.md) adds exact
+source UV transfer and generation-bound detached trim copies inside two fixed
+SDK property calls. It preserves complete source seals and all ordinary edit
+refusals; it grants no arbitrary numerical phase or public certificate authority.
+
 This additive checkpoint follows frozen `a0a589cd78a7436a683bb8df679fed9913af8533`.
 All earlier commits/evidence remain historical and unchanged. This source is
 **UNRUN against the actual SDK**. Syntax parsing is not numerical qualification.

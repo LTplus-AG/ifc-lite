@@ -4,6 +4,7 @@
 #include "copy.hpp"
 #include "sweep.hpp"
 #include "context_metadata.hpp"
+#include "representation_seal.hpp"
 #include "ifclite_smlib.h"
 #include <SmApiGeneral.h>
 #include <SmApiPrimitives.h>
@@ -108,6 +109,20 @@ struct ForeignSlot {
     }
     ~ForeignSlot() { context.SetUserNotifyCallback(previous); }
 };
+void direct_read_refusal() {
+    std::fprintf(stderr,"lineage BEGIN direct unaudited numerical read remains refused\n");
+    Solids owned; owned.source=box(); auto& context=*const_cast<SmContext*>(owned.source->GetContext());
+    Ledger ledger; Scope lifetime(ledger,context); admit(ledger,*owned.source);
+    Scope phase(ledger,context); double volume=0;
+    const auto status=SmApiBrepComputeVolume(owned.source.get(),1e-8,volume);
+    const auto origin=ledger.failure_origin();
+    require(status==SM_SUCCESS && ledger.failed()==Failure::UnsupportedGeometryChange &&
+        origin.operation==SM_NO_PRE_EDIT && origin.caller_type==SmBSplineCurve_TYPE,
+        "direct SDK property query still refuses an unissued transient numerical edit");
+    // Completed observation-only negative: publish no geometry/evidence. The
+    // real setter acts on a detached copy; no public failure recovery claimed.
+    owned.source.reset(); phase.finish(); lifetime.finish();
+}
 void copy_lifetime() {
     std::fprintf(stderr,"lineage BEGIN actual copies, opaque origins, source immutability and release lifetime\n");
     Solids owned; owned.source=box();
@@ -121,7 +136,9 @@ void copy_lifetime() {
     const auto policy=raw_context::Access<SmContext>::get(context);
     SmTArray<SmVertex*> before; owned.source->GetVertices(before);
     std::vector<SmPoint3d> points; for(auto* vertex:before) points.push_back(vertex->GetPoint());
+    std::fprintf(stderr,"lineage copy-lifetime stage=first-owned-copy\n");
     owned.first=checked_brep_copy(owned.source.get(),&ledger);
+    std::fprintf(stderr,"lineage copy-lifetime stage=second-owned-copy\n");
     owned.second=checked_brep_copy(owned.first.get(),&ledger);
     require(context.GetUserNotifyCallback()==&lifetime && context.GetSysNotifyCallback()==system,
         "continuous observer preserved, system slot unchanged");
@@ -157,9 +174,29 @@ void copy_lifetime() {
     require(seen.size()==roots.size(),"complete copied source inventory survives operand release");
     {
         Scope phase(ledger,context);
-        double volume=0;
-        require(SmApiBrepComputeVolume(owned.second.get(),1e-8,volume)==SM_SUCCESS && std::abs(volume-8)<1e-6,
-            "surviving actual copied geometry has analytic volume8");
+        std::fprintf(stderr,"lineage copy-lifetime stage=sealed-surviving-volume\n");
+        const auto current=seeds(*owned.second); std::vector<Identity> identities;
+        for(auto seed:current) identities.push_back(ledger.identity(seed.face));
+        // Repeated fixed phases must consume fresh transient generations even
+        // when the SDK allocator reuses its temporary addresses.
+        for(unsigned read=0;read<2;++read) {
+            const auto event_start=ledger.event_size(),node_start=ledger.node_size();
+            const auto volume=NumericalRead::volume(ledger,*owned.second,1e-8);
+            require(std::abs(volume-8)<1e-6,"surviving actual copied geometry has analytic volume8");
+            unsigned edits=0;
+            for(uint32_t e=event_start;e<ledger.event_size();++e) {
+                const auto& event=ledger.event(e);
+                if((event.operation==SM_NO_PRE_EDIT || event.operation==SM_NO_POST_EDIT) && event.before[0].sequence) {
+                    ++edits;
+                    require(event.after[0]!=event.before[0] && event.after[0].sequence>event.before[0].sequence &&
+                        event.before[0].sequence>node_start,"each actual transient edit retains a fresh current-read event generation");
+                }
+            }
+            require(edits>0,"fixed actual volume read reached tracked detached numerical-copy edits");
+            for(size_t i=0;i<current.size();++i)
+                require(ledger.identity(current[i].face)==identities[i] && single(ledger,identities[i]).object.revision==14,
+                    "fixed numerical phases preserve actual face generations and original object revision");
+        }
         ledger.check(); owned.second.reset(); ledger.check(); phase.finish(); ledger.check();
     }
     lifetime.finish(); ledger.check();
@@ -176,6 +213,11 @@ std::unique_ptr<SmBrep> plane_sheet(SmFace*& face) {
         const SmExtent2d domain(0,0,2,2);
         require(surface->AdjustSTEPUVDomain(domain)==SM_SUCCESS && result->CreateFaceFromSurface(surface,domain,face)==SM_SUCCESS && face,
             "actual independently issued plane patch");
+        // Prepare genuine original trim representation before adoption. The
+        // raw intentionally trimless refusal fixture remains in root tests.
+        double ms=0,xs=0,me=0,xe=0,mv=0,xv=0;
+        require(face->CreateUVTrimCurves(FALSE,nullptr,nullptr,ms,xs,me,xe,mv,xv)==SM_SUCCESS,
+            "actual mixed-origin source trims prepared before root adoption");
         return result;
     } catch(...) { result.release(); rethrow_tainted_kernel_domain("lineage sheet fixture construction"); }
 }
@@ -438,6 +480,6 @@ void terminal_budget_failure() {
 }
 void run_root_issuance_tests();
 void run_face_lineage_tests() {
-    run_root_issuance_tests(); copy_lifetime(); split_merge(); mixed_origins(); address_reuse(); refusals(); terminal_budget_failure();
+    run_root_issuance_tests(); direct_read_refusal(); copy_lifetime(); split_merge(); mixed_origins(); address_reuse(); refusals(); terminal_budget_failure();
     std::fprintf(stderr,"lineage witnesses PASS; paired split/classification/extraction still unimplemented\n");
 }

@@ -8,6 +8,8 @@ struct FaceTransfer { Identity source,output; };
 // Checked source-direction face copying into an OWNED provisional target.
 // This neither intersects nor classifies, selects the opposite cap orientation,
 // validates solid closure, publishes a handle, nor certifies a paired output.
+// Requires complete genuine source UVs and unique mapped use/edge/endpoints;
+// exact checked UV copies are attached before any later numerical read.
 // The relation owner and both operands must remain alive through the call.
 // On status8 all SDK operands/relations must be abandoned by their isolation
 // owner; no later SDK access/destruction is permitted.

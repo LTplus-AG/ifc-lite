@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "representation_seal.hpp"
+#include "copy.hpp"
+#include "context_metadata.hpp"
+#include <SmApiQueries.h>
+#include <SmFace.h>
+#include <SmEdgeuse.h>
 #include "sweep.hpp"
 #include "ifclite_smlib.h"
+#include <algorithm>
+#include <cmath>
 #include <SmBSplineCurve.h>
 #include <SmBSplineSurface.h>
 #include <SmLine.h>
@@ -68,5 +75,78 @@ void RepresentationSeal::surface(SmObject* object) {
         const auto scale=plane->GetUVScale(); real(scale.x); real(scale.y);
         const auto step=plane->GetSTEPUVDomain(); real(step.GetUMin()); real(step.GetUMax()); real(step.GetVMin()); real(step.GetVMax());
     }
+}
+}
+
+namespace face_lineage {
+void RepresentationSeal::require_exact_curve_copy(SmObject* from,SmObject* to) {
+    require(from && to && from!=to && from->GetType()==to->GetType(),"trim copy evaluator class mismatch");
+    scratch.clear(); curve(from); const auto count=scratch.size(); curve(to);
+    require(scratch.size()==2*count && count>1 && std::equal(scratch.begin()+1,scratch.begin()+count,scratch.begin()+count+1),
+        "trim copy changed exact coefficients/knots/domain/semantics");
+    scratch.clear();
+}
+void RepresentationSeal::require_exact_surface_copy(SmObject* from,SmObject* to) {
+    require(from && to && from!=to && from->GetType()==to->GetType(),"surface copy evaluator class mismatch");
+    scratch.clear(); surface(from); const auto count=scratch.size(); surface(to);
+    require(scratch.size()==2*count && count>1 && std::equal(scratch.begin()+1,scratch.begin()+count,scratch.begin()+count+1),
+        "surface copy changed exact parameter representation");
+    scratch.clear();
+}
+void NumericalRead::begin(Ledger& ledger,SmBrep& source) {
+    ledger.verify_inventory(source);
+    require(!ledger.numerical.source && ledger.frame_count,"nested/unowned numerical read phase refused");
+    ledger.numerical.trims.clear(); ledger.numerical.trims.reserve(8192);
+    SmTArray<SmFace*> faces; source.GetFaces(faces);
+    for(auto* face:faces) {
+        SmTArray<SmEdgeuse*> uses; face->GetUpwardEdgeuses(uses);
+        require(uses.GetSize()<=8192,"numerical read trim inventory exceeds bound");
+        for(auto* use:uses) {
+            SmEdgeuse* owner=nullptr; auto* trim=use->GetUVTrimCurve(&owner);
+            require(trim && owner && trim->GetOwner()==owner && trim->GetDim()==2 && owner->GetBrep()==&source,
+                "numerical read requires complete actual pre-existing owned UV trims");
+            bool seen=false; for(auto* known:ledger.numerical.trims) seen|=known==trim;
+            if(seen) continue;
+            require(ledger.numerical.trims.size()<8192,"numerical read trim inventory exceeds bound");
+            ledger.numerical.trims.push_back(trim);
+        }
+    }
+    ledger.numerical.operation=ledger.append(Change::AuditBoundary); ledger.check();
+    ledger.numerical.frame=ledger.frame_count; ledger.numerical.source=&source;
+}
+void NumericalRead::end(Ledger& ledger) {
+    for(const auto& binding:ledger.bindings)
+        if(binding.alive && binding.numerical_operation==ledger.numerical.operation) ledger.fail(Failure::UnknownHistory);
+    ledger.numerical.source=nullptr; ledger.numerical.trims.clear(); ledger.check();
+}
+double NumericalRead::volume(Ledger& ledger,SmBrep& source,double accuracy) {
+    if(kernel_domain_is_tainted()) throw KernelDomainTainted{"numerical read refused after terminal isolation failure"};
+    require(source.GetContext() && std::isfinite(accuracy) && accuracy>0,"invalid owned volume-read inputs");
+    auto& context=*const_cast<SmContext*>(source.GetContext()); raw_context::Restore restore(&context);
+    Scope phase(ledger,context,&source); RepresentationSeal seal(ledger,source);
+    begin(ledger,source);
+    try {
+        double result=0; const auto status=SmApiBrepComputeVolume(&source,accuracy,result);
+        require(status==SM_SUCCESS,"actual SDK volume read failed"); ledger.check(); end(ledger); seal.verify(); ledger.verify_inventory(source);
+        phase.finish(); ledger.check(); return result;
+    } catch(...) { ledger.numerical.source=nullptr; rethrow_tainted_kernel_domain("fixed SDK volume read"); }
+}
+BoundaryProperties NumericalRead::face(Ledger& ledger,SmFace& face,SmOrientType orientation,double accuracy,
+    const SmPoint3d& origin,double estimated_area) {
+    if(kernel_domain_is_tainted()) throw KernelDomainTainted{"numerical read refused after terminal isolation failure"};
+    auto* source=face.GetBrep();
+    require(source && source->GetContext() && std::isfinite(accuracy) && accuracy>0 &&
+        std::isfinite(estimated_area) && estimated_area>=0 && std::isfinite(origin.x) && std::isfinite(origin.y) && std::isfinite(origin.z) &&
+        (orientation==SM_OT_SAME || orientation==SM_OT_OPPOSITE),"invalid owned boundary-read inputs");
+    auto& context=*const_cast<SmContext*>(source->GetContext()); raw_context::Restore restore(&context);
+    Scope phase(ledger,context,source); RepresentationSeal seal(ledger,*source);
+    ledger.identity(&face); begin(ledger,*source);
+    try {
+        BoundaryProperties result; SmTArray<SmVector3d> moments;
+        const auto status=face.ComputePreciseProperties(orientation,accuracy,origin,estimated_area,0.,result.area,result.volume,moments,
+            SM_PPF_AREA|SM_PPF_VOLUME);
+        require(status==SM_SUCCESS,"actual SDK boundary-property read failed"); ledger.check(); end(ledger); seal.verify(); ledger.verify_inventory(*source);
+        phase.finish(); ledger.check(); return result;
+    } catch(...) { ledger.numerical.source=nullptr; rethrow_tainted_kernel_domain("fixed SDK boundary-property read"); }
 }
 }

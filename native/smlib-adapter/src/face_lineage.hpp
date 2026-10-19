@@ -10,6 +10,7 @@ class SmFace;
 class SmObject;
 class SmCopyBrepMap;
 class SmSurface;
+class SmCurve;
 namespace face_lineage {
 // Private adapter evidence only. Runtime sealing under the actual incarnation
 // and original issued source/operation remains mandatory; no wire authority.
@@ -61,6 +62,13 @@ class Ledger {
         bool active=false;
     } creation;
     std::unique_ptr<class RepresentationSeal> creation_seal;
+    struct NumericalPhase {
+        SmBrep* source=nullptr;
+        Identity operation{};
+        uint32_t frame=0;
+        std::vector<SmObject*> trims;
+    } numerical;
+
     struct Node {
         Identity parent[2]{};
         uint32_t root=UINT32_MAX;
@@ -73,6 +81,7 @@ class Ledger {
         SmBrep* owner=nullptr;
         uint32_t birth_frame=0;
         bool alive=false,retired=false,removed=false,newborn=false,initial_issuance=false,numerical_initialized=false;
+        Identity numerical_operation{};
     };
     Limits limits;
     uint64_t domain;
@@ -109,10 +118,12 @@ class Ledger {
         if(failure==Failure::None) { failure=value; failed_operation=current_operation; failed_type=current_type; failed_event=current_event?current_event:event_count; failed_frame=frame_count; failed_nodes=node_count; }
     }
     bool creation_owner(SmObject*,SmObject*,SmObject*) noexcept;
+    bool numerical_event(Event&,SmNotifyOperation,SmObject*,SmObject*);
     void protect(SmBrep*);
     friend class Scope;
     friend class RepresentationSeal;
     friend class GeneratedPlane;
+    friend class NumericalRead;
 public:
     explicit Ledger(Limits={});
     ~Ledger();

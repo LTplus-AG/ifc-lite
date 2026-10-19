@@ -1,0 +1,204 @@
+{
+  "base": "dea192484d99dc9d6713d25f478c7bddd2eaf871",
+  "scope": "approved fixed numerical property calls and exact source UV transfer; no partition expansion",
+  "qualification": "UNRUN actual repaired-source native/WASM/SDK witnesses; no child heavy submission/build/link/SDK execution",
+  "syntax": {
+    "result": "PASS",
+    "translation_units": 11,
+    "flags": "-std=c++17 -fsyntax-only -Wall -Wextra -DSM_NO_DEBUG_CODE -DSM_NO_GFX_OUTPUT_CODE -DNDEBUG"
+  },
+  "diff_check": "PASS",
+  "changed_paths": [
+    {
+      "path": "native/smlib-adapter/CHECKED_FACE_EXTRACTION.md",
+      "before_sha256": "1383d9019b2fc31fa5a6969fa74d4f1c689f3262c49819b93d67667a81791b04",
+      "after_sha256": "51ce63b25ef440363a1896029bc473edf3dd76ef479020bd4fa972de011cae3b"
+    },
+    {
+      "path": "native/smlib-adapter/CHECKED_NUMERICAL_READ.md",
+      "before_sha256": null,
+      "after_sha256": "436997d51d051113dc687057ddacc6d20a0f824fc897efd8a810952b4928d65b"
+    },
+    {
+      "path": "native/smlib-adapter/CLOSED_WORLD_NUMERICAL_CONTRACT.md",
+      "before_sha256": "b6a7da379d62b89a88539ec7d7021f7598292ad621d9457c1ca36370dec78cb6",
+      "after_sha256": "e90a90991fd5076021a4db6080856972dc4c5bd01a5d852faaf40f0fd7d4ab01"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_extraction.cpp",
+      "before_sha256": "fc84454b17e0b422c4ae2665228a8b65e53e8da1d6f3b342e6265873d5e329dc",
+      "after_sha256": "6b4dfd3ca6644d798069f135e4f90cddd249bea078c922f5ac18ac676aa1a77f"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_extraction.hpp",
+      "before_sha256": "35c7392c230f77f051b7f361db6c305710398e3e6b72b5276742a77832513c9e",
+      "after_sha256": "3fb84e78a780684ef71001d007c66cf75af05478c4a4be3e1603fb760ce9e09e"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.cpp",
+      "before_sha256": "ed03a318bbb3a7d4073be0d1ad1b9569ea0364f40c37c54228f1b69d64b1cb6d",
+      "after_sha256": "83d069d38ffc2e8cb3c68bedc785e6c165d58d16c25fa0815811a2d5bd509980"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.hpp",
+      "before_sha256": "49384c53198a62efeca24274c7d0b84c4b7c337fe6c947cd90513dd1d6725789",
+      "after_sha256": "38dde10430bc819ab7ec6f68ba333d67548d9d4a68152f7ecc69e47689b3c9f1"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage_events.cpp",
+      "before_sha256": "3b24a3dc0339cf10fb00a693ef746ca81c09ffd7276ddb52c001e2ff6570d8b5",
+      "after_sha256": "a10605a49e9dea97617b86b058bd54a49323bb3f88b4984f970b1c74f7b3df09"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage_geometry.cpp",
+      "before_sha256": "55503c590951efe8b0a37dc7a84382ebc7223e56704a2202d11d4bbfe856ab64",
+      "after_sha256": "4d18b0383993ac00077764fa0190a210bb9158bd4d9f42d165462ce340fd89cb"
+    },
+    {
+      "path": "native/smlib-adapter/src/representation_seal.hpp",
+      "before_sha256": "d3b69151fa7b755c2ac730667279dd7133264be5de9ed72db03135cdd1279f2c",
+      "after_sha256": "930872e1bd12035dc2594f7e5efec41530e42b81eea25e43f3d36717f93ad746"
+    },
+    {
+      "path": "native/smlib-adapter/src/representation_seal_geometry.cpp",
+      "before_sha256": "a31dee2bb027cf92fc23dc40b70b6f4241def2b81d024bd829a4041ab208b2a5",
+      "after_sha256": "2f0b20961c64e440213fe7382dd47414dd374fbe554a24d6c8dc37e642e4e2b3"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_extraction_tests.cpp",
+      "before_sha256": "e86e49cbea26f4aafacf11c9c1297a5e1be543cadea53a25387e362de8e0dbb3",
+      "after_sha256": "8e9c56e9217c9da3c56a79e56713e6a19643e3e610663e43481cde6aa9aea12f"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_lineage_tests.cpp",
+      "before_sha256": "7132809c10dff8049d8f8d86da0527b872e4d959152fe9fc214717fc64c25d65",
+      "after_sha256": "c21dd2a8bd9b17de9fe43b36d3239d00c9600b1cd72d31f44230244b2beecf65"
+    },
+    {
+      "path": "native/smlib-adapter/tests/root_issuance_tests.cpp",
+      "before_sha256": "36984335fb36039db9255099463955047767495fcee4b58228dbb15b1e905cf8",
+      "after_sha256": "467a4d4869e0cf5d221027927d2e76f7cf4a937351f6bc3b63eff67ce3d77a94"
+    }
+  ],
+  "unchanged_local_safeguards": [
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "sha256": "00d0744bd073743477ec481276749d3c1593c613f2e5932901245d5a29cc65a6"
+    },
+    {
+      "path": "native/smlib-adapter/src/generated_plane.cpp",
+      "sha256": "a7279559e35260ddaa94e9d43507d69a50941ef984ad229b015339c6576cc8ed"
+    },
+    {
+      "path": "native/smlib-adapter/src/generated_plane.hpp",
+      "sha256": "75edcab37297c8152d9868b3594938f4e053624446dbc9ae31644caadd8e9416"
+    },
+    {
+      "path": "native/smlib-adapter/src/representation_seal.cpp",
+      "sha256": "82cc39b3793ebbd6b2ce84a8e53e0b9130eb8143ab879c2ec991ce9d20b7ed21"
+    },
+    {
+      "path": "native/smlib-adapter/src/plane.cpp",
+      "sha256": "1c7ed1a9958693682696ca48b8cb6a893eb4c480d1192999b97974e51391cafe"
+    },
+    {
+      "path": "native/smlib-adapter/src/plane_domain.cpp",
+      "sha256": "3e500336a94fad265286eecaa3c6673c38a6a3752ac079b7b1032ef10a01357d"
+    },
+    {
+      "path": "native/smlib-adapter/src/copy.cpp",
+      "sha256": "0cfc60da6dccd1f91a7140fe53e5ee8be975e21cb3e827895e359d48105072bf"
+    },
+    {
+      "path": "native/smlib-adapter/src/context_metadata.hpp",
+      "sha256": "c105a819bb1aa5d7e678aadca403a4174a0312621eb26cbc2d850eb0f3d4b407"
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "sha256": "800e18af50520867897d70b25e814428e78cd279bcd643fc8d68e70abf520a8a"
+    },
+    {
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "sha256": "f67077face61a64176dbb0f155aa4d96a13124135728d7ff016f138cadaf6fa3"
+    },
+    {
+      "path": "native/smlib-adapter/qualify.sh",
+      "sha256": "ec797fc4b79e24e07e40e0502ee054d3a9b42d0f0edbab47c34b20f3f4389e43"
+    }
+  ],
+  "previous_parent_native_evidence": {
+    "job": "0468a83b-07c8-4268-be78-5eb2c26ed777",
+    "source": "4a85b7d6de82aae00673db2b025233d800ec3603",
+    "source_before_clean": true,
+    "observed_log_sha256": "454c92b6da0ebb3f2de6af4aa553ff662b417910a34706ac4216f394be55e8c4",
+    "observed_receipt_sha256": "879605d7ecaf58224c06240b5b8ef14c0d127682e5e52afeda3aae815c4b1fdf",
+    "qualification_scope": "observed prior CTest5/8; old source6 generated/silent controls reached;6 and7 numerical-read origins failed;8 actual destructive fault PASS; separate4 failure parent-owned; original receipt was not a terminal full-job receipt",
+    "lane6": {
+      "failure": 15,
+      "event": 1164,
+      "operation": 10,
+      "caller_type": 14033,
+      "frame": 2,
+      "nodes": 72
+    },
+    "lane7": {
+      "failure": 15,
+      "event": 456,
+      "operation": 7,
+      "caller_type": 15011,
+      "frame": 2,
+      "nodes": 52
+    }
+  },
+  "previous_parent_wasm_evidence": "parent reports same lane6/7 scalar origins and lane8 PASS on same assembled source; no child WASM execution",
+  "sdk": {
+    "revision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+    "status": ""
+  },
+  "witnesses": [
+    {
+      "path": "native/smlib-adapter/tests/face_lineage_tests.cpp",
+      "functions": [
+        "direct_read_refusal",
+        "copy_lifetime",
+        "plane_sheet"
+      ],
+      "status": "UNRUN",
+      "invariants": [
+        "unissued actual volume read still refuses",
+        "two fixed actual volume reads analytic8",
+        "per-event incomplete temporary generations within new read operation",
+        "actual copied face generations/original revision14 survive",
+        "later mixed-origin fixture has genuine pre-adoption UV trims"
+      ]
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_extraction_tests.cpp",
+      "function": "box_transfer",
+      "status": "UNRUN",
+      "invariants": [
+        "complete actual trims/seal before query",
+        "real detached coefficient mutation fails exact-copy comparison",
+        "repeated mated transfer retained",
+        "fixed actual integrals signed volume8/area24",
+        "source immutable, generated root and release lifetime preserved"
+      ]
+    },
+    {
+      "path": "native/smlib-adapter/tests/root_issuance_tests.cpp",
+      "function": "run_root_issuance_tests",
+      "status": "UNRUN",
+      "invariants": [
+        "trimless numerical read refuses before SDK call",
+        "old silent/edit/initial/revision/class refusal controls retained"
+      ]
+    }
+  ],
+  "holds": [
+    "later MakeEdgeInFace/DeleteEdge topology/numerical phases unchanged and not qualified",
+    "untracked helper descendants, non-2D/unsupported evaluator/owner/read classes",
+    "escaped numerical caches/temporaries or any source representation change",
+    "one shared checked intersection/exhaustive partition/classification/complementary extraction/interface ancestry",
+    "public runtime sealing and persistent-face/layer closure authority"
+  ]
+}

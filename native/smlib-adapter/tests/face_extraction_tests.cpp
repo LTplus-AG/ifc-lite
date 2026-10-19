@@ -2,6 +2,7 @@
 // Real SDK extraction and terminal partial-mutation witnesses. UNRUN.
 #include "face_extraction.hpp"
 #include "generated_plane.hpp"
+#include "representation_seal.hpp"
 #include "context_metadata.hpp"
 #include "copy.hpp"
 #include "sweep.hpp"
@@ -10,6 +11,7 @@
 #include <SmApiPrimitives.h>
 #include <SmAssertArray.h>
 #include <SmBSplineSurface.h>
+#include <SmBSplineCurve.h>
 #include <SmFace.h>
 #include <SmFaceuse.h>
 #include <SmEdgeuse.h>
@@ -18,6 +20,7 @@
 #include <SmPlane.h>
 #include <SmShell.h>
 #include <SmVertex.h>
+#include <SmVertexuse.h>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -91,10 +94,68 @@ void box_transfer() {
         require(refused && !kernel_domain_is_tainted() && owned.target->GetNumFaces()==0,"wrong ordered relation owner refuses before mutation");
         phase.finish(); ledger.check();
     }
+    std::vector<SmEdgeuse*> opposite_inputs;
+    for(auto* face:source) {
+        SmTArray<SmEdgeuse*> uses; face->GetUpwardEdgeuses(uses);
+        for(auto* use:uses) if(use->GetOrientation()==SM_OT_OPPOSITE) opposite_inputs.push_back(use);
+    }
+    require(!opposite_inputs.empty(),"actual closed-box source supplies opposite-oriented matched-use witnesses");
     std::fprintf(stderr,"extraction stage=selected-face-transfer\n");
     const auto transfers=checked_extract_faces(*owned.source,*owned.target,*owned.relations,source.GetDataArray(),source.GetSize(),ledger);
     require(transfers.size()==6 && owned.target->GetNumFaces()==6,"actual complete selected-face transfer");
+    unsigned opposite_attachments=0;
+    for(auto* input:opposite_inputs) {
+        auto& map=owned.relations->GetTopologyIntersector();
+        auto* face_map=map.GetBrepMate(input->GetFace()); auto* edge_map=map.GetBrepMate(input->GetEdge());
+        SmTArray<SmFace*> target_faces; owned.target->GetFaces(target_faces);
+        SmFace* target_face=nullptr; unsigned face_hits=0;
+        for(auto* face:target_faces) if(face==face_map) { target_face=face; ++face_hits; }
+        require(face_hits==1 && target_face,"opposite-use witness has exactly one actual mapped target face");
+        SmTArray<SmEdgeuse*> uses; target_face->GetUpwardEdgeuses(uses);
+        SmEdgeuse* matched=nullptr; unsigned hits=0;
+        for(auto* use:uses) if(use->GetEdge()==edge_map && use->GetOrientation()==SM_OT_OPPOSITE) { matched=use; ++hits; }
+        require(hits==1 && matched && matched->GetMate() && matched->GetMate()->GetMate()==matched &&
+            matched->GetVertexuse() && input->GetVertexuse() && input->GetMate() &&
+            matched->GetMate()->GetVertexuse() && input->GetMate()->GetVertexuse() &&
+            map.GetBrepMate(input->GetVertexuse()->GetVertex())==matched->GetVertexuse()->GetVertex() &&
+            map.GetBrepMate(input->GetMate()->GetVertexuse()->GetVertex())==matched->GetMate()->GetVertexuse()->GetVertex(),
+            "opposite-use witness preserves unique mapped edge/orientation/both endpoints");
+        auto* expected=matched->GetMate(); SmEdgeuse* owner=nullptr;
+        auto* raw=matched->GetUVTrimCurve(&owner);
+        require(expected->GetOrientation()==SM_OT_SAME && matched->GetOrientation()==SM_OT_OPPOSITE &&
+            expected->GetFace()==target_face && matched->GetFace()==target_face && expected->GetEdge()==matched->GetEdge() &&
+            expected->GetBrep()==owned.target.get() && matched->GetBrep()==owned.target.get() &&
+            raw && owner==expected && raw->GetOwner()==expected && expected->GetUVTrimCurvePointer()==raw &&
+            matched->GetUVTrimCurvePointer()==nullptr && raw!=input->GetUVTrimCurve(),
+            "actual opposite-oriented transfer stores the exact copied trim on its SDK-selected SAME mate");
+        ++opposite_attachments;
+    }
+    require(opposite_attachments==opposite_inputs.size(),"every actual opposite-oriented source use reached canonical target attachment");
+    std::fprintf(stderr,"extraction stage=opposite-use-canonical-attachments-verified count=%u\n",opposite_attachments);
     std::fprintf(stderr,"extraction stage=repeated-mated-transfer\n");
+    {
+        RepresentationSeal complete(ledger,*owned.target); complete.verify();
+        SmTArray<SmFace*> faces; owned.target->GetFaces(faces);
+        for(auto* face:faces) {
+            SmTArray<SmEdgeuse*> uses; face->GetUpwardEdgeuses(uses);
+            for(auto* use:uses) require(use->GetUVTrimCurve(),"every extracted actual trim exists before any numerical query");
+        }
+        // Exact-copy comparison rejects a real detached clone coefficient
+        // change without changing the source, target or normal read guards.
+        SmTArray<SmEdgeuse*> first_uses; faces[0]->GetUpwardEdgeuses(first_uses);
+        require(first_uses.GetSize()>0,"actual comparison trim inventory");
+        auto* original=first_uses[0]->GetUVTrimCurve();
+        SmCurve* raw=nullptr; require(original->Copy(context,raw)==SM_SUCCESS && raw,"actual detached comparison clone");
+        std::unique_ptr<SmCurve> changed(raw);
+        complete.require_exact_curve_copy(original,raw);
+        ULONG n=0; double* values=nullptr;
+        require(static_cast<SmBSplineCurve*>(raw)->GetControlPointsPointer(n,values)==SM_SUCCESS && n && values,
+            "actual detached clone homogeneous coefficients");
+        values[0]+=0.125; bool refused=false;
+        try { complete.require_exact_curve_copy(original,raw); } catch(const SweepFailure&) { refused=true; }
+        require(refused,"changed exact trim copy never becomes transfer authority");
+        complete.verify(); ledger.check();
+    }
     const auto repeated=checked_extract_faces(*owned.source,*owned.target,*owned.relations,source.GetDataArray(),source.GetSize(),ledger);
     require(repeated.size()==6 && owned.target->GetNumFaces()==6,"already-mated SDK branch retains complete face inventory without duplicates");
     for(ULONG i=0;i<source.GetSize();++i) {
@@ -115,14 +176,14 @@ void box_transfer() {
             require(use->GetShell()->GetRegion()!=owned.target->GetInfiniteRegion(),"actual bounded-side faceuse incidence");
             SmTArray<SmLoop*> loops; face->GetLoops(loops);
             for(auto* loop:loops) require(loop->IsClosedPtrs() && loop->IsClosed3d(),"actual extracted trim closure");
-            double a=0,v=0; SmTArray<SmVector3d> moments;
-            require(face->ComputePreciseProperties(use->GetOrientation(),1e-8,SmPoint3d(1,1,1),4.,0.,a,v,moments,
-                SM_PPF_AREA|SM_PPF_VOLUME)==SM_SUCCESS,"checked exact-boundary numerical integral"); ledger.check();
-            area+=a; volume+=v;
+            const auto properties=NumericalRead::face(ledger,*face,use->GetOrientation(),1e-8,SmPoint3d(1,1,1),4.);
+            ledger.check(); area+=properties.area; volume+=properties.volume;
         }
         // Integrate actual bounded-side faceuses directly. MakeFaceuse does
         // not set material flags; no region classification is fabricated here.
         require(std::abs(volume-8)<1e-6 && std::abs(area-24)<1e-6,"analytic signed box boundary volume8 and area24");
+        require(opposite_attachments>0,"opposite-oriented attachment witness reaches complete seal and actual boundary integrals");
+        std::fprintf(stderr,"extraction stage=opposite-use-complete-seal-integrals-verified count=%u\n",opposite_attachments);
         phase.finish(); ledger.check();
     }
     const auto after=raw_context::Access<SmBrep>::get(*owned.source);

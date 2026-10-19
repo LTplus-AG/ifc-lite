@@ -1,0 +1,98 @@
+{
+  "integrationParent": "9018c72b506195f24d9c013a484039c4c8e63410",
+  "childBase": "dea192484d99dc9d6713d25f478c7bddd2eaf871",
+  "childSource": "ff87777ce8bad7b11276c3043cd3007e6bc628aa",
+  "files": {
+    "native/smlib-adapter/CHECKED_FACE_EXTRACTION.md": {
+      "before": "1383d9019b2fc31fa5a6969fa74d4f1c689f3262c49819b93d67667a81791b04",
+      "after": "51ce63b25ef440363a1896029bc473edf3dd76ef479020bd4fa972de011cae3b"
+    },
+    "native/smlib-adapter/CHECKED_NUMERICAL_READ.md": {
+      "before": null,
+      "after": "b4c1d9d17d4a3274c59202fdae320a245c9a44da757660223dda89e50f847f5a"
+    },
+    "native/smlib-adapter/CLOSED_WORLD_NUMERICAL_CONTRACT.md": {
+      "before": "b6a7da379d62b89a88539ec7d7021f7598292ad621d9457c1ca36370dec78cb6",
+      "after": "e90a90991fd5076021a4db6080856972dc4c5bd01a5d852faaf40f0fd7d4ab01"
+    },
+    "native/smlib-adapter/evidence/numerical-read-dea192/ASSEMBLY.md": {
+      "before": null,
+      "after": "9ae99c03a0ca8487be573df929678135efd1d16c274dd9ef55eda4a97524be0b"
+    },
+    "native/smlib-adapter/evidence/numerical-read-dea192/summary.json": {
+      "before": null,
+      "after": "13b698021c1815e31d60181051fe43831b3356c41fb5977d1b4a2a6617cf339f"
+    },
+    "native/smlib-adapter/evidence/opposite-uv-2e557/ASSEMBLY.md": {
+      "before": null,
+      "after": "c73c05b257f82f12fdf04b34a8488ec734c788740989431f59ef9fe1e57739df"
+    },
+    "native/smlib-adapter/evidence/opposite-uv-2e557/REVIEW_RESPONSE.md": {
+      "before": null,
+      "after": "706ee8ba98369d0c379a04a8b0be1682531682152d2137035f63e82ed190e043"
+    },
+    "native/smlib-adapter/evidence/opposite-uv-2e557/summary.json": {
+      "before": null,
+      "after": "0c13e178403cc54595a8b175ed588f95dc1aab41491233d8ccbe4922f9602417"
+    },
+    "native/smlib-adapter/src/face_extraction.cpp": {
+      "before": "fc84454b17e0b422c4ae2665228a8b65e53e8da1d6f3b342e6265873d5e329dc",
+      "after": "c14ef3f235d32b96545d166f9e9df52f5e0b8973099ac9181c28a116edb539b6"
+    },
+    "native/smlib-adapter/src/face_extraction.hpp": {
+      "before": "35c7392c230f77f051b7f361db6c305710398e3e6b72b5276742a77832513c9e",
+      "after": "3fb84e78a780684ef71001d007c66cf75af05478c4a4be3e1603fb760ce9e09e"
+    },
+    "native/smlib-adapter/src/face_lineage.cpp": {
+      "before": "ed03a318bbb3a7d4073be0d1ad1b9569ea0364f40c37c54228f1b69d64b1cb6d",
+      "after": "83d069d38ffc2e8cb3c68bedc785e6c165d58d16c25fa0815811a2d5bd509980"
+    },
+    "native/smlib-adapter/src/face_lineage.hpp": {
+      "before": "49384c53198a62efeca24274c7d0b84c4b7c337fe6c947cd90513dd1d6725789",
+      "after": "38dde10430bc819ab7ec6f68ba333d67548d9d4a68152f7ecc69e47689b3c9f1"
+    },
+    "native/smlib-adapter/src/face_lineage_events.cpp": {
+      "before": "3b24a3dc0339cf10fb00a693ef746ca81c09ffd7276ddb52c001e2ff6570d8b5",
+      "after": "a10605a49e9dea97617b86b058bd54a49323bb3f88b4984f970b1c74f7b3df09"
+    },
+    "native/smlib-adapter/src/face_lineage_geometry.cpp": {
+      "before": "55503c590951efe8b0a37dc7a84382ebc7223e56704a2202d11d4bbfe856ab64",
+      "after": "4d18b0383993ac00077764fa0190a210bb9158bd4d9f42d165462ce340fd89cb"
+    },
+    "native/smlib-adapter/src/representation_seal.hpp": {
+      "before": "d3b69151fa7b755c2ac730667279dd7133264be5de9ed72db03135cdd1279f2c",
+      "after": "930872e1bd12035dc2594f7e5efec41530e42b81eea25e43f3d36717f93ad746"
+    },
+    "native/smlib-adapter/src/representation_seal_geometry.cpp": {
+      "before": "a31dee2bb027cf92fc23dc40b70b6f4241def2b81d024bd829a4041ab208b2a5",
+      "after": "2f0b20961c64e440213fe7382dd47414dd374fbe554a24d6c8dc37e642e4e2b3"
+    },
+    "native/smlib-adapter/tests/face_extraction_tests.cpp": {
+      "before": "e86e49cbea26f4aafacf11c9c1297a5e1be543cadea53a25387e362de8e0dbb3",
+      "after": "587068a2efdbf1679499a13d5cabe911f70ecf13e95772fabc01a9e9ae572bb1"
+    },
+    "native/smlib-adapter/tests/face_lineage_tests.cpp": {
+      "before": "7132809c10dff8049d8f8d86da0527b872e4d959152fe9fc214717fc64c25d65",
+      "after": "c21dd2a8bd9b17de9fe43b36d3239d00c9600b1cd72d31f44230244b2beecf65"
+    },
+    "native/smlib-adapter/tests/root_issuance_tests.cpp": {
+      "before": "36984335fb36039db9255099463955047767495fcee4b58228dbb15b1e905cf8",
+      "after": "467a4d4869e0cf5d221027927d2e76f7cf4a937351f6bc3b63eff67ce3d77a94"
+    }
+  },
+  "parentSyntax": {
+    "exitCode": 0,
+    "flags": [
+      "-std=c++17",
+      "-fsyntax-only",
+      "-Wall",
+      "-Wextra",
+      "-Werror"
+    ],
+    "sdk": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+    "diagnosticSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "actualCorrectedNative": "UNRUN",
+  "actualCorrectedWASM": "UNRUN",
+  "pairedQualification": false
+}

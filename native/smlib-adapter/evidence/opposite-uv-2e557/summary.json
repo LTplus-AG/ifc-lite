@@ -1,0 +1,135 @@
+{
+  "base": "2e557ea7116d3e8299dc11e8fab8eb5198c47541",
+  "scope": "single reviewed P1 SDK-selected SAME-mate UV ownership correction",
+  "changed_paths": [
+    {
+      "path": "native/smlib-adapter/CHECKED_NUMERICAL_READ.md",
+      "before_sha256": "436997d51d051113dc687057ddacc6d20a0f824fc897efd8a810952b4928d65b",
+      "after_sha256": "b4c1d9d17d4a3274c59202fdae320a245c9a44da757660223dda89e50f847f5a"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_extraction.cpp",
+      "before_sha256": "6b4dfd3ca6644d798069f135e4f90cddd249bea078c922f5ac18ac676aa1a77f",
+      "after_sha256": "c14ef3f235d32b96545d166f9e9df52f5e0b8973099ac9181c28a116edb539b6"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_extraction_tests.cpp",
+      "before_sha256": "8e9c56e9217c9da3c56a79e56713e6a19643e3e610663e43481cde6aa9aea12f",
+      "after_sha256": "587068a2efdbf1679499a13d5cabe911f70ecf13e95772fabc01a9e9ae572bb1"
+    }
+  ],
+  "unchanged_local_safeguards": [
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "sha256": "00d0744bd073743477ec481276749d3c1593c613f2e5932901245d5a29cc65a6"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_extraction.hpp",
+      "sha256": "3fb84e78a780684ef71001d007c66cf75af05478c4a4be3e1603fb760ce9e09e"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.cpp",
+      "sha256": "83d069d38ffc2e8cb3c68bedc785e6c165d58d16c25fa0815811a2d5bd509980"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.hpp",
+      "sha256": "38dde10430bc819ab7ec6f68ba333d67548d9d4a68152f7ecc69e47689b3c9f1"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage_events.cpp",
+      "sha256": "a10605a49e9dea97617b86b058bd54a49323bb3f88b4984f970b1c74f7b3df09"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage_geometry.cpp",
+      "sha256": "4d18b0383993ac00077764fa0190a210bb9158bd4d9f42d165462ce340fd89cb"
+    },
+    {
+      "path": "native/smlib-adapter/src/generated_plane.cpp",
+      "sha256": "a7279559e35260ddaa94e9d43507d69a50941ef984ad229b015339c6576cc8ed"
+    },
+    {
+      "path": "native/smlib-adapter/src/representation_seal.cpp",
+      "sha256": "82cc39b3793ebbd6b2ce84a8e53e0b9130eb8143ab879c2ec991ce9d20b7ed21"
+    },
+    {
+      "path": "native/smlib-adapter/src/representation_seal_geometry.cpp",
+      "sha256": "2f0b20961c64e440213fe7382dd47414dd374fbe554a24d6c8dc37e642e4e2b3"
+    },
+    {
+      "path": "native/smlib-adapter/src/representation_seal.hpp",
+      "sha256": "930872e1bd12035dc2594f7e5efec41530e42b81eea25e43f3d36717f93ad746"
+    },
+    {
+      "path": "native/smlib-adapter/src/copy.cpp",
+      "sha256": "0cfc60da6dccd1f91a7140fe53e5ee8be975e21cb3e827895e359d48105072bf"
+    },
+    {
+      "path": "native/smlib-adapter/src/context_metadata.hpp",
+      "sha256": "c105a819bb1aa5d7e678aadca403a4174a0312621eb26cbc2d850eb0f3d4b407"
+    },
+    {
+      "path": "native/smlib-adapter/src/plane.cpp",
+      "sha256": "1c7ed1a9958693682696ca48b8cb6a893eb4c480d1192999b97974e51391cafe"
+    },
+    {
+      "path": "native/smlib-adapter/src/plane_domain.cpp",
+      "sha256": "3e500336a94fad265286eecaa3c6673c38a6a3752ac079b7b1032ef10a01357d"
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "sha256": "800e18af50520867897d70b25e814428e78cd279bcd643fc8d68e70abf520a8a"
+    },
+    {
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "sha256": "f67077face61a64176dbb0f155aa4d96a13124135728d7ff016f138cadaf6fa3"
+    },
+    {
+      "path": "native/smlib-adapter/qualify.sh",
+      "sha256": "ec797fc4b79e24e07e40e0502ee054d3a9b42d0f0edbab47c34b20f3f4389e43"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_lineage_tests.cpp",
+      "sha256": "c21dd2a8bd9b17de9fe43b36d3239d00c9600b1cd72d31f44230244b2beecf65"
+    },
+    {
+      "path": "native/smlib-adapter/tests/root_issuance_tests.cpp",
+      "sha256": "467a4d4869e0cf5d221027927d2e76f7cf4a937351f6bc3b63eff67ce3d77a94"
+    }
+  ],
+  "source_proof": {
+    "path": "source/SMLib/src/SmEdgeuse.cpp",
+    "lines": "4547-4570",
+    "meaning": "SetUVTrimCurve stores raw pointer and owner backlink on SM_OT_SAME member; opposite mate raw slot cleared"
+  },
+  "syntax": {
+    "result": "PASS",
+    "translation_units": [
+      "native/smlib-adapter/src/face_extraction.cpp",
+      "native/smlib-adapter/tests/face_extraction_tests.cpp"
+    ],
+    "flags": "-std=c++17 -fsyntax-only -Wall -Wextra -DSM_NO_DEBUG_CODE -DSM_NO_GFX_OUTPUT_CODE -DNDEBUG"
+  },
+  "diff_check": "PASS",
+  "sdk": {
+    "revision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+    "status": ""
+  },
+  "actual_qualification": "UNRUN: no child configure/build/link/test/native/WASM/SDK/heavy job",
+  "witness": {
+    "path": "native/smlib-adapter/tests/face_extraction_tests.cpp",
+    "function": "box_transfer",
+    "stages": [
+      "actual opposite-oriented source uses required",
+      "unique live mapped target face/edge/orientation/both endpoints",
+      "SDK-selected reciprocal SAME owner exact raw slot/backlink and face/brep",
+      "complete normal seal and repeated transfer retained",
+      "actual signed integral volume8/area24 assertions and reached-stage marker retained"
+    ],
+    "status": "UNRUN"
+  },
+  "remaining_holds": [
+    "corrected native/WASM execution",
+    "later split/merge topology/numerical phase qualification",
+    "full shared checked paired partition/interface ancestry/op21 authority"
+  ]
+}

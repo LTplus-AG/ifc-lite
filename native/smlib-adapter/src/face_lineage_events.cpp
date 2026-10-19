@@ -21,6 +21,7 @@ void Ledger::observe(SmNotifyOperation operation,SmObject* caller,SmObject* a,Sm
 void Ledger::transition(Event& event,SmNotifyOperation op,SmObject* caller,SmObject* a,SmObject* b,SmObject* c) {
     // REG_PROPAGATION carries array addresses, not objects. Never inspect them.
     if(op==SM_NO_REG_PROPAGATION) return;
+    if(numerical_event(event,op,caller,b)) return;
     // Follow only documented live caller ownership, with a bounded cycle check.
     // Do not inspect arbitrary event payload slots (some contain arrays).
     const bool mutation=op!=SM_NO_COPY && op!=SM_NO_CONSTRUCTION && op!=SM_NO_COINCIDENT;

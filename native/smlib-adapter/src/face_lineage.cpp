@@ -29,7 +29,7 @@ Ledger::Ledger(Limits requested):limits(requested),domain(0) {
         "invalid lineage resource limits");
     const uint64_t bytes=uint64_t(limits.nodes)*(sizeof(Node)+sizeof(uint32_t))+
         (2*uint64_t(limits.nodes)+1)*sizeof(Binding)+uint64_t(limits.roots)*sizeof(Root)+
-        uint64_t(limits.events)*sizeof(Event);
+        uint64_t(limits.events)*sizeof(Event)+8192*sizeof(SmObject*);
     require(bytes<=64*1024*1024,"lineage storage exceeds fixed adapter limit");
     uint64_t expected=next_domain.load();
     do {

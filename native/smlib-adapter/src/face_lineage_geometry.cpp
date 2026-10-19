@@ -120,3 +120,44 @@ void Ledger::guard_numerical(SmNotifyOperation op,SmObject* caller,SmObject* a,S
         affect_numerical_owner(caller,initialization);
 }
 }
+
+namespace face_lineage {
+bool Ledger::numerical_event(Event& event,SmNotifyOperation op,SmObject* caller,SmObject* original) {
+    if(!numerical.source || numerical.frame!=frame_count || !caller) return false;
+    if(!caller->IsKindOf(SmCurve_TYPE)) return false;
+    if(op==SM_NO_CONSTRUCTION) {
+        // SmCurve's base constructor reports the actual source in b before
+        // derived numerical data exists. No deferred address-history lookup.
+        bool known=false; for(auto* trim:numerical.trims) known|=trim==original;
+        if(!known) return false; // Unowned helpers have no exemption.
+        for(auto* trim:numerical.trims) if(trim==caller) { fail(Failure::InvalidEvent); return true; }
+        auto* entry=binding(caller,true);
+        if(!entry || entry->alive) { fail(Failure::InvalidEvent); return true; }
+        const auto id=append(Change::Construct); replace(entry,id);
+        entry->numerical_operation=numerical.operation; entry->birth_frame=frame_count; event.after[0]=id;
+        return true;
+    }
+    auto* entry=binding(caller,false);
+    if(!entry || !entry->alive || entry->retired || entry->numerical_operation!=numerical.operation ||
+        entry->birth_frame!=frame_count) return false;
+    if(op==SM_NO_DESTRUCTION) { event.before[0]=entry->current; entry->alive=false; entry->retired=true; return true; }
+    if(op!=SM_NO_PRE_EDIT && op!=SM_NO_POST_EDIT) return false;
+    auto* curve=static_cast<SmCurve*>(caller); auto* owner=curve->GetOwner();
+    bool known_owner=false;
+    // A copied trim's backlink can name a source edgeuse. Authority comes
+    // from its current constructor generation, never from that backlink.
+    for(auto* trim:numerical.trims) known_owner|=static_cast<SmCurve*>(trim)->GetOwner()==owner;
+    if(!known_owner || !owner || owner->GetType()!=SmEdgeuse_TYPE || curve->GetDim()!=2 ||
+        (caller->GetType()!=SmBSplineCurve_TYPE && caller->GetType()!=SmLine_TYPE)) {
+        fail(Failure::UnsupportedGeometryChange); return true;
+    }
+    auto* use=static_cast<SmEdgeuse*>(owner);
+    if(use->GetBrep()!=numerical.source || use->GetUVTrimCurve()==curve || use->GetUVTrimCurvePointer()==curve ||
+        !use->GetMate() || use->GetMate()->GetUVTrimCurvePointer()==curve) {
+        fail(Failure::UnsupportedGeometryChange); return true;
+    }
+    event.before[0]=entry->current;
+    const auto edited=append(Change::Edit,entry->current); replace(entry,edited); event.after[0]=edited;
+    return true;
+}
+}

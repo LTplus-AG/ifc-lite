@@ -198,6 +198,9 @@ impl ProductState {
             return Err(Box::new(RejectedReply { error, reply }));
         }
         if let super::session_protocol::WorkPayload::Stopped(stop) = &reply.payload { self.remember_stop(*stop); }
+        // A fresh authenticated source scope replaces ambient terminal TLS.
+        // Preserve a validated reply's entrance cancellation across that boundary.
+        let entrance_stop = ifc_lite_geometry::resource::check_current().err();
         if !matches!(reply.payload,super::session_protocol::WorkPayload::GeometryStep(_,_)) && self.capture_stop() {
             self.protocol.accepted();
             return Ok(());
@@ -208,6 +211,9 @@ impl ProductState {
             let order = TriangleOrderScope::new(router, self.keep_order);
             match reply.payload {
                 super::session_protocol::WorkPayload::GeometryStep(inner,stop)=> {
+                    // Source ancestry and the reply's first fault take precedence;
+                    // accept the real inner reply before cancellation drains reports.
+                    let stop=stop.or(entrance_stop).map(ifc_lite_geometry::resource::stop);
                     let program=&mut self.pending_geometry.as_mut().expect("open geometry attempt").program;
                     program.accept(inner,router).expect("validated inner reply");
                     if stop.is_some() || ifc_lite_geometry::resource::check_current().is_err() {

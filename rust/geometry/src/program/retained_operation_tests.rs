@@ -37,8 +37,19 @@ fn p2_nested_mapping_boolean_preserves_order_definition_sharing_and_survey_frame
                 }
                 RetainedOperationKind::Boolean {inputs,operation:kind}=> {
                     assert!(inputs.iter().all(|input|definitions.contains(input.definition())));
-                    let expected=nalgebra::Matrix4::new_translation(&nalgebra::Vector3::new(5_000_000.,7.,11.));
-                    for input in inputs {assert!((nalgebra::Matrix4::from_column_slice(input.object_frame())-expected).norm()<1e-9);}
+                    // The 2m x4m rectangle is centred on its authored origin;
+                    // the runtime packet starts at its first corner(-1,-2,0).
+                    // Physical object frames therefore include that anchor,
+                    // while the original mm source frame retains the map origin.
+                    let expected=nalgebra::Matrix4::new_translation(&nalgebra::Vector3::new(4_999_999.,5.,11.));
+                    let mut source_frame=nalgebra::Matrix4::new_nonuniform_scaling(&nalgebra::Vector3::repeat(0.001));
+                    source_frame[(0,3)]=5_000_000.;source_frame[(1,3)]=7.;source_frame[(2,3)]=11.;
+                    for input in inputs {
+                        assert!((nalgebra::Matrix4::from_column_slice(input.object_frame())-expected).norm()<1e-9);
+                        if let Some(source)=input.world_from_source() {
+                            assert!((nalgebra::Matrix4::from_column_slice(source)-source_frame).norm()<1e-9);
+                        }
+                    }
                     if boolean_outputs.is_empty() {
                         assert_eq!(*kind,crate::document::BooleanOperation::Difference);
                         assert_eq!(inputs[0].definition(),inputs[1].definition(),"reached mapped source is shared");

@@ -17,11 +17,15 @@ pub(super) const SOURCE:&str="#1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCAXIS2PLACEM
 const CONTRACT:RetainedContract=RetainedContract {source_epoch:3,source_revision:7};
 pub(super) fn drive(program:&mut GeometryProgram,router:&GeometryRouter,decoder:&mut EntityDecoder<'_>)->Result<usize> {
     let mut count=0;let mut polls=0;
-    while let Some(request)=program.request().expect("common request") {
+    let typed_stop=|error|match error {
+        ProgramError::TraversalStopped(stop)=>crate::Error::ProgramStopped(stop),
+        other=>panic!("unexpected common protocol error: {other:?}"),
+    };
+    while let Some(request)=program.request().map_err(typed_stop)? {
         polls+=1;assert!(polls<30000,"bounded real fixture");
         let (reply,op)=program.admit_retained_with_inputs(request,router,decoder,None,None)
-            .expect("same common admission");
-        count+=op.len();program.accept(reply,router).expect("original reply");
+            .map_err(typed_stop)?;
+        count+=op.len();program.accept(reply,router).map_err(|rejected|typed_stop(rejected.error))?;
     }
     Ok(count)
 }
@@ -284,7 +288,11 @@ fn p2_styled_and_type_map_roots_share_bounds_across_a_mapped_boolean_cycle() {
             };
             match program.admit_retained_with_inputs(request,&router,&mut decoder,None,None) {
                 Err(ProgramError::TraversalStopped(_))=>{stopped=true;break},
-                Ok((reply,_))=>program.accept(reply,&router).unwrap(),
+                Ok((reply,_))=>match program.accept(reply,&router) {
+                    Ok(())=>{},
+                    Err(rejected) if matches!(rejected.error,ProgramError::TraversalStopped(_))=>{stopped=true;break},
+                    Err(other)=>panic!("unexpected acceptance {other:?}"),
+                },
                 Err(error)=>panic!("unexpected admission {error:?}"),
             }
         }

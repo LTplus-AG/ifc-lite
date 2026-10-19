@@ -1,0 +1,91 @@
+{
+  "id": "68b22977-af2e-4b12-9956-b6f6cf118d17",
+  "host": {
+    "host": "pop-os",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 32,
+    "availableMemoryBytes": 114739974144,
+    "totalMemoryBytes": 134644969472,
+    "python": "3.12.3",
+    "time": 1792367196.358253
+  },
+  "cwd": "/home/louistrue/build-workers/worker-state/checkouts/9c75470c82e04c3bd6228d8773158b2516a54c41",
+  "sourceBefore": {
+    "commit": "9c75470c82e04c3bd6228d8773158b2516a54c41",
+    "tree": "9b418ff31dca98dbd14001b82a6a66c836ee04a9",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "8f1e27526ac5ba876035bdb9731bcf830cdc7ee574a26f6037895da4b2dae8ac",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "command": [
+    "bash",
+    "/home/louistrue/build-workers/setup/projects-20261017/ifc-lite/env-exec.sh",
+    "bash",
+    "-c",
+    "pnpm fixtures ara3d/AC20-FZK-Haus.ifc && cargo test --workspace && cargo clippy --workspace --all-targets -- -D warnings"
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792367196.35777,
+  "resources": [
+    "/home/louistrue/build-workers/worker-state/checkouts/9c75470c82e04c3bd6228d8773158b2516a54c41",
+    "/home/louistrue/build-workers/worker-state/targets/7b6d116f3fe97c15ab2b"
+  ],
+  "state": "failed",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "fixtures": {},
+  "tools": {
+    "git": {
+      "path": "/usr/bin/git",
+      "exitCode": 0,
+      "version": "git version 2.43.0"
+    },
+    "rustc": {
+      "path": "/home/louistrue/build-workers/toolchains/cargo/bin/rustc",
+      "exitCode": 0,
+      "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+    },
+    "cargo": {
+      "path": "/home/louistrue/build-workers/toolchains/cargo/bin/cargo",
+      "exitCode": 0,
+      "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+    },
+    "node": {
+      "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+      "exitCode": 0,
+      "version": "v24.22.0"
+    },
+    "pnpm": {
+      "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/pnpm",
+      "exitCode": 0,
+      "version": "10.8.1"
+    }
+  },
+  "runnerSha256": "3bebacb6e09e29cd0ee86c7d06dfef95062ab61ecc1b37601e5e53cc64aedce5",
+  "startedAt": 1792367250.8228488,
+  "queueSeconds": 54.46507906913757,
+  "resourceScope": true,
+  "exitCode": 101,
+  "finishedAt": 1792368687.4130337,
+  "sourceAfter": {
+    "commit": "9c75470c82e04c3bd6228d8773158b2516a54c41",
+    "tree": "9b418ff31dca98dbd14001b82a6a66c836ee04a9",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "8f1e27526ac5ba876035bdb9731bcf830cdc7ee574a26f6037895da4b2dae8ac",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {},
+  "outputSha256": "c72a98f391b8d1c966f2d2d0fa4e8d4a551086affcc699c92aea4cd292557be8"
+}

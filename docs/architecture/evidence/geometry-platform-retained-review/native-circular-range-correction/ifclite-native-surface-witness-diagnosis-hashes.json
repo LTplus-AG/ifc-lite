@@ -1,0 +1,86 @@
+{
+  "qualification": "read-only diagnosis plus separately authorized adapter interval correction; actual runtime unrun",
+  "files": [
+    {
+      "origin": "failed-source331",
+      "path": "native/smlib-adapter/src/sweep.cpp",
+      "sha256": "bab0f3ba560cfd297347c77d566aed30d76b94b80ed6002f4cada2efa7436dac"
+    },
+    {
+      "origin": "root-authorized-interval-fix",
+      "path": "native/smlib-adapter/src/sweep.cpp",
+      "sha256": "26dd3457c57c4f9ac6f23f838f73ffc7893668008860ba4452bfe0d6249f0f5a"
+    },
+    {
+      "origin": "failed-source331",
+      "path": "native/smlib-adapter/tests/sweep_region_tests.cpp",
+      "sha256": "e3d38e8b5de42024ec46736f65ff84c806877a9ae7070fae5df962a320590fb4"
+    },
+    {
+      "origin": "root-authorized-interval-fix",
+      "path": "native/smlib-adapter/tests/sweep_region_tests.cpp",
+      "sha256": "95200073f03788bccc66f1fd4d694fdcaba06632301a283f531bd16b91956a39"
+    },
+    {
+      "origin": "pinned-sdk-c9c5979",
+      "path": "source/SM_API/src/SmApiCurves.cpp",
+      "sha256": "c96c0aa4f955eefba6021658748051c5e734adc55e5d8ee08bb6421f8544c438"
+    },
+    {
+      "origin": "pinned-sdk-c9c5979",
+      "path": "source/SM_API/src/SmApiBrep.cpp",
+      "sha256": "c1dcdf9899a386199dd9cc3ee3bef9626d324d5558a8b7b6132b19e18fb70df1"
+    },
+    {
+      "origin": "pinned-sdk-c9c5979",
+      "path": "source/SMLib/src/SmBSplineCurve.cpp",
+      "sha256": "93c905a12c4124f6761f63ca9dbe2e2ffe400eb32b493c3d514be42de2c41138"
+    },
+    {
+      "origin": "pinned-sdk-c9c5979",
+      "path": "source/SMLib/src/NL_CrvCommon.cpp",
+      "sha256": "c7f2c3abf486de47c89c5d5caf5b98255a23c3c7629c226dc1f42ca0bcc70cbe"
+    },
+    {
+      "origin": "pinned-sdk-c9c5979",
+      "path": "source/SMLib/src/SmPrimitiveCreation.cpp",
+      "sha256": "38a15b60587059687c13923ba0b22a6a139b0b931997d0650898d866be8b692c"
+    },
+    {
+      "origin": "pinned-sdk-c9c5979",
+      "path": "source/SMLib/src/SmSurface.cpp",
+      "sha256": "218a360a80b68d4dec70a7b3e1cab5d8d89a375f41cd5564e2e058c6629740be"
+    },
+    {
+      "origin": "pinned-sdk-c9c5979",
+      "path": "source/SMLib/src/SmPseudoBox.cpp",
+      "sha256": "102800300df086b1df5ecac1271a5ce40e3488364994250f5afbc531fcbbddc8"
+    },
+    {
+      "origin": "pinned-sdk-c9c5979",
+      "path": "source/SMLib/inc/SmPlane.h",
+      "sha256": "b6cc96275d55a7c7e627c618c2d44a7d86bde3121a01e4116d411d5d9f3117c4"
+    },
+    {
+      "origin": "pinned-sdk-c9c5979",
+      "path": "source/SMLib/inc/SmMessages.h",
+      "sha256": "f5ff614fa94e265abe73b2f3a6a195f84bd499b39ab06381f673498542896b0c"
+    },
+    {
+      "origin": "pinned-sdk-c9c5979",
+      "path": "source/SMLib/inc/SmPrimitiveCreation.h",
+      "sha256": "f4b7ad8d52464fe2018f5f0631048fe950f6189d5575cfd493a9c6a677bf00a5"
+    },
+    {
+      "origin": "pinned-sdk-c9c5979",
+      "path": "source/SMLib/inc/SmBSplineCurve.h",
+      "sha256": "0e12036dda5f5439d3cbc5a2daf4253779ed4dfa73167031587d9ff5eb12dfb2"
+    },
+    {
+      "origin": "failed-run-evidence",
+      "path": "docs/architecture/evidence/geometry-platform-retained-review/curved-round3-delivery/receipts/fbacabd8-8b31-46d8-b433-19690d89c074-output.log.gz",
+      "sha256": "566c941c4fae1c29ec178c1100b48d53bdbe542b42d1d1aef3ae68387e75702a",
+      "raw_log_sha256": "e6a1f6ebad71f7826f377f0e5cb4abe18d8c85a78c75dca425d0863841c1c9f5"
+    }
+  ]
+}

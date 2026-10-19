@@ -1,0 +1,22 @@
+{
+  "job": "68b22977-af2e-4b12-9956-b6f6cf118d17",
+  "source": "9c75470c82e04c3bd6228d8773158b2516a54c41",
+  "exit": 101,
+  "source_unchanged": true,
+  "output_sha256": "c72a98f391b8d1c966f2d2d0fa4e8d4a551086affcc699c92aea4cd292557be8",
+  "geometry_library": {
+    "passed": 1618,
+    "failed": 5,
+    "ignored": 1
+  },
+  "failures": [
+    "analytic::source_tests::original_metadata_does_not_qualify_curves_or_holes_for_sdk_admission: old lower() UnqualifiedRegion assertion",
+    "math::tol_tests::inline_epsilon_literals_only_go_down: 498 literals vs ceiling480",
+    "program::boolean::dispatch_tests::configured_boolean_and_csg_roots_keep_their_selected_small_cut_policy: volume7.999999001647044 expected7.999999",
+    "program::openings::execute::tests::opening_terminal_port_late_stop_retains_completed_root_kernel_failure: completedvolume1.2 assertion",
+    "program::openings::execute::unwind_tests::opening_root_unwind_drains_real_capped_failure_and_preserves_payload_once: GroupCut::Rejected assertion"
+  ],
+  "clippy": "NOT RUN: chained after failed cargo test",
+  "meaning": "Earlier source9c only, not full-workspace pass or later6f qualification; no resubmission/source fixes performed",
+  "original_delivery_unchanged": "/tmp/ifclite-retained-curved-consumption-round3"
+}

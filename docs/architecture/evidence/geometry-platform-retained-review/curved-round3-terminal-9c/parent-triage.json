@@ -1,0 +1,13 @@
+{
+  "source": "9c75470c82e04c3bd6228d8773158b2516a54c41",
+  "supersedes": "running observation in original6f delivery qualification.json only; original bundle unchanged",
+  "verified_output_sha256": "c72a98f391b8d1c966f2d2d0fa4e8d4a551086affcc699c92aea4cd292557be8",
+  "source_unchanged": true,
+  "status": "FAIL; geometrylib1618passed5failed1ignored; clippyNOTRUN",
+  "parent_triage": {
+    "source_metadata_test": "asserts lowered OrderedRegion requirement and sourceboundarycounts; runtimequalification remains in actualworker owners; updated sourceUNRUN",
+    "tolerance_ratchet": "activefix preservevalues+units andceiling",
+    "boolean_opening_failures": "inner assembly owner triage; no acceptance/tolerance weakening"
+  },
+  "latest_assembled_source": "not qualified by this historical execution"
+}

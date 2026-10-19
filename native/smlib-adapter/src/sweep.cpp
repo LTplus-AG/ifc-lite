@@ -65,7 +65,13 @@ Segment read_segment(Reader& reader) {
         require(v[0]+v[9]>v[0] && v[1]+v[9]>v[1],"collapsed circle extent");
         // IFC angle conventions have already been resolved by the source owner.
         // Convert derived radians exactly once at the SDK's degree boundary.
-        const double start=std::remainder(v[10],2*pi), end=start+sweep;
+        // The SDK requires BOTH endpoint degrees in [-360,360]. Shift the
+        // whole interval together; wrapping endpoints independently changes
+        // long trims and loses a full circle. Its midpoint fits [-pi,pi],
+        // so an interval of length <=2pi fits [-2pi,2pi] without changing sense.
+        const double authored_start=std::remainder(v[10],2*pi);
+        const double middle=std::remainder(authored_start+sweep*0.5,2*pi);
+        const double start=middle-sweep*0.5, end=start+sweep;
         SmBSplineCurve* raw=nullptr;
         const auto status=SmApiCreateArc(SmPoint3d(0,0,0),v[9],
             std::min(start,end)*180/pi,std::max(start,end)*180/pi,raw);

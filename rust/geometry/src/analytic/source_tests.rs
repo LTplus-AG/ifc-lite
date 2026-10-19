@@ -210,8 +210,8 @@ fn trimmed_line_keeps_raw_vector_and_descending_selector_parameters() {
 }
 
 #[test]
-fn original_metadata_does_not_qualify_curves_or_holes_for_sdk_admission() {
-    use crate::document::{retained_sweep, RetainedExtrusion, RetainedRefusal};
+fn original_metadata_keeps_curves_and_holes_requiring_runtime_qualification() {
+    use crate::document::{retained_sweep::{self, RegionQualification}, RetainedExtrusion};
     let base = include_bytes!("../../tests/fixtures/mapped_instances_synthetic.ifc");
     let mut decoder = EntityDecoder::with_index(base, build_entity_index(base));
     let entity = decoder.decode_by_id(12).unwrap();
@@ -229,6 +229,8 @@ fn original_metadata_does_not_qualify_curves_or_holes_for_sdk_admission() {
     ] {
         assert_eq!(p.status, AnalyticStatus::Complete);
         assert!(p.loops.iter().all(|boundary| boundary.source.is_some()));
+        let expected_loops = p.loops.len() as u32;
+        let expected_segments = p.loops.iter().map(|boundary| boundary.segments.len()).sum::<usize>() as u32;
         let mut source = extrusion.clone();
         source.swept_area_id = Some(p.profile_id);
         source.profile = Some(p);
@@ -238,9 +240,12 @@ fn original_metadata_does_not_qualify_curves_or_holes_for_sdk_admission() {
             source_epoch: 1,
             source_revision: 1,
         };
-        assert!(matches!(
-            retained_sweep::lower(&recipe),
-            Err(RetainedRefusal::UnqualifiedRegion)
-        ));
+        // Lowering now describes supported curves; metadata cannot open the
+        // execution gate. Native/browser owners require their actual same-
+        // incarnation numerical witnesses for this explicit requirement.
+        let payload = retained_sweep::lower(&recipe).unwrap();
+        assert_eq!(payload.qualification, RegionQualification::OrderedRegion);
+        assert_eq!(payload.loops, expected_loops);
+        assert_eq!(payload.segments, expected_segments);
     }
 }

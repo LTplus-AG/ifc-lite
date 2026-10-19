@@ -124,6 +124,20 @@ void run_sweep_region_tests() {
     witness("rectangle",{rectangle(0,0,2,4)},8,12,{0,0,2,4},6,0);
     witness("circle",{{arc(0,0,2,0,2*pi,true)}},4*pi,4*pi,{-2,-2,2,2},2,1);
     witness("clockwise-circle",{{arc(0,0,2,0,-2*pi,true)}},4*pi,4*pi,{-2,-2,2,2},2,1);
+    // Nonzero full-circle trims previously sent an endpoint beyond SDK 360deg.
+    witness("shifted-circle",{{arc(0,0,2,0.37,2*pi,true)}},4*pi,4*pi,{-2,-2,2,2},2,1);
+    witness("shifted-clockwise-circle",{{arc(0,0,2,-0.37,-2*pi,true)}},4*pi,4*pi,{-2,-2,2,2},2,1);
+    witness("shifted-negative-normal-circle",{{arc(0,0,2,0.37,2*pi,true,-1)}},
+        4*pi,4*pi,{-2,-2,2,2},2,1);
+    const double q=std::sqrt(2.);
+    // A 270deg trim crosses the old endpoint range. The closing chord and
+    // section oracle distinguish it from the complementary 90deg segment.
+    witness("wrapped-major-arc",{{arc(0,0,2,0.75*pi,1.5*pi),line(q,q,-q,q)}},
+        3*pi+2,3*pi+2*q,{-2,-2,2,q},3,1);
+    witness("wrapped-reversed-major-arc",{{arc(0,0,2,2.25*pi,-1.5*pi),line(-q,q,q,q)}},
+        3*pi+2,3*pi+2*q,{-2,-2,2,q},3,1);
+    witness("wrapped-negative-normal-major-arc",{{arc(0,0,2,0.75*pi,1.5*pi,false,-1),line(q,-q,-q,-q)}},
+        3*pi+2,3*pi+2*q,{-2,-q,2,2},3,1);
     witness("arc-line",{{arc(0,0,2,0,pi),line(-2,0,2,0)}},2*pi,2*pi+4,{-2,0,2,2},3,1);
     witness("reversed-arc-line",{{arc(0,0,2,pi,-pi),line(2,0,-2,0)}},2*pi,2*pi+4,{-2,0,2,2},3,1);
     witness("negative-normal",{{arc(0,0,2,0,-pi,false,-1),line(-2,0,2,0)}},2*pi,2*pi+4,{-2,0,2,2},3,1);

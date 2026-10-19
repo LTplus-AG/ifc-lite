@@ -25,7 +25,7 @@ pub use planning::plan_authored_geometry;
 #[serde(tag = "kind", content = "definition", rename_all = "snake_case")]
 pub enum AuthoredDefinition {
     Extrusion(Box<ExtrusionDefinition>),
-    SweptDisk(SweptDiskDefinition),
+    SweptDisk(Box<SweptDiskDefinition>),
 }
 
 impl AuthoredDefinition {

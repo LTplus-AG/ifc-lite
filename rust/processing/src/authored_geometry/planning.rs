@@ -64,7 +64,7 @@ fn assemble(views: crate::AnalyticQuantitySources, inventory: super::inventory::
         plan.definitions.push(AuthoredDefinition::Extrusion(Box::new(source)));
     }
     for source in views.swept_disk_definitions.sources {
-        plan.definitions.push(AuthoredDefinition::SweptDisk(source));
+        plan.definitions.push(AuthoredDefinition::SweptDisk(Box::new(source)));
     }
     let definitions: BTreeMap<_, _> = plan.definitions.iter().map(|source| {
         let (construction, status, retained_rational) = match source {

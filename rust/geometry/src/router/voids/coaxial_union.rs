@@ -300,9 +300,9 @@ impl GeometryRouter {
 
     /// Build the pairwise-disjoint re-extruded prisms for a COAXIAL cluster via
     /// 2.5D depth-slicing along `axis`: the depth axis is cut at every cutter's
-    /// authored z-boundary, and within each depth SLAB the footprints of the
+    /// prepared z-boundary, and within each depth SLAB the footprints of the
     /// cutters that FULLY SPAN it are unioned (one i_overlay pass) and re-extruded
-    /// over exactly that slab. A cutter never contributes outside its authored
+    /// over exactly that slab. A cutter never contributes outside its prepared
     /// [z_lo, z_hi], so a partial-depth / blind cutter is cut faithfully — never
     /// stretched to a through-cut. Slabs are Z-disjoint (they share only boundary
     /// planes, which the conforming N-ary subtract dissolves). Returns `None`
@@ -327,8 +327,15 @@ impl GeometryRouter {
     ) -> Option<(Vec<Mesh>, bool, Vec<usize>, f64)> {
         let (u, v, d) = ortho_frame(axis)?;
         let mut fps: Vec<Footprint> = Vec::with_capacity(members.len());
+        let mut cutter_volumes = Vec::with_capacity(members.len());
         for &m in members {
-            fps.push(cutter_footprint(&cands[m].mesh, &u, &v, &d)?);
+            // Adjust only the original cutter's caps. A depth slice introduces
+            // internal seams, not authored exits/jambs: pulling those seams in
+            // independently leaves a gap inside a through opening (#6940,
+            // rvt01 #6305 at the 12 mm render/core interface).
+            let prepared = Self::extend_opening_mesh_through_host(&cands[m].mesh, result, d);
+            fps.push(cutter_footprint(&prepared, &u, &v, &d)?);
+            cutter_volumes.push(mesh_signed_volume(&prepared).abs());
         }
 
         // Reject an invalid total depth span before constructing source slabs.
@@ -400,15 +407,12 @@ impl GeometryRouter {
                 }
                 let mut prism = extrude_profile_watertight(shape, slab_depth, Some(base)).ok()?;
                 apply_transform(&mut prism, &m_world);
-                // Push caps a hair past any FLUSH host face along the axis so the
-                // subtract is a clean transversal crossing. A slab boundary INTERIOR
-                // to the host (no host facet there) is left untouched — the two
-                // slabs meeting at it tile the void with no gap.
-                let ext = Self::extend_opening_mesh_through_host(&prism, result, d);
-                if !mesh_is_closed_exact(&ext) {
+                // Generated seams must stay coincident so adjacent slabs tile
+                // the prepared cutter without gaps or extra removed material.
+                if !mesh_is_closed_exact(&prism) {
                     return None;
                 }
-                prisms.push(ext);
+                prisms.push(prism);
             }
         }
         if prisms.is_empty() {
@@ -420,28 +424,10 @@ impl GeometryRouter {
         // prisms that the N-ary subtract handles directly.
         let multi_slab = coalesced.len() > 2;
         let contributors: Vec<usize> = (0..fps.len()).filter(|&i| contributed[i]).collect();
-        // Removed-volume upper bound: Σ over contributing cutters of the volume of the
-        // SAME through-host extension the prisms use. The union of the reconstructed
-        // prisms equals the union of the actual cutters, so the removed (host-clipped)
-        // volume `Vol(∪prism ∩ host) = Vol(∪cutter ∩ host) ≤ Σ Vol(cutter_i ∩ host) ≤
-        // Σ Vol(extended cutter_i)` — a subtract that removes MORE (an inflated /
-        // bridged prism reconstruction) is over-cutting and is rejected downstream.
-        // Using the EXTENDED cutter (not `area × authored_depth`) is essential: a
-        // through-cut of a host THICKER than the authored opening legitimately removes
-        // more than the authored volume, and must not be mistaken for an over-cut.
-        // 2% relative slack absorbs the f32 volume-differencing noise of a large host.
-        let max_removed = 1.02
-            * contributors
-                .iter()
-                .map(|&i| {
-                    let ext = Self::extend_opening_mesh_through_host(
-                        &cands[members[i]].mesh,
-                        result,
-                        d,
-                    );
-                    mesh_signed_volume(&ext).abs()
-                })
-                .sum::<f64>();
+        // The reconstructed union cannot remove more than the sum of its
+        // prepared cutters' volumes; retain the existing 2% f32 slack. Use the
+        // same preparations as the footprints, without adjusting a seam again.
+        let max_removed = 1.02 * contributors.iter().map(|&i| cutter_volumes[i]).sum::<f64>();
         Some((prisms, multi_slab, contributors, max_removed))
     }
 

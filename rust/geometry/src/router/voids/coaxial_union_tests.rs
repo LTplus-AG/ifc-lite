@@ -585,3 +585,33 @@ fn issue_6940_same_kernel_cell_depths_do_not_make_degenerate_slabs() {
     assert_eq!(super::super::geom::point_inside_mesh_agreed(
         &prisms[0], Point3::new(0.5, 0.5, 0.2)), Some(true));
 }
+
+#[path = "rvt01_6305_tests.rs"]
+mod rvt01_6305;
+
+#[test]
+fn issue_6940_depth_slice_seams_do_not_become_host_jambs() {
+    // A 12 mm render layer in front of a 250 mm core. The through opening
+    // crosses the interface; another opening contributes an 11 mm depth.
+    let render = box_mesh([0.0, 0.0, 0.0], [1.0, 0.012, 1.0]);
+    let core = box_mesh([0.0, 0.012, 0.0], [1.0, 0.262, 1.0]);
+    let host = joined(&[&render, &core]);
+    let bounds = [
+        ([0.2, 0.0, 0.2], [0.8, 0.274, 0.8]),
+        ([0.6, 0.0, 0.6], [0.9, 0.011, 0.9]),
+    ];
+    let cands: Vec<_> = bounds.into_iter().enumerate().map(|(idx, (lo, hi))| UnionCand {
+        idx, mesh: box_mesh(lo, hi), dir: Vector3::y(), lo, hi,
+    }).collect();
+    let (prisms, _, _, _) = GeometryRouter::new().build_coaxial_prisms(
+        &host, &cands, &[0, 1], &Vector3::y(),
+    ).expect("coaxial cutters have recoverable footprints");
+    for y in [0.0105, 0.0115, 0.0125] {
+        assert!(prisms.iter().any(|p| super::super::geom::point_inside_mesh_agreed(
+            p, Point3::new(0.4, y, 0.4),
+        ) == Some(true)), "through cutter lost its interior at depth {y}");
+    }
+    assert!(prisms.iter().all(|p| super::super::geom::point_inside_mesh_agreed(
+        p, Point3::new(0.85, 0.02, 0.85),
+    ) == Some(false)), "the shallow cutter must keep its authored depth");
+}

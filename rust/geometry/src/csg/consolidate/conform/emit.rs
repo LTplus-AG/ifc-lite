@@ -26,7 +26,9 @@ pub(in crate::csg::consolidate) fn emit_plans(
     conformed: bool,
 ) -> (Mesh, bool) {
     let mut complete = true;
-    use crate::triangulation::triangulate_polygon_with_holes_refined;
+    use crate::triangulation::{
+        triangulate_polygon_with_holes_refined_bounded, EARCUT_FALLBACK_MAX_VERTICES,
+    };
     let mut output = Mesh::new();
     for plan in plans.iter_mut() {
         let raw = if conformed {
@@ -78,7 +80,15 @@ pub(in crate::csg::consolidate) fn emit_plans(
                     }
                 }
             }
-            let (all_2d, indices) = match triangulate_polygon_with_holes_refined(outer, holes) {
+            // A region that fails to triangulate makes the consolidation fall
+            // back to the raw kernel mesh, which is cheaper than earcut on a large
+            // declined ring.
+            let triangulated = triangulate_polygon_with_holes_refined_bounded(
+                outer,
+                holes,
+                EARCUT_FALLBACK_MAX_VERTICES,
+            );
+            let (all_2d, indices) = match triangulated {
                 Ok((pts, idx)) => (pts, idx),
                 Err(_) => {
                     complete = false;

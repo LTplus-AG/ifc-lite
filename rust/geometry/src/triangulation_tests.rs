@@ -285,6 +285,28 @@ fn test_refined_collinear_outer_falls_back() {
     assert!(idx.iter().all(|&i| i < pts.len()));
 }
 
+/// Past the earcut limit, a ring the quality CDT declines is refused; at the
+/// limit it still reaches earcut, and the unbounded function keeps using earcut
+/// at any size.
+#[test]
+fn test_refined_bounded_keeps_large_declined_rings_away_from_earcut() {
+    let collinear = |n: usize| (0..n).map(|i| Point2::new(i as f64, 0.0)).collect::<Vec<_>>();
+    let limit = EARCUT_FALLBACK_MAX_VERTICES;
+    let at = collinear(limit);
+    let past = collinear(limit + 1);
+    assert!(triangulate_polygon_with_holes_refined_bounded(&at, &[], limit).is_ok());
+    assert!(triangulate_polygon_with_holes_refined_bounded(&past, &[], limit).is_err());
+    assert!(triangulate_polygon_with_holes_refined(&past, &[]).is_ok());
+    let mut hole = collinear(2);
+    hole.push(Point2::new(0.5, 0.5));
+    let outer = collinear(limit - 2);
+    assert!(
+        triangulate_polygon_with_holes_refined_bounded(&outer, std::slice::from_ref(&hole), limit)
+            .is_err(),
+        "hole vertices count toward the limit"
+    );
+}
+
 #[test]
 fn test_calculate_polygon_normal() {
     // XY plane polygon - normal should be Z

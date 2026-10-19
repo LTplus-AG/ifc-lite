@@ -195,6 +195,14 @@ impl ClippingProcessor {
             // Only a fully closed fold-free host replaces the fold output; one
             // that is merely less open gives up the fold's finite support for
             // nothing (rvt01 #26681 pins that trade).
+            //
+            // `has_uncertified_needle` is deliberately NOT asked here, unlike the
+            // partial-closure fallback below: on the hosts this exists for
+            // (ISSUE_068 #43810, #54549) the closed fold-free result does carry
+            // uncertified needles, so that guard would reject the only closed
+            // answer and ship the torn candidate. A sliver needle is the lesser
+            // defect than an open boundary, and the #7292 star, which forbids
+            // restored needles, tears nothing beyond its fold and never gets here.
             if crate::exact_topology::strict_closed_mesh(&ordinary)
                 && preservation::public_weld_closed(&ordinary) {
                 return ordinary;

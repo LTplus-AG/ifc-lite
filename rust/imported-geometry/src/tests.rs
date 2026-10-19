@@ -44,3 +44,12 @@ fn invalid_large_indices_never_wrap_into_a_real_vertex_on_wasm32() {
     assert!(normals[..6].iter().all(|v|v.is_nan()));
     assert_eq!(&normals[6..],&[0.,0.,0.]);
 }
+
+#[test]
+fn untrusted_face_counts_stay_bounded() {
+    let raw = |counts: Vec<f64>| RawMesh { points: vec![vec![0., 0., 0.], vec![1., 0., 0.], vec![0., 1., 0.]], face_vertex_indices: vec![0., 1., 2.], face_vertex_counts: Some(counts), normals: None };
+    assert_eq!(crate::math::mesh(&raw(vec![f64::INFINITY]), &[]).unwrap().indices, Vec::<u32>::new());
+    assert_eq!(crate::math::mesh(&raw(vec![f64::NAN, 3.]), &[]).unwrap().indices, Vec::<u32>::new());
+    assert_eq!(crate::math::mesh(&raw(vec![1e12]), &[]).unwrap().indices, vec![0, 1, 2]);
+    assert_eq!(crate::math::mesh(&raw(vec![3.]), &[]).unwrap().indices, vec![0, 1, 2]);
+}

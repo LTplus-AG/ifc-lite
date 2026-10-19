@@ -79,9 +79,13 @@ pub(crate) fn mesh(source:&RawMesh,stack:&[RawMatrix])->Result<MeshOutput,Import
     if let Some(counts)=source.face_vertex_counts.as_ref().filter(|x| !x.is_empty()) {
         let mut offset=0.0;
         for &count in counts {
+            // Untrusted counts: a non-finite count ends the fan walk and a face
+            // never fans past the indices that exist, so work stays bounded.
+            if !count.is_finite() { break; }
             let get=|index:f64| if index>=0. && index.fract()==0. {source.face_vertex_indices.get(index as usize).copied().unwrap_or(f64::NAN)}else{f64::NAN};
+            let available=(source.face_vertex_indices.len() as f64-offset).max(0.);
             let mut i=1.;
-            while i<count-1. {
+            while i<count.min(available)-1. {
                 indices.extend([to_uint32(get(offset)),to_uint32(get(offset+i)),to_uint32(get(offset+i+1.))]); i+=1.;
             }
             offset+=count;

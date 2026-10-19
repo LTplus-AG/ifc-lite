@@ -128,6 +128,8 @@ fn graph_packet_points_retain_f64_source_stage_f32_colors_and_wait_for_ack() {
 #[test]
 fn graph_packet_invalid_packets_do_not_allocate_or_advance_handles() {
     let first = open(1); close(first);
+    let programs = || REGISTRY.with(|registry| registry.borrow().programs.len());
+    let before = programs();
     let mut invalid_edge = Packet::new(100);
     invalid_edge.wide(1).wide(1).word(1).word(1).word(1).string("root").word(1).string("bad").word(1);
     assert_eq!(invalid_edge.run(), Err(ImportError::InvalidPacket));
@@ -138,6 +140,7 @@ fn graph_packet_invalid_packets_do_not_allocate_or_advance_handles() {
     let mut invalid_count = Packet::new(100);
     invalid_count.wide(1).wide(1).word(1).word(1).word(u32::MAX);
     assert_eq!(invalid_count.run(), Err(ImportError::InvalidPacket));
+    assert_eq!(programs(), before, "a refused Open must not retain a program");
     let second = open(1); assert!(second > first); close(second);
 }
 

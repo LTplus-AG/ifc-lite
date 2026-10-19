@@ -98,6 +98,7 @@ impl ReadyProductMerge {
     pub(crate) fn execute(mut self) -> Result<ProductResources> {
         match (&mut self.resources, self.output) {
             (ProductResources::Retained(values), ProductItemOutput::Retained(mut incoming)) => {
+                super::retained_walk::charge(incoming.len() as u64)?;
                 crate::resource::charge(crate::resource::Cost { work: incoming.len() as u64,
                     ..Default::default() })?.retain();
                 crate::resource::reserve_headers(values,incoming.len())?.retain();

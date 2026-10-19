@@ -73,6 +73,7 @@ impl RetainedCache {
     }
     pub(crate) fn get_styled(&self, id: u32) -> Result<Option<Vec<LogicalRetainedValue>>> {
         for (key,values) in &self.styled_entries {
+            crate::program::retained_walk::charge(1)?;
             crate::resource::charge(crate::resource::Cost {work:1,..Default::default()})?.retain();
             if *key==id {return copy_values(values).map(Some)}
         }
@@ -91,6 +92,7 @@ impl RetainedCache {
     }
     pub(super) fn publish_styled(&mut self, id: u32, values: &[LogicalRetainedValue]) -> Result<()> {
         for (key,_) in &self.styled_entries {
+            crate::program::retained_walk::charge(1)?;
             crate::resource::charge(crate::resource::Cost {work:1,..Default::default()})?.retain();
             if *key==id {return Ok(())}
         }

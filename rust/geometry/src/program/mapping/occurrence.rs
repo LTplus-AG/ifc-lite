@@ -40,6 +40,7 @@ pub(super) fn claim_contract(item:&DecodedEntity,source_id:u32,representation:De
             None=>true,
             Some(_) if router.instancing_batch_local()=> {
                 let mut claims=cache.styled_claims.lock().unwrap_or_else(|e|e.into_inner());
+                crate::program::retained_walk::charge(claims.len() as u64)?;
                 resource::charge(Cost {work:claims.len() as u64,..Default::default()})?.retain();
                 if claims.contains(&source_id) {false} else {
                     let permit=resource::reserve_headers(&mut claims,1)?;claims.push(source_id);

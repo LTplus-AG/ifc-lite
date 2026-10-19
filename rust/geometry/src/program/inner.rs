@@ -282,6 +282,14 @@ impl GeometryProgram {
     pub fn accept(&mut self, reply: ProgramReply, router: &GeometryRouter)
         -> std::result::Result<(), Box<RejectedProgramReply>> {
         if let Err(error)=self.validate_reply(&reply,router) {return Err(Box::new(RejectedProgramReply {error,reply}))}
+        // Validation precedes scope admission: a foreign reply cannot spend this
+        // root's budget, and accepted effects cannot debit an ambient root.
+        let _walk = match self.retained_walk.as_ref().map(|walk|walk.acceptance_scope()).transpose() {
+            Ok(scope) => scope,
+            Err(stop) => return Err(Box::new(RejectedProgramReply {
+                error: ProgramError::TraversalStopped(stop), reply,
+            })),
+        };
         router.drain_mapping_cleanup();
         match reply.value {
             ReplyValue::Opening(reply)=>self.opening.as_mut().expect("opening continuation").accept(reply,router),

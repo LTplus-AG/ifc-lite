@@ -112,17 +112,21 @@ impl GeometryProgram {
     }
     pub(super) fn accept_boolean(&mut self, reply: ReplyValue, router: &GeometryRouter) {
         let state = self.boolean.as_mut().expect("boolean child");
-        let processor = router.processor_for(&state.binding.as_ref().expect("bound child").0).expect("selected processor");
-        let recorder = processor.boolean_recorder().expect("actual boolean recorder");
         let result = match reply {
             ReplyValue::BooleanChild(reply)=> {
                 state.child.as_mut().expect("Boolean child").accept(*reply,router).expect("validated Boolean child reply");Ok(())
             }
             ReplyValue::BooleanChildFinished(value)=>state.program.accept_retained_child(value),
-            ReplyValue::BooleanSource(reply) => state.program.accept_source(reply, recorder)
-                .unwrap_or_else(|_| panic!("validated source reply")),
-            ReplyValue::BooleanNumerical(reply) => state.program.accept_numerical(reply, recorder)
-                .unwrap_or_else(|_| panic!("validated numerical reply")),
+            ReplyValue::BooleanSource(reply) => {
+                let processor = router.processor_for(&state.binding.as_ref().expect("bound child").0).expect("selected processor");
+                let recorder = processor.boolean_recorder().expect("actual boolean recorder");
+                state.program.accept_source(reply, recorder).unwrap_or_else(|_| panic!("validated source reply"))
+            }
+            ReplyValue::BooleanNumerical(reply) => {
+                let processor = router.processor_for(&state.binding.as_ref().expect("bound child").0).expect("selected processor");
+                let recorder = processor.boolean_recorder().expect("actual boolean recorder");
+                state.program.accept_numerical(reply, recorder).unwrap_or_else(|_| panic!("validated numerical reply"))
+            }
             _ => unreachable!(),
         };
         if let Err(error) = result {

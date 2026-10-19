@@ -56,9 +56,19 @@ impl RetainedWalk {
         if work>remaining {drop(budget);return Err(self.refuse(Dimension::Work,work,remaining));}
         budget.spent+=work;Ok(())
     }
+    /// Validated reply adapters accept recursively without fallible envelope
+    /// debits. Reinstall captured ancestry; actual effects charge their work.
+    pub(super) fn acceptance_scope(&self)->Result<WalkScope,ProgramStop> {
+        self.check()?;
+        Ok(WalkScope {prior:CURRENT.with(|slot|slot.replace(Some(self.clone())))})
+    }
     pub(super) fn scope(&self)->Result<WalkScope,ProgramStop> {
         self.charge(1)?;
         Ok(WalkScope {prior:CURRENT.with(|slot|slot.replace(Some(self.clone())))})
+    }
+    #[cfg(test)]
+    pub(super) fn spent_for_test(&self)->u64 {
+        self.budget.lock().unwrap_or_else(|e|e.into_inner()).spent
     }
     #[cfg(test)]
     pub(super) fn set_test_work_limit(&self,limit:u64) {
@@ -69,3 +79,7 @@ pub(super) fn current()->Option<RetainedWalk> {CURRENT.with(|slot|slot.borrow().
 pub(super) fn charge(work:u64)->crate::Result<()> {
     match current() {Some(walk)=>walk.charge(work).map_err(Into::into),None=>Ok(())}
 }
+
+#[cfg(test)]
+#[path="retained_walk_accept_tests.rs"]
+mod accept_tests;

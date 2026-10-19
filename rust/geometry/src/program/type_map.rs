@@ -99,6 +99,7 @@ impl ReadyTypeMerge {
         crate::resource::check_current()?;
         match self.output {
             TypeItemOutput::Retained(mut values)=> {
+                super::retained_walk::charge(values.len() as u64)?;
                 let parts=self.parts.retained.as_mut().ok_or_else(||crate::Error::geometry("type-map contract mismatch"))?;
                 crate::resource::charge(crate::resource::Cost {work:values.len() as u64,..Default::default()})?.retain();
                 crate::resource::reserve_headers(parts,values.len())?.retain();parts.append(&mut values);

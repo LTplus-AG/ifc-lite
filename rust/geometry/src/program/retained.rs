@@ -50,6 +50,7 @@ pub struct LogicalRetainedValue {
 impl LogicalRetainedValue {
     pub fn presentation(&self) -> &[super::retained_presentation::RetainedPresentation] { &self.presentation }
     pub(super) fn present(&mut self, binding: super::retained_presentation::RetainedPresentation) -> crate::Result<()> {
+        super::retained_walk::charge(1)?;
         crate::resource::charge(crate::resource::Cost {work:1,copy_bytes:std::mem::size_of_val(&binding) as u64,..Default::default()})?.retain();
         crate::resource::reserve_headers(&mut self.presentation, 1)?.retain();
         self.presentation.push(binding); Ok(())
@@ -301,6 +302,7 @@ pub(super) fn copy_values(values: &[LogicalRetainedValue]) -> crate::Result<Vec<
         let mut placements = Vec::new();
         crate::resource::reserve_headers(&mut placements, value.placements.len())?.retain();
         placements.extend_from_slice(&value.placements);
+        super::retained_walk::charge(value.presentation.len() as u64)?;
         let mut presentation = Vec::new();
         crate::resource::reserve_headers(&mut presentation, value.presentation.len())?.retain();
         crate::resource::charge(crate::resource::Cost { copy_bytes: std::mem::size_of_val(value.presentation.as_slice()) as u64, ..Default::default() })?.retain();

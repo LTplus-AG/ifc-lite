@@ -41,7 +41,7 @@ target_compile_definitions(smlib_kernel PUBLIC SM_NO_DEBUG_CODE SM_NO_GFX_OUTPUT
 add_library(smlib_api STATIC ${api_sources})
 target_include_directories(smlib_api BEFORE PRIVATE "${SMLIB_SOURCE}/source/SM_API/inc")
 target_link_libraries(smlib_api PUBLIC smlib_kernel)
-add_library(ifclite_smlib STATIC src/adapter.cpp src/copy.cpp src/face_lineage.cpp src/face_lineage_events.cpp src/face_lineage_geometry.cpp src/generated_plane.cpp src/representation_seal.cpp src/representation_seal_geometry.cpp src/face_extraction.cpp src/affine.cpp src/plane.cpp src/plane_domain.cpp src/plane_source_domain.cpp src/mesh.cpp src/sweep.cpp src/disk.cpp src/protocol.cpp)
+add_library(ifclite_smlib STATIC src/adapter.cpp src/copy.cpp src/face_lineage.cpp src/face_lineage_events.cpp src/face_lineage_geometry.cpp src/generated_plane.cpp src/representation_seal.cpp src/representation_seal_geometry.cpp src/face_extraction.cpp src/planar_transition.cpp src/planar_transition_plan.cpp src/planar_transition_events.cpp src/planar_transition_verify.cpp src/affine.cpp src/plane.cpp src/plane_domain.cpp src/plane_source_domain.cpp src/mesh.cpp src/sweep.cpp src/disk.cpp src/protocol.cpp)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   set_source_files_properties(src/plane.cpp src/plane_domain.cpp src/plane_source_domain.cpp PROPERTIES
     COMPILE_OPTIONS "-fno-fast-math;-ffp-contract=off")

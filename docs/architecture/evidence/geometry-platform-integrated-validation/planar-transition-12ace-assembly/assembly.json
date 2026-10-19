@@ -1,0 +1,8 @@
+{
+  "childSource": "12ace76be215f697814aaf579a741c2f34273cbe",
+  "childBase": "ff87777ce8bad7b11276c3043cd3007e6bc628aa",
+  "exactNonCmakeSourceHashesVerified": 14,
+  "cmakeIntegration": "Add exactly four transition cpp sources, preserve existing parent plane_source_domain.cpp and strict floating options. No CTest changes.",
+  "cmakeSha256": "d21c21c37a3af497e466a200a6d7ded4e7d4dfdaf08e6dcf43a4a741531015bb",
+  "qualification": "UNRUN; independent review active; actual positive and adversarial execution required; no paired interface authority"
+}

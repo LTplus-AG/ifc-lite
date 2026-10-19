@@ -12,6 +12,7 @@ class RepresentationSeal {
     SmBrep& source;
     Identity operation;
     bool initial=false;
+    const class PlanarTransition* transition_slots=nullptr;
     std::vector<uint64_t> retained,scratch;
     std::vector<SmObject*> pending;
     uint32_t work=0;
@@ -34,6 +35,7 @@ public:
 private:
     RepresentationSeal(Ledger&,SmBrep&,bool initial_creation);
     friend class GeneratedPlane;
+    friend class PlanarTransition;
 };
 struct BoundaryProperties { double area=0,volume=0; };
 // Fixed calls only. No callable, external mutator or user phase flag.

@@ -134,7 +134,7 @@ bool Ledger::numerical_event(Event& event,SmNotifyOperation op,SmObject* caller,
         auto* entry=binding(caller,true);
         if(!entry || entry->alive) { fail(Failure::InvalidEvent); return true; }
         const auto id=append(Change::Construct); replace(entry,id);
-        entry->numerical_operation=numerical.operation; entry->birth_frame=frame_count; event.after[0]=id;
+        entry->numerical_operation=numerical.operation; entry->owned_transition={}; entry->birth_frame=frame_count; event.after[0]=id;
         return true;
     }
     auto* entry=binding(caller,false);

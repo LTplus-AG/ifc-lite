@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "face_lineage.hpp"
+#include "planar_transition.hpp"
 #include <SmBrep.h>
 #include <SmCurve.h>
 #include <SmFace.h>
@@ -8,6 +9,9 @@
 #include <SmVertex.h>
 #include <SmSurface.h>
 #include <SmTopology.h>
+#include <SmLoop.h>
+#include <SmLoopuse.h>
+#include <SmFaceuse.h>
 #include <array>
 namespace face_lineage {
 bool Ledger::face(SmObject* object) const { return object && object->GetType()==SmFace_TYPE; }
@@ -20,7 +24,18 @@ void Ledger::observe(SmNotifyOperation operation,SmObject* caller,SmObject* a,Sm
 }
 void Ledger::transition(Event& event,SmNotifyOperation op,SmObject* caller,SmObject* a,SmObject* b,SmObject* c) {
     // REG_PROPAGATION carries array addresses, not objects. Never inspect them.
-    if(op==SM_NO_REG_PROPAGATION) return;
+    if(op==SM_NO_REG_PROPAGATION) {
+        if(active_transition) fail(Failure::InvalidEvent); // no region propagation in this fixed topology plan
+        return;
+    }
+    if(active_transition && active_transition->event(event,op,caller,a,b,c)) return;
+    if(failure!=Failure::None) return;
+    if(op==SM_NO_DESTRUCTION && caller && caller->IsKindOf(SmCurve_TYPE)) {
+        auto* entry=binding(caller,false);
+        if(entry && entry->alive && entry->owned_transition.sequence) {
+            event.before[0]=entry->current; entry->alive=false; entry->retired=true; return;
+        }
+    }
     if(numerical_event(event,op,caller,b)) return;
     // Follow only documented live caller ownership, with a bounded cycle check.
     // Do not inspect arbitrary event payload slots (some contain arrays).
@@ -56,7 +71,9 @@ void Ledger::transition(Event& event,SmNotifyOperation op,SmObject* caller,SmObj
         if(entry && readonly(entry->owner)) fail(Failure::ReadOnlyMutation);
         return entry && failure==Failure::None;
     };
-    const bool leaf=caller && (caller->GetType()==SmEdge_TYPE || caller->GetType()==SmVertex_TYPE);
+    const bool leaf=caller && (caller->GetType()==SmEdge_TYPE || caller->GetType()==SmVertex_TYPE ||
+        caller->GetType()==SmEdgeuse_TYPE || caller->GetType()==SmLoop_TYPE ||
+        caller->GetType()==SmLoopuse_TYPE || caller->GetType()==SmFaceuse_TYPE);
     if(op==SM_NO_CONSTRUCTION && leaf) {
         auto* entry=binding(caller,true);
         if(!entry) return;
@@ -175,6 +192,8 @@ Scope::Scope(Ledger& value,SmContext& ctx,SmBrep* source,Phase kind):ledger(valu
     if((ledger.context && ledger.context!=&context) || (ledger.attached && previous!=ledger.observer)) {
         ledger.fail(Failure::ReentrantCallback); ledger.check();
     }
+    if(ledger.frame_serial==UINT64_MAX) { ledger.fail(Failure::InvalidEvent); ledger.check(); }
+    serial=++ledger.frame_serial;
     // Inventory/protection happens before any slot change. No SDK mutation has
     // started if this preflight refuses. The system callback is never claimed.
     ledger.protect(source); ledger.context=&context;

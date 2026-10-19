@@ -1,0 +1,235 @@
+{
+  "base": "ff87777ce8bad7b11276c3043cd3007e6bc628aa",
+  "scope": "private operation transition for a plane/one-outer-rectangle diagonal roundtrip only",
+  "changed_paths": [
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "before_sha256": "00d0744bd073743477ec481276749d3c1593c613f2e5932901245d5a29cc65a6",
+      "after_sha256": "4686ef428948712e8d55feab5adec8e6412a84b63a27cbc96b85b2788cb968cc"
+    },
+    {
+      "path": "native/smlib-adapter/PLANAR_TRANSITION_CONTRACT.md",
+      "before_sha256": null,
+      "after_sha256": "11935a926542840f4ecb545f2b487bb27e675a82cdf913c5a3c0e5b577f9ff90"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.cpp",
+      "before_sha256": "83d069d38ffc2e8cb3c68bedc785e6c165d58d16c25fa0815811a2d5bd509980",
+      "after_sha256": "7b381a7180d1014cd726a78dbaebb8bba47e7fc7de22a12573234333c23e4c30"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.hpp",
+      "before_sha256": "38dde10430bc819ab7ec6f68ba333d67548d9d4a68152f7ecc69e47689b3c9f1",
+      "after_sha256": "a9da49c03a156903ff69b61da436ebf164359932db53e1507f099f087d6407da"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage_events.cpp",
+      "before_sha256": "a10605a49e9dea97617b86b058bd54a49323bb3f88b4984f970b1c74f7b3df09",
+      "after_sha256": "4cfa13edc5ac650faacc7413f1f67c510f1dd9b4206886782f86e82d9e8348d9"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage_geometry.cpp",
+      "before_sha256": "4d18b0383993ac00077764fa0190a210bb9158bd4d9f42d165462ce340fd89cb",
+      "after_sha256": "7f1269991e88e82974e6f0a6bd142c6fb9fce372741915ac1bdd31b0faa3fb98"
+    },
+    {
+      "path": "native/smlib-adapter/src/planar_transition.cpp",
+      "before_sha256": null,
+      "after_sha256": "e96ab156ed3d9a6b8bf60113062b5d22d2e60bfc1153c4f7cfda1eb87f8fea64"
+    },
+    {
+      "path": "native/smlib-adapter/src/planar_transition.hpp",
+      "before_sha256": null,
+      "after_sha256": "38316b59014b14dc10a302ff9064f47c674b53cd446849341b2855616be0955e"
+    },
+    {
+      "path": "native/smlib-adapter/src/planar_transition_detail.hpp",
+      "before_sha256": null,
+      "after_sha256": "238610814c7585df94e95d723ca8e058e0b5a31d38916a1d87b28654485db3bf"
+    },
+    {
+      "path": "native/smlib-adapter/src/planar_transition_events.cpp",
+      "before_sha256": null,
+      "after_sha256": "07a5555c9ef79ba4874faf1b82167194c5960148afe98f4c1a5be54646ef340d"
+    },
+    {
+      "path": "native/smlib-adapter/src/planar_transition_plan.cpp",
+      "before_sha256": null,
+      "after_sha256": "28bb3af03165cd3faaf05d6091b225ef6aa936e685198aa69533af599abb8c59"
+    },
+    {
+      "path": "native/smlib-adapter/src/planar_transition_verify.cpp",
+      "before_sha256": null,
+      "after_sha256": "951044d46747b29150ee31b1997f4206d6a640c64a5cff17524a6a7dcbb7ae6f"
+    },
+    {
+      "path": "native/smlib-adapter/src/representation_seal.cpp",
+      "before_sha256": "82cc39b3793ebbd6b2ce84a8e53e0b9130eb8143ab879c2ec991ce9d20b7ed21",
+      "after_sha256": "6e2377e515661599c13df6097777164462b60102a6d3c6775bc680687f1f250d"
+    },
+    {
+      "path": "native/smlib-adapter/src/representation_seal.hpp",
+      "before_sha256": "930872e1bd12035dc2594f7e5efec41530e42b81eea25e43f3d36717f93ad746",
+      "after_sha256": "b2d4895a3b7510785ab428edd0600aa291328ebd2b646f0af5bbb25fd26cdc1d"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_lineage_tests.cpp",
+      "before_sha256": "c21dd2a8bd9b17de9fe43b36d3239d00c9600b1cd72d31f44230244b2beecf65",
+      "after_sha256": "d27cb66ded7172d47cf04ec78ae9e0dbb52f357b8f19107b61349622b215dacb"
+    }
+  ],
+  "unchanged_local_safeguards": [
+    {
+      "path": "native/smlib-adapter/src/face_extraction.hpp",
+      "sha256": "3fb84e78a780684ef71001d007c66cf75af05478c4a4be3e1603fb760ce9e09e"
+    },
+    {
+      "path": "native/smlib-adapter/src/generated_plane.cpp",
+      "sha256": "a7279559e35260ddaa94e9d43507d69a50941ef984ad229b015339c6576cc8ed"
+    },
+    {
+      "path": "native/smlib-adapter/src/representation_seal_geometry.cpp",
+      "sha256": "2f0b20961c64e440213fe7382dd47414dd374fbe554a24d6c8dc37e642e4e2b3"
+    },
+    {
+      "path": "native/smlib-adapter/src/copy.cpp",
+      "sha256": "0cfc60da6dccd1f91a7140fe53e5ee8be975e21cb3e827895e359d48105072bf"
+    },
+    {
+      "path": "native/smlib-adapter/src/context_metadata.hpp",
+      "sha256": "c105a819bb1aa5d7e678aadca403a4174a0312621eb26cbc2d850eb0f3d4b407"
+    },
+    {
+      "path": "native/smlib-adapter/src/plane.cpp",
+      "sha256": "1c7ed1a9958693682696ca48b8cb6a893eb4c480d1192999b97974e51391cafe"
+    },
+    {
+      "path": "native/smlib-adapter/src/plane_domain.cpp",
+      "sha256": "3e500336a94fad265286eecaa3c6673c38a6a3752ac079b7b1032ef10a01357d"
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "sha256": "800e18af50520867897d70b25e814428e78cd279bcd643fc8d68e70abf520a8a"
+    },
+    {
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "sha256": "f67077face61a64176dbb0f155aa4d96a13124135728d7ff016f138cadaf6fa3"
+    },
+    {
+      "path": "native/smlib-adapter/qualify.sh",
+      "sha256": "ec797fc4b79e24e07e40e0502ee054d3a9b42d0f0edbab47c34b20f3f4389e43"
+    },
+    {
+      "path": "native/smlib-adapter/tests/root_issuance_tests.cpp",
+      "sha256": "467a4d4869e0cf5d221027927d2e76f7cf4a937351f6bc3b63eff67ce3d77a94"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_extraction.cpp",
+      "sha256": "c14ef3f235d32b96545d166f9e9df52f5e0b8973099ac9181c28a116edb539b6"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_extraction_tests.cpp",
+      "sha256": "587068a2efdbf1679499a13d5cabe911f70ecf13e95772fabc01a9e9ae572bb1"
+    },
+    {
+      "path": "native/smlib-adapter/tests/paired_plane_observability_tests.cpp",
+      "sha256": "e6c742d94260facb9ddfcfb7c5ab90f1e99afe63c6f6a03f3dcc1b5ed9916b20"
+    }
+  ],
+  "syntax": {
+    "result": "PASS",
+    "translation_units": [
+      "native/smlib-adapter/src/planar_transition.cpp",
+      "native/smlib-adapter/src/planar_transition_plan.cpp",
+      "native/smlib-adapter/src/planar_transition_events.cpp",
+      "native/smlib-adapter/src/planar_transition_verify.cpp",
+      "native/smlib-adapter/src/face_lineage.cpp",
+      "native/smlib-adapter/src/face_lineage_events.cpp",
+      "native/smlib-adapter/src/face_lineage_geometry.cpp",
+      "native/smlib-adapter/src/representation_seal.cpp",
+      "native/smlib-adapter/tests/face_lineage_tests.cpp"
+    ],
+    "flags": "-std=c++17 -fsyntax-only -Wall -Wextra -DSM_NO_DEBUG_CODE -DSM_NO_GFX_OUTPUT_CODE -DNDEBUG",
+    "diagnostics_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "diff_check": "PASS",
+  "sdk": {
+    "revision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+    "status": ""
+  },
+  "production_modules": {
+    "native/smlib-adapter/src/face_lineage.cpp": 217,
+    "native/smlib-adapter/src/face_lineage.hpp": 181,
+    "native/smlib-adapter/src/face_lineage_events.cpp": 252,
+    "native/smlib-adapter/src/face_lineage_geometry.cpp": 163,
+    "native/smlib-adapter/src/planar_transition.cpp": 136,
+    "native/smlib-adapter/src/planar_transition.hpp": 73,
+    "native/smlib-adapter/src/planar_transition_detail.hpp": 47,
+    "native/smlib-adapter/src/planar_transition_events.cpp": 120,
+    "native/smlib-adapter/src/planar_transition_plan.cpp": 130,
+    "native/smlib-adapter/src/planar_transition_verify.cpp": 176,
+    "native/smlib-adapter/src/representation_seal.cpp": 182,
+    "native/smlib-adapter/src/representation_seal.hpp": 50
+  },
+  "actual_qualification": "UNRUN: no child configure/build/object/link/SDK/CTest/native/WASM/Rust/Chrome/jobs",
+  "prior_evidence": {
+    "job": "cf149f9a-2efe-4e77-8888-f856b36c3d09",
+    "request": "auto-d0d513c09e7143b3858076d9621839b2",
+    "source": "parent source26354; frozen ff877 integrated6ca",
+    "log_path": "/home/louistrue/build-workers/worker-state/jobs/cf149f9a-2efe-4e77-8888-f856b36c3d09/output.log",
+    "log_sha256": "a47a5f405528672b7c156af3e32a09015fd2031d82cca6e2fafd37f490ae39d9",
+    "lines": "54347-54384",
+    "actual": "Node/WASM sixth later DeleteEdge failure15/event408/op10/16016/frame2/nodes43; seventh/eighth PASS; DNS failure before actual Rust/Chrome; no whole qualification"
+  },
+  "witnesses": [
+    {
+      "path": "native/smlib-adapter/tests/face_lineage_tests.cpp",
+      "function": "split_merge",
+      "status": "UNRUN"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_lineage_tests.cpp",
+      "function": "transition_frame_refusal",
+      "status": "UNRUN"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_lineage_tests.cpp",
+      "function": "transition_head_refusal",
+      "status": "UNRUN"
+    }
+  ],
+  "source_proof": [
+    {
+      "path": "source/SMLib/src/SmBrep.cpp",
+      "lines": "5752-6020,6487-6560,12242-12864,13405-13468",
+      "meaning": "actual DeleteEdge PRE/UV destruction/retained support/early merge; public WithVU exact fixed branch and actual constructor/copy source"
+    },
+    {
+      "path": "source/SMLib/src/SmLoopuse.cpp",
+      "lines": "66-126",
+      "meaning": "public CollectEdgeuses resets primary and assigns closed cyclic use ownership"
+    },
+    {
+      "path": "source/SMLib/src/SmBSplineSurface.cpp",
+      "lines": "924-1013",
+      "meaning": "analytic plane branch copies genuine actual support"
+    },
+    {
+      "path": "source/SMLib/src/SmBSplineCurve.cpp",
+      "lines": "711-742,2284-2322",
+      "meaning": "genuine copy source and checked materialized initial linear construction"
+    },
+    {
+      "path": "source/SMLib/src/SmEdgeuse.cpp",
+      "lines": "4510-4608",
+      "meaning": "real trim deletion and canonical SAME owner attachment"
+    }
+  ],
+  "remaining_holds": [
+    "independent pinned review",
+    "parent admitted native/WASM execution of changed source",
+    "any extra SDK flags/list/numerical branches must refuse",
+    "shared intersection/complete checked partition/classification/paired extraction/interface provenance/regularized region support",
+    "no opcode21/cap128/final persistent faces/layer closure authority"
+  ]
+}

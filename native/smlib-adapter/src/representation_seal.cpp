@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "representation_seal.hpp"
+#include "planar_transition.hpp"
 #include "context_metadata.hpp"
 #include "sweep.hpp"
 #include "ifclite_smlib.h"
@@ -29,7 +30,7 @@ void RepresentationSeal::word(uint64_t value) {
     scratch.push_back(value);
 }
 void RepresentationSeal::real(double value) { uint64_t bits; static_assert(sizeof(bits)==sizeof(value)); std::memcpy(&bits,&value,sizeof(bits)); word(bits); }
-void RepresentationSeal::pointer(const void* value) { word(reinterpret_cast<uintptr_t>(value)); }
+void RepresentationSeal::pointer(const void* value) { word(transition_slots?transition_slots->expected_slot_pointer(value):reinterpret_cast<uintptr_t>(value)); }
 void RepresentationSeal::object(SmObject* value) {
     if(!value) return;
     for(auto* existing:pending) {
@@ -116,7 +117,8 @@ void RepresentationSeal::capture() {
                 auto* f=static_cast<SmFace*>(t); auto uv=f->GetUVDomain();
                 real(f->GetTolerance()); word(f->GetRectangularTrim());
                 real(uv.GetUMin()); real(uv.GetUMax()); real(uv.GetVMin()); real(uv.GetVMax());
-                auto id=initial?ledger.binding(f,false)->current:ledger.identity(f); word(id.domain); word(id.sequence);
+                auto id=initial?ledger.binding(f,false)->current:ledger.identity(f);
+                const auto slot_id=transition_slots?transition_slots->expected_face_slot(f,id):id; word(slot_id.domain); word(slot_id.sequence);
                 std::array<Root,1024> roots{}; const auto count=initial?0:ledger.roots(id,roots.data(),roots.size()); word(count);
                 for(uint32_t r=0;r<count;++r) {
                     const auto& root=roots[r]; word(root.identity.domain); word(root.identity.sequence); word(uint64_t(root.kind));

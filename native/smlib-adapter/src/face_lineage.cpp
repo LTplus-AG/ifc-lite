@@ -4,6 +4,7 @@
 #include "ifclite_smlib.h"
 #include "empty.hpp"
 #include "representation_seal.hpp"
+#include "planar_transition.hpp"
 #include <SmBrep.h>
 #include <SmCopyBrepMap.h>
 #include <SmFace.h>

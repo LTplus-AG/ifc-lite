@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Actual SDK event/ownership invariants. UNRUN; not paired qualification.
 #include "face_lineage.hpp"
+#include "planar_transition.hpp"
 #include "copy.hpp"
 #include "sweep.hpp"
 #include "context_metadata.hpp"
@@ -12,6 +13,8 @@
 #include <SmEdge.h>
 #include <SmFace.h>
 #include <SmLine.h>
+#include <SmLoop.h>
+#include <SmLoopuse.h>
 #include <SmMerge.h>
 #include <SmPlane.h>
 #include <SmVertex.h>
@@ -273,49 +276,102 @@ void split_merge() {
     auto* working=owned.first.get();
     const auto inventory=seeds(*working); SmFace* original=inventory.front().face;
     const auto root=single(ledger,ledger.identity(original)); const auto parent=ledger.identity(original);
-    SmTArray<SmVertex*> vertices; original->GetVertices(vertices);
-    require(vertices.GetSize()==4,"real quadrilateral box face");
-    SmVertex* start=nullptr; SmVertex* end=nullptr; double distance=0;
-    for(auto* a:vertices) for(auto* b:vertices) {
-        const auto delta=a->GetPoint()-b->GetPoint(); const double d=delta.Dot(delta);
-        if(d>distance) { distance=d; start=a; end=b; }
+    // Fixed private WithVU/DeleteEdge operation, genuine retained UVs and
+    // operation-transition receipts; ordinary direct edit negatives stay below.
+    const auto transition=PlanarTransition::roundtrip(ledger,*owned.source,*working,*original);
+    const auto one=transition.fragment(0),two=transition.fragment(1);
+    require(transition.before()==parent && one!=parent && two!=parent && one!=two &&
+        ledger.descends_from(one,parent) && ledger.descends_from(two,parent),
+        "both real fragments have distinct generations and frozen source parent");
+    require(single(ledger,one).identity==root.identity && single(ledger,two).identity==root.identity,
+        "actual original source revision/root survives both fragments");
+    require(transition.after()!=parent && transition.after()!=one && transition.after()!=two &&
+        ledger.identity(original)==transition.after() && transition.physical_revision().sequence &&
+        ledger.descends_from(transition.after(),one) && ledger.descends_from(transition.after(),two),
+        "new physical revision derives from both fragments, never relabelled as original");
+    auto refused=[&](const TransitionReceipt& receipt,SmBrep& body) {
+        bool rejected=false; try { PlanarTransition::consume(ledger,receipt,body); }
+        catch(const SweepFailure& e) { rejected=e.status==IFCLITE_SMLIB_UNSUPPORTED; }
+        require(rejected,"foreign/reused/stale private transition refused before SDK mutation"); ledger.check();
+    };
+    refused(TransitionReceipt{},*working); // Caller integers/default values cannot issue authority.
+    refused(transition,*owned.source); // Actual source cannot be substituted for the issued target.
+    {
+        Ledger other; bool rejected=false;
+        try { PlanarTransition::consume(other,transition,*working); }
+        catch(const SweepFailure& e) { rejected=e.status==IFCLITE_SMLIB_UNSUPPORTED; }
+        require(rejected,"operation issued by another ledger is not authority");
     }
-    require(start && end && distance==8,"choose actual opposite corners without an invented edge");
-    Scope phase(ledger,context,owned.source.get());
-    SmEdge* cut=nullptr; SmLoop* loop=nullptr; SmFace* fragment=nullptr; SmLine* line=nullptr;
+    PlanarTransition::consume(ledger,transition,*working); refused(transition,*working);
+    const auto next=PlanarTransition::roundtrip(ledger,*owned.source,*working,*original);
+    require(next.before()==transition.after() && next.after()!=next.before() &&
+        next.physical_revision()!=transition.physical_revision(),"subsequent operation receives new physical revision");
+    refused(transition,*working); // Old operation/fragment generations cannot substitute for next plan.
+    PlanarTransition::consume(ledger,next,*working);
+    require(working->GetNumFaces()==6 && owned.source->GetNumFaces()==6,"complete live inventories retained");
+    require(std::abs(NumericalRead::volume(ledger,*working,1e-8)-8.)<=1e-8,
+        "actual fixed transition preserves analytic signed box volume 8");
+    double area=0;
+    for(auto seed:seeds(*working)) area+=NumericalRead::face(ledger,*seed.face,SM_OT_SAME,1e-8,
+        SmPoint3d(0,0,0),4.).area;
+    require(std::abs(area-24.)<=1e-8,"actual fixed transition preserves analytic box area 24");
     try {
-        require(SmLine::CreateLineSegment(context,3,start->GetPoint(),end->GetPoint(),line)==SM_SUCCESS && line,
-            "actual SDK diagonal curve"); ledger.check();
-        working->m_bEditingEnabled=TRUE;
-        require(working->MakeEdgeInFace(original,start,end,line,nullptr,line->GetNaturalInterval(),SM_OT_SAME,
-            working->GetTolerance(),cut,loop,fragment)==SM_SUCCESS && cut && fragment,
-            "actual SDK face split produces a reached new fragment"); ledger.check();
-        ledger.verify_inventory(*working);
-        const auto one=ledger.identity(original),two=ledger.identity(fragment);
-        require(one!=parent && two!=parent && one!=two && ledger.descends_from(one,parent) && ledger.descends_from(two,parent),
-            "both fragments have distinct event generations and the same frozen parent");
-        require(single(ledger,one).identity==root.identity && single(ledger,two).identity==root.identity,
-            "split fragments preserve actual original boundary ancestry");
-        require(working->DeleteEdge(cut)==SM_SUCCESS,"actual SDK removal merges split face fragments");
-        ledger.check(); ledger.verify_inventory(*working);
-        require(working->GetNumFaces()==6,"actual split/merge restores box face cardinality");
-        bool reached=false;
-        for(auto seed:seeds(*working)) {
-            const auto id=ledger.identity(seed.face);
-            if(single(ledger,id).identity==root.identity) {
-                require(ledger.descends_from(id,one) && ledger.descends_from(id,two),"merged face retains both fragment ancestors");
-                reached=true;
-            }
-        }
-        require(reached,"actual merged source face reached");
-        working->m_bEditingEnabled=FALSE;
-        phase.finish(); ledger.check();
         owned.second=checked_brep_copy(working,&ledger);
         require(owned.source->GetNumFaces()==6,"original source face inventory survives owned split/merge");
         ledger.verify_inventory(*owned.source);
         Scope release(ledger,context); owned.source.reset(); ledger.check(); owned.first.reset(); ledger.check();
         owned.second.reset(); ledger.check(); release.finish(); ledger.check();
     } catch(...) { rethrow_tainted_kernel_domain("actual lineage split/merge witness"); }
+}
+void transition_head_refusal() {
+    std::fprintf(stderr,"lineage BEGIN actual post-receipt head-slot substitution refusal\n");
+    Solids owned; owned.source=box(); Ledger ledger;
+    auto& context=*const_cast<SmContext*>(owned.source->GetContext());
+    Scope lifetime(ledger,context); admit(ledger,*owned.source);
+    owned.first=checked_brep_copy(owned.source.get(),&ledger);
+    auto* face=seeds(*owned.first).front().face;
+    bool foreign=false;
+    try { PlanarTransition::roundtrip(ledger,*owned.source,*owned.first,*seeds(*owned.source).front().face); }
+    catch(const SweepFailure& e) { foreign=e.status==IFCLITE_SMLIB_UNSUPPORTED; }
+    require(foreign && !kernel_domain_is_tainted(),"foreign original face/head plan refused before executed mutation"); ledger.check();
+    const auto receipt=PlanarTransition::roundtrip(ledger,*owned.source,*owned.first,*face);
+    SmTArray<SmLoop*> loops; face->GetLoops(loops);
+    auto* lu=loops[0]->GetLoopuse(); auto* original=static_cast<SmEdgeuse*>(lu->GetEUorVU());
+    auto* replacement=original->GetCCWEdgeuse(); unsigned executed=0;
+    require(replacement && replacement!=original && replacement->GetLoopuse()==lu,"actual distinct same-cycle replacement head");
+    const auto status=lu->CollectEdgeuses(replacement); ++executed;
+    require(status==SM_SUCCESS && lu->GetEUorVU()==replacement,"actual public head substitution reached"); ledger.check();
+    bool refused=false;
+    try { PlanarTransition::consume(ledger,receipt,*owned.first); }
+    catch(const SweepFailure& e) { refused=e.status==IFCLITE_SMLIB_UNSUPPORTED; }
+    require(refused && executed==1 && ledger.failed()==Failure::RepresentationChanged,
+        "new physical post seal refuses an actually substituted head, before receipt consumption");
+    // This exact successful rotation keeps a valid four-use cyclic graph. It
+    // does not authorize continuation after the ledger's first failure latch.
+    owned.first.reset(); owned.source.reset(); lifetime.finish();
+}
+void transition_frame_refusal() {
+    std::fprintf(stderr,"lineage BEGIN planned transition stale parent frame refusal\n");
+    Solids owned; owned.source=box(); Ledger ledger;
+    auto& context=*const_cast<SmContext*>(owned.source->GetContext());
+    Scope lifetime(ledger,context); admit(ledger,*owned.source);
+    owned.first=checked_brep_copy(owned.source.get(),&ledger);
+    TransitionReceipt receipt;
+    {
+        Scope issuing_parent(ledger,context);
+        receipt=PlanarTransition::roundtrip(ledger,*owned.source,*owned.first,*seeds(*owned.first).front().face);
+        issuing_parent.finish(); ledger.check();
+    }
+    {
+        Scope different_parent(ledger,context); // Same depth, separately issued activation.
+        bool rejected=false;
+        try { PlanarTransition::consume(ledger,receipt,*owned.first); }
+        catch(const SweepFailure& e) { rejected=e.status==IFCLITE_SMLIB_UNSUPPORTED; }
+        require(rejected,"same-depth replacement scope cannot replay prior physical operation receipt");
+        ledger.check(); different_parent.finish(); ledger.check();
+    }
+    owned.first.reset(); ledger.check(); owned.source.reset(); ledger.check();
+    lifetime.finish(); ledger.check();
 }
 void address_reuse() {
     std::fprintf(stderr,"lineage BEGIN real SDK allocator reuse (must be observed, never skipped)\n");
@@ -480,6 +536,6 @@ void terminal_budget_failure() {
 }
 void run_root_issuance_tests();
 void run_face_lineage_tests() {
-    run_root_issuance_tests(); direct_read_refusal(); copy_lifetime(); split_merge(); mixed_origins(); address_reuse(); refusals(); terminal_budget_failure();
+    run_root_issuance_tests(); direct_read_refusal(); copy_lifetime(); split_merge(); transition_frame_refusal(); transition_head_refusal(); mixed_origins(); address_reuse(); refusals(); terminal_budget_failure();
     std::fprintf(stderr,"lineage witnesses PASS; paired split/classification/extraction still unimplemented\n");
 }

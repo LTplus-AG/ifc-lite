@@ -62,6 +62,8 @@ class Ledger {
         bool active=false;
     } creation;
     std::unique_ptr<class RepresentationSeal> creation_seal;
+    std::unique_ptr<class PlanarTransition> completed_transition;
+    class PlanarTransition* active_transition=nullptr;
     struct NumericalPhase {
         SmBrep* source=nullptr;
         Identity operation{};
@@ -81,7 +83,7 @@ class Ledger {
         SmBrep* owner=nullptr;
         uint32_t birth_frame=0;
         bool alive=false,retired=false,removed=false,newborn=false,initial_issuance=false,numerical_initialized=false;
-        Identity numerical_operation{};
+        Identity numerical_operation{},owned_transition{};
     };
     Limits limits;
     uint64_t domain;
@@ -97,6 +99,7 @@ class Ledger {
     std::array<Scope*,64> frames{};
     std::array<SmBrep*,64> protected_sources{};
     uint32_t frame_count=0;
+    uint64_t frame_serial=0;
     std::vector<Node> nodes;
     std::vector<Binding> bindings;
     std::vector<Root> root_records;
@@ -124,6 +127,7 @@ class Ledger {
     friend class RepresentationSeal;
     friend class GeneratedPlane;
     friend class NumericalRead;
+    friend class PlanarTransition;
 public:
     explicit Ledger(Limits={});
     ~Ledger();
@@ -160,10 +164,12 @@ class Scope final:public SmNotifyCallback {
     SmNotifyCallback* previous;
     bool installed=false,owns_callback=false;
     uint32_t frame=0;
+    uint64_t serial=0;
     uint32_t depth=0;
     Phase phase;
     friend class Ledger;
     friend class GeneratedPlane;
+    friend class PlanarTransition;
 public:
     Scope(Ledger&,SmContext&,SmBrep* readonly_source=nullptr,Phase=Phase::Mutation);
     Scope(const Scope&)=delete;

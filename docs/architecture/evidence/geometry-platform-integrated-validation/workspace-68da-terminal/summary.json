@@ -1,0 +1,19 @@
+{
+  "source": "68da7b8a966e0972fa41a0c5d9ab3a48ede19a4c",
+  "job": "00939a61-7797-48a0-a104-cb7657915d72",
+  "state": "failed",
+  "exitCode": 101,
+  "sourceUnchanged": true,
+  "output_sha256": "3d98bf22e67270febf02edcacfd003631122973f7da1369aeaa8d8ff2802bb53",
+  "target_summaries": 391,
+  "tests": {
+    "passed": 6383,
+    "failed": 1,
+    "ignored": 47
+  },
+  "failure": "processing rejected-reply box-lifetime test attempted publication with outstanding destroyed reply; reservation/refund assertions passed; teardown repaired f70ac2afcf",
+  "strict_clippy": "FAIL suspicious_assignment_formatting in retained_curved_consumption.rs93; whitespace-only repair4397b575c4",
+  "source_after_repairs": "03f8e4f109",
+  "repaired_source_execution": "UNRUN",
+  "actual_sdk_coverage": "Not established by this workspace run; explicit native --rust-consumers qualification remains required"
+}

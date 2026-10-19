@@ -279,3 +279,33 @@ fn p1_rigidity_policy_bounds_gram_error_and_excludes_reflection() {
     let mut invalid=Matrix4::identity();invalid[(0,0)]=f64::NAN;
     assert!(proper_rigid(&invalid).is_err());
 }
+
+#[test]
+fn p1_affine_admission_copy_stop_survives_the_common_ready_boundary() {
+    use crate::resource::{ExecutionAccount,ExecutionPolicy,ResourceLimits,ProgramStop,Dimension};
+    let source=NESTED_MM.replace("#24,1.,#3","#24,2.,#3");
+    let router=GeometryRouter::with_scale(0.001);
+    let mut decoder=EntityDecoder::new(&source);
+    let mut program=GeometryProgram::retained_parts(decoder.decode_by_id(10).unwrap(),
+        RetainedContract {source_epoch:7,source_revision:11});
+    let account=ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits {copy_bytes:Some(0),..Default::default()}));
+    let mut constructions=0;
+    loop {
+        let request=program.request().unwrap().expect("affine admission must be reached");
+        match account.scope(||program.admit_retained_with_inputs(request,&router,&mut decoder,None,None)) {
+            Ok((reply,operations))=> {
+                assert!(operations.iter().all(|operation|operation.construction().is_some()));
+                constructions+=operations.len();
+                account.scope(||program.accept(reply,&router)).unwrap();
+            }
+            Err(ProgramError::TraversalStopped(stop))=> {
+                assert!(matches!(stop,ProgramStop::ResourceRefused(f) if f.dimension==Dimension::CopyBytes));
+                assert_eq!(account.check().unwrap_err(),stop);
+                assert_eq!(constructions,1);
+                assert!(program.finish_retained().is_err(),"no partial traversal result after failed affine admission");
+                break;
+            }
+            Err(error)=>panic!("resource stop must not become unsupported/protocol: {error:?}"),
+        }
+    }
+}

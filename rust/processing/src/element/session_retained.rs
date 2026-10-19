@@ -201,6 +201,8 @@ impl RetainedProductExecution {
                     Err(stop)=>RetainedExecutionError::Stopped(stop),
                     Ok(())=>match error {
                         super::session_protocol::WorkError::Geometry(ifc_lite_geometry::program::ProgramError::TraversalStopped(stop))=>RetainedExecutionError::Stopped(stop),
+                        super::session_protocol::WorkError::Geometry(ifc_lite_geometry::program::ProgramError::UnsupportedRetained)=>
+                            RetainedExecutionError::Unsupported("reached common retained admission unavailable".into()),
                         other=>protocol(other),
                     },
                 })?;

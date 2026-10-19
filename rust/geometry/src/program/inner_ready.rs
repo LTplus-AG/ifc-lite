@@ -105,19 +105,25 @@ impl Envelope {
                 }
     }
 }
+fn retained_admission_error(error:crate::Error)->ProgramError {
+    match error {
+        crate::Error::ProgramStopped(stop)=>ProgramError::TraversalStopped(stop),
+        _=>ProgramError::UnsupportedRetained,
+    }
+}
 impl ReadyOperation {
     /// Logical plan admission only. This reply certifies no remote execution.
     pub(super) fn admit_retained(self) -> Result<(ProgramReply, Vec<super::retained::RetainedPlanOperation>), ProgramError> {
         let (value, operation) = match self.payload {
             ReadyPayload::Item(ready) => {
-                let (value,operation) = ready.admit_retained().map_err(|_| ProgramError::UnsupportedRetained)?;
+                let (value,operation) = ready.admit_retained().map_err(retained_admission_error)?;
                 let mut operations=Vec::new();
-                crate::resource::reserve_headers(&mut operations,1).map_err(|_| ProgramError::UnsupportedRetained)?.retain();
+                crate::resource::reserve_headers(&mut operations,1).map_err(ProgramError::TraversalStopped)?.retain();
                 operations.push(operation);
                 (ReplyValue::Item(ItemStep::Complete(value)), operations)
             }
             ReadyPayload::Boolean(ready) => {
-                let (reply,operations)=ready.admit_retained().map_err(|_| ProgramError::UnsupportedRetained)?;
+                let (reply,operations)=ready.admit_retained().map_err(retained_admission_error)?;
                 (ReplyValue::BooleanNumerical(reply),operations)
             }
             ReadyPayload::Nested(envelope, ready) => {
@@ -125,7 +131,7 @@ impl ReadyOperation {
                 (envelope.wrap(reply), operation)
             }
             ReadyPayload::Mapping(ready) => {
-                let (reply, operations) = ready.admit_retained().map_err(|_| ProgramError::UnsupportedRetained)?;
+                let (reply, operations) = ready.admit_retained().map_err(retained_admission_error)?;
                 (ReplyValue::Mapping(reply), operations)
             },
             ReadyPayload::TypeMap(ready) => (ReplyValue::TypeMap(ready.execute()), Vec::new()),

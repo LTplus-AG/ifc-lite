@@ -250,3 +250,43 @@ fn p2_sdk_nested_outcome_binding_exhaustion_is_typed_and_preserves_original_repl
     assert!(execution.traversal_plan().is_none());
     assert!(execution.issue_next(&worker,&mut decoder,&router).is_err());
 }
+
+#[test]
+fn p1_sdk_stop_while_capturing_affine_input_is_typed_before_any_affine_issuance() {
+    use ifc_lite_geometry::resource::{Dimension,ExecutionAccount,ExecutionPolicy,ResourceLimits};
+    let Some(mut worker)=worker() else {return};
+    // One source-local value has no placement vector to copy. Publishing its
+    // definition therefore fits a zero-copy allowance. The reached scale appends
+    // a placement; capturing that input for the physical affine operation is the
+    // first positive placement-lineage copy and must refuse before SDK issuance.
+    let source=SOURCE.replace("'SweptSolid',(#13)","'MappedRepresentation',(#93)")
+        .replace("ENDSEC;END-ISO-10303-21;","
+        #90=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',(#13));
+        #91=IFCREPRESENTATIONMAP(#5,#90);
+        #92=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#4,2.,$);
+        #93=IFCMAPPEDITEM(#91,#92);ENDSEC;END-ISO-10303-21;");
+    let model=ProductionModel::from_source(SourceBundle::new(source.into_bytes()));
+    let context=model.snapshot(OwnedMeshProductionData::default());
+    let mut decoder=context.source().unwrap().decoder();
+    let router=router(&mut decoder);
+    let account=ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits {copy_bytes:Some(0),..Default::default()}));
+    let mut execution=account.scope(||execution(&context,&mut decoder,&router));
+    let issued=execution.issue_next(&worker,&mut decoder,&router).unwrap().expect("real construction");
+    let work=issued.execute(&mut worker,0.001,15.,MeshLimits::default()).unwrap();
+    assert!(work.realization().is_some());
+    execution.accept(work,&mut decoder,&router).unwrap();
+    let source_handle=execution.ledger[0].receipt.solid();
+    let error=match execution.issue_next(&worker,&mut decoder,&router) {
+        Err(error)=>error,Ok(_)=>panic!("affine input copying must stop before another runtime issuance"),
+    };
+    let stop=account.check().unwrap_err();
+    assert!(matches!(stop,ProgramStop::ResourceRefused(f) if f.dimension==Dimension::CopyBytes));
+    assert!(matches!(error,RetainedExecutionError::Stopped(actual) if actual==stop));
+    assert_eq!(execution.discharged_count(),1);
+    assert!(execution.pending.is_none(),"no replacement numerical receipt was manufactured");
+    assert!(execution.state.pending_geometry.is_some(),"original reached common continuation remains owned");
+    assert!(execution.traversal_plan().is_none());
+    assert!(execution.issue_next(&worker,&mut decoder,&router).is_err());
+    assert!((worker.volume(source_handle,1e-8).unwrap()-24.).abs()<1e-6,
+        "the earlier independent source receipt survives this admission refusal");
+}

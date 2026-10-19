@@ -4,7 +4,7 @@ The user explicitly requested retirement and full cleanup. Automatic continuatio
 
 ## Preserved work and recovery
 
-- Root checkout `t3-bc9e57fa` is clean; it remains only as the app-bound retirement anchor. All **69 explicitly owned scratch/child source checkouts were removed** after preservation. Other sessions' checkouts, jobs, branches, locks and shared worker caches were left intact.
+- Root checkout `t3-bc9e57fa` is clean; it remains only as the app-bound retirement anchor. All **69 explicitly owned scratch/child source checkouts and four owned bare source stores were removed** after preservation. The root anchor’s 190 ignored cache/artifact entries were also cleaned or relocated. Other sessions' checkouts, jobs, branches, locks and shared worker caches were left intact.
 - Four unfinished test states were saved as immutable recovery commits, with separate staged/working patches and untracked-file archives. See `source-restoration-map.json`: C2 profile tests `eeb32bdfa32cae5601c725b23fce4d1af3a8167b`; polygonal baseline-red tests `92da2d0d10b2bbdebd2af0eb5cb916547e17087a`; D47 baseline-red tests `c7399400a974253d517882424f0fb908c2b7f27f`; F3b placement tests `b21c085924eb9662d3202166cf5773f6f3c59e55`. These are saved test states, not qualified fixes.
 - `all-owned-source.bundle` is verified and self-contained: 58 source/recovery refs, 873573327 bytes, SHA-256 `c532d3e092552bbf8d8c5ebf50a1996d680d3f139f5250b2ebf9e2959d3d9c06`.
 - `child-source.bundle` preserves all 13 final child/integration heads: 862470965 bytes, SHA-256 `68473ce66a2f268bea1dabc6672161eb0b6cc307156a19a86345e36641a16339`. Exact refs and original paths are in `child-restoration-map.json`.
@@ -12,11 +12,14 @@ The user explicitly requested retirement and full cleanup. Automatic continuatio
 - Generated WASM, fixture copies, old test outputs and other ignored evidence were relocated rather than discarded. `cleanup-results.json` maps every retained entry under `retained-build-evidence/` back to its original path. Rebuildable node_modules/dist/typecheck caches were discarded. Published evidence and original logs outside source checkouts remain in the original artifact tree. Old path references require the relocation map before replay.
 - Restore source with `git fetch /absolute/path/all-owned-source.bundle refs/archive/bc9e57fa-retirement/source-NN:refs/heads/recovered-name`, then check out that ref in a fresh checkout. Use the child bundle and its exact map for child heads. Restore required ignored artifacts from the relocation map. Complete bundles and large evidence remain local; the public archive carries bounded maps, patches and receipts, not the large binaries/private fixtures.
 
+- Four additional owned bare stores contained 2,110 refs, including 257 additional commits. `supplemental-stores.bundle` preserves them relative to the two complete bundles above (4,628,547 bytes; SHA-256 `2a82cb9bc6e243af0f307e378cb1c48fe7f462a141a95d30474ba66ad9d3d024`). Import the complete bundles first, then this supplemental bundle; exact ref mappings are in `supplemental-store-map.json`. A stale raw-source alternate was rebound to already-preserved objects and its original thin bundle imported before verification; no source bytes were fabricated or lost.
+
 ## Work stopped
 
 - The hourly scheduled task was first disabled, then deleted. Its full disabled configuration is retained in `scheduler-disabled-before-deletion.json`.
-- All 12 existing delegated owner threads are terminal, without pending child runs. Their automatic deliveries were disposed. D47's last request job `7f66cbd2-742b-429d-ab85-e398b3244ea0` failed during setup and released its resources; no owned workload remains running. The PC status was empty. Two observed Pop jobs belonged to other work and were preserved.
+- All 12 existing delegated owner threads are terminal, without pending child runs. Their automatic deliveries were disposed and all 12 child threads archived. D47's last request job `7f66cbd2-742b-429d-ab85-e398b3244ea0` failed during setup and released its resources; no owned workload remains running. The PC status was empty. Two observed Pop jobs belonged to other work and were preserved.
 - All PR watches in this thread are stopped. Open PRs remain open, linked, and available for deliberate reassignment; no automatic merge or new benchmark is queued.
+- Session claim labels were removed from #7890, #7714, #7711 and #7655 with explicit release comments; no session claim labels remain. Shared-account assignees were preserved to avoid removing another owner.
 - Goal status is paused at the user's retirement request; no completion is claimed.
 
 ## Delivered and pending

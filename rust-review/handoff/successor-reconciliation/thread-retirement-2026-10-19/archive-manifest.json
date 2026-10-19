@@ -16,8 +16,8 @@
   },
   {
     "path": "HANDOFF.md",
-    "bytes": 7945,
-    "sha256": "e6c30def979a6139e4ac04a1496608b76d3f8598f9adcfff969bd9a281df4286"
+    "bytes": 8876,
+    "sha256": "8c8fc10c1a0987910a0357df0da1bc876b3794ee76c757828bc7f248da21f414"
   },
   {
     "path": "bundle-identity.json",
@@ -40,6 +40,16 @@
     "sha256": "f6f521cc1a90e0a028a28ffeb65f379e8448685f90483fe00e80016a19f07515"
   },
   {
+    "path": "claim-release-body.md",
+    "bytes": 466,
+    "sha256": "1f140e193907428205984ede6e0baed47b0daca05c91d1315e24d82b0d69e50c"
+  },
+  {
+    "path": "claim-release-receipts.json",
+    "bytes": 710,
+    "sha256": "1bec4d17432c1c8aabca94c75bd6b91696d3cd9497f3174ca2ead02a796a5a47"
+  },
+  {
     "path": "cleanup-plan.json",
     "bytes": 277260,
     "sha256": "5fab96038f527789dcd779fc9040b6100f2337e44f5a37c208ddd74c4e988f30"
@@ -53,6 +63,11 @@
     "path": "delegated-retirement.json",
     "bytes": 7832,
     "sha256": "79e38883bee682e34ab6b0cbc84982413a8f153d7865899f6f28894645383929"
+  },
+  {
+    "path": "discussion-retirement-result.json",
+    "bytes": 107,
+    "sha256": "c0fafe309b060a5942671cf1407e1463575d70e07d0348ee398cb8b577bda282"
   },
   {
     "path": "fleet-pc-wsl-status.json",
@@ -85,9 +100,24 @@
     "sha256": "539f75d902d89f3c807c91e4c24794bb24927c05d5fec5435e165af1099555ad"
   },
   {
+    "path": "public-archive.json",
+    "bytes": 256,
+    "sha256": "2a35bcd3fee6c1f088cfe41333692d760c87b9ce5eb79c932a0fe5639ec85501"
+  },
+  {
+    "path": "remaining-claim-labels.json",
+    "bytes": 3,
+    "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+  },
+  {
     "path": "retirement-state.json",
-    "bytes": 859,
-    "sha256": "8a2423af5f752c0a4c80ad0f5ae8c4d8cc0a551c861410b3f566848150cd0234"
+    "bytes": 1169,
+    "sha256": "16ea3f978d15a249b99f2c84047999ee5f87bea7d447ce27787c60ad56b8a6d8"
+  },
+  {
+    "path": "root-cache-cleanup.json",
+    "bytes": 36870,
+    "sha256": "d23ac8f6b75b8f163c06bdbceaea8f9a1cd2c802d950a281a67179f2feb4de7d"
   },
   {
     "path": "scheduler-disabled-before-deletion.json",
@@ -181,8 +211,18 @@
   },
   {
     "path": "state.json",
-    "bytes": 364432,
-    "sha256": "0df145c550e8ef52618c72bd682bbdce47d8bc62b90ab2f8efb4aa1d2a4d2074"
+    "bytes": 364681,
+    "sha256": "a3fdc880ea2fa7dbaeb8348a415da9eb3fa8a73b9df4532efc0991d16080a744"
+  },
+  {
+    "path": "supplemental-store-identity.json",
+    "bytes": 254,
+    "sha256": "3304c9b02148259a4984436979136aa4c23886b82e7d13f36a20915efea0fde6"
+  },
+  {
+    "path": "supplemental-store-map.json",
+    "bytes": 255511,
+    "sha256": "085e9a7dd64f9c8be0aaed37adfee6d3936b8a8203eb88f76378eb6649c2442e"
   },
   {
     "path": "tracker.html",

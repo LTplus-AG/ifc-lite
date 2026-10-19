@@ -1,0 +1,8 @@
+{
+  "sha256": "2a82cb9bc6e243af0f307e378cb1c48fe7f462a141a95d30474ba66ad9d3d024",
+  "bytes": 4628547,
+  "requires": "Restore all-owned-source.bundle and child-source.bundle first",
+  "originalBareStores": 4,
+  "refs": 2110,
+  "supplementalCommits": 257
+}

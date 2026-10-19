@@ -1,0 +1,22 @@
+[
+  {
+    "issue": 7890,
+    "claimLabelRemoved": true,
+    "note": "Shared-account assignee preserved to avoid removing another owner; session release explicitly commented"
+  },
+  {
+    "issue": 7714,
+    "claimLabelRemoved": true,
+    "note": "Shared-account assignee preserved to avoid removing another owner; session release explicitly commented"
+  },
+  {
+    "issue": 7711,
+    "claimLabelRemoved": true,
+    "note": "Shared-account assignee preserved to avoid removing another owner; session release explicitly commented"
+  },
+  {
+    "issue": 7655,
+    "claimLabelRemoved": true,
+    "note": "Shared-account assignee preserved to avoid removing another owner; session release explicitly commented"
+  }
+]

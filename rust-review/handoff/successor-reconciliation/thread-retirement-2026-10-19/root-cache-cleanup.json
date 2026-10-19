@@ -1,0 +1,824 @@
+[
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/apps/autodesk-service/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/apps/cloud-service/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/apps/report-service/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/apps/viewer-embed/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/apps/viewer/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/apps/viewer/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/apps/viewer/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/apps/viewer/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/examples/babylonjs-viewer/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/examples/collab-demo/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/examples/headless-workflows/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/examples/threejs-collab/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/examples/threejs-viewer/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/ai/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/ai/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/ai/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/ai/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/bcf-api/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/bcf-api/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/bcf-api/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/bcf-api/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/bcf/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/bcf/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/bcf/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/bcf/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/cache/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/cache/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/cache/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/cache/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/charts/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/charts/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/charts/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/charts/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/clash/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/clash/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/clash/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/clash/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/cli/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/codegen/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/codegen/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/codegen/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/codegen/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/collab-server/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/collab/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/collab/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/collab/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/collab/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/create-ifc-lite/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/create/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/create/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/create/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/create/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/create/tsconfig.tsbuildinfo",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/data/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/data/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/data/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/data/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/diff/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/diff/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/diff/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/diff/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/documents-api/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/documents-api/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/documents-api/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/documents-api/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/drawing-2d/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/drawing-2d/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/drawing-2d/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/drawing-2d/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/embed-protocol/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/embed-sdk/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/encoding/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/encoding/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/encoding/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/encoding/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/export/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/export/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/export/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/export/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/extensions/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/extensions/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/extensions/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/extensions/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/flow-nodes/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/flow-nodes/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/flow-nodes/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/flow-nodes/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/flow/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/flow/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/flow/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/flow/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/geometry/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/geometry/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/geometry/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/geometry/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/ids-agent/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/ids-agent/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/ids-agent/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/ids-agent/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/ids-authoring/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/ids-authoring/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/ids-authoring/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/ids-authoring/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/ids/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/ids/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/ids/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/ids/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/ifcx/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/ifcx/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/ifcx/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/ifcx/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/lens/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/lens/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/lens/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/lens/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/lists/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/lists/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/lists/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/lists/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/load-trace/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/load-trace/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/load-trace/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/load-trace/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/mcp/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/mcp/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/mcp/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/mcp/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/merge/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/merge/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/merge/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/merge/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/mutations/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/mutations/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/mutations/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/mutations/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/oauth-pkce/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/oauth-pkce/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/oauth-pkce/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/oauth-pkce/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/opencde-foundation/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/opencde-foundation/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/opencde-foundation/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/opencde-foundation/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/parser/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/parser/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/parser/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/parser/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/plugin-api/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/plugin-api/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/plugin-api/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/plugin-api/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/pointcloud/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/pointcloud/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/pointcloud/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/pointcloud/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/provenance/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/query/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/query/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/query/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/query/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/regex-guard/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/regex-guard/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/regex-guard/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/regex-guard/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/renderer/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/renderer/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/renderer/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/renderer/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/report-contract/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/report-contract/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/report-contract/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/report-contract/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/rules/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/rules/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/rules/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/rules/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/sandbox/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/sandbox/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/sandbox/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/sandbox/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/sdk/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/sdk/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/sdk/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/sdk/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/semantic/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/semantic/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/semantic/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/semantic/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/server-bin/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/server-client/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/server-client/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/server-client/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/server-client/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/solar/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/solar/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/solar/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/solar/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/source-autodesk/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/source-autodesk/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/source-autodesk/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/source-autodesk/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/source-dalux/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/source-dalux/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/source-dalux/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/source-dalux/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/source-dropbox/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/source-dropbox/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/source-dropbox/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/source-dropbox/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/source-fixture/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/source-fixture/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/source-fixture/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/source-fixture/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/source-msgraph/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/source-msgraph/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/source-msgraph/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/source-msgraph/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/spatial/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/spatial/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/spatial/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/spatial/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/timing-ladder/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/timing-ladder/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/timing-ladder/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/timing-ladder/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/viewer/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/viewer/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/viewer/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/viewer/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/wasm-lifecycle/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/wasm-lifecycle/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/wasm-lifecycle/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/wasm-lifecycle/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/wasm/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/wasm/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/wasm/pkg/README.md",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/wasm/pkg/README.md"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/wasm/pkg/ifc-lite.js",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/wasm/pkg/ifc-lite.js"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/wasm/pkg/ifc-lite_bg.wasm",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/wasm/pkg/ifc-lite_bg.wasm"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/wasm/pkg/ifc-lite_bg.wasm.d.ts",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/wasm/pkg/ifc-lite_bg.wasm.d.ts"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/wasm/pkg/package.json",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/wasm/pkg/package.json"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/world-frame-fixtures/.turbo",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/packages/world-frame-fixtures/.turbo"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/world-frame-fixtures/dist",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/packages/world-frame-fixtures/node_modules",
+    "action": "removed rebuildable cache"
+  },
+  {
+    "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3-bc9e57fa/target",
+    "action": "retained evidence",
+    "retained": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/root-anchor/target"
+  }
+]

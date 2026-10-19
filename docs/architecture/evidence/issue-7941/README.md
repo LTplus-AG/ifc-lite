@@ -18,8 +18,17 @@ The receipts below describe the earlier source identified in
 `qualification.json`. They are retained evidence for that source. Transferring
 them to the layered-wall repair requires fresh output identity or a new surface
 proof; the earlier WASM hash and determinism run do not qualify the repair.
-Fresh native and WASM qualification, changed-output checks, actual browser
-rendering, size and current-pair performance remain pending.
+The repaired production source subsequently completed the default Rust workspace
+suite: 5,756 passed, zero failed and 47 ignored. The alternate-triangulator
+workspace run stopped at its census: `rvt01` host 11232 remains closed, but its
+enclosed volume changed from 39,336 to 39,344 cm³ and its triangle count from
+144 to 154. The prior host 6305 census discrepancy is absent.
+`repair-native-qualification.json` binds these results to their source and logs.
+The 11232 surface disposition and alternate suite completion remain pending;
+no census pin was changed. These runs precede the subsequent subgrid-depth
+review fix and do not qualify it. Fresh WASM consumer checks, changed-output
+checks, actual browser rendering, size and current-pair performance also remain
+pending.
 
 `qualification.json` records the completed native whole-wall finite-surface
 comparison for NUS host 143268, using all seven original openings and every

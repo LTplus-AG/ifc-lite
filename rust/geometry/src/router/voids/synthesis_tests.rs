@@ -954,3 +954,34 @@ mod issue_4611_far_field_threshold {
         );
     }
 }
+
+
+#[test]
+fn issue_6940_rectangular_merge_preserves_small_gaps_and_steps() {
+    let rect = |lo: [f64; 3], hi: [f64; 3]| OpeningType::Rectangular(
+        Point3::from(lo), Point3::from(hi), Some(Vector3::z()));
+    let covered = |openings: &[OpeningType], p: [f64; 3]| openings.iter().any(|o| {
+        let OpeningType::Rectangular(lo, hi, _) = o else { panic!("rectangular fixture") };
+        (0..3).all(|k| p[k] >= lo[k] && p[k] <= hi[k])
+    });
+    for (original, witness) in [
+        (vec![rect([0.,0.,0.], [1.,1.,1.]), rect([1.001,0.,0.], [2.,1.,1.])], [1.0005,0.5,0.5]),
+        (vec![rect([0.,0.,0.], [1.,1.,1.]), rect([0.5,0.005,0.], [2.,1.005,1.])], [1.5,0.002,0.5]),
+    ] {
+        assert!(!covered(&original, witness), "witness is authored solid, not an opening");
+        let merged = GeometryRouter::merge_rectangular_openings(&original);
+        assert!(!covered(&merged, witness), "near adjacency must not manufacture a cut");
+        for p in [[0.25,0.5,0.5], [1.5,0.5,0.5]] {
+            assert!(covered(&original, p) && covered(&merged, p), "both real cutters survive");
+        }
+    }
+    let tiled = vec![rect([0.,0.,0.], [1.,1.,1.]), rect([1.,0.,0.], [2.,1.,1.])];
+    let merged = GeometryRouter::merge_rectangular_openings(&tiled);
+    assert_eq!(merged.len(), 1, "an exact rectangular union still coalesces");
+    for p in [[0.5,0.5,0.5], [1.,0.5,0.5], [1.5,0.5,0.5]] {
+        assert!(covered(&merged, p));
+    }
+}
+
+#[path = "opening_merge_fixture_tests.rs"]
+mod opening_merge_fixture_tests;

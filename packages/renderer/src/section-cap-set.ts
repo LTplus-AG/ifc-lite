@@ -102,7 +102,8 @@ class CapGeometry {
     if (!this.fillVertexBuffer || !this.fillSource) return;
     const next = highlight && highlight.size > 0 ? highlight : null;
     if (sameHighlight(this.appliedHighlight, next)) return;
-    this.appliedHighlight = next;
+    // A copy: the caller may mutate and re-pass the same Map, which must still read as a change.
+    this.appliedHighlight = next && new Map(next);
     device.queue.writeBuffer(this.fillVertexBuffer, 0, recolorCapVertices(this.fillSource, this.fillRanges, next) ?? this.fillSource);
   }
 
@@ -144,7 +145,7 @@ class CapGeometry {
       this.fillSource = fill.vertices;
       this.fillRanges = fill.ranges;
       const painted = recolorCapVertices(fill.vertices, fill.ranges, highlight);
-      this.appliedHighlight = painted && highlight && highlight.size > 0 ? highlight : null;
+      this.appliedHighlight = painted && highlight && highlight.size > 0 ? new Map(highlight) : null;
       device.queue.writeBuffer(this.fillVertexBuffer, 0, painted ?? fill.vertices);
 
       this.fillIndexBuffer = device.createBuffer({
@@ -169,7 +170,7 @@ class CapGeometry {
 }
 
 function sameHighlight(a: CapHighlight | null, b: CapHighlight | null): boolean {
-  if (a === b) return true;
+  if (a === null && b === null) return true;
   if (!a || !b || a.size !== b.size) return false;
   for (const [id, color] of a) {
     const other = b.get(id);

@@ -39,7 +39,13 @@ export function sectionCapHighlight(
   if (state.activeTool !== 'section') return null;
   const out = new Map<string, Rgba>();
   const hovered = state.hoverHighlightEnabled ? state.hoverState.entityId : null;
-  if (hovered != null) out.set(capHighlightKey(state.hoverState.modelIndex, hovered), CAP_HOVER_COLOR);
+  // An element that is also selected (in the hovered element's model, or in any model when the
+  // selection is unscoped) takes the selection colour; a scoped hover key would otherwise be
+  // looked up first and win over the unscoped selection key.
+  const hoverModel = state.hoverState.modelIndex;
+  const hoverIsSelected = hovered != null && (selectedModelIndex === undefined || selectedModelIndex === hoverModel)
+    && (hovered === selectedId || selectedIds?.has(hovered) === true);
+  if (hovered != null && !hoverIsSelected) out.set(capHighlightKey(hoverModel, hovered), CAP_HOVER_COLOR);
   if (selectedId != null) out.set(capHighlightKey(selectedModelIndex, selectedId), CAP_SELECTION_COLOR);
   if (selectedIds) for (const id of selectedIds) out.set(capHighlightKey(selectedModelIndex, id), CAP_SELECTION_COLOR);
   return out.size > 0 ? out : null;

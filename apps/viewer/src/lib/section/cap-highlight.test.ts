@@ -30,6 +30,15 @@ describe('sectionCapHighlight (#7950)', () => {
     assert.deepEqual([...map.keys()].sort(), ['1:5', '2:9']);
   });
 
+  it('drops a scoped hover of an element that is selected unscoped, so selection wins', () => {
+    const map = sectionCapHighlight(state({ hoverState: { entityId: 5, modelIndex: 2 } }), 5, undefined)!;
+    assert.deepEqual([...map.keys()], ['*:5']);
+    const viaSet = sectionCapHighlight(state({ hoverState: { entityId: 6, modelIndex: 2 } }), null, new Set([6]))!;
+    assert.deepEqual([...viaSet.keys()], ['*:6']);
+    const other = sectionCapHighlight(state({ hoverState: { entityId: 5, modelIndex: 2 } }), 5, undefined, 1)!;
+    assert.deepEqual([...other.keys()].sort(), ['1:5', '2:5'], 'a different model is a different element');
+  });
+
   it('ignores hover while hover highlight is off', () => {
     assert.equal(sectionCapHighlight(state({ hoverHighlightEnabled: false, hoverState: { entityId: 9 } }), null, undefined), null);
   });

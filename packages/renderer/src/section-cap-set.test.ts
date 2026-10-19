@@ -242,5 +242,16 @@ describe('cap highlight (#7950)', () => {
     fill = lastFill(writes, created)!;
     assert.deepEqual(colorAt(fill.data, 3), [1, 0, 0, 1], 'a re-upload (slider drag) keeps the highlight');
   });
-});
 
+  it('sees a Map mutated in place and passed again as a change', () => {
+    const { renderer, writes, created } = newRenderer();
+    renderer.uploadDrawing(TWO, [], 'down', 1);
+    const highlight = new Map<string, readonly [number, number, number, number]>([['*:1', [1, 0, 0, 1]]]);
+    renderer.setCapHighlight(highlight);
+    const before = writes.length;
+    highlight.set('*:2', [0, 1, 0, 1]);
+    renderer.setCapHighlight(highlight);
+    assert.ok(writes.length > before, 'the mutated map is rewritten');
+    assert.deepEqual(colorAt(lastFill(writes, created)!.data, 3), [0, 1, 0, 1]);
+  });
+});

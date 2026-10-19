@@ -941,6 +941,16 @@ jobs:
           # components.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/facet_weld/components.rs | grep -Fxq 'rust/geometry/src/facet_weld/components.rs'; then
             oracle_args+=(--mutation tests/evidence/issue-7633/connected-patches.oracle.patch)
+          # #7638 (#7633): the new consolidate plan/recovery modules carry the
+          # changed plan/closure tests, so a whole-change revert cannot compile
+          # them (INCONCLUSIVE). Keep the modules, the retry plumbing and the
+          # closure certificate, and break ONLY the projected-gap proof:
+          # separated_groups never certifies independent groups, so no bucket
+          # regroups onto its own source plane and the prior single-plane union
+          # stays. The partition/noise and remote-prism plan tests turn RED. Once
+          # plan/disjoint.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/csg/consolidate/plan/disjoint.rs | grep -Fxq 'rust/geometry/src/csg/consolidate/plan/disjoint.rs'; then
+            oracle_args+=(--mutation tests/evidence/issue-7633/disjoint-plane.oracle.patch)
           # #7673: the new large-stack geometry pool module carries its own
           # tests, so a whole-file revert deletes them (INCONCLUSIVE). Keep the
           # module and remove ONLY the large worker stack: the deep par_iter

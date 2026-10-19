@@ -66,7 +66,8 @@ pub(super) fn signed_boundary_worse(candidate: &Mesh, baseline: &Mesh) -> bool {
 /// peer seam conform splits a retained edge at a vertex the fold never owned
 /// (the sub-edge still runs along it), while a chord through a fold's interior,
 /// or an edge joining two separate fold regions, has both endpoints on a fold
-/// and runs along none of its edges.
+/// and runs along none of its edges. The edge is covered when the fold edges
+/// collinear with it, within tolerance, jointly span it end to end.
 pub(super) fn tears_beyond_folds(
     candidate: &Mesh,
     buckets: &super::buckets::Buckets,
@@ -78,24 +79,64 @@ pub(super) fn tears_beyond_folds(
     // grows with the coordinate (about 1e-4 at 1000 units).
     const TOLERANCE: f64 = 2.0 / SCALE;
     const F32_ROUNDING: f64 = 3.0e-7;
-    const SAMPLES: usize = 4;
     let mut fold_edges: Vec<[Point3<f64>; 2]> = Vec::new();
     for key in supported.folded_buckets.iter().chain(&supported.fold_support_buckets) {
         for tri in buckets.get(key).into_iter().flatten() {
             fold_edges.extend((0..3).map(|k| [tri.v[k], tri.v[(k + 1) % 3]]));
         }
     }
-    let on_fold_edge = |p: &Point3<f64>| {
-        let reach = TOLERANCE + F32_ROUNDING * p.coords.abs().max();
-        fold_edges.iter().any(|[a, b]| {
-            let ab = b - a;
-            let len2 = ab.norm_squared();
-            let t = if len2 > 0.0 { ((p - a).dot(&ab) / len2).clamp(0.0, 1.0) } else { 0.0 };
-            (p - (a + ab * t)).norm() <= reach
-        })
-    };
     super::open_edge_endpoints_at(candidate, SCALE).iter().any(|edge| {
         let [a, b] = edge.map(|e| Point3::new(e.0 as f64, e.1 as f64, e.2 as f64) / SCALE);
-        !(0..=SAMPLES).all(|k| on_fold_edge(&(a + (b - a) * (k as f64 / SAMPLES as f64))))
+        let reach = TOLERANCE + F32_ROUNDING * a.coords.abs().max().max(b.coords.abs().max());
+        !edge_covered_by(&a, &b, &fold_edges, reach)
     })
+}
+
+/// Is the segment `a`-`b` wholly within `reach` of the union of `edges`?
+///
+/// Each edge collinear with `a`-`b` (both its ends within `reach` of the line)
+/// covers the parameter interval its ends project to; the segment is covered
+/// when those intervals, each widened by `reach`, chain across [0, 1].
+fn edge_covered_by(
+    a: &nalgebra::Point3<f64>,
+    b: &nalgebra::Point3<f64>,
+    edges: &[[nalgebra::Point3<f64>; 2]],
+    reach: f64,
+) -> bool {
+    let ab = b - a;
+    let len2 = ab.norm_squared();
+    let len = len2.sqrt();
+    if len <= reach {
+        // A degenerate open edge is a point: some fold edge must pass through it.
+        return edges.iter().any(|[c, d]| {
+            let cd = d - c;
+            let l2 = cd.norm_squared();
+            let t = if l2 > 0.0 { ((a - c).dot(&cd) / l2).clamp(0.0, 1.0) } else { 0.0 };
+            (a - (c + cd * t)).norm() <= reach
+        });
+    }
+    let line_distance = |p: &nalgebra::Point3<f64>| (ab.cross(&(p - a))).norm() / len;
+    let param = |p: &nalgebra::Point3<f64>| (p - a).dot(&ab) / len2;
+    let slack = reach / len;
+    let mut spans: Vec<(f64, f64)> = edges
+        .iter()
+        .filter(|[c, d]| line_distance(c) <= reach && line_distance(d) <= reach)
+        .map(|[c, d]| {
+            let (tc, td) = (param(c), param(d));
+            (tc.min(td), tc.max(td))
+        })
+        .filter(|&(lo, hi)| hi >= -slack && lo <= 1.0 + slack)
+        .collect();
+    spans.sort_by(|x, y| x.0.total_cmp(&y.0));
+    let mut covered = 0.0_f64;
+    for (lo, hi) in spans {
+        if lo > covered + slack {
+            return false;
+        }
+        covered = covered.max(hi);
+        if covered >= 1.0 - slack {
+            return true;
+        }
+    }
+    covered >= 1.0 - slack
 }

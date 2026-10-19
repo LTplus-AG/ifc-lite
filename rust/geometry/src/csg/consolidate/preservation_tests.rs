@@ -396,3 +396,23 @@ fn issue_7949_far_negative_coordinates_still_find_the_fold_edge() {
     );
     assert!(!tears_beyond_folds(&split, &buckets, &supported));
 }
+
+#[test]
+fn issue_7949_an_open_edge_must_be_covered_end_to_end_not_at_sampled_points() {
+    use nalgebra::Point3;
+    let p = |x: f64| Point3::new(x, 0., 0.);
+    let reach = 2.0e-4;
+    // Fold edges along y=0 over [0,1] and [1.05,2], with a 0.05 gap between.
+    // Five evenly spaced samples of (0..2) all land on a fold edge; only
+    // continuous coverage sees the gap.
+    let gapped = [[p(0.), p(1.)], [p(1.05), p(2.)]];
+    assert!(!edge_covered_by(&p(0.), &p(2.), &gapped, reach));
+    // Closing the gap, in either listing order, covers the edge.
+    let joined = [[p(1.), p(2.)], [p(0.), p(1.)]];
+    assert!(edge_covered_by(&p(0.), &p(2.), &joined, reach));
+    // A sub-edge of one longer fold edge is covered; a sibling off the line is not.
+    assert!(edge_covered_by(&p(0.25), &p(0.75), &[[p(0.), p(1.)]], reach));
+    assert!(!edge_covered_by(&p(0.25), &p(0.75), &[[Point3::new(0., 1., 0.), Point3::new(1., 1., 0.)]], reach));
+    // Reversed fold-edge orientation covers it just the same.
+    assert!(edge_covered_by(&p(0.), &p(1.), &[[p(1.), p(0.)]], reach));
+}

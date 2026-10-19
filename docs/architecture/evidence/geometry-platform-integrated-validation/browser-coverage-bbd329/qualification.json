@@ -1,0 +1,27 @@
+{
+  "source": "bbd329882936002beb503b7badad72676406d6d0",
+  "before": "4251bceb10db6fd4b8291f647917bb7617929f06",
+  "sha256": {
+    ".github/workflows/geometry-platform.yml": "8f753d98b3864142b094feea925f29cde21e7b57baccd4846e6b1a0390ad206c",
+    "rust/wasm-bindings/src/api/retained_browser.rs": "3284841884f409dd4c0ae05531234c9418de12deb87daab127b43afd2334d346",
+    "rust/wasm-bindings/src/api/retained_browser_tests.rs": "ccca2531591e5001c33a0157acb7c371539622273f4453dccd50b955b8b043ea"
+  },
+  "implemented": "CI filter includes every session_retained browser module and both retained API families; new real-source/API Worker witness covers millimetres, survey frame, cancellation/replacement, volume24 and source expiry",
+  "executed": {
+    "asset_staging_fixtures": "3 passed, 0 failed/skipped",
+    "test_wiring": "PASS",
+    "source_text_assertions": "PASS",
+    "rust_syntax_only": "PASS",
+    "workflow_yaml_parse": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "unrun": [
+    "Rust native compilation of latest root",
+    "wasm32 compilation",
+    "actual browser Worker numerical execution",
+    "standalone JS public-export contract against canonical rebuilt module",
+    "generated declarations and imported artifacts",
+    "performance"
+  ],
+  "scope": "No final-product, JS export parity, SDK numerical, migration or release qualification claim"
+}

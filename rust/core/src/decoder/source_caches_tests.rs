@@ -226,3 +226,22 @@ fn rejected_foreign_transfers_preserve_all_populated_destination_caches() {
     assert_eq!(target.get_placement_transform_cached(3), Some([4.; 16]));
     assert!(source.owns_decoder(&target));
 }
+
+#[test]
+fn seeded_unit_scales_revoke_source_authority() {
+    let source = SourceBundle::new(b"DATA;#1=IFCCARTESIANPOINT((1.,2.,3.));".to_vec());
+    let mut decoder = source.decoder();
+    let inputs = decoder.trusted_inputs().unwrap();
+    assert!(source.owns_decoder(&decoder));
+    decoder.seed_unit_scales(0.001, 1.);
+    assert!(!source.owns_decoder(&decoder));
+    assert!(!inputs.matches(&decoder));
+}
+
+#[test]
+fn unbound_raw_imports_still_block_a_later_bind() {
+    let mut decoder = crate::EntityDecoder::new(b"DATA;");
+    decoder.set_point_cache(Default::default());
+    assert_ne!(decoder.cache_revision, 0);
+    assert!(!decoder.can_bind_source());
+}

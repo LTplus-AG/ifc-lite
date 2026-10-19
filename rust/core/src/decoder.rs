@@ -475,9 +475,11 @@ impl<'a> EntityDecoder<'a> {
     /// every arc-bearing element re-pays the scan (≈135 ms each on a 75 MB
     /// file). The orchestrator resolves both scales once on a warm shared
     /// decoder and seeds each worker decoder here.
+    /// Seeded scales are caller-supplied inputs, so seeding revokes coherent
+    /// source authority like the other raw cache importers.
     pub fn seed_unit_scales(&mut self, length_unit_scale: f64, plane_angle_to_radians: f64) {
+        self.revoke_cache_authority();
         self.execution_owner.changed();
-        self.execution_owner.cache_changed();
         self.length_unit_scale_cache = Some(length_unit_scale);
         self.plane_angle_to_radians_cache = Some(plane_angle_to_radians);
     }

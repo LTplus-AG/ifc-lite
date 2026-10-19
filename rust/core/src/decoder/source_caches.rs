@@ -50,6 +50,14 @@ impl TrustedDecoderInputs {
 impl EntityDecoder<'_> {
     pub(crate) fn revoke_cache_authority(&mut self) {
         self.execution_owner.publish_cache_source(None);
+        // An unbound decoder has no source authority to protect: any nonzero
+        // revision already blocks a later bind, and unbound caches never
+        // compare revisions. Skip the process-wide counter on that path, which
+        // the per-element cache hoisting in processing hits for every element.
+        if self.source_bundle.is_none() {
+            self.cache_revision = self.cache_revision.max(1);
+            return;
+        }
         static NEXT: AtomicU64 = AtomicU64::new(1);
         self.cache_revision = NEXT
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))

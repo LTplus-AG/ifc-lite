@@ -1,0 +1,20 @@
+{
+  "manifest": "pc-wsl-9e2ea7ba-3442-42a9-b9f5-f64083f9971e-e3233f6bc850",
+  "name": "output.log",
+  "evidence": {
+    "backend": "local",
+    "bytes": 0,
+    "encoding": "gzip",
+    "originalPath": "/home/louistrue/build-workers/worker-state/jobs/9e2ea7ba-3442-42a9-b9f5-f64083f9971e/output.log",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "458c5a203299dd326aa747fee1bbc7709bfbd560507d1603459d9f7d9eb6be76",
+    "storedBytes": 20,
+    "verified": true
+  },
+  "verified": true,
+  "owned_task_closure": {
+    "task": "ifclite-opening-oracle-d441-20261019",
+    "state": "reclaimed",
+    "scope": "Only own terminal setup checkout reclaimed after exact empty-log publication verification; source/evidence/sharedcache retained"
+  }
+}

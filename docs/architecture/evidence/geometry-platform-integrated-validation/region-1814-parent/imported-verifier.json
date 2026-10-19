@@ -1,0 +1,7 @@
+{
+  "source": "13c81a2fdc",
+  "command": "node scripts/build-imported-geometry.mjs --verify",
+  "exit_code": 1,
+  "outcome": "Source fingerprint mismatch; regenerate only through fleet admission",
+  "scope": "Read-only artifact provenance verification; no generation or runtime execution"
+}

@@ -32,6 +32,9 @@ import {
   buildCapFillGeometry,
   buildDrawingOutlineVertices,
   createSectionLift,
+  recolorCapVertices,
+  type CapHighlight,
+  type CapPolygonRange,
   type CutPolygon2D,
   type DrawingLine2D,
   type SectionAxis,
@@ -65,6 +68,11 @@ class CapGeometry {
   lineVertexCount = 0;
   /** f64 cap anchor retained separately from the local cap vertices. */
   anchor: [number, number, number] | null = null;
+  /** The fill vertices as built (before any highlight) and each polygon's slice of them. */
+  private fillSource: Float32Array | null = null;
+  private fillRanges: CapPolygonRange[] = [];
+  /** The highlight last written to {@link fillVertexBuffer}; compared by content. */
+  private appliedHighlight: CapHighlight | null = null;
 
   has(): boolean {
     return this.fillIndexCount > 0 || this.lineVertexCount > 0;
@@ -80,10 +88,27 @@ class CapGeometry {
     this.fillIndexCount = 0;
     this.lineVertexCount = 0;
     this.anchor = null;
+    this.fillSource = null;
+    this.fillRanges = [];
+    this.appliedHighlight = null;
+  }
+
+  /**
+   * Paint the highlighted elements' polygons in their colour (`null` restores the
+   * cap as built). Rewrites the vertex buffer only when the highlight actually
+   * differs from what is already there.
+   */
+  setHighlight(device: GPUDevice, highlight: CapHighlight | null): void {
+    if (!this.fillVertexBuffer || !this.fillSource) return;
+    const next = highlight && highlight.size > 0 ? highlight : null;
+    if (sameHighlight(this.appliedHighlight, next)) return;
+    this.appliedHighlight = next;
+    device.queue.writeBuffer(this.fillVertexBuffer, 0, recolorCapVertices(this.fillSource, this.fillRanges, next) ?? this.fillSource);
   }
 
   upload(
     device: GPUDevice,
+    highlight: CapHighlight | null,
     polygons: CutPolygon2D[],
     lines: DrawingLine2D[],
     axis: SectionAxis,
@@ -116,7 +141,11 @@ class CapGeometry {
         size: fill.vertices.byteLength,
         usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
       });
-      device.queue.writeBuffer(this.fillVertexBuffer, 0, fill.vertices);
+      this.fillSource = fill.vertices;
+      this.fillRanges = fill.ranges;
+      const painted = recolorCapVertices(fill.vertices, fill.ranges, highlight);
+      this.appliedHighlight = painted && highlight && highlight.size > 0 ? highlight : null;
+      device.queue.writeBuffer(this.fillVertexBuffer, 0, painted ?? fill.vertices);
 
       this.fillIndexBuffer = device.createBuffer({
         size: fill.indices.byteLength,
@@ -139,6 +168,16 @@ class CapGeometry {
   }
 }
 
+function sameHighlight(a: CapHighlight | null, b: CapHighlight | null): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.size !== b.size) return false;
+  for (const [id, color] of a) {
+    const other = b.get(id);
+    if (!other || other[0] !== color[0] || other[1] !== color[1] || other[2] !== color[2] || other[3] !== color[3]) return false;
+  }
+  return true;
+}
+
 /** One extra plane's cap to draw: its key and the planes that clip it. */
 export interface ExtraCapDraw {
   key: string;
@@ -151,6 +190,15 @@ export class SectionCapSet {
   private readonly extras = new Map<string, CapGeometry>();
   private readonly uniforms = new Float32Array(SECTION_2D_UNIFORM_FLOATS);
   private readonly clipScratch = new Float32Array(EXTRA_CLIP_FLOATS);
+  /** The elements whose cap is painted in a highlight colour; carried over every re-upload. */
+  private highlight: CapHighlight | null = null;
+
+  /** Paint these elements' cap polygons in their colour on every cap; `null` clears. */
+  setHighlight(device: GPUDevice, highlight: CapHighlight | null): void {
+    this.highlight = highlight && highlight.size > 0 ? highlight : null;
+    this.primary.setHighlight(device, this.highlight);
+    for (const geometry of this.extras.values()) geometry.setHighlight(device, this.highlight);
+  }
 
   /** Whether the primary plane's cap holds anything. */
   has(): boolean { return this.primary.has(); }
@@ -168,14 +216,14 @@ export class SectionCapSet {
     CutPolygon2D[], DrawingLine2D[], SectionAxis, number, boolean, SectionCustomPlane | undefined,
   ]): void {
     if (key === null) {
-      this.primary.upload(device, ...args);
+      this.primary.upload(device, this.highlight, ...args);
       return;
     }
     // A plane past the capacity has no uniform slot to draw with.
     if (!this.extras.has(key) && this.extras.size >= SECTION_2D_MAX_EXTRA_CAPS) return;
     let geometry = this.extras.get(key);
     if (!geometry) { geometry = new CapGeometry(); this.extras.set(key, geometry); }
-    geometry.upload(device, ...args);
+    geometry.upload(device, this.highlight, ...args);
   }
 
   /** Release the primary cap (`key` null) or one extra cap. */

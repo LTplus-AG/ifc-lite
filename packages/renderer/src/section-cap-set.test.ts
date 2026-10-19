@@ -211,3 +211,36 @@ describe('the cap shaders clip against the other planes (#7545)', () => {
     }
   });
 });
+
+describe('cap highlight (#7950)', () => {
+  const TWO = [
+    ...TRIANGLE,
+    { polygon: { outer: [{ x: 3, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 1 }], holes: [] }, ifcType: 'IfcSlab', expressId: 2, color: [0.5, 0.5, 0.5, 1] as [number, number, number, number] },
+  ];
+  const lastFill = (writes: Rec[], created: Array<{ __size: number }>) =>
+    [...writes].reverse().find((w) => created[w.buffer.__id].__size === w.data.byteLength && w.data.length === 6 * 7);
+  const colorAt = (data: Float32Array, vertex: number) => Array.from(data.slice(vertex * 7 + 3, vertex * 7 + 7));
+
+  it('recolours only the highlighted element, restores on clear, and survives a re-upload', () => {
+    const { renderer, writes, created } = newRenderer();
+    renderer.uploadDrawing(TWO, [], 'down', 1);
+    renderer.setCapHighlight(new Map([[1, [0.3, 0.6, 1, 1]]]));
+    let fill = lastFill(writes, created)!;
+    assert.deepEqual(colorAt(fill.data, 0).map((v) => Math.round(v * 10) / 10), [0.3, 0.6, 1, 1], 'element 1 highlighted');
+    assert.deepEqual(colorAt(fill.data, 3), [0.5, 0.5, 0.5, 1], 'element 2 untouched');
+
+    const before = writes.length;
+    renderer.setCapHighlight(new Map([[1, [0.3, 0.6, 1, 1]]]));
+    assert.equal(writes.length, before, 'an unchanged highlight rewrites nothing');
+
+    renderer.setCapHighlight(null);
+    fill = lastFill(writes, created)!;
+    assert.equal(colorAt(fill.data, 0)[3], -1, 'cleared: back to the uniform-fill sentinel');
+
+    renderer.setCapHighlight(new Map([[2, [1, 0, 0, 1]]]));
+    renderer.uploadDrawing(TWO, [], 'down', 2);
+    fill = lastFill(writes, created)!;
+    assert.deepEqual(colorAt(fill.data, 3), [1, 0, 0, 1], 'a re-upload (slider drag) keeps the highlight');
+  });
+});
+

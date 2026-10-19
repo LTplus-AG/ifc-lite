@@ -138,7 +138,12 @@ export type SectionCapHatchId =
   | 'brick'
   | 'insulation';
 
+/** How a section cap is filled: one uniform style, or each element's own colour (the uniform style stays the fallback). */
+export type SectionCapFillMode = 'uniform' | 'element';
+
 export interface SectionCapStyleOptions {
+  /** Fill source. Applied where the cap polygons are built (the app's cap conversion); the renderer draws whatever colours the polygons carry. Default `'uniform'`. */
+  fillMode?: SectionCapFillMode;
   /** Fill colour behind the hatch. RGBA 0-1. */
   fillColor?: [number, number, number, number];
   /** Hatch stroke colour. RGBA 0-1. */
@@ -257,6 +262,12 @@ export interface RenderOptions {
   selectedId?: number | null;     // Currently selected mesh (for highlighting)
   selectedIds?: Set<number>;      // Multi-selection support
   selectedItemId?: number;        // #4382: narrows selectedId's highlight to one representation item (geometryItemId); no effect on selectedIds
+  /**
+   * Element id → RGBA (0–1) painted over that element's section-cap polygons, so
+   * a selected or hovered element's cut face matches its highlighted surfaces.
+   * Compared by content each frame; absent / empty leaves every cap as built.
+   */
+  capHighlight?: ReadonlyMap<number, readonly [number, number, number, number]> | null;
   hoverOutline?: { id: number; modelIndex?: number } | null; // #5390 thin visible-only pre-highlight; modelIndex scopes federation
   /**
    * Render the active colour overrides almost full-bright so they POP like a

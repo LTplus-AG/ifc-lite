@@ -8,6 +8,7 @@ import { useViewerStore } from '@/store';
 import { chartAwareRendererSelectionFromStore } from '@/lib/charts/renderer-selection';
 import { preserveClashPaintInSelection } from '@/lib/clash/renderer-selection';
 import { sectionRenderClip } from '@/lib/section/section-render-clip';
+import { sectionCapHighlight } from '@/lib/section/cap-highlight';
 import { hoverOutlineTarget } from './useHoverOutline';
 
 /** One option builder for ordinary frames and owned captures (#6709). */
@@ -37,6 +38,7 @@ export function viewportRenderOptions(
     buildingRotation: p.coordinateInfoRef.current?.buildingRotation,
     ...sectionRenderClip(state.sceneState.section.visible, p.sectionPlaneRef.current, p.sectionRangeRef.current, state.activeTool, state.inactiveSectionPlanes, p.sectionBoundsRef?.current),
     ...hoverOutlineTarget(),
+    capHighlight: sectionCapHighlight(state, selection.selectedId, selection.selectedIds),
     terrainClipY: p.terrainClipYRef.current ?? undefined,
   };
 }

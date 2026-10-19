@@ -199,7 +199,9 @@ export class PolygonBuilder {
     const out: DrawingPolygon[] = [];
     for (const groupSegments of byColor.values()) {
       const groupColor = multiMaterial ? groupSegments[0].color : undefined;
-      out.push(...this.buildColorGroupPolygons(groupSegments, groupColor));
+      const built = this.buildColorGroupPolygons(groupSegments, groupColor);
+      const sourceColor = groupSegments[0].color;
+      out.push(...(sourceColor ? built.map((p) => ({ ...p, sourceColor })) : built));
     }
     return out;
   }

@@ -132,10 +132,51 @@ export function createSectionLift(
   return (x2d, y2d) => transform2Dto3D(x2d, y2d, axis, planePosition, flipped, customPlane);
 }
 
+/** One cut polygon's slice of the cap's vertex buffer: which element it belongs to and where its vertices sit. */
+export interface CapPolygonRange {
+  expressId: number;
+  /** Index of the polygon's first vertex (not float offset). */
+  vertexStart: number;
+  vertexCount: number;
+}
+
 /** Interleaved `[x, y, z, r, g, b, a]` cap vertices plus their triangle indices. */
 export interface CapFillGeometry {
   vertices: Float32Array;
   indices: Uint32Array;
+  /** Per-polygon vertex slices, so a selection can recolour one element's cap without re-triangulating. */
+  ranges: CapPolygonRange[];
+}
+
+/** Floats per cap fill vertex: position (3) + RGBA (4). */
+export const CAP_FILL_VERTEX_FLOATS = 7;
+
+/** Element id → RGBA (0–1, same space as {@link CutPolygon2D.color}) painted over that element's cap polygons. */
+export type CapHighlight = ReadonlyMap<number, readonly [number, number, number, number]>;
+
+/**
+ * A copy of the cap's vertices with every highlighted element's polygons
+ * recoloured, or `null` when no polygon belongs to a highlighted element (the
+ * caller then keeps the original buffer). The source is never modified, so
+ * clearing the highlight restores the cap exactly.
+ */
+export function recolorCapVertices(
+  vertices: Float32Array,
+  ranges: readonly CapPolygonRange[],
+  highlight: CapHighlight | null | undefined,
+): Float32Array | null {
+  if (!highlight || highlight.size === 0) return null;
+  let out: Float32Array | null = null;
+  for (const range of ranges) {
+    const color = highlight.get(range.expressId);
+    if (!color) continue;
+    out ??= vertices.slice();
+    for (let i = 0; i < range.vertexCount; i++) {
+      const o = (range.vertexStart + i) * CAP_FILL_VERTEX_FLOATS + 3;
+      out[o] = color[0]; out[o + 1] = color[1]; out[o + 2] = color[2]; out[o + 3] = color[3];
+    }
+  }
+  return out;
 }
 
 /**
@@ -167,6 +208,7 @@ export function buildCapFillGeometry(
 ): CapFillGeometry | null {
   const fillVertices: number[] = [];
   const fillIndices: number[] = [];
+  const ranges: CapPolygonRange[] = [];
   let vertexOffset = 0;
 
   for (const polygon of polygons) {
@@ -204,12 +246,14 @@ export function buildCapFillGeometry(
     for (const [a, b, c] of tris) {
       fillIndices.push(baseVertex + a, baseVertex + b, baseVertex + c);
     }
+    ranges.push({ expressId: polygon.expressId, vertexStart: baseVertex, vertexCount: vertexOffset - baseVertex });
   }
 
   if (fillVertices.length === 0) return null;
   return {
     vertices: new Float32Array(fillVertices),
     indices: new Uint32Array(fillIndices),
+    ranges,
   };
 }
 

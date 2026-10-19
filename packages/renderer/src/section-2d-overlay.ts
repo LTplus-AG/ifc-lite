@@ -39,6 +39,7 @@ import {
   sectionUniformSlotStride,
 } from './shaders/section-2d-overlay.wgsl.js';
 import {
+  type CapHighlight,
   type CutPolygon2D,
   type DrawingLine2D,
   type SectionAxis,
@@ -55,7 +56,7 @@ import {
   type Section2DOverlayOptions,
 } from './section-2d-types.js';
 
-export type { CutPolygon2D, DrawingLine2D, SectionCustomPlane } from './section-2d-lift.js';
+export type { CapHighlight, CutPolygon2D, DrawingLine2D, SectionCustomPlane } from './section-2d-lift.js';
 export { LINE_OVERLAY_CHANNELS } from './section-2d-types.js';
 export type { LineOverlayChannel, Section2DOverlayCapStyle, Section2DOverlayOptions } from './section-2d-types.js';
 
@@ -461,6 +462,16 @@ export class Section2DOverlayRenderer {
    */
   hasGeometry(): boolean {
     return this.caps.has();
+  }
+
+  /**
+   * Paint the given elements' cap polygons in their colour on every cutting
+   * plane's cap (the selection / hover highlight); `null` restores the caps. A
+   * no-op when it matches what is already drawn, so the render loop can call it
+   * every frame.
+   */
+  setCapHighlight(highlight: CapHighlight | null): void {
+    this.caps.setHighlight(this.device, highlight);
   }
 
   /** Whether any cutting plane beyond the first has a cap to draw (#7545). */

@@ -6,6 +6,7 @@
  * Cap-surface appearance, inside the Section bar's Cap popover (#5499):
  *
  *   Display   [Surfaces] [Lines]
+ *   Fill      [Uniform] [Element colour]
  *   Hatch     <pattern>
  *   Colours   ■ Fill  ■ Hatch
  *   Spacing / Angle / Width
@@ -68,6 +69,10 @@ export function SectionCapControls(): React.JSX.Element {
     setCapStyle({ pattern: e.target.value as SectionCapHatchId });
   }, [setCapStyle]);
 
+  const onFillMode = useCallback((mode: 'uniform' | 'element') => {
+    setCapStyle({ fillMode: mode });
+  }, [setCapStyle]);
+
   const onFillColor = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setCapStyle({ fillColor: hexToRgba(e.target.value, sectionPlane.capStyle.fillColor[3]) });
   }, [setCapStyle, sectionPlane.capStyle.fillColor]);
@@ -106,6 +111,7 @@ export function SectionCapControls(): React.JSX.Element {
   const angleId   = `${baseId}-angle`;
   const widthId   = `${baseId}-width`;
 
+  const fillMode = sectionPlane.capStyle.fillMode ?? 'uniform';
   const hatchInputsDisabled = !sectionPlane.showCap;
 
   return (
@@ -121,6 +127,21 @@ export function SectionCapControls(): React.JSX.Element {
           <HudToggle pressed={sectionPlane.showOutlines} onPressedChange={onToggleOutlines}
             title={t(sectionPlane.showOutlines ? 'sectionCap.hideLines' : 'sectionCap.showLines')}>
             {t('sectionCap.lines')}
+          </HudToggle>
+        </div>
+      </div>
+
+      {/* Fill source — one uniform style, or each element's own colour. */}
+      <div className="flex items-center justify-between gap-2">
+        <span className={CAPTION}>{t('sectionCap.fillMode')}</span>
+        <div className="flex items-center gap-0.5">
+          <HudToggle pressed={fillMode === 'uniform'} onPressedChange={() => onFillMode('uniform')}
+            title={t('sectionCap.fillMode.uniformTitle')}>
+            {t('sectionCap.fillMode.uniform')}
+          </HudToggle>
+          <HudToggle pressed={fillMode === 'element'} onPressedChange={() => onFillMode('element')}
+            title={t('sectionCap.fillMode.elementTitle')}>
+            {t('sectionCap.fillMode.element')}
           </HudToggle>
         </div>
       </div>

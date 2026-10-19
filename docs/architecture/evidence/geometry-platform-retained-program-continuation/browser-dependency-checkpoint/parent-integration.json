@@ -1,0 +1,12 @@
+{
+  "parent_before": "7d1abe501d",
+  "source": "df8ff4fd4676fc4cf4bb6a65d37ebcefaa9228dc",
+  "paths_verified": 14,
+  "original_bundle_checksums": "PASS",
+  "parent_before_child_git_fs_and_assembled_after": "PASS",
+  "independent_review": "no concrete static blocker in declaredruntime scope",
+  "runtime_tests": "UNRUN; sixdriverprotocolfixtures do notqualifySDKgeometry",
+  "common_product_continuation": "UNIMPLEMENTED: logicalslots/pendingacceptance/finalnet",
+  "archive": "originalchecksumfilerefersoriginalbundle; archivedlogscompressedwithoriginaluncompressedbytes",
+  "parent_post_delivery_correction": "removed trailing blank line only from retained_values.rs after exact after-hash verification; original patch archived as gzip without changing its bytes"
+}

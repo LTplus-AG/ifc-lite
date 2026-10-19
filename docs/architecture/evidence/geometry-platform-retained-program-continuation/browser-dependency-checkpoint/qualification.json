@@ -1,0 +1,63 @@
+{
+  "source_commit": "df8ff4fd4676fc4cf4bb6a65d37ebcefaa9228dc",
+  "base_commit": "1aceb23744dd9d37b45a7b8354f57dabae4c6c23",
+  "heavy_submissions": 0,
+  "tests": {
+    "protocol_lifetime_fixture": {
+      "status": "passed",
+      "count": 6,
+      "sdk_evidence": false
+    },
+    "rust_syntax": {
+      "status": "passed",
+      "file_count": 9,
+      "typecheck": false
+    },
+    "javascript_syntax": "passed",
+    "git_diff_check": "passed",
+    "rust_build": "not_run",
+    "native_sdk": "not_run",
+    "actual_browser_rust_tests": {
+      "status": "not_run",
+      "count": 5
+    },
+    "workspace_tests_clippy": "not_run",
+    "wasm_contract_and_root_ts": "not_run",
+    "python": "not_run",
+    "scene_oracles": "not_run",
+    "performance": "not_measured"
+  },
+  "capacity": "No heavy submission. Pop guard 78; user-reported PC drain/full; Mac disabled. Await parent verified capacity.",
+  "implemented": "Explicit browser numerical dependency contract, sealed ordered operands/frame identity, immutable copy/Boolean/result execution, independent per-object release, captured retirement and async-drop cancellation, shared native/browser f64 admission and lineage.",
+  "default_behavior": "Exact remains permanent/default. BrowserWorker::new retains source-only Drop teardown and source-only qualification. New behavior requires BrowserWorker::new_retained_execution.",
+  "resource_coverage": "Partial mesh-transfer/operation bounds only; not full heap or complete Bounded coverage.",
+  "common_retained_status": "UNIMPLEMENTED; this is a runtime prerequisite checkpoint, not common retained execution or final-net certification.",
+  "remaining": [
+    "Common GeometryProgram/ProductState logical retained values and explicit entry contract.",
+    "Original analytic reached construction and proper-rigid occurrence admissions in canonical representation order.",
+    "Common ordered Boolean/group/opening continuations and repeated mapped branches.",
+    "Private processing pending transaction with outer/common requests, Arc ticket, actual context/source/ProductOwner/stage, independently captured operation and frames.",
+    "Intact transaction/receipt validation before logical continuation acceptance, duplicate/stage/operator/operand/frame rejection tests.",
+    "Canonical late-appearance and every-reached-branch closure before final-net certification, explicit refusal without exact retry for unsupported families/contracts.",
+    "Actual native/browser SDK compilation and numerical witnesses, workspace/Clippy/WASM/root TS/Python/oracles and whole-pool performance qualification.",
+    "Actual browser test runner asset staging/invocation; Rust browser tests exist but current geometry-platform CTest runs only the new lightweight protocol fixtures."
+  ],
+  "parent_coordination": {
+    "not_cherry_picked": [
+      "f9b72af9c5",
+      "f6471fd952"
+    ],
+    "protected_paths_untouched": [
+      "rust/geometry/src/router/mod.rs",
+      "rust/geometry/src/router/mapping_program_store.rs",
+      "rust/processing/src/element/"
+    ],
+    "note": "Parent resource-accounting witness pending. This patch has no source changes under geometry or processing; native CMake change only registers lightweight driver fixture tests."
+  },
+  "external_actions": {
+    "issues": 0,
+    "pushes": 0,
+    "pull_requests": 0,
+    "foreign_jobs_changed": 0
+  }
+}

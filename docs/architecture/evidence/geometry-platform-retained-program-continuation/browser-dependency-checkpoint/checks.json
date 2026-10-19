@@ -1,0 +1,168 @@
+[
+  {
+    "command": [
+      "node",
+      "--check",
+      "rust/geometry-runtime/js/retained-driver.mjs"
+    ],
+    "exit": 0,
+    "log": "check-00.log",
+    "qualification": "static check"
+  },
+  {
+    "command": [
+      "node",
+      "--experimental-vm-modules",
+      "--test",
+      "rust/geometry-runtime/js/retained-driver.test.mjs"
+    ],
+    "exit": 0,
+    "log": "check-01.log",
+    "qualification": "protocol/lifetime fixture only"
+  },
+  {
+    "command": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "exit": 0,
+    "log": "check-02.log",
+    "qualification": "static check"
+  },
+  {
+    "command": [
+      "rustfmt",
+      "--edition",
+      "2021",
+      "--emit",
+      "stdout",
+      "--config",
+      "skip_children=true",
+      "rust/geometry-runtime/src/browser.rs"
+    ],
+    "exit": 0,
+    "log": "check-03.log",
+    "qualification": "Rust syntax only"
+  },
+  {
+    "command": [
+      "rustfmt",
+      "--edition",
+      "2021",
+      "--emit",
+      "stdout",
+      "--config",
+      "skip_children=true",
+      "rust/geometry-runtime/src/browser_bridge.rs"
+    ],
+    "exit": 0,
+    "log": "check-04.log",
+    "qualification": "Rust syntax only"
+  },
+  {
+    "command": [
+      "rustfmt",
+      "--edition",
+      "2021",
+      "--emit",
+      "stdout",
+      "--config",
+      "skip_children=true",
+      "rust/geometry-runtime/src/browser_bridge_tests.rs"
+    ],
+    "exit": 0,
+    "log": "check-05.log",
+    "qualification": "Rust syntax only"
+  },
+  {
+    "command": [
+      "rustfmt",
+      "--edition",
+      "2021",
+      "--emit",
+      "stdout",
+      "--config",
+      "skip_children=true",
+      "rust/geometry-runtime/src/browser_dependencies.rs"
+    ],
+    "exit": 0,
+    "log": "check-06.log",
+    "qualification": "Rust syntax only"
+  },
+  {
+    "command": [
+      "rustfmt",
+      "--edition",
+      "2021",
+      "--emit",
+      "stdout",
+      "--config",
+      "skip_children=true",
+      "rust/geometry-runtime/src/browser_tests.rs"
+    ],
+    "exit": 0,
+    "log": "check-07.log",
+    "qualification": "Rust syntax only"
+  },
+  {
+    "command": [
+      "rustfmt",
+      "--edition",
+      "2021",
+      "--emit",
+      "stdout",
+      "--config",
+      "skip_children=true",
+      "rust/geometry-runtime/src/lib.rs"
+    ],
+    "exit": 0,
+    "log": "check-08.log",
+    "qualification": "Rust syntax only"
+  },
+  {
+    "command": [
+      "rustfmt",
+      "--edition",
+      "2021",
+      "--emit",
+      "stdout",
+      "--config",
+      "skip_children=true",
+      "rust/geometry-runtime/src/retained_values.rs"
+    ],
+    "exit": 0,
+    "log": "check-09.log",
+    "qualification": "Rust syntax only"
+  },
+  {
+    "command": [
+      "rustfmt",
+      "--edition",
+      "2021",
+      "--emit",
+      "stdout",
+      "--config",
+      "skip_children=true",
+      "rust/geometry-runtime/src/worker.rs"
+    ],
+    "exit": 0,
+    "log": "check-10.log",
+    "qualification": "Rust syntax only"
+  },
+  {
+    "command": [
+      "rustfmt",
+      "--edition",
+      "2021",
+      "--emit",
+      "stdout",
+      "--config",
+      "skip_children=true",
+      "rust/geometry-runtime/src/worker_dependencies.rs"
+    ],
+    "exit": 0,
+    "log": "check-11.log",
+    "qualification": "Rust syntax only"
+  }
+]

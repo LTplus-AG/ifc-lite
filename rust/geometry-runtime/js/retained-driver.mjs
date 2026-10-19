@@ -7,10 +7,14 @@ export class RetainedDriver {
   #incarnation;
   #retired = false;
   #qualified = false;
+  #dependenciesQualified = false;
   #busy = false;
   #sequence = 0;
   #session;
   #objects = new Map();
+  #releases = [];
+  #cleanup;
+  #dispatchListeners = [];
   #firstDispatch;
   #signalDispatch;
   constructor() {
@@ -33,11 +37,36 @@ export class RetainedDriver {
   // Observation only, used by the actual Worker cancellation invariant. This
   // Promise cannot submit work or change receipt/qualification authority.
   firstDispatch() { return this.#firstDispatch; }
+  nextDispatch() { return new Promise(resolve => this.#dispatchListeners.push(resolve)); }
   retire() {
     if (this.#retired) return;
     this.#retired = true;
     this.#objects.clear(); // Invalidate leases before terminating transport.
+    this.#releases.length = 0;
+    this.#dispatchListeners.length = 0;
     this.#transport?.retire(this.#incarnation);
+  }
+  releaseObject(object) {
+    const solid = this.#objects.get(object);
+    if (!solid) return;
+    this.#objects.delete(object); // Invalidate before the asynchronous release.
+    this.#releases.push(solid);
+    this.#scheduleReleases();
+  }
+  #scheduleReleases() {
+    if (this.#busy || !this.live() || !this.#releases.length) return;
+    // Acquire synchronously so another entry cannot race a cleanup command.
+    this.#busy = true;
+    this.#cleanup = this.#flushReleases().catch(error => {
+      this.retire();
+      console.error('retained object release retired captured worker', error);
+    }).finally(() => { this.#cleanup = undefined; this.#busy = false; this.#scheduleReleases(); });
+  }
+  async #awaitCleanup() {
+    while (this.#cleanup) await this.#cleanup;
+  }
+  async #flushReleases() {
+    while (this.#releases.length) await this.#call(8, this.#session, this.#releases.shift());
   }
   async #call(opcode, ...fields) {
     if (!this.live() || !this.#transport) throw new Error('retired retained worker');
@@ -51,7 +80,10 @@ export class RetainedDriver {
     const pending = this.#transport.batch([frame], this.#incarnation);
     // Actual postMessage transfers/detaches the request synchronously. A
     // rejected unsent request never establishes this submission observation.
-    if (frame.byteLength === 0) this.#signalDispatch();
+    if (frame.byteLength === 0) {
+      this.#signalDispatch();
+      for (const resolve of this.#dispatchListeners.splice(0)) resolve();
+    }
     const [result] = await pending;
     if (!this.live()) throw new Error('worker expired during retained command');
     const response = new DataView(result);
@@ -60,18 +92,27 @@ export class RetainedDriver {
     if (status !== 0) throw new Error(`retained status ${status}: ${new TextDecoder().decode(result.slice(12))}`);
     return new Uint8Array(result.slice(12));
   }
-  async qualify() {
+  async qualify() { return this.#qualify(false); }
+  async qualifyDependencies() { return this.#qualify(true); }
+  async #qualify(dependencies) {
     await this.#ready;
+    await this.#awaitCleanup();
     if (!this.live() || this.#busy) throw new Error('retained executor unavailable');
     this.#busy = true;
     this.#qualified = false;
+    this.#dependenciesQualified = false;
     try {
       const { runSweepContract } = await import('/smlib/sweep-contract.mjs');
       await runSweepContract(this.#transport, this.#incarnation);
+      if (dependencies) {
+        const { runContract } = await import('/smlib/contract.mjs');
+        await runContract(frames => this.#transport.batch(frames, this.#incarnation));
+      }
       if (!this.live()) throw new Error('qualification worker expired');
       this.#qualified = true;
+      this.#dependenciesQualified = dependencies;
     } catch (error) { this.retire(); throw error; }
-    finally { this.#busy = false; }
+    finally { this.#busy = false; this.#scheduleReleases(); }
   }
   async evaluate(bytes, format, loops, segments, qualification, chord, angle, maxBytes) {
     // Own every coefficient before awaiting initialization or asset loading.
@@ -79,6 +120,7 @@ export class RetainedDriver {
     if (![0, 1, 2].includes(qualification) || !Number.isFinite(chord) || chord <= 0 ||
         !Number.isFinite(angle) || angle <= 0 || !Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error('invalid retained evaluation limits');
     await this.#ready;
+    await this.#awaitCleanup();
     if (!this.live() || this.#busy) throw new Error('retained executor unavailable');
     if (qualification !== 0 && !this.#qualified) throw new Error('UnqualifiedRegion: execute same-incarnation numerical witnesses first');
     this.#busy = true;
@@ -93,23 +135,59 @@ export class RetainedDriver {
       const handle = await uploadSweep(this.#transport, sessionId, recipe, { format, loops, segments }, this.#incarnation);
       if (!this.live()) throw new Error('retained upload worker expired');
       const solid = new Uint8Array(handle.bytes);
-      const meshHandle = await this.#call(9, this.#session, solid, f64(chord), f64(angle));
-      validateHandle(meshHandle, sessionId);
-      let mesh;
-      try { mesh = await this.#readMesh(meshHandle, maxBytes); }
-      catch (error) { this.retire(); throw error; }
-      // Release the temporary mesh before sealing its independent copied arrays.
-      await this.#call(8, this.#session, meshHandle);
-      if (!this.live()) throw new Error('retained object owner expired');
-      const object = Object.freeze({}); // Identity, not caller-visible wire bytes.
-      this.#objects.set(object, solid);
-      return { object, mesh };
+      validateHandle(solid, sessionId);
+      return await this.#seal(solid, chord, angle, maxBytes);
     } catch (error) {
       // Unknown outcomes are never retried; the captured Worker owns all its
       // session allocations, including a solid whose response was lost.
       this.retire();
       throw error;
-    } finally { this.#busy = false; }
+    } finally { this.#busy = false; this.#scheduleReleases(); }
+  }
+  async evaluateBoolean(left, right, relative, operation, chord, angle, maxBytes) {
+    // Capture owned coefficients before the first await. Object tokens are only
+    // accepted from this private driver's lease map, never from wire numbers.
+    const matrix = Array.from(relative);
+    properRigid(matrix);
+    limits(chord, angle, maxBytes);
+    if (![1, 2, 3].includes(operation)) throw new Error('invalid retained Boolean operation');
+    if (!this.objectLive(left) || !this.objectLive(right)) throw new Error('foreign retained dependency');
+    await this.#ready;
+    await this.#awaitCleanup();
+    if (!this.live() || this.#busy) throw new Error('retained executor unavailable');
+    if (!this.#dependenciesQualified) throw new Error('unqualified retained dependencies');
+    if (!this.objectLive(left) || !this.objectLive(right)) throw new Error('expired retained dependency');
+    const a = this.#objects.get(left), b = this.#objects.get(right);
+    this.#busy = true;
+    try {
+      const sessionId = new DataView(this.#session.buffer).getBigUint64(0, true);
+      const moved = await this.#call(17, this.#session, b, ...matrix.map(f64));
+      validateHandle(moved, sessionId);
+      this.#assertNewSolid(moved);
+      const solid = await this.#call(5, this.#session, a, moved, u32(operation));
+      validateHandle(solid, sessionId);
+      if (sameHandle(solid, moved)) throw new Error('Boolean result aliases temporary operand');
+      this.#assertNewSolid(solid);
+      await this.#call(8, this.#session, moved);
+      return await this.#seal(solid, chord, angle, maxBytes);
+    } catch (error) { this.retire(); throw error; }
+    finally { this.#busy = false; this.#scheduleReleases(); }
+  }
+  #assertNewSolid(solid) {
+    if (Array.from(this.#objects.values()).some(existing => sameHandle(existing, solid)))
+      throw new Error('retained result aliases live input lease');
+  }
+  async #seal(solid, chord, angle, maxBytes) {
+    this.#assertNewSolid(solid);
+    const sessionId = new DataView(this.#session.buffer).getBigUint64(0, true);
+    const meshHandle = await this.#call(9, this.#session, solid, f64(chord), f64(angle));
+    validateHandle(meshHandle, sessionId);
+    const mesh = await this.#readMesh(meshHandle, maxBytes);
+    await this.#call(8, this.#session, meshHandle);
+    if (!this.live()) throw new Error('retained object owner expired');
+    const object = Object.freeze({});
+    this.#objects.set(object, solid);
+    return { object, mesh };
   }
   async #readMesh(handle, maxBytes) {
     const info = await this.#call(10, this.#session, handle);
@@ -150,3 +228,21 @@ function validateHandle(bytes, session) {
 }
 function u32(value) { const bytes = new Uint8Array(4); new DataView(bytes.buffer).setUint32(0, value, true); return bytes; }
 function f64(value) { const bytes = new Uint8Array(8); new DataView(bytes.buffer).setFloat64(0, value, true); return bytes; }
+
+function limits(chord, angle, maxBytes) {
+  if (!Number.isFinite(chord) || chord <= 0 || !Number.isFinite(angle) || angle <= 0 ||
+      !Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error('invalid retained evaluation limits');
+}
+function properRigid(m) {
+  if (m.length !== 16 || !m.every(Number.isFinite) || m[3] !== 0 || m[7] !== 0 || m[11] !== 0 || m[15] !== 1)
+    throw new Error('retained dependency requires proper rigid metre frame');
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+    let dot = 0;
+    for (let k = 0; k < 3; k++) dot += m[i * 4 + k] * m[j * 4 + k];
+    if (Math.abs(dot - (i === j ? 1 : 0)) > 1e-12) throw new Error('nonrigid retained frame');
+  }
+  const cross = [m[1]*m[6]-m[2]*m[5], m[2]*m[4]-m[0]*m[6], m[0]*m[5]-m[1]*m[4]];
+  if (cross.some((v, i) => Math.abs(v - m[8 + i]) > 1e-12)) throw new Error('reflected retained frame');
+}
+
+function sameHandle(a, b) { return a.byteLength === b.byteLength && a.every((value, i) => value === b[i]); }

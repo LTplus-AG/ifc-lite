@@ -10,9 +10,13 @@ use std::sync::{
 #[cfg(target_arch = "wasm32")]
 #[path = "browser_bridge.rs"]
 mod bridge;
+#[path = "browser_dependencies.rs"]
+mod dependencies;
+pub use dependencies::{BrowserDependency, BrowserDependencyResult, BrowserOperationIdentity, BrowserObjectHandle};
 
 struct Owner {
     identity: u64,
+    independent_leases: bool,
     live: AtomicBool,
     #[cfg(target_arch = "wasm32")]
     driver: bridge::Driver,
@@ -91,12 +95,14 @@ fn next_identity() -> u64 {
 /// host-created geometry. Its object lease and Worker must both remain live.
 pub struct BrowserRealization {
     completion: RetainedCompletion,
+    handle: BrowserObjectHandle,
     owner: Arc<Owner>,
     object_live: Arc<AtomicBool>,
     #[cfg(target_arch = "wasm32")]
     object: wasm_bindgen::JsValue,
 }
 impl BrowserRealization {
+    pub fn handle(&self) -> &BrowserObjectHandle { &self.handle }
     pub fn completion(&self) -> &RetainedCompletion {
         &self.completion
     }
@@ -121,7 +127,11 @@ impl BrowserRealization {
 }
 impl Drop for BrowserRealization {
     fn drop(&mut self) {
-        self.retire();
+        self.object_live.store(false, Ordering::Release);
+        if self.owner.independent_leases {
+            #[cfg(target_arch = "wasm32")]
+            self.owner.driver.release_object(&self.object);
+        } else { self.owner.retire(); }
     }
 }
 

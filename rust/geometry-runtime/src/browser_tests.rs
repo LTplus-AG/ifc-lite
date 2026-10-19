@@ -3,6 +3,7 @@ use super::*;
 fn owner() -> Arc<Owner> {
     Arc::new(Owner {
         identity: next_identity(),
+        independent_leases: false,
         live: AtomicBool::new(true),
     })
 }

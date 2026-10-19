@@ -27,9 +27,12 @@ Its weak cache must stay keyed by `decoder.execution_identity()`.
 Native `worker_dependencies.rs` already provides sealed
 `RetainedDependencyResult`, immutable `RetainedOperationIdentity`, actual operand
 handles and f64 frames. Browser `BrowserRealization` seals a source construction;
-`browser_bridge.rs` currently exposes qualification and source evaluation only.
-There is no browser sealed dependency-result/Boolean API corresponding to the
-native one. Adding a ticket around `ModelBoundRetainedDocument::issue` would
+`BrowserWorker::new_retained_execution` now selects independent browser object
+leases and exposes sealed `BrowserDependency::{Source,Result}` Boolean execution.
+Its immutable identity records actual operand objects, operation and admitted
+f64 frames; a result owns its own SDK object. This is an unqualified runtime
+implementation checkpoint, not a consuming common-program contract. The default
+`BrowserWorker::new` retains its source-only teardown boundary. Adding a ticket around `ModelBoundRetainedDocument::issue` would
 still publish one authored source; it would not resume the reached product.
 
 These are missing consuming contracts, not an asset-staging problem. A retained
@@ -162,8 +165,10 @@ from the other's receipt or from JavaScript transport tests.
 
 ## Residual implementation and required evidence
 
-None of the five geometry value/entry changes, the processing pending transaction,
-or the browser dependency result described here is implemented by this assembly.
+None of the five geometry value/entry changes or the processing pending transaction
+is implemented by this assembly. The browser dependency-result prerequisite now
+has a source implementation, protocol-fixture tests and unrun actual browser
+tests; it has no SDK or common-product qualification.
 The source-only native/browser consumers remain usable only under their existing
 explicit contract. This document does not advertise new production APIs.
 

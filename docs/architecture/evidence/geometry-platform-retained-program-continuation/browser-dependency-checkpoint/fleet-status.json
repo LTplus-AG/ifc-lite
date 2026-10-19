@@ -1,0 +1,49 @@
+{
+  "fleet": [
+    {
+      "host": "pop-os",
+      "state": "reachable",
+      "capacity": {
+        "cpu": 16,
+        "memoryGiB": 48,
+        "legacyLock": "/home/louistrue/build-workers/heavy-job.lock",
+        "guard": "/home/louistrue/build-workers/machine-health/disk_guard.py",
+        "repository": "/home/louistrue/build-workers/ifc-lite",
+        "fetch": false,
+        "systemdScope": true,
+        "admission": {
+          "allowed": false,
+          "guardExitCode": 78
+        },
+        "configuredAllowedKinds": [
+          "ordinary",
+          "benchmark",
+          "service"
+        ],
+        "allowedKinds": []
+      }
+    },
+    {
+      "host": "pc-wsl",
+      "state": "reachable",
+      "capacity": {
+        "cpu": 8,
+        "memoryGiB": 32,
+        "legacyLock": "/home/louistrue/build-workers/heavy-job.lock",
+        "guard": "/home/louistrue/build-workers/setup/capacity-guard.py",
+        "repository": "/home/louistrue/build-workers/ifc-lite.git",
+        "fetch": true,
+        "systemdScope": false,
+        "allowedKinds": [
+          "ordinary",
+          "service"
+        ]
+      }
+    },
+    {
+      "host": "mac",
+      "state": "disabled"
+    }
+  ],
+  "policy": "automatic ordinary routing; source and benchmark ownership preserved"
+}

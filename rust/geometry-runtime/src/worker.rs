@@ -20,7 +20,7 @@ mod disk_qualification;
 pub use qualification::RegionQualificationReport;
 #[path = "worker_dependencies.rs"]
 mod dependencies;
-pub use dependencies::{RetainedDependency, RetainedDependencyResult, RetainedLineage, RetainedOperationIdentity};
+pub use dependencies::{RetainedDependency, RetainedDependencyResult, RetainedOperationIdentity};
 #[path = "worker_mesh.rs"]
 mod mesh;
 #[path = "worker_sweep.rs"]

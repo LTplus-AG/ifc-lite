@@ -53,3 +53,109 @@ async fn abandoned_rust_future_retires_actual_worker_without_killing_replacement
     worker.retire();
     assert_ne!(replacement.incarnation(), 0);
 }
+
+fn rectangle(worker: &BrowserWorker) -> RetainedRequest {
+    let input = b"#1=IFCCARTESIANPOINT((0.,0.));#2=IFCAXIS2PLACEMENT2D(#1,$);#3=IFCRECTANGLEPROFILEDEF(.AREA.,$,#2,1.,1.);#4=IFCDIRECTION((0.,0.,1.));#5=IFCEXTRUDEDAREASOLID(#3,$,#4,1.);";
+    let mut decoder = EntityDecoder::with_index(input, build_entity_index(input));
+    let entity = decoder.decode_by_id(5).unwrap();
+    let mut document = GeometryDocument::new();
+    let definition = document.add_retained_extrusion(RetainedExtrusion {
+        source: extract_analytic_extrusion(&entity, &mut decoder), length_unit_scale: 1.,
+        source_epoch: 1, source_revision: 1,
+    }).unwrap();
+    document.prepare_retained_extrusion(definition, EvaluationContract::RetainedBrep, worker.incarnation()).unwrap()
+}
+const IDENTITY: [f64; 16] = [1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 0.,0.,0.,1.];
+fn source(realization: &BrowserRealization, frame: [f64; 16]) -> BrowserDependency<'_> {
+    BrowserDependency::Source { realization, world_from_source: frame }
+}
+fn volume(mesh: &RetainedTessellation) -> f64 {
+    let p = |i: u32| { let i = i as usize * 3; [mesh.positions[i], mesh.positions[i+1], mesh.positions[i+2]] };
+    mesh.indices.chunks_exact(3).map(|tri| {
+        let [a,b,c] = [p(tri[0]),p(tri[1]),p(tri[2])];
+        (a[0]*(b[1]*c[2]-b[2]*c[1])+a[1]*(b[2]*c[0]-b[0]*c[2])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6.
+    }).sum::<f64>().abs()
+}
+
+#[wasm_bindgen_test(async)]
+async fn actual_browser_difference_survives_operand_drop_and_can_feed_next_dependency() {
+    use ifc_lite_geometry::document::BooleanOperation;
+    let mut worker = BrowserWorker::new_retained_execution().unwrap();
+    worker.qualify().await.unwrap();
+    let a = worker.evaluate(rectangle(&worker), 0.001, 5., 1_048_576).await.unwrap();
+    let b = worker.evaluate(rectangle(&worker), 0.001, 5., 1_048_576).await.unwrap();
+    let mut left = IDENTITY; left[12] = 1e9; left[13] = 2e9;
+    let mut right = left; right[12] += 0.5;
+    let expected_left = crate::retained_values::multiply(left, a.completion().source_from_evaluation);
+    let expected_right = crate::retained_values::multiply(right, b.completion().source_from_evaluation);
+    let result = worker.evaluate_retained_boolean(source(&a, left), source(&b, right),
+        BooleanOperation::Difference, 0.001, 5., 1_048_576).await.unwrap();
+    assert_eq!(result.operation_identity().left, *a.handle());
+    assert_eq!(result.operation_identity().right, *b.handle());
+    assert_eq!(result.operation_identity().operation, BooleanOperation::Difference);
+    assert_eq!(result.operation_identity().left_world_from_evaluation, expected_left);
+    assert_eq!(result.operation_identity().right_world_from_evaluation, expected_right);
+    assert_eq!(*result.world_from_evaluation(), expected_left);
+    assert!((volume(result.mesh()) - 0.5).abs() < 1e-6);
+    drop(a); drop(b);
+    result.validate_live().unwrap();
+    assert_ne!(worker.incarnation(), 0);
+    // A repeated dependency counts both branches. It is not visited-set deduped
+    // away and remains independently usable after its input result is dropped.
+    let repeated = worker.evaluate_retained_boolean(BrowserDependency::Result(&result),
+        BrowserDependency::Result(&result), BooleanOperation::Union, 0.001, 5., 1_048_576).await.unwrap();
+    drop(result);
+    repeated.validate_live().unwrap();
+    assert!((volume(repeated.mesh()) - 0.5).abs() < 1e-6);
+    drop(repeated);
+    assert_ne!(worker.incarnation(), 0);
+    worker.retire();
+}
+
+#[wasm_bindgen_test(async)]
+async fn actual_browser_foreign_and_nonrigid_rejection_preserve_operands_and_workers() {
+    use ifc_lite_geometry::document::BooleanOperation;
+    let mut worker = BrowserWorker::new_retained_execution().unwrap();
+    worker.qualify().await.unwrap();
+    let a = worker.evaluate(rectangle(&worker), 0.001, 5., 1_048_576).await.unwrap();
+    let mut foreign = BrowserWorker::new_retained_execution().unwrap();
+    let b = foreign.evaluate(rectangle(&foreign), 0.001, 5., 1_048_576).await.unwrap();
+    assert!(worker.evaluate_retained_boolean(source(&a, IDENTITY), source(&b, IDENTITY),
+        BooleanOperation::Difference, 0.001, 5., 1_048_576).await.is_err());
+    a.validate_live().unwrap(); b.validate_live().unwrap();
+    assert_ne!(worker.incarnation(), 0); assert_ne!(foreign.incarnation(), 0);
+    let mut scale = IDENTITY; scale[0] = 2.;
+    assert!(worker.evaluate_retained_boolean(source(&a, IDENTITY), source(&a, scale),
+        BooleanOperation::Union, 0.001, 5., 1_048_576).await.is_err());
+    a.validate_live().unwrap(); b.validate_live().unwrap();
+    worker.retire(); foreign.retire();
+}
+
+#[wasm_bindgen_test(async)]
+async fn abandoned_actual_browser_dependency_future_retires_only_captured_incarnation() {
+    use ifc_lite_geometry::document::BooleanOperation;
+    let mut worker = BrowserWorker::new_retained_execution().unwrap();
+    worker.qualify().await.unwrap();
+    let a = worker.evaluate(rectangle(&worker), 0.001, 5., 1_048_576).await.unwrap();
+    let b = worker.evaluate(rectangle(&worker), 0.001, 5., 1_048_576).await.unwrap();
+    let owner = worker.owner.clone();
+    let submitted = owner.driver.next_dispatch();
+    let mut future = Box::pin(worker.evaluate_retained_boolean(source(&a, IDENTITY), source(&b, IDENTITY),
+        BooleanOperation::Union, 0.001, 5., 1_048_576));
+    assert!(matches!(future.as_mut().poll(&mut Context::from_waker(Waker::noop())), Poll::Pending));
+    JsFuture::from(submitted).await.unwrap();
+    drop(future);
+    assert_eq!(worker.incarnation(), 0);
+    assert!(a.validate_live().is_err()); assert!(b.validate_live().is_err());
+    let replacement = BrowserWorker::new_retained_execution().unwrap();
+    drop(a); drop(b); drop(worker);
+    assert_ne!(replacement.incarnation(), 0);
+}
+
+#[wasm_bindgen_test(async)]
+async fn actual_browser_source_only_drop_keeps_existing_worker_teardown_boundary() {
+    let mut worker = BrowserWorker::new().unwrap();
+    let source = worker.evaluate(rectangle(&worker), 0.001, 5., 1_048_576).await.unwrap();
+    drop(source);
+    assert_eq!(worker.incarnation(), 0);
+}

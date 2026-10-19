@@ -85,3 +85,38 @@ geometry evidence. Outstanding integration includes transformed-copy boolean
 operands, full source/trim metadata, surface-type/section witnesses, application
 asset delivery, memory limits and supervisor undeliverable-result cleanup. Do
 not activate it as a replacement production geometry path.
+
+
+`browser::BrowserWorker::new()` keeps the explicit source-only lifecycle: dropping
+one source realization retires its captured Worker. The separate
+`BrowserWorker::new_retained_execution()` constructor selects independent object
+leases. After `qualify()` executes both sweep and Boolean numerical witnesses in
+that same module Worker, `evaluate_retained_boolean` accepts only sealed
+`BrowserDependency::Source` / `BrowserDependency::Result` operands from that
+owner. It copies the right operand into the left f64 evaluation frame before the
+ordered Boolean, and seals its own independently owned result. Opaque object
+identity and immutable operation/frame identity are observable for a consuming
+transaction to compare; neither can construct a receipt or numerical dependency.
+No source bundle or model authority is transported with these numerical values.
+
+Dropping a lease invalidates exactly that object before queued healthy release.
+A failed or uncertain command/release retires its captured Worker; abandoned Rust
+futures use the captured cancellation capability. Replacement Workers are separate
+owners. The source-only constructor does not enter this dependency contract.
+Host mesh-byte limits and the 128-operation dependency bound are partial resource
+bounds, not SDK heap limits or complete `Bounded` resource coverage.
+
+The private driver has lightweight protocol/lifetime fixture tests, wired into
+adapter CTest as `retained_driver_protocol_lifetimes`:
+
+```bash
+node --experimental-vm-modules --test rust/geometry-runtime/js/retained-driver.test.mjs
+```
+
+These tests load the actual driver with a fixture module transport. They prove
+protocol ordering and lease behavior, not SDK numerics. Actual browser Rust tests
+in `src/browser_bridge_tests.rs` require canonical `/smlib/` assets and a real
+module Worker; they have not been run for this checkpoint. Common
+`GeometryProgram` retained slots, the processing pending transaction, complete
+reached-branch/late-appearance closure and final-net publication are still
+unimplemented. There is no production engine cutover or performance claim.

@@ -19,11 +19,21 @@ extern "C" {
     pub(super) fn retire(this: &Driver);
     #[wasm_bindgen(method, js_name = objectLive)]
     pub(super) fn object_live(this: &Driver, object: &JsValue) -> bool;
+    #[wasm_bindgen(method, js_name = releaseObject)]
+    pub(super) fn release_object(this: &Driver, object: &JsValue);
+    #[wasm_bindgen(method, js_name = evaluateBoolean)]
+    pub(super) fn evaluate_boolean(this: &Driver, left: &JsValue, right: &JsValue,
+        relative: &[f64], operation: u32, chord: f64, angle: f64, max_bytes: u32) -> js_sys::Promise;
     #[wasm_bindgen(method)]
     fn qualify(this: &Driver) -> js_sys::Promise;
+    #[wasm_bindgen(method, js_name = qualifyDependencies)]
+    fn qualify_dependencies(this: &Driver) -> js_sys::Promise;
     #[cfg(test)]
     #[wasm_bindgen(method, js_name = firstDispatch)]
     fn first_dispatch(this: &Driver) -> js_sys::Promise;
+    #[cfg(test)]
+    #[wasm_bindgen(method, js_name = nextDispatch)]
+    pub(super) fn next_dispatch(this: &Driver) -> js_sys::Promise;
     #[wasm_bindgen(method)]
     fn evaluate(
         this: &Driver,
@@ -50,10 +60,15 @@ struct Mesh {
 }
 
 impl BrowserWorker {
-    pub fn new() -> Result<Self, JsValue> {
+    pub fn new() -> Result<Self, JsValue> { Self::create(false) }
+    /// Explicit graph numerical execution. Independent object leases do not
+    /// grant common-product coverage or change the source-only constructor.
+    pub fn new_retained_execution() -> Result<Self, JsValue> { Self::create(true) }
+    fn create(independent_leases: bool) -> Result<Self, JsValue> {
         Ok(Self {
             owner: Arc::new(Owner {
                 identity: next_identity(),
+                independent_leases,
                 live: AtomicBool::new(true),
                 driver: Driver::new()?,
             }),
@@ -64,7 +79,9 @@ impl BrowserWorker {
     /// source/IFC qualification. No feature bit can open this gate.
     pub async fn qualify(&mut self) -> Result<(), JsValue> {
         let mut flight = InFlight::new(&self.owner);
-        JsFuture::from(self.owner.driver.qualify()).await?;
+        let qualification = if self.owner.independent_leases { self.owner.driver.qualify_dependencies() }
+            else { self.owner.driver.qualify() };
+        JsFuture::from(qualification).await?;
         self.owner.validate().map_err(error)?;
         self.qualified = true;
         flight.disarm();
@@ -107,26 +124,15 @@ impl BrowserWorker {
         if !self.owner.driver.object_live(&object) {
             return Err(error(RetainedRefusal::InvalidRuntime));
         }
-        let mesh: Mesh = serde_wasm_bindgen::from_value(js_sys::Reflect::get(
-            &value,
-            &JsValue::from_str("mesh"),
-        )?)
-        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let mesh = mesh(&value)?;
         let realization = BrowserRealization {
             owner: self.owner.clone(),
+            handle: BrowserObjectHandle::new(),
             object,
             object_live: Arc::new(AtomicBool::new(true)),
             completion: RetainedCompletion::new(
                 request,
-                RetainedTessellation {
-                    positions: mesh.positions,
-                    indices: mesh.indices,
-                    flat_corner_normals: mesh.flat_corner_normals,
-                    revision_local_faces: mesh.revision_local_faces,
-                    source_face_count: mesh.source_face_count,
-                    boundary_edges: mesh.boundary_edges,
-                    spine_edges: mesh.spine_edges,
-                },
+                mesh,
                 payload.source_from_evaluation,
                 payload.evaluation_from_source,
             ),
@@ -143,3 +149,11 @@ fn error(error: RetainedRefusal) -> JsValue {
 #[cfg(test)]
 #[path = "browser_bridge_tests.rs"]
 mod tests;
+
+pub(super) fn mesh(value: &JsValue) -> Result<RetainedTessellation, JsValue> {
+    let mesh: Mesh = serde_wasm_bindgen::from_value(js_sys::Reflect::get(value,
+        &JsValue::from_str("mesh"))?).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    Ok(RetainedTessellation { positions: mesh.positions, indices: mesh.indices,
+        flat_corner_normals: mesh.flat_corner_normals, revision_local_faces: mesh.revision_local_faces,
+        source_face_count: mesh.source_face_count, boundary_edges: mesh.boundary_edges, spine_edges: mesh.spine_edges })
+}

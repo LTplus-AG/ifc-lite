@@ -2,7 +2,9 @@
 //! Immutable retained operands in a common object-local metre frame.
 use super::{BrepHandle, MeshLimits, RetainedRealization, SmlibWorker, TessellatedMesh, WorkerError};
 use crate::protocol::KernelCommand;
-use ifc_lite_geometry::document::{BooleanOperation, RetainedRequest};
+use ifc_lite_geometry::document::BooleanOperation;
+use crate::RetainedLineage;
+use crate::retained_values::{multiply, relative, rigid};
 use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
 
 /// Numerical dependency only. Canonical source authority and executor tickets
@@ -10,14 +12,6 @@ use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
 pub enum RetainedDependency<'a> {
     Source { realization: &'a RetainedRealization, world_from_source: [f64; 16] },
     Result(&'a RetainedDependencyResult),
-}
-
-/// Source lineage is separate from temporary SDK face indices and display data.
-/// This tree records evaluated operations, not complete representation coverage.
-#[derive(Debug, Clone)]
-pub enum RetainedLineage {
-    Source { request: Box<RetainedRequest>, world_from_source: [f64; 16] },
-    Boolean { operation: BooleanOperation, left: Arc<Self>, right: Arc<Self> },
 }
 
 /// Immutable operation identity borrowed from the actual sealed output. Handles
@@ -70,7 +64,7 @@ impl RetainedDependency<'_> {
             Self::Source { realization, world_from_source } => {
                 realization.validate_live()?;
                 let frame = multiply(*world_from_source, realization.completion().source_from_evaluation);
-                rigid(frame)?;
+                rigid(frame).map_err(|e| WorkerError::Authored(e.into()))?;
                 Ok((realization.solid(), frame, Arc::new(RetainedLineage::Source {
                     request: Box::new(realization.completion().request().clone()),
                     world_from_source: *world_from_source,
@@ -95,7 +89,7 @@ impl SmlibWorker {
     pub fn copy_transform(&mut self, solid: BrepHandle, column_major: [f64; 16])
         -> Result<BrepHandle, WorkerError>
     {
-        rigid(column_major)?;
+        rigid(column_major).map_err(|e| WorkerError::Authored(e.into()))?;
         self.object_liveness(solid)?;
         let solid = self.wire(solid)?;
         let bytes = self.call(KernelCommand::CopyTransform { session: self.session, solid, column_major })?;
@@ -118,7 +112,7 @@ impl SmlibWorker {
             .filter(|n| *n <= 128).ok_or(WorkerError::ResourceLimit("retained dependency depth/work"))?;
         // Compute inverse-left * right in f64; subtract translations before
         // rotating to avoid manufacturing far-origin f32 geometry.
-        let relative = relative(frame, right_frame)?;
+        let relative = relative(frame, right_frame).map_err(|e| WorkerError::Authored(e.into()))?;
         let transformed = self.copy_transform(b, relative)?;
         let boolean = self.boolean(a, transformed, operation);
         let cleanup = self.release(transformed);
@@ -146,30 +140,6 @@ impl SmlibWorker {
         })
     }
 }
-fn multiply(a: [f64; 16], b: [f64; 16]) -> [f64; 16] {
-    std::array::from_fn(|i| (0..4).map(|k| a[k * 4 + i % 4] * b[i / 4 * 4 + k]).sum())
-}
-fn rigid(m: [f64; 16]) -> Result<(), WorkerError> {
-    let valid = m.iter().all(|v| v.is_finite()) && m[3] == 0. && m[7] == 0. && m[11] == 0. && m[15] == 1.
-        && (0..3).all(|i| (0..3).all(|j| {
-            let dot: f64 = (0..3).map(|k| m[i*4+k]*m[j*4+k]).sum();
-            (dot - if i == j { 1. } else { 0. }).abs() <= 1e-12
-        }));
-    let cross = [m[1]*m[6]-m[2]*m[5], m[2]*m[4]-m[0]*m[6], m[0]*m[5]-m[1]*m[4]];
-    if valid && (0..3).all(|i| (cross[i] - m[8+i]).abs() <= 1e-12) { Ok(()) }
-    else { Err(WorkerError::Authored("retained dependency requires proper rigid metre frame".into())) }
-}
-fn relative(a: [f64; 16], b: [f64; 16]) -> Result<[f64; 16], WorkerError> {
-    rigid(a)?; rigid(b)?;
-    let mut out = [0.; 16]; out[15] = 1.;
-    for col in 0..3 { for row in 0..3 {
-        out[col*4+row] = (0..3).map(|k| a[row*4+k]*b[col*4+k]).sum();
-    }}
-    for row in 0..3 { out[12+row] = (0..3).map(|k| a[row*4+k]*(b[12+k]-a[12+k])).sum(); }
-    rigid(out)?;
-    Ok(out)
-}
-
 #[cfg(test)]
 #[path = "worker_dependencies_tests.rs"]
 mod tests;

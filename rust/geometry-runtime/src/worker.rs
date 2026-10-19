@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 #[path = "worker_affine.rs"]
 mod affine;
-pub use affine::{AffineCopyIdentity, RetainedAffineCopy};
+pub use affine::{AffineCopyIdentity, RetainedAffineCopy, RetainedTransformInput};
 #[path = "worker_upload.rs"]
 mod upload;
 #[path = "worker_qualification.rs"]

@@ -12,6 +12,7 @@ use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
 pub enum RetainedDependency<'a> {
     Source { realization: &'a RetainedRealization, world_from_source: [f64; 16] },
     Result(&'a RetainedDependencyResult),
+    Affine { copy: &'a super::RetainedAffineCopy, world_from_affine: [f64;16] },
 }
 
 /// Immutable operation identity borrowed from the actual sealed output. Handles
@@ -46,6 +47,7 @@ impl RetainedDependencyResult {
     pub fn solid(&self) -> BrepHandle { self.solid }
     pub fn outcome(&self) -> crate::NumericalOutcome { self.mesh.outcome() }
     pub fn is_empty(&self) -> bool { self.mesh.is_empty() }
+    pub(super) fn operation_count(&self) -> usize { self.operations }
     pub fn mesh(&self) -> &TessellatedMesh { &self.mesh }
     pub fn world_from_evaluation(&self) -> &[f64; 16] { &self.world_from_evaluation }
     pub fn lineage(&self) -> &RetainedLineage { &self.lineage }
@@ -69,6 +71,12 @@ impl RetainedDependency<'_> {
                     request: Box::new(realization.completion().request().clone()),
                     world_from_source: *world_from_source,
                 }), 0))
+            }
+            Self::Affine { copy, world_from_affine } => {
+                copy.validate_live()?;
+                rigid(*world_from_affine).map_err(|e| WorkerError::Authored(e.into()))?;
+                Ok((copy.solid(),*world_from_affine,Arc::new(RetainedLineage::Placed {
+                    value:Arc::new(copy.lineage().clone()), world_from_evaluation:*world_from_affine }),copy.operation_count()))
             }
             Self::Result(result) => {
                 result.validate_live()?;

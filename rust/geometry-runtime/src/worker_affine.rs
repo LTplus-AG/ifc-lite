@@ -1,10 +1,38 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Separate opcode18 numerical seam. Opcode17 remains proper rigid only.
 use super::{BrepHandle, RetainedRealization, SmlibWorker, WorkerError};
-use crate::{affine::{validate_affine, AffineCertificate}, protocol::KernelCommand, RuntimeOwner};
-use ifc_lite_geometry::document::RetainedRequest;
+use crate::{affine::{validate_affine, AffineCertificate}, protocol::KernelCommand, RuntimeOwner, RetainedLineage};
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
+/// Input geometry is already in its object's local metre domain. This enum
+/// grants no authority to caller-created handles or manufactured lineage.
+pub enum RetainedTransformInput<'a> {
+    Source(&'a RetainedRealization),
+    Result(&'a super::RetainedDependencyResult),
+    Affine(&'a RetainedAffineCopy),
+}
+impl RetainedTransformInput<'_> {
+    fn parts(self) -> Result<(BrepHandle, Arc<RetainedLineage>, usize), WorkerError> {
+        match self {
+            Self::Source(source) => {
+                source.validate_live()?;
+                let completion=source.completion();
+                Ok((source.solid(),Arc::new(RetainedLineage::Definition {
+                    request:Box::new(completion.request().clone()),
+                    source_from_evaluation:completion.source_from_evaluation,
+                    evaluation_from_source:completion.evaluation_from_source }),0))
+            }
+            Self::Result(result) => {
+                result.validate_live()?;
+                Ok((result.solid(),Arc::new(result.lineage().clone()),result.operation_count()))
+            }
+            Self::Affine(copy) => {
+                copy.validate_live()?;
+                Ok((copy.solid,copy.lineage.clone(),copy.operations))
+            }
+        }
+    }
+}
 /// Sealed actual operation identity. Keeping this data does not grant a lease.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AffineCopyIdentity {
@@ -21,13 +49,15 @@ pub struct RetainedAffineCopy {
     owner: RuntimeOwner,
     live: Arc<AtomicBool>,
     identity: AffineCopyIdentity,
-    source_request: RetainedRequest,
+    lineage: Arc<RetainedLineage>,
+    operations: usize,
 }
 impl RetainedAffineCopy {
     pub fn solid(&self) -> BrepHandle { self.solid }
     pub fn operation_identity(&self) -> &AffineCopyIdentity { &self.identity }
-    /// Original immutable authored coefficients and realization lineage.
-    pub fn source_request(&self) -> &RetainedRequest { &self.source_request }
+    /// Full immutable ancestry, including original raw source coefficients.
+    pub fn lineage(&self) -> &RetainedLineage { &self.lineage }
+    pub(super) fn operation_count(&self) -> usize { self.operations }
     pub fn owner(&self) -> &RuntimeOwner { &self.owner }
     pub fn validate_live(&self) -> Result<(), WorkerError> {
         if self.owner.incarnation()==Some(self.solid.worker) && self.live.load(Ordering::Acquire) {
@@ -38,12 +68,14 @@ impl RetainedAffineCopy {
 impl SmlibWorker {
     /// Explicit candidate API, distinct from proper-rigid copy_transform.
     /// Capability means implementation; this does not qualify any target or P1.
-    pub fn copy_retained_affine(&mut self, source: &RetainedRealization, column_major: [f64; 16])
+    pub fn copy_retained_affine(&mut self, source: RetainedTransformInput<'_>, column_major: [f64; 16])
         -> Result<RetainedAffineCopy, WorkerError>
     {
         validate_affine(&column_major).map_err(|e| WorkerError::Authored(e.into()))?;
-        source.validate_live()?;
-        let input=source.solid(); self.object_liveness(input)?;
+        let (input,lineage,count)=source.parts()?;
+        self.object_liveness(input)?;
+        let operations=count.checked_add(1).filter(|n|*n<=128)
+            .ok_or(WorkerError::ResourceLimit("retained affine depth/work"))?;
         let capabilities=self.call(KernelCommand::Capabilities)?;
         if capabilities.len()!=8 || capabilities[..4]!=1u32.to_le_bytes() ||
             u32::from_le_bytes(capabilities[4..].try_into().expect("four bytes"))&16==0 {
@@ -55,8 +87,8 @@ impl SmlibWorker {
         let certificate=AffineCertificate::decode(&bytes[16..]).map_err(|e| self.poison(e))?;
         let solid=self.handle(bytes[..16].to_vec())?;
         let result=RetainedAffineCopy { solid, owner:RuntimeOwner::new(self.process_control(),self.identity),
-            live:self.object_liveness(solid)?, identity:AffineCopyIdentity {input,column_major,certificate},
-            source_request:source.completion().request().clone() };
+            live:self.object_liveness(solid)?, identity:AffineCopyIdentity {input,column_major,certificate:certificate.clone()},
+            lineage:Arc::new(RetainedLineage::AffineCopy { input:lineage,column_major,certificate }), operations };
         result.validate_live()?;
         Ok(result)
     }

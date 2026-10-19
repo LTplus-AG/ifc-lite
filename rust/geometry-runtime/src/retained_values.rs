@@ -7,6 +7,11 @@ use std::sync::Arc;
 /// This tree records evaluated operations, not complete representation coverage.
 #[derive(Debug, Clone)]
 pub enum RetainedLineage {
+    /// A realization's raw authored source and its actual evaluation domain.
+    Definition { request: Box<RetainedRequest>, source_from_evaluation: [f64;16], evaluation_from_source: [f64;16] },
+    AffineCopy { input: Arc<Self>, column_major: [f64;16], certificate: crate::AffineCertificate },
+    /// Explicit post-bake placement; never inferred from authored units or RTC.
+    Placed { value: Arc<Self>, world_from_evaluation: [f64;16] },
     Source { request: Box<RetainedRequest>, world_from_source: [f64; 16] },
     Boolean { operation: BooleanOperation, left: Arc<Self>, right: Arc<Self> },
 }

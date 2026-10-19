@@ -18,7 +18,7 @@ mod supervision;
 #[cfg(not(target_arch = "wasm32"))]
 pub use supervision::{PendingCommand, SupervisedWorker, SupervisionError, WorkerCommand, WorkerResult};
 #[cfg(not(target_arch = "wasm32"))]
-pub use worker::{AffineCopyIdentity, RetainedAffineCopy, RegionQualificationReport, RetainedDependency, RetainedDependencyResult, RetainedOperationIdentity, BrepHandle, MeshLimits, RetainedRealization, SmlibWorker, TessellatedMesh, WorkerError};
+pub use worker::{AffineCopyIdentity, RetainedAffineCopy, RetainedTransformInput, RegionQualificationReport, RetainedDependency, RetainedDependencyResult, RetainedOperationIdentity, BrepHandle, MeshLimits, RetainedRealization, SmlibWorker, TessellatedMesh, WorkerError};
 #[cfg(not(target_arch = "wasm32"))]
 mod runtime_owner;
 #[cfg(not(target_arch = "wasm32"))]

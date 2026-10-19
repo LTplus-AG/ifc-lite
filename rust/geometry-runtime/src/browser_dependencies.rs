@@ -21,6 +21,7 @@ impl BrowserObjectHandle {
 pub enum BrowserDependency<'a> {
     Source { realization: &'a BrowserRealization, world_from_source: [f64; 16] },
     Result(&'a BrowserDependencyResult),
+    Affine { copy: &'a super::BrowserAffineCopy, world_from_affine: [f64;16] },
 }
 
 /// The runtime seals the operands and frames it actually used. Processing must
@@ -52,6 +53,12 @@ impl BrowserDependencyResult {
     pub fn handle(&self) -> &BrowserObjectHandle { &self.handle }
     pub fn outcome(&self) -> crate::NumericalOutcome { self.outcome }
     pub fn is_empty(&self) -> bool { self.outcome == crate::NumericalOutcome::Empty }
+    #[cfg(target_arch="wasm32")]
+    pub(super) fn transform_parts(&self) -> Result<super::affine::TransformParts,RetainedRefusal> {
+        self.validate_live()?;
+        Ok(super::affine::TransformParts { owner:self.owner.clone(),object:self.object.clone(),
+            handle:self.handle.clone(),lineage:self.lineage.clone(),operations:self.operations })
+    }
     pub fn mesh(&self) -> &RetainedTessellation { &self.mesh }
     pub fn world_from_evaluation(&self) -> &[f64; 16] { &self.world_from_evaluation }
     pub fn lineage(&self) -> &RetainedLineage { &self.lineage }
@@ -95,6 +102,12 @@ impl BrowserDependency<'_> {
                     lineage: Arc::new(RetainedLineage::Source {
                         request: Box::new(realization.completion.request().clone()),
                         world_from_source: *world_from_source }) }
+            }
+            Self::Affine { copy, world_from_affine } => {
+                let parts=copy.transform_parts()?;
+                Input { owner:parts.owner,object:parts.object,handle:parts.handle,operations:parts.operations,
+                    frame:*world_from_affine,lineage:Arc::new(RetainedLineage::Placed {
+                        value:parts.lineage,world_from_evaluation:*world_from_affine }) }
             }
             Self::Result(result) => {
                 result.validate_live()?;

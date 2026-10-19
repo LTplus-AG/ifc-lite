@@ -14,7 +14,7 @@ mod bridge;
 mod dependencies;
 #[path = "browser_affine.rs"]
 mod affine;
-pub use affine::{BrowserAffineCopy, BrowserAffineIdentity};
+pub use affine::{BrowserAffineCopy, BrowserAffineIdentity, BrowserTransformInput};
 pub use dependencies::{BrowserDependency, BrowserDependencyResult, BrowserOperationIdentity, BrowserObjectHandle};
 
 #[cfg(target_arch = "wasm32")]

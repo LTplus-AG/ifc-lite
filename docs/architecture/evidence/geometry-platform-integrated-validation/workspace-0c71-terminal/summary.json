@@ -1,0 +1,10 @@
+{
+  "source": "0c71cfc276ddc318431220e97e839a33e835de53",
+  "job": "bfa2a644-ff95-456a-b9e4-af7e81969bea",
+  "exitCode": 101,
+  "sourceUnchanged": true,
+  "output_sha256": "d93e988635bfb36d7a011c8ea94ff08870f3e85fea8cfaff83a5259e1a38c2c7",
+  "tests_executed": 0,
+  "failure": "processing libtest E0004 missing UnaryClip arm; strict Clippy additionally err_expect3/manual_contains1",
+  "source_repairs": "40a5dfc729; no numerical oracle changes"
+}

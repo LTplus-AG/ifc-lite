@@ -1,0 +1,76 @@
+{
+  "candidate": "8b6b71e0a468a6503b98d808d3db3ca9c7a1a773",
+  "base": "3b309fdcaf2e8aa8e034a7ea1605016980fd8ac0",
+  "sdk": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "files": [
+    {
+      "commit": "8b6b71e0a468a6503b98d808d3db3ca9c7a1a773",
+      "path": "native/smlib-adapter/tests/context_metadata_tests.cpp",
+      "git_blob": "70e5a14e5b8f05ece3c482c69e9a7e60fad65cb7",
+      "sha256": "ea2d7b371bec4f02da492702723ccdaa4812a29258bb016b1772c65b58140978"
+    },
+    {
+      "commit": "8b6b71e0a468a6503b98d808d3db3ca9c7a1a773",
+      "path": "native/smlib-adapter/src/context_metadata.hpp",
+      "git_blob": "36a5bc0993b5a6641acaebc0ef610cea74e7f487",
+      "sha256": "c105a819bb1aa5d7e678aadca403a4174a0312621eb26cbc2d850eb0f3d4b407"
+    },
+    {
+      "commit": "8b6b71e0a468a6503b98d808d3db3ca9c7a1a773",
+      "path": "native/smlib-adapter/src/copy.cpp",
+      "git_blob": "2bcfeee5d957e76e43cb1a6d36c48e0d35ca447d",
+      "sha256": "df3f6993cbc6fea0dd488891dc08a9ff595630e30adc1e8f31d988898c7b3a1b"
+    },
+    {
+      "commit": "8b6b71e0a468a6503b98d808d3db3ca9c7a1a773",
+      "path": "native/smlib-adapter/src/plane_domain.cpp",
+      "git_blob": "55e70474dfb122876ae08aa8b725ad56beda7850",
+      "sha256": "3e500336a94fad265286eecaa3c6673c38a6a3752ac079b7b1032ef10a01357d"
+    },
+    {
+      "commit": "8b6b71e0a468a6503b98d808d3db3ca9c7a1a773",
+      "path": "native/smlib-adapter/src/plane_domain.hpp",
+      "git_blob": "9c4f9e44c1a3f2a086f4def4af4a3e7840a231b0",
+      "sha256": "0c60a4745cc99485979bf4ae1178bcbb7d29f5999c24810ff4e4ce16df160d6e"
+    },
+    {
+      "commit": "3b309fdcaf2e8aa8e034a7ea1605016980fd8ac0",
+      "path": "native/smlib-adapter/tests/context_metadata_tests.cpp",
+      "git_blob": "4202b0a3b41d7300fceabfdc4c778d2c5f4d6204",
+      "sha256": "b9ecc5105d31b4e937be647a2df7af46201fd4acfc2988330e9369b43a19bc0d"
+    },
+    {
+      "commit": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+      "path": "source/SMLib/src/SmBrep.cpp",
+      "git_blob": "07842739d03c15fcdd3cd1ab2732833b27a4941f",
+      "sha256": "5d44d6ac347fa42e4e83fead8bbde82ce46c5ff48e0a973b5c7cddc778a2fca1",
+      "working_file_matches_pin": true
+    },
+    {
+      "commit": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+      "path": "source/SMLib/inc/SmAssertArray.h",
+      "git_blob": "e76de27c3ffc749a7ce73125fa9c8430aacf36c8",
+      "sha256": "7bf8fbef9420d21ce971028cf29720bf50b2c9d9d6241acd1c9de4accddec9e1",
+      "working_file_matches_pin": true
+    },
+    {
+      "commit": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+      "path": "source/SMLib/inc/SmBrep.h",
+      "git_blob": "909bb5ff1ae36e827389203ec4d981bb2090d7eb",
+      "sha256": "7826cddbc8816cb51bba8349f5fedee42070ab63c0a33018c1875134c0d9ab73",
+      "working_file_matches_pin": true
+    },
+    {
+      "commit": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+      "path": "source/SMLib/src/SmTol.cpp",
+      "git_blob": "d9f276c8690573df1058f0d6d95090138e64e592",
+      "sha256": "cf5fb72eca566e2b96903a6647102c0e6e831336cc413ef4b1386d34ae032a84",
+      "working_file_matches_pin": true
+    }
+  ],
+  "patch_sha256": "3e85f8573465f698006d64945e1bfc8fc3d70da9f3d49a4d3039f13ca86b3aae",
+  "patch_matches_expected": true,
+  "fixture_manifest_matches": true,
+  "log_sha256": "6159826eb44039d0921fb0ac4b93e74e8c38acf898184d4a5c477ca87b06f8c2",
+  "validation": "Read-only source/hash/log inspection; no tests, compilation, or jobs."
+}

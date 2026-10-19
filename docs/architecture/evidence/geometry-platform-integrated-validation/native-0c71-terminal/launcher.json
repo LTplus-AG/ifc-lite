@@ -1,0 +1,20 @@
+{
+  "source": "0c71cfc276ddc318431220e97e839a33e835de53",
+  "pid": 2224154,
+  "task": "ifclite-platform-native-common-plane-20261019",
+  "command": [
+    "/home/louistrue/build-workers/ifc-fleet",
+    "run",
+    "--route",
+    "fleet",
+    "--storage-task",
+    "ifclite-platform-native-common-plane-20261019",
+    "--cwd",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361",
+    "--",
+    "bash",
+    "-c",
+    "source \"$HOME/build-workers/worker-env.sh\"; unset IFCLITE_ADAPTER_BUILD; bash native/smlib-adapter/qualify.sh native || exit $?; source_id=$(git rev-parse HEAD); checkout_key=$(printf \"%s\" \"$(pwd -P)\" | sha256sum | cut -c1-12); export IFCLITE_SMLIB_WORKER=\"$CARGO_TARGET_DIR/ifclite-smlib/native-$source_id-$checkout_key/ifclite_smlib_worker\"; cargo test -p ifc-lite-geometry-runtime --all-targets --no-fail-fast || exit $?; cargo test -p ifc-lite-processing --lib session_retained -- --nocapture || exit $?; cargo test -p ifc-lite-processing --test retained_authored_evaluator --test retained_curved_consumption --test retained_geometry --no-fail-fast"
+  ],
+  "log": "/tmp/ifclite-fleet-native-common-plane.log"
+}

@@ -1,0 +1,11 @@
+{
+  "source": "0c71cfc276ddc318431220e97e839a33e835de53",
+  "job": "483755e8-f223-49e2-874c-14c816e79cf3",
+  "exitCode": 8,
+  "sourceUnchanged": true,
+  "output_sha256": "9b4941379a86724e7be3a69c4c76509a9c9a0813fbcdbcb4e716890c3f34a25a",
+  "ctest": "4/5 pass; all affine/21regions/disks/legacy transactions reached",
+  "failure": "copied host before Boolean; BRepTol.0002 faces test6 and edges test60 from inconsistent post-creation fixture zones",
+  "source_repair": "504b0ea02b integrates reviewed8b6 fixture-only preservation of created zones; numerical rerun required",
+  "actual_worker_Rust": "not reached"
+}

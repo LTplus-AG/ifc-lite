@@ -1,0 +1,17 @@
+{
+  "id": "auto-84bb75cb9e7f420e90b5fbed70cc355e",
+  "commit": "0c71cfc276ddc318431220e97e839a33e835de53",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "-c",
+    "source \"$HOME/build-workers/worker-env.sh\"; pnpm install --frozen-lockfile --prefer-offline || exit $?; pnpm fixtures || exit $?; cargo test --workspace --no-fail-fast; test_status=$?; cargo clippy --workspace --all-targets -- -D warnings; clippy_status=$?; printf \"workspace_test_exit=%s clippy_exit=%s\\n\" \"$test_status\" \"$clippy_status\"; if [ \"$test_status\" -ne 0 ]; then exit \"$test_status\"; fi; exit \"$clippy_status\""
+  ],
+  "storageTask": "ifclite-platform-workspace-common-plane-20261019",
+  "pools": []
+}

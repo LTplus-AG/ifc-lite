@@ -1,0 +1,8 @@
+{
+  "source": "504b0ea02b",
+  "workspace_repair": "40a5dfc729: explicit UnaryClip fixture match and strict Clippy test fixes",
+  "native_repair": "504b0ea02b: preserve SDK-created context/source/sibling zones; retain all strict validators and numerical oracles",
+  "latest_source_compilation": "UNRUN",
+  "latest_source_numerical_tests": "UNRUN",
+  "reason": "Both eligible fleet hosts guard78; no override or duplicate request"
+}

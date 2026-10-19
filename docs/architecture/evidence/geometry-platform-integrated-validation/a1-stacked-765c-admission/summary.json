@@ -1,0 +1,8 @@
+{
+  "source": "765c10ee0e0bbf215be6458ed280cbb571a2d66b",
+  "job": "25cd4910-6bef-460d-ad15-39718c5f9db5",
+  "result": "host capacity guard refused admission before project command",
+  "tests_executed": 0,
+  "output_log": "not created; receipt and original launcher transcript preserved",
+  "resubmitted": false
+}

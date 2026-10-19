@@ -22,6 +22,8 @@ mod item;
 mod inner;
 mod inner_ready;
 mod retained;
+mod retained_presentation;
+pub use retained_presentation::RetainedPresentation;
 pub use retained::{RetainedContract, LogicalRetainedDefinition, LogicalRetainedSlot, LogicalRetainedValue, RetainedPlanOperation, RetainedProductPlan, RetainedRequirement, RetainedPlacement, RetainedPlacementStage};
 pub(crate) use inner_ready::ReadyOperation;
 mod inner_boolean;
@@ -98,3 +100,6 @@ mod retained_tests;
 
 #[cfg(test)]
 mod retained_mapping_tests;
+
+#[cfg(test)]
+mod retained_styled_tests;

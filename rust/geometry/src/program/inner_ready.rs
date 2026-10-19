@@ -114,6 +114,7 @@ impl ReadyOperation {
                 (envelope.wrap(reply), operation)
             }
             ReadyPayload::Mapping(ready) => (ReplyValue::Mapping(ready.execute()), None),
+            ReadyPayload::TypeMap(ready) => (ReplyValue::TypeMap(ready.execute()), None),
             ReadyPayload::Product(ready) if ready.is_retained_control() => (ReplyValue::Product(ready.execute()), None),
             _ => return Err(ProgramError::UnsupportedRetained),
         };

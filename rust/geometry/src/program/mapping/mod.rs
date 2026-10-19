@@ -3,6 +3,8 @@
 //! each step borrows live execution owners and installs no retained guard.
 mod frames;
 mod values;
+mod styled_values;
+pub(crate) use styled_values::StyledValues;
 pub(crate) use values::{MappedValues, RetainedCache, SharedRetainedCache};
 mod merged;
 mod submeshes;

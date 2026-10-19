@@ -42,7 +42,16 @@ impl GeometryProgram {
     pub(super) fn take_geometry_output(&mut self)->Result<GeometryOutput> {
         assert!(self.pending.is_none(),"outstanding geometry request");
         if let Some(output)=self.outcome.take(){return output}
-        match self.step.take(){Some(ItemStep::Complete(value))=>value.result.map(|value|match value {super::retained::ItemValue::Mesh(mesh)=>GeometryOutput::Mesh(mesh),super::retained::ItemValue::Retained(value)=>GeometryOutput::Retained(vec![value])}),_=>Err(crate::Error::geometry("Geometry output pending"))}
+        match self.step.take() {
+            Some(ItemStep::Complete(value))=>value.result.and_then(|value|Ok(match value {
+                super::retained::ItemValue::Mesh(mesh)=>GeometryOutput::Mesh(mesh),
+                super::retained::ItemValue::Retained(value)=> {
+                    let mut values=Vec::new();crate::resource::reserve_headers(&mut values,1)?.retain();
+                    values.push(value);GeometryOutput::Retained(values)
+                }
+            })),
+            _=>Err(crate::Error::geometry("Geometry output pending")),
+        }
     }
     pub fn type_map_id(id:u32)->Self {
         let mut program=Self::from_step(None);

@@ -30,6 +30,7 @@ pub(crate) struct TypeMap {
 pub(crate) struct TypeMapParts {
     untextured: SourceParts,
     textured: Vec<TexturedPart>,
+    retained: Option<Vec<super::retained::LogicalRetainedValue>>,
 }
 
 impl TypeMapSource {
@@ -67,6 +68,7 @@ impl TypeMap {
 
     /// Taking a child is pure control. Repeated authored IFC IDs are separate
     /// entries in the admitted iterator and therefore separate occurrences.
+    pub(crate) fn select_retained(&mut self) {self.parts.retained=Some(Vec::new());}
     pub(crate) fn next(&mut self) -> Option<DecodedEntity> { self.items.next() }
     pub(crate) fn policy(&self) -> bool { self.policy }
 
@@ -84,21 +86,30 @@ impl TypeMap {
 }
 
 pub(crate) enum TypeItemOutput {
+    Retained(Vec<super::retained::LogicalRetainedValue>),
     Parts(Vec<Mesh>),
     Textured(Mesh, Vec<f32>, TextureAttachment),
 }
 
 pub(crate) struct ReadyTypeMerge { parts: TypeMapParts, output: TypeItemOutput }
 impl ReadyTypeMerge {
-    pub(crate) fn execute(mut self) -> TypeMapParts {
+    #[cfg(test)]
+    pub(crate) fn execute(self) -> TypeMapParts { self.execute_checked().expect("exact type merge") }
+    pub(crate) fn execute_checked(mut self) -> Result<TypeMapParts> {
+        crate::resource::check_current()?;
         match self.output {
+            TypeItemOutput::Retained(mut values)=> {
+                let parts=self.parts.retained.as_mut().ok_or_else(||crate::Error::geometry("type-map contract mismatch"))?;
+                crate::resource::charge(crate::resource::Cost {work:values.len() as u64,..Default::default()})?.retain();
+                crate::resource::reserve_headers(parts,values.len())?.retain();parts.append(&mut values);
+            }
             TypeItemOutput::Parts(parts) => {
                 for mesh in parts { self.parts.untextured.merge(&mesh); }
             }
             TypeItemOutput::Textured(mesh, uvs, texture) =>
                 self.parts.textured.push((mesh, uvs, texture)),
         }
-        self.parts
+        crate::resource::check_current()?; Ok(self.parts)
     }
 }
 
@@ -110,7 +121,7 @@ impl TypeMapOrigin {
             origin(&self.program.rep_map, router, decoder)
         })?;
         Ok(ReadyTypeMap { untextured: self.program.parts.untextured,
-            textured: self.program.parts.textured, origin })
+            textured: self.program.parts.textured, retained:self.program.parts.retained, map_id:self.program.rep_map.id, origin })
     }
 }
 
@@ -119,9 +130,25 @@ impl TypeMapOrigin {
 pub(crate) struct ReadyTypeMap {
     untextured: SourceParts,
     textured: Vec<TexturedPart>,
+    retained: Option<Vec<super::retained::LogicalRetainedValue>>,
+    map_id:u32,
     origin: Option<Matrix4<f64>>,
 }
+pub(crate) enum TypeMapValues { Mesh(TypeParts), Retained(Vec<super::retained::LogicalRetainedValue>) }
 impl ReadyTypeMap {
+    pub(crate) fn execute_values(mut self)->Result<TypeMapValues> {
+        crate::resource::check_current()?;
+        if let Some(values)=self.retained.take() {
+            let mut output=Vec::new();crate::resource::reserve_headers(&mut output,values.len())?.retain();
+            for mut value in values {
+                value.present(super::retained_presentation::RetainedPresentation::occurrence(self.map_id,self.map_id,None,true))?;
+                output.push(value.placed(&self.origin.unwrap_or_else(Matrix4::identity),0,
+                    super::retained::RetainedPlacementStage::TypeMap {representation_map:self.map_id})?);
+            }
+            return Ok(TypeMapValues::Retained(output));
+        }
+        let parts=self.execute();crate::resource::check_current()?;Ok(TypeMapValues::Mesh(parts))
+    }
     pub(crate) fn execute(self) -> TypeParts {
         let mut out = Vec::new();
         for (mut mesh, uvs, texture) in self.textured {

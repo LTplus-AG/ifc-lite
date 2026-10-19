@@ -20,9 +20,9 @@ enum Reply {
     Decoded(Result<DecodedEntity>), Representation(Result<TypeMapItemsSource>),
     Items(Result<TypeMapItemsAdmission>), Texture(Result<Option<ReadyTexture>>),
     TextureExecuted(Result<Option<TexturePart>>), ChildAdmitted(Result<Child>),
-    Child(Box<ProgramReply>), ChildFinished { mapped: bool, rtc: (f64, f64, f64), result: Result<Vec<Mesh>> },
-    Restored(TypeItemOutput), Merged(TypeMapParts), Origin(Result<ReadyTypeMap>),
-    Finished(super::type_map::TypeParts), Stopped(crate::Error),
+    Child(Box<ProgramReply>), ChildFinished { mapped: bool, rtc: (f64, f64, f64), result: Result<TypeItemOutput> },
+    Restored(TypeItemOutput), Merged(Result<TypeMapParts>), Origin(Result<ReadyTypeMap>),
+    Finished(Result<super::type_map::TypeMapValues>), Stopped(crate::Error),
     StoppedNumerical { tag: u16, error: crate::Error },
 }
 pub(super) enum TypeMapReadyWork {
@@ -40,8 +40,8 @@ impl TypeMapReadyWork {
         TypeMapReply(match self {
             Self::Texture(ready)=>Reply::TextureExecuted(ready.execute()),
             Self::Restore(ready)=>Reply::Restored(ready.execute()),
-            Self::Merge(ready)=>Reply::Merged(ready.execute()),
-            Self::Finish(ready)=>Reply::Finished(ready.execute()),
+            Self::Merge(ready)=>Reply::Merged(ready.execute_checked()),
+            Self::Finish(ready)=>Reply::Finished(ready.execute_values()),
         })
     }
 }
@@ -58,8 +58,11 @@ impl TypeMapReply {
 pub(super) struct TypeMapControl {
     action: Option<Action>, program: Option<TypeMap>, child: Option<Child>,
     item: Option<DecodedEntity>, output: Option<Result<GeometryOutput>>,
+    retained:Option<super::retained::RetainedContract>,cache:Option<super::mapping::SharedRetainedCache>,
+    presentation:Option<super::retained_presentation::RetainedPresentation>,
 }
 impl TypeMapControl {
+    pub(super) fn select_retained(&mut self,contract:super::retained::RetainedContract) {self.retained=Some(contract);self.cache=Some(Default::default());}
     pub(super) fn take_ready(&mut self) -> Option<TypeMapReadyWork> {
         Some(match self.action.take()? {
             Action::TextureReady(ready)=>TypeMapReadyWork::Texture(ready),
@@ -82,7 +85,7 @@ impl TypeMapControl {
         Self::initial(Action::Representation(TypeMap::begin(&map)))
     }
     fn initial(action: Action) -> Self {
-        Self { action: Some(action), program: None, child: None, item: None, output: None }
+        Self { action: Some(action), program: None, child: None, item: None, output: None,retained:None,cache:Default::default(),presentation:None }
     }
 
     pub(super) fn poll(&mut self) -> std::result::Result<Option<ProgramStage>, ProgramError> {
@@ -118,6 +121,12 @@ impl TypeMapControl {
             Action::Representation(source) => Reply::Representation(source.admit(decoder)),
             Action::Items(source) => Reply::Items(source.lower(decoder)),
             Action::Texture(item) => {
+                if self.retained.is_some() {
+                    match super::retained_presentation::RetainedPresentation::item(item.id,router,textures.and_then(|index|index.get(&item.id))) {
+                        Ok(binding)=>self.presentation=Some(binding),Err(error)=>return Ok(Reply::Stopped(error)),
+                    }
+                    return Ok(Reply::Texture(Ok(None)));
+                }
                 let result = match textures.and_then(|index| index.get(&item.id)).filter(|_| matches!(
                     item.ifc_type, IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork)) {
                     Some(map) => ReadyTexture::admit(&item, map, Some(router.rtc_offset()), router, decoder),
@@ -132,7 +141,10 @@ impl TypeMapControl {
                 let result = router.with_unsupported_policy(policy, || {
                     let mapped = item.ifc_type == IfcType::IfcMappedItem;
                     let rtc = router.rtc_offset();
-                    let program = if mapped { GeometryProgram::mapped_merged(&item, router)? }
+                    let program = if let Some(contract)=self.retained {
+                        if mapped {GeometryProgram::retained_styled(&item,false,contract,router,self.cache.as_ref().expect("retained type-map cache").clone())?}
+                        else {GeometryProgram::retained_item(item,contract)}
+                    } else if mapped { GeometryProgram::mapped_merged(&item, router)? }
                         else if router.processor_for(&item.ifc_type).is_some() { GeometryProgram::item(item, rtc) }
                         else { return Err(crate::Error::geometry("no processor")) };
                     Ok(Child { program: Box::new(program), mapped, policy, rtc })
@@ -146,9 +158,17 @@ impl TypeMapControl {
                 })?))
             }
             Action::ChildFinished => {
-                let child = self.child.take().expect("completed child");
-                let result = if child.mapped { (*child.program).finish_parts() }
-                    else { (*child.program).finish().map(|mesh| vec![mesh]) };
+                let mut child = self.child.take().expect("completed child");
+                let result = if self.retained.is_some() {
+                    child.program.take_geometry_output().and_then(|output|match output {
+                        GeometryOutput::Retained(mut values)=> {
+                            for value in &mut values {if let Some(binding)=&self.presentation {value.present(binding.clone())?;}}
+                            Ok(TypeItemOutput::Retained(values))
+                        }
+                        _=>Err(crate::Error::geometry("type-map retained child contract mismatch")),
+                    })
+                } else if child.mapped { (*child.program).finish_parts().map(TypeItemOutput::Parts) }
+                    else { (*child.program).finish().map(|mesh|TypeItemOutput::Parts(vec![mesh])) };
                 Reply::ChildFinished { mapped: child.mapped, rtc: child.rtc, result }
             }
             Action::Origin(source) => Reply::Origin(source.admit(router, decoder)),
@@ -186,7 +206,8 @@ impl TypeMapControl {
         match reply {
             Reply::Decoded(map) => self.action = Some(Action::Representation(TypeMap::begin(&map?))),
             Reply::Representation(source) => self.action = Some(Action::Items(source?)),
-            Reply::Items(admission) => self.program = Some(admission?.accept(router)),
+            Reply::Items(admission) => {let mut program=admission?.accept(router);
+                if self.retained.is_some() {program.select_retained();}self.program=Some(program);},
             Reply::Texture(reply) => self.action = Some(match reply? {
                 Some(ready) => Action::TextureReady(ready),
                 None => Action::AdmitChild(self.item.as_ref().expect("texture candidate").clone()),
@@ -206,17 +227,19 @@ impl TypeMapControl {
                     .expect("validated TypeMap child reply");
             }
             Reply::ChildFinished { mapped, rtc, result } => match result {
-                Ok(parts) => {
-                    let output = TypeItemOutput::Parts(parts);
+                Ok(output) => {
                     self.action = Some(if mapped { self.merge(output) }
                         else { Action::Restore(ReadyRestore { output, rtc }) });
                 }
                 Err(error) => self.drop_item(error, router)?,
             },
             Reply::Restored(output) => self.action = Some(self.merge(output)),
-            Reply::Merged(parts) => { self.program.as_mut().expect("map traversal").accept_merge(parts); self.item = None; }
+            Reply::Merged(parts) => { self.program.as_mut().expect("map traversal").accept_merge(parts?); self.item = None; self.presentation=None; }
             Reply::Origin(ready) => self.action = Some(Action::Finish(ready?)),
-            Reply::Finished(parts) => self.output = Some(Ok(GeometryOutput::TypeParts(parts))),
+            Reply::Finished(parts) => self.output=Some(Ok(match parts? {
+                super::type_map::TypeMapValues::Mesh(v)=>GeometryOutput::TypeParts(v),
+                super::type_map::TypeMapValues::Retained(v)=>GeometryOutput::Retained(v),
+            })),
             Reply::Stopped(error) | Reply::StoppedNumerical {error,..} => return Err(error),
         }
         Ok(())
@@ -226,7 +249,7 @@ impl TypeMapControl {
         Action::Merge(self.program.as_mut().expect("map traversal").merge(output))
     }
     fn drop_item(&mut self, error: crate::Error, router: &GeometryRouter) -> Result<()> {
-        if matches!(error, crate::Error::ProgramStopped(_)) { return Err(error) }
+        if self.retained.is_some() || matches!(error, crate::Error::ProgramStopped(_)) { return Err(error) }
         crate::resource::check_current()?;
         let item = self.item.take().expect("failed item occurrence");
         let policy = self.program.as_ref().expect("map traversal").policy();
@@ -269,6 +292,7 @@ impl ReadyRestore {
     fn execute(mut self) -> TypeItemOutput {
         let restore = |mesh: &mut Mesh| super::mapping::keep_rebase_in_origin(mesh, self.rtc);
         match &mut self.output {
+            TypeItemOutput::Retained(_)=>{},
             TypeItemOutput::Parts(parts) => parts.iter_mut().for_each(restore),
             TypeItemOutput::Textured(mesh, _, _) => restore(mesh),
         }

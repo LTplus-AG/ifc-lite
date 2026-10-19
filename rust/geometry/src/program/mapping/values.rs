@@ -5,7 +5,7 @@ use crate::program::retained::{LogicalRetainedValue, copy_values};
 use crate::router::frame_parts::SourceParts;
 
 pub(crate) enum MappedValues { Mesh(Vec<Mesh>), Retained(Vec<LogicalRetainedValue>) }
-pub(super) enum Accumulator { Mesh(SourceParts), Retained(Vec<LogicalRetainedValue>) }
+pub(crate) enum Accumulator { Mesh(SourceParts), Retained(Vec<LogicalRetainedValue>) }
 impl Default for Accumulator { fn default() -> Self { Self::Mesh(SourceParts::default()) } }
 impl Accumulator {
     pub(super) fn new(retained: bool) -> Self {
@@ -47,6 +47,8 @@ pub(crate) type SharedRetainedCache = std::sync::Arc<std::sync::Mutex<RetainedCa
 #[derive(Default)]
 pub(crate) struct RetainedCache {
     entries: Vec<(u32,Vec<LogicalRetainedValue>)>,
+    styled_entries: Vec<(u32,Vec<LogicalRetainedValue>)>,
+    pub(super) styled_claims: std::sync::Arc<std::sync::Mutex<Vec<u32>>>,
     provenance: Option<(ifc_lite_core::execution_owner::ExecutionIdentity,
         ifc_lite_core::execution_owner::ExecutionIdentity, crate::program::retained::RetainedContract)>,
 }
@@ -67,6 +69,13 @@ impl RetainedCache {
         }
         Ok(None)
     }
+    pub(crate) fn get_styled(&self, id: u32) -> Result<Option<Vec<LogicalRetainedValue>>> {
+        for (key,values) in &self.styled_entries {
+            crate::resource::charge(crate::resource::Cost {work:1,..Default::default()})?.retain();
+            if *key==id {return copy_values(values).map(Some)}
+        }
+        Ok(None)
+    }
     pub(super) fn publish(&mut self, id: u32, values: &[LogicalRetainedValue]) -> Result<()> {
         for (key,_) in &self.entries {
             crate::resource::charge(crate::resource::Cost {work:1,..Default::default()})?.retain();
@@ -75,6 +84,16 @@ impl RetainedCache {
         let values = copy_values(values)?;
         crate::resource::reserve_headers(&mut self.entries, 1)?.retain();
         self.entries.push((id, values));
+        Ok(())
+    }
+    pub(super) fn publish_styled(&mut self, id: u32, values: &[LogicalRetainedValue]) -> Result<()> {
+        for (key,_) in &self.styled_entries {
+            crate::resource::charge(crate::resource::Cost {work:1,..Default::default()})?.retain();
+            if *key==id {return Ok(())}
+        }
+        let values = copy_values(values)?;
+        crate::resource::reserve_headers(&mut self.styled_entries, 1)?.retain();
+        self.styled_entries.push((id, values));
         Ok(())
     }
 }

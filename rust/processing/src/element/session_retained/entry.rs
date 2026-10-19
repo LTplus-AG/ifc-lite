@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Authenticate the actual product root inside the same reserved source owner.
-use super::super::{session_owner::ProductOwner, ElementJobKind};
+use super::super::session_owner::ProductOwner;
 use super::*;
 impl RetainedProductExecution {
     pub fn new(
@@ -24,11 +24,6 @@ impl RetainedProductExecution {
         context
             .validate_decoder(decoder)
             .map_err(|_| RetainedExecutionError::Source)?;
-        if !matches!(job.kind, ElementJobKind::Product) {
-            return Err(RetainedExecutionError::Unsupported(
-                "retained type-product entry is not implemented".into(),
-            ));
-        }
         let mut owner = ProductOwner::admit(decoder, router).map_err(protocol)?;
         // A fresh trusted work epoch must not erase a Compatibility-domain
         // terminal established before this retained owner was constructed.
@@ -50,7 +45,7 @@ impl RetainedProductExecution {
             id: actual.id,
             ifc_type: actual.ifc_type.clone(),
             entity: &actual,
-            kind: ElementJobKind::Product,
+            kind: job.kind.clone(),
             element_color: job.element_color,
             metadata: job.metadata,
         };
@@ -79,6 +74,7 @@ impl RetainedProductExecution {
             pending: None,
             ledger: Vec::default(),
             plan: None,
+            type_values:Vec::default(),
             failed: false,
             resources,
         })

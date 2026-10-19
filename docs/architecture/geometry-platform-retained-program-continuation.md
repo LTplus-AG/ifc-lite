@@ -268,3 +268,53 @@ and optimized Boolean regression, all-target Clippy, canonical WASM contracts,
 root TS consumers, Python, real-scene identity/oracles and whole-pool performance
 remain separate exact-source qualification. No heavy validation is authorized
 under the current capacity restriction.
+
+## P1 styled and type-map source checkpoint
+
+The explicit common entries `GeometryProgram::retained_submeshes` and
+`retained_type_map_id` now use the existing `MappingControl`/`SubmeshWalk` and
+`TypeMapControl`. `Range`, `Append`, `MergeShared` and `FinishShared` carry
+contract-disjoint values; no second traversal or exact-mesh retry is involved.
+`finish_retained_type_map` accepts the already planned type-product id, geometry
+class and fallback colour and returns a logical plan with remaining obligations.
+Processing uses its existing `PendingGeometryAttempt` and `plan_type_geometry`
+selection: a map referenced by products does not draw again directly, instanced
+library geometry retains the viewer/export distinction, and each selected direct
+map executes once. Several maps accumulate ordered values in the same execution.
+
+Styled source order remains source, representation, transform, eligibility,
+template, claim and whole Items. Retained template markers and source-local
+values have their own contract-qualified cache namespace, authenticated against
+router/decoder configuration and retained source revision. Mesh caches and exact
+materialized-source markers do not authenticate retained hits. Template output
+captures definition references before mapping placement. Placeholder recovery
+uses the same shared child controls; each instance receives its own occurrence
+slot and ordered placement history. Repeated uncached children remain separate
+constructions. Textured and indexed-palette sources retain the canonical
+exclusion from placeholders. Failed provisional retained template markers roll
+back; completed independent source entries survive a later refusal.
+
+`LogicalRetainedValue::presentation()` carries ordered geometry/style/map
+bindings, template/placeholder roles and pending indexed-palette/texture inputs.
+Texture coordinate/index arrays are owned snapshots of the reached index entry;
+embedded pixels remain immutable shared backing. The processing execution also
+owns the immutable source/context containing actual style, palette and material
+indices. Those inputs are provenance and outstanding work, not evaluated colour,
+material, normals or UV output. Type-product bindings retain their class and
+fallback colour. Material resolution, palette splitting, persistent face lineage,
+UV attachment and final display assembly still require canonical presentation.
+No logical placeholder is a fabricated mesh, net solid or runtime receipt.
+
+The new synthetic STEP fixture has actual repeated mapped triangles, a two-colour
+indexed palette, embedded RGBA pixels and UV indices. Exact geometry and processing
+fixtures assert nonempty UV/pixel and palette channels. They do not qualify the
+retained tessellated-family constructor, which still refuses explicitly. Other
+fixtures cover real retained extrusion DAGs, distinct styles/frames, template and
+placeholder timing, type-map late origin, owner/configuration expiry and typed
+resource stops. These source additions remain uncompiled and unexecuted until a
+coordinated fleet run. They do not inherit the parent's earlier baseline result.
+
+Remaining gates include affine integration and target qualification, exact
+per-stage display/frame fidelity, native object lifetime integration, browser
+common transactions, retained family completion, openings/layers and final
+appearance/UV/material assembly. The exact kernel remains permanent and default.

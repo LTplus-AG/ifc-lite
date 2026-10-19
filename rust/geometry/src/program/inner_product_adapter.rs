@@ -278,6 +278,7 @@ impl ProductRootAdapter {
 impl ProductRootAdapter {
     pub(super) fn select_retained(&mut self, contract: super::retained::RetainedContract) {
         self.retained = Some(contract);
+        self.layer=None; // Layers remain an explicit retained requirement; never run an exact mesh attempt.
         self.machine.retained = Some(contract);
         self.machine.retained_cache = Some(std::sync::Arc::new(std::sync::Mutex::new(super::mapping::RetainedCache::default())));
     }

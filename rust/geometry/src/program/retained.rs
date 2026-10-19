@@ -26,7 +26,7 @@ pub struct LogicalRetainedDefinition {
 /// Ordered immutable source-free operation lineage. Matrices are column-major,
 /// object-local metres -> output-local metres; source file units stay separate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RetainedPlacementStage { Mapping { source_id: u32 }, Product { product_id: u32 } }
+pub enum RetainedPlacementStage { TypeMap { representation_map: u32 }, Mapping { source_id: u32 }, Product { product_id: u32 } }
 #[derive(Debug, Clone, PartialEq)]
 pub struct RetainedPlacement {
     pub input: LogicalRetainedSlot,
@@ -41,11 +41,18 @@ pub struct LogicalRetainedValue {
     /// Inner-to-outer metre-domain mappings, followed by reached product placement.
     placements: Vec<RetainedPlacement>,
     product_placed: bool,
+    presentation: Vec<super::retained_presentation::RetainedPresentation>,
     slot: LogicalRetainedSlot,
     source_from_evaluation: [f64; 16],
     evaluation_from_source: [f64; 16],
 }
 impl LogicalRetainedValue {
+    pub fn presentation(&self) -> &[super::retained_presentation::RetainedPresentation] { &self.presentation }
+    pub(super) fn present(&mut self, binding: super::retained_presentation::RetainedPresentation) -> crate::Result<()> {
+        crate::resource::charge(crate::resource::Cost {work:1,copy_bytes:std::mem::size_of_val(&binding) as u64,..Default::default()})?.retain();
+        crate::resource::reserve_headers(&mut self.presentation, 1)?.retain();
+        self.presentation.push(binding); Ok(())
+    }
     pub fn definition(&self) -> &LogicalRetainedDefinition { &self.definition }
     pub fn placements(&self) -> &[RetainedPlacement] { &self.placements }
     pub fn is_product_placed(&self) -> bool { self.product_placed }
@@ -62,6 +69,10 @@ impl LogicalRetainedValue {
     }
     pub(super) fn placed(mut self, transform: &nalgebra::Matrix4<f64>, program: u64,
         stage: RetainedPlacementStage) -> crate::Result<Self> {
+        self.place_in_place(transform,program,stage)?;Ok(self)
+    }
+    pub(super) fn place_in_place(&mut self,transform:&nalgebra::Matrix4<f64>,program:u64,
+        stage:RetainedPlacementStage)->crate::Result<()> {
         proper_rigid(transform)?;
         crate::resource::charge(crate::resource::Cost { work: 1, occurrences: 1,
             ..Default::default() })?.retain();
@@ -77,7 +88,7 @@ impl LogicalRetainedValue {
         self.placements.push(RetainedPlacement { input, output:self.slot, stage,
             matrix:crate::math::mat4::col_major_array(transform) });
         self.product_placed |= matches!(stage,RetainedPlacementStage::Product {..});
-        Ok(self)
+        Ok(())
     }
 
     pub fn slot(&self) -> LogicalRetainedSlot {
@@ -119,6 +130,14 @@ pub enum RetainedRequirement {
     PersistentFaces,
 }
 
+impl RetainedProductPlan {
+    /// Assembly of already-completed canonical type-map values, with unresolved
+    /// product/presentation obligations retained. No runtime or display claim.
+    pub fn from_type_values(values:Vec<LogicalRetainedValue>)->crate::Result<Self> {
+        Ok(Self {values,remaining:remaining_requirements()?})
+    }
+}
+
 pub(crate) enum ItemValue {
     Mesh(crate::Mesh),
     Retained(LogicalRetainedValue),
@@ -153,16 +172,35 @@ impl GeometryProgram {
         match self.outcome {
             Some(Ok(super::inner::GeometryOutput::Retained(values))) if values.iter().all(|v| v.product_placed) => Ok(RetainedProductPlan {
                 values,
-                remaining: vec![
-
-                    RetainedRequirement::OpeningClosure,
-                    RetainedRequirement::MaterialLayers,
-                    RetainedRequirement::IfcAppearance,
-                    RetainedRequirement::PersistentFaces,
-                ],
+                remaining: remaining_requirements()?,
             }),
             Some(Err(error)) => Err(error),
             _ => Err(crate::Error::geometry("retained product incomplete")),
+        }
+    }
+    pub fn retained_submeshes(element: DecodedEntity, contract: RetainedContract) -> Self {
+        let mut program=Self::submeshes(element); program.retained=Some(contract);
+        program.product.as_mut().expect("product root").select_retained(contract); program
+    }
+    pub(super) fn retained_styled(item:&DecodedEntity,allow_instancing:bool,contract:RetainedContract,
+        router:&crate::GeometryRouter,cache:super::mapping::SharedRetainedCache)->crate::Result<Self> {
+        let mut program=Self::mapped_styled(item,allow_instancing,router)?;program.retained=Some(contract);
+        program.mapping.as_mut().expect("styled mapping root").select_retained(contract,cache);Ok(program)
+    }
+    pub fn retained_type_map_id(id:u32,contract:RetainedContract)->Self {
+        let mut program=Self::type_map_id(id);program.retained=Some(contract);
+        program.type_map.as_mut().expect("type-map root").select_retained(contract);program
+    }
+    pub fn finish_retained_type_map(mut self,type_product:u32,class:u8,color:[f32;4])->crate::Result<RetainedProductPlan> {
+        if self.pending.is_some() {return Err(crate::Error::geometry("retained type-map request outstanding"))}
+        match self.take_geometry_output()? {
+            super::inner::GeometryOutput::Retained(mut values)=> {
+                for value in &mut values {
+                    let mut binding=super::retained_presentation::RetainedPresentation::occurrence(type_product,type_product,None,true);
+                    binding.type_product=Some((type_product,class));binding.fallback_color=Some(color);value.present(binding)?;
+                }
+                Ok(RetainedProductPlan {values,remaining:remaining_requirements()?})},
+            _=>Err(crate::Error::geometry("retained type-map incomplete")),
         }
     }
     pub(super) fn retained_mapped(item: &DecodedEntity, contract: RetainedContract,
@@ -217,7 +255,7 @@ pub(super) fn capture(
         value: LogicalRetainedValue {
             definition: LogicalRetainedDefinition { program, source_epoch: contract.source_epoch,
                 source_revision: contract.source_revision, source_id: item.id },
-            length_unit_scale: scale, placements: Vec::new(), product_placed: false,
+            length_unit_scale: scale, placements: Vec::new(), presentation: Vec::new(), product_placed: false,
             slot: LogicalRetainedSlot {
                 program,
                 occurrence: 1,
@@ -263,15 +301,26 @@ pub(super) fn copy_values(values: &[LogicalRetainedValue]) -> crate::Result<Vec<
         let mut placements = Vec::new();
         crate::resource::reserve_headers(&mut placements, value.placements.len())?.retain();
         placements.extend_from_slice(&value.placements);
-        output.push(LogicalRetainedValue { placements, ..value.clone_without_placements() });
+        let mut presentation = Vec::new();
+        crate::resource::reserve_headers(&mut presentation, value.presentation.len())?.retain();
+        crate::resource::charge(crate::resource::Cost { copy_bytes: std::mem::size_of_val(value.presentation.as_slice()) as u64, ..Default::default() })?.retain();
+        presentation.extend_from_slice(&value.presentation);
+        output.push(LogicalRetainedValue { placements, presentation, ..value.clone_without_placements() });
     }
     Ok(output)
 }
 impl LogicalRetainedValue {
     fn clone_without_placements(&self) -> Self {
         Self { definition: self.definition.clone(), length_unit_scale: self.length_unit_scale,
-            placements: Vec::new(), product_placed: self.product_placed, slot: self.slot,
+            placements: Vec::new(), presentation: Vec::new(), product_placed: self.product_placed, slot: self.slot,
             source_from_evaluation: self.source_from_evaluation,
             evaluation_from_source: self.evaluation_from_source }
     }
+}
+
+fn remaining_requirements()->crate::Result<Vec<RetainedRequirement>> {
+    let requirements=[RetainedRequirement::OpeningClosure,RetainedRequirement::MaterialLayers,
+        RetainedRequirement::IfcAppearance,RetainedRequirement::PersistentFaces];
+    let mut remaining=Vec::new();crate::resource::reserve_headers(&mut remaining,requirements.len())?.retain();
+    remaining.extend_from_slice(&requirements);Ok(remaining)
 }

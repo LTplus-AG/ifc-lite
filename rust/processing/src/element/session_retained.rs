@@ -93,6 +93,7 @@ pub struct RetainedProductExecution {
     pending: Option<PendingRetainedTransaction>,
     ledger: Vec<DischargedValue>,
     plan: Option<RetainedProductPlan>,
+    type_values:Vec<ifc_lite_geometry::program::LogicalRetainedValue>,
     failed: bool,
     resources: OwnedResourceContext,
 }
@@ -140,20 +141,17 @@ impl RetainedProductExecution {
         loop {
             self.resources.check().map_err(RetainedExecutionError::Stopped)?;
             self.validate_definitions(worker)?;
-            let request = self
-                .state
-                .request()
-                .map_err(|error| match error {
-                    super::session_protocol::WorkError::RetainedContract => {
-                        RetainedExecutionError::Unsupported(
-                            "retained type-map/host-opening entry is not implemented".into(),
-                        )
-                    }
-                    other => protocol(other),
-                })?
-                .ok_or_else(|| {
-                    RetainedExecutionError::Unsupported("no retained product traversal".into())
-                })?;
+            let request = self.state.request().map_err(|error|match error {
+                super::session_protocol::WorkError::RetainedContract=>RetainedExecutionError::Unsupported("retained host-opening entry is not implemented".into()),
+                error=>protocol(error),
+            })?;
+            let Some(request)=request else {
+                if matches!(self.state.stage,Stage::Complete) {
+                    let plan=RetainedProductPlan::from_type_values(std::mem::take(&mut self.type_values)).map_err(protocol)?;
+                    self.validate_manifest(&plan)?;self.plan=Some(plan);return Ok(None);
+                }
+                return Err(RetainedExecutionError::Unsupported("no retained product traversal".into()));
+            };
             if request.inner.is_none() {
                 self.state
                     .protocol
@@ -164,13 +162,18 @@ impl RetainedProductExecution {
                     .pending_geometry
                     .take()
                     .ok_or_else(|| protocol("missing common continuation"))?;
-                let plan = attempt
-                    .program
-                    .finish_retained()
+                let is_type=matches!(attempt.kind,super::session_protocol::WorkKind::TypeMap {..});
+                let plan=if let super::session_protocol::WorkKind::TypeMap {class,..}=attempt.kind {
+                    attempt.program.finish_retained_type_map(self.state.job.id,class,self.state.element_color)}
+                    else {attempt.program.finish_retained()}
                     .map_err(|error| RetainedExecutionError::Unsupported(error.to_string()))?;
                 self.validate_manifest(&plan)?;
                 self.state.protocol.executed(request, &[]);
                 self.state.protocol.accepted();
+                if is_type {
+                    self.resources.reserve_headers(&mut self.type_values,plan.values.len()).map_err(RetainedExecutionError::Stopped)?.retain();
+                    self.type_values.extend(plan.values);continue;
+                }
                 self.state.stage = Stage::Complete;
                 self.plan = Some(plan);
                 return Ok(None);
@@ -348,3 +351,6 @@ mod resource_tests;
 
 #[cfg(test)]
 mod mapping_tests;
+
+#[cfg(test)]
+mod styled_tests;

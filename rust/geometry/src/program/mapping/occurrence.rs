@@ -31,9 +31,28 @@ pub(super) fn solid_id(source_id:u32,representation:&DecodedEntity,depth:usize,a
     } else { None }
 
 }
-#[allow(clippy::too_many_arguments)] // Reached derived occurrence and actual router claim authority.
-pub(super) fn claim(item:&DecodedEntity,source_id:u32,representation:DecodedEntity,transform:Option<Matrix4<f64>>,
-    solid_id:Option<u32>,router:&GeometryRouter,store:&mut MappingStore)->Result<Admission> {
+#[allow(clippy::too_many_arguments)] // Same reached claim, with a contract-disjoint marker owner.
+pub(super) fn claim_contract(item:&DecodedEntity,source_id:u32,representation:DecodedEntity,transform:Option<Matrix4<f64>>,
+    solid_id:Option<u32>,router:&GeometryRouter,store:&mut MappingStore,retained:Option<&mut super::values::RetainedCache>)->Result<Admission> {
+    if let Some(cache)=retained {
+        let mut provisional=None;
+        let template=match solid_id {
+            None=>true,
+            Some(_) if router.instancing_batch_local()=> {
+                let mut claims=cache.styled_claims.lock().unwrap_or_else(|e|e.into_inner());
+                resource::charge(Cost {work:claims.len() as u64,..Default::default()})?.retain();
+                if claims.contains(&source_id) {false} else {
+                    let permit=resource::reserve_headers(&mut claims,1)?;claims.push(source_id);
+                    provisional=Some(ProvisionalTemplate {id:source_id,sources:router.materialized_source_handle(),
+                        committed:Cell::new(false),permit:RefCell::new(Some(permit)),retained:Some(cache.styled_claims.clone())});true
+                }
+            }
+            Some(_)=>router.output_instancing_plan().and_then(|plan|plan.get(&source_id))
+                .map(|&(_,template)|template).unwrap_or(item.id)==item.id,
+        };
+        let claim=provisional.map(|claim|store.insert(claim)).transpose()?;
+        return Ok(Admission {source_id,representation,transform,solid_id,template,claim});
+    }
     let mut marker_permit = None;
     let template = match solid_id {
         None => true,
@@ -55,8 +74,8 @@ pub(super) fn claim(item:&DecodedEntity,source_id:u32,representation:DecodedEnti
         }
     };
     let provisional = (resource::is_active() && solid_id.is_some() && template && router.instancing_batch_local())
-        .then(|| ProvisionalTemplate { id: source_id, sources: router.materialized_source_handle(), committed: Cell::new(false), permit: RefCell::new(marker_permit) });
-    let claim = provisional.map(|claim| store.insert(claim));
+        .then(|| ProvisionalTemplate { id: source_id, sources: router.materialized_source_handle(), committed: Cell::new(false), permit: RefCell::new(marker_permit), retained:None });
+    let claim = provisional.map(|claim| store.insert(claim)).transpose()?;
     Ok(Admission { source_id, representation, transform, solid_id, template, claim })
 }
 
@@ -100,9 +119,13 @@ pub(super) fn release(admission: &Admission, store: &mut MappingStore) {
 pub(super) struct ProvisionalTemplate {
     id: u32, sources: Rc<RefCell<FxHashSet<u32>>>, committed: Cell<bool>,
     permit: RefCell<Option<resource::Reservation>>,
+    retained:Option<std::sync::Arc<std::sync::Mutex<Vec<u32>>>>,
 }
 impl Drop for ProvisionalTemplate {
-    fn drop(&mut self) { if !self.committed.get() { self.sources.borrow_mut().remove(&self.id); } }
+    fn drop(&mut self) { if !self.committed.get() {
+        if let Some(claims)=&self.retained {claims.lock().unwrap_or_else(|e|e.into_inner()).retain(|id|*id!=self.id);}
+        else {self.sources.borrow_mut().remove(&self.id);}
+    } }
 }
 
 /// Preserve a raw source child's model RTC in its f64 local origin before any

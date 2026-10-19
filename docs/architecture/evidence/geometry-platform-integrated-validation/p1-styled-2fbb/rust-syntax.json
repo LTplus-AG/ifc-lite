@@ -1,0 +1,122 @@
+[
+  {
+    "file": "rust/geometry/src/program/inner_entries.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/geometry/src/program/inner_mapping.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/geometry/src/program/inner_product/source.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/geometry/src/program/inner_product_adapter.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/geometry/src/program/inner_ready.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/geometry/src/program/inner_type_map.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/geometry/src/program/mapping/mod.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/geometry/src/program/mapping/occurrence.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/geometry/src/program/mapping/store.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/geometry/src/program/mapping/styled_values.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/geometry/src/program/mapping/submesh_ready.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/geometry/src/program/mapping/submesh_source.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/geometry/src/program/mapping/submeshes.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/geometry/src/program/mapping/values.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/geometry/src/program/mod.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/geometry/src/program/retained.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/geometry/src/program/retained_presentation.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/geometry/src/program/retained_styled_tests.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/geometry/src/program/type_map.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/processing/src/element/session_inner.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/processing/src/element/session_retained.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/processing/src/element/session_retained/entry.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/processing/src/element/session_retained/mapping_tests.rs",
+    "exitCode": 0,
+    "stderr": ""
+  },
+  {
+    "file": "rust/processing/src/element/session_retained/styled_tests.rs",
+    "exitCode": 0,
+    "stderr": ""
+  }
+]

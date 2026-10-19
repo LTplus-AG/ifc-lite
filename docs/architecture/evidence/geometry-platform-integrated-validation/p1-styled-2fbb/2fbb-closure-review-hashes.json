@@ -1,0 +1,31 @@
+{
+  "commit": "2fbb172ddbde52fcf8151360f03dc142581be4b1",
+  "base": "55b4b5bd55",
+  "git_objects_only": true,
+  "files": {
+    "rust/geometry/src/program/retained_styled_tests.rs": {
+      "blob": "cf85e5d46f6499174d62a30c0f7a2284b77dfab6",
+      "sha256": "fec674788340c2296429d0e4236b761c54edbbb605dd499cdf4f113404996134"
+    },
+    "rust/processing/src/element/session_retained/mapping_tests.rs": {
+      "blob": "3dbacb1d30fa1053dc2972148a226a4ad8fb720e",
+      "sha256": "8a01786730010d26bfded8bf0eda304a815b844212f2242618d7bda535c73499"
+    },
+    "rust/processing/src/element/session_retained.rs": {
+      "blob": "c8791e822780a8039cb8b5e324942112294b3c34",
+      "sha256": "012f5abd939894012a24a848049bf51096a126edb7f5e089db22d95c00eda1a1"
+    },
+    "rust/processing/src/element/session_owner.rs": {
+      "blob": "580c54550abbc1696c00a95e2a292d55988ae8b9",
+      "sha256": "2ddea677fb77d972daec4adac01ff773515ecf94a8d747b888e464801a621c50"
+    },
+    "rust/geometry/src/program/mapping/occurrence.rs": {
+      "blob": "ff0fa86c164ae1cecc5938c5d15db27184b498ba",
+      "sha256": "0b37219ab45a7cccd356107db4e0570631db1d8fc085d37bcdff3911fad9bbea"
+    },
+    "rust/geometry/src/program/inner_mapping.rs": {
+      "blob": "bb0f3a1867b57ce35a4de92e3b7df03646266a15",
+      "sha256": "ff550c5c056f6177598e945895cbfc663b588e5ff9bf9b1f9080b143d2c8f826"
+    }
+  }
+}

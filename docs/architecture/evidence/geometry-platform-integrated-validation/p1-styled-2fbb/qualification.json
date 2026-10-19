@@ -1,0 +1,44 @@
+{
+  "source": "2fbb172ddbde52fcf8151360f03dc142581be4b1",
+  "checks": [
+    {
+      "name": "diff-check",
+      "command": [
+        "git",
+        "diff",
+        "--check",
+        "1c7be12f19",
+        "2fbb172ddbde52fcf8151360f03dc142581be4b1"
+      ],
+      "exitCode": 0
+    },
+    {
+      "name": "refwalk-guards",
+      "command": [
+        "node",
+        "scripts/check-refwalk-guards.mjs"
+      ],
+      "exitCode": 0
+    },
+    {
+      "name": "rust-source-text",
+      "command": [
+        "node",
+        "scripts/check-rust-source-text-assertions.mjs"
+      ],
+      "exitCode": 0
+    }
+  ],
+  "rustParseFiles": 24,
+  "rustParseErrors": 0,
+  "inlineEpsilonCount": 480,
+  "cargoBuild": "NOT RUN",
+  "cargoTests": "NOT RUN",
+  "clippy": "NOT RUN",
+  "sdkTests": "NOT RUN",
+  "browserTests": "NOT RUN",
+  "perf": "NOT RUN",
+  "heavySubmission": null,
+  "reason": "User requires parent coordination; startup Pop guard78 closed; PC/Mac disabled. Parent baseline887916da and later parent sources do not qualify this source.",
+  "state": "implemented source; uncompiled; unexecuted; unqualified"
+}

@@ -6,6 +6,7 @@
 #include "sweep.hpp"
 #include <SmApiPrimitives.h>
 #include <SmOffsetSurface.h>
+#include <SmFace.h>
 #include <algorithm>
 #include <array>
 #include <cmath>

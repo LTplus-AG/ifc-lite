@@ -6,6 +6,7 @@
 #include <SmBSplineCurve.h>
 #include <SmBSplineSurface.h>
 #include <SmMatrix.h>
+#include <SmVertex.h>
 #include <SmTol.h>
 #include <algorithm>
 #include <array>
@@ -75,6 +76,15 @@ Factors factor(const double* m) {
     checked(f.last.SetCanonical(SmPoint3d(m[12],m[13],m[14]),
         SmVector3d(left[0][0],left[1][0],left[2][0]),
         SmVector3d(left[0][1],left[1][1],left[2][1])));
+    // SetCanonical/GetZAxis can normalize basis data. Certify the effective
+    // placements too, rather than trusting only the raw SVD factors.
+    const SmVector3d first[3]={f.first.GetXAxis(),f.first.GetYAxis(),f.first.GetZAxis()};
+    const SmVector3d last[3]={f.last.GetXAxis(),f.last.GetYAxis(),f.last.GetZAxis()};
+    for(unsigned r=0;r<3;++r) for(unsigned c=0;c<3;++c) {
+        double x=0; for(unsigned k=0;k<3;++k) x+=last[k][r]*w[k]*first[c][k];
+        require(std::isfinite(x) && std::abs(x-m[4*c+r])<=128*std::numeric_limits<double>::epsilon()*norm,
+            IFCLITE_SMLIB_KERNEL_ERROR,"affine effective placement reconstruction residual");
+    }
     f.scale=SmVector3d(w[0],w[1],w[2]);
     return f;
 }
@@ -153,6 +163,10 @@ std::unique_ptr<SmBrep> copy_affine_rational(SmBrep* source, const double* matri
     SmBrep* raw=nullptr; const auto status=SmApiBrepCopy(source,raw);
     std::unique_ptr<SmBrep> result(raw); checked(status);
     require(bool(result),IFCLITE_SMLIB_KERNEL_ERROR,"affine copy returned null");
+    ifclite_smlib_affine_certificate copied{};
+    inspect(result.get(),&copied,false);
+    for(unsigned i=0;i<12;++i) require(copied.source_classes[i]==prepared.source_classes[i],
+        IFCLITE_SMLIB_KERNEL_ERROR,"affine copy changed source representation classes");
     checked(result->TurnToNURBS());
     inspect(result.get(),nullptr,true);
     // Use only checked proper placements and signed diagonal scale. In

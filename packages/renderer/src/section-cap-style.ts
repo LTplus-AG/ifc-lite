@@ -32,7 +32,8 @@ export const HATCH_PATTERN_IDS = {
 export type HatchPatternId = keyof typeof HATCH_PATTERN_IDS;
 
 export interface SectionCapStyle {
-  /** `'element'` fills each cap polygon with its source element's colour; default `'uniform'`. */
+  /** Cap fill source preference, persisted with the style. The renderer does not read it: the app's cap conversion (`capOverlayInput`)
+   *  uses it to give each polygon its element colour (`'element'`) or leave it to the uniform fill (`'uniform'`, default). */
   fillMode?:         'uniform' | 'element';
   fillColor:         [number, number, number, number];
   strokeColor:       [number, number, number, number];

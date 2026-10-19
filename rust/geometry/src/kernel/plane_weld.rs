@@ -31,6 +31,9 @@ mod transversal;
 mod contact_stability;
 mod selection;
 mod promotion;
+mod finite;
+#[cfg(test)]
+use promotion::promote;
 mod separate_incidence;
 
 pub use diag::take_plane_weld_stats;
@@ -262,13 +265,13 @@ const MAX_WELD_PASSES: usize = 4;
 /// census run) can measure whether the promotion fires at all rather than
 /// inferring it from an unchanged golden.
 pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[Tri]) -> usize {
-    promotion::promote::<false>(cutter, host)
+    promotion::promote::<false, false>(cutter, host)
 }
 
 /// Opening-only form: additionally retain separate coincident host surfaces (#6940).
 /// Ordinary public subtraction and mutual promotion retain main's #7292 behavior.
 pub(crate) fn promote_subtract_cutter_onto_host_faces(cutter: &mut [Tri], host: &[Tri]) -> usize {
-    promotion::promote::<true>(cutter, host)
+    promotion::promote::<true, true>(cutter, host)
 }
 
 #[cfg(test)]

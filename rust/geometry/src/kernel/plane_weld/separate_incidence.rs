@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! The subtract weld's exact-incidence guard (#6940).
+//! The opening weld's exact-incidence guards (#6940, #7635).
 //!
 //! # What goes wrong without it
 //!
@@ -52,12 +52,29 @@
 //! plane) while it certainly ends the coplanarity the cutter already had.
 //!
 //! The host is not moved by the weld, so the answer for one cutter vertex
-//! depends on that vertex and the host alone: not on the order of the host
-//! faces, nor on what was decided for another vertex.
+//! depends on its original geometry: not on what was decided for another
+//! vertex. The finite certificate below also reads original cutter edges.
+//!
+//! # Finite source-wall certificate (#7635)
+//!
+//! A distant target can leave the source plane's band beyond the existing
+//! wall. Mutual coincidence then fails even though welding would break an
+//! exact finite wall incidence. The additional `refuses_finite` rule requires
+//! finite, noncollapsed original operands with exactly one opposite pair of
+//! uses per edge. This necessary closed-edge prerequisite does not certify
+//! solid validity or vertex manifoldness. Uncertified inputs retain the
+//! established coincidence rule. The local certificate then requires
+//! a complete manifold host arris contained in an original manifold cutter
+//! arris, with an incident cutter face exactly coplanar with the source face.
+//! Both arrises have two opposite edge uses and noncoplanar incident faces.
+//! The entire source face must remain inside the target's existing band, and
+//! the same connectivity test must certify separate surfaces. A common line
+//! without finite containment, or crossing cutter faces, supplies no proof.
 //!
 //! # What it deliberately leaves alone
 //!
-//! * A target that does not coincide with `g` (the perpendicular end face of
+//! * Without the finite source-wall certificate, a target that does not
+//!   coincide with `g` (the perpendicular end face of
 //!   the original #1007 repro, any oblique face, a small facet whose plane
 //!   leaves `g`'s band over `g`'s extent): that weld slides the vertex along
 //!   `g` or reconciles a real second surface, and is the weld's purpose.
@@ -74,14 +91,14 @@
 //!   plane in `f`'s place was measured over the census corpus and changed no
 //!   row, so it is not done.
 
-use crate::kernel::{arrangement::Tri, near_band::NearBand};
+pub(super) use super::selection::Face;
 use crate::kernel::budget::incidence_work as work;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Exact-position key. `+ 0.0` folds `-0.0` onto `0.0`, so two vertices that
 /// compare equal as `f64` share a key.
-type Key = [u64; 3];
-fn key(p: &[f64; 3]) -> Key {
+pub(super) type Key = [u64; 3];
+pub(super) fn key(p: &[f64; 3]) -> Key {
     [
         (p[0] + 0.0).to_bits(),
         (p[1] + 0.0).to_bits(),
@@ -114,6 +131,8 @@ fn checked_band(a: &Face, b: &Face) -> Result<bool, work::Exhausted> {
 /// Faces are named by their index in the slice it was built over.
 pub(super) struct Guard<'a> {
     faces: &'a [Face],
+    source_host: &'a [super::Tri],
+    finite_edges: Option<super::finite::Edges>,
     /// The host faces at each vertex position. Built on first need: most
     /// cutters never reach a coinciding pair.
     at: Option<FxHashMap<Key, Vec<usize>>>,
@@ -126,9 +145,11 @@ pub(super) struct Guard<'a> {
 }
 
 impl<'a> Guard<'a> {
-    pub(super) fn new(faces: &'a [Face]) -> Self {
+    pub(super) fn new(faces: &'a [Face], source_host: &'a [super::Tri]) -> Self {
         Guard {
             faces,
+            source_host,
+            finite_edges: None,
             at: None,
             last: None,
             #[cfg(test)]
@@ -197,6 +218,50 @@ impl<'a> Guard<'a> {
         Ok(false)
     }
 
+    /// Admit only the original complete closed edge soup. `Face::new` can
+    /// omit invalid faces, so its filtered list cannot establish this fact.
+    /// The same lazy map supplies the finite arris queries below.
+    fn finite_edges(&mut self) -> Result<&super::finite::Edges, work::Exhausted> {
+        if self.finite_edges.is_none() {
+            self.finite_edges = Some(super::finite::Edges::new(self.source_host.iter())?);
+        }
+        Ok(self.finite_edges.as_ref().expect("complete finite edge index"))
+    }
+
+    pub(super) fn closed_edge_incidence(&mut self) -> Result<bool, work::Exhausted> {
+        Ok(self.finite_edges()?.closed_edge_incidence())
+    }
+
+    /// #7635: a finite cutter arris contains an existing host arris. A remote
+    /// target need not stay near the host plane beyond that finite incidence,
+    /// but the whole source face must still be in its existing weld band.
+    /// An incident cutter face must be exactly coplanar with this source face.
+    /// Connected creased surfaces retain the original weld policy.
+    pub(super) fn refuses_finite(
+        &mut self, v: &[f64; 3], w: &[f64; 3], target: usize, on: &[usize],
+        cutter: &super::finite::CutterEdges,
+    ) -> Result<bool, work::Exhausted> {
+        let faces = self.faces;
+        let mut left = Vec::new();
+        for &g in on {
+            work::spend(1)?;
+            if faces[g].raw_offset(w) == 0.0 || !checked_band(&faces[g], &faces[target])? {
+                continue;
+            }
+            for i in 0..3 {
+                work::spend(1)?;
+                let (a, b) = (&faces[g].t[i], &faces[g].t[(i + 1) % 3]);
+                if cutter.contains(v, a, b, &faces[g].t)?
+                    && self.finite_edges()?.is_arris(a, b)
+                {
+                    left.push(g);
+                    break;
+                }
+            }
+        }
+        if left.is_empty() { Ok(false) } else { self.separate(target, left) }
+    }
+
     /// Would welding a vertex to `w`, on face `target`'s plane, take it off a
     /// host face in `on` (the faces it is exactly on) and onto a separate
     /// surface that coincides with that face?
@@ -215,6 +280,10 @@ impl<'a> Guard<'a> {
         if left.is_empty() {
             return Ok(false); // the weld leaves no face it coincides with
         }
+        self.separate(target, left)
+    }
+
+    fn separate(&mut self, target: usize, left: Vec<usize>) -> Result<bool, work::Exhausted> {
         work::spend(left.len())?; // bound the cached question comparison too
         if self
             .last
@@ -228,52 +297,9 @@ impl<'a> Guard<'a> {
     }
 }
 
-/// A host triangle as the weld reads it: its plane and that plane's band.
-pub(super) struct Face {
-    /// `t[0]` anchors the plane; all three are [`super::lift::exact_on_plane_weld`]'s
-    /// edge basis.
-    t: Tri,
-    n: [f64; 3], // raw (unnormalised) plane normal
-    nn: f64,     // |n|²
-    /// Squared PERPENDICULAR band for THIS face's plane. `NearBand`
-    /// returns it scaled by `nn` (its comparisons are made against a raw
-    /// `d = dot(v − t0, n)`); the `/ nn` here puts it back into true
-    /// distance units, because the nearest-plane search compares
-    /// `d²/nn` ACROSS faces with different `|n|`.
-    band2: f64,
-}
-
-impl Face {
-    /// `None` for a degenerate host triangle.
-    pub(super) fn new(t: &Tri, band: &NearBand) -> Option<Self> {
-        let e1 = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
-        let e2 = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
-        let n = [
-            e1[1] * e2[2] - e1[2] * e2[1],
-            e1[2] * e2[0] - e1[0] * e2[2],
-            e1[0] * e2[1] - e1[1] * e2[0],
-        ];
-        let nn = n[0] * n[0] + n[1] * n[1] + n[2] * n[2];
-        if nn <= 0.0 || !nn.is_finite() {
-            return None;
-        }
-        let band2 = band.scaled_band2(n, nn) / nn;
-        Some(Face { t: *t, n, nn, band2 })
-    }
-
-    /// Raw signed offset of `p` from this plane, `dot(p − t0, n)`: zero exactly
-    /// when `p` is on the plane by the weld's own `d == 0` reading.
-    #[inline]
-    fn raw_offset(&self, p: &[f64; 3]) -> f64 {
-        (p[0] - self.t[0][0]) * self.n[0]
-            + (p[1] - self.t[0][1]) * self.n[1]
-            + (p[2] - self.t[0][2]) * self.n[2]
-    }
-}
 
 impl Guard<'_> {
-    /// Apply the existing #6940 separated-surface predicate to the final #7292 proposal.
-    pub(super) fn retains(&mut self, original: [f64; 3], target: [f64; 3], selected: Tri) -> Result<bool, work::Exhausted> {
+    pub(super) fn retains(&mut self, original: [f64; 3], target: [f64; 3], selected: super::Tri, cutter: Option<&super::finite::CutterEdges>) -> Result<bool, work::Exhausted> {
         let mut face_index = None;
         let mut on = Vec::new();
         for (i, face) in self.faces.iter().enumerate() {
@@ -282,9 +308,16 @@ impl Guard<'_> {
             if face.raw_offset(&original) == 0.0 { on.push(i); }
         }
         let index = face_index.expect("selected nondegenerate host face is present");
-        self.refuses(&target, index, &on).map(|refused| !refused)
+        if self.refuses(&target, index, &on)? { return Ok(false); }
+        if let Some(edges) = cutter {
+            if !on.is_empty() && edges.closed_edge_incidence()
+                && self.refuses_finite(&original, &target, index, &on, edges)?
+                && self.closed_edge_incidence()? { return Ok(false); }
+        }
+        Ok(true)
     }
 }
+
 #[cfg(test)]
 #[path = "separate_incidence_tests.rs"]
 mod tests;

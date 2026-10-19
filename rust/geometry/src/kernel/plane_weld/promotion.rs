@@ -9,7 +9,7 @@ use super::lift::{exact_axis_plane_foot, exact_on_plane_weld};
 use super::selection::Face;
 use crate::kernel::{arrangement::Tri, near_band::NearBand};
 
-pub(super) fn promote<const KEEP_INCIDENCE: bool>(cutter: &mut [Tri], host: &[Tri]) -> usize {
+pub(super) fn promote<const KEEP_INCIDENCE: bool, const FINITE_INCIDENCE: bool>(cutter: &mut [Tri], host: &[Tri]) -> usize {
     if cutter.is_empty() || host.is_empty() {
         return 0;
     }
@@ -19,8 +19,7 @@ pub(super) fn promote<const KEEP_INCIDENCE: bool>(cutter: &mut [Tri], host: &[Tr
 
     let faces: Vec<Face> = host.iter().filter_map(|&t| Face::new(t, &band)).collect();
 
-    let guarded_faces = if KEEP_INCIDENCE { host.iter().filter_map(|t| separate_incidence::Face::new(t, &band)).collect() } else { Vec::new() };
-    let mut guard = separate_incidence::Guard::new(&guarded_faces);
+    let mut guard = separate_incidence::Guard::new(&faces, host);
     let mut axis_planes: Option<Vec<AxisPlane>> = None;
     let mut proposals = Vec::new();
     for (ti, t) in cutter.iter().enumerate() {
@@ -125,12 +124,20 @@ pub(super) fn promote<const KEEP_INCIDENCE: bool>(cutter: &mut [Tri], host: &[Tr
         }
         // Every certificate sees immutable ORIGINAL source facets. Rejected raw
         // keys retain their exact original bits; no alternate lift is attempted.
-        if KEEP_INCIDENCE {
+        if KEEP_INCIDENCE && proposals.iter().any(|proposal| proposal.target.is_some()) {
+            // No finite index or budget charge until an actual movement
+            // survives the established admission rules.
+            let cutter_edges = if FINITE_INCIDENCE {
+                match super::finite::CutterEdges::new(cutter) {
+                    Ok(edges) => Some(edges),
+                    Err(_) => return welded,
+                }
+            } else { None };
             for proposal in &mut proposals {
                 let Some(target) = proposal.target else { continue; };
                 let face = proposal.admitted_q20_face.map(|(_, f)| f).or(proposal.refused_face)
                     .expect("every weld proposal retains its selected host face");
-                match guard.retains(proposal.original, target, face.t) {
+                match guard.retains(proposal.original, target, face.t, cutter_edges.as_ref()) {
                     Ok(true) => {},
                     Ok(false) => proposal.target = None,
                     Err(_) => return welded, // caller rejects the whole Boolean on budget exhaustion

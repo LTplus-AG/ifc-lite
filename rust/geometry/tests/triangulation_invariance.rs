@@ -2440,3 +2440,29 @@ fn issue_7292_rvt_void_cut_hygiene_preserves_exact_closed_boundaries() {
 #[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
 #[path = "triangulation_invariance/source_boundary_7292_tests.rs"]
 mod source_boundary_7292_tests;
+
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+#[test]
+fn issue_6940_subgrid_coaxial_depths_keep_dental_hosts_closed() {
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _reset = AltTriangulatorReset;
+    let Some(content) = ifc_lite_testkit::fixture_text("ara3d/dental_clinic.ifc") else {
+        eprintln!("Skipping #6940 dental depth regression: run pnpm fixtures");
+        return;
+    };
+    let voids = void_index(&content);
+    let frame = ModelFrame::new(&content);
+    #[cfg(feature = "triangulation-alt")]
+    let triangulators = [false, true].as_slice();
+    #[cfg(not(feature = "triangulation-alt"))]
+    let triangulators = [false].as_slice();
+    for &alt in triangulators {
+        set_alt(alt);
+        for id in [167, 207] {
+            let mesh = process(&frame, id, &voids).expect("actual dental host must mesh");
+            let exact = edge_stats_exact(&mesh);
+            assert_eq!((exact.open, exact.strict), (0, 0), "dental #{id}, alt={alt}");
+            assert_eq!(edge_stats(&mesh).open, 0, "dental #{id}, alt={alt}");
+        }
+    }
+}

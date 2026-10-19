@@ -1,0 +1,35 @@
+{
+  "source": "3c68778cdd",
+  "implementation": "canonical actual JavaScript export contract is invoked through an explicit root Playwright script and CI after canonical WASM build and SDK asset staging; all independent CI outcomes must succeed",
+  "source_hashes": {
+    ".github/workflows/geometry-platform.yml": "74d1649cf6bfdddf341a85db6691ca94969f413613367d023577f204de5631db",
+    "native/smlib-adapter/README.md": "56fc0eedd71167666e8bf116f238ef9e0d7eeb945a49412ca724b1379b5dc193",
+    "package.json": "4cf9cf1dc70cee40ab775df7d3d36665c55bd855514913fee9149209fc9b2edd",
+    "rust/wasm-bindings/tests/retained-browser-contract.mjs": "004029b21fff77d93c32bc19888ee85e94d89331a2e7ba6cede33ab5c9136a12",
+    "rust/wasm-bindings/tests/retained-browser-contract.html": "78e619ce0db792e6d138ddc168b1bf19a1d0b39d6a9cc6a6c3c814fee4d4bb2c",
+    "tests/e2e/retained-browser.config.ts": "fa2bfee56d46eb2392c90b53615206a8b331598ee74f6e052af9b1205e778ec4",
+    "tests/e2e/retained-browser.e2e.spec.ts": "e0b9f2f0f1c33426003d6b359939120379d8eb84dbe1291b4f13a2fa945038a5",
+    "tests/e2e/retained-browser.tsconfig.json": "59adf905ebc07d0b48c0df58007571fd209b404695cab2f75d97a7609f26bd37"
+  },
+  "executed": {
+    "TypeScript": "transpile syntax only, NOT typecheck",
+    "page_and_contract_JS": "node --check PASS",
+    "workflow": "YAML and extracted aggregate shell syntax PASS",
+    "aggregate_shell_fixtures": {
+      "scope": "actual extracted workflow aggregate shell, controlled lane outcomes; not SDK/browser execution",
+      "all_success_exit": 0,
+      "non_success_cases_refused": 32,
+      "cases": 33
+    },
+    "metadata": "test wiring, test glob coverage, source-text assertion guards and whitespace PASS"
+  },
+  "unrun": [
+    "root pnpm typecheck",
+    "canonical WASM regeneration and committed declarations sync",
+    "native and WASM SDK numerical suites",
+    "actual Playwright browser contract",
+    "actual wasm-pack browser runtime/product/API tests",
+    "performance and final-product qualification"
+  ],
+  "scope": "Wiring and control validation only; no passing native/browser/release claim. Staging/served-file hashes identify files, not compiler attestation. Continued or skipped CI lanes cannot pass final aggregate."
+}

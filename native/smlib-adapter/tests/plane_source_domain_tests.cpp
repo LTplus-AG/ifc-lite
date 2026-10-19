@@ -306,6 +306,58 @@ void conversion_span_negative() {
     demand(span_refused,"overflowing actual SDK dispatch refuses authority before UV detach");
     unchanged(malformed,*source);
 }
+// R2 8cdb review: finite positions do not certify the actual derivative dispatch.
+void conversion_jacobian_negative() {
+    auto source=box(); SmTArray<SmEdge*> edges; source->GetEdges(edges);
+    SmEdge* edge=nullptr; SmLine* line=nullptr;
+    for(auto* candidate:edges) {
+        if(candidate->GetCurve()->GetType()!=SmLine_TYPE) continue;
+        auto* actual=static_cast<SmLine*>(candidate->GetCurve());
+        SmPoint3d o; SmVector3d a; double scale=0; SmExtent1d iv; SmBoolean reverse=UNSURE;
+        demand(actual->GetCanonical(o,a,scale,iv,&reverse)==SM_SUCCESS,"actual SDK Jacobian negative source");
+        if(reverse==FALSE) { edge=candidate; line=actual; break; }
+    }
+    demand(line && edge,"actual SDK box supplies forward Jacobian fixture");
+    const SmPoint3d origin(0,0,0); const SmVector3d axis(1,0,0);
+    SmPoint3d set_origin=origin; SmVector3d set_axis=axis; SmExtent1d natural(0,0.5);
+    const double step_max=std::ldexp(1.,1023),scale=std::ldexp(1.,-1023);
+    demand(line->SetCanonical(set_origin,set_axis,scale,natural)==SM_SUCCESS,"actual SDK finite negative natural interval");
+    line->SetAnalyticDomain(SmExtent1d(0,step_max)); edge->SetInterval(natural);
+    ULONG n=0; double* p=nullptr;
+    demand(line->GetControlPointsPointer(n,p)==SM_SUCCESS && n==2,"actual materialized Jacobian negative controls");
+    p[0]=0; p[4]=1;
+    demand(plane_source_proof::canonical_value(p[0],0,scale,1,0) &&
+        plane_source_proof::canonical_value(p[4],0,scale,1,step_max),"Jacobian negative exact dyadic corners pass");
+    auto rational=std::unique_ptr<SmBSplineCurve>(new (*source->GetContext()) SmBSplineCurve(*line));
+    auto reverse_basis=std::unique_ptr<SmBSplineCurve>(new (*source->GetContext()) SmBSplineCurve(*rational));
+    double* reversed=nullptr; demand(reverse_basis->GetControlPointsPointer(n,reversed)==SM_SUCCESS && n==2,"actual reverse coefficient basis");
+    reversed[0]=1; reversed[4]=0;
+    auto reverse_line=std::unique_ptr<SmLine>(new (*source->GetContext()) SmLine(origin,axis,SmExtent1d(0,step_max),
+        scale,3,nullptr,reverse_basis.get(),TRUE));
+    Snapshot malformed(*source);
+    SmTArray<SmEdgeuse*> uses; source->GetEdgeuses(uses); std::vector<SmObject*> owners;
+    for(auto* use:uses) { auto* trim=use->GetUVTrimCurve(); demand(trim,"actual existing UV before Jacobian refusal"); owners.push_back(trim->GetOwner()); }
+    SmVector3d values[4],backward[4],finite[2],step_values[3];
+    demand(line->Evaluate(0.25,3,TRUE,values,FALSE)==SM_SUCCESS && std::isfinite(values[0].x) &&
+        std::isinf(values[1].x) && std::isnan(values[1].y) && std::isnan(values[1].z),
+        "actual forward SDK derivative overflows despite finite position");
+    demand(reverse_line->Evaluate(0.25,3,TRUE,backward,FALSE)==SM_SUCCESS && std::isfinite(backward[0].x) &&
+        std::isinf(backward[1].x) && backward[1].x<0 && std::isnan(backward[1].y) && std::isnan(backward[1].z),
+        "actual reverse SDK derivative uses the same overflowing Jacobian");
+    demand(rational->Evaluate(0.25,1,TRUE,finite,FALSE)==SM_SUCCESS &&
+        finite[1].x==2 && finite[1].y==0 && finite[1].z==0,"actual rational derivative remains finite");
+    demand(line->EvaluateSTEP(0,2,TRUE,step_values)==SM_SUCCESS && step_values[1].x==scale,
+        "actual STEP derivative omits only the overflowing Jacobian");
+    for(unsigned d=0;d<3;++d) demand(values[2][d]==0 && values[3][d]==0 && backward[2][d]==0 &&
+        backward[3][d]==0 && step_values[2][d]==0,"actual analytic higher derivatives are literal zeros");
+    const double identity[]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}; bool jacobian_refused=false;
+    try { plane_source_proof::IdentityUvTransfer no_authority(*source,identity); }
+    catch(const SweepFailure& e) { jacobian_refused=e.status==IFCLITE_SMLIB_UNSUPPORTED && e.message &&
+        std::strcmp(e.message,"identity UV nonfinite or zero line Jacobian")==0; }
+    demand(jacobian_refused,"nonfinite actual Jacobian refuses authority before UV detach");
+    unchanged(malformed,*source);
+    for(ULONG i=0;i<uses.GetSize();++i) demand(uses[i]->GetUVTrimCurve()->GetOwner()==owners[i],"Jacobian refusal preserves actual UV owners");
+}
 void negative_fixtures() {
     auto source=box(); replace_planes(*source);
     SmTArray<SmFace*> faces; source->GetFaces(faces);
@@ -378,4 +430,5 @@ void run_plane_source_domain_tests() {
     negative_fixtures();
     conversion_map_negative();
     conversion_span_negative();
+    conversion_jacobian_negative();
 }

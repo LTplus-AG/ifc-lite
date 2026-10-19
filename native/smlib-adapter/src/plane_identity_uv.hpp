@@ -72,6 +72,8 @@ class IdentityUvTransfer {
         // the normalized NURBS parameter. Finite ends alone do not make that
         // span finite: 0*infinity can invalidate even the first endpoint.
         check(std::isfinite(step_length) && step_length>0,"identity UV nonfinite STEP conversion span");
+        const double jacobian=step_length/length;
+        check(std::isfinite(jacobian) && jacobian>0,"identity UV nonfinite or zero line Jacobian");
         double mapped[2]{};
         for(unsigned i=0;i<2;++i) {
             const double t=i?natural.GetMax():natural.GetMin();
@@ -82,18 +84,41 @@ class IdentityUvTransfer {
             check(std::isfinite(offset) && std::isfinite(ratio) && ratio>=0 && ratio<=1 &&
                 std::isfinite(scaled) && std::isfinite(mapped[i]),"identity UV nonfinite STEP conversion intermediate");
         }
+        // The inverse converter uses a different operation order/translation.
+        for(double t:{step.GetMin(),step.GetMax()}) {
+            const double offset=t-step.GetMin(),ratio=offset/step_length;
+            const double scaled=ratio*(reverse?-length:length);
+            const double converted=(reverse?natural.GetMax():natural.GetMin())+scaled;
+            check(std::isfinite(offset) && std::isfinite(ratio) && ratio>=0 && ratio<=1 &&
+                std::isfinite(scaled) && std::isfinite(converted),"identity UV nonfinite inverse STEP conversion intermediate");
+        }
         // Each dispatch stage is monotone on the complete natural interval;
         // finite endpoint extrema bound every interior intermediate. Check
         // the following signed-axis position operations too, without SDK eval.
         unsigned varying=0;
-        for(unsigned d=0;d<dimensions;++d) {
+        for(unsigned d=0;d<3;++d) {
             check(std::isfinite(origin[d]) && (axis[d]==0 || axis[d]==1 || axis[d]==-1),
                 "identity UV line is not an exact coordinate axis"); varying+=axis[d]!=0;
-            for(double t:mapped) {
+            check(dimensions==3 || d<2 || (origin[d]==0 && axis[d]==0 &&
+                (p[d]==NL_NOZ || p[d]==0) && (p[4+d]==NL_NOZ || p[4+d]==0)),
+                "identity UV nonzero hidden analytic 2D coordinate");
+            // EvaluatePoint multiplies t*scale first; Evaluate/EvaluateSTEP
+            // multiply t*axis first. Check BOTH groupings over both domains.
+            for(double t:{mapped[0],mapped[1],step.GetMin(),step.GetMax()}) {
+                const double scalar=t*scale,term=scalar*axis[d],point=origin[d]+term;
                 const double directed=t*axis[d],scaled=directed*scale,position=origin[d]+scaled;
-                check(std::isfinite(directed) && std::isfinite(scaled) && std::isfinite(position),
+                check(std::isfinite(scalar) && std::isfinite(term) && std::isfinite(point) &&
+                    std::isfinite(directed) && std::isfinite(scaled) && std::isfinite(position),
                     "identity UV nonfinite analytic line position intermediate");
             }
+            // Evaluate's first derivative uses the actual (possibly reversed)
+            // axis*scale*Jacobian sequence. STEP keeps the unreversed axis;
+            // all requested derivatives of order >=2 are literal zeros.
+            const double step_derivative=axis[d]*scale,signed_axis=reverse?-axis[d]:axis[d];
+            const double directed_derivative=signed_axis*scale,derivative=directed_derivative*jacobian;
+            check(std::isfinite(step_derivative) && std::isfinite(directed_derivative) && std::isfinite(derivative) &&
+                (axis[d]==0 || derivative!=0),"identity UV nonfinite or collapsed analytic line derivative");
+            if(d>=dimensions) continue; // NL_NOZ is storage, not a third coordinate of a 2D NURBS.
             const bool first=canonical_value(p[d],origin[d],scale,axis[d],reverse?step.GetMax():step.GetMin());
             const bool last=canonical_value(p[4+d],origin[d],scale,axis[d],reverse?step.GetMin():step.GetMax());
             if(!first || !last) std::fprintf(stderr,
@@ -127,6 +152,27 @@ class IdentityUvTransfer {
             check(u[0]>=domain.GetUMin() && u[3]<=domain.GetUMax() && v[0]>=domain.GetVMin() && v[3]<=domain.GetVMax() &&
                 std::isfinite(scale.x) && scale.x!=0 && std::isfinite(scale.y) && scale.y!=0,
                 "identity UV plane support escapes actual unclamped analytic map");
+            check(std::isfinite(domain.GetUMin()) && std::isfinite(domain.GetUMax()) &&
+                std::isfinite(domain.GetVMin()) && std::isfinite(domain.GetVMax()) &&
+                domain.GetUMin()<domain.GetUMax() && domain.GetVMin()<domain.GetVMax(),
+                "identity UV unsupported finite plane dispatch domain");
+            const auto z=frame.GetZAxis();
+            // Plane UV converters are inherited identity copies: no hidden
+            // Jacobian. Both position groupings and every first partial are
+            // checked over the full actual clamped analytic domain. Higher
+            // and mixed partials are initialized to zero by SmPlane::Evaluate.
+            for(unsigned d=0;d<3;++d) {
+                check(std::isfinite(z[d]) && std::isfinite(x[d]*scale.x) && std::isfinite(y[d]*scale.y),
+                    "identity UV nonfinite plane normal or first derivative");
+                for(double a:{domain.GetUMin(),domain.GetUMax()}) for(double b:{domain.GetVMin(),domain.GetVMax()}) {
+                    const double su=a*scale.x,sv=b*scale.y,tu=su*x[d],tv=sv*y[d],sum=o[d]+tu,point=sum+tv;
+                    const double au=a*x[d],bv=b*y[d],du=au*scale.x,dv=bv*scale.y,dsum=o[d]+du,dpoint=dsum+dv;
+                    check(std::isfinite(su) && std::isfinite(sv) && std::isfinite(tu) && std::isfinite(tv) &&
+                        std::isfinite(sum) && std::isfinite(point) && std::isfinite(au) && std::isfinite(bv) &&
+                        std::isfinite(du) && std::isfinite(dv) && std::isfinite(dsum) && std::isfinite(dpoint),
+                        "identity UV nonfinite analytic plane position intermediate");
+                }
+            }
             unsigned ux=3,vx=3;
             for(unsigned d=0;d<3;++d) {
                 check(std::isfinite(o[d]) && (x[d]==0 || x[d]==1 || x[d]==-1) &&

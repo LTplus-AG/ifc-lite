@@ -1,0 +1,9 @@
+{
+  "source": "bdbd7efa54",
+  "checks": {
+    "node scripts/check-module-size.mjs": "PASS: 6228 files, no new file above400, no allowance raised",
+    "node scripts/check-refwalk-guards.mjs": "PASS:1603 Rustfiles/29 candidatewalks,0unguarded;12 inheritedfanoutreviewnotes remain",
+    "git diff --check": "PASS"
+  },
+  "limits": "Metadata only; no Rust types, behavioral tests, default extractor equivalence, SDK/browser or performance execution"
+}

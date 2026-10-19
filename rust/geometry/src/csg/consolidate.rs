@@ -184,6 +184,9 @@ impl ClippingProcessor {
         let output = candidates::prefer_raw_if_cleaner(&mesh, output, &buckets, &supported);
         // Fold retention may leave the fold's own boundary open, never the rest
         // of the host: where it does, the fold-free result is the better one.
+        // The fold-free consolidation is the same call in both checks below, so
+        // it runs at most once.
+        let mut fold_free: Option<Mesh> = None;
         if !supported.folded_buckets.is_empty()
             && preservation::tears_beyond_folds(&output, &buckets, &supported)
         {
@@ -196,6 +199,7 @@ impl ClippingProcessor {
                 && preservation::public_weld_closed(&ordinary) {
                 return ordinary;
             }
+            fold_free = Some(ordinary);
         }
         // A local healthy fold cannot reopen a boundary ordinary cleanup
         // already closes. Only an open candidate pays for this comparison;
@@ -204,8 +208,8 @@ impl ClippingProcessor {
             let exact = crate::exact_topology::strict_closed_mesh(&output);
             let public = preservation::public_weld_closed(&output);
             if !exact || !public {
-                let ordinary = Self::consolidate_with_supported_cells(
-                    mesh.clone(), length_unit_scale, preserve_supported, false);
+                let ordinary = fold_free.take().unwrap_or_else(|| Self::consolidate_with_supported_cells(
+                    mesh.clone(), length_unit_scale, preserve_supported, false));
                 if ((!exact && crate::exact_topology::strict_closed_mesh(&ordinary))
                     || (!public && preservation::public_weld_closed(&ordinary)))
                     && !supported_cells::has_uncertified_needle(&ordinary, &supported) {

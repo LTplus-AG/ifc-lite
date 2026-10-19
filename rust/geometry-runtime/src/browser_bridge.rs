@@ -19,7 +19,7 @@ extern "C" {
 extern "C" {
     #[wasm_bindgen(js_name = RetainedDriver)]
     pub(super) type Driver;
-    #[wasm_bindgen(constructor, catch)]
+    #[wasm_bindgen(constructor, catch, js_class = RetainedDriver)]
     fn new() -> Result<Driver, JsValue>;
     #[wasm_bindgen(method)]
     pub(super) fn live(this: &Driver) -> bool;

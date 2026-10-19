@@ -1,0 +1,52 @@
+{
+  "task": "ifclite-browser-runtime-9b827-20261019",
+  "state": "reclaimed",
+  "host": "pc-wsl",
+  "logManifest": "pc-wsl-58d9615c-8ed5-41e1-969f-b2ed0fe7b043-961ae1227460",
+  "decodedLogSha256": "cbd1429407363d19fd63d02052c405da3d37018f3c2dc04cc0e9bf43330fe46f",
+  "readbackVerified": true,
+  "vaultBackend": "local (not canonical off-VHD evidence proof)",
+  "resources": [
+    {
+      "action": "2f29ea96bdaa458fba3c05131fbca91e",
+      "metadata": {
+        "allocatedBytes": 3529187328,
+        "entries": 103718,
+        "signature": "fb649a4ea75c9e0749bfa108e1e90d3b65a3fd0180d06e34fdd2f4df969cc4ae"
+      },
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/9b82767b4a254a5806817700cca0d709e2c31eff",
+      "reclaimed": {
+        "commit": "9b82767b4a254a5806817700cca0d709e2c31eff",
+        "finishedAt": 1792418105.4497385,
+        "id": "2f29ea96bdaa458fba3c05131fbca91e",
+        "path": "/home/louistrue/build-workers/worker-state/checkouts/9b82767b4a254a5806817700cca0d709e2c31eff",
+        "restoreCommand": "git --git-dir /home/louistrue/build-workers/ifc-lite.git worktree add /home/louistrue/build-workers/worker-state/checkouts/9b82767b4a254a5806817700cca0d709e2c31eff refs/heads/archive/storage/ifclite-browser-runtime-9b827-20261019-9b82767b4a254a5806817700cca0d709e2c31eff",
+        "sourceExtras": null,
+        "sourceRef": "refs/heads/archive/storage/ifclite-browser-runtime-9b827-20261019-9b82767b4a254a5806817700cca0d709e2c31eff",
+        "state": "removed",
+        "task": "ifclite-browser-runtime-9b827-20261019"
+      },
+      "role": "worktree",
+      "sourceCommit": "9b82767b4a254a5806817700cca0d709e2c31eff"
+    }
+  ],
+  "sharedCache": "preserved",
+  "fixtureCacheProofCount": 182,
+  "retiredLogs": {
+    "58d9615c-8ed5-41e1-969f-b2ed0fe7b043": {
+      "finishedAt": 1792418105.5019176,
+      "id": "0cd6cbbcd9514f2ea7f2b8d5d12a48be",
+      "job": "58d9615c-8ed5-41e1-969f-b2ed0fe7b043",
+      "path": "/home/louistrue/build-workers/worker-state/jobs/58d9615c-8ed5-41e1-969f-b2ed0fe7b043/output.log",
+      "sha256": "cbd1429407363d19fd63d02052c405da3d37018f3c2dc04cc0e9bf43330fe46f",
+      "signature": [
+        4587729,
+        5303,
+        1792416239130462223
+      ],
+      "state": "removed",
+      "task": "ifclite-browser-runtime-9b827-20261019"
+    }
+  },
+  "method": "Normal managed close then reclaim after exact log readback; no forced closure or manual deletion."
+}

@@ -1,0 +1,52 @@
+{
+  "task": "ifclite-resource-34ab-20261019",
+  "state": "reclaimed",
+  "host": "pc-wsl",
+  "logManifest": "pc-wsl-beadc973-369d-427f-9584-2d071e8cc6a2-3cabbd77a68f",
+  "decodedLogSha256": "358dfb415dcaa3d9d764c29722ff54afbe6fc1331c59ca8fdd457d5e79814ff3",
+  "readbackVerified": true,
+  "vaultBackend": "local (not canonical off-VHD evidence proof)",
+  "resources": [
+    {
+      "action": "d96cb8d74b4d4103912cffc57724472e",
+      "metadata": {
+        "allocatedBytes": 2077413376,
+        "entries": 23658,
+        "signature": "edab6a7063495b4da1f9f2b8c86775085bb76e429e614a53709c0eab1cd7c9ce"
+      },
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/34ab0e45719f686ae3e056174812fb2eab2c65ff",
+      "reclaimed": {
+        "commit": "34ab0e45719f686ae3e056174812fb2eab2c65ff",
+        "finishedAt": 1792418012.8513083,
+        "id": "d96cb8d74b4d4103912cffc57724472e",
+        "path": "/home/louistrue/build-workers/worker-state/checkouts/34ab0e45719f686ae3e056174812fb2eab2c65ff",
+        "restoreCommand": "git --git-dir /home/louistrue/build-workers/ifc-lite.git worktree add /home/louistrue/build-workers/worker-state/checkouts/34ab0e45719f686ae3e056174812fb2eab2c65ff refs/heads/archive/storage/ifclite-resource-34ab-20261019-34ab0e45719f686ae3e056174812fb2eab2c65ff",
+        "sourceExtras": null,
+        "sourceRef": "refs/heads/archive/storage/ifclite-resource-34ab-20261019-34ab0e45719f686ae3e056174812fb2eab2c65ff",
+        "state": "removed",
+        "task": "ifclite-resource-34ab-20261019"
+      },
+      "role": "worktree",
+      "sourceCommit": "34ab0e45719f686ae3e056174812fb2eab2c65ff"
+    }
+  ],
+  "sharedCache": "preserved",
+  "fixtureCacheProofCount": 182,
+  "retiredLogs": {
+    "beadc973-369d-427f-9584-2d071e8cc6a2": {
+      "finishedAt": 1792418012.8770483,
+      "id": "23138497eb084500a33f14dd0cc8bee6",
+      "job": "beadc973-369d-427f-9584-2d071e8cc6a2",
+      "path": "/home/louistrue/build-workers/worker-state/jobs/beadc973-369d-427f-9584-2d071e8cc6a2/output.log",
+      "sha256": "358dfb415dcaa3d9d764c29722ff54afbe6fc1331c59ca8fdd457d5e79814ff3",
+      "signature": [
+        4733426,
+        713466,
+        1792417198530588688
+      ],
+      "state": "removed",
+      "task": "ifclite-resource-34ab-20261019"
+    }
+  },
+  "method": "Normal managed close then reclaim after exact log readback; no forced closure or manual deletion."
+}

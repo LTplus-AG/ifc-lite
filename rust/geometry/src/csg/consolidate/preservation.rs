@@ -53,3 +53,27 @@ pub(super) fn signed_boundary_worse(candidate: &Mesh, baseline: &Mesh) -> bool {
         super::count_open_boundary_edges_at(candidate, scale)
             > super::count_open_boundary_edges_at(baseline, scale))
 }
+
+/// Does `candidate` leave boundary open anywhere other than along a retained
+/// fold? A healthy fold keeps its own finite support, and that support may stay
+/// open against the cleaned neighbours (#7292). An open edge that touches no
+/// fold or fold-support vertex is a tear the fold did not need, and the
+/// fold-free result is the better host (#7949: the ISSUE_068 opening-dense
+/// walls, where a noise-level fold turned the whole wall into hairline cracks).
+pub(super) fn tears_beyond_folds(
+    candidate: &Mesh,
+    buckets: &super::buckets::Buckets,
+    supported: &super::supported_cells::Supported,
+) -> bool {
+    const SCALE: f64 = 1.0e4;
+    let grid = |v: f64| (f64::from(v as f32) * SCALE).round() as i64;
+    let mut fold_points = rustc_hash::FxHashSet::default();
+    for key in supported.folded_buckets.iter().chain(&supported.fold_support_buckets) {
+        for tri in buckets.get(key).into_iter().flatten() {
+            fold_points.extend(tri.v.iter().map(|p| (grid(p.x), grid(p.y), grid(p.z))));
+        }
+    }
+    super::open_edge_endpoints_at(candidate, SCALE)
+        .iter()
+        .any(|edge| !edge.iter().all(|end| fold_points.contains(end)))
+}

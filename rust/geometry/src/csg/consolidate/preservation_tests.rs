@@ -277,3 +277,45 @@ fn issue_7292_public_f32_weld_preserves_actual_nary_caller_contract() {
     assert!(!public_weld_closed(&rim));
     assert!(!crate::exact_topology::strict_closed_mesh(&baseline), "the caller bar is not exact closure");
 }
+
+fn fold_fixture() -> (Mesh, super::super::buckets::Buckets, super::super::supported_cells::Supported) {
+    use super::super::plane_merge::PlaneTri;
+    use nalgebra::{Point3, Vector3};
+    let mut closed = tris_to_mesh(&box_mesh([0.; 3], [1.; 3]));
+    let first: Vec<u32> = closed.indices[..3].to_vec();
+    // Drop one triangle: its three edges open, and only those.
+    let open = {
+        let mut m = closed.clone();
+        m.indices.drain(..3);
+        m
+    };
+    let corner = |i: u32| {
+        let b = i as usize * 3;
+        Point3::new(closed.positions[b] as f64, closed.positions[b + 1] as f64, closed.positions[b + 2] as f64)
+    };
+    let key = (0, 0, 0, 0);
+    let mut buckets = super::super::buckets::Buckets::new();
+    buckets.insert(
+        key,
+        vec![PlaneTri { v: [corner(first[0]), corner(first[1]), corner(first[2])], normal: Vector3::z(), tag: None }],
+    );
+    let mut supported = super::super::supported_cells::Supported::default();
+    supported.folded_buckets.push(key);
+    closed.indices.clear();
+    (open, buckets, supported)
+}
+
+#[test]
+fn issue_7949_open_edges_on_the_fold_are_not_a_tear_beyond_it() {
+    let (open, buckets, supported) = fold_fixture();
+    assert!(!tears_beyond_folds(&open, &buckets, &supported), "the hole sits on the fold's own vertices");
+}
+
+#[test]
+fn issue_7949_open_edges_off_the_fold_are_a_tear_beyond_it() {
+    let (open, buckets, _) = fold_fixture();
+    let no_fold = super::super::supported_cells::Supported::default();
+    assert!(tears_beyond_folds(&open, &buckets, &no_fold), "with no fold to explain it the hole is a tear");
+    let closed = tris_to_mesh(&box_mesh([0.; 3], [1.; 3]));
+    assert!(!tears_beyond_folds(&closed, &buckets, &no_fold), "a closed host tears nothing");
+}

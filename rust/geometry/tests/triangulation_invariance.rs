@@ -2007,7 +2007,13 @@ const ISSUE_068_MODEL: &str = "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc";
 // on a kernel-disjoint opening). #144568 (26 -> 0), #891553 (10 -> 0) and
 // #892717 (27 -> 0; #5361 had already moved its no-void pass 29 -> 22) closed
 // with #5943's strictly-closed retry on quantum-snapped wall-frame operands.
-const ISSUE_068_KNOWN_TORN_HOSTS: usize = 19;
+// #7607/#7949: 19 -> 13. #43810 (open 11 -> 0), #52944 (4 -> 0), #53592 (3 -> 0),
+// #143837 (7 -> 0), #144344 (3 -> 0) and #1184857 (8 -> 0) closed with the
+// closure-preserving void-output hygiene. #43810 and #54549 first tore
+// (11 -> 414, 0 -> 274) when a noise-level fold made consolidation stop
+// restoring the closed kernel output; #7949 is the fix, so #54549 stays on its
+// clean row.
+const ISSUE_068_KNOWN_TORN_HOSTS: usize = 13;
 
 /// Coverage floors, one per heavy fixture, bounding BOTH the checked-in golden
 /// and every sweep that gates or blesses against it. [`MIN_VOID_HOSTS`]'s job,
@@ -2066,6 +2072,38 @@ fn issue_5012_intermediate_difference_keeps_host_53374_watertight() {
     assert_eq!(mesh.triangle_count(), 346, "#5012 must not discard wall geometry");
     assert_eq!(stats.open, 0, "#5012 wall must have no unmatched boundary edges");
     assert_eq!(stats.strict, 0, "#5012 wall must satisfy the strict manifold rule");
+}
+
+/// #7949: a noise-level "healthy fold" in a wall with many openings made the
+/// consolidation keep the fold's source cells and stop restoring the closed
+/// kernel output, so the wall came out as hairline cracks (open edges 0 -> 274,
+/// triangles 1170 -> 593). The fold may leave its own boundary open; it may not
+/// tear the rest of the host.
+#[test]
+#[ignore = "focused ISSUE_068 fixture regression (#7949); fetch with `pnpm fixtures`"]
+fn issue_7949_fold_retention_keeps_openings_walls_54549_and_43810_watertight() {
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(content) = ifc_lite_testkit::fixture_text(ISSUE_068_MODEL) else {
+        eprintln!(
+            "skipping #7949 regression: {ISSUE_068_MODEL} is absent; fetch it with `pnpm fixtures`"
+        );
+        return;
+    };
+    let frame = ModelFrame::new(&content);
+    let voids = void_index(&content);
+    // (host, strict ceiling): #43810 already read 16 strict pairs before the
+    // regression (the golden's #3435 population), #54549 was clean.
+    for (host, strict_ceiling) in [(54_549, 0), (43_810, 16)] {
+        let mesh = process(&frame, host, &voids).expect("ISSUE_068 host must process");
+        let stats = edge_stats(&mesh);
+        assert!(mesh.triangle_count() > 1000, "#7949 host #{host} must not lose its wall geometry");
+        assert_eq!(stats.open, 0, "#7949 host #{host} must have no unmatched boundary edges");
+        assert!(
+            stats.strict <= strict_ceiling,
+            "#7949 host #{host} reads {} strict pairs, above its pre-regression {strict_ceiling}",
+            stats.strict
+        );
+    }
 }
 
 /// Sweep one heavy fixture, report what it measured, and gate it against

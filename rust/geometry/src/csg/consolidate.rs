@@ -18,7 +18,7 @@ mod source_boundary;
 mod source_boundary_graph;
 
 use super::ClippingProcessor;
-use conform::count_open_boundary_edges_at;
+use conform::{count_open_boundary_edges_at, open_edge_endpoints_at};
 #[cfg(test)]
 use conform::{build_seam_map, conform_plans, PlanBucket};
 use ring_ops::floor_pow2;
@@ -182,6 +182,21 @@ impl ClippingProcessor {
             return mesh;
         }
         let output = candidates::prefer_raw_if_cleaner(&mesh, output, &buckets, &supported);
+        // Fold retention may leave the fold's own boundary open, never the rest
+        // of the host: where it does, the fold-free result is the better one.
+        if !supported.folded_buckets.is_empty()
+            && preservation::tears_beyond_folds(&output, &buckets, &supported)
+        {
+            let ordinary = Self::consolidate_with_supported_cells(
+                mesh.clone(), length_unit_scale, preserve_supported, false);
+            // Only a fully closed fold-free host replaces the fold output; one
+            // that is merely less open gives up the fold's finite support for
+            // nothing (rvt01 #26681 pins that trade).
+            if crate::exact_topology::strict_closed_mesh(&ordinary)
+                && preservation::public_weld_closed(&ordinary) {
+                return ordinary;
+            }
+        }
         // A local healthy fold cannot reopen a boundary ordinary cleanup
         // already closes. Only an open candidate pays for this comparison;
         // the no-fold call retains the original thin-cell policy.

@@ -1,0 +1,6 @@
+{
+  "source": "3c68778cdd20afd1c8cb8713218b80511ff7c2fe",
+  "task": "node:delegated-task:command%3Amcp%3A55805d56-4cbd-47f7-89c1-076c896c961c%3Adelegate-task%3Acanonical-browser-runner-3c687-review-20261019-r1",
+  "status": "completed",
+  "result": "Reviewed committed source **`3c68778cdd20afd1c8cb8713218b80511ff7c2fe`**, excluding independent core characterization `667b6b899d`.\n\n**No actionable source-level findings in the requested changes.**\n\n- All eight CI outcomes must equal `success`; continued failures, skipped lanes, and missing outcomes cannot qualify.\n- The JS runner imports canonical package exports, uses actual Worker assets, fails on required missing inputs, and attempts all owned-handle cleanup.\n- Rust test registration/filter coverage and dedicated root typecheck wiring appear consistent.\n- Served-file hashes identify observed artifacts; they do not establish compiler/source provenance.\n\nValidation remains **unqualified**: no builds, tests, typechecks, browser launches, heavy jobs, GitHub operations, or extra agents were run. Actual SDK execution, WASM compilation, browser behavior, generated declaration sync, and typechecking remain unverified. Even a successful source-only contract would not prove the complete production migration."
+}

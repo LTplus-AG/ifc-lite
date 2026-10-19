@@ -7,6 +7,8 @@ on:
       - 'native/smlib-adapter/**'
       - 'rust/geometry-runtime/**'
       - 'rust/core/**'
+      - 'rust/geometry/Cargo.toml'
+      - 'rust/geometry/src/test_support.rs'
       - 'rust/geometry/src/analytic/**'
       - 'rust/geometry/src/resource/**'
       - 'Cargo.lock'
@@ -36,6 +38,30 @@ permissions:
   contents: read
 
 jobs:
+  source-resource-account:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: source-resource-account
+      - name: Compile ordinary and explicitly opted-in normal libraries
+        run: |
+          cargo build --locked -p ifc-lite-core --lib --no-default-features
+          cargo build --locked -p ifc-lite-core --lib --no-default-features --features source-resource-tracking
+          cargo build --locked -p ifc-lite-core --lib --no-default-features --features source-resource-gate-test-support
+      - name: Exercise the same normal core gate with the actual geometry account
+        run: |
+          cargo test --locked -p ifc-lite-core --lib --features source-resource-gate-test-support source_resources -- --nocapture
+          cargo test --locked -p ifc-lite-geometry --lib --features source-resource-gate-test-support resource:: -- --nocapture
+      - name: Compile the opted-in wasm test target
+        run: cargo test --locked -p ifc-lite-core --lib --target wasm32-unknown-unknown --features source-resource-gate-test-support --no-run
+      - name: Require strict Clippy for the unified test-support feature graph
+        run: cargo clippy --workspace --all-targets --features ifc-lite-core/source-resource-gate-test-support -- -D warnings
+
   boundary:
     runs-on: ubuntu-24.04
     timeout-minutes: 90

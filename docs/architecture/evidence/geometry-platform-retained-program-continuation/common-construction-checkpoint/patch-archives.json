@@ -1,0 +1,17 @@
+[
+  {
+    "path": "owned-paths.patch.gz",
+    "uncompressed_sha256": "41ea9e852ed79794cc9cb362eb7bbc90b68b99ed143ce2f053072e075b12d227",
+    "uncompressed_bytes": 104364
+  },
+  {
+    "path": "raw/first-source/owned-paths.patch.gz",
+    "uncompressed_sha256": "d20e988b21c3c16dd5b97d3cd838bfc41e0172248cb461e0c03873d2965b36f3",
+    "uncompressed_bytes": 101239
+  },
+  {
+    "path": "raw/root-auth-source/owned-paths.patch.gz",
+    "uncompressed_sha256": "198a979f8a260a9ac3ac50ebb8963ca50e7a4c47ae7c4267da1fd93ca1578a1f",
+    "uncompressed_bytes": 104360
+  }
+]

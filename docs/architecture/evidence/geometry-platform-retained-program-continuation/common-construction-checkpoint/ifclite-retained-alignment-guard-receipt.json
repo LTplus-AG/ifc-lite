@@ -1,0 +1,17 @@
+{
+  "root_head": "01abf2b4d940ac94eaddc58794d52767cc2984e0",
+  "state": "uncommitted shared-root change on applied construction checkpoint",
+  "checks": "pinned rustfmt parse-only + whitespace exit0; behavior tests UNRUN; no build/job",
+  "files": [
+    {
+      "path": "rust/geometry/src/program/inner_product_adapter.rs",
+      "sha256": "a822019f705debfda7ed90b80758f20ab346fb8975e55470338ab2620b245077",
+      "bytes": 15408
+    },
+    {
+      "path": "rust/geometry/src/program/retained_tests.rs",
+      "sha256": "cf42932184599194fb53d079479a9badecff4d53167e691f4cc7d459f58a3447",
+      "bytes": 8490
+    }
+  ]
+}

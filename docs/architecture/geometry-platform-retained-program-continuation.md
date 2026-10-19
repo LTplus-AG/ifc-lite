@@ -1,20 +1,52 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 # Retained common-program continuation: required source changes
 
-This is an **unimplemented source design**, recorded after assembly of the inner
-program on parent `a969cbcaf9`. It does not add retained issuance, execution,
-acceptance or final-net publication to `ProductState`. The exact Rust evaluator
-remains the permanent default. The explicit source-only native and browser
-consumers retain their existing contracts.
+This remains an **incomplete migration**, following assembly of the inner program
+and browser dependencies on parent `53dafdcf7f`. A consuming construction checkpoint
+now connects logical retained values in the common product program to a private
+processing transaction and sealed native construction receipts. Its behavioral
+fixtures are **unrun**: syntax checks are not compilation or execution evidence.
+Exact Rust remains the permanent default; final-net publication is unavailable.
+The explicit source-only native/browser consumers retain their existing contracts.
+
+The checkpoint selects `GeometryProgram::retained_parts` through the same reached
+`ProductProgram`/Items admissions. Original extrusion and swept-disk source is
+captured before sampled constructor lowering. `ItemResult` carries an explicit
+mesh-or-logical-value variant; the common product control accumulates logical
+values and continues to the next reached item only after accepting the original
+reply. Repeated source ids produce distinct common child-program slots. Exact
+mesh caches cannot discharge those values.
+
+`element/session_retained.rs` selects that contract on the actual `ProductState`.
+It captures the original outer/common request, engine-produced reply, strong Arc
+ticket, stage, actual context and owner stamp, original source operation and f64
+frames, and independently captured native runtime cancellation. Execution holds
+only source lifecycle authority outside the dormant product. Acceptance checks
+all captured identity and sealed receipt fields before taking the reply, reserves
+ledger capacity, accepts the same reply and retains the actual sealed object in
+the private ledger. Ordinary `ProductState::execute`/`accept`/mesh publication
+cannot consume this contract.
+
+This is **not** the complete requested retained implementation. Repeated mapped
+DAG contexts, rigid occurrence/product placement, common Boolean/group/opening
+operations and their owned operands, browser transaction acceptance, complete
+resource accounting and appearance closure remain required. Unsupported reached
+source families refuse this selected contract without exact retry. A completed
+construction-only traversal still carries explicit placement, opening, layer,
+appearance and persistent-face requirements; it provides no final-product
+execution or coverage authority. See the
+[checkpoint evidence](evidence/geometry-platform-retained-program-continuation/common-construction-checkpoint/README.md).
 
 ## Concrete obstruction in the assembled source
 
 `element/session_inner.rs::PendingGeometryAttempt` now retains the actual
 `GeometryProgram` across every reached request. However, its `finish` methods
-still consume meshes. `program/item.rs::ItemResult`,
-`program/boolean/state.rs::Value`, mapping results, `product_control.rs` resources,
-layer results and opening host parts all contain `Mesh`. `inner_ready.rs` has no
-retained-operation payload or retained-value continuation.
+still consume meshes on the default contract. `ItemResult` and common product
+accumulation now additionally carry logical construction values on the explicit
+contract. Boolean `Value`, mapping, layers and opening host parts remain mesh
+values: they still need consuming retained continuations. `inner_ready.rs` now
+admits original-source construction operations through nested common replies;
+this admission alone makes no remote-execution claim.
 
 The authored plan in `authored_geometry/planning.rs` is a partial analytic view:
 it unconditionally records `RepresentationCoverageUnverified` and records
@@ -165,17 +197,20 @@ from the other's receipt or from JavaScript transport tests.
 
 ## Residual implementation and required evidence
 
-None of the five geometry value/entry changes or the processing pending transaction
-is implemented by this assembly. The browser dependency-result prerequisite now
-has a source implementation, protocol-fixture tests and unrun actual browser
-tests; it has no SDK or common-product qualification.
+The construction value/entry and native processing transaction are now source
+implementations with behavioral fixtures, not qualified execution evidence. The
+remaining geometry accumulation families and browser consuming transaction are
+still unimplemented. The browser dependency-result prerequisite has protocol
+fixtures and unrun actual browser tests; it has no SDK/common-product qualification.
 The source-only native/browser consumers remain usable only under their existing
 explicit contract. This document does not advertise new production APIs.
 
-The first implementation checkpoint must connect a real reached construction
-through this exact transaction and resume its original common request. Then
-connect a repeated mapped occurrence and a real Boolean/opening dependency using
-actual sealed operands; expose unsupported families as refusals throughout.
+The construction checkpoint supplies a real-SDK fixture that issues a reached
+construction, executes its original analytic recipe, accepts the sealed receipt
+and resumes the original common request through product accumulation. It is
+unrun under the current capacity restriction. Next qualify that fixture, then
+connect repeated mapped occurrences and real Boolean/opening dependencies using
+actual sealed operands; preserve explicit refusals throughout.
 Final-net coverage remains withheld until representation/layer/appearance closure
 is established across all reached branches.
 

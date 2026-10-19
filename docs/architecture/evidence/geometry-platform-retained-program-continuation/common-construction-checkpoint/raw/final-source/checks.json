@@ -1,0 +1,103 @@
+[
+  {
+    "name": "rust-syntax",
+    "command": [
+      "rustfmt",
+      "--emit",
+      "stdout",
+      "--config",
+      "skip_children=true",
+      "rust/geometry-runtime/src/worker_sweep.rs",
+      "rust/geometry/src/document/retained.rs",
+      "rust/geometry/src/error.rs",
+      "rust/geometry/src/program/inner.rs",
+      "rust/geometry/src/program/inner_boolean.rs",
+      "rust/geometry/src/program/inner_entries.rs",
+      "rust/geometry/src/program/inner_product.rs",
+      "rust/geometry/src/program/inner_product/source.rs",
+      "rust/geometry/src/program/inner_product_adapter.rs",
+      "rust/geometry/src/program/inner_ready.rs",
+      "rust/geometry/src/program/item.rs",
+      "rust/geometry/src/program/mod.rs",
+      "rust/geometry/src/program/product_control.rs",
+      "rust/geometry/src/program/product_control/completion.rs",
+      "rust/geometry/src/program/retained.rs",
+      "rust/geometry/src/program/retained_tests.rs",
+      "rust/processing/src/element.rs",
+      "rust/processing/src/element/session.rs",
+      "rust/processing/src/element/session_inner.rs",
+      "rust/processing/src/element/session_protocol.rs",
+      "rust/processing/src/element/session_retained.rs",
+      "rust/processing/src/element/session_retained/acceptance.rs",
+      "rust/processing/src/element/session_retained/entry.rs",
+      "rust/processing/src/element/session_retained/native.rs",
+      "rust/processing/src/element/session_retained/tests.rs"
+    ],
+    "exit_code": 0,
+    "log": "rust-syntax.log",
+    "source_commit": "22bb418a02b6a2c6c2db34e46f932afcd69f279d",
+    "qualification": "source-only; no compilation or behavior execution"
+  },
+  {
+    "name": "rust-source-text",
+    "command": [
+      "node",
+      "scripts/check-rust-source-text-assertions.mjs"
+    ],
+    "exit_code": 0,
+    "log": "rust-source-text.log",
+    "source_commit": "22bb418a02b6a2c6c2db34e46f932afcd69f279d",
+    "qualification": "source-only; no compilation or behavior execution"
+  },
+  {
+    "name": "refwalk",
+    "command": [
+      "node",
+      "scripts/check-refwalk-guards.mjs"
+    ],
+    "exit_code": 0,
+    "log": "refwalk.log",
+    "source_commit": "22bb418a02b6a2c6c2db34e46f932afcd69f279d",
+    "qualification": "source-only; no compilation or behavior execution"
+  },
+  {
+    "name": "license-headers",
+    "command": [
+      "node",
+      "scripts/add-license-headers.mjs",
+      "--check"
+    ],
+    "exit_code": 1,
+    "log": "license-headers.log",
+    "source_commit": "22bb418a02b6a2c6c2db34e46f932afcd69f279d",
+    "qualification": "source-only; no compilation or behavior execution"
+  },
+  {
+    "name": "diff-check",
+    "command": [
+      "git",
+      "diff",
+      "53dafdcf7f0452b419581be9eae00474e093e74f",
+      "22bb418a02b6a2c6c2db34e46f932afcd69f279d",
+      "--check"
+    ],
+    "exit_code": 0,
+    "log": "diff-check.log",
+    "source_commit": "22bb418a02b6a2c6c2db34e46f932afcd69f279d",
+    "qualification": "source-only; no compilation or behavior execution"
+  },
+  {
+    "name": "patch-reverse-check",
+    "command": [
+      "git",
+      "apply",
+      "--reverse",
+      "--check",
+      "/home/louistrue/.t3/worktrees/ifc-lite/t3-1ce7f62c/docs/architecture/evidence/geometry-platform-retained-program-continuation/common-construction-checkpoint/owned-paths.patch"
+    ],
+    "exit_code": 0,
+    "log": "patch-reverse-check.log",
+    "source_commit": "22bb418a02b6a2c6c2db34e46f932afcd69f279d",
+    "qualification": "source-only; no compilation or behavior execution"
+  }
+]

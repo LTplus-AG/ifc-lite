@@ -73,6 +73,13 @@ pub struct RetainedRequest {
     recipe: Arc<RetainedConstruction>,
 }
 impl RetainedRequest {
+    /// Exact immutable admission identity; matching STEP ids alone is insufficient.
+    pub fn same_admission(&self, other: &Self) -> bool {
+        self.document == other.document && self.revision == other.revision
+            && self.definition == other.definition && self.worker_incarnation == other.worker_incarnation
+            && Arc::ptr_eq(&self.recipe, &other.recipe)
+    }
+
     pub fn recipe(&self) -> &RetainedConstruction {
         &self.recipe
     }

@@ -51,14 +51,14 @@ impl ChildItem {
     pub(crate) fn finish(mut self) -> ItemStep {
         let value=self.program.finish_with_reports();
         self.reports.merge(value.reports);
-        match value.result {
+        match value.result.and_then(super::retained::ItemValue::into_mesh) {
             Ok(mesh) => ItemStep::Ready(ReadyItem { plan: ItemRecipe::Mesh(mesh), scale:self.scale, offset:None, reports:self.reports, detached_reports:None, emitter:self.emitter }),
             Err(error) => ItemStep::Ready(ReadyItem { plan:ItemRecipe::Failure(error), scale:self.scale, offset:None,
                 reports:self.reports, detached_reports:None, emitter:self.emitter }),
         }
     }
 }
-enum ItemRecipe { Constructor(OwnedConstructor), Mesh(Mesh), Failure(crate::Error) }
+enum ItemRecipe { Retained(super::retained::RetainedPlanOperation), Constructor(OwnedConstructor), Mesh(Mesh), Failure(crate::Error) }
 pub(crate) struct ReadyItem {
     plan: ItemRecipe,
     scale: f64,
@@ -68,7 +68,7 @@ pub(crate) struct ReadyItem {
     pub emitter: ProcessorEmitter,
 }
 pub(crate) struct ItemResult {
-    pub result: Result<Mesh>,
+    pub result: Result<super::retained::ItemValue>,
     pub reports: ConstructionReports,
     pub emitter: Option<ProcessorEmitter>,
 }
@@ -85,7 +85,7 @@ impl ReadyItem {
             let mut reports = UnwindReports(Some(self.reports));
             let result=(|| {
             crate::resource::check_current()?;
-            let mut mesh = match self.plan { ItemRecipe::Constructor(plan) => plan.evaluate()?, ItemRecipe::Mesh(mesh) => mesh, ItemRecipe::Failure(error) => return Err(error) };
+            let mut mesh = match self.plan { ItemRecipe::Retained(_) => return Err(crate::Error::geometry("retained construction requires checked processing ledger")), ItemRecipe::Constructor(plan) => plan.evaluate()?, ItemRecipe::Mesh(mesh) => mesh, ItemRecipe::Failure(error) => return Err(error) };
             mesh.validate_indices();
             crate::router::unit_admission::scale_mesh(&mut mesh, self.scale);
             if let Some(offset) = self.offset {
@@ -96,7 +96,7 @@ impl ReadyItem {
             (result, reports.0.take().expect("owned source reports"))
         });
         reports.merge(numerical);
-        ItemResult { result: crate::resource::observe(result), reports, emitter: Some(self.emitter) }
+        ItemResult { result: crate::resource::observe(result).map(super::retained::ItemValue::Mesh), reports, emitter: Some(self.emitter) }
     }
 }
 impl ItemSource {
@@ -177,7 +177,7 @@ impl ItemSource {
                     if rtc { crate::router::processing::publish_object_frame_bounds(&mut mesh, self.offset); }
                     mesh
                 });
-                ItemStep::Complete(ItemResult { result, reports: self.reports, emitter })
+                ItemStep::Complete(ItemResult { result: result.map(super::retained::ItemValue::Mesh), reports: self.reports, emitter })
             }
             Ok(Lowered::Plan(Err(error), _)) | Err(error) => ItemStep::Complete(ItemResult {
                 result: crate::resource::observe(Err(error)), reports: self.reports, emitter }),
@@ -197,3 +197,38 @@ impl Drop for UnwindReports {
 #[cfg(test)]
 #[path = "item_reports_tests.rs"]
 mod tests;
+
+impl ItemSource {
+    pub(super) fn execute_retained(self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>,
+        contract: super::retained::RetainedContract, program: u64) -> ItemStep {
+        let result = (|| {
+            crate::resource::check_current()?;
+            let processor = router.processor_for(&self.item.ifc_type)
+                .ok_or_else(|| crate::Error::geometry("retained processor unavailable"))?;
+            let emitter = router.processor_emitter(processor.as_ref())
+                .filter(|emitter| emitter.origin() == crate::ProcessorEmitterOrigin::Builtin)
+                .ok_or_else(|| crate::Error::geometry("retained extension contract unavailable"))?;
+            router.record_processor_dispatch(processor.as_ref());
+            let operation = super::retained::capture(&self.item, decoder, router.unit_scale(), contract, program)?;
+            Ok((operation, emitter))
+        })();
+        match result {
+            Ok((operation, emitter)) => ItemStep::Ready(ReadyItem { plan: ItemRecipe::Retained(operation),
+                scale: 1., offset: None, reports: self.reports, detached_reports: None, emitter }),
+            Err(error) => ItemStep::Complete(ItemResult { result: Err(error), reports: self.reports, emitter: None }),
+        }
+    }
+
+}
+impl ReadyItem {
+    pub(super) fn retained_operation(&self) -> Option<&super::retained::RetainedPlanOperation> {
+        match &self.plan { ItemRecipe::Retained(operation) => Some(operation), _ => None }
+    }
+    pub(super) fn admit_retained(self) -> Result<ItemResult> {
+        let ItemRecipe::Retained(operation) = self.plan else {
+            return Err(crate::Error::geometry("exact recipe cannot discharge retained contract"));
+        };
+        Ok(ItemResult { result: Ok(super::retained::ItemValue::Retained(operation.value)),
+            reports: self.reports, emitter: Some(self.emitter) })
+    }
+}

@@ -42,3 +42,14 @@ impl PendingGeometryAttempt {
         }
     }
 }
+
+impl PendingGeometryAttempt {
+    pub fn retained(kind: WorkKind, job: &OwnedJob, contract: ifc_lite_geometry::program::RetainedContract)
+        -> Result<Self, super::session_protocol::WorkError> {
+        match kind {
+            WorkKind::Primary { strategy: PrimaryStrategy::TexturedSubmeshes, .. } | WorkKind::PlainParts =>
+                Ok(Self { kind, program: GeometryProgram::retained_parts(job.entity.clone(), contract) }),
+            _ => Err(super::session_protocol::WorkError::RetainedContract),
+        }
+    }
+}

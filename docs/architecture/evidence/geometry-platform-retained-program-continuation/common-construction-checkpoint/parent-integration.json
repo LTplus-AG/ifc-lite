@@ -1,0 +1,13 @@
+{
+  "source": "22bb418a02b6a2c6c2db34e46f932afcd69f279d",
+  "parent_before": "01abf2b4d940ac94eaddc58794d52767cc2984e0",
+  "source_paths_verified": 26,
+  "original_artifact_checksums_verified": 52,
+  "original_patch_before_after_verification": "PASS before parent corrections",
+  "parent_corrections": {
+    "alignment_prelude": "source guard and actual paired retained/exact regression added; unrun",
+    "resource_authority": "active owned-context correction; original source review blocker unresolved until final verification"
+  },
+  "qualification": "UNCOMPILED/UNRUN on latest source; not final-net publication",
+  "remaining": "mapped DAG/rigid occurrence/Boolean/opening/browser transaction/full resource+appearance closure and target/performance qualification"
+}

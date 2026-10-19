@@ -43,6 +43,7 @@ impl ProductAdapterReply {
 
 pub(super) struct ProductRootAdapter {
     machine: ProductMachine,
+    retained: Option<super::retained::RetainedContract>,
     prelude: Option<PreludeControl>,
     layer: Option<Box<GeometryProgram>>,
     action: Option<Action>,
@@ -62,7 +63,7 @@ impl ProductRootAdapter {
         let layer = (allow_layers && matches!(consumer, ProductConsumer::Styled { .. }))
             .then(|| Box::new(GeometryProgram::layer_attempt(element.clone(), false)));
         Self { prelude: Some(PreludeControl::new(element.clone(), consumer)), layer,
-            machine: ProductMachine::begin(element, consumer, hygiene),
+            machine: ProductMachine::begin(element, consumer, hygiene), retained: None,
             action: None, child: None, output: None }
     }
 
@@ -81,6 +82,7 @@ impl ProductRootAdapter {
                     PreludePoll::Complete(output) => {
                         self.output = Some(output.map(|output| match output {
                             CompletedProduct::Merged(parts) => GeometryOutput::Parts(parts),
+                            CompletedProduct::Retained(values) => GeometryOutput::Retained(values),
                             CompletedProduct::Styled(collection) => GeometryOutput::Submeshes(collection),
                         }));
                         return Ok(None);
@@ -110,6 +112,7 @@ impl ProductRootAdapter {
                 ProductMachinePoll::Complete(result) => {
                     self.output = Some(result.map(|output| match output {
                         CompletedProduct::Merged(parts) => GeometryOutput::Parts(parts),
+                            CompletedProduct::Retained(values) => GeometryOutput::Retained(values),
                         CompletedProduct::Styled(collection) => GeometryOutput::Submeshes(collection),
                     }));
                     return Ok(None);
@@ -150,8 +153,15 @@ impl ProductRootAdapter {
             return Ok(ProductAdapterReply(Reply::Stopped(stop.into())));
         }
         let reply = match self.action.take().expect("requested product action") {
-            Action::Source(source) => Reply::Product(ProductReply::Source(source.execute(router, decoder, textures))),
+            Action::Source(source) => Reply::Product(ProductReply::Source(match self.retained {
+                Some(contract) => source.execute_retained(router, decoder, textures, contract),
+                None => source.execute(router, decoder, textures),
+            })),
             Action::Ready(_) => unreachable!("product numerical action extracted above"),
+            // Dedicated alignment lowering/callbacks are not retained source
+            // contracts. Refuse the reached branch before any opaque work;
+            // skipping it would silently select ordinary Body fallback.
+            Action::Prelude(_) if self.retained.is_some() => return Err(ProgramError::UnsupportedRetained),
             Action::Prelude(action) => Reply::Prelude(action.execute(router, decoder)?),
             Action::Layer(request) => Reply::Layer(Box::new(self.layer.as_mut().expect("layer prelude")
                 .execute_with_inputs(request, router, decoder, None, voids)?)),
@@ -160,11 +170,17 @@ impl ProductRootAdapter {
                 .program.execute_with_inputs(request, router, decoder, textures, voids)?)),
             Action::ChildFinished => {
                 let child = self.child.take().expect("completed child");
-                let result = match child.kind {
+                let result = if self.retained.is_some() {
+                    let mut program = *child.program;
+                    program.take_geometry_output().and_then(|output| match output {
+                        GeometryOutput::Retained(values) => Ok(ChildOutput::Retained(values)),
+                        _ => Err(crate::Error::geometry("exact child cannot enter retained product")),
+                    })
+                } else { match child.kind {
                     ChildKind::Parts => (*child.program).finish_parts().map(ChildOutput::Parts),
                     ChildKind::Styled => (*child.program).finish_submeshes().map(ChildOutput::Styled),
                     ChildKind::Mesh { raw } => (*child.program).finish().map(|mesh| ChildOutput::Mesh(mesh, raw)),
-                };
+                }};
                 Reply::ChildFinished(result)
             }
         };
@@ -256,5 +272,17 @@ impl ProductRootAdapter {
         if let Some(layer)=&mut self.layer { layer.cancel_with_reports(router); }
         if let Some(child)=&mut self.child {child.program.cancel_with_reports(router).expect("validated cancellation router");}
         self.cancel();
+    }
+}
+
+impl ProductRootAdapter {
+    pub(super) fn select_retained(&mut self, contract: super::retained::RetainedContract) {
+        self.retained = Some(contract);
+        self.machine.retained = Some(contract);
+    }
+}
+impl ProductReadyWork {
+    pub(super) fn is_retained_control(&self) -> bool {
+        matches!(self, Self::Product(ProductReady::Merge(_) | ProductReady::Finish(_)))
     }
 }

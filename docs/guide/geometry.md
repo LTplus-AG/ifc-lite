@@ -872,6 +872,25 @@ limit and does not change the browser batch ABI. See the
 [implementation boundary](../architecture/geometry-platform-resource-accounting.md)
 for ownership, terminal errors and remaining coverage.
 
+### Explicit retained common construction in native Rust
+
+Native Rust integrations can opt into `RetainedProductExecution` with an
+authenticated source context and its reserved decoder/router. `issue_next`
+advances the existing common product program to a supported construction and
+returns decoder-free work. Pass its sealed worker result to `accept` before
+requesting the next operation. Caller-created geometry cannot discharge the
+pending request.
+
+This entry currently consumes extrusion and supported swept-disk constructions.
+Mapped occurrences, Boolean/opening dependencies and browser transactions remain
+unfinished. `traversal_plan()` reports logical values and unresolved placement,
+opening, layer, appearance and persistent-face requirements; it provides no final
+mesh publication. Unsupported retained work refuses rather than selecting exact
+recovery. Ordinary producers continue to use the permanent exact kernel.
+See the [consuming contract and remaining coverage](../architecture/geometry-platform-retained-program-continuation.md).
+Current-source compilation, actual SDK execution and preservation qualification
+remain required before this experimental entry can be treated as qualified.
+
 ### Explicit retained source execution in a browser
 
 The low-level WASM API has an explicit source-only retained consumer. Install

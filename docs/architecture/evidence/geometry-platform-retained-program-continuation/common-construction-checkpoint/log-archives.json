@@ -1,0 +1,7 @@
+[
+  {
+    "path": "raw/root-auth-source/checks/refwalk.log.gz",
+    "uncompressed_sha256": "ecfc768d059fee151507a70a900662fe2136c388c0a4d395d96d03ec5247e318",
+    "reason": "Immutable failing audit output includes an EOF blank line; exact bytes are archived instead of editing that evidence."
+  }
+]

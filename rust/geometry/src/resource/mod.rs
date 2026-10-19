@@ -3,6 +3,8 @@
 mod account;
 mod pool;
 mod storage;
+mod owned;
+pub use owned::OwnedResourceContext;
 pub(crate) use storage::reserve_headers;
 pub mod mesh;
 pub use account::{ExecutionAccount, Reservation, Usage};
@@ -68,7 +70,7 @@ pub fn stop(error: ProgramStop) -> ProgramStop {
     let error = prior_source.unwrap_or(error);
     let error = current_account().map_or(error, |account| account.stop(error));
     let source = SOURCE_STOP.with(|slot| slot.borrow().as_ref().map(|source| source.stop(error)));
-    let error = source.unwrap_or(error);
+    let error = owned::record_stop(source.unwrap_or(error));
     TERMINAL.with(|slot| match (source, slot.get()) {
         // A validated source chain is authoritative for this lexical domain;
         // unrelated ambient terminal state is restored by with_source_stop.

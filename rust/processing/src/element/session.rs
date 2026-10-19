@@ -18,8 +18,9 @@ pub(super) struct ProductState {
     pub(super) occurrences: Vec<RawInstanceOccurrence>,
     pub(super) presentation_context: Option<std::sync::Arc<OwnedMeshProductionContext>>,
     pub(super) pending_geometry:Option<super::session_inner::PendingGeometryAttempt>,
-    protocol: Protocol,
-    owner: Option<ProductOwner>,
+    pub(super) protocol: Protocol,
+    pub(super) retained_contract: Option<ifc_lite_geometry::program::RetainedContract>,
+    pub(super) owner: Option<ProductOwner>,
     pending_adopted: bool,
     terminal: Option<ifc_lite_geometry::resource::ProgramStop>,
 }
@@ -78,7 +79,7 @@ impl ProductState {
         let scopes = scopes.complete();
         let mut state = Self { job: OwnedJob::new(job), stage, element_color: plan.element_color,
             keep_order, scopes: Some(scopes), hasher, meshes: Vec::new(), occurrences: Vec::new(),
-            presentation_context: None, pending_geometry:None, protocol: Protocol::new(), owner, pending_adopted: false, terminal };
+            presentation_context: None, pending_geometry:None, protocol: Protocol::new(), retained_contract: None, owner, pending_adopted: false, terminal };
         if let Some(stop) = terminal { state.remember_stop(stop); }
         state
     }
@@ -104,7 +105,10 @@ impl ProductState {
                 None => { self.stage = Stage::Complete; return Ok(None); }
             },
         };
-        let mut attempt=super::session_inner::PendingGeometryAttempt::new(kind,&self.job);
+        let mut attempt=match self.retained_contract {
+            Some(contract) => super::session_inner::PendingGeometryAttempt::retained(kind, &self.job, contract)?,
+            None => super::session_inner::PendingGeometryAttempt::new(kind,&self.job),
+        };
         let inner=attempt.request();
         self.pending_geometry=Some(attempt);
         Ok(Some(self.protocol.issue_inner(kind,inner)))
@@ -127,6 +131,14 @@ impl ProductState {
 
     pub fn execute(&mut self, request: WorkRequest, ctx: &MeshProductionContext<'_>,
         decoder: &mut EntityDecoder, router: &GeometryRouter) -> Result<WorkReply, WorkError> {
+        if self.retained_contract.is_some() { return Err(WorkError::RetainedContract) }
+        self.execute_admission(request, ctx, decoder, router).map(|(reply, _)| reply)
+    }
+
+    pub(super) fn execute_admission(&mut self, request: WorkRequest, ctx: &MeshProductionContext<'_>,
+        decoder: &mut EntityDecoder, router: &GeometryRouter)
+        -> Result<(WorkReply, Option<ifc_lite_geometry::program::RetainedPlanOperation>), WorkError> {
+        let mut retained_operation = None;
         assert!(self.scopes.is_some(), "aborted product execution cannot execute");
         self.protocol.before_execute(request)?;
         self.admit_owner(decoder, router)?;
@@ -136,20 +148,27 @@ impl ProductState {
             let order = TriangleOrderScope::new(router, self.keep_order);
             let result = ifc_lite_geometry::ProcessorDispatchCapture::capture(|| {
                 let result=if let Some(inner)=request.inner {
-                    let reply=self.pending_geometry.as_mut().expect("open geometry attempt").program
-                        .execute_with_inputs(inner,router,decoder,Some(ctx.texture_index),Some(ctx.void_index)).expect("validated inner request");
+                    let program = &mut self.pending_geometry.as_mut().expect("open geometry attempt").program;
+                    let reply = if self.retained_contract.is_some() {
+                        let (reply, operation) = program.admit_retained_with_inputs(inner, router, decoder,
+                            Some(ctx.texture_index), Some(ctx.void_index)).map_err(WorkError::Geometry)?;
+                        retained_operation = operation;
+                        reply
+                    } else {
+                        program.execute_with_inputs(inner,router,decoder,Some(ctx.texture_index),Some(ctx.void_index)).expect("validated inner request")
+                    };
                     (request.kind.emitter(),super::session_protocol::WorkPayload::GeometryStep(reply,None))
                 } else if let Some(attempt)=self.pending_geometry.take() {
                     (request.kind.emitter(),attempt.finish(&self.job,router))
                 } else { unreachable!("request owns an open geometry attempt") };
-                match ifc_lite_geometry::resource::check_current() {
+                Ok::<_, WorkError>(match ifc_lite_geometry::resource::check_current() {
                     Ok(())=>result,
                     Err(stop)=>match result {
                         (emitter,super::session_protocol::WorkPayload::GeometryStep(reply,_))=>
                             (emitter,super::session_protocol::WorkPayload::GeometryStep(reply,Some(stop))),
                         (emitter,_) =>(emitter,super::session_protocol::WorkPayload::Stopped(stop)),
                     },
-                }
+                })
             });
             self.keep_order = order.finish();
             result
@@ -157,14 +176,22 @@ impl ProductState {
         // On failed owner commit the active scopes drop and poison the session;
         // never permit re-admission against this outstanding request.
         self.owner = Some(owner);
-        let (((emitter, payload), registry_emitters), owner) = execution?;
+        let ((result, registry_emitters), owner) = execution?;
         self.scopes = Some(scopes.complete());
+        let (emitter, payload) = result?;
         if let super::session_protocol::WorkPayload::Stopped(stop) = &payload { self.remember_stop(*stop); }
         self.protocol.executed(request, &registry_emitters);
-        Ok(WorkReply { request, context:request.context, owner, emitter, registry_emitters, payload })
+        Ok((WorkReply { request, context:request.context, owner, emitter, registry_emitters, payload }, retained_operation))
     }
 
     pub fn accept(&mut self, reply: WorkReply, ctx: &MeshProductionContext<'_>,
+        decoder: &mut EntityDecoder, router: &GeometryRouter) -> Result<(), Box<RejectedReply>> {
+        if self.retained_contract.is_some() {
+            return Err(Box::new(RejectedReply { error: WorkError::RetainedContract, reply }));
+        }
+        self.accept_admission(reply, ctx, decoder, router)
+    }
+    pub(super) fn accept_admission(&mut self, reply: WorkReply, ctx: &MeshProductionContext<'_>,
         decoder: &mut EntityDecoder, router: &GeometryRouter) -> Result<(), Box<RejectedReply>> {
         assert!(self.scopes.is_some(), "aborted product execution cannot accept");
         if let Err(error) = self.validate_reply(&reply, decoder, router) {
@@ -200,7 +227,7 @@ impl ProductState {
         Ok(())
     }
 
-    fn validate_reply(&self, reply: &WorkReply, decoder: &EntityDecoder,
+    pub(super) fn validate_reply(&self, reply: &WorkReply, decoder: &EntityDecoder,
         router: &GeometryRouter) -> Result<(), WorkError> {
         self.protocol.before_accept(reply)?;
         let owner = self.owner.as_ref().ok_or(WorkError::WrongOwner)?.validate(decoder, router)?;
@@ -212,6 +239,16 @@ impl ProductState {
         Ok(())
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(super) fn validate_retained_resources(&mut self, decoder: &EntityDecoder, router: &GeometryRouter) -> Result<(), WorkError> {
+        if self.terminal.is_some() { return Err(WorkError::RetainedContract) }
+        let owner = self.owner.as_mut().ok_or(WorkError::WrongOwner)?;
+        let mut scopes = session_state::ActiveScopes::new(self.scopes.take().expect("retained validation scopes"));
+        let (result, _) = owner.read_work(decoder, router, || scopes.with_scope(ifc_lite_geometry::resource::check_current))?;
+        self.scopes = Some(scopes.complete());
+        result.map_err(|_| WorkError::RetainedContract)
+    }
+
     pub fn advance(&mut self, ctx: &MeshProductionContext<'_>, decoder: &mut EntityDecoder,
         router: &GeometryRouter) -> bool {
         let Some(request) = self.request().expect("canonical product request") else { return false; };
@@ -221,6 +258,7 @@ impl ProductState {
     }
 
     pub fn finish(mut self, decoder: &EntityDecoder, router: &GeometryRouter) -> ProducedElementMeshes {
+        assert!(self.retained_contract.is_none(), "retained product cannot publish through mesh assembly");
         if self.capture_stop() { return self.finish_stopped(decoder, router); }
         assert!(matches!(self.stage, Stage::Complete), "product work must finish before publication");
         assert!(self.scopes.is_some(), "aborted product execution cannot publish");

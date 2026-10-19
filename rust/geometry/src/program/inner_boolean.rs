@@ -47,7 +47,7 @@ impl GeometryProgram {
             result => {
                 let result = match result { Ok(BooleanPoll::Complete((mesh,_))) => Ok(mesh),
                     Err(error) => Err(error), _ => unreachable!() };
-                self.step = Some(ItemStep::Complete(ItemResult { result,
+                self.step = Some(ItemStep::Complete(ItemResult { result:result.map(super::retained::ItemValue::Mesh),
                     reports: state.program.take_reports(), emitter:state.emitter() }));
                 self.boolean = None;
                 None

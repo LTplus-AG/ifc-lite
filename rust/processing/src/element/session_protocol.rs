@@ -90,7 +90,7 @@ impl std::fmt::Debug for RejectedReply {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum WorkError { Geometry(ifc_lite_geometry::program::ProgramError), Outstanding, StaleTicket, AlreadyExecuted, NotExecuted, WrongEmitter, WrongPayload, WrongOwner, OwnerBusy, WrongContext, StaleSource, MismatchedSource }
+pub(super) enum WorkError { RetainedContract, Geometry(ifc_lite_geometry::program::ProgramError), Outstanding, StaleTicket, AlreadyExecuted, NotExecuted, WrongEmitter, WrongPayload, WrongOwner, OwnerBusy, WrongContext, StaleSource, MismatchedSource }
 
 pub(super) struct Protocol {
     session: usize,

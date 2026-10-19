@@ -116,3 +116,20 @@ impl ProductSourceReply {
             Self::Child(_)=>4, Self::Hygiene(_,_)=>5, Self::Placement(_)=>6 }
     }
 }
+
+impl ProductSource {
+    pub(in crate::program) fn execute_retained(self, router: &GeometryRouter, decoder: &mut EntityDecoder<'_>,
+        textures: Option<&FxHashMap<u32, ResolvedTextureMap>>, contract: super::super::retained::RetainedContract) -> ProductSourceReply {
+        match self {
+            Self::Begin { .. } | Self::Items(_) => self.execute(router, decoder, textures),
+            Self::Texture { item, .. } => ProductSourceReply::Texture(
+                if textures.is_some_and(|index| index.contains_key(&item.id)) {
+                    Err(crate::Error::geometry("retained UV/appearance contract unavailable"))
+                } else { Ok(None) }),
+            Self::Raw { item, .. } => ProductSourceReply::Child(Ok((
+                GeometryProgram::retained_item(item, contract), ChildKind::Mesh { raw: false }))),
+            Self::Annotation { .. } => ProductSourceReply::Annotation(Err(crate::Error::geometry("retained annotation contract unavailable"))),
+            Self::Hygiene { .. } | Self::Placement(_) => ProductSourceReply::Child(Err(crate::Error::geometry("retained final presentation contract unavailable"))),
+        }
+    }
+}

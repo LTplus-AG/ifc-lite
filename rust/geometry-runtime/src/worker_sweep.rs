@@ -40,6 +40,11 @@ impl RetainedRealization {
 }
 
 impl SmlibWorker {
+    /// Independently captured cancellation/liveness for a dormant product owner.
+    pub fn retained_owner(&self) -> crate::RuntimeOwner {
+        crate::RuntimeOwner::new(self.process_control(), self.identity)
+    }
+
     pub fn incarnation(&self) -> u64 {
         if self.is_live() {
             self.identity

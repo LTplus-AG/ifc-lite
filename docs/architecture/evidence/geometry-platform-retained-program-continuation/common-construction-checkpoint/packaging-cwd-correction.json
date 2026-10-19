@@ -1,0 +1,6 @@
+{
+  "initial_packaging_command_exit": 1,
+  "reason": "Relative evidence path was resolved from evidence directory rather than checkout; source-hashes.json was not found.",
+  "correction": "Moved the newly copied final receipts to the intended evidence directory and verified using absolute checkout paths. No source or prior evidence was removed.",
+  "source_validation_affected": false
+}

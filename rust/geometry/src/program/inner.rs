@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 pub struct GeometryProgram {
     pub(super) id: u64,
     sequence: u64,
+    pub(super) retained: Option<super::retained::RetainedContract>,
     pub(super) step: Option<ItemStep>,
     pub(super) boolean: Option<BooleanControl>,
     pub(super) pending: Option<(ProgramRequest, bool)>,
@@ -33,11 +34,11 @@ pub struct GeometryProgram {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProgramRequest { program: u64, sequence: u64, stage: ProgramStage }
 impl ProgramRequest { pub(super) fn stage(self)->ProgramStage {self.stage} }
-pub(super) enum GeometryOutput { Mesh(Mesh), Parts(Vec<Mesh>), Submeshes(crate::SubMeshCollection), TypeParts(Vec<(Mesh,Vec<f32>,Option<crate::processors::texture::TextureAttachment>)>), LayerCandidate(Option<crate::SubMeshCollection>), OpeningContext(std::sync::Arc<crate::router::voids::ReadyVoidContext>) }
+pub(super) enum GeometryOutput { Retained(Vec<super::retained::LogicalRetainedValue>), Mesh(Mesh), Parts(Vec<Mesh>), Submeshes(crate::SubMeshCollection), TypeParts(Vec<(Mesh,Vec<f32>,Option<crate::processors::texture::TextureAttachment>)>), LayerCandidate(Option<crate::SubMeshCollection>), OpeningContext(std::sync::Arc<crate::router::voids::ReadyVoidContext>) }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ProgramStage { Source, Extension, Numerical }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProgramError { WrongPayload, WrongOwner, Outstanding, StaleRequest, AlreadyExecuted, NotExecuted, WrongEmitter, Cancelled }
+pub enum ProgramError { UnsupportedRetained, WrongPayload, WrongOwner, Outstanding, StaleRequest, AlreadyExecuted, NotExecuted, WrongEmitter, Cancelled }
 pub use super::inner_ready::ReadyOperation;
 pub struct ProgramReply { pub(super) request: ProgramRequest, pub(super) value: ReplyValue, pub(super) emitter: Option<ProcessorEmitter> }
 pub(super) enum ReplyValue { ItemChild(Box<ProgramReply>), Opening(super::inner_opening::OpeningAdapterReply), Layers(super::inner_layers::LayerReply), Voids(super::inner_voids::VoidReply), TypeMap(super::inner_type_map::TypeMapReply), Product(super::inner_product_adapter::ProductAdapterReply), Mapping(super::inner_mapping::MappingReply), Cache(super::inner_cache::CacheReply), Item(ItemStep), BooleanSource(super::boolean::BooleanSourceReply), BooleanNumerical(super::boolean::BooleanNumericalReply) }
@@ -59,7 +60,7 @@ impl GeometryProgram {
         static NEXT: AtomicU64 = AtomicU64::new(1);
         let id = NEXT.fetch_update(Ordering::Relaxed, Ordering::Relaxed,
             |id| id.checked_add(1)).expect("geometry program identities exhausted");
-        Self { id, sequence: 0, step, pending: None, expected_emitter: None,
+        Self { id, sequence: 0, retained: None, step, pending: None, expected_emitter: None,
             cancelled: false, boolean: None, selected_binding:None, pending_item_reports:None, expected_decoder:None, expected_router: None, expected_payload: None, cache: None, mapping: None, outcome: None, product: None, type_map: None,layers:None,voids:None,opening:None }
     }
     /// Reduce control without borrowing source, router callbacks or a live scope.
@@ -147,6 +148,7 @@ impl GeometryProgram {
         if request.stage==ProgramStage::Numerical {
             self.expected_router = Some(router.execution_identity());
             self.expected_decoder=Some(decoder.execution_identity());
+            if self.retained.is_some() { return Err(ProgramError::UnsupportedRetained) }
             return Ok(self.take_ready(request)?.execute());
         }
         self.expected_router = Some(router.execution_identity());
@@ -178,7 +180,7 @@ impl GeometryProgram {
         } else {
             let step=self.step.take().expect("unexecuted request owns recipe");
             ReplyValue::Item(match step {
-                ItemStep::Source(source)=>source.execute(router,decoder),
+                ItemStep::Source(source)=>match self.retained { Some(contract)=>source.execute_retained(router,decoder,contract,self.id), None=>source.execute(router,decoder) },
                 _=>unreachable!("numerical recipes extracted above"),
             })
         };
@@ -282,7 +284,7 @@ impl GeometryProgram {
         if let Some(layers)=&mut self.layers {layers.cancel()}
         if let Some(voids)=&mut self.voids {voids.cancel()}
         self.opening=None; }
-    pub(crate) fn finish(self) -> Result<Mesh> { self.finish_with_reports().result }
+    pub(crate) fn finish(self) -> Result<Mesh> { self.finish_with_reports().result.and_then(super::retained::ItemValue::into_mesh) }
     pub(crate) fn finish_with_reports(self) -> super::item::ItemResult {
         assert!(self.pending.is_none(), "outstanding geometry request");
         if let Some(outcome)=self.outcome {
@@ -291,7 +293,7 @@ impl GeometryProgram {
                 GeometryOutput::Parts(mut parts) if parts.len()<=1=>Ok(parts.pop().unwrap_or_default()),
                 _=>Err(crate::Error::geometry("Geometry output is not one mesh")),
             });
-            return super::item::ItemResult {result,reports:Default::default(),emitter:None}
+            return super::item::ItemResult {result:result.map(super::retained::ItemValue::Mesh),reports:Default::default(),emitter:None}
         }
         match self.step { Some(ItemStep::Complete(value)) => value,
             _ => panic!("geometry program must complete before publication") }

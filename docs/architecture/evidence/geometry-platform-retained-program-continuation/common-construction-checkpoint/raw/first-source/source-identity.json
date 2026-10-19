@@ -1,0 +1,17 @@
+{
+  "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-1ce7f62c",
+  "branch": "t3/retained-geometry-consumption",
+  "expected_parent": "53dafdcf7f0452b419581be9eae00474e093e74f",
+  "actual_parent": "53dafdcf7f0452b419581be9eae00474e093e74f",
+  "source": "f1bd0a7d79fa9a61908dcf10516e69f69bb3f949",
+  "initial_worktree_clean": true,
+  "parent_preservation": "25-path incremental source patch, no parent commit replaced",
+  "heavy_submissions": 0,
+  "external_actions": {
+    "issue": 0,
+    "push": 0,
+    "PR": 0,
+    "publish": 0,
+    "foreign_jobs_modified": 0
+  }
+}

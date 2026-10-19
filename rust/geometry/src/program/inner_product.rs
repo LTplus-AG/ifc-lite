@@ -22,6 +22,7 @@ pub(super) struct ProductMachine {
     child: Option<ProductChild>,
     next: Option<ProductMachinePoll>,
     finished: bool,
+    pub(super) retained: Option<super::retained::RetainedContract>,
 }
 pub(super) enum ProductMachinePoll {
     Source(ProductSource), Ready(ProductReady), Child { program: Box<GeometryProgram>, kind: ChildKind },
@@ -35,7 +36,7 @@ pub(super) enum ProductReply {
     Child(Result<ChildOutput>), Prepare(Geometry),
     Place(Geometry), Join(Result<Vec<Mesh>>),
 }
-pub(super) enum ChildOutput { Parts(Vec<Mesh>), Styled(SubMeshCollection), Mesh(Mesh, bool) }
+pub(super) enum ChildOutput { Retained(Vec<super::retained::LogicalRetainedValue>), Parts(Vec<Mesh>), Styled(SubMeshCollection), Mesh(Mesh, bool) }
 pub(super) enum ProductReady {
     Merge(ReadyProductMerge), Finish(ReadyProductFinish), Annotation(AnnotationFill), Texture(ReadyTexture),
     Prepare(ReadyProductPrepare), Place(ReadyProductPlace), Join(ReadyProductJoin),
@@ -94,7 +95,7 @@ impl ProductMachine {
     pub(super) fn begin(element: DecodedEntity, consumer: ProductConsumer, hygiene: SourceHygiene) -> Self {
         let source = ProductSource::Begin { element: element.clone(), consumer };
         Self { element, consumer, hygiene, control: None, completion: None, child: None,
-            next: Some(ProductMachinePoll::Source(source)), finished: false }
+            next: Some(ProductMachinePoll::Source(source)), finished: false, retained: None }
     }
 
     pub(super) fn poll(&mut self) -> ProductMachinePoll {
@@ -194,7 +195,11 @@ impl ProductMachine {
         match reply {
             ProductReply::Source(source) => match source {
                 ProductSourceReply::Begin(program) => match program? {
-                    Some(program) => self.control = Some(ProductControl::new(program, self.element.clone(), self.consumer)),
+                    Some(program) => {
+                        let mut control = ProductControl::new(program, self.element.clone(), self.consumer);
+                        if self.retained.is_some() { control.select_retained(); }
+                        self.control = Some(control);
+                    },
                     None => {
                         self.finished = true;
                         self.next = Some(ProductMachinePoll::Complete(Ok(match self.consumer {
@@ -227,6 +232,11 @@ impl ProductMachine {
             }
             ProductReply::Finish(output) => {
                 self.control = None;
+                if let ProductOutput::Retained(values) = output {
+                    self.finished = true;
+                    self.next = Some(ProductMachinePoll::Complete(Ok(CompletedProduct::Retained(values))));
+                    return Ok(());
+                }
                 self.next = Some(ProductMachinePoll::Source(ProductSource::Hygiene { requested: self.hygiene, output }));
             }
             ProductReply::Annotation(reply) => match reply {
@@ -242,7 +252,14 @@ impl ProductMachine {
                 None => self.next = Some(ProductMachinePoll::Source(self.raw_source())),
             },
             ProductReply::Child(reply) => {
-                let output = match reply? {
+                let reply = reply?;
+                if let ChildOutput::Retained(values) = reply {
+                    self.control.as_mut().expect("traversal").accept_retained(values)?;
+                    self.child = None;
+                    return Ok(());
+                }
+                let output = match reply {
+                    ChildOutput::Retained(_) => unreachable!(),
                     ChildOutput::Parts(parts) => ProductItemOutput::Merged(parts),
                     ChildOutput::Styled(collection) => ProductItemOutput::Styled(collection),
                     ChildOutput::Mesh(mesh, raw) => self.mesh_output(mesh, raw),

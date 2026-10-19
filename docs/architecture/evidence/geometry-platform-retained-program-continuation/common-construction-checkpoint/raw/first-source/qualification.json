@@ -1,0 +1,62 @@
+{
+  "source_commit": "f1bd0a7d79fa9a61908dcf10516e69f69bb3f949",
+  "base_commit": "53dafdcf7f0452b419581be9eae00474e093e74f",
+  "status": "INCOMPLETE_MIGRATION_UNQUALIFIED_SOURCE_CHECKPOINT",
+  "heavy_submissions": 0,
+  "behavior_tests": {
+    "status": "NOT_RUN",
+    "geometry_common_admission_fixtures": 3,
+    "processing_fixtures": 8,
+    "requires_actual_sdk_worker": 7,
+    "meaning": "fixtures exercise the real reached common continuation and real sealed SDK receipts when executed; no such execution has occurred for this source"
+  },
+  "lightweight_checks": "raw/committed-source/checks.json",
+  "license_gate": {
+    "exit_code": 1,
+    "preexisting_unchanged_failures": 10,
+    "identity_proof": "license-baseline.json"
+  },
+  "default": "Exact Rust stays permanent/default; ordinary ProductState entry/accept/publication rejects selected retained contract. Default behavior equivalence is UNQUALIFIED, not measured.",
+  "implemented": [
+    "Actual common product/representation/Items traversal selects original-source construction capture before sampled constructor lowering.",
+    "ItemResult mesh-or-logical value and common product logical accumulation; separate slots for repeated source occurrences.",
+    "Nested ready packet plan admission retains the original ProgramReply; it does not claim remote execution.",
+    "Native consuming ProductState transaction with original outer/common request and reply, Arc ticket/stage, actual source/context/owner stamp, expected original source and f64 frames, independent cancellation capability.",
+    "Intact target receipt/source/owner/stage/frame/object-lease validation, captured lexical stop checks and ledger capacity before linear reply acceptance.",
+    "Original common continuation resumes only after checked sealed construction discharge; native ledger retains actual objects.",
+    "Final-net withheld; completed traversal is an unverified plan with explicit remaining placement/opening/layer/appearance/persistent-face requirements."
+  ],
+  "remaining_goal": [
+    "Complete common retained values through mapping, Boolean/group, type-map, layer, void/opening and late presentation paths without a second source walker.",
+    "Implement and consume immutable proper-rigid occurrences and ordered Boolean/group/host-opening operations with independently captured exact operator, ordered sealed operands and admitted f64 local/source/world frames.",
+    "Repeated mapped DAG definitions/occurrences and branch contexts (repeated direct-source occurrence fixture is NOT mapped-DAG proof).",
+    "Browser consuming transaction with dormant same ProductOwner across await, independent cancellation during mutable worker borrow, sealed actual object receipt validation and same-continuation resume.",
+    "Native/browser dependency lifetime proof: copied result survives dropping/releasing both source objects while worker owner remains alive; native coarse-domain Drop behavior still needs integration work.",
+    "All reached representations/branches and required appearance contracts must close or refuse before canonical final assembly/publication.",
+    "Unsupported retained families remain refusals, not an excuse to declare the overall migration complete.",
+    "Complete resource admission/accounting for original-source copies, logical plans, ledger/object storage and target operations (captured lexical checks here are partial).",
+    "Wrong operator/ordered operand/frame tests, mapped branches, actual Boolean/opening dependency tests and browser-await cancellation/release fixtures.",
+    "Actual source compile and workspace tests, optimized Boolean regressions, all-target Clippy, canonical real-WASM boundary, SDK/native/browser witnesses, root pnpm typecheck/test, Python wheel consumer, real-scene output identity/oracles and end-to-end base/branch worker-pool performance.",
+    "Independent review and qualification scheduling remain parent-owned."
+  ],
+  "not_run": [
+    "cargo test --workspace",
+    "cargo clippy --workspace --all-targets -- -D warnings",
+    "native SDK behavior fixtures",
+    "browser tests",
+    "WASM build/contracts",
+    "root pnpm typecheck/test",
+    "Python consumer",
+    "scene oracles",
+    "performance"
+  ],
+  "capacity": "Pop refuses admission with guard exit 78; user-reported PC drain/full restriction remains; Mac disabled. No capacity override or job cleanup.",
+  "perf_verdict": "NOT_MEASURED; no performance claim and no benchmark baseline edited",
+  "external_actions": {
+    "issues": 0,
+    "pushes": 0,
+    "PRs": 0,
+    "publish": 0,
+    "foreign_jobs_changed": 0
+  }
+}

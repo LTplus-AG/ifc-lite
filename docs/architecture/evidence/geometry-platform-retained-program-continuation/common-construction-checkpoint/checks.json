@@ -1,0 +1,54 @@
+[
+  {
+    "name": "fleet-status",
+    "command": [
+      "/home/louistrue/build-workers/ifc-fleet",
+      "status"
+    ],
+    "exit_code": 0,
+    "log": "raw/fleet-status.log",
+    "meaning": "lightweight metadata/source check; no compilation or behavior execution"
+  },
+  {
+    "name": "rust-source-text",
+    "command": [
+      "node",
+      "scripts/check-rust-source-text-assertions.mjs"
+    ],
+    "exit_code": 0,
+    "log": "raw/rust-source-text.log",
+    "meaning": "lightweight metadata/source check; no compilation or behavior execution"
+  },
+  {
+    "name": "refwalk",
+    "command": [
+      "node",
+      "scripts/check-refwalk-guards.mjs"
+    ],
+    "exit_code": 0,
+    "log": "raw/refwalk.log",
+    "meaning": "lightweight metadata/source check; no compilation or behavior execution"
+  },
+  {
+    "name": "license-headers",
+    "command": [
+      "node",
+      "scripts/add-license-headers.mjs",
+      "--check"
+    ],
+    "exit_code": 1,
+    "log": "raw/license-headers.log",
+    "meaning": "lightweight metadata/source check; no compilation or behavior execution"
+  },
+  {
+    "name": "diff-check",
+    "command": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "exit_code": 0,
+    "log": "raw/diff-check.log",
+    "meaning": "lightweight metadata/source check; no compilation or behavior execution"
+  }
+]

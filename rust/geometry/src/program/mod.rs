@@ -21,6 +21,8 @@ mod execute;
 mod item;
 mod inner;
 mod inner_ready;
+mod retained;
+pub use retained::{RetainedContract, LogicalRetainedSlot, LogicalRetainedValue, RetainedPlanOperation, RetainedProductPlan, RetainedRequirement};
 pub(crate) use inner_ready::ReadyOperation;
 mod inner_boolean;
 mod inner_cache;
@@ -90,3 +92,6 @@ mod policy_tests;
 
 #[cfg(test)]
 mod inner_unwind_tests;
+
+#[cfg(test)]
+mod retained_tests;

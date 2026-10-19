@@ -1,0 +1,11 @@
+{
+  "rust/geometry/src/resource/mod.rs": "e953c410c04c4d1bbc912d3595889d8d236baa7c0084cd4d2ee5181a39a3843e",
+  "rust/geometry/src/resource/owned.rs": "aeb79db1ff63b859df1903ec33c94cdc7cf386cb603b707de158f9dc4f840d6f",
+  "rust/geometry/src/resource/owned_tests.rs": "e0f5a266095a42b41bbeea07878d7b6118ef5c242bb71afc925f16bcfeb3a7d4",
+  "rust/processing/src/element/session_retained.rs": "4ae88c3e293f35d44bacd4d97ce18783689ab6ce35a322f43c834fbf92a86087",
+  "rust/processing/src/element/session_retained/entry.rs": "db03c7bc165bf9074671a0ae402c78ebb16e2af06e6defc760b1d2d5c5f42983",
+  "rust/processing/src/element/session_retained/acceptance.rs": "2ec260c96354d7295c8484dde6541f031c815c447d7cc112b455a15fdd8fdebe",
+  "rust/processing/src/element/session_retained/native.rs": "649636db6bd4d92a18ffcec42e81894f22b8a71238f4fd1694e793faa877a648",
+  "rust/processing/src/element/session_retained/tests.rs": "3cc39316cf9c773016dbfdb87a72de1b21a5bc1fd2c678dfa4a820ede1155fa8",
+  "rust/processing/src/element/session_retained/resource_tests.rs": "97b66ca1383369db4dde33dec021edf771b17f5570afdeba8ac46f30ad226090"
+}

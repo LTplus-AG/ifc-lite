@@ -10,7 +10,7 @@ use ifc_lite_core::DecodedEntity;
 type Bounds = Option<[f32; 6]>;
 type FarParts = std::vec::IntoIter<(Mesh, Bounds)>;
 
-pub(crate) enum CompletedProduct { Merged(Vec<Mesh>), Styled(SubMeshCollection) }
+pub(crate) enum CompletedProduct { Retained(Vec<super::super::retained::LogicalRetainedValue>), Merged(Vec<Mesh>), Styled(SubMeshCollection) }
 pub(crate) enum Geometry { Single(Mesh), Styled(SubMeshCollection) }
 #[derive(Clone, Copy)]
 enum AppendPolicy { Ordinary, Rebased(Bounds) }
@@ -41,6 +41,7 @@ pub(crate) enum CompletionPoll {
 impl ProductCompletion {
     pub(crate) fn new(element: DecodedEntity, output: ProductOutput, hygiene: SourceHygiene) -> Self {
         let sequence = match output {
+            ProductOutput::Retained(_) => panic!("retained product cannot enter exact mesh completion"),
             ProductOutput::Merged((primary, far, rebased)) => Sequence::Merged {
                 primary: Some(primary), far: far.into_parts(), rebased: Some(rebased), output: Vec::new() },
             ProductOutput::Styled(collection) => Sequence::Styled(Some(collection)),

@@ -1,0 +1,24 @@
+{
+  "qualification": "Static source only; all new Rust consumers, unit tests and real SDK fixtures UNCOMPILED and UNRUN. No Cargo/Clippy/WASM, numerical/performance run or heavy/fleet submission.",
+  "root_head_at_freeze": "01abf2b4d940ac94eaddc58794d52767cc2984e0",
+  "checks": {
+    "rustfmt_parse_no_write": 0,
+    "rust_source_text_guard": 0,
+    "git_diff_check": 0,
+    "reference_walk_guard": 1
+  },
+  "refwalk_failure": "rust/geometry/src/program/retained_tests.rs::process::recursion outside owned paths; native agent owns correction",
+  "new_behavior_fixtures": 14,
+  "new_sdk_conditional_fixtures": 6,
+  "files": {
+    "rust/geometry/src/resource/mod.rs": "e953c410c04c4d1bbc912d3595889d8d236baa7c0084cd4d2ee5181a39a3843e",
+    "rust/geometry/src/resource/owned.rs": "bd12dbe3301e1cd2f712f5cb975292df41650e4cc2f454cda6d01d09957c94f3",
+    "rust/geometry/src/resource/owned_tests.rs": "9ef82c57e601f7593352c17f868e13076e517dd45a8471c2c64cddcbda116bab",
+    "rust/processing/src/element/session_retained.rs": "4ae88c3e293f35d44bacd4d97ce18783689ab6ce35a322f43c834fbf92a86087",
+    "rust/processing/src/element/session_retained/entry.rs": "db03c7bc165bf9074671a0ae402c78ebb16e2af06e6defc760b1d2d5c5f42983",
+    "rust/processing/src/element/session_retained/acceptance.rs": "2ec260c96354d7295c8484dde6541f031c815c447d7cc112b455a15fdd8fdebe",
+    "rust/processing/src/element/session_retained/native.rs": "649636db6bd4d92a18ffcec42e81894f22b8a71238f4fd1694e793faa877a648",
+    "rust/processing/src/element/session_retained/tests.rs": "3cc39316cf9c773016dbfdb87a72de1b21a5bc1fd2c678dfa4a820ede1155fa8",
+    "rust/processing/src/element/session_retained/resource_tests.rs": "97b66ca1383369db4dde33dec021edf771b17f5570afdeba8ac46f30ad226090"
+  }
+}

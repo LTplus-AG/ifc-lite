@@ -66,6 +66,11 @@ pub(crate) use model_context::ProductionLifecycle;
 pub use model_context::{OwnedMeshProductionData,OwnedMeshProductionContext,ProductionModel,ProductionContextId,ProductionContextError};
 mod session;
 mod session_inner;
+#[cfg(not(target_arch = "wasm32"))]
+mod session_retained;
+#[cfg(not(target_arch = "wasm32"))]
+pub use session_retained::{RetainedProductExecution, RetainedExecutionError, IssuedCommonConstruction,
+    CompletedCommonConstruction, RejectedCommonConstruction, RetainedCancellation};
 mod owned_session;
 mod accounted_session;
 pub use accounted_session::{produce_element_meshes_owned_accounted, AccountedElementMeshes, AccountedProductionError};

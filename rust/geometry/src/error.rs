@@ -10,6 +10,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Errors that can occur during geometry processing
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("Retained contract refused: {0}")]
+    RetainedContract(#[from] crate::document::RetainedRefusal),
+
     #[error(transparent)]
     ProgramStopped(#[from] crate::resource::ProgramStop),
 

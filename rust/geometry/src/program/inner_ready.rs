@@ -36,16 +36,7 @@ impl ReadyOperation {
             ReadyPayload::Opening(ready)=>ReplyValue::Opening(super::inner_opening::OpeningAdapterReply::from_ready(ready.execute())),
             ReadyPayload::Nested(envelope,ready)=>{
                 let reply=ready.execute();
-                match envelope {
-                    Envelope::Product=>ReplyValue::Product(super::inner_product_adapter::ProductAdapterReply::wrap_child_reply(reply)),
-                    Envelope::TypeMap=>ReplyValue::TypeMap(super::inner_type_map::TypeMapReply::wrap_child_reply(reply)),
-                    Envelope::Layers=>ReplyValue::Layers(super::inner_layers::LayerReply::wrap_child_reply(reply)),
-                    Envelope::Item=>ReplyValue::ItemChild(Box::new(reply)),
-                    Envelope::Mapping=>ReplyValue::Mapping(super::inner_mapping::MappingReply::wrap_child_reply(reply)),
-                    Envelope::Cache=>ReplyValue::Cache(super::inner_cache::CacheReply::wrap_child_reply(reply)),
-                    Envelope::Voids=>ReplyValue::Voids(super::inner_voids::VoidReply::wrap_child_reply(reply)),
-                    Envelope::Opening=>ReplyValue::Opening(super::inner_opening::OpeningAdapterReply::wrap_child_reply(reply)),
-                }
+                envelope.wrap(reply)
             }
         };
         ProgramReply {request:self.request,value,emitter:self.emitter}
@@ -92,5 +83,60 @@ impl GeometryProgram {
         };
         self.expected_payload=Some(tag);self.expected_emitter=emitter;self.pending=Some((request,true));
         Ok(ReadyOperation {request,payload,emitter})
+    }
+}
+
+impl Envelope {
+    fn wrap(self, reply: ProgramReply) -> ReplyValue {
+        match self {
+                    Envelope::Product=>ReplyValue::Product(super::inner_product_adapter::ProductAdapterReply::wrap_child_reply(reply)),
+                    Envelope::TypeMap=>ReplyValue::TypeMap(super::inner_type_map::TypeMapReply::wrap_child_reply(reply)),
+                    Envelope::Layers=>ReplyValue::Layers(super::inner_layers::LayerReply::wrap_child_reply(reply)),
+                    Envelope::Item=>ReplyValue::ItemChild(Box::new(reply)),
+                    Envelope::Mapping=>ReplyValue::Mapping(super::inner_mapping::MappingReply::wrap_child_reply(reply)),
+                    Envelope::Cache=>ReplyValue::Cache(super::inner_cache::CacheReply::wrap_child_reply(reply)),
+                    Envelope::Voids=>ReplyValue::Voids(super::inner_voids::VoidReply::wrap_child_reply(reply)),
+                    Envelope::Opening=>ReplyValue::Opening(super::inner_opening::OpeningAdapterReply::wrap_child_reply(reply)),
+                }
+    }
+}
+impl ReadyOperation {
+    /// Logical plan admission only. This reply certifies no remote execution.
+    pub(super) fn admit_retained(self) -> Result<(ProgramReply, Option<super::retained::RetainedPlanOperation>), ProgramError> {
+        let (value, operation) = match self.payload {
+            ReadyPayload::Item(ready) => {
+                let operation = ready.retained_operation().ok_or_else(super::retained::unsupported)?.clone();
+                let value = ready.admit_retained().map_err(|_| ProgramError::UnsupportedRetained)?;
+                (ReplyValue::Item(ItemStep::Complete(value)), Some(operation))
+            }
+            ReadyPayload::Nested(envelope, ready) => {
+                let (reply, operation) = ready.admit_retained()?;
+                (envelope.wrap(reply), operation)
+            }
+            ReadyPayload::Product(ready) if ready.is_retained_control() => (ReplyValue::Product(ready.execute()), None),
+            _ => return Err(ProgramError::UnsupportedRetained),
+        };
+        Ok((ProgramReply { request: self.request, value, emitter: self.emitter }, operation))
+    }
+}
+impl GeometryProgram {
+    /// Runs reached source admissions or logical arithmetic, with no SDK claim.
+    /// A processing ledger must withhold the reply until its sealed receipt closes.
+    pub fn admit_retained_with_inputs(&mut self, request: ProgramRequest, router: &crate::GeometryRouter,
+        decoder: &mut ifc_lite_core::EntityDecoder<'_>,
+        textures: Option<&rustc_hash::FxHashMap<u32, crate::ResolvedTextureMap>>,
+        voids: Option<&rustc_hash::FxHashMap<u32, Vec<u32>>>)
+        -> Result<(ProgramReply, Option<super::retained::RetainedPlanOperation>), ProgramError> {
+        if self.retained.is_none() { return Err(ProgramError::UnsupportedRetained) }
+        if request.stage() == ProgramStage::Numerical {
+            self.before_execute(request)?;
+            if self.expected_router.is_some_and(|owner| owner != router.execution_identity())
+                || self.expected_decoder.is_some_and(|owner| owner != decoder.execution_identity()) {
+                return Err(ProgramError::WrongOwner);
+            }
+            self.take_ready(request)?.admit_retained()
+        } else {
+            self.execute_with_inputs(request, router, decoder, textures, voids).map(|reply| (reply, None))
+        }
     }
 }

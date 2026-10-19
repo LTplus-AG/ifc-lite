@@ -1,0 +1,3 @@
+# Exact patch bytes are versioned in deterministic gzip archives.
+owned-paths.patch
+**/owned-paths.patch

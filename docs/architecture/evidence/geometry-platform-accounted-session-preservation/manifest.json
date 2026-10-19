@@ -1,0 +1,7 @@
+{
+  "source_base": "f6471fd952cf30ac5cf1b9f938c539b9f50a52ba",
+  "file": "rust/processing/src/element/accounted_session_tests.rs",
+  "before_sha256": "d98ac4b186e07de3b832964ae49c706872e8de6b83084dbc79cd48954c4bb301",
+  "after_sha256": "a9f2ec2e9f688f7276ecc1ef15a33127ac34b6eec2e1548d5f09cfb8280e02e7",
+  "validation": "Static called-path diagnosis and git diff --check only; all new/changed behavioral tests UNCOMPILED and UNRUN; no heavy jobs submitted"
+}

@@ -106,6 +106,9 @@ fn every_recoverable_work_kind_preserves_a_typed_stop_instead_of_empty_retry() {
         WorkKind::VoidedParts, WorkKind::PlainParts, WorkKind::TypeMap { map_id:61, class:1 },
     ];
     for kind in kinds {
+        // With an empty opening index, VoidedSubmeshes deliberately returns
+        // empty before invoking any processor. Supply a real opening so this
+        // recovery-boundary test actually reaches its cancelling callback.
         let source = SOURCE.replace("ENDSEC;END-ISO-10303-21;",
             "#200=IFCOPENINGELEMENT('opening',$,$,$,$,#19,#21,$,$);ENDSEC;END-ISO-10303-21;");
         let mut decoder = EntityDecoder::new(&source);
@@ -144,29 +147,83 @@ fn every_recoverable_work_kind_preserves_a_typed_stop_instead_of_empty_retry() {
     }
 }
 
-struct PanicProcessor;
+#[test]
+fn empty_opening_index_returns_voided_submeshes_before_a_cancelling_callback() {
+    let mut decoder = EntityDecoder::new(SOURCE);
+    let mut router = admitted_router(&mut decoder);
+    let calls = Rc::new(Cell::new(0));
+    router.register(Box::new(CatchStop { calls: calls.clone(), cancel: true }));
+    let entity = decoder.decode_by_id(10).unwrap();
+    let account = account(ResourceLimits::default());
+    let output = account.scope(|| router.process_element_with_submeshes_and_voids(
+        &entity, &mut decoder, &FxHashMap::default())).unwrap();
+    assert!(output.is_empty(), "an opening-free void attempt defers to the ordinary product strategy");
+    assert_eq!(calls.get(), 0, "the cancelling callback was never reached");
+    assert_eq!(account.check(), Ok(()), "an unreached callback cannot manufacture cancellation");
+    assert!(resource::current_account().is_none());
+}
+
+struct PanicProcessor { calls: Rc<Cell<usize>> }
 impl GeometryProcessor for PanicProcessor {
     fn supported_types(&self) -> Vec<IfcType> { vec![IfcType::IfcExtrudedAreaSolid] }
     fn process(&self,_:&DecodedEntity,_:&mut EntityDecoder,_:&IfcSchema,
-        _:TessellationQuality) -> ifc_lite_geometry::Result<Mesh> { panic!("deliberate extension unwind") }
+        _:TessellationQuality) -> ifc_lite_geometry::Result<Mesh> {
+        self.calls.set(self.calls.get() + 1);
+        panic!("deliberate extension unwind")
+    }
 }
 #[test]
 fn canonical_extension_unwind_restores_resource_tls_and_decoder_router_owners() {
-    let model = ProductionModel::new();
-    let context = model.snapshot(OwnedMeshProductionData::default());
-    let mut decoder = EntityDecoder::new(SOURCE);
-    let mut router = admitted_router(&mut decoder);
-    router.register(Box::new(PanicProcessor));
-    let entity = decoder.decode_by_id(10).unwrap();
-    let account = account(ResourceLimits::default());
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(||
-        produce_element_meshes_owned_accounted(&job(&entity,&metadata(10)),&context,
-            &options(),&mut decoder,&router,&account)));
-    assert!(outcome.is_err());
-    assert!(resource::current_account().is_none());
-    assert!(decoder.try_execution_lease().is_ok());
-    assert!(router.try_execution_lease().is_ok());
-    assert_eq!(account.usage().live_bytes,0,"no output admission survived the failed callback");
+    use ifc_lite_geometry::resource::{ModelResourcePool, RequestAdmission};
+    const QUOTA: u64 = 1_000_000;
+    for completed_cache in [false, true] {
+        // A completed built-in block precedes the panicking extension only in
+        // the cache case. Its real geometry must remain owned by the router;
+        // failed later work cannot revoke that already reached publication.
+        let source = if completed_cache {
+            SOURCE.replace("'SweptSolid',(#13)", "'SweptSolid',(#30,#13)")
+                .replace("ENDSEC;END-ISO-10303-21;",
+                    "#30=IFCBLOCK($,1.,2.,3.);ENDSEC;END-ISO-10303-21;")
+        } else { SOURCE.to_owned() };
+        let model = ProductionModel::new();
+        let context = model.snapshot(OwnedMeshProductionData::default());
+        let mut decoder = EntityDecoder::new(&source);
+        let mut router = admitted_router(&mut decoder);
+        let calls = Rc::new(Cell::new(0));
+        router.register(Box::new(PanicProcessor { calls: calls.clone() }));
+        let entity = decoder.decode_by_id(10).unwrap();
+        let pool = ModelResourcePool::new(QUOTA);
+        let limits = ResourceLimits { live_bytes: Some(QUOTA), ..ResourceLimits::default() };
+        let account = match pool.admit(limits).unwrap() {
+            RequestAdmission::Ready(account) => account,
+            RequestAdmission::WaitingForCapacity => panic!("fresh pool must admit the unwind fixture"),
+        };
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(||
+            produce_element_meshes_owned_accounted(&job(&entity,&metadata(10)),&context,
+                &options(),&mut decoder,&router,&account)));
+        assert!(outcome.is_err(), "the actual extension must unwind before any product returns");
+        assert_eq!(calls.get(), 1, "the actual extension, rather than an earlier invariant, must panic");
+        assert!(resource::current_account().is_none());
+        assert!(decoder.try_execution_lease().is_ok());
+        assert!(router.try_execution_lease().is_ok());
+        let usage = account.usage();
+        // Frame backing is admitted before callback entry. retain() keeps that
+        // conservative charge until the account dies, even after its Vec drops;
+        // live_bytes is not a measurement of surviving output allocations.
+        assert!(usage.live_bytes > 0, "the real continuation has admitted backing");
+        if !completed_cache {
+            assert_eq!(usage.output_bytes, 0, "the failed first callback admitted no output");
+        } else {
+            assert!(usage.output_bytes > 0, "the completed block's numerical output was admitted");
+        }
+        drop(account);
+        assert_eq!(pool.resident_bytes(), if completed_cache { QUOTA } else { 0 },
+            "only an independently completed router cache may retain the request after unwind");
+        drop(router);
+        assert_eq!(pool.resident_bytes(), 0, "dropping the last real storage owner returns the entire permit");
+        assert!(matches!(pool.admit(limits).unwrap(), RequestAdmission::Ready(_)),
+            "unwind cannot leak capacity from a later request");
+    }
 }
 
 struct Recoverable { calls: Rc<Cell<usize>> }

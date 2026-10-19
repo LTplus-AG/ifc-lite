@@ -12,6 +12,7 @@ pub struct RetainedRealization {
     solid: BrepHandle,
     completion: RetainedCompletion,
     owner: crate::RuntimeOwner,
+    lease: std::sync::Arc<super::objects::ManagedObjectLease>,
     object_live: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 impl RetainedRealization {
@@ -27,6 +28,7 @@ impl RetainedRealization {
     /// Explicit standalone host-trusted escape. Consumes the sealed receipt;
     /// returned mutable numerical data cannot recreate runtime authority.
     pub fn into_host_trusted_parts(self) -> (BrepHandle, RetainedCompletion) {
+        self.lease.disarm();
         (self.solid, self.completion)
     }
     pub fn validate_live(&self) -> Result<(), WorkerError> {
@@ -105,6 +107,7 @@ impl SmlibWorker {
             return Err(WorkerError::Protocol("worker exited before publication"));
         }
         Ok(RetainedRealization {
+            lease: self.manage_object(solid)?,
             object_live: self.object_liveness(solid)?,
             owner: crate::RuntimeOwner::new(self.process_control(), self.identity),
             solid,

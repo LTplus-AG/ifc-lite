@@ -1,0 +1,9 @@
+# Managed lifetime authority correction review
+
+Immutable source: 0f3832cc030c502a99ed98467489484e0d0204c2 atop b20f191df7cfdecf783da506fd6b43c88b70d292. Read-only git-object inspection of the two changed files and existing worker check / fault-peer behavior. Original b20 review and hashes remain untouched.
+
+The reported blocker is closed statically. release first compares actual host worker identity and full wire session, returning WrongWorker immediately on mismatch. No check/drain/exchange runs in those branches. For a matching domain but missing full WireHandle key (unknown slot, unknown generation, previously removed object), check returns its error and the registry lookup authorizes no drain. Thus the primary rejection cannot be overwritten by cleanup failure, and neither foreign nor unknown handles dispatch IO. Only a registered invalidated object reaches the special pending cleanup drain; the legitimate queued-object failure contract remains intact.
+
+The new regression creates real protocol worker peers A and B, queues A's final managed release, and submits foreign-worker, foreign-session, unknown-generation and unknown-slot handles. Each must return WrongWorker while A's incarnation and exact queued local object remain unchanged. An explicit later flush hits the existing peer's genuine release failure and retires A while B stays live. If any rejected branch still drained, this failure-configured peer makes both the error and liveness assertions fail. This is a meaningful transport/authority invariant, not a numerical geometry witness.
+
+No further concrete blocker found in this correction. No source edits, parsing, builds, test runs or fleet submissions were performed. The new regression and original SDK lifetime regressions remain UNRUN; source verification is not runtime qualification. Full immutable hashes: /tmp/ifclite-managed-native-lifetime-correction-hashes.json.

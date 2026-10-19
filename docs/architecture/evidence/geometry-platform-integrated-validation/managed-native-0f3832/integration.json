@@ -1,0 +1,69 @@
+{
+  "base": "ecdfb586758ea5d4d36e0546f883170e7b340aaf",
+  "source": "0f3832cc030c502a99ed98467489484e0d0204c2",
+  "parent": "1c7be12f191de7851e6633ae8b7938f03ff5a1e6",
+  "status": "source integrated, reviewed; compile/runtime/SDK unqualified",
+  "composition": [
+    "Preserved empty outcome getters and strict construction checks",
+    "Kept both appended empty and independent-lifetime receipt test families",
+    "Added IsEmpty to post-drain command handle validation",
+    "Preserved P1 common ledger and removed only its completed construction retiring Drop",
+    "Affine CopyAffine validation and lease constructor remain required when its candidate integrates"
+  ],
+  "files": [
+    {
+      "path": "rust/geometry-runtime/src/worker.rs",
+      "sourceSha256": "548514d2ae527c75c2bbd94ac7544922f0eacf98b2819c7f4c65803a65eb1118",
+      "integratedSha256": "548514d2ae527c75c2bbd94ac7544922f0eacf98b2819c7f4c65803a65eb1118",
+      "matchesChild": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_dependencies.rs",
+      "sourceSha256": "ccc728ffb869346adf940caa12823f8cbacd1185bc26be285d2fa3e330d057d0",
+      "integratedSha256": "439fd6b1f74b520232dac3dd0101b06b5290a58b10684bf0c29f337a8a37aa2c",
+      "matchesChild": false
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_objects.rs",
+      "sourceSha256": "4f6558a1ff9ab8e0ce1d804517f08f4605aa4363dcb86bb69beab1830ed3bcb6",
+      "integratedSha256": "e20f25a3f26b5886a44511377813135e64b610d1ace9bc664ee24d8fcb259a0a",
+      "matchesChild": false
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_objects_tests.rs",
+      "sourceSha256": "2c7933c9bc2bc0e3a7b5e941ed5c63f6c271eda2d624f10d5d66a3f9fc5e6df0",
+      "integratedSha256": "2c7933c9bc2bc0e3a7b5e941ed5c63f6c271eda2d624f10d5d66a3f9fc5e6df0",
+      "matchesChild": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_sweep.rs",
+      "sourceSha256": "30c5ffb136a5e32f148b757cde185a41f8de60fbe630dd85e0edf0a732391590",
+      "integratedSha256": "4bcf3f02cfbd9a281ff19219329faee699dc657e2a19f006aebaa54fb4da408c",
+      "matchesChild": false
+    },
+    {
+      "path": "rust/geometry-runtime/tests/fixtures/object-release-peer.py",
+      "sourceSha256": "867751104a8fa383e65efc2fea7741a14efbf910d73e331ebb123701f97ebdfc",
+      "integratedSha256": "867751104a8fa383e65efc2fea7741a14efbf910d73e331ebb123701f97ebdfc",
+      "matchesChild": true
+    },
+    {
+      "path": "rust/geometry-runtime/tests/retained_receipt.rs",
+      "sourceSha256": "eca1ea881ebc9ab491dda3f68002052c134924502ff6a59015de55f83c49239c",
+      "integratedSha256": "7947497617e7850374487473fac1d7f2ee95ee5f615a765dc93fdd29248f141e",
+      "matchesChild": false
+    },
+    {
+      "path": "rust/geometry-runtime/tests/smlib_worker.rs",
+      "sourceSha256": "d7c0309900f1d27579ca28367b59957326765d469f12587808857a40fd7b56d0",
+      "integratedSha256": "d7c0309900f1d27579ca28367b59957326765d469f12587808857a40fd7b56d0",
+      "matchesChild": true
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/native.rs",
+      "sourceSha256": "0aeaee57872cdfb37b9881a62cc1fb6d47ad78a1a320d13d086d22ae68533006",
+      "integratedSha256": "0aeaee57872cdfb37b9881a62cc1fb6d47ad78a1a320d13d086d22ae68533006",
+      "matchesChild": true
+    }
+  ]
+}

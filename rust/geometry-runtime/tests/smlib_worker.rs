@@ -41,7 +41,7 @@ fn real_worker_preserves_boolean_inputs_and_empty_success() {
     worker.release(right).unwrap();
     assert!(matches!(
         worker.boolean(left, right, BooleanOperation::Difference),
-        Err(WorkerError::Kernel { .. })
+        Err(WorkerError::WrongWorker)
     ));
     close(worker.volume(left, 1e-8).unwrap(), 8.);
     worker.release(left).unwrap();
@@ -81,7 +81,7 @@ fn failed_commands_preserve_worker_session_and_released_handles_stay_stale() {
     let replacement = worker.create_box([0.; 3], [1.; 3]).unwrap();
     assert!(matches!(
         worker.volume(solid, 1e-8),
-        Err(WorkerError::Kernel { .. })
+        Err(WorkerError::WrongWorker)
     ));
     close(worker.volume(replacement, 1e-8).unwrap(), 1.);
 }

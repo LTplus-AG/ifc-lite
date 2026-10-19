@@ -97,8 +97,8 @@ fn actual_sdk_retained_limit_error_with_successful_cleanup_preserves_session() {
 }
 
 // P2 sealed-empty witness. Actual SDK execution is required; no mesh/host
-// substitute establishes the classification. Native result Drop remains a
-// separate whole-worker ownership gap: keep every result alive during this run.
+// substitute establishes the classification. Keep the result handles alive
+// for the identity cases; independent managed Drop is exercised separately.
 #[test]
 fn actual_sdk_sealed_empty_boolean_identities_preserve_independent_operands() {
     use ifc_lite_geometry::document::BooleanOperation::{Union, Intersection, Difference};
@@ -148,4 +148,81 @@ fn actual_sdk_sealed_empty_boolean_identities_preserve_independent_operands() {
     assert!(empty.validate_live().is_err());
     a.validate_live().unwrap(); b.validate_live().unwrap(); removed.validate_live().unwrap();
     assert!(worker.is_empty(removed.solid()).unwrap());
+}
+
+#[test]
+fn actual_sdk_managed_sources_and_chained_results_have_independent_lifetimes() {
+    use ifc_lite_geometry::document::BooleanOperation;
+    use ifc_lite_geometry_runtime::RetainedDependency;
+    let Some(mut worker) = worker() else { return };
+    let identity = [1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 0.,0.,0.,1.];
+    let mut shifted = identity;
+    shifted[12] = 1.;
+    let (_, first) = request(&worker);
+    let (_, second) = request(&worker);
+    let a = worker.evaluate_retained_extrusion(first, 0.001, 15., MeshLimits::default()).unwrap();
+    let b = worker.evaluate_retained_extrusion(second, 0.001, 15., MeshLimits::default()).unwrap();
+    let first = worker.evaluate_retained_boolean(
+        RetainedDependency::Source { realization: &a, world_from_source: identity },
+        RetainedDependency::Source { realization: &b, world_from_source: shifted },
+        BooleanOperation::Union, 0.001, 15., MeshLimits::default()).unwrap();
+    let chained = worker.evaluate_retained_boolean(
+        RetainedDependency::Result(&first),
+        RetainedDependency::Source { realization: &b, world_from_source: shifted },
+        BooleanOperation::Difference, 0.001, 15., MeshLimits::default()).unwrap();
+    assert!((worker.volume(first.solid(), 1e-8).unwrap() - 36.).abs() < 1e-6);
+    assert!((worker.volume(chained.solid(), 1e-8).unwrap() - 12.).abs() < 1e-6);
+    let stale_intermediate = first.solid();
+    drop(first);
+    assert!(matches!(worker.volume(stale_intermediate, 1e-8), Err(WorkerError::WrongWorker)));
+    // A sibling command drains the intermediate, then performs actual SDK work.
+    assert!((worker.volume(b.solid(), 1e-8).unwrap() - 24.).abs() < 1e-6);
+    let original = a.solid();
+    drop(a);
+    assert!(matches!(worker.release(original), Err(WorkerError::WrongWorker)));
+    worker.release(b.solid()).unwrap();
+    assert!(b.validate_live().is_err()); // explicit raw release before acceptance
+    drop(b);
+    worker.flush_releases().unwrap();
+    // Actual result-copy survival after both sources and the intermediate die.
+    assert!((worker.volume(chained.solid(), 1e-8).unwrap() - 12.).abs() < 1e-6);
+    assert!(worker.is_manifold(chained.solid()).unwrap());
+    let copy = worker.copy_transform(chained.solid(), identity).unwrap();
+    drop(chained);
+    worker.flush_releases().unwrap();
+    assert!((worker.volume(copy, 1e-8).unwrap() - 12.).abs() < 1e-6);
+    worker.release(copy).unwrap();
+}
+
+#[test]
+fn actual_sdk_consumed_raw_escape_survives_managed_cleanup_and_slot_reuse() {
+    let Some(mut worker) = worker() else { return };
+    let (_, source) = request(&worker);
+    let receipt = worker.evaluate_retained_extrusion(source, 0.001, 15., MeshLimits::default()).unwrap();
+    let (raw, packet) = receipt.into_host_trusted_parts();
+    worker.flush_releases().unwrap();
+    assert!((worker.volume(raw, 1e-8).unwrap() - 24.).abs() < 1e-6);
+    assert!(!packet.tessellation.indices.is_empty());
+    worker.release(raw).unwrap();
+    let replacement = worker.create_box([0.; 3], [3.; 3]).unwrap();
+    worker.flush_releases().unwrap();
+    assert!(matches!(worker.volume(raw, 1e-8), Err(WorkerError::WrongWorker)));
+    assert!((worker.volume(replacement, 1e-8).unwrap() - 27.).abs() < 1e-6);
+    worker.release(replacement).unwrap();
+}
+
+#[test]
+fn actual_sdk_explicit_raw_release_invalidates_receipt_before_accept_and_preserves_replacement() {
+    let Some(mut worker) = worker() else { return };
+    let (_, source) = request(&worker);
+    let receipt = worker.evaluate_retained_extrusion(source, 0.001, 15., MeshLimits::default()).unwrap();
+    let old = receipt.solid();
+    worker.release(old).unwrap();
+    assert!(receipt.validate_live().is_err());
+    let replacement = worker.create_box([0.; 3], [3.; 3]).unwrap();
+    drop(receipt); // stale final Drop must not queue release for a reused slot
+    worker.flush_releases().unwrap();
+    assert!((worker.volume(replacement, 1e-8).unwrap() - 27.).abs() < 1e-6);
+    assert!(matches!(worker.release(old), Err(WorkerError::WrongWorker)));
+    worker.release(replacement).unwrap();
 }

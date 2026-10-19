@@ -1,0 +1,18 @@
+{
+  "commit": "b20f191df7cfdecf783da506fd6b43c88b70d292",
+  "base": "ecdfb58675",
+  "sha256": {
+    "rust/geometry-runtime/src/worker.rs": "548514d2ae527c75c2bbd94ac7544922f0eacf98b2819c7f4c65803a65eb1118",
+    "rust/geometry-runtime/src/worker_dependencies.rs": "ccc728ffb869346adf940caa12823f8cbacd1185bc26be285d2fa3e330d057d0",
+    "rust/geometry-runtime/src/worker_objects.rs": "c68dbbfd047453221c1671ab9657542e51b24309a04b49ee92ed970d1941bfe2",
+    "rust/geometry-runtime/src/worker_objects_tests.rs": "7df8a998d35464677bdee34c012872f69bba0ac0fcc51850d1cdb4eb45498126",
+    "rust/geometry-runtime/src/worker_sweep.rs": "30c5ffb136a5e32f148b757cde185a41f8de60fbe630dd85e0edf0a732391590",
+    "rust/geometry-runtime/tests/fixtures/object-release-peer.py": "867751104a8fa383e65efc2fea7741a14efbf910d73e331ebb123701f97ebdfc",
+    "rust/geometry-runtime/tests/retained_receipt.rs": "eca1ea881ebc9ab491dda3f68002052c134924502ff6a59015de55f83c49239c",
+    "rust/geometry-runtime/tests/smlib_worker.rs": "d7c0309900f1d27579ca28367b59957326765d469f12587808857a40fd7b56d0",
+    "rust/processing/src/element/session_retained/native.rs": "0aeaee57872cdfb37b9881a62cc1fb6d47ad78a1a320d13d086d22ae68533006",
+    "rust/geometry-runtime/src/worker_mesh.rs": "042051f7e3cfc6fc86b7dd8b903ac4f807f506be3b28b69ebe08a2cd1971a595",
+    "rust/geometry-runtime/src/runtime_owner.rs": "c171a55edd5324c8e117b0e1aa60d221bb3b478ae0bbbe991d0ff166aff15e87",
+    "rust/geometry-runtime/src/process_control.rs": "8a601065565601e9424708803bfc7604cacc6216d3881f49a4d20d7ec3c6c06a"
+  }
+}

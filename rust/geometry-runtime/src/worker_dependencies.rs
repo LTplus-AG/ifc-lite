@@ -34,6 +34,7 @@ pub struct RetainedOperationIdentity {
 pub struct RetainedDependencyResult {
     solid: BrepHandle,
     owner: crate::RuntimeOwner,
+    _lease: Arc<super::objects::ManagedObjectLease>,
     object_live: Arc<AtomicBool>,
     mesh: TessellatedMesh,
     world_from_evaluation: [f64; 16],
@@ -55,9 +56,6 @@ impl RetainedDependencyResult {
             Ok(())
         } else { Err(WorkerError::WrongWorker) }
     }
-}
-impl Drop for RetainedDependencyResult {
-    fn drop(&mut self) { self.owner.retire(); }
 }
 
 impl RetainedDependency<'_> {
@@ -132,6 +130,7 @@ impl SmlibWorker {
             }
         };
         Ok(RetainedDependencyResult {
+            _lease: self.manage_object(solid)?,
             object_live: self.object_liveness(solid)?,
             solid, owner: crate::RuntimeOwner::new(self.process_control(), self.identity), mesh,
             world_from_evaluation: frame,

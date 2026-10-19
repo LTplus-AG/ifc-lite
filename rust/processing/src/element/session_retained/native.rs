@@ -94,11 +94,6 @@ impl CompletedCommonConstruction {
         &self.realization
     }
 }
-impl Drop for CompletedCommonConstruction {
-    fn drop(&mut self) {
-        self.realization.owner().retire();
-    }
-}
 #[derive(Debug)]
 pub struct RejectedCommonConstruction {
     pub reason: RetainedExecutionError,

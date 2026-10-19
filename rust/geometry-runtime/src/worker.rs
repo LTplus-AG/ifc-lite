@@ -28,6 +28,9 @@ mod sweep;
 pub use sweep::RetainedRealization;
 pub use mesh::{MeshLimits, TessellatedMesh};
 
+#[path = "worker_objects.rs"]
+mod objects;
+
 static NEXT_WORKER: AtomicU64 = AtomicU64::new(1);
 
 /// Opaque BRep identity. Worker identity is host-local and never sent over IPC.
@@ -84,6 +87,8 @@ pub struct SmlibWorker {
     healthy: bool,
     regions_qualified: bool,
     disks_qualified: bool,
+    releases: std::sync::Arc<objects::ReleaseQueue>,
+    managed: std::collections::HashMap<WireHandle, std::sync::Weak<objects::ManagedObjectLease>>,
     objects: std::collections::HashMap<WireHandle, std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
@@ -119,6 +124,8 @@ impl SmlibWorker {
             regions_qualified: false,
             disks_qualified: false,
             objects: std::collections::HashMap::new(),
+            releases: std::sync::Arc::new(objects::ReleaseQueue::default()),
+            managed: std::collections::HashMap::new(),
         })
     }
 
@@ -243,23 +250,6 @@ impl SmlibWorker {
         }
     }
 
-    pub fn release(&mut self, solid: BrepHandle) -> Result<(), WorkerError> {
-        let object = self.wire(solid)?;
-        if let Some(live) = self.objects.remove(&object) { live.store(false, Ordering::Release); }
-        let response = self.call(KernelCommand::Release {
-            session: self.session,
-            object,
-        });
-        let bytes = match response {
-            Ok(bytes) => bytes,
-            Err(error) => { self.retire(); return Err(error); }
-        };
-        if !bytes.is_empty() {
-            return Err(self.poison("release returned unexpected payload"));
-        }
-        Ok(())
-    }
-
     fn handle(&mut self, bytes: Vec<u8>) -> Result<BrepHandle, WorkerError> {
         let wire = WireHandle::from_bytes(&bytes).map_err(|error| self.poison(error.as_str()))?;
         if wire.session != self.session {
@@ -280,19 +270,26 @@ impl SmlibWorker {
     }
 
     fn check(&self, solid: BrepHandle) -> Result<(), WorkerError> {
-        if solid.worker == self.identity {
-            Ok(())
-        } else {
-            Err(WorkerError::WrongWorker)
+        if !self.is_live() {
+            return Err(WorkerError::Protocol("worker requires restart"));
         }
+        if solid.worker != self.identity || solid.wire.session != self.session {
+            return Err(WorkerError::WrongWorker);
+        }
+        if !self.objects.get(&solid.wire).is_some_and(|live| live.load(Ordering::Acquire)) {
+            return Err(WorkerError::WrongWorker);
+        }
+        Ok(())
     }
 
     fn call(&mut self, command: KernelCommand) -> Result<Vec<u8>, WorkerError> {
         if !self.is_live() {
             return Err(WorkerError::Protocol("worker requires restart"));
         }
+        self.flush_releases()?;
+        self.check_command_objects(&command)?;
         let result = self.exchange(&command);
-        if matches!(result, Err(WorkerError::Io(_) | WorkerError::Protocol(_))) {
+        if matches!(result, Err(WorkerError::Io(_) | WorkerError::Protocol(_) | WorkerError::Kernel { status: 8, .. })) {
             self.retire();
         }
         result

@@ -1,0 +1,10 @@
+{
+  "commit": "0f3832cc030c502a99ed98467489484e0d0204c2",
+  "base": "b20f191df7cfdecf783da506fd6b43c88b70d292",
+  "sha256": {
+    "rust/geometry-runtime/src/worker_objects.rs": "4f6558a1ff9ab8e0ce1d804517f08f4605aa4363dcb86bb69beab1830ed3bcb6",
+    "rust/geometry-runtime/src/worker_objects_tests.rs": "2c7933c9bc2bc0e3a7b5e941ed5c63f6c271eda2d624f10d5d66a3f9fc5e6df0",
+    "rust/geometry-runtime/src/worker.rs": "548514d2ae527c75c2bbd94ac7544922f0eacf98b2819c7f4c65803a65eb1118",
+    "rust/geometry-runtime/tests/fixtures/object-release-peer.py": "867751104a8fa383e65efc2fea7741a14efbf910d73e331ebb123701f97ebdfc"
+  }
+}

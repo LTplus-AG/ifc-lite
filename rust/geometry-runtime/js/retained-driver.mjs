@@ -117,8 +117,8 @@ export class RetainedDriver {
   async evaluate(bytes, format, loops, segments, qualification, chord, angle, maxBytes) {
     // Own every coefficient before awaiting initialization or asset loading.
     const recipe = new Uint8Array(bytes);
-    if (![0, 1, 2].includes(qualification) || !Number.isFinite(chord) || chord <= 0 ||
-        !Number.isFinite(angle) || angle <= 0 || !Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error('invalid retained evaluation limits');
+    if (![0, 1, 2].includes(qualification)) throw new Error('invalid retained qualification');
+    limits(chord, angle, maxBytes);
     await this.#ready;
     await this.#awaitCleanup();
     if (!this.live() || this.#busy) throw new Error('retained executor unavailable');
@@ -230,7 +230,7 @@ function u32(value) { const bytes = new Uint8Array(4); new DataView(bytes.buffer
 function f64(value) { const bytes = new Uint8Array(8); new DataView(bytes.buffer).setFloat64(0, value, true); return bytes; }
 
 function limits(chord, angle, maxBytes) {
-  if (!Number.isFinite(chord) || chord <= 0 || !Number.isFinite(angle) || angle <= 0 ||
+  if (!Number.isFinite(chord) || chord <= 0 || !Number.isFinite(angle) || angle <= 0 || angle > 180 ||
       !Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error('invalid retained evaluation limits');
 }
 function properRigid(m) {

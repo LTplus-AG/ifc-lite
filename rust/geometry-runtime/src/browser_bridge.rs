@@ -98,6 +98,9 @@ impl BrowserWorker {
         if request.worker_incarnation() != self.incarnation() {
             return Err(error(RetainedRefusal::InvalidRuntime));
         }
+        // Known caller errors precede the cancellation guard: no numerical
+        // command was submitted, so existing object leases remain usable.
+        evaluation_limits(chord, angle, max_bytes).map_err(error)?;
         let payload = request.recipe().lower().map_err(error)?;
         let qualification = match payload.qualification {
             RegionQualification::Rectangle => 0,

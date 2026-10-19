@@ -128,9 +128,7 @@ impl super::BrowserWorker {
         let operations = left.operations.checked_add(right.operations).and_then(|n| n.checked_add(1))
             .filter(|n| *n <= 128).ok_or_else(|| JsValue::from_str("retained dependency depth/work"))?;
         let relative = crate::retained_values::relative(left.frame, right.frame).map_err(JsValue::from_str)?;
-        if !chord.is_finite() || chord <= 0. || !angle.is_finite() || angle <= 0. || max_bytes == 0 {
-            return Err(error(RetainedRefusal::InvalidSource("invalid retained evaluation limits")));
-        }
+        super::evaluation_limits(chord, angle, max_bytes).map_err(error)?;
         let code = match operation { BooleanOperation::Union => 1, BooleanOperation::Intersection => 2, BooleanOperation::Difference => 3 };
         let mut flight = super::InFlight::new(&self.owner);
         let value = JsFuture::from(self.owner.driver.evaluate_boolean(&left.object, &right.object,

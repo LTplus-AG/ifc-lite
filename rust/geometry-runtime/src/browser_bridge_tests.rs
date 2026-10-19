@@ -127,7 +127,10 @@ async fn actual_browser_foreign_and_nonrigid_rejection_preserve_operands_and_wor
     let mut scale = IDENTITY; scale[0] = 2.;
     assert!(worker.evaluate_retained_boolean(source(&a, IDENTITY), source(&a, scale),
         BooleanOperation::Union, 0.001, 5., 1_048_576).await.is_err());
+    assert!(worker.evaluate_retained_boolean(source(&a, IDENTITY), source(&a, IDENTITY),
+        BooleanOperation::Union, 0.001, 181., 1_048_576).await.is_err());
     a.validate_live().unwrap(); b.validate_live().unwrap();
+    assert_ne!(worker.incarnation(), 0);
     worker.retire(); foreign.retire();
 }
 
@@ -158,4 +161,35 @@ async fn actual_browser_source_only_drop_keeps_existing_worker_teardown_boundary
     let source = worker.evaluate(rectangle(&worker), 0.001, 5., 1_048_576).await.unwrap();
     drop(source);
     assert_eq!(worker.incarnation(), 0);
+}
+
+#[wasm_bindgen_test(async)]
+async fn invalid_construction_limits_preserve_actual_browser_object_and_worker() {
+    let mut worker = BrowserWorker::new_retained_execution().unwrap();
+    let original = worker.evaluate(rectangle(&worker), 0.001, 5., 1_048_576).await.unwrap();
+    let incarnation = worker.incarnation();
+    for (chord, angle, bytes) in [
+        (0., 5., 1_048_576),
+        (-0.001, 5., 1_048_576),
+        (f64::NAN, 5., 1_048_576),
+        (f64::INFINITY, 5., 1_048_576),
+        (0.001, 0., 1_048_576),
+        (0.001, -5., 1_048_576),
+        (0.001, f64::NAN, 1_048_576),
+        (0.001, f64::INFINITY, 1_048_576),
+        (0.001, 181., 1_048_576),
+        (0.001, 5., 0),
+    ] {
+        assert!(worker.evaluate(rectangle(&worker), chord, angle, bytes).await.is_err());
+        original.validate_live().unwrap();
+        assert_eq!(worker.incarnation(), incarnation);
+    }
+    // A second actual SDK construction proves the captured executor remains
+    // usable, rather than merely retaining a nonzero bookkeeping identity.
+    let next = worker.evaluate(rectangle(&worker), 0.001, 180., 1_048_576).await.unwrap();
+    assert!((volume(&next.completion().tessellation) - 1.).abs() < 1e-6);
+    original.validate_live().unwrap();
+    drop(next);
+    original.validate_live().unwrap();
+    worker.retire();
 }

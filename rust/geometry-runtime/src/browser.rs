@@ -14,6 +14,14 @@ mod bridge;
 mod dependencies;
 pub use dependencies::{BrowserDependency, BrowserDependencyResult, BrowserOperationIdentity, BrowserObjectHandle};
 
+#[cfg(target_arch = "wasm32")]
+fn evaluation_limits(chord: f64, angle: f64, max_bytes: u32) -> Result<(), RetainedRefusal> {
+    if !chord.is_finite() || chord <= 0. || !angle.is_finite() || angle <= 0. || angle > 180. || max_bytes == 0 {
+        return Err(RetainedRefusal::InvalidSource("invalid retained evaluation limits"));
+    }
+    Ok(())
+}
+
 struct Owner {
     identity: u64,
     independent_leases: bool,

@@ -206,8 +206,9 @@ export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
                         .join(' / '),
                     })}
                     data-viewcube-zone={zone.kind}
-                    // The face button spans the whole face (its hit area is the full face, as
-                    // before the bevels existed); the edge and corner pieces sit on top of it.
+                    // The face button's box spans the whole face; the edge and corner pieces sit on
+                    // top and take the clicks in the outer band, so only the middle of the face
+                    // selects the face view.
                     style={isFace
                       ? { gridArea: '1 / 1 / -1 / -1' }
                       : { gridColumn: zone.col + 2, gridRow: zone.row + 2, zIndex: 1 }}

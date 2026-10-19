@@ -22,7 +22,7 @@
     "passed": 46,
     "failed": 5,
     "ignored": 0,
-    "filtered_out": 716
+    "filtered_out": 717
   },
   "strict_all_target_clippy": "PASS",
   "failed_tests": [

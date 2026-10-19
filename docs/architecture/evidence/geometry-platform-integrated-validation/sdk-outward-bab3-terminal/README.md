@@ -4,7 +4,7 @@
 
 The source-unchanged run builds and passes all six native CTests, including original region/ownership checks and new off-centre oblique side/volume witnesses. It preserves the strict coefficient check and every prior oracle. Strict workspace/all-target Clippy also passes.
 
-Actual runtime tests report54 passed and one failed; the retained-product-only processing filter reports46 passed and five failed (716 unrelated tests filtered out). Overall exit101 remains a failure. This is not a full-workspace, browser, performance or final-product pass.
+Actual runtime tests report54 passed and one failed; the retained-product-only processing filter reports46 passed and five failed (717 unrelated tests filtered out). Overall exit101 remains a failure. This is not a full-workspace, browser, performance or final-product pass.
 
 The chained generic B-spline face has an existing owner but no cached UV trim; admission still refuses. The real source-edge model gets past plane construction and exposes a separate below-range volume request, repaired only in subsequent source. The authored-backtrack model still needs a derived region operation.
 

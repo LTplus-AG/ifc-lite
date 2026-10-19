@@ -206,3 +206,6 @@ fn scoped_profile_restores_configuration_and_active_budgets_on_unwind() {
     assert_eq!(active_snapshot(), before);
     assert!(!tripped());
 }
+
+#[path = "budget/isolation_tests.rs"]
+mod isolation_tests;

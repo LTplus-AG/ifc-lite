@@ -167,4 +167,17 @@ describe('mounted Section cap localization (#4785)', () => {
     assert.match(ui.textContent ?? '', /Replacement display/);
     assert.equal(toggle(ui, 'Surfaces').title, 'Replacement hide');
   });
+
+  it('picks the fill source beside the fill colour, as a radio group (#7950)', () => {
+    const ui = mountedCap();
+    const group = ui.querySelector('[role="radiogroup"][aria-label="Fill source"]');
+    assert.ok(group, 'fill source is one radio group');
+    const radio = (name: string) => [...group.querySelectorAll<HTMLElement>('[role="radio"]')].find((r) => r.textContent?.trim() === name)!;
+    assert.equal(radio('Uniform').getAttribute('aria-checked'), 'true');
+    click(radio('Element colour'));
+    assert.equal(useViewerStore.getState().sectionPlane.capStyle.fillMode, 'element');
+    assert.equal(radio('Element colour').getAttribute('aria-checked'), 'true');
+    assert.ok(ui.querySelector('input[aria-label="Fill colour"]'), 'the fill colour stays reachable for cuts without a colour');
+  });
 });
+

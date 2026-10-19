@@ -16,7 +16,8 @@ test('real HTTP module proxy fixes snippet and SDK MIME while preserving bytes a
   const wasm = Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]);
   const host = await serve((request, response) => {
     response.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-    if (request.url === '/missing.mjs') { response.writeHead(404, { 'content-type': 'text/plain' }); response.end('missing'); }
+    if (request.url === '/cached.mjs') { response.writeHead(304, { 'content-type': 'application/octet-stream' }); response.end(); }
+    else if (request.url === '/missing.mjs') { response.writeHead(404, { 'content-type': 'text/plain' }); response.end('missing'); }
     else if (request.url === '/module.wasm') { response.writeHead(200, { 'content-type': 'application/wasm' }); response.end(wasm); }
     else { response.writeHead(200, { 'content-type': 'application/octet-stream' }); response.end(module); }
   });
@@ -40,6 +41,9 @@ test('real HTTP module proxy fixes snippet and SDK MIME while preserving bytes a
       assert.equal(response.headers.get('Cross-Origin-Opener-Policy'), 'same-origin');
       assert.equal(await response.text(), module);
     }
+    const cached = await fetch(origin + '/cached.mjs');
+    assert.equal(cached.status, 304);
+    assert.equal(cached.headers.get('content-type'), 'text/javascript; charset=utf-8');
     const binary = await fetch(origin + '/module.wasm');
     assert.equal(binary.headers.get('content-type'), 'application/wasm');
     assert.deepEqual(Buffer.from(await binary.arrayBuffer()), wasm);

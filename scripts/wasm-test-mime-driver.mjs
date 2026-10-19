@@ -22,15 +22,23 @@ function forward(request, response, target, body, moduleMime = false) {
     delete headers['transfer-encoding'];
     headers['content-length'] = body.length;
   }
-  const upstream = http.request(url, { method: request.method, headers }, result => {
+  const started = Date.now();
+  if (moduleMime && process.env.IFCLITE_WASM_HTTP_TRACE) console.error('wasm HTTP begin', request.method, url.href);
+  const upstream = http.request(url, { method: request.method, headers, agent: false }, result => {
     const outputHeaders = { ...result.headers };
-    if (moduleMime && result.statusCode === 200 && url.pathname.endsWith('.mjs')) {
+    if (moduleMime && ((result.statusCode >= 200 && result.statusCode < 300) || result.statusCode === 304) && url.pathname.endsWith('.mjs')) {
       outputHeaders['content-type'] = 'text/javascript; charset=utf-8';
     }
     response.writeHead(result.statusCode, outputHeaders);
+    result.on('end', () => {
+      if (moduleMime && process.env.IFCLITE_WASM_HTTP_TRACE) console.error('wasm HTTP end', result.statusCode, Date.now() - started, url.href);
+    });
     result.pipe(response);
   });
+  response.on('close', () => { if (!response.writableEnded) upstream.destroy(); });
+  request.on('aborted', () => upstream.destroy());
   upstream.on('error', error => {
+    if (response.destroyed) return;
     console.error('wasm test HTTP forwarding failed:', error.message);
     if (!response.headersSent) response.writeHead(502);
     response.end(error.message);

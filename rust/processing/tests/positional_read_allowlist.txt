@@ -55,14 +55,11 @@
 1 rust/geometry/src/processors/boolean/mod.rs
 2 rust/geometry/src/processors/boolean/operand.rs
 1 rust/geometry/src/processors/boolean/polygonal_boundary.rs
-5 rust/geometry/src/processors/csg_primitive.rs
-1 rust/geometry/src/processors/extrusion.rs
+1 rust/geometry/src/processors/csg_primitive.rs
 4 rust/geometry/src/processors/extrusion_params.rs
-2 rust/geometry/src/processors/extrusion_tapered.rs
 18 rust/geometry/src/processors/helpers.rs
 3 rust/geometry/src/processors/sectioned.rs
 17 rust/geometry/src/processors/sectioned_positions.rs
-2 rust/geometry/src/processors/sphere.rs
 3 rust/geometry/src/processors/structural_edge.rs
 1 rust/geometry/src/processors/structural_face.rs
 8 rust/geometry/src/processors/surface.rs

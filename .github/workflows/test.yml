@@ -1108,6 +1108,14 @@ jobs:
           # triangulated_plan.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/tessellated/triangulated_plan.rs | grep -Fxq 'rust/geometry/src/processors/tessellated/triangulated_plan.rs'; then
             oracle_args+=(--mutation tests/evidence/geometry-tessellated-plans-b2/behaviour.oracle.patch)
+          # #7955 B1: the owned extrusion/primitive plans add extrusion_plan.rs,
+          # extrusion_tapered_plan.rs and primitive_plan.rs, which their tests import, so a
+          # whole-change revert cannot compile them (INCONCLUSIVE). Keep the plan types and
+          # break ONLY the behaviour: the Position transform is skipped when a plan is
+          # evaluated. Once extrusion_plan.rs is on main, ordinary whole-change revert
+          # resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/extrusion_plan.rs | grep -Fxq 'rust/geometry/src/processors/extrusion_plan.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-extrusion-plans-b1/behaviour.oracle.patch)
           # #7682: keep the new STEP-writer modules, StepStats fields and the TS
           # allocatedExpressId export loadable while disabling ONLY the guards the
           # changed tests pin (value/name/id-reuse refusals, the id-space refusal,

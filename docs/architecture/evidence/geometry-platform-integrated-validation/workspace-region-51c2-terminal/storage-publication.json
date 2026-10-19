@@ -1,0 +1,20 @@
+{
+  "manifest": "pc-wsl-511c0cc8-92d1-414d-b914-085ab03eb359-6e5179a275ca",
+  "name": "output.log",
+  "evidence": {
+    "backend": "local",
+    "bytes": 24925,
+    "encoding": "gzip",
+    "originalPath": "/home/louistrue/build-workers/worker-state/jobs/511c0cc8-92d1-414d-b914-085ab03eb359/output.log",
+    "originalSha256": "2108eb359a7fa559224be7f6735de18a15cd39cc0c59e40159b75a4bc92d33e2",
+    "sha256": "2ba7b3a603dc6f91afb8d4f878f4acc0e5d543b57ebf9c75dd1619ba3f639c5a",
+    "storedBytes": 5972,
+    "verified": true
+  },
+  "verified": true,
+  "owned_task_closure": {
+    "task": "ifclite-workspace-region-51c2-20261019",
+    "state": "reclaimed",
+    "scope": "Own completed failed compilation checkout reclaimed after exact publication verification; committed source/sharedcache/immutable evidence retained"
+  }
+}

@@ -153,3 +153,12 @@ fn retained_round1_staged_chunks_preserve_v1_envelopes_and_bound_arithmetic() {
             Err(ProtocolError::PayloadSize));
     }
 }
+
+#[test]
+fn sealed_empty_query_is_additive_opcode_19_and_preserves_solid_identity() {
+    let solid = WireHandle { session: 0xfedcba9876543210, slot: 77, generation: 19 };
+    let bytes = encode_request(43, &KernelCommand::IsEmpty { session: solid.session, solid }).unwrap();
+    assert_eq!(&bytes[8..12], &19u32.to_le_bytes());
+    assert_eq!(&bytes[12..20], &solid.session.to_le_bytes());
+    assert_eq!(&bytes[20..], &solid.to_bytes());
+}

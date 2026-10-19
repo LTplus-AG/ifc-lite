@@ -65,8 +65,9 @@ async function fixture() {
   const exports = {
     '/smlib/client.mjs': { SmlibWorkerTransport: Transport },
     '/smlib/sweep.mjs': { uploadSweep: async transport => {
-      const bytes = transport.allocate();
-      (transport.uploads ??= []).push(new DataView(bytes.buffer).getUint32(8, true));
+      const peer = peers.find(peer => peer.incarnation === transport.incarnation);
+      const bytes = peer.allocate();
+      (peer.uploads ??= []).push(new DataView(bytes.buffer).getUint32(8, true));
       return { bytes };
     } },
     '/smlib/sweep-contract.mjs': { runSweepContract: async transport => transport.witnesses.push('sweep') },
@@ -205,5 +206,29 @@ test('driver fixture: a returned wire alias cannot mint an independent result le
   const a = await evaluate(driver), b = await evaluate(driver);
   peers[0].aliasBoolean = true;
   await assert.rejects(boolean(driver, a, b), /aliases live input lease/);
+  assert.equal(driver.live(), false);
+});
+
+// Fault peers check refusal/retirement only, never prove SDK emptiness.
+test('driver fixture: zero or malformed meshes need matching actual-query classification', async () => {
+  for (const [query, info] of [
+    [0, [0,0,0,0,0,0]], [1, [4,0,0,0,0,0]], [1, [0,4,0,0,0,0]],
+    [1, [0,0,4,0,0,0]], [1, [0,0,0,1,0,0]], [1, [0,0,0,0,1,0]],
+    [1, [0,0,0,0,0,1]], [0, [4,4,4,0,0,1]], [2, [0,0,0,0,0,0]],
+  ]) {
+    const { Driver, peers } = await fixture();
+    const driver = new Driver(); await driver.qualifyDependencies();
+    const a = await evaluate(driver), b = await evaluate(driver);
+    peers[0].emptyQuery = query; peers[0].meshInfo = info;
+    await assert.rejects(boolean(driver, a, b), /invalid/);
+    assert.equal(driver.live(), false);
+    assert.equal(driver.objectLive(a.object), false);
+  }
+});
+
+test('driver fixture: construction refuses certified empty rather than widening source admission', async () => {
+  const { Driver, peers } = await fixture(); const driver = new Driver();
+  await driver.qualifyDependencies(); peers[0].emptyQuery = 1;
+  await assert.rejects(evaluate(driver), /empty retained construction/);
   assert.equal(driver.live(), false);
 });

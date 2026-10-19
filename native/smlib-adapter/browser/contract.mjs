@@ -20,6 +20,7 @@ export function response(frame, expectedStatus = 0) {
 export async function runContract(batch) {
   const call = async (op, ...fields) => response((await batch([request(op, ...fields)]))[0]);
   assert(new DataView(u64(0xfedcba9876543210n).buffer).getBigUint64(0, true) === 0xfedcba9876543210n, 'u64 precision');
+  await emptyContract(call);
   const session = await call(1);
   assert(new DataView(session.buffer).getBigUint64(0, true) > 0n, 'session identifier');
   const box = await call(3, session, ...[0, 0, 0, 2, 3, 4].map(f64));
@@ -78,4 +79,40 @@ export async function runContract(batch) {
   await call(8, session, other);
   await call(2, session);
   return { volume, triangleVolume: Math.abs(signedVolume), vertices, triangles, session: new DataView(session.buffer).getBigUint64(0, true).toString() };
+}
+
+// Actual C ABI dispatch, shared by Node WASM and browser Worker witnesses.
+// These are execution obligations, not a host-created empty receipt.
+async function emptyContract(call) {
+  const caps = new DataView((await call(12)).buffer);
+  assert(caps.getUint32(0, true) === 1 && (caps.getUint32(4, true) & 32), 'semantic empty capability');
+  const session = await call(1);
+  const a = await call(3, session, ...[0,0,0,2,2,2].map(f64));
+  const b = await call(3, session, ...[10,0,0,2,2,2].map(f64));
+  const classify = async (solid, expected) => {
+    const bytes = await call(19, session, solid);
+    assert(bytes.length === 4 && new DataView(bytes.buffer).getUint32(0, true) === Number(expected), 'actual solid semantic emptiness');
+    const mesh = await call(9, session, solid, f64(0.001), f64(5));
+    const info = await call(10, session, mesh);
+    assert(info.length === 24, 'complete mesh metadata');
+    const fields = Array.from({ length: 6 }, (_, i) => new DataView(info.buffer).getUint32(i * 4, true));
+    assert(expected ? fields.every(n => n === 0) : fields.slice(0,3).every(n => n > 0) && fields.slice(3).every(n => n === 0), 'strict matching empty metadata');
+    await call(8, session, mesh);
+  };
+  const disjoint = await call(5, session, a, b, u32(2));
+  const removed = await call(5, session, a, a, u32(3));
+  for (const empty of [disjoint, removed]) {
+    await classify(empty, true);
+    for (const operation of [1,2,3]) for (const reverse of [false,true]) {
+      const result = await call(5, session, reverse ? a : empty, reverse ? empty : a, u32(operation));
+      const expected = operation === 2 || (operation === 3 && !reverse);
+      await classify(result, expected);
+      if (!expected) assert(Math.abs(new DataView((await call(6, session, result, f64(1e-8))).buffer).getFloat64(0, true) - 8) < 1e-6, 'empty identity preserves nonempty geometry');
+      await call(8, session, result);
+      await classify(empty, true); await classify(a, false);
+    }
+    await call(8, session, empty);
+  }
+  await classify(a, false); await classify(b, false);
+  await call(2, session);
 }

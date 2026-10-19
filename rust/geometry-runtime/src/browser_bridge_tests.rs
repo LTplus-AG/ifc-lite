@@ -199,3 +199,48 @@ async fn invalid_construction_limits_preserve_actual_browser_object_and_worker()
     original.validate_live().unwrap();
     worker.retire();
 }
+
+// P2 actual private driver + Worker + pinned SDK. UNRUN until browser execution.
+#[wasm_bindgen_test(async)]
+async fn actual_browser_sealed_empty_boolean_identities_and_independent_leases() {
+    use ifc_lite_geometry::document::BooleanOperation::{Union, Intersection, Difference};
+    use crate::NumericalOutcome;
+    let mut worker = BrowserWorker::new_retained_execution().unwrap();
+    worker.qualify().await.unwrap();
+    let a = worker.evaluate(rectangle(&worker), 0.001, 5., 1_048_576).await.unwrap();
+    let b = worker.evaluate(rectangle(&worker), 0.001, 5., 1_048_576).await.unwrap();
+    let mut far = IDENTITY; far[12] = 100.;
+    let empty = worker.evaluate_retained_boolean(source(&a, IDENTITY), source(&b, far),
+        Intersection, 0.001, 5., 1_048_576).await.unwrap();
+    let removed = worker.evaluate_retained_boolean(source(&a, IDENTITY), source(&a, IDENTITY),
+        Difference, 0.001, 5., 1_048_576).await.unwrap();
+    for zero in [&empty, &removed] {
+        assert_eq!(zero.outcome(), NumericalOutcome::Empty);
+        assert!(zero.is_empty()); assert!(zero.mesh().positions.is_empty());
+        for operation in [Union, Intersection, Difference] {
+            for reverse in [false, true] {
+                let (left, right) = if reverse {
+                    (source(&a, IDENTITY), BrowserDependency::Result(zero))
+                } else { (BrowserDependency::Result(zero), source(&a, IDENTITY)) };
+                let result = worker.evaluate_retained_boolean(left, right, operation,
+                    0.001, 5., 1_048_576).await.unwrap();
+                let expected = operation == Intersection || (operation == Difference && !reverse);
+                assert_eq!(result.is_empty(), expected);
+                assert_eq!(result.mesh().indices.is_empty(), expected);
+                if !expected { assert!((volume(result.mesh()) - 1.).abs() < 1e-6); }
+                drop(result);
+                // Actual result lease release must leave all independent input
+                // leases live and usable for the next iteration.
+                a.validate_live().unwrap(); b.validate_live().unwrap(); zero.validate_live().unwrap();
+            }
+        }
+    }
+    drop(empty);
+    removed.validate_live().unwrap(); a.validate_live().unwrap(); b.validate_live().unwrap();
+    let intact = worker.evaluate_retained_boolean(source(&a, IDENTITY), source(&b, IDENTITY),
+        Union, 0.001, 5., 1_048_576).await.unwrap();
+    assert!((volume(intact.mesh()) - 1.).abs() < 1e-6);
+    drop(a); drop(b); drop(removed);
+    intact.validate_live().unwrap();
+    assert_ne!(worker.incarnation(), 0);
+}

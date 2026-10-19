@@ -95,3 +95,52 @@ fn actual_sdk_retained_limit_error_with_successful_cleanup_preserves_session() {
     assert!((worker.volume(solid, 1e-8).unwrap() - 8.).abs() < 1e-6);
     worker.release(solid).unwrap();
 }
+
+// P2 sealed-empty witness. Actual SDK execution is required; no mesh/host
+// substitute establishes the classification. Native result Drop remains a
+// separate whole-worker ownership gap: keep every result alive during this run.
+#[test]
+fn actual_sdk_sealed_empty_boolean_identities_preserve_independent_operands() {
+    use ifc_lite_geometry::document::BooleanOperation::{Union, Intersection, Difference};
+    use ifc_lite_geometry_runtime::{NumericalOutcome, RetainedDependency};
+    let Some(mut worker) = worker() else { return };
+    let (_, first) = request(&worker); let (_, second) = request(&worker);
+    let a = worker.evaluate_retained_extrusion(first, 0.001, 5., MeshLimits::default()).unwrap();
+    let b = worker.evaluate_retained_extrusion(second, 0.001, 5., MeshLimits::default()).unwrap();
+    let identity = [1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 0.,0.,0.,1.];
+    let mut far = identity; far[12] = 100.;
+    let source = |realization, world_from_source| RetainedDependency::Source { realization, world_from_source };
+    let empty = worker.evaluate_retained_boolean(source(&a, identity), source(&b, far),
+        Intersection, 0.001, 5., MeshLimits::default()).unwrap();
+    let removed = worker.evaluate_retained_boolean(source(&a, identity), source(&a, identity),
+        Difference, 0.001, 5., MeshLimits::default()).unwrap();
+    let mut results = Vec::new();
+    for zero in [&empty, &removed] {
+        assert_eq!(zero.outcome(), NumericalOutcome::Empty);
+        assert!(zero.is_empty()); assert!(zero.mesh().positions.is_empty());
+        assert!(worker.is_empty(zero.solid()).unwrap());
+        for operation in [Union, Intersection, Difference] {
+            for reverse in [false, true] {
+                let (left, right) = if reverse {
+                    (source(&a, identity), RetainedDependency::Result(zero))
+                } else { (RetainedDependency::Result(zero), source(&a, identity)) };
+                let result = worker.evaluate_retained_boolean(left, right, operation,
+                    0.001, 5., MeshLimits::default()).unwrap();
+                let expected = operation == Intersection || (operation == Difference && !reverse);
+                assert_eq!(result.is_empty(), expected);
+                assert_eq!(worker.is_empty(result.solid()).unwrap(), expected);
+                assert_eq!(result.mesh().indices.is_empty(), expected);
+                if !expected { assert!((worker.volume(result.solid(), 1e-8).unwrap() - 24.).abs() < 1e-6); }
+                a.validate_live().unwrap(); b.validate_live().unwrap(); zero.validate_live().unwrap();
+                assert!((worker.volume(a.solid(), 1e-8).unwrap() - 24.).abs() < 1e-6);
+                results.push(result);
+            }
+        }
+    }
+    // Explicit per-handle release preserves the independent inputs. This does
+    // not qualify dropping a native result, whose existing Drop retires owner.
+    worker.release(empty.solid()).unwrap();
+    assert!(empty.validate_live().is_err());
+    a.validate_live().unwrap(); b.validate_live().unwrap(); removed.validate_live().unwrap();
+    assert!(worker.is_empty(removed.solid()).unwrap());
+}

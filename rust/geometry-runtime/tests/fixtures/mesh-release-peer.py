@@ -24,14 +24,14 @@ while True:
     elif opcode == 12:
         data = struct.pack('<II', 1, 32)
     elif opcode == 19:
-        data = struct.pack('<I', 0)
+        data = struct.pack('<I', int(not Path(__file__).with_name('oversize').exists()))
     elif opcode == 1:
         data = struct.pack('<Q', 1)
     elif opcode in (3, 9):
         data = struct.pack('<QQ', 1, 1 if opcode == 3 else 2)
     elif opcode == 10:
-        vertices = 1000000 if Path(__file__).with_name('oversize').exists() else 1
-        data = struct.pack('<IIIIII', vertices, 1, 1, 0, 0, 0)
+        counts = (1000000, 1, 1, 0, 0, 0) if Path(__file__).with_name('oversize').exists() else (0, 0, 0, 0, 0, 0)
+        data = struct.pack('<IIIIII', *counts)
     elif opcode == 11:
         stream, offset, count = struct.unpack('<III', body[36:48])
         data = bytes(count * (8 if stream in (1, 4) else 4))

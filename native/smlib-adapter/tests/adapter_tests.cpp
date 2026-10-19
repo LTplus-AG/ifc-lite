@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <limits>
 extern "C" uint32_t header_works_in_c(void);
+void run_empty_tests();
 void run_mesh_tests();
 void run_sweep_tests();
 namespace {
@@ -24,6 +25,7 @@ void near(double actual, double expected) {
 }
 }
 int main() {
+    run_empty_tests();
     run_mesh_tests();
     run_sweep_tests();
     expect(header_works_in_c() == 1, "version from pure C translation unit");

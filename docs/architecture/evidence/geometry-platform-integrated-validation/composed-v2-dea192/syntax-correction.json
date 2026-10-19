@@ -1,0 +1,22 @@
+{
+  "source": "35beacbe24",
+  "initial_source": "29330bd80630b8fa558dea4e0bf32015470d73d6",
+  "initial_check": "11/12 translation units pass; new protocol.cpp has misleading-indentation warnings under -Werror",
+  "correction": "Only protocol.cpp native source changed; non-whitespace token sequence identical; statement wire order unchanged",
+  "recheck": "g++ C++17 -fsyntax-only -Wall -Wextra -Werror protocol.cpp PASS",
+  "combined_scope": "All12 current TUs have passing syntax checks:11 unchanged+1 corrected/rechecked; no object/link/SDK/WASM execution",
+  "current_source_hashes": {
+    "src/plane.cpp": "c1c4be8a95ce8457470dfa58b2818e60d1f3eff414ca86b207702f4f9589e5a8",
+    "src/plane_domain.cpp": "4e0873e84f285a799527fd39f913f4210cb749c0d4b00e5be7ba6ff5193a6af0",
+    "src/plane_source_domain.cpp": "4add7a2599ce54cc0e80f18f74d5bda6ef6c8eebc308dc496768cbd958ddeeec",
+    "src/protocol.cpp": "8d629040f4c36235ad2376225084030b03b681e1291829a72d23c9a8575e59bc",
+    "src/generated_plane.cpp": "a7279559e35260ddaa94e9d43507d69a50941ef984ad229b015339c6576cc8ed",
+    "src/face_lineage.cpp": "ed03a318bbb3a7d4073be0d1ad1b9569ea0364f40c37c54228f1b69d64b1cb6d",
+    "src/face_lineage_events.cpp": "3b24a3dc0339cf10fb00a693ef746ca81c09ffd7276ddb52c001e2ff6570d8b5",
+    "src/face_lineage_geometry.cpp": "55503c590951efe8b0a37dc7a84382ebc7223e56704a2202d11d4bbfe856ab64",
+    "src/representation_seal.cpp": "82cc39b3793ebbd6b2ce84a8e53e0b9130eb8143ab879c2ec991ce9d20b7ed21",
+    "tests/face_extraction_tests.cpp": "e86e49cbea26f4aafacf11c9c1297a5e1be543cadea53a25387e362de8e0dbb3",
+    "tests/face_lineage_tests.cpp": "7132809c10dff8049d8f8d86da0527b872e4d959152fe9fc214717fc64c25d65",
+    "tests/root_issuance_tests.cpp": "36984335fb36039db9255099463955047767495fcee4b58228dbb15b1e905cf8"
+  }
+}

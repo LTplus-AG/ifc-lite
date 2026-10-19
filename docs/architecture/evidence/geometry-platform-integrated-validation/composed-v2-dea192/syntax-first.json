@@ -1,0 +1,68 @@
+{
+  "source": "29330bd80630b8fa558dea4e0bf32015470d73d6",
+  "sdk": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "scope": "Combined C++ syntax only; no object/link/SDK execution",
+  "elapsed_seconds": 9.463109016418457,
+  "files": [
+    {
+      "path": "src/plane.cpp",
+      "exit_code": 0,
+      "diagnostics": ""
+    },
+    {
+      "path": "src/plane_domain.cpp",
+      "exit_code": 0,
+      "diagnostics": ""
+    },
+    {
+      "path": "src/plane_source_domain.cpp",
+      "exit_code": 0,
+      "diagnostics": ""
+    },
+    {
+      "path": "src/protocol.cpp",
+      "exit_code": 1,
+      "diagnostics": "native/smlib-adapter/src/protocol.cpp: In function \u2018void {anonymous}::rectangle_record(Writer&, const ifclite_smlib_rectangle_domain&)\u2019:\nnative/smlib-adapter/src/protocol.cpp:37:5: error: this \u2018for\u2019 clause does not guard... [-Werror=misleading-indentation]\n   37 |     for(double v:r.controls) w.f64(v); for(double v:r.u) w.f64(v); for(double v:r.v) w.f64(v);\n      |     ^~~\nnative/smlib-adapter/src/protocol.cpp:37:40: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the \u2018for\u2019\n   37 |     for(double v:r.controls) w.f64(v); for(double v:r.u) w.f64(v); for(double v:r.v) w.f64(v);\n      |                                        ^~~\nnative/smlib-adapter/src/protocol.cpp:38:5: error: this \u2018for\u2019 clause does not guard... [-Werror=misleading-indentation]\n   38 |     for(double v:r.bounds) w.f64(v); for(double v:r.uv_hull) w.f64(v); for(double v:r.inverse) w.f64(v);\n      |     ^~~\nnative/smlib-adapter/src/protocol.cpp:38:38: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the \u2018for\u2019\n   38 |     for(double v:r.bounds) w.f64(v); for(double v:r.uv_hull) w.f64(v); for(double v:r.inverse) w.f64(v);\n      |                                      ^~~\nnative/smlib-adapter/src/protocol.cpp:41:9: error: this \u2018for\u2019 clause does not guard... [-Werror=misleading-indentation]\n   41 |         for(double v:e.controls) w.f64(v); for(double v:e.knots) w.f64(v);\n      |         ^~~\nnative/smlib-adapter/src/protocol.cpp:41:44: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the \u2018for\u2019\n   41 |         for(double v:e.controls) w.f64(v); for(double v:e.knots) w.f64(v);\n      |                                            ^~~\nnative/smlib-adapter/src/protocol.cpp:42:9: error: this \u2018for\u2019 clause does not guard... [-Werror=misleading-indentation]\n   42 |         for(double v:e.interval) w.f64(v); for(double v:e.start) w.f64(v); for(double v:e.end) w.f64(v);\n      |         ^~~\nnative/smlib-adapter/src/protocol.cpp:42:44: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the \u2018for\u2019\n   42 |         for(double v:e.interval) w.f64(v); for(double v:e.start) w.f64(v); for(double v:e.end) w.f64(v);\n      |                                            ^~~\nnative/smlib-adapter/src/protocol.cpp:43:9: error: this \u2018for\u2019 clause does not guard... [-Werror=misleading-indentation]\n   43 |         for(double v:e.line_origin) w.f64(v); for(double v:e.line_axis) w.f64(v);\n      |         ^~~\nnative/smlib-adapter/src/protocol.cpp:43:47: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the \u2018for\u2019\n   43 |         for(double v:e.line_origin) w.f64(v); for(double v:e.line_axis) w.f64(v);\n      |                                               ^~~\nnative/smlib-adapter/src/protocol.cpp:44:9: error: this \u2018for\u2019 clause does not guard... [-Werror=misleading-indentation]\n   44 |         for(double v:e.step) w.f64(v); w.f64(e.scale);\n      |         ^~~\nnative/smlib-adapter/src/protocol.cpp:44:40: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the \u2018for\u2019\n   44 |         for(double v:e.step) w.f64(v); w.f64(e.scale);\n      |                                        ^\ncc1plus: all warnings being treated as errors\n"
+    },
+    {
+      "path": "src/generated_plane.cpp",
+      "exit_code": 0,
+      "diagnostics": ""
+    },
+    {
+      "path": "src/face_lineage.cpp",
+      "exit_code": 0,
+      "diagnostics": ""
+    },
+    {
+      "path": "src/face_lineage_events.cpp",
+      "exit_code": 0,
+      "diagnostics": ""
+    },
+    {
+      "path": "src/face_lineage_geometry.cpp",
+      "exit_code": 0,
+      "diagnostics": ""
+    },
+    {
+      "path": "src/representation_seal.cpp",
+      "exit_code": 0,
+      "diagnostics": ""
+    },
+    {
+      "path": "tests/face_extraction_tests.cpp",
+      "exit_code": 0,
+      "diagnostics": ""
+    },
+    {
+      "path": "tests/face_lineage_tests.cpp",
+      "exit_code": 0,
+      "diagnostics": ""
+    },
+    {
+      "path": "tests/root_issuance_tests.cpp",
+      "exit_code": 0,
+      "diagnostics": ""
+    }
+  ]
+}

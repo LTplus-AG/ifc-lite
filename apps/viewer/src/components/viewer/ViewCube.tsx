@@ -206,6 +206,11 @@ export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
                         .join(' / '),
                     })}
                     data-viewcube-zone={zone.kind}
+                    // The face button spans the whole face (its hit area is the full face, as
+                    // before the bevels existed); the edge and corner pieces sit on top of it.
+                    style={isFace
+                      ? { gridArea: '1 / 1 / -1 / -1' }
+                      : { gridColumn: zone.col + 2, gridRow: zone.row + 2, zIndex: 1 }}
                     // Keyboard users get the six face views (as before) plus the view shortcuts;
                     // 20 more stops, many of them facing away, would bloat the tab order.
                     tabIndex={isFace ? undefined : -1}

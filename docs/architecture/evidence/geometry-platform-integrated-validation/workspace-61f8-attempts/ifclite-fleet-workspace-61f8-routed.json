@@ -1,0 +1,22 @@
+{
+  "source": "61f8f00dd0e5ff33a2475c693b4f53200612f0b1",
+  "pid": 2074149,
+  "command": [
+    "/home/louistrue/build-workers/ifc-fleet",
+    "run",
+    "--route",
+    "fleet",
+    "--storage-task",
+    "ifclite-platform-workspace-61f8-fleet-20261019",
+    "--cwd",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361",
+    "--",
+    "bash",
+    "/home/louistrue/build-workers/setup/projects-20261017/ifc-lite/env-exec.sh",
+    "bash",
+    "-c",
+    "pnpm fixtures || exit $?; cargo test --workspace --no-fail-fast; test_status=$?; cargo clippy --workspace --all-targets -- -D warnings; clippy_status=$?; printf \"workspace_test_exit=%s clippy_exit=%s\\n\" \"$test_status\" \"$clippy_status\"; if [ \"$test_status\" -ne 0 ]; then exit \"$test_status\"; fi; exit \"$clippy_status\""
+  ],
+  "log": "/tmp/ifclite-fleet-workspace-61f8-routed.log",
+  "supersedesCancelledQueuedJob": "94bb02dc-1154-4f84-9a53-3292a57db7a8"
+}

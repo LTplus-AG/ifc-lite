@@ -1,0 +1,69 @@
+{
+  "id": "94bb02dc-1154-4f84-9a53-3292a57db7a8",
+  "host": {
+    "host": "pop-os",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 32,
+    "availableMemoryBytes": 113879748608,
+    "totalMemoryBytes": 134644969472,
+    "python": "3.12.3",
+    "time": 1792396363.1428509
+  },
+  "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361",
+  "sourceBefore": {
+    "commit": "61f8f00dd0e5ff33a2475c693b4f53200612f0b1",
+    "tree": "84868e89e0b720d1fdc385362e13ff7c50595837",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "c7b880d976fdd1c6676a47941fe1fe0308c643ac83476d122507d329b2cfbf0a",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+    }
+  },
+  "command": [
+    "bash",
+    "/home/louistrue/build-workers/setup/projects-20261017/ifc-lite/env-exec.sh",
+    "bash",
+    "-c",
+    "pnpm fixtures || exit $?; cargo test --workspace --no-fail-fast; test_status=$?; cargo clippy --workspace --all-targets -- -D warnings; clippy_status=$?; printf \"workspace_test_exit=%s clippy_exit=%s\\n\" \"$test_status\" \"$clippy_status\"; if [ \"$test_status\" -ne 0 ]; then exit \"$test_status\"; fi; exit \"$clippy_status\""
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792396363.1386476,
+  "resources": [
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361",
+    "/home/louistrue/build-workers/worker-state/caches/1c8ef91bc19f507e5b98a277"
+  ],
+  "state": "failed",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "storageTask": "ifclite-platform-workspace-61f8-20261019",
+  "storageTaskExplicit": true,
+  "storageResources": [
+    {
+      "path": "/home/louistrue/build-workers/worker-state/caches/1c8ef91bc19f507e5b98a277",
+      "role": "cache",
+      "project": "ifc-lite",
+      "compatibilityKey": "1c8ef91bc19f507e5b98a277"
+    }
+  ],
+  "error": "cancelled while queued",
+  "exitCode": 1,
+  "finishedAt": 1792396400.4602206,
+  "sourceAfter": {
+    "commit": "61f8f00dd0e5ff33a2475c693b4f53200612f0b1",
+    "tree": "84868e89e0b720d1fdc385362e13ff7c50595837",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "c7b880d976fdd1c6676a47941fe1fe0308c643ac83476d122507d329b2cfbf0a",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {}
+}

@@ -64,7 +64,7 @@ template<class Action> int32_t boundary(Action action) noexcept {
     } catch (...) {
         std::snprintf(last_error, sizeof(last_error), "%s", "unknown C++ exception");
     }
-    return IFCLITE_SMLIB_EXCEPTION;
+    return kernel_domain_is_tainted() ? IFCLITE_SMLIB_TAINTED_DOMAIN : IFCLITE_SMLIB_EXCEPTION;
 }
 Session& lookup(uint64_t id) {
     auto found = sessions.find(id);

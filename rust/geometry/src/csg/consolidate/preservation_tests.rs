@@ -324,8 +324,8 @@ fn issue_7949_open_edges_off_the_fold_are_a_tear_beyond_it() {
 fn issue_7949_an_open_sub_edge_split_along_a_fold_edge_is_not_a_tear_beyond_it() {
     use super::super::{buckets::Buckets, plane_merge::PlaneTri, supported_cells::Supported};
     use nalgebra::{Point3, Vector3};
-    // One retained fold triangle. A peer seam splits its bottom and left edges
-    // at (1,0) and (0,1): vertices the fold never owned, but which lie on it.
+    // One retained fold triangle. A peer seam splits its bottom edge at (1,0): a
+    // vertex the fold never owned, but which lies on it.
     let key = (0, 0, 0, 0);
     let (a, b, c) = (Point3::new(0., 0., 0.), Point3::new(2., 0., 0.), Point3::new(0., 2., 0.));
     let mut buckets = Buckets::new();
@@ -333,11 +333,18 @@ fn issue_7949_an_open_sub_edge_split_along_a_fold_edge_is_not_a_tear_beyond_it()
     let mut supported = Supported::default();
     supported.folded_buckets.push(key);
 
-    // All three corners sit on the fold's edges, so every open edge is the
-    // fold's own boundary.
-    let on_edges = represented(&[[1., 0., 0.], [0., 2., 0.], [0., 1., 0.]], &[[0, 1, 2]]);
-    assert!(!tears_beyond_folds(&on_edges, &buckets, &supported));
-    // One corner outside the fold: that boundary is not the fold's.
+    // The fold re-cut at (1,0): every open edge runs along the fold's boundary
+    // (the shared a-split diagonal is paired, so it is not open).
+    let split = represented(
+        &[[0., 0., 0.], [1., 0., 0.], [2., 0., 0.], [0., 2., 0.]],
+        &[[0, 1, 3], [1, 2, 3]],
+    );
+    assert!(!tears_beyond_folds(&split, &buckets, &supported));
+    // A chord through the fold's interior, both endpoints on its boundary, is
+    // not the fold's boundary.
+    let chord = represented(&[[1., 0., 0.], [0., 2., 0.], [0., 1., 0.]], &[[0, 1, 2]]);
+    assert!(tears_beyond_folds(&chord, &buckets, &supported));
+    // One corner outside the fold altogether.
     let off_fold = represented(&[[1., 0., 0.], [0., 2., 0.], [3., 3., 0.]], &[[0, 1, 2]]);
     assert!(tears_beyond_folds(&off_fold, &buckets, &supported));
 }

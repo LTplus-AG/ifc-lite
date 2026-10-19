@@ -176,16 +176,24 @@ impl GraphProgram {
         let passes = match mode { 1 => vec![true], 2 => vec![false], _ => vec![true, false] };
         let mut program = Self { store, revision, nodes, seeds, passes, pass: 0, queue: Vec::new(),
             current: None, pending: None, sequence: 0, occurrence: 0, emitted: HashSet::new(), retained: Vec::new(), failure: None, definitions: HashMap::new(), point_metadata: HashMap::new(), limits: LIMITS, queued_bytes: 0 };
-        program.seed_pass();
+        program.seed_pass()?;
         Ok(program)
     }
-    fn seed_pass(&mut self) {
+    /// Seeds are charged against the queue and frame budgets before any frame
+    /// is allocated, so a packet of many isolated nodes is refused up front.
+    fn seed_pass(&mut self) -> Result<(), ImportError> {
+        let bytes = self.seeds.len().checked_mul(FRAME_BYTES + ENTRY_BYTES)
+            .and_then(|bytes| bytes.checked_add(self.queued_bytes));
+        if bytes.is_none_or(|bytes| bytes > self.limits.queued_bytes) || self.seeds.len() as u64 > self.limits.frames {
+            return Err(self.fail(ImportError::InvalidPacket));
+        }
         let frames: Vec<Frame> = self.seeds.iter().rev().map(|node| Frame {
             node: *node, lineage: vec![LineageEntry { node: *node, edge: None }],
             bytes: FRAME_BYTES + ENTRY_BYTES, ..Frame::default()
         }).collect();
         self.queued_bytes = self.queued_bytes.saturating_add(frames.iter().map(|f| f.bytes).sum());
         self.queue.extend(frames);
+        Ok(())
     }
     fn issue(&mut self, kind: EventKind) -> Result<(), ImportError> {
         let frame = self.current.as_ref().ok_or(ImportError::IdentityMismatch)?;
@@ -201,7 +209,7 @@ impl GraphProgram {
         while self.queue.is_empty() {
             if self.pass + 1 == self.passes.len() { return Ok(None); }
             self.pass += 1;
-            self.seed_pass();
+            self.seed_pass()?;
         }
         let mut frame = self.queue.pop().ok_or(ImportError::IdentityMismatch)?;
         self.queued_bytes = self.queued_bytes.saturating_sub(frame.bytes);

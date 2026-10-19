@@ -30,11 +30,13 @@ fn empty_bbox_and_signed_zero_are_preserved() {
     let p=math::points(&[0.,0.,-0.],&[]).unwrap();assert_eq!(p.positions[1].to_bits(),(-0.0_f32).to_bits());assert_eq!(p.positions[2].to_bits(),(-0.0_f32).to_bits());
 }
 #[test]
-fn mesh_checks_every_projective_denominator_but_points_preserve_first_only() {
+fn mesh_and_points_check_every_projective_denominator() {
     let stack=vec![vec![vec![1.,0.,0.,1.],vec![0.,1.,0.,0.],vec![0.,0.,1.,0.],vec![0.,0.,0.,1.]]];
     let raw=RawMesh{points:vec![vec![0.,0.,0.],vec![-1.,0.,0.]],face_vertex_indices:vec![],face_vertex_counts:None,normals:None};
     assert_eq!(math::mesh(&raw,&stack).unwrap_err(),ImportError::HomogeneousMesh);
-    let p=math::points(&[0.,0.,0.,-1.,0.,0.],&stack).unwrap();assert!(!p.positions[3].is_finite());
+    // A later zero w used to place a non-finite point and poison the bbox.
+    assert_eq!(math::points(&[0.,0.,0.,-1.,0.,0.],&stack).unwrap_err(),ImportError::HomogeneousPoints);
+    assert!(math::points(&[0.,0.,0.,1.,0.,0.],&stack).is_ok());
 }
 
 #[test]

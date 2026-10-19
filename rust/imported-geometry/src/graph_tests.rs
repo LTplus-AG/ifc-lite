@@ -314,3 +314,23 @@ fn oversized_local_transforms_are_refused() {
     let mut p = GraphProgram::new(1, 1, 1, vec![node("root", &[])]).unwrap();
     drain_root(&mut p, NodeReply { local_transform: Some(translation(1., 2., 3.)), ..attributes(true, false, false) }).unwrap();
 }
+
+#[test]
+fn isolated_seeds_are_charged_before_they_are_queued() {
+    let nodes: Vec<Node> = (0..200).map(|i| Node { path: format!("n{i}"), children: Vec::new() }).collect();
+    // Two passes: the second pass re-seeds every node and must be charged first.
+    let mut p = GraphProgram::new(1, 1, 3, nodes.clone()).unwrap();
+    p.limits.queued_bytes = 1_000;
+    let mut outcome = None;
+    while outcome.is_none() {
+        outcome = match p.poll() {
+            Ok(Some(request)) => { let s = request.sequence; p.node_reply(s, attributes(true, false, false)).err() }
+            Ok(None) => Some(ImportError::IdentityMismatch),
+            Err(error) => Some(error),
+        };
+    }
+    assert_eq!(outcome, Some(ImportError::InvalidPacket));
+    assert!(p.queue.is_empty());
+    // The production budget admits the same graph.
+    assert!(GraphProgram::new(1, 1, 3, nodes).is_ok());
+}

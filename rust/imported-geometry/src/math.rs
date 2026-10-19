@@ -128,9 +128,9 @@ pub(crate) fn points(source:&[f64],stack:&[RawMatrix])->Result<PointsOutput,Impo
     let staged=stage_values(source);
     let mut positions=Vec::with_capacity(source.len());
     let mut min=[f64::INFINITY;3]; let mut max=[f64::NEG_INFINITY;3];
-    for (index,chunk) in staged.chunks(3).enumerate() {
+    for chunk in staged.chunks(3) {
         let mut p=[at(chunk,0),at(chunk,1),at(chunk,2)];
-        if let Some(m)=transform { let w=denominator(p,&m); if index==0 && staged.len()>=3 && bad_w(w) {return Err(ImportError::HomogeneousPoints);} p=placed(p,&m,w,true); }
+        if let Some(m)=transform { let w=denominator(p,&m); if chunk.len()==3 && bad_w(w) {return Err(ImportError::HomogeneousPoints);} p=placed(p,&m,w,true); }
         let out=yup(p);
         positions.extend_from_slice(&out[..chunk.len()]);
         for j in 0..3 { let v=if j<chunk.len(){out[j] as f64}else{f64::NAN}; if v<min[j]{min[j]=v;}

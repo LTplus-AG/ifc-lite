@@ -1,20 +1,28 @@
 // SPDX-License-Identifier: MPL-2.0
-// P2 actual pinned SDK semantic empty certificates; UNRUN until SDK execution.
+// P2 actual pinned SDK semantic empty certificates. Keep every oracle strict.
 #include "ifclite_smlib.h"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <initializer_list>
 namespace {
-void expect(bool value) {
+void expect_at(bool value, const char* expression, int line) {
     if (!value) {
         char error[512]; ifclite_smlib_error_copy(error,sizeof(error));
-        std::fprintf(stderr,"empty outcome invariant failed: %s\n",error); std::exit(1);
+        std::fprintf(stderr,"empty outcome invariant failed at %d (%s): %s\n",line,expression,error); std::exit(1);
     }
 }
-void ok(int32_t value) { expect(value == IFCLITE_SMLIB_OK); }
+#define expect(value) expect_at((value), #value, __LINE__)
+void ok_at(int32_t value, const char* expression, int line) {
+    if (value != IFCLITE_SMLIB_OK) std::fprintf(stderr,"empty call status=%d expression=%s line=%d\n",value,expression,line);
+    expect_at(value == IFCLITE_SMLIB_OK, expression, line);
+}
+#define ok(value) ok_at((value), #value, __LINE__)
 void classify(uint64_t session, ifclite_smlib_handle solid, bool empty) {
     uint32_t value=99; ok(ifclite_smlib_is_empty(session,solid,&value));
+    if (value != uint32_t(empty)) std::fprintf(stderr,
+        "empty query slot=%u generation=%u expected=%u actual=%u\n",
+        solid.slot,solid.generation,unsigned(empty),value);
     expect(value == uint32_t(empty));
     ifclite_smlib_handle mesh{};
     ok(ifclite_smlib_tessellate(session,solid,0.001,5,&mesh));
@@ -45,6 +53,7 @@ void run_empty_tests() {
             for (bool reverse : {false,true}) {
                 ifclite_smlib_handle result{};
                 ok(ifclite_smlib_boolean(session,reverse ? a : zero,reverse ? zero : a,operation,&result));
+                std::fprintf(stderr,"empty identity operand=%u operation=%u reverse=%u\n",zero.slot,operation,unsigned(reverse));
                 const bool expected=operation==IFCLITE_SMLIB_INTERSECTION ||
                     (operation==IFCLITE_SMLIB_DIFFERENCE && !reverse);
                 classify(session,result,expected);

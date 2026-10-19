@@ -68,10 +68,10 @@ struct RestoreBudget { cap: Option<u64>, element: Option<u64> }
 impl Drop for RestoreBudget {
     fn drop(&mut self) {
         PANIC.with(|p| *p.borrow_mut() = None);
-        budget::set_element_cap(None);
+        budget::test_caps::set_element_cap(None);
         budget::begin_element();
-        budget::set_cap(self.cap);
-        budget::set_element_cap(self.element);
+        budget::test_caps::set_cap(self.cap);
+        budget::test_caps::set_element_cap(self.element);
     }
 }
 fn positive_control(host: &Mesh, context: &VoidContext) -> Vec<(u8, u32, u32)> {
@@ -84,8 +84,8 @@ fn positive_control(host: &Mesh, context: &VoidContext) -> Vec<(u8, u32, u32)> {
     assert!(crate::mesh_check::closed_enough_to_emit(&precursor));
     assert!((crate::mesh_check::signed_volume(&precursor).abs() - 96.).abs() < 1e-5);
     let residual = context.bool2d.as_ref().unwrap().residual.as_ref().unwrap();
-    budget::set_cap(Some(budget::DEFAULT_CAP));
-    budget::set_element_cap(Some(1));
+    budget::test_caps::set_cap(Some(budget::DEFAULT_CAP));
+    budget::test_caps::set_element_cap(Some(1));
     budget::begin_element();
     crate::csg::take_csg_census();
     let control = Execution::new(TessellationQuality::default(), configuration(disabled));
@@ -148,13 +148,14 @@ fn staged_real_capped_child_failure_drops_on_correction_stop_or_unwind() {
         return;
     };
     let _lock = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _test_caps = budget::test_caps::scope();
     let _restore = RestoreBudget { cap: budget::cap(), element: budget::element_cap() };
-    budget::set_cap(None);
-    budget::set_element_cap(None);
+    budget::test_caps::set_cap(None);
+    budget::test_caps::set_element_cap(None);
     budget::begin_element();
     let (host, context) = fixture();
     let expected_work = positive_control(&host, &context);
-    budget::set_element_cap(None);
+    budget::test_caps::set_element_cap(None);
     budget::begin_element();
     let router = GeometryRouter::new();
     earlier_host(&router);
@@ -162,8 +163,8 @@ fn staged_real_capped_child_failure_drops_on_correction_stop_or_unwind() {
     let prior_failures = format!("{:?}", router.csg_failures.borrow());
     clear_telemetry(&router);
     crate::csg::take_csg_census();
-    budget::set_cap(Some(budget::DEFAULT_CAP));
-    budget::set_element_cap(Some(1));
+    budget::test_caps::set_cap(Some(budget::DEFAULT_CAP));
+    budget::test_caps::set_element_cap(Some(1));
     budget::begin_element();
     GATES.with(|n| n.set(0));
     let payload = Arc::new(String::from("original staged correction panic"));

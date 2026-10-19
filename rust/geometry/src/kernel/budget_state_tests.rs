@@ -13,15 +13,15 @@ impl Caps {
             op: cap(),
             element: element_cap(),
         };
-        set_cap(Some(op));
-        set_element_cap(Some(element));
+        test_caps::set_cap(Some(op));
+        test_caps::set_element_cap(Some(element));
         saved
     }
 }
 impl Drop for Caps {
     fn drop(&mut self) {
-        set_cap(self.op);
-        set_element_cap(self.element);
+        test_caps::set_cap(self.op);
+        test_caps::set_element_cap(self.element);
     }
 }
 fn charge(count: usize) {
@@ -33,6 +33,7 @@ fn charge(count: usize) {
 #[test]
 fn interleaved_elements_keep_their_cumulative_caps_and_restore_the_caller() {
     let _lock = GLOBAL_CAP_LOCK.lock().unwrap();
+    let _test_caps = test_caps::scope();
     let _caps = Caps::set(100, 3);
     let _caller = enter_element();
     begin();
@@ -48,7 +49,7 @@ fn interleaved_elements_keep_their_cumulative_caps_and_restore_the_caller() {
         charge(1);
         assert!(!tripped());
     });
-    set_element_cap(Some(1000));
+    test_caps::set_element_cap(Some(1000));
     first.with_scope(|| {
         assert_eq!(element_count(), 2);
         charge(1);
@@ -70,6 +71,7 @@ fn interleaved_elements_keep_their_cumulative_caps_and_restore_the_caller() {
 #[test]
 fn resuming_keeps_current_operation_cap_until_an_actual_new_operation_begins() {
     let _lock = GLOBAL_CAP_LOCK.lock().unwrap();
+    let _test_caps = test_caps::scope();
     let _caps = Caps::set(2, 100);
     let _caller = enter_element();
     begin();
@@ -79,7 +81,7 @@ fn resuming_keeps_current_operation_cap_until_an_actual_new_operation_begins() {
         charge(1);
         assert!(!tripped());
     });
-    set_cap(Some(100));
+    test_caps::set_cap(Some(100));
     state.with_scope(|| {
         charge(1);
         assert_eq!(count(), 2);
@@ -95,6 +97,7 @@ fn resuming_keeps_current_operation_cap_until_an_actual_new_operation_begins() {
 #[test]
 fn element_budget_survives_thread_migration_and_restores_destination_counters() {
     let _lock = GLOBAL_CAP_LOCK.lock().unwrap();
+    let _test_caps = test_caps::scope();
     let _caps = Caps::set(4, 6);
     let _caller = enter_element();
     begin();
@@ -104,6 +107,10 @@ fn element_budget_survives_thread_migration_and_restores_destination_counters() 
         charge(2);
     });
     let mut state = std::thread::spawn(move || {
+        let _test_caps = test_caps::scope();
+        // Destination configuration is independent from the migrated snapshot.
+        test_caps::set_cap(Some(20));
+        test_caps::set_element_cap(Some(30));
         let _destination = enter_element();
         begin();
         charge(1);
@@ -113,6 +120,8 @@ fn element_budget_survives_thread_migration_and_restores_destination_counters() 
             assert!(tripped(), "the operation cap travels with the state");
         });
         assert_eq!((count(), element_count()), (1, 1));
+        assert_eq!(OP_CAP.with(|cap| cap.get()), 20);
+        assert_eq!((cap(), element_cap()), (Some(20), Some(30)));
         assert!(!tripped());
         state
     })
@@ -134,6 +143,7 @@ fn element_budget_survives_thread_migration_and_restores_destination_counters() 
 #[test]
 fn nested_scopes_and_error_return_restore_enclosing_counters_and_caps() {
     let _lock = GLOBAL_CAP_LOCK.lock().unwrap();
+    let _test_caps = test_caps::scope();
     let _caps = Caps::set(8, 10);
     let _caller = enter_element();
     begin();
@@ -169,6 +179,7 @@ fn nested_scopes_and_error_return_restore_enclosing_counters_and_caps() {
 #[test]
 fn panic_saves_element_progress_and_restores_the_callers_budget() {
     let _lock = GLOBAL_CAP_LOCK.lock().unwrap();
+    let _test_caps = test_caps::scope();
     let _caps = Caps::set(4, 6);
     let _caller = enter_element();
     begin();

@@ -149,17 +149,18 @@ fn opening_terminal_port_late_stop_retains_completed_root_kernel_failure() {
     }
     use crate::kernel::budget;
     let _cap_guard = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _test_caps = budget::test_caps::scope();
     struct RestoreBudget { cap: Option<u64>, element: Option<u64> }
     impl Drop for RestoreBudget {
         fn drop(&mut self) {
-            budget::set_element_cap(None);
+            budget::test_caps::set_element_cap(None);
             budget::begin_element();
-            budget::set_cap(self.cap);
-            budget::set_element_cap(self.element);
+            budget::test_caps::set_cap(self.cap);
+            budget::test_caps::set_element_cap(self.element);
         }
     }
     let _restore = RestoreBudget { cap: budget::cap(), element: budget::element_cap() };
-    budget::set_cap(Some(budget::DEFAULT_CAP));
+    budget::test_caps::set_cap(Some(budget::DEFAULT_CAP));
     let router = GeometryRouter::new();
     // A real successful route creates success telemetry, which must remain
     // unpublished if acceptance is stopped (not merely stay zero on a miss).
@@ -198,7 +199,7 @@ fn opening_terminal_port_late_stop_retains_completed_root_kernel_failure() {
     crate::router::voids::take_bool2d_stats();
     crate::router::voids::take_prism_stats();
     crate::rect_fast::take_param_fires();
-    budget::set_element_cap(Some(1));
+    budget::test_caps::set_element_cap(Some(1));
     budget::begin_element();
     resource::ExecutionAccount::default().scope(|| {
         let outcome = ReadyOperation::new(host, std::sync::Arc::new(context), 91109,

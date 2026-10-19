@@ -43,13 +43,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 mod state;
 pub use state::ElementState;
 
-/// Serialises every test that mutates the process-global `CAP` / `ELEMENT_CAP`
-/// atomics, so cargo's parallel runner can't race them. Shared crate-wide (not
-/// just this module's tests) so cap-mutating tests in OTHER modules — e.g. the
-/// voids-router engulf-suppression regression — take the SAME lock and never
-/// clobber each other's cap while a boolean runs. Test-only.
+// Test configuration never changes the process profile seen by other tests.
 #[cfg(test)]
-pub(crate) static GLOBAL_CAP_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+#[path = "budget_test_caps.rs"]
+pub(crate) mod test_caps;
+#[cfg(test)]
+pub(crate) use test_caps::GLOBAL_CAP_LOCK;
 
 /// Default per-boolean exact-evaluation cap for the interactive profile.
 ///
@@ -161,6 +160,8 @@ pub fn set_element_cap(cap: Option<u64>) {
 
 /// The active per-boolean cap, as configured (`None` ⇒ unbounded).
 pub fn cap() -> Option<u64> {
+    #[cfg(test)]
+    if let Some(cap) = test_caps::configured_operation() { return cap; }
     match CAP.load(Ordering::Relaxed) {
         0 => None,
         n => Some(n),
@@ -169,6 +170,8 @@ pub fn cap() -> Option<u64> {
 
 /// The active per-element cap, as configured (`None` ⇒ unbounded).
 pub fn element_cap() -> Option<u64> {
+    #[cfg(test)]
+    if let Some(cap) = test_caps::configured_element() { return cap; }
     match ELEMENT_CAP.load(Ordering::Relaxed) {
         0 => None,
         n => Some(n),
@@ -189,6 +192,8 @@ pub fn begin() {
         Some(v) => v, // env override wins (0 = unbounded)
         None => CAP.load(Ordering::Relaxed),
     };
+    #[cfg(test)]
+    let cap = test_caps::operation(cap);
     OP_CAP.with(|c| c.set(if cap == 0 { u64::MAX } else { cap }));
     COUNT.with(|c| c.set(0));
 }
@@ -216,6 +221,8 @@ pub fn begin_element() {
         Some(v) => v == 0,
         None => CAP.load(Ordering::Relaxed) == 0,
     };
+    #[cfg(test)]
+    let boolean_unbounded = test_caps::unbounded(boolean_unbounded);
     let elem_cap = if boolean_unbounded {
         0 // unbounded (server / offline export)
     } else {
@@ -224,6 +231,8 @@ pub fn begin_element() {
             None => ELEMENT_CAP.load(Ordering::Relaxed),
         }
     };
+    #[cfg(test)]
+    let elem_cap = test_caps::element(elem_cap, boolean_unbounded);
     ELEM_CAP.with(|c| c.set(if elem_cap == 0 { u64::MAX } else { elem_cap }));
     ELEM_COUNT.with(|c| c.set(0));
 }

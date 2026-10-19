@@ -33,10 +33,10 @@ fn box_mesh(center_x: f64, half: [f64; 3]) -> Mesh {
 struct RestoreBudget { cap: Option<u64>, element: Option<u64> }
 impl Drop for RestoreBudget {
     fn drop(&mut self) {
-        budget::set_element_cap(None);
+        budget::test_caps::set_element_cap(None);
         budget::begin_element();
-        budget::set_cap(self.cap);
-        budget::set_element_cap(self.element);
+        budget::test_caps::set_cap(self.cap);
+        budget::test_caps::set_element_cap(self.element);
     }
 }
 
@@ -55,10 +55,11 @@ fn opening_root_unwind_drains_real_capped_failure_and_preserves_payload_once() {
         return;
     }
     let _lock = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _test_caps = budget::test_caps::scope();
     let _restore = RestoreBudget { cap: budget::cap(), element: budget::element_cap() };
     // An unbounded per-boolean profile also disables the element cap.
-    budget::set_cap(Some(budget::DEFAULT_CAP));
-    budget::set_element_cap(Some(1));
+    budget::test_caps::set_cap(Some(budget::DEFAULT_CAP));
+    budget::test_caps::set_element_cap(Some(1));
     budget::begin_element();
     crate::csg::take_csg_census();
     let host = box_mesh(0., [1., 0.15, 1.]);

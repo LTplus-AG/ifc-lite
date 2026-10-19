@@ -10,6 +10,7 @@ fn actual() -> (Tri,Tri,[f64;3]) {
 }
 fn check(source:Tri,host:Tri,target:[f64;3])->bool {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let _test_caps = budget::test_caps::scope();
     budget::begin();let band=NearBand::from_operands(&[source],&[host]);
     let face=Face::new(host,&band).unwrap();certificate(&source,target,&face,&band)
 }
@@ -52,6 +53,7 @@ fn issue_7292_nonfinite_and_degenerate_inputs_never_certify() {
 #[test]
 fn issue_7292_raw_key_rejection_is_coherent_and_admitted_paths_are_exempt() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let _test_caps = budget::test_caps::scope();
     let(s,h,q)=actual();let band=NearBand::from_operands(&[s],&[h]);let f=Face::new(h,&band).unwrap();
     let mut p=vec![Proposal{admitted_q20_face:None,ti:0,vi:0,original:s[0],target:Some(q),refused_face:Some(&f),initial_foot:Some(q)},
         Proposal{admitted_q20_face:None,ti:1,vi:0,original:s[0],target:Some(q),refused_face:Some(&f),initial_foot:Some(q)}];
@@ -70,8 +72,9 @@ fn issue_7292_raw_key_rejection_is_coherent_and_admitted_paths_are_exempt() {
 #[test]
 fn issue_7292_budget_exhaustion_never_certifies_a_new_veto() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap();
-    struct Reset(Option<u64>);impl Drop for Reset{fn drop(&mut self){budget::set_cap(self.0);budget::begin();}}
-    let _reset=Reset(budget::cap());budget::set_cap(Some(1));budget::begin();budget::note_escalation();
+    let _test_caps = budget::test_caps::scope();
+    struct Reset(Option<u64>);impl Drop for Reset{fn drop(&mut self){budget::test_caps::set_cap(self.0);budget::begin();}}
+    let _reset=Reset(budget::cap());budget::test_caps::set_cap(Some(1));budget::begin();budget::note_escalation();
     let(s,h,q)=actual();let band=NearBand::from_operands(&[s],&[h]);let f=Face::new(h,&band).unwrap();
     assert!(budget::tripped());assert!(!certificate(&s,q,&f,&band));
 }
@@ -92,7 +95,8 @@ fn issue_7292_initial_step_must_not_veto_standing_secondary_axis_completion_8693
 
 #[test]
 fn issue_7292_actual473_old_certificate_true_but_new_stability_declines_veto() {
-    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap();let _element=budget::enter_element();
+    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _test_caps = budget::test_caps::scope();let _element=budget::enter_element();
     let host=[[-20.0,0.0,3900.0],[270.0006103515625,0.0,3900.0],[270.0006103515625,0.0,0.0]];
     let source=[[19.681137084960938,-10.0,3869.99951171875],[19.680282592773438,G,3869.99951171875],[19.680282592773438,G,3899.99951171875]];
     let band=NearBand::from_operands(&[source],&[host]);let face=Face::new(host,&band).unwrap();

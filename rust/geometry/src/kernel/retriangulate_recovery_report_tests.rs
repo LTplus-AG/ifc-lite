@@ -34,6 +34,7 @@ fn missing(mesh:&Mesh2d,it:&Interner,canon:&Canonical)->usize {
 #[test]
 fn issue_7292_net_unchanged_crossed_diagonal_pass_cannot_report_zero() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let _test_caps = budget::test_caps::scope();
     let _element=budget::enter_element();budget::begin();
     let (it,mut mesh,canon)=square();
     let converged=passes::recover(&mut mesh,&it,&canon.segments);
@@ -46,6 +47,7 @@ fn issue_7292_net_unchanged_crossed_diagonal_pass_cannot_report_zero() {
 #[test]
 fn issue_7292_actual794_b65_crossed_constraints_recover_or_report() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let _test_caps = budget::test_caps::scope();
     let _element=budget::enter_element();budget::begin();
     let input=actual::input();let mut it=Interner::new();
     let mesh=triangulate(&input,&mut it).expect("actual nondegenerate B65");
@@ -57,6 +59,7 @@ fn issue_7292_actual794_b65_crossed_constraints_recover_or_report() {
 #[test]
 fn issue_7292_attempt_flag_reuses_existing_edge_gate_and_reports_bail() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let _test_caps = budget::test_caps::scope();
     let _element=budget::enter_element();budget::begin();
     let (mut it,mut mesh,canon)=square();let (a,c)=canon.segments[0];
     assert!(!recover_subsegment(&mut mesh,&it,a,c));
@@ -68,10 +71,11 @@ fn issue_7292_attempt_flag_reuses_existing_edge_gate_and_reports_bail() {
 #[test]
 fn issue_7292_tripped_budget_does_not_start_recovery_or_final_audit() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
-    struct Reset(Option<u64>);impl Drop for Reset{fn drop(&mut self){budget::set_cap(self.0);budget::begin();}}
+    let _test_caps = budget::test_caps::scope();
+    struct Reset(Option<u64>);impl Drop for Reset{fn drop(&mut self){budget::test_caps::set_cap(self.0);budget::begin();}}
     let _reset=Reset(budget::cap());let _element=budget::enter_element();
     let (it,mut mesh,canon)=square();let before=mesh.tris.clone();
-    budget::set_cap(Some(1));budget::begin();budget::note_escalation();
+    budget::test_caps::set_cap(Some(1));budget::begin();budget::note_escalation();
     assert!(budget::tripped());let counters=budget::snapshot_counters();
     assert!(!passes::recover(&mut mesh,&it,&canon.segments));
     let axis=mesh.axis;audit_and_recover(&mut mesh,&it,&canon,axis);

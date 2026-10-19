@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Retained-authored round1: interpreted source, explicit execution, document consumer.
 #![cfg(not(target_arch = "wasm32"))]
-use ifc_lite_geometry::document::{retained_sweep, EvaluationContract, RetainedRefusal};
+use ifc_lite_geometry::document::{EvaluationContract, RetainedRefusal};
 use ifc_lite_geometry_runtime::{MeshLimits, SmlibWorker};
 use ifc_lite_processing::authored_geometry::{
     evaluator::{AuthoredRetainedDocument, RetainedDisplayContract},
@@ -44,7 +44,7 @@ fn model(circle: bool) -> String {
 }
 #[test]
 fn retained_round1_units_and_separate_source_frames_remain_f64_and_replayable() {
-    for circle in [false] {
+    for circle in [false, true] {
         let input = model(circle);
         let plan = plan_authored_geometry(input.as_bytes(), Some(&HashSet::from([31])));
         assert_eq!(plan.recipes.len(), 1, "{:?}", plan.diagnostics);
@@ -57,8 +57,8 @@ fn retained_round1_units_and_separate_source_frames_remain_f64_and_replayable() 
         let request = doc
             .prepare(key, EvaluationContract::RetainedBrep, 1)
             .unwrap();
-        assert_eq!(request.recipe().source.depth, Some(3000.));
-        let payload = retained_sweep::lower(request.recipe()).unwrap();
+        assert_eq!(request.recipe().extrusion().unwrap().source.depth, Some(3000.));
+        let payload = request.recipe().lower().unwrap();
         let a = Matrix4::from_column_slice(&payload.source_from_evaluation);
         let b = Matrix4::from_column_slice(&payload.evaluation_from_source);
         assert!((a * b - Matrix4::identity()).norm() < 1e-9);
@@ -72,11 +72,12 @@ fn retained_round1_units_and_separate_source_frames_remain_f64_and_replayable() 
         assert!((p[2] - 3.).abs() < 1e-12);
         assert_eq!(
             payload.bytes,
-            retained_sweep::lower(request.recipe()).unwrap().bytes
+            request.recipe().lower().unwrap().bytes
         );
         assert_eq!(
             request
                 .recipe()
+                .extrusion().unwrap()
                 .source
                 .profile
                 .as_ref()
@@ -101,7 +102,7 @@ fn retained_round1_holed_profiles_refuse_before_kernel_instead_of_becoming_empty
     profile.loops.push(inner);
     assert!(matches!(
         AuthoredRetainedDocument::admit_source(&plan, &key, 1, 1),
-        Err(RetainedRefusal::UnqualifiedRegion)
+        Err(RetainedRefusal::InvalidSource(_))
     ));
 }
 
@@ -114,7 +115,8 @@ fn retained_round1_actual_sdk_extrusion_is_consumed_without_touching_exact_defau
         return;
     };
     let mut worker = SmlibWorker::spawn(executable).unwrap();
-    for circle in [false] {
+    worker.qualify_ordered_regions().unwrap();
+    for circle in [false, true] {
         let input = model(circle);
         let plan = plan_authored_geometry(input.as_bytes(), Some(&HashSet::from([31])));
         let key = &plan.recipes[0].source;
@@ -253,13 +255,28 @@ fn retained_round1_default_exact_consumer_is_still_operational_after_authored_ad
 }
 
 #[test]
-fn retained_round1_circle_is_refused_until_positive_sdk_sweep_qualification() {
+fn retained_round3_circle_source_admits_but_actual_worker_requires_qualification() {
     let input = model(true);
     let plan = plan_authored_geometry(input.as_bytes(), Some(&HashSet::from([31])));
-    assert!(matches!(
-        AuthoredRetainedDocument::admit_source(&plan, &plan.recipes[0].source, 1, 1),
-        Err(RetainedRefusal::UnqualifiedRegion)
-    ));
+    let key = &plan.recipes[0].source;
+    let document = AuthoredRetainedDocument::admit_source(&plan, key, 1, 1).unwrap();
+    let request = document.prepare(key, EvaluationContract::RetainedBrep, 1).unwrap();
+    assert_eq!(request.recipe().lower().unwrap().qualification,
+        ifc_lite_geometry::document::retained_sweep::RegionQualification::OrderedRegion);
+    let Some(executable) = std::env::var_os("IFCLITE_SMLIB_WORKER") else {
+        eprintln!("SKIP actual ordered-region gate: set IFCLITE_SMLIB_WORKER");return;
+    };
+    let mut worker = SmlibWorker::spawn(&executable).unwrap();
+    let request = document.prepare(key, EvaluationContract::RetainedBrep, worker.incarnation()).unwrap();
+    let incarnation = worker.incarnation();
+    assert!(worker.evaluate_retained_extrusion(request.clone(),0.001,5.,MeshLimits::default()).is_err());
+    assert_eq!(worker.incarnation(),incarnation,"refusal occurs before upload");
+    assert_eq!(worker.qualify_ordered_regions().unwrap().cases,6);
+    let receipt = worker.evaluate_retained_extrusion(request,0.001,5.,MeshLimits::default()).unwrap();
+    assert!((worker.volume(receipt.solid(),1e-8).unwrap()-12.*std::f64::consts::PI).abs()<1e-5);
+    let mut replacement = SmlibWorker::spawn(executable).unwrap();
+    let request = document.prepare(key,EvaluationContract::RetainedBrep,replacement.incarnation()).unwrap();
+    assert!(replacement.evaluate_retained_extrusion(request,0.001,5.,MeshLimits::default()).is_err(),"qualification cannot transfer across incarnations");
 }
 
 #[test]

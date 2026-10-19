@@ -238,3 +238,23 @@ For reproducible fleet qualification, `bash native/smlib-adapter/qualify.sh nati
 cache and verifies its commit. It bootstraps pinned public CMake/Ninja wheels
 when necessary; WASM uses Emscripten 4.0.15. Run this script through `ifc-fleet run
 --route fleet --cwd ABSOLUTE_CHECKOUT -- ...`. No OpenUSD/TBB dependency is needed.
+
+## Additional numerical routes (unqualified)
+
+[Round3 contract](NUMERICAL_ROUND3.md) specifies additive staged format2 for a
+capped solid disk along a single clamped rational B-spline path, constructed from
+Euclidean control points, positive weights, unique knots/multiplicities and a
+numerical trim interval. Coefficients go directly to `CreateCanonical`; there is
+no point fitting. Caller-owned original source coefficients remain separate.
+Opcode17 copies a retained solid with `SmApiBrepCopy`, then invokes
+`SmApiTransform` on that copy using a validated positive rigid frame.
+
+Capability flags report implemented routes. They do not qualify any route.
+The new native witnesses cover unequal-weight straight and rational circular
+paths, analytic volume, tight straight bounds, translated/rotated copy mesh bounds
+and preserved inputs. The actual module/browser contract exercises format2 and
+opcode17 as well. These SDK witnesses have not executed; source admission gates
+must stay closed pending real target receipts. General rational profile regions,
+hollow disks, closed paths, fillets, periodic/unclamped splines, self-intersection
+certification, scale, shear and reflection remain unsupported. No provenance,
+appearance, UV, persistent face identity or process-heap bound is established.

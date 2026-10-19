@@ -1,12 +1,27 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Numerical edge conversion. Source recipes remain unchanged and replayable.
+//! This module grants no native/browser execution qualification.
 use super::{RetainedExtrusion, RetainedRefusal};
 use crate::analytic::AnalyticCurveSegment;
 use nalgebra::{Matrix4, Vector4};
+#[path = "retained_region.rs"]
+mod region;
+
+/// Evidence required from the actual execution path, not an SDK feature bit.
+/// Neither variant itself grants execution authority.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegionQualification {
+    Rectangle,
+    OrderedRegion,
+    RationalDisk,
+}
 
 pub struct SweepPayload {
+    pub format: u32,
     pub bytes: Vec<u8>,
     pub segments: u32,
+    pub loops: u32,
+    pub qualification: RegionQualification,
     pub source_from_evaluation: [f64; 16],
     pub evaluation_from_source: [f64; 16],
 }
@@ -28,6 +43,9 @@ pub fn lower(recipe: &RetainedExtrusion) -> Result<SweepPayload, RetainedRefusal
         AnalyticCurveSegment::Line { start, .. } => *start,
         AnalyticCurveSegment::Arc { center, .. } => *center,
     };
+    if anchor[2] != 0.0 {
+        return Err(RetainedRefusal::InvalidSource("profile must be in its XY plane"));
+    }
     let translation = Matrix4::new_translation(&nalgebra::Vector3::from(anchor));
     let source_from_evaluation = solid * p * translation * Matrix4::new_scaling(1.0 / units);
     let inverse = source_from_evaluation
@@ -56,55 +74,36 @@ pub fn lower(recipe: &RetainedExtrusion) -> Result<SweepPayload, RetainedRefusal
     if !norm.is_finite() || norm <= 0.0 || !depth.is_finite() || depth <= 0.0 || vector[2] == 0.0 {
         return Err(RetainedRefusal::InvalidSource("invalid sweep extent"));
     }
-    let segments = &profile.loops[0].segments;
-    let mut bytes = Vec::with_capacity(56 + segments.len() * 104);
-    for value in [1, 1, segments.len() as u32, 0] {
+    let (curves, qualification) = region::lower(profile, anchor, units)?;
+    let segments = curves.iter().map(|boundary| boundary.len()).sum::<usize>() as u32;
+    let loops = curves.len() as u32;
+    let mut bytes = Vec::with_capacity(48 + curves.len() * 8 + segments as usize * 104);
+    for value in [1, loops, segments, 0] {
         u32_bytes(&mut bytes, value);
     }
     for value in [vector[0] / norm, vector[1] / norm, vector[2] / norm, depth] {
         f64_bytes(&mut bytes, value)?;
     }
-    u32_bytes(&mut bytes, 0);
-    u32_bytes(&mut bytes, segments.len() as u32);
-    for segment in segments {
-        let (kind, values) = match segment {
-            AnalyticCurveSegment::Line { start, end } => {
-                let mut values = [0.0; 12];
-                for i in 0..3 {
-                    values[i] = (start[i] - anchor[i]) * units;
-                    values[i + 3] = (end[i] - anchor[i]) * units;
-                }
-                (1, values)
+    if depth > 1e9 || depth * (vector[2] / norm).abs() <= 1e-12 {
+        return Err(RetainedRefusal::InvalidSource("sweep outside local numerical domain"));
+    }
+    for (index, boundary) in curves.iter().enumerate() {
+        u32_bytes(&mut bytes, u32::from(index != 0));
+        u32_bytes(&mut bytes, boundary.len() as u32);
+        for curve in boundary {
+            u32_bytes(&mut bytes, curve.kind);
+            u32_bytes(&mut bytes, 0);
+            for value in curve.values {
+                f64_bytes(&mut bytes, value)?;
             }
-            AnalyticCurveSegment::Arc {
-                center,
-                normal,
-                x_axis,
-                radius,
-                start_angle,
-                sweep_angle,
-            } => {
-                let mut values = [0.0; 12];
-                for i in 0..3 {
-                    values[i] = (center[i] - anchor[i]) * units;
-                    values[i + 3] = normal[i];
-                    values[i + 6] = x_axis[i];
-                }
-                values[9] = radius * units;
-                values[10] = *start_angle;
-                values[11] = *sweep_angle;
-                (2, values)
-            }
-        };
-        u32_bytes(&mut bytes, kind);
-        u32_bytes(&mut bytes, 0);
-        for value in values {
-            f64_bytes(&mut bytes, value)?;
         }
     }
     Ok(SweepPayload {
+        format: 1,
         bytes,
-        segments: segments.len() as u32,
+        segments,
+        loops,
+        qualification,
         source_from_evaluation: array(source_from_evaluation),
         evaluation_from_source: array(inverse),
     })
@@ -152,3 +151,7 @@ fn f64_bytes(bytes: &mut Vec<u8>, value: f64) -> Result<(), RetainedRefusal> {
 #[cfg(test)]
 #[path = "retained_sweep_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "retained_region_tests.rs"]
+mod region_tests;

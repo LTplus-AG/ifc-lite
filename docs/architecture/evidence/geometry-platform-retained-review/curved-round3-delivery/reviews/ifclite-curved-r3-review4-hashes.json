@@ -1,0 +1,200 @@
+{
+  "review_target": "9c75470c82e04c3bd6228d8773158b2516a54c41",
+  "comparison_base": "331ab9d92ab588063b61400ca0bef1cfd424438a",
+  "repository": "/home/louistrue/.t3/worktrees/ifc-lite/t3-b7a487b7",
+  "observed_head_end": "9c75470c82e04c3bd6228d8773158b2516a54c41",
+  "working_status_end": " M rust/processing/src/authored_geometry/bound.rs\n M rust/processing/src/element/model_context.rs\n",
+  "source_files": [
+    {
+      "path": "native/smlib-adapter/src/adapter.cpp",
+      "changed_in_delta": false,
+      "target_sha256": "4ad408ff7d4688a74adc41a92a79f8be9dd5ffafd4856472af6bb08d14f742c9",
+      "observed_working_sha256": "4ad408ff7d4688a74adc41a92a79f8be9dd5ffafd4856472af6bb08d14f742c9",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/AGENTS.md",
+      "changed_in_delta": false,
+      "target_sha256": "fc1271f73e8bec4ad4a72344caf5b04697799634187225d9d8df466f27badd6d",
+      "observed_working_sha256": "fc1271f73e8bec4ad4a72344caf5b04697799634187225d9d8df466f27badd6d",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/runtime_owner.rs",
+      "changed_in_delta": false,
+      "target_sha256": "c171a55edd5324c8e117b0e1aa60d221bb3b478ae0bbbe991d0ff166aff15e87",
+      "observed_working_sha256": "c171a55edd5324c8e117b0e1aa60d221bb3b478ae0bbbe991d0ff166aff15e87",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker.rs",
+      "changed_in_delta": false,
+      "target_sha256": "70b8c2bb0c5a7b7306737e61dff0e3c3b3beebfcbedda648bd3e3e5971f13fe7",
+      "observed_working_sha256": "70b8c2bb0c5a7b7306737e61dff0e3c3b3beebfcbedda648bd3e3e5971f13fe7",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_dependencies.rs",
+      "changed_in_delta": true,
+      "target_sha256": "ead93c796ebe5db637506b14c84e7c2528e3ce321ec898068be7f8dcec3d0ffd",
+      "observed_working_sha256": "ead93c796ebe5db637506b14c84e7c2528e3ce321ec898068be7f8dcec3d0ffd",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_dependencies_tests.rs",
+      "changed_in_delta": false,
+      "target_sha256": "f3beff8152be2804a34528be37cb52cb6211b580d084fd1bbe01019a97f15579",
+      "observed_working_sha256": "f3beff8152be2804a34528be37cb52cb6211b580d084fd1bbe01019a97f15579",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_sweep.rs",
+      "changed_in_delta": false,
+      "target_sha256": "2be5e2cb8762f12babb02cc0f7e4753ee82a820f9e5c6cc10e2b19da71a4d70f",
+      "observed_working_sha256": "2be5e2cb8762f12babb02cc0f7e4753ee82a820f9e5c6cc10e2b19da71a4d70f",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/mod.rs",
+      "changed_in_delta": true,
+      "target_sha256": "7b8bc13c3bdfadbef43208f1b252ada4af356ad202868b91de319e678570435d",
+      "observed_working_sha256": "7b8bc13c3bdfadbef43208f1b252ada4af356ad202868b91de319e678570435d",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/owned_directrix.rs",
+      "changed_in_delta": true,
+      "target_sha256": "d245ccae9096696ae309bc7ed545ceec19736faf18fa70bfd90d90fbf2dfaa68",
+      "observed_working_sha256": "d245ccae9096696ae309bc7ed545ceec19736faf18fa70bfd90d90fbf2dfaa68",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/source.rs",
+      "changed_in_delta": false,
+      "target_sha256": "8a75f84452f061f18b80152d63802a88aad7b719b5b8a0c498496083e41bcde5",
+      "observed_working_sha256": "8a75f84452f061f18b80152d63802a88aad7b719b5b8a0c498496083e41bcde5",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained.rs",
+      "changed_in_delta": true,
+      "target_sha256": "3cca76d9f649516ad2c16c0e1326ccc8b3ad2cbf529319ea045554699cdb7f43",
+      "observed_working_sha256": "3cca76d9f649516ad2c16c0e1326ccc8b3ad2cbf529319ea045554699cdb7f43",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained_construction.rs",
+      "changed_in_delta": false,
+      "target_sha256": "4bb4f000b64528fe3073329dab91b46e547b4c4890af65639491129936428286",
+      "observed_working_sha256": "4bb4f000b64528fe3073329dab91b46e547b4c4890af65639491129936428286",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/program/openings/execute.rs",
+      "changed_in_delta": false,
+      "target_sha256": "e830ff8e9d2776a0a08bd9e05263a00562ab80344f72aa2b25b924b718530ab9",
+      "observed_working_sha256": "e830ff8e9d2776a0a08bd9e05263a00562ab80344f72aa2b25b924b718530ab9",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/coaxial_union.rs",
+      "changed_in_delta": false,
+      "target_sha256": "f831dd4671668d9901de9a3a86129d6e3effb92108107c6a1560a5ece0f4ca59",
+      "observed_working_sha256": "f831dd4671668d9901de9a3a86129d6e3effb92108107c6a1560a5ece0f4ca59",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/coaxial_union_tests.rs",
+      "changed_in_delta": true,
+      "target_sha256": "6d7fd32b358773d6b2d00372080cbff8b2bf7e7519687439661e1f55bde2ddc5",
+      "observed_working_sha256": "6d7fd32b358773d6b2d00372080cbff8b2bf7e7519687439661e1f55bde2ddc5",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/router/voids/mod.rs",
+      "changed_in_delta": false,
+      "target_sha256": "f41525c944988bf3e3fd1f9c6f90118844cb00ea7178ed183cd328ab9fdab031",
+      "observed_working_sha256": "f41525c944988bf3e3fd1f9c6f90118844cb00ea7178ed183cd328ab9fdab031",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/processing/src/analytic_export/definitions.rs",
+      "changed_in_delta": false,
+      "target_sha256": "9b135d13e069b8fb4c94e84b78adf33f6c4316d3f7b6d8f78600f8ae2436ea9c",
+      "observed_working_sha256": "9b135d13e069b8fb4c94e84b78adf33f6c4316d3f7b6d8f78600f8ae2436ea9c",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/bound.rs",
+      "changed_in_delta": false,
+      "target_sha256": "cb9235de18ef6177ad404b740d9727781f87cfbb82a53471c07527cd1f48afcc",
+      "observed_working_sha256": "4efb15edb5fa3a6e0946c265557c5df9a3a2ae13d6def83a6fadcae405920d68",
+      "working_matches_target": false
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/bound_native.rs",
+      "changed_in_delta": false,
+      "target_sha256": "35463a0ae82c992ad1a755a2d98ed995882e24d9fe265b1b93215ddf7b3665b0",
+      "observed_working_sha256": "35463a0ae82c992ad1a755a2d98ed995882e24d9fe265b1b93215ddf7b3665b0",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/processing/tests/retained_curved_consumption.rs",
+      "changed_in_delta": true,
+      "target_sha256": "07a3a713b34fbf32c0e866749e8ee43c335246e5ba9fbe418d73b44a9c71b1ef",
+      "observed_working_sha256": "07a3a713b34fbf32c0e866749e8ee43c335246e5ba9fbe418d73b44a9c71b1ef",
+      "working_matches_target": true
+    }
+  ],
+  "sdk_root": "/tmp/ifclite-smlib-eval-upstream",
+  "sdk_head": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "sdk_inspected_files": [
+    {
+      "path": "source/SM_API/src/SmApiBrep.cpp",
+      "sha256": "c1dcdf9899a386199dd9cc3ee3bef9626d324d5558a8b7b6132b19e18fb70df1"
+    },
+    {
+      "path": "source/SM_API/src/SmApiQueries.cpp",
+      "sha256": "d6d3c79094a0e14af95233a0af1e038559b6433864979b95b23f4a060db2305a"
+    },
+    {
+      "path": "source/SMLib/src/SmBrep.cpp",
+      "sha256": "5d44d6ac347fa42e4e83fead8bbde82ce46c5ff48e0a973b5c7cddc778a2fca1"
+    }
+  ],
+  "prior_evidence_hashes": [
+    {
+      "path": "/tmp/ifclite-curved-r3-review1.md",
+      "sha256": "9cba3e0a9b4beddb0fb42f940c55d0bea130a10e628479ffe85b27f5598cdbce"
+    },
+    {
+      "path": "/tmp/ifclite-curved-r3-review1-hashes.json",
+      "sha256": "c7361e682ee53fd1e9b3ec521b63c0f2269c47d55fdb683b98e3e96ea3e9b56f"
+    },
+    {
+      "path": "/tmp/ifclite-curved-r3-review2.md",
+      "sha256": "ed43c60a15f2f7aa9eff14eaae91bdcd57574b7243e849cf7bd263e501ce8f84"
+    },
+    {
+      "path": "/tmp/ifclite-curved-r3-review2-hashes.json",
+      "sha256": "247a551c776f33758ab7bf8562518114b447c6785a13a20a613a0ee5d70d4035"
+    },
+    {
+      "path": "/tmp/ifclite-curved-r3-review3.md",
+      "sha256": "f577bfdf326c680fb967ad94b5923670e2d77dec05f2cc987a9d71f852248d68"
+    },
+    {
+      "path": "/tmp/ifclite-curved-r3-review3-hashes.json",
+      "sha256": "218ba7e09ab513738ed4005fd432eb2829ca71a695c3cd045ab9ddc1a54fbb52"
+    }
+  ],
+  "report": {
+    "path": "/tmp/ifclite-curved-r3-review4.md",
+    "sha256": "4ee07cceab9e27254638ffcd574c0c5ac07c9c482369501d627b8630059d50b6"
+  },
+  "limitations": "Read-only focused source review, no execution or job inspection. Whole-file hashes identify bytes; supporting source was inspected in focused excerpts. Prior review summaries are inherited, not rerun qualifications. Concurrent working changes listed separately are excluded; target bound.rs was explicitly reread from git.",
+  "concurrent_changes_excluded": [
+    "rust/processing/src/authored_geometry/bound.rs",
+    "rust/processing/src/element/model_context.rs"
+  ]
+}

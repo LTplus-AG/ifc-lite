@@ -2,10 +2,8 @@
 //! Synthetic 2x4x3 source invariant, actual SDK receipt and lifecycle (review 1-4).
 //! This is not a real-authoring-tool IFC or broad geometry qualification witness.
 #![cfg(not(target_arch = "wasm32"))]
-use ifc_lite_geometry::analytic::{
-    AnalyticCurveSegment, AnalyticExtrusion, AnalyticProfile, AnalyticProfileLoop, AnalyticStatus,
-    ProfileLoopKind,
-};
+use ifc_lite_geometry::analytic::extract_analytic_extrusion;
+use ifc_lite_core::{build_entity_index, EntityDecoder};
 use ifc_lite_geometry::document::{
     EvaluationContract, GeometryDocument, RetainedExtrusion, RetainedRequest,
 };
@@ -21,39 +19,10 @@ fn worker() -> Option<SmlibWorker> {
     Some(SmlibWorker::spawn(path).unwrap())
 }
 fn request(worker: &SmlibWorker) -> (GeometryDocument, RetainedRequest) {
-    let corners = [[0., 0., 0.], [2., 0., 0.], [2., 4., 0.], [0., 4., 0.]];
-    let boundary = AnalyticProfileLoop {
-        kind: ProfileLoopKind::Outer,
-        segments: (0..4)
-            .map(|i| AnalyticCurveSegment::Line {
-                start: corners[i],
-                end: corners[(i + 1) % 4],
-            })
-            .collect(),
-        signed_area: 8.,
-        perimeter: 12.,
-        source: None,
-    };
-    let source = AnalyticExtrusion {
-        solid_id: 12,
-        swept_area_id: Some(8),
-        position_id: None,
-        position_matrix: None,
-        extruded_direction_id: Some(9),
-        direction_ratios: Some([0., 0., 1.]),
-        axis_unit_vector: Some([0., 0., 1.]),
-        depth: Some(3.),
-        status: AnalyticStatus::Complete,
-        profile: Some(AnalyticProfile {
-            profile_id: 8,
-            ifc_type_name: "IfcRectangleProfileDef".into(),
-            profile_type: Some("AREA".into()),
-            position_id: None,
-            profile_position: None,
-            loops: vec![boundary],
-            status: AnalyticStatus::Complete,
-        }),
-    };
+    let input = b"#1=IFCCARTESIANPOINT((1.,2.));#2=IFCAXIS2PLACEMENT2D(#1,$);#3=IFCRECTANGLEPROFILEDEF(.AREA.,$,#2,2.,4.);#4=IFCDIRECTION((0.,0.,1.));#5=IFCEXTRUDEDAREASOLID(#3,$,#4,3.);";
+    let mut decoder = EntityDecoder::with_index(input, build_entity_index(input));
+    let entity = decoder.decode_by_id(5).unwrap();
+    let source = extract_analytic_extrusion(&entity, &mut decoder);
     let mut document = GeometryDocument::new();
     let definition = document
         .add_retained_extrusion(RetainedExtrusion {

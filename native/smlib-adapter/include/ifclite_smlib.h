@@ -55,6 +55,10 @@ ifclite_smlib_status ifclite_smlib_cylinder(ifclite_smlib_session session,
 ifclite_smlib_status ifclite_smlib_boolean(ifclite_smlib_session session,
     ifclite_smlib_handle left, ifclite_smlib_handle right, uint32_t operation,
     ifclite_smlib_handle* out);
+/* Copies the BRep before transforming; input remains immutable on all outcomes.
+ * Matrix has 16 column-major doubles: finite positive rigid affine only. */
+ifclite_smlib_status ifclite_smlib_transform(ifclite_smlib_session session,
+    ifclite_smlib_handle solid, const double* matrix, ifclite_smlib_handle* out);
 /* Relative numerical-integration tolerance, supported range [1e-8, 1e-1]. */
 ifclite_smlib_status ifclite_smlib_volume(ifclite_smlib_session session,
     ifclite_smlib_handle solid, double integration_tolerance, double* out);
@@ -77,6 +81,9 @@ ifclite_smlib_status ifclite_smlib_mesh_copy(ifclite_smlib_session session,
     ifclite_smlib_handle mesh, uint32_t stream, uint32_t offset, uint32_t count,
     void* out, uint32_t capacity_bytes);
 /* Additive extension negotiation, independent of unchanged ABI/protocol v1.
+ * Bit 1: staged format2 capped rational-path disk; bit3: copied rigid transform.
+ * Format2 and its variable coefficient records: NUMERICAL_ROUND3.md.
+ * Capability indicates implementation, never execution qualification.
  * Bit 0: staged sweep recipe format 1. One upload/session; max 1MiB/8192 curves/128 loops.
  * Recipe LE: u32 format,loops,segments,reserved; f64 unit direction XYZ,depth;
  * per loop u32 role(0 outer first,1 inner thereafter),count; per curve u32 kind,reserved and 12 f64.

@@ -5,7 +5,7 @@ use super::*;
 use crate::analytic::{extract_analytic_extrusion, AnalyticStatus};
 use ifc_lite_core::{build_entity_index, EntityDecoder};
 
-fn recipe(raw_per_metre: f64) -> RetainedExtrusion {
+pub(super) fn recipe(raw_per_metre: f64) -> RetainedExtrusion {
     let u = raw_per_metre;
     let data = format!(
         "#1=IFCCARTESIANPOINT(({},{}));\n\

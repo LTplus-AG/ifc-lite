@@ -11,6 +11,16 @@ use std::io::{Read, Write};
 use std::process::{ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[path = "worker_upload.rs"]
+mod upload;
+#[path = "worker_qualification.rs"]
+mod qualification;
+#[path = "worker_disk_qualification.rs"]
+mod disk_qualification;
+pub use qualification::RegionQualificationReport;
+#[path = "worker_dependencies.rs"]
+mod dependencies;
+pub use dependencies::{RetainedDependency, RetainedDependencyResult, RetainedLineage, RetainedOperationIdentity};
 #[path = "worker_mesh.rs"]
 mod mesh;
 #[path = "worker_sweep.rs"]
@@ -21,7 +31,7 @@ pub use mesh::{MeshLimits, TessellatedMesh};
 static NEXT_WORKER: AtomicU64 = AtomicU64::new(1);
 
 /// Opaque BRep identity. Worker identity is host-local and never sent over IPC.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BrepHandle {
     worker: u64,
     wire: WireHandle,
@@ -45,7 +55,7 @@ impl std::fmt::Display for WorkerError {
             Self::Kernel { status, message } => {
                 write!(f, "geometry worker status {status}: {message}")
             }
-            Self::Authored(message) => write!(f,"authored extrusion refused: {message}"),
+            Self::Authored(message) => write!(f,"authored construction refused: {message}"),
             Self::WrongWorker => write!(f, "BRep handle belongs to another worker"),
             Self::ResourceLimit(message) => write!(f, "geometry worker resource limit: {message}"),
         }
@@ -72,6 +82,9 @@ pub struct SmlibWorker {
     session: u64,
     sequence: u32,
     healthy: bool,
+    regions_qualified: bool,
+    disks_qualified: bool,
+    objects: std::collections::HashMap<WireHandle, std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl SmlibWorker {
@@ -103,6 +116,9 @@ impl SmlibWorker {
             session: 0,
             sequence: 0,
             healthy: true,
+            regions_qualified: false,
+            disks_qualified: false,
+            objects: std::collections::HashMap::new(),
         })
     }
 
@@ -229,10 +245,15 @@ impl SmlibWorker {
 
     pub fn release(&mut self, solid: BrepHandle) -> Result<(), WorkerError> {
         let object = self.wire(solid)?;
-        let bytes = self.call(KernelCommand::Release {
+        if let Some(live) = self.objects.remove(&object) { live.store(false, Ordering::Release); }
+        let response = self.call(KernelCommand::Release {
             session: self.session,
             object,
-        })?;
+        });
+        let bytes = match response {
+            Ok(bytes) => bytes,
+            Err(error) => { self.retire(); return Err(error); }
+        };
         if !bytes.is_empty() {
             return Err(self.poison("release returned unexpected payload"));
         }
@@ -243,6 +264,9 @@ impl SmlibWorker {
         let wire = WireHandle::from_bytes(&bytes).map_err(|error| self.poison(error.as_str()))?;
         if wire.session != self.session {
             return Err(self.poison("returned handle belongs to another session"));
+        }
+        if self.objects.insert(wire, std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true))).is_some() {
+            return Err(self.poison("duplicate live object handle"));
         }
         Ok(BrepHandle {
             worker: self.identity,

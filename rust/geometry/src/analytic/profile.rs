@@ -112,9 +112,8 @@ fn parse_profile(
     };
     if matches!(profile.ifc_type, IfcType::IfcRectangleProfileDef | IfcType::IfcCircleProfileDef) {
         let mut capture = super::source::SourceCapture::enabled();
-        capture.record(profile, decoder).map_err(|error| error.to_string())?;
-        result.loops[0].source = Some(capture.finish(profile.id, decoder.plane_angle_to_radians())
-            .map_err(|error| error.to_string())?);
+        capture.record(profile, decoder);
+        result.loops[0].source = Some(capture.finish(profile.id, decoder.plane_angle_to_radians()));
     }
     Ok(())
 }
@@ -179,8 +178,7 @@ fn curve_loop(
         .ok_or_else(|| format!("curve #{id} is not exact line/arc geometry"))?;
     let mut boundary = loop_from_segments(kind, segments)
         .map_err(|reason| format!("curve #{id}: {reason}"))?;
-    boundary.source = Some(walk.source.finish(id, decoder.plane_angle_to_radians())
-        .map_err(|error| format!("curve #{id}: {error}"))?);
+    boundary.source = Some(walk.source.finish(id, decoder.plane_angle_to_radians()));
     Ok(boundary)
 }
 

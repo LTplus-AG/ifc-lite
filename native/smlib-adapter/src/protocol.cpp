@@ -126,6 +126,13 @@ Writer dispatch(Reader& reader) {
             const uint64_t upload=reader.u64(); reader.end(); ifclite_smlib_handle solid{};
             status=ifclite_smlib_sweep_commit(session,upload,&solid); payload.handle(solid); break;
         }
+        case 17: {
+            const auto input=reader.handle(); std::array<double,16> matrix{};
+            for(double& value:matrix) value=reader.f64();
+            reader.end(); ifclite_smlib_handle result{};
+            status=ifclite_smlib_transform(session,input,matrix.data(),&result);
+            payload.handle(result); break;
+        }
         case 16: {
             const uint64_t upload=reader.u64(); reader.end();
             status=ifclite_smlib_sweep_abort(session,upload); break;

@@ -5,7 +5,7 @@
 //! Reusable authored source geometry and explicit product occurrences.
 
 use std::collections::BTreeMap;
-use ifc_lite_geometry::analytic::{AnalyticCurveSegment, AnalyticStatus, AnalyticSweptDisk};
+use ifc_lite_geometry::analytic::{AnalyticBoundarySource, OwnedDirectrix, AnalyticCurveSegment, AnalyticStatus, AnalyticSweptDisk};
 use serde::Serialize;
 
 use nalgebra::Matrix4;
@@ -39,6 +39,14 @@ pub type SweptDiskSourceContext = AnalyticSourceContext;
 /// Original `IfcSweptDiskSolid` geometry in IFC file length units.
 #[derive(Debug, Clone, Serialize)]
 pub struct SweptDiskDefinition {
+    /// Original source graph and separate exact numerical directrix. Legacy
+    /// line/arc fields and their status retain their existing interpretation.
+    pub source: Option<AnalyticBoundarySource>,
+    pub owned_directrix: Option<OwnedDirectrix>,
+    #[serde(rename = "StartParam")]
+    pub start_param: Option<f64>,
+    #[serde(rename = "EndParam")]
+    pub end_param: Option<f64>,
     pub key: SweptDiskSourceKey,
     pub directrix_id: u32,
     #[serde(rename = "Radius")]
@@ -97,8 +105,19 @@ impl SweptDiskDefinitions {
 }
 
 impl SweptDiskDefinition {
+    pub(crate) fn owned_source(&self) -> AnalyticSweptDisk {
+        AnalyticSweptDisk { directrix_id:self.directrix_id, radius:self.radius, inner_radius:self.inner_radius,
+            segments:self.directrix.clone(), status:self.status.clone(), source:self.source.clone(),
+            owned_directrix:self.owned_directrix.clone(), start_param:self.start_param, end_param:self.end_param }
+    }
+    pub(crate) fn retained_rational(&self) -> bool {
+        matches!(self.owned_directrix, Some(OwnedDirectrix::Rational(_)))
+            && self.source.as_ref().is_some_and(|s| matches!(s.capture_status, AnalyticStatus::Complete))
+    }
+
     pub(super) fn from_disk(key: SweptDiskSourceKey, disk: &AnalyticSweptDisk) -> Self {
-        Self { key, directrix_id: disk.directrix_id, radius: disk.radius,
+        Self { source: disk.source.clone(), owned_directrix: disk.owned_directrix.clone(),
+            start_param: disk.start_param, end_param: disk.end_param, key, directrix_id: disk.directrix_id, radius: disk.radius,
             inner_radius: disk.inner_radius, directrix: disk.segments.clone(),
             status: disk.status.clone() }
     }

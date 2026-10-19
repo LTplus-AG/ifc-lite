@@ -5,7 +5,7 @@ use super::{AuthoredDefinition, AuthoredGeometryPlan, AuthoredRecipe};
 use crate::AnalyticSourceKey;
 use ifc_lite_geometry::document::{
     DefinitionHandle, EvaluationContract, GeometryDocument, OccurrenceHandle, RetainedCompletion,
-    RetainedDefinitionHandle, RetainedExtrusion, RetainedRefusal, RetainedRequest,
+    RetainedDefinitionHandle, RetainedExtrusion, RetainedRefusal, RetainedRequest, RetainedConstruction, RetainedSweptDisk,
 };
 use nalgebra::Matrix4;
 use std::collections::BTreeMap;
@@ -74,25 +74,22 @@ impl AuthoredRetainedDocument {
             .ok_or(RetainedRefusal::InvalidSource(
                 "authored definition unavailable",
             ))?;
-        let AuthoredDefinition::Extrusion(source) = source else {
-            return Err(RetainedRefusal::UnsupportedSource(
-                "swept disk evaluator not implemented".into(),
-            ));
-        };
-        if source.source.solid_id != key.solid_id
-            || key.length_unit_scale_bits != format!("{:016x}", plan.length_unit_scale.to_bits())
-        {
-            return Err(RetainedRefusal::InvalidSource(
-                "source identity/unit mismatch",
-            ));
+        if key.length_unit_scale_bits != format!("{:016x}", plan.length_unit_scale.to_bits()) {
+            return Err(RetainedRefusal::InvalidSource("source identity/unit mismatch"));
         }
+        let recipe = match source {
+            AuthoredDefinition::Extrusion(source) => {
+                if source.source.solid_id != key.solid_id { return Err(RetainedRefusal::InvalidSource("solid identity mismatch")); }
+                RetainedConstruction::Extrusion(Box::new(RetainedExtrusion { source:source.source.clone(),
+                    length_unit_scale:plan.length_unit_scale, source_epoch, source_revision }))
+            }
+            AuthoredDefinition::SweptDisk(source) => RetainedConstruction::SweptDisk(Box::new(RetainedSweptDisk {
+                solid_id:key.solid_id, source:source.owned_source(), length_unit_scale:plan.length_unit_scale,
+                source_epoch, source_revision,
+            })),
+        };
         let mut document = GeometryDocument::new();
-        let handle = document.add_retained_extrusion(RetainedExtrusion {
-            source: source.source.clone(),
-            length_unit_scale: plan.length_unit_scale,
-            source_epoch,
-            source_revision,
-        })?;
+        let handle = document.add_retained_construction(recipe)?;
         let occurrences: Vec<_> = plan
             .recipes
             .iter()
@@ -102,9 +99,7 @@ impl AuthoredRetainedDocument {
         if occurrences.is_empty() {
             return Err(RetainedRefusal::InvalidSource("no admitted occurrence"));
         }
-        let frame = ifc_lite_geometry::document::retained_sweep::lower(
-            document.retained_extrusion(handle)?,
-        )?;
+        let frame = document.retained_construction(handle)?.lower()?;
         for occurrence in &occurrences {
             occurrence_frame(occurrence, &frame.source_from_evaluation)?;
         }

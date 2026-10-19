@@ -1,0 +1,8 @@
+{
+  "base": "00a6923bab0c8d8642188e0002dd1a475740af16",
+  "source_head": "6f30e7c1dab17270a84127fd5d2332ad3a9206b3",
+  "alternate_index_only": true,
+  "apply_check_exit": 0,
+  "output": "",
+  "patch_sha256": "166968e32b2d5ba0357676b1b10f4bce32157f0653d796e406fdbb2d9de23126"
+}

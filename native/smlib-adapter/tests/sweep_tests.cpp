@@ -8,6 +8,7 @@
 #include <cstring>
 #include <vector>
 void run_sweep_region_tests();
+void run_disk_tests();
 namespace {
 void expect(bool ok) { if (!ok) { std::fprintf(stderr,"sweep invariant failed\n"); std::abort(); } }
 void ok(int32_t status) { expect(status==0); }
@@ -48,6 +49,7 @@ double volume(uint64_t s,ifclite_smlib_handle h) { double v=0;ok(ifclite_smlib_v
 }
 void run_sweep_tests() {
     run_sweep_region_tests();
+    run_disk_tests();
     expect(ifclite_smlib_abi_version()==1 && (ifclite_smlib_capabilities()&1));
     uint64_t session=0;ok(ifclite_smlib_session_create(&session));
     for(bool circle:{false,true}) {

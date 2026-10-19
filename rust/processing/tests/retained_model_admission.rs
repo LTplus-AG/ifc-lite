@@ -248,3 +248,32 @@ fn retained_round2_review_expired_foreign_receiver_cannot_retire_valid_owner() {
     drop(published_b);
     assert_eq!(owner_b.incarnation(), None);
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn retained_round3_released_object_cannot_publish_even_while_actual_process_is_live() {
+    use ifc_lite_geometry_runtime::{MeshLimits, SmlibWorker};
+    use ifc_lite_processing::authored_geometry::evaluator::RetainedDisplayContract;
+    let Some(executable) = std::env::var_os("IFCLITE_SMLIB_WORKER") else {
+        eprintln!("SKIP actual retained release-before-accept: set IFCLITE_SMLIB_WORKER"); return;
+    };
+    let source = SourceBundle::new(MODEL.to_vec());
+    let model = ProductionModel::from_source(source.clone());
+    let context = model.snapshot(OwnedMeshProductionData::default());
+    let mut decoder = source.decoder();
+    let plan = context.admit_authored_plan(&mut decoder).unwrap();
+    let key = &plan.plan().recipes[0].source;
+    let mut document = plan.admit_source(key).unwrap();
+    let mut worker = SmlibWorker::spawn(executable).unwrap();
+    let issued = document.issue(key, &worker).unwrap();
+    let work = document.execute(issued, &mut worker, 0.001, 5., MeshLimits::default()).unwrap();
+    let incarnation = worker.incarnation();
+    let positions = work.realization().completion().tessellation.positions.clone();
+    worker.release(work.realization().solid()).unwrap();
+    assert_eq!(worker.incarnation(), incarnation, "individual release preserves a healthy process");
+    assert!(work.realization().validate_live().is_err(), "process liveness cannot resurrect released object");
+    let revision = document.document().revision();
+    let rejected = document.accept(work, 0, RetainedDisplayContract::UnstyledFlatSourceOnly).err().unwrap();
+    assert_eq!(document.document().revision(), revision, "rejection precedes display publication");
+    assert_eq!(rejected.work.realization().completion().tessellation.positions, positions);
+}

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Actual SDK witness shared by module-worker browser and independent WASM modules.
+import { regionWitnesses } from './region-recipes.mjs';
+import { meshWitness } from './mesh-witness.mjs';
 import { uploadSweep } from './sweep.mjs';
 import { assert, request, response, u32, f64 } from './contract.mjs';
 export function rectangleRecipe(divisions = 1) {
@@ -28,48 +30,54 @@ export function circleRecipe() {
     .forEach((value, i) => view.setFloat64(64 + i * 8, value, true));
   return bytes;
 }
+export function diskRecipe() {
+  const bytes = new Uint8Array(168), view = new DataView(bytes.buffer);
+  [2, 1, 1, 0].forEach((v, i) => view.setUint32(4 * i, v, true));
+  view.setFloat64(16, 0.25, true);
+  [4, 0, 1, 2, 2, 0].forEach((v, i) => view.setUint32(32 + 4 * i, v, true));
+  view.setFloat64(64, 1, true);
+  [0, 0, 0, 2, 0, 0, 5, 3].forEach((v, i) => view.setFloat64(72 + 8 * i, v, true));
+  view.setUint32(144, 2, true);
+  view.setFloat64(152, 1, true); view.setUint32(160, 2, true);
+  return bytes;
+}
 export async function runSweepContract(transport, incarnation) {
   const batch = (frames) => transport.batch(frames, incarnation);
   const call = async (op, ...fields) => response((await batch([request(op, ...fields)]))[0]);
   const session = await call(1), sessionId = new DataView(session.buffer).getBigUint64(0, true);
   const results = [];
+  let primaryFailed = false;
   try {
-  for (const [recipe, segments, expected] of [[rectangleRecipe(32), 128, 24], [circleRecipe(), 1, 12 * Math.PI]]) {
-    const handle = await uploadSweep(transport, sessionId, recipe, { loops: 1, segments }, incarnation);
+  const fixtures = [
+    { name: 'subdivided-rectangle', recipe: rectangleRecipe(32), loops: 1, segments: 128, expected: 24, format: 1 },
+    { name: 'circle', recipe: circleRecipe(), loops: 1, segments: 1, expected: 12 * Math.PI, format: 1 },
+    { name: 'rational-straight-pipe', recipe: diskRecipe(), loops: 1, segments: 1, expected: 5 * Math.PI / 16, format: 2 },
+    ...regionWitnesses(),
+  ];
+  for (const fixture of fixtures) {
+    const { recipe, loops, segments, expected, format, name } = fixture;
+    const handle = await uploadSweep(transport, sessionId, recipe, { loops, segments, format }, incarnation);
     const solid = new Uint8Array(handle.bytes);
+    const manifold = new DataView((await call(7, session, solid)).buffer).getUint32(0, true);
+    assert(manifold === 1, `${name}: SDK manifold solid`);
     const volume = new DataView((await call(6, session, solid, f64(1e-8))).buffer).getFloat64(0, true);
-    assert(Math.abs(volume - expected) < 1e-5, 'capped authored sweep analytic volume');
+    assert(Math.abs(volume - expected) < 1e-5, `${name}: SDK volume vs derived analytic volume`);
+    const matrix = [0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 10, 20, 30, 1];
+    const moved = await call(17, session, solid, ...matrix.map(f64));
+    const movedVolume = new DataView((await call(6, session, moved, f64(1e-8))).buffer).getFloat64(0, true);
+    assert(Math.abs(movedVolume - expected) < 1e-5, 'copied rigid transform volume');
     const duplicate = await call(5, session, solid, solid, u32(1));
     const unchanged = new DataView((await call(6, session, solid, f64(1e-8))).buffer).getFloat64(0, true);
     assert(Math.abs(unchanged - expected) < 1e-5, 'authored operand immutable');
-    const mesh = await call(9, session, solid, f64(0.0001), f64(3));
-    const info = new DataView((await call(10, session, mesh)).buffer);
-    const vertices = info.getUint32(0, true), triangles = info.getUint32(4, true);
-    assert(vertices > 0 && triangles > 0 && info.getUint32(8, true) > 0 &&
-      info.getUint32(12, true) === 0 && info.getUint32(16, true) === 0 && info.getUint32(20, true) === 0,
-    'complete retained tessellation');
-    async function read(stream, count, width) {
-      const bytes = new Uint8Array(count * width);
-      for (let offset = 0; offset < count; offset += 480) {
-        bytes.set(await call(11, session, mesh, u32(stream), u32(offset), u32(Math.min(480, count - offset))), offset * width);
-      }
-      return new DataView(bytes.buffer);
-    }
-    const positions = await read(1, vertices * 3, 8), indices = await read(2, triangles * 3, 4);
-    let sixVolume = 0;
-    for (let triangle = 0; triangle < triangles; triangle++) {
-      const p = [0, 1, 2].map((corner) => {
-        const index = indices.getUint32((triangle * 3 + corner) * 4, true);
-        assert(index < vertices, 'retained triangle vertex');
-        return [0, 1, 2].map((axis) => positions.getFloat64((index * 3 + axis) * 8, true));
-      });
-      sixVolume += p[0][0] * (p[1][1] * p[2][2] - p[1][2] * p[2][1]) +
-        p[0][1] * (p[1][2] * p[2][0] - p[1][0] * p[2][2]) +
-        p[0][2] * (p[1][0] * p[2][1] - p[1][1] * p[2][0]);
-    }
-    assert(Math.abs(Math.abs(sixVolume) / 6 - expected) < expected * 0.002, 'independent triangle volume');
-    for (const object of [mesh, duplicate, solid]) await call(8, session, object);
-    results.push({ expected, vertices, triangles });
+    const region = fixture.area === undefined ? undefined : fixture;
+    const originalMesh = await meshWitness(call, session, solid, expected, region);
+    const movedMesh = await meshWitness(call, session, moved, expected, region, true);
+    for (const object of [moved, duplicate, solid]) await call(8, session, object);
+    results.push({ name, expected, evidence: 'derived numerical recipe; not source IFC qualification',
+      sdkVolume: volume, copiedSdkVolume: movedVolume, originalMesh, movedMesh,
+      ...(region && { expectedProfileArea: region.area, expectedSectionLength: region.perimeter,
+        expectedSurfaceArea: region.surface, expectedSectionLoops: region.loops }),
+      analyticSurfaceIdentity: 'not exposed by protocol', analyticSection: 'not exposed by protocol' });
   }
   // Real worker cleanup contract: invalid offset discards, incomplete commit consumes.
   let token = await call(13, session, u32(1), u32(472), u32(1), u32(4));
@@ -80,6 +88,9 @@ export async function runSweepContract(transport, incarnation) {
   response((await batch([request(13, session, u32(1), u32(0xffffffff), u32(1), u32(0xffffffff))]))[0], 1);
   response((await batch([request(13, session, u32(1), u32(480), u32(129), u32(4))]))[0], 1);
   return results;
+  } catch (error) {
+    primaryFailed = true;
+    throw error;
   } finally {
     // Session ownership covers every solid/mesh if any assertion fails mid-test.
     if (transport.incarnation === incarnation) {
@@ -87,7 +98,8 @@ export async function runSweepContract(transport, incarnation) {
       catch (error) {
         if (transport.retire) transport.retire(incarnation);
         else if (incarnation !== undefined && transport.incarnation === incarnation) transport.dispose();
-        throw error;
+        if (!primaryFailed) throw error;
+        console.error("SDK witness session cleanup failed after primary failure", error);
       }
     }
   }

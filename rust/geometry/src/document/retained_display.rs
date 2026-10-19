@@ -75,49 +75,17 @@ pub(super) fn display_mesh(packet: &RetainedCompletion) -> Result<Mesh, Retained
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analytic::{
-        AnalyticCurveSegment, AnalyticExtrusion, AnalyticProfile, AnalyticProfileLoop,
-        AnalyticStatus, ProfileLoopKind,
-    };
+    use crate::analytic::extract_analytic_extrusion;
+    use ifc_lite_core::{build_entity_index, EntityDecoder};
     use crate::document::{
         EvaluationContract, GeometryDocument, RetainedExtrusion, RetainedTessellation,
     };
 
     fn packet(positions: Vec<f64>) -> RetainedCompletion {
-        let source = AnalyticExtrusion {
-            solid_id: 1,
-            swept_area_id: Some(2),
-            position_id: None,
-            position_matrix: None,
-            extruded_direction_id: Some(3),
-            direction_ratios: Some([0., 0., 1.]),
-            axis_unit_vector: Some([0., 0., 1.]),
-            depth: Some(1.),
-            status: AnalyticStatus::Complete,
-            profile: Some(AnalyticProfile {
-                profile_id: 2,
-                ifc_type_name: "IfcRectangleProfileDef".into(),
-                profile_type: Some("AREA".into()),
-                position_id: None,
-                profile_position: None,
-                loops: vec![AnalyticProfileLoop {
-                    kind: ProfileLoopKind::Outer,
-                    signed_area: 1.,
-                    perimeter: 4.,
-                    source: None,
-                    segments: {
-                        let points = [[0., 0., 0.], [1., 0., 0.], [1., 1., 0.], [0., 1., 0.]];
-                        (0..4)
-                            .map(|i| AnalyticCurveSegment::Line {
-                                start: points[i],
-                                end: points[(i + 1) % 4],
-                            })
-                            .collect()
-                    },
-                }],
-                status: AnalyticStatus::Complete,
-            }),
-        };
+        let input = b"#1=IFCCARTESIANPOINT((0.,0.));#2=IFCAXIS2PLACEMENT2D(#1,$);#3=IFCRECTANGLEPROFILEDEF(.AREA.,$,#2,1.,1.);#4=IFCDIRECTION((0.,0.,1.));#5=IFCEXTRUDEDAREASOLID(#3,$,#4,1.);";
+        let mut decoder = EntityDecoder::with_index(input, build_entity_index(input));
+        let entity = decoder.decode_by_id(5).unwrap();
+        let source = extract_analytic_extrusion(&entity, &mut decoder);
         let mut doc = GeometryDocument::new();
         let definition = doc
             .add_retained_extrusion(RetainedExtrusion {
@@ -130,7 +98,7 @@ mod tests {
         let request = doc
             .prepare_retained_extrusion(definition, EvaluationContract::RetainedBrep, 1)
             .unwrap();
-        let frame = crate::document::retained_sweep::lower(request.recipe()).unwrap();
+        let frame = request.recipe().lower().unwrap();
         RetainedCompletion::new(
             request,
             RetainedTessellation {

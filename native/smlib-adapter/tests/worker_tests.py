@@ -40,6 +40,15 @@ with subprocess.Popen([worker], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
     assert status == 0 and len(solid) == 16
     status, value = call(6, session + solid + struct.pack("<d", 1e-8), 1234)
     assert status == 0 and abs(struct.unpack("<d", value)[0] - 24) < 1e-6
+    matrix = (0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1)
+    status, moved = call(17, session + solid + struct.pack("<16d", *matrix))
+    assert status == 0 and len(moved) == 16 and moved != solid
+    for handle in (moved, solid):
+        status, value = call(6, session + handle + struct.pack("<d", 1e-8))
+        assert status == 0 and abs(struct.unpack("<d", value)[0] - 24) < 1e-6
+    assert call(8, session + moved)[0] == 0
+    reflected = (-1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
+    assert call(17, session + solid + struct.pack("<16d", *reflected))[0] == 1
     status, error = call(6, session + solid + struct.pack("<d", 1e-12))
     assert status == 1 and b"tolerance" in error
     status, mesh = call(9, session + solid + struct.pack("<dd", 0.001, 5))

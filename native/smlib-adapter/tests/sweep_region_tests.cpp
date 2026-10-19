@@ -66,6 +66,8 @@ void witness(const char* name,const std::vector<Loop>& loops,double area,double 
         if(faces[i]->GetSurface()->IsKindOf(SmCylinder_TYPE))++cylinders;
         if(faces[i]->GetSurface()->IsKindOf(SmSurfOfExtrusion_TYPE))++extrusions;
     }
+    std::fprintf(stderr,"region %s surfaces actual planes=%u curved=%u cylinders=%u extrusions=%u expected planes=%u curved=%u cylinders=%u\n",
+        name,actual_planar,actual_curved,cylinders,extrusions,planar,curved,expected_cylinders);
     check(actual_planar==planar && actual_curved==curved,"actual planar/curved surface counts");
     check(cylinders==expected_cylinders,"full circles retain actual SDK cylinder surfaces");
     SmTArray<SmCurve*> section;

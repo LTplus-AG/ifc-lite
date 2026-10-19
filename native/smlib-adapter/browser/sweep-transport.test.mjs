@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { uploadSweep } from './sweep.mjs';
-import { rectangleRecipe } from './sweep-contract.mjs';
+import { rectangleRecipe, diskRecipe } from './sweep-contract.mjs';
 function peer({ failChunk = false } = {}) {
   const calls = [], chunks = [];
   return { calls, chunks, incarnation: {}, disposed: false,
@@ -109,4 +109,22 @@ test('browser review: old upload rejection preserves replacement incarnation', a
   await assert.rejects(uploadSweep(transport, 1n, rectangleRecipe(), { loops: 1, segments: 4 }, old), /restarted/);
   assert.equal(transport.disposed, false);
   assert.notEqual(transport.incarnation, old);
+});
+
+test('round3 format2 capability is required before declaring exact rational coefficients', async () => {
+  const unavailable = peer();
+  await assert.rejects(uploadSweep(unavailable, 1n, diskRecipe(),
+    { loops: 1, segments: 1, format: 2 }, unavailable.incarnation), /unavailable/);
+  assert.deepEqual(unavailable.calls, [12]);
+  const transport = peer(), original = transport.batch;
+  transport.batch = async function (frames, incarnation) {
+    const op = new DataView(frames[0]).getUint32(8, true);
+    if (op === 13) assert.equal(new DataView(frames[0]).getUint32(20, true), 2);
+    const result = await original.call(this, frames, incarnation);
+    if (op === 12) new DataView(result[0]).setUint32(16, 3, true);
+    return result;
+  };
+  const recipe = diskRecipe();
+  await uploadSweep(transport, 1n, recipe, { loops: 1, segments: 1, format: 2 }, transport.incarnation);
+  assert.deepEqual(Uint8Array.from(transport.chunks.flatMap(chunk => [...chunk])), recipe);
 });

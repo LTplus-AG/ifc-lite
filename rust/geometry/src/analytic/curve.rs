@@ -58,7 +58,7 @@ impl CurveWalk {
         curve: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Vec<Segment>>> {
-        self.source.record(curve, decoder)?;
+        self.source.record(curve, decoder);
         match curve.ifc_type {
             IfcType::IfcPolyline => self.polyline(curve, decoder).map(Some),
             IfcType::IfcIndexedPolyCurve => self.indexed(curve, decoder),
@@ -194,6 +194,7 @@ impl CurveWalk {
         start: Option<f64>,
         end: Option<f64>,
     ) -> Result<Option<Vec<Segment>>> {
+        self.source.record(curve, decoder);
         let refs = curve
             .get_list(0)
             .ok_or_else(|| invalid("CompositeCurve missing Segments"))?;
@@ -202,19 +203,22 @@ impl CurveWalk {
         }
         let mut pieces_with_spans = Vec::new();
         let mut total = 0.0;
+        let mut complete = true;
         for reference in refs {
             let segment = resolve(Some(reference), decoder)?;
             if segment.ifc_type != IfcType::IfcCompositeCurveSegment {
                 return Ok(None);
             }
+            self.source.record(&segment, decoder);
             let parent = resolve(segment.get(2), decoder)?;
             let Some(pieces) = self.extract(&parent, decoder)? else {
-                return Ok(None);
+                complete = false;
+                continue;
             };
             let Some(mut spans) = parent_piece_spans(&parent, &pieces, decoder)? else {
-                return Ok(None);
+                complete = false;
+                continue;
             };
-            self.source.record(&segment, decoder)?;
             let same_sense = segment.get_bool(1).unwrap_or(true);
             let pieces: Vec<_> = if same_sense {
                 pieces
@@ -233,6 +237,7 @@ impl CurveWalk {
                 pieces_with_spans.push((piece, span));
             }
         }
+        if !complete { return Ok(None); }
         let a = start.unwrap_or(0.0).max(0.0);
         let b = end.unwrap_or(total).min(total);
         if b <= a {
@@ -256,6 +261,7 @@ impl CurveWalk {
         curve: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Vec<Segment>>> {
+        self.source.record(curve, decoder);
         let refs = curve
             .get_list(0)
             .ok_or_else(|| invalid("CompositeCurve missing Segments"))?;
@@ -263,23 +269,25 @@ impl CurveWalk {
             return Err(invalid("CompositeCurve exceeds work bound"));
         }
         let mut out = Vec::new();
+        let mut complete = true;
         for reference in refs {
             let segment = resolve(Some(reference), decoder)?;
             if segment.ifc_type != IfcType::IfcCompositeCurveSegment {
                 return Ok(None);
             }
-            self.source.record(&segment, decoder)?;
+            self.source.record(&segment, decoder);
             let same_sense = segment.get_bool(1).unwrap_or(true);
             let parent = resolve(segment.get(2), decoder)?;
             let Some(mut pieces) = self.extract(&parent, decoder)? else {
-                return Ok(None);
+                complete = false;
+                continue;
             };
             if !same_sense {
                 pieces = pieces.into_iter().rev().map(|p| p.reversed()).collect();
             }
             out.extend(pieces);
         }
-        Ok(Some(out))
+        Ok(complete.then_some(out))
     }
 
     fn trimmed(
@@ -289,7 +297,10 @@ impl CurveWalk {
     ) -> Result<Option<Vec<Segment>>> {
         let basis = resolve(curve.get(0), decoder)?;
         if matches!(basis.ifc_type, IfcType::IfcLine | IfcType::IfcCircle) {
-            self.source.record(&basis, decoder)?;
+            self.source.record(&basis, decoder);
+        } else {
+            self.extract(&basis, decoder)?;
+            return Ok(None);
         }
         Ok(decode_trimmed_primitive(curve, &basis, decoder, TrimRecovery::RequireBoth)?
             .map(|primitive| vec![match primitive {

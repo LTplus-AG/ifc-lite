@@ -2,6 +2,7 @@
 #include "ifclite_smlib.h"
 #include "mesh.hpp"
 #include "sweep.hpp"
+#include "rigid.hpp"
 #include <SmApiBrep.h>
 #include <SmApiGeneral.h>
 #include <SmApiPrimitives.h>
@@ -21,7 +22,7 @@ namespace {
 using Solid = std::unique_ptr<SmBrep>;
 struct Failure { int32_t status; const char* message; };
 struct Slot { Solid solid; uint32_t generation = 1; std::unique_ptr<AdapterMesh> mesh; };
-struct Upload { uint64_t id; uint32_t length, loops, segments; std::vector<uint8_t> bytes; };
+struct Upload { uint64_t id; uint32_t length, loops, segments, format; std::vector<uint8_t> bytes; };
 struct Session { std::vector<Slot> slots; std::unique_ptr<Upload> upload; };
 uint64_t next_upload = 1;
 std::unordered_map<uint64_t, Session> sessions;
@@ -256,7 +257,17 @@ int32_t ifclite_smlib_mesh_copy(uint64_t session, ifclite_smlib_handle handle,
         if (count) std::memcpy(out,static_cast<const uint8_t*>(source)+size_t(offset)*width,count*width);
     });
 }
-uint32_t ifclite_smlib_capabilities(void) { return 1u; }
+int32_t ifclite_smlib_transform(uint64_t session, ifclite_smlib_handle handle,
+    const double* matrix, ifclite_smlib_handle* out) {
+    return boundary([&] {
+        output(out);
+        const auto frame=numerical_rigid_frame(matrix);
+        Solid result=copy(solid(session,handle));
+        checked(SmApiTransform(result.get(),frame));
+        *out=store(session,std::move(result));
+    });
+}
+uint32_t ifclite_smlib_capabilities(void) { return 1u|2u|8u; }
 int32_t ifclite_smlib_sweep_begin(uint64_t session, uint32_t format,
     uint32_t length, uint32_t loops, uint32_t segments, uint64_t* out) {
     return boundary([&] {
@@ -264,13 +275,14 @@ int32_t ifclite_smlib_sweep_begin(uint64_t session, uint32_t format,
         auto& owner=lookup(session);
         require(!owner.upload,IFCLITE_SMLIB_RESOURCE_LIMIT,"upload already active");
         require(loops>0 && loops<=128 && loops<=segments,IFCLITE_SMLIB_INVALID_ARGUMENT,"invalid loop count");
-        require(format==1 && segments>0 && segments<=8192 &&
-            length==48u+8u*loops+104u*segments && length<=1048576u,
+        require(segments>0 && segments<=8192 && length<=1048576u &&
+            ((format==1 && length==48u+8u*loops+104u*segments) ||
+             (format==2 && loops==1 && segments==1 && length>=168)),
             IFCLITE_SMLIB_INVALID_ARGUMENT,"invalid/unqualified sweep declaration");
         require(next_upload!=UINT64_MAX,IFCLITE_SMLIB_RESOURCE_LIMIT,"upload IDs exhausted");
         auto upload=std::make_unique<Upload>();
         upload->id=next_upload++; upload->length=length; upload->loops=loops;
-        upload->segments=segments; upload->bytes.reserve(length);
+        upload->segments=segments; upload->format=format; upload->bytes.reserve(length);
         *out=upload->id; owner.upload=std::move(upload);
     });
 }
@@ -301,7 +313,8 @@ int32_t ifclite_smlib_sweep_commit(uint64_t session, uint64_t id, ifclite_smlib_
         auto upload=std::move(active); // Every commit attempt consumes the transaction.
         require(upload->bytes.size()==upload->length,IFCLITE_SMLIB_INVALID_ARGUMENT,
             "incomplete sweep upload discarded");
-        auto result=create_authored_sweep(upload->bytes,upload->loops,upload->segments);
+        auto result=upload->format==2 ? create_authored_disk(upload->bytes) :
+            create_authored_sweep(upload->bytes,upload->loops,upload->segments);
         *out=store(session,std::move(result));
     });
 }

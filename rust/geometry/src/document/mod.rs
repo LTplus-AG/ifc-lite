@@ -8,6 +8,9 @@
 mod types;
 mod validation;
 mod retained;
+mod retained_construction;
+mod retained_disk;
+pub use retained_construction::{RetainedConstruction, RetainedSweptDisk};
 mod retained_display;
 pub mod retained_sweep;
 pub use retained::{RetainedCompletion, RetainedDefinitionHandle, RetainedExtrusion,

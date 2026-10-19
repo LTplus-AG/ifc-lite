@@ -67,11 +67,11 @@ fn assemble(views: crate::AnalyticQuantitySources, inventory: super::inventory::
         plan.definitions.push(AuthoredDefinition::SweptDisk(source));
     }
     let definitions: BTreeMap<_, _> = plan.definitions.iter().map(|source| {
-        let (construction, status) = match source {
-            AuthoredDefinition::Extrusion(source) => (AuthoredConstruction::Extrusion, &source.source.status),
-            AuthoredDefinition::SweptDisk(source) => (AuthoredConstruction::SweptDisk, &source.status),
+        let (construction, status, retained_rational) = match source {
+            AuthoredDefinition::Extrusion(source) => (AuthoredConstruction::Extrusion, source.source.status.clone(), false),
+            AuthoredDefinition::SweptDisk(source) => (AuthoredConstruction::SweptDisk, if source.retained_rational() { AnalyticStatus::Complete } else { source.status.clone() }, source.retained_rational()),
         };
-        (source.key().clone(), (construction, status.clone()))
+        (source.key().clone(), (construction, status, retained_rational))
     }).collect();
     for instance in views.extrusion_definitions.instances.into_values().flatten()
         .chain(views.swept_disk_definitions.instances.into_values().flatten()) {
@@ -87,7 +87,7 @@ fn assemble(views: crate::AnalyticQuantitySources, inventory: super::inventory::
 
 fn add_occurrence(
     plan: &mut AuthoredGeometryPlan, instance: SweptDiskInstance,
-    definitions: &BTreeMap<crate::AnalyticSourceKey, (AuthoredConstruction, AnalyticStatus)>,
+    definitions: &BTreeMap<crate::AnalyticSourceKey, (AuthoredConstruction, AnalyticStatus, bool)>,
 ) {
     let product = plan.products.entry(instance.product_id).or_insert_with(|| AuthoredProductPlan {
         product_id: instance.product_id, occurrences: Vec::new(),
@@ -98,7 +98,8 @@ fn add_occurrence(
     }
     let definition = definitions.get(&instance.source);
     let reason = match (definition, &instance.status, instance.world_from_source) {
-        (Some((_, AnalyticStatus::Unsupported(reason))), _, _) => Some(reason.clone()),
+        (Some((_, AnalyticStatus::Unsupported(reason), _)), _, _) => Some(reason.clone()),
+        (Some((_, _, true)), _, Some(_)) => None,
         (_, AnalyticStatus::Unsupported(reason), _) => Some(reason.clone()),
         (None, _, _) => Some("authored source definition unavailable".into()),
         (_, _, None) => Some("authored occurrence placement unavailable".into()),
@@ -106,7 +107,7 @@ fn add_occurrence(
     };
     if let Some(reason) = reason {
         product.requirements.push(EvaluationRequirement::UnsupportedSource { solid_id: instance.solid_id, reason });
-    } else if let (Some((construction, _)), Some(world_from_source)) = (definition, instance.world_from_source) {
+    } else if let (Some((construction, _, _)), Some(world_from_source)) = (definition, instance.world_from_source) {
         plan.recipes.push(AuthoredRecipe { source: instance.source.clone(), product_id: instance.product_id,
             source_ordinal: instance.ordinal, construction: *construction,
             contract: AuthoredEvaluationContract::AuthoredSourceOnly, world_from_source });

@@ -6,7 +6,9 @@ find_program(NODE_TRANSPORT_EXECUTABLE node)
 if(NODE_TRANSPORT_EXECUTABLE)
   add_test(NAME smlib_sweep_upload_transport COMMAND "${NODE_TRANSPORT_EXECUTABLE}" --test
     "${CMAKE_CURRENT_SOURCE_DIR}/browser/sweep-transport.test.mjs"
-    "${CMAKE_CURRENT_SOURCE_DIR}/browser/client.test.mjs")
+    "${CMAKE_CURRENT_SOURCE_DIR}/browser/client.test.mjs"
+    "${CMAKE_CURRENT_SOURCE_DIR}/browser/region-recipes.test.mjs"
+    "${CMAKE_CURRENT_SOURCE_DIR}/browser/mesh-witness.test.mjs")
 endif()
 set(IFCLITE_SMLIB_REVISION c9c5979f04cea8c38213004d4f04df0dcfb40d05)
 if(NOT IS_DIRECTORY "${SMLIB_SOURCE}/source/SMLib/src")
@@ -35,11 +37,11 @@ target_compile_definitions(smlib_kernel PUBLIC SM_NO_DEBUG_CODE SM_NO_GFX_OUTPUT
 add_library(smlib_api STATIC ${api_sources})
 target_include_directories(smlib_api BEFORE PRIVATE "${SMLIB_SOURCE}/source/SM_API/inc")
 target_link_libraries(smlib_api PUBLIC smlib_kernel)
-add_library(ifclite_smlib STATIC src/adapter.cpp src/mesh.cpp src/sweep.cpp src/protocol.cpp)
+add_library(ifclite_smlib STATIC src/adapter.cpp src/mesh.cpp src/sweep.cpp src/disk.cpp src/protocol.cpp)
 target_include_directories(ifclite_smlib PUBLIC include)
 target_link_libraries(ifclite_smlib PRIVATE smlib_api)
 # Keep upstream C++ types/includes private to the adapter.
-add_executable(ifclite_smlib_tests tests/adapter_tests.cpp tests/mesh_tests.cpp tests/sweep_tests.cpp tests/sweep_region_tests.cpp tests/c_header.c)
+add_executable(ifclite_smlib_tests tests/adapter_tests.cpp tests/mesh_tests.cpp tests/sweep_tests.cpp tests/sweep_region_tests.cpp tests/disk_tests.cpp tests/c_header.c)
 target_compile_features(ifclite_smlib_tests PRIVATE c_std_11 cxx_std_17)
 target_link_libraries(ifclite_smlib_tests PRIVATE ifclite_smlib smlib_api)
 target_include_directories(ifclite_smlib_tests PRIVATE src)
@@ -65,7 +67,7 @@ if(EMSCRIPTEN)
     "-sEXPORTED_FUNCTIONS=['_malloc','_free','_ifclite_smlib_dispatch_owned']"
     "-sEXPORTED_RUNTIME_METHODS=['HEAPU8']")
   set_target_properties(ifclite_smlib_browser PROPERTIES SUFFIX ".mjs")
-  foreach(module module worker client contract sweep sweep-contract lifecycle-contract)
+  foreach(module module worker client contract sweep sweep-contract lifecycle-contract mesh-witness region-recipes)
     configure_file("browser/${module}.mjs" "${module}.mjs" COPYONLY)
   endforeach()
   configure_file(browser/test.html test.html COPYONLY)

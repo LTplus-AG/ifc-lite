@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Replayable source ownership, separate from meshes, occurrences and worker tokens.
-use super::{DocumentError, DocumentId, EvaluationContract, GeometryDocument};
+use super::{DocumentError, DocumentId, EvaluationContract, GeometryDocument, RetainedConstruction};
 use crate::analytic::{AnalyticExtrusion, AnalyticStatus, ProfileLoopKind};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RetainedDefinitionHandle {
@@ -18,6 +19,16 @@ pub struct RetainedExtrusion {
     pub length_unit_scale: f64,
     pub source_epoch: u64,
     pub source_revision: u64,
+}
+
+impl RetainedExtrusion {
+    /// Required execution evidence, independent of source storage/validity.
+    /// A runtime must check its explicit qualification capability before evaluation.
+    pub fn qualification_requirement(
+        &self,
+    ) -> Result<super::retained_sweep::RegionQualification, RetainedRefusal> {
+        Ok(super::retained_sweep::lower(self)?.qualification)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -49,7 +60,7 @@ impl std::error::Error for RetainedRefusal {}
 #[derive(Debug)]
 pub(super) struct RetainedDefinition {
     generation: u64,
-    recipe: RetainedExtrusion,
+    recipe: Arc<RetainedConstruction>,
 }
 
 /// Source-only construction. This does not certify enclosing CSG/opening coverage.
@@ -59,10 +70,10 @@ pub struct RetainedRequest {
     revision: u64,
     definition: RetainedDefinitionHandle,
     worker_incarnation: u64,
-    recipe: RetainedExtrusion,
+    recipe: Arc<RetainedConstruction>,
 }
 impl RetainedRequest {
-    pub fn recipe(&self) -> &RetainedExtrusion {
+    pub fn recipe(&self) -> &RetainedConstruction {
         &self.recipe
     }
     pub fn worker_incarnation(&self) -> u64 {
@@ -137,7 +148,7 @@ impl GeometryDocument {
         self.revision
             .checked_add(count)
             .ok_or(DocumentError::RevisionExhausted)?;
-        let definition = self.add_mesh_definition(packet.request.recipe.source.solid_id, mesh)?;
+        let definition = self.add_mesh_definition(packet.request.recipe.solid_id(), mesh)?;
         let mut handles = Vec::with_capacity(occurrences.len());
         for &(product_id, transform) in occurrences {
             handles.push(self.add_occurrence(definition, product_id, transform)?);
@@ -150,8 +161,13 @@ impl GeometryDocument {
         &mut self,
         recipe: RetainedExtrusion,
     ) -> Result<RetainedDefinitionHandle, RetainedRefusal> {
-        // Validate the numerical edge before storing a replayable admitted recipe.
-        super::retained_sweep::lower(&recipe)?;
+        self.add_retained_construction(RetainedConstruction::Extrusion(Box::new(recipe)))
+    }
+
+    pub fn add_retained_construction(&mut self, recipe: RetainedConstruction)
+        -> Result<RetainedDefinitionHandle, RetainedRefusal>
+    {
+        recipe.lower()?;
         let revision = self.next_revision()?;
         let handle = RetainedDefinitionHandle {
             document: self.id,
@@ -160,7 +176,7 @@ impl GeometryDocument {
         };
         self.retained.push(Some(RetainedDefinition {
             generation: 1,
-            recipe,
+            recipe: Arc::new(recipe),
         }));
         self.revision = revision;
         Ok(handle)
@@ -170,12 +186,22 @@ impl GeometryDocument {
         &self,
         handle: RetainedDefinitionHandle,
     ) -> Result<&RetainedExtrusion, RetainedRefusal> {
+        self.retained_construction(handle)?.extrusion()
+            .ok_or(RetainedRefusal::InvalidSource("construction is not extrusion"))
+    }
+
+    pub fn retained_construction(&self, handle: RetainedDefinitionHandle)
+        -> Result<&RetainedConstruction, RetainedRefusal>
+    {
+        Ok(self.retained_definition(handle)?.recipe.as_ref())
+    }
+
+    fn retained_definition(&self, handle: RetainedDefinitionHandle)
+        -> Result<&RetainedDefinition, RetainedRefusal>
+    {
         self.check_document(handle.document)?;
-        self.retained
-            .get(handle.slot)
-            .and_then(Option::as_ref)
+        self.retained.get(handle.slot).and_then(Option::as_ref)
             .filter(|definition| definition.generation == handle.generation)
-            .map(|definition| &definition.recipe)
             .ok_or(RetainedRefusal::Document(DocumentError::StaleHandle))
     }
 
@@ -183,7 +209,7 @@ impl GeometryDocument {
         &mut self,
         handle: RetainedDefinitionHandle,
     ) -> Result<(), RetainedRefusal> {
-        self.retained_extrusion(handle)?;
+        self.retained_construction(handle)?;
         let revision = self.next_revision()?;
         self.retained[handle.slot] = None;
         self.revision = revision;
@@ -207,7 +233,7 @@ impl GeometryDocument {
             revision: self.revision,
             definition,
             worker_incarnation,
-            recipe: self.retained_extrusion(definition)?.clone(),
+            recipe: Arc::clone(&self.retained_definition(definition)?.recipe),
         })
     }
 
@@ -227,13 +253,12 @@ impl GeometryDocument {
         if request.revision != self.revision {
             return Err(DocumentError::StaleRevision.into());
         }
-        let current = self.retained_extrusion(request.definition)?;
-        if current.source_epoch != request.recipe.source_epoch
-            || current.source_revision != request.recipe.source_revision
+        let current = self.retained_construction(request.definition)?;
+        if current.revision() != request.recipe.revision()
         {
             return Err(DocumentError::StaleRevision.into());
         }
-        let expected = super::retained_sweep::lower(current)?;
+        let expected = current.lower()?;
         if packet.source_from_evaluation != expected.source_from_evaluation
             || packet.evaluation_from_source != expected.evaluation_from_source
         {
@@ -253,6 +278,14 @@ pub(super) fn validate_source(recipe: &RetainedExtrusion) -> Result<(), Retained
     if let AnalyticStatus::Unsupported(reason) = &source.status {
         return Err(RetainedRefusal::UnsupportedSource(reason.clone()));
     }
+    let original = source.source.as_ref()
+        .ok_or(RetainedRefusal::OriginalTrimConventionUnavailable)?;
+    if let AnalyticStatus::Unsupported(reason) = &original.capture_status {
+        return Err(RetainedRefusal::UnsupportedSource(format!("original solid capture: {reason}")));
+    }
+    if original.root_entity_id != source.solid_id || !original.records.contains_key(&source.solid_id) {
+        return Err(RetainedRefusal::InvalidSource("invalid original solid metadata"));
+    }
     let profile = source
         .profile
         .as_ref()
@@ -260,25 +293,30 @@ pub(super) fn validate_source(recipe: &RetainedExtrusion) -> Result<(), Retained
     if let AnalyticStatus::Unsupported(reason) = &profile.status {
         return Err(RetainedRefusal::UnsupportedSource(reason.clone()));
     }
-    if profile.loops.len() != 1 || profile.loops[0].kind != ProfileLoopKind::Outer {
-        return Err(RetainedRefusal::UnqualifiedRegion);
+    if profile.loops.is_empty() || profile.loops.len() > 128 {
+        return Err(RetainedRefusal::InvalidSource("invalid bounded region loop count"));
     }
-    if profile.ifc_type_name == "IfcCircleProfileDef" {
-        return Err(RetainedRefusal::UnqualifiedRegion);
-    }
-    let segments = &profile.loops[0].segments;
-    if segments.is_empty() || segments.len() > 8192 {
-        return Err(RetainedRefusal::InvalidSource(
-            "curve count exceeds bounded recipe",
-        ));
-    }
-    if profile.ifc_type_name != "IfcRectangleProfileDef" {
-        if profile.loops.iter().any(|boundary| boundary.source.is_none()) {
-            return Err(RetainedRefusal::OriginalTrimConventionUnavailable);
+    let mut count = 0;
+    for (index, boundary) in profile.loops.iter().enumerate() {
+        let expected = if index == 0 { ProfileLoopKind::Outer } else { ProfileLoopKind::Inner };
+        if boundary.kind != expected {
+            return Err(RetainedRefusal::InvalidSource("expected outer then inner boundaries"));
         }
-        // Original selectors are retained now, but this does not qualify SDK
-        // cap topology, orientation, surface types, bounds or sections.
-        return Err(RetainedRefusal::UnqualifiedRegion);
+        if boundary.segments.is_empty() || boundary.segments.len() > 8192 - count {
+            return Err(RetainedRefusal::InvalidSource("curve count exceeds bounded recipe"));
+        }
+        count += boundary.segments.len();
+        let original = boundary.source.as_ref()
+            .ok_or(RetainedRefusal::OriginalTrimConventionUnavailable)?;
+        if let AnalyticStatus::Unsupported(reason) = &original.capture_status {
+            return Err(RetainedRefusal::UnsupportedSource(format!("original boundary capture: {reason}")));
+        }
+        if !original.plane_angle_to_radians.is_finite()
+            || original.plane_angle_to_radians <= 0.0
+            || !original.records.contains_key(&original.root_entity_id)
+        {
+            return Err(RetainedRefusal::InvalidSource("invalid original boundary metadata"));
+        }
     }
     Ok(())
 }

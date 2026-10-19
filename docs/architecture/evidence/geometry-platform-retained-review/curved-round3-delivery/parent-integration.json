@@ -1,0 +1,19 @@
+{
+  "parent_before_actual": "abceb91f60327072b83cbb8bfa2fbd5c079af37c",
+  "delivery_source": "6f30e7c1dab17270a84127fd5d2332ad3a9206b3",
+  "paths_verified": 65,
+  "patch_sha256": "166968e32b2d5ba0357676b1b10f4bce32157f0653d796e406fdbb2d9de23126",
+  "current_parent_apply_check": "PASS",
+  "assembled_after_hashes": "PASS",
+  "latest_build_tests_clippy": "UNRUN",
+  "native_sdk_geometry": "FAIL surface-count witness at source331; not qualified",
+  "browser_consumer": "separate pending integration",
+  "python_paths_preserved": true,
+  "parent_protocol_oracle_fixtures": {
+    "command": "node --test native/smlib-adapter/browser/*.test.mjs",
+    "passed": 24,
+    "failed": 0,
+    "skipped": 0,
+    "actual_sdk": false
+  }
+}

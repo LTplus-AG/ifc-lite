@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! One immutable construction transaction; no fallback or implicit replay.
 use super::{BrepHandle, MeshLimits, SmlibWorker, WorkerError};
-use crate::protocol::KernelCommand;
 use ifc_lite_geometry::document::{
     retained_sweep, RetainedCompletion, RetainedRequest, RetainedTessellation,
 };
@@ -13,6 +12,7 @@ pub struct RetainedRealization {
     solid: BrepHandle,
     completion: RetainedCompletion,
     owner: crate::RuntimeOwner,
+    object_live: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 impl RetainedRealization {
     pub fn solid(&self) -> BrepHandle {
@@ -30,7 +30,8 @@ impl RetainedRealization {
         (self.solid, self.completion)
     }
     pub fn validate_live(&self) -> Result<(), WorkerError> {
-        if self.owner.incarnation() == Some(self.solid.worker) {
+        if self.owner.incarnation() == Some(self.solid.worker)
+            && self.object_live.load(std::sync::atomic::Ordering::Acquire) {
             Ok(())
         } else {
             Err(WorkerError::WrongWorker)
@@ -59,9 +60,17 @@ impl SmlibWorker {
         if request.worker_incarnation() != self.incarnation() || !self.is_live() {
             return Err(WorkerError::WrongWorker);
         }
-        let payload = retained_sweep::lower(request.recipe())
+        let payload = request.recipe().lower()
             .map_err(|error| WorkerError::Authored(error.to_string()))?;
-        let solid = self.create_sweep(&payload.bytes, payload.segments)?;
+        let qualified = match payload.qualification {
+            retained_sweep::RegionQualification::Rectangle => true,
+            retained_sweep::RegionQualification::OrderedRegion => self.regions_qualified,
+            retained_sweep::RegionQualification::RationalDisk => self.disks_qualified,
+        };
+        if !qualified {
+            return Err(WorkerError::Authored("UnqualifiedRegion: execute same-incarnation target witnesses first".into()));
+        }
+        let solid = self.create_sweep(&payload.bytes, payload.format, payload.loops, payload.segments)?;
         let tessellation = match self.tessellate(solid, chord_metres, angle_degrees, limits) {
             Ok(mesh) => mesh,
             Err(error) => {
@@ -87,6 +96,7 @@ impl SmlibWorker {
             return Err(WorkerError::Protocol("worker exited before publication"));
         }
         Ok(RetainedRealization {
+            object_live: self.object_liveness(solid)?,
             owner: crate::RuntimeOwner::new(self.process_control(), self.identity),
             solid,
             completion: RetainedCompletion::new(
@@ -98,59 +108,4 @@ impl SmlibWorker {
         })
     }
 
-    fn create_sweep(&mut self, bytes: &[u8], segments: u32) -> Result<BrepHandle, WorkerError> {
-        let capabilities = self.call(KernelCommand::Capabilities)?;
-        if capabilities.len() != 8
-            || capabilities[..4] != 1u32.to_le_bytes()
-            || u32::from_le_bytes(capabilities[4..].try_into().expect("four bytes")) & 1 == 0
-        {
-            return Err(WorkerError::Protocol("staged sweep extension unavailable"));
-        }
-        let length =
-            u32::try_from(bytes.len()).map_err(|_| WorkerError::ResourceLimit("sweep size"))?;
-        if bytes.len() > 1_048_576 || segments == 0 || segments > 8192 {
-            return Err(WorkerError::ResourceLimit("sweep declaration"));
-        }
-        let response = self.call(KernelCommand::SweepBegin {
-            session: self.session,
-            length,
-            loops: 1,
-            segments,
-        })?;
-        let upload = u64::from_le_bytes(self.fixed(response)?);
-        if upload == 0 {
-            return Err(self.poison("zero upload token"));
-        }
-        for (index, chunk) in bytes.chunks(3840).enumerate() {
-            let result = self.call(KernelCommand::SweepChunk {
-                session: self.session,
-                upload,
-                offset: (index * 3840) as u32,
-                bytes: chunk.to_vec(),
-            });
-            match result {
-                Ok(response) if response.is_empty() => (),
-                Ok(_) => return Err(self.poison("unexpected upload result")),
-                Err(error) => {
-                    // Chunk domain failures discard the transaction at the ABI.
-                    // Abort is best effort; inability to clean retires the worker.
-                    if self
-                        .call(KernelCommand::SweepAbort {
-                            session: self.session,
-                            upload,
-                        })
-                        .is_err()
-                    {
-                        self.retire();
-                    }
-                    return Err(error);
-                }
-            }
-        }
-        let result = self.call(KernelCommand::SweepCommit {
-            session: self.session,
-            upload,
-        })?;
-        self.handle(result)
-    }
 }

@@ -1,0 +1,96 @@
+{
+  "source_head": "6f30e7c1dab17270a84127fd5d2332ad3a9206b3",
+  "verdict": "UNQUALIFIED; full requested platform incomplete",
+  "implemented": [
+    "ordered outer/inner line/arc/circle extrusion lowering",
+    "original trim/basis/composite/plane-angle/profile and solid placement coefficients separate from derived numerical data",
+    "exact open rational swept-disk coefficients; supported line/arc algebraic evaluation lowering",
+    "model-bound native request/receipt with actual per-object and process liveness",
+    "copied positive rigid occurrence transforms and common-frame Boolean/opening dependency receipts",
+    "decoder-instance/generation-bound weak analysis sharing, witnessed in source by supported distinct unit configurations"
+  ],
+  "passed_lightweight": [
+    {
+      "command": "node --test native/smlib-adapter/browser/*.test.mjs",
+      "passed": 24,
+      "meaning": "11 transport fixtures and 13 synthetic numerical oracle/recipe fixtures; not actual SDK geometry or canonical browser parity"
+    },
+    {
+      "command": "node scripts/check-refwalk-guards.mjs",
+      "result": "0 unguarded; 12 existing fan-out reviews"
+    },
+    {
+      "command": "node scripts/check-module-size.mjs",
+      "result": "0 new over 400; no cap growth"
+    },
+    {
+      "command": "rustfmt --emit stdout --config skip_children=true on touched Rust files",
+      "meaning": "syntax parsing only; no compile"
+    },
+    {
+      "command": "bash -n native/smlib-adapter/qualify.sh; node --check browser/sweep-contract.mjs; git diff --check",
+      "result": "PASS"
+    }
+  ],
+  "actual_native_sdk": {
+    "source": "331ab9d92ab588063b61400ca0bef1cfd424438a",
+    "sdk": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+    "host": "pop-os",
+    "job": "fbacabd8-8b31-46d8-b433-19690d89c074",
+    "exit": 8,
+    "build_link": "PASS",
+    "ctest": {
+      "smlib_sweep_upload_transport": "PASS",
+      "smlib_worker_framing": "PASS",
+      "smlib_owned_boundary": "FAIL: actual planar/curved surface counts"
+    },
+    "source_unchanged": true,
+    "output_sha256": "e6a1f6ebad71f7826f377f0e5cb4abe18d8c85a78c75dca425d0863841c1c9f5",
+    "meaning": "Not successful geometry qualification. Later owned-boundary assertions may not execute after abort."
+  },
+  "workspace": {
+    "source": "9c75470c82e04c3bd6228d8773158b2516a54c41",
+    "job": "68b22977-af2e-4b12-9956-b6f6cf118d17",
+    "request": "auto-5fa6c4cca5fb403b91fe7a88a2c0a9e0",
+    "state_at_assembly": "running",
+    "command": "pnpm fixtures ara3d/AC20-FZK-Haus.ifc && cargo test --workspace && cargo clippy --workspace --all-targets -- -D warnings",
+    "meaning": "No test/Clippy pass claimed; excludes later decoder/placement corrections"
+  },
+  "diagnostic_attempt": {
+    "source": "029228c2c4c4319ecf235f98cc62dd0595a70fcc",
+    "request": "auto-fc5acffe1231473b87fb5f7570465f0d",
+    "exit": 69,
+    "state": "blocked before execution: job kind disabled; later status guard78",
+    "retry": false
+  },
+  "unrun": [
+    "latest-source Rust compile/workspace tests/all-target Clippy",
+    "actual WASM SDK/browser numerical execution",
+    "canonical source-bound browser retained consumer/parity",
+    "source-bound native real-authoring IFC SDK invariant and release-before-accept regression",
+    "root pnpm typecheck/test",
+    "whole-worker-pool base/branch performance and output identity"
+  ],
+  "residual_coverage": [
+    "complete canonical ProductProgram representation/copy/Boolean/opening/final-net consumption (separate active owner)",
+    "actual canonical source-bound browser/WASM consumer (new implementation round active)",
+    "general rational planar regions; hollow/closed/periodic/multisegment swept disks and unsupported trim semantics",
+    "retained USD and imported-format retained consumers with accounted representation coverage",
+    "appearance/UV/smooth analytic normals/persistent IFC face provenance remain explicit refusals",
+    "full geometry surface/section and source-faithfulness target qualification",
+    "performance/memory unqualified"
+  ],
+  "immutable_unknown_request": "auto-5049ad4327104721832dd92ea474724d preserved unchanged",
+  "reviews": {
+    "rounds": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "latest_source": "6f30e7c1dab17270a84127fd5d2332ad3a9206b3",
+    "latest_verdict": "No new concrete blocker; review5 testblocker corrected. Static source review only."
+  }
+}

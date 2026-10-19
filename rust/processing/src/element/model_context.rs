@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Immutable model inputs shared once per effective batch, never copied per product.
 use super::*;
-use std::{fmt,sync::{Arc,OnceLock,atomic::{AtomicU64,Ordering}}};
+use std::{fmt,sync::{Arc,Mutex,Weak,atomic::{AtomicU64,Ordering}}};
 
 /// Shared components selected by the existing consumer for one effective batch.
 /// Construct by moving maps into Arcs or cloning existing model-level Arcs.
@@ -54,7 +54,7 @@ impl ProductionModel {
         let revision=self.state.revision.fetch_update(Ordering::Relaxed,Ordering::Relaxed,|n|n.checked_add(1))
             .expect("production context revision exhausted")+1;
         Arc::new(OwnedMeshProductionContext {id:ProductionContextId {load:self.state.load,source_epoch,revision},
-            data,state:self.state.clone(),source:self.source.clone(),trusted:self.trusted.clone(),authored_plan:OnceLock::new()})
+            data,state:self.state.clone(),source:self.source.clone(),trusted:self.trusted.clone(),authored_plan:Mutex::new(Default::default())})
     }
     /// Whether a snapshot was created by this model load, independent of its
     /// immutable configuration revision. This grants no decoder authority.
@@ -76,7 +76,7 @@ pub struct OwnedMeshProductionContext {
     state:Arc<ModelState>,
     source:Option<Arc<ifc_lite_core::SourceBundle>>,
     trusted:Option<ifc_lite_core::TrustedDecoderInputs>,
-    authored_plan:OnceLock<Arc<crate::authored_geometry::bound::BoundAuthoredPlan>>,
+    authored_plan:Mutex<std::collections::HashMap<ifc_lite_core::execution_owner::ExecutionIdentity,Weak<crate::authored_geometry::bound::BoundAuthoredPlan>>>,
 }
 impl OwnedMeshProductionContext {
     pub fn id(&self)->ProductionContextId {self.id}
@@ -84,7 +84,7 @@ impl OwnedMeshProductionContext {
     pub(crate) fn lifecycle(&self)->ProductionLifecycle {
         ProductionLifecycle {id:self.id,state:Arc::clone(&self.state)}
     }
-    pub(crate) fn authored_cache(&self)->&OnceLock<Arc<crate::authored_geometry::bound::BoundAuthoredPlan>> {
+    pub(crate) fn authored_cache(&self)->&Mutex<std::collections::HashMap<ifc_lite_core::execution_owner::ExecutionIdentity,Weak<crate::authored_geometry::bound::BoundAuthoredPlan>>> {
         &self.authored_plan
     }
     /// Numerical presentation retains only its immutable derived inputs, never

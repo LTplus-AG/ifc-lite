@@ -5,12 +5,12 @@
 //! Owned EXPRESS values beside interpreted geometry. No sampling or unit conversion.
 use crate::{Error, Result};
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// Original selector types, typed wrappers and source references survive intact.
 /// Reals are decoded f64 values, not original STEP lexical spellings.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum SourceValue {
     EntityRef(u32),
@@ -28,7 +28,7 @@ pub enum SourceValue {
     Derived,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SourceRecord {
     pub id: u32,
     pub ifc_type_name: String,
@@ -36,9 +36,11 @@ pub struct SourceRecord {
     pub attributes: BTreeMap<String, SourceValue>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AnalyticBoundarySource {
     pub root_entity_id: u32,
+    /// Failed capture never exposes a partial graph as complete provenance.
+    pub capture_status: super::AnalyticStatus,
     /// File plane-angle units -> radians. Length coefficients remain file units.
     pub plane_angle_to_radians: f64,
     /// Reached profile/curve/composite/basis/placement/point records, indexed by source ID.
@@ -52,6 +54,7 @@ pub(super) struct SourceCapture {
     records: BTreeMap<u32, SourceRecord>,
     values: usize,
     enabled: bool,
+    failure: Option<String>,
 }
 impl SourceCapture {
     pub fn enabled() -> Self {
@@ -60,21 +63,35 @@ impl SourceCapture {
             ..Self::default()
         }
     }
-    pub fn finish(self, root_entity_id: u32, scale: f64) -> Result<AnalyticBoundarySource> {
+    pub fn finish(mut self, root_entity_id: u32, scale: f64) -> AnalyticBoundarySource {
         if !scale.is_finite() || scale <= 0.0 {
-            return Err(invalid("invalid source plane-angle unit scale"));
+            self.fail("invalid source plane-angle unit scale".to_owned());
         }
-        Ok(AnalyticBoundarySource {
+        AnalyticBoundarySource {
             root_entity_id,
+            capture_status: self.failure.map_or(super::AnalyticStatus::Complete,
+                super::AnalyticStatus::Unsupported),
             plane_angle_to_radians: scale,
             records: self.records,
-        })
+        }
+    }
+
+    fn fail(&mut self, reason: String) {
+        self.records.clear();
+        self.enabled = false;
+        if self.failure.is_none() { self.failure = Some(reason); }
+    }
+
+    pub fn record(&mut self, entity: &DecodedEntity, decoder: &mut EntityDecoder) {
+        if let Err(error) = self.try_record(entity, decoder) {
+            self.fail(error.to_string());
+        }
     }
 
     /// Called by the existing curve interpreter when it reaches each record.
     /// Only fixed-depth coefficient dependencies are captured here; composite
     /// and trimmed curve traversal remains exclusively in CurveWalk.
-    pub fn record(&mut self, entity: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {
+    fn try_record(&mut self, entity: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {
         if !self.enabled {
             return Ok(());
         }
@@ -115,6 +132,13 @@ impl SourceCapture {
                 "MasterRepresentation",
             ],
             IfcType::IfcLine => &["Pnt", "Dir"],
+            IfcType::IfcExtrudedAreaSolid => &["SweptArea", "Position", "ExtrudedDirection", "Depth"],
+            IfcType::IfcSweptDiskSolid =>
+                &["Directrix", "Radius", "InnerRadius", "StartParam", "EndParam"],
+            IfcType::IfcBSplineCurveWithKnots => &["Degree", "ControlPointsList", "CurveForm",
+                "ClosedCurve", "SelfIntersect", "KnotMultiplicities", "Knots", "KnotSpec"],
+            IfcType::IfcRationalBSplineCurveWithKnots => &["Degree", "ControlPointsList", "CurveForm",
+                "ClosedCurve", "SelfIntersect", "KnotMultiplicities", "Knots", "KnotSpec", "WeightsData"],
             IfcType::IfcCircle => &["Position", "Radius"],
             IfcType::IfcAxis2Placement2D => &["Location", "RefDirection"],
             IfcType::IfcAxis2Placement3D => &["Location", "Axis", "RefDirection"],
@@ -122,7 +146,7 @@ impl SourceCapture {
             IfcType::IfcDirection => &["DirectionRatios"],
             IfcType::IfcVector => &["Orientation", "Magnitude"],
             IfcType::IfcCartesianPointList2D | IfcType::IfcCartesianPointList3D => &["CoordList"],
-            _ => return Ok(()),
+            _ => return Err(invalid("unsupported source record type")),
         };
         if self.records.len() >= 100_000 {
             return Err(invalid("source records exceed work budget"));
@@ -155,6 +179,7 @@ impl SourceCapture {
         let slots: &[(usize, &[IfcType])] = match entity.ifc_type {
             IfcRectangleProfileDef | IfcCircleProfileDef => &[(2, &[IfcAxis2Placement2D])],
             IfcLine => &[(0, &[IfcCartesianPoint]), (1, &[IfcVector])],
+            IfcExtrudedAreaSolid => &[(1, &[IfcAxis2Placement3D]), (2, &[IfcDirection])],
             IfcCircle => &[(0, &[IfcAxis2Placement2D, IfcAxis2Placement3D])],
             IfcIndexedPolyCurve => &[(0, &[IfcCartesianPointList2D, IfcCartesianPointList3D])],
             IfcAxis2Placement2D => &[(0, &[IfcCartesianPoint]), (1, &[IfcDirection])],
@@ -171,8 +196,10 @@ impl SourceCapture {
                 dependencies.push(Self::coefficient(id, expected, decoder)?);
             }
         }
-        if entity.ifc_type == IfcPolyline {
-            if let Some(points) = entity.get_list(0) {
+        if matches!(entity.ifc_type, IfcPolyline | IfcBSplineCurveWithKnots
+            | IfcRationalBSplineCurveWithKnots) {
+            let slot = if entity.ifc_type == IfcPolyline { 0 } else { 1 };
+            if let Some(points) = entity.get_list(slot) {
                 for point in points {
                     if let Some(id) = point.as_entity_ref() {
                         dependencies.push(Self::coefficient(id, &[IfcCartesianPoint], decoder)?);

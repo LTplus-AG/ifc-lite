@@ -1,0 +1,427 @@
+{
+  "reviewed_commit": "4e278251eed17044c58c9ce0615022259ad9c880",
+  "observed_final_head": "67e6df69f788c84f120a70fae8ca1e9227838473",
+  "sdk_commit": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "mode": "read-only source review; no builds/tests/compiler probes/jobs/checkouts/publication",
+  "repository_files": [
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "target_sha256": "93575f2da7d282009a80a28b9c13523a57f3e78a8d00de58e067eb0f60df4d72",
+      "observed_working_sha256": "93575f2da7d282009a80a28b9c13523a57f3e78a8d00de58e067eb0f60df4d72",
+      "working_matches_target": true
+    },
+    {
+      "path": "native/smlib-adapter/NUMERICAL_ROUND3.md",
+      "target_sha256": "1fc6110382c3b1759a2bbad0737c78db822c284471c3856594b05b116a908dda",
+      "observed_working_sha256": "1fc6110382c3b1759a2bbad0737c78db822c284471c3856594b05b116a908dda",
+      "working_matches_target": true
+    },
+    {
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "target_sha256": "56ca3f2c200a3afa9ae5773400d9023b6b2330dec4e2145f6c60e56ef2eb05a5",
+      "observed_working_sha256": "56ca3f2c200a3afa9ae5773400d9023b6b2330dec4e2145f6c60e56ef2eb05a5",
+      "working_matches_target": true
+    },
+    {
+      "path": "native/smlib-adapter/src/adapter.cpp",
+      "target_sha256": "4ad408ff7d4688a74adc41a92a79f8be9dd5ffafd4856472af6bb08d14f742c9",
+      "observed_working_sha256": "4ad408ff7d4688a74adc41a92a79f8be9dd5ffafd4856472af6bb08d14f742c9",
+      "working_matches_target": true
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "target_sha256": "1413e52f1a0f52947f11afa43eca9c4dcab7c7b57ffb1b7f13ba33ba2730b97c",
+      "observed_working_sha256": "1413e52f1a0f52947f11afa43eca9c4dcab7c7b57ffb1b7f13ba33ba2730b97c",
+      "working_matches_target": true
+    },
+    {
+      "path": "native/smlib-adapter/src/disk.cpp",
+      "target_sha256": "23bd0b342d8509bf52b83296e9f8ee00df279eb074bf4eaf91e0f88d49527b45",
+      "observed_working_sha256": "23bd0b342d8509bf52b83296e9f8ee00df279eb074bf4eaf91e0f88d49527b45",
+      "working_matches_target": true
+    },
+    {
+      "path": "native/smlib-adapter/src/sweep.cpp",
+      "target_sha256": "bab0f3ba560cfd297347c77d566aed30d76b94b80ed6002f4cada2efa7436dac",
+      "observed_working_sha256": "bab0f3ba560cfd297347c77d566aed30d76b94b80ed6002f4cada2efa7436dac",
+      "working_matches_target": true
+    },
+    {
+      "path": "native/smlib-adapter/src/rigid.hpp",
+      "target_sha256": "2622bae5ee598a90ee827fbc12f3339d3e4d4ee162909e09e302bd067335bb6a",
+      "observed_working_sha256": "2622bae5ee598a90ee827fbc12f3339d3e4d4ee162909e09e302bd067335bb6a",
+      "working_matches_target": true
+    },
+    {
+      "path": "native/smlib-adapter/tests/disk_tests.cpp",
+      "target_sha256": "3f1d6dc1d664cd883230174d52b055126d77635f834b1ec82a157157e9ac3beb",
+      "observed_working_sha256": "3f1d6dc1d664cd883230174d52b055126d77635f834b1ec82a157157e9ac3beb",
+      "working_matches_target": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep-contract.mjs",
+      "target_sha256": "a9aae2b7b73c7dc55301671def6eedf070f3fc6331ba78504b4ec57bf2beef55",
+      "observed_working_sha256": "a9aae2b7b73c7dc55301671def6eedf070f3fc6331ba78504b4ec57bf2beef55",
+      "working_matches_target": true
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep.mjs",
+      "target_sha256": "94ee1485970fd42faa2844a7b5e96cd551f3fe4c3e5100be05b72a1048436eb8",
+      "observed_working_sha256": "94ee1485970fd42faa2844a7b5e96cd551f3fe4c3e5100be05b72a1048436eb8",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/AGENTS.md",
+      "target_sha256": "fc1271f73e8bec4ad4a72344caf5b04697799634187225d9d8df466f27badd6d",
+      "observed_working_sha256": "fc1271f73e8bec4ad4a72344caf5b04697799634187225d9d8df466f27badd6d",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/lib.rs",
+      "target_sha256": "46ae5034573a367547fac25227ebbbddc4ebe60d7ae5895bcfd0967ab46f9922",
+      "observed_working_sha256": "8318145850960f56c9b3774cae06050af59fa32f3a9840ea520f91fb83e16b67",
+      "working_matches_target": false
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker.rs",
+      "target_sha256": "be626b13daf0b65137374bb237a3f96541d3eebaf84b9b452b14118b1dc6cc7e",
+      "observed_working_sha256": "70b8c2bb0c5a7b7306737e61dff0e3c3b3beebfcbedda648bd3e3e5971f13fe7",
+      "working_matches_target": false
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_mesh.rs",
+      "target_sha256": "042051f7e3cfc6fc86b7dd8b903ac4f807f506be3b28b69ebe08a2cd1971a595",
+      "observed_working_sha256": "042051f7e3cfc6fc86b7dd8b903ac4f807f506be3b28b69ebe08a2cd1971a595",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_sweep.rs",
+      "target_sha256": "2be5e2cb8762f12babb02cc0f7e4753ee82a820f9e5c6cc10e2b19da71a4d70f",
+      "observed_working_sha256": "2be5e2cb8762f12babb02cc0f7e4753ee82a820f9e5c6cc10e2b19da71a4d70f",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_upload.rs",
+      "target_sha256": "7d62ea2986ccb42568f64db01cadfaa1cd540d92a1b916f04e0afd7c468e5ec2",
+      "observed_working_sha256": "7d62ea2986ccb42568f64db01cadfaa1cd540d92a1b916f04e0afd7c468e5ec2",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_dependencies.rs",
+      "target_sha256": "9e1210ca33a4f1abbcc312eb1f948b8f697cca1d343a288580168a5cd46770f8",
+      "observed_working_sha256": "e82c5c6c8f38da59ad6c7673a6793593a2f64f9ed0d5b96afb6abe82cf032cd9",
+      "working_matches_target": false
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_qualification.rs",
+      "target_sha256": "78e19622a91c3894d5e502664f9a093c1bb4019b130e02fc4b3aa4e7acb315ca",
+      "observed_working_sha256": "78e19622a91c3894d5e502664f9a093c1bb4019b130e02fc4b3aa4e7acb315ca",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_disk_qualification.rs",
+      "target_sha256": "3e0e71302f7fc3e888b086c2d7c11b3a38be9135c7fbcdfa1ad0bfd184ffe90d",
+      "observed_working_sha256": "3e0e71302f7fc3e888b086c2d7c11b3a38be9135c7fbcdfa1ad0bfd184ffe90d",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/runtime_owner.rs",
+      "target_sha256": "c171a55edd5324c8e117b0e1aa60d221bb3b478ae0bbbe991d0ff166aff15e87",
+      "observed_working_sha256": "c171a55edd5324c8e117b0e1aa60d221bb3b478ae0bbbe991d0ff166aff15e87",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/curve_source.rs",
+      "target_sha256": "3da72aed89d5124bb36593f79e84421fc5b9a09f89c8ac35605523b4a6e720c0",
+      "observed_working_sha256": "3da72aed89d5124bb36593f79e84421fc5b9a09f89c8ac35605523b4a6e720c0",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/curve.rs",
+      "target_sha256": "637cfbe024ef4f0b2c957fa0493dee59e755df88310e796c7e46a7a908607bf9",
+      "observed_working_sha256": "637cfbe024ef4f0b2c957fa0493dee59e755df88310e796c7e46a7a908607bf9",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/profile.rs",
+      "target_sha256": "f10ac9e7a83038048144900b35eef0b6ba0d1f0b9dcd0c2d51bfe7b166d5e3b8",
+      "observed_working_sha256": "f10ac9e7a83038048144900b35eef0b6ba0d1f0b9dcd0c2d51bfe7b166d5e3b8",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/source.rs",
+      "target_sha256": "8a75f84452f061f18b80152d63802a88aad7b719b5b8a0c498496083e41bcde5",
+      "observed_working_sha256": "8a75f84452f061f18b80152d63802a88aad7b719b5b8a0c498496083e41bcde5",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/owned_directrix.rs",
+      "target_sha256": "557d39338055acdb3015dd5665c0d9883116bb7f7f85d539c5655b33e3eb6c64",
+      "observed_working_sha256": "557d39338055acdb3015dd5665c0d9883116bb7f7f85d539c5655b33e3eb6c64",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/owned_directrix_tests.rs",
+      "target_sha256": "6a29137fff4f58fc98c228f4693699d342937e3e7618c2b78a538c1b9be0e9c5",
+      "observed_working_sha256": "6a29137fff4f58fc98c228f4693699d342937e3e7618c2b78a538c1b9be0e9c5",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/analytic/swept_disk.rs",
+      "target_sha256": "09c1f988e6a44df1b02a2d3748126c2d25e8ff1357b361f33e1be8c2021bf6da",
+      "observed_working_sha256": "09c1f988e6a44df1b02a2d3748126c2d25e8ff1357b361f33e1be8c2021bf6da",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained.rs",
+      "target_sha256": "a77dc46ff23d25a66677e2ca0eb8304fb0817e94c770bcdb96641dcc9eb95eb8",
+      "observed_working_sha256": "a77dc46ff23d25a66677e2ca0eb8304fb0817e94c770bcdb96641dcc9eb95eb8",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained_construction.rs",
+      "target_sha256": "4bb4f000b64528fe3073329dab91b46e547b4c4890af65639491129936428286",
+      "observed_working_sha256": "4bb4f000b64528fe3073329dab91b46e547b4c4890af65639491129936428286",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained_sweep.rs",
+      "target_sha256": "e4890f23df49d76cdad5e0f62e896cba0539ce83a0787853c4f9d1795f716c79",
+      "observed_working_sha256": "e4890f23df49d76cdad5e0f62e896cba0539ce83a0787853c4f9d1795f716c79",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained_region.rs",
+      "target_sha256": "d91439314aafbc52d295aa5d6cc270c3e57ba4739688fe5801ef92dfa433d4de",
+      "observed_working_sha256": "d91439314aafbc52d295aa5d6cc270c3e57ba4739688fe5801ef92dfa433d4de",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained_region_tests.rs",
+      "target_sha256": "ea86862cf6da55e0dce055a74ef6644f919fa910c2c1a9c2bc9dcb6ad0691da1",
+      "observed_working_sha256": "ea86862cf6da55e0dce055a74ef6644f919fa910c2c1a9c2bc9dcb6ad0691da1",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained_disk.rs",
+      "target_sha256": "90bb03e5bc6e1b6a325afd47657412b48ae540839db1508c322eb875e32100a6",
+      "observed_working_sha256": "90bb03e5bc6e1b6a325afd47657412b48ae540839db1508c322eb875e32100a6",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/geometry/src/document/retained_display.rs",
+      "target_sha256": "6fef78f47bd04285ac5dd22224ceea5bcbbe720389535d3b10826903557a77ba",
+      "observed_working_sha256": "6fef78f47bd04285ac5dd22224ceea5bcbbe720389535d3b10826903557a77ba",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/processing/src/analytic_export/definitions.rs",
+      "target_sha256": "9b135d13e069b8fb4c94e84b78adf33f6c4316d3f7b6d8f78600f8ae2436ea9c",
+      "observed_working_sha256": "9b135d13e069b8fb4c94e84b78adf33f6c4316d3f7b6d8f78600f8ae2436ea9c",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/processing/src/analytic_export/walk.rs",
+      "target_sha256": "fed31bd94a8c380a546c2b8b21f9ce9992fc8678145dae4320395acc0925caff",
+      "observed_working_sha256": "fed31bd94a8c380a546c2b8b21f9ce9992fc8678145dae4320395acc0925caff",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/processing/src/analytic_export/walk/entry.rs",
+      "target_sha256": "aaa8790b7ca46b70f82a451aa07f2af12ccea96a69e874701a592d134733f5d8",
+      "observed_working_sha256": "aaa8790b7ca46b70f82a451aa07f2af12ccea96a69e874701a592d134733f5d8",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/inventory.rs",
+      "target_sha256": "a906a9648a01234a5017bdd7970f2d3f37a2ab5299c02a495aa3a4fa8a666efc",
+      "observed_working_sha256": "a906a9648a01234a5017bdd7970f2d3f37a2ab5299c02a495aa3a4fa8a666efc",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/planning.rs",
+      "target_sha256": "e500174d2a0a7e91a45335b3abd4ba0d2dd66f9ced0f32fb715e3512b8cf909b",
+      "observed_working_sha256": "e500174d2a0a7e91a45335b3abd4ba0d2dd66f9ced0f32fb715e3512b8cf909b",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/evaluator.rs",
+      "target_sha256": "6db76c83541a525de63f1c9ab2b614936217cd5e0acb84bdba927ac783690389",
+      "observed_working_sha256": "6db76c83541a525de63f1c9ab2b614936217cd5e0acb84bdba927ac783690389",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/bound.rs",
+      "target_sha256": "416a684abd2c5d76c4ba4b386f6c71e6198a00ef5cffe06f337312def135c053",
+      "observed_working_sha256": "416a684abd2c5d76c4ba4b386f6c71e6198a00ef5cffe06f337312def135c053",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/bound_native.rs",
+      "target_sha256": "35463a0ae82c992ad1a755a2d98ed995882e24d9fe265b1b93215ddf7b3665b0",
+      "observed_working_sha256": "35463a0ae82c992ad1a755a2d98ed995882e24d9fe265b1b93215ddf7b3665b0",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/processing/tests/retained_authored_evaluator.rs",
+      "target_sha256": "d0b817db1cec533d84ff801398b852769acbe719a9084d9aa89ca2c53a85e8f3",
+      "observed_working_sha256": "d0b817db1cec533d84ff801398b852769acbe719a9084d9aa89ca2c53a85e8f3",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/processing/tests/retained_curved_consumption.rs",
+      "target_sha256": "450e2da35f2f30c7080fd31080ec41c7ab04fa9440571e5a0934b565a7d6dc4d",
+      "observed_working_sha256": "3ea8d52056b08c621f219eab3ae98e116ab39d6fd35e87fd3e900e013947f016",
+      "working_matches_target": false
+    },
+    {
+      "path": "rust/processing/tests/retained_admission_policy.rs",
+      "target_sha256": "d052f0bac34f1438124f264c38181471fd4c88d31a6d5032ea939f96a7b33811",
+      "observed_working_sha256": "d052f0bac34f1438124f264c38181471fd4c88d31a6d5032ea939f96a7b33811",
+      "working_matches_target": true
+    },
+    {
+      "path": "rust/processing/tests/retained_model_admission.rs",
+      "target_sha256": "8efa36249805b29a91198eddd134a9c765a95884e340ebbf6b9c2c4463998c31",
+      "observed_working_sha256": "8efa36249805b29a91198eddd134a9c765a95884e340ebbf6b9c2c4463998c31",
+      "working_matches_target": true
+    }
+  ],
+  "sdk_inspected_files": [
+    {
+      "path": "source/SMLib/inc/SmBSplineCurve.h",
+      "sha256": "0e12036dda5f5439d3cbc5a2daf4253779ed4dfa73167031587d9ff5eb12dfb2"
+    },
+    {
+      "path": "source/SMLib/src/SmBSplineCurve.cpp",
+      "sha256": "93c905a12c4124f6761f63ca9dbe2e2ffe400eb32b493c3d514be42de2c41138"
+    },
+    {
+      "path": "source/SM_API/inc/SmApiBrep.h",
+      "sha256": "ca08db54ad2211c4c98eb229bb875573e799fe731b9226288737181705fb4296"
+    },
+    {
+      "path": "source/SM_API/src/SmApiBrep.cpp",
+      "sha256": "c1dcdf9899a386199dd9cc3ee3bef9626d324d5558a8b7b6132b19e18fb70df1"
+    },
+    {
+      "path": "source/SMLib/src/SmPrimitiveCreation.cpp",
+      "sha256": "38a15b60587059687c13923ba0b22a6a139b0b931997d0650898d866be8b692c"
+    },
+    {
+      "path": "source/SMLib/inc/SmCircle.h",
+      "sha256": "04efc5725ef897be297c44625203ee937f6e3518f4f49d57fe2f27315dedf58f"
+    },
+    {
+      "path": "source/SMLib/inc/SmEllipse.h",
+      "sha256": "239c365f26cd3bdb12281cd05a65942d50a7e16e45122f49f710b5c0a8b022d1"
+    },
+    {
+      "path": "source/SMLib/inc/SmConic.h",
+      "sha256": "52d98a6e12f662e62cbe8b1a9c41fdf91bc393912095791eeef7b3b3ae5c1029"
+    },
+    {
+      "path": "source/SMLib/inc/SmTArray.h",
+      "sha256": "129f846f6b00f80a9a425f849094a39568f3668507ea2585de86909dfc47910b"
+    },
+    {
+      "path": "source/SMLib/inc/SmObject.h",
+      "sha256": "0d92667bb6bd071b8a60ae5ca5750bad34e5e8187abb8044b675800f9deeecb8"
+    },
+    {
+      "path": "source/SMLib/inc/SmContext.h",
+      "sha256": "07cbae5016d3bee7df0afb12dbc957250dfc239a9300432f5e7e60b20e309134"
+    },
+    {
+      "path": "source/SMLib/inc/SmMath.h",
+      "sha256": "b5e2a7999d0a836d557c0b420601b48d782a395d1f94f4d9a12b64a91a9787c4"
+    },
+    {
+      "path": "source/SMLib/src/SmObject.cpp",
+      "sha256": "04e370628a7fbb903a0839edb78633ccd8dba9a996e2e22ea7666824faac54d4"
+    },
+    {
+      "path": "source/SMLib/src/SmContext.cpp",
+      "sha256": "bce6d1c2117d34c16235c842476ebe2c541df6804753091e06eab6c6d47436de"
+    },
+    {
+      "path": "source/SMLib/src/SmCircle.cpp",
+      "sha256": "70e1a503cb628ac58f4c1d92aba463240fb8e4dbdc71ca62508290fa478b62f1"
+    }
+  ],
+  "prior_evidence_hashes": [
+    {
+      "path": "/tmp/ifclite-curved-r3-review1.md",
+      "sha256": "9cba3e0a9b4beddb0fb42f940c55d0bea130a10e628479ffe85b27f5598cdbce"
+    },
+    {
+      "path": "/tmp/ifclite-retained-authored-preservation-round2/reviews/ifclite-retained-authored-source-review-hashes.json",
+      "sha256": "f1061811e2b27d069132fcc315040ea75f81f7f14555171e0b3ed93df92b964a"
+    },
+    {
+      "path": "/tmp/ifclite-retained-authored-preservation-round2/reviews/ifclite-retained-authored-source-review.md",
+      "sha256": "ae5e6ea5ae6007528aee50e0e88abab3476f21e342740ba3dd9cda81ddef8783"
+    },
+    {
+      "path": "/tmp/ifclite-retained-authored-preservation-round2/reviews/ifclite-retained-preservation-round2-independent-review-hashes.json",
+      "sha256": "f468b41a07a41719ddf56e8d90f227c774b5bc7e4820a33ed1c4b633f51c07dd"
+    },
+    {
+      "path": "/tmp/ifclite-retained-authored-preservation-round2/reviews/ifclite-retained-preservation-round2-independent-review.md",
+      "sha256": "f0ca0fe316da23ceeb219792f0ab4f0a5f04bd5dd8ff88f8015b1c769bbe462e"
+    },
+    {
+      "path": "/tmp/ifclite-retained-authored-preservation-round2/reviews/ifclite-retained-preservation-round2-review-final-hashes.json",
+      "sha256": "02b24406e406908ca16d136839a74ecd6642487ce6ebd2045506cb5c28632bb2"
+    },
+    {
+      "path": "/tmp/ifclite-retained-authored-preservation-round2/reviews/ifclite-retained-preservation-round2-review-final.md",
+      "sha256": "768a242ea62987b2c006599898f09ce99622e46ea688acee0bb4a232c8e2e86c"
+    },
+    {
+      "path": "/tmp/ifclite-retained-authored-preservation-round2/reviews/ifclite-retained-preservation-round2-review-followup-hashes.json",
+      "sha256": "65d2879dac0ad1ea914e952bcd573ed80478abe6be2aa64b9f47cd4c7751cd4a"
+    },
+    {
+      "path": "/tmp/ifclite-retained-authored-preservation-round2/reviews/ifclite-retained-preservation-round2-review-followup.md",
+      "sha256": "0f0c7d87d7ad3ee53d3c84be825ef25f104f641ec9a5d5693229d92f4b273fca"
+    },
+    {
+      "path": "/tmp/ifclite-retained-authored-preservation-round2/reviews/ifclite-retained-runtime-review-hashes.json",
+      "sha256": "3f15366243b0727a52fa03e448daca305f3f9868e2be8756f361c396b866a6ad"
+    },
+    {
+      "path": "/tmp/ifclite-retained-authored-preservation-round2/reviews/ifclite-retained-runtime-review.md",
+      "sha256": "d8619d94486953c9c62e8cfc3d14ad731c20ff62c4755d8f5c6f7c6979fd869f"
+    },
+    {
+      "path": "/tmp/ifclite-retained-authored-preservation-round2/reviews/ifclite-retained-sdk-browser-review.json",
+      "sha256": "e21f4092c00ea3f785794b016b65fc1ed2c2250d9a7c06f69b9b645c02cecc96"
+    },
+    {
+      "path": "/tmp/ifclite-retained-authored-preservation-round2/reviews/ifclite-retained-sdk-browser-review.md",
+      "sha256": "b148de48d6e3da0a2ce960dfdb2e21fadd959e1654a3d368bc88094feff40736"
+    },
+    {
+      "path": "/tmp/ifclite-retained-authored-preservation-round2/reviews/retained-curve-interface.md",
+      "sha256": "6aa94f467cec1a6e8b813e54f7524df6e92e629a4374c29ad2507dd49fb679af"
+    },
+    {
+      "path": "/tmp/ifclite-retained-authored-preservation-round2/reviews/retained-processing-interface.md",
+      "sha256": "82aee3873f7dc5788cecffa1b1e67a31b16ef9d4eb35feecd9399aa2e6f0d4fa"
+    },
+    {
+      "path": "/tmp/ifclite-retained-authored-preservation-round2/reviews/retained-runtime-interface.md",
+      "sha256": "3bc52bbecf9a9bdeda993c75f6fc283e3b62cbd868de5900f70b2f9ff6937676"
+    },
+    {
+      "path": "/tmp/ifclite-retained-authored-preservation-round2/reviews/retained-source-interface.md",
+      "sha256": "a4c66cb78d953f72167565f1e76784f785f27ed3c8b229afcbe52730a171b2cd"
+    }
+  ],
+  "report": {
+    "path": "/tmp/ifclite-curved-r3-review2.md",
+    "sha256": "ed43c60a15f2f7aa9eff14eaae91bdcd57574b7243e849cf7bd263e501ce8f84"
+  },
+  "limitations": "Files were inspected in focused excerpts as described by the report; hashes identify whole file bytes, not exhaustive line-by-line coverage. Later operation-identity diff excluded from checkpoint verdict."
+}

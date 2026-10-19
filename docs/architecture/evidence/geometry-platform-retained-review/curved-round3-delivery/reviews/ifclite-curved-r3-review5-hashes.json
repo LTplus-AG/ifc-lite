@@ -1,0 +1,188 @@
+{
+  "target": "011d999c2f1c2f6f868ae3a23de53e13017fb393",
+  "base": "9c75470c82e04c3bd6228d8773158b2516a54c41",
+  "observed_head": "bfd1fbc3bcfd9c59bad1262cbeb293eecd0e4dd9",
+  "review_kind": "read-only source review; no compilation or execution",
+  "files": {
+    "native/smlib-adapter/browser/sweep-contract.mjs": {
+      "target_git_blob_sha256": "99fbc8f5f0f7d75c46b61ac662711a2b393c61d170d5cbe1b90b517dff430097",
+      "observed_file_sha256": "99fbc8f5f0f7d75c46b61ac662711a2b393c61d170d5cbe1b90b517dff430097",
+      "matches_target": true,
+      "focused_delta": true
+    },
+    "native/smlib-adapter/qualify.sh": {
+      "target_git_blob_sha256": "fd350bb8de6a5df016a2b84aa911c3a9ed4c6eb3e46e9eab35b1d27e6816615b",
+      "observed_file_sha256": "fd350bb8de6a5df016a2b84aa911c3a9ed4c6eb3e46e9eab35b1d27e6816615b",
+      "matches_target": true,
+      "focused_delta": true
+    },
+    "rust/geometry/src/analytic/extrusion.rs": {
+      "target_git_blob_sha256": "7ebf0b8884af0f93b455de5bf56598c19eedbe8f62ea06d2b96f63ddfdbff36c",
+      "observed_file_sha256": "7ebf0b8884af0f93b455de5bf56598c19eedbe8f62ea06d2b96f63ddfdbff36c",
+      "matches_target": true,
+      "focused_delta": true
+    },
+    "rust/geometry/src/analytic/extrusion_tests.rs": {
+      "target_git_blob_sha256": "d94f7c393480b5dbfe201a7c761eb0279bd39e7f4e4bc5a0cc6616e52d1e6bb7",
+      "observed_file_sha256": "d94f7c393480b5dbfe201a7c761eb0279bd39e7f4e4bc5a0cc6616e52d1e6bb7",
+      "matches_target": true,
+      "focused_delta": true
+    },
+    "rust/geometry/src/analytic/source.rs": {
+      "target_git_blob_sha256": "a1b55c280e4c919d6af80d6ecfa24ef0293ff7128f8a4c72ca48a5ca2ddffab0",
+      "observed_file_sha256": "a1b55c280e4c919d6af80d6ecfa24ef0293ff7128f8a4c72ca48a5ca2ddffab0",
+      "matches_target": true,
+      "focused_delta": true
+    },
+    "rust/geometry/src/document/retained.rs": {
+      "target_git_blob_sha256": "07ab2822530eb3b0b13311ab4b25e62746c793968170a0e9e048c25770364a75",
+      "observed_file_sha256": "07ab2822530eb3b0b13311ab4b25e62746c793968170a0e9e048c25770364a75",
+      "matches_target": true,
+      "focused_delta": true
+    },
+    "rust/processing/src/authored_geometry/bound.rs": {
+      "target_git_blob_sha256": "4efb15edb5fa3a6e0946c265557c5df9a3a2ae13d6def83a6fadcae405920d68",
+      "observed_file_sha256": "4efb15edb5fa3a6e0946c265557c5df9a3a2ae13d6def83a6fadcae405920d68",
+      "matches_target": true,
+      "focused_delta": true
+    },
+    "rust/processing/src/element/model_context.rs": {
+      "target_git_blob_sha256": "0e12311a8d727575c811268e1964a8ccaf7631675e5aa4deefb0e2cf6e7f703b",
+      "observed_file_sha256": "0e12311a8d727575c811268e1964a8ccaf7631675e5aa4deefb0e2cf6e7f703b",
+      "matches_target": true,
+      "focused_delta": true
+    },
+    "rust/processing/tests/retained_admission_policy.rs": {
+      "target_git_blob_sha256": "f99c99f8e6f72a12a3e6b278277bf3d730ac933586ee4ca12d02ce2e0031f772",
+      "observed_file_sha256": "2198ccc6a69ac22e2c4641bedd9d7c750afa9f9b5ed54fc1032ca884396b015e",
+      "matches_target": false,
+      "focused_delta": true
+    },
+    "rust/core/src/decoder.rs": {
+      "target_git_blob_sha256": "90e96ca30bd72f0daa86e7aa5eacb81aef84a0c47c3222fd14417417b0aa66ee",
+      "observed_file_sha256": "90e96ca30bd72f0daa86e7aa5eacb81aef84a0c47c3222fd14417417b0aa66ee",
+      "matches_target": true,
+      "focused_delta": false
+    },
+    "rust/core/src/decoder/execution.rs": {
+      "target_git_blob_sha256": "8148cf7a407985965305a91cc75c75342374ff4ad63c0cef0666307a631b521d",
+      "observed_file_sha256": "8148cf7a407985965305a91cc75c75342374ff4ad63c0cef0666307a631b521d",
+      "matches_target": true,
+      "focused_delta": false
+    },
+    "rust/core/src/decoder/caches.rs": {
+      "target_git_blob_sha256": "81ac177a8e0da46503399893f0872e7cec964ba028f6b86d7199f48d1e1144ed",
+      "observed_file_sha256": "81ac177a8e0da46503399893f0872e7cec964ba028f6b86d7199f48d1e1144ed",
+      "matches_target": true,
+      "focused_delta": false
+    },
+    "rust/core/src/decoder/source_caches.rs": {
+      "target_git_blob_sha256": "5690daa4d42cfe1199f958d58159d1d40eb1ff881992ed4a6e2c476488036c9e",
+      "observed_file_sha256": "5690daa4d42cfe1199f958d58159d1d40eb1ff881992ed4a6e2c476488036c9e",
+      "matches_target": true,
+      "focused_delta": false
+    },
+    "rust/core/src/decoder/source_caches_tests.rs": {
+      "target_git_blob_sha256": "9559d83811ef8f517284b561f8fe872824e69d8831ac6e5108902e6e64f8e2c6",
+      "observed_file_sha256": "9559d83811ef8f517284b561f8fe872824e69d8831ac6e5108902e6e64f8e2c6",
+      "matches_target": true,
+      "focused_delta": false
+    },
+    "rust/core/src/decoder/schema_layout.rs": {
+      "target_git_blob_sha256": "012d72845deec3479f0b6bdce2476393b7f38a900fbdfa0aeebb329bc74ba475",
+      "observed_file_sha256": "012d72845deec3479f0b6bdce2476393b7f38a900fbdfa0aeebb329bc74ba475",
+      "matches_target": true,
+      "focused_delta": false
+    },
+    "rust/core/src/execution_owner.rs": {
+      "target_git_blob_sha256": "e38ffab725f51a3b047cdd77ee6a00716d3aac3c2e7f2901588406e4b86b9aca",
+      "observed_file_sha256": "e38ffab725f51a3b047cdd77ee6a00716d3aac3c2e7f2901588406e4b86b9aca",
+      "matches_target": true,
+      "focused_delta": false
+    },
+    "rust/core/src/source_bundle.rs": {
+      "target_git_blob_sha256": "ed174aa07af14f1647302f44095be34a2d3f6760e35d9a204e6a3524ca5518ad",
+      "observed_file_sha256": "ed174aa07af14f1647302f44095be34a2d3f6760e35d9a204e6a3524ca5518ad",
+      "matches_target": true,
+      "focused_delta": false
+    },
+    "rust/processing/src/authored_geometry/bound_native.rs": {
+      "target_git_blob_sha256": "35463a0ae82c992ad1a755a2d98ed995882e24d9fe265b1b93215ddf7b3665b0",
+      "observed_file_sha256": "35463a0ae82c992ad1a755a2d98ed995882e24d9fe265b1b93215ddf7b3665b0",
+      "matches_target": true,
+      "focused_delta": false
+    },
+    "rust/processing/src/authored_geometry/planning.rs": {
+      "target_git_blob_sha256": "16e42b915f826ed7530330f6c1051fc6db56553529d9943d58c5e98f94070208",
+      "observed_file_sha256": "16e42b915f826ed7530330f6c1051fc6db56553529d9943d58c5e98f94070208",
+      "matches_target": true,
+      "focused_delta": false
+    },
+    "rust/processing/src/element/presentation.rs": {
+      "target_git_blob_sha256": "8d5acce8dfc9c489be0684af75f5b4dcd2306e977b344f96d9509819835221cf",
+      "observed_file_sha256": "8d5acce8dfc9c489be0684af75f5b4dcd2306e977b344f96d9509819835221cf",
+      "matches_target": true,
+      "focused_delta": false
+    },
+    "rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc": {
+      "target_git_blob_sha256": "3069997f0b7d555232180c88bea27d0f6ca4d9c309a9cf4b1c3a8c68bba166ad",
+      "observed_file_sha256": "3069997f0b7d555232180c88bea27d0f6ca4d9c309a9cf4b1c3a8c68bba166ad",
+      "matches_target": true,
+      "focused_delta": false
+    },
+    "rust/geometry/src/analytic/source_tests.rs": {
+      "target_git_blob_sha256": "cdb8bbfd6f843f85cadc7f6a3c1b8a578695507850e18b8bbef1e4fe1272ce5b",
+      "observed_file_sha256": "cdb8bbfd6f843f85cadc7f6a3c1b8a578695507850e18b8bbef1e4fe1272ce5b",
+      "matches_target": true,
+      "focused_delta": false
+    },
+    "native/smlib-adapter/src/disk.cpp": {
+      "target_git_blob_sha256": "58b84e51b07744002d9284122f5fda4ff172fa62877ef8da623bf9293dcd211d",
+      "observed_file_sha256": "58b84e51b07744002d9284122f5fda4ff172fa62877ef8da623bf9293dcd211d",
+      "matches_target": true,
+      "focused_delta": false
+    },
+    "native/smlib-adapter/NUMERICAL_ROUND3.md": {
+      "target_git_blob_sha256": "1fc6110382c3b1759a2bbad0737c78db822c284471c3856594b05b116a908dda",
+      "observed_file_sha256": "1fc6110382c3b1759a2bbad0737c78db822c284471c3856594b05b116a908dda",
+      "matches_target": true,
+      "focused_delta": false
+    },
+    "native/smlib-adapter/README.md": {
+      "target_git_blob_sha256": "b44857d5627fb5e5bb01ce7cc752843145984465fa0a0f4422dee1009451c6fa",
+      "observed_file_sha256": "b44857d5627fb5e5bb01ce7cc752843145984465fa0a0f4422dee1009451c6fa",
+      "matches_target": true,
+      "focused_delta": false
+    },
+    "docs/architecture/evidence/geometry-platform-retained-review/consumption-round3.md": {
+      "target_git_blob_sha256": "70358dfdd0242e6e29740fecbee6b4b4b6ece790da5f564f3945a1babde6b196",
+      "observed_file_sha256": "8c45e4b90a89d462fe8a46fa860f98feb4382d1b5abf6ee694e4a179b6e04b43",
+      "matches_target": false,
+      "focused_delta": false
+    }
+  },
+  "prior_reports": {
+    "/tmp/ifclite-curved-r3-review1.md": "9cba3e0a9b4beddb0fb42f940c55d0bea130a10e628479ffe85b27f5598cdbce",
+    "/tmp/ifclite-curved-r3-review2.md": "ed43c60a15f2f7aa9eff14eaae91bdcd57574b7243e849cf7bd263e501ce8f84",
+    "/tmp/ifclite-curved-r3-review3.md": "f577bfdf326c680fb967ad94b5923670e2d77dec05f2cc987a9d71f852248d68",
+    "/tmp/ifclite-curved-r3-review4.md": "4ee07cceab9e27254638ffcd574c0c5ac07c9c482369501d627b8630059d50b6",
+    "/tmp/ifclite-retained-round3-parent-source-review.md": "56f2436763c4a9fd86f99b1db59056ae86f71c9e822c5fc506ae8a6d972b9536",
+    "/tmp/ifclite-retained-round3-parent-runtime-review.md": "2b13be284fb970364dbfd6504507cf5013d9dcffc2c3e15300b5b21df0969640",
+    "/tmp/ifclite-retained-round3-parent-sdk-review.md": "87b3649f6d679b4fcdaa98d1952509744aa227dd23828852081d48328e44f500"
+  },
+  "report_sha256": "822f92f8cc3756386addd5e928f6c55100399bcfee89962c9d6710e3d2dccb2f",
+  "sdk_pin_inherited_not_reinspected": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "findings": [
+    {
+      "priority": "P2",
+      "file": "rust/processing/tests/retained_admission_policy.rs",
+      "lines": [
+        129,
+        150
+      ],
+      "description": "New unconditional tests assume earlier-duplicate factory cache prewarming explicitly prohibited by pinned core."
+    }
+  ],
+  "job_inspection": false,
+  "moving_source_note": "Concurrent observed test/doc bytes differ from target and are excluded; target Git blobs explicitly reread. Later sweep_region_tests.cpp commit excluded."
+}

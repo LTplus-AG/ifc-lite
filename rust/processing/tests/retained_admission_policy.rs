@@ -74,18 +74,17 @@ fn bound_duplicate_products_and_links_use_actual_factory_cache_without_replaying
     assert_eq!(solids(fresh_plan.plan()), [900]);
     assert_eq!(openings(fresh_plan.plan()), [(910, 921)]);
 
-    // A real scanner/prepass can warm the first original record. Its cache is
-    // authoritative for this source decoder and must not be cleared or replaced
-    // by the fresh-worker last-record policy during bound admission.
+    // Direct earlier-record reads remain readable but the authenticated decoder
+    // deliberately prevents them from poisoning canonical last-record selection.
     let warm_context = model.snapshot(OwnedMeshProductionData::default());
     let mut warm = source.decoder();
     prewarm_first(&mut warm, source.bytes(), 31);
     prewarm_first(&mut warm, source.bytes(), 910);
     let warm_plan = warm_context.admit_authored_plan(&mut warm).unwrap();
-    assert_eq!(solids(warm_plan.plan()), [12]);
-    assert_eq!(openings(warm_plan.plan()), [(910, 920)]);
-    assert_eq!(warm.decode_by_id(31).unwrap().get_ref(6), Some(27));
-    assert_eq!(warm.decode_by_id(910).unwrap().get_ref(5), Some(920));
+    assert_eq!(solids(warm_plan.plan()), [900]);
+    assert_eq!(openings(warm_plan.plan()), [(910, 921)]);
+    assert_eq!(warm.decode_by_id(31).unwrap().get_ref(6), Some(902));
+    assert_eq!(warm.decode_by_id(910).unwrap().get_ref(5), Some(921));
 }
 
 #[test]
@@ -107,4 +106,77 @@ fn standalone_duplicate_relationship_keeps_earlier_fault_while_bound_uses_select
     assert!(!bound.plan().products[&31].requirements.iter().any(|requirement|
         matches!(requirement, EvaluationRequirement::OpeningRelationshipsUnverified)));
     assert_eq!(openings(bound.plan()), [(910, 921)]);
+}
+
+#[test]
+fn same_context_cache_is_bound_to_actual_decoder_configuration_in_both_orders() {
+    for warm_first in [true, false] {
+        let source = SourceBundle::new(duplicate_source().into_bytes());
+        let model = ProductionModel::from_source(source.clone());
+        let context = model.snapshot(OwnedMeshProductionData::default());
+        let mut warm = source.decoder();
+        warm.seed_unit_scales(0.001, 1.0);
+        let mut fresh = source.decoder();
+        fresh.seed_unit_scales(1.0, 1.0);
+        assert_eq!(warm.length_unit_scale(), 0.001);
+        assert_eq!(fresh.length_unit_scale(), 1.0);
+        let (warm_plan, fresh_plan) = if warm_first {
+            let warm_plan = context.admit_authored_plan(&mut warm).unwrap();
+            (warm_plan, context.admit_authored_plan(&mut fresh).unwrap())
+        } else {
+            let fresh_plan = context.admit_authored_plan(&mut fresh).unwrap();
+            (context.admit_authored_plan(&mut warm).unwrap(), fresh_plan)
+        };
+        assert_eq!(solids(warm_plan.plan()), [900]);
+        assert_eq!(openings(warm_plan.plan()), [(910, 921)]);
+        assert_eq!(solids(fresh_plan.plan()), [900]);
+        assert_eq!(openings(fresh_plan.plan()), [(910, 921)]);
+        assert_eq!(warm_plan.plan().length_unit_scale, 0.001);
+        assert_eq!(fresh_plan.plan().length_unit_scale, 1.0);
+        assert!(!std::sync::Arc::ptr_eq(&warm_plan, &fresh_plan));
+        assert!(std::sync::Arc::ptr_eq(&warm_plan,
+            &context.admit_authored_plan(&mut warm).unwrap()));
+        assert!(std::sync::Arc::ptr_eq(&fresh_plan,
+            &context.admit_authored_plan(&mut fresh).unwrap()));
+    }
+}
+
+#[test]
+fn cache_mutation_generations_recompute_selected_facts_without_replacing_decoder_policy() {
+    let source = SourceBundle::new(duplicate_source().into_bytes());
+    let model = ProductionModel::from_source(source.clone());
+    let context = model.snapshot(OwnedMeshProductionData::default());
+    let mut decoder = source.decoder();
+    prewarm_first(&mut decoder, source.bytes(), 31);
+    prewarm_first(&mut decoder, source.bytes(), 910);
+    let first = context.admit_authored_plan(&mut decoder).unwrap();
+    assert_eq!(solids(first.plan()), [900]);
+    assert_eq!(openings(first.plan()), [(910, 921)]);
+    decoder.clear_cache();
+    let cleared = context.admit_authored_plan(&mut decoder).unwrap();
+    assert_eq!(solids(cleared.plan()), [900]);
+    assert_eq!(openings(cleared.plan()), [(910, 921)]);
+    assert!(!std::sync::Arc::ptr_eq(&first, &cleared));
+    let _drained = decoder.drain_source_cache();
+    let drained = context.admit_authored_plan(&mut decoder).unwrap();
+    assert_eq!(solids(drained.plan()), [900]);
+    assert!(!std::sync::Arc::ptr_eq(&cleared, &drained));
+    let mut donor = source.decoder();
+    prewarm_first(&mut donor, source.bytes(), 31);
+    prewarm_first(&mut donor, source.bytes(), 910);
+    assert!(decoder.inject_source_cache(&donor.drain_source_cache()));
+    // Injection follows the actual receiver's existing overwrite policy.
+    let selected_solid = decoder.decode_by_id(31).unwrap().get_ref(6).unwrap();
+    let selected_opening = decoder.decode_by_id(910).unwrap().get_ref(5).unwrap();
+    assert_eq!(selected_solid, 902, "authenticated cache keeps canonical selection");
+    assert_eq!(selected_opening, 921);
+    let imported = context.admit_authored_plan(&mut decoder).unwrap();
+    assert!(!std::sync::Arc::ptr_eq(&drained, &imported));
+    assert_eq!(solids(imported.plan()), [900]);
+    assert_eq!(openings(imported.plan()), [(910, selected_opening)]);
+    decoder.seed_unit_scales(0.001, 1.0);
+    let configured = context.admit_authored_plan(&mut decoder).unwrap();
+    assert!(!std::sync::Arc::ptr_eq(&imported, &configured));
+    assert_eq!(configured.plan().length_unit_scale, 0.001);
+    assert_eq!(imported.plan().length_unit_scale, 1.0);
 }

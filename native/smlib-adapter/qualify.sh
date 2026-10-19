@@ -6,6 +6,12 @@ mode=${1:-native}
 revision=c9c5979f04cea8c38213004d4f04df0dcfb40d05
 cache=${IFCLITE_SDK_CACHE:-/tmp/ifclite-public-sdk-c9c5979}
 sdk=${SMLIB_SOURCE:-$cache/usd-brep}
+mkdir -p "$cache"
+# Respect the original mode lock before touching shared setup artifacts.
+exec 8>"$cache/$mode.lock"
+flock -n 8 || { printf 'qualification cache already owned\n' >&2; exit 73; }
+exec 9>"$cache/setup.lock"
+flock -n 9 || { printf 'qualification setup already owned\n' >&2; exit 73; }
 if [[ ! -d "$sdk" ]]; then
   mkdir -p "$sdk"
   git -C "$sdk" init
@@ -15,17 +21,21 @@ fi
 [[ $(git -C "$sdk" rev-parse HEAD) == "$revision" ]]
 source_id=$(git rev-parse HEAD)
 build=${IFCLITE_ADAPTER_BUILD:-$cache/build-$mode}
-mkdir -p "$cache"
+# Lock the normalized physical build directory too: official overrides may
+# intentionally share one path across modes or through symlink aliases.
+mkdir -p "$build"
+build=$(realpath -e -- "$build")
+exec 7>"$build/.qualification.lock"
+flock -n 7 || { printf 'qualification build already owned\n' >&2; exit 73; }
 # These public tool wheels supply prerequisites without system package changes.
 if ! command -v cmake >/dev/null || ! command -v ninja >/dev/null; then
-  if [[ ! -x "$cache/tools/cmake/data/bin/cmake" || ! -x "$cache/tools/ninja/data/bin/ninja" ]]; then
+  if [[ ! -x "$cache/tools/cmake/data/bin/cmake" || ! -x "$cache/tools/ninja-1.11.1.4.data/scripts/ninja" ]]; then
     python3 native/smlib-adapter/acquire-tools.py "$cache/tools"
   fi
-  export PATH="$cache/tools/cmake/data/bin:$cache/tools/ninja/data/bin:$PATH"
+  export PATH="$cache/tools/cmake/data/bin:$cache/tools/ninja-1.11.1.4.data/scripts:$PATH"
 fi
-# Guard only this qualification cache, within the already-admitted job.
-exec 8>"$cache/$mode.lock"
-flock -n 8 || { printf 'qualification cache already owned\n' >&2; exit 73; }
+# Setup is complete; the original mode lock stays held through CTest.
+flock -u 9
 printf 'qualification source=%s sdk=%s host=%s mode=%s\n' "$source_id" "$revision" "$(hostname)" "$mode"
 if [[ "$mode" == wasm ]]; then
   if ! command -v emcmake >/dev/null; then

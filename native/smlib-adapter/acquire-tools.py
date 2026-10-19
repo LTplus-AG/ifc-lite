@@ -39,7 +39,8 @@ for name, version, filename, expected in pins:
             if not target.is_relative_to(root):
                 raise SystemExit('Wheel path escapes tools directory')
         archive.extractall(root)
-    for executable in (root / name / 'data' / 'bin').iterdir():
+    binaries = root / (f'ninja-{version}.data/scripts' if name == 'ninja' else 'cmake/data/bin')
+    for executable in binaries.iterdir():
         if executable.is_file():
             executable.chmod(0o755)
     receipts.append({'name': name, 'version': version, 'url': item['url'], 'sha256': digest})

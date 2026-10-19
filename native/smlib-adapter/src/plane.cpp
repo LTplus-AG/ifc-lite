@@ -3,6 +3,7 @@
 #include "plane_domain.hpp"
 #include "copy.hpp"
 #include "empty.hpp"
+#include "context_metadata.hpp"
 #include <SmApiBrep.h>
 #include <SmFace.h>
 #include <SmPlane.h>
@@ -89,7 +90,7 @@ void enclosing_wall(SmFace* f,const Bounds& domain,const SmVector3d& inward,doub
         "actual derived sidewall/back does not strictly enclose finite input domain");
 }
 Solid cutter_for(SmBrep* source,const SmAxis2Placement& frame,const Bounds& b,const PlaneDomain& domain) {
-    Solid result(new (*source->GetContext()) SmBrep());
+    Solid result=raw_context::construct_brep(source->GetContext());
     try {
         result->m_bEditingEnabled=TRUE;
         const auto p=frame.GetOrigin();
@@ -131,6 +132,8 @@ Solid cutter_for(SmBrep* source,const SmAxis2Placement& frame,const Bounds& b,co
 std::unique_ptr<SmBrep> clip_finite_plane(SmBrep* source,const double* plane,
     int32_t side,uint32_t mode,ifclite_smlib_plane_certificate& certificate) {
     using namespace plane_numeric;
+    require(source && source->GetContext(),"plane source lacks context",IFCLITE_SMLIB_INVALID_ARGUMENT);
+    raw_context::Restore preserve_context(source->GetContext());
     require(side==1 || side==-1,"plane side must be +/-1",IFCLITE_SMLIB_INVALID_ARGUMENT);
     require(mode==IFCLITE_SMLIB_INTERSECTION || mode==IFCLITE_SMLIB_DIFFERENCE,
         "only finite host Intersection/Difference clipping is supported",IFCLITE_SMLIB_UNSUPPORTED);
@@ -158,7 +161,11 @@ std::unique_ptr<SmBrep> clip_finite_plane(SmBrep* source,const double* plane,
     }
     Solid a,bounded;
     try {
-        a=checked_brep_copy(source); bounded=cutter_for(source,frame,b,domain);
+        a=checked_brep_copy(source);
+        // Full SDK validators may evaluate/build trim data. Run them only on
+        // the owned copy after source representation admission, never source.
+        validate_plane_solid(a.get());
+        bounded=cutter_for(source,frame,b,domain);
         SmBrep* raw=nullptr;
         const auto status=SmApiBoolean(a.get(),bounded.get(),SM_BO_INTERSECTION,raw);
         // SDK may mutate/delete operands before reporting failure. Never run

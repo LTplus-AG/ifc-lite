@@ -137,6 +137,61 @@ volume. Cutter validation runs on owned data. These checks are actual boundary
 observations; neither capability64 nor the certificate qualifies preserved
 whole-product geometry, material appearance, source faces or layers.
 
+## Shared context correction after independent review
+
+The default `SmBrep` constructor (`SmBrep.cpp493`) invokes setters that
+propagate DEFAULT sizing policy into the shared context (`SmBrep.h724+`).
+End-of-operation restoration alone leaves the wrong effective policy active
+during topology copying and cutter construction. Private `context_metadata.hpp`
+now preserves raw size, ratio and zone with legal protected-member pointers,
+including sentinels, and restores the shared context immediately after each
+adapter-owned BRep constructor, before any adapter geometry/tolerance work.
+Both checked-copy and the whole clip also have exception-safe outer guards.
+Raw BRep metadata is copied directly without propagating public setters.
+
+The inspected `MergeBrep` body copies topology/geometry without a BRep
+constructor or sizing setter. Supported `ManifoldBoolean` Intersection keeps
+its input BRep; its direct new-BRep extraction branch is for
+SM_BO_EXTRACT_SEPARATE, which this seam does not invoke. Its temporary rebase
+uses translation without an optional scale; the tolerance-changing branch of
+`SmBrep::Transform` requires an optional scale and bScaleTol. The guards also
+restore context on all clip exits, including numerical failure/taint.
+
+New actual shared-context witnesses use nondefault and DEFAULT raw metadata
+for context/source/sibling, compare raw scalar bits and effective tolerances,
+and cover nonempty, full-removal Empty, empty-input and refused operations. A
+virtual trim Copy observer checks the policy inside real MergeBrep, then
+delegates actual SDK geometry copying. These witnesses are UNRUN here, and the
+existing isolated poison witness is unchanged.
+
+## Source preflight correction after independent review
+
+`SmBrep::ValidatePointers` is evaluating even at LEVEL_0: its UV checks at
+31566-31590 call `EvaluatePoint` on present trims. A present generic curve
+without NURBS can enter `GetOrCreateGwNurbPointer`, ignore failed MakeNurb, and
+dereference a null representation. A derived curve could instead materialize
+and mutate source data. Missing trim pointers alone do not cover this case.
+
+Source certification now performs non-evaluating class/pointer/materialization
+preflight over every source face, 3D edge, existing edgeuse trim and cylinder
+generator. It rejects unknown or present-but-unmaterialized representations
+with status7 before coefficient access or any SDK geometry validator. It uses
+only SDK-constructed topology getters, raw representation pointers, actual
+coefficient/domain reads and non-evaluating topology checks. In this pin,
+`SmBrep::IsManifoldSolid`11246 and `SmEdge::IsManifold`4722 inspect topology
+only; `SmLoopuse::IsClosedPtrs`917 follows pointers only. Source-side geometric
+closure/ValidatePointers calls are removed. Full pointer-report, geometry and
+volume validation runs on the owned checked copy before Boolean work, and on
+the owned cutter/output, preserving the existing numerical oracles.
+
+New actual SDK negative witnesses attach a present default-constructed generic
+UV curve with null NURBS to real box topology. They exercise direct domain and
+clip entry, require status7, unchanged trim identity/null representation, raw
+source/context metadata, topology counts and vertex scalar bits, and no taint.
+A second present derived trim observes that MakeNurb is never invoked; it
+supplies no successful geometry. These are rejection witnesses, not positive
+geometry completion evidence, and remain UNRUN until parent execution.
+
 ## Primary-source findings and remaining split work
 
 All locations below refer to the pinned SDK source, inspected without editing:

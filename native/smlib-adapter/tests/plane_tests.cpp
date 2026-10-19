@@ -18,6 +18,8 @@
 #include <cstring>
 #include <map>
 #include <vector>
+void run_context_metadata_tests();
+void run_plane_preflight_tests();
 namespace {
 void require(bool value,const char* message) {
     if(!value) { char error[512]; ifclite_smlib_error_copy(error,sizeof(error));
@@ -206,6 +208,8 @@ void control_net_interior() {
 }
 }
 void run_plane_tests() {
+    run_context_metadata_tests();
+    run_plane_preflight_tests();
     require((ifclite_smlib_capabilities()&64u)!=0 && (ifclite_smlib_capabilities()&128u)==0,"unary clip only, no paired split advertisement");
     uint64_t s=0; ok(ifclite_smlib_session_create(&s));
     ifclite_smlib_handle box{}; ok(ifclite_smlib_box(s,0,0,0,2,2,2,&box));

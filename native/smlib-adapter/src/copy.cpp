@@ -2,7 +2,7 @@
 #include "copy.hpp"
 #include "sweep.hpp"
 #include "ifclite_smlib.h"
-#include <SmContext.h>
+#include "context_metadata.hpp"
 #include <SmEdge.h>
 #include <SmFace.h>
 #include <exception>
@@ -11,30 +11,6 @@ bool tainted=false;
 void require(bool valid,int32_t status,const char* message) {
     if(!valid) throw SweepFailure{status,message};
 }
-struct Metadata { double size,ratio; SmZoneTol3d zone; };
-// Pin-specific legal protected-member access; no base-to-derived cast and no
-// source write. Public SmTol getters chase DEFAULT sentinels, so using those
-// would change the copy constructor's raw tolerance metadata contract.
-// These types are never instantiated; the member pointers apply to Base.
-template<class Base> struct MetadataAccess: Base {
-    static Metadata get(const Base& value) {
-        return {value.*(&MetadataAccess::m_dThisModelSizeEstimate),
-            value.*(&MetadataAccess::m_dThisLargeSmallSizeRatio),
-            value.*(&MetadataAccess::m_sThisZoneTol3d)};
-    }
-    static void set(Base& value,const Metadata& m) {
-        value.*(&MetadataAccess::m_dThisModelSizeEstimate)=m.size;
-        value.*(&MetadataAccess::m_dThisLargeSmallSizeRatio)=m.ratio;
-        value.*(&MetadataAccess::m_sThisZoneTol3d)=m.zone;
-    }
-};
-struct RestoreContext {
-    SmContext& context;
-    Metadata metadata;
-    explicit RestoreContext(const SmContext* c):context(*const_cast<SmContext*>(c)),
-        metadata(MetadataAccess<SmContext>::get(context)) {}
-    ~RestoreContext() { MetadataAccess<SmContext>::set(context,metadata); }
-};
 }
 std::unique_ptr<SmBrep> checked_brep_copy(const SmBrep* source) {
     require(source && source->GetContext(),IFCLITE_SMLIB_INVALID_ARGUMENT,"copy source lacks context");
@@ -44,11 +20,11 @@ std::unique_ptr<SmBrep> checked_brep_copy(const SmBrep* source) {
         IFCLITE_SMLIB_UNSUPPORTED,"SDK MergeBrep cannot copy composite/specialized faces");
     for(auto* e:edges) require(e && e->GetType()==SmEdge_TYPE,
         IFCLITE_SMLIB_UNSUPPORTED,"SDK MergeBrep cannot copy composite/specialized edges");
-    RestoreContext context(source->GetContext());
+    raw_context::Restore context(source->GetContext());
     std::unique_ptr<SmBrep> result;
     try {
-    result.reset(new (*source->GetContext()) SmBrep());
-    MetadataAccess<SmBrep>::set(*result,MetadataAccess<SmBrep>::get(*source));
+    result=raw_context::construct_brep(source->GetContext());
+    raw_context::Access<SmBrep>::set(*result,raw_context::Access<SmBrep>::get(*source));
     result->m_bEditingEnabled=source->m_bEditingEnabled;
     result->m_bValidateOnly=source->m_bValidateOnly;
     // SmApiBrepCopy's copy constructor discards this status with SE(...).

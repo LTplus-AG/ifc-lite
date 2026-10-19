@@ -62,12 +62,42 @@ Bounds curve_hull(SmBSplineCurve* c,unsigned dimensions,const SmExtent1d& interv
 bool rational_curve(SM_TYPE type) {
     return type==SmBSplineCurve_TYPE || type==SmLine_TYPE || type==SmCircle_TYPE || type==SmEllipse_TYPE;
 }
+void preflight_existing_data(SmBrep* source,const SmTArray<SmFace*>& faces,const SmTArray<SmEdge*>& edges) {
+    // No Evaluate*, MakeNurb, GetOrCreate*, geometric closure or SDK validator.
+    // Native handles refer to SDK-constructed topology; inspect representations
+    // before any operation that may evaluate or lazily materialize geometry.
+    for(auto* face:faces) {
+        require(face && face->GetType()==SmFace_TYPE && face->GetSurface(),"unsupported source face");
+        auto* surface=face->GetSurface(); const auto type=surface->GetType();
+        require(type==SmPlane_TYPE || type==SmBSplineSurface_TYPE || type==SmCylinder_TYPE,
+            "unsupported source surface representation");
+        require(static_cast<SmBSplineSurface*>(surface)->GetGwNurbPointer(),"unmaterialized source surface");
+        if(type==SmCylinder_TYPE) {
+            auto* generator=static_cast<SmCylinder*>(surface)->GetGenCurve();
+            require(generator && rational_curve(generator->GetType()) && generator->GetGwNurbPointer(),
+                "unknown or unmaterialized cylinder generator");
+        }
+    }
+    for(auto* edge:edges) {
+        require(edge && edge->GetType()==SmEdge_TYPE && edge->GetCurve() && rational_curve(edge->GetCurve()->GetType()),
+            "unsupported source edge representation");
+        require(static_cast<SmBSplineCurve*>(edge->GetCurve())->GetGwNurbPointer(),"unmaterialized source edge");
+    }
+    SmTArray<SmEdgeuse*> uses; source->GetEdgeuses(uses);
+    require(uses.GetSize()<=400000,"source edgeuse preflight budget",IFCLITE_SMLIB_RESOURCE_LIMIT);
+    for(auto* use:uses) {
+        require(use && use->GetEdge() && use->GetFace(),"unsupported source edgeuse");
+        auto* trim=use->GetUVTrimCurve(); // Read only, including an existing mate trim.
+        if(trim) require(rational_curve(trim->GetType()) && trim->GetGwNurbPointer(),
+            "unknown or present-but-unmaterialized source UV trim");
+    }
+}
 Bounds trim_domain(SmFace* face,PlaneDomain& domain) {
     SmTArray<SmLoop*> loops; face->GetLoops(loops);
     require(loops.GetSize()>0 && loops.GetSize()<=8192,"missing or oversized finite face loops");
     Bounds uv=vacant();
     for(auto* loop:loops) {
-        require(loop && loop->IsClosedPtrs() && loop->IsClosed3d(),"open source trim loop");
+        require(loop && loop->IsClosedPtrs(),"open source trim pointer loop");
         SmTArray<SmEdgeuse*> uses; loop->GetEdgeuses(uses);
         require(uses.GetSize()>0 && uses.GetSize()<=8192,"missing or oversized trim cycle");
         for(auto* use:uses) {
@@ -180,6 +210,14 @@ void validate_plane_solid(SmBrep* solid) {
     using namespace plane_numeric;
     validate_topology(solid);
     if(semantically_empty_brep(solid)) return;
+    // Preserve the previous geometric loop-closure oracle, but evaluate it
+    // only here on owned copied/cutter/output geometry, never on the source.
+    SmTArray<SmFace*> faces; solid->GetFaces(faces);
+    for(auto* face:faces) {
+        SmTArray<SmLoop*> loops; face->GetLoops(loops);
+        for(auto* loop:loops) require(loop && loop->IsClosedPtrs() && loop->IsClosed3d(),
+            "owned numerical solid has an open geometric trim loop",IFCLITE_SMLIB_KERNEL_ERROR);
+    }
     double volume=0; checked(SmApiBrepComputeVolume(solid,1e-8,volume));
     require(std::isfinite(volume) && volume>0,"plane operand/result lacks positive finite material volume",IFCLITE_SMLIB_KERNEL_ERROR);
 }
@@ -190,18 +228,22 @@ PlaneDomain certify_plane_domain(SmBrep* source) {
     volatile double minimum=std::numeric_limits<double>::min(),half=0.5;
     volatile double subnormal=minimum*half;
     require(subnormal>0,"plane enclosure requires gradual underflow");
-    // Source certification must not integrate a face: volume integration can
-    // create missing UV trims via a fitting path. Only owned numerical outputs
-    // are permitted that validation. Preflight reads existing topology/data.
-    validate_topology(source);
-    PlaneDomain domain; domain.empty=semantically_empty_brep(source);
-    if(domain.empty) { domain.bounds={{{0,0},{0,0},{0,0}}}; return domain; }
-    tolerance(domain,source->GetTolerance());
+    // ValidatePointers is evaluating even at LEVEL_0. It must not run on the
+    // source: an existing trim without NURBS can crash or lazily mutate it.
+    require(source && source->GetInfiniteRegion() && source->GetInfiniteRegion()->IsVoid()==TRUE,
+        "source lacks a finite-material topology domain");
     SmTArray<SmFace*> faces; source->GetFaces(faces);
     SmTArray<SmEdge*> edges; source->GetEdges(edges);
     SmTArray<SmVertex*> vertices; source->GetVertices(vertices);
     require(faces.GetSize()<=100000 && edges.GetSize()<=100000 && vertices.GetSize()<=100000,
         "plane topology budget",IFCLITE_SMLIB_RESOURCE_LIMIT);
+    preflight_existing_data(source,faces,edges);
+    PlaneDomain domain; domain.empty=semantically_empty_brep(source);
+    if(domain.empty) { domain.bounds={{{0,0},{0,0},{0,0}}}; return domain; }
+    // IsManifoldSolid only inspects regions, shell vertices and edgeuse types
+    // in this SDK (SmBrep11246, SmEdge4722); it never evaluates geometry.
+    require(source->IsManifoldSolid() && faces.GetSize()>0,"source is not a manifold solid topology");
+    tolerance(domain,source->GetTolerance());
     domain.faces=faces.GetSize(); domain.edges=edges.GetSize();
     for(ULONG i=0;i<faces.GetSize();++i) {
         auto* f=faces[i]; require(f,"missing face");

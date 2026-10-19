@@ -34,7 +34,7 @@ impl GeometryProgram {
     pub(crate) fn opening_body(element:DecodedEntity)->Self {
         let mut program=Self::from_step(None);
         program.product=Some(super::inner_product_adapter::ProductRootAdapter::without_layers(element,
-            super::product_control::ProductConsumer::Merged,crate::router::processing::SourceHygiene::IndexOnly));program
+            super::product_control::ProductConsumer::Merged,crate::router::processing::SourceHygiene::BooleanOperand));program
     }
     pub(crate) fn finish_layer_candidate(self)->Result<Option<crate::SubMeshCollection>> {
         match self.outcome.expect("completed layer outcome")? {GeometryOutput::LayerCandidate(value)=>Ok(value),_=>Err(crate::Error::geometry("Wrong layer outcome"))}

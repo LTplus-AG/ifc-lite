@@ -115,7 +115,7 @@ impl VoidControl {
                     VoidConsumer::Parts if self.ids.is_empty()=>(GeometryProgram::product(self.element.clone(),ProductConsumer::Merged,SourceHygiene::Watertight),ChildRole::PlainParts),
                     VoidConsumer::Parts=>(GeometryProgram::opening_body(self.element.clone()),ChildRole::BodyParts),
                     VoidConsumer::Styled if self.ids.is_empty()=>{self.output=Some(Ok(GeometryOutput::Submeshes(SubMeshCollection::new())));return Ok(())}
-                    VoidConsumer::Styled=>(GeometryProgram::product(self.element.clone(),ProductConsumer::Styled {allow_instancing:false},SourceHygiene::IndexOnly),ChildRole::BodyStyled),
+                    VoidConsumer::Styled=>(GeometryProgram::product(self.element.clone(),ProductConsumer::Styled {allow_instancing:false},SourceHygiene::BooleanOperand),ChildRole::BodyStyled),
                 };
                 self.child=Some(Child {program:Box::new(program),role});
             }
@@ -158,7 +158,7 @@ impl VoidControl {
 impl ReadyFinish {
     fn clean_part(&mut self) -> Result<()> {
         crate::resource::check_current()?;
-        self.part.mesh.clean_degenerate();
+        crate::router::voids::hygiene::clean_void_output(&mut self.part.mesh);
         crate::resource::check_current()?;
         Ok(())
     }

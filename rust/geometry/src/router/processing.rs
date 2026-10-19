@@ -62,6 +62,9 @@ pub(crate) enum SourceHygiene {
     /// those inputs changed the cut on ~20 void hosts of the public corpus, so
     /// it is a separate, measured change.
     IndexOnly,
+    /// Boolean inputs also split exactly collinear cap seams at an existing
+    /// same-face apex index, without changing vertex arrays (#7292).
+    BooleanOperand,
 }
 
 impl SourceHygiene {
@@ -77,6 +80,7 @@ impl SourceHygiene {
             Self::None => {},
             Self::Watertight => mesh.clean_degenerate_watertight(),
             Self::IndexOnly => mesh.clean_degenerate(),
+            Self::BooleanOperand => mesh.clean_degenerate_exact_indexed(),
         }
     }
 }
@@ -223,3 +227,7 @@ impl GeometryRouter {
         std::mem::take(&mut *self.content_hash_oversized_ref_drops.borrow_mut())
     }
 }
+
+#[cfg(test)]
+#[path = "processing_hygiene_tests.rs"]
+mod hygiene_tests;

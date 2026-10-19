@@ -20,7 +20,7 @@ use census::record_csg_op;
 mod degenerate_check;
 mod group_cut;
 mod normals;
-mod plane_eps;
+pub(crate) mod plane_eps;
 mod topology_diagnostic;
 mod union;
 

@@ -135,7 +135,7 @@ impl OpeningControl {
         let result = match self.machine.as_mut().expect("active opening machine") {
             Machine::Host(machine) => machine.resume(reply),
             Machine::Classifier(machine) => machine.resume(reply, router),
-            Machine::Probe(machine) => machine.resume(reply),
+            Machine::Probe(machine) => machine.resume(reply, router),
             Machine::Rectangle(machine) => machine.resume(reply),
             Machine::Planar(machine) => machine.resume(reply),
         };

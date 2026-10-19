@@ -95,13 +95,24 @@ describe('end-to-end MCP server with real IFC', () => {
     expect(counts.structuredContent.groups.length).toBeGreaterThan(0);
     expect(counts.structuredContent.groups.some((g) => /WALL/i.test(g.key))).toBe(true);
 
-    // model_audit always returns a score in [0,100].
-    const audit = await send<{ structuredContent: { overall: number } }>(
+    // model_audit returns a score in [0,100] that is the rounded mean of its
+    // three category scores. A range check alone passes for a constant 0.
+    const audit = await send<{
+      structuredContent: {
+        overall: number;
+        scores: { structure: number; identity: number; dataQuality: number };
+        totals: { duplicateGlobalIds: number };
+      };
+    }>(
       transport, 5, 'tools/call',
       { name: 'model_audit', arguments: {} },
     );
-    expect(audit.structuredContent.overall).toBeGreaterThanOrEqual(0);
-    expect(audit.structuredContent.overall).toBeLessThanOrEqual(100);
+    const { overall, scores } = audit.structuredContent;
+    expect(audit.structuredContent.totals.duplicateGlobalIds).toBe(0);
+    expect(scores.identity).toBe(100);
+    expect(overall).toBe(Math.round((scores.structure + scores.identity + scores.dataQuality) / 3));
+    expect(overall).toBeGreaterThan(0);
+    expect(overall).toBeLessThanOrEqual(100);
 
     // resources/list should advertise the manifest.
     const resources = await send<{ resources: Array<{ uri: string }> }>(transport, 6, 'resources/list');

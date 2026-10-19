@@ -82,7 +82,7 @@
 //! looser.
 
 use crate::mesh::Mesh;
-use nalgebra::Vector3;
+use nalgebra::{Point3, Vector3};
 
 use super::{ClipResult, Plane, Triangle};
 
@@ -119,7 +119,7 @@ use crate::math::tol::F32_ULP_SCALE;
 /// the irrelevant x axis, where the real f32 rounding step at that z is about
 /// 2.4e-4 mm: roughly 1000x too loose on the only axis that matters.
 #[derive(Debug, Clone, Copy)]
-pub(super) struct PlaneEps {
+pub(crate) struct PlaneEps {
     /// Per-axis absolute rounding-noise amplitude, in the mesh's native units.
     axis_noise: [f64; 3],
     /// Minimum tolerance, applied after projection.
@@ -172,6 +172,23 @@ impl PlaneEps {
                 axis_noise[axis] = a;
             }
         }
+        Self::from_axis_magnitudes(axis_noise, floor)
+    }
+
+    /// Same policy for quantities read back from f32-stored vertices as f64
+    /// points (e.g. host and cutter bounds): per-axis `max |p_i|`, floored
+    /// (after projection) at `floor`.
+    pub(crate) fn from_points(points: &[Point3<f64>], floor: f64) -> Self {
+        let mut axis_magnitude = [0.0f64; 3];
+        for p in points {
+            for (axis, magnitude) in axis_magnitude.iter_mut().enumerate() {
+                *magnitude = magnitude.max(p[axis].abs());
+            }
+        }
+        Self::from_axis_magnitudes(axis_magnitude, floor)
+    }
+
+    fn from_axis_magnitudes(mut axis_noise: [f64; 3], floor: f64) -> Self {
         for noise in axis_noise.iter_mut() {
             *noise *= F32_ULP_SCALE;
         }
@@ -209,7 +226,7 @@ impl PlaneEps {
     /// the tolerance (an axis orthogonal to `n` contributes exactly nothing).
     /// Any prose claiming this form is "never looser" than max-over-axes is
     /// wrong.
-    pub(super) fn for_normal(&self, n: &Vector3<f64>) -> f64 {
+    pub(crate) fn for_normal(&self, n: &Vector3<f64>) -> f64 {
         let projected = n.x.abs() * self.axis_noise[0]
             + n.y.abs() * self.axis_noise[1]
             + n.z.abs() * self.axis_noise[2];

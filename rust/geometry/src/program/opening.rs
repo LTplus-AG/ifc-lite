@@ -80,7 +80,7 @@ impl OpeningProgram {
             TraversalPoll::Pending => Step::Poll(OpeningPoll::Pending),
         }
     }
-    pub(super) fn resume(&mut self, reply: OpeningReply) -> Result<()> {
+    pub(super) fn resume(&mut self, reply: OpeningReply, router: &GeometryRouter) -> Result<()> {
         match reply {
             OpeningReply::Representations(reply) => match reply? {
                 Some(items) => {
@@ -143,6 +143,7 @@ impl OpeningProgram {
                 Ok(parts) => {
                     self.next = Some(OpeningPoll::Ready(OpeningReady::ProbeParts {
                         parts,
+                        hygiene: crate::router::processing::SourceHygiene::BooleanOperand.for_router(router),
                         placement: self.placement,
                         frame: self.frame.expect("admitted placement frame"),
                         meshes: self.meshes,

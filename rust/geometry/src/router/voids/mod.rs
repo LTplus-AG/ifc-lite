@@ -21,6 +21,7 @@ pub(crate) mod geom;
 mod malformed_opening_repair;
 mod local_frame;
 mod frame_snap;
+pub(crate) mod hygiene;
 pub(crate) mod prism_cut;
 pub(crate) mod probe;
 mod representation;
@@ -539,7 +540,7 @@ impl Execution {
         // hygiene the production output applies — in the small frame, where it is
         // precise — so the self-check sees exactly what downstream will keep.
         let mut out = rotate_mesh_from_frame(&merged, &host.r, &host.center);
-        out.clean_degenerate();
+        hygiene::clean_void_output(&mut out);
 
         // Self-check: never emit a non-watertight cut; defer to the exact kernel.
         if !param_cut_watertight(&out) {

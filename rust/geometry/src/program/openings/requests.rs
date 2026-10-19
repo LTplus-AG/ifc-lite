@@ -217,6 +217,7 @@ pub(crate) enum OpeningReady {
     },
     ProbeParts {
         parts: Vec<Mesh>,
+        hygiene: crate::router::processing::SourceHygiene,
         placement: Matrix4<f64>,
         frame: WorldFrame,
         meshes: bool,

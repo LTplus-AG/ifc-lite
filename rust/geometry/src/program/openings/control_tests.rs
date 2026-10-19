@@ -146,6 +146,7 @@ fn opening_numerical_probe_uses_owned_mesh_and_frame_after_source_disposal() {
             .evaluate()
     };
     let recipe = OpeningReady::ProbeParts {
+        hygiene: crate::router::processing::SourceHygiene::BooleanOperand,
         parts: vec![mesh],
         placement: nalgebra::Matrix4::new_translation(&crate::Vector3::new(5., 6., 7.)),
         frame: crate::router::transforms::WorldFrame {

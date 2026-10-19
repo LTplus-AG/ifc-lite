@@ -76,6 +76,13 @@ pub(crate) struct NearBand {
 }
 
 impl NearBand {
+    /// Exact binary64 basis of the existing coordinate-uncertainty body.
+    /// Consumers requiring a certificate must convert BEFORE multiplication;
+    /// the ordinary f64 band evaluation is not an outward arithmetic bound.
+    pub(super) fn uncertainty_basis(&self) -> ([f64; 3], f64, f64) {
+        (self.axis_extent, F32_ULP_SCALE, NEAR_BAND_FLOOR)
+    }
+
     /// Fold one point's coordinates into the per-axis extents.
     pub(crate) fn observe_point(&mut self, p: &[f64; 3]) {
         for k in 0..3 {
@@ -93,6 +100,13 @@ impl NearBand {
                 self.observe_point(v);
             }
         }
+    }
+
+    /// One shared quantization context for the two complete operand meshes.
+    pub(crate) fn from_operands(a: &[Tri], b: &[Tri]) -> Self {
+        let mut band = Self::from_tris(a);
+        band.observe_tris(b);
+        band
     }
 
     /// The band over `tris`.

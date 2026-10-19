@@ -95,6 +95,8 @@ describe('zone column/condition (#1810)', () => {
       walls([{ id: 'z', source: 'zone', psetName: 'takt', propertyName: 'Zone' }]),
       createProvider(assignments),
     );
+    // Guard against a vacuous `every` over zero rows: the provider has 4 walls.
+    expect(result.rows).toHaveLength(4);
     expect(result.rows.every(r => r.values[0] === null)).toBe(true);
   });
 
@@ -196,6 +198,8 @@ describe('zone volume columns (#2508)', () => {
   it('is null until an apportionment exists, rather than clipping behind the user', () => {
     // The provider returns null when nothing has been computed for the set.
     const result = executeList(walls([volumeColumn]), volumeProvider(new Map()));
+    // Guard against a vacuous `every` over zero rows: the provider has 4 walls.
+    expect(result.rows).toHaveLength(4);
     expect(result.rows.every(r => r.values[0] === null)).toBe(true);
   });
 
@@ -210,6 +214,8 @@ describe('zone volume columns (#2508)', () => {
     const legacy = createProvider(new Map());
     expect(legacy.getZoneVolumeShares).toBeUndefined();
     const result = executeList(walls([volumeColumn]), legacy);
+    // Guard against a vacuous `every` over zero rows: the provider has 4 walls.
+    expect(result.rows).toHaveLength(4);
     expect(result.rows.every(r => r.values[0] === null)).toBe(true);
   });
 

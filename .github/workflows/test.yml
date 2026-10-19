@@ -860,12 +860,26 @@ jobs:
           E2E_GPU_STRICT: '0'
         run: |
           oracle_args=(--base origin/main --ci --json)
+          # #6729: keep the newly introduced GPU pass importable and remove
+          # only its geometric visibility constraint. The paired projection
+          # witness must then assert the original wrong foreground ownership.
+          # Once the module is on main, ordinary whole-change reverts resume.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- packages/renderer/src/opaque-visibility-pass.ts | grep -Fxq 'packages/renderer/src/opaque-visibility-pass.ts'; then
+            oracle_args+=(--mutation tests/evidence/reporter-6729/visibility.oracle.patch)
+          # #7292: the initial exact-kernel modules/APIs must stay loadable;
+          # a whole-production revert prevents the changed Rust tests compiling.
+          # Reverse ONLY geometric signed-zero key normalization in SourceAxes:
+          # the actual production weld must split one shared corner and turn RED.
+          # All changed tests still run on BOTH sides, with unchanged selection
+          # and timeout. Once source_axes.rs is on main, whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/kernel/plane_weld/source_axes.rs | grep -Fxq 'rust/geometry/src/kernel/plane_weld/source_axes.rs'; then
+            oracle_args+=(--mutation docs/architecture/evidence/issue-7292/signed-zero.oracle.patch)
           # #7495: deleting the newly introduced report service prevents test
           # collection. Its initial qualification instead removes ONLY the
           # approved NDA digest check: wrong-digest acceptance must turn RED.
           # All changed tests still run on both sides; once agreement.ts is on
           # main, the ordinary whole-change revert resumes automatically.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- apps/report-service/src/agreement.ts | grep -Fxq 'apps/report-service/src/agreement.ts'; then
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/report-service/src/agreement.ts | grep -Fxq 'apps/report-service/src/agreement.ts'; then
             oracle_args+=(--mutation apps/report-service/test/fixtures/approved-digest.oracle.patch)
           # The initial publication transport adds modules imported by its
           # witnesses. Keep them loadable while disabling ONLY refusal of an

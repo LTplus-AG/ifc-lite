@@ -311,3 +311,4 @@ pub use void_index::{
 /// Explicit resource admission for audited canonical execution sites.
 pub mod resource;
 pub use ifc_lite_imported_geometry as imported;
+mod exact_topology;

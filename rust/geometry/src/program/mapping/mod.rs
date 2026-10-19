@@ -83,3 +83,7 @@ mod tests;
 
 #[cfg(test)]
 mod resource_tests;
+
+#[cfg(test)]
+#[path = "../../router/processing_shared_cap_tests.rs"]
+mod shared_cap_tests;

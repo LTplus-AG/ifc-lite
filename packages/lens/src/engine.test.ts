@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { evaluateLens, evaluateAutoColorLens } from './engine.js';
 import { GHOST_COLOR, hexToRgba } from './colors.js';
 import type { Lens, LensRule, LensDataProvider, AutoColorSpec } from './types.js';
@@ -25,6 +25,19 @@ function createMockProvider(entities: Array<{
   };
 }
 
+afterEach(() => vi.restoreAllMocks());
+
+/**
+ * Run `fn` with a clock that reads 1000 then 1007.5, so `executionTime` has a
+ * single correct value. A bare `>= 0` check passes for a constant 0.
+ */
+function withClock<T extends { executionTime: number }>(fn: () => T): T {
+  vi.spyOn(performance, 'now').mockReturnValueOnce(1000).mockReturnValueOnce(1007.5);
+  const result = fn();
+  expect(result.executionTime).toBe(7.5);
+  return result;
+}
+
 function typeGroups(ifcType: string): NonNullable<LensRule['groups']> {
   return [{ rules: [{ kind: 'ifcType', op: 'in', values: [ifcType] }], combinator: 'AND' }];
 }
@@ -39,11 +52,10 @@ describe('evaluateLens', () => {
       ],
     };
     const provider = createMockProvider([{ id: 1, type: 'IfcWall' }]);
-    const result = evaluateLens(lens, provider, new Map());
+    const result = withClock(() => evaluateLens(lens, provider, new Map()));
 
     expect(result.colorMap.size).toBe(0);
     expect(result.hiddenIds.size).toBe(0);
-    expect(result.executionTime).toBeGreaterThanOrEqual(0);
   });
 
   it('should colorize matching entities and ghost non-matches', () => {
@@ -157,10 +169,7 @@ describe('evaluateLens', () => {
       ],
     };
     const provider = createMockProvider([{ id: 1, type: 'IfcWall' }]);
-    const result = evaluateLens(lens, provider, new Map([['r1', new Set([1])]]));
-
-    expect(typeof result.executionTime).toBe('number');
-    expect(result.executionTime).toBeGreaterThanOrEqual(0);
+    withClock(() => evaluateLens(lens, provider, new Map([['r1', new Set([1])]])));
   });
 });
 
@@ -271,10 +280,7 @@ describe('evaluateAutoColorLens', () => {
   it('should return execution time', () => {
     const provider = createMockProvider([{ id: 1, type: 'IfcWall' }]);
     const spec: AutoColorSpec = { source: 'ifcType' };
-    const result = evaluateAutoColorLens(spec, provider);
-
-    expect(typeof result.executionTime).toBe('number');
-    expect(result.executionTime).toBeGreaterThanOrEqual(0);
+    withClock(() => evaluateAutoColorLens(spec, provider));
   });
 
   it('should group a multi-material element under EVERY one of its materials (#1366)', () => {

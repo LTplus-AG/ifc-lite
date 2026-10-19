@@ -164,7 +164,7 @@ fn tpi_lambda(t: &Tpi) -> (Iv3, RnInterval) {
 
 /// Interval-tier indirect orient3d for one implicit point `(λ/d)`. `None` ⇒ the
 /// `Λ′` or `d` interval straddles zero ⇒ escalate to the exact tier.
-fn indirect_orient3d(
+pub(super) fn indirect_orient3d(
     lambda: &Iv3,
     d: RnInterval,
     p2: [f64; 3],

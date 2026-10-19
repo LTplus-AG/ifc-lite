@@ -76,11 +76,12 @@ impl OpeningReady {
             }
             Self::ProbeParts {
                 parts,
+                hygiene,
                 placement,
                 frame,
                 meshes,
                 direction,
-            } => place_probe_parts(parts, placement, frame, meshes, direction),
+            } => place_probe_parts(parts, hygiene, placement, frame, meshes, direction),
             Self::RectOrientation { host, boxes } => {
                 let rotation = host.transpose();
                 let mut eligible = true;
@@ -156,6 +157,7 @@ impl OpeningReady {
 
 fn place_probe_parts(
     parts: Vec<crate::Mesh>,
+    hygiene: crate::router::processing::SourceHygiene,
     placement: nalgebra::Matrix4<f64>,
     frame: crate::router::transforms::WorldFrame,
     meshes: bool,
@@ -163,10 +165,13 @@ fn place_probe_parts(
 ) -> OpeningReply {
     let mut placed = Vec::new();
     let mut bounds = Vec::new();
-    for mut mesh in parts.into_iter().filter(|mesh| !mesh.is_empty()) {
+    for mesh in parts {
         if let Err(stop) = crate::resource::check_current() {
             return OpeningReply::Error(stop.into());
         }
+        let Some(mut mesh) = crate::router::voids::hygiene::clean_opening_item(mesh, hygiene) else {
+            continue;
+        };
         if meshes {
             let framed = frame.needs_local_frame(&mesh, &placement);
             frame.transform_mesh_world_framed(&mut mesh, &placement, framed);

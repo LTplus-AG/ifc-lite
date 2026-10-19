@@ -70,7 +70,9 @@ else
   printf 'mode must be native or wasm\n' >&2; exit 2
 fi
 cmake --build "$build" --parallel 4
-ctest --test-dir "$build" --output-on-failure
+ctest_status=0
+ctest --test-dir "$build" --output-on-failure || ctest_status=$?
+consumer_status=0
 if [[ "$consumers" == --rust-consumers ]]; then
   # Use this build's actual worker, never a caller's stale executable or an
   # absent environment variable that makes SDK-gated Rust tests skip.
@@ -80,6 +82,11 @@ if [[ "$consumers" == --rust-consumers ]]; then
     exit 2
   }
   printf 'qualification Rust consumers source=%s worker=%s\n' "$source_id" "$IFCLITE_SMLIB_WORKER"
-  cargo test -p ifc-lite-geometry-runtime -p ifc-lite-processing --all-targets --no-fail-fast -- --nocapture
+  # CTest and Rust workers have separate process isolation. Preserve a failing
+  # boundary verdict while gathering independent consumer failures as well.
+  cargo test -p ifc-lite-geometry-runtime -p ifc-lite-processing --all-targets --no-fail-fast -- --nocapture || consumer_status=$?
+  printf 'qualification_ctest_exit=%s rust_consumer_exit=%s\n' "$ctest_status" "$consumer_status"
 fi
 printf 'qualification build=%s\n' "$build"
+if [[ "$ctest_status" -ne 0 ]]; then exit "$ctest_status"; fi
+exit "$consumer_status"

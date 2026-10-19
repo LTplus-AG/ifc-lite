@@ -254,12 +254,16 @@ wrapper with `bash` (the wrapper need not be executable):
 
 For native Rust consumer qualification, use `native --rust-consumers` in the
 same admitted command after fetching fixtures with root `pnpm fixtures`.
-After every CTest passes, this option sets `IFCLITE_SMLIB_WORKER` to the executable
+After CTest finishes, this option sets `IFCLITE_SMLIB_WORKER` to the executable
 from that exact build, checks that it exists and is executable, then runs all
 runtime and processing Cargo targets with `--no-fail-fast -- --nocapture`.
 This includes model admission and lifecycle integration tests as well as common
-retained transactions. SDK-gated tests cannot skip for a missing worker variable;
-fixture-dependent tests still report absent fixtures, and those skips remain
+retained transactions. SDK-gated tests cannot skip for a missing worker variable.
+CTest and Rust outcomes are recorded separately. Consumer tests still execute
+after a CTest failure because their workers use separate processes, and either
+failure makes the overall command fail. A successful consumer run cannot qualify
+a failing CTest boundary.
+Fixture-dependent tests still report absent fixtures, and those skips remain
 missing coverage. This command does not replace workspace tests, strict Clippy,
 WASM/browser tests, other consumers or performance qualification.
 

@@ -4,6 +4,14 @@ use super::IfcAPI;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use ifc_lite_processing::element::{plan_type_geometry, ElementJobKind, TypeGeometryMode};
 impl IfcAPI {
+    /// Configure a newly created canonical product router. The merge toggle
+    /// intentionally disables layer slicing in both exact and retained entries.
+    pub(super) fn configure_product_material_layers(&self, router: &mut ifc_lite_geometry::GeometryRouter,
+        content: &[u8], decoder: &mut EntityDecoder<'_>) {
+        if !self.merge_layers() {
+            router.set_material_layer_index(self.get_or_build_material_layer_index(content,decoder));
+        }
+    }
     pub(super) fn canonical_product_job_kind(&self, content: &[u8], entity: &DecodedEntity,
         ifc_type: &IfcType, decoder: &mut EntityDecoder<'_>) -> Option<ElementJobKind> {
         if !ifc_type.is_subtype_of(IfcType::IfcTypeProduct) { return Some(ElementJobKind::Product); }

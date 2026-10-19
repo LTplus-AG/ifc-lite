@@ -118,7 +118,7 @@ impl IfcAPI {
         }
         let mut router = GeometryRouter::with_scale_and_quality(decoder.length_unit_scale(),self.tessellation_quality());
         router.set_skip_small_cuts(self.skip_small_cuts());
-        if self.merge_layers() { router.set_material_layer_index(self.get_or_build_material_layer_index(content,&mut decoder)); }
+        self.configure_product_material_layers(&mut router,content,&mut decoder);
         let palettes = self.get_or_build_indexed_colour_maps(content,&mut decoder);
         let textures = self.get_or_build_texture_index(content,&mut decoder);
         let kind = self.canonical_product_job_kind(content, &entity, &entity.ifc_type, &mut decoder)

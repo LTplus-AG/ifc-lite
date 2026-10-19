@@ -222,9 +222,7 @@ impl IfcAPI {
         // flag — off (default) ⇒ slice into layers; on ⇒ one solid. The separate
         // part-skip path below keeps its own index, so IfcBuildingElementPart
         // merging is unaffected.
-        if !self.merge_layers() {
-            router.set_material_layer_index(self.get_or_build_material_layer_index(content, &mut decoder));
-        }
+        self.configure_product_material_layers(&mut router,content,&mut decoder);
 
         // Set RTC offset if needed
         if needs_shift {

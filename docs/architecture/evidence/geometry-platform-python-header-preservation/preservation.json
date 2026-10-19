@@ -1,0 +1,94 @@
+{
+  "format": "historical-python-header-preservation-v1",
+  "purpose": "preserve exact historical evidence while adding MPL notices to maintained copies; no runtime qualification",
+  "archive": {
+    "path": "original-scripts.tar.gz",
+    "sha256": "5cf4351a556fff8efba4c06941f8ee988210b54d77d29f0e47912986e81e6dc6",
+    "bytes": 10084,
+    "format": "GNU tar, sorted regular members, normalized uid/gid/mtime and empty user/group; gzip filename empty, mtime zero, level9",
+    "generation_python": "3.12.3 (main, Nov  6 2025, 13:44:16) [GCC 13.3.0]"
+  },
+  "added_notice_utf8": "# This Source Code Form is subject to the terms of the Mozilla Public\n# License, v. 2.0. If a copy of the MPL was not distributed with this\n# file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n",
+  "files": [
+    {
+      "path": "docs/architecture/evidence/geometry-platform-context-final/allocation-diagnostic/run.py",
+      "original_sha256": "92c50b6ed77697f891fa5c4da7c27738df02772071de3edc738cede098beaf26",
+      "original_bytes": 5445,
+      "original_mode": "0o664",
+      "maintained_sha256": "0eb02b9d175e897941c24ac00e8182b50f253be97915c9705237c3bbcd8b3707",
+      "maintained_bytes": 5646,
+      "notice_offset": 23,
+      "notice_bytes": 201
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-context-final/allocation-stacks/corrected-source/run.py",
+      "original_sha256": "3e6107dc1a5b40c49c6b104448f9717d65a43f30bafdb2832d46b0809df597ba",
+      "original_bytes": 3651,
+      "original_mode": "0o664",
+      "maintained_sha256": "dc8299b612e48f6cc20013f7cb39d35125951e35febfa247f6fd6344b95e9879",
+      "maintained_bytes": 3852,
+      "notice_offset": 23,
+      "notice_bytes": 201
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-context-final/allocation-stacks/corrected-source/symbolize.py",
+      "original_sha256": "0c017947f2c2ce46f1101d2fd5d354efd398d2598a44c12a6a47792d6c7c081a",
+      "original_bytes": 6928,
+      "original_mode": "0o664",
+      "maintained_sha256": "05f715cf9ec3baeeec2dbb9a47fec6f1a5c791e4b74f855cc5bcc591f890f957",
+      "maintained_bytes": 7129,
+      "notice_offset": 23,
+      "notice_bytes": 201
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-context-final/allocation-stacks/exploratory/run.py",
+      "original_sha256": "3e6107dc1a5b40c49c6b104448f9717d65a43f30bafdb2832d46b0809df597ba",
+      "original_bytes": 3651,
+      "original_mode": "0o664",
+      "maintained_sha256": "dc8299b612e48f6cc20013f7cb39d35125951e35febfa247f6fd6344b95e9879",
+      "maintained_bytes": 3852,
+      "notice_offset": 23,
+      "notice_bytes": 201
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-context-final/allocation-stacks/exploratory/symbolize.py",
+      "original_sha256": "0c017947f2c2ce46f1101d2fd5d354efd398d2598a44c12a6a47792d6c7c081a",
+      "original_bytes": 6928,
+      "original_mode": "0o664",
+      "maintained_sha256": "05f715cf9ec3baeeec2dbb9a47fec6f1a5c791e4b74f855cc5bcc591f890f957",
+      "maintained_bytes": 7129,
+      "notice_offset": 23,
+      "notice_bytes": 201
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-work/driver-snapshots/assemble-receipts.py",
+      "original_sha256": "4c8861f553e99a3dde3df37aa268c26427be8019e149f3bfd0b8f7036a72a00c",
+      "original_bytes": 8782,
+      "original_mode": "0o664",
+      "maintained_sha256": "4ea09e525d933753270490ca6dd41f0ce8257657870f5f5da8dd7d6f2ef3c3d2",
+      "maintained_bytes": 8983,
+      "notice_offset": 0,
+      "notice_bytes": 201
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-work/driver-snapshots/default-path-memory.py",
+      "original_sha256": "c547df3eaa61c3a688c3549da7aba004c8e7944f1a71dbaba1f270b5db799be3",
+      "original_bytes": 2485,
+      "original_mode": "0o664",
+      "maintained_sha256": "f554d1ccfb255c74a236d5cebd7b20604886c73198675036d78badac28b76b01",
+      "maintained_bytes": 2686,
+      "notice_offset": 0,
+      "notice_bytes": 201
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-work/driver-snapshots/default-path-perf.py",
+      "original_sha256": "2803b7c8ab82ab93cd88aee497c6b394a67a479e36246f468f9f983f43086bd2",
+      "original_bytes": 2495,
+      "original_mode": "0o664",
+      "maintained_sha256": "d56de415b723724919fddc96e09a296319e2bb2d13a7219f65fb0329f14e3257",
+      "maintained_bytes": 2696,
+      "notice_offset": 0,
+      "notice_bytes": 201
+    }
+  ]
+}

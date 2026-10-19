@@ -1,0 +1,8 @@
+92c50b6ed77697f891fa5c4da7c27738df02772071de3edc738cede098beaf26  docs/architecture/evidence/geometry-platform-context-final/allocation-diagnostic/run.py
+3e6107dc1a5b40c49c6b104448f9717d65a43f30bafdb2832d46b0809df597ba  docs/architecture/evidence/geometry-platform-context-final/allocation-stacks/corrected-source/run.py
+0c017947f2c2ce46f1101d2fd5d354efd398d2598a44c12a6a47792d6c7c081a  docs/architecture/evidence/geometry-platform-context-final/allocation-stacks/corrected-source/symbolize.py
+3e6107dc1a5b40c49c6b104448f9717d65a43f30bafdb2832d46b0809df597ba  docs/architecture/evidence/geometry-platform-context-final/allocation-stacks/exploratory/run.py
+0c017947f2c2ce46f1101d2fd5d354efd398d2598a44c12a6a47792d6c7c081a  docs/architecture/evidence/geometry-platform-context-final/allocation-stacks/exploratory/symbolize.py
+4c8861f553e99a3dde3df37aa268c26427be8019e149f3bfd0b8f7036a72a00c  docs/architecture/evidence/geometry-platform-work/driver-snapshots/assemble-receipts.py
+c547df3eaa61c3a688c3549da7aba004c8e7944f1a71dbaba1f270b5db799be3  docs/architecture/evidence/geometry-platform-work/driver-snapshots/default-path-memory.py
+2803b7c8ab82ab93cd88aee497c6b394a67a479e36246f468f9f983f43086bd2  docs/architecture/evidence/geometry-platform-work/driver-snapshots/default-path-perf.py

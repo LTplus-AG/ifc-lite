@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 from pathlib import Path
 import subprocess,json,hashlib,statistics,platform
 root=Path('/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361');base=Path('/tmp/ifclite-smlib-base-8acd0715a')

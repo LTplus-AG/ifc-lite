@@ -1,0 +1,67 @@
+{
+  "verification": "independent archive/member/live-copy verification; no script execution, historical measurements not rerun",
+  "archive_sha256": "5cf4351a556fff8efba4c06941f8ee988210b54d77d29f0e47912986e81e6dc6",
+  "members": [
+    {
+      "path": "docs/architecture/evidence/geometry-platform-context-final/allocation-diagnostic/run.py",
+      "archive_sha256_verified": true,
+      "notice_only_reversible": true,
+      "both_python_syntax_valid": true
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-context-final/allocation-stacks/corrected-source/run.py",
+      "archive_sha256_verified": true,
+      "notice_only_reversible": true,
+      "both_python_syntax_valid": true
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-context-final/allocation-stacks/corrected-source/symbolize.py",
+      "archive_sha256_verified": true,
+      "notice_only_reversible": true,
+      "both_python_syntax_valid": true
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-context-final/allocation-stacks/exploratory/run.py",
+      "archive_sha256_verified": true,
+      "notice_only_reversible": true,
+      "both_python_syntax_valid": true
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-context-final/allocation-stacks/exploratory/symbolize.py",
+      "archive_sha256_verified": true,
+      "notice_only_reversible": true,
+      "both_python_syntax_valid": true
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-work/driver-snapshots/assemble-receipts.py",
+      "archive_sha256_verified": true,
+      "notice_only_reversible": true,
+      "both_python_syntax_valid": true
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-work/driver-snapshots/default-path-memory.py",
+      "archive_sha256_verified": true,
+      "notice_only_reversible": true,
+      "both_python_syntax_valid": true
+    },
+    {
+      "path": "docs/architecture/evidence/geometry-platform-work/driver-snapshots/default-path-perf.py",
+      "archive_sha256_verified": true,
+      "notice_only_reversible": true,
+      "both_python_syntax_valid": true
+    }
+  ],
+  "independent_archive_regeneration_byte_identical": true,
+  "global_license_check": {
+    "checked": 13502,
+    "excluded": 43,
+    "unreadable": 0,
+    "missing": 2,
+    "exit": 1,
+    "remaining_paths": [
+      "rust/imported-geometry/src/scene.rs",
+      "rust/imported-geometry/src/scene_tests.rs"
+    ],
+    "log_sha256": "154771bd9aa70ea6d1f390cb89eddbaaecb59571314289880c3812ab7c548db7"
+  }
+}

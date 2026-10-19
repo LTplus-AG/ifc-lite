@@ -28,11 +28,24 @@ async function fixture() {
         const view = new DataView(owned), op = view.getUint32(8, true);
         this.commands.push({ op, view });
         if (op === this.fail) throw new Error(`fixture failure opcode ${op}`);
-        let bytes = new Uint8Array();
+        let bytes = new Uint8Array(), status = 0;
         if (op === 1) { bytes = new Uint8Array(8); new DataView(bytes.buffer).setBigUint64(0, 42n, true); }
-        else if (op === 12) { bytes = new Uint8Array(8); new DataView(bytes.buffer).setUint32(0, 1, true); new DataView(bytes.buffer).setUint32(4, 32, true); }
-        else if (op === 19) { bytes = new Uint8Array(4); new DataView(bytes.buffer).setUint32(0, this.emptyQuery ?? 0, true); }
-        else if (op === 17) {
+        else if (op === 12) {
+          bytes = new Uint8Array(8);
+          new DataView(bytes.buffer).setUint32(0, 1, true);
+          new DataView(bytes.buffer).setUint32(4, 48, true);
+        } else if (op === 19) {
+          bytes = new Uint8Array(4); new DataView(bytes.buffer).setUint32(0, this.emptyQuery ?? 0, true);
+        } else if (op === 18 && this.refuseAffine) {
+          status = 7; bytes = new TextEncoder().encode("unsupported source class");
+        } else if (op === 18) {
+          assert.ok(this.objects.has(view.getUint32(28, true)));
+          bytes = new Uint8Array(72);
+          bytes.set(this.allocate());
+          const cert = new DataView(bytes.buffer);
+          cert.setUint32(16, 1, true); cert.setUint32(20, this.badCertificate ? 9 : 1, true);
+          cert.setUint32(24 + 7*4, 6, true);
+        } else if (op === 17) {
           assert.ok(this.objects.has(view.getUint32(28, true)));
           bytes = this.allocate();
         } else if (op === 5) {
@@ -53,13 +66,14 @@ async function fixture() {
         } else throw new Error(`unexpected fixture opcode ${op}`);
         const response = new Uint8Array(12 + bytes.length), envelope = new DataView(response.buffer);
         envelope.setUint32(0, 1, true); envelope.setUint32(4, view.getUint32(4, true), true);
+        envelope.setInt32(8, status, true);
         response.set(bytes, 12);
         return response.buffer;
       }));
     }
     constructor() { peers.push(this); }
   }
-  const context = createContext({ Uint8Array, Float64Array, Uint32Array, ArrayBuffer, DataView,
+  const context = createContext({ Uint8Array, Float64Array, Uint32Array, ArrayBuffer, DataView, TextDecoder,
     console: { error: (...args) => errors.push(args) } });
   const modules = new Map();
   const exports = {
@@ -231,4 +245,53 @@ test('driver fixture: construction refuses certified empty rather than widening 
   await driver.qualifyDependencies(); peers[0].emptyQuery = 1;
   await assert.rejects(evaluate(driver), /empty retained construction/);
   assert.equal(driver.live(), false);
+});
+
+
+test('affine transport fixture: exact matrix payload, independent object and certificate', async () => {
+  const { Driver, peers } = await fixture();
+  const driver = new Driver(), source = await evaluate(driver);
+  const matrix = [-2,0,0,0, 0.4,3,0,0, 0.2,0.3,4,0, 7,-4,2,1];
+  const pending = driver.copyAffine(source.object, matrix);
+  matrix[0] = 99; // Driver owns inputs before its first await.
+  const result = await pending, peer = peers[0];
+  const issued = peer.commands.find(command => command.op === 18);
+  assert.equal(issued.view.getFloat64(36, true), -2);
+  assert.equal(result.certificate.byteLength, 56);
+  assert.notEqual(source.object, result.object);
+  driver.releaseObject(source.object); await flush();
+  assert.equal(driver.objectLive(source.object), false);
+  assert.equal(driver.objectLive(result.object), true);
+  assert.equal(peer.retired, undefined);
+  driver.releaseObject(result.object); await flush();
+  assert.equal(driver.live(), true);
+  driver.retire();
+});
+
+test('affine transport fixture: invalid matrix is unsent; malformed certificate retires domain', async () => {
+  const { Driver, peers } = await fixture();
+  const driver = new Driver(), source = await evaluate(driver), peer = peers[0];
+  const before = peer.commands.length;
+  const singular = identity.slice(); singular[10] = 0;
+  await assert.rejects(driver.copyAffine(source.object, singular), /singular/);
+  assert.equal(peer.commands.length, before);
+  assert.equal(driver.objectLive(source.object), true);
+  peer.badCertificate = true;
+  await assert.rejects(driver.copyAffine(source.object, identity), /certificate/);
+  assert.equal(driver.objectLive(source.object), false);
+  assert.equal(peer.retired, true);
+});
+
+
+test('affine transport fixture: synchronized representation refusal preserves independent leases', async () => {
+  const { Driver, peers } = await fixture();
+  const driver = new Driver(), source = await evaluate(driver), peer = peers[0];
+  peer.refuseAffine = true;
+  await assert.rejects(driver.copyAffine(source.object, identity), /unsupported source class/);
+  assert.equal(driver.objectLive(source.object), true);
+  assert.equal(peer.retired, undefined);
+  peer.refuseAffine = false;
+  const result = await driver.copyAffine(source.object, identity);
+  assert.equal(driver.objectLive(result.object), true);
+  driver.retire();
 });

@@ -234,7 +234,7 @@ export class RetainedDriver {
     } catch (error) {
       // Synchronized typed refusal is transactional. Unknown/transport outcomes
       // still retire the captured domain, and are never automatically retried.
-      if (!Number.isInteger(error.kernelStatus)) this.retire();
+      if (!Number.isInteger(error.kernelStatus) || error.kernelStatus < 1 || error.kernelStatus > 7) this.retire();
       throw error;
     } finally { this.#busy = false; this.#scheduleReleases(); }
   }

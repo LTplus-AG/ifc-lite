@@ -2,6 +2,10 @@
 // Independent affine oracles fixed before execution; no test below has yet
 // qualified this source. Reuses actual C ABI BReps, never mock SDK geometry.
 #include "ifclite_smlib.h"
+#include "affine.hpp"
+#include "sweep.hpp"
+#include <SmApiPrimitives.h>
+#include <SmOffsetSurface.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -103,6 +107,21 @@ void witness(const M& m,bool cylinder) {
 }
 }
 void run_affine_tests() {
+    // A real offset source must refuse before TurnToNURBS's approximation path.
+    SmBrep* raw=nullptr;
+    require(SmApiCreateBox(SmVector3d(0,0,0),2,2,3,raw)==SM_SUCCESS && raw,"offset preflight fixture");
+    std::unique_ptr<SmBrep> offset_source(raw);
+    SmTArray<SmFace*> faces; raw->GetFaces(faces);
+    SmSurface* base=nullptr;
+    require(faces[0]->GetSurface()->Copy(*raw->GetContext(),base)==SM_SUCCESS && base,"owned offset base copy");
+    auto* offset=new (*raw->GetContext()) SmOffsetSurface(0.1,*base,TRUE);
+    faces[0]->SetSurface(offset,TRUE);
+    const M identity{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
+    ifclite_smlib_affine_certificate refused{}; bool unsupported=false;
+    try { auto unexpected=copy_affine_rational(raw,identity.data(),refused); }
+    catch(const SweepFailure& e) { unsupported=e.status==IFCLITE_SMLIB_UNSUPPORTED; }
+    require(unsupported && !refused.version && faces[0]->GetSurface()==offset,
+        "offset source remains unchanged and receives no rational conversion certificate");
     // Fixed before execution: positive uniform, negative uniform, nonuniform,
     // shear with distinct Z, reflected shear. Both box and rational cylinder.
     for(M m: { M{2,0,0,0,0,2,0,0,0,0,2,0,7,-4,2,1},

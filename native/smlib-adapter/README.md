@@ -344,3 +344,28 @@ appearance, UV, persistent face identity or process-heap bound is established.
 Candidate general affine copy uses separate opcode18 and capability bit4; see
 [AFFINE_CONTRACT.md](AFFINE_CONTRACT.md) for conversion certificates, numerical
 bounds, ownership, unresolved classes and explicit unqualified status.
+
+### Canonical JavaScript browser contract
+
+After building the adapter, staging its assets as above, and rebuilding the
+canonical package with `pnpm build:wasm`, run `pnpm test:retained-browser` through
+fleet admission. It uses the repository's existing Playwright dependency and its
+own loopback server on an OS-selected port, with no borrowed viewer/dev server.
+Missing package binaries, SDK assets or model fixtures fail the test.
+
+The test imports the actual package's JavaScript exports and calls
+`rust/wasm-bindings/tests/retained-browser-contract.mjs`. Its actual Worker witness
+checks millimetre conversion, a survey-scale f64 occurrence frame, independent
+volume, captured cancellation, replacement-domain isolation and canonical source
+expiry. WASM handles are disposed on success and failure. The result explicitly
+remains `sourceOnly: true` and `fullProductQualification: false`.
+
+Playwright attachments retain the contract result and served-file hashes; failed
+runs retain a trace and screenshot under `test-results/retained-browser`. These
+identify observed files and behavior, not a compiler/source attestation. Build and
+execution receipts must bind qualification to the exact source and artifacts.
+The geometry-platform workflow builds both actual numerical targets and the
+canonical package before this test. It gathers independent numerical/browser
+failures, then requires every lane to succeed; a continued or skipped lane cannot
+produce a passing qualification verdict. Standalone source output does not
+qualify complete product appearance, layers, persistent faces or final export.

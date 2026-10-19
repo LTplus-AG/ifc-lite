@@ -20,9 +20,15 @@ on:
       - 'rust/geometry/src/program/**'
       - 'rust/wasm-bindings/src/api/retained_product*'
       - 'rust/wasm-bindings/src/api/retained_browser*'
-      - 'rust/wasm-bindings/tests/retained-browser-contract.mjs'
+      - 'rust/wasm-bindings/tests/retained-browser-contract.*'
       - 'rust/wasm-bindings/src/api/product_job.rs'
       - 'scripts/stage-retained-browser-assets.mjs'
+      - 'scripts/perf/browser-static-server.ts'
+      - 'scripts/perf/browser-cold-server-path.ts'
+      - 'tests/e2e/retained-browser*'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'tests/models/manifest.json'
       - '.github/workflows/geometry-platform.yml'
   workflow_dispatch:
 
@@ -37,6 +43,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Fetch and authenticate actual model fixtures
+        run: |
+          pnpm fixtures
+          pnpm fixtures:check
       - name: Checkout pinned upstream source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
@@ -44,23 +60,26 @@ jobs:
           ref: c9c5979f04cea8c38213004d4f04df0dcfb40d05
           path: upstream-smlib
           persist-credentials: false
-      - name: Native owned boundary and worker
+      - name: Build native owned boundary and worker
         run: |
           cmake -S native/smlib-adapter -B /tmp/smlib-native -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DSMLIB_SOURCE="$GITHUB_WORKSPACE/upstream-smlib"
           cmake --build /tmp/smlib-native --parallel 4
-          ctest --test-dir /tmp/smlib-native --output-on-failure
+      - name: Execute every native owned boundary
+        id: native-ctest
+        continue-on-error: true
+        run: ctest --test-dir /tmp/smlib-native --output-on-failure
       - uses: ./.github/actions/setup-wasm-build
         with:
           cache-prefix: geometry-platform
       - name: Real Rust subprocess integration
+        id: native-consumers
+        continue-on-error: true
         env:
           IFCLITE_SMLIB_WORKER: /tmp/smlib-native/ifclite_smlib_worker
         run: |
-          cargo test --locked -p ifc-lite-geometry-runtime --all-targets
-          cargo test --locked -p ifc-lite-processing --lib session_retained
-          cargo test --locked -p ifc-lite-processing --test retained_authored_evaluator \
-            --test retained_curved_consumption --test retained_geometry
+          test -x "$IFCLITE_SMLIB_WORKER"
+          cargo test --locked -p ifc-lite-geometry-runtime -p ifc-lite-processing --all-targets --no-fail-fast
       - name: Checkout pinned Emscripten SDK
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
@@ -72,14 +91,17 @@ jobs:
         run: |
           emsdk/emsdk install 4.0.15
           emsdk/emsdk activate 4.0.15
-      - name: WASM owned boundary under Node
+      - name: Build WASM owned boundary
         shell: bash
         run: |
           source emsdk/emsdk_env.sh
           emcmake cmake -S native/smlib-adapter -B /tmp/smlib-wasm -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DSMLIB_SOURCE="$GITHUB_WORKSPACE/upstream-smlib"
           cmake --build /tmp/smlib-wasm --parallel 4
-          ctest --test-dir /tmp/smlib-wasm --output-on-failure
+      - name: Execute every WASM owned boundary under Node
+        id: wasm-ctest
+        continue-on-error: true
+        run: ctest --test-dir /tmp/smlib-wasm --output-on-failure
 
       - name: Stage canonical assets for actual module-Worker tests
         shell: bash
@@ -92,10 +114,64 @@ jobs:
             --sdk "$GITHUB_WORKSPACE/upstream-smlib" --out "$GITHUB_WORKSPACE/rust/processing/smlib"
           node scripts/stage-retained-browser-assets.mjs --build /tmp/smlib-wasm \
             --sdk "$GITHUB_WORKSPACE/upstream-smlib" --out "$GITHUB_WORKSPACE/rust/wasm-bindings/smlib"
-      - name: Actual browser runtime and shared product transactions
+      - name: Actual browser runtime
+        id: browser-runtime
+        continue-on-error: true
         env:
           WASM_BINDGEN_TEST_TIMEOUT: 180
+        run: wasm-pack test --headless --chrome rust/geometry-runtime --lib
+      - name: Actual browser shared product continuations
+        id: browser-processing
+        continue-on-error: true
+        env:
+          WASM_BINDGEN_TEST_TIMEOUT: 180
+        run: wasm-pack test --headless --chrome rust/processing --lib session_retained
+      - name: Actual browser canonical source and product APIs
+        id: browser-api
+        continue-on-error: true
+        env:
+          WASM_BINDGEN_TEST_TIMEOUT: 180
+        run: wasm-pack test --headless --chrome rust/wasm-bindings --lib retained_
+      - name: Build canonical package for the actual JavaScript export contract
+        run: pnpm build:wasm
+      - name: Verify committed canonical declarations
+        id: generated-types
+        continue-on-error: true
+        run: git diff --exit-code -- packages/wasm/pkg/ifc-lite.d.ts
+      - name: Stage actual Worker assets for the JavaScript export contract
         run: |
-          wasm-pack test --headless --chrome rust/geometry-runtime --lib
-          wasm-pack test --headless --chrome rust/processing --lib session_retained
-          wasm-pack test --headless --chrome rust/wasm-bindings --lib retained_
+          node scripts/stage-retained-browser-assets.mjs --build /tmp/smlib-wasm \
+            --sdk "$GITHUB_WORKSPACE/upstream-smlib" --out "$GITHUB_WORKSPACE/apps/viewer/public/smlib"
+      - name: Install browser for the canonical JavaScript contract
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Execute canonical JavaScript exports with actual browser Worker
+        id: browser-js
+        continue-on-error: true
+        run: pnpm test:retained-browser
+      - name: Preserve actual JavaScript browser witness
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: retained-browser-contract
+          path: test-results/retained-browser
+          if-no-files-found: ignore
+      # Gather independent failures, then preserve a failing overall verdict.
+      # No skipped/unrun lane or continued numerical failure qualifies the job.
+      - name: Require every independent boundary and consumer result
+        if: always()
+        env:
+          NATIVE_CTEST: ${{ steps.native-ctest.outcome }}
+          NATIVE_CONSUMERS: ${{ steps.native-consumers.outcome }}
+          WASM_CTEST: ${{ steps.wasm-ctest.outcome }}
+          BROWSER_RUNTIME: ${{ steps.browser-runtime.outcome }}
+          BROWSER_PROCESSING: ${{ steps.browser-processing.outcome }}
+          BROWSER_API: ${{ steps.browser-api.outcome }}
+          GENERATED_TYPES: ${{ steps.generated-types.outcome }}
+          BROWSER_JS: ${{ steps.browser-js.outcome }}
+        run: |
+          failed=0
+          for lane in NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_RUNTIME BROWSER_PROCESSING BROWSER_API GENERATED_TYPES BROWSER_JS; do
+            printf '%s=%s\n' "$lane" "${!lane}"
+            if [[ "${!lane}" != success ]]; then failed=1; fi
+          done
+          exit "$failed"

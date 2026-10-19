@@ -1,0 +1,19 @@
+{
+  "//": "SPDX-License-Identifier: MPL-2.0",
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "rootDir": "../..",
+    "types": [
+      "node"
+    ]
+  },
+  "include": [],
+  "exclude": [],
+  "files": [
+    "retained-browser.config.ts",
+    "retained-browser.e2e.spec.ts"
+  ]
+}

@@ -17,7 +17,9 @@ export async function runRetainedBrowserContract(wasm, fixture) {
     .replace('#10=IFCCARTESIANPOINT((0.,0.,0.));', '#10=IFCCARTESIANPOINT((1000.,2000.,3000.));');
   assert(text !== fixture && text.includes('5000000000.'), 'known millimetre/survey source fixture');
   const api = new wasm.IfcAPI();
-  let source, executor;
+  let source, executor, primary, failed = false;
+  const freeSource = () => { const owned = source; source = undefined; owned?.free(); };
+  const freeExecutor = () => { const owned = executor; executor = undefined; owned?.free(); };
   try {
     await rejects(() => api.retainedSourceKeys(), 'unbound installed source must refuse');
     api.setSourceBytes(new TextEncoder().encode(text));
@@ -36,8 +38,8 @@ export async function runRetainedBrowserContract(wasm, fixture) {
       cancellation.retire();
       await rejects(() => pending, 'captured cancellation rejects pending execution');
       await rejects(() => source.display(), 'cancelled source cannot publish a display');
-      source.free(); source = api.admitRetainedSource(key);
-      executor.free(); executor = new wasm.RetainedBrowserExecutor();
+      freeSource(); source = api.admitRetainedSource(key);
+      freeExecutor(); executor = new wasm.RetainedBrowserExecutor();
       cancellation.retire(); // An old cancellation cannot retire this replacement.
     } finally { cancellation.free(); }
     const display = await source.execute(executor, 0, 0.001, 5, 16 * 1024 * 1024);
@@ -59,12 +61,22 @@ export async function runRetainedBrowserContract(wasm, fixture) {
       'common assembly preserves source/profile/solid/survey placement in f64');
     executor.retire();
     await rejects(() => source.display(), 'retired captured Worker invalidates object lease');
-    source.free(); source = api.admitRetainedSource(key);
-    executor.free(); executor = new wasm.RetainedBrowserExecutor();
+    freeSource(); source = api.admitRetainedSource(key);
+    freeExecutor(); executor = new wasm.RetainedBrowserExecutor();
     await source.execute(executor, 0, 0.001, 5, 16 * 1024 * 1024);
     api.clearPrePassCache();
     await rejects(() => source.display(), 'canonical source invalidation expires publication');
     return { passed: true, source: 'mapped_instances_synthetic.ifc, modified units/frames', volume: Math.abs(sixVolume / 6),
       triangles: indices.length / 3, sourceOnly: true, fullProductQualification: false };
-  } finally { source?.free(); executor?.free(); api.free(); }
+  } catch (error) {
+    failed = true; primary = error; throw error;
+  } finally {
+    // Clear each owned handle before disposal, and attempt every disposal even
+    // after a failure. Keep the original contract failure in cleanup evidence.
+    const errors = [];
+    for (const dispose of [freeSource, freeExecutor, () => api.free()]) {
+      try { dispose(); } catch (error) { errors.push(error); }
+    }
+    if (errors.length) throw new AggregateError(failed ? [primary, ...errors] : errors, 'Retained browser contract cleanup failed');
+  }
 }

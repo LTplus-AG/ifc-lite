@@ -1,0 +1,22 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<meta charset="utf-8">
+<title>Canonical retained source API contract</title>
+<pre id="result" data-state="running">Running actual canonical WASM and Worker…</pre>
+<script type="module">
+const result = document.querySelector('#result');
+try {
+  const wasm = await import('/packages/wasm/pkg/ifc-lite.js');
+  await wasm.default();
+  const { runRetainedBrowserContract } = await import('./retained-browser-contract.mjs');
+  const response = await fetch('/rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc');
+  if (!response.ok) throw new Error(`Actual IFC fixture missing: HTTP ${response.status}`);
+  const witness = await runRetainedBrowserContract(wasm, await response.text());
+  if (witness.passed !== true) throw new Error('Source contract did not complete');
+  result.textContent = JSON.stringify(witness);
+  result.dataset.state = 'passed';
+} catch (error) {
+  result.textContent = JSON.stringify({ passed: false, error: String(error), stack: error?.stack });
+  result.dataset.state = 'failed';
+}
+</script>

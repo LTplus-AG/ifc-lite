@@ -91,7 +91,7 @@
     "collab:demo:3d": "pnpm turbo build --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server && node scripts/collab-demo-3d.mjs",
     "typecheck": "turbo typecheck && pnpm run typecheck:tail",
     "typecheck:ci": "turbo typecheck --only && pnpm run typecheck:tail",
-    "typecheck:tail": "node scripts/typecheck-tests.mjs --audit && tsc --project scripts/perf/tsconfig.frames.json && tsc --project tests/e2e/projection-depth.tsconfig.json",
+    "typecheck:tail": "node scripts/typecheck-tests.mjs --audit && tsc --project scripts/perf/tsconfig.frames.json && tsc --project tests/e2e/projection-depth.tsconfig.json && tsc --project tests/e2e/retained-browser.tsconfig.json",
     "check:test-typecheck": "node scripts/typecheck-tests.mjs --audit",
     "lint": "node scripts/check-changesets.mjs && node scripts/check-test-glob-coverage.mjs && node scripts/check-main-entry-guards.mjs && node scripts/check-unused-locals.mjs && node scripts/check-i18n-literals.mjs && node scripts/check-jsx-a11y.mjs && node scripts/check-type-scale.mjs && node scripts/check-lint-ran.mjs",
     "lint:baseline": "node scripts/check-unused-locals.mjs --update",
@@ -124,7 +124,8 @@
     "check:codegen-sync": "node scripts/check-codegen-sync.mjs",
     "check:generated": "node scripts/check-generated.mjs",
     "test:packed": "node scripts/check-packed-workflows.mjs",
-    "docs:api": "node scripts/docs/build-api-reference.mjs"
+    "docs:api": "node scripts/docs/build-api-reference.mjs",
+    "test:retained-browser": "playwright test --config=tests/e2e/retained-browser.config.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

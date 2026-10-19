@@ -1,0 +1,29 @@
+{
+  "base": "18f0d5d4bfd7698d68719516d2cc1165520d7f84",
+  "commit": "2ea4bb632b0f65636f14f7953942040f2ce72daf",
+  "branch": "t3/opening-oracle-repair",
+  "patch_sha256": "8f2baf0126cc51221551e8f2221b7645a32c084b8d84befe5791c83944e7b359",
+  "source_sha256": {
+    "Cargo.lock": "b006ec6433690a164f71539412558d230e5935c9852c7cb296762ca4bd2ea1e0",
+    "rust/processing/Cargo.toml": "5101731bc891b82f026e69cfd3d8ff645e1008ce274d3833fb8cdb35252e196a",
+    "rust/processing/src/element/session_retained/opening_browser_tests.rs": "60115d3fedcc7a713531868a7d2f6e5efa36ce80bbb949cecf4f7b672c361417",
+    "rust/processing/src/element/session_retained/opening_tests.rs": "32715d9c17affb4528f0002daaf86a325f2ee60b43f325fb6af0bf0e727ead68",
+    "rust/processing/src/element/session_retained/opening_witness.rs": "6ffc3cae98a5fb8a50ddd6b917a83570c685218e024d7ddbde3b17c9a35f2570",
+    "rust/processing/src/element/session_retained/opening_witness/analytic.rs": "cfc987b9870c21d855f1e0d953cca49af6440b7349fa360ce40d288393576f29",
+    "rust/processing/src/element/session_retained/opening_witness/decoded-bits.json": "6194499812784312bcc5bbf598e93d5dbeaf0d1454f1c6274cd230c3870e8d7f",
+    "rust/processing/src/element/session_retained/opening_witness/physical.rs": "b4fc416b6b72ca6cb2f0298cd985caa4e662005b51c1f11a2c7668df4ae1bb15",
+    "rust/processing/src/element/session_retained/opening_witness/qualification.json": "392ce5c7fb9ab2c98e65d2bc1db2261d0663144df9f890568f629213b7b00174",
+    "rust/processing/src/element/session_retained/opening_witness/source.rs": "993a4c2e9154b65eca2c4ed9573a57aab3d2080d23187001e1c2efc586c68ecb"
+  },
+  "checks": {
+    "rust_parser_edition2021": "PASS; syntax only",
+    "cargo_metadata_no_deps_offline_locked": "PASS; metadata only",
+    "git_diff_check": "PASS",
+    "compile_tests_clippy_native_worker_heavy_jobs": "UNRUN"
+  },
+  "limitations": [
+    "Missing exact BRep section seam explicitly flagged; mesh-section checks do not qualify it.",
+    "#3641 remains red/unqualified.",
+    "Identical-consumer pre-migration exact-route byte identity remains separate UNRUN release gate."
+  ]
+}

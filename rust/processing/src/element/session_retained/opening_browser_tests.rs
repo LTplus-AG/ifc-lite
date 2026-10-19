@@ -18,7 +18,7 @@ async fn p2_worker_issue_2019_original_control_and_repeated_mapped_openings() {
         let mut decoder = context.source().unwrap().decoder();
         let router = router(&mut decoder);
         let mut execution = execution(&context, 30, &mut decoder, &router);
-        let oracle = exact_volume(&source, 30);
+        let oracle = oracle(&source);
         let mut cuts = 0;
         let mut final_volume = 0.;
         let mut right_slots = Vec::new();
@@ -38,16 +38,21 @@ async fn p2_worker_issue_2019_original_control_and_repeated_mapped_openings() {
                 .await
                 .unwrap();
             if let RealizationKind::Boolean(value) = work.realizations[0].kind() {
+                work.realizations[0].validate_live().unwrap();
                 assert!(!value.is_empty());
+                assert_eq!(value.mesh().boundary_edges, 0);
+                assert_eq!(value.mesh().spine_edges, 0);
                 cuts += 1;
+                oracle.assert_stage(cuts, volume(value.mesh()));
                 if cuts % (expected_cuts / parts) == 0 {
+                    oracle.assert_mesh(&value.mesh().positions, &value.mesh().indices, value.world_from_evaluation());
                     final_volume += volume(value.mesh());
                 }
             }
             execution.accept(work, &mut decoder, &router).unwrap();
         }
         assert_eq!(cuts, expected_cuts);
-        assert!((final_volume - oracle).abs() < 1e-6);
+        assert!((final_volume - oracle.total).abs() < 1e-6);
         assert_plan(&execution, 30, parts, expected_cuts as u64);
         if parts == 2 {
             for (value, id) in execution

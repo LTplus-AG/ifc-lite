@@ -55,31 +55,10 @@ pub(super) fn router(decoder: &mut EntityDecoder<'_>) -> GeometryRouter {
     decoder.seed_unit_scales(scale, angle);
     GeometryRouter::with_scale(scale)
 }
-pub(super) fn exact_volume(source: &str, id: u32) -> f64 {
-    let result = crate::process_geometry(source);
-    let meshes: Vec<_> = result
-        .meshes
-        .iter()
-        .filter(|mesh| mesh.express_id == id)
-        .collect();
-    assert!(
-        !meshes.is_empty(),
-        "existing exact real-source oracle must produce the host"
-    );
-    meshes
-        .into_iter()
-        .map(|mesh| {
-            let mut exact = ifc_lite_geometry::Mesh::new();
-            exact.positions.clone_from(&mesh.positions);
-            exact.indices.clone_from(&mesh.indices);
-            assert_eq!(
-                ifc_lite_geometry::mesh_check::undirected_defect_count(&exact),
-                0
-            );
-            ifc_lite_geometry::mesh_check::signed_volume(&exact).abs()
-        })
-        .sum()
-}
+mod analytic;
+mod source;
+mod physical;
+pub(super) use source::oracle;
 pub(super) fn repeated_mapped_source() -> String {
     // A stated multiplicity invariant over the existing #2019 authored solids:
     // two distinct host item/style identities and a reused two-occurrence opening body.

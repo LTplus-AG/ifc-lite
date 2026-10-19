@@ -1616,6 +1616,8 @@ dependencies = [
  "ifc-lite-geometry-runtime",
  "ifc-lite-testkit",
  "nalgebra",
+ "num-rational",
+ "num-traits",
  "png",
  "rayon",
  "rayon-core",

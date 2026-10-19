@@ -1,0 +1,56 @@
+{
+  "scope": "TEST ONLY oracle repair; no production geometry repair or qualification claim",
+  "implementation_base": "18f0d5d4bfd7698d68719516d2cc1165520d7f84",
+  "review_sha256": "08f13225291b14a5b44dab0a3cffea7c7c676242abd6138e42d1524cb14e925b",
+  "old_assertion": "assert!((actual - oracle).abs() < 1e-6); oracle = opening_witness::exact_volume(source, 30), calling process_geometry and summing closed display mesh absolute signed volumes",
+  "old_native_job": {
+    "source": "bab3fd6646d758e21333e10627f1f5a4fcfdd9a8",
+    "sdk": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+    "host": "louistrue-pc",
+    "log": "/tmp/ifclite-sdk-outward-bab3-final.log",
+    "log_sha256": "c723f0fa90da401da2426c8a11f32f08bd17da9aeb78813ff32d7dc8900f3af1",
+    "assertion_lines": [
+      460,
+      469,
+      507
+    ]
+  },
+  "old_measurements": [
+    {
+      "variant": "original",
+      "actual_sdk_volume": "2.08000000000000318",
+      "display_volume": "2.08012553663746713",
+      "display_minus_sdk_decimal": "0.00012553663746395"
+    },
+    {
+      "variant": "Reference",
+      "actual_sdk_volume": "2.20756625000000328",
+      "display_volume": "2.20756953284796831",
+      "display_minus_sdk_decimal": "0.00000328284796503"
+    },
+    {
+      "variant": "repeated",
+      "actual_sdk_volume": "4.16000000000000547",
+      "display_volume": "4.16006829830238534",
+      "display_minus_sdk_decimal": "0.00006829830237987"
+    }
+  ],
+  "interpretation": "Observed cross-representation differences remain disclosed; no attribution to one snap, no claim that the old exact output is incorrect.",
+  "source_oracle": "Canonical EntityDecoder numeric leaves + Axis2Placement matrices + canonical mapped transform; exact dyadic convex clipping and bounded inclusion-exclusion; no SDK or mesh input to expectations.",
+  "bits": "decoded-bits.json contains independently predicted source/matrix coefficients, asserted against actual canonical decoder/matrix values when the witnesses execute. Python -0 in the axis-aligned Y.x formula is canonical +0 from Z cross X. These assertions are UNRUN, not an executed capture.",
+  "physical_witness": "Signed +/-X triangle intersections at source y=.1 and z=.1,.4,.7,1.7, transformed using each sealed world_from_evaluation; source outer bounds; each repeated host individually. Numerical triangle-edge duplicate handling is separate from unchanged 1e-6 endpoint predicate.",
+  "minimum_gate_status": {
+    "canonical_decoder_assertions": "IMPLEMENTED_UNRUN",
+    "independent_per_cut_per_host_net": "IMPLEMENTED_UNRUN",
+    "native_sdk_witness": "IMPLEMENTED_UNRUN",
+    "actual_module_worker_witness": "IMPLEMENTED_UNRUN",
+    "physical_mesh_sections_and_bounds": "IMPLEMENTED_UNRUN",
+    "exact_brep_physical_sections": "MISSING EXACT SEAM: runtime receipts expose tessellation and evaluation frame, no exact BRep section API found. Do not label exact-section qualification green.",
+    "premigration_exact_route_identity": "SEPARATE RELEASE GATE UNRUN: pin pre-migration base and integrated branch; same ordinary process_geometry consumer, fixtures/options/environment; compare selected host mesh/triangle counts and exact positions/index bytes or documented canonical identity; retain order-invariance coverage. No waiver.",
+    "positive_3641": "EXISTING POSITIVE NATIVE/WORKER GATES UNCHANGED; RED/UNQUALIFIED",
+    "other_platform_appearance_final_product": "UNCHANGED_UNQUALIFIED"
+  },
+  "preserved": "Original occurrence/order/Reference/laziness, completion/ledger/live receipt, Empty, presentation and source lifetime checks remain. No new unsupported-as-skip path. Existing native worker availability behavior unchanged.",
+  "allowed_checks": "Rust parser only, cargo metadata --no-deps --offline --locked, git diff --check. No supplied tests run.",
+  "release": "Not release-ready: admitted execution and exact preservation evidence remain parent-owned."
+}

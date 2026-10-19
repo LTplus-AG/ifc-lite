@@ -56,6 +56,8 @@ nalgebra.workspace = true
 ifc-lite-geometry-runtime = { path = "../geometry-runtime" }
 
 [dev-dependencies]
+num-rational = { version = "0.4", default-features = false, features = ["num-bigint"] }
+num-traits = "0.2"
 # Test-only (publish = false). Path-only: cargo strips it when packaging.
 ifc-lite-testkit = { path = "../testkit" }
 # `test_support::recv_or_diagnose` only - the shared worker watchdog, so the

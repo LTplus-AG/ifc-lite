@@ -14,7 +14,7 @@ fn p2_sdk_issue_2019_original_opening_control_cuts_overlapping_ordered_sources()
     let mut decoder = context.source().unwrap().decoder();
     let router = router(&mut decoder);
     let mut execution = execution(&context, 30, &mut decoder, &router);
-    let oracle = exact_volume(OVERLAP, 30);
+    let oracle = oracle(OVERLAP);
     let mut cuts = 0;
     let mut last = None;
     while let Some(issued) = execution
@@ -25,17 +25,22 @@ fn p2_sdk_issue_2019_original_opening_control_cuts_overlapping_ordered_sources()
             .execute(&mut worker, 0.00001, 15., MeshLimits::default())
             .unwrap();
         if let RealizationKind::Boolean(value) = work.realizations[0].kind() {
+            work.realizations[0].validate_live().unwrap();
             assert!(!value.is_empty());
             assert!(worker.is_manifold(value.solid()).unwrap());
             last = Some(worker.volume(value.solid(), 1e-8).unwrap());
             cuts += 1;
+            oracle.assert_stage(cuts, last.unwrap());
+            if cuts == oracle.stages.len() {
+                oracle.assert_mesh(&value.mesh().positions, &value.mesh().indices, value.world_from_evaluation());
+            }
         }
         execution.accept(work, &mut decoder, &router).unwrap();
     }
     assert_eq!(cuts, 3);
     let actual=last.unwrap();
-    assert!((actual - oracle).abs() < 1e-6,
-        "actual ordered SDK opening volume={actual:.17}, exact mesh oracle={oracle:.17}, cuts={cuts}");
+    assert!((actual - oracle.total).abs() < 1e-6,
+        "actual ordered SDK opening volume={actual:.17}, source analytic oracle={:.17}, cuts={cuts}", oracle.total);
     assert_plan(&execution, 30, 1, 3);
     let fact = execution
         .traversal_plan()
@@ -57,7 +62,7 @@ fn p2_sdk_repeated_mapped_opening_parts_keep_distinct_occurrences_and_host_style
     let mut execution = execution(&context, 30, &mut decoder, &router);
     let mut right_slots = Vec::new();
     let mut final_volume = 0.;
-    let oracle = exact_volume(&source, 30);
+    let oracle = oracle(&source);
     let mut cuts = 0;
     while let Some(issued) = execution
         .issue_next(&worker, &mut decoder, &router)
@@ -75,15 +80,20 @@ fn p2_sdk_repeated_mapped_opening_parts_keep_distinct_occurrences_and_host_style
             .unwrap();
         if let RealizationKind::Boolean(value) = work.realizations[0].kind() {
             cuts += 1;
+            work.realizations[0].validate_live().unwrap();
+            assert!(!value.is_empty());
+            assert!(worker.is_manifold(value.solid()).unwrap());
+            oracle.assert_stage(cuts, worker.volume(value.solid(), 1e-8).unwrap());
             if cuts % 4 == 0 {
+                oracle.assert_mesh(&value.mesh().positions, &value.mesh().indices, value.world_from_evaluation());
                 final_volume += worker.volume(value.solid(), 1e-8).unwrap();
             }
         }
         execution.accept(work, &mut decoder, &router).unwrap();
     }
     assert_eq!(cuts, 8);
-    assert!((final_volume - oracle).abs() < 1e-6,
-        "actual repeated SDK opening volume={final_volume:.17}, exact mesh oracle={oracle:.17}, cuts={cuts}");
+    assert!((final_volume - oracle.total).abs() < 1e-6,
+        "actual repeated SDK opening volume={final_volume:.17}, source analytic oracle={:.17}, cuts={cuts}", oracle.total);
     assert_eq!(&right_slots[..4], &right_slots[4..]);
     assert_eq!(
         right_slots[..4]
@@ -234,6 +244,7 @@ fn p2_sdk_mixed_reference_opening_keeps_original_no_cutter_eligibility() {
     let mut decoder = context.source().unwrap().decoder();
     let router = router(&mut decoder);
     let mut execution = execution(&context, 30, &mut decoder, &router);
+    let oracle=oracle(&source);
     let mut cuts = 0;
     let mut last = None;
     while let Some(issued) = execution
@@ -244,16 +255,22 @@ fn p2_sdk_mixed_reference_opening_keeps_original_no_cutter_eligibility() {
             .execute(&mut worker, 0.00001, 15., MeshLimits::default())
             .unwrap();
         if let RealizationKind::Boolean(value) = work.realizations[0].kind() {
+            work.realizations[0].validate_live().unwrap();
+            assert!(!value.is_empty());
+            assert!(worker.is_manifold(value.solid()).unwrap());
             last = Some(worker.volume(value.solid(), 1e-8).unwrap());
             cuts += 1;
+            oracle.assert_stage(cuts, last.unwrap());
+            if cuts == oracle.stages.len() {
+                oracle.assert_mesh(&value.mesh().positions, &value.mesh().indices, value.world_from_evaluation());
+            }
         }
         execution.accept(work, &mut decoder, &router).unwrap();
     }
     assert_eq!(cuts, 2);
     let actual=last.unwrap();
-    let oracle=exact_volume(&source,30);
-    assert!((actual - oracle).abs() < 1e-6,
-        "actual Reference-filtered SDK opening volume={actual:.17}, exact mesh oracle={oracle:.17}, cuts={cuts}");
+    assert!((actual - oracle.total).abs() < 1e-6,
+        "actual Reference-filtered SDK opening volume={actual:.17}, source analytic oracle={:.17}, cuts={cuts}", oracle.total);
     assert!(decoder.get_cached(46).is_none());
     assert_plan(&execution, 30, 1, 2);
 }

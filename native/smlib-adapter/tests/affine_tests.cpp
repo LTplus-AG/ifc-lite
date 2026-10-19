@@ -53,6 +53,9 @@ void witness(const M& m,bool cylinder) {
     ok(ifclite_smlib_copy_affine(session,source,m.data(),&copy,&cert));
     require(cert.version==1 && cert.representation==1,"rational conversion certificate");
     require(copy.slot!=source.slot || copy.generation!=source.generation,"independent copy identity");
+    std::fprintf(stderr,"affine source=%s classes=",cylinder?"cylinder":"box");
+    for(unsigned i=0;i<12;++i) std::fprintf(stderr,"%s%u",i?",":"",cert.source_classes[i]);
+    std::fprintf(stderr," matrix_diag=%.17g,%.17g,%.17g\n",m[0],m[5],m[10]);
     require(cylinder?cert.source_classes[8]>0:cert.source_classes[7]==6,"actual source class conversion witnesses");
     double unchanged=0; ok(ifclite_smlib_volume(session,source,1e-8,&unchanged));
     require(std::abs(unchanged-original)<=original*1e-5,"source unchanged by affine copy");

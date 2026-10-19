@@ -34,14 +34,23 @@ struct Writer {
 void rectangle_record(Writer& w,const ifclite_smlib_rectangle_domain& r) {
     for(uint32_t v:{r.version,r.source_face,r.u_axis,r.v_axis,r.normal_axis,r.loops,
         r.holes,r.edge_count,r.control_count,r.flags,r.reserved0,r.reserved1}) w.u32(v);
-    for(double v:r.controls) w.f64(v); for(double v:r.u) w.f64(v); for(double v:r.v) w.f64(v);
-    for(double v:r.bounds) w.f64(v); for(double v:r.uv_hull) w.f64(v); for(double v:r.inverse) w.f64(v);
+    for(double v:r.controls) w.f64(v);
+    for(double v:r.u) w.f64(v);
+    for(double v:r.v) w.f64(v);
+    for(double v:r.bounds) w.f64(v);
+    for(double v:r.uv_hull) w.f64(v);
+    for(double v:r.inverse) w.f64(v);
     for(const auto& e:r.edges) {
         w.u32(e.flags); w.u32(e.start_corner); w.u32(e.end_corner); w.u32(e.reserved);
-        for(double v:e.controls) w.f64(v); for(double v:e.knots) w.f64(v);
-        for(double v:e.interval) w.f64(v); for(double v:e.start) w.f64(v); for(double v:e.end) w.f64(v);
-        for(double v:e.line_origin) w.f64(v); for(double v:e.line_axis) w.f64(v);
-        for(double v:e.step) w.f64(v); w.f64(e.scale);
+        for(double v:e.controls) w.f64(v);
+        for(double v:e.knots) w.f64(v);
+        for(double v:e.interval) w.f64(v);
+        for(double v:e.start) w.f64(v);
+        for(double v:e.end) w.f64(v);
+        for(double v:e.line_origin) w.f64(v);
+        for(double v:e.line_axis) w.f64(v);
+        for(double v:e.step) w.f64(v);
+        w.f64(e.scale);
     }
 }
 Writer dispatch(Reader& reader) {

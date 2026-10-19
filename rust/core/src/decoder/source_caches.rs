@@ -98,3 +98,7 @@ impl EntityDecoder<'_> {
 #[cfg(test)]
 #[path = "source_caches_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "resource_retention_tests.rs"]
+mod resource_retention_tests;

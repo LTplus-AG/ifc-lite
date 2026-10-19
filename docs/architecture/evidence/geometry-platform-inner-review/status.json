@@ -1,0 +1,11 @@
+{
+  "review_source": "488d3369e16a9e2989cf6fb65870ab5213a8734f",
+  "assembly": "active isolated child ifclite-inner-current-parent-assembly-round2",
+  "findings": [
+    "release-build active.pop side effect in debug_assert",
+    "void finish cleanup precedes entry stop check",
+    "public cancel_with_reports lacks router identity check"
+  ],
+  "runtime": "UNRUN on latest source",
+  "retained_common_pending": "NOT YET IMPLEMENTED"
+}

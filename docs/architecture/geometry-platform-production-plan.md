@@ -6,19 +6,41 @@ retained construction and resource-authority corrections. This is a release plan
 not a qualification receipt. Historical passing runs do not qualify this tree.
 
 Latest executed observations (2026-10-19): source `4a85b7d6de` completed the
-SDK-unset workspace with 6,427 passed, zero failed and 47 ignored. Its SDK lane
-and strict Clippy failed; the complete terminal evidence is under
-`evidence/geometry-platform-integrated-validation/native-rust-4a85-terminal`.
-Source `26354b06cc` passed all 31 private allocator tests and compiled their
-opted-in wasm32 test target, but feature-enabled workspace Clippy failed on the
-enlarged plane lineage variant. That source's WASM SDK execution passed five of
-eight CTests, including checked face extraction; Chrome provisioning then failed
-on DNS before browser tests or canonical binding generation. Exact receipts and
-scope are under `core-allocator-26354-terminal` and `browser-26354-terminal` in
-the same evidence directory. Later certificate-sharing and section-grid repairs
-still require affected reruns. These results do not close production account
-integration, source/cache migration, paired layers, appearance, final product,
-installed consumer, preservation, platform or performance obligations.
+SDK-unset workspace with 6,427 passed, zero failed and 47 ignored. Source
+`26354b06cc` passed all 31 private allocator tests and compiled their opted-in
+wasm32 test target; neither result activates production tracked source owners.
+Source `6896c7425a` subsequently passes both default and opted-in allocator-feature
+workspace/all-target strict Clippy. Exact terminal evidence is under
+`evidence/geometry-platform-integrated-validation/{native-rust-4a85-terminal,core-allocator-26354-terminal,clippy-6896-terminal}`.
+
+Source `a3752756ca` successfully regenerated the imported artifact, verified it,
+and built canonical WASM. Worker exit 1 is its expected rejection of tracked
+regeneration changes, not a compiler failure. The exact generated outputs were
+hash-checked and committed at `38fac90894`; imported executable bytes are unchanged,
+while provenance and retained public WASM declarations update. See
+`artifacts-a375-terminal`. A clean repeat-generation, real WASM contract and full
+root TypeScript typecheck/test request now runs on that committed source. A separate
+actual SDK/Worker/browser request runs the same source; it includes bounded normal
+retries and hash verification for browser provisioning. Neither pending job is a pass.
+
+The latest actual WASM SDK execution on source `26354b06cc` passes five of eight
+CTests, including checked extraction and isolated destructive-failure handling.
+It exposes a section-grid negative-zero key defect, a real affine edge endpoint
+representation mismatch, and an unissued DeleteEdge transition in the lineage
+witness. The section-key repair preserves the existing rounding grid and passes
+32 small protocol/oracle fixtures; actual SDK rerun is pending. Narrow source-backed
+affine and issued rectangular-transition repairs remain in progress. Chrome
+provisioning then failed on DNS before any actual browser tests. See
+`browser-26354-terminal`; previous SDK or fixture passes do not qualify later edits.
+
+An opt-in actual geometry-account resource boundary is integrated from source
+`8af4994f3f` at `dc7b2545ba`, with no tracked parser/cache/ProductOwner activation.
+The first independent review identifies a fresh-epoch fault-precedence defect;
+its repair is pending. New compilation, behavior, cyclic feature packaging and
+end-to-end actual-account/private-gate evidence remain outstanding. Whole owner,
+cache, nested entity/COW and borrowed-view migration remains a mandatory release
+requirement, as do regularized source binding, paired layers, appearance, final
+product publication, installed consumers, preservation, platform and performance.
 
 ## Outcome and non-negotiable contracts
 

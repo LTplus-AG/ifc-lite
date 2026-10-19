@@ -12,6 +12,7 @@ use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
 pub enum RetainedDependency<'a> {
     Source { realization: &'a RetainedRealization, world_from_source: [f64; 16] },
     Result(&'a RetainedDependencyResult),
+    Clip(&'a super::RetainedPlaneClip),
     /// An explicitly admitted replacement object-local -> world frame. The
     /// original result/frame remains immutable; this is not a relative matrix.
     PlacedResult { result: &'a RetainedDependencyResult, world_from_result: [f64;16] },
@@ -64,7 +65,7 @@ impl RetainedDependencyResult {
 }
 
 impl RetainedDependency<'_> {
-    fn input(&self) -> Result<(BrepHandle, [f64; 16], Arc<RetainedLineage>, usize), WorkerError> {
+    pub(super) fn input(&self) -> Result<(BrepHandle, [f64; 16], Arc<RetainedLineage>, usize), WorkerError> {
         match self {
             Self::Source { realization, world_from_source } => {
                 realization.validate_live()?;
@@ -80,6 +81,10 @@ impl RetainedDependency<'_> {
                 rigid(*world_from_affine).map_err(|e| WorkerError::Authored(e.into()))?;
                 Ok((copy.solid(),*world_from_affine,Arc::new(RetainedLineage::Placed {
                     value:Arc::new(copy.lineage().clone()), world_from_evaluation:*world_from_affine }),copy.operation_count()))
+            }
+            Self::Clip(clip) => {
+                clip.validate_live()?;
+                Ok((clip.solid(), *clip.world_from_evaluation(), Arc::new(clip.lineage().clone()), clip.operation_count()))
             }
             Self::Result(result) => {
                 result.validate_live()?;

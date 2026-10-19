@@ -80,7 +80,8 @@ impl SmlibWorker {
                 check(*left)?;
                 check(*right)
             }
-            KernelCommand::CopyAffine { solid, .. }
+            KernelCommand::ClipPlane { solid, .. }
+            | KernelCommand::CopyAffine { solid, .. }
             | KernelCommand::CopyTransform { solid, .. }
             | KernelCommand::IsEmpty { solid, .. }
             | KernelCommand::Volume { solid, .. }

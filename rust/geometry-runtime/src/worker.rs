@@ -11,6 +11,9 @@ use std::io::{Read, Write};
 use std::process::{ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[path = "worker_clip.rs"]
+mod clip;
+pub use clip::{RetainedPlaneClip, PlaneClipIdentity};
 #[path = "worker_affine.rs"]
 mod affine;
 pub use affine::{AffineCopyIdentity, RetainedAffineCopy, RetainedTransformInput};
@@ -289,10 +292,14 @@ impl SmlibWorker {
         if !self.is_live() {
             return Err(WorkerError::Protocol("worker requires restart"));
         }
+        self.check_command_objects(&command)?;
         self.flush_releases()?;
         self.check_command_objects(&command)?;
         let result = self.exchange(&command);
-        if matches!(result, Err(WorkerError::Io(_) | WorkerError::Protocol(_) | WorkerError::Kernel { status: 8, .. })) {
+        // Only known synchronized statuses 1..7 guarantee transactional refusal.
+        // Preserve the primary error while retiring any uncertain kernel domain.
+        if matches!(&result, Err(WorkerError::Io(_) | WorkerError::Protocol(_)))
+            || matches!(&result, Err(WorkerError::Kernel { status, .. }) if !(1..=7).contains(status)) {
             self.retire();
         }
         result

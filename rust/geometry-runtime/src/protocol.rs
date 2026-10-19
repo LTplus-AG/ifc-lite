@@ -76,6 +76,7 @@ pub enum KernelCommand {
     SweepAbort { session: u64, upload: u64 },
     CopyAffine { session: u64, solid: WireHandle, column_major: [f64; 16] },
     CopyTransform { session: u64, solid: WireHandle, column_major: [f64; 16] },
+    ClipPlane { session: u64, solid: WireHandle, plane: [f64; 6], side: i32, mode: u32 },
     IsEmpty { session: u64, solid: WireHandle },
     CreateSession,
     DestroySession {
@@ -175,6 +176,7 @@ pub fn encode_request(request_id: u32, command: &KernelCommand) -> Result<Vec<u8
         KernelCommand::AbiVersion => 0,
         KernelCommand::Capabilities => 12,
         KernelCommand::IsEmpty { .. } => 19,
+        KernelCommand::ClipPlane { .. } => 20,
         KernelCommand::CopyTransform { .. } => 17,
         KernelCommand::CopyAffine { .. } => 18,
         KernelCommand::SweepBegin { .. } => 13,
@@ -224,6 +226,11 @@ fn encode_arguments(command: &KernelCommand, out: &mut Vec<u8>) -> Result<(), Pr
         CopyTransform { session, solid, column_major } | CopyAffine { session, solid, column_major } => {
             write_solid(out, *session, *solid);
             for value in column_major { out.extend(value.to_le_bytes()); }
+        }
+        ClipPlane { session, solid, plane, side, mode } => {
+            write_solid(out, *session, *solid);
+            for value in plane { out.extend(value.to_le_bytes()); }
+            out.extend(side.to_le_bytes()); out.extend(mode.to_le_bytes());
         }
         DestroySession { session } => out.extend(session.to_le_bytes()),
         Box {

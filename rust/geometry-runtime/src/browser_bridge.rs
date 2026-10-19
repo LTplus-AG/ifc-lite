@@ -21,6 +21,9 @@ extern "C" {
     pub(super) fn object_live(this: &Driver, object: &JsValue) -> bool;
     #[wasm_bindgen(method, js_name = releaseObject)]
     pub(super) fn release_object(this: &Driver, object: &JsValue);
+    #[wasm_bindgen(method, js_name = clipPlane)]
+    pub(super) fn clip_plane(this: &Driver, source: &JsValue, plane: &[f64], side: i32, mode: u32,
+        chord: f64, angle: f64, max_bytes: u32) -> js_sys::Promise;
     #[wasm_bindgen(method, js_name = copyAffine)]
     pub(super) fn copy_affine(this: &Driver, source: &JsValue, matrix: &[f64]) -> js_sys::Promise;
     #[wasm_bindgen(method, js_name = evaluateBoolean)]

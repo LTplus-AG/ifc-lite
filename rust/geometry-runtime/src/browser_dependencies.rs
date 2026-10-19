@@ -21,6 +21,7 @@ impl BrowserObjectHandle {
 pub enum BrowserDependency<'a> {
     Source { realization: &'a BrowserRealization, world_from_source: [f64; 16] },
     Result(&'a BrowserDependencyResult),
+    Clip(&'a super::BrowserPlaneClip),
     /// Explicit replacement frame for this occurrence, never multiplied by the
     /// result's original world frame. The sealed object and result stay intact.
     PlacedResult { result: &'a BrowserDependencyResult, world_from_result: [f64;16] },
@@ -86,17 +87,17 @@ impl Drop for BrowserDependencyResult {
 }
 
 #[cfg(target_arch = "wasm32")]
-struct Input {
-    owner: Arc<Owner>,
-    object: wasm_bindgen::JsValue,
-    handle: BrowserObjectHandle,
-    frame: [f64; 16],
-    lineage: Arc<RetainedLineage>,
-    operations: usize,
+pub(super) struct Input {
+    pub(super) owner: Arc<Owner>,
+    pub(super) object: wasm_bindgen::JsValue,
+    pub(super) handle: BrowserObjectHandle,
+    pub(super) frame: [f64; 16],
+    pub(super) lineage: Arc<RetainedLineage>,
+    pub(super) operations: usize,
 }
 #[cfg(target_arch = "wasm32")]
 impl BrowserDependency<'_> {
-    fn input(&self) -> Result<Input, RetainedRefusal> {
+    pub(super) fn input(&self) -> Result<Input, RetainedRefusal> {
         let input = match self {
             Self::Source { realization, world_from_source } => {
                 realization.validate_live()?;
@@ -114,6 +115,7 @@ impl BrowserDependency<'_> {
                     frame:*world_from_affine,lineage:Arc::new(RetainedLineage::Placed {
                         value:parts.lineage,world_from_evaluation:*world_from_affine }) }
             }
+            Self::Clip(clip) => clip.dependency_parts()?,
             Self::Result(result) => {
                 result.validate_live()?;
                 Input { owner: result.owner.clone(), object: result.object.clone(), handle: result.handle.clone(),

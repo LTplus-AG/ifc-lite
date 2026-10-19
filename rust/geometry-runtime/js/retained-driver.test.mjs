@@ -33,9 +33,34 @@ async function fixture() {
         else if (op === 12) {
           bytes = new Uint8Array(8);
           new DataView(bytes.buffer).setUint32(0, 1, true);
-          new DataView(bytes.buffer).setUint32(4, 48, true);
+          new DataView(bytes.buffer).setUint32(4, this.capabilities ?? 112, true);
         } else if (op === 19) {
           bytes = new Uint8Array(4); new DataView(bytes.buffer).setUint32(0, this.emptyQuery ?? 0, true);
+        } else if (op === 20 && this.refusePlane) {
+          status = this.refusePlane; bytes = new TextEncoder().encode('plane fixture refusal');
+        } else if (op === 20) {
+          // Structural template only. Never supplies an SDK geometry oracle.
+          assert.equal(owned.byteLength, 92);
+          const count = this.cylinders ?? 0;
+          bytes = new Uint8Array(312 + 136*count);
+          bytes.set(this.allocate()); bytes.set(new Uint8Array(owned, 20, 16), 32); bytes.set(bytes.slice(0, 16), 48);
+          const cert = new DataView(bytes.buffer), set = (i, v) => cert.setUint32(i, v, true);
+          for (const [i, v] of [[16,1],[20,count ? 5 : 1],[24,1],[64,view.getUint32(84,true)],
+            [68,view.getUint32(88,true)],[72,6],[76,12],[80,64],[308,count]]) set(i, v);
+          bytes.set(new Uint8Array(owned, 36, 48), 84);
+          const sign = view.getInt32(84, true)*(view.getUint32(88,true) === 3 ? -1 : 1);
+          // This template is restricted to a +/-Z request normal.
+          for (const [base, values] of [[132,[1,0,0,0,sign,0,0,0,sign]],
+            [204,[-1,-1,0,1,1,1]],[252,[-2,-2,0,2,2,2]]])
+            values.forEach((v,i) => cert.setFloat64(base+8*i,v,true));
+          cert.setFloat64(300, 1e-6, true);
+          for (let i = 0; i < count; i++) {
+            const base = 312+136*i;
+            set(base, i);
+            [0,4,8].forEach(j => cert.setFloat64(base+40+8*j,1,true));
+            cert.setFloat64(base+112,1,true); cert.setFloat64(base+128,1,true);
+          }
+          if (this.corruptPlane) this.corruptPlane(bytes, cert);
         } else if (op === 18 && this.refuseAffine) {
           status = this.refuseAffine; bytes = new TextEncoder().encode("unsupported source class");
         } else if (op === 18) {
@@ -304,4 +329,86 @@ test('affine transport fixture: tainted kernel status retires the captured worke
   await assert.rejects(driver.copyAffine(source.object, identity), /retained status 8/);
   assert.equal(driver.objectLive(source.object), false);
   assert.equal(peer.retired, true);
+});
+
+const clip = (driver, source, plane = [0,0,0.5,0,0,1], side = 1, mode = 2) =>
+  driver.clipPlane(source.object, plane, side, mode, 0.001, 5, 1024);
+
+test('plane protocol fixture: own exact coefficients before await; frozen result and independent cleanup', async () => {
+  const { Driver, peers } = await fixture(); const driver = new Driver(), source = await evaluate(driver);
+  const plane = [-0,0,0.5,0,0,1], pending = clip(driver, source, plane);
+  plane[2] = 99;
+  const result = await pending, issued = peers[0].commands.find(c => c.op === 20);
+  assert.equal(issued.view.byteLength, 92); assert.equal(issued.view.getFloat64(52, true), 0.5);
+  assert.ok(Object.is(issued.view.getFloat64(36, true), -0));
+  assert.ok(Object.isFrozen(result)); assert.ok(Object.isFrozen(result.certificate));
+  assert.ok(Object.isFrozen(result.input)); assert.ok(Object.isFrozen(result.mesh));
+  assert.ok(Object.isFrozen(result.mesh.positions));
+  assert.throws(() => { result.certificate[0] = 99; }, TypeError);
+  driver.releaseObject(source.object);
+  const chained = await clip(driver, result);
+  driver.releaseObject(result.object); await flush();
+  assert.equal(driver.objectLive(chained.object), true);
+  driver.releaseObject(chained.object); await flush();
+  assert.equal(peers[0].objects.size, 0); assert.equal(driver.live(), true); driver.retire();
+});
+
+test('plane rejection fixtures: exact identity, frame, finite domain and cylinder bounds', async () => {
+  const mutations = [
+    (b,v) => v.setUint32(16,2,true), (b,v) => v.setUint32(20,8,true),
+    (b,v) => v.setUint32(24,0,true), (b,v) => v.setUint32(28,2,true),
+    (b,v) => v.setUint32(32,43,true), (b,v) => v.setUint32(44,0,true),
+    (b,v) => v.setUint32(48,43,true), (b,v) => v.setUint32(60,0,true),
+    (b,v) => v.setUint32(64,0xffffffff,true), (b,v) => v.setUint32(68,3,true),
+    (b,v) => v.setUint32(72,100001,true), (b,v) => v.setUint32(76,100001,true),
+    (b,v) => v.setUint32(80,1000001,true), (b,v) => v.setUint32(308,17,true),
+    (b,v) => v.setFloat64(84,-0,true), (b,v) => v.setFloat64(132,NaN,true),
+    (b,v) => v.setFloat64(204,2,true), (b,v) => v.setFloat64(252,2,true),
+    (b,v) => v.setFloat64(300,0,true), (b,v) => v.setUint32(20,0,true),
+    (b,v) => v.setUint32(312,6,true), (b,v) => v.setUint32(316,2,true),
+    (b,v) => v.setUint32(320,2,true), (b,v) => v.setUint32(324,1,true),
+    (b,v) => v.setFloat64(328,Infinity,true), (b,v) => v.setFloat64(424,0,true),
+    (b,v) => v.setFloat64(432,1,true), (b,v) => v.setFloat64(440,NaN,true),
+  ];
+  for (const mutation of mutations) {
+    const { Driver, peers } = await fixture(); const driver = new Driver(), source = await evaluate(driver);
+    peers[0].cylinders = 1; peers[0].corruptPlane = mutation;
+    await assert.rejects(clip(driver, source));
+    assert.equal(driver.live(), false); assert.equal(driver.objectLive(source.object), false);
+  }
+});
+
+test('plane refusal fixtures: unsupported capability/status7 preserve inputs; taint8 retires', async () => {
+  const { Driver, peers } = await fixture(); const driver = new Driver(), source = await evaluate(driver), peer = peers[0];
+  peer.capabilities = 48;
+  await assert.rejects(clip(driver, source), /unavailable/);
+  assert.equal(peer.commands.some(c => c.op === 20), false); assert.equal(driver.objectLive(source.object), true);
+  peer.capabilities = 112; peer.refusePlane = 7;
+  await assert.rejects(clip(driver, source), /fixture refusal/); assert.equal(driver.objectLive(source.object), true);
+  peer.refusePlane = 8;
+  await assert.rejects(clip(driver, source), /fixture refusal/); assert.equal(driver.live(), false);
+});
+
+test('plane fixture: foreign/invalid inputs unsent; output semantic-query mismatch retires', async () => {
+  const { Driver, peers } = await fixture(); const driver = new Driver(), foreign = new Driver();
+  const source = await evaluate(driver), other = await evaluate(foreign), count = peers[0].commands.length;
+  await assert.rejects(clip(driver, other), /foreign/);
+  await assert.rejects(clip(driver, source, [0,0,0,0,0,0]), /invalid/);
+  assert.equal(peers[0].commands.length, count); assert.equal(driver.objectLive(source.object), true);
+  peers[0].emptyQuery = 1; peers[0].meshInfo = [0,0,0,0,0,0];
+  await assert.rejects(clip(driver, source), /classification mismatch/);
+  assert.equal(driver.live(), false); assert.equal(foreign.objectLive(other.object), true); foreign.retire();
+});
+
+test('plane lifetime fixture: pending release generations cannot alias newly accepted output', async () => {
+  const { Driver, peers } = await fixture(); const driver = new Driver();
+  const source = await evaluate(driver), sibling = await evaluate(driver), peer = peers[0];
+  const siblingSlot = peer.uploads[1];
+  peer.corruptPlane = (bytes, view) => {
+    // Driver is busy here: dropping a sibling queues its exact generation.
+    driver.releaseObject(sibling.object);
+    bytes.set(handle(siblingSlot)); bytes.set(handle(siblingSlot), 48);
+  };
+  await assert.rejects(clip(driver, source), /aliases live input lease/);
+  assert.equal(driver.live(), false);
 });

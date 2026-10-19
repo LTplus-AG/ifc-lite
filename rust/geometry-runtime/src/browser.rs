@@ -12,6 +12,9 @@ use std::sync::{
 mod bridge;
 #[path = "browser_dependencies.rs"]
 mod dependencies;
+#[path = "browser_clip.rs"]
+mod clip;
+pub use clip::{BrowserPlaneClip, BrowserPlaneClipIdentity};
 #[path = "browser_affine.rs"]
 mod affine;
 pub use affine::{BrowserAffineCopy, BrowserAffineIdentity, BrowserTransformInput};

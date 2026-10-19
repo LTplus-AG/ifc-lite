@@ -9,6 +9,9 @@ use std::sync::Arc;
 pub enum RetainedLineage {
     /// A realization's raw authored source and its actual evaluation domain.
     Definition { request: Box<RetainedRequest>, source_from_evaluation: [f64;16], evaluation_from_source: [f64;16] },
+    /// Actual unary numerical operation in the unchanged selected metre frame.
+    PlaneClip { input: Arc<Self>, plane: [f64;6], side: crate::PlaneSide, mode: crate::PlaneClipMode,
+        world_from_evaluation: [f64;16], certificate: crate::PlaneCertificate },
     AffineCopy { input: Arc<Self>, column_major: [f64;16], certificate: crate::AffineCertificate },
     /// Explicit post-bake placement; never inferred from authored units or RTC.
     Placed { value: Arc<Self>, world_from_evaluation: [f64;16] },

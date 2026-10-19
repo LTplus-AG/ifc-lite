@@ -9,6 +9,7 @@ pub enum BrowserTransformInput<'a> {
     Source(&'a super::BrowserRealization),
     Result(&'a super::BrowserDependencyResult),
     Affine(&'a BrowserAffineCopy),
+    Clip(&'a super::BrowserPlaneClip),
 }
 #[cfg(target_arch="wasm32")]
 pub(super) struct TransformParts {
@@ -32,6 +33,7 @@ impl BrowserTransformInput<'_> {
                         evaluation_from_source:completion.evaluation_from_source }) })
             }
             Self::Result(result) => result.transform_parts(),
+            Self::Clip(clip) => clip.transform_parts(),
             Self::Affine(copy) => copy.transform_parts(),
         }
     }

@@ -10,6 +10,7 @@ pub enum RetainedTransformInput<'a> {
     Source(&'a RetainedRealization),
     Result(&'a super::RetainedDependencyResult),
     Affine(&'a RetainedAffineCopy),
+    Clip(&'a super::RetainedPlaneClip),
 }
 impl RetainedTransformInput<'_> {
     fn parts(self) -> Result<(BrepHandle, Arc<RetainedLineage>, usize), WorkerError> {
@@ -25,6 +26,10 @@ impl RetainedTransformInput<'_> {
             Self::Result(result) => {
                 result.validate_live()?;
                 Ok((result.solid(),Arc::new(result.lineage().clone()),result.operation_count()))
+            }
+            Self::Clip(clip) => {
+                clip.validate_live()?;
+                Ok((clip.solid(),Arc::new(clip.lineage().clone()),clip.operation_count()))
             }
             Self::Affine(copy) => {
                 copy.validate_live()?;

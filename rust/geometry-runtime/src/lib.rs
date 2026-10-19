@@ -6,6 +6,8 @@ pub mod protocol;
 pub mod browser;
 mod retained_values;
 mod affine;
+mod plane;
+pub use plane::{PlaneCertificate, CylinderDomain, PlaneClipMode, PlaneSide};
 pub use affine::AffineCertificate;
 pub use retained_values::{RetainedLineage, NumericalOutcome};
 
@@ -18,7 +20,7 @@ mod supervision;
 #[cfg(not(target_arch = "wasm32"))]
 pub use supervision::{PendingCommand, SupervisedWorker, SupervisionError, WorkerCommand, WorkerResult};
 #[cfg(not(target_arch = "wasm32"))]
-pub use worker::{AffineCopyIdentity, RetainedAffineCopy, RetainedTransformInput, RegionQualificationReport, RetainedDependency, RetainedDependencyResult, RetainedOperationIdentity, BrepHandle, MeshLimits, RetainedRealization, SmlibWorker, TessellatedMesh, WorkerError};
+pub use worker::{RetainedPlaneClip, PlaneClipIdentity, AffineCopyIdentity, RetainedAffineCopy, RetainedTransformInput, RegionQualificationReport, RetainedDependency, RetainedDependencyResult, RetainedOperationIdentity, BrepHandle, MeshLimits, RetainedRealization, SmlibWorker, TessellatedMesh, WorkerError};
 #[cfg(not(target_arch = "wasm32"))]
 mod runtime_owner;
 #[cfg(not(target_arch = "wasm32"))]

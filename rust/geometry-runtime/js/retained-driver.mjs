@@ -238,8 +238,41 @@ export class RetainedDriver {
       throw error;
     } finally { this.#busy = false; this.#scheduleReleases(); }
   }
+  // Unary candidate only. The caller supplies no transport or positive evidence.
+  async clipPlane(source, planeValues, side, mode, chord, angle, maxBytes) {
+    const plane = Array.from(planeValues); validatePlane(plane, side, mode);
+    limits(chord, angle, maxBytes);
+    if (!this.objectLive(source)) throw new Error('foreign plane source lease');
+    await this.#ready;
+    await this.#awaitCleanup();
+    if (!this.live() || this.#busy || !this.objectLive(source)) throw new Error('expired plane source lease');
+    const input = this.#objects.get(source); this.#busy = true;
+    let published = false;
+    try {
+      const capabilities = await this.#call(12);
+      if (capabilities.byteLength !== 8 || new DataView(capabilities.buffer).getUint32(0, true) !== 1)
+        throw new Error('invalid plane capability payload');
+      if (!(new DataView(capabilities.buffer).getUint32(4, true) & 64))
+        throw Object.assign(new Error('finite plane clipping unavailable'), { kernelStatus: 7 });
+      // Source may have been dropped while negotiation was in flight.
+      if (!this.objectLive(source)) throw new Error('expired plane source lease');
+      const bytes = await this.#call(20, this.#session, input, ...plane.map(f64), u32(side >>> 0), u32(mode));
+      published = true; // Later typed query/tessellation failure is not a clip refusal.
+      const certificate = planeCertificate(bytes, input, plane, side, mode);
+      const solid = certificate.output; this.#assertNewSolid(solid);
+      const value = await this.#seal(solid, chord, angle, maxBytes, true);
+      if (!this.objectLive(source)) throw new Error('plane source expired before acceptance');
+      if ((value.outcome === 'empty') !== certificate.empty) throw new Error('plane Empty classification mismatch');
+      const mesh = Object.freeze(Object.fromEntries(Object.entries(value.mesh).map(([key, v]) =>
+        [key, ArrayBuffer.isView(v) ? Object.freeze(Array.from(v)) : v])));
+      return Object.freeze({ ...value, mesh, input: Object.freeze(Array.from(input)), certificate: Object.freeze(Array.from(bytes)) });
+    } catch (error) {
+      if (published || !Number.isInteger(error.kernelStatus) || error.kernelStatus < 1 || error.kernelStatus > 7) this.retire();
+      throw error;
+    } finally { this.#busy = false; this.#scheduleReleases(); }
+  }
   #assertNewSolid(solid) {
-    if (Array.from(this.#objects.values()).some(existing => sameHandle(existing, solid)))
+    if ([...this.#objects.values(), ...this.#releases].some(existing => sameHandle(existing, solid)))
       throw new Error('retained result aliases live input lease');
   }
   async #seal(solid, chord, angle, maxBytes, allowEmpty) {
@@ -303,7 +336,6 @@ function validateHandle(bytes, session) {
 }
 function u32(value) { const bytes = new Uint8Array(4); new DataView(bytes.buffer).setUint32(0, value, true); return bytes; }
 function f64(value) { const bytes = new Uint8Array(8); new DataView(bytes.buffer).setFloat64(0, value, true); return bytes; }
-
 function limits(chord, angle, maxBytes) {
   if (!Number.isFinite(chord) || chord <= 0 || !Number.isFinite(angle) || angle <= 0 || angle > 180 ||
       !Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error('invalid retained evaluation limits');
@@ -319,5 +351,50 @@ function properRigid(m) {
   const cross = [m[1]*m[6]-m[2]*m[5], m[2]*m[4]-m[0]*m[6], m[0]*m[5]-m[1]*m[4]];
   if (cross.some((v, i) => Math.abs(v - m[8 + i]) > 1e-12)) throw new Error('reflected retained frame');
 }
-
 function sameHandle(a, b) { return a.byteLength === b.byteLength && a.every((value, i) => value === b[i]); }
+function validatePlane(plane, side, mode) {
+  if (plane.length !== 6 || !plane.every(Number.isFinite) || plane.slice(3).every(x => x === 0) ||
+      ![1, -1].includes(side) || ![2, 3].includes(mode)) throw new Error('invalid local metre plane');
+}
+function planeCertificate(bytes, input, plane, side, mode) {
+  validatePlane(plane, side, mode);
+  if (bytes.byteLength < 312 || bytes.byteLength > 2488) throw new Error('invalid plane response size');
+  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), u = i => v.getUint32(i, true), f = i => v.getFloat64(i, true);
+  const floats = (offset, count) => Array.from({ length: count }, (_, i) => f(offset + 8*i)), same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+  const output = bytes.slice(0, 16), count = u(308), method = u(20), sameHandle = (offset, expected) => same(bytes.slice(offset, offset + 16), expected);
+  if (count > 16 || bytes.byteLength !== 312 + 136*count || u(16) !== 1 || u(24) !== 1 || u(28) > 1 ||
+      !sameHandle(32, input) || !sameHandle(48, output) || sameHandle(0, input) ||
+      !same(output.slice(0, 8), input.slice(0, 8)) || !u(12) || !new DataView(input.buffer, input.byteOffset).getUint32(12, true) ||
+      new DataView(input.buffer, input.byteOffset).getBigUint64(0, true) === 0n ||
+      u(64) !== (side >>> 0) || u(68) !== mode) throw new Error('invalid plane identity certificate');
+  const original = new Uint8Array(48), pv = new DataView(original.buffer); plane.forEach((x, i) => pv.setFloat64(8*i, x, true));
+  if (!same(bytes.slice(84, 132), original)) throw new Error('plane coefficient identity mismatch');
+  const faces = u(72), edges = u(76), coefficients = u(80);
+  if (method > 7 || faces > 100000 || edges > 100000 || coefficients > 1000000 ||
+      Boolean(method & 4) !== (count > 0) || count > faces) throw new Error('invalid plane domain budget/method');
+  const basis = floats(132, 9), domain = floats(204, 6), cutter = floats(252, 6), clearance = f(300);
+  if (![...basis, ...domain, ...cutter, clearance].every(Number.isFinite)) throw new Error('nonfinite plane certificate');
+  const scale = Math.max(...plane.slice(3).map(Math.abs)), n = plane.slice(3).map(x => x/scale), length = Math.hypot(...n), kept = side * (mode === 3 ? -1 : 1), eps = 64*Number.EPSILON;
+  if (n.some((x, i) => Math.abs(basis[6+i] - kept*x/length) > eps)) throw new Error('invalid effective plane normal');
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+    const dot = [0,1,2].reduce((sum, k) => sum + basis[3*i+k]*basis[3*j+k], 0);
+    if (Math.abs(dot - (i === j ? 1 : 0)) > eps) throw new Error('invalid effective plane basis');
+  }
+  const cross = [basis[1]*basis[5]-basis[2]*basis[4], basis[2]*basis[3]-basis[0]*basis[5], basis[0]*basis[4]-basis[1]*basis[3]];
+  if (cross.some((x, i) => Math.abs(x-basis[6+i]) > eps)) throw new Error('reflected effective plane basis');
+  if (method === 0) {
+    if (u(28) !== 1 || faces || edges || coefficients || [...domain, ...cutter, clearance].some(x => x !== 0))
+      throw new Error('invalid canonical empty plane domain');
+  } else if (!faces || !edges || !coefficients || clearance <= 0 ||
+      ![0,1,2].every(i => domain[i] < domain[i+3] && cutter[i] < cutter[i+3]) ||
+      cutter[2] !== 0)
+    throw new Error('invalid finite plane domain/cutter');
+  const seen = new Set(); for (let i = 0; i < count; i++) {
+    const offset = 312 + 136*i, face = u(offset);
+    if (face >= faces || seen.has(face) || u(offset+4) > 1 || u(offset+8) > 1 || u(offset+12) !== 0 ||
+        !floats(offset+16, 15).every(Number.isFinite) || f(offset+112) <= 0 || f(offset+120) >= f(offset+128))
+      throw new Error('invalid cylinder conversion/domain certificate');
+    seen.add(face);
+  }
+  return Object.freeze({ output, empty: u(28) === 1 });
+}

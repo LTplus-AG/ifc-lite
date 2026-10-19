@@ -1,0 +1,41 @@
+# P3 source closure review: 55e
+
+Reviewed immutable commit `55e6bda205` (full identity and 20 inspected blob/SHA256 pins in `ifclite-p3-55e-closure-review-hashes.json`). Read-only review; no edits, builds, jobs, SDK execution or browser execution. The old queued jobs do not qualify this source. Prior c82 backend/consumer reports were read, including withdrawal of the incorrect two-versus-three validation allegation.
+
+## Source verdict
+
+No new concrete source blocker found. The prior layer-policy inversion, stale requirement-count assertion and predispatch ownership loss are closed in the inspected source. This is source closure only. Compilation, actual native SDK execution, generated WASM and actual browser worker/consumer behavior remain unqualified.
+
+## Original packet ownership and correctable rejection
+
+`batch.rs:35–44` validates captured resources first, source lifecycle second, then ISSUED stage and captured actual runtime liveness. Native `execute` and browser `execute_browser` perform this observation before supplied-worker and limit checks. The latter checks neither debit Cost nor transition the stage or dispatch. A known worker/limit error moves the same armed non-Clone IssuedCommonConstruction into Box<RejectedCommonExecution>::issued=Some. Ticket/stage/operations, original pending reply and captured cancellation/resource authority stay the same. There is no new issue request or reset of a possibly dispatched transaction.
+
+The public error owns this packet; moving out `issued` enables corrected retry. Dropping the error without recovering the packet drops the armed original and invokes captured cancellation. Public reason/issued fields and Display/Error implementations are consistent with that ownership. Source/lifecycle/stage/resource failure before preflight returns issued=None and drops armed self, retiring its captured domain. Any failure after execution start likewise returns no retry packet and drops armed self. Successful completion disarms only after finish sealed DELIVERED.
+
+Native and browser share the same start/checkpoint/finish/acceptance machinery. Public reexports are present through the already-public processing::element API; callers do not require a new crate-root alias. A Git-wide Rust caller search is retained in `/tmp/ifclite-p3-55e-callers.txt`. Inspected existing call sites either unwrap, inspect the new error.reason/issued, or map reason explicitly. No stale in-tree pattern expecting RetainedExecutionError directly from these changed methods was found. This is a Rust public return-type change; release/API documentation must continue to show recovery rather than imply all Err values are retryable. No API compatibility claim for out-of-tree callers is made by this source review.
+
+## Cancellation, scope and first fault
+
+Recoverability is an observation, not a race-free guarantee that a returned packet can never subsequently cancel. A concurrent RetainedCancellation may change ISSUED after preflight; start uses ISSUED→EXECUTING CAS and rechecks resources/lifecycle/stage/owner before admitting work. Cancelled recovered packets cannot dispatch successfully. A cancellation after delivery invalidates acceptance through stage and object liveness. Recovery does not grant a new runtime lease or bypass captured source generation.
+
+The browser async future captures the armed issued value even before first poll, so dropping that unpolled batch future drops/cancels the captured domain. Once started, the same self spans await; no issued guard is disarmed early. Dropping a dispatched future triggers both the existing runtime in-flight isolation and issued abandonment. Neither path is authority to retire a supplied foreign worker: check_worker compares captured actual domain identity and no foreign InFlight is armed on rejection. An ignored returned packet does retire its originally captured healthy worker, intentionally documented abandonment.
+
+Resource checks use OwnedResourceContext, which selects only captured source/account/terminal channels rather than later ambient worker account state. The original source stop outranks account/local cached faults. check-before-preflight prevents invalid limits/foreign worker from concealing an already terminal original transaction. start/checkpoint/finish recheck it; preserve_fault prioritizes it over numerical/JS errors. Browser resource/triangle/source lexical scopes end before numerical await. Native numerical calls remain inside the synchronous captured resource scope. No new TLS or RefCell/owner guard crosses await in this change.
+
+A concurrent cancellation just after final checkpoint can still cause finish's CAS or later acceptance to reject; no final mesh or acceptance occurs merely because the future completed numerically. These are existing validation boundaries, not a promise of interrupting arbitrary synchronous kernel instructions at the instant cancellation is requested.
+
+## Canonical browser consumer and policy fixes
+
+`RetainedBrowserProduct::execute` validates context then static numerical limits before taking its one router or creating local authenticated decoder/execution. Invalid caller limits leave the product/router/executor usable for corrected retry. The consumer maps rejected.reason explicitly; any returned packet is deliberately dropped because this high-level invocation aborts the transaction, then cleanup cancels the local execution. It does not silently retry an uncertain numerical operation.
+
+`product_job.rs::configure_product_material_layers` installs the canonical index exactly when !merge_layers. Both ordinary gpu batch and retained admission call it, fixing the inverted policy without another resolver. The behavioral fixture appends actual two-layer IFC material relationships to the real nested mapping source, verifies actual index sliceability under both flags, and verifies both routers observe the same policy. This is configuration parity, not retained layer numerical qualification.
+
+Canonical job-kind selection remains the shared source classifier with the existing EmitTagged type-map filtering; ordinary product jobs and referenced/instantiated type maps retain their policy. The consumer admits from actual CoherentLoad/source and model snapshot, not supplied bytes/source keys/runtime receipts. Snapshot/source replacement and captured runtime retirement continue to invalidate witnesses. The successful return remains common_product_transaction_only with final_product_available=false; no final-net output is exposed.
+
+The requirement test now checks named OpeningClosure, MaterialLayers, IfcAppearance and PersistentFaces obligations and absence of already-completed logical ProductPlacement. This fixes the impossible >=5 assertion without fabricating extra obligations. The binding-budget test retains the existing three-validation arithmetic and adds actual usage==limit/remaining0 checks; the previous report's two-validation allegation stays withdrawn.
+
+## What the new tests would establish, if executed
+
+The native/browser retry witnesses use real admitted source and actual SDK/module workers, carry the same original ticket/stage/outer request through multiple invalid limits and a foreign worker, assert unchanged admitted account usage, then perform a successful numerical transaction/accept. Abandonment tests require only the captured domain to retire and independent geometry to remain executable. Terminal predispatch tests combine resource/source/cancellation failures with later wrong-worker/invalid-limit errors and require typed original faults, no retry packet, unchanged account usage and pending reply, no partial discharge, and a live independent foreign transaction. These are meaningful behavior fixtures, not source-text assertions or mocked geometry.
+
+All six new tests and the earlier PlacedResult/source-control/native/browser witnesses remain UNRUN. Compile/Clippy, canonical generated binding synchronization, actual module Worker serving/assets, startup/missing-asset/timeout behavior and final release/performance qualification remain gates. Halfspace/external openings/layers/complete display appearance, UV/texture/persistent-face assembly and final publication remain incomplete, not repaired by an inspection witness.

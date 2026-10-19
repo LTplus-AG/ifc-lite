@@ -96,9 +96,9 @@ It passed independent source review. The queued SDK request at `8441381f54` was 
 start time, output or numerical verdict; its original receipt is preserved under
 `sdk-844-orphan`. Distinct normal request `auto-895582117bbf44bfbbc9bc38550d22ae`,
 job `d9732438-f7d2-477f-98d7-bf893a697174`, runs source `80a8cc307a` with the same
-numerical repair and subsequent integration records. Its durable launcher remains
-alive and the job is queued. The command runs actual-worker Rust runtime tests
-only after full native CTest passes. No complete SDK pass is claimed.
+numerical repair and subsequent integration records. Its original durable launcher reached a terminal admission timeout before any
+native command ran. Source remained unchanged. The exact receipt is preserved
+under `sdk-80a8-admission-timeout`; no SDK pass or numerical failure is claimed.
 
 Common typed construction/affine/Boolean operations are now integrated through
 `a860781f0b`. Parent composition preserves Styled affine ranges, cached source
@@ -111,11 +111,29 @@ semantic outcomes on the original inner GeometryStep reply and rejects multiple
 Boolean outcomes before mutation. Independent source review closes those
 acceptance findings; compilation and behavioral execution remain pending.
 Workspace request `auto-abd0a88232854244a0f35583cca7f525` pins earlier source
-`23d68a60f4`, remains queued, and excludes these two later corrections.
+`23d68a60f4` and is terminal: compilation failed at the earlier original-reply
+binding, followed independently by seven strict Clippy findings. No workspace
+test result was produced. Evidence is under `workspace-23d68-terminal`.
+Corrections `62608a9b21` and `61f8f00dd0` address those Clippy findings without
+weakening gates. Corrected-source execution remains pending.
 Source identities, reviews and remaining implementation contracts are under
 `evidence/geometry-platform-integrated-validation/p2-common-a860`.
 
-Full opening/layer/browser/final publication closure, regenerated artifacts,
+Browser common transactions and canonical snapshot admission are integrated at
+`7a9f4a76c5`, with replacement-frame follow-up `c82a596f12`, shared layer-policy
+repair `3ab8bdf3f8` and recoverable predispatch ownership repair `55e6bda205`.
+Source reviews and exact child/source identities are under `p3-common-8a670`.
+Actual compilation, Worker execution and canonical binding generation remain
+unqualified; the API explicitly reports remaining requirements and no final product.
+
+Unary native plane clipping is integrated at `56de0d7a73`. Follow-up
+`8a670c900e` restores shared SDK policy before intermediate geometry work and
+rejects unmaterialized source geometry without evaluation. All nine corrected
+file hashes reproduce the child checkpoint. Source and reviews are under
+`native-plane-8a670`. Actual SDK execution remains unrun; paired split, runtime
+plane transactions and product-level opening/layer closure remain open.
+
+Full opening/layer/final publication closure, regenerated artifacts,
 all-consumer/platform/model/performance qualification and the remaining reviewable
 PR stack are still required. The current mixed-controller ancestry cap must also
 be reconciled with preservation of existing valid nesting. Historical passes

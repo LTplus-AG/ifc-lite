@@ -1,0 +1,131 @@
+P3 implementation source freeze
+==============================
+Base: b98e6282a015a9cee7bd0ce2d562d1de9de0ea77
+Commit: 79a7d364448c4ed20860a4a2d3d812fcb0448ced
+Branch: t3/browser-common-product-transactions
+Checkout: /home/louistrue/.t3/worktrees/ifc-lite/t3-2ccc840b
+Working tree clean at freeze. No push, PR, heavy job, WASM generation, SDK build,
+staging of real assets, foreign-job/cache/lock change, or geometry/native SDK edit.
+
+Composition
+-----------
+Use p3-from-b98.patch for the full incremental delta from the supplied parent.
+If the parent already applied /tmp/p3-original-reply.patch, use
+p3-after-original-reply-repair.patch. Both were reverse-apply checked against the
+frozen child. source-hashes.json records exact SHA256 before/after for all 31 files.
+The minimal original-reply patch had acceptance.rs before 586086c77d6620f63fd593dfa004c00b7deeef56e17f4c4fa5dbec3c473cbf27,
+after b01ebd2c1ed8762054e3cce534ffcc73f3ee62ba8ebde43e5b10b3bfbfcf9cc9.
+Do not overwrite newer whole files. In particular preserve root a860781f0b geometry
+scope/accounting repairs, b8ee3847fc affine source gates, root 6eed210aac additive
+PlacedResult enum/input branches and all other parent changes. This child does
+not include those later root commits. The P3 browser_dependencies.rs hunk only
+adds belongs_to; preserve the root's independent additive enum/input branches.
+
+Implemented source
+------------------
+One existing processing session_retained control/issue/pending/acceptance/ledger
+is now compiled on native and wasm32. Private selected target aliases project
+actual sealed receipts and domains. Native and browser adapters contain only
+numerical dispatch; no second common executor, source walk or copied acceptance.
+Original WorkReply/outer+common requests, source/context/owner, ticket/stage,
+ordered operations/input Arc leases, exact f64 frames and resources remain in the
+same common execution. Runtime domain matching compares actual captured owner
+Arcs (native Child control and browser Owner), with separate actual liveness.
+
+Shared issued-batch Drop covers unpolled futures, prestart cancellation, gaps and
+abandoned awaits. It retires only captured authority. Supplied foreign-worker
+preflight and known invalid numerical limits do not retire domains. Resource
+preflight/reservations are synchronous, all scopes end before each await, and
+resumed checks/sealing use captured authority. Unknown operation failures retire
+the batch domain; captured first faults take precedence over later JS errors.
+Native executes the same shared batch lifecycle. Acceptance revalidates after
+reservation, uses actual GeometryStep inside original WorkReply for iterative
+Empty binding, rejects malformed multi-Boolean outcomes before mutation, and
+cannot overwrite cancellation with ACCEPTED or append ledger after cancelled CAS.
+Cancellation cleanup uses typed error propagation, not a new cancellation expect.
+
+Canonical wasm consumer: IfcAPI.admitRetainedProduct captures actual CoherentLoad
+and one model snapshot using existing combined_pre_pass and style/void/material/
+palette/texture caches. Shared canonical job-kind helper preserves product/type
+selection in both ordinary batch and retained entry. One authenticated decoder
+and configured router are ordinary locals inside the execute future and remain
+reserved across awaits. Independent executor cancellation is exposed before any
+awaited mutable executor borrow. The returned witness validates source/resources/
+objects and explicitly reports remaining_requirements and final_product_available
+false. Source-only APIs remain separate and are never used as product publication.
+
+Bindings/API follow-through required in parent
+----------------------------------------------
+Canonical scripts/build-wasm.sh must regenerate committed
+packages/wasm/pkg/ifc-lite.d.ts. No generated bindings were hand-edited here.
+New wasm names: IfcAPI.admitRetainedProduct;
+RetainedBrowserProduct::{execute,witness};
+RetainedBrowserProductExecutor::{constructor,cancellation,qualifyNumericalRoutes};
+RetainedBrowserProductCancellation::cancel.
+Rust additions include Common RetainedProductExecution::validate_witness,
+BrowserCancellation Clone/incarnation/same_domain/observe_dispatch, sealed browser
+receipt belongs_to methods, and native RuntimeOwner::same_domain.
+Parent should refresh intentional API-surface snapshot/changeset as applicable
+with canonical generated artifacts in the same assembled PR. No version or
+changelog changes were made. Public API guide and runtime README are updated.
+
+Written actual tests / canonical runner wiring
+----------------------------------------------
+Processing browser tests consume real IFC source and actual module Workers, with
+nested/shared mapped Boolean+Empty, millimetre/survey frames and affine copy,
+foreign/wrong-operation/swapped/stale-stage/duplicate/missing receipt rejection,
+all-or-nothing affine batches, source expiry and captured resource faults both
+while awaiting and after delivery, unpolled/prestart cancellation, cancellation
+at observed dispatch 15/5/18, cancellation before a second affine operation, and
+unrelated stopped callback account isolation. API tests use the committed nested
+mapped IFC fixture through actual installed coherent source; test witness refusal
+after source replacement/domain retirement and pre-borrow cancellation.
+Runtime actual tests add domain membership, affine/source-drop survival,
+retirement during actual release 8, stale object/old-drop isolation and abandoned
+affine 18 dispatch. Existing actual runtime drop/Boolean/Empty tests are retained.
+Native actual-worker regression exercises shared batch abandonment before execute.
+
+geometry-platform.yml now includes affected transaction/program/API paths, runs
+native shared processing tests, reuses the pinned setup-wasm-build action, stages
+canonical actual assets into each browser test crate without overwrite, then runs
+wasm-pack browser tests for runtime, processing and canonical API. Workflow YAML
+parses; actual workflow/Chrome/asset-serving execution is UNRUN.
+
+Qualification
+-------------
+qualification.json records actual results and all unrun lanes. Executed only:
+12/12 unchanged private-driver protocol/lifetime fixtures; 3/3 small asset-staging
+fixtures; offline locked cargo metadata; parse-only rustfmt for 26 changed Rust
+files (no formatting writes); workflow YAML parse; git whitespace/patch checks.
+These are NOT Rust compilation, SDK numerics, actual browser execution or broad
+resource/geometry qualification. No actual Worker numerical/cancellation test has
+been run for this source. The parent retains its original queued SDK/build jobs.
+
+Residuals / follow-up
+---------------------
+P2 halfspace, external opening, layer execution and P4 final placement/fidelity/
+UV/texture/persistent provenance/final-net publication remain open. No remaining
+requirements were cleared. The witness has no mesh/display/export method.
+SDK heap, source coefficient/transfer backing, process memory, broad affine target
+qualification and complete strict resource coverage remain unqualified. Real
+synchronized release-failure injection, hard-timeout/missing-assets qualification,
+real authoring-tool corpus parity, all-consumer preservation, generated bindings,
+root pnpm graph checks, workspace tests/Clippy and E2E performance remain required.
+No source/consumer/family limitation is considered discharged by a refusal.
+
+PlacedResult follow-up supplied separately after root runtime6eed210aac:
+placed-result-followup-after-p3-and-runtime.patch combines the single shared
+processing selector, an actual browser equivalent of the root's native survey/
+rotated replacement-frame/result-source-drop/lineage/refusal/survival witness,
+and a native outcome-binding budget calibration. Apply atomically with the root's
+proper-rigid metadata bake change, after additive native+browser runtime variants.
+The replacement frame is explicit object_frame, never multiplied by the receipt's
+original world frame; actual acceptance still compares sealed operation frames.
+Follow-up is patch-check/parse-only, NOT applied to this clean child freeze and
+NOT compiled or executed. Per-file before/after hashes are in follow-up JSON files.
+The small native budget calibration preserves the inherited regression's intended
+stop inside iterative outcome binding after the new third intact validation;
+without it the test can stop earlier in validation while superficially passing.
+
+The frozen source and all follow-ups are unqualified implementation checkpoints,
+not a P3 exit, final-product, production, performance, merge-ready or release claim.

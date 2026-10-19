@@ -1,0 +1,10 @@
+{
+  "base_head": "62608a9b2150005c0c34c309449305fb4dd78b6c",
+  "sha256": {
+    "rust/geometry/src/program/boolean/protocol.rs": "98ee2c98befa4fc6d6a58822141028582aeb94d45ba60e98ecb924954514fe8e",
+    "rust/geometry/src/program/boolean/protocol_tests.rs": "cdcd482c6eb71e55a7420767c5b4293a4cf5282a9eef9d7296a040f3d63e4c3b",
+    "rust/geometry/src/program/inner_product_prelude.rs": "777dce417b6221e13a1375c7389783577d1328494e037bd299e4efb7534d9c6a",
+    "rust/geometry/src/program/inner_product_adapter.rs": "17927f414a0d6e3332ae2cab5c80c2747296b9bd3633b645fecf1d658322369f"
+  },
+  "validation": "Targeted rustfmt stdout parsing, skip_children=true; git diff --check; no build/test/clippy executed."
+}

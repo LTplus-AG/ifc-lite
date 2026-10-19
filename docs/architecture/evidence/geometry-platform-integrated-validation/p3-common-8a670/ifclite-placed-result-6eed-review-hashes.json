@@ -1,0 +1,62 @@
+{
+  "commit": "6eed210aacaed4f9927b076072faa20a579ca82f",
+  "parent": "db58b8d10f35fb46b71f0c9ff5e76e3fdc4c65e1",
+  "validation": "static source review only; no build/SDK/browser execution",
+  "files": [
+    {
+      "path": "rust/geometry-runtime/src/worker_dependencies.rs",
+      "blob": "aa1f23674f8d633f3c84de2ada29fe63d56b71cb",
+      "sha256": "87306b4460f9bedf968af70c61a239d358c5614bf4a2319ae0575a6e6664551b"
+    },
+    {
+      "path": "rust/geometry-runtime/src/browser_dependencies.rs",
+      "blob": "fad58ccd2686eec775338d8e611cfe7bf8427610",
+      "sha256": "9f71e066d2c97b4e430c23552a148c5c1d497ed4435a2968830c397d07ed674a"
+    },
+    {
+      "path": "rust/geometry-runtime/tests/retained_receipt.rs",
+      "blob": "d86db9915e83690dcfd357b93680c00c09df216e",
+      "sha256": "401b3295f5908fb726db8980ddf25ba1337aa82c9549acce88aca7fbc6ed342e"
+    },
+    {
+      "path": "rust/geometry-runtime/src/retained_values.rs",
+      "blob": "322374d2581f3cf4086ebbdb131b7501931a1541",
+      "sha256": "614097b9a620ddf3b5df5614578e8e0cedc2c5731402d08b4d517388fcd1f629"
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_affine.rs",
+      "blob": "8774838f13aebe007060992a1d6732f2ce508872",
+      "sha256": "869088fc523edd287ece682caf61b2fee7ee2e9f35dc890c7022914fd5140246"
+    },
+    {
+      "path": "rust/geometry/src/program/retained.rs",
+      "blob": "6ca3cf2e9da89385bc1329750dc26f2b7edb119a",
+      "sha256": "d2fa4357dc19def912f11eb4245daf1b42181558f7dfdc7c6896d5b51df672d9"
+    },
+    {
+      "path": "rust/geometry/src/document/retained_sweep.rs",
+      "blob": "bcb966c031ed97959871fe623bceb0d1b19fc54a",
+      "sha256": "b8eaf1400adf0c3e7cbe521f67119a1ac7711820d40bbe64bb206c9de7dbe98a"
+    },
+    {
+      "path": "rust/geometry/src/analytic/profile.rs",
+      "blob": "e93c818ecf32e1806396cfe3cae1dbbcd9d839b8",
+      "sha256": "67f6a4f75ffa69ada81321e1191d011697fe49e0eafb432dc5a740f92f64f0f7"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/value.rs",
+      "blob": "dcec11d89304bd41021ed1e9eda51f5f48b8bc83",
+      "sha256": "6af94219bfdf051f3b739e37c706fb11c041005f74338bbcee7a7f238d0199aa"
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "blob": "313e9c291aec81da463ff66b3b58c403869adbff",
+      "sha256": "6af162676d8ff097d5ed91025b9dc1c9cc669547e9f56e4db46576f6aebdd2be"
+    },
+    {
+      "path": "native/smlib-adapter/src/affine.cpp",
+      "blob": "b210709104684a9179ce37030f52fedb8b8765ba",
+      "sha256": "f4be6693ee7d26fd6420e7ea3b348e24650a98c000cb0d3278f0ec04898c1445"
+    }
+  ]
+}

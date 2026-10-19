@@ -1,0 +1,237 @@
+{
+  "status": "read-only source research; no compilation, SDK execution, browser run, or performance qualification",
+  "repository_commit": "bbab059034a60ad7821a8e83c8d3ccb80d79f094",
+  "sdk_commit": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "repository": [
+    {
+      "path": "docs/architecture/geometry-platform-production-plan.md",
+      "git_blob": "3254acc124dadfa1aa3715e06ce4c881f4a19bab",
+      "sha256": "cc08e8ac6543f03851347646ddc7a75e2c8536c65556063d3e3da910842ffdd5",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "rust/geometry/src/program/retained.rs",
+      "git_blob": "6ca3cf2e9da89385bc1329750dc26f2b7edb119a",
+      "sha256": "d2fa4357dc19def912f11eb4245daf1b42181558f7dfdc7c6896d5b51df672d9",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "rust/geometry/src/program/retained_presentation.rs",
+      "git_blob": "352d12381ebd0bb4effd6d12c832b63aad114084",
+      "sha256": "808f0b1b34acefccb6fa9723b3597dd57d3eb00207600b1922675c75929ee2fe",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "rust/geometry/src/program/layers/slice.rs",
+      "git_blob": "d559dfa0216183c4cab3fe2d6b22b63abca862b1",
+      "sha256": "961dedcb694c48e97abee534fe9443501804e58e15c6256dddcf8e8e2b689d41",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "rust/geometry/src/processors/texture/mod.rs",
+      "git_blob": "2e91be67d61dfb7cba375acc69aaf3f1d26cbf21",
+      "sha256": "0ac093fb4c9e1b9c7034b11219671bc4cdbada4e83d30db1727356d0703c153d",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "rust/processing/src/element/presentation_source.rs",
+      "git_blob": "359b94f20da74a8fc49916e12df7eb91c70a44f0",
+      "sha256": "8ef40fbb2125406595873e63e395100b2376345c582fba3202298549bb6b119b",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "rust/processing/src/element/presentation.rs",
+      "git_blob": "1af48d9e31741e869db98e889a307abed2c196f3",
+      "sha256": "8d5acce8dfc9c489be0684af75f5b4dcd2306e977b344f96d9509819835221cf",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "rust/processing/src/element/assembly_submeshes.rs",
+      "git_blob": "9a52c0084b16d9f47e4b3167eb7090f21f2e5625",
+      "sha256": "56c593dfa9b850ea63c67c47a78e5c3ad75418f000b1b21f021432203fd4d57d",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "rust/processing/src/element/assembly_types.rs",
+      "git_blob": "b2d6724882fd15028495515f755ffde144d9f79a",
+      "sha256": "625822ac3ae7bb46a2e24bb4c90344cb7c448e6108615284d21fee41a5a71d9b",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "rust/processing/src/element_mesh_build.rs",
+      "git_blob": "2573b7b81ff67837353bef0d61e292ed49593e6c",
+      "sha256": "7731bf4b00023f717bfbe393326c0ba1ef1ecd0fad9b725ae48810f8efc553ed",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_dependencies.rs",
+      "git_blob": "0f097779d43722485a4d410e34d54a583c529884",
+      "sha256": "8b58443f5236c407f2a1d9526d2bd217875a6b4f3500d9cbf5b096740f7901a1",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_affine.rs",
+      "git_blob": "8774838f13aebe007060992a1d6732f2ce508872",
+      "sha256": "869088fc523edd287ece682caf61b2fee7ee2e9f35dc890c7022914fd5140246",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/retained_values.rs",
+      "git_blob": "322374d2581f3cf4086ebbdb131b7501931a1541",
+      "sha256": "614097b9a620ddf3b5df5614578e8e0cedc2c5731402d08b4d517388fcd1f629",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_mesh.rs",
+      "git_blob": "7e652ed8390decc492477c617260b13c6a20545e",
+      "sha256": "991387ba3d19967690e6622eb8017698a4b516a4edeb4458bbb97a170665cd78",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "rust/geometry-runtime/src/browser_dependencies.rs",
+      "git_blob": "caa93761590aab4b092356aade73b5080e2db3f9",
+      "sha256": "b1b25dec19e2d51ba0bd109119d1c98f4091f7289b0b673d464ad2a2a9726ee8",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "native/smlib-adapter/src/mesh.cpp",
+      "git_blob": "210ec791eb3ed39c3e42a1ebe87693dd5e9227c6",
+      "sha256": "336fb6f3bf9b7d86010ad0ed15f16bf61e0dbf84de1e09d0820e7f4f7d213b26",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "native/smlib-adapter/src/copy.cpp",
+      "git_blob": "7b10587dc082e77055281f45d9144c265fc63987",
+      "sha256": "80e63256ee430e430a33c5597b9447a9b90c5f37e119e6f257b2c243f3449f26",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "native/smlib-adapter/src/adapter.cpp",
+      "git_blob": "c28aa7d9c5faf0895a7f4ff589fdf24bb3303239",
+      "sha256": "ec0c75637a245d901336993f6577dbfb1326bddf326038583ccf5e0ab24872f4",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "native/smlib-adapter/src/affine.cpp",
+      "git_blob": "b210709104684a9179ce37030f52fedb8b8765ba",
+      "sha256": "f4be6693ee7d26fd6420e7ea3b348e24650a98c000cb0d3278f0ec04898c1445",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "git_blob": "313e9c291aec81da463ff66b3b58c403869adbff",
+      "sha256": "6af162676d8ff097d5ed91025b9dc1c9cc669547e9f56e4db46576f6aebdd2be",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "native/smlib-adapter/src/sweep.cpp",
+      "git_blob": "104ee65d9efa9ab1c996869751c0ffdd120a2ebe",
+      "sha256": "222549d865c29c28b334cb877de2091fed6c07f3ad3f5929cdc8848f2a0057cb",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "git_blob": "72b7020fe15c9e5d68bc1f0a05d8e4186103107b",
+      "sha256": "cb62a065c004a9e7752b5ecf3a54d136ec1109cd89c18686a03fa8aa5230089f",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "tests/models/manifest.json",
+      "git_blob": "522d4dde325d339b3ab854c945dceffde01a922d",
+      "sha256": "02b63fb2290e685c10ce23fdee66c364f68202ac898d41badca1eeda484067e3",
+      "filesystem_matches_pin": true
+    }
+  ],
+  "sdk": [
+    {
+      "path": "source/SMLib/inc/SmCopyBrepMap.h",
+      "git_blob": "344a8c2b590fb950cafded5a0fb5844e3bfe512c",
+      "sha256": "740852fa01a9b523df0104482e94147abba01d5a59e6bbc87c8118e870beb559",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "source/SMLib/inc/SmBrep.h",
+      "git_blob": "909bb5ff1ae36e827389203ec4d981bb2090d7eb",
+      "sha256": "7826cddbc8816cb51bba8349f5fedee42070ab63c0a33018c1875134c0d9ab73",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "source/SMLib/inc/SmAttribute.h",
+      "git_blob": "92bcec9823682511895ee5ba477be4600518c6cd",
+      "sha256": "6d56b4e0454b082a946b278c9ec789782e6ff1d8153bbfae2d9b87beb12ca7ad",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "source/SMLib/inc/SmAObject.h",
+      "git_blob": "0a1bfade3982f856267fcd3b726ac6db375f30d7",
+      "sha256": "39c7a7bf9c31e88e82eff024154ed0cd86106daff0954ac59b89cf8fbf1b79b2",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "source/SMLib/inc/SmContext.h",
+      "git_blob": "715b78026fa01500cb2ee8a870bae249fc3aebdf",
+      "sha256": "07cbae5016d3bee7df0afb12dbc957250dfc239a9300432f5e7e60b20e309134",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "source/SMLib/inc/SmTrackTopologyChanges.h",
+      "git_blob": "e098bff4beb624a02274f95bd5931b7c4cc183c6",
+      "sha256": "8b5d62935ff3e49c41e106cb8a1ac4586b5dcd0ba94f480a9ead48240ba081d9",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "source/SMLib/inc/SmPoly.h",
+      "git_blob": "112c0020121750751e48f4f5734cc0e5f8a0bf07",
+      "sha256": "b80cfb825cc0f8eeddd714bc895869b1b9cbf416ca051601027cc0ca0299b493",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "source/SMLib/inc/SmSurface.h",
+      "git_blob": "e118480c14fcda9327250536b94f26811d13069d",
+      "sha256": "36277a74e9508d0670bbf62098f93b9548e366ad049e73ab8f2cb0e09dc4ff0c",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "source/SMLib/src/SmAObject.cpp",
+      "git_blob": "fe4a01e0d2d6c6384c80ace31fa692d5ab2db2ee",
+      "sha256": "2df3bf4093e2f35207b27b0857d405657591e7324c413855224ed1359ab8057b",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "source/SMLib/src/SmBrep.cpp",
+      "git_blob": "07842739d03c15fcdd3cd1ab2732833b27a4941f",
+      "sha256": "5d44d6ac347fa42e4e83fead8bbde82ce46c5ff48e0a973b5c7cddc778a2fca1",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "source/SMLib/src/SmTess.cpp",
+      "git_blob": "c44d06da538984692f15db26d350eceb30d55744",
+      "sha256": "f2832e236559753b8755365a06c0036f71b404bd7b7c784dd086144f6de7fa59",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "source/SMLib/src/SmPrimitiveCreation.cpp",
+      "git_blob": "c2d368227a1b183dc1c84cab34a3cd1dc9a75445",
+      "sha256": "38a15b60587059687c13923ba0b22a6a139b0b931997d0650898d866be8b692c",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "source/SM_API/inc/SmApiBrep.h",
+      "git_blob": "9eb38eaafdd135e3aac1dde4530d2de172669964",
+      "sha256": "ca08db54ad2211c4c98eb229bb875573e799fe731b9226288737181705fb4296",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "source/SM_API/inc/SmApiTessellationParams.h",
+      "git_blob": "ec2e324aab6d1d09a6f8dfe69ba9f3fd5a829c4f",
+      "sha256": "dd47e8c5c96a985d61ff777b77c655fa47d51e18f71f2fd7903e4e8530cafc21",
+      "filesystem_matches_pin": true
+    },
+    {
+      "path": "source/SM_API/src/SmApiBrep.cpp",
+      "git_blob": "646087d1ea047690ad28d7723dac7405f76be636",
+      "sha256": "c1dcdf9899a386199dd9cc3ee3bef9626d324d5558a8b7b6132b19e18fb70df1",
+      "filesystem_matches_pin": true
+    }
+  ]
+}

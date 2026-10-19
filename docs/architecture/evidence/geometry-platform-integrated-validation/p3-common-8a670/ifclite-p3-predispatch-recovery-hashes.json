@@ -1,0 +1,17 @@
+{
+  "base_head": "56de0d7a7336043632dd67a9c8da5965ae545392",
+  "sha256": {
+    "rust/processing/src/element.rs": "aad205ca7d72211190252e684edbc93eb8ce588e8b6dcd89961eca1960f2c8c9",
+    "rust/processing/src/element/session_retained.rs": "64addab721cf7d97db29174c5bee1aedf70d91ec01a264c6962475417c9a629c",
+    "rust/processing/src/element/session_retained/batch.rs": "7bf1ff081cdee5f8e4f05bdf93d993524e467e744428b3391cae4486bece1299",
+    "rust/processing/src/element/session_retained/native.rs": "a3bded00262cdc2658a9b5830ca4464e4f285ec5e176983fb3aad09be27bd317",
+    "rust/processing/src/element/session_retained/browser.rs": "ecaededb0b9fbe87ad64b7c05b00959a00ed8c1a4728604db7830a1e5dbd0b2c",
+    "rust/processing/src/element/session_retained/browser_tests.rs": "893cee85a785fe9a86a18fa759d908e5a9e8d21d97b8c8fefbb2f08fa7ef5c5e",
+    "rust/processing/src/element/session_retained/resource_tests.rs": "6f7cc0ad6955f24f9dce78551fc5daa7a08c360c1ecd0abfdeb1643e1543ae87",
+    "rust/processing/src/element/session_retained/operation_tests.rs": "41b1f3377fdd9ed06f5f15cd0501dd0881a92d869ddb095b4347ee7d59354920",
+    "rust/processing/src/element/session_retained/predispatch_native_tests.rs": "00c60e75f2e3604be3e2ba738b8e4c0ec17b2678a63fd1b326ab1153eb663c89",
+    "rust/processing/src/element/session_retained/predispatch_browser_tests.rs": "69e32e44099bca23a85b305e7f378d30396ba59d5f34574171e86a337bee80c6"
+  },
+  "validation": "rustfmt --edition2021 --config skip_children=true --emit stdout (parse only); git diff --check; no build/tests",
+  "followup": "Shared non-debit captured resource/lifecycle/ISSUED/live-owner checkpoint precedes worker/limit caller errors; six actual-worker tests unrun."
+}

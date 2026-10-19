@@ -1,0 +1,52 @@
+{
+  "commit": "79a7d364448c4ed20860a4a2d3d812fcb0448ced",
+  "qualification": "UNQUALIFIED source implementation checkpoint",
+  "executed": [
+    {
+      "command": "node --experimental-vm-modules --test rust/geometry-runtime/js/retained-driver.test.mjs",
+      "exit_code": 0,
+      "passed": 12,
+      "scope": "protocol/lifetime fixtures, NOT SDK numerics"
+    },
+    {
+      "command": "node --test scripts/stage-retained-browser-assets.test.mjs",
+      "exit_code": 0,
+      "passed": 3,
+      "scope": "small packaging fixtures"
+    },
+    {
+      "command": "cargo metadata --offline --locked --format-version 1",
+      "exit_code": 0,
+      "scope": "dependency metadata only"
+    },
+    {
+      "command": "rustfmt --edition 2021 --config skip_children=true --emit stdout <each changed Rust file>",
+      "exit_code": 0,
+      "files": 26,
+      "scope": "parse only; no formatting writes; NOT Rust types"
+    },
+    {
+      "command": "python3 yaml.safe_load geometry-platform.yml",
+      "exit_code": 0,
+      "scope": "YAML parse only"
+    },
+    {
+      "command": "git diff --cached --check",
+      "exit_code": 0,
+      "scope": "whitespace"
+    }
+  ],
+  "unrun": [
+    "native processing/runtime compilation and shared tests",
+    "cargo test --workspace",
+    "cargo clippy --workspace --all-targets -- -D warnings",
+    "canonical scripts/build-wasm.sh and generated declarations",
+    "actual staged-SDK module Worker numerical/cancellation tests",
+    "workflow execution and actual Chrome asset serving",
+    "root pnpm build/typecheck/test and wasm contract",
+    "real authoring-tool model and native/browser parity corpus",
+    "broader affine target qualification and complete finite-resource coverage",
+    "end-to-end performance/base-branch comparison",
+    "all-consumer/package/ABI/preservation/final-publication qualification"
+  ]
+}

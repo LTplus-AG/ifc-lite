@@ -1,0 +1,118 @@
+{
+  "base_commit": "23d68a60f47a538dd1a369958cf1a47755adc5c5",
+  "source_commit": "a0fa95edd7ad15d2d5d05425808324a55c1cd7bc",
+  "sdk_commit": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "status": "UNRUN: syntax-only checks; no compiled or numerical qualification",
+  "owned_files": [
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "before_sha256": "cb62a065c004a9e7752b5ecf3a54d136ec1109cd89c18686a03fa8aa5230089f",
+      "after_sha256": "2fd4d4a4dd303601e594ea1bb528436d4fff83f5b39f4b31eb443239812bc50f"
+    },
+    {
+      "path": "native/smlib-adapter/PLANE_CONTRACT.md",
+      "before_sha256": null,
+      "after_sha256": "92eaab3693f200c3106235698537ffc44e2c479f9767e8edb8b0b5ebee78cd0c"
+    },
+    {
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "before_sha256": "44eac8e5fe2b1bedc7169d5a4d5e78450406cc74ee96fce6a7720803aabc104d",
+      "after_sha256": "f67077face61a64176dbb0f155aa4d96a13124135728d7ff016f138cadaf6fa3"
+    },
+    {
+      "path": "native/smlib-adapter/src/adapter.cpp",
+      "before_sha256": "ec0c75637a245d901336993f6577dbfb1326bddf326038583ccf5e0ab24872f4",
+      "after_sha256": "7f937d6b815d3248548929d299deb4d3909229d0810e8b2800e8b11e74aede08"
+    },
+    {
+      "path": "native/smlib-adapter/src/plane.cpp",
+      "before_sha256": null,
+      "after_sha256": "491c348edeee425a2c11156ec2b66990f07f940d73b17479448b226c71a4ac3f"
+    },
+    {
+      "path": "native/smlib-adapter/src/plane.hpp",
+      "before_sha256": null,
+      "after_sha256": "f3300a0c0ffd0e1876410011a6718d84f5c4625b526627e7e258875099c13f71"
+    },
+    {
+      "path": "native/smlib-adapter/src/plane_domain.cpp",
+      "before_sha256": null,
+      "after_sha256": "d7e4832c2692c490dc392d74e2f71f0da9ed14e047732774aae4f02a6e167e1e"
+    },
+    {
+      "path": "native/smlib-adapter/src/plane_domain.hpp",
+      "before_sha256": null,
+      "after_sha256": "5590c01616b27bccfec2edb23eba9b0759d766a882d6c7ef5c3023851e2aa245"
+    },
+    {
+      "path": "native/smlib-adapter/src/plane_interval.hpp",
+      "before_sha256": null,
+      "after_sha256": "12405e5045b61f73b797f618977b4123eb326171be42e9392a67a712b431c158"
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "before_sha256": "6af162676d8ff097d5ed91025b9dc1c9cc669547e9f56e4db46576f6aebdd2be",
+      "after_sha256": "800e18af50520867897d70b25e814428e78cd279bcd643fc8d68e70abf520a8a"
+    },
+    {
+      "path": "native/smlib-adapter/tests/adapter_tests.cpp",
+      "before_sha256": "576b89c5439c986a11f56ad69f6cd83c54041eca24ecf186517c47a3c9f4a91b",
+      "after_sha256": "b5e339673bfeb57d77995c9bf2cc123abb07498b87615c9abf54f2cc527ef86c"
+    },
+    {
+      "path": "native/smlib-adapter/tests/plane_tests.cpp",
+      "before_sha256": null,
+      "after_sha256": "206c369c6a104456a66b188836710e58e4573407a708d3454378bcfb62f90847"
+    }
+  ],
+  "sdk_inspected_files": [
+    {
+      "path": "source/SMLib/src/SmBrep.cpp",
+      "sha256": "5d44d6ac347fa42e4e83fead8bbde82ce46c5ff48e0a973b5c7cddc778a2fca1"
+    },
+    {
+      "path": "source/SMLib/src/SmBSplineSurface.cpp",
+      "sha256": "f99a3b406641889e17d117e7d76ef45e24a5ec3b291adbca963f9b773057598a"
+    },
+    {
+      "path": "source/SMLib/src/SmBSplineSurfaceNLib.cpp",
+      "sha256": "b971fc6c381f25805d6b5fec6463359bd20850f0e50fb0c75510c4e563061b1b"
+    },
+    {
+      "path": "source/SMLib/src/SmBSplineCurve.cpp",
+      "sha256": "93c905a12c4124f6761f63ca9dbe2e2ffe400eb32b493c3d514be42de2c41138"
+    },
+    {
+      "path": "source/SMLib/src/SmCone.cpp",
+      "sha256": "74a065f859c430cfa2183798467a323f0692445831c94952f35b04cd5b6df8c2"
+    },
+    {
+      "path": "source/SMLib/src/SmCylinder.cpp",
+      "sha256": "b143e855fd5da8392ca6300f36e39d548a01ef95ee51ecac9c9add96e3375290"
+    },
+    {
+      "path": "source/SMLib/src/SmPlane.cpp",
+      "sha256": "5e554da57cd7b642ceb46c0528d582a906993fcde94779ab8a7a2328ec6e48e5"
+    },
+    {
+      "path": "source/SMLib/src/SmEdge.cpp",
+      "sha256": "cb69520529d7e45c497478262cde2ed2fcbc2557f3a02bdf01a30017c8ead3a7"
+    },
+    {
+      "path": "source/SMLib/src/SmFace.cpp",
+      "sha256": "6004846a29074d8f8923904caabc01e194eceaff7f57f33b68ecdbbec08c51f9"
+    },
+    {
+      "path": "source/SMLib/src/SmMerge.cpp",
+      "sha256": "4e01eaf74c56c6d4b7b1515e82ce3e03c29a35fce3138b8bd7a21f535d4677b3"
+    },
+    {
+      "path": "source/SMLib/src/SmTopology.cpp",
+      "sha256": "6eabe0b108831caeffa807eb6a70a9339883b51e4a64d308170262566ecbecde"
+    },
+    {
+      "path": "source/SM_API/src/SmApiBrep.cpp",
+      "sha256": "c1dcdf9899a386199dd9cc3ee3bef9626d324d5558a8b7b6132b19e18fb70df1"
+    }
+  ]
+}

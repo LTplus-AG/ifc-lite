@@ -1,0 +1,30 @@
+{
+  "commit": "c82a596f12a7272888fd0cf8ab42e48e1ac0be9a",
+  "sha256": {
+    "rust/processing/src/element/session_retained.rs": "992bdfb2efdd10bcbbd53238efbb8fd13355cf869d5dce2ce26fbeef0dbe95d6",
+    "rust/processing/src/element/session.rs": "39cf0aacfac0b2c775f9e9abec2b3d25a5fa523847efc2636e8819aa2aa3c144",
+    "rust/processing/src/element/session_retained/target.rs": "e10e98d77163f5397df9dbc03d50298e04ae538c66ad60a0747f0affb3a67da8",
+    "rust/processing/src/element/session_retained/target_native.rs": "e37d1a2714eee012a07c037aa39b06ad930169dcffe3142df69a412f82976407",
+    "rust/processing/src/element/session_retained/target_browser.rs": "8352b57dc9210f7c0c15ff905701a0e26dd5d95b63afbd7985019de81ce21e93",
+    "rust/processing/src/element/session_retained/batch.rs": "fda86633b49fba4863a061a7d2fd03c8e63a2b67a83fcf6f4af111540c3d4527",
+    "rust/processing/src/element/session_retained/native.rs": "42fb046ad86065892490f9fb0f1fe70bb8fbac760a5867043edcd172a589e9cc",
+    "rust/processing/src/element/session_retained/browser.rs": "fc0e505f0a61287af7f3ba1401ceb1aec97f12c730a26f0cefe32606c7e8f734",
+    "rust/processing/src/element/session_retained/issuance.rs": "927c9e2a045ea262e3cfb8211ada6851ae54173a2eee299d80ed3153d70ad111",
+    "rust/processing/src/element/session_retained/acceptance.rs": "9bc449e1634d097c7446e3b5f3bad8bb4fb2c590705d309569873b9b88122d82",
+    "rust/processing/src/element/session_retained/value.rs": "147d3f57ce931045992e0852c68000c94e3d444533bac5018e29e99718602b80",
+    "rust/processing/src/element/session_retained/entry.rs": "04e4ab6ed3f704b607057697244e5708492616b260d6b78faf76651bb21aace0",
+    "rust/processing/src/element/session_retained/tests.rs": "04904d39c87fbdc93a4549e233edfc6368e4dc99b3502b4f7cf9b7315edc5bc3",
+    "rust/processing/src/element/session_retained/browser_tests.rs": "8436ab7b22dc7069c89426e61d97939cd86e9509a1430c4e0874bdad09e41f3c",
+    "rust/processing/src/element/session_retained/operation_tests.rs": "b3b96dc1a836c05344f59b84f16119795d863372e962dc0257eecbfaee779b85",
+    "rust/processing/src/element/session_retained/resource_tests.rs": "e292fb949fd25baed0f7f9ca5bc9fbdda29a896b78cb4e5d31359cfea358c2a5",
+    "rust/geometry-runtime/src/process_control.rs": "79164764b51e06fd440ef3bbb62d7dad0abb958b198d4589cddc3f294b830111",
+    "rust/geometry-runtime/src/runtime_owner.rs": "b5be12611af7a687bda74bdeacd8aa5258389a8f0c587906d83bc871e894eed7",
+    "rust/geometry-runtime/src/browser.rs": "2f48c2302b46ef318699f091c2921279525f2ff708fc5bb4f336223359e36619",
+    "rust/geometry-runtime/src/browser_bridge.rs": "c0322dae94c81139b48e73c3d85718371c720a86b71c8b6e351884e6977ca10a",
+    "rust/geometry-runtime/src/browser_dependencies.rs": "c65ba4e1428403cb3626cee9eb20dbb41c13ee587ac421b8d23b110291674939",
+    "rust/geometry-runtime/src/browser_affine.rs": "a468761fef8f38328320e44cee3e04274c78297fad7185115622be3c3a0e0e63",
+    "rust/geometry-runtime/src/worker_dependencies.rs": "87306b4460f9bedf968af70c61a239d358c5614bf4a2319ae0575a6e6664551b",
+    "rust/geometry-runtime/src/worker_affine.rs": "869088fc523edd287ece682caf61b2fee7ee2e9f35dc890c7022914fd5140246",
+    "rust/geometry/src/program/retained.rs": "606563c92a299dda12c2d7aa5df1ed137b63d025e65b20c08c47c0ddabfc8fe6"
+  }
+}

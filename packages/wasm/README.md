@@ -10,6 +10,17 @@ Pre-built WebAssembly bindings for the IFClite Rust core, covering STEP parsing 
 npm install @ifc-lite/wasm
 ```
 
+The package includes generated private JavaScript helpers under `pkg/snippets/`
+when the WASM bindings import them. Keep these files beside the generated glue;
+copying only `ifc-lite.js` and the `.wasm` file can leave an incomplete runtime.
+The canonical build and prebuilt fetch generate npm ignore metadata so
+wasm-pack's broad Git ignore does not exclude these helpers from publication.
+`pnpm build:wasm:fetch` validates the static helper dependency closure and runtime
+exports before installation, preserving committed types and an existing runtime
+if validation fails. Validation parses code without running constructors or
+loading optional SDK assets. Those assets remain an explicit retained-execution
+deployment requirement, separate from the generated runtime helpers.
+
 ## Direct WASM use
 
 The text-based entity scanner (`scanEntitiesFast`) takes the raw IFC text

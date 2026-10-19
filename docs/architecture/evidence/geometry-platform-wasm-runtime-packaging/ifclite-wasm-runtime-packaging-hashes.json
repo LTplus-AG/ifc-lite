@@ -1,0 +1,63 @@
+{
+  "head": "a06415a4b72b21688e6032e0258744740fb21bd2",
+  "uncommitted": true,
+  "changed_paths": [
+    {
+      "path": "packages/wasm/package.json",
+      "sha256": "c7415d29f4f81e5d86339f31d4096cd960885155e18714471515be3e865fd698",
+      "bytes": 1114,
+      "lines": 49
+    },
+    {
+      "path": "packages/wasm/README.md",
+      "sha256": "c1cdfea3f12a64a582877fbcd3a0c9eb84fced3a5d01e6638e8d5df6c56f740a",
+      "bytes": 14632,
+      "lines": 295
+    },
+    {
+      "path": "scripts/build-wasm.sh",
+      "sha256": "2268cc4beb2b6e9649576d3f4d0f750539aa57208c16e13c6a9520c0816f6355",
+      "bytes": 14008,
+      "lines": 282
+    },
+    {
+      "path": "scripts/fetch-prebuilt-wasm.mjs",
+      "sha256": "a39148bc8701283e9929d5a8aae78e7a9d6385c1f7bab899edd829262f1d8b44",
+      "bytes": 7703,
+      "lines": 177
+    },
+    {
+      "path": "scripts/fetch-prebuilt-wasm.test.mjs",
+      "sha256": "fc0999709db7717f2f95c7d89de04413400e5fd6f405d1b6360bf529c800f4f7",
+      "bytes": 12295,
+      "lines": 241
+    },
+    {
+      "path": "scripts/lib/wasm-runtime-assets.mjs",
+      "sha256": "8317e4435175fb0def1e8169562bdf18e4d5d408b4624a9611d083faab88ccaf",
+      "bytes": 2525,
+      "lines": 55
+    },
+    {
+      "path": ".changeset/green-paws-build.md",
+      "sha256": "dc9b569a93ac6d31f4576718ad3d2ef2fe1bb4d57257afe9dd788e44b8312fd0",
+      "bytes": 175,
+      "lines": 5
+    }
+  ],
+  "test_command": "node --test scripts/fetch-prebuilt-wasm.test.mjs scripts/lib/wasm-export-parity.test.mjs",
+  "test_result": {
+    "passed": 27,
+    "failed": 0,
+    "skipped": 0,
+    "duration_ms": 7671.865743
+  },
+  "test_log": "/tmp/ifclite-wasm-runtime-assets-tests.log",
+  "test_log_sha256": "99159d1a151d669fb2c63b53bce5e788aff39a8bdb518177fc1a13482c67a382",
+  "additional_checks": [
+    "bash -n scripts/build-wasm.sh",
+    "git diff --check (changed tracked files)"
+  ],
+  "changeset_command": "pnpm changeset add --minor @ifc-lite/wasm -m <recorded summary>",
+  "qualification": "local synthetic file-install/parity and real local npm-packlist behavior only; actual canonical WASM/package/bundler/browser unrun; no real npm fetch/build/publish"
+}

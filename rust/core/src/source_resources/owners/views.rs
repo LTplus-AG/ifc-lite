@@ -12,7 +12,8 @@ impl<A: Domain> Clone for Value<'_, A> { fn clone(&self) -> Self { *self } }
 impl<'a, A: Domain> AttributeRef<'a, A> {
     pub fn raw(value: &'a RawAttributeValue) -> Self { Self(Value::Raw(value)) }
     pub fn owned(value: &'a Node<A>) -> Self { Self(Value::Owned(value)) }
-    fn scalar(self) -> Option<Scalar> {
+    /// Exact immediate variant; typed wrappers remain distinguishable.
+    pub fn scalar(self) -> Option<Scalar> {
         match self.0 {
             Value::Raw(RawAttributeValue::EntityRef(id)) => Some(Scalar::EntityRef(*id)),
             Value::Raw(RawAttributeValue::Integer(value)) => Some(Scalar::Integer(*value)),

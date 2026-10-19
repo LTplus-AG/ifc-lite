@@ -39,6 +39,8 @@ mod report_sink;
 mod scanner;
 mod slots;
 mod tokenizer;
+#[cfg(test)]
+pub(crate) use tokenizer::MAX_NESTING_DEPTH;
 
 pub use keyword::{find_keyword, keyword_ends_with, keyword_eq, keyword_starts_with};
 pub use header::declared_schema_bounded;

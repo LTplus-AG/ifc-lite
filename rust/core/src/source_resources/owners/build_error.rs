@@ -8,6 +8,7 @@ pub(super) enum OwnerError {
     Overflow,
     ForeignDomain,
     Invariant,
+    Nesting,
 }
 
 /// A failed consuming operation returns the original donor, without copying it.

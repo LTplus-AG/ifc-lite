@@ -21,6 +21,7 @@ pub(super) enum NodeKind<A: Domain> {
 pub(super) struct TypedBlock<A: Domain> {
     pub name: OwnedText<A>,
     pub value: Node<A>,
+    depth: u32,
 }
 impl<A: Domain> Stored<A> for TypedBlock<A> {
     fn compatible(&self, allocator: &A) -> bool {
@@ -38,6 +39,13 @@ impl<A: Domain> Clone for Node<A> {
     }
 }
 impl<A: Domain> Node<A> {
+    fn depth(&self) -> u32 {
+        match &self.kind {
+            NodeKind::Scalar(_) | NodeKind::Text(_, _) => 0,
+            NodeKind::List(list) => list.1 + 1,
+            NodeKind::Typed(typed) => typed.get().depth,
+        }
+    }
     /// Scalars own no backing, carry no authority, and can be copied freely.
     pub fn scalar(value: Scalar) -> Self { Self { kind: NodeKind::Scalar(value) } }
     pub fn try_text(allocator: &A, kind: TextKind, text: OwnedText<A>)
@@ -49,6 +57,9 @@ impl<A: Domain> Node<A> {
     pub fn try_list(allocator: &A, list: ListOwner<A>) -> Result<Self, BuildError<ListOwner<A>>> {
         if let Err(error) = allocator.enter() { return Err(BuildError::new(error, list)); }
         if !list.compatible(allocator) { return Err(BuildError::new(OwnerError::ForeignDomain, list)); }
+        if list.1 >= crate::parser::MAX_NESTING_DEPTH {
+            return Err(BuildError::new(OwnerError::Nesting, list));
+        }
         Ok(Self { kind: NodeKind::List(list) })
     }
     pub fn try_typed(allocator: &A, name: OwnedText<A>, value: Self)
@@ -57,7 +68,11 @@ impl<A: Domain> Node<A> {
         if !name.compatible(allocator) || !value.compatible(allocator) {
             return Err(BuildError::new(OwnerError::ForeignDomain, (name, value)));
         }
-        Shared::try_new(allocator, TypedBlock { name, value })
+        let Some(depth) = value.depth().checked_add(1)
+            .filter(|depth| *depth <= crate::parser::MAX_NESTING_DEPTH) else {
+            return Err(BuildError::new(OwnerError::Nesting, (name, value)));
+        };
+        Shared::try_new(allocator, TypedBlock { name, value, depth })
             .map(|typed| Self { kind: NodeKind::Typed(typed) })
             .map_err(|error| BuildError::new(error.error, (error.donor.name, error.donor.value)))
     }
@@ -107,26 +122,32 @@ impl<A: Domain> NodeWeak<A> {
     }
 }
 
-pub(super) struct ListOwner<A: Domain>(Shared<OwnedBuffer<Node<A>, A>, A>);
-pub(super) struct ListWeak<A: Domain>(SharedWeak<OwnedBuffer<Node<A>, A>, A>);
+pub(super) struct ListOwner<A: Domain>(Shared<OwnedBuffer<Node<A>, A>, A>, u32);
+pub(super) struct ListWeak<A: Domain>(SharedWeak<OwnedBuffer<Node<A>, A>, A>, u32);
 impl<A: Domain> ListOwner<A> {
     pub fn try_new(allocator: &A, values: OwnedBuffer<Node<A>, A>)
         -> Result<Self, BuildError<OwnedBuffer<Node<A>, A>>> {
         if let Err(error) = allocator.enter() { return Err(BuildError::new(error, values)); }
         if !values.compatible(allocator) { return Err(BuildError::new(OwnerError::ForeignDomain, values)); }
-        Shared::try_new(allocator, values).map(Self)
+        // Charge the entire inspection before scanning. Root attributes add no
+        // lexical level; only Node::try_list wraps this storage in a STEP list.
+        if let Err(error) = allocator.copy_work(values.len(), 0) {
+            return Err(BuildError::new(error, values));
+        }
+        let depth = values.iter().map(Node::depth).max().unwrap_or(0);
+        Shared::try_new(allocator, values).map(|block| Self(block, depth))
     }
     pub fn view(&self) -> AttributeListRef<'_, A> { AttributeListRef::owned(self.0.get()) }
-    pub fn downgrade(&self) -> ListWeak<A> { ListWeak(self.0.downgrade()) }
+    pub fn downgrade(&self) -> ListWeak<A> { ListWeak(self.0.downgrade(), self.1) }
 }
 impl<A: Domain> Clone for ListOwner<A> {
-    fn clone(&self) -> Self { Self(self.0.clone()) }
+    fn clone(&self) -> Self { Self(self.0.clone(), self.1) }
 }
 impl<A: Domain> Clone for ListWeak<A> {
-    fn clone(&self) -> Self { Self(self.0.clone()) }
+    fn clone(&self) -> Self { Self(self.0.clone(), self.1) }
 }
 impl<A: Domain> ListWeak<A> {
-    pub fn upgrade(&self) -> Option<ListOwner<A>> { self.0.upgrade().map(ListOwner) }
+    pub fn upgrade(&self) -> Option<ListOwner<A>> { self.0.upgrade().map(|block| ListOwner(block, self.1)) }
 }
 impl<A: Domain> Stored<A> for ListOwner<A> {
     fn compatible(&self, allocator: &A) -> bool { self.0.allocator().same_domain(allocator) }

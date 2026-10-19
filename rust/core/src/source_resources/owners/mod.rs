@@ -16,3 +16,5 @@ mod attribute_tests;
 mod lifetime_tests;
 #[cfg(test)]
 mod buffer_cache_tests;
+#[cfg(test)]
+mod composition_tests;

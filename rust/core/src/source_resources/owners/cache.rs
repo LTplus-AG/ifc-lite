@@ -22,11 +22,15 @@ impl<T: Stored<A>, A: Domain> CacheOwner<T, A> {
         if let Err(error) = allocator.enter() { return Err(BuildError::new(error, value)); }
         if !value.compatible(&allocator) { return Err(BuildError::new(OwnerError::ForeignDomain, value)); }
         if let Some(slot) = self.entries.get_mut(&key) { return Ok(Some(std::mem::replace(slot, value))); }
-        let count = self.entries.capacity();
-        let Some(bytes) = count.checked_mul(std::mem::size_of::<(u32, T)>()) else {
-            return Err(BuildError::new(allocator.overflow_error(), value));
-        };
-        if let Err(error) = allocator.copy_work(count, bytes) { return Err(BuildError::new(error, value)); }
+        // hashbrown capacity includes only slots usable without a rehash,
+        // accounting for tombstones. Spare-capacity insertion copies no table.
+        if self.entries.len() == self.entries.capacity() {
+            let count = self.entries.capacity();
+            let Some(bytes) = count.checked_mul(std::mem::size_of::<(u32, T)>()) else {
+                return Err(BuildError::new(allocator.overflow_error(), value));
+            };
+            if let Err(error) = allocator.copy_work(count, bytes) { return Err(BuildError::new(error, value)); }
+        }
         if let Err(error) = self.entries.try_reserve(1) {
             let error = match error {
                 hashbrown::TryReserveError::CapacityOverflow => allocator.overflow_error(),

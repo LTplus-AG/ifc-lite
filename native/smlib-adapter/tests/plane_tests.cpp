@@ -236,8 +236,11 @@ void control_net_interior() {
 }
 }
 void run_plane_tests() {
+    std::fprintf(stderr,"plane BEGIN context metadata\n");
     run_context_metadata_tests();
+    std::fprintf(stderr,"plane BEGIN source preflight\n");
     run_plane_preflight_tests();
+    std::fprintf(stderr,"plane BEGIN C ABI qualification\n");
     require((ifclite_smlib_capabilities()&64u)!=0 && (ifclite_smlib_capabilities()&128u)==0,"unary clip only, no paired split advertisement");
     uint64_t s=0; ok(ifclite_smlib_session_create(&s));
     ifclite_smlib_handle box{}; ok(ifclite_smlib_box(s,0,0,0,2,2,2,&box));
@@ -305,7 +308,9 @@ void run_plane_tests() {
     clip_case(s,placed,{4999999,-2000000,100,-0.5,0,0},1,2,144,192);
     // Input release must not affect a previous independently owned output.
     ok(ifclite_smlib_session_destroy(s));
+    std::fprintf(stderr,"plane BEGIN control net interior\n");
     control_net_interior();
+    std::fprintf(stderr,"plane BEGIN cylinder domains\n");
     cylinder_domains();
     std::puts("SMLib unary clip: analytical side/volume, actual domain, topology and lifetime witnesses passed");
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // geometric invariants and owned-handle lifetime through the C boundary.
 #include "ifclite_smlib.h"
+#include "copy.hpp"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -26,11 +27,13 @@ void near(double actual, double expected) {
     expect(std::abs(actual - expected) < 1e-6, "analytic solid volume");
 }
 }
-int main() {
+int main() try {
     run_empty_tests();
     run_mesh_tests();
     run_affine_tests();
+    std::fprintf(stderr,"owned boundary BEGIN sweeps\n");
     run_sweep_tests();
+    std::fprintf(stderr,"owned boundary BEGIN legacy C ABI transactions\n");
     expect(header_works_in_c() == 1, "version from pure C translation unit");
     uint64_t session, other;
     ok(ifclite_smlib_session_create(&session)); ok(ifclite_smlib_session_create(&other));
@@ -102,6 +105,10 @@ int main() {
     expect(ifclite_smlib_volume(session,out,1e-8,&value) == IFCLITE_SMLIB_INVALID_SESSION,
         "destroyed session invalidates all handles");
     ok(ifclite_smlib_session_destroy(other));
+    std::fprintf(stderr,"owned boundary BEGIN plane/context qualification\n");
     run_plane_tests();
     std::puts("SMLib C ABI: volume, manifold, immutable transactions and handle lifetime passed");
+} catch(const KernelDomainTainted& taint) {
+    std::fprintf(stderr,"owned boundary TAINTED (last BEGIN stage above): %s\n",taint.message.c_str());
+    return EXIT_FAILURE; // Never resume SDK work after a tainted operation.
 }

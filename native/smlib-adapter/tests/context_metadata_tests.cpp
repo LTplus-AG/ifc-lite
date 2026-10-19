@@ -62,6 +62,8 @@ public:
     }
 };
 void scenario(bool explicit_context,bool source_defaults) {
+    std::fprintf(stderr,"context metadata BEGIN scenario explicit_context=%u source_defaults=%u\n",
+        unsigned(explicit_context),unsigned(source_defaults));
     auto* context=SmApiGetOrCreateContext(); require(context,"live SDK context");
     raw_context::Restore original(context); // Includes fixture setup/destruction.
     SmBrep *a=nullptr,*b=nullptr;
@@ -89,6 +91,7 @@ void scenario(bool explicit_context,bool source_defaults) {
     auto* observed=new (*context) ObservingTrim(*uses[0]->GetUVTrimCurve(),state,calls);
     uses[0]->SetUVTrimCurve(observed,0,TRUE); state.check();
     {
+        std::fprintf(stderr,"context metadata BEGIN checked copy\n");
         auto copy=checked_brep_copy(source.get());
         require(calls>0,"context observed inside actual MergeBrep trim copy"); state.check();
         require(same(state.source_raw,raw_context::Access<SmBrep>::get(*copy)) &&
@@ -96,6 +99,7 @@ void scenario(bool explicit_context,bool source_defaults) {
     }
     state.check();
     for(double x:{0.5,3.}) {
+        std::fprintf(stderr,"context metadata BEGIN clip x=%.17g\n",x);
         calls=0; const double plane[]={x,0,0,1,0,0}; ifclite_smlib_plane_certificate certificate{};
         auto result=clip_finite_plane(source.get(),plane,1,IFCLITE_SMLIB_INTERSECTION,certificate);
         require(calls>0,"clip host copy observed intermediate context"); state.check();
@@ -108,17 +112,20 @@ void scenario(bool explicit_context,bool source_defaults) {
     }
     state.check();
     const double plane[]={0.5,0,0,1,0,0}; ifclite_smlib_plane_certificate certificate{}; bool refused=false;
+    std::fprintf(stderr,"context metadata BEGIN refused Union\n");
     try { clip_finite_plane(source.get(),plane,1,IFCLITE_SMLIB_UNION,certificate); }
     catch(const SweepFailure& e) { refused=e.status==IFCLITE_SMLIB_UNSUPPORTED; }
     require(refused && !kernel_domain_is_tainted(),"typed refusal preserves usable context"); state.check();
     auto empty=raw_context::construct_brep(context); state.check();
     const auto empty_metadata=raw_context::Access<SmBrep>::get(*empty);
+    std::fprintf(stderr,"context metadata BEGIN empty-input clip\n");
     auto result=clip_finite_plane(empty.get(),plane,1,IFCLITE_SMLIB_INTERSECTION,certificate);
     require(certificate.empty==1 && semantically_empty_brep(result.get()) &&
         same(empty_metadata,raw_context::Access<SmBrep>::get(*empty)),"empty-input copy preserves raw source policy");
     state.check();
 }
 void sentinel_zone_copy_only() {
+    std::fprintf(stderr,"context metadata BEGIN raw sentinel empty copy\n");
     // Raw metadata compatibility only:9876543.21 is NOT a valid inherited zone
     // for clipping a two-unit model. Use empty SDK topology without geometry,
     // and invoke no clipping, volume or positive geometry oracle here.

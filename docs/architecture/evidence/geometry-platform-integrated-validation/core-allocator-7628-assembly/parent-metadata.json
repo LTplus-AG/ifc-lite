@@ -6,5 +6,8 @@
   "compiler": "UNRUN",
   "tests": "UNRUN",
   "clippy": "UNRUN",
-  "wasm": "UNRUN"
+  "wasm": "UNRUN",
+  "diff_check_scope": "Initial unstaged imported source delta only; final staged archive check recorded by packaging correction.",
+  "initial_staged_archive_diff_check_exit": 2,
+  "final_staged_archive_diff_check_exit": 0
 }

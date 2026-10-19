@@ -1,0 +1,115 @@
+{
+  "base": "55f3d3aa28507058dca262455c78c5cd8eca12e8",
+  "head": "f3fa41ffc739f3d96f4bc12bf039230cdcb1d88a",
+  "tree": "ae095e7448dd557c20929f0f6e3335e8d13d4a48",
+  "patch": {
+    "path": "/tmp/ifclite-imported-current-qualification/owned.patch",
+    "sha256": "9161d48c9d2b3b3061662c2fa75c46266003656d60c65a192b2a3f4126c5664a"
+  },
+  "changedFiles": {
+    "packages/ifcx/src/generated/imported-geometry-static.js": "e50cfdfe881a56a99cc52faacb00ce9e8a071f4fa1f223f6f2f859380d0b40ac",
+    "packages/ifcx/src/generated/imported-geometry.provenance.json": "bc5039b288a87ce898d30d8dc7c97888c16ff89dabd1f5d5b77dd8fc3c3b8af2",
+    "packages/ifcx/src/generated/imported-geometry.ts": "eb980e33b25e5a11d2c283d882f12e4dd8348fd3e6db5d1eda20887978522e4d",
+    "rust/imported-geometry/src/scene.rs": "3b3c9975843a31be8f9a406260a079beef8457fa4c598f54ceb759a00da66333",
+    "rust/imported-geometry/src/scene_tests.rs": "2a0403e5d5738da5787055e4474fac94500d14bb564cb83085286250ea032c8c",
+    "scripts/README-imported-geometry.md": "5b8d2bad3406c0baa33b14db71dec7170b9fb00ac3cb1a59d6eaab1e83943b62",
+    "scripts/build-imported-geometry.mjs": "e30844fbd36cf4c79e3e34a5873669b1640a48ae589626950353fab82e1712ca",
+    "scripts/compare-imported-capture.mjs": "ce11897b07064af6cbd1faf6374ace47beacd2cff332c5d51bbce5a9223050bf",
+    "scripts/compare-imported-geometry.mjs": "4331a080a1acbb4fd2ba601b96554931f8a92da327073b352fb3b8a758c371b5",
+    "scripts/imported-artifacts.test.mjs": "62da691df446848b36babf4f364c6bd5d5fe25645f1ead0bf7d93007034c4c48",
+    "scripts/lib/imported-artifacts.mjs": "c96ec698f52863ece2d89450e5a545e9252afbaf48bae511d8913161004fd1fb",
+    "turbo.json": "c1a935772620cec83c8e1cf7c6d4e2d1b6474bf2c8e262c22638988382f160e1"
+  },
+  "artifacts": {
+    "imported-geometry-static.js": "e50cfdfe881a56a99cc52faacb00ce9e8a071f4fa1f223f6f2f859380d0b40ac",
+    "imported-geometry.ts": "eb980e33b25e5a11d2c283d882f12e4dd8348fd3e6db5d1eda20887978522e4d",
+    "imported-geometry.provenance.json": "bc5039b288a87ce898d30d8dc7c97888c16ff89dabd1f5d5b77dd8fc3c3b8af2",
+    "imported-geometry-static.d.ts": "ef70966d6b82a701ed2f50479ecccbf7b06cd991f28fda9d93a314d300357cb2"
+  },
+  "receipts": {
+    "initial-generation": {
+      "job": "86896e82-c271-4668-bab8-29ddd6f411f1",
+      "originalReceipt": "/home/louistrue/build-workers/worker-state/jobs/86896e82-c271-4668-bab8-29ddd6f411f1/receipt.json",
+      "receiptSha256": "ce658220e7b5e69656f27d21fee4496498a43eb413ae91e2a8672de2b4b22f65",
+      "source": "165f2da22cd51aab8ce9c9880e89d1d803e4b83c",
+      "state": "failed",
+      "exitCode": 1,
+      "error": "qualified command changed source",
+      "sourceUnchanged": false
+    },
+    "final-generator-regeneration": {
+      "job": "6ce45a6f-d273-4671-9ef8-3ed7a06aa4fb",
+      "originalReceipt": "/home/louistrue/build-workers/worker-state/jobs/6ce45a6f-d273-4671-9ef8-3ed7a06aa4fb/receipt.json",
+      "receiptSha256": "b1c421070dd8e26822595f15688825f07e50cd993ad598743128cdb210a5e547",
+      "source": "cb0f601fbda9a8534600f062909f78b9d2fb5c2c",
+      "state": "failed",
+      "exitCode": 1,
+      "error": "qualified command changed source",
+      "sourceUnchanged": false
+    },
+    "root-consumer": {
+      "job": "45918360-13e0-4298-97a5-51c801d4cbbb",
+      "originalReceipt": "/home/louistrue/build-workers/worker-state/jobs/45918360-13e0-4298-97a5-51c801d4cbbb/receipt.json",
+      "receiptSha256": "55be74f8c9d0e35452e3298186881667b737c1f1c451d03885c8214e0ad98058",
+      "source": "3f0f9f522561de0451328ea87c1cd0aecbe54fdb",
+      "state": "failed",
+      "exitCode": 1,
+      "error": null,
+      "sourceUnchanged": true
+    },
+    "extended-comparator-admission-refusal": {
+      "job": "59035f34-2706-491f-bba1-31ee237c1a7b",
+      "originalReceipt": "/home/louistrue/build-workers/worker-state/jobs/59035f34-2706-491f-bba1-31ee237c1a7b/receipt.json",
+      "receiptSha256": "27629151c73d14c091756535c88f97cfa1cde23df965f5d65d37eae69f2b0e64",
+      "source": "8683a5b06524df040e06e57c0897f6929ef7f2b6",
+      "state": "failed",
+      "exitCode": 1,
+      "error": "host capacity guard refused admission",
+      "sourceUnchanged": true
+    }
+  },
+  "preMigration": {
+    "source": "86adb595c0c6429e1a0c423b962f9b153a1d2d0a",
+    "receipt": "/tmp/ifclite-imported-current-qualification/reproducible/comparison.json",
+    "sha256": "eff86c0d40abe45d3dfbd8e2d317cf60f6d1e10533dc07182c83fb83feb2afab",
+    "realScenesExactlyEqual": 7,
+    "rawBitDirectCasesExactlyEqual": 8
+  },
+  "immediateParent": {
+    "source": "55f3d3aa28507058dca262455c78c5cd8eca12e8",
+    "committedStaticSha256": "a77b2a56a5b493ce8c4a529de57aba1ffbff4722ab7fb827125e48af47d8fc5b",
+    "numericalCasesPassed": 13,
+    "errorCasesPassed": 1,
+    "fullConsumerExitCode": 1,
+    "logSha256": "795f1059d2e773b2f54d66a903e5b2242592ef8256aeaf07b4b261a2015bf041",
+    "finding": "55f committed static artifact rejects current graph packet on first Hello Wall fixture; source-regenerated55f baseline pending admission"
+  },
+  "coverage": {
+    "ifcxTests": {
+      "pass": 229,
+      "fail": 0,
+      "skip": 0
+    },
+    "fixtureOnlyProvisioningPublicationTests": {
+      "pass": 3,
+      "fail": 0
+    },
+    "verify": "passed",
+    "typecheck": "root composite script ran72packages; failed canonical WASM dependency on inherited E0616 private expected_router/expected_decoder at inner_ready.rs133-134",
+    "nativeImportedTests": "parent owns workspace run; not duplicated"
+  },
+  "residuals": [
+    "Immediate-parent source regeneration and real-scene comparison need fleet admission",
+    "Root typecheck needs exact parent27b prerequisite; no corrected-source full graph run performed",
+    "Any recorded imported source or Cargo.lock change requires regeneration; parent27b three-file program fix does not alter recorded imported inputs",
+    "No USD export/reopen, actual browser/moduleWorker, packaging installation matrix or performance qualification claimed",
+    "Integration owner owns changeset/API/release bookkeeping and complete migration verdict"
+  ],
+  "sourceClean": true,
+  "patchApplicationCheck": {
+    "target": "d751b09658afd7322ea8d12640a4a824e956e2f6",
+    "temporaryIndex": true,
+    "passed": true,
+    "sourceMutated": false
+  }
+}

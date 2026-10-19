@@ -1,0 +1,59 @@
+{
+  "id": "59035f34-2706-491f-bba1-31ee237c1a7b",
+  "host": {
+    "host": "pop-os",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 32,
+    "availableMemoryBytes": 112206241792,
+    "totalMemoryBytes": 134644969472,
+    "python": "3.12.3",
+    "time": 1792386169.831603
+  },
+  "cwd": "/home/louistrue/build-workers/worker-state/checkouts/8683a5b06524df040e06e57c0897f6929ef7f2b6",
+  "sourceBefore": {
+    "commit": "8683a5b06524df040e06e57c0897f6929ef7f2b6",
+    "tree": "8397c426be07ccd877d709edf90be028f7180c09",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "a0216e232726394c443842d9e60b8668a13bd4682d1ea21d6db5334c2f4dff47",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+    }
+  },
+  "command": [
+    "bash",
+    "/home/louistrue/build-workers/setup/projects-20261017/ifc-lite/env-exec.sh",
+    "bash",
+    "-c",
+    "pnpm install --frozen-lockfile --prefer-offline && node scripts/build-imported-geometry.mjs --verify && node scripts/fixtures/fetch-fixtures.mjs ifc5/Hello_Wall_hello-wall.ifcx ifc5/Hello_Wall_advanced_3rd-window.ifcx ifc5/Point_Cloud_point-cloud.ifcx ifc5/Point_Cloud_S1-pointcloud.ifcx && pnpm build --filter=@ifc-lite/ifcx && node --disallow-code-generation-from-strings scripts/compare-imported-geometry.mjs 55f3d3aa28507058dca262455c78c5cd8eca12e8 && node --test scripts/imported-artifacts.test.mjs && node scripts/check-source-text-assertions.mjs && node scripts/check-test-wiring.mjs"
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792386169.831047,
+  "resources": [
+    "/home/louistrue/build-workers/worker-state/checkouts/8683a5b06524df040e06e57c0897f6929ef7f2b6",
+    "/home/louistrue/build-workers/worker-state/targets/f04cb32bf8bf1e7754bd"
+  ],
+  "state": "failed",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "error": "host capacity guard refused admission",
+  "exitCode": 1,
+  "finishedAt": 1792386300.6226528,
+  "sourceAfter": {
+    "commit": "8683a5b06524df040e06e57c0897f6929ef7f2b6",
+    "tree": "8397c426be07ccd877d709edf90be028f7180c09",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "a0216e232726394c443842d9e60b8668a13bd4682d1ea21d6db5334c2f4dff47",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {}
+}

@@ -1,0 +1,67 @@
+{
+  "baselineSource": "86adb595c0c6429e1a0c423b962f9b153a1d2d0a",
+  "baselineQualificationSha256": "13a53df3040ff9c4fcb911cbd33145f9d14c38d3f6a0d62366689d2747322d98",
+  "candidateSource": "f3fa41ffc739f3d96f4bc12bf039230cdcb1d88a",
+  "candidateEntry": "packages/ifcx/src/index.ts",
+  "candidateStaticSha256": "e50cfdfe881a56a99cc52faacb00ce9e8a071f4fa1f223f6f2f859380d0b40ac",
+  "candidateStaticVerified": true,
+  "mode": "fixture-only production-source consumer execution; no build",
+  "records": [
+    {
+      "name": "Domestic_Hot_Water_domestic-hot-water.ifcx.json",
+      "baselineSha256": "5973e472efe419551696f6eb3ebe541376b3ae0472cef3539ad704d70368c873",
+      "candidateSha256": "dae7544a646bf37e7aabfad0fc73c81103da50a8f2980d1952240edaa8b5ef78",
+      "exactFieldsEqual": true
+    },
+    {
+      "name": "Georeferencing_georeferenced-bridge-deck.ifcx.json",
+      "baselineSha256": "3a06dc30e79810fa1d1c95d86b6e21b2a4f57d4544fdcf9a0ed6e33385d412b0",
+      "candidateSha256": "39df4298e9ed3999a44ec301ac0e84b04de7454507e16f528bc2bdbd7b80a723",
+      "exactFieldsEqual": true
+    },
+    {
+      "name": "Hello_Wall_hello-wall.ifcx.json",
+      "baselineSha256": "8420123755d64237250e86658eff4a3a45c6626c4581f2c42f2c0f305c32cb15",
+      "candidateSha256": "6c1793a53e8df737af59a44a76b307d58e9efc69bacb0e461108d5e9bb917f2d",
+      "exactFieldsEqual": true
+    },
+    {
+      "name": "PCERT-Sample-Scene_Building-Architecture.ifcx.json",
+      "baselineSha256": "d554cbda6039ef3cd33411a9a5945fd382dcd5114187960f96cccf1f7c744dc2",
+      "candidateSha256": "dcd3649240ccfffbf1c75a44fbeccc8a8917b89f7818af08728d01d2e1663ea2",
+      "exactFieldsEqual": true
+    },
+    {
+      "name": "Point_Cloud_point-cloud.ifcx.json",
+      "baselineSha256": "27858c9a6709505f3cc130af294b1b4fb344148516d8842ec6af2017b390ace7",
+      "candidateSha256": "27858c9a6709505f3cc130af294b1b4fb344148516d8842ec6af2017b390ace7",
+      "exactFieldsEqual": true
+    },
+    {
+      "name": "fire-rating.json",
+      "baselineSha256": "98f571e424102a6f1ab6c9ac710a5b57f1f6dd4cfadb8dc330ba2f9b8dcebcc1",
+      "candidateSha256": "a9bc3f2ffa4deacc6f7594acd1f13d26cc32cd12d835fc3eaf6d4019bab7db86",
+      "exactFieldsEqual": true
+    },
+    {
+      "name": "pbr.json",
+      "baselineSha256": "fe9e1c329d037711fda18a644035c71d56c0e4b39338a2fc96da1f8210b9250f",
+      "candidateSha256": "def21c1e5a4c9963815d3aa853f0afb84ec15ce0916adc773047adbcc2e04550",
+      "exactFieldsEqual": true
+    }
+  ],
+  "directCases": 8,
+  "directBaselineSha256": "6bd3d71f61f77d546dfd88a4797ff4b3c48e711841b217e5ec7985dac470b561",
+  "directCandidateSha256": "dc36103c6fc95e334273bf417dab4e7a495556f8e6c14da9c4b71d1f1fde9455",
+  "scope": "Captured full scene fields, ordering, typed-array bytes, float bits, errors and absence; full/incremental overlays asserted by original harness",
+  "exclusions": [
+    "parseTime",
+    "ephemeral layer UUIDs replaced by supplied filenames"
+  ],
+  "limits": [
+    "No viewer/GPU/module Worker execution",
+    "No new USD export/reopen or performance run",
+    "Historical harness summary saying no Rust numerical call describes its old capture; current target executes generated Rust static JS",
+    "Independent pre-migration comparison; does not replace immediate-parent artifact/source comparison"
+  ]
+}

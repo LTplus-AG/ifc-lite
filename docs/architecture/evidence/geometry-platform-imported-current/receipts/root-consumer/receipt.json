@@ -1,0 +1,91 @@
+{
+  "id": "45918360-13e0-4298-97a5-51c801d4cbbb",
+  "host": {
+    "host": "pop-os",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 32,
+    "availableMemoryBytes": 115470962688,
+    "totalMemoryBytes": 134644969472,
+    "python": "3.12.3",
+    "time": 1792386079.6691794
+  },
+  "cwd": "/home/louistrue/build-workers/worker-state/checkouts/3f0f9f522561de0451328ea87c1cd0aecbe54fdb",
+  "sourceBefore": {
+    "commit": "3f0f9f522561de0451328ea87c1cd0aecbe54fdb",
+    "tree": "10803199a689dd48dbce0ad151533dda706def25",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "a0216e232726394c443842d9e60b8668a13bd4682d1ea21d6db5334c2f4dff47",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+    }
+  },
+  "command": [
+    "bash",
+    "/home/louistrue/build-workers/setup/projects-20261017/ifc-lite/env-exec.sh",
+    "bash",
+    "-c",
+    "pnpm install --frozen-lockfile --prefer-offline && pnpm build:imported-geometry && node scripts/build-imported-geometry.mjs --verify && node scripts/fixtures/fetch-fixtures.mjs ifc5/Hello_Wall_hello-wall.ifcx ifc5/Hello_Wall_advanced_3rd-window.ifcx ifc5/Point_Cloud_point-cloud.ifcx ifc5/Point_Cloud_S1-pointcloud.ifcx ifc5/PCERT-Sample-Scene_Building-Architecture.ifcx ifc5/PCERT-Sample-Scene_Building-Structural.ifcx && pnpm build --filter=@ifc-lite/ifcx --force && node --disallow-code-generation-from-strings scripts/compare-imported-geometry.mjs 55f3d3aa28507058dca262455c78c5cd8eca12e8 && pnpm test --filter=@ifc-lite/ifcx --force && pnpm typecheck --filter=@ifc-lite/ifcx --force"
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792386079.6686978,
+  "resources": [
+    "/home/louistrue/build-workers/worker-state/checkouts/3f0f9f522561de0451328ea87c1cd0aecbe54fdb",
+    "/home/louistrue/build-workers/worker-state/targets/17382e389d9bc78f303d"
+  ],
+  "state": "failed",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "fixtures": {},
+  "tools": {
+    "git": {
+      "path": "/usr/bin/git",
+      "exitCode": 0,
+      "version": "git version 2.43.0"
+    },
+    "rustc": {
+      "path": "/home/louistrue/build-workers/toolchains/cargo/bin/rustc",
+      "exitCode": 0,
+      "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+    },
+    "cargo": {
+      "path": "/home/louistrue/build-workers/toolchains/cargo/bin/cargo",
+      "exitCode": 0,
+      "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+    },
+    "node": {
+      "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+      "exitCode": 0,
+      "version": "v24.22.0"
+    },
+    "pnpm": {
+      "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/pnpm",
+      "exitCode": 0,
+      "version": "10.8.1"
+    }
+  },
+  "runnerSha256": "3bebacb6e09e29cd0ee86c7d06dfef95062ab61ecc1b37601e5e53cc64aedce5",
+  "startedAt": 1792386080.5535793,
+  "queueSeconds": 0.8848822116851807,
+  "resourceScope": true,
+  "exitCode": 1,
+  "finishedAt": 1792386302.145129,
+  "sourceAfter": {
+    "commit": "3f0f9f522561de0451328ea87c1cd0aecbe54fdb",
+    "tree": "10803199a689dd48dbce0ad151533dda706def25",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "a0216e232726394c443842d9e60b8668a13bd4682d1ea21d6db5334c2f4dff47",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {},
+  "outputSha256": "c6efdad45aa1f07bd66ea12c72d842f26125e29d7d397632cb1ffb2a6ce0f356"
+}

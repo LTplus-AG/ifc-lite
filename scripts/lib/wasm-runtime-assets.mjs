@@ -3,7 +3,7 @@
  * Dynamic imports (including explicitly activated SDK assets) stay lazy and are
  * outside this generated-runtime packaging contract.
  */
-import { readFileSync, realpathSync, statSync } from 'node:fs';
+import { lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
 
@@ -52,4 +52,30 @@ export function wasmRuntimeAssets(directory) {
     }
   }
   return [...assets];
+}
+
+
+/** Static preflight only: reject unsafe output paths before any runtime writes.
+ * This does not protect against another process changing paths after the check.
+ */
+export function assertWasmRuntimeDestinations(checkoutDirectory, assets) {
+  const root = realpathSync(checkoutDirectory);
+  for (const name of [...assets, '.npmignore', '.gitignore', 'ifc-lite.d.ts']) {
+    const destination = resolve(root, 'packages/wasm/pkg', name);
+    const parts = relative(root, destination).split(sep);
+    let path = root;
+    for (const [index, part] of parts.entries()) {
+      path = resolve(path, part);
+      let entry;
+      try { entry = lstatSync(path); }
+      catch (error) {
+        if (error.code === 'ENOENT') continue;
+        throw error;
+      }
+      const directory = index < parts.length - 1;
+      if (entry.isSymbolicLink() || (directory ? !entry.isDirectory() : !entry.isFile())) {
+        throw new Error(`unsafe runtime destination: ${relative(root, path)}`);
+      }
+    }
+  }
 }

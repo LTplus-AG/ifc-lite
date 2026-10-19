@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 // Private wasm import. Deploy the canonical adapter assets at /smlib/.
 import { planeCertificate, validatePlane } from './plane-certificate.mjs';
+// Deployment-only modules are fetched by explicit retained operations. Bundlers
+// must leave all of them outside ordinary viewer and geometry Worker bundles.
+function loadSdkModule(path) { return import(/* @vite-ignore */ path); }
 // No caller transport, result, incarnation or qualification flag enters here.
 export class RetainedDriver {
   #ready;
@@ -21,8 +24,7 @@ export class RetainedDriver {
     // particular, importing the default IFC wasm does not fetch an SDK module.
     // This deployment asset is resolved by the browser after explicit selection,
     // rather than bundled into every ordinary viewer/geometry Worker build.
-    const clientModule = '/smlib/client.mjs';
-    this.#ready = import(/* @vite-ignore */ clientModule).then(({ SmlibWorkerTransport }) => {
+    this.#ready = loadSdkModule('/smlib/client.mjs').then(({ SmlibWorkerTransport }) => {
       if (this.#retired) throw new Error('retained executor cancelled before startup');
       this.#transport = new SmlibWorkerTransport({ workerUrl: '/smlib/worker.mjs' });
       this.#incarnation = this.#transport.incarnation;
@@ -127,10 +129,10 @@ export class RetainedDriver {
     this.#qualified = false;
     this.#dependenciesQualified = false;
     try {
-      const { runSweepContract } = await import('/smlib/sweep-contract.mjs');
+      const { runSweepContract } = await loadSdkModule('/smlib/sweep-contract.mjs');
       await runSweepContract(this.#transport, this.#incarnation);
       if (dependencies) {
-        const { runContract } = await import('/smlib/contract.mjs');
+        const { runContract } = await loadSdkModule('/smlib/contract.mjs');
         await runContract(frames => this.#transport.batch(frames, this.#incarnation));
       }
       if (!this.live()) throw new Error('qualification worker expired');
@@ -150,7 +152,7 @@ export class RetainedDriver {
     if (qualification !== 0 && !this.#qualified) throw new Error('UnqualifiedRegion: execute same-incarnation numerical witnesses first');
     this.#busy = true;
     try {
-      const { uploadSweep } = await import('/smlib/sweep.mjs');
+      const { uploadSweep } = await loadSdkModule('/smlib/sweep.mjs');
       if (!this.#session) {
         const session = await this.#call(1);
         if (session.byteLength !== 8 || new DataView(session.buffer).getBigUint64(0, true) === 0n) throw new Error('invalid retained session');

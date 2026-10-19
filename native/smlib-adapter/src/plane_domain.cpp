@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "plane_domain.hpp"
+#include "plane_source_certificate.hpp"
 #include "empty.hpp"
 #include <SmApiQueries.h>
 #include <SmAssertArray.h>
@@ -171,11 +172,40 @@ Bounds cylinder_hull(SmCone* c,SmFace* face,uint32_t index,PlaneDomain& domain) 
     }
     domain.methods|=4; return result;
 }
+plane_source_proof::Rectangle rectangle_domain(SmFace* face,uint32_t index,PlaneDomain& domain) {
+    auto proof=plane_source_proof::certify_axis_rectangle(face); proof.source_face=index;
+    charge(domain,proof.control_count); // 4 patch + 4*2 complete boundary controls
+    SmTArray<SmEdgeuse*> uses; face->GetUpwardEdgeuses(uses);
+    require(uses.GetSize()==4,"affine upward boundary inventory mismatch");
+    for(auto* use:uses) if(auto* trim=use->GetUVTrimCurve()) {
+        // Same operation ledger as surface/boundary/global edges, never reset.
+        const auto uv=curve_hull(trim,2,use->GetEdge()->GetInterval(),domain);
+        require(uv[0].lo>=proof.u[0] && uv[0].hi<=proof.u[3] &&
+            uv[1].lo>=proof.v[0] && uv[1].hi<=proof.v[3],"present affine UV hull escapes knot support");
+    }
+    return proof;
+}
+bool missing_cached_uv(SmFace* face) {
+    SmTArray<SmEdgeuse*> uses; face->GetUpwardEdgeuses(uses);
+    require(uses.GetSize()>0 && uses.GetSize()<=400000,"missing or oversized source boundary");
+    for(auto* use:uses) {
+        require(use && use->GetFace()==face,"foreign source boundary use");
+        if(!use->GetUVTrimCurve()) return true;
+    }
+    return false;
+}
 Bounds face_hull(SmFace* face,uint32_t index,PlaneDomain& domain) {
     require(face && face->GetType()==SmFace_TYPE && face->GetSurface(),"unsupported source face");
     auto* surface=face->GetSurface();
     if(surface->GetType()==SmCylinder_TYPE || surface->GetType()==SmCone_TYPE)
         return cylinder_hull(static_cast<SmCone*>(surface),face,index,domain);
+    if(surface->GetType()==SmBSplineSurface_TYPE && missing_cached_uv(face)) {
+        require(domain.rectangle_count<IFCLITE_SMLIB_PLANE_MAX_RECTANGLES,
+            "source rectangle certificate record budget",IFCLITE_SMLIB_RESOURCE_LIMIT);
+        const auto proof=rectangle_domain(face,index,domain);
+        domain.rectangles[domain.rectangle_count++]=plane_source_proof::certificate_record(proof);
+        domain.methods|=IFCLITE_SMLIB_PLANE_SOURCE_RECTANGLE; return proof.bounds;
+    }
     auto uv=trim_domain(face,domain);
     if(surface->GetType()==SmPlane_TYPE) {
         // Plane UVs use the analytic STEP map, not a sampled boundary or an
@@ -281,7 +311,7 @@ PlaneDomain certify_plane_domain(SmBrep* source) {
     tolerance(domain,source->GetTolerance());
     domain.faces=faces.GetSize(); domain.edges=edges.GetSize();
     for(ULONG i=0;i<faces.GetSize();++i) {
-        auto* f=faces[i]; require(f,"missing face");
+        auto* f=faces[i]; require(f && f->GetBrep()==source,"missing or foreign source face");
         tolerance(domain,f->GetTolerance()); include(domain.bounds,face_hull(f,i,domain));
     }
     for(auto* e:edges) {
@@ -300,4 +330,36 @@ PlaneDomain certify_plane_domain(SmBrep* source) {
     for(auto a:domain.bounds) require(std::isfinite(a.lo) && std::isfinite(a.hi) && a.lo<a.hi,
         "nonfinite or collapsed finite BRep domain");
     return domain;
+}
+
+plane_source_proof::Rectangle certify_plane_source_rectangle(SmBrep* source,SmFace* face) {
+    using namespace plane_numeric;
+    require(source && source->GetInfiniteRegion() && source->GetInfiniteRegion()->IsVoid()==TRUE,
+        "affine source lacks finite-material topology");
+    SmTArray<SmFace*> faces; source->GetFaces(faces);
+    SmTArray<SmEdge*> edges; source->GetEdges(edges);
+    SmTArray<SmVertex*> vertices; source->GetVertices(vertices);
+    require(faces.GetSize()<=100000 && edges.GetSize()<=100000 && vertices.GetSize()<=100000,
+        "affine source topology budget",IFCLITE_SMLIB_RESOURCE_LIMIT);
+    preflight_existing_data(source,faces,edges);
+    require(source->IsManifoldSolid() && face,"affine source face topology");
+    for(ULONG i=0;i<faces.GetSize();++i) if(faces[i]==face) {
+        require(face->GetBrep()==source,"affine source face ownership");
+        PlaneDomain ledger; return rectangle_domain(face,i,ledger);
+    }
+    throw SweepFailure{IFCLITE_SMLIB_UNSUPPORTED,"affine face is absent from actual source inventory"};
+}
+
+void populate_plane_source_records(const PlaneDomain& domain,ifclite_smlib_plane_certificate& c) {
+    using namespace plane_numeric;
+    require(domain.rectangle_count<=IFCLITE_SMLIB_PLANE_MAX_RECTANGLES &&
+        ((domain.methods&IFCLITE_SMLIB_PLANE_SOURCE_RECTANGLE)!=0)==(domain.rectangle_count!=0),
+        "inconsistent derived source proof records",IFCLITE_SMLIB_KERNEL_ERROR);
+    c.version=domain.rectangle_count?2u:1u; c.method=domain.methods;
+    c.rectangle_count=domain.rectangle_count;
+    c.rectangle_record_bytes=domain.rectangle_count?IFCLITE_SMLIB_PLANE_RECTANGLE_BYTES:0;
+    c.rectangle_edge_bytes=domain.rectangle_count?IFCLITE_SMLIB_PLANE_RECTANGLE_EDGE_BYTES:0;
+    c.rectangle_reserved=0;
+    std::fill(std::begin(c.rectangles),std::end(c.rectangles),ifclite_smlib_rectangle_domain{});
+    std::copy_n(domain.rectangles.begin(),domain.rectangle_count,c.rectangles);
 }

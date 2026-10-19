@@ -20,6 +20,8 @@
 #include <vector>
 void run_context_metadata_tests();
 void run_plane_preflight_tests();
+void run_plane_source_domain_tests();
+void run_plane_source_protocol_tests(uint64_t,ifclite_smlib_handle,const double*,const ifclite_smlib_plane_certificate&);
 namespace {
 void require(bool value,const char* message) {
     if(!value) { char error[512]; ifclite_smlib_error_copy(error,sizeof(error));
@@ -102,7 +104,7 @@ void clip_case(uint64_t s,ifclite_smlib_handle input,const std::array<double,6>&
     int side,unsigned mode,double expected,double original,bool section=false) {
     ifclite_smlib_handle out{}; ifclite_smlib_plane_certificate c{};
     ok(ifclite_smlib_clip_plane(s,input,p.data(),side,mode,&out,&c));
-    require(c.version==1 && (expected==0 || c.method!=0) && c.frame==1 && same(c.input,input) && same(c.output,out) &&
+    require(c.version==(c.rectangle_count?2u:1u) && ((c.method&8u)!=0)==(c.rectangle_count!=0) && (expected==0 || c.method!=0) && c.frame==1 && same(c.input,input) && same(c.output,out) &&
         !same(input,out) && c.side==side && c.mode==mode,"actual ordered input/output and side/mode certificate");
     require(std::memcmp(p.data(),c.plane,sizeof(c.plane))==0,"original six plane coefficients preserved byte-for-byte");
     uint32_t empty=2; ok(ifclite_smlib_is_empty(s,out,&empty));
@@ -113,6 +115,35 @@ void clip_case(uint64_t s,ifclite_smlib_handle input,const std::array<double,6>&
         if(original>=1 && original<=1000) shell(s,out,p.data(),mode==3?-side:side,expected,section);
     }
     ok(ifclite_smlib_release(s,out)); near(actual_volume(s,input),original);
+}
+// Must-pass production integration witnesses: these intentionally require
+// the parent-owned method/certificate integration. Never reinterpret status7
+// as success or skip when actual Boolean/affine output lacks UV caches.
+void source_rectangle_chains(uint64_t s) {
+    const double x[]={0.5,0,0,1,0,0},y[]={0,1,0,0,1,0};
+    ifclite_smlib_handle source{},first{},second{},identity_copy{};
+    ifclite_smlib_plane_certificate first_cert{},second_cert{};
+    ok(ifclite_smlib_box(s,0,0,0,2,2,2,&source));
+    ok(ifclite_smlib_clip_plane(s,source,x,1,2,&first,&first_cert));
+    near(actual_volume(s,source),8); near(actual_volume(s,first),6);
+    require(same(first_cert.input,source) && same(first_cert.output,first),"first sealed Clip identities");
+    shell(s,first,x,1,6,true);
+    // The real regression is this second consumption of a Boolean output.
+    ok(ifclite_smlib_clip_plane(s,first,y,1,2,&second,&second_cert));
+    require(second_cert.version==2 && (second_cert.method&8u) && second_cert.rectangle_count && second_cert.frame==1 && same(second_cert.input,first) &&
+        same(second_cert.output,second) && std::memcmp(second_cert.plane,y,sizeof(y))==0,
+        "second Clip binds actual input/output/frame and unchanged requested coefficients");
+    uint32_t manifold=0; ok(ifclite_smlib_manifold(s,second,&manifold)); require(manifold==1,"chained result manifold");
+    near(actual_volume(s,first),6); near(actual_volume(s,second),3); shell(s,second,y,1,3,false);
+    run_plane_source_protocol_tests(s,first,y,second_cert);
+    const double identity[]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
+    ifclite_smlib_affine_certificate affine{};
+    ok(ifclite_smlib_copy_affine(s,source,identity,&identity_copy,&affine));
+    clip_case(s,identity_copy,{0.5,0,0,1,0,0},1,2,6,8,true);
+    ok(ifclite_smlib_release(s,source)); ok(ifclite_smlib_release(s,first));
+    near(actual_volume(s,second),3); // independently retained generation
+    clip_case(s,second,{0,0,1,0,0,1},1,2,1.5,3);
+    ok(ifclite_smlib_release(s,identity_copy)); ok(ifclite_smlib_release(s,second));
 }
 void protocol_witness(uint64_t s,ifclite_smlib_handle input) {
     std::vector<uint8_t> packet;
@@ -126,7 +157,7 @@ void protocol_witness(uint64_t s,ifclite_smlib_handle input) {
         require(offset+4<=response.size(),"bounded response read");
         for(unsigned i=0;i<4;++i) n|=uint32_t(response[offset+i])<<(8*i);
         return n; };
-    require(response.size()==324 && read32(0)==1 && read32(4)==731 && read32(8)==0,
+    require(response.size()==324 && read32(0)==1 && read32(4)==731 && read32(8)==0 && read32(28)==1 && !(read32(32)&8u),
         "actual opcode20 fixed certificate packet without cylinder records");
     ifclite_smlib_handle out{uint64_t(read32(12))|(uint64_t(read32(16))<<32),read32(20),read32(24)};
     near(actual_volume(s,out),6); ok(ifclite_smlib_release(s,out));
@@ -240,6 +271,8 @@ void run_plane_tests() {
     run_context_metadata_tests();
     std::fprintf(stderr,"plane BEGIN source preflight\n");
     run_plane_preflight_tests();
+    std::fprintf(stderr,"plane BEGIN additive private affine source proof (not production admission)\n");
+    run_plane_source_domain_tests();
     std::fprintf(stderr,"plane BEGIN C ABI qualification\n");
     require((ifclite_smlib_capabilities()&64u)!=0 && (ifclite_smlib_capabilities()&128u)==0,"unary clip only, no paired split advertisement");
     uint64_t s=0; ok(ifclite_smlib_session_create(&s));
@@ -308,12 +341,14 @@ void run_plane_tests() {
     const double transform[]={-2,0,0,0,0,3,0,0,0,0,4,0,5000000,-2000000,100,1};
     ifclite_smlib_handle local{},survey{}; ok(ifclite_smlib_box(s,0,0,0,2,2,2,&local));
     ok(ifclite_smlib_copy_affine(s,local,transform,&survey,&affine));
-    const double survey_plane[]={4999999,-2000000,100,-0.5,0,0};
-    require(ifclite_smlib_clip_plane(s,survey,survey_plane,1,2,&refused,&refused_cert)==7 && !refused.session,
-        "reflected affine trim loss remains an explicit uncovered preservation class");
+    // Axis-aligned reflected affine rectangles are a positive qualification
+    // target. This assertion must fail until the parent enables the new method.
+    clip_case(s,survey,{4999999,-2000000,100,-0.5,0,0},1,2,144,192);
     near(actual_volume(s,survey),192);
     ifclite_smlib_handle placed{}; ok(ifclite_smlib_box(s,4999996,-2000000,100,4,6,8,&placed));
     clip_case(s,placed,{4999999,-2000000,100,-0.5,0,0},1,2,144,192);
+    std::fprintf(stderr,"plane BEGIN actual C ABI generic affine and Boolean chaining positives\n");
+    source_rectangle_chains(s);
     // Input release must not affect a previous independently owned output.
     ok(ifclite_smlib_session_destroy(s));
     std::fprintf(stderr,"plane BEGIN control net interior\n");

@@ -31,6 +31,19 @@ struct Writer {
     void f64(double value) { uint64_t bits; std::memcpy(&bits,&value,8); u64(bits); }
     void handle(ifclite_smlib_handle value) { u64(value.session); u32(value.slot); u32(value.generation); }
 };
+void rectangle_record(Writer& w,const ifclite_smlib_rectangle_domain& r) {
+    for(uint32_t v:{r.version,r.source_face,r.u_axis,r.v_axis,r.normal_axis,r.loops,
+        r.holes,r.edge_count,r.control_count,r.flags,r.reserved0,r.reserved1}) w.u32(v);
+    for(double v:r.controls) w.f64(v); for(double v:r.u) w.f64(v); for(double v:r.v) w.f64(v);
+    for(double v:r.bounds) w.f64(v); for(double v:r.uv_hull) w.f64(v); for(double v:r.inverse) w.f64(v);
+    for(const auto& e:r.edges) {
+        w.u32(e.flags); w.u32(e.start_corner); w.u32(e.end_corner); w.u32(e.reserved);
+        for(double v:e.controls) w.f64(v); for(double v:e.knots) w.f64(v);
+        for(double v:e.interval) w.f64(v); for(double v:e.start) w.f64(v); for(double v:e.end) w.f64(v);
+        for(double v:e.line_origin) w.f64(v); for(double v:e.line_axis) w.f64(v);
+        for(double v:e.step) w.f64(v); w.f64(e.scale);
+    }
+}
 Writer dispatch(Reader& reader) {
     if (reader.u32() != version) throw std::runtime_error("unsupported protocol version");
     const uint32_t id = reader.u32(), operation = reader.u32();
@@ -104,6 +117,18 @@ Writer dispatch(Reader& reader) {
                 for(auto value:cylinder.basis) payload.f64(value);
                 payload.f64(cylinder.radius);
                 for(auto value:cylinder.step_v) payload.f64(value);
+            }
+            if(c.version==2) {
+                if(!(c.method&IFCLITE_SMLIB_PLANE_SOURCE_RECTANGLE) || c.rectangle_count==0 ||
+                    c.rectangle_count>IFCLITE_SMLIB_PLANE_MAX_RECTANGLES ||
+                    c.rectangle_record_bytes!=IFCLITE_SMLIB_PLANE_RECTANGLE_BYTES ||
+                    c.rectangle_edge_bytes!=IFCLITE_SMLIB_PLANE_RECTANGLE_EDGE_BYTES || c.rectangle_reserved)
+                    throw std::runtime_error("invalid native rectangle certificate layout");
+                payload.u32(c.rectangle_count); payload.u32(c.rectangle_record_bytes);
+                payload.u32(c.rectangle_edge_bytes); payload.u32(c.rectangle_reserved);
+                for(uint32_t i=0;i<c.rectangle_count;++i) rectangle_record(payload,c.rectangles[i]);
+            } else if(c.rectangle_count || (c.method&IFCLITE_SMLIB_PLANE_SOURCE_RECTANGLE)) {
+                throw std::runtime_error("derived source proof requires certificate v2");
             }
             break;
         }

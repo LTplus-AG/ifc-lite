@@ -164,6 +164,7 @@ std::unique_ptr<SmBrep> clip_finite_plane(SmBrep* source,const double* plane,
     std::copy(plane,plane+6,c.plane); c.faces=domain.faces; c.edges=domain.edges; c.coefficients=domain.coefficients;
     c.cylinder_count=domain.cylinder_count;
     std::copy(domain.cylinders.begin(),domain.cylinders.end(),c.cylinders);
+    populate_plane_source_records(domain,c);
     const SmVector3d axes[]={frame.GetXAxis(),frame.GetYAxis(),frame.GetZAxis()};
     for(unsigned i=0;i<3;++i) for(unsigned j=0;j<3;++j) c.basis[3*i+j]=axes[i][j];
     for(unsigned d=0;d<3;++d) { c.domain[d]=domain.bounds[d].lo; c.domain[3+d]=domain.bounds[d].hi; }

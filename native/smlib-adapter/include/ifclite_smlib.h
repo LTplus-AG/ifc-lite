@@ -89,7 +89,10 @@ ifclite_smlib_status ifclite_smlib_copy_affine(ifclite_smlib_session session,
  * numerical orthonormal XYZ basis. Bounds arrays are loXYZ,hiXYZ.
  * method is a domain-proof bitmask: 1=analytic planar UV hull,
  * 2=generic positive clamped patch with existing UV containment,
- * 4=bounded analytic cylinder formula; 0 is the canonical Empty domain.
+ * 4=bounded analytic cylinder formula; 8=source-derived affine rectangle.
+ * Version2 is emitted iff method8 records exist; all other domains use v1.
+ * Source-derived inverse bounds are distinct from authored UV trims.
+ * 0 is the canonical Empty domain.
  * Cylinder records bind actual local coefficients and source GetFaces index,
  * not persistent source ancestry. At most16 records; larger domains refuse.
  * Empty is the canonical topology query, not a zero-volume heuristic.
@@ -99,6 +102,27 @@ typedef struct ifclite_smlib_cylinder_domain {
     uint32_t source_face, swap_uv, inside_out, reserved;
     double origin[3], basis[9], radius, step_v[2];
 } ifclite_smlib_cylinder_domain;
+#define IFCLITE_SMLIB_PLANE_MAX_RECTANGLES 16u
+#define IFCLITE_SMLIB_PLANE_RECTANGLE_BYTES 1376u
+#define IFCLITE_SMLIB_PLANE_RECTANGLE_EDGE_BYTES 248u
+#define IFCLITE_SMLIB_PLANE_SOURCE_RECTANGLE 8u
+/* All wire integers are little-endian u32; all wire doubles IEEE binary64.
+ * source_face is revision-local GetFaces inventory, never persistent ancestry.
+ * Edge flags: bit0=canonical SmLine fields present, bit1=inside-out.
+ * Non-analytic edge canonical fields are all zero. */
+typedef struct ifclite_smlib_rectangle_edge {
+    uint32_t flags, start_corner, end_corner, reserved;
+    double controls[8], knots[4], interval[2], start[3], end[3];
+    double line_origin[3], line_axis[3], step[2], scale;
+} ifclite_smlib_rectangle_edge;
+typedef struct ifclite_smlib_rectangle_domain {
+    uint32_t version, source_face, u_axis, v_axis, normal_axis;
+    uint32_t loops, holes, edge_count, control_count, flags, reserved0, reserved1;
+    double controls[16], u[4], v[4], bounds[6], uv_hull[4];
+    /* u0,u1,P00[U],P10[U],v0,v1,P00[V],P01[V]. No rounded division. */
+    double inverse[8];
+    ifclite_smlib_rectangle_edge edges[4];
+} ifclite_smlib_rectangle_domain;
 typedef struct ifclite_smlib_plane_certificate {
     uint32_t version, method, frame, empty;
     ifclite_smlib_handle input, output;
@@ -107,6 +131,10 @@ typedef struct ifclite_smlib_plane_certificate {
     double plane[6], basis[9], domain[6], cutter[6], clearance;
     uint32_t cylinder_count;
     ifclite_smlib_cylinder_domain cylinders[IFCLITE_SMLIB_PLANE_MAX_CYLINDERS];
+    /* V2 wire extension follows serialized cylinder records; never memcpy
+     * the padded C certificate as a wire payload. V1 has no extension. */
+    uint32_t rectangle_count, rectangle_record_bytes, rectangle_edge_bytes, rectangle_reserved;
+    ifclite_smlib_rectangle_domain rectangles[IFCLITE_SMLIB_PLANE_MAX_RECTANGLES];
 } ifclite_smlib_plane_certificate;
 ifclite_smlib_status ifclite_smlib_clip_plane(ifclite_smlib_session session,
     ifclite_smlib_handle solid, const double* plane, int32_t side, uint32_t mode,

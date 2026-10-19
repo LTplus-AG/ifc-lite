@@ -295,3 +295,264 @@ explicit negative coverage, never completion evidence.
 native/module Worker, real model, cross-target, correctness and performance
 qualification is still required. No heavy job, PR, push, target creation,
 cleanup or upstream-source modification was performed by this child.
+
+## Private source-derived rectangle candidate (2026-10-19, UNRUN)
+
+This additive candidate is **not enabled in `certify_plane_domain` or the clip
+C ABI**. It does not assign a wire method bit, change a parser, create authored
+UV trims, alter capability/opcode advertisements, or relabel a generic patch as
+`SmPlane`. The parent must independently review the proof and coordinate the
+method/certificate integration. The must-pass C ABI witnesses below require that
+integration; at this checkpoint the old missing-trim refusal remains a known
+production blocker, rather than an accepted test outcome.
+
+The read-only seam is `certify_plane_source_rectangle(source, face)`. It runs
+the existing whole-source representation preflight and finite-material/manifold
+checks, authenticates the face against the actual source inventory, then calls
+`plane_source_proof::certify_axis_rectangle`. Any present UV trim still needs
+its original supported, materialized, positive-weight, clamped hull within the
+surface knot support. A present but unmaterialized trim always refuses before
+any coefficient getter can create it. No evaluating source validator is added.
+
+### Proof and primary-source premises
+
+All SDK references are to immutable pin
+`c9c5979f04cea8c38213004d4f04df0dcfb40d05` in
+`/tmp/ifclite-public-sdk-c9c5979/usd-brep`:
+
+- `SmBSplineSurface.cpp:2857–2884` exposes homogeneous tensor controls in
+  P00, P01, P10, P11 order for a 2x2 net; `:2897` exposes raw knot arrays.
+  These getters call `GetOrCreateGwNurbPointer`, so the separate prior raw
+  `GetGwNurbPointer` checks are essential. No missing representation reaches
+  those getters. `SmBSplineSurfaceNLib.cpp:8683–8747` leaves EvaluatePoint's
+  clamp disabled and dispatches non-power forms to `N_SrfEvalPt`.
+- Degree one, knot pairs `[u0,u0,u1,u1]` and `[v0,v0,v1,v1]`, and unit weights
+  give the exact bilinear tensor map. Coefficient equalities require P00/P01
+  to share the U-coordinate, P10/P11 the other U-coordinate, and the analogous
+  V equalities, with one further constant coordinate. U and V each vary on
+  exactly one distinct coordinate axis. Thus the mixed coefficient vanishes
+  exactly, and both affine directions are independent. The map is injective
+  on the entire plane; no small residual, sampled planarity, or interval
+  containing zero substitutes for equality.
+- Its symbolic inverse is
+  `u=u0+(X-P00[U])/(P10[U]-P00[U])*(u1-u0)`, and analogously for v. Exact
+  order comparisons place every full boundary-control hull inside the two
+  spatial endpoint ranges and exactly on the constant-coordinate plane.
+  Therefore all inverse boundary hulls lie in the actual knot support.
+  The certificate conservatively records that complete supported UV rectangle;
+  it does not round or fit a new UV curve. The returned Cartesian bounds are
+  the entire proved affine patch hull, not the boundary-only box of an
+  arbitrary rational surface.
+- `SmBSplineCurve.cpp:3955–3977` exposes homogeneous edge coefficients;
+  `:3274–3337` evaluates the generic rational curve. Each admitted boundary
+  curve has two unit-weight controls, degree one, four finite clamped knots,
+  and a strict finite actual edge interval contained in the entire support.
+  Exact endpoint equations authenticate that interval against actual vertices,
+  including cropped intervals. Full edge-control hulls, not just endpoints,
+  must lie on the rectangular boundary side and inside patch support.
+- **SmLine needs a second proof.** `SmLine.cpp:1131–1143` evaluates canonical
+  fields after `:459–487` affine parameter conversion; `:838–857` returns raw
+  origin, axis, scale, STEP interval and inside-out fields. The candidate
+  requires a positive finite scale, one exact signed coordinate axis, a
+  bounded strict finite STEP interval, and excludes the actual near-zero
+  conversion branch. Exact canonical equations at both knot endpoints prove
+  equivalence with the materialized line over the entire affine interval,
+  including reversed parameterization. `:796–804` uses the existing NURBS
+  natural interval when materialized. Boundedness alone is never the proof.
+- `SmEdge.cpp:4498–4520` and `SmEdgeuse.h:65–85` give endpoint and traversal
+  conventions. The candidate verifies actual same-face loop/use/mate/edge
+  ownership, distinct edges, reciprocal CW/CCW links and exact geometric
+  closure. `SmFace.cpp:10190–10220` retrieves primary/upward loops;
+  `SmFace.h:108–113` specifies that convention. `SmLoopuse.h:53` identifies
+  an outer loop, while `SmFace.h:200–208,303–312` documents positive parameter
+  winding for an outer area loop. The candidate independently proves the
+  four distinct corners and CCW sequence 00 -> 10 -> 11 -> 01, rather than
+  relying on the first/outer flag. Exactly one such simple Jordan rectangle
+  bounds the interior. No holes are admitted in this version. The injective
+  inverse takes that bounded interior into knot support. Neither an unbounded
+  complement nor an incomplete pointer cycle receives a certificate.
+
+`plane_dyadic.hpp` provides bounded source-owned exact equality for the required
+sum of products. It unpacks finite IEEE binary64 into sign, integer mantissa
+and exponent. Products span bit exponents -2148 through 2047. Separate positive
+and negative sums use 136 base-2^32 limbs and at most 16 terms, including headroom
+for carries. Each 32x32 partial product fits uint64, is split before shifting,
+and propagates carry with explicit bounds. Exact zero is equality of the two
+integer arrays. No host extended precision, floating product, FMA, Boost,
+sampling, or epsilon-based zero inference is used. Test invariants include
+nonzero underflow/overflow products, cancellation preserving the smallest
+residual and a one-ULP survey-coordinate discrepancy.
+
+The private `Rectangle` record distinguishes its source-derived proof identity
+from an authored trim. It retains source inventory index, the full raw surface
+net and knots, axis indices, supported inverse UV hull, complete four edge
+control/knot/interval records, actual vertices, canonical SmLine fields when
+used, winding/corner records and fixed counts. It is not a retained certificate
+for later object generations. Parent integration must bind records and all
+existing outward tolerance expansion/resource ceilings to the actual source
+incarnation and output receipt. It must not silently publish existing method2
+for this different admission proof.
+
+### Qualification plan frozen before execution
+
+New SDK-gated witnesses are wired into the existing `smlib_owned_boundary`
+executable, with no additional heavyweight job submitted by this child:
+
+- actual box faces replaced by generic materialized patches with caches
+  explicitly absent; identity affine output; a reflected nonuniform affine
+  box in survey coordinates; a replacement patch at survey coordinates;
+  and generic faces from an actual first sealed Clip Boolean result;
+- exact source coefficient/pointer/absent-trim/raw metadata snapshots across
+  successful private certification;
+- one-ULP near-affine and clearly warped controls, invalid/nonunit weights,
+  out-of-support edge intervals, wrong loop side, foreign face ownership,
+  and present-but-unmaterialized UV trim refusals;
+- C ABI must-pass second consumption of a first Clip, identity affine Clip,
+  third Clip after releasing earlier inputs, and reflected survey Clip.
+  Existing input/output/frame/request identity, independent volume, side,
+  closed mesh, manifold and independent lifetime assertions remain. The
+  previously documented survey refusal becomes a positive requirement;
+  unsupported curved rational cylinder copies still refuse. Existing
+  interior-bulge and lazy trim negatives are retained unchanged.
+
+**Every new numerical test is UNRUN, including syntax/compile qualification.**
+Only a whitespace diff check and source inspection were performed. The private
+proof may expose a genuine SDK representation gap on execution; record that
+failure without weakening or skipping the corresponding positive assertion.
+The production source method, source-bound certificate/consumer integration and
+actual runtime chain are still held for the parent. No arbitrary externally
+edited graph, callback-only ancestry, general affine/sheared patch, nonunit
+constant weight, higher-degree net, curved boundary or hole is claimed.
+Exact remains permanent/default. Paired partition, layers and appearance remain
+separate holds.
+
+## Additive native method8 integration after frozen 5bcc (UNRUN)
+
+The preceding private-candidate section records the immutable `5bcc14113a`
+checkpoint. This subsequent additive implementation puts its restricted theorem
+into `certify_plane_domain` **only** for an actual `SmBSplineSurface` face with
+at least one absent cached UV trim. Complete cached UV domains keep the old
+method2 path, byte-for-byte v1 wire layout and all its existing checks. Any
+present but unmaterialized/unknown trim still refuses in whole-source preflight.
+The old generic route is not weakened; unresolved missing-cache surfaces fail
+the restricted proof with status7. No `SmPlane` dispatch, Rust/JS consumer,
+capability, opcode or upstream SDK source changes here.
+
+`rectangle_domain` uses the caller's single `PlaneDomain` ledger. Each record
+charges four surface and eight complete boundary controls, plus **every**
+present trim's control count through the existing `curve_hull` path. The later
+complete source-edge pass charges all its controls to that same ledger. No
+per-face scratch ledger occurs in production. The standalone per-face research
+entrypoint has a fresh ledger because each such call is a separate operation.
+The existing ceilings of 100000 source faces/edges/vertices, 400000 preflight
+edgeuses and 1000000 charged coefficients remain; a source operation may emit
+at most16 rectangle records, independently of the existing16 cylinder maximum.
+The seventeenth rectangle refuses with resource-limit status before output.
+Source/face/edge/vertex tolerance aggregation and the final outward domain
+expansion are unchanged. Individual rectangle records retain the exact raw
+patch bounds before that aggregate expansion.
+
+The parent-owned cutter file is deliberately unmodified. The exact assignment
+hunk in `/tmp/ifclite-plane-source-records-5bcc-assignment.patch` adds only
+`populate_plane_source_records(domain,c);` immediately after its existing
+cylinder-record copy. The helper installs method/version/rectangle fields:
+version2 iff actual derived records exist, method bit8 iff those records exist;
+all other domains, including canonical Empty, use version1 with no extension.
+The native C header grows to hold bounded records; native callers must rebuild
+against it. Wire serialization remains explicit scalar LE, never C padding.
+Until the parent applies that one-line handoff and its owned runtime parsing,
+this child does not constitute an integrated C ABI/runtime production closure.
+
+### Exact version2 wire contract
+
+The entire prior successful response prefix, including the original cylinder
+records, retains the v1 field ordering and widths. Overall certificate version
+is2 only when method bit8 records exist. At response offset
+`324 + 136*cylinder_count` (including the12-byte response header), v2 appends:
+
+- four LE u32 fields: `rectangle_count` (1..16), `rectangle_record_bytes=1376`,
+  `rectangle_edge_bytes=248`, `rectangle_reserved=0`;
+- exactly `rectangle_count` fixed-width1376-byte rectangle records.
+
+Each rectangle record contains, in order:
+
+- twelve LE u32: `record_version=1`, actual input `source_face` GetFaces index,
+  `u_axis`, `v_axis`, `normal_axis`, `loops=1`, `holes=0`, `edge_count=4`,
+  `control_count=12`, `flags=0`, `reserved0=0`, `reserved1=0`;
+- IEEE binary64 arrays: `controls[16]` (raw homogeneous tensor P00,P01,P10,P11),
+  `u[4]`, `v[4]`, `bounds[6]` (loXYZ,hiXYZ), `uv_hull[4]`
+  (loU,loV,hiU,hiV), `inverse[8]`;
+- four fixed-width248-byte edge records in the certified actual loop inventory.
+
+`inverse` is exactly `u0,u1,P00[U],P10[U],v0,v1,P00[V],P01[V]`.
+It specifies
+`u=u0+(X-P00[U])/(P10[U]-P00[U])*(u1-u0)` and the analogous v expression,
+without storing a rounded reciprocal or fitted UV data. Distinct signed axes
+and raw endpoint differences authenticate injectivity. The derived inverse UV
+hull is the full conservative supported knot rectangle, not an authored trim.
+
+Record byte offsets are: header0, controls48, U knots176, V knots208,
+Cartesian bounds240, UV hull288, symbolic inverse320, four edges384.
+The last edge ends at byte1376.
+
+Each edge record contains four LE u32: `flags`, `start_corner`, `end_corner`,
+`reserved=0`, followed by IEEE binary64 arrays in order: homogeneous
+`controls[8]`, `knots[4]`, actual `interval[2]`, actual `start[3]`, `end[3]`,
+canonical `line_origin[3]`, `line_axis[3]`, `step[2]`, then `scale`.
+Edge flag bit0 means canonical SmLine data is present; bit1 means inside-out;
+no other bits are defined. All canonical fields/flags are zero for a generic
+linear B-spline edge. Corner codes use U in bit0, V in bit1, so positive
+parameter winding is0->1->3->2->0. Geometric start/end fields follow increasing
+curve parameter; corner fields follow the oriented face-loop traversal.
+Edge offsets are header0, controls16, knots80, interval112, start128, end152,
+line origin176, line axis200, STEP interval224 and scale240; total248 bytes.
+
+`source_face` is local to the actual consumed source's current face inventory.
+It is **not** persistent ancestry. The enclosing actual input/output native
+handles and parent-owned incarnation/operation sealing provide the binding.
+No source proof record is accepted from a caller as authority. No rectangle
+extension is serialized for v1, including v1 method1/2/4 or Empty. Mixed
+old/new faces produce a v2 certificate with bit8 plus the other actual methods.
+At both maxima the response bound is24532 bytes:
+`324 + 16*136 + 16 + 16*1376`. Request framing remains92 bytes.
+
+### Additional qualification witnesses and actual state
+
+The existing SDK boundary now includes production-domain success for the
+replacement, identity/survey affine and actual Boolean fixtures; exact method
+and version selection; a six-derived-face 96-control ledger invariant; and a
+mixed authored/derived case with102 charged controls, including three surviving
+trims on the derived face. A real disjoint union of three boxes supplies18
+faces for the seventeenth-record refusal witness. Each of source, face, edge
+and vertex tolerances has a distinct owned fixture verifying final outward
+expansion. All warped/near-affine/weight/interval/loop-side/unmaterialized trim
+negatives now exercise both the private seam and production domain path.
+Foreign ownership remains checked against the actual source inventory.
+
+The actual C ABI second-Clip witness requires v2/bit8 and nonzero records;
+its protocol companion independently reads every fixed-width field, including
+raw homogeneous sentinel bits, all boundary records and inverse fields, checks
+exact extension lengths, real result volume/manifold status and release. The
+old analytic packet witness still requires a324-byte v1 response with no bit8.
+Identity affine and reflected survey replacement-frame positives remain
+must-pass, never status7 skips. All existing cutter, manifold, mesh, closure,
+volume, source-immutability and lifetime assertions remain.
+
+A host C++17/C11 **syntax-only** check against the pinned SDK headers completed
+with exit0 and no diagnostics for the changed native/domain/protocol/test
+translation units, including the fixed248/1376-byte C/C++ layout assertions.
+This did not link or execute SDK code. All new SDK/C ABI/protocol/runtime and
+browser numerical qualification is still **UNRUN**; parent job475 and its
+immutable evidence were untouched, and this child submitted no worker job.
+The parent's `475c5edca5` source ledger and outward cutter changes must be kept:
+apply incremental patches after5bcc and the one-line handoff, never overlay
+this child's older full native files. Exact remains permanent/default;
+paired partition, layers, appearance and broader affine classes remain holds.
+
+Transport integration hold: although native worker output framing can write the
+bounded24532-byte response, current `browser/module.mjs:20` and browser client
+response checks reject frames over4096 bytes. Rust's protocol module also uses
+`MAX_PAYLOAD_BYTES=4096`. The parent must coordinate a bounded **response** limit
+and parsing for v2 without widening the existing request admission. No Rust/JS
+transport was modified by this child, and no end-to-end response acceptance is
+claimed from the native serializer or syntax result alone.

@@ -19,7 +19,10 @@ export class RetainedDriver {
   constructor() {
     // This constructor is called only by explicit retained admission. In
     // particular, importing the default IFC wasm does not fetch an SDK module.
-    this.#ready = import('/smlib/client.mjs').then(({ SmlibWorkerTransport }) => {
+    // This deployment asset is resolved by the browser after explicit selection,
+    // rather than bundled into every ordinary viewer/geometry Worker build.
+    const clientModule = '/smlib/client.mjs';
+    this.#ready = import(/* @vite-ignore */ clientModule).then(({ SmlibWorkerTransport }) => {
       if (this.#retired) throw new Error('retained executor cancelled before startup');
       this.#transport = new SmlibWorkerTransport({ workerUrl: '/smlib/worker.mjs' });
       this.#incarnation = this.#transport.incarnation;

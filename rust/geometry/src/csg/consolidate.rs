@@ -8,6 +8,8 @@ mod buckets;
 mod candidates;
 mod conform;
 mod plans;
+mod plan;
+mod recovery;
 mod plane_merge;
 mod ring_ops;
 mod preservation;
@@ -179,7 +181,7 @@ impl ClippingProcessor {
         if output.is_empty() {
             return mesh;
         }
-        let mut output = candidates::prefer_raw_if_cleaner(&mesh, output, &buckets, &supported);
+        let output = candidates::prefer_raw_if_cleaner(&mesh, output, &buckets, &supported);
         // A local healthy fold cannot reopen a boundary ordinary cleanup
         // already closes. Only an open candidate pays for this comparison;
         // the no-fold call retains the original thin-cell policy.
@@ -214,6 +216,9 @@ impl ClippingProcessor {
                 return baseline;
             }
         }
+        let mut output = recovery::retry_closed_input(
+            &mesh, output, &buckets, planned, length_unit_scale, &supported,
+        );
         // Carry the input's placement / frame metadata (`origin` local-frame
         // translation, `rtc_applied`, and the #1474 world-capture `local_bounds` /
         // `local_to_world`) onto the re-triangulated output. `consolidate_coplanar`

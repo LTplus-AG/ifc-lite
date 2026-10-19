@@ -210,7 +210,7 @@ fn patch(points: &[[f64; 3]], faces: &[[usize; 3]]) -> (Vec<PlanBucket>, Buckets
     let plan = PlanBucket {
         bid: 0, normal: Vector3::z(), origin: Point3::origin(),
         u_axis: Vector3::x(), v_axis: Vector3::y(), raw: Vec::new(),
-        raw_conformed: None, regions: Vec::new(),
+        raw_conformed: None, regions: Vec::new(), retry: None,
     };
     (vec![plan], buckets)
 }

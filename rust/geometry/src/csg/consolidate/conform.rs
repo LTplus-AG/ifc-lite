@@ -192,6 +192,21 @@ pub(super) struct PlanBucket {
     /// baseline byte-identical when no peer seam vertex touches a raw edge.
     pub(super) raw_conformed: Option<Vec<[Point3<f64>; 3]>>,
     pub(super) regions: Vec<PlanRegion>,
+    /// Original union operands retained only for a possible remote-plane retry.
+    pub(super) retry: Option<super::plan::RetryGeometry>,
+}
+
+impl PlanBucket {
+    /// A retry has a new bucket/seam map. Retain the original CDT, but discard
+    /// every insertion or snap considered by the previous conform attempt.
+    pub(super) fn reset_for_retry(&mut self) {
+        self.raw_conformed = None;
+        for region in &mut self.regions {
+            region.outer_conformed.clone_from(&region.outer);
+            region.holes_conformed.clone_from(&region.holes);
+            region.changed = false;
+        }
+    }
 }
 
 /// Build the seam map from finished plans: every kept corner of every bucket, in

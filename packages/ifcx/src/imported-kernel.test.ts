@@ -32,8 +32,10 @@ test('imported kernel retains per-frame identity canonicalization and mesh/point
   assert.throws(() => executePoints(new Float64Array([Infinity, 2, 3]), [identity]), /IFCx pointcloud:.*homogeneous w/);
   const projective = [[1, 0, 0, 1], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]];
   assert.throws(() => executeMesh({ points: [[0, 0, 0], [-1, 0, 0]], faceVertexIndices: [] }, [projective]), /IFCx geometry:.*homogeneous w/);
-  const points = executePoints(new Float32Array([0, 0, 0, -1, 0, 0]), [projective]);
-  assert.equal(points.positions[3], -Infinity);
+  // Every point is checked: a later zero w refuses the cloud instead of
+  // emitting a non-finite position.
+  assert.throws(() => executePoints(new Float32Array([0, 0, 0, -1, 0, 0]), [projective]), /IFCx pointcloud:.*homogeneous w/);
+  assert.equal(executePoints(new Float32Array([0, 0, 0, 1, 0, 0]), [projective]).positions.length, 6);
 });
 
 test('imported normal helpers preserve perpendicularity and degenerate fallback', () => {

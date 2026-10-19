@@ -46,7 +46,12 @@ export async function meshWitness(call, session, solid, expected, fixture, moved
   let sectionSegments = 0;
   const sectionGraph = new Map();
   const sectionPoints = new Map();
-  const sectionKey = p => p.map(v => v.toFixed(7)).join(',');
+  const sectionKey = p => p.map(v => {
+    const rounded = v.toFixed(7);
+    // toFixed preserves the sign of values rounded to zero. Both spellings
+    // identify the same grid point; the seven-decimal grid stays unchanged.
+    return rounded === '-0.0000000' ? '0.0000000' : rounded;
+  }).join(',');
   function connect(a, b) {
     const key = sectionKey(a), value = sectionKey(b);
     if (!sectionGraph.has(key)) sectionGraph.set(key, []);

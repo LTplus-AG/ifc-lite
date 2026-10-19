@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { meshWitness } from './mesh-witness.mjs';
 import { regionWitnesses, rationalDiskWitnesses } from './region-recipes.mjs';
-function annularMesh(fixture, { moved = false, fillHole = false, shift = 0 } = {}) {
+function annularMesh(fixture, { moved = false, fillHole = false, shift = 0, sectionSeam } = {}) {
   const n = 512, positions = [], indices = [];
   const inner = fixture.holes[0][2];
   for (const z of [0, fixture.depth * fixture.direction[2]]) {
@@ -23,6 +23,23 @@ function annularMesh(fixture, { moved = false, fillHole = false, shift = 0 } = {
     quad(i + n, i + 3*n, j + 3*n, j + n); // inner wall
   }
   if (fillHole) indices.push(n, n + n/3 | 0, n + 2*n/3 | 0);
+  if (sectionSeam !== undefined) {
+    // A triangle soup lets neighboring sections approach the zero axis from
+    // opposite signs. Only one wall triangle's vertical edge is displaced.
+    const soup = indices.map(index => positions.slice(3 * index, 3 * index + 3));
+    let changed = false;
+    for (let i = 0; i < soup.length; i += 3) {
+      const edge = soup.slice(i, i + 3).filter(p =>
+        Math.abs(p[0]) < 1e-14 && Math.abs(p[1] - inner) < 1e-14);
+      if (edge.length === 2 && edge[0][2] !== edge[1][2]) {
+        for (const p of edge) p[0] = -sectionSeam;
+        changed = true;
+        break;
+      }
+    }
+    assert(changed, 'fixture must reach a vertical inner-wall edge at x=0');
+    return meshTransport(soup.flat(), soup.map((_, index) => index));
+  }
   return meshTransport(positions, indices);
 }
 function meshTransport(positions, indices) {
@@ -58,6 +75,18 @@ test('round3 numerical oracle rejects a volume-preserving incorrect translation'
   const fixture = regionWitnesses().find(f => f.name === 'annulus-normal-1');
   await assert.rejects(meshWitness(annularMesh(fixture, { shift: 0.1 }), new Uint8Array(8),
     new Uint8Array(16), fixture.expected, fixture), /tight mesh bounds/);
+});
+
+test('section grid joins opposite signs rounded to zero (fixture only)', async () => {
+  const fixture = regionWitnesses().find(f => f.name === 'annulus-normal-1');
+  const result = await meshWitness(annularMesh(fixture, { sectionSeam: 1e-16 }),
+    new Uint8Array(8), new Uint8Array(16), fixture.expected, fixture);
+  assert(Math.abs(result.meshSectionArea - fixture.area) < fixture.area * 0.002);
+});
+test('section grid still refuses a seam beyond the existing grid spacing (fixture only)', async () => {
+  const fixture = regionWitnesses().find(f => f.name === 'annulus-normal-1');
+  await assert.rejects(meshWitness(annularMesh(fixture, { sectionSeam: 1e-6 }),
+    new Uint8Array(8), new Uint8Array(16), fixture.expected, fixture), /closed section boundary degree/);
 });
 
 function quarterPipe({ moved = false, shift = 0 } = {}) {

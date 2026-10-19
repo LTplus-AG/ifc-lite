@@ -1,0 +1,37 @@
+{
+  "format": "ifclite-oracle-regression-v1",
+  "actual_trigger": {
+    "source": "26354b06cc798a36cd363b1ec9610334f03a7e33",
+    "job": "cf149f9a-2efe-4e77-8888-f856b36c3d09",
+    "output_sha256": "a47a5f405528672b7c156af3e32a09015fd2031d82cca6e2fafd37f490ae39d9",
+    "fixture": "oblique-annulus",
+    "keys": [
+      "0.0000000,1.0000000",
+      "-0.0000000,1.0000000"
+    ],
+    "distance": 1.1102230246251565e-16
+  },
+  "unchanged_grid_decimals": 7,
+  "unchanged_geometry_tolerances": true,
+  "before": {
+    "source": "59fac274a538800c792a0a411039d42da5dd7849",
+    "new_fixture_tests": 2,
+    "passed": 1,
+    "failed": 1,
+    "positive_same_grid_case": "fails on old witness",
+    "outside_grid_case": "still refuses"
+  },
+  "after": {
+    "command": "node --test native/smlib-adapter/browser/{sweep-transport,client,response-caps,region-recipes,mesh-witness}.test.mjs",
+    "tests": 32,
+    "passed": 32,
+    "failed": 0,
+    "skipped": 0,
+    "scope": "Synthetic transport/oracle fixtures; no SDK execution"
+  },
+  "files": {
+    "native/smlib-adapter/browser/mesh-witness.mjs": "282b143b27896d83f2ca3c141cacd686beccbbaf2cdc4ce15f4e04eadb0bfd7f",
+    "native/smlib-adapter/browser/mesh-witness.test.mjs": "cdde2acf717f03b40982ec3fa01c97a19d8c80385953f4ded176d7f929a6716e"
+  },
+  "sdk_rerun": "UNRUN"
+}

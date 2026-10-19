@@ -1,0 +1,127 @@
+{
+  "source": "ccf483375bdcc42c3264e4d0ed1efea8f693a41f",
+  "base": "775567f2bd1360fdf239fe96818cf7b1d3184c4c",
+  "files": [
+    {
+      "path": "rust/geometry/src/processors/boolean/half_space_plan.rs",
+      "gitBlob": "09c016c19bdae91e342897de4513afc59184f91b",
+      "sha256": "4095f8960e540244b2ff4bfce0fde07f5a2fe851fc23405cad56e1853bb2ae54"
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/retained.rs",
+      "gitBlob": "0126852995e323175bd7e2303f6586c146471f8f",
+      "sha256": "c59cba28fe15425c452bf531aafad82f206a590821a55fd5728d731f5ccc6bba"
+    },
+    {
+      "path": "rust/geometry/src/program/mod.rs",
+      "gitBlob": "055c879bcb5a47f2b7730bd745e272ecebbf0915",
+      "sha256": "663f3c0d319472138de082356f94c096ee4d876096c34c39780c80682f4bcf6d"
+    },
+    {
+      "path": "rust/geometry/src/program/retained.rs",
+      "gitBlob": "eca7b73db261994840d1cfe1c8e30befe4522ad4",
+      "sha256": "11c5b74770e3d71263f8e3ed2fb049cc50e4fc520a392ffd0a92f07bd1d5b54e"
+    },
+    {
+      "path": "rust/geometry/src/program/retained_clip.rs",
+      "gitBlob": "0cad267ff7e85e6c536e565152cee3aa437bd166",
+      "sha256": "0117e46954c65155f4026be772436b5280a75402659824811cdc208beb8386b8"
+    },
+    {
+      "path": "rust/geometry/src/program/retained_clip_tests.rs",
+      "gitBlob": "6a7ae8a1a936baa691585cad594ebee609a1d308",
+      "sha256": "afb08a796f477ab9133bebec8afe526d35b9e6a2faebbc73663bdc1d3335a7ca"
+    },
+    {
+      "path": "rust/geometry/src/program/retained_operation_tests.rs",
+      "gitBlob": "73c3eb65d596663f040746bb5f349ed592aac6d1",
+      "sha256": "9998dd6419dab9d74d47bb0a5252289ae1416f0de523a9e756a8de495ca2b7c0"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained.rs",
+      "gitBlob": "5c1b14f138d9aafc8fa224ebfcbc75e9db3edf6f",
+      "sha256": "8e1b0d859ca295b8f6a6baf9eb569ecdfbbd61fe004c2360f12668f3ae195b35"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/acceptance.rs",
+      "gitBlob": "d63a6cafd4af038e9eba91d7ae1496afc5d5839d",
+      "sha256": "a8d9c69327fa745a4f8c3775c2141661d8bbbbb1e49cf958fee801ba74f8b08f"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/browser.rs",
+      "gitBlob": "d515cdcd4eec2d2956745f79f574b6b35d205460",
+      "sha256": "c7db15509a2c88e23d2f96a2be5647a05d79d376adebb7b98b1508017ce97ae1"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/browser_tests.rs",
+      "gitBlob": "b0543bf46386268b59c7f782bf43156edaec24a9",
+      "sha256": "030dd96a98c580759ab62896ae45c3133d93f30ece987be567fc0fa631793a80"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/clip_browser_tests.rs",
+      "gitBlob": "4343c40f89e7d960c8173b489a4270f603afa606",
+      "sha256": "a665974d4432b44c356f0ff0249f4c677a32339badf1fd1a7344b98a06c00f71"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/clip_tests.rs",
+      "gitBlob": "eb3bed11957f37f0b6018e84c689e63331558d9a",
+      "sha256": "88f3ec6c69d24048d0a74f24d8d4972e887cb513d8f66c99b19968dc1f0afff8"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/issuance.rs",
+      "gitBlob": "2a811babc7a6d1f6f4bab23a522fe85ac711d7a0",
+      "sha256": "c391794d9bc60b2abc6372e4f9c923992dff47004b5b0ecc504062875b0be348"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/native.rs",
+      "gitBlob": "b31f24bafd6bece5632f6232569208dd7db2f947",
+      "sha256": "314fce776e7948da19ec04bd5af72872df411718d8495c3f8fb31d951d3de060"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/target_browser.rs",
+      "gitBlob": "4855ffa630dbdf04f63fa673c9ba87b33fda169e",
+      "sha256": "0cb934901e4c3b29f062a85254f13f995adc72fada7843aa7652c019d725092b"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/target_native.rs",
+      "gitBlob": "dfa794b71144bc781e0a297e4dcc7e67e70d49f0",
+      "sha256": "c3aed57e084663ebaf1a6b7570b3c30f12562cb8749b558bad2d70d04f2362ef"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/value.rs",
+      "gitBlob": "361ed3d747ce6a56dd96005c6b44e53ee6577487",
+      "sha256": "c2eaa55d9d9033d51d9d892e6680132036f0497fc733ddadcf7338d3905362ed"
+    },
+    {
+      "path": "rust/geometry/src/csg/mod.rs",
+      "gitBlob": "a8c83ab6015473f3e59e4367e2fa781e2a813c32",
+      "sha256": "fb536c7a396662707ade406fca7e622b13b49d3231c8eee15499abcae29a0488"
+    },
+    {
+      "path": "rust/geometry/src/csg/plane_eps.rs",
+      "gitBlob": "6fb60b6fb0cf4c0204e1e469559d35d5a7e953fb",
+      "sha256": "2d5d8007a52f83d6eb3c34ed5e1008d755e5df66d108a0544629f4875d2c9394"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/halfspace_cap_tests.rs",
+      "gitBlob": "9cf02a506685ad620c3b2ed6e87f42b4a754dbcf",
+      "sha256": "0e50498530999386dfb24a581b323e53501307bc21a111b2f1c2ddd1d62bbf14"
+    },
+    {
+      "path": "rust/geometry/src/processors/boolean/cut_heuristics.rs",
+      "gitBlob": "2c39b7d0a91e6d937b015f27acdd04ed2c07214f",
+      "sha256": "b1c43c3901a2f379947782d421d2b525c3bf9ed962968e792d00c75bbea0072d"
+    },
+    {
+      "path": "rust/geometry/src/program/boolean/work.rs",
+      "gitBlob": "e20b486c994f3bd9b6f1b82faa9579a174ab3101",
+      "sha256": "89ce258a0668683609de3824338de12327339f4d91fa4c9314c1ae45b1cc9a2e"
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/merged_ready.rs",
+      "gitBlob": "b09146cb8c08abd0a6001b639222ff9c021e168a",
+      "sha256": "502e91f9d4416e76d048422c2f97eac696b7c8deae87f893df306c410c4a7088"
+    }
+  ],
+  "qualification": "Read-only source review; no builds/tests/jobs"
+}

@@ -1,0 +1,103 @@
+{
+  "id": "52782339-371a-4004-8487-9c8cce9ff312",
+  "host": {
+    "host": "louistrue-pc",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 24,
+    "availableMemoryBytes": 64867995648,
+    "totalMemoryBytes": 67423580160,
+    "python": "3.14.4",
+    "time": 1792399039.995604
+  },
+  "cwd": "/home/louistrue/build-workers/worker-state/checkouts/6c7edd4d4cd7a0a5b1e60a5dc52809bbbca53da2",
+  "sourceBefore": {
+    "commit": "6c7edd4d4cd7a0a5b1e60a5dc52809bbbca53da2",
+    "tree": "6e0de2f91673002bd3bb935fe7f8f674771755db",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "2e66a76b1f156a98db8ed64088735af2ff66a12a7357b0e977afe08ad2b5c169"
+    }
+  },
+  "command": [
+    "bash",
+    "-c",
+    "source \"$HOME/build-workers/worker-env.sh\"; pnpm install --frozen-lockfile --prefer-offline || exit $?; pnpm fixtures || exit $?; cargo test --workspace --no-fail-fast; test_status=$?; cargo clippy --workspace --all-targets -- -D warnings; clippy_status=$?; printf \"workspace_test_exit=%s clippy_exit=%s\\n\" \"$test_status\" \"$clippy_status\"; if [ \"$test_status\" -ne 0 ]; then exit \"$test_status\"; fi; exit \"$clippy_status\""
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792399039.9926474,
+  "resources": [
+    "/home/louistrue/build-workers/worker-state/checkouts/6c7edd4d4cd7a0a5b1e60a5dc52809bbbca53da2",
+    "/home/louistrue/build-workers/worker-state/caches/465834aecd7ae9e461a66d1b"
+  ],
+  "state": "completed",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "storageTask": "ifclite-a0-budget-6c7-workspace-20261019",
+  "storageTaskExplicit": true,
+  "storageResources": [
+    {
+      "path": "/home/louistrue/build-workers/worker-state/caches/465834aecd7ae9e461a66d1b",
+      "role": "cache",
+      "project": "ifc-lite",
+      "compatibilityKey": "465834aecd7ae9e461a66d1b"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/6c7edd4d4cd7a0a5b1e60a5dc52809bbbca53da2",
+      "role": "worktree"
+    }
+  ],
+  "fixtures": {},
+  "tools": {
+    "git": {
+      "path": "/usr/local/bin/git",
+      "exitCode": 0,
+      "version": "git version 2.53.0"
+    },
+    "rustc": {
+      "path": "/home/louistrue/.cargo/bin/rustc",
+      "exitCode": 0,
+      "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+    },
+    "cargo": {
+      "path": "/home/louistrue/.cargo/bin/cargo",
+      "exitCode": 0,
+      "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+    },
+    "node": {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node",
+      "exitCode": 0,
+      "version": "v24.21.0"
+    },
+    "pnpm": {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/pnpm",
+      "exitCode": 0,
+      "version": "10.8.1"
+    }
+  },
+  "runnerSha256": "e43e00e2d93ae926cf7369009285aa96f63d4722b8e3e0b266a1daa699fed7bb",
+  "startedAt": 1792399040.4698923,
+  "queueSeconds": 0.4772450923919678,
+  "resourceScope": false,
+  "exitCode": 0,
+  "finishedAt": 1792399751.6353228,
+  "sourceAfter": {
+    "commit": "6c7edd4d4cd7a0a5b1e60a5dc52809bbbca53da2",
+    "tree": "6e0de2f91673002bd3bb935fe7f8f674771755db",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "2e66a76b1f156a98db8ed64088735af2ff66a12a7357b0e977afe08ad2b5c169"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {},
+  "outputSha256": "e926781ec972f1a941c690d4084a89edc8fcb6b2d2bec9405fb90687b083086d"
+}

@@ -1,0 +1,11 @@
+{
+  "url": "https://github.com/LTplus-AG/ifc-lite/pull/7946",
+  "base": "067ef8327b7238a5eef106df722ad7e705c8ed18",
+  "qualified_source": "6c7edd4d4cd7a0a5b1e60a5dc52809bbbca53da2",
+  "head": "2b63ef9899cad4d718f8a79e0ee23eb5822ad9f5",
+  "head_difference": "two evidence JSON files only; source hashes match qualification",
+  "initial_mergeability": "MERGEABLE/BLOCKED; required CI/review running",
+  "comments_triage": "Vercel previews ignored by repository policy; optional Bugbot declined due account usage limit, no finding or billing change",
+  "parent_owns_watch": true,
+  "merged_or_enqueued": false
+}

@@ -1,0 +1,97 @@
+{
+  "reviewed_commit": "4168d78f31e50b7cfdf9df7aaca70e9cd29ce816",
+  "reviewed_tree": "532f5aecfb71777332f4566857969314c665d195",
+  "scope": "immutable Git blobs only, no later source hardening verdict; no edits/builds/tests/jobs",
+  "files": [
+    {
+      "path": "rust/geometry-runtime/js/retained-driver.mjs",
+      "git_blob": "229b52ca56926e5b302bf5a4d489994d25c73006",
+      "sha256": "1b5e683315c482e6597e9b300377e3dd0015e032671e6a812d019551e771ba83",
+      "bytes": 8020
+    },
+    {
+      "path": "rust/geometry-runtime/src/browser.rs",
+      "git_blob": "ddd697fdf45fa9f69de61cbd0e1d35eebc327b52",
+      "sha256": "f6078e8d4caabcce05657a865c9ca5c8ac6860f8dca1bf6343b0c5346abebdc9",
+      "bytes": 3914
+    },
+    {
+      "path": "rust/geometry-runtime/src/browser_bridge.rs",
+      "git_blob": "302b50ad36c460567259ff6482f0c51d6fd7ac3e",
+      "sha256": "9e3a9733ab3fda9d3c1014344a90f9c804ac97533b304aaa42d32fd3fb5e9944",
+      "bytes": 4812
+    },
+    {
+      "path": "rust/geometry-runtime/src/browser_bridge_tests.rs",
+      "git_blob": "6d61d054d2e57d49241cc27773e617bd425ad596",
+      "sha256": "88fa34cf2dbcb0c5857332510a2fd4cbd1cc1a6ca16122deb5521fcdf39f1fe3",
+      "bytes": 2110
+    },
+    {
+      "path": "rust/geometry-runtime/src/browser_tests.rs",
+      "git_blob": "172d798b35ddbc06ceed27246c2b6cd31c29dab6",
+      "sha256": "bda414f5db9b44a18d15677fdc7a41d9a38e94d946037d4fd3bc01835702259b",
+      "bytes": 872
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/bound_browser.rs",
+      "git_blob": "bbef60328def9a665b349de334d2bf3c43bf8145",
+      "sha256": "2c5bf1c89c36d1ad3f30e8bc1636047ee168a10610c02d2258ef8d44c2fb4d05",
+      "bytes": 6033
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/retained_browser.rs",
+      "git_blob": "cd69d3be5b2c8c6f03e2e0388b79a9f30396806b",
+      "sha256": "33396a077c29ca430a7db67af544d257fe22e3a7c37f1d87c706d2207eb29bbb",
+      "bytes": 6854
+    },
+    {
+      "path": "rust/wasm-bindings/tests/retained-browser-contract.mjs",
+      "git_blob": "b6fe964f7d605dc3c368c68c03175ab259d13f14",
+      "sha256": "fc46f25474d14031b5428feb5ecd446851014a07cf498c3fa7dc7666ab049555",
+      "bytes": 3903
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep-contract.mjs",
+      "git_blob": "c13b85c016f5b6562c4f889a8492dcbcbebf8999",
+      "sha256": "58351e3ac44472032ce679a28f47117c45963da998c841bed56801a923cf81d5",
+      "bytes": 6068
+    },
+    {
+      "path": "native/smlib-adapter/browser/region-recipes.mjs",
+      "git_blob": "94a826f1ed7f2c26d969d89b901b375a813b4a4a",
+      "sha256": "b6b876ed8a4a7271ee49c4b86e4336255f806437006f01c2364734534b0ceee7",
+      "bytes": 3843
+    },
+    {
+      "path": "native/smlib-adapter/browser/client.mjs",
+      "git_blob": "4a117cfc5efcb7f3cb678135ce491920fab872a8",
+      "sha256": "66ed0d7b8c7f463bcab09e59d6633d2c359bc33e06b239f2115f696510f3da4c",
+      "bytes": 3933
+    },
+    {
+      "path": "native/smlib-adapter/browser/sweep.mjs",
+      "git_blob": "eaec774b34f783e3728cf8e1b63bd7b6fcc90cbe",
+      "sha256": "94ee1485970fd42faa2844a7b5e96cd551f3fe4c3e5100be05b72a1048436eb8",
+      "bytes": 4513
+    },
+    {
+      "path": "rust/geometry-runtime/src/worker_disk_qualification.rs",
+      "git_blob": "fa1343427eba55feeb5251d80d41638e86f4d81f",
+      "sha256": "3e0e71302f7fc3e888b086c2d7c11b3a38be9135c7fbcdfa1ad0bfd184ffe90d",
+      "bytes": 2916
+    },
+    {
+      "path": "rust/geometry/src/document/mod.rs",
+      "git_blob": "28bdbcd2068f1ea9f5aaf3cefe2380b8bb2c969f",
+      "sha256": "964772f8aecc401aa87b0983c4202f78f31fb88f5ffad461c6587b63767f7c28",
+      "bytes": 9395
+    },
+    {
+      "path": "docs/guide/geometry.md",
+      "git_blob": "3366e7a18cdae3533d724ef8427a883c47bde8da",
+      "sha256": "9cdb77a4e59822b0b214a86d9bbdb1648257ab2d5f98b16aad6f71a3a4d605ae",
+      "bytes": 38505
+    }
+  ]
+}

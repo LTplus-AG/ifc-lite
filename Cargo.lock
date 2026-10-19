@@ -1581,6 +1581,12 @@ version = "21.4.0"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
+ "js-sys",
+ "serde",
+ "serde-wasm-bindgen",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-test",
 ]
 
 [[package]]
@@ -1666,6 +1672,7 @@ dependencies = [
  "ifc-lite-core",
  "ifc-lite-export",
  "ifc-lite-geometry",
+ "ifc-lite-geometry-runtime",
  "ifc-lite-landxml",
  "ifc-lite-processing",
  "ifc-lite-testkit",
@@ -1677,6 +1684,7 @@ dependencies = [
  "serde_json",
  "tracing",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "wasm-bindgen-rayon",
  "wasm-bindgen-test",
  "web-sys",

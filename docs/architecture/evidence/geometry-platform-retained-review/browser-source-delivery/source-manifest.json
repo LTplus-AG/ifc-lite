@@ -1,0 +1,108 @@
+{
+  "base": "b3bd2f3c71f09d9689678ef1ea2f6ab901750266",
+  "head": "1550026c778e42680c72928e552bdca9326dfea4",
+  "files": [
+    {
+      "path": "Cargo.lock",
+      "sha256": "ee22461fc3d2b4ecb68803b434c96bae3c68723e09f92f7b9207d6de7f500d9c",
+      "bytes": 90357,
+      "lines": 3723
+    },
+    {
+      "path": "docs/guide/geometry.md",
+      "sha256": "9cdb77a4e59822b0b214a86d9bbdb1648257ab2d5f98b16aad6f71a3a4d605ae",
+      "bytes": 38505,
+      "lines": 909
+    },
+    {
+      "path": "rust/geometry-runtime/Cargo.toml",
+      "sha256": "eb29d54fb087c33a3ee7df19720f6e784a3a04d68d58fabb4ea6c07e25cd422c",
+      "bytes": 694,
+      "lines": 28
+    },
+    {
+      "path": "rust/geometry-runtime/js/retained-driver.mjs",
+      "sha256": "1b5e683315c482e6597e9b300377e3dd0015e032671e6a812d019551e771ba83",
+      "bytes": 8020,
+      "lines": 142
+    },
+    {
+      "path": "rust/geometry-runtime/src/browser.rs",
+      "sha256": "f6078e8d4caabcce05657a865c9ca5c8ac6860f8dca1bf6343b0c5346abebdc9",
+      "bytes": 3914,
+      "lines": 145
+    },
+    {
+      "path": "rust/geometry-runtime/src/browser_bridge.rs",
+      "sha256": "9e3a9733ab3fda9d3c1014344a90f9c804ac97533b304aaa42d32fd3fb5e9944",
+      "bytes": 4812,
+      "lines": 142
+    },
+    {
+      "path": "rust/geometry-runtime/src/browser_bridge_tests.rs",
+      "sha256": "88fa34cf2dbcb0c5857332510a2fd4cbd1cc1a6ca16122deb5521fcdf39f1fe3",
+      "bytes": 2110,
+      "lines": 50
+    },
+    {
+      "path": "rust/geometry-runtime/src/browser_tests.rs",
+      "sha256": "bda414f5db9b44a18d15677fdc7a41d9a38e94d946037d4fd3bc01835702259b",
+      "bytes": 872,
+      "lines": 32
+    },
+    {
+      "path": "rust/geometry-runtime/src/lib.rs",
+      "sha256": "8fd437de993f0f37b61294de88f3c993abd2d2979fb4114e3b92cdbea3cb8957",
+      "bytes": 896,
+      "lines": 21
+    },
+    {
+      "path": "rust/processing/Cargo.toml",
+      "sha256": "ef34041bff696034e8fc8a3ae15be64d062662d87351bc0b1ac795d145bb5168",
+      "bytes": 2763,
+      "lines": 66
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/bound.rs",
+      "sha256": "f1b5956c8a9a0421ff969a30e6fb7cc99fb020c69ec964b1726470cd78b693e0",
+      "bytes": 4724,
+      "lines": 95
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/bound_browser.rs",
+      "sha256": "018e016be2e3892f885d0ec67969c78339f9223a252ffe2978448e9ef9a71cca",
+      "bytes": 6527,
+      "lines": 193
+    },
+    {
+      "path": "rust/processing/src/authored_geometry/mod.rs",
+      "sha256": "964fb4915c44c3043dff07795f7099391e85837f68b6755a0585de8d912286d2",
+      "bytes": 3934,
+      "lines": 105
+    },
+    {
+      "path": "rust/wasm-bindings/Cargo.toml",
+      "sha256": "1737e471ce4786176b16972a870660c8041503eec23d677a11e143bd649fafbf",
+      "bytes": 3808,
+      "lines": 87
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/mod.rs",
+      "sha256": "6a2582f83ee3b5843f21aab402f491802c5a57390929982125afc3798a63685f",
+      "bytes": 47789,
+      "lines": 961
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/retained_browser.rs",
+      "sha256": "2e08e20d170d0510d592a30fa32082011b7fcab58defbb5ccfcfa22d12fca8b8",
+      "bytes": 6860,
+      "lines": 191
+    },
+    {
+      "path": "rust/wasm-bindings/tests/retained-browser-contract.mjs",
+      "sha256": "fc46f25474d14031b5428feb5ecd446851014a07cf498c3fa7dc7666ab049555",
+      "bytes": 3903,
+      "lines": 58
+    }
+  ]
+}

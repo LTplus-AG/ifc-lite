@@ -65,7 +65,7 @@ impl BoundAuthoredPlan {
         let (epoch, revision) = self.lifecycle.epoch_revision();
         let document = AuthoredRetainedDocument::admit_source(&self.plan, key, epoch, revision)?;
         self.lifecycle.validate().map_err(source_error)?;
-        Ok(ModelBoundRetainedDocument { document, lifecycle: self.lifecycle.clone(), #[cfg(not(target_arch = "wasm32"))] pending: None })
+        Ok(ModelBoundRetainedDocument { document, lifecycle: self.lifecycle.clone(), pending: None })
     }
 }
 
@@ -74,7 +74,6 @@ impl BoundAuthoredPlan {
 pub struct ModelBoundRetainedDocument {
     pub(super) document: AuthoredRetainedDocument,
     pub(super) lifecycle: ProductionLifecycle,
-    #[cfg(not(target_arch = "wasm32"))]
     pub(super) pending: Option<std::sync::Weak<()>>,
 }
 impl ModelBoundRetainedDocument {

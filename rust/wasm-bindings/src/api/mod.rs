@@ -957,3 +957,5 @@ fn set_js_prop(obj: &JsValue, key: &str, value: &JsValue) -> bool {
 #[cfg(test)] mod mod_tests;
 
 mod coherent_source;
+#[cfg(target_arch = "wasm32")]
+mod retained_browser;

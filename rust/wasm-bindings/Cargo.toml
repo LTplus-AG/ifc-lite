@@ -74,6 +74,10 @@ wasm-bindgen = "=0.2.126"
 tracing = { workspace = true, optional = true, features = ["std"] }
 web-sys = { version = "=0.3.103", features = ["console", "Performance", "Window"] }
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+ifc-lite-geometry-runtime = { path = "../geometry-runtime" }
+wasm-bindgen-futures = "=0.4.76"
+
 [dev-dependencies]
 # Test-only (publish = false). Path-only: cargo strips it when packaging.
 ifc-lite-testkit = { path = "../testkit" }

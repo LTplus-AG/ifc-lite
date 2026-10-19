@@ -1,0 +1,19 @@
+{
+  "parent_before": "d625617742870554c68a15901bf80a123611bf61",
+  "browser_source": "1550026c778e42680c72928e552bdca9326dfea4",
+  "patch_sha256": "9f78f15ccd5ed27207c97fd6e2e4aaf4a7728f38cc10f8c9d989976cb3e2e0bb",
+  "delivered_paths_verified": 17,
+  "review_pin": "4168d78f31e50b7cfdf9df7aaca70e9cd29ce816",
+  "authority_fix": "155 checks document handle before source-expiry retirement and seals publication fields",
+  "parent_corrections": [
+    "separate captured cancellation capability usable during async mutable executor borrow"
+  ],
+  "remaining": [
+    "same-worker curved rational qualification witness",
+    "common ProgramRequest/ProductState retained continuation",
+    "SDK browser asset staging",
+    "canonical generated wasm dts",
+    "all compile/runtime/platform/performance qualification"
+  ],
+  "validation": "UNRUN except delivered source parse/metadata/JS syntax checks; no actual browser claim"
+}

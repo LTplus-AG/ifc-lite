@@ -871,3 +871,45 @@ unsupported coverage before invoking producers. This is not an RSS or GPU-memory
 limit and does not change the browser batch ABI. See the
 [implementation boundary](../architecture/geometry-platform-resource-accounting.md)
 for ownership, terminal errors and remaining coverage.
+
+### Explicit retained source execution in a browser
+
+The low-level WASM API has an explicit source-only retained consumer. Install
+bytes/index through the existing source path and call `bindSourceModel` first.
+`retainedSourceKeys()` lists keys from that authenticated model;
+`admitRetainedSource(key)` requires one exact selected key and returns an opaque
+`RetainedBrowserSource`. Admission does not start an SDK Worker.
+
+Construct `RetainedBrowserExecutor` only when retained execution is requested.
+Its private driver starts the canonical module Worker from `/smlib/worker.mjs`;
+serve the built adapter and its browser modules under `/smlib/`. There is no
+caller-provided transport, numeric incarnation authority or completion-buffer
+injection. `source.execute(executor, occurrenceIndex, chordMetres, angleDegrees,
+maxBytes)` carries a linear pending ticket through actual Worker execution and
+publishes through the shared geometry document assembly. `source.display()`
+checks the source lifecycle, Worker incarnation and object lease before copying
+unstyled flat mesh buffers and f64 occurrence transforms. Output is IFC Z-up in
+metres. Enclosing booleans, openings and full representation coverage are not
+certified by this source-only result.
+
+Nonrectangular ordered regions and rational disks require explicit
+`executor.qualifyNumericalRoutes()` on that same Worker before execution. It runs
+the existing actual numerical witnesses; those recipes do not establish full
+source/browser qualification. `executor.retire()` or freeing the executor
+invalidates its retained objects. A dropped in-flight Rust future retires its
+captured Worker even though its JavaScript Promise cannot be cancelled. Source
+replacement through the canonical load lifecycle expires admitted sources and
+publications. Failed execution is not retried or switched to another engine.
+
+Before starting an async operation, capture `executor.cancellation()`. Its
+`retire()` remains callable while the operation holds the executor's mutable
+WASM borrow. Free the cancellation handle when finished; freeing that handle
+alone does not cancel work. A captured handle retires only its original Worker,
+including when called after a replacement executor has been constructed.
+
+This implementation still requires actual assembled WASM/browser execution and
+performance evidence. The committed browser contract witness covers canonical
+source selection, millimetre conversion, survey placement, Worker retirement and
+source invalidation. Its source is not a successful execution receipt. The
+ordinary exact path remains the default; SDK assets are fetched only by explicit
+retained executor construction.

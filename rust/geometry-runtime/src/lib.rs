@@ -3,6 +3,7 @@
 //! BRep operations use independent native worker processes.
 
 pub mod protocol;
+pub mod browser;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod worker;

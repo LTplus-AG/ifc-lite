@@ -9,6 +9,8 @@ mod inventory;
 pub mod bound;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod bound_native;
+#[cfg(target_arch = "wasm32")]
+pub mod bound_browser;
 mod planning;
 pub mod evaluator;
 

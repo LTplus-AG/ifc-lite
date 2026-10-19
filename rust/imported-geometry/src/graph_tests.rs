@@ -128,7 +128,7 @@ fn imported_graph_latest_visibility_and_entity_type_inheritance_gate_malformed_s
         local_transform: Some(malformed), ..attributes(true, true, false) }).unwrap();
     let child = event(&mut p); // Hidden malformed mesh never requested.
     assert_eq!(child.node, 1);
-    p.node_reply(child.sequence, NodeReply { visibility: Some("inherited".into()), ..attributes(false, true, false) }).unwrap();
+    p.node_reply(child.sequence, NodeReply { visibility: Some("visible".into()), ..attributes(false, true, false) }).unwrap();
     let key = event(&mut p); assert!(matches!(key.kind, EventKind::Key { .. }));
     p.key_reply(key.sequence, "skip-for-test".into()).unwrap();
     // Execute no vertices: malformed w validation belongs to executed geometry.
@@ -241,4 +241,76 @@ fn imported_definition_cannot_change_source_or_codec_metadata_within_one_revisio
         let ImportedSource::Points(raw) = p.retained()[0].source.as_ref() else { panic!("points source"); };
         assert_eq!(raw, &[1., 2., 3.]);
     }
+}
+
+#[test]
+fn inherited_visibility_keeps_an_invisible_ancestor_hidden() {
+    for (child, hidden) in [("inherited", true), ("INHERITED", true), ("visible", false), ("invisible", true)] {
+        let mut p = GraphProgram::new(1, 1, 1, vec![node("root", &[("child", 1)]), node("child", &[])]).unwrap();
+        let root = event(&mut p);
+        p.node_reply(root.sequence, NodeReply { visibility: Some("invisible".into()), ..attributes(true, false, false) }).unwrap();
+        let reached = event(&mut p);
+        p.node_reply(reached.sequence, NodeReply { visibility: Some(child.into()), ..attributes(false, true, false) }).unwrap();
+        let emitted = matches!(p.poll().unwrap().map(|e| &e.kind), Some(EventKind::Key { .. }));
+        assert_eq!(emitted, !hidden, "{child}");
+    }
+}
+
+fn drain_root(p: &mut GraphProgram, reply: NodeReply) -> Result<(), ImportError> {
+    let root = event(p);
+    p.node_reply(root.sequence, reply)
+}
+
+#[test]
+fn repeated_child_fan_out_is_refused_by_the_queue_budget() {
+    let edges = vec![("edge", 1u32); 400];
+    let mut p = GraphProgram::new(1, 1, 1, vec![node("root", &edges), node("leaf", &[])]).unwrap();
+    p.limits.queued_bytes = 20_000;
+    assert_eq!(drain_root(&mut p, attributes(true, false, false)), Err(ImportError::InvalidPacket));
+    assert_eq!(p.poll().unwrap_err(), ImportError::InvalidPacket);
+    // The same graph is fine under the production budget.
+    let mut p = GraphProgram::new(1, 1, 1, vec![node("root", &edges), node("leaf", &[])]).unwrap();
+    drain_root(&mut p, attributes(true, false, false)).unwrap();
+    assert_eq!(p.queue.len(), 400);
+}
+
+#[test]
+fn long_edge_names_count_against_the_queue_budget() {
+    let long = "x".repeat(1 << 20);
+    let nodes = vec![Node { path: "root".into(), children: (0..300).map(|_| (long.clone(), 1)).collect() }, node("leaf", &[])];
+    let mut p = GraphProgram::new(1, 1, 1, nodes).unwrap();
+    assert_eq!(drain_root(&mut p, attributes(true, false, false)), Err(ImportError::InvalidPacket));
+    assert!(p.queue.len() < 300);
+}
+
+#[test]
+fn depth_and_total_frame_limits_refuse_the_program() {
+    let chain = vec![node("a", &[("e", 1)]), node("b", &[("e", 2)]), node("c", &[("e", 3)]), node("d", &[])];
+    let run = |p: &mut GraphProgram| loop {
+        match p.poll() {
+            Ok(Some(request)) => { let s = request.sequence; if let Err(e) = p.node_reply(s, attributes(true, false, false)) { return Some(e); } }
+            Ok(None) => return None,
+            Err(e) => return Some(e),
+        }
+    };
+    let mut p = GraphProgram::new(1, 1, 1, chain.clone()).unwrap();
+    assert_eq!(run(&mut p), None);
+    let mut p = GraphProgram::new(1, 1, 1, chain.clone()).unwrap();
+    p.limits.depth = 3;
+    assert_eq!(run(&mut p), Some(ImportError::InvalidPacket));
+    let mut p = GraphProgram::new(1, 1, 1, chain).unwrap();
+    p.limits.frames = 2;
+    assert_eq!(run(&mut p), Some(ImportError::InvalidPacket));
+}
+
+#[test]
+fn oversized_local_transforms_are_refused() {
+    for matrix in [vec![vec![0.; 4]; 5], vec![vec![0.; 100_000]], vec![vec![1., 0., 0., 0., 0.]]] {
+        let mut p = GraphProgram::new(1, 1, 1, vec![node("root", &[])]).unwrap();
+        let reply = NodeReply { local_transform: Some(matrix), ..attributes(true, false, false) };
+        assert_eq!(drain_root(&mut p, reply), Err(ImportError::InvalidPacket));
+        assert_eq!(p.poll().unwrap_err(), ImportError::InvalidPacket);
+    }
+    let mut p = GraphProgram::new(1, 1, 1, vec![node("root", &[])]).unwrap();
+    drain_root(&mut p, NodeReply { local_transform: Some(translation(1., 2., 3.)), ..attributes(true, false, false) }).unwrap();
 }

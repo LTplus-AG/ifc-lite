@@ -36,10 +36,18 @@ pub fn compute_normal_matrix(m: &[f32]) -> Option<Vec<f32>> {
     Some([e*i-f*h,-(d*i-f*g),d*h-e*g,-(b*i-c*h),a*i-c*g,-(a*h-b*g),b*f-c*e,-(a*f-c*d),a*e-b*d].map(|x| (x*inv) as f32).to_vec())
 }
 fn at(values: &[f32], i: usize) -> f64 { values.get(i).copied().unwrap_or(f32::NAN) as f64 }
+/// Float offset of a vertex's first component. `None` unless all three
+/// components (`offset..=offset + 2`) are representable, so no later `+1`/`+2`
+/// can wrap (on wasm32 index 0x55555555 multiplies to exactly `usize::MAX`).
+pub(crate) fn vertex_offset(index: usize) -> Option<usize> {
+    let offset = index.checked_mul(3)?;
+    offset.checked_add(2)?;
+    Some(offset)
+}
 pub fn compute_normals(positions: &[f32], indices: &[u32]) -> Vec<f32> {
     let mut normals = vec![0.; positions.len()];
     for tri in indices.chunks(3) {
-        let ids = [0, 1, 2].map(|i| tri.get(i).and_then(|x| (*x as usize).checked_mul(3)).unwrap_or(usize::MAX - 2));
+        let ids = [0, 1, 2].map(|i| tri.get(i).and_then(|x| vertex_offset(*x as usize)).unwrap_or(usize::MAX - 2));
         let (a,b,c)=(ids[0],ids[1],ids[2]);
         let e1=[at(positions,b)-at(positions,a),at(positions,b+1)-at(positions,a+1),at(positions,b+2)-at(positions,a+2)];
         let e2=[at(positions,c)-at(positions,a),at(positions,c+1)-at(positions,a+1),at(positions,c+2)-at(positions,a+2)];
@@ -77,18 +85,23 @@ pub(crate) fn mesh(source:&RawMesh,stack:&[RawMatrix])->Result<MeshOutput,Import
     }
     let mut indices=Vec::new();
     if let Some(counts)=source.face_vertex_counts.as_ref().filter(|x| !x.is_empty()) {
-        let mut offset=0.0;
+        // Untrusted counts. The walk ends at the first count that is not a finite
+        // non-negative integer. `offset` stays within 0..=indices.len() and a face
+        // never fans past the indices that exist, so the total number of emitted
+        // triangles is at most indices.len() and work stays bounded.
+        let len=source.face_vertex_indices.len();
+        let get=|index:usize| source.face_vertex_indices.get(index).copied().unwrap_or(f64::NAN);
+        let mut offset=0usize;
         for &count in counts {
-            // Untrusted counts: a non-finite count ends the fan walk and a face
-            // never fans past the indices that exist, so work stays bounded.
-            if !count.is_finite() { break; }
-            let get=|index:f64| if index>=0. && index.fract()==0. {source.face_vertex_indices.get(index as usize).copied().unwrap_or(f64::NAN)}else{f64::NAN};
-            let available=(source.face_vertex_indices.len() as f64-offset).max(0.);
-            let mut i=1.;
-            while i<count.min(available)-1. {
-                indices.extend([to_uint32(get(offset)),to_uint32(get(offset+i)),to_uint32(get(offset+i+1.))]); i+=1.;
+            if !count.is_finite() || count<0. || count.fract()!=0. { break; }
+            let available=len-offset;
+            // Saturating: counts beyond the remaining indices clamp to them.
+            let n=if count>=available as f64 {available} else {count as usize};
+            for i in 1..n.saturating_sub(1) {
+                indices.extend([to_uint32(get(offset)),to_uint32(get(offset+i)),to_uint32(get(offset+i+1))]);
             }
-            offset+=count;
+            offset+=n;
+            if count>available as f64 { break; }
         }
     } else { indices.extend(source.face_vertex_indices.iter().map(|x|to_uint32(*x))); }
     let normals=match &source.normals {

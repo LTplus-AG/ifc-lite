@@ -53,3 +53,29 @@ fn untrusted_face_counts_stay_bounded() {
     assert_eq!(crate::math::mesh(&raw(vec![1e12]), &[]).unwrap().indices, vec![0, 1, 2]);
     assert_eq!(crate::math::mesh(&raw(vec![3.]), &[]).unwrap().indices, vec![0, 1, 2]);
 }
+
+#[test]
+fn wasm32_shaped_index_boundary_is_rejected_before_wrapping() {
+    // usize::MAX / 3 on a 32-bit target: the product is exactly usize::MAX.
+    let boundary = 0x5555_5555_u32 as usize;
+    assert_eq!(boundary.wrapping_mul(3) & 0xffff_ffff, 0xffff_ffff);
+    assert_eq!(crate::math::vertex_offset(u32::MAX as usize / 3), if usize::BITS == 32 { None } else { Some(0x5555_5555 * 3) });
+    // Simulated 32-bit arithmetic: checked_mul succeeds, +2 must not.
+    assert_eq!(0x5555_5555_u32.checked_mul(3), Some(u32::MAX));
+    assert_eq!(0x5555_5555_u32.checked_mul(3).and_then(|o| o.checked_add(2)), None);
+    assert_eq!(crate::math::vertex_offset(usize::MAX / 3), None);
+    let positions = vec![0., 0., 0., 1., 0., 0., 0., 1., 0.];
+    let normals = compute_normals(&positions, &[0, 1, 0x5555_5555]);
+    assert!(normals[..6].iter().all(|v| v.is_nan()));
+    assert_eq!(&normals[6..], &[0., 0., 0.]);
+}
+
+#[test]
+fn negative_and_fractional_face_counts_end_the_walk() {
+    let raw = |counts: Vec<f64>| RawMesh { points: vec![vec![0., 0., 0.], vec![1., 0., 0.], vec![0., 1., 0.]], face_vertex_indices: vec![0., 1., 2.], face_vertex_counts: Some(counts), normals: None };
+    let fan = |counts: Vec<f64>| crate::math::mesh(&raw(counts), &[]).unwrap().indices;
+    assert_eq!(fan(vec![-1e12, 1e12]), Vec::<u32>::new());
+    assert_eq!(fan(vec![2.5, 3.]), Vec::<u32>::new());
+    assert_eq!(fan(vec![3., 1e12]), vec![0, 1, 2]);
+    assert_eq!(fan(vec![-1., 3.]), Vec::<u32>::new());
+}

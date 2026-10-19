@@ -60,10 +60,35 @@ impl Event {
         }
     }
 }
+/// Work limits for untrusted graph packets. Every outgoing edge clones its
+/// parent frame, so an adversarial reply (the same child repeated, huge edge
+/// names, oversized matrices, very deep chains) could otherwise multiply a
+/// small packet into gigabytes. Real IFCX models are far below all of these.
+/// Exceeding any limit refuses the program with `ImportError::InvalidPacket`.
+/// Deepest path of nested nodes (a frame's lineage length).
+pub const MAX_DEPTH: usize = 512;
+/// Total frames a program may visit across all passes.
+pub const MAX_FRAMES: u64 = 10_000_000;
+/// Bytes (estimated) held by queued, not yet visited, frames at any moment.
+pub const MAX_QUEUED_BYTES: usize = 256 << 20;
+/// A local transform is accepted only as at most 4 rows of at most 4 values.
+pub const MAX_TRANSFORM_ROWS: usize = 4;
+pub const MAX_TRANSFORM_COLUMNS: usize = 4;
+#[derive(Clone, Copy, Debug)]
+struct Limits { depth: usize, frames: u64, queued_bytes: usize }
+const LIMITS: Limits = Limits { depth: MAX_DEPTH, frames: MAX_FRAMES, queued_bytes: MAX_QUEUED_BYTES };
+const FRAME_BYTES: usize = 160;
+const ENTRY_BYTES: usize = 32;
+fn matrix_bytes(matrix: &RawMatrix) -> usize {
+    24 + matrix.iter().map(|row| 24 + row.len() * 8).sum::<usize>()
+}
+
 #[derive(Clone, Debug, Default)]
 struct Frame {
     occurrence: u64, node: u32, lineage: Vec<LineageEntry>, context: Option<u32>,
     is_type: bool, invisible: bool, color: Option<[f64; 4]>, stack: Vec<RawMatrix>,
+    /// Estimated size of this frame, kept in step with lineage and stack.
+    bytes: usize,
 }
 #[derive(Debug)]
 pub struct GraphProgram {
@@ -72,6 +97,7 @@ pub struct GraphProgram {
     sequence: u32, occurrence: u64, emitted: HashSet<String>, retained: Vec<RetainedSource>, failure: Option<ImportError>,
     definitions: HashMap<(u64, bool), Arc<ImportedSource>>,
     point_metadata: HashMap<u64, Arc<PointMetadata>>,
+    limits: Limits, queued_bytes: usize,
 }
 
 fn seeds(nodes: &[Node], candidates: usize) -> Result<Vec<u32>, ImportError> {
@@ -149,14 +175,17 @@ impl GraphProgram {
         let seeds = seeds(&nodes, candidates)?;
         let passes = match mode { 1 => vec![true], 2 => vec![false], _ => vec![true, false] };
         let mut program = Self { store, revision, nodes, seeds, passes, pass: 0, queue: Vec::new(),
-            current: None, pending: None, sequence: 0, occurrence: 0, emitted: HashSet::new(), retained: Vec::new(), failure: None, definitions: HashMap::new(), point_metadata: HashMap::new() };
+            current: None, pending: None, sequence: 0, occurrence: 0, emitted: HashSet::new(), retained: Vec::new(), failure: None, definitions: HashMap::new(), point_metadata: HashMap::new(), limits: LIMITS, queued_bytes: 0 };
         program.seed_pass();
         Ok(program)
     }
     fn seed_pass(&mut self) {
-        self.queue.extend(self.seeds.iter().rev().map(|node| Frame {
-            node: *node, lineage: vec![LineageEntry { node: *node, edge: None }], ..Frame::default()
-        }));
+        let frames: Vec<Frame> = self.seeds.iter().rev().map(|node| Frame {
+            node: *node, lineage: vec![LineageEntry { node: *node, edge: None }],
+            bytes: FRAME_BYTES + ENTRY_BYTES, ..Frame::default()
+        }).collect();
+        self.queued_bytes = self.queued_bytes.saturating_add(frames.iter().map(|f| f.bytes).sum());
+        self.queue.extend(frames);
     }
     fn issue(&mut self, kind: EventKind) -> Result<(), ImportError> {
         let frame = self.current.as_ref().ok_or(ImportError::IdentityMismatch)?;
@@ -175,7 +204,9 @@ impl GraphProgram {
             self.seed_pass();
         }
         let mut frame = self.queue.pop().ok_or(ImportError::IdentityMismatch)?;
+        self.queued_bytes = self.queued_bytes.saturating_sub(frame.bytes);
         self.occurrence = self.occurrence.checked_add(1).ok_or(ImportError::InvalidPacket)?;
+        if self.occurrence > self.limits.frames { return Err(self.fail(ImportError::InvalidPacket)); }
         frame.occurrence = self.occurrence;
         let lineage = frame.lineage.clone();
         self.current = Some(frame);
@@ -194,17 +225,25 @@ impl GraphProgram {
     }
     pub fn node_reply(&mut self, sequence: u32, reply: NodeReply) -> Result<(), ImportError> {
         self.check_reply(sequence, 102)?;
+        if reply.local_transform.as_ref().is_some_and(|m| m.len() > MAX_TRANSFORM_ROWS
+            || m.iter().any(|row| row.len() > MAX_TRANSFORM_COLUMNS)) {
+            return Err(self.fail(ImportError::InvalidPacket));
+        }
         let frame = self.current.as_mut().ok_or(ImportError::IdentityMismatch)?;
         if reply.has_entity {
             frame.context = Some(frame.node);
             frame.is_type |= reply.original_step_instance.as_deref().is_some_and(is_type);
         }
-        if let Some(visibility) = reply.visibility { frame.invisible = visibility.eq_ignore_ascii_case("invisible"); }
+        // USD: `inherited` takes the parent's state, so it never makes a hidden
+        // ancestor visible. Any other explicit token overrides.
+        if let Some(visibility) = reply.visibility {
+            if !visibility.eq_ignore_ascii_case("inherited") { frame.invisible = visibility.eq_ignore_ascii_case("invisible"); }
+        }
         if let Some(color) = reply.diffuse {
             frame.color = Some([color.first().copied().unwrap_or(f64::NAN),
                 color.get(1).copied().unwrap_or(f64::NAN), color.get(2).copied().unwrap_or(f64::NAN), reply.opacity]); // not-an-attribute: diffuse RGB Vec<f64> components, not IFC entity attributes.
         }
-        if let Some(local) = reply.local_transform { frame.stack.push(local); }
+        if let Some(local) = reply.local_transform { frame.bytes = frame.bytes.saturating_add(matrix_bytes(&local)); frame.stack.push(local); }
         // Stage on every frame, including hidden frames and nodes without geometry.
         let transform = stage_transform(&frame.stack, self.passes[self.pass]);
         let eligible = frame.context.is_some() && !frame.is_type && !frame.invisible;
@@ -288,8 +327,14 @@ impl GraphProgram {
         for (edge, child) in self.nodes[frame.node as usize].children.iter().rev() {
             // Path scope preserves real DAG occurrences; only cycles are omitted.
             if frame.lineage.iter().any(|entry| self.nodes[entry.node as usize].path == self.nodes[*child as usize].path) { continue; }
+            if frame.lineage.len() >= self.limits.depth { return Err(self.fail(ImportError::InvalidPacket)); }
+            let bytes = frame.bytes.saturating_add(ENTRY_BYTES).saturating_add(edge.len());
+            // Each queued frame owns a copy of its parent's state, so budget the clone first.
+            self.queued_bytes = self.queued_bytes.saturating_add(bytes);
+            if self.queued_bytes > self.limits.queued_bytes { return Err(self.fail(ImportError::InvalidPacket)); }
             let mut next = frame.clone();
             next.node = *child;
+            next.bytes = bytes;
             next.lineage.push(LineageEntry { node: *child, edge: Some(edge.clone()) });
             self.queue.push(next);
         }

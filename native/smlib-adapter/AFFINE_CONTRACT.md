@@ -128,11 +128,12 @@ backend with a supported affine/offset representation. None is implemented or
 silently selected here. SDK modification and mesh replacement are excluded.
 
 
-The owned-boundary executable runs `copy_failure_tests.cpp` last. It copies a
+A separate `smlib_copy_failure_boundary` CTest executable runs
+`copy_failure_tests.cpp` in its own native process (or isolated WASM test
+module). It cannot poison the shared owned-boundary/empty-result family. It copies a
 real SDK box, verifies unchanged context metadata and DEFAULT inheritance after a
 later context change, then replaces one actual UV trim by a derived rational
 curve whose Copy returns SM_ERR. This is deterministic failure injection into
 real SDK MergeBrep, not a mock geometry return. The witness demands terminal
 taint, preserved original trim and rejection of unrelated C ABI handles and
-session reset. It must execute last because the module intentionally cannot
-recover. These new witnesses remain unexecuted until normal native qualification.
+session reset. Its isolated module intentionally cannot recover. These new witnesses remain unexecuted until normal native qualification.

@@ -65,3 +65,9 @@ void run_copy_failure_tests() {
     // All SDK allocations, including unlinked partial copies, are reclaimed by
     // process exit. Do not claim destructor-only recovery or continue this lane.
 }
+
+int main() {
+    SmApiCreateContext();
+    run_copy_failure_tests();
+    std::puts("SMLib checked copy: metadata, failure propagation and terminal domain isolation passed");
+}

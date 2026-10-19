@@ -284,10 +284,14 @@ async fn p3_captured_resource_stop_while_actual_worker_awaits_wins_over_transpor
     assert!(matches!(future.as_mut().poll(&mut Context::from_waker(Waker::noop())),Poll::Pending));
     assert_eq!(JsFuture::from(observation).await.unwrap().as_f64(),Some(15.));
     if source_expiry {model.invalidate_source();}else {account.cancel();}
-    let result=future.await;
-    if source_expiry {assert!(matches!(result,Err(RetainedExecutionError::Source)));}
-    else {assert!(matches!(result,Err(RetainedExecutionError::Stopped(ProgramStop::Cancelled))));}
+    let rejected=future.await.unwrap_err();
+    assert!(rejected.issued.is_none());
+    if source_expiry {assert!(matches!(rejected.reason,RetainedExecutionError::Source));}
+    else {assert!(matches!(rejected.reason,RetainedExecutionError::Stopped(ProgramStop::Cancelled)));}
     assert_eq!(worker.incarnation(),0);assert_eq!(execution.discharged_count(),0);
     assert!(execution.pending.as_ref().unwrap().reply.is_some());assert!(execution.traversal_plan().is_none());
     }
 }
+
+#[path = "predispatch_browser_tests.rs"]
+mod predispatch;

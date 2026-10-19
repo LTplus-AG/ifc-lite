@@ -32,7 +32,7 @@ mod issuance;
 pub use value::CommonRetainedRealization;
 pub use batch::{
     CompletedCommonConstruction, IssuedCommonConstruction, RejectedCommonConstruction,
-    RetainedCancellation,
+    RetainedCancellation, RejectedCommonExecution,
 };
 
 const ISSUED: u8 = 0;
@@ -386,3 +386,6 @@ mod operation_tests;
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod browser_tests;
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod predispatch_native_tests;

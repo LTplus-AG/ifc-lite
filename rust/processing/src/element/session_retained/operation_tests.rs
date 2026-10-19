@@ -240,7 +240,8 @@ fn p2_sdk_nested_outcome_binding_exhaustion_is_typed_and_preserves_original_repl
     let outer=execution.pending.as_ref().unwrap().outer;
     let rejected=execution.accept(work,&mut decoder,&router).unwrap_err();
     let stop=account.check().unwrap_err();
-    assert!(matches!(stop,ProgramStop::ResourceRefused(f) if f.dimension==Dimension::Work && f.requested==1));
+    assert_eq!(account.usage().work,limit, "three validations, append and first binding envelope exhaust exactly the admitted work");
+    assert!(matches!(stop,ProgramStop::ResourceRefused(f) if f.dimension==Dimension::Work && f.requested==1 && f.remaining==0));
     assert!(matches!(rejected.reason,RetainedExecutionError::Stopped(actual) if actual==stop));
     let pending=execution.pending.as_ref().unwrap();
     assert_eq!(pending.outer,outer);

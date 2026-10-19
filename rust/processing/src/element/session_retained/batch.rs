@@ -25,11 +25,20 @@ pub struct IssuedCommonConstruction {
 }
 impl IssuedCommonConstruction {
     pub fn cancellation(&self) -> RetainedCancellation { self.cancellation.clone() }
-    pub(super) fn validate_limits(&mut self, chord: f64, angle: f64, max_bytes: usize) -> Result<(), RetainedExecutionError> {
+    /// Validate caller limits before admitting source or taking a worker borrow.
+    pub fn validate_numerical_limits(chord: f64, angle: f64, max_bytes: usize) -> Result<(), RetainedExecutionError> {
         if !chord.is_finite() || chord <= 0. || !angle.is_finite() || angle <= 0. || angle > 180. || max_bytes == 0 {
-            // Known caller error: no Worker operation or stage transition occurred.
-            self.armed = false;
             return Err(protocol("invalid retained numerical limits"));
+        }
+        Ok(())
+    }
+    // Caller errors are recoverable only while the original transaction is live.
+    // This observation debits no work; start/checkpoint revalidate after preflight.
+    pub(super) fn validate_predispatch_state(&self) -> Result<(), RetainedExecutionError> {
+        self.resources.check().map_err(RetainedExecutionError::Stopped)?;
+        if self.lifecycle.validate().is_err() { return Err(RetainedExecutionError::Source); }
+        if self.stage.load(Ordering::Acquire) != ISSUED || self.cancellation.owner.incarnation().is_none() {
+            return Err(protocol("retained issued transaction cancelled or retired"));
         }
         Ok(())
     }
@@ -75,6 +84,33 @@ impl IssuedCommonConstruction {
         for value in &realizations { value.validate_live().map_err(protocol)?; }
         self.stage.compare_exchange(EXECUTING, DELIVERED, Ordering::AcqRel, Ordering::Acquire).map_err(protocol)?;
         Ok(CompletedCommonConstruction {ticket:self.ticket.clone(),stage:self.stage.clone(),realizations})
+    }
+}
+/// A caller error on a live issued transaction returns its original armed packet.
+/// Terminal state or execution failure returns `issued: None` and retires only
+/// the captured domain. Dropping a returned packet explicitly abandons it.
+pub struct RejectedCommonExecution {
+    pub reason: RetainedExecutionError,
+    pub issued: Option<IssuedCommonConstruction>,
+}
+impl std::fmt::Debug for RejectedCommonExecution {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RejectedCommonExecution").field("reason", &self.reason)
+            .field("recoverable", &self.issued.is_some()).finish()
+    }
+}
+impl std::fmt::Display for RejectedCommonExecution {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "{}", self.reason) }
+}
+impl std::error::Error for RejectedCommonExecution {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.reason) }
+}
+impl RejectedCommonExecution {
+    pub(super) fn predispatch(reason: RetainedExecutionError, issued: IssuedCommonConstruction) -> Box<Self> {
+        Box::new(Self { reason, issued: Some(issued) })
+    }
+    pub(super) fn terminal(reason: RetainedExecutionError) -> Box<Self> {
+        Box::new(Self { reason, issued: None })
     }
 }
 #[derive(Debug)]

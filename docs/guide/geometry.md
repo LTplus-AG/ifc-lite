@@ -974,6 +974,14 @@ reserved as ordinary locals throughout that future. Lexical source, resource and
 triangle-order scopes end before every numerical await. An abandoned batch
 retires its captured Worker; errors never select another engine.
 
+Invalid chord, angle or byte limits are rejected before the product consumes its
+router or admits a transaction, so the same product and executor can be called
+again with valid limits. The Rust batch API returns `RejectedCommonExecution`:
+for a known predispatch worker/limit error, its `issued` field contains the
+original issued packet for corrected retry. Dropping that returned packet
+abandons the transaction and cancels its captured domain. After execution starts,
+failures contain no retry packet and retire that captured domain.
+
 The return value and `product.witness()` are **transaction inspection witnesses**:
 `contract` is `common_product_transaction_only`; they report `product_id`,
 `discharged_operations`, `occurrences`, `remaining_requirements` and
@@ -983,7 +991,7 @@ method at this checkpoint. The earlier source-only API remains separate.
 
 Supported reached constructions, mapped transforms and ordered Booleans can
 execute numerically, including actual Empty results. Halfspaces, external opening
-closure, material-layer execution, final placement, appearance/UV/texture fidelity
+closure, material-layer execution, final display placement, appearance/UV/texture fidelity
 and persistent face/final assembly closure remain requirements. Their presence
 in a snapshot or completed logical traversal does not discharge them. P4 final
 publication is still required. This source has not yet passed native compilation,

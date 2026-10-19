@@ -24,12 +24,21 @@ impl IssuedRetainedOperation {
 impl IssuedCommonConstruction {
     /// Execute the immutable ordered numerical batch under captured resources.
     pub fn execute(mut self, worker: &mut SmlibWorker, chord: f64, angle: f64, limits: MeshLimits)
-        -> Result<CompletedCommonConstruction, RetainedExecutionError> {
+        -> Result<CompletedCommonConstruction, Box<RejectedCommonExecution>> {
+        self.validate_predispatch_state().map_err(RejectedCommonExecution::terminal)?;
         if let Err(error) = self.check_worker(worker) {
-            self.armed = false; // A foreign supplied worker grants no retirement authority.
-            return Err(error);
+            return Err(RejectedCommonExecution::predispatch(error, self));
         }
-        self.validate_limits(chord, angle, limits.max_bytes)?;
+        if let Err(error) = Self::validate_numerical_limits(chord, angle, limits.max_bytes) {
+            return Err(RejectedCommonExecution::predispatch(error, self));
+        }
+        let completed = self.execute_started(worker, chord, angle, limits)
+            .map_err(RejectedCommonExecution::terminal)?;
+        self.armed = false;
+        Ok(completed)
+    }
+    fn execute_started(&self, worker: &mut SmlibWorker, chord: f64, angle: f64, limits: MeshLimits)
+        -> Result<CompletedCommonConstruction, RetainedExecutionError> {
         let mut values = self.start()?;
         for operation in &self.operations {
             self.checkpoint()?;
@@ -41,8 +50,6 @@ impl IssuedCommonConstruction {
             permit.retain();
             values.push(Arc::new(value));
         }
-        let completed = self.finish(values)?;
-        self.armed = false;
-        Ok(completed)
+        self.finish(values)
     }
 }

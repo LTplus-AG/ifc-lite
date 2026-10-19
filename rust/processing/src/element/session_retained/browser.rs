@@ -22,12 +22,21 @@ impl IssuedCommonConstruction {
     /// One immutable ordered common batch; never a product source walk or publication.
     /// Dropping even an unpolled future retires only its captured domain.
     pub async fn execute_browser(mut self, worker: &mut SelectedWorker, chord: f64, angle: f64, max_bytes: u32)
-        -> Result<CompletedCommonConstruction, RetainedExecutionError> {
+        -> Result<CompletedCommonConstruction, Box<RejectedCommonExecution>> {
+        self.validate_predispatch_state().map_err(RejectedCommonExecution::terminal)?;
         if let Err(error) = self.check_worker(worker) {
-            self.armed = false;
-            return Err(error);
+            return Err(RejectedCommonExecution::predispatch(error, self));
         }
-        self.validate_limits(chord, angle, max_bytes as usize)?;
+        if let Err(error) = Self::validate_numerical_limits(chord, angle, max_bytes as usize) {
+            return Err(RejectedCommonExecution::predispatch(error, self));
+        }
+        let completed = self.execute_started_browser(worker, chord, angle, max_bytes).await
+            .map_err(RejectedCommonExecution::terminal)?;
+        self.armed = false;
+        Ok(completed)
+    }
+    async fn execute_started_browser(&self, worker: &mut SelectedWorker, chord: f64, angle: f64, max_bytes: u32)
+        -> Result<CompletedCommonConstruction, RetainedExecutionError> {
         let mut values = self.start()?;
         for operation in &self.operations {
             self.checkpoint()?;
@@ -53,8 +62,6 @@ impl IssuedCommonConstruction {
             permit.retain();
             self.resources.with_scope(|| values.push(Arc::new(value)));
         }
-        let completed = self.finish(values)?;
-        self.armed = false;
-        Ok(completed)
+        self.finish(values)
     }
 }

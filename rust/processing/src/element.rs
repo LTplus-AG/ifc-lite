@@ -68,7 +68,7 @@ mod session;
 mod session_inner;
 mod session_retained;
 pub use session_retained::{CommonRetainedRealization, RetainedProductExecution, RetainedExecutionError, IssuedCommonConstruction,
-    CompletedCommonConstruction, RejectedCommonConstruction, RetainedCancellation};
+    CompletedCommonConstruction, RejectedCommonConstruction, RejectedCommonExecution, RetainedCancellation};
 mod owned_session;
 mod accounted_session;
 pub use accounted_session::{produce_element_meshes_owned_accounted, AccountedElementMeshes, AccountedProductionError};

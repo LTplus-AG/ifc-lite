@@ -4,7 +4,8 @@ use super::{coherent_source::CoherentLoad, IfcAPI};
 use ifc_lite_geometry::GeometryRouter;
 use ifc_lite_geometry_runtime::browser::{BrowserCancellation, BrowserWorker};
 use ifc_lite_processing::element::{ElementJobKind, ElementMeshJob, MeshProductionOptions,
-    OwnedMeshProductionContext, OwnedMeshProductionData, RetainedProductExecution, RetainedExecutionError};
+    OwnedMeshProductionContext, OwnedMeshProductionData, RetainedProductExecution, RetainedExecutionError,
+    IssuedCommonConstruction};
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
@@ -50,6 +51,8 @@ impl RetainedBrowserProduct {
     pub async fn execute(&mut self, executor: &mut RetainedBrowserProductExecutor,
         chord_metres: f64, angle_degrees: f64, max_bytes: u32) -> Result<JsValue, JsValue> {
         self.context.validate_source().map_err(failure)?;
+        IssuedCommonConstruction::validate_numerical_limits(chord_metres,angle_degrees,max_bytes as usize)
+            .map_err(failure)?;
         let router = self.router.take().ok_or_else(|| failure("product transaction already started"))?;
         // Ordinary locals are preserved by Rust's async state machine. There is
         // one decoder for all awaits; no leaks or self-referential wasm object.
@@ -65,7 +68,8 @@ impl RetainedBrowserProduct {
             &MeshProductionOptions::default(), &mut decoder, &router).map_err(failure)?;
         let outcome: Result<(), RetainedExecutionError> = async {
             while let Some(issued) = execution.issue_next(&executor.worker, &mut decoder, &router)? {
-                let work = issued.execute_browser(&mut executor.worker, chord_metres, angle_degrees, max_bytes).await?;
+                let work = issued.execute_browser(&mut executor.worker, chord_metres, angle_degrees, max_bytes)
+                    .await.map_err(|rejected|rejected.reason)?;
                 execution.accept(work, &mut decoder, &router).map_err(|rejected|rejected.reason)?;
             }
             Ok(())

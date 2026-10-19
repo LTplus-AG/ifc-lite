@@ -131,3 +131,20 @@ canonical asset staging. Native compilation, WASM generation, actual browser
 execution, broader affine target qualification and performance remain UNRUN for
 this source. Halfspaces, openings, layers, final appearance/provenance and common
 final publication remain incomplete. There is no default engine cutover.
+
+
+Rigidly placed Boolean results can be passed as `RetainedDependency::PlacedResult`
+or `BrowserDependency::PlacedResult` with an explicitly admitted replacement
+object-local-to-world frame. The original result's frame, object and mesh remain
+immutable; the new occurrence retains its original lineage under a `Placed` node.
+The frame must be proper rigid. It is never multiplied by the old world frame or
+used to avoid the independent source/owner/frame checks in processing. Nonrigid
+maps still require the explicit affine conversion contract.
+
+Processing's issued batches return `RejectedCommonExecution` on failure. A known
+predispatch worker/limit error returns the original armed packet in `issued`;
+callers may correct the input and execute that packet again. No new request,
+recipe or receipt is fabricated. Dropping the recovered packet is abandonment and
+cancels only its captured domain. A failure after execution starts carries no
+retry packet. These contracts and new native/browser witnesses remain unqualified
+until assembled target execution passes.

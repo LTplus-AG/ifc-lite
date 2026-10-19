@@ -38,8 +38,9 @@ fn original_account_cancelled_after_issue_refuses_sdk_execution_outside_scope() 
     let issued = execution.issue_next(&worker, &mut decoder, &router).unwrap().unwrap();
     let work_before = account.usage().work;
     account.cancel();
-    assert!(matches!(issued.execute(&mut worker, 0.001, 15., MeshLimits::default()),
-        Err(RetainedExecutionError::Stopped(ProgramStop::Cancelled))));
+    let rejected=issued.execute(&mut worker, 0.001, 15., MeshLimits::default()).unwrap_err();
+    assert!(matches!(rejected.reason,RetainedExecutionError::Stopped(ProgramStop::Cancelled)));
+    assert!(rejected.issued.is_none(), "terminal source/account failure cannot be retried");
     assert_eq!(account.usage().work, work_before, "cancelled original account admits no SDK work unit");
     assert_eq!(execution.discharged_count(), 0);
     assert!(execution.pending.as_ref().unwrap().reply.is_some());

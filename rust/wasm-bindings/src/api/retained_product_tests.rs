@@ -73,3 +73,22 @@ fn p3_canonical_retained_admission_uses_the_same_material_layer_toggle_policy_as
         assert_eq!(batch_router.is_material_layer_sliceable(35),retained.is_material_layer_sliceable(35));
     }
 }
+
+
+#[wasm_bindgen_test(async)]
+async fn p3_invalid_limits_leave_the_original_canonical_product_and_executor_retryable() {
+    let api=api();let mut product=api.admit_retained_product(35).unwrap();
+    let mut executor=RetainedBrowserProductExecutor::new().unwrap();
+    let original=executor.worker.incarnation();let cancellation=executor.worker.cancellation();
+    for (chord,angle,bytes) in [(0.,15.,8_388_608),(0.001,181.,8_388_608),(0.001,15.,0)] {
+        assert!(product.execute(&mut executor,chord,angle,bytes).await.is_err());
+        assert!(product.router.is_some(),"caller limits are checked before taking the original router");
+        assert!(product.execution.is_none());
+        assert_eq!(executor.worker.incarnation(),original);
+        assert_eq!(cancellation.incarnation(),Some(original));
+    }
+    executor.qualify_numerical_routes().await.unwrap();
+    product.execute(&mut executor,0.001,15.,8_388_608).await.unwrap();
+    assert!(product.witness().is_ok());
+    assert_eq!(cancellation.incarnation(),Some(original));
+}

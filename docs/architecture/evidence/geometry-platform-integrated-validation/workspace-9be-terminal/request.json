@@ -1,0 +1,19 @@
+{
+  "id": "auto-75bdd3bf62164776888b9cb5f8a247e3",
+  "commit": "9be1dcd3a036be4327686e8b56029cc4ff8f67aa",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "/home/louistrue/build-workers/setup/projects-20261017/ifc-lite/env-exec.sh",
+    "bash",
+    "-c",
+    "pnpm fixtures && cargo test -p ifc-lite-geometry --lib && cargo test --workspace --no-fail-fast && cargo clippy --workspace --all-targets -- -D warnings"
+  ],
+  "pools": [],
+  "requestedHost": "pop-os"
+}

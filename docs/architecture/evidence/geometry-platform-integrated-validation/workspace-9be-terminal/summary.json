@@ -1,0 +1,25 @@
+{
+  "job_id": "887916da-9ea2-4528-966a-8d90b4cca9e4",
+  "source": "9be1dcd3a036be4327686e8b56029cc4ff8f67aa",
+  "exit_code": 101,
+  "source_unchanged": true,
+  "standalone_geometry": {
+    "passed": 1876,
+    "failed": 0,
+    "ignored": 1
+  },
+  "workspace_test_results_sum": {
+    "passed": 6273,
+    "failed": 1,
+    "ignored": 47
+  },
+  "workspace_result_blocks": 388,
+  "failing_targets": [
+    "ifc-lite-processing --lib"
+  ],
+  "failure": "stopped_valid_reply_cannot_assemble_after_an_earlier_type_map_was_accepted",
+  "clippy": "NOT RUN: shell && after workspace failure",
+  "output_sha256": "11ecaea01462b05dfca7bc097a16c0f50ad778963e29ba749b99ab82656f5d1d",
+  "repair": "bf9f12270d (source-reviewed, unrun)",
+  "qualification_scope": "Earlier9be baseline only, excludes empty/mapping/managed-lifetime/affine/styled layers integrated afterward."
+}

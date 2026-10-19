@@ -1,0 +1,49 @@
+{
+  "source_head": "1aceb23744dd9d37b45a7b8354f57dabae4c6c23",
+  "source_state": "shared root dirty; no commit by this agent",
+  "qualification": "syntax/whitespace only; allocation and geometry tests UNRUN",
+  "files": [
+    {
+      "path": "rust/geometry/src/router/mod.rs",
+      "sha256": "98b477f0b39429276c1d553c47f652b6bc8c848b82100ec39f7f733854c0d731",
+      "bytes": 35683,
+      "edited_for_fix": true
+    },
+    {
+      "path": "rust/geometry/src/router/mapped_cache_ownership.rs",
+      "sha256": "43d0935dc335f2ed3cded4fa6373d4dc88e2e452db2ced2d5c55de9e52fb8195",
+      "bytes": 5972,
+      "edited_for_fix": true
+    },
+    {
+      "path": "rust/geometry/src/router/mapping_program_store.rs",
+      "sha256": "3eb93d57e6e790546a56c89692b3938ef6142d2b6b417d8c7810c7222ba9f494",
+      "bytes": 1482,
+      "edited_for_fix": true
+    },
+    {
+      "path": "rust/geometry/src/router/mapped_cache_ownership_tests.rs",
+      "sha256": "55ad1b6ee8d0f896f565b00c5cc89baaf935b13bed7251a0d87cf679985e4e1d",
+      "bytes": 9070,
+      "edited_for_fix": true
+    },
+    {
+      "path": "rust/geometry/tests/router_construction_allocations.rs",
+      "sha256": "1178937b842727ee3d092bbbae88cc9d005a10d464c11cea427e4beb3eccb046",
+      "bytes": 2648,
+      "edited_for_fix": false
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/occurrence.rs",
+      "sha256": "b2768e7be612015a6dfc6036b2eca3e93437380621cc9fba18dbc2d5346269f4",
+      "bytes": 5823,
+      "edited_for_fix": false
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/store.rs",
+      "sha256": "f424404479cc0a73ffab8db5e9b39b3cec4c4bed93e3943b27000da428366f97",
+      "bytes": 1076,
+      "edited_for_fix": false
+    }
+  ]
+}

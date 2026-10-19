@@ -138,3 +138,47 @@ fn canonical_extrusion_cache_miss_refuses_unadmitted_spare_backing_before_public
         assert_eq!(resource::mesh::resident_bytes(cache.values().next().unwrap()).unwrap(), backing);
     });
 }
+
+// Lazy claim-owner initialization must preserve real pending-template rollback
+// even when the router is disposed before its external execution store.
+#[test]
+fn lazy_template_claim_owner_survives_router_drop_and_rolls_back_unaccepted_geometry() {
+    use crate::program::mapping::{MappingStore, SubmeshPoll, SubmeshWalk};
+    use crate::resource::{ExecutionPolicy, ResourceLimits};
+    let mut router = GeometryRouter::new();
+    router.enable_accounted_mapped_item_cache(AccountedMappedItemCache::new());
+    router.enable_output_instancing(Arc::new([(6, (2, 8))].into_iter().collect()));
+    router.set_instancing_batch_local(true);
+    let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+    let (walk, mut store, sources) = account.scope(|| {
+        let mut decoder = EntityDecoder::new(SOURCE);
+        let item = decoder.decode_by_id(8).unwrap();
+        let mut walk = SubmeshWalk::new(&item, true, &router).unwrap();
+        let mut store = MappingStore::default();
+        for _ in 0..16 {
+            let SubmeshPoll::Source(source) = walk.poll() else {
+                panic!("source admission must precede geometry execution")
+            };
+            let reply = source.execute(&router, &mut decoder, None, &mut store);
+            walk.accept(reply, &router, &mut store);
+            if router.instanced_sources_materialized.get().is_some_and(|owner| owner.borrow().contains(&6)) {
+                let sources = router.materialized_source_handle();
+                return (walk, store, sources);
+            }
+        }
+        panic!("real mapped source never reached provisional template admission")
+    });
+    assert!(router.cached_mapped_source(6).is_none(), "no child geometry was executed or cached");
+    drop(router);
+    assert!(sources.borrow().contains(&6), "pending external store retains the actual shared claim owner");
+    drop(walk);
+    store.cancel();
+    assert!(!sources.borrow().contains(&6), "abandoned real admission rolls back through the same owner");
+    let retry = GeometryRouter::new();
+    let mut decoder = EntityDecoder::new(SOURCE);
+    let item = decoder.decode_by_id(8).unwrap();
+    let geometry = retry.process_mapped_item_parts(&item, &mut decoder).unwrap();
+    assert_eq!(geometry.len(), 1);
+    assert_eq!(geometry[0].indices, [0, 1, 2]);
+    assert!(!geometry[0].positions.is_empty(), "retry emits real source geometry rather than a template placeholder");
+}

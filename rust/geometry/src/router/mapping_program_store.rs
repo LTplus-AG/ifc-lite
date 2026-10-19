@@ -10,10 +10,12 @@ pub(crate) type CleanupQueue = Arc<Mutex<Vec<u64>>>;
 #[derive(Default)]
 pub(super) struct MappingProgramStores {
     stores: RefCell<FxHashMap<u64, MappingStore>>,
-    cleanup: CleanupQueue,
+    cleanup: std::cell::OnceCell<CleanupQueue>,
 }
 impl GeometryRouter {
-    pub(crate) fn mapping_cleanup_queue(&self) -> CleanupQueue { self.mapping_program_stores.cleanup.clone() }
+    pub(crate) fn mapping_cleanup_queue(&self) -> CleanupQueue {
+        self.mapping_program_stores.cleanup.get_or_init(Default::default).clone()
+    }
     pub(crate) fn with_mapping_program_store<T>(&self, id: u64, f: impl FnOnce(&mut MappingStore) -> T) -> T {
         self.drain_mapping_cleanup();
         // Mapping source admissions do not invoke extension callbacks. A child
@@ -22,7 +24,8 @@ impl GeometryRouter {
         f(stores.entry(id).or_default())
     }
     pub(crate) fn drain_mapping_cleanup(&self) {
-        let ids = std::mem::take(&mut *self.mapping_program_stores.cleanup.lock().unwrap_or_else(|e| e.into_inner()));
+        let Some(cleanup) = self.mapping_program_stores.cleanup.get() else { return };
+        let ids = std::mem::take(&mut *cleanup.lock().unwrap_or_else(|e| e.into_inner()));
         let mut stores = self.mapping_program_stores.stores.borrow_mut();
         for id in ids { stores.remove(&id); }
     }

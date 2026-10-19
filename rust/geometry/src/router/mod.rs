@@ -254,7 +254,7 @@ pub struct GeometryRouter {
     /// occurrence of a source inserts its id (materializes); later occurrences see
     /// the id present and don't-bake. Reset implicitly per batch — a fresh router is
     /// built per `produce_batch`. Unused (stays empty) in the native global mode.
-    instanced_sources_materialized: std::rc::Rc<RefCell<FxHashSet<u32>>>,
+    instanced_sources_materialized: std::cell::OnceCell<std::rc::Rc<RefCell<FxHashSet<u32>>>>,
     unsupported: RefCell<diagnostics::UnsupportedItemState>, // dropped items by `IfcType` + per-source bookkeeping
     // Last: retained payloads must drop before their resident owners.
     mapped_cache_accounts: RefCell<Vec<crate::resource::ExecutionAccount>>,
@@ -298,7 +298,7 @@ impl GeometryRouter {
             indexed_colour_split_ids: None, // armed by `enable_indexed_colour_split_guard`
             preserve_triangle_order: std::cell::Cell::new(false),
             instancing_batch_local: false, // native global-template mode by default
-            instanced_sources_materialized: std::rc::Rc::new(RefCell::new(FxHashSet::default())),
+            instanced_sources_materialized: Default::default(),
             unsupported: RefCell::new(Default::default()),
         }
     }
@@ -474,9 +474,7 @@ impl GeometryRouter {
     /// batch-local template) the FIRST time this router sees `source_id`, `false`
     /// (don't-bake) every time after. Idempotent per source within one router/batch.
     pub(crate) fn mark_source_materialized_if_first(&self, source_id: u32) -> bool {
-        self.instanced_sources_materialized
-            .borrow_mut()
-            .insert(source_id)
+        self.materialized_source_handle().borrow_mut().insert(source_id)
     }
 
     /// Disable content-dedup (drops the cache reference so `item_dedup_key`

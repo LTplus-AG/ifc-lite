@@ -98,9 +98,11 @@ impl GeometryRouter {
     }
 
     // Shared marker ownership for provisional mapped-template admission. This
-    // borrows the existing set; no source maps are cloned per product.
+    // initializes only on reached template work; unused routers allocate nothing.
+    // Every provisional claim still shares this one owner, with no source-map clone.
     pub(crate) fn materialized_source_handle(&self) -> std::rc::Rc<std::cell::RefCell<rustc_hash::FxHashSet<u32>>> {
-        std::rc::Rc::clone(&self.instanced_sources_materialized)
+        std::rc::Rc::clone(self.instanced_sources_materialized.get_or_init(||
+            std::rc::Rc::new(std::cell::RefCell::new(rustc_hash::FxHashSet::default()))))
     }
 
     pub(crate) fn retain_local_resource_account(&self) -> Result<(), ProgramStop> {

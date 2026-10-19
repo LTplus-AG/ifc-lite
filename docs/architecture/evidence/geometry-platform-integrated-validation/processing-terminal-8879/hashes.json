@@ -1,0 +1,15 @@
+{
+  "review_head": "bf9f12270dac0de4a25eced09d56991e093c1973",
+  "sha256": {
+    "rust/processing/src/element/session.rs": "2e75eb21a84728cab7378a25572e101d4b6a615e73dac5e2cfa05075161232b8",
+    "rust/processing/src/element/session_terminal_tests.rs": "0ba3a9e5c0172cd23829a6bea52e68746699e14df7d0a5993d3cb2a120b7944f",
+    "rust/processing/src/element/session_owner.rs": "2ddea677fb77d972daec4adac01ff773515ecf94a8d747b888e464801a621c50",
+    "rust/processing/src/element/owned_session.rs": "3e1348d29e5772211c7c37d9c4c931f19ad2ef76498d73bf13e1b310aed3d3b1",
+    "rust/geometry/src/resource/account.rs": "8965a9948edf32fe36a86dde6dded7a02af987b25263a841c2ce6b807b705590",
+    "rust/geometry/src/resource/mod.rs": "e953c410c04c4d1bbc912d3595889d8d236baa7c0084cd4d2ee5181a39a3843e",
+    "rust/geometry/src/resource/owned.rs": "aeb79db1ff63b859df1903ec33c94cdc7cf386cb603b707de158f9dc4f840d6f",
+    "rust/core/src/execution_owner/resource_context.rs": "e00ba5f784fff0d3bf42b13c579f8a5711eb453e0140ac80d30dce7421a555c3",
+    "rust/geometry/src/program/inner.rs": "f0c00cbb9013bcb975ad4d008c1a5ffd84e8280642f9b8dc541b81a17162c2b0",
+    "rust/geometry/src/program/inner_type_map.rs": "d54bd16a77effd6c63cfef0dcd0bcf4a9f1e957fd4f52a593b74c5919b2b6dad"
+  }
+}

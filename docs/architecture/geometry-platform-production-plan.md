@@ -72,7 +72,12 @@ not qualify SDK numerical behavior or Rust types. Affine exclusions remain gaps.
 
 Baseline job `887916da-9ea2-4528-966a-8d90b4cca9e4` is bound to earlier source
 `9be1dcd3a0`: its first geometry suite passed 1,876 tests with one ignored, and
-workspace tests remain in progress. It does not qualify later integrated layers.
+workspace tests remain in progress. Its processing library reported 731 passed,
+one failed and one ignored: the existing two-map cancellation fixture caught a
+source-scope entrance-stop loss. Repair `bf9f12270d` retains the unchanged regression
+and passed independent source review; runtime rerun is pending. Evidence is under
+`evidence/geometry-platform-integrated-validation/processing-terminal-8879`.
+The earlier run does not qualify later integrated layers.
 Pop admission is currently refused by disk guard78; no replacement is submitted.
 Styled/type-map source `eafd759151` is under independent review. Common retained
 operation values, affine bake and Boolean continuation implementation is delegated

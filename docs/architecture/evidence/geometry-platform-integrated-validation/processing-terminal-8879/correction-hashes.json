@@ -1,0 +1,7 @@
+{
+  "commit": "bf9f12270dac0de4a25eced09d56991e093c1973",
+  "sha256": {
+    "rust/processing/src/element/session.rs": "2e75eb21a84728cab7378a25572e101d4b6a615e73dac5e2cfa05075161232b8",
+    "rust/processing/src/element/session_terminal_tests.rs": "0ba3a9e5c0172cd23829a6bea52e68746699e14df7d0a5993d3cb2a120b7944f"
+  }
+}

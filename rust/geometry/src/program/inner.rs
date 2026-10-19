@@ -12,17 +12,19 @@ pub struct GeometryProgram {
     sequence: u64,
     pub(super) retained: Option<super::retained::RetainedContract>,
     pub(super) step: Option<ItemStep>,
-    pub(super) boolean: Option<BooleanControl>,
+    // Only the selected controller owns storage. Keeping every alternative inline
+    // made even an item program 34 KiB and inflated every nested source reply.
+    pub(super) boolean: Option<Box<BooleanControl>>,
     pub(super) pending: Option<(ProgramRequest, bool)>,
     pub(super) expected_emitter: Option<ProcessorEmitter>,
     cancelled: bool,
-    pub(super) opening:Option<super::inner_opening::OpeningAdapter>,
-    pub(super) layers:Option<super::inner_layers::LayerControl>,
-    pub(super) voids:Option<super::inner_voids::VoidControl>,
-    pub(super) type_map: Option<super::inner_type_map::TypeMapControl>,
-    pub(super) product: Option<super::inner_product_adapter::ProductRootAdapter>,
-    pub(super) cache: Option<super::inner_cache::CacheControl>,
-    pub(super) mapping: Option<super::inner_mapping::MappingControl>,
+    pub(super) opening:Option<Box<super::inner_opening::OpeningAdapter>>,
+    pub(super) layers:Option<Box<super::inner_layers::LayerControl>>,
+    pub(super) voids:Option<Box<super::inner_voids::VoidControl>>,
+    pub(super) type_map: Option<Box<super::inner_type_map::TypeMapControl>>,
+    pub(super) product: Option<Box<super::inner_product_adapter::ProductRootAdapter>>,
+    pub(super) cache: Option<Box<super::inner_cache::CacheControl>>,
+    pub(super) mapping: Option<Box<super::inner_mapping::MappingControl>>,
     pub(super) outcome: Option<Result<GeometryOutput>>,
     pub(super) expected_payload: Option<u32>,
     expected_router: Option<ifc_lite_core::execution_owner::ExecutionIdentity>,
@@ -323,3 +325,7 @@ mod tests;
 #[cfg(test)]
 #[path="inner_item_reports_tests.rs"]
 mod item_reports_tests;
+
+#[cfg(test)]
+#[path="inner_stack_tests.rs"]
+mod stack_tests;

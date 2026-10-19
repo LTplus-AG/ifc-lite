@@ -101,7 +101,7 @@ fn retained_header_growth_is_admitted_before_allocation_in_original_account() {
 }
 
 #[test]
-fn later_ancestor_fault_remains_authoritative_over_already_captured_local_fault() {
+fn propagated_child_fault_is_first_in_every_ancestor_after_execution_expires() {
     for accounted in [false, true] {
         let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
         let owner = ExecutionOwner::default();
@@ -120,15 +120,49 @@ fn later_ancestor_fault_remains_authoritative_over_already_captured_local_fault(
         assert_eq!(context.check(), Err(ProgramStop::Cancelled));
         let failure = ProgramStop::ResourceRefused(ResourceFailure { dimension: Dimension::Work,
             requested: 2, remaining: 1, reason: RefusalReason::Limit });
-        assert_eq!(ancestor.stop(failure), failure);
-        assert_eq!(context.check(), Err(failure), "oldest source ancestor outranks local cached cancellation");
-        assert_eq!(context.with_scope(resource::check_current), Err(failure));
+        // SourceStopHandle::stop propagates the child's first fault to every
+        // ancestor. A later stop cannot manufacture a different ancestor fault.
+        assert_eq!(ancestor.check(), Err(ProgramStop::Cancelled));
+        assert_eq!(ancestor.stop(failure), ProgramStop::Cancelled);
+        assert_eq!(context.check(), Err(ProgramStop::Cancelled));
+        assert_eq!(context.with_scope(resource::check_current), Err(ProgramStop::Cancelled));
         if accounted {
             assert_eq!(account.check(), Err(ProgramStop::Cancelled), "account retains its own first fault");
         }
         drop(child_source); drop(child_work); drop(source); drop(work);
         assert!(child.validate(owner.identity()).is_err());
-        assert_eq!(context.check(), Err(failure), "authoritative resource fault survives expired execution authority");
+        assert_eq!(context.check(), Err(ProgramStop::Cancelled), "propagated first fault survives expired execution authority");
         assert_eq!(resource::check_current(), Ok(()), "captured stops do not escape into ambient TLS");
     }
+}
+
+#[test]
+fn independent_account_cancellation_cannot_mask_actual_ancestor_source_fault() {
+    let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+    let owner = ExecutionOwner::default();
+    let mut root = owner.try_lease().unwrap();
+    let work = root.begin_synchronous_work(owner.identity()).unwrap();
+    let source = work.source_borrow_scope();
+    let ancestor = source.resource_stop_handle();
+    let mut child = work.child_capability().try_lease(owner.identity()).unwrap();
+    let child_work = child.begin_synchronous_work(owner.identity()).unwrap();
+    let child_source = child_work.source_borrow_scope();
+    let context = resource::with_source_stop(child_source.resource_stop_handle(), ||
+        account.scope(OwnedResourceContext::capture_current));
+    // Cancel the account independently, before a captured check can propagate
+    // that fault into the actual source chain. Both domains now have real,
+    // distinct first faults; source ancestry must retain precedence.
+    account.cancel();
+    assert_eq!(account.check(), Err(ProgramStop::Cancelled));
+    assert_eq!(ancestor.check(), Ok(()));
+    let failure = ProgramStop::ResourceRefused(ResourceFailure { dimension: Dimension::Work,
+        requested: 2, remaining: 1, reason: RefusalReason::Limit });
+    assert_eq!(ancestor.stop(failure), failure);
+    assert_eq!(context.check(), Err(failure));
+    assert_eq!(context.with_scope(resource::check_current), Err(failure));
+    assert_eq!(account.check(), Err(ProgramStop::Cancelled), "account keeps its independent first fault");
+    drop(child_source); drop(child_work); drop(source); drop(work);
+    assert!(child.validate(owner.identity()).is_err());
+    assert_eq!(context.check(), Err(failure));
+    assert_eq!(resource::check_current(), Ok(()), "captured authority never escapes to ambient TLS");
 }

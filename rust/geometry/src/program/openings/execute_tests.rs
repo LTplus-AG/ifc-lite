@@ -177,6 +177,15 @@ fn opening_terminal_port_late_stop_retains_completed_root_kernel_failure() {
         assert_eq!(router.take_rect_fast_stats(), crate::rect_fast::RectFastStats::default());
     });
     let host = capped_box(0., [1., 0.15, 1.]);
+    assert!((crate::mesh_check::signed_volume(&host).abs() - 1.2).abs() < 1e-6,
+        "authored box has the expected volume before kernel admission");
+    // Kernel admission reconciles f32 coordinates to its reconciliation grid.
+    // The capped subtraction retains that complete admitted box, not its
+    // unsnapped decimal coordinates. Derive its volume from the independent
+    // box dimensions rather than widening the volume tolerance.
+    let grid = crate::kernel::mesh_bridge::SNAP_GRID;
+    let admitted_half_depth = (0.15f32 as f64 / grid).round() * grid;
+    let admitted_host_volume = 8. * admitted_half_depth;
     let mut cutter = capped_box(-0.8, [0.5, 0.15 + 1.3e-4, 1.0 + 1.7e-4]);
     cutter.merge(&capped_box(0.8, [0.5, 0.15 + 1.3e-4, 1.0 + 1.7e-4]));
     let (lo, hi) = cutter.bounds();
@@ -198,8 +207,9 @@ fn opening_terminal_port_late_stop_retains_completed_root_kernel_failure() {
             .as_ref().expect("kernel budget fallback completed before cancellation");
         assert!(budget::tripped(), "the real numerical subtraction must exhaust the element cap");
         assert_eq!(completed.triangle_count(), 12);
-        assert!((crate::mesh_check::signed_volume(completed).abs() - 1.2).abs() < 1e-6,
-            "capped host volume {}, expected 1.2", crate::mesh_check::signed_volume(completed).abs());
+        assert!((crate::mesh_check::signed_volume(completed).abs() - admitted_host_volume).abs() < 1e-6,
+            "capped host volume {}, expected admitted box volume {admitted_host_volume}",
+            crate::mesh_check::signed_volume(completed).abs());
         assert!(crate::mesh_check::closed_enough_to_emit(completed));
         assert_eq!(crate::csg::take_csg_census().len(), 1,
             "one actual capped subtraction, with no numerical retry");

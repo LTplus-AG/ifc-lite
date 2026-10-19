@@ -24,7 +24,7 @@ fn drive(mut control: TypeMapControl, router: &GeometryRouter,
 #[test]
 fn unaccepted_whole_items_reply_does_not_claim_source_drop_counting() {
     let source = "#1=IFCREPRESENTATIONMAP($,#2);
-#2=IFCSHAPEREPRESENTATION($,'Body','GeometricCurveSet',(#10));
+#2=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#10));
 #10=IFCGEOMETRICCURVESET(());";
     let mut decoder = EntityDecoder::new(source);
     let map = decoder.decode_by_id(1).unwrap();
@@ -37,10 +37,15 @@ fn unaccepted_whole_items_reply_does_not_claim_source_drop_counting() {
     let items_reply = unaccepted.execute(&router, &mut decoder, None).unwrap();
     drop(items_reply);
     drop(unaccepted);
-    let parts = drive(TypeMapControl::from_entity(map), &router, &mut decoder).unwrap();
+    // RepresentationType, not the unsupported child type, determines Body loss.
+    let parts = drive(TypeMapControl::from_entity(map.clone()), &router, &mut decoder).unwrap();
     assert!(parts.is_empty());
-    assert_eq!(router.take_unsupported_items().values().sum::<u64>(), 1,
+    let dropped = router.take_unsupported_items();
+    assert_eq!(dropped.get("IfcGeometricCurveSet"), Some(&1),
         "the first accepted source walk still owns its real unsupported item");
+    assert_eq!(dropped.len(), 1);
+    assert!(drive(TypeMapControl::from_entity(map), &router, &mut decoder).unwrap().is_empty());
+    assert!(router.take_unsupported_items().is_empty(), "a reached retry cannot count the same source twice");
 }
 
 #[test]

@@ -28,7 +28,7 @@ impl GeometryProgram {
         // Allocate identity through the same owner, without any source access.
         let mut wrapper = Self::from_step(None);
         wrapper.step = None;
-        wrapper.boolean = Some(BooleanControl { program, binding:None, action:None });
+        wrapper.boolean = Some(Box::new(BooleanControl { program, binding:None, action:None }));
         wrapper
     }
     pub(crate) fn bind_processor(&mut self, ifc_type: IfcType, emitter: ProcessorEmitter) {

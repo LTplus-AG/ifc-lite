@@ -70,12 +70,22 @@ mod tests {
     }
     #[test]
     fn shared_source_drop_counting_uses_its_reached_representation_policy() {
-        for (identifier,expected) in [("FootPrint",0),("Body",1)] {
+        // A nonblank RepresentationType wins over RepresentationIdentifier,
+        // including contradictory pairs. The same unsupported item is reached.
+        for (identifier,rep_type,expected) in [("FootPrint","Annotation2D",0),
+            ("Body","Annotation2D",0),("FootPrint","SweptSolid",1),("Body","SweptSolid",1)] {
             let source=wrap(&format!("#8=IFCANNOTATIONFILLAREA($,());
-                #9=IFCSHAPEREPRESENTATION($,'{identifier}','Annotation2D',(#8));"),9,100,200);
+                #9=IFCSHAPEREPRESENTATION($,'{identifier}','{rep_type}',(#8));"),9,100,200);
             let mut decoder=EntityDecoder::new(&source);let mut router=router();
+            let output=drive_placeholder(&mut router,&mut decoder,100,200);
+            assert_eq!(output.len(),1);
+            assert!(output.sub_meshes[0].mesh.positions.is_empty());
+            assert!(router.cached_mapped_source(100).is_none(), "total-loss source cannot publish cached geometry");
+            let dropped=router.take_unsupported_items();
+            assert_eq!(dropped.values().sum::<u64>(),expected, "{identifier}/{rep_type}");
+            if expected != 0 { assert_eq!(dropped.get("IfcAnnotationFillArea"),Some(&1)); }
             drive_placeholder(&mut router,&mut decoder,100,200);
-            assert_eq!(router.take_unsupported_items().values().sum::<u64>(),expected);
+            assert!(router.take_unsupported_items().is_empty(), "a repeated total-loss source is counted once");
         }
     }
     #[test]

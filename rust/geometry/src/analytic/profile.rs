@@ -10,6 +10,10 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use serde::Serialize;
 use std::f64::consts::TAU;
 
+// Unit: dimensionless. All four tests require circular basis axes to lie in
+// the canonical profile XY plane, allowing the same authored-axis roundoff.
+const PROFILE_XY_AXIS_EPS: f64 = 1e-9;
+
 const MAX_LOOPS: usize = 100_000;
 // Application baseline in raw IFC length units. IFC does not prescribe a
 // default Precision. Declared values may tighten joins or widen clearance;
@@ -229,8 +233,8 @@ fn segment_area(segment: &AnalyticCurveSegment, origin: AnalyticPoint) -> Result
     match segment {
         AnalyticCurveSegment::Line { .. } => Ok((a[0] * b[1] - b[0] * a[1]) * 0.5),
         AnalyticCurveSegment::Arc { center, normal, x_axis, radius, sweep_angle, .. } => {
-            if normal[0].abs() > 1e-9 || normal[1].abs() > 1e-9
-                || (normal[2].abs() - 1.0).abs() > 1e-9 || x_axis[2].abs() > 1e-9 {
+            if normal[0].abs() > PROFILE_XY_AXIS_EPS || normal[1].abs() > PROFILE_XY_AXIS_EPS
+                || (normal[2].abs() - 1.0).abs() > PROFILE_XY_AXIS_EPS || x_axis[2].abs() > PROFILE_XY_AXIS_EPS {
                 return Err("profile arc is not planar in XY".into());
             }
             let c = [center[0] - origin.origin[0] - origin.offset[0],

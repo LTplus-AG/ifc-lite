@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Exact coefficient conversion at the numerical edge; originals stay in recipe.
 use super::{retained_sweep::{RegionQualification, SweepPayload}, RetainedRefusal, RetainedSweptDisk};
+use crate::math::tol;
 use crate::analytic::{AnalyticCurveSegment, AnalyticStatus, OwnedDirectrix, OwnedRationalCurve};
 
 pub(super) fn lower(recipe: &RetainedSweptDisk) -> Result<SweepPayload, RetainedRefusal> {
@@ -11,7 +12,7 @@ pub(super) fn lower(recipe: &RetainedSweptDisk) -> Result<SweepPayload, Retained
     }
     let units = recipe.length_unit_scale;
     let radius = recipe.source.radius * units;
-    if !units.is_finite() || units <= 0. || !radius.is_finite() || radius <= 1e-12 || radius > 1e9 {
+    if !units.is_finite() || units <= 0. || !radius.is_finite() || radius <= tol::RETAINED_MIN_LENGTH_M || radius > 1e9 {
         return invalid("invalid retained disk units/radius");
     }
     if recipe.source.inner_radius.is_some() {
@@ -81,7 +82,7 @@ fn exact_path(segments: &[AnalyticCurveSegment], id:u32) -> Result<OwnedRational
     let (degree, controls, weights, knots, multiplicities)=match segments {
         [AnalyticCurveSegment::Line { start,end }] => (1,vec![*start,*end],vec![1.,1.],vec![0.,1.],vec![2,2]),
         [AnalyticCurveSegment::Arc { center,normal,x_axis,radius,start_angle,sweep_angle }]
-            if sweep_angle.abs()>1e-12 && sweep_angle.abs()<std::f64::consts::TAU-1e-12 => {
+            if sweep_angle.abs()>tol::RETAINED_ARC_INTERVAL_EPS_RAD && sweep_angle.abs()<std::f64::consts::TAU-tol::RETAINED_ARC_INTERVAL_EPS_RAD => {
             let count=(sweep_angle.abs()/std::f64::consts::FRAC_PI_2).ceil() as usize;
             let y=[normal[1]*x_axis[2]-normal[2]*x_axis[1],normal[2]*x_axis[0]-normal[0]*x_axis[2],normal[0]*x_axis[1]-normal[1]*x_axis[0]];
             let point=|angle:f64, divisor:f64| std::array::from_fn(|i| center[i]+radius*(x_axis[i]*angle.cos()+y[i]*angle.sin())/divisor);

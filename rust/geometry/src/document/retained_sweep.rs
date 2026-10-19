@@ -3,6 +3,7 @@
 //! This module grants no native/browser execution qualification.
 use super::{RetainedExtrusion, RetainedRefusal};
 use crate::analytic::AnalyticCurveSegment;
+use crate::math::tol;
 use nalgebra::{Matrix4, Vector4};
 #[path = "retained_region.rs"]
 mod region;
@@ -84,7 +85,7 @@ pub fn lower(recipe: &RetainedExtrusion) -> Result<SweepPayload, RetainedRefusal
     for value in [vector[0] / norm, vector[1] / norm, vector[2] / norm, depth] {
         f64_bytes(&mut bytes, value)?;
     }
-    if depth > 1e9 || depth * (vector[2] / norm).abs() <= 1e-12 {
+    if depth > 1e9 || depth * (vector[2] / norm).abs() <= tol::RETAINED_MIN_LENGTH_M {
         return Err(RetainedRefusal::InvalidSource("sweep outside local numerical domain"));
     }
     for (index, boundary) in curves.iter().enumerate() {
@@ -115,7 +116,7 @@ fn matrix(values: Option<[f64; 16]>) -> Result<Matrix4<f64>, RetainedRefusal> {
     let rigid = (0..3).all(|i| {
         (0..3).all(|j| {
             let dot = (0..3).map(|k| matrix[(k, i)] * matrix[(k, j)]).sum::<f64>();
-            (dot - if i == j { 1.0 } else { 0.0 }).abs() < 1e-10
+            (dot - if i == j { 1.0 } else { 0.0 }).abs() < tol::RETAINED_RIGID_DOT_EPS
         })
     });
     if matrix.iter().any(|v| !v.is_finite())

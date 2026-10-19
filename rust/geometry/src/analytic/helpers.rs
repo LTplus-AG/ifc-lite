@@ -102,7 +102,7 @@ pub(super) fn parent_piece_spans(
                 (Segment::Line { start, end }, IfcType::IfcLine) => {
                     let (_, vector) = line_basis(&basis, decoder)?;
                     let magnitude = Vector3::from(vector).norm();
-                    if magnitude <= 1e-12 {
+                    if magnitude <= tol::DIRECTION_MIN_LEN {
                         return Ok(None);
                     }
                     let length = (Vector3::from(*end) - Vector3::from(*start)).norm();

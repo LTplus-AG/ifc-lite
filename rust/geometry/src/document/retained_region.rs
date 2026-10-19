@@ -3,6 +3,7 @@
 use super::{RegionQualification, RetainedRefusal};
 use crate::analytic::{AnalyticCurveSegment, AnalyticProfile};
 use std::f64::consts::TAU;
+use crate::math::tol;
 
 pub(super) struct Curve {
     pub kind: u32,
@@ -55,7 +56,7 @@ pub(super) fn lower(
         for (i, item) in curves.iter().enumerate() {
             let (_, end) = item.endpoints();
             let (next, _) = curves[(i + 1) % curves.len()].endpoints();
-            if (end[0] - next[0]).hypot(end[1] - next[1]) > 1e-10 {
+            if (end[0] - next[0]).hypot(end[1] - next[1]) > tol::RETAINED_BOUNDARY_JOIN_EPS_M {
                 return invalid("disconnected numerical boundary");
             }
             if item.kind == 2 && curves.len() != 1 {
@@ -64,9 +65,9 @@ pub(super) fn lower(
             twice_area += item.twice_area();
         }
         let source_area = boundary.signed_area * units * units * 2.0;
-        if !twice_area.is_finite() || twice_area.abs() <= 1e-18
+        if !twice_area.is_finite() || twice_area.abs() <= tol::RETAINED_TWICE_AREA_EPS_M2
             || !source_area.is_finite()
-            || (source_area - twice_area).abs() > twice_area.abs() * 1e-9 + 1e-18
+            || (source_area - twice_area).abs() > twice_area.abs() * tol::RETAINED_TWICE_AREA_REL + tol::RETAINED_TWICE_AREA_EPS_M2
         {
             return invalid("invalid or inconsistent numerical boundary area");
         }
@@ -78,7 +79,7 @@ pub(super) fn lower(
         net_area += if index == 0 { twice_area.abs() } else { -twice_area.abs() };
         loops.push(curves);
     }
-    if !net_area.is_finite() || net_area <= 1e-18 {
+    if !net_area.is_finite() || net_area <= tol::RETAINED_TWICE_AREA_EPS_M2 {
         return invalid("nonpositive numerical region area");
     }
     // Geometry qualification cannot be acquired by merely changing a type name.
@@ -100,8 +101,8 @@ fn is_rectangle(curves: &[Curve]) -> bool {
         let opposite = edges[(i + 2) % 4];
         // Parameterized rectangle edges lie on profile X/Y axes, exactly.
         ((a[0] == 0.0 && b[1] == 0.0) || (a[1] == 0.0 && b[0] == 0.0))
-            && (a[0] + opposite[0]).abs() <= 1e-12
-            && (a[1] + opposite[1]).abs() <= 1e-12
+            && (a[0] + opposite[0]).abs() <= tol::RETAINED_RECTANGLE_EDGE_EPS_M
+            && (a[1] + opposite[1]).abs() <= tol::RETAINED_RECTANGLE_EDGE_EPS_M
     })
 }
 
@@ -113,7 +114,7 @@ fn curve(segment: &AnalyticCurveSegment, anchor: [f64; 3], units: f64) -> Result
                 v[i] = (start[i] - anchor[i]) * units;
                 v[i + 3] = (end[i] - anchor[i]) * units;
             }
-            if v[2] != 0.0 || v[5] != 0.0 || (v[3] - v[0]).hypot(v[4] - v[1]) <= 1e-12 {
+            if v[2] != 0.0 || v[5] != 0.0 || (v[3] - v[0]).hypot(v[4] - v[1]) <= tol::RETAINED_MIN_LENGTH_M {
                 return invalid("invalid XY numerical line");
             }
             1
@@ -128,13 +129,13 @@ fn curve(segment: &AnalyticCurveSegment, anchor: [f64; 3], units: f64) -> Result
             v[10] = start_angle % TAU;
             v[11] = *sweep_angle;
             if v[2] != 0.0 || v[3] != 0.0 || v[4] != 0.0 || v[5].abs() != 1.0
-                || v[8] != 0.0 || (v[6].hypot(v[7]) - 1.0).abs() >= 1e-12 || v[9] <= 1e-12
+                || v[8] != 0.0 || (v[6].hypot(v[7]) - 1.0).abs() >= tol::RETAINED_CIRCLE_BASIS_EPS || v[9] <= tol::RETAINED_MIN_LENGTH_M
                 || v[0] + v[9] <= v[0] || v[1] + v[9] <= v[1]
             {
                 return invalid("invalid XY numerical circular basis");
             }
-            if (sweep_angle.abs() - TAU).abs() < 1e-12 { 2 }
-            else if sweep_angle.abs() > 1e-12 && sweep_angle.abs() < TAU - 1e-12 { 3 }
+            if (sweep_angle.abs() - TAU).abs() < tol::RETAINED_ARC_INTERVAL_EPS_RAD { 2 }
+            else if sweep_angle.abs() > tol::RETAINED_ARC_INTERVAL_EPS_RAD && sweep_angle.abs() < TAU - tol::RETAINED_ARC_INTERVAL_EPS_RAD { 3 }
             else { return invalid("invalid numerical circular interval"); }
         }
     };

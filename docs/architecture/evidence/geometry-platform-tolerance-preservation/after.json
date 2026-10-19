@@ -1,0 +1,13 @@
+{
+  "rust/geometry/src/math/tol.rs": "e3cc9ebbaf4fb52b23b784835a3764fa38ff54e34c08c37e14cb036b47864c17",
+  "rust/geometry/src/math/tol_tests.rs": "4c2e6d3e2b67de5285945ca57dd8707a65ed9a04c30faad8440b1a8b29e12ca6",
+  "rust/geometry/src/document/retained_region.rs": "04e9be8e2f228210616015115a4ccc8192883db016672aaf0e48211c2ecb0367",
+  "rust/geometry/src/document/retained_disk.rs": "77d716a25a2612e7bb3b2e7d1f554ff598c9dd7dd2afbb7f8113f5acc63d6f30",
+  "rust/geometry/src/document/retained_sweep.rs": "b8eaf1400adf0c3e7cbe521f67119a1ac7711820d40bbe64bb206c9de7dbe98a",
+  "rust/geometry/src/document/retained_display.rs": "aef6fc164aa7921d0230b0ec1ccb16a6d50575b38b7ff807843c44b26d708e1f",
+  "rust/geometry/src/analytic/swept_disk.rs": "e68110b594154e36fd88bd61e1b6e042794324ada12da60418d7560e9497ada5",
+  "rust/geometry/src/analytic/helpers.rs": "0c56e4f4573e7140dbe00ebac54a08cf3554223304f545c09879084956813990",
+  "rust/geometry/src/analytic/profile.rs": "67f6a4f75ffa69ada81321e1191d011697fe49e0eafb432dc5a740f92f64f0f7",
+  "rust/geometry/src/analytic/topology_interval.rs": "5ecd1287e5fac98398abf09cc97e6950170105a931e9cbaaf43829669b818438",
+  "rust/geometry/src/document/retained_display_tests.rs": "f55b3b6f1d18b2987a72aabc054fe15f4329863e07e6d0021e9cfef3decbb874"
+}

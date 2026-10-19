@@ -1,0 +1,72 @@
+[
+  {
+    "name": "RETAINED_MIN_LENGTH_M",
+    "literal": "1e-12",
+    "bits": "0x3d719799812dea11",
+    "unit": "metres",
+    "policy": "minimum retained line length/radius/normal sweep thickness"
+  },
+  {
+    "name": "RETAINED_RECTANGLE_EDGE_EPS_M",
+    "literal": "1e-12",
+    "bits": "0x3d719799812dea11",
+    "unit": "metres",
+    "policy": "opposite parameterized rectangle edge component mismatch"
+  },
+  {
+    "name": "RETAINED_BOUNDARY_JOIN_EPS_M",
+    "literal": "1e-10",
+    "bits": "0x3ddb7cdfd9d7bdbb",
+    "unit": "metres",
+    "policy": "consecutive derived numerical boundary join"
+  },
+  {
+    "name": "RETAINED_TWICE_AREA_EPS_M2",
+    "literal": "1e-18",
+    "bits": "0x3c32725dd1d243ac",
+    "unit": "metres squared, twice-area",
+    "policy": "absolute twice-area positivity/agreement budget"
+  },
+  {
+    "name": "RETAINED_TWICE_AREA_REL",
+    "literal": "1e-9",
+    "bits": "0x3e112e0be826d695",
+    "unit": "relative",
+    "policy": "source versus numerical twice-area agreement"
+  },
+  {
+    "name": "RETAINED_ARC_INTERVAL_EPS_RAD",
+    "literal": "1e-12",
+    "bits": "0x3d719799812dea11",
+    "unit": "radians",
+    "policy": "same zero/full-turn circular interval margin in regions/disk conversion"
+  },
+  {
+    "name": "RETAINED_CIRCLE_BASIS_EPS",
+    "literal": "1e-12",
+    "bits": "0x3d719799812dea11",
+    "unit": "dimensionless",
+    "policy": "circular X-axis unit-length deviation"
+  },
+  {
+    "name": "RETAINED_RIGID_DOT_EPS",
+    "literal": "1e-10",
+    "bits": "0x3ddb7cdfd9d7bdbb",
+    "unit": "dimensionless",
+    "policy": "placement orthonormal dot-product residual"
+  },
+  {
+    "name": "PROFILE_XY_AXIS_EPS",
+    "literal": "1e-9",
+    "bits": "0x3e112e0be826d695",
+    "unit": "dimensionless",
+    "policy": "four canonical XY circular basis component residuals"
+  },
+  {
+    "name": "TRIG_TAYLOR_REMAINDER_ABS",
+    "literal": "1e-50",
+    "bits": "0x358dee7a4ad4b81f",
+    "unit": "dimensionless",
+    "policy": "same absolute sin/cos enclosure remainder endpoint magnitude"
+  }
+]

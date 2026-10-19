@@ -1,0 +1,14 @@
+{
+  "method": "Expand named operands on both sides, remove only newly added imports/local declarations and whitespace/comments, compare complete original executable token streams. Test body compared modulo indentation only.",
+  "production_files_verified": [
+    "document/retained_region.rs",
+    "document/retained_disk.rs",
+    "document/retained_sweep.rs",
+    "analytic/helpers.rs",
+    "analytic/swept_disk.rs",
+    "analytic/profile.rs",
+    "analytic/topology_interval.rs"
+  ],
+  "display_test_body_unchanged": true,
+  "ratchet_ceiling_unchanged": true
+}

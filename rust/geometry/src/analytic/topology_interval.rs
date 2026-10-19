@@ -9,6 +9,11 @@
 use crate::kernel::interval::{next_down, next_up, RnInterval as I};
 use super::AnalyticCurveSegment;
 
+// Absolute sin/cos remainder bound, dimensionless. Sixty Taylor terms for
+// |angle| <= 16 radians leave a smaller remainder for both degrees (119/118).
+// Keep this local to the enclosure proof, separate from geometric tolerances.
+const TRIG_TAYLOR_REMAINDER_ABS: f64 = 1e-50;
+
 pub(super) type Box2 = [I; 2];
 pub(super) fn point(x: f64) -> I { I::point(x) }
 pub(super) fn range(lo: f64, hi: f64) -> I { I { lo, hi } }
@@ -29,7 +34,7 @@ fn trig(x: I, cosine: bool) -> Result<I, String> {
         term = divide(term.mul(negative_square), (n * (n - 1)) as f64);
         sum = sum.add(term);
     }
-    let result = sum.add(range(-1e-50, 1e-50));
+    let result = sum.add(range(-TRIG_TAYLOR_REMAINDER_ABS, TRIG_TAYLOR_REMAINDER_ABS));
     finite(result).then_some(result).ok_or_else(|| "profile topology: non-finite trigonometric enclosure".into())
 }
 

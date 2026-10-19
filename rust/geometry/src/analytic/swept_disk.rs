@@ -7,6 +7,7 @@ use super::{
     OwnedDirectrix,
 };
 use crate::{Error, Result};
+use crate::math::tol;
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
 /// Extract an exact directrix where supported. Unsupported curve types return a
@@ -152,7 +153,7 @@ fn trim_legacy_segments(
             if !begin.is_finite()
                 || !sweep.is_finite()
                 || sweep <= 0.0
-                || sweep > std::f64::consts::TAU + 1e-9
+                || sweep > std::f64::consts::TAU + tol::PARAM_EPS
             {
                 *status = AnalyticStatus::Unsupported(
                     "invalid circular directrix parameter range".to_string(),
@@ -211,7 +212,7 @@ fn trimmed_line_solid_bounds_redundant(
     }
     let (_, direction) = helpers::line_basis(&basis, decoder)?;
     let magnitude = (direction.iter().map(|v| v * v).sum::<f64>()).sqrt();
-    if magnitude <= 1e-12 {
+    if magnitude <= tol::DIRECTION_MIN_LEN {
         return Ok(false);
     }
     let span = a

@@ -1,0 +1,18 @@
+{
+  "source": "38fac90894723638343e89cc4913ad347545fb2e",
+  "job": "c1d2695c-3219-4488-b07d-d9697459833d",
+  "host": "pop-os",
+  "exit": 1,
+  "sourceUnchanged": true,
+  "outputSha256": "1be093e5612b3fe8fcb3bb637428cce7022b6711369922473cd7ec9b8e2e5e3d",
+  "rawOutputBytes": 5687,
+  "repeatImported": 0,
+  "verifyImported": 0,
+  "canonicalWasm": 0,
+  "generatedDiff": 0,
+  "wasmContract": 1,
+  "rootTypecheck": 1,
+  "rootTest": 1,
+  "cause": "script omitted frozen install and root build; renderer dist missing, Turbo executable missing",
+  "correctedScript": "corrected-command.sh"
+}

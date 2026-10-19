@@ -1,0 +1,23 @@
+{
+  "source": "38fac90894723638343e89cc4913ad347545fb2e",
+  "job": "86e9fd24-19d6-4539-9dad-cd6986f2d511",
+  "host": "louistrue-pc",
+  "exit": 8,
+  "sourceUnchanged": true,
+  "outputSha256": "c92697925fbb57217f067e0948d1c563d9f0154d06852cb4fab70268089bb541",
+  "rawOutputBytes": 4697296,
+  "wasmCtests": {
+    "passed": 6,
+    "failed": 2,
+    "failedNames": [
+      "smlib_owned_boundary",
+      "smlib_paired_copy_observability"
+    ]
+  },
+  "rustBrowserLanes": "all argument validation failures: missing --chrome; no Rust browser tests executed",
+  "canonicalWasmBuild": 0,
+  "generatedTypesDiff": 0,
+  "canonicalPlaywright": "actual page executed and failed module linking: requested Driver but actual private module exports RetainedDriver",
+  "sourceRepair": "e1a1a82b68 explicit constructor js_class; UNRUN",
+  "browserProvisioning": "matched153.0.8010.52 browser and driver successfully provisioned and version-checked"
+}

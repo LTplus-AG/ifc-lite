@@ -1,0 +1,38 @@
+{
+  "root_head_observed": "4ba3d21539a28b79e46101690623550a6c64c599",
+  "files": [
+    {
+      "path": "native/smlib-adapter/src/sweep.cpp",
+      "sha256": "26dd3457c57c4f9ac6f23f838f73ffc7893668008860ba4452bfe0d6249f0f5a",
+      "bytes": 7728,
+      "inspection_copy": "/tmp/ifclite-native-circular-range-reviewed-sources/sweep.cpp"
+    },
+    {
+      "path": "native/smlib-adapter/tests/sweep_region_tests.cpp",
+      "sha256": "95200073f03788bccc66f1fd4d694fdcaba06632301a283f531bd16b91956a39",
+      "bytes": 8584,
+      "inspection_copy": "/tmp/ifclite-native-circular-range-reviewed-sources/sweep_region_tests.cpp"
+    }
+  ],
+  "sdk_revision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "sdk_files": [
+    {
+      "path": "source/SM_API/src/SmApiCurves.cpp",
+      "sha256": "c96c0aa4f955eefba6021658748051c5e734adc55e5d8ee08bb6421f8544c438"
+    },
+    {
+      "path": "source/SMLib/src/SmBSplineCurve.cpp",
+      "sha256": "93c905a12c4124f6761f63ca9dbe2e2ffe400eb32b493c3d514be42de2c41138"
+    },
+    {
+      "path": "source/SMLib/src/NL_CrvCommon.cpp",
+      "sha256": "c7f2c3abf486de47c89c5d5caf5b98255a23c3c7629c226dc1f42ca0bcc70cbe"
+    },
+    {
+      "path": "source/SMLib/inc/SmMessages.h",
+      "sha256": "f5ff614fa94e265abe73b2f3a6a195f84bd499b39ab06381f673498542896b0c"
+    }
+  ],
+  "diagnosis_sha256": "40b1aa7fed747a68348dc3ec5e9493cbcdba7aad5080e565b063f96934df30d7",
+  "validation": "read-only source and lightweight scalar arithmetic only; no compiler/build/SDK/tests/jobs"
+}

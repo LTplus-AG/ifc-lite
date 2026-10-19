@@ -129,6 +129,27 @@ void run_sweep_region_tests() {
     witness("shifted-clockwise-circle",{{arc(0,0,2,-0.37,-2*pi,true)}},4*pi,4*pi,{-2,-2,2,2},2,1);
     witness("shifted-negative-normal-circle",{{arc(0,0,2,0.37,2*pi,true,-1)}},
         4*pi,4*pi,{-2,-2,2,2},2,1);
+    // Kind2 is exactly a full circle after validation, even when its source
+    // coefficient lies just inside either side of the admitted 1e-12 band.
+    witness("near-full-positive-over",{{arc(0,0,2,-2.5e-13,2*pi+5e-13,true)}},
+        4*pi,4*pi,{-2,-2,2,2},2,1);
+    witness("near-full-positive-under",{{arc(0,0,2,2.5e-13,2*pi-5e-13,true)}},
+        4*pi,4*pi,{-2,-2,2,2},2,1);
+    witness("near-full-negative-over",{{arc(0,0,2,2.5e-13,-2*pi-5e-13,true)}},
+        4*pi,4*pi,{-2,-2,2,2},2,1);
+    witness("near-full-negative-under",{{arc(0,0,2,-2.5e-13,-2*pi+5e-13,true)}},
+        4*pi,4*pi,{-2,-2,2,2},2,1);
+    witness("near-full-negative-normal",{{arc(0,0,2,-2.5e-13,2*pi+5e-13,true,-1)}},
+        4*pi,4*pi,{-2,-2,2,2},2,1);
+    for(double invalid:{2*pi+2e-12,2*pi-2e-12,-2*pi-2e-12,-2*pi+2e-12}) {
+        const auto bytes=recipe({{arc(0,0,2,0,invalid,true)}});
+        try {
+            const auto rejected=create_authored_sweep(bytes,1,1);
+            check(false,"out-of-band full circle must reject before canonicalization");
+        } catch(const SweepFailure& error) {
+            check(error.status==IFCLITE_SMLIB_INVALID_ARGUMENT,"full-circle validation error");
+        }
+    }
     const double q=std::sqrt(2.);
     // A 270deg trim crosses the old endpoint range. The closing chord and
     // section oracle distinguish it from the complementary 90deg segment.

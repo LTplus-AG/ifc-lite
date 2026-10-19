@@ -1,0 +1,55 @@
+{
+  "scope": "binary64 arithmetic sanity only, not compiled C++ or SDK execution",
+  "zero_positive_degrees": 360.0,
+  "zero_negative_degrees": -360.0,
+  "cases": [
+    {
+      "start": 0.0,
+      "authored_sweep": 6.283185307179586,
+      "derived_endpoint_degrees": [
+        0.0,
+        360.0
+      ]
+    },
+    {
+      "start": 0.0,
+      "authored_sweep": -6.283185307179586,
+      "derived_endpoint_degrees": [
+        -360.0,
+        0.0
+      ]
+    },
+    {
+      "start": -2.5e-13,
+      "authored_sweep": 6.283185307180086,
+      "derived_endpoint_degrees": [
+        -1.432521828531168e-11,
+        359.9999999999857
+      ]
+    },
+    {
+      "start": 2.5e-13,
+      "authored_sweep": 6.283185307179086,
+      "derived_endpoint_degrees": [
+        -359.9999999999857,
+        1.4350662722763387e-11
+      ]
+    },
+    {
+      "start": 2.5e-13,
+      "authored_sweep": -6.283185307180086,
+      "derived_endpoint_degrees": [
+        -359.9999999999857,
+        1.432521828531168e-11
+      ]
+    },
+    {
+      "start": -2.5e-13,
+      "authored_sweep": -6.283185307179086,
+      "derived_endpoint_degrees": [
+        -1.4350662722763387e-11,
+        359.9999999999857
+      ]
+    }
+  ]
+}

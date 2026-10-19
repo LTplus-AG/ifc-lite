@@ -1,0 +1,13 @@
+# Full-circle admitted-domain correction
+
+Fresh uncommitted correction to `native/smlib-adapter/src/sweep.cpp` and `tests/sweep_region_tests.cpp`, separate from the previous interval-shift receipt and original surface diagnosis. Exact source and small-check artifact hashes are in `/tmp/ifclite-native-full-circle-policy-receipt.json`.
+
+The parent identified a real remaining accepted input: start=-2.5e-13 and kind2 sweep=2pi+5e-13. This passed the declared full-circle coefficient tolerance but produced an endpoint above the pinned SDK's strict 360-degree maximum. The SDK called path was rechecked: SmApiCreateArc delegates to CreateCircleSegment, which applies unconditional RANGE_ER to both endpoints, then creates the quadratic arc through N_CreateCircArc/N_CreateCircArcTol/N_CreateQuadraticArcTol. That lower constructor uses the supplied start angle and interval difference; reversal remains the existing post-construction ReverseParameterization.
+
+The correction now validates the original `v[11]` coefficient against the existing interval rules first. Only explicit kind2 is then derived as `copysign(2*pi,authored_sweep)`. The input vector and original recipe remain unchanged. Kind3 retains the original signed partial interval. Midpoint normalization shifts the entire resulting interval together; there is no independent endpoint clamp, trim truncation or orientation substitution. The derived exact span is also used for full-circle area and closure, consistent with the explicit kind2 declaration.
+
+Added five actual SDK positive witnesses with unchanged analytic full-circle area/perimeter and surface counts: positive/negative spans just above/below full turn, and negative-normal near-full span. Four explicit out-of-band spans require InvalidArgument, so moving canonicalization ahead of validation cannot silently admit malformed full circles. Prior long/reversed/negative-normal partial-arc witnesses and all existing planar/curved/cylinder assertions remain intact.
+
+Light actual-header `c++ -std=c++17 -fsyntax-only` succeeded for both files with the same pinned SDK include paths/macros as the prior check. Whitespace check passed. A separate Python binary64 arithmetic sanity artifact confirms the zero-start exact ±TAU expression converts to exactly ±360 degrees using this pi constant and evaluation order, and the concrete near-boundary cases derive endpoints inside [-360,360]. That arithmetic check is explicitly not compiled C++/SDK runtime evidence.
+
+No heavy build/link/test, fleet submission, retry, SDK edit or cleanup occurred. The new actual SDK assertions remain UNRUN. The earlier native surface-count failure remains unresolved; this accepted-domain correction does not qualify or explain that failure.

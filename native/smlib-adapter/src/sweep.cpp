@@ -59,9 +59,13 @@ Segment read_segment(Reader& reader) {
         require(v[2]==0 && v[3]==0 && v[4]==0 && std::abs(v[5])==1 && v[8]==0 &&
             std::abs(std::hypot(v[6],v[7])-1)<1e-12 && v[9]>1e-12,
             "invalid XY circular basis");
-        const double sweep=v[11];
-        require(kind==2 ? std::abs(std::abs(sweep)-2*pi)<1e-12 :
-            (std::abs(sweep)>1e-12 && std::abs(sweep)<2*pi-1e-12),"invalid circular interval");
+        const double authored_sweep=v[11];
+        require(kind==2 ? std::abs(std::abs(authored_sweep)-2*pi)<1e-12 :
+            (std::abs(authored_sweep)>1e-12 && std::abs(authored_sweep)<2*pi-1e-12),"invalid circular interval");
+        // Kind2 explicitly declares a full circle. Its accepted coefficient
+        // tolerance must not become a >360deg SDK interval or an open seam.
+        // Preserve the original recipe and genuine kind3 trims unchanged.
+        const double sweep=kind==2 ? std::copysign(2*pi,authored_sweep) : authored_sweep;
         require(v[0]+v[9]>v[0] && v[1]+v[9]>v[1],"collapsed circle extent");
         // IFC angle conventions have already been resolved by the source owner.
         // Convert derived radians exactly once at the SDK's degree boundary.

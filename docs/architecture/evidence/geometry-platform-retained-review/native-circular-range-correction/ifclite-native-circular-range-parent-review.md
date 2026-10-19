@@ -1,0 +1,33 @@
+# Native circular endpoint range: parent static review
+
+Reviewed the root circular interval correction and six added witnesses in `native/smlib-adapter/src/sweep.cpp` and `native/smlib-adapter/tests/sweep_region_tests.cpp`, plus `/tmp/ifclite-native-surface-witness-diagnosis.md` and the actual SDK at `c9c5979f04cea8c38213004d4f04df0dcfb40d05`. Exact inspected file hashes and SDK inputs are in `/tmp/ifclite-native-circular-range-parent-review-hashes.json`; exact inspected adapter/test copies are under `/tmp/ifclite-native-circular-range-reviewed-sources`. Root HEAD observed during this review was4ba3d21539a28b79e46101690623550a6c64c599. This verdict attaches to the file hashes, not later root changes.
+
+No source/SDK edits, compiler/syntax probes, builds, SDK execution, tests, heavy jobs or job mutations were performed. Only lightweight scalar arithmetic and source inspection were used. The provided syntax-only PASS is not repeated or promoted to link/runtime qualification.
+
+## Concrete remaining edge: admitted full-circle span can exceed the proof bound
+
+The new common-midpoint shift correctly bounds endpoints when absolute sweep is at most2π. However the unchanged kind2 admission accepts `abs(abs(sweep)-2*pi)<1e-12`, which includes spans slightly greater than2π. The interval-width precondition in the new comment is therefore not true for the entire admitted wire domain.
+
+Concrete accepted input: kind2, authored start=-2.5e-13 radians, signed sweep=2π+5e-13 radians, valid radius/basis/normal. IEEE scalar arithmetic gives normalized midpointπ, start degrees approximately-1.432521828531168e-11, and maximum endpoint360.0000000000143 degrees. The pinned SDK's RANGE_ER(-360,endpoint,360) uses strict >= and <= comparisons without tolerance; that endpoint remains out of range. The input passes the adapter's declared full-circle tolerance. Lightweight Python arithmetic confirmed those scalar values, not an SDK call.
+
+This is a narrow incomplete range closure for the currently admitted full-circle domain. Canonical source full circles with exact±2π and all six newly authored witnesses do not use this margin. Resolve the mismatch deliberately: for an explicit full-circle kind, canonicalize the numerical circle span to exactly signed2π while retaining original source coefficients separately, or explicitly narrow admission to the contract actually supported. Do not wrap/clamp endpoints independently, which changes major trims and signed/full-circle extent. Add a genuine SDK witness at this accepted tolerance margin if that domain remains admitted. This finding is not evidence that the old unknown surface-count failure had this cause.
+
+## SDK convention and main correction verified
+
+SmApiCreateArc constructs the canonical XY frame and calls SmBSplineCurve::CreateCircleSegment with endpoint degrees. That function checks both endpoints in[-360,360] with the unconditional RANGE_ER macro, then calls N_CreateCircArc; its quadratic route reaches N_CreateCircArcTol and N_CreateQuadraticArcTol. The lower implementation obtains theta=ae-as, starts at the supplied angular origin and builds quadratic arc pieces. The degree arguments are endpoint angles, not a start-plus-independent-sweep interface.
+
+Reducing authored start by a whole period, reducing the interval midpoint by a whole period, then deriving both endpoints from that midpoint preserves one common angular translation. For |sweep|<=2π, midpoint in[-π,π] places the interval in[-2π,2π]. Sorting endpoints for the SDK and reversing the constructed curve only when the original sweep is negative preserves the selected signed traversal. No independent endpoint wrap changes the270-degree trim into its90-degree complement. The circular local frame remains unchanged: local Y=(-normal*x_y,normal*x_x), preserving the positive/negative normal basis. Derived endpoint and signed area calculations use the same signed interval. Geometric periodic equivalence is not a claim of bit-identical trigonometric results for all large coordinates.
+
+## Six witness oracles checked independently
+
+For radius2, every full circle has area4π and perimeter4π, regardless of shifted start, sweep sign or normal reflection. Its vertical depth3 volume is12π, bounds x/y±2,z0..3, with two planar caps and one curved/cylindrical side expected by the unchanged topology oracle. These formulas apply to shifted-circle, shifted-clockwise-circle and shifted-negative-normal-circle.
+
+The wrapped positive major arc starts at135degrees and advances270degrees to405degrees. It runs from(-sqrt(2),sqrt(2)) to(sqrt(2),sqrt(2)); the provided horizontal chord closes the major region below y=sqrt(2). Its area is r²(theta-sin(theta))/2=3π+2 and perimeter r*theta+chord=3π+2sqrt(2). Bounds[-2,-2,2,sqrt(2)] are correct. Reversed-major-arc uses the opposite traversal and reversed chord over the same region. The negative-normal major case reflects local Y, closing along y=-sqrt(2) and giving bounds[-2,-sqrt(2),2,2], with unchanged positive area magnitude/perimeter. The expected three planes (two caps/chord wall), one curved arc wall and no full-circle cylinder count are internally consistent; actual SDK representation/count behavior remains to be observed.
+
+The existing section boundary test permits angular winding adjustments, checks sampled section points against authored lines/arcs, and requires the complete independent perimeter. Together with area/volume and bounds, these tests distinguish the long arc from the complementary short segment. The witnesses also traverse the actual bounded ABI upload/session path and retain all prior surface/cylinder/count assertions; no test weakening or SDK edit was found.
+
+## Qualification boundary
+
+The archived native331 run's only established numerical failure is the unnamed actual planar/curved surface-count assertion. Missing fixture/count output and unflushed stdout prevent assigning it to a particular case. The endpoint-range bug is separately source-proven; neither the main correction nor this review explains or resolves that historical surface-count failure. The newer diagnostic must execute against actual final SDK artifacts before selecting a surface-classification correction.
+
+All six new actual-SDK witnesses remain UNRUN. The parent-reported real-header syntax check establishes parsing/header correspondence only, not geometry, topology count, memory lifetime or native/browser parity. The existing unknown surface-count failure remains an open qualification blocker. Later source changes require comparing their hashes to the exact reviewed copies before reusing this verdict.

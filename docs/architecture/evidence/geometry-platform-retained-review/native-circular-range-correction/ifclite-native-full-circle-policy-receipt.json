@@ -1,0 +1,29 @@
+{
+  "root_head_before_uncommitted_fix": "4ba3d21539a28b79e46101690623550a6c64c599",
+  "qualification": "syntax+whitespace only; SDK runtime UNRUN",
+  "sdk": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "syntax_exit": 0,
+  "whitespace_exit": 0,
+  "files": [
+    {
+      "path": "native/smlib-adapter/src/sweep.cpp",
+      "sha256": "661f06a7e41fad2c453b07e2c928038cf8271537b56c12f28f6678f812f2adb8",
+      "bytes": 8083
+    },
+    {
+      "path": "native/smlib-adapter/tests/sweep_region_tests.cpp",
+      "sha256": "ae2e11468a551fe2cebbc03eee6920bbaa5015b00de115966d97cd0e7fd08741",
+      "bytes": 9782
+    },
+    {
+      "path": "/tmp/ifclite-native-full-circle-policy-arithmetic.json",
+      "sha256": "3163074cf8274bc896759c4f65c1e98a4b9c84eb55a7d630144a0b9fa244b124",
+      "bytes": 1200
+    },
+    {
+      "path": "/tmp/ifclite-native-full-circle-policy-syntax.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "source": "bab3fd6646d758e21333e10627f1f5a4fcfdd9a8",
+  "pid": 2460524,
+  "task": "ifclite-sdk-outward-bab3-20261019",
+  "command": [
+    "/home/louistrue/build-workers/ifc-fleet",
+    "run",
+    "--route",
+    "fleet",
+    "--storage-task",
+    "ifclite-sdk-outward-bab3-20261019",
+    "--cwd",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361",
+    "--",
+    "bash",
+    "-c",
+    "source \"$HOME/build-workers/worker-env.sh\" || exit $?\npnpm fixtures || exit $?\nunset IFCLITE_ADAPTER_BUILD\nbash native/smlib-adapter/qualify.sh native\nnative_status=$?\nsource_sha=$(git rev-parse HEAD)\ncheckout_key=$(printf '%s' \"$(pwd -P)\" | sha256sum | cut -c1-12)\nexport IFCLITE_SMLIB_WORKER=\"$CARGO_TARGET_DIR/ifclite-smlib/native-$source_sha-$checkout_key/ifclite_smlib_worker\"\nruntime_status=125\nproduct_status=125\nif [ -x \"$IFCLITE_SMLIB_WORKER\" ]; then\n  cargo test -p ifc-lite-geometry-runtime --all-targets --no-fail-fast -- --nocapture\n  runtime_status=$?\n  cargo test -p ifc-lite-processing --lib element::session_retained -- --nocapture\n  product_status=$?\nfi\ncargo clippy --workspace --all-targets -- -D warnings\nclippy_status=$?\nprintf 'native_boundary_exit=%s actual_runtime_exit=%s retained_product_exit=%s clippy_exit=%s\\n' \"$native_status\" \"$runtime_status\" \"$product_status\" \"$clippy_status\"\nif [ \"$native_status\" -ne 0 ]; then exit \"$native_status\"; fi\nif [ \"$runtime_status\" -ne 0 ]; then exit \"$runtime_status\"; fi\nif [ \"$product_status\" -ne 0 ]; then exit \"$product_status\"; fi\nexit \"$clippy_status\""
+  ],
+  "log": "/tmp/ifclite-sdk-outward-bab3-20261019.log",
+  "launched_at": 1792405287.3755486,
+  "scope": "Full native CTest; all runtime targets; retained processing lib tests; strict workspace all-target Clippy. Not full workspace/browser/performance."
+}

@@ -1,0 +1,58 @@
+{
+  "license": "MPL-2.0",
+  "source": "bab3fd6646d758e21333e10627f1f5a4fcfdd9a8",
+  "job": "753653ad-9e0f-4363-9e3a-f84c9fa5a6e8",
+  "host": "pc-wsl",
+  "state": "failed",
+  "exitCode": 101,
+  "sourceUnchanged": true,
+  "output_sha256": "c723f0fa90da401da2426c8a11f32f08bd17da9aeb78813ff32d7dc8900f3af1",
+  "scope": "Full native6 CTest; all runtime targets; processing lib element::session_retained filter only; strict workspace all-target Clippy. Not full workspace/browser/performance.",
+  "native_ctest": {
+    "passed": 6,
+    "failed": 0,
+    "outward_plane_and_offcentre_both_sides_modes": "PASS; strict coefficient and existing geometric oracles preserved"
+  },
+  "runtime": {
+    "passed": 54,
+    "failed": 1,
+    "ignored": 0
+  },
+  "retained_product_tests": {
+    "passed": 46,
+    "failed": 5,
+    "ignored": 0,
+    "filtered_out": 716
+  },
+  "strict_all_target_clippy": "PASS",
+  "failed_tests": [
+    "actual_plane_runtime_box_survey_frame_chaining_and_independent_release",
+    "element::session_retained::clip_tests::p2_sdk_issue_5314_source_edge_clip_obeys_existing_prism_integral",
+    "element::session_retained::opening_tests::p2_sdk_mixed_reference_opening_keeps_original_no_cutter_eligibility",
+    "element::session_retained::opening_tests::p2_sdk_issue_3641_actual_voiding_feature_chain_preserves_index_and_closed_solid_invariants",
+    "element::session_retained::opening_tests::p2_sdk_issue_2019_original_opening_control_cuts_overlapping_ordered_sources",
+    "element::session_retained::opening_tests::p2_sdk_repeated_mapped_opening_parts_keep_distinct_occurrences_and_host_styles"
+  ],
+  "opening_values": {
+    "original": {
+      "sdk": 2.080000000000003,
+      "display_mesh": 2.080125536637467
+    },
+    "Reference_filtered": {
+      "sdk": 2.2075662500000033,
+      "display_mesh": 2.2075695328479683
+    },
+    "repeated": {
+      "sdk": 4.1600000000000055,
+      "display_mesh": 4.160068298302385
+    }
+  },
+  "remaining": {
+    "generic_clip_chain": "Existing owned trim missing; actual surface type15002 genericBSpline. Additive source-domain proof required, not guard removal.",
+    "source_edge_model": "Now reaches volume API request below existing range. Test-only fix ed13a69999 is subsequent/unrun.",
+    "authored_region": "Positive3641 remains refused due exact870mm backtrack; inspection foundation being implemented separately.",
+    "opening_oracle": "Actual SDK matches independent source analytic calculation; original unchanged1e-6 display-mesh oracle remains failed pending independent contract review and separate exact-baseline identity.",
+    "new_lineage": "Integrated later990b11cc8f, not covered by this run; new7/8 tests UNRUN."
+  },
+  "release_verdict": "Native6 boundary qualified at this source only. Full program remains incomplete/unqualified; no final-product/platform/perf claim."
+}

@@ -29,7 +29,9 @@ test('imported kernel retains per-frame identity canonicalization and mesh/point
   assert.equal(stageTransform([identity]), null);
   const input = { points: [[Infinity, 2, 3]], faceVertexIndices: [] };
   assert.equal(executeMesh(input, [identity]).positions[0], Infinity);
-  assert.throws(() => executePoints(new Float64Array([Infinity, 2, 3]), [identity]), /IFCx pointcloud:.*homogeneous w/);
+  // Non-finite source points (organized PCD invalid returns) pass through
+  // instead of refusing the cloud; only finite points must have a valid w.
+  assert.ok(!Number.isFinite(executePoints(new Float64Array([Infinity, 2, 3]), [identity]).positions[0]));
   const projective = [[1, 0, 0, 1], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]];
   assert.throws(() => executeMesh({ points: [[0, 0, 0], [-1, 0, 0]], faceVertexIndices: [] }, [projective]), /IFCx geometry:.*homogeneous w/);
   // Every point is checked: a later zero w refuses the cloud instead of

@@ -15,10 +15,7 @@ export class RetainedDriver {
   #releases = [];
   #cleanup;
   #dispatchListeners = [];
-  #firstDispatch;
-  #signalDispatch;
   constructor() {
-    this.#firstDispatch = new Promise(resolve => { this.#signalDispatch = resolve; });
     // This constructor is called only by explicit retained admission. In
     // particular, importing the default IFC wasm does not fetch an SDK module.
     this.#ready = import('/smlib/client.mjs').then(({ SmlibWorkerTransport }) => {
@@ -36,14 +33,18 @@ export class RetainedDriver {
   objectLive(object) { return this.live() && this.#objects.has(object); }
   // Observation only, used by the actual Worker cancellation invariant. This
   // Promise cannot submit work or change receipt/qualification authority.
-  firstDispatch() { return this.#firstDispatch; }
-  nextDispatch() { return new Promise(resolve => this.#dispatchListeners.push(resolve)); }
+  nextDispatch(opcode) {
+    if (!Number.isSafeInteger(opcode) || opcode <= 0 || opcode > 0xffffffff)
+      return Promise.reject(new Error('invalid dispatch observation opcode'));
+    if (!this.live()) return Promise.reject(new Error('retired retained worker'));
+    return new Promise((resolve, reject) => this.#dispatchListeners.push({ opcode, resolve, reject }));
+  }
   retire() {
     if (this.#retired) return;
     this.#retired = true;
     this.#objects.clear(); // Invalidate leases before terminating transport.
     this.#releases.length = 0;
-    this.#dispatchListeners.length = 0;
+    for (const listener of this.#dispatchListeners.splice(0)) listener.reject(new Error('retained worker retired before observed dispatch'));
     this.#transport?.retire(this.#incarnation);
   }
   releaseObject(object) {
@@ -68,6 +69,32 @@ export class RetainedDriver {
   async #flushReleases() {
     while (this.#releases.length) await this.#call(8, this.#session, this.#releases.shift());
   }
+  #batch(frames, incarnation) {
+    // Observe the captured actual transport, including staged upload commands.
+    // This wrapper never manufactures responses or changes transport ownership.
+    const opcodes = frames.map(frame => new DataView(frame).getUint32(8, true));
+    const pending = this.#transport.batch(frames, incarnation);
+    for (let i = 0; i < frames.length; i++) {
+      // Only a real transfer/detachment proves submission. An unsent rejection
+      // leaves the frame intact and must not satisfy a cancellation witness.
+      if (frames[i].byteLength !== 0) continue;
+      const waiting = [];
+      for (const listener of this.#dispatchListeners) {
+        if (listener.opcode === opcodes[i]) listener.resolve(opcodes[i]);
+        else waiting.push(listener);
+      }
+      this.#dispatchListeners = waiting;
+    }
+    return pending;
+  }
+  #uploadTransport() {
+    const transport = this.#transport;
+    return Object.freeze({
+      batch: (frames, incarnation) => this.#batch(frames, incarnation),
+      retire: incarnation => transport.retire(incarnation),
+      get incarnation() { return transport.incarnation; },
+    });
+  }
   async #call(opcode, ...fields) {
     if (!this.live() || !this.#transport) throw new Error('retired retained worker');
     if (this.#sequence >= 0xffffffff) throw new Error('retained request identity exhausted');
@@ -77,13 +104,7 @@ export class RetainedDriver {
     [1, id, opcode].forEach((v, i) => view.setUint32(i * 4, v, true));
     let offset = 12;
     for (const field of fields) { new Uint8Array(frame, offset, field.byteLength).set(field); offset += field.byteLength; }
-    const pending = this.#transport.batch([frame], this.#incarnation);
-    // Actual postMessage transfers/detaches the request synchronously. A
-    // rejected unsent request never establishes this submission observation.
-    if (frame.byteLength === 0) {
-      this.#signalDispatch();
-      for (const resolve of this.#dispatchListeners.splice(0)) resolve();
-    }
+    const pending = this.#batch([frame], this.#incarnation);
     const [result] = await pending;
     if (!this.live()) throw new Error('worker expired during retained command');
     const response = new DataView(result);
@@ -132,7 +153,7 @@ export class RetainedDriver {
         this.#session = session;
       }
       const sessionId = new DataView(this.#session.buffer).getBigUint64(0, true);
-      const handle = await uploadSweep(this.#transport, sessionId, recipe, { format, loops, segments }, this.#incarnation);
+      const handle = await uploadSweep(this.#uploadTransport(), sessionId, recipe, { format, loops, segments }, this.#incarnation);
       if (!this.live()) throw new Error('retained upload worker expired');
       const solid = new Uint8Array(handle.bytes);
       validateHandle(solid, sessionId);

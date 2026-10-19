@@ -29,11 +29,8 @@ extern "C" {
     #[wasm_bindgen(method, js_name = qualifyDependencies)]
     fn qualify_dependencies(this: &Driver) -> js_sys::Promise;
     #[cfg(test)]
-    #[wasm_bindgen(method, js_name = firstDispatch)]
-    fn first_dispatch(this: &Driver) -> js_sys::Promise;
-    #[cfg(test)]
     #[wasm_bindgen(method, js_name = nextDispatch)]
-    pub(super) fn next_dispatch(this: &Driver) -> js_sys::Promise;
+    pub(super) fn next_dispatch(this: &Driver, opcode: u32) -> js_sys::Promise;
     #[wasm_bindgen(method)]
     fn evaluate(
         this: &Driver,

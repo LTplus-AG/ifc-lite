@@ -23,8 +23,11 @@ review, not browser compilation or execution evidence.
 3. `browser_bridge_tests.rs`: the construction cancellation witness observes
    session-open dispatch; the dependency witness observes operand-copy dispatch.
    These are real Worker requests, but do not prove cancellation during upload
-   commit or Boolean allocation. Add opcode-specific observation and witnesses
-   before claiming those lifecycle cases qualified.
+   commit or Boolean allocation. The follow-up source repair now observes real
+   detached frames by opcode, including staged uploads, and waits for commit 15
+   or Boolean 5 before abandoning the Rust future. It proves submission before
+   acceptance, not when SDK computation starts internally. Browser execution
+   remains pending; the source repair alone does not qualify those cases.
 
 The existing source-only browser publication remains distinct from a complete
 product. It does not discharge common `ProgramRequest`/product owner/stage and

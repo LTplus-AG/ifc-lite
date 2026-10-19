@@ -14,7 +14,7 @@ use wasm_bindgen_test::*;
 wasm_bindgen_test_configure!(run_in_browser);
 
 #[wasm_bindgen_test(async)]
-async fn abandoned_rust_future_retires_actual_worker_without_killing_replacement() {
+async fn abandoned_commit_future_retires_actual_worker_without_killing_replacement() {
     let mut worker = BrowserWorker::new().unwrap();
     // The full actual SDK witness ensures this captured module Worker exists
     // before cancellation, rather than cancelling an unstarted import.
@@ -39,12 +39,13 @@ async fn abandoned_rust_future_retires_actual_worker_without_killing_replacement
         )
         .unwrap();
     let owner = worker.owner.clone();
+    let submitted = owner.driver.next_dispatch(15); // actual staged sweep commit
     let mut future = Box::pin(worker.evaluate(request, 0.001, 5., 1024 * 1024));
     let mut context = Context::from_waker(Waker::noop());
     assert!(matches!(future.as_mut().poll(&mut context), Poll::Pending));
-    // Wait for a real transferred request, without polling the Rust operation
-    // to completion. Qualification alone or one initial poll proves no upload.
-    JsFuture::from(owner.driver.first_dispatch()).await.unwrap();
+    // Wait for the actual commit transfer, not session creation or upload
+    // chunks. The Rust future has not accepted the newly allocated result.
+    assert_eq!(JsFuture::from(submitted).await.unwrap().as_f64(), Some(15.));
     assert!(owner.validate().is_ok());
     drop(future);
     assert_eq!(worker.incarnation(), 0);
@@ -135,18 +136,18 @@ async fn actual_browser_foreign_and_nonrigid_rejection_preserve_operands_and_wor
 }
 
 #[wasm_bindgen_test(async)]
-async fn abandoned_actual_browser_dependency_future_retires_only_captured_incarnation() {
+async fn abandoned_actual_browser_boolean_future_retires_only_captured_incarnation() {
     use ifc_lite_geometry::document::BooleanOperation;
     let mut worker = BrowserWorker::new_retained_execution().unwrap();
     worker.qualify().await.unwrap();
     let a = worker.evaluate(rectangle(&worker), 0.001, 5., 1_048_576).await.unwrap();
     let b = worker.evaluate(rectangle(&worker), 0.001, 5., 1_048_576).await.unwrap();
     let owner = worker.owner.clone();
-    let submitted = owner.driver.next_dispatch();
+    let submitted = owner.driver.next_dispatch(5); // actual Boolean, after operand copy
     let mut future = Box::pin(worker.evaluate_retained_boolean(source(&a, IDENTITY), source(&b, IDENTITY),
         BooleanOperation::Union, 0.001, 5., 1_048_576));
     assert!(matches!(future.as_mut().poll(&mut Context::from_waker(Waker::noop())), Poll::Pending));
-    JsFuture::from(submitted).await.unwrap();
+    assert_eq!(JsFuture::from(submitted).await.unwrap().as_f64(), Some(5.));
     drop(future);
     assert_eq!(worker.incarnation(), 0);
     assert!(a.validate_live().is_err()); assert!(b.validate_live().is_err());

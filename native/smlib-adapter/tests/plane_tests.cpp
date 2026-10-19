@@ -266,6 +266,14 @@ void run_plane_tests() {
     for(int side:{1,-1}) for(unsigned mode:{2u,3u}) {
         clip_case(s,box,{0.5,0,0,2,0,0},side,mode,(side==1)==(mode==2)?6:2,8,side==1 && mode==2);
         clip_case(s,box,{1,1,1,1,1,1},side,mode,4,8);
+        // Regression: oblique cutter orientation must preserve its original
+        // analytic plane instead of rebuilding it through SwapUV. This
+        // off-centre section also distinguishes the two material sides.
+        // For [0,2]^3, volume(x+y+z <= 2.5)=(2.5^3-3*0.5^3)/6=61/24.
+        clip_case(s,box,{1,1,0.5,1,1,1},side,mode,
+            (side==1)==(mode==2)?131./24.:61./24.,8);
+        clip_case(s,box,{1,1,0.5,-1,-1,-1},side,mode,
+            (side==1)==(mode==2)?61./24.:131./24.,8);
         clip_case(s,box,{3,0,0,1,0,0},side,mode,(side==1)==(mode==2)?0:8,8);
         clip_case(s,box,{0,0,0,1,0,0},side,mode,(side==1)==(mode==2)?8:0,8);
         clip_case(s,box,{2,0,0,1,0,0},side,mode,(side==1)==(mode==2)?0:8,8);

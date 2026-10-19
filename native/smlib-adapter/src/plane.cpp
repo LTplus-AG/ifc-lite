@@ -96,14 +96,19 @@ Solid cutter_for(SmBrep* source,const SmAxis2Placement& frame,const Bounds& b,co
         result->m_bEditingEnabled=TRUE;
         const auto p=frame.GetOrigin();
         const auto x=frame.GetXAxis(),y=frame.GetYAxis(),z=frame.GetZAxis();
-        // This face is anchored to the ORIGINAL point. Clearance never moves
-        // the requested plane. Negative UV extents keep its original origin.
-        auto* base=face(result.get(),p,x,y,b[0].lo,b[1].lo,b[0].hi,b[1].hi);
+        // Construct each analytic face with its normal already outward.
+        // SwapUV rebuilds SmPlane's analytic coefficients from rounded NURBS
+        // corners in this SDK. Avoid requesting that representation change;
+        // retain the exact post-stitch assertion for the intended base axes.
+        // Negating one axis and its UV interval preserves the original map
+        // and rectangle, without moving the requested cutting-plane origin.
+        const auto base_y=y*-1;
+        auto* base=face(result.get(),p,x,base_y,b[0].lo,-b[1].hi,b[0].hi,-b[1].lo);
         auto* back=face(result.get(),p+z*b[2].hi,x,y,b[0].lo,b[1].lo,b[0].hi,b[1].hi);
-        auto* left=face(result.get(),p+x*b[0].lo,y,z,b[1].lo,0,b[1].hi,b[2].hi);
+        auto* left=face(result.get(),p+x*b[0].lo,y,z*-1,b[1].lo,-b[2].hi,b[1].hi,0);
         auto* right=face(result.get(),p+x*b[0].hi,y,z,b[1].lo,0,b[1].hi,b[2].hi);
         auto* front=face(result.get(),p+y*b[1].lo,x,z,b[0].lo,0,b[0].hi,b[2].hi);
-        auto* rear=face(result.get(),p+y*b[1].hi,x,z,b[0].lo,0,b[0].hi,b[2].hi);
+        auto* rear=face(result.get(),p+y*b[1].hi,x,z*-1,b[0].lo,-b[2].hi,b[0].hi,0);
         checked(result->StitchAndOrient()); result->m_bEditingEnabled=FALSE;
         validate_plane_solid(result.get(),"derived cutter");
         SmTArray<SmFace*> live; result->GetFaces(live);
@@ -115,8 +120,8 @@ Solid cutter_for(SmBrep* source,const SmAxis2Placement& frame,const Bounds& b,co
         require(base->GetSurface()->GetType()==SmPlane_TYPE,"derived base plane lost");
         const auto& actual=static_cast<SmPlane*>(base->GetSurface())->GetPosition();
         const bool unchanged=same(actual.GetOrigin(),p) &&
-            ((same(actual.GetXAxis(),x) && same(actual.GetYAxis(),y)) ||
-             (same(actual.GetXAxis(),y) && same(actual.GetYAxis(),x)));
+            ((same(actual.GetXAxis(),x) && same(actual.GetYAxis(),base_y)) ||
+             (same(actual.GetXAxis(),base_y) && same(actual.GetYAxis(),x)));
         if(!unchanged) {
             // Diagnostic only: read stored analytic coefficients; no evaluation,
             // mutation, changed predicate, tolerance or publication authority.
@@ -127,7 +132,7 @@ Solid cutter_for(SmBrep* source,const SmAxis2Placement& frame,const Bounds& b,co
             std::fprintf(stderr,"plane requested raw point=(%.17g %.17g %.17g) normal=(%.17g %.17g %.17g)\n",
                 requested_plane[0],requested_plane[1],requested_plane[2],
                 requested_plane[3],requested_plane[4],requested_plane[5]);
-            std::fprintf(stderr,"plane constructed origin=(%.17g %.17g %.17g) X=(%.17g %.17g %.17g) Y=(%.17g %.17g %.17g) Z=(%.17g %.17g %.17g)\n",
+            std::fprintf(stderr,"plane volume frame origin=(%.17g %.17g %.17g) X=(%.17g %.17g %.17g) Y=(%.17g %.17g %.17g) Z=(%.17g %.17g %.17g)\n",
                 p.x,p.y,p.z,x.x,x.y,x.z,y.x,y.y,y.z,z.x,z.y,z.z);
             std::fprintf(stderr,"plane effective origin=(%.17g %.17g %.17g) X=(%.17g %.17g %.17g) Y=(%.17g %.17g %.17g) crossXY=(%.17g %.17g %.17g) UVscale=(%.17g %.17g)\n",
                 ao.x,ao.y,ao.z,ax.x,ax.y,ax.z,ay.x,ay.y,ay.z,az.x,az.y,az.z,scale.x,scale.y);

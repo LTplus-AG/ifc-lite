@@ -1,0 +1,30 @@
+{
+  "license": "MPL-2.0",
+  "parent": "f82669e1b04c510fa29ab556a2bf51b3ec745098",
+  "sdk": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "candidate": "Construct all six faces outward; do not loosen plane predicate or validators",
+  "source_hashes": {
+    "native/smlib-adapter/src/plane.cpp": "504adb61bf330dabd78c376729e72e5c43febf9d3655407e83b733650e5bc91a",
+    "native/smlib-adapter/tests/plane_tests.cpp": "79f24558162326b39afd88fb267513acecdfc184185f84240ddaf16dbf247b2d"
+  },
+  "diagnostic_source": "d631427e75c5e24fdbbcf1c6ada005ee150d7908",
+  "diagnostic_job": "9c52f026-fc3c-4820-b55a-8208aa1f0911",
+  "raw_normal": [
+    1,
+    1,
+    1
+  ],
+  "effective_axis": [
+    0.816496580927726,
+    -0.408248290463863,
+    -0.4082482904638631
+  ],
+  "effective_axis_exact_normal_dot": "-1/18014398509481984",
+  "checks": {
+    "cpp17_syntax_strict_owned_source": "PASS; pinned upstream headers are system includes",
+    "git_diff_check": "PASS",
+    "actual_sdk_oracles": "UNRUN for this candidate",
+    "rust_browser_models_perf": "UNRUN for this candidate"
+  },
+  "remaining": "Chained results missing certified trim data; no qualified fix or paired-split claim"
+}

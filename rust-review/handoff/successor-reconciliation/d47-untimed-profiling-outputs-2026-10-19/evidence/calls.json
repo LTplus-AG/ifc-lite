@@ -1,0 +1,1718 @@
+[
+  {
+    "ordinal": 1,
+    "input": "shared-set.ifc",
+    "api": "stream",
+    "side": "base",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/d47-public-probe",
+      "witness",
+      "stream",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/shared-set.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/shared-set.ifc.stream.base.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 820086792192,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 56000512,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 820085587968,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/shared-set.ifc.stream.base.json",
+      "size": 1197931,
+      "sha256": "4d2362fc9d1798432af52d7ef52d0ba4314751a36176ca0b1b7d6c72a9fdb309"
+    }
+  },
+  {
+    "ordinal": 2,
+    "input": "shared-set.ifc",
+    "api": "stream",
+    "side": "raw",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/d47-public-probe",
+      "witness",
+      "stream",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/shared-set.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/shared-set.ifc.stream.raw.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 820085583872,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819872284672,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/shared-set.ifc.stream.raw.json",
+      "size": 213290141,
+      "sha256": "9a79d6d1144b6cc0e437a1cb5de92444ed49f95cb53afd51e657ee5b46d8cc73"
+    }
+  },
+  {
+    "ordinal": 3,
+    "input": "shared-set.ifc",
+    "api": "build",
+    "side": "base",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/d47-public-probe",
+      "witness",
+      "build",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/shared-set.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/shared-set.ifc.build.base.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819872157696,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819870953472,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/shared-set.ifc.build.base.json",
+      "size": 1197931,
+      "sha256": "4d2362fc9d1798432af52d7ef52d0ba4314751a36176ca0b1b7d6c72a9fdb309"
+    }
+  },
+  {
+    "ordinal": 4,
+    "input": "shared-set.ifc",
+    "api": "build",
+    "side": "raw",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/d47-public-probe",
+      "witness",
+      "build",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/shared-set.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/shared-set.ifc.build.raw.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819870953472,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819657465856,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/shared-set.ifc.build.raw.json",
+      "size": 213290141,
+      "sha256": "9a79d6d1144b6cc0e437a1cb5de92444ed49f95cb53afd51e657ee5b46d8cc73"
+    }
+  },
+  {
+    "ordinal": 5,
+    "input": "shared-set.ifc",
+    "api": "csv",
+    "side": "base",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/d47-public-probe",
+      "witness",
+      "csv",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/shared-set.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/shared-set.ifc.csv.base.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819657396224,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819656835072,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/shared-set.ifc.csv.base.json",
+      "size": 558177,
+      "sha256": "f01b19d80af5955f9d2783d734a1d8e5a53aa31e2ecd895a7b9e829f2c772c5f"
+    }
+  },
+  {
+    "ordinal": 6,
+    "input": "shared-set.ifc",
+    "api": "csv",
+    "side": "raw",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/d47-public-probe",
+      "witness",
+      "csv",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/shared-set.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/shared-set.ifc.csv.raw.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819656835072,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819550216192,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/shared-set.ifc.csv.raw.json",
+      "size": 106605078,
+      "sha256": "57fc187d23cc333f254adfa25cc8dc6e5ebd5bc24655711b3757123d01134cf4"
+    }
+  },
+  {
+    "ordinal": 7,
+    "input": "shared-set.ifc",
+    "api": "entity_data",
+    "side": "base",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python",
+      "/home/louistrue/build-workers/incoming/d47-perf-prerequisites-v3/entity_data_probe.py",
+      "witness",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/libd47_public_probe.so",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/shared-set.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/shared-set.ifc.entity_data.base.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819550212096,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819549483008,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/shared-set.ifc.entity_data.base.json",
+      "size": 610004,
+      "sha256": "54fcf89e4e5cfeaa961a08f22317daac9393c085a4c1b469b06db98a33764480"
+    }
+  },
+  {
+    "ordinal": 8,
+    "input": "shared-set.ifc",
+    "api": "entity_data",
+    "side": "raw",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python",
+      "/home/louistrue/build-workers/incoming/d47-perf-prerequisites-v3/entity_data_probe.py",
+      "witness",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/libd47_public_probe.so",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/shared-set.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/shared-set.ifc.entity_data.raw.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819549483008,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819442819072,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/shared-set.ifc.entity_data.raw.json",
+      "size": 106656109,
+      "sha256": "3f7dd06654891329b205245b57654055482083dfe5236625d7248f263ad36d9c"
+    }
+  },
+  {
+    "ordinal": 9,
+    "input": "shared-set.ifc",
+    "api": "server",
+    "side": "base",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/d47-public-probe",
+      "witness",
+      "server",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/shared-set.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/shared-set.ifc.server.base.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819442683904,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819441577984,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/shared-set.ifc.server.base.json",
+      "size": 1088012,
+      "sha256": "0d3d250fdd8c586763dca1a17f6de07e22c65a9bdc7426fde18a194651c088aa"
+    }
+  },
+  {
+    "ordinal": 10,
+    "input": "shared-set.ifc",
+    "api": "server",
+    "side": "raw",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/d47-public-probe",
+      "witness",
+      "server",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/shared-set.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/shared-set.ifc.server.raw.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819441528832,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819440439296,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/shared-set.ifc.server.raw.json",
+      "size": 1088012,
+      "sha256": "0d3d250fdd8c586763dca1a17f6de07e22c65a9bdc7426fde18a194651c088aa"
+    }
+  },
+  {
+    "ordinal": 11,
+    "input": "02-opposed-products.ifc",
+    "api": "stream",
+    "side": "base",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/d47-public-probe",
+      "witness",
+      "stream",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/02-opposed-products.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/02-opposed-products.ifc.stream.base.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819439509504,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819438247936,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/02-opposed-products.ifc.stream.base.json",
+      "size": 1127443,
+      "sha256": "0ba63ee0957c9e69a78201896ffca51c156cdb16bf4f88e06dd4492603123301"
+    }
+  },
+  {
+    "ordinal": 12,
+    "input": "02-opposed-products.ifc",
+    "api": "stream",
+    "side": "raw",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/d47-public-probe",
+      "witness",
+      "stream",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/02-opposed-products.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/02-opposed-products.ifc.stream.raw.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819438247936,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819437113344,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/02-opposed-products.ifc.stream.raw.json",
+      "size": 1127443,
+      "sha256": "006de74c490f780fdea8f765864f11620716f8d4a48f8de561352c9a17c131a9"
+    }
+  },
+  {
+    "ordinal": 13,
+    "input": "02-opposed-products.ifc",
+    "api": "build",
+    "side": "base",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/d47-public-probe",
+      "witness",
+      "build",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/02-opposed-products.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/02-opposed-products.ifc.build.base.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819437109248,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819435978752,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/02-opposed-products.ifc.build.base.json",
+      "size": 1127443,
+      "sha256": "0ba63ee0957c9e69a78201896ffca51c156cdb16bf4f88e06dd4492603123301"
+    }
+  },
+  {
+    "ordinal": 14,
+    "input": "02-opposed-products.ifc",
+    "api": "build",
+    "side": "raw",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/d47-public-probe",
+      "witness",
+      "build",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/02-opposed-products.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/02-opposed-products.ifc.build.raw.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819435913216,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819434778624,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/02-opposed-products.ifc.build.raw.json",
+      "size": 1127443,
+      "sha256": "006de74c490f780fdea8f765864f11620716f8d4a48f8de561352c9a17c131a9"
+    }
+  },
+  {
+    "ordinal": 15,
+    "input": "02-opposed-products.ifc",
+    "api": "csv",
+    "side": "base",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/d47-public-probe",
+      "witness",
+      "csv",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/02-opposed-products.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/02-opposed-products.ifc.csv.base.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819434774528,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819434229760,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/02-opposed-products.ifc.csv.base.json",
+      "size": 533229,
+      "sha256": "426d0fd068fd856f25973b81bd142e16ffba534f303ba2afabb81085a0be6005"
+    }
+  },
+  {
+    "ordinal": 16,
+    "input": "02-opposed-products.ifc",
+    "api": "csv",
+    "side": "raw",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/d47-public-probe",
+      "witness",
+      "csv",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/02-opposed-products.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/02-opposed-products.ifc.csv.raw.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819434229760,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819433566208,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/02-opposed-products.ifc.csv.raw.json",
+      "size": 533229,
+      "sha256": "f0fa0d32e228bb961cf6092c00e48f6de50dd9766094033216d4d51f6ec1729e"
+    }
+  },
+  {
+    "ordinal": 17,
+    "input": "02-opposed-products.ifc",
+    "api": "entity_data",
+    "side": "base",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python",
+      "/home/louistrue/build-workers/incoming/d47-perf-prerequisites-v3/entity_data_probe.py",
+      "witness",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/libd47_public_probe.so",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/02-opposed-products.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/02-opposed-products.ifc.entity_data.base.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819433562112,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819432980480,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/02-opposed-products.ifc.entity_data.base.json",
+      "size": 578918,
+      "sha256": "98b9e34618a8f5824eff324fc7a0549dc5f6739e9392fa4b0fb11afaf1313f45"
+    }
+  },
+  {
+    "ordinal": 18,
+    "input": "02-opposed-products.ifc",
+    "api": "entity_data",
+    "side": "raw",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python",
+      "/home/louistrue/build-workers/incoming/d47-perf-prerequisites-v3/entity_data_probe.py",
+      "witness",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/libd47_public_probe.so",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/02-opposed-products.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/02-opposed-products.ifc.entity_data.raw.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819432976384,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819433238528,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/02-opposed-products.ifc.entity_data.raw.json",
+      "size": 578918,
+      "sha256": "49c08abaa9e99dc722d0b0c60d8b44356affe828b3612bba02621c80244330ab"
+    }
+  },
+  {
+    "ordinal": 19,
+    "input": "02-opposed-products.ifc",
+    "api": "server",
+    "side": "base",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/d47-public-probe",
+      "witness",
+      "server",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/02-opposed-products.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/02-opposed-products.ifc.server.base.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819433238528,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819432144896,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/02-opposed-products.ifc.server.base.json",
+      "size": 1088506,
+      "sha256": "095c564ece6cb2acea21e7ca021761471cdb062f366d1fb15ca7f861fbcb08c2"
+    }
+  },
+  {
+    "ordinal": 20,
+    "input": "02-opposed-products.ifc",
+    "api": "server",
+    "side": "raw",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/d47-public-probe",
+      "witness",
+      "server",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/02-opposed-products.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/02-opposed-products.ifc.server.raw.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819432132608,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819430895616,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/02-opposed-products.ifc.server.raw.json",
+      "size": 1088506,
+      "sha256": "095c564ece6cb2acea21e7ca021761471cdb062f366d1fb15ca7f861fbcb08c2"
+    }
+  },
+  {
+    "ordinal": 21,
+    "input": "AC20-FZK-Haus.ifc",
+    "api": "stream",
+    "side": "base",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/d47-public-probe",
+      "witness",
+      "stream",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/AC20-FZK-Haus.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/AC20-FZK-Haus.ifc.stream.base.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819430879232,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819429662720,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/AC20-FZK-Haus.ifc.stream.base.json",
+      "size": 1214553,
+      "sha256": "c104249ac8c1a5bfd2712ea9edc8196d2b2e6e6695e5c93635587bec43f561b7"
+    }
+  },
+  {
+    "ordinal": 22,
+    "input": "AC20-FZK-Haus.ifc",
+    "api": "stream",
+    "side": "raw",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/d47-public-probe",
+      "witness",
+      "stream",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/AC20-FZK-Haus.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/AC20-FZK-Haus.ifc.stream.raw.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819429658624,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819428311040,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/AC20-FZK-Haus.ifc.stream.raw.json",
+      "size": 1214553,
+      "sha256": "c104249ac8c1a5bfd2712ea9edc8196d2b2e6e6695e5c93635587bec43f561b7"
+    }
+  },
+  {
+    "ordinal": 23,
+    "input": "AC20-FZK-Haus.ifc",
+    "api": "build",
+    "side": "base",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/d47-public-probe",
+      "witness",
+      "build",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/AC20-FZK-Haus.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/AC20-FZK-Haus.ifc.build.base.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819428311040,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819427090432,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/AC20-FZK-Haus.ifc.build.base.json",
+      "size": 1214553,
+      "sha256": "c104249ac8c1a5bfd2712ea9edc8196d2b2e6e6695e5c93635587bec43f561b7"
+    }
+  },
+  {
+    "ordinal": 24,
+    "input": "AC20-FZK-Haus.ifc",
+    "api": "build",
+    "side": "raw",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/d47-public-probe",
+      "witness",
+      "build",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/AC20-FZK-Haus.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/AC20-FZK-Haus.ifc.build.raw.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819427086336,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819425869824,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/AC20-FZK-Haus.ifc.build.raw.json",
+      "size": 1214553,
+      "sha256": "c104249ac8c1a5bfd2712ea9edc8196d2b2e6e6695e5c93635587bec43f561b7"
+    }
+  },
+  {
+    "ordinal": 25,
+    "input": "AC20-FZK-Haus.ifc",
+    "api": "csv",
+    "side": "base",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/d47-public-probe",
+      "witness",
+      "csv",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/AC20-FZK-Haus.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/AC20-FZK-Haus.ifc.csv.base.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819425869824,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819425239040,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/AC20-FZK-Haus.ifc.csv.base.json",
+      "size": 498702,
+      "sha256": "9e5698c5e51443f755c80fbac67294f9a4d89c7c4c1ac10e4479f3952d956193"
+    }
+  },
+  {
+    "ordinal": 26,
+    "input": "AC20-FZK-Haus.ifc",
+    "api": "csv",
+    "side": "raw",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/d47-public-probe",
+      "witness",
+      "csv",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/AC20-FZK-Haus.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/AC20-FZK-Haus.ifc.csv.raw.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819425071104,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819424571392,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/AC20-FZK-Haus.ifc.csv.raw.json",
+      "size": 498702,
+      "sha256": "9e5698c5e51443f755c80fbac67294f9a4d89c7c4c1ac10e4479f3952d956193"
+    }
+  },
+  {
+    "ordinal": 27,
+    "input": "AC20-FZK-Haus.ifc",
+    "api": "entity_data",
+    "side": "base",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/venv/bin/python",
+      "/home/louistrue/build-workers/incoming/d47-perf-prerequisites-v3/entity_data_probe.py",
+      "witness",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/libd47_public_probe.so",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/AC20-FZK-Haus.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/AC20-FZK-Haus.ifc.entity_data.base.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819424571392,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819423899648,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/AC20-FZK-Haus.ifc.entity_data.base.json",
+      "size": 671614,
+      "sha256": "b931f84abb335d72e47f5f9c033e3b6c1ab4560b5338278e95fac1a8996fd781"
+    }
+  },
+  {
+    "ordinal": 28,
+    "input": "AC20-FZK-Haus.ifc",
+    "api": "entity_data",
+    "side": "raw",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/venv/bin/python",
+      "/home/louistrue/build-workers/incoming/d47-perf-prerequisites-v3/entity_data_probe.py",
+      "witness",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/libd47_public_probe.so",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/AC20-FZK-Haus.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/AC20-FZK-Haus.ifc.entity_data.raw.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819423895552,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819423219712,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/AC20-FZK-Haus.ifc.entity_data.raw.json",
+      "size": 671614,
+      "sha256": "b931f84abb335d72e47f5f9c033e3b6c1ab4560b5338278e95fac1a8996fd781"
+    }
+  },
+  {
+    "ordinal": 29,
+    "input": "AC20-FZK-Haus.ifc",
+    "api": "server",
+    "side": "base",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/base/target/profiling/d47-public-probe",
+      "witness",
+      "server",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/AC20-FZK-Haus.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/AC20-FZK-Haus.ifc.server.base.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819423092736,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819417612288,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/AC20-FZK-Haus.ifc.server.base.json",
+      "size": 5474994,
+      "sha256": "2411b1a2cc484a236b6d892d491983be6c3985e2dc1ac68793ebae702218c56d"
+    }
+  },
+  {
+    "ordinal": 30,
+    "input": "AC20-FZK-Haus.ifc",
+    "api": "server",
+    "side": "raw",
+    "mode": "witness",
+    "argv": [
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/raw/target/profiling/d47-public-probe",
+      "witness",
+      "server",
+      "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2/inputs/AC20-FZK-Haus.ifc",
+      "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/AC20-FZK-Haus.ifc.server.raw.json"
+    ],
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819417608192,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "after": {
+      "sources": {
+        "base": {
+          "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+          "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+          "clean": "initial/final full check; head rechecked per call"
+        },
+        "raw": {
+          "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+          "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+          "clean": "initial/final full check; head rechecked per call"
+        }
+      },
+      "payloadFreeBytes": 819412131840,
+      "payloadInodes": 1000000,
+      "linuxWorkerStateFreeBytes": 55996416,
+      "artifactsInputsPinned": true
+    },
+    "output": {
+      "path": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/witnesses/AC20-FZK-Haus.ifc.server.raw.json",
+      "size": 5474994,
+      "sha256": "2411b1a2cc484a236b6d892d491983be6c3985e2dc1ac68793ebae702218c56d"
+    }
+  }
+]

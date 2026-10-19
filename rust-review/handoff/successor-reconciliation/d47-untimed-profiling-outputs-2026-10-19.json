@@ -1,0 +1,191 @@
+{
+  "at": "2026-10-19T03:54:20.615717+00:00",
+  "result": {
+    "jobId": "02741f0c-8583-4bc7-bb24-f2c679f99cd6",
+    "originalSession": 38253,
+    "terminal": "COMPLETED0",
+    "sourceUnchanged": true,
+    "ownedResourceRowGone": true,
+    "matchingProcesses": [],
+    "callCount": 30,
+    "callsExit0": 30,
+    "freshProcesses": 30,
+    "semanticInputsPassed": 3,
+    "mode": "witness-only",
+    "builds": 0,
+    "measuredInvocations": 0,
+    "PopExecution": false,
+    "summary": [
+      {
+        "input": "shared-set.ifc",
+        "status": "PASS",
+        "rows": {
+          "base": {
+            "Rust": 200,
+            "Python": 200,
+            "CSVproperties": 200
+          },
+          "raw": {
+            "Rust": 200,
+            "Python": 200,
+            "CSVproperties": 200
+          }
+        },
+        "changedValuesByAPI": {
+          "stream": 199,
+          "build": 199,
+          "csv": 199,
+          "entity_data": 199
+        },
+        "canonicalMemberChecks": {
+          "raw/stream": {
+            "propertiesComparedToActualCanonicalServer": 200
+          },
+          "raw/build": {
+            "propertiesComparedToActualCanonicalServer": 200
+          },
+          "raw/csv": {
+            "propertiesComparedToActualCanonicalServer": 200
+          },
+          "raw/entity_data": {
+            "propertiesComparedToActualCanonicalServer": 200
+          }
+        },
+        "entireOutputByteIdentityByAPI": {
+          "stream": false,
+          "build": false,
+          "csv": false,
+          "entity_data": false,
+          "server": true
+        },
+        "comparisonFile": "evidence/shared-set.ifc.comparison.json",
+        "comparisonSha256": "0f109153bcc23c5671603e9c78e2a9277a59f5b1dd40d2b1b95b97b464075113"
+      },
+      {
+        "input": "02-opposed-products.ifc",
+        "status": "PASS",
+        "rows": {
+          "base": {
+            "Rust": 200,
+            "Python": 200,
+            "CSVproperties": 2
+          },
+          "raw": {
+            "Rust": 200,
+            "Python": 200,
+            "CSVproperties": 2
+          }
+        },
+        "changedValuesByAPI": {
+          "stream": 2,
+          "build": 2,
+          "csv": 2,
+          "entity_data": 2
+        },
+        "canonicalMemberChecks": {
+          "raw/stream": {
+            "propertiesComparedToActualCanonicalServer": 2
+          },
+          "raw/build": {
+            "propertiesComparedToActualCanonicalServer": 2
+          },
+          "raw/csv": {
+            "propertiesComparedToActualCanonicalServer": 2
+          },
+          "raw/entity_data": {
+            "propertiesComparedToActualCanonicalServer": 2
+          }
+        },
+        "entireOutputByteIdentityByAPI": {
+          "stream": false,
+          "build": false,
+          "csv": false,
+          "entity_data": false,
+          "server": true
+        },
+        "comparisonFile": "evidence/02-opposed-products.ifc.comparison.json",
+        "comparisonSha256": "1fa3d9688afd12a8c7eaad9952ed9863374a43462a88bd27cff3656cc310f635"
+      },
+      {
+        "input": "AC20-FZK-Haus.ifc",
+        "status": "PASS",
+        "rows": {
+          "base": {
+            "Rust": 127,
+            "Python": 127,
+            "CSVproperties": 4427
+          },
+          "raw": {
+            "Rust": 127,
+            "Python": 127,
+            "CSVproperties": 4427
+          }
+        },
+        "changedValuesByAPI": {},
+        "canonicalMemberChecks": {
+          "base/stream": {
+            "propertiesComparedToActualCanonicalServer": 4427
+          },
+          "base/build": {
+            "propertiesComparedToActualCanonicalServer": 4427
+          },
+          "base/csv": {
+            "propertiesComparedToActualCanonicalServer": 4427
+          },
+          "base/entity_data": {
+            "propertiesComparedToActualCanonicalServer": 4427
+          },
+          "raw/stream": {
+            "propertiesComparedToActualCanonicalServer": 4427
+          },
+          "raw/build": {
+            "propertiesComparedToActualCanonicalServer": 4427
+          },
+          "raw/csv": {
+            "propertiesComparedToActualCanonicalServer": 4427
+          },
+          "raw/entity_data": {
+            "propertiesComparedToActualCanonicalServer": 4427
+          }
+        },
+        "entireOutputByteIdentityByAPI": {
+          "stream": true,
+          "build": true,
+          "csv": true,
+          "entity_data": true,
+          "server": true
+        },
+        "comparisonFile": "evidence/AC20-FZK-Haus.ifc.comparison.json",
+        "comparisonSha256": "a3cce9975d3bf5c9f01a0c815bfc8e6e72e5ef57f3229bb27b33c224188f2f69"
+      }
+    ],
+    "archiveSha256": "1af039ddb837c57605eada8e8ed709e06539d437b3feeb39733742434689df00",
+    "originalPayloads": 30,
+    "originalBytes": 672641446,
+    "archiveBytes": 4968913,
+    "sourcePair": {
+      "base": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "raw": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db"
+    },
+    "limits": [
+      "No latency/RSS/performance verdict",
+      "Streaming witness collects; measure mode drops each row",
+      "Canonical comparison uses actual server set names/member values; source-set IDs/relationships not exposed by these public witnesses, so association proof not invented",
+      "Legitimate cuts1 is the unchanged normative vector/fullF pin, not a new exposed runtime counter",
+      "Pop loader and150measured invocations UNRUN"
+    ]
+  },
+  "verifiedMembers": 65,
+  "manifestSha256": "cf5498321225be20d639f558073618ad3127831a7690355487fd491e4dd968ed",
+  "archivedMembers": 64,
+  "localOnlyHashBoundMembers": [
+    {
+      "path": "witnesses.tar.gz",
+      "sha256": "1af039ddb837c57605eada8e8ed709e06539d437b3feeb39733742434689df00",
+      "size": 4968913
+    }
+  ],
+  "parentArchiveVerification": "Independently decompressed and SHA/size verified every one of30 original output members; total672641446bytes. No data call repeated.",
+  "parentInspection": "Read complete output validator. Canonical proof scoped to set-name/member-value membership; Haus entire output byte identity. Expected BASE differences retained; no performance acceptance.",
+  "next": "No further PC work allocated. Existing exact saved artifacts await actual Pop admission and loader proof before150-call timed cohort. Currentmain integration/publication remain pending."
+}

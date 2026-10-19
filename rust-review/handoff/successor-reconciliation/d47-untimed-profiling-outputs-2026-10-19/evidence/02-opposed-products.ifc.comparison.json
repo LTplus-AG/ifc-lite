@@ -1,0 +1,168 @@
+{
+  "input": "02-opposed-products.ifc",
+  "status": "PASS",
+  "canonicalMemberChecks": {
+    "raw/stream": {
+      "propertiesComparedToActualCanonicalServer": 2
+    },
+    "raw/build": {
+      "propertiesComparedToActualCanonicalServer": 2
+    },
+    "raw/csv": {
+      "propertiesComparedToActualCanonicalServer": 2
+    },
+    "raw/entity_data": {
+      "propertiesComparedToActualCanonicalServer": 2
+    }
+  },
+  "serverSets": {
+    "base": 2,
+    "raw": 2
+  },
+  "rows": {
+    "base": {
+      "Rust": 200,
+      "Python": 200,
+      "CSVproperties": 2
+    },
+    "raw": {
+      "Rust": 200,
+      "Python": 200,
+      "CSVproperties": 2
+    }
+  },
+  "intendedBaseDefectDifferences": [
+    {
+      "api": "stream",
+      "entityId": 100,
+      "setPosition": 0,
+      "propertyPosition": 0,
+      "setName": "Pset_Second",
+      "propertyName": "Wide",
+      "base": {
+        "bytes": 532946,
+        "sha256": "92a974b8fddd650169101d999d3acb2ed120243559a60a8a28ae8cb2a157efeb"
+      },
+      "raw": {
+        "bytes": 51,
+        "sha256": "c9f5f39305bb1a22cfb18b81932635518146768ca1e507b6c8f7bb7a3de8a8de"
+      }
+    },
+    {
+      "api": "stream",
+      "entityId": 101,
+      "setPosition": 0,
+      "propertyPosition": 0,
+      "setName": "Pset_Shared",
+      "propertyName": "Wide",
+      "base": {
+        "bytes": 51,
+        "sha256": "c9f5f39305bb1a22cfb18b81932635518146768ca1e507b6c8f7bb7a3de8a8de"
+      },
+      "raw": {
+        "bytes": 532946,
+        "sha256": "92a974b8fddd650169101d999d3acb2ed120243559a60a8a28ae8cb2a157efeb"
+      }
+    },
+    {
+      "api": "build",
+      "entityId": 100,
+      "setPosition": 0,
+      "propertyPosition": 0,
+      "setName": "Pset_Second",
+      "propertyName": "Wide",
+      "base": {
+        "bytes": 532946,
+        "sha256": "92a974b8fddd650169101d999d3acb2ed120243559a60a8a28ae8cb2a157efeb"
+      },
+      "raw": {
+        "bytes": 51,
+        "sha256": "c9f5f39305bb1a22cfb18b81932635518146768ca1e507b6c8f7bb7a3de8a8de"
+      }
+    },
+    {
+      "api": "build",
+      "entityId": 101,
+      "setPosition": 0,
+      "propertyPosition": 0,
+      "setName": "Pset_Shared",
+      "propertyName": "Wide",
+      "base": {
+        "bytes": 51,
+        "sha256": "c9f5f39305bb1a22cfb18b81932635518146768ca1e507b6c8f7bb7a3de8a8de"
+      },
+      "raw": {
+        "bytes": 532946,
+        "sha256": "92a974b8fddd650169101d999d3acb2ed120243559a60a8a28ae8cb2a157efeb"
+      }
+    },
+    {
+      "api": "csv",
+      "entityId": 100,
+      "setPosition": null,
+      "propertyPosition": null,
+      "setName": "Pset_Second",
+      "propertyName": "Wide",
+      "base": {
+        "bytes": 532946,
+        "sha256": "92a974b8fddd650169101d999d3acb2ed120243559a60a8a28ae8cb2a157efeb"
+      },
+      "raw": {
+        "bytes": 51,
+        "sha256": "c9f5f39305bb1a22cfb18b81932635518146768ca1e507b6c8f7bb7a3de8a8de"
+      }
+    },
+    {
+      "api": "csv",
+      "entityId": 101,
+      "setPosition": null,
+      "propertyPosition": null,
+      "setName": "Pset_Shared",
+      "propertyName": "Wide",
+      "base": {
+        "bytes": 51,
+        "sha256": "c9f5f39305bb1a22cfb18b81932635518146768ca1e507b6c8f7bb7a3de8a8de"
+      },
+      "raw": {
+        "bytes": 532946,
+        "sha256": "92a974b8fddd650169101d999d3acb2ed120243559a60a8a28ae8cb2a157efeb"
+      }
+    },
+    {
+      "api": "entity_data",
+      "entityId": 100,
+      "setPosition": 0,
+      "propertyPosition": 0,
+      "setName": "Pset_Second",
+      "propertyName": "Wide",
+      "base": {
+        "bytes": 532946,
+        "sha256": "92a974b8fddd650169101d999d3acb2ed120243559a60a8a28ae8cb2a157efeb"
+      },
+      "raw": {
+        "bytes": 51,
+        "sha256": "c9f5f39305bb1a22cfb18b81932635518146768ca1e507b6c8f7bb7a3de8a8de"
+      }
+    },
+    {
+      "api": "entity_data",
+      "entityId": 101,
+      "setPosition": 0,
+      "propertyPosition": 0,
+      "setName": "Pset_Shared",
+      "propertyName": "Wide",
+      "base": {
+        "bytes": 51,
+        "sha256": "c9f5f39305bb1a22cfb18b81932635518146768ca1e507b6c8f7bb7a3de8a8de"
+      },
+      "raw": {
+        "bytes": 532946,
+        "sha256": "92a974b8fddd650169101d999d3acb2ed120243559a60a8a28ae8cb2a157efeb"
+      }
+    }
+  ],
+  "allOtherComparedFieldsEqual": true,
+  "HausEntireOutputsEqual": false,
+  "canonicalScope": "Actual server set-name/member-value membership; public row witness omits source set IDs and server witness omits relationships, so no invented source-ID association proof",
+  "legitimateCuts": "shared-set exact normative F retained; vector cuts1 policy, APIs do not expose a cut counter"
+}

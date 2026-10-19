@@ -1,0 +1,65 @@
+{"jobId": "02741f0c-8583-4bc7-bb24-f2c679f99cd6", "receipt": "/home/louistrue/build-workers/worker-state/jobs/02741f0c-8583-4bc7-bb24-f2c679f99cd6/receipt.json"}
+START shared-set.ifc.stream.base
+END shared-set.ifc.stream.base 0
+START shared-set.ifc.stream.raw
+END shared-set.ifc.stream.raw 0
+START shared-set.ifc.build.base
+END shared-set.ifc.build.base 0
+START shared-set.ifc.build.raw
+END shared-set.ifc.build.raw 0
+START shared-set.ifc.csv.base
+END shared-set.ifc.csv.base 0
+START shared-set.ifc.csv.raw
+END shared-set.ifc.csv.raw 0
+START shared-set.ifc.entity_data.base
+END shared-set.ifc.entity_data.base 0
+START shared-set.ifc.entity_data.raw
+END shared-set.ifc.entity_data.raw 0
+START shared-set.ifc.server.base
+END shared-set.ifc.server.base 0
+START shared-set.ifc.server.raw
+END shared-set.ifc.server.raw 0
+SEMANTICS_PASS shared-set.ifc
+START 02-opposed-products.ifc.stream.base
+END 02-opposed-products.ifc.stream.base 0
+START 02-opposed-products.ifc.stream.raw
+END 02-opposed-products.ifc.stream.raw 0
+START 02-opposed-products.ifc.build.base
+END 02-opposed-products.ifc.build.base 0
+START 02-opposed-products.ifc.build.raw
+END 02-opposed-products.ifc.build.raw 0
+START 02-opposed-products.ifc.csv.base
+END 02-opposed-products.ifc.csv.base 0
+START 02-opposed-products.ifc.csv.raw
+END 02-opposed-products.ifc.csv.raw 0
+START 02-opposed-products.ifc.entity_data.base
+END 02-opposed-products.ifc.entity_data.base 0
+START 02-opposed-products.ifc.entity_data.raw
+END 02-opposed-products.ifc.entity_data.raw 0
+START 02-opposed-products.ifc.server.base
+END 02-opposed-products.ifc.server.base 0
+START 02-opposed-products.ifc.server.raw
+END 02-opposed-products.ifc.server.raw 0
+SEMANTICS_PASS 02-opposed-products.ifc
+START AC20-FZK-Haus.ifc.stream.base
+END AC20-FZK-Haus.ifc.stream.base 0
+START AC20-FZK-Haus.ifc.stream.raw
+END AC20-FZK-Haus.ifc.stream.raw 0
+START AC20-FZK-Haus.ifc.build.base
+END AC20-FZK-Haus.ifc.build.base 0
+START AC20-FZK-Haus.ifc.build.raw
+END AC20-FZK-Haus.ifc.build.raw 0
+START AC20-FZK-Haus.ifc.csv.base
+END AC20-FZK-Haus.ifc.csv.base 0
+START AC20-FZK-Haus.ifc.csv.raw
+END AC20-FZK-Haus.ifc.csv.raw 0
+START AC20-FZK-Haus.ifc.entity_data.base
+END AC20-FZK-Haus.ifc.entity_data.base 0
+START AC20-FZK-Haus.ifc.entity_data.raw
+END AC20-FZK-Haus.ifc.entity_data.raw 0
+START AC20-FZK-Haus.ifc.server.base
+END AC20-FZK-Haus.ifc.server.base 0
+START AC20-FZK-Haus.ifc.server.raw
+END AC20-FZK-Haus.ifc.server.raw 0
+SEMANTICS_PASS AC20-FZK-Haus.ifc
+D47_UNTIMED_WITNESSES_COMPLETE

@@ -1,0 +1,44 @@
+{
+  "cpu": 2,
+  "memoryGiB": 12,
+  "kind": "ordinary",
+  "scope": "Exactly30 witness-mode calls and emitted JSON/CSV semantic comparisons; no build/measure/test suite",
+  "resources": [
+    "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1",
+    "/mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2",
+    "/home/louistrue/build-workers/incoming/d47-untimed-witness-v1",
+    "/mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source",
+    "/mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/source",
+    "/home/louistrue/build-workers/incoming/d47-perf-prerequisites-v3"
+  ],
+  "driverSha256": "887152a48a09f497051defe2ed795409eb967f52e602cdf1ec3c230d9573cec8",
+  "validatorSha256": "cffc7c638592cfccef6f85f94a02a8e037b625edb036ab5d88a4d411b8d054a9",
+  "command": [
+    "ssh",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "StrictHostKeyChecking=yes",
+    "-o",
+    "ConnectTimeout=10",
+    "-o",
+    "ForwardAgent=no",
+    "ifc-pc-worker",
+    "env RUSTUP_TOOLCHAIN=nightly-2025-11-15 RUSTUP_HOME=/home/louistrue/.rustup RUSTUP_AUTO_INSTALL=0 TMPDIR=/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/tmp TMP=/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/tmp TEMP=/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/tmp PYTHONDONTWRITEBYTECODE=1 CARGO_TARGET_DIR=/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/unused-target CARGO_HOME=/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/unused-cargo-home XDG_CACHE_HOME=/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/xdg/cache XDG_DATA_HOME=/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/xdg/data XDG_CONFIG_HOME=/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/xdg/config XDG_STATE_HOME=/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/xdg/state /home/louistrue/build-workers/worker-python /home/louistrue/build-workers/worker-current/worker.py --state /home/louistrue/build-workers/worker-state run --cwd /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source --kind ordinary --cpu 2 --memory 12 --queue-timeout 3600 --timeout 14400 --require-clean --commit 7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db --resource /mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1 --resource /mnt/c/Users/louistrue/ifc-private/d47-perf-prerequisites-v2 --resource /home/louistrue/build-workers/incoming/d47-untimed-witness-v1 --resource /mnt/c/Users/louistrue/ifc-private/d47-raw-native-v1/source --resource /mnt/c/Users/louistrue/ifc-private/d47-public02-wasm-baseline-v1/source --resource /home/louistrue/build-workers/incoming/d47-perf-prerequisites-v3 -- /home/louistrue/build-workers/worker-python /home/louistrue/build-workers/incoming/d47-untimed-witness-v1/qualify.py"
+  ],
+  "overrides": {
+    "TMPDIR": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/tmp",
+    "TMP": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/tmp",
+    "TEMP": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/tmp",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "CARGO_TARGET_DIR": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/unused-target",
+    "CARGO_HOME": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/unused-cargo-home",
+    "XDG_CACHE_HOME": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/xdg/cache",
+    "XDG_DATA_HOME": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/xdg/data",
+    "XDG_CONFIG_HOME": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/xdg/config",
+    "XDG_STATE_HOME": "/mnt/c/Users/louistrue/ifc-private/d47-untimed-witness-v1/xdg/state",
+    "RUSTUP_TOOLCHAIN": "nightly-2025-11-15",
+    "RUSTUP_HOME": "/home/louistrue/.rustup",
+    "RUSTUP_AUTO_INSTALL": "0"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "callCount": 30,
+  "exit0": 30,
+  "semanticInputsPassed": 3,
+  "mode": "witness-only",
+  "measuredInvocations": 0,
+  "builds": 0,
+  "PopExecution": false,
+  "performanceVerdict": null,
+  "streamWitness": "collects rows; not measure-mode drop-each-row memory/time scope",
+  "canonicalComparisonScope": "see comparison summaries; no alternate IFC parser or budget math"
+}

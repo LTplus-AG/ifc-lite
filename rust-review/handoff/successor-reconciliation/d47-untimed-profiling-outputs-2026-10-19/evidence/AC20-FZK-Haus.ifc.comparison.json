@@ -1,0 +1,51 @@
+{
+  "input": "AC20-FZK-Haus.ifc",
+  "status": "PASS",
+  "canonicalMemberChecks": {
+    "base/stream": {
+      "propertiesComparedToActualCanonicalServer": 4427
+    },
+    "base/build": {
+      "propertiesComparedToActualCanonicalServer": 4427
+    },
+    "base/csv": {
+      "propertiesComparedToActualCanonicalServer": 4427
+    },
+    "base/entity_data": {
+      "propertiesComparedToActualCanonicalServer": 4427
+    },
+    "raw/stream": {
+      "propertiesComparedToActualCanonicalServer": 4427
+    },
+    "raw/build": {
+      "propertiesComparedToActualCanonicalServer": 4427
+    },
+    "raw/csv": {
+      "propertiesComparedToActualCanonicalServer": 4427
+    },
+    "raw/entity_data": {
+      "propertiesComparedToActualCanonicalServer": 4427
+    }
+  },
+  "serverSets": {
+    "base": 306,
+    "raw": 306
+  },
+  "rows": {
+    "base": {
+      "Rust": 127,
+      "Python": 127,
+      "CSVproperties": 4427
+    },
+    "raw": {
+      "Rust": 127,
+      "Python": 127,
+      "CSVproperties": 4427
+    }
+  },
+  "intendedBaseDefectDifferences": [],
+  "allOtherComparedFieldsEqual": true,
+  "HausEntireOutputsEqual": true,
+  "canonicalScope": "Actual server set-name/member-value membership; public row witness omits source set IDs and server witness omits relationships, so no invented source-ID association proof",
+  "legitimateCuts": "shared-set exact normative F retained; vector cuts1 policy, APIs do not expose a cut counter"
+}

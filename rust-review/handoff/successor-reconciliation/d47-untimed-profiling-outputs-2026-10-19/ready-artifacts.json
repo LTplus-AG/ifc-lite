@@ -1,0 +1,91 @@
+{
+  "scope": "BUILD-ONLY profiling prerequisites; PC import/identity proof, no data APIs executed",
+  "sources": {
+    "base": {
+      "head": "02b8e1981158559fd4ec9b385d2d80729079a633",
+      "tree": "5bcc12d28f8ed7fa32ab9105eb8d95ed767a08f0",
+      "clean": true
+    },
+    "raw": {
+      "head": "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+      "tree": "2d50a075e3eb8d460069b6462b647284ee4e216c",
+      "clean": true
+    }
+  },
+  "profile": {
+    "name": "profiling",
+    "inherits": "release",
+    "opt-level": 3,
+    "lto": true,
+    "codegen-units": 1,
+    "strip": false,
+    "debug": "line-tables-only",
+    "panic": "unwind",
+    "overflow-checks": false,
+    "releasePackageStar": {
+      "opt-level": 3,
+      "strip": true
+    },
+    "flags": "No RUSTFLAGS/encoded flags; same effective profile applied through CLI to excluded Python crate"
+  },
+  "toolchain": "nightly-2025-11-15/rustc1.93.0-nightly b6d7ff3aa",
+  "Python": "authentic managed3.12.14 SHA f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+  "Maturin": "1.15.0 SHA7770f6d9cbe0497f69b9b60f001a9a92784767651658e778b9664e6ef9b8a29a",
+  "artifacts": {
+    "entity_data_probe.py": {
+      "sha256": "4fd0ad29292bc6fcce8b974647f4da854c57e8cbeb2eb481394417388cd50d18",
+      "size": 1480,
+      "mode": "0o664"
+    },
+    "inputs/AC20-FZK-Haus.ifc": {
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "size": 2526511,
+      "mode": "0o775"
+    },
+    "inputs/02-opposed-products.ifc": {
+      "sha256": "fe5748939628705334cfaa562265580559e5fb13edb78341786eec1faef8a1f0",
+      "size": 26776,
+      "mode": "0o775"
+    },
+    "inputs/shared-set.ifc": {
+      "sha256": "6595832ebf581a7483749dbcf0dbfecffd5bd6218a3772350aaad32aed560fa8",
+      "size": 27628,
+      "mode": "0o775"
+    },
+    "base/libd47_public_probe.so": {
+      "sha256": "e5eb0380789390597a46c4267f8970915d2e8b6ab2a61f6d4590f3460ae183bd",
+      "size": 1598832,
+      "mode": "0o777"
+    },
+    "base/d47-public-probe": {
+      "sha256": "6969782519015c3e1d4ee97e57317d69113cdd950dc617b2a51ad65595333507",
+      "size": 11119720,
+      "mode": "0o777"
+    },
+    "base/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl": {
+      "sha256": "2e998c4c234798b63c28700c739346f3aa4e96935ef1e512a0ee786abc3e716d",
+      "size": 9049728,
+      "mode": "0o777"
+    },
+    "raw/libd47_public_probe.so": {
+      "sha256": "71c36644d639460e5f2a23f12b723cfdeb2ff8dafaed724f8698544357ab7e39",
+      "size": 1598832,
+      "mode": "0o777"
+    },
+    "raw/d47-public-probe": {
+      "sha256": "66face4fc520b56881d238af868f7fd294c22c6dae05522363646ed476802f0f",
+      "size": 11176984,
+      "mode": "0o777"
+    },
+    "raw/ifclite_geom-4.15.0-cp39-abi3-manylinux_2_35_x86_64.whl": {
+      "sha256": "6a251330ae223466c20b552d3cd6571a7d72b09050cb13c135bf102ab4386c24",
+      "size": 9059317,
+      "mode": "0o777"
+    }
+  },
+  "nativeArchiveLoadedStubIdentities": "Both sides proved in evidence/*-artifacts.json and remote-lossless-inventory.json",
+  "loader": "ELF-LOADER-REQUIREMENTS.json; wrapper GLIBC2.34, bridge2.33, wheel2.35; no Pop execution proof",
+  "nextPrerequisites": "Parent-observed eligible Pop; authenticated existing runtime/private venv install of each own profiling wheel; matching installed native/loader/libs before any timing. Do not relocate PC venv.",
+  "finiteCalls": "FINITE-150-INVOCATIONS.json, no dispatch/measurement queue",
+  "optionalMeshControl": "OMITTED: process_geometry does not reach property rows"
+}

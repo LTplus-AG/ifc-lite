@@ -8,7 +8,8 @@ fn actual946() -> (Tri, Tri, [f64;3]) {
      [[0.0,0.0,0.0],[3750.0,0.0,0.0],[3750.0,0.0,3900.0]], [3729.999755859375,0.0,65.0])
 }
 fn check(source:Tri, host:Tri, original:[f64;3], foot:[f64;3]) -> bool {
-    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap();let _element=budget::enter_element();
+    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _test_caps = budget::test_caps::scope();let _element=budget::enter_element();
     budget::begin(); let band=NearBand::from_operands(&[source],&[host]);
     escapes_original_contact(&source,original,foot,&Face::new(host,&band).unwrap(),&band)
 }
@@ -95,7 +96,8 @@ fn issue_7292_shared_raw_key_owner_order_and_primary_exemption_preserve_transact
     use super::super::transversal::{rejected_keys, Proposal};
     let(s,h,foot)=actual946();
     let stable=[s[0],[s[0][0]+G,13.0*G,65.0],[s[0][0],0.0,0.0]];
-    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap();let _element=budget::enter_element();
+    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _test_caps = budget::test_caps::scope();let _element=budget::enter_element();
     let band=NearBand::from_operands(&[s,stable],&[h]);let face=Face::new(h,&band).unwrap();
     budget::begin();assert!(!escapes_original_contact(&stable,s[0],foot,&face,&band));
     for owners in [[s,stable],[stable,s]] {for reverse in [false,true] {
@@ -113,8 +115,9 @@ fn issue_7292_projected_support_boundary_and_pretripped_budget_decline() {
     assert!(!endpoint_escapes(&v([10.0,0.0,0.0]),&p,&b));
     assert!(endpoint_escapes(&v([f64::from_bits(10.0_f64.to_bits()+1),0.0,0.0]),&p,&b));
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap();
-    struct Reset(Option<u64>);impl Drop for Reset {fn drop(&mut self){budget::set_cap(self.0);budget::begin();}}
-    let _reset=Reset(budget::cap());budget::set_cap(Some(1));let _element=budget::enter_element();budget::begin();budget::note_escalation();
+    let _test_caps = budget::test_caps::scope();
+    struct Reset(Option<u64>);impl Drop for Reset {fn drop(&mut self){budget::test_caps::set_cap(self.0);budget::begin();}}
+    let _reset=Reset(budget::cap());budget::test_caps::set_cap(Some(1));let _element=budget::enter_element();budget::begin();budget::note_escalation();
     let(s,h,foot)=actual946();let band=NearBand::from_operands(&[s],&[h]);let face=Face::new(h,&band).unwrap();
     assert!(budget::tripped());assert!(!escapes_original_contact(&s,s[0],foot,&face,&band));
     budget::begin();assert!(!budget::tripped());

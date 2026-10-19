@@ -21,6 +21,7 @@ fn no_straddle(it:&Interner,tris:&[[Vid;3]],plane:&Tri) {
 #[test]
 fn issue_7292_mixed_crossing_is_used_on_both_operands() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let _test_caps = budget::test_caps::scope();
     let _element=budget::enter_element();budget::begin();
     // Exercise both exact coplanarity and the existing near-coplanar lifting
     // path, through actual zero-pad discovery and the same production builder.
@@ -47,6 +48,7 @@ fn issue_7292_mixed_crossing_is_used_on_both_operands() {
 #[test]
 fn issue_7292_mixed_crossing_components_and_nary_share_builder() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let _test_caps = budget::test_caps::scope();
     let _element=budget::enter_element();budget::begin();
     let a=[host()];let b=[raw()];let c=[cop()];let q=e([1.,1.,0.]);
     let arr=binary::arrange_components(&a,&[&b,&c]);
@@ -58,6 +60,7 @@ fn clip(a:[f64;3],b:[f64;3],support:Tri)->SupportedClip { SupportedClip {a:e(a),
 #[test]
 fn issue_7292_coplanar_constraints_split_each_other_on_original_supports() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let _test_caps = budget::test_caps::scope();
     let _element=budget::enter_element();budget::begin();
     let c=vec![clip([1.,0.,0.],[1.,3.,0.],raw()),
         clip([0.,1.,0.],[3.,1.,0.],[[0.,1.,0.],[1.,1.,0.],[0.,1.,1.]])];
@@ -68,6 +71,7 @@ fn issue_7292_coplanar_constraints_split_each_other_on_original_supports() {
 #[test]
 fn issue_7292_off_carrier_or_undefined_support_cannot_create_projected_tpi() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let _test_caps = budget::test_caps::scope();
     let _element=budget::enter_element();budget::begin();
     let invalid=RawSeg {a:e([1.,0.,1.]),b:e([1.,3.,1.]),cutter:raw()};
     let mut points=Vec::new();let c=vec![clip([0.,1.,0.],[3.,1.,0.],[[0.,1.,0.],[1.,1.,0.],[0.,1.,1.]])];
@@ -81,6 +85,7 @@ fn issue_7292_off_carrier_or_undefined_support_cannot_create_projected_tpi() {
 #[test]
 fn issue_7292_raw_only_keeps_legacy_queries_and_constraints() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let _test_caps = budget::test_caps::scope();
     let _element=budget::enter_element();budget::begin();
     let r=RawSeg{a:e([1.,0.,0.]),b:e([1.,3.,0.]),cutter:raw()};
     let before=budget::snapshot_counters();let mut points=Vec::new();
@@ -92,6 +97,7 @@ fn issue_7292_raw_only_keeps_legacy_queries_and_constraints() {
 #[test]
 fn issue_7292_global_raw_only_consumes_the_same_exact_split_stream_and_budget_work() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let _test_caps = budget::test_caps::scope();
     let _element=budget::enter_element();budget::begin();
     let raws=vec![vec![RawSeg{a:e([1.,0.,0.]),b:e([1.,3.,0.]),cutter:raw()},
         RawSeg{a:e([0.,1.,0.]),b:e([3.,1.,0.]),
@@ -116,6 +122,7 @@ fn issue_7292_global_raw_only_consumes_the_same_exact_split_stream_and_budget_wo
 #[test]
 fn issue_7292_global_coplanar_on_another_carrier_keeps_raw_seam_propagation() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let _test_caps = budget::test_caps::scope();
     let _element=budget::enter_element();budget::begin();
     let mut generated=Vec::new();
     let raw_seam=RawSeg{a:e([1.,0.,0.]),b:e([1.,3.,0.]),cutter:raw()};
@@ -133,9 +140,10 @@ fn issue_7292_global_coplanar_on_another_carrier_keeps_raw_seam_propagation() {
 #[test]
 fn issue_7292_new_work_budget_trip_discards_partial_arrangement_without_panic() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
-    struct Reset(Option<u64>);impl Drop for Reset{fn drop(&mut self){budget::set_cap(self.0);budget::begin();}}
+    let _test_caps = budget::test_caps::scope();
+    struct Reset(Option<u64>);impl Drop for Reset{fn drop(&mut self){budget::test_caps::set_cap(self.0);budget::begin();}}
     let _reset=Reset(budget::cap());let _element=budget::enter_element();
-    budget::set_cap(Some(1));budget::begin();budget::note_escalation();
+    budget::test_caps::set_cap(Some(1));budget::begin();budget::note_escalation();
     let before=budget::snapshot_counters();let _arr=arrange(&[host()],&[raw(),cop()]);
     assert!(budget::tripped());assert_eq!(before,budget::snapshot_counters());
     budget::begin();let _arr=arrange(&[host()],&[raw(),cop()]);assert!(budget::tripped());
@@ -165,6 +173,7 @@ fn assert_positive_partition(it:&Interner,children:&[[Vid;3]],parent:&Tri) {
 #[test]
 fn issue_7292_actual794_mixed_crossing_conforms_both_original_carriers() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let _test_caps = budget::test_caps::scope();
     let _element=budget::enter_element();budget::begin();
     let (a,b)=actual::operands();
     let aux=[[8192009./65536.,176491./16384.,-3741087./32768.],
@@ -215,12 +224,13 @@ fn propagate_unculled(tris: &[Tri], built: &Built, generated: &[ImplicitPoint]) 
 #[test]
 fn issue_7292_raw_only_propagation_culls_seams_before_support_work_with_identical_points() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let _test_caps = budget::test_caps::scope();
     struct Reset(Option<u64>,Option<u64>);
     impl Drop for Reset { fn drop(&mut self) {
-        budget::set_cap(self.0); budget::set_element_cap(self.1); budget::begin();
+        budget::test_caps::set_cap(self.0); budget::test_caps::set_element_cap(self.1); budget::begin();
     }}
     let _reset=Reset(budget::cap(),budget::element_cap());
-    budget::set_cap(None);
+    budget::test_caps::set_cap(None);
     let tris=vec![[[0.,0.,0.],[2000.,0.,0.],[0.,2000.,0.]];256];
     // Every carrier AABB contains every generated point, but the actual seams
     // are separated. No carrier-box shortcut can establish the saving.
@@ -242,8 +252,8 @@ fn issue_7292_raw_only_propagation_culls_seams_before_support_work_with_identica
         assert!(budget::element_count()>budget::DEFAULT_ELEMENT_CAP,
             "the uncullled reference must actually exceed the interactive work allowance");
     }
-    budget::set_cap(Some(budget::DEFAULT_CAP));
-    budget::set_element_cap(Some(budget::DEFAULT_ELEMENT_CAP));
+    budget::test_caps::set_cap(Some(budget::DEFAULT_CAP));
+    budget::test_caps::set_element_cap(Some(budget::DEFAULT_ELEMENT_CAP));
     let _element=budget::enter_element(); budget::begin();
     let mut built=build(&tris,&raw,&cop,&mut Vec::new(),true);
     let mut actual=vec![Vec::new();tris.len()];
@@ -263,6 +273,7 @@ fn issue_7292_raw_only_propagation_culls_seams_before_support_work_with_identica
 #[test]
 fn issue_7292_propagation_keeps_exact_support_checks_and_seams_beyond_carrier_bounds() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let _test_caps = budget::test_caps::scope();
     let _element=budget::enter_element(); budget::begin();
     let horizontal=[[0.,1.,0.],[1.,1.,0.],[0.,1.,1.]];
     let undefined=ImplicitPoint::Lpi(Lpi {p:[0.,0.,1.],q:[1.,0.,1.],
@@ -288,6 +299,7 @@ fn issue_7292_propagation_keeps_exact_support_checks_and_seams_beyond_carrier_bo
 #[test]
 fn issue_7292_uncertain_finite_implicit_seam_uses_exact_support_and_containment() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let _test_caps = budget::test_caps::scope();
     let _element=budget::enter_element(); budget::begin();
     let carrier=[[0.,0.,0.],[4.,0.,4.],[0.,4.,0.]];
     let endpoint=ImplicitPoint::Lpi(Lpi {p:[0.,0.,1.],q:[1.,0.,2.+2.*f64::EPSILON],

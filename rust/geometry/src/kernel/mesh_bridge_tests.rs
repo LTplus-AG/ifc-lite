@@ -837,13 +837,14 @@ fn lenient_batch_on_an_open_host_reads_both_volumes_about_one_point_4693() {
 fn budget_aborted_partition_cover_retains_failure_provenance_7607() {
     use crate::kernel::{arrangement::box_mesh, budget};
     let _serial = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _test_caps = budget::test_caps::scope();
     struct RestoreCap(Option<u64>);
     impl Drop for RestoreCap {
-        fn drop(&mut self) { budget::set_cap(self.0); }
+        fn drop(&mut self) { budget::test_caps::set_cap(self.0); }
     }
     let _restore = RestoreCap(budget::cap());
     let _element = budget::enter_element();
-    budget::set_cap(None);
+    budget::test_caps::set_cap(None);
 
     // Two separated host components, each covered by its own closed cutter.
     // The cutter AABBs are disjoint even after snap-band inflation. A genuine
@@ -873,7 +874,7 @@ fn budget_aborted_partition_cover_retains_failure_provenance_7607() {
     assert_eq!(removed, signed_volume6(&h).abs(), "the actual disjoint intersections cover the host");
     let cap = oracle_work + 1;
     assert!(batch_work >= cap, "premise: batch work {batch_work} exceeds each oracle's {oracle_work}");
-    budget::set_cap(Some(cap));
+    budget::test_caps::set_cap(Some(cap));
     for component in &components {
         budget::begin();
         let _intersection = boolean(&h, component, BoolOp::Intersection);

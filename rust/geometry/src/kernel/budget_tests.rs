@@ -12,9 +12,10 @@ use super::*;
 #[test]
 fn cap_counts_and_trips_deterministically() {
     let _guard = GLOBAL_CAP_LOCK.lock().unwrap();
+    let _test_caps = test_caps::scope();
     let restore = cap();
 
-    set_cap(Some(5));
+    test_caps::set_cap(Some(5));
     begin();
     assert_eq!(count(), 0);
     assert!(!tripped(), "fresh op must not be tripped");
@@ -35,7 +36,7 @@ fn cap_counts_and_trips_deterministically() {
     assert!(!tripped());
 
     // Unbounded never trips, no matter how many escalations.
-    set_cap(None);
+    test_caps::set_cap(None);
     begin();
     for _ in 0..10_000 {
         note_escalation();
@@ -43,7 +44,7 @@ fn cap_counts_and_trips_deterministically() {
     assert_eq!(count(), 10_000);
     assert!(!tripped(), "unbounded (cap None) must never trip");
 
-    set_cap(restore);
+    test_caps::set_cap(restore);
 }
 
 /// The per-element budget (#1109 follow-up) accumulates across an element's
@@ -54,12 +55,13 @@ fn cap_counts_and_trips_deterministically() {
 #[test]
 fn per_element_budget_accumulates_across_booleans() {
     let _guard = GLOBAL_CAP_LOCK.lock().unwrap();
+    let _test_caps = test_caps::scope();
     let restore_cap = cap();
     let restore_ecap = element_cap();
     // A bounded per-boolean profile so begin_element() activates the element
     // cap (it is unbounded only when the per-boolean profile is unbounded).
-    set_cap(Some(1_000_000));
-    set_element_cap(Some(10));
+    test_caps::set_cap(Some(1_000_000));
+    test_caps::set_element_cap(Some(10));
 
     begin_element();
     assert_eq!(element_count(), 0);
@@ -89,7 +91,7 @@ fn per_element_budget_accumulates_across_booleans() {
 
     // An unbounded per-boolean profile makes the element cap unbounded too
     // (the single server/offline-export switch), so it never trips.
-    set_cap(None);
+    test_caps::set_cap(None);
     begin_element();
     for _ in 0..100_000 {
         note_escalation();
@@ -97,6 +99,6 @@ fn per_element_budget_accumulates_across_booleans() {
     assert_eq!(element_count(), 100_000);
     assert!(!tripped(), "unbounded per-boolean profile ⇒ unbounded element");
 
-    set_cap(restore_cap);
-    set_element_cap(restore_ecap);
+    test_caps::set_cap(restore_cap);
+    test_caps::set_element_cap(restore_ecap);
 }

@@ -6,8 +6,8 @@ use super::*;
 use super::super::{VoidContext, coaxial_union, world_host_bounds};
 use nalgebra::Point3;
 
-// Process-global census/cap invariants must not race ordinary geometry tests,
-// which do not acquire the budget-mutator lock before entering element scopes.
+// Process-global census invariants must not race ordinary geometry tests,
+// which do not acquire the fixture diagnostic/reset lock.
 fn isolated_test(name: &str, marker: &str) -> bool {
     if std::env::var_os(marker).is_some() { return true; }
     let name = format!("{}::{name}", module_path!().split_once("::").unwrap().1);
@@ -211,14 +211,15 @@ fn exhausted_element_budget_does_not_turn_a_group_into_a_proven_miss_6516() {
         "IFC_LITE_6516_ELEMENT_CAP_CHILD") { return; }
     use crate::kernel::budget;
     let _lock = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _test_caps = budget::test_caps::scope();
     struct RestoreElementCap(Option<u64>);
     impl Drop for RestoreElementCap {
-        fn drop(&mut self) { budget::set_element_cap(self.0); }
+        fn drop(&mut self) { budget::test_caps::set_element_cap(self.0); }
     }
     let _restore = RestoreElementCap(budget::element_cap());
-    // The child owns its global cap; ElementScope additionally restores this
+    // The test owns its local cap; ElementScope additionally restores this
     // thread's counters/caps on exit.
-    budget::set_element_cap(Some(1));
+    budget::test_caps::set_element_cap(Some(1));
     let _scope = budget::enter_element();
     let host = tetra_host().subdivided(2);
     let actual = vertical_box(0.125, 0.125, 0.625, 0.625);

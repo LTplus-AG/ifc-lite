@@ -64,4 +64,10 @@ describe('capOverlayInput fill mode (#7950)', () => {
     assert.deepEqual(polygons[1].color, [1, 0, 0, 1]);
     assert.equal(polygons[2].color, undefined);
   });
+
+  it('carries modelIndex on base and layer polygons alike, so a model-scoped highlight reaches both', () => {
+    const base = { polygon: square, entityId: 4, ifcType: 'IfcWall', modelIndex: 2, isCut: true };
+    const { polygons } = capOverlayInput({ ...cut, cutPolygons: [{ ...base }], layerBaseCutPolygons: [base] }, false);
+    assert.deepEqual(polygons.map((p) => p.modelIndex), [2, 2]);
+  });
 });

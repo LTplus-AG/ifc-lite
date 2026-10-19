@@ -28,6 +28,7 @@ export function capOverlayInput(cut: Cut, showHiddenLines: boolean, fillMode: 'u
     polygon: cp.polygon,
     ifcType: cp.ifcType,
     expressId: cp.entityId,
+    modelIndex: cp.modelIndex,
   }));
   const layerPolygons: CutPolygon2D[] = cut.cutPolygons.map((cp) => ({
     polygon: cp.polygon,

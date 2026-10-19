@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "affine.hpp"
 #include "copy.hpp"
+#include "plane_identity_uv.hpp"
 #include "sweep.hpp"
 #include <SmApiGeneral.h>
 #include <SmApiQueries.h>
@@ -173,6 +174,7 @@ std::unique_ptr<SmBrep> copy_affine_rational(SmBrep* source, const double* matri
     inspect(result.get(),&copied,false);
     for(unsigned i=0;i<12;++i) require(copied.source_classes[i]==prepared.source_classes[i],
         IFCLITE_SMLIB_KERNEL_ERROR,"affine copy changed source representation classes");
+    plane_source_proof::IdentityUvTransfer retained_uv(*result,matrix);
     checked(result->TurnToNURBS());
     inspect(result.get(),nullptr,true);
     // Use only checked proper placements and signed diagonal scale. In
@@ -180,6 +182,7 @@ std::unique_ptr<SmBrep> copy_affine_rational(SmBrep* source, const double* matri
     checked(result->Transform(f.first,nullptr,FALSE));
     checked(result->Transform(f.last,&f.scale,FALSE));
     inspect(result.get(),nullptr,true);
+    retained_uv.restore(*result);
     certificate=prepared;
     return result;
     } catch(...) {

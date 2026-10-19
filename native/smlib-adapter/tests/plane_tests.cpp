@@ -142,13 +142,24 @@ void source_rectangle_chains(uint64_t s) {
     ifclite_smlib_handle generic_first{},generic_second{}; ifclite_smlib_plane_certificate generic_cert{};
     ok(ifclite_smlib_copy_affine(s,first,identity,&generic_first,&affine));
     ok(ifclite_smlib_clip_plane(s,generic_first,y,1,2,&generic_second,&generic_cert));
-    require(generic_cert.version==2 && (generic_cert.method&8u) && generic_cert.rectangle_count==6 &&
+    require(generic_cert.version==1 && generic_cert.method==2 && generic_cert.rectangle_count==0 &&
         generic_cert.frame==1 && same(generic_cert.input,generic_first) && same(generic_cert.output,generic_second) &&
-        std::memcmp(generic_cert.plane,y,sizeof(y))==0,"real affine generic chain binds all six derived v2 source records");
+        std::memcmp(generic_cert.plane,y,sizeof(y))==0,"real affine generic chain binds genuine preserved UV source data");
     near(actual_volume(s,generic_first),6); near(actual_volume(s,generic_second),3);
     uint32_t generic_manifold=0; ok(ifclite_smlib_manifold(s,generic_second,&generic_manifold));
     require(generic_manifold==1,"actual affine generic chained result manifold"); shell(s,generic_second,y,1,3,false);
-    run_plane_source_protocol_tests(s,generic_first,y,generic_cert);
+    // A separate dyadic primitive keeps the strict genuine derived v2 case.
+    // The checked producer does not carry UVs when exact endpoints already hold.
+    ifclite_smlib_handle dyadic{},derived{},derived_out{}; ifclite_smlib_plane_certificate derived_cert{};
+    ok(ifclite_smlib_box(s,0.5,0,0,1.5,2,2,&dyadic));
+    ok(ifclite_smlib_copy_affine(s,dyadic,identity,&derived,&affine));
+    ok(ifclite_smlib_clip_plane(s,derived,y,1,2,&derived_out,&derived_cert));
+    require(derived_cert.version==2 && (derived_cert.method&8u) && derived_cert.rectangle_count==6,
+        "real dyadic affine source exercises all six exact derived v2 records");
+    near(actual_volume(s,dyadic),6); near(actual_volume(s,derived),6); near(actual_volume(s,derived_out),3);
+    shell(s,derived_out,y,1,3,false); run_plane_source_protocol_tests(s,derived,y,derived_cert);
+    ok(ifclite_smlib_release(s,dyadic)); ok(ifclite_smlib_release(s,derived)); near(actual_volume(s,derived_out),3);
+    ok(ifclite_smlib_release(s,derived_out));
     ok(ifclite_smlib_release(s,generic_first)); near(actual_volume(s,generic_second),3);
     ok(ifclite_smlib_release(s,generic_second));
     ok(ifclite_smlib_copy_affine(s,source,identity,&identity_copy,&affine));

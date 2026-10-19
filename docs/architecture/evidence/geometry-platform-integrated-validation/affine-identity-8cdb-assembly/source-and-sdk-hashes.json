@@ -1,0 +1,54 @@
+{
+  "commit": "8cdb8c12d7bf9a2c17eac8b7172eb28bea217ab3",
+  "frozen_parent": "f39ca76a5bde30c47d0dd9ef374f37f930bb9186",
+  "changed": {
+    "native/smlib-adapter/PLANE_CONTRACT.md": "53f406b0cbe44e8a83a5b19ecb5598a42e9c23b492c7d1ca6acc2d83cc7f3a66",
+    "native/smlib-adapter/src/plane_identity_uv.hpp": "d7e9d42b7decb7050ba4a9bc63e7686df4a70a087c3039ddd8efe79d2119bd46",
+    "native/smlib-adapter/tests/plane_source_domain_tests.cpp": "86f47426bbf0f89d31a358c70870ade0e7e9d7e0aa4f9f0352616513380aa433"
+  },
+  "preserved_from_f39": {
+    "native/smlib-adapter/src/affine.cpp": {
+      "sha256": "dcf135421af752bcd83264ad235c470eaa40ecafaae4c99db1e033de619d119d",
+      "identical": true
+    },
+    "native/smlib-adapter/tests/plane_tests.cpp": {
+      "sha256": "88b2edb1d22aa4b296bee361911d546812e4a05b29ef8c5f3d9c91bb28639fef",
+      "identical": true
+    },
+    "native/smlib-adapter/src/plane_source_domain.cpp": {
+      "sha256": "aa2b70f251fc48ee59262c9be76dfe0bfb6d53e8bf2cda3550ab4423bf5a44c7",
+      "identical": true
+    },
+    "native/smlib-adapter/src/plane_dyadic.hpp": {
+      "sha256": "aef1b0b09c2a4162d42b3523adbe2516fe77b919a519df3939b726a2e0554831",
+      "identical": true
+    },
+    "native/smlib-adapter/src/plane_domain.cpp": {
+      "sha256": "4e0873e84f285a799527fd39f913f4210cb749c0d4b00e5be7ba6ff5193a6af0",
+      "identical": true
+    },
+    "native/smlib-adapter/src/plane.cpp": {
+      "sha256": "504adb61bf330dabd78c376729e72e5c43febf9d3655407e83b733650e5bc91a",
+      "identical": true
+    },
+    "native/smlib-adapter/src/copy.cpp": {
+      "sha256": "df3f6993cbc6fea0dd488891dc08a9ff595630e30adc1e8f31d988898c7b3a1b",
+      "identical": true
+    }
+  },
+  "sdk_commit": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "sdk": {
+    "source/SMLib/src/SmLine.cpp": {
+      "sha256": "bac43a837e3a675d78c7b7fd7504ae88d0808d2b1ae3e988471a3993ca0df58f",
+      "matches_pin": true
+    },
+    "source/SMLib/inc/SmLine.h": {
+      "sha256": "64277fbf1f04223013f59745fb21140efd0c090d505597ca6b02ad1a25e2544c",
+      "matches_pin": true
+    },
+    "source/SMLib/src/SmExtent1d.cpp": {
+      "sha256": "3f3c6ac8133290ca089a2b2e04d69a16f31352457f026ba62692d93f73764324",
+      "matches_pin": true
+    }
+  }
+}

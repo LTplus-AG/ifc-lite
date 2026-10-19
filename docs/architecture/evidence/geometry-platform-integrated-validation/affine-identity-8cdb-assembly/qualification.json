@@ -1,0 +1,39 @@
+{
+  "commit": "8cdb8c12d7bf9a2c17eac8b7172eb28bea217ab3",
+  "base": "f39ca76a5bde30c47d0dd9ef374f37f930bb9186",
+  "review": "affine-f39ca-identity-uv-review-20261019-r1; finite STEP-span P2",
+  "syntax": {
+    "command": [
+      "c++",
+      "-std=c++17",
+      "-fsyntax-only",
+      "-DSM_NO_DEBUG_CODE",
+      "-DSM_NO_GFX_OUTPUT_CODE",
+      "-DNDEBUG",
+      "-I",
+      "native/smlib-adapter/include",
+      "-I",
+      "native/smlib-adapter/src",
+      "-I",
+      "/tmp/ifclite-public-sdk-c9c5979/usd-brep/source/SMLib/inc",
+      "-I",
+      "/tmp/ifclite-public-sdk-c9c5979/usd-brep/source/SM_API/inc",
+      "native/smlib-adapter/src/affine.cpp",
+      "native/smlib-adapter/tests/plane_source_domain_tests.cpp",
+      "native/smlib-adapter/tests/plane_tests.cpp"
+    ],
+    "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-89ed4b23",
+    "exit_code": 0,
+    "kind": "syntax-only, no link or actual execution"
+  },
+  "whitespace": "PASS",
+  "actual_SDK_negative": "UNRUN",
+  "actual_method2_positive": "UNRUN",
+  "actual_method8_v2_positive": "UNRUN",
+  "actual_Rust_plane_clip_rs48": "UNRUN; prior red remains required",
+  "actual_seal_restoration_reachability": "UNRUN",
+  "status8_cleanup": "unchanged; qualification held",
+  "heavy_jobs_submitted": 0,
+  "existing_endpoint_predicate": "unchanged exact; no epsilon or snapping",
+  "producer_hunk": "unchanged from f39; three lines only, not an overlay"
+}

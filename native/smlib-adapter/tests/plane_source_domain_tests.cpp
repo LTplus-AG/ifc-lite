@@ -5,6 +5,7 @@
 #include "plane.hpp"
 #include "plane_domain.hpp"
 #include "plane_dyadic.hpp"
+#include "plane_identity_uv.hpp"
 #include <SmApiGeneral.h>
 #include <SmApiBrep.h>
 #include <SmApiQueries.h>
@@ -156,12 +157,32 @@ void clipped_affine_positive(SmBrep& source,const double* identity) {
     auto generic=copy_affine_rational(&source,identity,affine); unchanged(original,source);
     demand(affine.version==1 && affine.source_classes[7]==6,
         "real affine operation consumes six actual analytic Boolean faces");
-    prove_generics(*generic,"identity-affine-of-direct-box-clip",6);
+    Snapshot converted(*generic); representation("identity-affine-with-preserved-real-UV",*generic,converted);
+    demand(original.coefficients.size()==converted.coefficients.size() &&
+        std::memcmp(original.coefficients.data(),converted.coefficients.data(),original.coefficients.size()*sizeof(double))==0,
+        "identity representation conversion preserves actual fixture coefficients, knots and intervals byte-for-byte");
+    SmTArray<SmFace*> faces; generic->GetFaces(faces); demand(faces.GetSize()==6,"actual converted planar face inventory");
+    for(auto* face:faces) {
+        demand(face->GetSurface()->GetType()==SmBSplineSurface_TYPE,"actual conversion retains generic class");
+        SmTArray<SmEdgeuse*> uses; face->GetUpwardEdgeuses(uses);
+        for(auto* use:uses) demand(use->GetUVTrimCurve()!=nullptr,"real UV trim retained across checked conversion");
+    }
+    const auto preserved=certify_plane_domain(generic.get());
+    demand(preserved.methods==2 && !preserved.rectangle_count,"genuine retained UV route, not fabricated derived endpoint proof");
+    bool strict_refused=false;
+    for(auto* face:faces) try { certify_plane_source_rectangle(generic.get(),face); }
+        catch(const SweepFailure& error) {
+            if(error.status==IFCLITE_SMLIB_UNSUPPORTED && error.message &&
+                std::strcmp(error.message,"edge interval endpoints do not exactly equal topology vertices")==0) { strict_refused=true; break; }
+            else throw;
+        }
+    demand(strict_refused,"strict independent source rectangle proof still refuses the represented endpoint gap");
+    unchanged(converted,*generic);
     Snapshot before(*generic);
     const double y[]={0,1,0,0,1,0}; ifclite_smlib_plane_certificate receipt{};
     auto second=clip_finite_plane(generic.get(),y,1,IFCLITE_SMLIB_INTERSECTION,receipt);
-    demand(receipt.version==2 && (receipt.method&8u) && receipt.rectangle_count==6 && !receipt.empty,
-        "actual Clip consumes genuine affine generic coefficients using six derived source proofs");
+    demand(receipt.version==1 && receipt.method==2 && receipt.rectangle_count==0 && !receipt.empty,
+        "actual Clip consumes true preserved UV data while exact endpoint guard remains strict");
     unchanged(before,*generic);
     double input_volume=0,output_volume=0;
     demand(SmApiBrepComputeVolume(generic.get(),1e-8,input_volume)==SM_SUCCESS && std::abs(input_volume-6)<1e-4 &&
@@ -233,6 +254,58 @@ void production_ledgers() {
     try { certify_plane_domain(many.get()); } catch(const SweepFailure& e) { limited=e.status==IFCLITE_SMLIB_RESOURCE_LIMIT; }
     demand(limited,"seventeenth derived face refuses at shared operation record ceiling"); unchanged(before,*many);
 }
+void conversion_map_negative() {
+    auto source=box(); SmTArray<SmEdge*> edges; source->GetEdges(edges);
+    auto* curve=static_cast<SmBSplineCurve*>(edges[0]->GetCurve());
+    demand(curve->GetType()==SmLine_TYPE && curve->GetGwNurbPointer(),"actual analytic line for represented-map negative");
+    ULONG n=0; double* p=nullptr;
+    demand(curve->GetControlPointsPointer(n,p)==SM_SUCCESS && n==2,"actual conversion source coefficients");
+    unsigned d=0; while(d<3 && p[d]==p[4+d]) ++d; demand(d<3,"actual nondegenerate line direction");
+    const double saved=p[d]; p[d]=std::nextafter(saved,std::numeric_limits<double>::infinity());
+    Snapshot malformed(*source); const double identity[]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
+    bool map_refused=false;
+    try { plane_source_proof::IdentityUvTransfer no_authority(*source,identity); }
+    catch(const SweepFailure& e) { map_refused=e.status==IFCLITE_SMLIB_UNSUPPORTED && e.message &&
+        std::strcmp(e.message,"identity UV canonical line differs from actual rational coefficients")==0; }
+    demand(map_refused,"real UV data cannot authorize conversion when canonical and materialized maps disagree exactly");
+    unchanged(malformed,*source); // Rejection occurs before detaching ANY trim.
+    p[d]=saved;
+}
+// R1 f39 review: exact dyadic corners do not certify finite SDK dispatch.
+void conversion_span_negative() {
+    auto source=box(); SmTArray<SmEdge*> edges; source->GetEdges(edges);
+    SmEdge* edge=nullptr; SmLine* line=nullptr;
+    for(auto* candidate:edges) {
+        if(candidate->GetCurve()->GetType()!=SmLine_TYPE) continue;
+        auto* actual=static_cast<SmLine*>(candidate->GetCurve());
+        SmPoint3d o; SmVector3d a; double scale=0; SmExtent1d iv; SmBoolean reverse=UNSURE;
+        demand(actual->GetCanonical(o,a,scale,iv,&reverse)==SM_SUCCESS,"actual SDK canonical negative source");
+        if(reverse==FALSE) { edge=candidate; line=actual; break; }
+    }
+    demand(line && edge,"actual SDK box supplies forward analytic line");
+    SmPoint3d origin(0,0,0); SmVector3d axis(1,0,0);
+    const double maximum=std::numeric_limits<double>::max(); SmExtent1d natural(0,1);
+    demand(line->SetCanonical(origin,axis,0.5,natural)==SM_SUCCESS,"actual SDK negative line canonical fields");
+    // Deliberately malformed private fixture: set actual analytic fields and
+    // materialized controls independently, retaining the actual [0,1] knots.
+    line->SetAnalyticDomain(SmExtent1d(-maximum,maximum)); edge->SetInterval(natural);
+    ULONG n=0; double* p=nullptr;
+    demand(line->GetControlPointsPointer(n,p)==SM_SUCCESS && n==2 && line->IsBounded(),"actual bounded negative line");
+    p[0]=-maximum/2; p[4]=maximum/2;
+    demand(p[0]==-maximum/2 && p[4]==maximum/2 &&
+        plane_source_proof::canonical_value(p[0],0,0.5,1,-maximum) &&
+        plane_source_proof::canonical_value(p[4],0,0.5,1,maximum),"exact dyadic negative corners pass");
+    Snapshot malformed(*source);
+    double converted=0;
+    demand(line->ConvertTFromNURBSToSTEP(0,converted)==SM_SUCCESS && std::isnan(converted),
+        "actual SDK conversion has zero times infinite STEP span despite finite exact corners");
+    const double identity[]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1}; bool span_refused=false;
+    try { plane_source_proof::IdentityUvTransfer no_authority(*source,identity); }
+    catch(const SweepFailure& e) { span_refused=e.status==IFCLITE_SMLIB_UNSUPPORTED && e.message &&
+        std::strcmp(e.message,"identity UV nonfinite STEP conversion span")==0; }
+    demand(span_refused,"overflowing actual SDK dispatch refuses authority before UV detach");
+    unchanged(malformed,*source);
+}
 void negative_fixtures() {
     auto source=box(); replace_planes(*source);
     SmTArray<SmFace*> faces; source->GetFaces(faces);
@@ -303,4 +376,6 @@ void run_plane_source_domain_tests() {
     production_ledgers();
     std::fprintf(stderr,"affine source BEGIN strict malformed source negatives\n");
     negative_fixtures();
+    conversion_map_negative();
+    conversion_span_negative();
 }

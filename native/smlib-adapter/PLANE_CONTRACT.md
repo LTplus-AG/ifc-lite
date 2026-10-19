@@ -667,3 +667,156 @@ the detailed source-causal analysis are recorded in the external handoff;
 no runtime source was edited. Native/WASM actual execution is still UNRUN for
 this correction; only syntax and whitespace checks passed. Exact remains
 default/permanent, with broader domains and whole-product closure unclaimed.
+
+## Exact checked identity conversion retaining genuine UV data (candidate, UNRUN)
+
+Parent execution at source26354 (83d15 repair integrated through9018) supplies
+an actual scalar witness in original job
+`cf149f9a-2efe-4e77-8888-f856b36c3d09/output.log:54324–54344`. Ordinary explicit
+and affine generic6 fixtures pass. The direct Clip has six SmPlanes; its
+identity-affine copy has six generic surfaces. Both312-value raw fingerprints
+are `a1ad985c49c5fec9`. The generic edge has controls
+`(0.5,2^-51,0)` and `(0.5,2,0)`, unit/nonrational weights, knots0,0,1,1,
+interval0,1, but topology start `(0.5,0,0)`. Its exact initial endpoint residual
+is `-2^-51`; the terminal residual is zero. This is a real represented boundary
+gap, not a metadata or zero-rounding test artefact. The old strict predicate
+is correct to refuse that standalone source-derived rectangle proof.
+
+The fingerprint alone is not byte-identity authority. The pinned
+`SmBSplineCurve.cpp:196–234` copy constructor, however, copies existing
+materialized coefficients (only knot fixup follows), and
+`SmLine.cpp:257–266` delegates to it. `TurnToNURBS` uses that copy rather than
+snapping controls to topology. `SmLine.cpp:1631–1686` shows where materialized
+line controls can originally be made from floating STEP endpoint evaluation.
+The source code and matching fingerprints are consistent with a pre-existing
+materialized discrepancy; the log does not dump the analytic input scalar
+control itself. It does not identify the first Boolean/analytic-construction
+step producing the value, or the actual pre-conversion canonical
+origin/axis/scale. The new byte comparison and exact map checks must establish
+that stronger claim during execution. Do not assert an invented canonical
+frame or blame a particular cancellation without those scalar values.
+
+The new private `IdentityUvTransfer` is an **owned producer** contract, not a
+weakened missing-UV admission theorem or an approximate conversion allowance:
+
+1. It is invoked only on the checked owned copy in `copy_affine_rational`,
+   before TurnToNURBS and before publication. Only the raw identity matrix can
+   activate it, and only when an all-planar, linear represented source actually
+   fails exact interval-endpoint-to-vertex equality. Ordinary exact box-affine
+   sources keep the original missing-cache method8 positive path. Other source
+   classes/nonidentity operations do not gain a transfer or domain credential.
+2. It first requires the actual complete existing-UV analytic domain via the
+   unchanged non-evaluating admission. Every source plane must have a2x2 unit
+   degree1 tensor net, clamped four-knot supports, disabled out-of-bounds flag,
+   and independent signed coordinate axes with nonzero finite UV scales.
+   Exact dyadic corner equations identify its **actual** analytic UV map with
+   the rational tensor map. Source UV hulls and face intervals must lie inside
+   that support and actual analytic domain. The generic evaluator's missing
+   clamp is not used as a premise.
+3. Every3D line is either already generic or has its raw canonical origin,
+   signed coordinate axis, scale, finite STEP interval and reverse flag exactly
+   identified with both actual materialized knot endpoints. This is the same
+   affine-map theorem, not agreement at sampled evaluation results. The SDK's
+   near-zero parameter-conversion branch is excluded explicitly. Nonunit or
+   mixed weight encodings, curved/higher-degree data and unresolved maps refuse.
+   The genuine2D trim maps are similarly checked; all trims must exist,
+   materialize, have independent same-face ownership, and have no unresolved
+   DropCurveFail provenance that the ownership move would otherwise discard.
+4. The private one-shot object holds the **actual existing UV objects** from
+   that owned copy. `SetUVTrimCurve(nullptr,0,FALSE)` detaches without deleting;
+   `SetOwner(nullptr)` clears their old owner. All proof reads/allocations finish
+   before any detach. No trim is fitted, sampled, reconstructed, cloned through
+   a base class, or declared present by a Boolean flag. The borrowed input is
+   untouched. The pinned setter supports this move explicitly
+   (`SmEdgeuse.cpp:4473–4610`); UV owner changes are non-evaluating
+   (`SmCurve.cpp:718–735`).
+5. The existing TurnToNURBS and both existing transform stages run unchanged.
+   Before restoration, an exact word comparison authenticates the same owned
+   BRep lifetime, topology inventory, regions/void classification, faceuses,
+   shells/material sides, loops, edgeuses/mates/vertexuses, endpoint pointers,
+   orientations, vertex coordinates, edge intervals, tolerances, face UV ranges
+   and all actual rational coefficients/knots. Only representation class and
+   geometry-object identities may change as specified; maps were proved before
+   the change and resulting generic maps must use the identical coefficients.
+   The original UV objects' dynamic classes, coefficients and canonical fields
+   are also checked unchanged. A changed or unsupported state refuses.
+6. Each real retained trim is reattached once to its same face/edge/use pair.
+   The SDK-selected canonical owner is read back and verified. The unchanged
+   generic admission must then succeed through **real existing UV method2**,
+   with no derived rectangle records. Thus existing v1/method2 evidence is true
+   of the actual consumed object. No method8 record is fabricated for the
+   inexact3D endpoint, no credential is accepted from a caller, and no authority
+   survives as a pointer cache or persistent ancestry claim. Restored UVs remain
+   ordinary owned geometry that later source preflight inspects anew.
+
+This does not snap/fix any3D source point or coefficient. The2^-51 gap may
+remain byte-for-byte while the original material UV domain is legitimately
+preserved across a proved identical map. If the actual canonical maps do not
+agree exactly with their NURBS data, preservation is **not** authorized: new
+bounded scalar diagnostics identify that failure, and the required chain stays
+open. No new approximate-displacement budget or silently toleranced equivalence
+is introduced. The existing affine catch/taint policy still covers failures
+inside its owned conversion; original inputs are never edited as a repair.
+
+The token has no external constructor data/bounds/certificate inputs; its only
+integration is the fixed owned producer call. It is noncopyable, bound to that
+owned BRep reference and complete current object inventory, and consumed once
+before its owner can publish. It has at most16 faces,64 edges/vertices/trims,
+128 regions,2048 topology objects and32768 exact words per signature; one
+cumulative coefficient-read ceiling remains1000000. The unchanged source-domain
+ledger still charges present UVs, edges and face controls and expands by every
+source/face/edge/vertex tolerance. No wire field, opcode, capability, runtime
+parser, parent cutter/copy/context implementation or upstream SDK is modified.
+
+Additional must-pass SDK witnesses require byte-for-byte fixture coefficients,
+knots and intervals across the real identity conversion; six actual generic
+faces with actual retained UV objects; method2 admission; the original exact
+endpoint predicate still refusing that specific independent rectangle proof;
+and then a real Clip retaining its6->3 analytical volumes through genuine UVs.
+A separate real dyadic box->identity-affine source still requires all six
+method8/v2 records and the full existing protocol, mesh, volume, containment,
+manifold and lifetime witnesses. Existing explicit generic, survey,96/102 ledger,
+record ceilings, tolerance and malformed-source negatives remain. A new real
+analytic-line fixture perturbs only its materialized control and must refuse
+conversion-map authority **before any UV object is detached**, leaving the
+source state unchanged. The parent-owned mesh negative-zero fix is untouched.
+
+All new actual SDK/native/WASM/runtime execution remains **UNRUN**. Syntax-only
+checks do not close the required `plane_clip.rs:48` positive, which remains
+required/red until parent-admitted execution proves this candidate at the
+assembled source. The earlier native/WASM failures and later DNS failure are
+preserved as distinct evidence. Exact is default/permanent; no blanket affine,
+plane, appearance, paired-partition or layer qualification is claimed.
+
+### R1 correction: finite line-dispatch intermediates (UNRUN)
+
+Independent review of frozen f39 identified a finite-endpoint counterexample:
+NURBS support [0,1], STEP ends [-DBL_MAX,DBL_MAX], canonical origin0,
+axis+X, scale0.5 and materialized controls [-DBL_MAX/2,DBL_MAX/2]. Both exact
+dyadic corner equations pass, but the SDK's STEP span subtraction overflows;
+`ConvertTFromNURBSToSTEP(0)` then forms0*infinity and returns NaN. Individual
+finite STEP ends do not prove a finite actual parameter dispatch.
+
+Before any detach, line-map preparation now requires a finite positive STEP
+span as well as a finite positive non-nearzero natural span. It checks both
+endpoint extrema of the SDK's actual subtraction/division/multiplication/addition
+sequence, including the reverse branch, for finite intermediates and normalized
+ratios in [0,1]. Each stage is monotone over the complete supported natural
+interval, so these endpoint extrema bound interior intermediates; these checks
+are arithmetic bounds, not sampled SDK evaluations used to infer a domain.
+It also checks the subsequent signed-axis position multiplication/addition
+extrema for finiteness. The exact dyadic map equations remain separately
+mandatory. No approximate identity, tolerance or source repair is introduced.
+
+A new actual SDK malformed-line fixture retains real [0,1] knots and UV objects,
+sets the canonical STEP interval and matching materialized controls of the
+counterexample, requires the exact corner predicates to pass and actual SDK
+conversion to return NaN, then requires the specific nonfinite-STEP-span refusal
+with unchanged source coefficients, pointers, UV ownership and metadata. This
+fixture is UNRUN until parent-admitted execution. f39 remains preserved; this
+is a separate incremental correction, not a newly qualified producer claim.
+The endpoint log still proves only the represented gap, not its first producer
+or analytic/rational equivalence. TurnToNURBS surface replacement can recreate
+UV data and reset domains; exact-seal/restoration reachability, the genuine
+method2 positive, separate method8/v2 positive, required Rust line48 chain and
+existing status8 cleanup behavior remain held for actual execution.

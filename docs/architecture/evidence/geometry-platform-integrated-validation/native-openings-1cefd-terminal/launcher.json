@@ -1,0 +1,21 @@
+{
+  "source": "1cefdab4966118967195422cd317ae38dd7b9922",
+  "pid": 2391131,
+  "task": "ifclite-native-openings-1cefd-20261019",
+  "command": [
+    "/home/louistrue/build-workers/ifc-fleet",
+    "run",
+    "--route",
+    "fleet",
+    "--storage-task",
+    "ifclite-native-openings-1cefd-20261019",
+    "--cwd",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361",
+    "--",
+    "bash",
+    "-c",
+    "source \"$HOME/build-workers/worker-env.sh\" || exit $?; pnpm fixtures || exit $?; unset IFCLITE_ADAPTER_BUILD; bash native/smlib-adapter/qualify.sh native --rust-consumers; sdk_status=$?; cargo test -p ifc-lite-geometry --lib --no-fail-fast; controls_status=$?; cargo clippy --workspace --all-targets -- -D warnings; clippy_status=$?; printf \"native_sdk_and_consumers_exit=%s geometry_controls_exit=%s clippy_exit=%s\\n\" \"$sdk_status\" \"$controls_status\" \"$clippy_status\"; if [ \"$sdk_status\" -ne 0 ]; then exit \"$sdk_status\"; fi; if [ \"$controls_status\" -ne 0 ]; then exit \"$controls_status\"; fi; exit \"$clippy_status\""
+  ],
+  "log": "/tmp/ifclite-native-openings-1cefd-20261019.log",
+  "launched_at": 1792403584.4089684
+}

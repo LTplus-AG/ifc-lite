@@ -1,0 +1,49 @@
+{
+  "license": "MPL-2.0",
+  "source": "1cefdab4966118967195422cd317ae38dd7b9922",
+  "job": "a3c15b59-2f25-4b8d-99fc-3581690ee39b",
+  "host": "pc-wsl",
+  "state": "failed",
+  "exitCode": 8,
+  "sourceUnchanged": true,
+  "output_sha256": "cc1ad83d8a337adff650a7ec08e7984bfbcf725a9ee3d629de12698791658ef6",
+  "ctest": {
+    "passed": 5,
+    "failed": 1,
+    "failed_test": "smlib_owned_boundary",
+    "new_paired_copy_observability": "PASS; earlier frozen2915 witness only, not new9d5 ledger or paired split"
+  },
+  "actual_sdk_rust_consumers": {
+    "passed": 1321,
+    "failed": 12,
+    "ignored": 5,
+    "failed_tests": [
+      "actual_plane_runtime_box_survey_frame_chaining_and_independent_release",
+      "element::session_retained::clip_tests::p2_sdk_difference_empty_captured_cancel_or_refusal_precedes_compatibility_hold",
+      "element::session_retained::clip_tests::p2_sdk_actual_authoring_roof_walls_follow_existing_positive_volume_invariant",
+      "element::session_retained::mapping_tests::p1_type_product_uses_actual_one_and_three_products_and_orphan_mode_consumers",
+      "element::session_retained::clip_tests::p2_sdk_issue_5314_source_edge_clip_obeys_existing_prism_integral",
+      "element::session_retained::opening_tests::p2_sdk_issue_3641_actual_voiding_feature_chain_preserves_index_and_closed_solid_invariants",
+      "element::session_retained::opening_tests::p2_sdk_issue_2019_original_opening_control_cuts_overlapping_ordered_sources",
+      "element::session_retained::opening_tests::p2_sdk_mixed_reference_opening_keeps_original_no_cutter_eligibility",
+      "element::session_retained::operation_tests::p1_sdk_affine_batch_rejects_swapped_actual_outputs_before_any_common_acceptance",
+      "element::session_retained::operation_tests::p1_sdk_stop_while_capturing_affine_input_is_typed_before_any_affine_issuance",
+      "element::session_retained::resource_tests::actual_sealed_acceptance_charges_ledger_backing_to_original_account_after_caller_drop",
+      "element::session_retained::opening_tests::p2_sdk_repeated_mapped_opening_parts_keep_distinct_occurrences_and_host_styles"
+    ]
+  },
+  "geometry_controls": {
+    "passed": 1942,
+    "failed": 0,
+    "ignored": 1
+  },
+  "strict_all_target_clippy": "PASS",
+  "numerical_qualification": "FAIL; no release/cutover claim",
+  "failure_groups": {
+    "plane_cutter": "existing exact basis/origin check rejects constructed plane; coefficients diagnostic5954 added later, unexecuted",
+    "clip_chaining": "actual Boolean-produced result lacks required certified existing UV trim",
+    "test_setup": "volume API request below minimum; retired worker reuse; mapping identity/batch/resource accounting expectations require source-specific repairs",
+    "authored_region": "actual model contour backtracks along870mm exact overlap; retained simple-region refusal preserved; regularization required for full support"
+  },
+  "subsequent_source": "5629 inventory and5954 diagnostics not covered by this run"
+}

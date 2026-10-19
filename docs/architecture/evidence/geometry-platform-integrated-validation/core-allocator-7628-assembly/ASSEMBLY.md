@@ -1,0 +1,12 @@
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+# Private source allocator prototype assembly
+
+The exact 15-file core/Cargo delta from frozen f57 to `7628bf9acf82d8169084df40edcaaae07247877e` is integrated over parent `17f8ef4f33ced9a1f2f256a5242814777f5883ca`. All 15 resulting files reproduce child bytes. This imports the private feature-plus-unit-test feasibility target, not production owner/cache replacement or parser activation. Ordinary source ownership and default parsing remain unchanged. Cargo.lock gains the intentional optional dependency edge; artifact input fingerprints must be regenerated on the eventual qualified candidate.
+
+Independent R1 found a healthy-handoff allocation-free mutation proof gap. The three tests in 7628 close that gap in source; independent R2 found no actionable source-level finding. The original R1 result is retained in sibling `core-allocator-0f67-review`. Frozen child R4/P2 records and hashes are preserved here, with original scope intact.
+
+All 31 supplied tests, compiler feasibility, strict Clippy, feature-unified integration, wasm compatibility and performance remain UNRUN. The already admitted job at 4a85 excludes this change and cannot qualify it. Generation-coupled revision witnessing is not complete production cache authority. Geometry backend integration, baseline enforcement, public owner/cache migration and Raw-to-regularized-region production binding remain required. Underlying Global error rollback has only source review, not an executed allocation-failure witness.
+
+Next admitted validation must execute `cargo test --locked -p ifc-lite-core --lib --features source-resource-tracking source_resources -- --nocapture`, default and feature-unified workspace tests, `cargo clippy --workspace --all-targets -- -D warnings`, the same strict Clippy with `--features ifc-lite-core/source-resource-tracking`, and the opted-in wasm32 test-target compilation. A library-only feature build does not compile the private prototype. Report actual tests, early returns and platform limitations separately; compile success alone provides no allocator lifetime or production activation proof.
+
+Parent metadata: whitespace and module-size gates pass. The latter measures 6,243 files with no new production module over 400 lines or allowance increase. These lexical checks do not establish Rust compiler feasibility or allocator behavior.

@@ -1,0 +1,31 @@
+{
+  "source_checkpoint": "0f67f3016def860f7f4f10984af766016a2a90cd",
+  "submission": "NONE; parent coordinates admission after its two active jobs",
+  "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-361487a2",
+  "commands_are_suggestions_only": [
+    [
+      "cargo",
+      "test",
+      "-p",
+      "ifc-lite-core",
+      "--lib",
+      "--features",
+      "source-resource-tracking",
+      "source_resources",
+      "--",
+      "--nocapture"
+    ],
+    [
+      "cargo",
+      "clippy",
+      "--workspace",
+      "--all-targets",
+      "--features",
+      "ifc-lite-core/source-resource-tracking",
+      "--",
+      "-D",
+      "warnings"
+    ]
+  ],
+  "requirements": "Run only through parent-coordinated ifc-fleet/environment. Record actual composed source commit if parent imports this patch; do not relabel this f57-based source checkpoint as parent ba3aa. Default-feature checks alone do not compile/exercise this test-only prototype."
+}

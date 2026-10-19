@@ -282,3 +282,7 @@ impl std::error::Error for ExecutionLeaseError {}
 #[cfg(test)]
 #[path="execution_owner_tests.rs"]
 mod tests;
+
+#[cfg(all(test, feature = "source-resource-tracking"))]
+#[path = "source_resources/authority.rs"]
+pub(crate) mod resource_prototype;

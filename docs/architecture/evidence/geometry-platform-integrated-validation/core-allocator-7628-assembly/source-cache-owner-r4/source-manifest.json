@@ -1,0 +1,161 @@
+{
+  "base": "f57db33bc11e6d6aac559dd0f0268ea37ac746ef",
+  "source_commit": "0f67f3016def860f7f4f10984af766016a2a90cd",
+  "frozen_r4_contract_sha256": "e8eb451090091f9502b48def6fc3f92722d17df9a6c9691f35fe7d48a434e81a",
+  "patch_sha256": "74c4352344df8613f9897ff4f6402c30c74d63748046fc2674d476575600a834",
+  "changed_files": {
+    "Cargo.lock": "abc0c942046a3726b4a35fd14f5d98e047de490c1983f47109029e00ed659472",
+    "rust/core/Cargo.toml": "0b40e0a18594331f470919f031206085a268a44c5f1fefaa8442f9822e986cbb",
+    "rust/core/SOURCE_RESOURCE_PROTOTYPE.md": "2c7ec322156229a5f0281eea37f397ba74498c01ebc609a8fc7c493d024b8759",
+    "rust/core/src/execution_owner.rs": "f48dc51a0ee696c7df4ca976d5ffdf74d87eccfe9ff56b20e76199152d15e7d0",
+    "rust/core/src/lib.rs": "d72914940ce62604276fa6b2e3ae34358d89d82579567e2757d038dd9bbf4fe0",
+    "rust/core/src/source_resources/allocator.rs": "fd84a2afed34a8721852a17adc01265b91eabc4723d6d64f6e17d7ae967ce78f",
+    "rust/core/src/source_resources/authority.rs": "4a6091647617108655266049e561018fd0b996ee686fc31595319c8eafd1d5c1",
+    "rust/core/src/source_resources/authority_tests.rs": "4f66eceb6b663971e6924f7230fbcc521ec908c43409f27ca34c7dabd1e1683f",
+    "rust/core/src/source_resources/backend.rs": "6c933f6f75174bc3681b8dc9d7381af56cad7ef11455307e43fd3c6499f19efb",
+    "rust/core/src/source_resources/containers.rs": "347af319dc1c2618fdb1c73456830a97259141c41f98e903d67ce6c30d45aa09",
+    "rust/core/src/source_resources/fixtures.rs": "8216b7b4afbaa5c5e003703af778b38576d67a226b576afe30b6ce8e01db6a21",
+    "rust/core/src/source_resources/gate.rs": "ad68a2f1755873b4806a95725fc5a5165dcc8af4b6d580cc00091e073344935e",
+    "rust/core/src/source_resources/lifetime_tests.rs": "b1cbc5b83c3bb3b4f44235632b188179479ea45fd71d2543f00f03dd1bb6945f",
+    "rust/core/src/source_resources/mod.rs": "9d49076df398e32675f7c24ff2a7d610567d788e5117aef56c0cecc7303c9f41",
+    "rust/core/src/source_resources/tests.rs": "5bbd1aca34f0ce944612c4ea0dafb0ce8bd31159b501ebf57bb7094630249831"
+  },
+  "prior_immutable_artifacts": {
+    ".source-cache-retention-delivery": {
+      "SHA256SUMS_sha256": "51399453c222e9d90b88abe435aaa43600ba8fc38d20c09c03092e26bea940d1"
+    },
+    ".source-cache-owner-design": {
+      "SHA256SUMS_sha256": "affeb7d1e097f9ef8801ebf01d4c9a5e920a9971fa81f096a248ea7ecb323249",
+      "contract_sha256": "43b99ef1880461383f39cfdd6ed73bf62bef388358e133aa4d29593462091103"
+    },
+    ".source-cache-owner-r3": {
+      "SHA256SUMS_sha256": "cbb2de21ba1947441d01f5810293d531ae2bb2084c832fee7199218bf8a6951d",
+      "contract_sha256": "34ee5695c015c302ae250f13a6fcabb0b67ecd87021bf863de0f38768d75e25c"
+    }
+  },
+  "new_and_touched_non_test_module_lines": {
+    "rust/core/src/execution_owner.rs": 288,
+    "rust/core/src/lib.rs": 162,
+    "rust/core/src/source_resources/allocator.rs": 116,
+    "rust/core/src/source_resources/authority.rs": 94,
+    "rust/core/src/source_resources/backend.rs": 54,
+    "rust/core/src/source_resources/containers.rs": 104,
+    "rust/core/src/source_resources/fixtures.rs": 120,
+    "rust/core/src/source_resources/gate.rs": 112,
+    "rust/core/src/source_resources/mod.rs": 23
+  },
+  "tests_written": [
+    {
+      "file": "rust/core/src/source_resources/authority_tests.rs",
+      "name": "r4_account_context_and_waiting_work_without_source_scope_grant_nothing"
+    },
+    {
+      "file": "rust/core/src/source_resources/authority_tests.rs",
+      "name": "r4_wrong_actual_decoder_and_foreign_source_are_refused_before_allocation"
+    },
+    {
+      "file": "rust/core/src/source_resources/authority_tests.rs",
+      "name": "r4_actual_generation_and_raw_cache_revision_mutations_invalidate_allocation"
+    },
+    {
+      "file": "rust/core/src/source_resources/authority_tests.rs",
+      "name": "r4_live_work_cannot_allocate_after_its_published_source_scope_ends"
+    },
+    {
+      "file": "rust/core/src/source_resources/authority_tests.rs",
+      "name": "r4_reentry_restores_previous_binding_without_tls_or_new_gate"
+    },
+    {
+      "file": "rust/core/src/source_resources/authority_tests.rs",
+      "name": "r4_cleanup_transfer_to_next_actual_decoder_rebinds_work_not_refund_account"
+    },
+    {
+      "file": "rust/core/src/source_resources/authority_tests.rs",
+      "name": "r4_same_source_with_another_backend_cannot_reassign_existing_refunds"
+    },
+    {
+      "file": "rust/core/src/source_resources/authority_tests.rs",
+      "name": "r4_ancestor_original_stop_wins_over_backend_and_capacity_failure"
+    },
+    {
+      "file": "rust/core/src/source_resources/authority_tests.rs",
+      "name": "r4_control_metadata_has_fixed_slots_and_reports_real_abi_sizes"
+    },
+    {
+      "file": "rust/core/src/source_resources/authority_tests.rs",
+      "name": "r4_joined_source_worker_uses_actual_decoder_and_observes_ancestor_expiry"
+    },
+    {
+      "file": "rust/core/src/source_resources/authority_tests.rs",
+      "name": "r4_retained_allocator_and_shadow_resource_scope_do_not_grant_new_work"
+    },
+    {
+      "file": "rust/core/src/source_resources/authority_tests.rs",
+      "name": "r4_binding_frame_limit_unwinds_without_allocating_control_history"
+    },
+    {
+      "file": "rust/core/src/source_resources/authority_tests.rs",
+      "name": "r4_existing_original_stop_survives_stale_configuration_at_gate_entry"
+    },
+    {
+      "file": "rust/core/src/source_resources/authority_tests.rs",
+      "name": "r4_same_bytes_and_same_backend_do_not_admit_a_foreign_source_load"
+    },
+    {
+      "file": "rust/core/src/source_resources/lifetime_tests.rs",
+      "name": "r4_standard_weak_keeps_only_actual_control_layout_after_nested_vec_drops"
+    },
+    {
+      "file": "rust/core/src/source_resources/lifetime_tests.rs",
+      "name": "r4_standard_arc_payload_unwind_deallocates_header_and_nested_storage"
+    },
+    {
+      "file": "rust/core/src/source_resources/lifetime_tests.rs",
+      "name": "r4_cleanup_take_and_replacement_survive_cancel_and_unwind_without_authority"
+    },
+    {
+      "file": "rust/core/src/source_resources/lifetime_tests.rs",
+      "name": "r4_hashbrown_reserve_tombstones_replace_clear_and_moved_capacity"
+    },
+    {
+      "file": "rust/core/src/source_resources/lifetime_tests.rs",
+      "name": "r4_hashbrown_batch_refusal_preserves_destination_and_charges_attempted_work"
+    },
+    {
+      "file": "rust/core/src/source_resources/lifetime_tests.rs",
+      "name": "r4_hashbrown_batch_duplicate_keys_keep_last_value_and_share_no_hidden_allocation"
+    },
+    {
+      "file": "rust/core/src/source_resources/lifetime_tests.rs",
+      "name": "r4_retained_container_does_not_create_a_strong_source_ownership_cycle"
+    },
+    {
+      "file": "rust/core/src/source_resources/tests.rs",
+      "name": "r4_layout_debit_precedes_storage_and_refund_follows_free"
+    },
+    {
+      "file": "rust/core/src/source_resources/tests.rs",
+      "name": "r4_grow_shrink_and_zeroed_grow_account_full_overlap"
+    },
+    {
+      "file": "rust/core/src/source_resources/tests.rs",
+      "name": "r4_refused_grow_keeps_old_pointer_and_cumulative_copy_cost"
+    },
+    {
+      "file": "rust/core/src/source_resources/tests.rs",
+      "name": "r4_box_overflow_is_classified_before_allocator_and_preserves_original_stop"
+    },
+    {
+      "file": "rust/core/src/source_resources/tests.rs",
+      "name": "r4_partial_box_prefix_drops_nested_allocations_on_failure_and_unwind"
+    },
+    {
+      "file": "rust/core/src/source_resources/tests.rs",
+      "name": "r4_successful_box_and_zero_sized_storage_keep_real_destructors"
+    },
+    {
+      "file": "rust/core/src/source_resources/tests.rs",
+      "name": "r4_zero_budget_and_vec_capacity_overflow_never_reach_global"
+    }
+  ]
+}

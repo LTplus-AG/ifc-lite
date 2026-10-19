@@ -1,0 +1,50 @@
+{
+  "status": "CLEAN_COMMITTED_SOURCE_CHECKPOINT_AWAITING_PARENT_ADMISSION",
+  "base": "f57db33bc11e6d6aac559dd0f0268ea37ac746ef",
+  "source_commit": "0f67f3016def860f7f4f10984af766016a2a90cd",
+  "parent_reported": "ba3aa; not imported or independently qualified; parent browser runner/harness excluded",
+  "frozen_contract_sha256": "e8eb451090091f9502b48def6fc3f92722d17df9a6c9691f35fe7d48a434e81a",
+  "prototype_visibility": "private core unit-test target only, gated by source-resource-tracking; feature-only library build does not exercise prototype",
+  "tests_written": 28,
+  "execution": {
+    "build": "UNRUN",
+    "feature_compilation": "UNRUN",
+    "tests": "UNRUN",
+    "clippy": "UNRUN",
+    "workspace_feature_unification": "UNRUN",
+    "abi_size_numbers": "UNRUN",
+    "global_oom_branch": "UNRUN; no huge OS allocation attempted",
+    "performance": "UNRUN",
+    "heavy_jobs_submitted": 0,
+    "github_work": false
+  },
+  "static_checks": {
+    "git_diff_check": "PASS",
+    "module_line_max": 288,
+    "license_headers": "all new Rust files carry SPDX MPL-2.0",
+    "source_scope": "Cargo.lock optional edge; core feature, private cfg(test) wiring, prototype modules and documentation only"
+  },
+  "review_issue_resolutions": {
+    "box_slice": "old stop/work then Layout::array precheck before Box; prefix guard owns and drops initialized nested values before standard allocator-bearing box cleanup",
+    "cleanup_authority": "CleanupOwner empty/take/replace have no admission; existing allocator/gate/refund domain moves intact; later allocation requires actual destination work"
+  },
+  "implemented_boundaries": [
+    "actual factory decoder and matching ExecutionWork/source scope, safe owned state snapshots; no raw decoder pointer/TLS",
+    "revision witness tied to live generation, current publication and current adapter validation",
+    "layout debit before Global, refund after Global deallocation; full new+old resize overlap",
+    "standard Arc/Weak control lifetime, fixed terminal bridge and reserve-overflow classification",
+    "same-domain rebind across cleanup moves, fixed gates/frames/ancestor caps",
+    "model identity uses Weak<SourceBundle> to avoid future source-index/allocator ownership cycle",
+    "resource-only backend recovered from actual source scope; no geometry adapter or replacement account minted in production"
+  ],
+  "coverage_holds": [
+    "private prototype not public owner replacement or production activation",
+    "compile/feature/lock resolution and all runtime tests pending parent receipts",
+    "source cache revision/gen writer implication must remain audited; no independent atomic revision mirror",
+    "geometry resource adapter and real ProductOwner/context transaction integration not implemented",
+    "baseline control metadata ABI values/initial-source budget integration unexecuted; known slot/depth limits are explicit",
+    "canonical parser/escape/error sinks, broad COW/consumer migration, indexes/OnceLocks and downstream APIs remain future work",
+    "arbitrary hashbrown panicking Drop unsupported; real Global failure branch unexecuted",
+    "full output/performance/release migration qualification unrun"
+  ]
+}

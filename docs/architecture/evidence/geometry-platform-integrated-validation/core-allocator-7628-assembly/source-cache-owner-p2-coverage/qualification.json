@@ -1,0 +1,21 @@
+{
+  "source_commit": "7628bf9acf82d8169084df40edcaaae07247877e",
+  "base_commit": "0f67f3016def860f7f4f10984af766016a2a90cd",
+  "scope": "Independent P2 coverage repair only; one tests-only source file, three behavioral tests and local helpers. Existing private feature plus unit-test gating unchanged.",
+  "build": "UNRUN",
+  "tests": "UNRUN",
+  "clippy": "UNRUN",
+  "mutation_testing": "UNRUN",
+  "performance": "UNRUN; tests-only change, no production performance claim",
+  "heavy_jobs_submitted": false,
+  "github_actions": false,
+  "static_checks": [
+    "git diff --check",
+    "R2/R3/R4 SHA256SUMS integrity verification",
+    "exact base-relative patch reverse applicability"
+  ],
+  "production_bug_identified": false,
+  "authority_claims_added": false,
+  "raw_parser_public_migration": false,
+  "validation_owner": "Parent-coordinated fleet only; both hosts observed guard refusal 78."
+}

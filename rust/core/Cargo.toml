@@ -13,6 +13,7 @@ exclude = ["examples/test_real_ifc.rs"]
 
 [features]
 default = []
+source-resource-tracking = ["dep:hashbrown"]
 
 [dependencies]
 
@@ -28,6 +29,9 @@ futures-util = "0.3"
 memchr.workspace = true
 # Parser
 nom = "7.1"
+
+# Private, test-target-only standard-allocator feasibility prototype.
+hashbrown = { version = "=0.15.5", optional = true, default-features = false, features = ["nightly"] }
 
 # Fast hashing
 rustc-hash.workspace = true

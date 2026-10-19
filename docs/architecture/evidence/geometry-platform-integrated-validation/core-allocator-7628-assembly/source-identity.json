@@ -1,0 +1,87 @@
+{
+  "format": "ifclite-source-integration-v1",
+  "parent": "17f8ef4f33ced9a1f2f256a5242814777f5883ca",
+  "child_source": "7628bf9acf82d8169084df40edcaaae07247877e",
+  "child_base": "f57db33bc11e6d6aac559dd0f0268ea37ac746ef",
+  "patch_sha256": "b17154e6a706e90e2695b0a430a5cad195a9545823af787048ddc6339992e1ab",
+  "files": [
+    {
+      "path": "Cargo.lock",
+      "parent_before_sha256": "b006ec6433690a164f71539412558d230e5935c9852c7cb296762ca4bd2ea1e0",
+      "after_sha256": "abc0c942046a3726b4a35fd14f5d98e047de490c1983f47109029e00ed659472"
+    },
+    {
+      "path": "rust/core/Cargo.toml",
+      "parent_before_sha256": "5cfd94437e4e5ea8a48c7601d468eed9707ae6921a3658691740d12a32ab85c3",
+      "after_sha256": "0b40e0a18594331f470919f031206085a268a44c5f1fefaa8442f9822e986cbb"
+    },
+    {
+      "path": "rust/core/SOURCE_RESOURCE_PROTOTYPE.md",
+      "parent_before_sha256": null,
+      "after_sha256": "2c7ec322156229a5f0281eea37f397ba74498c01ebc609a8fc7c493d024b8759"
+    },
+    {
+      "path": "rust/core/src/execution_owner.rs",
+      "parent_before_sha256": "e38ffab725f51a3b047cdd77ee6a00716d3aac3c2e7f2901588406e4b86b9aca",
+      "after_sha256": "f48dc51a0ee696c7df4ca976d5ffdf74d87eccfe9ff56b20e76199152d15e7d0"
+    },
+    {
+      "path": "rust/core/src/lib.rs",
+      "parent_before_sha256": "ba0287dde720a1f97334e5e63f9d05f4add48fc9e712f8732754cf1799bf4a99",
+      "after_sha256": "d72914940ce62604276fa6b2e3ae34358d89d82579567e2757d038dd9bbf4fe0"
+    },
+    {
+      "path": "rust/core/src/source_resources/allocator.rs",
+      "parent_before_sha256": null,
+      "after_sha256": "fd84a2afed34a8721852a17adc01265b91eabc4723d6d64f6e17d7ae967ce78f"
+    },
+    {
+      "path": "rust/core/src/source_resources/authority.rs",
+      "parent_before_sha256": null,
+      "after_sha256": "4a6091647617108655266049e561018fd0b996ee686fc31595319c8eafd1d5c1"
+    },
+    {
+      "path": "rust/core/src/source_resources/authority_tests.rs",
+      "parent_before_sha256": null,
+      "after_sha256": "4f66eceb6b663971e6924f7230fbcc521ec908c43409f27ca34c7dabd1e1683f"
+    },
+    {
+      "path": "rust/core/src/source_resources/backend.rs",
+      "parent_before_sha256": null,
+      "after_sha256": "6c933f6f75174bc3681b8dc9d7381af56cad7ef11455307e43fd3c6499f19efb"
+    },
+    {
+      "path": "rust/core/src/source_resources/containers.rs",
+      "parent_before_sha256": null,
+      "after_sha256": "347af319dc1c2618fdb1c73456830a97259141c41f98e903d67ce6c30d45aa09"
+    },
+    {
+      "path": "rust/core/src/source_resources/fixtures.rs",
+      "parent_before_sha256": null,
+      "after_sha256": "8216b7b4afbaa5c5e003703af778b38576d67a226b576afe30b6ce8e01db6a21"
+    },
+    {
+      "path": "rust/core/src/source_resources/gate.rs",
+      "parent_before_sha256": null,
+      "after_sha256": "ad68a2f1755873b4806a95725fc5a5165dcc8af4b6d580cc00091e073344935e"
+    },
+    {
+      "path": "rust/core/src/source_resources/lifetime_tests.rs",
+      "parent_before_sha256": null,
+      "after_sha256": "48749382f73679d9d2acab535c904b32c51fbf6182670ae3933df73d4c243910"
+    },
+    {
+      "path": "rust/core/src/source_resources/mod.rs",
+      "parent_before_sha256": null,
+      "after_sha256": "9d49076df398e32675f7c24ff2a7d610567d788e5117aef56c0cecc7303c9f41"
+    },
+    {
+      "path": "rust/core/src/source_resources/tests.rs",
+      "parent_before_sha256": null,
+      "after_sha256": "5bbd1aca34f0ce944612c4ea0dafb0ce8bd31159b501ebf57bb7094630249831"
+    }
+  ],
+  "exact_child_bytes": true,
+  "compilation": "UNRUN",
+  "production_activation": false
+}

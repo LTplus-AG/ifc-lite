@@ -1,0 +1,10 @@
+{
+  "source_scope": "Exact 15-file imported child delta at 7628 over parent 17f8; no compiler or behavioral execution.",
+  "module_size_exit": 0,
+  "module_size_output_sha256": "c6c62685b981fc9226eb32dd8d83a5a22fe2c6da58c2c150f53ab56ab85df65f",
+  "diff_check_exit": 0,
+  "compiler": "UNRUN",
+  "tests": "UNRUN",
+  "clippy": "UNRUN",
+  "wasm": "UNRUN"
+}

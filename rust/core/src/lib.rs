@@ -2,6 +2,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg_attr(
+    all(test, feature = "source-resource-tracking"),
+    feature(allocator_api, try_reserve_kind, vec_push_within_capacity)
+)]
+
 //! # IFC-Lite Core Parser
 //!
 //! High-performance STEP/IFC parser built with [nom](https://docs.rs/nom).
@@ -151,3 +156,7 @@ pub mod source_bundle;
 pub use source_bundle::SourceBundle;
 
 pub use decoder::source_caches::{SourceCache, TrustedDecoderInputs};
+
+// Private feasibility only: enabling the feature does not activate production decoding.
+#[cfg(all(test, feature = "source-resource-tracking"))]
+mod source_resources;

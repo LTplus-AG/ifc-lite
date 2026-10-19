@@ -1,0 +1,20 @@
+{
+  "base_commit": "0f67f3016def860f7f4f10984af766016a2a90cd",
+  "source_commit": "7628bf9acf82d8169084df40edcaaae07247877e",
+  "changed_paths": [
+    "rust/core/src/source_resources/lifetime_tests.rs"
+  ],
+  "file": {
+    "path": "rust/core/src/source_resources/lifetime_tests.rs",
+    "before_sha256": "b1cbc5b83c3bb3b4f44235632b188179479ea45fd71d2543f00f03dd1bb6945f",
+    "after_sha256": "48749382f73679d9d2acab535c904b32c51fbf6182670ae3933df73d4c243910",
+    "before_git_blob": "29baabd716d5af7a9f38e2b734d740a23fe1e6e3",
+    "after_git_blob": "1c4673d03213203e5ce94ea6ed34bbf1a9a2c043"
+  },
+  "incremental_patch_sha256": "843305b76589734bbca6990bf71f41f9a0aff1f425c1b7a7ddde86e0591e0e81",
+  "preserved_artifact_manifests": {
+    ".source-cache-owner-design": "affeb7d1e097f9ef8801ebf01d4c9a5e920a9971fa81f096a248ea7ecb323249",
+    ".source-cache-owner-r3": "cbb2de21ba1947441d01f5810293d531ae2bb2084c832fee7199218bf8a6951d",
+    ".source-cache-owner-r4": "5e9614c50bfff58d484def4d394cfb549bea37591176964477b6320474766f59"
+  }
+}

@@ -1505,6 +1505,7 @@ dependencies = [
  "fast-float2",
  "futures-core",
  "futures-util",
+ "hashbrown 0.15.5",
  "ifc-lite-geometry",
  "memchr",
  "nom",

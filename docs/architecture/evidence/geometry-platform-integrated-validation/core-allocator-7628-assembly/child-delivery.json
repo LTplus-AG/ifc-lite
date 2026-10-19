@@ -1,0 +1,19 @@
+{
+  "taskId": "node:delegated-task:command%3Amcp%3A55805d56-4cbd-47f7-89c1-076c896c961c%3Athread-send%3Acore-allocator-0f67-healthy-handoff-proof-20261019-r5",
+  "childThreadId": "thread:delegated-task:command%3Amcp%3A55805d56-4cbd-47f7-89c1-076c896c961c%3Adelegate-task%3Aregion-production-cache-lifetime-seam-20261019-r1",
+  "childRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A55805d56-4cbd-47f7-89c1-076c896c961c%253Adelegate-task%253Aregion-production-cache-lifetime-seam-20261019-r1:ordinal:5",
+  "childNodeId": "node:delegated-task:command%3Amcp%3A55805d56-4cbd-47f7-89c1-076c896c961c%3Athread-send%3Acore-allocator-0f67-healthy-handoff-proof-20261019-r5",
+  "status": "completed",
+  "workState": "result_available",
+  "hasPendingChildRuns": false,
+  "latestTerminalRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A55805d56-4cbd-47f7-89c1-076c896c961c%253Adelegate-task%253Aregion-production-cache-lifetime-seam-20261019-r1:ordinal:5",
+  "latestTerminalStatus": "completed",
+  "latestTerminalSummary": "Committed tests-only repair: `7628bf9acf82d8169084df40edcaaae07247877e`, based on frozen `0f67f301…`.\n\nThree independent healthy-backend tests cover spare-capacity push, occupied-key replacement, and pre-reserved insertion after work ends and cleanup handoff. They require Coverage refusal, unchanged contents/backing/accounting, and successful cleanup.\n\n- [Exact patch](.source-cache-owner-p2-coverage/incremental.patch)\n- [Before/after hashes](.source-cache-owner-p2-coverage/source-manifest.json)\n- [Review response](.source-cache-owner-p2-coverage/REVIEW_RESPONSE.md)\n- [UNRUN qualification](.source-cache-owner-p2-coverage/qualification.json)\n\nR2/R3/R4 remain unchanged. Worktree clean. No builds, tests, mutation runs, or heavy submissions; parent owns validation.",
+  "latestTerminalResultContextTransferId": "context-transfer:type:subagent_result:source-thread:thread%3Adelegated-task%3Acommand%253Amcp%253A55805d56-4cbd-47f7-89c1-076c896c961c%253Adelegate-task%253Aregion-production-cache-lifetime-seam-20261019-r1:target-thread:e53a6af1-6c4c-459f-9148-b672b674d40a:f774de48-2115-4507-8f24-725ff859348c",
+  "providerInstanceId": "codex",
+  "model": "gpt-6.1-sol",
+  "summary": "Committed tests-only repair: `7628bf9acf82d8169084df40edcaaae07247877e`, based on frozen `0f67f301…`.\n\nThree independent healthy-backend tests cover spare-capacity push, occupied-key replacement, and pre-reserved insertion after work ends and cleanup handoff. They require Coverage refusal, unchanged contents/backing/accounting, and successful cleanup.\n\n- [Exact patch](.source-cache-owner-p2-coverage/incremental.patch)\n- [Before/after hashes](.source-cache-owner-p2-coverage/source-manifest.json)\n- [Review response](.source-cache-owner-p2-coverage/REVIEW_RESPONSE.md)\n- [UNRUN qualification](.source-cache-owner-p2-coverage/qualification.json)\n\nR2/R3/R4 remain unchanged. Worktree clean. No builds, tests, mutation runs, or heavy submissions; parent owns validation.",
+  "resultContextTransferId": "context-transfer:type:subagent_result:source-thread:thread%3Adelegated-task%3Acommand%253Amcp%253A55805d56-4cbd-47f7-89c1-076c896c961c%253Adelegate-task%253Aregion-production-cache-lifetime-seam-20261019-r1:target-thread:e53a6af1-6c4c-459f-9148-b672b674d40a:f774de48-2115-4507-8f24-725ff859348c",
+  "hasPendingQuestion": false,
+  "waitTimedOut": false
+}

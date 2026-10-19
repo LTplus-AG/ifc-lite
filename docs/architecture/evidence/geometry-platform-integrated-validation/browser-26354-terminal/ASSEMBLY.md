@@ -26,3 +26,5 @@ retained. The decoded output matches the unchanged original receipt and an
 independent verified vault readback. summary.json distinguishes all stages.
 Task closure is deferred while the newer strict Clippy job owns the same shared
 compatibility cache; no shared cache, foreign task or source was removed.
+
+Before the distinct Pop run, PC request auto-fca225e8277d47b2861271e5058df7af was refused before dispatch: job kind disabled on that host. Its original launcher and request are retained; it created no worker job and was not replayed.

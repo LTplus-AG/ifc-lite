@@ -5,6 +5,21 @@ Planning checkpoint: 2026-10-19, parent `01abf2b4d9` plus uncommitted common
 retained construction and resource-authority corrections. This is a release plan,
 not a qualification receipt. Historical passing runs do not qualify this tree.
 
+Latest executed observations (2026-10-19): source `4a85b7d6de` completed the
+SDK-unset workspace with 6,427 passed, zero failed and 47 ignored. Its SDK lane
+and strict Clippy failed; the complete terminal evidence is under
+`evidence/geometry-platform-integrated-validation/native-rust-4a85-terminal`.
+Source `26354b06cc` passed all 31 private allocator tests and compiled their
+opted-in wasm32 test target, but feature-enabled workspace Clippy failed on the
+enlarged plane lineage variant. That source's WASM SDK execution passed five of
+eight CTests, including checked face extraction; Chrome provisioning then failed
+on DNS before browser tests or canonical binding generation. Exact receipts and
+scope are under `core-allocator-26354-terminal` and `browser-26354-terminal` in
+the same evidence directory. Later certificate-sharing and section-grid repairs
+still require affected reruns. These results do not close production account
+integration, source/cache migration, paired layers, appearance, final product,
+installed consumer, preservation, platform or performance obligations.
+
 ## Outcome and non-negotiable contracts
 
 Land one Rust-owned plan/execute/assemble architecture for existing STEP geometry

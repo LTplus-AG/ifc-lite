@@ -9359,6 +9359,7 @@
     "aggregateFrameTimings: function",
     "appearanceSourceTriangle: function",
     "bucketBaseKeyFor: function",
+    "capHighlightKey: function",
     "chunkCellKey: function",
     "computeDeviationStatistics: function",
     "computeDeviationStatisticsAsync: function",

@@ -9,7 +9,7 @@
  * the element's `expressId`; the renderer recolours them from this map.
  */
 
-import type { RenderOptions } from '@ifc-lite/renderer';
+import { capHighlightKey, type RenderOptions } from '@ifc-lite/renderer';
 
 type Rgba = readonly [number, number, number, number];
 
@@ -21,7 +21,7 @@ export const CAP_HOVER_COLOR: Rgba = [0.62, 0.80, 1.0, 1];
 interface CapHighlightState {
   activeTool: string | null;
   hoverHighlightEnabled: boolean;
-  hoverState: { entityId: number | null };
+  hoverState: { entityId: number | null; modelIndex?: number };
 }
 
 /**
@@ -33,12 +33,14 @@ export function sectionCapHighlight(
   state: CapHighlightState,
   selectedId: number | null | undefined,
   selectedIds: ReadonlySet<number> | undefined,
+  /** Model the selection belongs to; omitted ⇒ the ids match in every model. */
+  selectedModelIndex?: number,
 ): NonNullable<RenderOptions['capHighlight']> | null {
   if (state.activeTool !== 'section') return null;
-  const out = new Map<number, Rgba>();
+  const out = new Map<string, Rgba>();
   const hovered = state.hoverHighlightEnabled ? state.hoverState.entityId : null;
-  if (hovered != null) out.set(hovered, CAP_HOVER_COLOR);
-  if (selectedId != null) out.set(selectedId, CAP_SELECTION_COLOR);
-  if (selectedIds) for (const id of selectedIds) out.set(id, CAP_SELECTION_COLOR);
+  if (hovered != null) out.set(capHighlightKey(state.hoverState.modelIndex, hovered), CAP_HOVER_COLOR);
+  if (selectedId != null) out.set(capHighlightKey(selectedModelIndex, selectedId), CAP_SELECTION_COLOR);
+  if (selectedIds) for (const id of selectedIds) out.set(capHighlightKey(selectedModelIndex, id), CAP_SELECTION_COLOR);
   return out.size > 0 ? out : null;
 }

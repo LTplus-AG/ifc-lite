@@ -14,15 +14,20 @@ const state = (over: Partial<Parameters<typeof sectionCapHighlight>[0]> = {}) =>
 describe('sectionCapHighlight (#7950)', () => {
   it('paints the selected element and every multi-selected one in the selection colour', () => {
     const map = sectionCapHighlight(state(), 5, new Set([6, 7]))!;
-    assert.deepEqual([...map.keys()].sort(), [5, 6, 7]);
+    assert.deepEqual([...map.keys()].sort(), ['*:5', '*:6', '*:7']);
     for (const c of map.values()) assert.deepEqual(c, CAP_SELECTION_COLOR);
   });
 
   it('paints the hovered element, but selection wins when it is also selected', () => {
     const map = sectionCapHighlight(state({ hoverState: { entityId: 9 } }), 5, undefined)!;
-    assert.deepEqual(map.get(9), CAP_HOVER_COLOR);
+    assert.deepEqual(map.get('*:9'), CAP_HOVER_COLOR);
     const both = sectionCapHighlight(state({ hoverState: { entityId: 5 } }), 5, undefined)!;
-    assert.deepEqual(both.get(5), CAP_SELECTION_COLOR);
+    assert.deepEqual(both.get('*:5'), CAP_SELECTION_COLOR);
+  });
+
+  it('scopes selection and hover to their model', () => {
+    const map = sectionCapHighlight(state({ hoverState: { entityId: 9, modelIndex: 2 } }), 5, undefined, 1)!;
+    assert.deepEqual([...map.keys()].sort(), ['1:5', '2:9']);
   });
 
   it('ignores hover while hover highlight is off', () => {

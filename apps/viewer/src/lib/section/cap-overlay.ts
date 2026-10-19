@@ -33,6 +33,7 @@ export function capOverlayInput(cut: Cut, showHiddenLines: boolean, fillMode: 'u
     polygon: cp.polygon,
     ifcType: cp.ifcType,
     expressId: cp.entityId,
+    modelIndex: cp.modelIndex,
     // Per-layer material colour, so the cap matches the 3D build-up; undefined → uniform cap style.
     // "Element colour" fills every other polygon with its own source colour too, and keeps
     // every cap opaque: a translucent source (glass) would otherwise leave the cut see-through.

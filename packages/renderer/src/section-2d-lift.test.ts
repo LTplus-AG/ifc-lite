@@ -7,6 +7,7 @@ import assert from 'node:assert';
 import {
   buildCapFillGeometry,
   buildDrawingOutlineVertices,
+  capHighlightKey,
   createSectionLift,
   recolorCapVertices,
   transform2Dto3D,
@@ -368,7 +369,7 @@ describe('cap highlight recolouring (#7950)', () => {
   it('paints only the highlighted element and leaves the source buffer untouched', () => {
     const fill = buildCapFillGeometry([tri(7, 0), tri(9, 5)], lift)!;
     const before = Array.from(fill.vertices);
-    const out = recolorCapVertices(fill.vertices, fill.ranges, new Map([[9, [0.1, 0.2, 0.3, 1] as const]]));
+    const out = recolorCapVertices(fill.vertices, fill.ranges, new Map([['*:9', [0.1, 0.2, 0.3, 1] as const]]));
     assert.ok(out);
     assert.deepStrictEqual(Array.from(fill.vertices), before, 'source is never mutated');
     const colorOf = (buf: Float32Array, vertex: number) =>
@@ -383,14 +384,25 @@ describe('cap highlight recolouring (#7950)', () => {
     const fill = buildCapFillGeometry([tri(7, 0)], lift)!;
     assert.strictEqual(recolorCapVertices(fill.vertices, fill.ranges, null), null);
     assert.strictEqual(recolorCapVertices(fill.vertices, fill.ranges, new Map()), null);
-    assert.strictEqual(recolorCapVertices(fill.vertices, fill.ranges, new Map([[99, [1, 0, 0, 1] as const]])), null);
+    assert.strictEqual(recolorCapVertices(fill.vertices, fill.ranges, new Map([['*:99', [1, 0, 0, 1] as const]])), null);
   });
 
   it('highlights a polygon that had no colour (uniform-fill sentinel) too', () => {
     const plain: CutPolygon2D = { ...poly([[0, 0], [1, 0], [0, 1]]), expressId: 4 };
     const fill = buildCapFillGeometry([plain], lift)!;
     assert.strictEqual(fill.vertices[6], -1, 'sentinel alpha before highlight');
-    const out = recolorCapVertices(fill.vertices, fill.ranges, new Map([[4, [0.3, 0.6, 1, 1] as const]]))!;
+    const out = recolorCapVertices(fill.vertices, fill.ranges, new Map([['*:4', [0.3, 0.6, 1, 1] as const]]))!;
     assert.strictEqual(out[6], 1, 'alpha now selects the vertex colour in the shader');
+  });
+
+  it('scopes a highlight to its model when both models share an express id', () => {
+    const a = { ...tri(7, 0), modelIndex: 0 };
+    const b = { ...tri(7, 5), modelIndex: 1 };
+    const fill = buildCapFillGeometry([a, b], lift)!;
+    const out = recolorCapVertices(fill.vertices, fill.ranges, new Map([[capHighlightKey(1, 7), [1, 0, 0, 1] as const]]))!;
+    assert.strictEqual(out[3], 0.5, 'model 0 keeps its colour');
+    assert.strictEqual(out[fill.ranges[1].vertexStart * FLOATS_PER_VERTEX + 3], 1, 'model 1 is highlighted');
+    const any = recolorCapVertices(fill.vertices, fill.ranges, new Map([[capHighlightKey(undefined, 7), [0, 1, 0, 1] as const]]))!;
+    assert.strictEqual(any[4], 1, 'an unscoped entry matches the id in every model');
   });
 });

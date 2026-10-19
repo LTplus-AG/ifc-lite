@@ -263,11 +263,11 @@ export interface RenderOptions {
   selectedIds?: Set<number>;      // Multi-selection support
   selectedItemId?: number;        // #4382: narrows selectedId's highlight to one representation item (geometryItemId); no effect on selectedIds
   /**
-   * Element id → RGBA (0–1) painted over that element's section-cap polygons, so
+   * `capHighlightKey(modelIndex, id)` → RGBA (0–1) painted over that element's section-cap polygons, so
    * a selected or hovered element's cut face matches its highlighted surfaces.
    * Compared by content each frame; absent / empty leaves every cap as built.
    */
-  capHighlight?: ReadonlyMap<number, readonly [number, number, number, number]> | null;
+  capHighlight?: ReadonlyMap<string, readonly [number, number, number, number]> | null;
   hoverOutline?: { id: number; modelIndex?: number } | null; // #5390 thin visible-only pre-highlight; modelIndex scopes federation
   /**
    * Render the active colour overrides almost full-bright so they POP like a

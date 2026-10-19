@@ -38,7 +38,7 @@ export function viewportRenderOptions(
     buildingRotation: p.coordinateInfoRef.current?.buildingRotation,
     ...sectionRenderClip(state.sceneState.section.visible, p.sectionPlaneRef.current, p.sectionRangeRef.current, state.activeTool, state.inactiveSectionPlanes, p.sectionBoundsRef?.current),
     ...hoverOutlineTarget(),
-    capHighlight: sectionCapHighlight(state, selection.selectedId, selection.selectedIds),
+    capHighlight: sectionCapHighlight(state, selection.selectedId, selection.selectedIds, p.selectedModelIndexRef.current),
     terrainClipY: p.terrainClipYRef.current ?? undefined,
   };
 }

@@ -1,0 +1,13 @@
+[package]
+name = "ifc-lite-imported-geometry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Source-independent imported tessellation numeric program"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[lints]
+workspace = true

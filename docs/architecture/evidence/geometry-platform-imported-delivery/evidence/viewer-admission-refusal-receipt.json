@@ -1,0 +1,65 @@
+{
+  "id": "228de050-d4ae-4cee-b371-450d0a381089",
+  "host": {
+    "host": "pop-os",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 32,
+    "availableMemoryBytes": 114452070400,
+    "totalMemoryBytes": 134644969472,
+    "python": "3.12.3",
+    "time": 1792367088.8881671
+  },
+  "cwd": "/home/louistrue/build-workers/worker-state/checkouts/6834ce9806ecc0823e87c52764125f354a98e1fd",
+  "sourceBefore": {
+    "commit": "6834ce9806ecc0823e87c52764125f354a98e1fd",
+    "tree": "0dcf50af1bb593bdf76dab74ae9378d54e2cf415",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "f52385dc435b1addd5560d94e7576d38647d0551aa89f3330ac5c4391a738a0c",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "command": [
+    "bash",
+    "-c",
+    "pnpm install --frozen-lockfile --prefer-offline && exec \"$@\"",
+    "ifc-fleet",
+    "pnpm",
+    "exec",
+    "env",
+    "NODE_OPTIONS=--max-old-space-size=8192",
+    "sh",
+    "-c",
+    "pnpm typecheck && node scripts/check-source-text-assertions.mjs && TEST_PATTERN=\"useIfc(Federation|Loader.*(ifcx|federated|completion|glbTextures))|viewerModelIngest\" pnpm test --filter=@ifc-lite/viewer --env-mode=loose"
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792367088.8876433,
+  "resources": [
+    "/home/louistrue/build-workers/worker-state/checkouts/6834ce9806ecc0823e87c52764125f354a98e1fd",
+    "/home/louistrue/build-workers/worker-state/targets/1af4c712d4f18fbf111d"
+  ],
+  "state": "failed",
+  "cpu": 4,
+  "memoryGiB": 16,
+  "error": "host capacity guard refused admission",
+  "exitCode": 1,
+  "finishedAt": 1792367753.9849358,
+  "sourceAfter": {
+    "commit": "6834ce9806ecc0823e87c52764125f354a98e1fd",
+    "tree": "0dcf50af1bb593bdf76dab74ae9378d54e2cf415",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "f52385dc435b1addd5560d94e7576d38647d0551aa89f3330ac5c4391a738a0c",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {}
+}

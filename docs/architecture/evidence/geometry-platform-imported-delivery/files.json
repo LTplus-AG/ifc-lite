@@ -1,0 +1,541 @@
+{
+  "requested_parent": "86adb595c0c6429e1a0c423b962f9b153a1d2d0a",
+  "integration_parent": "d625617742870554c68a15901bf80a123611bf61",
+  "child": "82a80ff7b013283e997eb5083f1b054baa318222",
+  "apply_mode": "Incremental owned-path hunks only; preserve unrelated integration-parent edits in shared root files. Child-after hashes identify this source artifact and are not permission for full-file overlays.",
+  "owned_files": [
+    {
+      "path": ".changeset/neat-pugs-stand.md",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "de2ae5092552c4af0374b5054a055db3b96ea7be4a0a0b33f2672473dcae3b76",
+      "child_after_bytes": 301
+    },
+    {
+      "path": ".changeset/quiet-bridges-own.md",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "699bcb7a6c609ff04e3d7d814e49ac7bfa9a91c9348d4642ea8463d04777f4c1",
+      "child_after_bytes": 414
+    },
+    {
+      "path": "Cargo.lock",
+      "action": "modified",
+      "requested_parent_sha256": "f52385dc435b1addd5560d94e7576d38647d0551aa89f3330ac5c4391a738a0c",
+      "integration_parent_sha256": "8f1e27526ac5ba876035bdb9731bcf830cdc7ee574a26f6037895da4b2dae8ac",
+      "child_after_sha256": "e15ad2577a52aae93986401f7373252715e1d0b9a70c9b274537f9df7479c673",
+      "child_after_bytes": 90275
+    },
+    {
+      "path": "Cargo.toml",
+      "action": "modified",
+      "requested_parent_sha256": "9936c021fee0d7652644db1d95d9a2f99408a598c1d376e11f165e5688072177",
+      "integration_parent_sha256": "9936c021fee0d7652644db1d95d9a2f99408a598c1d376e11f165e5688072177",
+      "child_after_sha256": "057a31be1ce5d039b27c4198872e1f78ea75805cb4875a895bd9ce8394a90aff",
+      "child_after_bytes": 4700
+    },
+    {
+      "path": "apps/viewer/src/hooks/ingest/ifcxComposition.ts",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "3862131f5bccb9d981e2ed14abe809d26361cbe2ba5ac6385a38b09395595229",
+      "child_after_bytes": 2660
+    },
+    {
+      "path": "apps/viewer/src/hooks/ingest/ifcxLayerPublication.ts",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "1a56f64aae47e914a7437c5fd5b02544f99194bee1550d4b5ea492122d92dfb0",
+      "child_after_bytes": 2888
+    },
+    {
+      "path": "apps/viewer/src/hooks/ingest/viewerModelIngest.ts",
+      "action": "modified",
+      "requested_parent_sha256": "a0fb3e814926999de822d5f21abd55269c3cb938436243b7260410575d958db7",
+      "integration_parent_sha256": "a0fb3e814926999de822d5f21abd55269c3cb938436243b7260410575d958db7",
+      "child_after_sha256": "3fef4e47e5fb105b1e9e3c7e9e26fdd1c2ce165461c211a7af9132bc98cc9419",
+      "child_after_bytes": 13228
+    },
+    {
+      "path": "apps/viewer/src/hooks/modelLoadOptions.ts",
+      "action": "modified",
+      "requested_parent_sha256": "bf490f133342bb1531cd57562cb4f90f7add6ae06539a6d4358bd6a08a783207",
+      "integration_parent_sha256": "bf490f133342bb1531cd57562cb4f90f7add6ae06539a6d4358bd6a08a783207",
+      "child_after_sha256": "ba74656782f37d5f1d055dd79dc19d156578f5d0e6006a584890f80ce2b5a42a",
+      "child_after_bytes": 1704
+    },
+    {
+      "path": "apps/viewer/src/hooks/useIfcFederation.canonicalIfcx.test.tsx",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "eaed16a34fc20947e13e712197484bc3aafebe77b48ff7649d99d13de58acf68",
+      "child_after_bytes": 8444
+    },
+    {
+      "path": "apps/viewer/src/hooks/useIfcFederation.ifcxBuffers.test.tsx",
+      "action": "modified",
+      "requested_parent_sha256": "980d45ce1c2751a05a3be3869fd372ed66b14f116dcc740d114748f1157965c5",
+      "integration_parent_sha256": "980d45ce1c2751a05a3be3869fd372ed66b14f116dcc740d114748f1157965c5",
+      "child_after_sha256": "6af0ebde85cb8d240c89f16f5ecd598c18ccda110765acbf57bb24338d0c84da",
+      "child_after_bytes": 11152
+    },
+    {
+      "path": "apps/viewer/src/hooks/useIfcFederation.loadErrorRetry.test.tsx",
+      "action": "modified",
+      "requested_parent_sha256": "c5f128f83db7c12782470f41f2b166d99caebe1cdac6237aebd115c80271ea7b",
+      "integration_parent_sha256": "c5f128f83db7c12782470f41f2b166d99caebe1cdac6237aebd115c80271ea7b",
+      "child_after_sha256": "9200e3848e279fe3faa44a6d9e3a5d655fca8b6fa6499513ea5f44fadda4619b",
+      "child_after_bytes": 4335
+    },
+    {
+      "path": "apps/viewer/src/hooks/useIfcFederation.resetState.test.tsx",
+      "action": "modified",
+      "requested_parent_sha256": "6605378fb4579416dfa2ecc4bf8b38cd47a6bee55a1747f87ad3ad24803aea7d",
+      "integration_parent_sha256": "6605378fb4579416dfa2ecc4bf8b38cd47a6bee55a1747f87ad3ad24803aea7d",
+      "child_after_sha256": "8f011ffabb056241495d14738c0f45188f9768e0673c97942d3129c393b77bc2",
+      "child_after_bytes": 7837
+    },
+    {
+      "path": "apps/viewer/src/hooks/useIfcFederation.ts",
+      "action": "modified",
+      "requested_parent_sha256": "77aeb34f1b301739bf368ba2c970b6aa341341dc075bdf8a56ec00f3c1e0d870",
+      "integration_parent_sha256": "77aeb34f1b301739bf368ba2c970b6aa341341dc075bdf8a56ec00f3c1e0d870",
+      "child_after_sha256": "2e3617421cb9710f5ed469e835284657f9a126c9177e4ac01b8ddf28fecbff3e",
+      "child_after_bytes": 18195
+    },
+    {
+      "path": "apps/viewer/src/hooks/useIfcLoader.ts",
+      "action": "modified",
+      "requested_parent_sha256": "7e7c3f44c63edb95618f90d6252af5af51633ae22c64a98d55158eac6b6cc0de",
+      "integration_parent_sha256": "7e7c3f44c63edb95618f90d6252af5af51633ae22c64a98d55158eac6b6cc0de",
+      "child_after_sha256": "5c1961546f367cb5b45b4dcf099ea2d0908ce1a8ec4bc9f17ebcbca675fa5676",
+      "child_after_bytes": 127128
+    },
+    {
+      "path": "docs/api/typescript.md",
+      "action": "modified",
+      "requested_parent_sha256": "b43478efbb639d8f83ebd989801c7e54955f1c8984fb23537496e0501d06581f",
+      "integration_parent_sha256": "b43478efbb639d8f83ebd989801c7e54955f1c8984fb23537496e0501d06581f",
+      "child_after_sha256": "91a513a9541f74e87e637d10a77715ade45e06be155d36f6584cb34ee76633ab",
+      "child_after_bytes": 55848
+    },
+    {
+      "path": "docs/guide/parsing.md",
+      "action": "modified",
+      "requested_parent_sha256": "2ce4a0350d69c7e96a757a53f3ea73a9884a01983fedd19742fd9513d9f2ddeb",
+      "integration_parent_sha256": "2ce4a0350d69c7e96a757a53f3ea73a9884a01983fedd19742fd9513d9f2ddeb",
+      "child_after_sha256": "a18bb93d6d61d168f608519a6b07d774350e91272d5b93fb21b092d041b0f592",
+      "child_after_bytes": 45164
+    },
+    {
+      "path": "package.json",
+      "action": "modified",
+      "requested_parent_sha256": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b",
+      "integration_parent_sha256": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b",
+      "child_after_sha256": "e0a97074be13dcde96c5528dbf4c485a4b7ff82529ffaf12e5e23461a4e46341",
+      "child_after_bytes": 11038
+    },
+    {
+      "path": "packages/ifcx/README.md",
+      "action": "modified",
+      "requested_parent_sha256": "045e10f9c1b57f90a1a712f087d83d4572fe282396fe93a852381324888eccf6",
+      "integration_parent_sha256": "045e10f9c1b57f90a1a712f087d83d4572fe282396fe93a852381324888eccf6",
+      "child_after_sha256": "3995847b5cd00f60df5f3264349489936d1b7a14b6a1329c81b919bb4442a58f",
+      "child_after_bytes": 5129
+    },
+    {
+      "path": "packages/ifcx/package.json",
+      "action": "modified",
+      "requested_parent_sha256": "c249a1c1c8a54ee786fcdb4d536ae21e9e6b2a3f34c997f59ea44d3581875ceb",
+      "integration_parent_sha256": "c249a1c1c8a54ee786fcdb4d536ae21e9e6b2a3f34c997f59ea44d3581875ceb",
+      "child_after_sha256": "fd67602932e05c8d7e9b5d42868e30e6f938e9c298c70f6429f248a0e476baf4",
+      "child_after_bytes": 1397
+    },
+    {
+      "path": "packages/ifcx/src/generated/imported-geometry-static.d.ts",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "ef70966d6b82a701ed2f50479ecccbf7b06cd991f28fda9d93a314d300357cb2",
+      "child_after_bytes": 459
+    },
+    {
+      "path": "packages/ifcx/src/generated/imported-geometry-static.js",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "a77b2a56a5b493ce8c4a529de57aba1ffbff4722ab7fb827125e48af47d8fc5b",
+      "child_after_bytes": 551049
+    },
+    {
+      "path": "packages/ifcx/src/generated/imported-geometry.provenance.json",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "3ee4a81d7cf9747a8257ecddba219c4ebdc37bb728ffda06b88072bac6d64e89",
+      "child_after_bytes": 2658
+    },
+    {
+      "path": "packages/ifcx/src/generated/imported-geometry.ts",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "4d5f9094ff5b74458c70161cc9c88e5fcac9636d5f167ea4fadba5c58d72388c",
+      "child_after_bytes": 104458
+    },
+    {
+      "path": "packages/ifcx/src/geometry-extractor.ts",
+      "action": "modified",
+      "requested_parent_sha256": "05d92f767feb1cf7da69d09fd715f70c30ad32cc241d99d6cc3bbba4417bea16",
+      "integration_parent_sha256": "05d92f767feb1cf7da69d09fd715f70c30ad32cc241d99d6cc3bbba4417bea16",
+      "child_after_sha256": "80c4986c6a777841a7d1f58ad95f0c9e15b869cedbb5c6b22b18a456df6692cc",
+      "child_after_bytes": 1192
+    },
+    {
+      "path": "packages/ifcx/src/geometry-normals.ts",
+      "action": "deleted",
+      "requested_parent_sha256": "3df8fb95542ef9fca8eb7a1865a7b326f0d792db231448001ae0b13ecb27cd52",
+      "integration_parent_sha256": "3df8fb95542ef9fca8eb7a1865a7b326f0d792db231448001ae0b13ecb27cd52",
+      "child_after_sha256": null,
+      "child_after_bytes": null
+    },
+    {
+      "path": "packages/ifcx/src/imported-graph-source.ts",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "2c9d5a599c7f1062775523cb659f400fc8b6327e6649c934448b01970019096c",
+      "child_after_bytes": 2760
+    },
+    {
+      "path": "packages/ifcx/src/imported-graph.ts",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "9b55803bdd4e8863168f4e214536fbe0b54f031bd1e8014d27bfe04141466229",
+      "child_after_bytes": 7621
+    },
+    {
+      "path": "packages/ifcx/src/imported-kernel.test.ts",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "81bd225657c589b8d0461929a591a0f7bb288430ce7f0cfd92ffa708e2ae611e",
+      "child_after_bytes": 4295
+    },
+    {
+      "path": "packages/ifcx/src/imported-kernel.ts",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "892ffb069728b7a7a145aea69288dd791520fea0bd6f46fea2b93d927ea8fe48",
+      "child_after_bytes": 7311
+    },
+    {
+      "path": "packages/ifcx/src/imported-packet.test.ts",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "c02a05067c4ed56f873d66513f7055641be5a4789b2d26cc2dbd3c62bf71dea3",
+      "child_after_bytes": 3186
+    },
+    {
+      "path": "packages/ifcx/src/imported-scene.ts",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "d3a367c80f96b7e63323516d6b0f9b54a42b3b1f313d05d0c192b127d0347601",
+      "child_after_bytes": 552
+    },
+    {
+      "path": "packages/ifcx/src/imported-snapshot.ts",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "bf7186df52c70a79481dddcd5369b2fd03554b078a0f57f33acacb18cabf9ee7",
+      "child_after_bytes": 1870
+    },
+    {
+      "path": "packages/ifcx/src/imported-source.test.ts",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "9c70290673256eef099be8b2918d7a8a080f7fd246eb8cf57446ba438bb36a99",
+      "child_after_bytes": 9368
+    },
+    {
+      "path": "packages/ifcx/src/imported-source.ts",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "f9c6f88d444c38d1e4172ca975499697e9ea9ce7932e361ff1d571c0b4930fb3",
+      "child_after_bytes": 6305
+    },
+    {
+      "path": "packages/ifcx/src/imported-wire.ts",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "e67f675c69604c872af87bbed5b8c5fd8cdb88e4ead542f0dfbfd24b411ed76a",
+      "child_after_bytes": 4500
+    },
+    {
+      "path": "packages/ifcx/src/index.ts",
+      "action": "modified",
+      "requested_parent_sha256": "692c128c935c550a0e36303e6d4ea0c20920b4585ad1dc2b337d0445cece2730",
+      "integration_parent_sha256": "692c128c935c550a0e36303e6d4ea0c20920b4585ad1dc2b337d0445cece2730",
+      "child_after_sha256": "fa1c3948fc6a535e2b57cac5e231e9815bd8d7c1a4968ed03a6cc61d4deaa935",
+      "child_after_bytes": 23089
+    },
+    {
+      "path": "packages/ifcx/src/pointcloud-extractor.ts",
+      "action": "modified",
+      "requested_parent_sha256": "4edabb5b455eb3403c7e55c2f8098e0f9174e26b6a3e69279056381db492a20f",
+      "integration_parent_sha256": "4edabb5b455eb3403c7e55c2f8098e0f9174e26b6a3e69279056381db492a20f",
+      "child_after_sha256": "7b0bcf54b7c076baf57c112790c7ad83189b6c6e88d19ce72f4835d01484d46c",
+      "child_after_bytes": 1384
+    },
+    {
+      "path": "packages/pointcloud/README.md",
+      "action": "modified",
+      "requested_parent_sha256": "964cf3a5daf96b994f07625cc239fbea2b4ece12511f4593c9b01a4e7a54dc86",
+      "integration_parent_sha256": "964cf3a5daf96b994f07625cc239fbea2b4ece12511f4593c9b01a4e7a54dc86",
+      "child_after_sha256": "4553c1b73413e2a568b9a296f09a823d8999a24fc07f92da85b8b5b4f3da1dff",
+      "child_after_bytes": 9163
+    },
+    {
+      "path": "packages/pointcloud/src/formats/ifcx-points.ts",
+      "action": "modified",
+      "requested_parent_sha256": "cf49df18dd90889984824423280305860593d9c6951103b7ac06dafd3fec7d59",
+      "integration_parent_sha256": "cf49df18dd90889984824423280305860593d9c6951103b7ac06dafd3fec7d59",
+      "child_after_sha256": "9a9844bd918403237d9013e21a2845774d0e16feee15f900b26e4ff3c1356faf",
+      "child_after_bytes": 7620
+    },
+    {
+      "path": "packages/pointcloud/src/formats/pcd-header.ts",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "774c055569d23de4f84f6a2ea81744749d3bf36f41d65a409fe457f0a88fd853",
+      "child_after_bytes": 4337
+    },
+    {
+      "path": "packages/pointcloud/src/formats/pcd.ts",
+      "action": "modified",
+      "requested_parent_sha256": "8c50220d97e27c83bd68d4c08e7161a709e0bb5c4ecc1b01b34368794d41bae1",
+      "integration_parent_sha256": "8c50220d97e27c83bd68d4c08e7161a709e0bb5c4ecc1b01b34368794d41bae1",
+      "child_after_sha256": "01c46752436e9b71f2ff4d74636de6b881bee0f707dccbbcee1bbdbb99dc00ea",
+      "child_after_bytes": 14119
+    },
+    {
+      "path": "packages/pointcloud/src/from-ifcx-attributes.ts",
+      "action": "modified",
+      "requested_parent_sha256": "4a432e4b5d40d024f0416978e123bc96432c8d647d7fa8727a4a85454b6b4782",
+      "integration_parent_sha256": "4a432e4b5d40d024f0416978e123bc96432c8d647d7fa8727a4a85454b6b4782",
+      "child_after_sha256": "ff51a9a449509e269aa8fa14b5d0fc1f8994600c11d8d333ba14726e473ed908",
+      "child_after_bytes": 2927
+    },
+    {
+      "path": "packages/pointcloud/src/index.ts",
+      "action": "modified",
+      "requested_parent_sha256": "7766f1060636acfdb5ccada5e0217d96b35c6770cbec9216bf258205e83f9135",
+      "integration_parent_sha256": "7766f1060636acfdb5ccada5e0217d96b35c6770cbec9216bf258205e83f9135",
+      "child_after_sha256": "4ab354ec4028183100be9ad0cfa663a8368de935b4b0960f06663b1447102468",
+      "child_after_bytes": 4326
+    },
+    {
+      "path": "packages/pointcloud/src/point-source.test.ts",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "952b0c6fe194652bb02dd825cb55013ade624c34cb90e9f37e3c100188baf9f8",
+      "child_after_bytes": 9276
+    },
+    {
+      "path": "packages/pointcloud/src/point-source.ts",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "aa8475f87bf53215e9f638eeaa6fdf2a0f18ba931bbef3dcf84aeda4e12ce07e",
+      "child_after_bytes": 694
+    },
+    {
+      "path": "rust/geometry/Cargo.toml",
+      "action": "modified",
+      "requested_parent_sha256": "898be314e2c126faa964d0d20536ce4e35dbac361c3690d0bc4bb939b26d19e5",
+      "integration_parent_sha256": "898be314e2c126faa964d0d20536ce4e35dbac361c3690d0bc4bb939b26d19e5",
+      "child_after_sha256": "5db155161da78afbc5aef6cddca5a6e6fc633d0366b24257d5d889a209c2cd5c",
+      "child_after_bytes": 9046
+    },
+    {
+      "path": "rust/geometry/src/lib.rs",
+      "action": "modified",
+      "requested_parent_sha256": "0956827eab796c2a3f1ac6098ed5aeb067222b0abdcd68452e5d15f9e0cdb7c4",
+      "integration_parent_sha256": "0956827eab796c2a3f1ac6098ed5aeb067222b0abdcd68452e5d15f9e0cdb7c4",
+      "child_after_sha256": "a5f907f714a4cd0794dea84436502f82ee32a9e2b7b670f33fda9cabaf3544d9",
+      "child_after_bytes": 14144
+    },
+    {
+      "path": "rust/imported-geometry/Cargo.toml",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "3a2a53f16298199c8cf5460cbbb431d957eff6fbe5cc6c575456530514bd29ce",
+      "child_after_bytes": 287
+    },
+    {
+      "path": "rust/imported-geometry/README.md",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "dccb0a516cada5abf8c56726446b17a44d1c73191557e244793c0c11693b3ad5",
+      "child_after_bytes": 4018
+    },
+    {
+      "path": "rust/imported-geometry/src/graph.rs",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "e703148b0803552381ee32e2aceb8f8d55c77177d0397bb20c55b67beeff7643",
+      "child_after_bytes": 15502
+    },
+    {
+      "path": "rust/imported-geometry/src/graph_packet.rs",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "df82407136c9a69a2568875777e9b20519c9f921569453f7639a92ca9707e9eb",
+      "child_after_bytes": 9880
+    },
+    {
+      "path": "rust/imported-geometry/src/graph_packet_tests.rs",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "6b1a7753cfb74456087ddf64bf16374b041c55f481ebd73165d831d5d31c595e",
+      "child_after_bytes": 8699
+    },
+    {
+      "path": "rust/imported-geometry/src/graph_tests.rs",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "320a399205706043971ef689824fe00bffa82d803a073eece9a1f69b04902546",
+      "child_after_bytes": 13919
+    },
+    {
+      "path": "rust/imported-geometry/src/lib.rs",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "2e0c6df5a77ac0a94d9b680a723f1182d8b170827f4b78350814034e24bb6d56",
+      "child_after_bytes": 3948
+    },
+    {
+      "path": "rust/imported-geometry/src/math.rs",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "7848ec9257eaa7823104e1b5a31c1129226bec0cf5c9751516769e3ab64693c2",
+      "child_after_bytes": 6473
+    },
+    {
+      "path": "rust/imported-geometry/src/packet.rs",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "8a1d36701bd9e19ea699002550c03d8139061f45bddb4b6793509ff26416e3d1",
+      "child_after_bytes": 5684
+    },
+    {
+      "path": "rust/imported-geometry/src/scene.rs",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "b3150ea00bd8810a5bbd259fd6aab534d0d22e7ae990971e22ddb24a7d46f223",
+      "child_after_bytes": 6152
+    },
+    {
+      "path": "rust/imported-geometry/src/scene_tests.rs",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "e831847ff2a9b99ad4fdd6ae1d83cf468b8fe0d4790f9af51d9f98d99357e9f5",
+      "child_after_bytes": 4432
+    },
+    {
+      "path": "rust/imported-geometry/src/tests.rs",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "71d7917ab049740d60a38bcc57af3bc6e791d788b5fd1f31dddcd7dd674d198a",
+      "child_after_bytes": 2921
+    },
+    {
+      "path": "rust/wasm-bindings/src/imported_geometry.rs",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "2dfa5d407fb57f1dfe6fb09d9d431fa96043804719788cfb59605ddf148d83d3",
+      "child_after_bytes": 572
+    },
+    {
+      "path": "rust/wasm-bindings/src/lib.rs",
+      "action": "modified",
+      "requested_parent_sha256": "2318d77527f471785d9c779f1c116f58e3af5d64310c0877a2e6a966c4075ae5",
+      "integration_parent_sha256": "2318d77527f471785d9c779f1c116f58e3af5d64310c0877a2e6a966c4075ae5",
+      "child_after_sha256": "8078da538b5c906eaf357ef892458d171b3e133bc2703f12fdbf07bb64503b10",
+      "child_after_bytes": 4053
+    },
+    {
+      "path": "scripts/api-surface.json",
+      "action": "modified",
+      "requested_parent_sha256": "8cfb2dd4b1b6bc3d74ed9cbc8439ed734410052db94c966b5e93e0c10bb596a6",
+      "integration_parent_sha256": "8cfb2dd4b1b6bc3d74ed9cbc8439ed734410052db94c966b5e93e0c10bb596a6",
+      "child_after_sha256": "ac720ed6fecffdfd2ea6a454eb716fababb9151fc286bce90789f3a3aed731af",
+      "child_after_bytes": 366710
+    },
+    {
+      "path": "scripts/build-imported-geometry.mjs",
+      "action": "added",
+      "requested_parent_sha256": null,
+      "integration_parent_sha256": null,
+      "child_after_sha256": "4459c457bdee31750d742203f7da861c0ee9c46e097199a17fe055fdbfea652f",
+      "child_after_bytes": 7293
+    },
+    {
+      "path": "scripts/module-size-allowlist.txt",
+      "action": "modified",
+      "requested_parent_sha256": "0642543e0d6ad32eb614f015b87725f558f7f7048053911cac83ea52503722eb",
+      "integration_parent_sha256": "0642543e0d6ad32eb614f015b87725f558f7f7048053911cac83ea52503722eb",
+      "child_after_sha256": "156b739e467396e0ad69df450ecd695a97f058a0f0b115f564d2a75f427b5998",
+      "child_after_bytes": 16671
+    },
+    {
+      "path": "turbo.json",
+      "action": "modified",
+      "requested_parent_sha256": "59565ab778d50acb48f9335baa8f850f5ed64bb33ccbf36921e472eb6dab005c",
+      "integration_parent_sha256": "59565ab778d50acb48f9335baa8f850f5ed64bb33ccbf36921e472eb6dab005c",
+      "child_after_sha256": "71aaa92878d5cf15bdd0dc3667a7b74ab024a056af4c59dbffe685eb7c427992",
+      "child_after_bytes": 2372
+    }
+  ],
+  "excluded_inherited_parent_fix_paths": [
+    "docs/architecture/evidence/geometry-platform-integrated-validation/retained-native-9311/classification.json",
+    "docs/architecture/evidence/geometry-platform-integrated-validation/retained-native-9311/output.log.gz",
+    "docs/architecture/evidence/geometry-platform-integrated-validation/retained-native-9311/receipt.json",
+    "docs/architecture/evidence/geometry-platform-integrated-validation/retained-native-9311/request.json",
+    "rust/processing/src/analytic_export.rs",
+    "rust/processing/src/analytic_export/walk.rs",
+    "rust/processing/src/analytic_export/walk/entry.rs",
+    "rust/processing/src/authored_geometry/bound.rs",
+    "rust/processing/src/authored_geometry/inventory.rs",
+    "rust/processing/src/authored_geometry/planning.rs",
+    "rust/processing/tests/retained_admission_policy.rs"
+  ]
+}

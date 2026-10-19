@@ -114,7 +114,6 @@
   1290 apps/viewer/src/hooks/useDrawingExport.ts
   1041 apps/viewer/src/hooks/useDrawingGeneration.ts
    586 apps/viewer/src/hooks/useIfcCache.ts
-   667 apps/viewer/src/hooks/useIfcFederation.ts
   2234 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
    457 apps/viewer/src/hooks/useSymbolicAnnotations.ts
@@ -246,7 +245,6 @@
    494 packages/parser/src/source-bytes.ts
    513 packages/plugin-api/src/types.ts
    678 packages/pointcloud/src/formats/e57-decode.ts
-   424 packages/pointcloud/src/formats/pcd.ts
    529 packages/pointcloud/src/streaming/e57-source.ts
    423 packages/provenance/src/certificate.ts
    410 packages/provenance/src/commutation.ts

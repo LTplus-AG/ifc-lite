@@ -9,6 +9,7 @@
     "Cargo.lock",
     "rust-toolchain.toml",
     "scripts/build-wasm.sh",
+    "scripts/build-imported-geometry.mjs",
     "tsconfig.json",
     "tsconfig.packages.json",
     "tsconfig.tests.base.json",

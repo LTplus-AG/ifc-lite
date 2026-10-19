@@ -74,6 +74,7 @@ csg_topology_gate = []
 csg_manifold_gate = []
 
 [dependencies]
+ifc-lite-imported-geometry.workspace = true
 
 # Triangulation
 earcutr = "0.5"

@@ -66,6 +66,7 @@ pub use utils::stash_location_parts;
 #[cfg(feature = "threads")]
 pub use wasm_bindgen_rayon::init_thread_pool;
 
+mod imported_geometry;
 mod api;
 mod progress_hook;
 #[cfg(feature = "opening-perf-trace")]

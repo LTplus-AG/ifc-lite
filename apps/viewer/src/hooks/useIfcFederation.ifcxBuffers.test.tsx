@@ -37,6 +37,7 @@ import { resolve, dirname } from 'node:path';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
+import { useIfcLoader } from './useIfcLoader.js';
 import { useIfcFederation } from './useIfcFederation.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
@@ -130,7 +131,12 @@ const loadFile = async (file: File, target?: unknown): Promise<void> => {
 };
 
 function Probe(): null {
-  hookApi = useIfcFederation(loadFile);
+  const canonical = useIfcLoader().loadFile;
+  hookApi = useIfcFederation(async (file, target, options) => {
+    await loadFile(file, target);
+    // The delegate-only addModel case uses an intentionally invalid one-byte File.
+    if (options?.ifcxSources) await canonical(file, target, options);
+  });
   return null;
 }
 

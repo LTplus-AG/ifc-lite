@@ -1,0 +1,53 @@
+{
+  "abi": 1,
+  "compiler": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)",
+  "target": "wasm32-unknown-unknown",
+  "profile": "release",
+  "command": [
+    "cargo",
+    "build",
+    "--locked",
+    "-p",
+    "ifc-lite-imported-geometry",
+    "--target",
+    "wasm32-unknown-unknown",
+    "--release"
+  ],
+  "rustflags": [
+    "-C",
+    "link-arg=--max-memory=4294967296",
+    "-C",
+    "link-arg=-zstack-size=1048576",
+    "-C",
+    "target-feature=-simd128"
+  ],
+  "wasm2jsArgs": [
+    "--all-features",
+    "-O",
+    "--deterministic"
+  ],
+  "wasm2jsSha256": "fb4bc51da37e8ea8917552fdcb6edf8e1b77e9081c220579b78c50c429b29f2a",
+  "wasm2jsVersion": "wasm2js version 124 (version_124-26-gcf756c929)",
+  "staticSha256": "a77b2a56a5b493ce8c4a529de57aba1ffbff4722ab7fb827125e48af47d8fc5b",
+  "staticBytes": 551049,
+  "wasmBytes": 77946,
+  "wasmSha256": "974da5f00773c6735d3326243f15aed99c3fc4e6b668c955e8f7f42d92a3fb85",
+  "sources": {
+    "Cargo.toml": "057a31be1ce5d039b27c4198872e1f78ea75805cb4875a895bd9ce8394a90aff",
+    "Cargo.lock": "e15ad2577a52aae93986401f7373252715e1d0b9a70c9b274537f9df7479c673",
+    ".cargo/config.toml": "648f6196c824ca8d5cb14f93105f57016d9c141fdf0c90c103b7c4250e87c679",
+    "scripts/build-imported-geometry.mjs": "d478770f082530f68c23e04ed0f6d42607b1a2424adfea731fbd25278fbcce0f",
+    "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+    "rust/imported-geometry/Cargo.toml": "3a2a53f16298199c8cf5460cbbb431d957eff6fbe5cc6c575456530514bd29ce",
+    "rust/imported-geometry/src/graph.rs": "bfdc608f8fb733c7e0b04946e92210dd0f089adb45393a07ec7ba8d506f829f0",
+    "rust/imported-geometry/src/graph_packet.rs": "ec7cd1d5730129a923454d6a19798e44eb1d26a4288f9b6354c3ba0d3f6c27a6",
+    "rust/imported-geometry/src/graph_packet_tests.rs": "a029e760319fc57ccd2274c2f463cf801c84693943d2b28b8f69d3d241868266",
+    "rust/imported-geometry/src/graph_tests.rs": "e65a36688c86e0c9dd65023f1b714988b1da95f87e723cd3789ac6089414a3b5",
+    "rust/imported-geometry/src/lib.rs": "9eda18cf92e82bb14ff04126e8e728c8d6a3dbda931def5aeb378dbefcac74a6",
+    "rust/imported-geometry/src/math.rs": "9dfed31365d5e021c1b8bd5321ad6309b9b8e7ad96827aade92441fd4c41b8eb",
+    "rust/imported-geometry/src/packet.rs": "8a1d36701bd9e19ea699002550c03d8139061f45bddb4b6793509ff26416e3d1",
+    "rust/imported-geometry/src/scene.rs": "8ffda89a6fea23e5ca0a90b0cdb37c1f8384fe78d5b310c879e131c19af7dc08",
+    "rust/imported-geometry/src/scene_tests.rs": "6ed08a793b22c323daa4ea41dfe4a812cef9437b1620cc06076e97c883139ee0",
+    "rust/imported-geometry/src/tests.rs": "71d7917ab049740d60a38bcc57af3bc6e791d788b5fd1f31dddcd7dd674d198a"
+  }
+}

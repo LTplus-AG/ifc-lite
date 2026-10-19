@@ -66,6 +66,8 @@ import { useIfcCache, getCached, deleteCached } from './useIfcCache.js';
 import { useIfcServer } from './useIfcServer.js';
 
 import { prepareGlbViewerModel } from './ingest/glbTextureValidation.js';
+import { prepareIfcxSources } from './ingest/ifcxComposition.js';
+import { publishIfcxLayers } from './ingest/ifcxLayerPublication.js';
 import { getMaxExpressId, getViewerSchemaVersion, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
 import { isLandXmlFileName } from './ingest/landXmlSniff.js';
 import { drapeIfGeoRaster, loadLandXmlModel } from './ingest/landXmlLoad.js';
@@ -468,7 +470,7 @@ export function useIfcLoader() {
       setProgress({ phase: 'Loading file', percent: 0 });
 
       const fileName = file.name;
-      const fileSize = file.size;
+      const fileSize = options?.ifcxSources?.reduce((size, source) => size + ('buffer' in source ? source.buffer.byteLength : source.size), 0) ?? file.size;
       const fileSizeMB = fileSize / (1024 * 1024);
       // LandXML finalizes before the full-buffer detector below.
       let format: ReturnType<typeof detectFormat> | NonNullable<ReturnType<typeof detectPointCloudFormat>> | 'landxml' = isLandXmlFileName(file.name)
@@ -674,6 +676,7 @@ export function useIfcLoader() {
         }
 
         updateModel(modelId, {
+          sourceContentHash,
           ifcDataStore: dataStore,
           landXmlDocument: patch?.landXmlDocument,
           sourceSchema: patch?.sourceSchema,
@@ -692,9 +695,12 @@ export function useIfcLoader() {
         modelCompletion?.settleModel();
       };
       // Point clouds stream from Blob; only their head is needed for detection.
-      const headBuf = await file.slice(0, 4096).arrayBuffer();
+      const fileReadStart = performance.now();
+      const preparedIfcx = options?.ifcxSources ? await prepareIfcxSources(options.ifcxSources, isStale) : undefined;
+      if (options?.ifcxSources && !preparedIfcx) return;
+      const headBuf = preparedIfcx ? preparedIfcx.buffers[0].buffer.slice(0, 4096) : await file.slice(0, 4096).arrayBuffer();
       if (isStale()) return;
-      const pointCloudFormat = detectPointCloudFormat(file.name, headBuf), landXmlCandidate = format === 'landxml';
+      const pointCloudFormat = preparedIfcx ? null : detectPointCloudFormat(file.name, headBuf), landXmlCandidate = format === 'landxml';
 
       if (landXmlCandidate && !pointCloudFormat) {
         // A .xml file is handed to the authoritative LandXML parser, which
@@ -723,16 +729,18 @@ export function useIfcLoader() {
       }
 
       // Point clouds retain the head buffer; other formats acquire source bytes.
-      const fileReadStart = performance.now();
       const acquired: AcquiredBuffer = pointCloudFormat
         ? { buffer: headBuf, view: new Uint8Array(headBuf), isShared: false }
-        : await acquireFileBuffer(file);
+        : preparedIfcx
+          ? { buffer: preparedIfcx.buffers[0].buffer, view: preparedIfcx.identity, isShared: false }
+          : await acquireFileBuffer(file);
+      if (isStale()) return;
       // Legacy APIs below require ArrayBuffer.
       let buffer: ArrayBuffer | SharedArrayBuffer = acquired.buffer;
       const fileReadMs = performance.now() - fileReadStart;
       trace.record('file.read', fileReadStart, fileReadStart + fileReadMs);
       // Raw pre-unwrap bytes, no Blob re-read (#6431); not awaited here (#7022).
-      if (!pointCloudFormat) placementIdentity = startLoadSourceIdentity(modelId, file, () => isStale(), acquired.view)
+      if (!pointCloudFormat) placementIdentity = preparedIfcx ? Promise.resolve(preparedIfcx.hash) : startLoadSourceIdentity(modelId, file, () => isStale(), acquired.view)
         .finally(() => trace.milestone('placement.identityReady'));
       console.log(
         `[useIfc] File: ${file.name}, size: ${fileSizeMB.toFixed(2)}MB` +
@@ -747,14 +755,16 @@ export function useIfcLoader() {
         // Preserve ArrayBuffer zero-copy; copy SAB at this legacy API boundary.
         const zipInput = buffer instanceof ArrayBuffer ? buffer : countCopy('source.zipInput', new Uint8Array(buffer).slice().buffer);
         const zipContents = await trace.span('source.unwrap', () => unwrapIfcZipWithResources(zipInput));
+        if (isStale()) return;
         buffer = zipContents.model;
         // Retain original archive paths/encoded bytes alongside shared bitmaps.
         appearanceLoad = modelAppearanceAssets.begin(modelId);
         textureBitmaps = await appearanceLoad.decode(zipContents);
+        if (isStale()) return;
       }
 
-      loadedBufferByteLength = buffer.byteLength;
-      const sourceKeyFingerprint = trace.span('source.fingerprint', () => computeSourceFingerprint(new Uint8Array(buffer)));
+      loadedBufferByteLength = preparedIfcx?.buffers.reduce((sum, source) => sum + source.buffer.byteLength, 0) ?? buffer.byteLength;
+      const sourceKeyFingerprint = trace.span('source.fingerprint', () => computeSourceFingerprint(preparedIfcx?.identity ?? new Uint8Array(buffer)));
       modelSourceIdentity = `${file.name}:${sourceKeyFingerprint.hex}`;
       if (target.kind === 'primary') updateModel(modelId, { sourceFingerprint: modelSourceIdentity });
       format = pointCloudFormat ?? detectFormat(buffer instanceof ArrayBuffer ? buffer : countCopy('source.detectFormat', new Uint8Array(buffer).slice().buffer));
@@ -977,16 +987,8 @@ export function useIfcLoader() {
         setGeometryStreamingActive(false);
 
         try {
-          const result = await parseIfcxViewerModel(arrayBuffer, setProgress);
-          // Stale-guard-after-await sweep: `parseIfcxViewerModel` is a real
-          // (client-side) parse — the only await in this branch — and a
-          // newer load (or model removal) may have superseded this one while
-          // it ran. The point-cloud branch immediately above unwinds
-          // cleanly on the same check (renderer asset removed, counts
-          // cleared); IFCX acquires no renderer/registry resource before
-          // this point, so there is nothing to unwind — write nothing,
-          // exactly like the cache branch's `if (cacheOutcome === 'stale')
-          // return;`.
+          const result = await parseIfcxViewerModel(arrayBuffer, progress => { if (isCurrent()) setProgress(progress); }, { sources: preparedIfcx?.buffers });
+          // Parsing and finalization may outlive a replacement or cancellation.
           if (isStale()) {
             console.warn(`[useIfc] IFCX finalize ABORTED: stale session (mine=${currentSession}, current=${loadSessionRef.current}) — result discarded`);
             return;
@@ -997,14 +999,12 @@ export function useIfcLoader() {
           }
           await finalizeModel(result.dataStore, result.geometryResult, result.schemaVersion, { loadPath: 'wasm' });
           if (isStale()) return;
+          if (result.ifcxLayers) publishIfcxLayers(modelId, result.ifcxLayers, result.pathToId);
           setProgress({ phase: 'Complete', percent: 100 });
           captureModelLoaded({ format: 'ifcx', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, result.geometryResult), trace);
           setLoading(false);
           return;
         } catch (err: unknown) {
-          // Same guard on the error path (#stale-guard sweep): a superseded
-          // load's OWN parse failure must not clobber the newer load's model
-          // record with an `error` state it never had.
           if (isStale()) {
             console.warn(`[useIfc] IFCX parse failed on an already-stale session (mine=${currentSession}, current=${loadSessionRef.current}) — error discarded:`, err);
             return;

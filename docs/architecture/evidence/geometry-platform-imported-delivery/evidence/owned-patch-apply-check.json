@@ -1,0 +1,16 @@
+[
+  {
+    "parent": "86adb595c0c6429e1a0c423b962f9b153a1d2d0a",
+    "label": "exact-requested-parent",
+    "exit_code": 0,
+    "output": "",
+    "method": "temporary Git index only; no checkout or source mutation"
+  },
+  {
+    "parent": "d625617742",
+    "label": "integration-parent-d625",
+    "exit_code": 0,
+    "output": "",
+    "method": "temporary Git index only; no checkout or source mutation"
+  }
+]

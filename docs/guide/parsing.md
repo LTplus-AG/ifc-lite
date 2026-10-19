@@ -380,12 +380,28 @@ console.log(`Schema: ${result.schemaVersion}`);  // 'IFC5'
 console.log(`Parse time: ${result.parseTime}ms`);
 ```
 
+The public `extractGeometry(composed, pathToId)` and
+`extractPointClouds(composed, pathToId)` helpers remain synchronous and need no
+initialization. Their bundled static JavaScript kernel is generated from the
+same Rust source as the native and WebAssembly imported-geometry entry. The
+static target requires neither runtime WebAssembly compilation nor dynamic
+code generation. Package installation and TypeScript checks require no Rust
+toolchain; rebuilding the generated kernel is a separate repository operation.
+
+Composition, property extraction, image resolution, and point-cloud codecs stay
+with the IFCX adapter. Rust requests reached raw source, owns the geometry walk
+and operation order, and assembles the existing mesh and point-cloud fields.
+Compatibility output preserves the existing Float32 staging, Z-up to Y-up
+conversion, topology order, normal handling, and per-occurrence appearance.
+Original numeric mesh and point definitions and local matrices remain separate
+from their displayed buffers inside the import owner.
+
 ### IFC5 Features
 
 | Feature | Description |
 |---------|-------------|
 | **ECS Composition** | Entities composed from components (attributes) |
-| **USD Geometry** | Pre-tessellated meshes (no WASM triangulation needed) |
+| **USD Geometry** | Composed tessellation evaluated by the shared Rust imported-geometry program |
 | **Layer Semantics** | Multiple nodes at same path merge (later overrides) |
 | **Namespace Attributes** | Properties prefixed with namespace (e.g., `bsi::ifc::prop::`) |
 | **JSON Format** | Human-readable, streamable |

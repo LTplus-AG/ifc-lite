@@ -1073,6 +1073,17 @@ Binary cache format for fast model loading: `BinaryCacheWriter`, `BinaryCacheRea
 
 Point cloud decoders and types: `decodePcd`, LAS/LAZ support including `LasStreamingSource` for chunked streaming, and `decompressLZF`.
 
+`decodeIfcxPointSource(attributes)` returns an `IfcxPointSource` with owned
+`Float64Array` positions and optional normalized RGB colors, `pointCount`,
+`sourcePrecision` (`f32` or `f64`) and `sourceEncoding`. It preserves decoded
+PCD ASCII/float64 and inline numeric precision before coordinate processing;
+base64 float32 channels are widened without recovering lost precision. Its
+precedence is PCD, inline array, then base64, matching `decodeIfcxPointAttribute`.
+Unsupported attribute maps return `null`; selected malformed payloads throw.
+The source has no transforms, normals or bounds. Existing chunk decoders keep
+float32 staging, offset subtraction and their existing bounding-box behavior.
+
+
 ## @ifc-lite/solar
 
 Solar position, sunrise/sunset, and 3D sun-path geometry: `sunPosition`, `sunTimes`, and the sun-path dome builders (day paths, hourly analemmas). Renderer-agnostic.

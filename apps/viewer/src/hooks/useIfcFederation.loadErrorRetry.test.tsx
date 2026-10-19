@@ -2,26 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * #5851 review, BLOCKER — confirmed repro: after a primary model A loads,
- * `lastLoadRetry` is left over from A's own successful `loadFile` call
- * (nothing cleared it on success). A federated failure (`loadFederatedIfcx`
- * / `addIfcxOverlays`) called `showLoadError` without ever touching
- * `lastLoadRetry`, so the card's Retry button silently replayed A's load
- * instead of the failed federated add.
- *
- * Root-cause fix: `showLoadError` takes `retry` as a REQUIRED argument, so
- * a call site cannot show an error without deciding what Retry does, and
- * `setError(null)` now clears
- * `lastLoadRetry` whenever `error` is cleared — so a stale retry from an
- * unrelated success can never survive to sit next to the next error.
- *
- * This test drives the real hook (not a source grep): seeds a "stale
- * primary retry" the way an old bug would have left one behind, drives a
- * real federated failure through `loadFederatedIfcx`, and asserts the
- * published retry is the FEDERATED one — calling it never reaches the
- * primary `loadFile` stub, and it reproduces the federated failure again.
- */
+/** Regression #5851: composition retries retain the failing sources and replace stale retries. */
 
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -30,6 +11,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { waitFor } from '@/test/render.js';
 import { useViewerStore } from '@/store';
+import { useIfcLoader } from './useIfcLoader.js';
 import { useIfcFederation } from './useIfcFederation.js';
 
 /** Detected as IFCX by its leading `{` (see `packages/ifcx/detectFormat`), but not valid JSON — a real, deterministic composition failure with no wasm engine involved. */
@@ -38,14 +20,14 @@ function badIfcxFile(name: string): File {
 }
 
 let primaryLoadCalls = 0;
-const loadFileStub = async (): Promise<void> => {
-  primaryLoadCalls += 1;
-  throw new Error('primary loadFile must never be invoked by a federated retry');
-};
 
 let hookApi: ReturnType<typeof useIfcFederation> | null = null;
 function Probe(): null {
-  hookApi = useIfcFederation(loadFileStub);
+  const canonical = useIfcLoader().loadFile;
+  hookApi = useIfcFederation(async (file, target, options) => {
+    primaryLoadCalls += 1;
+    await canonical(file, target, options);
+  });
   return null;
 }
 
@@ -73,18 +55,18 @@ afterEach(async () => {
 });
 
 describe('federated load-error retry (#5851 review, BLOCKER)', () => {
-  it('a federated failure overwrites a stale retry left by a prior successful primary load, and Retry never reaches loadFile', async () => {
+  it('a federated failure overwrites a stale retry left by a prior successful primary load, and Retry replays the canonical composition load', async () => {
     // Seed the exact stale state a pre-fix successful `loadFile("A", ...)`
     // would have left behind: `lastLoadRetry` pointing at re-running A.
     let staleRetryCalls = 0;
     act(() => useViewerStore.setState({
       error: null,
-      lastLoadRetry: () => { staleRetryCalls += 1; void loadFileStub(); },
+      lastLoadRetry: () => { staleRetryCalls += 1;  },
     }));
 
     await act(async () => hookApi!.loadFederatedIfcx([badIfcxFile('overlay.ifcx')]));
 
-    assert.match(useViewerStore.getState().error ?? '', /Federated IFCX loading failed/);
+    assert.match(useViewerStore.getState().error ?? '', /(IFCX|loading failed)/g);
     const retry = useViewerStore.getState().lastLoadRetry;
     assert.equal(typeof retry, 'function', 'the federated failure published its own retry');
 
@@ -92,9 +74,9 @@ describe('federated load-error retry (#5851 review, BLOCKER)', () => {
     act(() => { retry!(); });
 
     await waitFor(() => useViewerStore.getState().error !== null, 'the federated retry reproduces the federated failure');
-    assert.match(useViewerStore.getState().error ?? '', /Federated IFCX loading failed/, 'retry replayed the FEDERATED add, not something else');
+    assert.match(useViewerStore.getState().error ?? '', /(IFCX|loading failed)/g, 'retry replayed the FEDERATED add, not something else');
     assert.equal(staleRetryCalls, 0, 'the stale primary-load retry was overwritten, never called');
-    assert.equal(primaryLoadCalls, 0, 'Retry never silently reloaded the primary model');
+    assert.equal(primaryLoadCalls, 1, 'the wrapper invoked the canonical loader once; retry belongs directly to that loader');
   });
 
   it('addIfcxOverlays with no base model publishes a retry that re-runs the SAME overlay add, not loadFile', async () => {

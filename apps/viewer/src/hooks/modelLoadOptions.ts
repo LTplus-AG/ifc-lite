@@ -3,9 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { TessellationQuality } from '@ifc-lite/geometry';
+import type { IfcxSource } from './ingest/ifcxComposition.js';
 import type { LandXmlGeorefAssumptions } from './ingest/landXmlGeorefAssumptions.js';
 
 export interface ModelLoadOptions {
+  /** IFCX composition order: weakest first, strongest last. Read by the load session. */
+  ifcxSources?: readonly IfcxSource[];
   sourceHandle?: FileSystemFileHandle;
   workflowOwner?: string;
   // Auto-retry-at-lower-detail (resource-retry.ts): when a resource-limit

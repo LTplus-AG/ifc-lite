@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { CompactEntityIndex, parseIfcx, createSyntheticDataStore, attachDataStoreAccessors, contiguousSourceBytes, type IfcDataStore, type IfcSourceBytes, type IfcStoreData, type PointCloudExtraction } from '@ifc-lite/parser';
+import { CompactEntityIndex, parseIfcx, parseFederatedIfcx, createSyntheticDataStore, attachDataStoreAccessors, contiguousSourceBytes, type IfcDataStore, type IfcSourceBytes, type IfcStoreData, type PointCloudExtraction } from '@ifc-lite/parser';
 import { type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
 import { parseGLB, parseGLBToMeshData, parseGLBImageResources } from '@ifc-lite/cache';
+import { attachIfcxComposition, type IfcxBuffer } from './ifcxComposition.js';
 import type { SchemaVersion } from '../../store/types.js';
 import { calculateMeshBounds, createCoordinateInfo, normalizeColor } from '../../utils/localParsingUtils.js';
 
@@ -31,6 +32,7 @@ export interface ViewerModelPayload {
   /** IFCX path ↔ expressId maps (only present for IFCX-parsed models). */
   pathToId?: Map<string, number>;
   idToPath?: Map<number, string>;
+  ifcxLayers?: Awaited<ReturnType<typeof parseFederatedIfcx>>['layerStack'];
 }
 
 export interface ParseIfcxOptions {
@@ -40,6 +42,7 @@ export interface ParseIfcxOptions {
    * Without this, geometry-less IFCX throws `overlay-only-ifcx`.
    */
   allowEmptyGeometry?: boolean;
+  sources?: IfcxBuffer[];
 }
 
 export function getViewerSchemaVersion(dataStore: IfcDataStore | null): SchemaVersion {
@@ -205,14 +208,11 @@ export async function parseIfcxViewerModel(
   onProgress?: (progress: { phase: string; percent: number }) => void,
   opts?: ParseIfcxOptions,
 ): Promise<ViewerModelPayload> {
-  const ifcxResult = await parseIfcx(buffer, {
-    onProgress: (progress) => {
-      onProgress?.({
-        phase: `IFCX ${progress.phase}`,
-        percent: 10 + (progress.percent * 0.8),
-      });
-    },
+  const progress = (progress: { phase: string; percent: number }) => onProgress?.({
+    phase: `IFCX ${progress.phase}`, percent: 10 + progress.percent * 0.8,
   });
+  const composition = opts?.sources ? await parseFederatedIfcx(opts.sources, { onProgress: progress }) : undefined;
+  const ifcxResult = composition ?? await parseIfcx(buffer, { onProgress: progress });
 
   const meshes = convertIfcxMeshes(ifcxResult.meshes);
   const pointClouds = convertIfcxPointClouds(ifcxResult.pointClouds ?? []);
@@ -221,6 +221,7 @@ export async function parseIfcxViewerModel(
   // samples) still represent a renderable model on their own.
   if (
     !opts?.allowEmptyGeometry &&
+    !opts?.sources &&
     meshes.length === 0 &&
     pointClouds.length === 0 &&
     ifcxResult.entityCount > 0
@@ -249,7 +250,7 @@ export async function parseIfcxViewerModel(
     bounds.max.z = Math.max(bounds.max.z, max[2]);
   }
   return {
-    dataStore: buildIfcxDataStore(ifcxResult, buffer),
+    dataStore: attachIfcxComposition(buildIfcxDataStore(ifcxResult, buffer), composition, opts?.sources),
     geometryResult: {
       meshes,
       pointClouds,
@@ -260,6 +261,7 @@ export async function parseIfcxViewerModel(
     schemaVersion: 'IFC5',
     pathToId: ifcxResult.pathToId,
     idToPath: ifcxResult.idToPath,
+    ifcxLayers: composition?.layerStack,
   };
 }
 

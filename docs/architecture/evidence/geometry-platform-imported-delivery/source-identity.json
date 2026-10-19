@@ -1,0 +1,16 @@
+{
+  "requested_parent": "86adb595c0c6429e1a0c423b962f9b153a1d2d0a",
+  "integration_parent_before": "d625617742870554c68a15901bf80a123611bf61",
+  "child_after": "82a80ff7b013283e997eb5083f1b054baa318222",
+  "child_tree": "61d2a578ae9e6c3456b0fe62731d7e6f1144ef7e",
+  "branch": "t3/ifcx-usd-rust-geometry",
+  "checkout": "/home/louistrue/.t3/worktrees/ifc-lite/t3-c65dd2fa",
+  "working_tree_clean": true,
+  "owned_incremental_patch_sha256": "0fdee1272de78307bf137d9474ddda05a614866c2bff561b73c872c667df0d1c",
+  "owned_path_count": 65,
+  "files_manifest_sha256": "4e5c7359d612a0d3f2741d54f8d96051a50860812c78de7f32f5e71aabbe1f0b",
+  "generated_artifact_source": "da65d2b974",
+  "generated_artifact_is_current": false,
+  "publication": false,
+  "inherited_source_fix_in_git_branch": "cccbc85887 (excluded from owned patch; parent already owns correction)"
+}

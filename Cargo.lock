@@ -1557,6 +1557,7 @@ dependencies = [
  "i_overlay",
  "ifc-lite-clash",
  "ifc-lite-core",
+ "ifc-lite-imported-geometry",
  "ifc-lite-testkit",
  "insta",
  "jpeg-decoder",
@@ -1588,6 +1589,10 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
 ]
+
+[[package]]
+name = "ifc-lite-imported-geometry"
+version = "21.4.0"
 
 [[package]]
 name = "ifc-lite-landxml"

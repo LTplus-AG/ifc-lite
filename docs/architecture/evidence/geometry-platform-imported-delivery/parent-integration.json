@@ -1,0 +1,19 @@
+{
+  "parent_before": "5e84bbf3fc",
+  "source": "82a80ff7b013283e997eb5083f1b054baa318222",
+  "patch_sha256": "0fdee1272de78307bf137d9474ddda05a614866c2bff561b73c872c667df0d1c",
+  "verified_git_blobs": 65,
+  "integration": "owned incremental patch applied except shared Cargo.lock; targeted offline cargo update -p ifc-lite-geometry added imported crate with zero external version updates",
+  "generated_artifact_verifier": {
+    "command": "node scripts/build-imported-geometry.mjs --verify",
+    "exit": 1,
+    "result": "Imported geometry Rust sources changed: regenerate with pnpm build:imported-geometry under fleet admission"
+  },
+  "generated_dts": "not regenerated",
+  "runtime_tests": "UNRUN on current source",
+  "cutover": "HOLD",
+  "python_lock_and_workflow": "Python lock legitimately refreshed after browser/imported dependency assembly; locked offline full metadata resolves imported/runtime dependencies; wheel workflow runtime path filters preserved",
+  "whitespace": "Non-generated diff check PASS; historical stale wasm2js generator output has trailing whitespace preserved byte-identically pending actual regeneration",
+  "module_size": "PASS no new over400",
+  "refwalk": "PASS 0unguarded;12 existing fanout reviews"
+}

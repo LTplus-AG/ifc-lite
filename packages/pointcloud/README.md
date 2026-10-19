@@ -29,6 +29,30 @@ if (chunk) {
 }
 ```
 
+For native import or coordinate processing, `decodeIfcxPointSource(attributes)`
+returns authored numeric channels before float32 staging: owned `Float64Array`
+`positions` and optional normalized RGB `colors`, plus `pointCount`,
+`sourcePrecision` and `sourceEncoding`. It uses the same PCD > inline array >
+base64 precedence and validation as `decodeIfcxPointAttribute`, returning `null`
+when no supported attribute is present. It applies no offsets, transforms,
+normals or bounds. ASCII PCD and inline numbers retain JavaScript number
+precision; binary and compressed PCD retain decoded float64 values. The
+`sourcePrecision` is `f32` only when all encoded coordinates are float32
+(including `points::base64`); otherwise it is `f64` (also for integer PCD
+coordinates decoded as numbers). `sourceEncoding` is `pcd-ascii`, `pcd-binary`,
+`pcd-binary_compressed`, `points-array` or `points-base64`. Widening an f32
+source does not recover precision already lost by its author.
+
+```ts
+import { decodeIfcxPointSource } from '@ifc-lite/pointcloud';
+
+declare const attributes: ReadonlyMap<string, unknown>;
+const source = decodeIfcxPointSource(attributes);
+if (source) {
+  console.log(source.positions, source.sourcePrecision, source.sourceEncoding);
+}
+```
+
 `DecodedPointChunk.normals` carries source-supplied oriented normals as
 row-aligned `nx, ny, nz` float triples when a decoder provides them. PLY
 supports complete `nx`/`ny`/`nz` properties in ASCII and binary files and

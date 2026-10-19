@@ -10,13 +10,16 @@
  * Returns null if the node carries none of the supported attributes.
  */
 
-import { decodePcd } from './formats/pcd.js';
+import { decodePcd, decodePcdSource } from './formats/pcd.js';
 import {
   decodePointsArray,
+  decodePointsArraySource,
   decodePointsBase64,
+  decodePointsBase64Source,
   type PointsArrayAttribute,
   type PointsBase64Attribute,
 } from './formats/ifcx-points.js';
+import type { IfcxPointSource } from './point-source.js';
 import type { DecodedPointChunk } from './types.js';
 
 export const POINTCLOUD_ATTR = {
@@ -31,17 +34,31 @@ export const POINTCLOUD_ATTR_KEYS: ReadonlySet<string> = new Set(Object.values(P
 export function decodeIfcxPointAttribute(
   attributes: ReadonlyMap<string, unknown>
 ): DecodedPointChunk | null {
+  return decodeAttribute(attributes, decodePcd, decodePointsArray, decodePointsBase64);
+}
+
+/** Same precedence and errors as decodeIfcxPointAttribute, before float32 staging. */
+export function decodeIfcxPointSource(attributes: ReadonlyMap<string, unknown>): IfcxPointSource | null {
+  return decodeAttribute(attributes, decodePcdSource, decodePointsArraySource, decodePointsBase64Source);
+}
+
+function decodeAttribute<T>(
+  attributes: ReadonlyMap<string, unknown>,
+  pcdDecoder: (bytes: Uint8Array) => T,
+  arrayDecoder: (attr: PointsArrayAttribute) => T,
+  base64Decoder: (attr: PointsBase64Attribute) => T,
+): T | null {
   const pcd = attributes.get(POINTCLOUD_ATTR.PCD_BASE64);
   if (typeof pcd === 'string' && pcd.length > 0) {
-    return decodePcd(base64ToBytes(pcd));
+    return pcdDecoder(base64ToBytes(pcd));
   }
   const arr = attributes.get(POINTCLOUD_ATTR.POINTS_ARRAY);
   if (arr && typeof arr === 'object') {
-    return decodePointsArray(arr as PointsArrayAttribute);
+    return arrayDecoder(arr as PointsArrayAttribute);
   }
   const b64 = attributes.get(POINTCLOUD_ATTR.POINTS_BASE64);
   if (b64 && typeof b64 === 'object') {
-    return decodePointsBase64(b64 as PointsBase64Attribute);
+    return base64Decoder(b64 as PointsBase64Attribute);
   }
   return null;
 }

@@ -63,6 +63,7 @@ import { resolve, dirname } from 'node:path';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
+import { useIfcLoader } from './useIfcLoader.js';
 import { useIfcFederation } from './useIfcFederation.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
@@ -80,12 +81,9 @@ function toFile(path: string, name: string): File {
 // ─── Behavioural harness ──────────────────────────────────────────────────
 
 let hookApi: ReturnType<typeof useIfcFederation> | null = null;
-const loadFile = async (): Promise<void> => {
-  throw new Error('loadFile should not be invoked by these federated-IFCX paths');
-};
 
 function Probe(): null {
-  hookApi = useIfcFederation(loadFile);
+  hookApi = useIfcFederation(useIfcLoader().loadFile);
   return null;
 }
 

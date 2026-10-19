@@ -1,0 +1,114 @@
+{
+  "status": "incomplete: source-only migration; current generated artifact stale and final runtime checks blocked by fleet admission",
+  "current_source": "82a80ff7b013283e997eb5083f1b054baa318222",
+  "receipts": {
+    "raw-point-codec": {
+      "job": "3d818ec0-1f31-49db-8e79-3faae2a2d52a",
+      "original_receipt": "/home/louistrue/build-workers/worker-state/jobs/3d818ec0-1f31-49db-8e79-3faae2a2d52a/receipt.json",
+      "receipt": "/tmp/ifclite-ifcx-owned-program-implementation-round1/evidence/raw-point-codec-receipt.json",
+      "sha256": "2735705505401f7944b5475cf1afdb13cb71e89c87b45b12f645194b7008a2b2",
+      "source_commit": "3eb50ecde50075b4cd2d089766c881db9fe26bda",
+      "state": "completed",
+      "exit_code": 0,
+      "error": null
+    },
+    "precursor-generation-native-clippy": {
+      "job": "744ed59c-ff39-4707-ac96-807d8f618e9e",
+      "original_receipt": "/home/louistrue/build-workers/worker-state/jobs/744ed59c-ff39-4707-ac96-807d8f618e9e/receipt.json",
+      "receipt": "/tmp/ifclite-ifcx-owned-program-implementation-round1/evidence/precursor-generation-native-clippy-receipt.json",
+      "sha256": "7d0fee034f31db2e039ea585af42d3cc56b4acecb42174c024adde442eb98c1d",
+      "source_commit": "da65d2b974e1c99f57402c15e904ab4661b97348",
+      "state": "failed",
+      "exit_code": 101,
+      "error": null
+    },
+    "final-kernel-admission-refusal": {
+      "job": "11d451f8-22b9-4fdf-bd75-93107bc769b9",
+      "original_receipt": "/home/louistrue/build-workers/worker-state/jobs/11d451f8-22b9-4fdf-bd75-93107bc769b9/receipt.json",
+      "receipt": "/tmp/ifclite-ifcx-owned-program-implementation-round1/evidence/final-kernel-admission-refusal-receipt.json",
+      "sha256": "278e16a41a6aac741e7f7d423aaac97b742fcc6eac9603d7e1783e1771a300b1",
+      "source_commit": "12718a11463277518288a10a3b78a6d2ebebedd6",
+      "state": "failed",
+      "exit_code": 1,
+      "error": "host capacity guard refused admission"
+    },
+    "viewer-heap-exhaustion": {
+      "job": "cb60a0c6-a683-4e70-89eb-40a6fb59e7bd",
+      "original_receipt": "/home/louistrue/build-workers/worker-state/jobs/cb60a0c6-a683-4e70-89eb-40a6fb59e7bd/receipt.json",
+      "receipt": "/tmp/ifclite-ifcx-owned-program-implementation-round1/evidence/viewer-heap-exhaustion-receipt.json",
+      "sha256": "ea1aff6de199eddf0433649b599aa89ad8b73c8cba75cf8f1ea10827f446f9d7",
+      "source_commit": "7da22decbd34fc063b62340cbcdda01b0cc7830d",
+      "state": "failed",
+      "exit_code": 134,
+      "error": null
+    },
+    "viewer-admission-refusal": {
+      "job": "228de050-d4ae-4cee-b371-450d0a381089",
+      "original_receipt": "/home/louistrue/build-workers/worker-state/jobs/228de050-d4ae-4cee-b371-450d0a381089/receipt.json",
+      "receipt": "/tmp/ifclite-ifcx-owned-program-implementation-round1/evidence/viewer-admission-refusal-receipt.json",
+      "sha256": "93677e577685c979ee6bfe31d86470ae87ae1548397fed760191d2c184430d5d",
+      "source_commit": "6834ce9806ecc0823e87c52764125f354a98e1fd",
+      "state": "failed",
+      "exit_code": 1,
+      "error": "host capacity guard refused admission"
+    }
+  },
+  "exact_parent_baseline": {
+    "source": "86adb595c0c6429e1a0c423b962f9b153a1d2d0a",
+    "path": "/tmp/ifclite-ifcx-owned-program-implementation-round1/base-consumer",
+    "scenes_captured": 7,
+    "direct_cases_captured": 8,
+    "candidate_compared": false,
+    "evidence_read_only": true
+  },
+  "precursor_only": {
+    "generation_source": "da65d2b974",
+    "native_tests_passed": 22,
+    "overall_job_passed": false,
+    "clippy": "4 structural warnings denied; fixes source-only afterwards",
+    "wasm_bytes": 77946,
+    "static_bytes": 551049,
+    "initial_factory_memory_bytes": 1179648,
+    "small_static_no_webassembly_no_eval_math_probe": true,
+    "full_importer_or_browser_qualified": false
+  },
+  "source_metadata_checks": {
+    "module_size": "passed",
+    "artifact_verify": {
+      "exit_code": 1,
+      "result": "expected failure: historical artifact source differs from current Rust/ABI; do not bypass"
+    },
+    "non_generated_source_whitespace": {
+      "exit_code": 0,
+      "historical_generated_static_excluded": true
+    },
+    "owned_patch_application": "passed temporary-index checks on exact parent86ad and integration parentd625; no checkout/source mutation"
+  },
+  "final_source_unrun": [
+    "generated-static/WASM regeneration and current-source byte parity",
+    "canonical full-WASM runtime and committed d.ts regeneration",
+    "API snapshot refresh for actual generated imported binding",
+    "root pnpm typecheck/test and mounted viewer regressions",
+    "cargo test --workspace and cargo clippy --workspace --all-targets -- -D warnings",
+    "complete-field exact-parent/candidate real IFCX comparison",
+    "actual current USD stage/export and IFCX export roundtrips",
+    "fresh no-WebAssembly/no-eval package import and actual browser/worker paths",
+    "ABI32 array/packet/live-heap capacity preservation",
+    "paired whole-worker-pool timing, initialization, artifact and memory performance"
+  ],
+  "scope_not_completed": true,
+  "support_loss_authorized": false,
+  "foreign_jobs_and_unknown_request_preserved": true,
+  "unknown_request_not_resubmitted": "auto-5049ad4327104721832dd92ea474724d",
+  "source_review_rounds": [
+    {
+      "reviewed_source": "1f57e299de609596b6ec14975ca6742d44f70075",
+      "round": 2,
+      "result": "three additional ownership findings fixed in82a80ff7b0; no runtime or third-review pass claimed"
+    },
+    {
+      "round": 1,
+      "result": "UTF16 identity, cycle-stub seed order and repeated raw definition findings fixed in626e4a0b9f; second review confirmed fixes source-coherent"
+    }
+  ]
+}

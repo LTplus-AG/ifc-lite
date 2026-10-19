@@ -142,6 +142,38 @@ PR stack are still required. The current mixed-controller ancestry cap must also
 be reconciled with preservation of existing valid nesting. Historical passes
 never qualify these later integrated layers.
 
+## Integrated validation checkpoint after unary continuation
+
+Source checkpoint `eee60ea6c8` includes sealed native/browser plane receipts,
+absolute replacement frames for clip dependencies, and unary halfspace work
+through the original Boolean continuation. AgreementFlag selects the occupied
+negative side when true and positive side when false for both operations.
+Intersection is newly admitted retained behavior; the existing exact planar
+Difference behavior is the preservation oracle. Difference returning Empty stays
+held before original-reply consumption until its compatibility policy is
+authenticated. Bounded halfspaces, unbounded Union and paired layers remain open.
+
+The following evidence supersedes earlier execution-status observations only
+for its named source; it does not qualify subsequent edits.
+
+| Boundary | Implementation and actual evidence | Required next result |
+| --- | --- | --- |
+| Integrated Rust | Source `68da7b8a96`: 6,383 passed, one failed, 47 ignored; strict Clippy also failed. The failed regression had already verified reply backing/refund, then incorrectly tried to publish an outstanding ticket after destroying its reply. Fixture repair `f70ac2afcf` preserves the outstanding-work guard. Whitespace-only repair `4397b575c4` fixes the Clippy finding. Full receipt/output: [workspace-68da-terminal](evidence/geometry-platform-integrated-validation/workspace-68da-terminal/summary.json). | Corrected workspace and strict all-target Clippy must finish successfully. Run `501b9566-c29c-48de-ac87-b0c91332d6ee` pins `a338ee7988`; its final result is pending. |
+| Shared retained walk | The `68da7b8a96` run passes the mapped and styled 256-occurrence diamond witnesses after domain-entry debit repair. A separate exact/retained 42-node Boolean-spine witness is committed at `b94afb6f28`. | Neither witness discharges the remaining mixed-controller stack and accepted-domain preservation work. The spine's logical admission is not retained SDK arithmetic. |
+| Native SDK boundary | Source `0c71cfc276` builds/links and passes four of five CTests, then rejects the copied host before Boolean work because the context fixture changed the BRep zone after topology creation. [Terminal evidence](evidence/geometry-platform-integrated-validation/native-0c71-terminal/summary.json) binds that failure. Repair `504b0ea02b` preserves every SDK-created zone and all strict validators/oracles. | Execute the repaired boundary. Its newer independent copy-observability sixth CTest (`03f8e4f109`) is also unrun. No paired opcode/capability is enabled. |
+| Actual Rust SDK consumers | `qualify.sh native --rust-consumers` binds the executable from that build and runs every runtime/processing Cargo target. CTest and Rust verdicts are collected independently; either failure fails the command. | An admitted actual run, including model admission, leases, affine/Boolean/clip chains and lifecycle cases. SDK-absent workspace test successes cannot substitute. |
+| Openings and final fidelity | Retained opening continuation source `719a7e4b2a` is an isolated delivery, not integrated here. Independent review found incorrect no-related Empty metadata and an unused diagnostics allocation before resource admission; correction and closure review are pending. | Integrate reviewed corrections, then execute native and actual Worker witnesses. Grouping-policy preservation, eligible layers, custom processors, persistent faces, appearance and final output remain held. |
+| Generated artifacts | The current imported-artifact verifier rejects the source fingerprint; canonical WASM declarations also still need regeneration. | Regenerate under fleet admission, verify repeat generation and run installed/browser consumers with their exact artifacts. Do not edit provenance or generated declarations by hand. |
+
+Independent reviewable deliveries remain distinct from platform qualification:
+[PR #7946](https://github.com/LTplus-AG/ifc-lite/pull/7946) carries exact-kernel
+test-budget isolation with source `6c7edd4d4c` workspace/Clippy evidence under
+`a0-6c7-qualified`; [PR #7940](https://github.com/LTplus-AG/ifc-lite/pull/7940)
+carries private runtime packaging repairs, with 42 focused tests on delivered
+source `56371d384e`. Required CI and review readiness are separate host evidence.
+Neither delivery activates retained evaluation or establishes a performance
+verdict for the platform.
+
 ## Release control and evidence
 
 Use the existing capability inventory as the preservation ledger. For every row,

@@ -23,7 +23,7 @@ impl GeometryProgram {
 
             }
         }
-        if let Some(boolean)=&mut self.boolean {publish(boolean.program.take_reports(),router);}
+        if let Some(boolean)=&mut self.boolean {boolean.cancel_with_reports(router);}
         if let Some(cache)=&mut self.cache {cache.cancel_with_reports(router);}
         if let Some(mapping)=&mut self.mapping {mapping.cancel_with_reports(router);}
         if let Some(product)=&mut self.product {product.cancel_with_reports(router);}

@@ -57,7 +57,7 @@ fn original_cancellation_before_accept_wins_over_absent_or_foreign_ambient_accou
         let mut execution = original.scope(|| execution(&context, &mut decoder, &router));
         let issued = execution.issue_next(&worker, &mut decoder, &router).unwrap().unwrap();
         let receipt = issued.execute(&mut worker, 0.001, 15., MeshLimits::default()).unwrap();
-        assert!((worker.volume(receipt.realization().solid(), 1e-8).unwrap() - 24.).abs() < 1e-6);
+        assert!((worker.volume(receipt.realization().expect("construction result").solid(), 1e-8).unwrap() - 24.).abs() < 1e-6);
         original.cancel();
         let foreign = account();
         let rejected = if foreign_scope {
@@ -66,7 +66,7 @@ fn original_cancellation_before_accept_wins_over_absent_or_foreign_ambient_accou
         assert!(matches!(rejected.reason, RetainedExecutionError::Stopped(ProgramStop::Cancelled)));
         assert_eq!(execution.discharged_count(), 0);
         assert!(execution.pending.as_ref().unwrap().reply.is_some(), "no original engine reply consumed");
-        assert!(rejected.work.realization().validate_live().is_ok(), "intact rejection still owns actual geometry");
+        assert!(rejected.work.realization().expect("construction result").validate_live().is_ok(), "intact rejection still owns actual geometry");
         assert_eq!(foreign.usage(), resource::Usage::default());
         foreign.scope(|| resource::charge(Cost { work: 1, ..Cost::default() }).unwrap());
         assert_eq!(foreign.usage().work, 1, "ambient authority restored after rejection");
@@ -84,7 +84,7 @@ fn unaccounted_retained_handoff_excludes_later_cancelled_scope_and_keeps_actual_
     foreign.scope(|| {
         let issued = execution.issue_next(&worker, &mut decoder, &router).unwrap().unwrap();
         let receipt = issued.execute(&mut worker, 0.001, 15., MeshLimits::default()).unwrap();
-        assert!((worker.volume(receipt.realization().solid(), 1e-8).unwrap() - 24.).abs() < 1e-6);
+        assert!((worker.volume(receipt.realization().expect("construction result").solid(), 1e-8).unwrap() - 24.).abs() < 1e-6);
         execution.accept(receipt, &mut decoder, &router).unwrap();
         assert!(execution.issue_next(&worker, &mut decoder, &router).unwrap().is_none());
         assert_eq!(resource::check_current(), Err(ProgramStop::Cancelled));
@@ -200,7 +200,7 @@ fn actual_pending_and_accepted_geometry_retain_original_resident_permit_until_ow
     drop(original);
     assert!(matches!(pool.admit(limits).unwrap(), RequestAdmission::WaitingForCapacity));
     let receipt = issued.execute(&mut worker, 0.001, 15., MeshLimits::default()).unwrap();
-    assert!((worker.volume(receipt.realization().solid(), 1e-8).unwrap() - 24.).abs() < 1e-6);
+    assert!((worker.volume(receipt.realization().expect("construction result").solid(), 1e-8).unwrap() - 24.).abs() < 1e-6);
     execution.accept(receipt, &mut decoder, &router).unwrap();
     assert_eq!(pool.resident_bytes(), 1_000_000, "accepted ledger still owns the request permit");
     drop(execution);

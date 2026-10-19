@@ -41,9 +41,9 @@ fn common_retained_reached_construction_resumes_same_request_and_accumulates_dis
             .admit_retained_with_inputs(request, &router, &mut decoder, None, None)
             .unwrap();
         assert_eq!(program.request().err(), Some(ProgramError::Outstanding));
-        if let Some(operation) = operation {
+        for operation in operation {
             let source = operation
-                .construction()
+                .construction().expect("construction packet")
                 .extrusion()
                 .expect("original analytic source");
             assert_eq!(source.source.depth, Some(3.000000000123));
@@ -85,7 +85,7 @@ fn common_retained_later_unsupported_branch_refuses_whole_traversal() {
         let (reply, operation) = program
             .admit_retained_with_inputs(request, &router, &mut decoder, None, None)
             .unwrap();
-        constructions += usize::from(operation.is_some());
+        constructions += operation.len();
         program.accept(reply, &router).unwrap();
     }
     assert_eq!(
@@ -130,7 +130,7 @@ fn retained_numerical_rejects_foreign_execution_owners_without_consuming_recipe(
         }
         let (reply, operation) = program.admit_retained_with_inputs(request, &router,
             &mut decoder, None, None).unwrap();
-        operations += usize::from(operation.is_some());
+        operations += operation.len();
         program.accept(reply, &router).unwrap();
     }
     assert_eq!(operations, 2);

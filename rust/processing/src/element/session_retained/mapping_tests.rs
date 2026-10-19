@@ -33,7 +33,7 @@ fn p1_native_reached_cache_reuses_one_immutable_realization_for_distinct_placed_
     let mut execution=execution(&context,&mut decoder,&router);
     let issued=execution.issue_next(&worker,&mut decoder,&router).unwrap().unwrap();
     let receipt=issued.execute(&mut worker,0.001,15.,MeshLimits::default()).unwrap();
-    let solid=receipt.realization().solid();
+    let solid=receipt.realization().expect("construction result").solid();
     assert!((worker.volume(solid,1e-8).unwrap()-24.).abs()<1e-6);
     execution.accept(receipt,&mut decoder,&router).unwrap();
     assert!(execution.issue_next(&worker,&mut decoder,&router).unwrap().is_none());
@@ -47,7 +47,7 @@ fn p1_native_reached_cache_reuses_one_immutable_realization_for_distinct_placed_
     for (actual,expected) in [(a,[11.,21.,34.,1.]),(b,[7.,21.,34.,1.])] {
         for axis in 0..4 {assert!((actual[axis]-expected[axis]).abs()<1e-10);}
     }
-    assert_eq!(execution.ledger[0].receipt.realization().solid(),solid);
+    assert_eq!(execution.ledger[0].receipt.solid(),solid);
     assert!((worker.volume(solid,1e-8).unwrap()-24.).abs()<1e-6,
         "logical occurrence placement never mutates shared source BRep");
 }
@@ -69,7 +69,7 @@ fn p1_mapped_foreign_receipt_and_expired_original_source_reject_before_take() {
     let rejected=first.accept(receipt_b,&mut decoder_a,&router_a).unwrap_err();
     assert!(first.pending.as_ref().unwrap().reply.is_some());
     assert!(foreign.pending.as_ref().unwrap().reply.is_some());
-    assert!(rejected.work.realization().validate_live().is_ok());
+    assert!(rejected.work.realization().expect("construction result").validate_live().is_ok());
     assert_ne!(worker.incarnation(),0,"foreign receipt cannot retire captured worker");
     foreign.accept(rejected.work,&mut decoder_b,&router_b).unwrap();
     model_a.invalidate_source();

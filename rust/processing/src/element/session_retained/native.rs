@@ -19,7 +19,7 @@ impl RetainedCancellation {
 pub struct IssuedCommonConstruction {
     pub(super) ticket: Arc<()>,
     pub(super) stage: Arc<AtomicU8>,
-    pub(super) request: RetainedRequest,
+    pub(super) operations: Vec<super::issuance::IssuedRetainedOperation>,
     pub(super) lifecycle: super::super::model_context::ProductionLifecycle,
     pub(super) cancellation: RetainedCancellation,
     pub(super) resources: OwnedResourceContext,
@@ -58,8 +58,26 @@ impl IssuedCommonConstruction {
             self.cancellation.cancel();
             return Err(RetainedExecutionError::Stopped(stop));
         }
-        let realization = worker
-            .evaluate_retained_extrusion(self.request, chord_metres, angle_degrees, limits);
+        let mut realizations = Vec::new();
+        match resources.reserve_headers(&mut realizations, self.operations.len()) {
+            Ok(permit)=>permit.retain(),
+            Err(stop)=>{self.cancellation.cancel();return Err(RetainedExecutionError::Stopped(stop));}
+        }
+        for operation in self.operations {
+            if let Err(stop)=resources.check() {self.cancellation.cancel();return Err(RetainedExecutionError::Stopped(stop));}
+            // Admit both the boxed sealed header and its shared receipt before
+            // allocating them. Numerical buffers/SDK memory retain separate limits.
+            let permit=match ifc_lite_geometry::resource::charge(ifc_lite_geometry::resource::Cost {
+                live_bytes: CommonRetainedRealization::header_bytes(),..Default::default()
+            }) {
+                Ok(permit)=>permit,
+                Err(stop)=>{self.cancellation.cancel();return Err(RetainedExecutionError::Stopped(stop));}
+            };
+            let value = operation.execute(worker, chord_metres, angle_degrees, limits, resources.clone())?;
+            value.validate_live().map_err(protocol)?;
+            permit.retain();
+            realizations.push(Arc::new(value));
+        }
         if self.lifecycle.validate().is_err() {
             self.cancellation.cancel();
             return Err(RetainedExecutionError::Source);
@@ -71,11 +89,9 @@ impl IssuedCommonConstruction {
         let work = CompletedCommonConstruction {
             ticket: self.ticket,
             stage: self.stage.clone(),
-            realization: realization.map_err(|error| RetainedExecutionError::Runtime(error.to_string()))?,
+            realizations,
         };
-        work.realization
-            .validate_live()
-            .map_err(|error| RetainedExecutionError::Runtime(error.to_string()))?;
+        for value in &work.realizations { value.validate_live().map_err(protocol)?; }
         self.stage
             .compare_exchange(EXECUTING, DELIVERED, Ordering::AcqRel, Ordering::Acquire)
             .map_err(protocol)?;
@@ -87,11 +103,12 @@ impl IssuedCommonConstruction {
 pub struct CompletedCommonConstruction {
     pub(super) ticket: Arc<()>,
     pub(super) stage: Arc<AtomicU8>,
-    pub(super) realization: RetainedRealization,
+    pub(super) realizations: Vec<Arc<CommonRetainedRealization>>,
 }
 impl CompletedCommonConstruction {
-    pub fn realization(&self) -> &RetainedRealization {
-        &self.realization
+    pub fn realizations(&self) -> &[Arc<CommonRetainedRealization>] { &self.realizations }
+    pub fn realization(&self) -> Option<&RetainedRealization> {
+        self.realizations.first().and_then(|v|v.construction())
     }
 }
 #[derive(Debug)]

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Intact original transaction/receipt validation before any linear take.
 use super::*;
+use super::value::RealizationKind;
+type InputBinding<'a> = (&'a ifc_lite_geometry::program::LogicalRetainedValue,&'a Arc<CommonRetainedRealization>);
 impl RetainedProductExecution {
     pub(super) fn validate_intact(
         &self,
@@ -41,29 +43,30 @@ impl RetainedProductExecution {
         self.state
             .validate_reply(reply, decoder, router)
             .map_err(protocol)?;
-        let (operation,request,document)=pending.construction();
-        let completion = work.realization.completion();
-        if !request.same_admission(completion.request()) {
-            return Err(protocol("retained construction admission mismatch"));
+        if pending.operations.len() != work.realizations.len() {
+            return Err(protocol("retained operation result count mismatch"));
         }
-        work.realization
-            .validate_live()
-            .map_err(|error| RetainedExecutionError::Runtime(error.to_string()))?;
-        let live = work.realization.owner().incarnation().unwrap_or(0);
-        if live != pending.cancellation.owner.incarnation().unwrap_or(0) {
-            return Err(protocol("retained runtime owner mismatch"));
-        }
-        document.validate_retained_completion(completion, live)
-            .map_err(protocol)?;
-        if completion.source_from_evaluation != *operation.value().source_from_evaluation()
-            || completion.evaluation_from_source
-                != *operation.value().evaluation_from_source()
-            || self
-                .ledger
-                .iter()
-                .any(|entry| &entry.definition == operation.value().definition())
-        {
-            return Err(protocol("retained frame or slot mismatch"));
+        for (index, (operation, realization)) in pending.operations.iter().zip(&work.realizations).enumerate() {
+            realization.validate_live().map_err(protocol)?;
+            let live = realization.owner().incarnation().unwrap_or(0);
+            if live == 0 || live != pending.cancellation.owner.incarnation().unwrap_or(0) {
+                return Err(protocol("retained runtime owner mismatch"));
+            }
+            operation.validate(realization, live)?;
+            for (value,input) in operation.inputs().into_iter().flatten() {
+                self.resources.with_scope(|| ifc_lite_geometry::resource::charge(ifc_lite_geometry::resource::Cost {
+                    work:self.ledger.len() as u64,..Default::default() }))
+                    .map_err(RetainedExecutionError::Stopped)?.retain();
+                if !self.ledger.iter().any(|entry| entry.operation.value().definition()==value.definition()
+                    && Arc::ptr_eq(&entry.receipt,input)) {
+                    return Err(protocol("retained logical input identity mismatch"));
+                }
+            }
+            let definition = operation.expected().value().definition();
+            if self.ledger.iter().any(|entry| entry.operation.value().definition() == definition)
+                || pending.operations[..index].iter().any(|prior| prior.expected().value().definition() == definition) {
+                return Err(protocol("retained duplicate output identity"));
+            }
         }
         Ok(())
     }
@@ -79,7 +82,7 @@ impl RetainedProductExecution {
         if let Err(reason) = self.validate_intact(&work, decoder, router) {
             return Err(Box::new(RejectedCommonConstruction { reason, work }));
         }
-        let permit = match self.resources.reserve_headers(&mut self.ledger, 1) {
+        let permit = match self.resources.reserve_headers(&mut self.ledger, work.realizations.len()) {
             Ok(permit) => permit,
             Err(stop) => return Err(Box::new(RejectedCommonConstruction {
                 reason: RetainedExecutionError::Stopped(stop), work,
@@ -99,6 +102,16 @@ impl RetainedProductExecution {
             return Err(Box::new(RejectedCommonConstruction {
                 reason: RetainedExecutionError::Stopped(stop), work,
             }));
+        }
+        // Actual semantic Empty classification resumes the original common step.
+        // Validate every binding before taking the linear reply or publishing a value.
+        let pending=self.pending.as_mut().expect("validated retained transaction");
+        for (operation,realization) in pending.operations.iter().zip(&work.realizations) {
+            let RealizationKind::Boolean(value)=realization.kind() else {continue};
+            if let Err(error)=pending.reply.as_mut().expect("original common reply")
+                .bind_retained_outcome(operation.expected().value().slot(),value.is_empty()) {
+                return Err(Box::new(RejectedCommonConstruction {reason:protocol(error),work}));
+            }
         }
         if self
             .pending
@@ -143,11 +156,72 @@ impl RetainedProductExecution {
             Ordering::AcqRel,
             Ordering::Acquire,
         );
-        self.ledger.push(DischargedValue {
-            definition: pending.construction().0.value().definition().clone(),
-            receipt: work,
-        });
-        self.pending = None;
+        let pending=self.pending.take().expect("accepted retained transaction");
+        for (operation, receipt) in pending.operations.into_iter().zip(work.realizations) {
+            self.ledger.push(DischargedValue {operation:operation.into_expected(),receipt});
+        }
+        Ok(())
+    }
+}
+
+impl PendingRetainedOperation {
+    fn inputs(&self) -> [Option<InputBinding<'_>>;2] {
+        use ifc_lite_geometry::program::RetainedOperationKind;
+        match self {
+            Self::Construction {..}=>[None,None],
+            Self::Affine {expected,input,..}=>match expected.kind() {
+                RetainedOperationKind::Affine {input:value,..}=>[Some((value,input)),None],_=>[None,None],
+            },
+            Self::Boolean {expected,inputs}=>match expected.kind() {
+                RetainedOperationKind::Boolean {inputs:values,..}=>[Some((&values[0],&inputs[0])),Some((&values[1],&inputs[1]))],_=>[None,None],
+            },
+        }
+    }
+    fn validate(&self, realization: &CommonRetainedRealization, live: u64)
+        -> Result<(), RetainedExecutionError> {
+        use ifc_lite_geometry::program::RetainedOperationKind;
+        if !matches!(self,Self::Construction {..})
+            && self.expected().value().definition() != &ifc_lite_geometry::program::LogicalRetainedDefinition::Operation(self.expected().value().slot()) {
+            return Err(protocol("retained operation output identity mismatch"));
+        }
+        match (self, realization.kind()) {
+            (Self::Construction {expected,request,document}, RealizationKind::Construction(value)) => {
+                let completion = value.completion();
+                if !request.same_admission(completion.request()) {
+                    return Err(protocol("retained construction admission mismatch"));
+                }
+                document.validate_retained_completion(completion, live).map_err(protocol)?;
+                if completion.source_from_evaluation != *expected.value().source_from_evaluation()
+                    || completion.evaluation_from_source != *expected.value().evaluation_from_source() {
+                    return Err(protocol("retained construction frame mismatch"));
+                }
+            }
+            (Self::Affine {expected,input,matrix}, RealizationKind::Affine(value)) => {
+                let RetainedOperationKind::Affine {input:logical,matrix:issued}=expected.kind() else {return Err(protocol("retained affine packet kind mismatch"))};
+                if matrix != issued || matrix != logical.object_frame()
+                    || expected.value().object_frame() != &ifc_lite_geometry::math::mat4::col_major_array(&nalgebra::Matrix4::identity()) {
+                    return Err(protocol("retained affine logical frame mismatch"));
+                }
+                input.validate_live().map_err(protocol)?;
+                if value.operation_identity().input != input.solid()
+                    || value.operation_identity().column_major != *matrix {
+                    return Err(protocol("retained affine input/matrix mismatch"));
+                }
+            }
+            (Self::Boolean {expected,inputs}, RealizationKind::Boolean(value)) => {
+                let RetainedOperationKind::Boolean {inputs:values,operation} = expected.kind() else {unreachable!()};
+                for input in inputs {input.validate_live().map_err(protocol)?;}
+                let identity = value.operation_identity();
+                if identity.left != inputs[0].solid() || identity.right != inputs[1].solid()
+                    || identity.operation != *operation
+                    || identity.left_world_from_evaluation != *values[0].object_frame()
+                    || identity.right_world_from_evaluation != *values[1].object_frame()
+                    || value.world_from_evaluation() != expected.value().object_frame() {
+                    return Err(protocol("retained Boolean ordered inputs/operation/frames mismatch"));
+                }
+            }
+            _=>return Err(protocol("retained operation kind mismatch")),
+        }
         Ok(())
     }
 }

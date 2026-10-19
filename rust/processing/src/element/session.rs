@@ -137,8 +137,8 @@ impl ProductState {
 
     pub(super) fn execute_admission(&mut self, request: WorkRequest, ctx: &MeshProductionContext<'_>,
         decoder: &mut EntityDecoder, router: &GeometryRouter)
-        -> Result<(WorkReply, Option<ifc_lite_geometry::program::RetainedPlanOperation>), WorkError> {
-        let mut retained_operation = None;
+        -> Result<(WorkReply, Vec<ifc_lite_geometry::program::RetainedPlanOperation>), WorkError> {
+        let mut retained_operation = Vec::new();
         assert!(self.scopes.is_some(), "aborted product execution cannot execute");
         self.protocol.before_execute(request)?;
         self.admit_owner(decoder, router)?;

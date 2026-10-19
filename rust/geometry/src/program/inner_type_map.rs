@@ -46,6 +46,10 @@ impl TypeMapReadyWork {
     }
 }
 impl TypeMapReply {
+    pub(super) fn child_reply_mut(&mut self) -> Option<&mut ProgramReply> {
+        match &mut self.0 { Reply::Child(reply)=>Some(reply), _=>None }
+    }
+
     pub(super) fn wrap_child_reply(reply: ProgramReply) -> Self { Self(Reply::Child(Box::new(reply))) }
     pub(super) fn tag(&self) -> u16 { match &self.0 {
         Reply::Decoded(_)=>0, Reply::Representation(_)=>1, Reply::Items(_)=>2, Reply::Texture(_)=>3,

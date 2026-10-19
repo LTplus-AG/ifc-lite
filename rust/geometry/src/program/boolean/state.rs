@@ -16,9 +16,13 @@ impl Walk {
     pub fn new(current: DecodedEntity, depth: u32) -> Self {
         Self { current, depth, spine: Vec::new(), seen: HashSet::new() }
     }
+    pub fn retained_steps(self, value: crate::program::retained::LogicalRetainedValue) -> Steps {
+        Steps {solo_step:self.spine.len()==1,nodes:self.spine,depth:self.depth,
+            mesh:Mesh::default(),empty_recorded:false,retained:Some(value)}
+    }
     pub fn steps(self, (mesh, empty_recorded): Value, batched: bool) -> Steps {
         Steps { solo_step: self.spine.len() == 1 && !batched,
-            nodes: self.spine, depth: self.depth, mesh, empty_recorded }
+            nodes: self.spine, depth: self.depth, mesh, empty_recorded, retained:None }
     }
 }
 
@@ -28,6 +32,7 @@ pub(super) struct Steps {
     pub solo_step: bool,
     pub mesh: Mesh,
     pub empty_recorded: bool,
+    pub retained: Option<crate::program::retained::LogicalRetainedValue>,
 }
 impl Steps {
     pub fn accept(&mut self, (mesh, dropped): Value) {
@@ -38,6 +43,7 @@ impl Steps {
 
 pub(super) enum Frame {
     Boolean(DecodedEntity, u32),
+    RetainedChild(Box<crate::program::GeometryProgram>),
     #[cfg(test)]
     BeginShells { shell_kind: ifc_lite_core::IfcType, operand: DecodedEntity, op: BoolOp, outer: Mesh },
     Csg { entity: DecodedEntity, depth: u32, guarded: bool },
@@ -51,6 +57,7 @@ pub(super) enum Frame {
     AfterBatch { walk: Walk, cutters: Vec<DecodedEntity>, mark: usize },
     Steps(Steps),
     AfterStep { steps: Steps, operator: BoolOp, host: Mesh },
+    RetainedAfterStep { steps: Steps, operator: BoolOp, host: crate::program::retained::LogicalRetainedValue },
     PlaneSource { steps: Steps, host: Mesh, operand: DecodedEntity },
     PrismSource { steps: Steps, host: Mesh, operand: DecodedEntity,
         plane: crate::processors::boolean::half_space_plan::HalfSpacePlan },

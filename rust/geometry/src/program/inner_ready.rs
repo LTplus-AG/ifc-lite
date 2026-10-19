@@ -21,7 +21,7 @@ enum ReadyPayload {
     Layers(super::inner_layers::LayerReadyWork),
     Nested(Envelope,Box<ReadyOperation>),
 }
-enum Envelope { Item, Mapping, Cache, Voids, Opening, Product, TypeMap, Layers }
+enum Envelope { Boolean, Item, Mapping, Cache, Voids, Opening, Product, TypeMap, Layers }
 impl ReadyOperation {
     pub(crate) fn execute(self)->ProgramReply {
         let value=match self.payload {
@@ -69,8 +69,12 @@ impl GeometryProgram {
             if let Some(ready)=state.take_ready(){let tag=0x5000+u32::from(ready.tag());(ReadyPayload::Layers(ready),tag,None)}
             else {let ready=state.take_child_ready()?.ok_or(ProgramError::StaleRequest)?;(ReadyPayload::Nested(Envelope::Layers,Box::new(ready)),0x5001,None)}
         } else if let Some(state)=&mut self.boolean {
-            let emitter=state.emitter();
-            (ReadyPayload::Boolean(state.take_ready().ok_or(ProgramError::StaleRequest)?),2,emitter)
+            if let Some(ready)=state.take_child_ready()? {
+                (ReadyPayload::Nested(Envelope::Boolean,Box::new(ready)),11,state.emitter())
+            } else {
+                let emitter=state.emitter();
+                (ReadyPayload::Boolean(state.take_ready().ok_or(ProgramError::StaleRequest)?),2,emitter)
+            }
         } else if matches!(self.step,Some(ItemStep::Child(_))) {
             let Some(ItemStep::Child(child))=self.step.as_mut() else{unreachable!()};
             let ready=child.program.take_ready(child.program.pending_request().expect("requested item child"))?;
@@ -89,6 +93,7 @@ impl GeometryProgram {
 impl Envelope {
     fn wrap(self, reply: ProgramReply) -> ReplyValue {
         match self {
+                    Envelope::Boolean=>ReplyValue::BooleanChild(Box::new(reply)),
                     Envelope::Product=>ReplyValue::Product(super::inner_product_adapter::ProductAdapterReply::wrap_child_reply(reply)),
                     Envelope::TypeMap=>ReplyValue::TypeMap(super::inner_type_map::TypeMapReply::wrap_child_reply(reply)),
                     Envelope::Layers=>ReplyValue::Layers(super::inner_layers::LayerReply::wrap_child_reply(reply)),
@@ -102,20 +107,29 @@ impl Envelope {
 }
 impl ReadyOperation {
     /// Logical plan admission only. This reply certifies no remote execution.
-    pub(super) fn admit_retained(self) -> Result<(ProgramReply, Option<super::retained::RetainedPlanOperation>), ProgramError> {
+    pub(super) fn admit_retained(self) -> Result<(ProgramReply, Vec<super::retained::RetainedPlanOperation>), ProgramError> {
         let (value, operation) = match self.payload {
             ReadyPayload::Item(ready) => {
-                let operation = ready.retained_operation().ok_or_else(super::retained::unsupported)?.clone();
-                let value = ready.admit_retained().map_err(|_| ProgramError::UnsupportedRetained)?;
-                (ReplyValue::Item(ItemStep::Complete(value)), Some(operation))
+                let (value,operation) = ready.admit_retained().map_err(|_| ProgramError::UnsupportedRetained)?;
+                let mut operations=Vec::new();
+                crate::resource::reserve_headers(&mut operations,1).map_err(|_| ProgramError::UnsupportedRetained)?.retain();
+                operations.push(operation);
+                (ReplyValue::Item(ItemStep::Complete(value)), operations)
+            }
+            ReadyPayload::Boolean(ready) => {
+                let (reply,operations)=ready.admit_retained().map_err(|_| ProgramError::UnsupportedRetained)?;
+                (ReplyValue::BooleanNumerical(reply),operations)
             }
             ReadyPayload::Nested(envelope, ready) => {
                 let (reply, operation) = ready.admit_retained()?;
                 (envelope.wrap(reply), operation)
             }
-            ReadyPayload::Mapping(ready) => (ReplyValue::Mapping(ready.execute()), None),
-            ReadyPayload::TypeMap(ready) => (ReplyValue::TypeMap(ready.execute()), None),
-            ReadyPayload::Product(ready) if ready.is_retained_control() => (ReplyValue::Product(ready.execute()), None),
+            ReadyPayload::Mapping(ready) => {
+                let (reply, operations) = ready.admit_retained().map_err(|_| ProgramError::UnsupportedRetained)?;
+                (ReplyValue::Mapping(reply), operations)
+            },
+            ReadyPayload::TypeMap(ready) => (ReplyValue::TypeMap(ready.execute()), Vec::new()),
+            ReadyPayload::Product(ready) if ready.is_retained_control() => (ReplyValue::Product(ready.execute()), Vec::new()),
             _ => return Err(ProgramError::UnsupportedRetained),
         };
         Ok((ProgramReply { request: self.request, value, emitter: self.emitter }, operation))
@@ -128,14 +142,14 @@ impl GeometryProgram {
         decoder: &mut ifc_lite_core::EntityDecoder<'_>,
         textures: Option<&rustc_hash::FxHashMap<u32, crate::ResolvedTextureMap>>,
         voids: Option<&rustc_hash::FxHashMap<u32, Vec<u32>>>)
-        -> Result<(ProgramReply, Option<super::retained::RetainedPlanOperation>), ProgramError> {
+        -> Result<(ProgramReply, Vec<super::retained::RetainedPlanOperation>), ProgramError> {
         if self.retained.is_none() { return Err(ProgramError::UnsupportedRetained) }
         if request.stage() == ProgramStage::Numerical {
             self.before_execute(request)?;
             self.validate_execution_inputs(router, decoder)?;
             self.take_ready(request)?.admit_retained()
         } else {
-            self.execute_with_inputs(request, router, decoder, textures, voids).map(|reply| (reply, None))
+            self.execute_with_inputs(request, router, decoder, textures, voids).map(|reply| (reply, Vec::new()))
         }
     }
 }

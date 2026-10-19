@@ -69,7 +69,7 @@ mod session_inner;
 #[cfg(not(target_arch = "wasm32"))]
 mod session_retained;
 #[cfg(not(target_arch = "wasm32"))]
-pub use session_retained::{RetainedProductExecution, RetainedExecutionError, IssuedCommonConstruction,
+pub use session_retained::{CommonRetainedRealization, RetainedProductExecution, RetainedExecutionError, IssuedCommonConstruction,
     CompletedCommonConstruction, RejectedCommonConstruction, RetainedCancellation};
 mod owned_session;
 mod accounted_session;

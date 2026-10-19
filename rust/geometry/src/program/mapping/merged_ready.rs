@@ -20,6 +20,19 @@ impl MergedReady {
     pub(crate) fn reply_tag(&self)->u8 {match &self.0 {
         Numerical::Merge {..}=>20,Numerical::Finish(_)=>21,Numerical::Clone(_)=>22,Numerical::Place(_)=>23,
     }}
+    pub(crate) fn admit_retained(self) -> Result<(MergedReply, Vec<crate::program::RetainedPlanOperation>)> {
+        let mut reply = self.execute();
+        let mut operations = Vec::new();
+        if let Reply::Ready(Ok((MappedValues::Retained(values), _))) = &mut reply.0 {
+            for value in values {
+                if let Some(operation) = value.bake()? {
+                    resource::reserve_headers(&mut operations, 1)?.retain();
+                    operations.push(operation);
+                }
+            }
+        }
+        Ok((reply, operations))
+    }
     pub(crate) fn execute(self)->MergedReply {
         MergedReply(match self.0 {
             Numerical::Clone(mesh)=>Reply::Cloned((||->Result<Mesh> {

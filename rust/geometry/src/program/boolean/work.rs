@@ -208,6 +208,7 @@ impl Execute for KeptSide {
 /// The complete set of numerical operations admitted by Boolean control.
 /// No variant contains an entity, decoder, callback or source authority.
 pub(super) enum Ready {
+    Retained(crate::program::retained::RetainedPlanOperation),
     Constructor(OwnedConstructor),
     Plane(Plane),
     Kept(KeptSide),
@@ -220,8 +221,9 @@ pub(super) enum Ready {
     Voids(Voids),
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Kind { Constructor, Plane, Kept, Prism, Single, Solid, SolidAdmission, Group, Shell, Voids }
+pub(super) enum Kind { Retained, Constructor, Plane, Kept, Prism, Single, Solid, SolidAdmission, Group, Shell, Voids }
 pub(super) enum Reply {
+    Retained(Result<crate::program::retained::LogicalRetainedValue>),
     Constructor(Completed<OwnedConstructor>),
     Plane(Completed<Plane>),
     Kept(Completed<KeptSide>),
@@ -235,7 +237,7 @@ pub(super) enum Reply {
 }
 impl Ready {
     pub fn kind(&self) -> Kind {
-        match self { Self::Constructor(_) => Kind::Constructor, Self::Plane(_) => Kind::Plane,
+        match self { Self::Retained(_)=>Kind::Retained, Self::Constructor(_) => Kind::Constructor, Self::Plane(_) => Kind::Plane,
             Self::Kept(_) => Kind::Kept, Self::Prism(_) => Kind::Prism,
             Self::Single(_) => Kind::Single, Self::Solid(_) => Kind::Solid,
             Self::SolidAdmission(_) => Kind::SolidAdmission,
@@ -243,6 +245,7 @@ impl Ready {
     }
     pub fn execute(self, target: FailureSink) -> Reply {
         match self {
+            Self::Retained(_)=>Reply::Retained(Err(crate::Error::geometry("retained Boolean requires explicit runtime admission"))),
             Self::Constructor(op) => Reply::Constructor(op.execute_owned(target)),
             Self::Plane(op) => Reply::Plane(op.execute_owned(target)),
             Self::Kept(op) => Reply::Kept(op.execute_owned(target)),
@@ -258,7 +261,7 @@ impl Ready {
 }
 impl Reply {
     pub fn kind(&self) -> Kind {
-        match self { Self::Constructor(_) => Kind::Constructor, Self::Plane(_) => Kind::Plane,
+        match self { Self::Retained(_)=>Kind::Retained, Self::Constructor(_) => Kind::Constructor, Self::Plane(_) => Kind::Plane,
             Self::Kept(_) => Kind::Kept, Self::Prism(_) => Kind::Prism,
             Self::Single(_) => Kind::Single, Self::Solid(_) => Kind::Solid,
             Self::SolidAdmission(_) => Kind::SolidAdmission,
@@ -266,6 +269,8 @@ impl Reply {
     }
 }
 pub(super) enum Continuation {
+    RetainedOperand,
+    RetainedStep(super::state::Steps),
     Operand { operand: ifc_lite_core::DecodedEntity, op: BoolOp },
     Step(super::state::Steps),
     SolidAdmission(super::state::Steps),

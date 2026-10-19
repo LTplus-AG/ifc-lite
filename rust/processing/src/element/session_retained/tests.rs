@@ -61,7 +61,7 @@ fn common_retained_actual_construction_is_consumed_and_original_product_resumes(
     let receipt = issued
         .execute(&mut worker, 0.001, 15., MeshLimits::default())
         .unwrap();
-    assert!((worker.volume(receipt.realization().solid(), 1e-8).unwrap() - 24.).abs() < 1e-6);
+    assert!((worker.volume(receipt.realization().expect("construction result").solid(), 1e-8).unwrap() - 24.).abs() < 1e-6);
     assert_eq!(execution.pending.as_ref().unwrap().outer.inner, common);
     execution.accept(receipt, &mut decoder, &router).unwrap();
     assert_eq!(execution.discharged_count(), 1);
@@ -93,7 +93,7 @@ fn common_retained_foreign_expired_receiver_wrong_stage_and_owner_return_intact_
     let receipt = issued
         .execute(&mut worker, 0.001, 15., MeshLimits::default())
         .unwrap();
-    let solid = receipt.realization().solid();
+    let solid = receipt.realization().expect("construction result").solid();
     let (foreign_model, foreign_context) = self::context();
     let mut foreign_decoder = foreign_context.source().unwrap().decoder();
     let foreign_router = self::router(&mut foreign_decoder);
@@ -102,7 +102,7 @@ fn common_retained_foreign_expired_receiver_wrong_stage_and_owner_return_intact_
     let rejected = foreign
         .accept(receipt, &mut foreign_decoder, &foreign_router)
         .unwrap_err();
-    assert_eq!(rejected.work.realization().solid(), solid);
+    assert_eq!(rejected.work.realization().expect("construction result").solid(), solid);
     assert_ne!(
         worker.incarnation(),
         0,
@@ -127,7 +127,7 @@ fn common_retained_foreign_expired_receiver_wrong_stage_and_owner_return_intact_
     let rejected = owner
         .accept(rejected.work, &mut decoder, &foreign_router)
         .unwrap_err();
-    assert_eq!(rejected.work.realization().solid(), solid);
+    assert_eq!(rejected.work.realization().expect("construction result").solid(), solid);
     owner.accept(rejected.work, &mut decoder, &router).unwrap();
     assert_eq!(owner.discharged_count(), 1);
 }
@@ -146,7 +146,7 @@ fn common_retained_own_source_expiry_retires_captured_owner_and_preserves_buffer
         .execute(&mut worker, 0.001, 15., MeshLimits::default())
         .unwrap();
     let positions = work
-        .realization()
+        .realization().expect("construction result")
         .completion()
         .tessellation
         .positions
@@ -158,7 +158,7 @@ fn common_retained_own_source_expiry_retires_captured_owner_and_preserves_buffer
     assert_eq!(
         rejected
             .work
-            .realization()
+            .realization().expect("construction result")
             .completion()
             .tessellation
             .positions,
@@ -212,20 +212,20 @@ fn common_retained_wrong_original_admission_rejects_before_consumption_then_dupl
             worker.incarnation(),
         )
         .unwrap();
-    let PendingRetainedOperation::Construction {request, ..} = &mut execution.pending.as_mut().unwrap().operation;
+    let PendingRetainedOperation::Construction {request, ..} = &mut execution.pending.as_mut().unwrap().operations[0] else {panic!("construction")};
     *request = wrong_request;
     let rejected = execution.accept(work, &mut decoder, &router).unwrap_err();
     assert!(execution.pending.as_ref().unwrap().reply.is_some());
     assert_eq!(execution.discharged_count(), 0);
-    let PendingRetainedOperation::Construction {request, ..} = &mut execution.pending.as_mut().unwrap().operation;
+    let PendingRetainedOperation::Construction {request, ..} = &mut execution.pending.as_mut().unwrap().operations[0] else {panic!("construction")};
     *request = original_request.clone();
     // Internal hostile replay uses a second actual SDK result, never forged buffers.
     let duplicate = CompletedCommonConstruction {
         ticket: rejected.work.ticket.clone(),
         stage: rejected.work.stage.clone(),
-        realization: worker
+        realizations: vec![Arc::new(CommonRetainedRealization::new(super::value::RealizationKind::Construction(Box::new(worker
             .evaluate_retained_extrusion(original_request, 0.001, 15., MeshLimits::default())
-            .unwrap(),
+            .unwrap())),execution.resources.clone()))],
     };
     execution
         .accept(rejected.work, &mut decoder, &router)
@@ -239,7 +239,7 @@ fn common_retained_wrong_original_admission_rejects_before_consumption_then_dupl
         0,
         "duplicate rejected intact before retirement"
     );
-    assert!(rejected.work.realization().validate_live().is_ok());
+    assert!(rejected.work.realization().expect("construction result").validate_live().is_ok());
 }
 
 #[test]
@@ -260,7 +260,7 @@ fn common_retained_repeated_source_occurrences_keep_independent_sealed_objects()
         let work = issued
             .execute(&mut worker, 0.001, 15., MeshLimits::default())
             .unwrap();
-        solids.push(work.realization().solid());
+        solids.push(work.realization().expect("construction result").solid());
         execution.accept(work, &mut decoder, &router).unwrap();
     }
     assert_ne!(solids[0], solids[1]);
@@ -295,7 +295,7 @@ fn common_retained_ordinary_product_acceptor_cannot_consume_logical_plan_admissi
         .execute_admission(request, &context.borrowed(), &mut decoder, &router)
         .unwrap();
     assert!(
-        operation.is_none(),
+        operation.is_empty(),
         "first request is common representation admission"
     );
     let rejected = execution
@@ -330,20 +330,20 @@ fn common_retained_released_actual_object_is_rejected_with_intact_receipt() {
     let work = issued
         .execute(&mut worker, 0.001, 15., MeshLimits::default())
         .unwrap();
-    let solid = work.realization().solid();
+    let solid = work.realization().expect("construction result").solid();
     let positions = work
-        .realization()
+        .realization().expect("construction result")
         .completion()
         .tessellation
         .positions
         .clone();
     worker.release(solid).unwrap();
     let rejected = execution.accept(work, &mut decoder, &router).unwrap_err();
-    assert_eq!(rejected.work.realization().solid(), solid);
+    assert_eq!(rejected.work.realization().expect("construction result").solid(), solid);
     assert_eq!(
         rejected
             .work
-            .realization()
+            .realization().expect("construction result")
             .completion()
             .tessellation
             .positions,
@@ -383,9 +383,9 @@ fn common_retained_entry_uses_actual_source_root_instead_of_caller_edited_snapsh
             .state
             .execute_admission(request, &context.borrowed(), &mut decoder, &router)
             .unwrap();
-        if let Some(operation) = operation {
+        if let Some(operation) = operation.first() {
             assert_eq!(
-                operation.construction().solid_id(),
+                operation.construction().expect("construction packet").solid_id(),
                 13,
                 "first construction came from the authenticated IFC root"
             );

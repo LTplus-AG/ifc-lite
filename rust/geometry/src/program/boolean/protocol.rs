@@ -12,14 +12,17 @@ static NEXT_PROGRAM: AtomicU64 = AtomicU64::new(1);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct BooleanTicket { program: u64, sequence: u64 }
 enum Pending {
+    Child,
     Source { ticket: BooleanTicket, frame: Frame },
     SourceReply(BooleanTicket),
     Numerical { ticket: BooleanTicket, kind: work::Kind, next: work::Continuation },
 }
 pub(crate) enum BooleanPoll {
+    Child(Box<crate::program::GeometryProgram>),
     Source(BooleanTicket),
     Ready(ReadyBoolean),
     Complete(Value),
+    RetainedComplete(crate::program::retained::LogicalRetainedValue),
 }
 pub(crate) struct ReadyBoolean { ticket: BooleanTicket, operation: work::Ready, unwind_sink:crate::processors::boolean::FailureSink, reports: PendingReports }
 pub(crate) struct BooleanNumericalReply { ticket: BooleanTicket, kind: work::Kind, value: Result<work::Reply>, reports: crate::construction::ConstructionReports }
@@ -68,7 +71,10 @@ impl BooleanProgram {
         let frame = loop {
             let Some(frame) = state.frames.pop() else {
                 crate::resource::check_current()?;
-                return Ok(BooleanPoll::Complete(state.value.take().expect("completed Boolean value")));
+                return Ok(match state.retained_value.take() {
+                    Some(value)=>BooleanPoll::RetainedComplete(value),
+                    None=>BooleanPoll::Complete(state.value.take().expect("completed Boolean value")),
+                });
             };
             match frame {
                 Frame::ExitPath(id) => {
@@ -77,6 +83,10 @@ impl BooleanProgram {
                     debug_assert_eq!(exited, Some(id));
                 }
                 Frame::Walk(walk) => state.walk(walk)?,
+                Frame::AfterBase(walk) if state.retained.is_some() => {
+                    let value=state.retained_value.take().expect("retained base");
+                    state.frames.push(Frame::Steps(walk.retained_steps(value)));
+                }
                 Frame::AfterBase(walk) => {
                     let value = state.value.take().expect("base continuation value");
                     #[cfg(test)]
@@ -87,8 +97,10 @@ impl BooleanProgram {
                 }
                 Frame::AfterBatch { walk, cutters, mark } => state.finish_batch(walk, cutters, mark)?,
                 Frame::AfterStep { steps, operator, host } => state.solid(steps, operator, host),
+                Frame::RetainedAfterStep {steps,operator,host} => state.retained_solid(steps,operator,host)?,
                 Frame::Steps(steps) if steps.nodes.is_empty() => {
-                    state.value = Some((steps.mesh, steps.empty_recorded));
+                    if let Some(value)=steps.retained {state.retained_value=Some(value);}
+                    else {state.value = Some((steps.mesh, steps.empty_recorded));}
                 }
                 Frame::Operand { entity, operator: _, depth } if matches!(entity.ifc_type,
                     ifc_lite_core::IfcType::IfcBooleanResult | ifc_lite_core::IfcType::IfcBooleanClippingResult) => {
@@ -103,6 +115,7 @@ impl BooleanProgram {
         self.sequence = self.sequence.checked_add(1).expect("Boolean sequence overflow");
         let ticket = BooleanTicket { program: self.id, sequence: self.sequence };
         match frame {
+            Frame::RetainedChild(child)=>{self.pending=Some(Pending::Child);Ok(BooleanPoll::Child(child))}
             Frame::Numerical(operation, next) => {
                 self.pending = Some(Pending::Numerical { ticket, kind: operation.kind(), next });
                 let reports=PendingReports::new(std::mem::take(&mut state.reports));
@@ -120,6 +133,11 @@ impl BooleanProgram {
     pub(crate) fn execute_source(&mut self, ticket: BooleanTicket,
         recorder: &BooleanClippingProcessor, decoder: &mut EntityDecoder,
     ) -> Result<BooleanSourceReply> {
+        self.execute_source_with_router(ticket,recorder,decoder,None)
+    }
+    pub(crate) fn execute_source_with_router(&mut self, ticket:BooleanTicket,
+        recorder:&BooleanClippingProcessor, decoder:&mut EntityDecoder,
+        router:Option<&crate::GeometryRouter>) -> Result<BooleanSourceReply> {
         if !matches!(&self.pending, Some(Pending::Source { ticket: expected, .. }) if *expected == ticket) {
             return Err(Error::geometry("Mismatched Boolean source request"));
         }
@@ -134,7 +152,7 @@ impl BooleanProgram {
         let ((result, mut state), reports) = crate::processors::diagnostic_capture::capture(|| {
             let mut restoring = RestoreState { slot: &mut self.state, state: Some(state) };
             let result = restoring.state.as_mut().expect("owned source state")
-                .source_frame(frame, &mut Services { recorder, decoder });
+                .source_frame(frame, &mut Services { recorder, decoder, router });
             (result, restoring.state.take().expect("source state reply"))
         });
         state.reports.merge(reports);
@@ -176,10 +194,23 @@ impl BooleanProgram {
         if result.is_err() { self.release_active(); }
         Ok(result)
     }
+    pub(crate) fn accept_retained_child(&mut self, value: Result<crate::program::retained::LogicalRetainedValue>) -> Result<()> {
+        if !matches!(self.pending,Some(Pending::Child)) {return Err(Error::geometry("stale retained Boolean child"));}
+        self.pending=None;
+        match value {
+            Ok(value)=>{self.state.as_mut().expect("Boolean child state").retained_value=Some(value);Ok(())}
+            Err(error)=>{self.release_active();Err(error)}
+        }
+    }
+    pub(crate) fn select_retained(&mut self, contract: crate::program::retained::RetainedContract, program:u64) {
+        let state=self.state.as_mut().expect("unstarted Boolean state");
+        state.retained=Some((contract,program));
+        state.retained_cache=Some(Default::default());
+    }
     pub(crate) fn cancel(&mut self) -> Result<()> {
         self.release_active();
         self.pending = None;
-        if let Some(state) = &mut self.state { state.frames.clear(); state.value = None; }
+        if let Some(state) = &mut self.state { state.frames.clear(); state.value = None; state.retained_value=None; }
         Err(crate::resource::ProgramStop::Cancelled.into())
     }
     fn release_active(&mut self) {
@@ -212,11 +243,30 @@ impl BooleanProgram {
                     self.accept_numerical(reply, recorder).unwrap_or_else(|_| panic!("own numerical reply rejected"))?;
                 }
                 BooleanPoll::Complete(value) => return Ok(value),
+                BooleanPoll::Child(_)=>return Err(Error::geometry("retained child cannot enter exact drain")),
+                BooleanPoll::RetainedComplete(_)=>return Err(Error::geometry("retained Boolean cannot enter exact drain")),
             }
         }
     }
 }
 impl ReadyBoolean {
+    pub(crate) fn admit_retained(self) -> Result<(BooleanNumericalReply, Vec<crate::program::retained::RetainedPlanOperation>)> {
+        let kind=self.operation.kind();
+        let work::Ready::Retained(operation)=self.operation else {
+            return Err(Error::geometry("exact Boolean operation cannot discharge retained work"));
+        };
+        let value=crate::program::retained::copy_values(std::slice::from_ref(operation.value()))?
+            .pop().expect("one retained output");
+        let mut operations=Vec::new();
+        crate::resource::reserve_headers(&mut operations,1)?.retain();
+        operations.push(operation);
+        // Keep reached source reports in the controller's shared pending log.
+        // Cancellation must still drain them while this original reply is held
+        // outside the program awaiting its physical receipt.
+        let _pending=UnwindReports(self.reports);
+        Ok((BooleanNumericalReply {ticket:self.ticket,kind,value:Ok(work::Reply::Retained(Ok(value))),
+            reports:Default::default()},operations))
+    }
     pub(crate) fn execute(self) -> BooleanNumericalReply {
         let kind = self.operation.kind();
         let (value, reports) = crate::processors::diagnostic_capture::capture(|| {
@@ -225,6 +275,14 @@ impl ReadyBoolean {
                 .map(|()| self.operation.execute(self.unwind_sink))
         });
         BooleanNumericalReply { ticket: self.ticket, kind, value, reports }
+    }
+}
+impl BooleanNumericalReply {
+    pub(in crate::program) fn bind_retained_outcome(&mut self, slot: crate::program::LogicalRetainedSlot, empty:bool) -> bool {
+        match &mut self.value {
+            Ok(work::Reply::Retained(Ok(value))) if value.slot()==slot=>{value.empty=empty;true}
+            _=>false,
+        }
     }
 }
 struct RestoreState<'a> { slot: &'a mut Option<BooleanState>, state: Option<BooleanState> }

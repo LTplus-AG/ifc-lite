@@ -40,7 +40,7 @@ fn drain(source: &str, router: &GeometryRouter) -> Result<(RetainedProductPlan, 
     while let Some(request)=program.request().expect("common request") {
         let (reply,operation)=program.admit_retained_with_inputs(request,router,&mut decoder,None,None)
             .expect("common admission");
-        constructions+=usize::from(operation.is_some());
+        constructions+=operation.len();
         program.accept(reply,router).expect("original reply");
     }
     program.finish_retained().map(|plan|(plan,constructions))
@@ -101,12 +101,17 @@ fn p1_diamond_preserves_256_occurrences_but_only_reached_cache_definitions_share
 }
 
 #[test]
-fn p1_nonrigid_refusal_is_explicit_and_is_not_a_coverage_witness() {
+fn p1_singular_mapping_refuses_and_nonsingular_affine_issues_physical_operation() {
     let router=GeometryRouter::with_scale(0.001);
-    for scale in ["2.","-1.","0."] {
+    let source=NESTED_MM.replace("#24,1.,#3","#24,0.,#3");
+    assert!(drain(&source,&router).is_err());
+    for scale in ["2.","-1."] {
         let source=NESTED_MM.replace("#24,1.,#3",&format!("#24,{scale},#3"));
-        let result=drain(&source,&router);
-        assert!(result.is_err(),"unqualified mapping cannot publish logical final output");
+        let (plan,operations)=drain(&source,&router).unwrap();
+        assert!(operations>1,"nonrigid mapping is a reached operation, not metadata admission");
+        assert_eq!(plan.values.len(),1);
+        assert!(matches!(plan.values[0].definition(),LogicalRetainedDefinition::Operation(_)));
+        assert!(!plan.remaining.is_empty(),"logical traversal remains unqualified for final-net publication");
     }
 }
 
@@ -153,7 +158,7 @@ fn p1_retained_warm_cache_reuses_definition_but_not_later_target_fault() {
             let mut program=GeometryProgram::retained_mapped(&item,contract,&router,cache.clone()).unwrap();
             while let Some(request)=program.request().unwrap() {
                 let (reply,operation)=program.admit_retained_with_inputs(request,&router,&mut decoder,None,None).unwrap();
-                constructions+=usize::from(operation.is_some());
+                constructions+=operation.len();
                 program.accept(reply,&router).unwrap();
             }
             let result=program.take_geometry_output();
@@ -193,7 +198,7 @@ fn p1_retained_cache_rejects_changed_selected_source_cache_provenance() {
     let mut stale=GeometryProgram::retained_mapped(&item,contract,&router,cache).unwrap();
     while let Some(request)=stale.request().unwrap() {
         let (reply,operation)=stale.admit_retained_with_inputs(request,&router,&mut decoder,None,None).unwrap();
-        assert!(operation.is_none(),"stale source cannot authenticate another construction");
+        assert!(operation.is_empty(),"stale source cannot authenticate another construction");
         stale.accept(reply,&router).unwrap();
     }
     assert!(stale.take_geometry_output().err().unwrap().to_string().contains("provenance"));
@@ -216,7 +221,7 @@ fn p1_cache_publication_resource_stop_keeps_earlier_source_local_definition() {
     while let Some(request)=program.request().unwrap() {
         let (reply,operation)=account.scope(||program.admit_retained_with_inputs(
             request,&router,&mut decoder,None,None)).unwrap();
-        constructions+=usize::from(operation.is_some());
+        constructions+=operation.len();
         account.scope(||program.accept(reply,&router)).unwrap();
     }
     assert_eq!(constructions,1);
@@ -248,7 +253,7 @@ fn p1_product_placement_fault_is_read_only_after_reached_construction_and_mappin
     while let Some(request)=program.request().unwrap() {
         if constructions==0 {assert!(decoder.get_cached(999).is_none());}
         let (reply,operation)=program.admit_retained_with_inputs(request,&router,&mut decoder,None,None).unwrap();
-        constructions+=usize::from(operation.is_some());
+        constructions+=operation.len();
         program.accept(reply,&router).unwrap();
     }
     assert_eq!(constructions,1,"placement fault does not short-circuit reached source construction");

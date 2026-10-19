@@ -13,6 +13,7 @@ mod operand;
 mod protocol;
 mod transitions;
 mod reports;
+mod retained;
 pub(crate) use protocol::{BooleanProgram, BooleanPoll, BooleanTicket, BooleanSourceReply, BooleanNumericalReply, ReadyBoolean};
 use state::{Frame, Steps, Value, Walk};
 
@@ -20,6 +21,7 @@ use state::{Frame, Steps, Value, Walk};
 pub(super) struct Services<'a, 'source> {
     recorder: &'a BooleanClippingProcessor,
     decoder: &'a mut EntityDecoder<'source>,
+    router: Option<&'a crate::GeometryRouter>,
 }
 
 /// Owned common-program child. No source service or runtime guard is retained.
@@ -31,12 +33,15 @@ pub(super) struct BooleanState {
     value: Option<Value>,
     reports: crate::construction::ConstructionReports,
     skip_small_cuts: bool,
+    retained: Option<(crate::program::retained::RetainedContract,u64)>,
+    retained_value: Option<crate::program::retained::LogicalRetainedValue>,
+    retained_cache: Option<crate::program::mapping::SharedRetainedCache>,
     unwind_sink:Option<crate::processors::boolean::FailureSink>,
     pending_reports:Option<reports::PendingReports>,
 }
 impl BooleanState {
     fn new(visited: OperandPath, quality: TessellationQuality, first: Frame) -> Self {
-        Self { visited, quality, frames: vec![first], active: Vec::new(), value: None, reports: Default::default(), skip_small_cuts: false, unwind_sink:None, pending_reports:None }
+        Self { visited, quality, frames: vec![first], active: Vec::new(), value: None, reports: Default::default(), skip_small_cuts: false, retained:None, retained_value:None, retained_cache:None, unwind_sink:None, pending_reports:None }
     }
     fn enter_path(&mut self, id: u32) -> Result<()> {
         if !self.visited.insert(id) {
@@ -117,6 +122,7 @@ impl BooleanState {
             Frame::AfterBatch { walk, cutters, mark } => self.finish_batch(walk, cutters, mark)?,
             Frame::Steps(steps) => self.steps(steps, services)?,
             Frame::AfterStep { steps, operator, host } => self.solid(steps, operator, host),
+            Frame::RetainedAfterStep {steps,operator,host} => self.retained_solid(steps,operator,host)?,
             Frame::PlaneSource { steps, host, operand } => self.plane_source(steps, host, operand, services)?,
             Frame::PrismSource { steps, host, operand, plane } => self.prism_source(steps, host, operand, plane, services)?,
             Frame::SingleUnits { steps, host, cutter, plane } => {
@@ -134,16 +140,18 @@ impl BooleanState {
             Frame::GroupSource(group) => self.group_source(group, services)?,
             Frame::GroupPrismSource { group, cutter, plane } => self.group_prism_source(group, cutter, plane, services)?,
             Frame::VoidsSource(voids) => self.voids_source(voids, services)?,
+            Frame::RetainedChild(_) => unreachable!("child frame is polled"),
             Frame::Numerical(_, _) => unreachable!("numerical frame executed as source"),
         }
         Ok(())
     }
     fn steps(&mut self, mut steps: Steps, services: &mut Services<'_, '_>) -> Result<()> {
         let Some(node) = steps.nodes.pop() else {
-            self.value = Some((steps.mesh, steps.empty_recorded));
+            if let Some(value) = steps.retained { self.retained_value = Some(value); }
+            else { self.value = Some((steps.mesh, steps.empty_recorded)); }
             return Ok(());
         };
-        if steps.mesh.is_empty() {
+        if self.retained.is_none() && steps.mesh.is_empty() {
             match boolean_operator(&node) {
                 Ok(BoolOp::Difference | BoolOp::Intersection) => {
                     self.frames.push(Frame::Steps(steps));
@@ -156,6 +164,7 @@ impl BooleanState {
                 _ => {}
             }
         }
+        if self.retained.is_some() { return self.retained_step(node, steps, services); }
         let host = std::mem::take(&mut steps.mesh);
         self.begin_step(node, host, steps, services)?;
         Ok(())

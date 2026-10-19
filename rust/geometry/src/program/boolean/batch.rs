@@ -17,7 +17,7 @@ impl BooleanState {
             let depth = walk.depth;
             self.frames.push(Frame::AfterBase(walk));
             self.frames.push(Frame::Operand { entity, operator: BoolOp::Unknown, depth });
-        } else if super::boolean_operator(&walk.current) == Ok(BoolOp::Difference) {
+        } else if self.retained.is_none() && super::boolean_operator(&walk.current) == Ok(BoolOp::Difference) {
             let current = walk.current.clone();
             self.frames.push(Frame::Collect(Collector { walk, current,
                 seen: Default::default(), cutters: Vec::new() }));

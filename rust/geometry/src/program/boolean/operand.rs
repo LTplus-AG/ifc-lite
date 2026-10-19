@@ -14,6 +14,18 @@ impl BooleanState {
         services: &mut Services<'_, '_>,
     ) -> Result<()> {
         crate::resource::check_current()?;
+        if let Some((contract,program)) = self.retained {
+            if operand.ifc_type == IfcType::IfcMappedItem {
+                let router=services.router.ok_or_else(||Error::geometry("retained mapped operand requires captured router"))?;
+                let child=crate::program::GeometryProgram::retained_mapped(&operand,contract,router,self.retained_cache.clone().expect("retained Boolean cache"))?;
+                self.frames.push(Frame::RetainedChild(Box::new(child)));
+                return Ok(());
+            }
+            let scale=match services.router {Some(router)=>router.unit_scale(),None=>services.decoder.length_unit_scale()};
+            let operation = crate::program::retained::capture(&operand,services.decoder,scale,contract,program)?;
+            self.frames.push(Frame::Numerical(work::Ready::Retained(operation), work::Continuation::RetainedOperand));
+            return Ok(());
+        }
         match &operand.ifc_type {
             IfcType::IfcCsgSolid | IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
                 return Err(Error::geometry("Recursive operand requires continuation dispatch"));

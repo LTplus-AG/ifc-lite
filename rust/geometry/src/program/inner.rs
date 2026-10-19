@@ -43,15 +43,35 @@ pub(super) enum ProgramStage { Source, Extension, Numerical }
 pub enum ProgramError { UnsupportedRetained, WrongPayload, WrongOwner, Outstanding, StaleRequest, AlreadyExecuted, NotExecuted, WrongEmitter, Cancelled }
 pub use super::inner_ready::ReadyOperation;
 pub struct ProgramReply { pub(super) request: ProgramRequest, pub(super) value: ReplyValue, pub(super) emitter: Option<ProcessorEmitter> }
-pub(super) enum ReplyValue { ItemChild(Box<ProgramReply>), Opening(super::inner_opening::OpeningAdapterReply), Layers(super::inner_layers::LayerReply), Voids(super::inner_voids::VoidReply), TypeMap(super::inner_type_map::TypeMapReply), Product(super::inner_product_adapter::ProductAdapterReply), Mapping(super::inner_mapping::MappingReply), Cache(super::inner_cache::CacheReply), Item(ItemStep), BooleanSource(super::boolean::BooleanSourceReply), BooleanNumerical(super::boolean::BooleanNumericalReply) }
+pub(super) enum ReplyValue { BooleanChild(Box<ProgramReply>), BooleanChildFinished(crate::Result<super::retained::LogicalRetainedValue>), ItemChild(Box<ProgramReply>), Opening(super::inner_opening::OpeningAdapterReply), Layers(super::inner_layers::LayerReply), Voids(super::inner_voids::VoidReply), TypeMap(super::inner_type_map::TypeMapReply), Product(super::inner_product_adapter::ProductAdapterReply), Mapping(super::inner_mapping::MappingReply), Cache(super::inner_cache::CacheReply), Item(ItemStep), BooleanSource(super::boolean::BooleanSourceReply), BooleanNumerical(super::boolean::BooleanNumericalReply) }
 pub struct RejectedProgramReply { pub error: ProgramError, pub reply: ProgramReply }
 impl ReplyValue {
-    pub(super) fn tag(&self)->u32 {match self { Self::Item(_)=>0,Self::ItemChild(_)=>10, Self::BooleanSource(_)=>1,
+    pub(super) fn tag(&self)->u32 {match self { Self::BooleanChild(_)=>11,Self::BooleanChildFinished(_)=>12, Self::Item(_)=>0,Self::ItemChild(_)=>10, Self::BooleanSource(_)=>1,
         Self::BooleanNumerical(_)=>2,Self::Cache(reply)=>0x2000+u32::from(reply.tag()),Self::Mapping(reply)=>0x1000+u32::from(reply.tag()),Self::Product(reply)=>0x3000+u32::from(reply.tag()),Self::TypeMap(reply)=>0x4000+u32::from(reply.tag()),Self::Layers(reply)=>0x5000+u32::from(reply.tag()),Self::Voids(reply)=>0x7000+u32::from(reply.tag()),Self::Opening(reply)=>0x8000+u32::from(reply.tag()) }}
 }
 impl std::fmt::Debug for RejectedProgramReply {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RejectedProgramReply").field("error", &self.error).field("request", &self.reply.request).finish()
+    }
+}
+impl ProgramReply {
+    /// Logical control outcome only; processing must first validate its sealed receipt.
+    /// This does not authenticate runtime work or authorize product publication.
+    pub fn bind_retained_outcome(&mut self, slot: super::retained::LogicalRetainedSlot, empty:bool)
+        -> crate::Result<()> {
+        let mut current=self;
+        loop {
+            crate::resource::charge(crate::resource::Cost {work:1,..Default::default()})?.retain();
+            current=match &mut current.value {
+                ReplyValue::BooleanNumerical(reply)=>return if reply.bind_retained_outcome(slot,empty) {Ok(())}
+                    else {Err(crate::Error::geometry("retained outcome slot mismatch"))},
+                ReplyValue::ItemChild(reply) | ReplyValue::BooleanChild(reply)=>reply,
+                ReplyValue::Mapping(reply)=>reply.child_reply_mut().ok_or_else(||crate::Error::geometry("retained outcome mapping mismatch"))?,
+                ReplyValue::TypeMap(reply)=>reply.child_reply_mut().ok_or_else(||crate::Error::geometry("retained outcome type map mismatch"))?,
+                ReplyValue::Product(reply)=>reply.child_reply_mut().ok_or_else(||crate::Error::geometry("retained outcome product mismatch"))?,
+                _=>return Err(crate::Error::geometry("retained outcome continuation unsupported")),
+            };
+        }
     }
 }
 impl GeometryProgram {
@@ -239,6 +259,7 @@ impl GeometryProgram {
         };
         if let Some(error)=error{return Err(error)}
         match &reply.value {
+            ReplyValue::BooleanChild(reply)=>self.boolean.as_ref().ok_or(ProgramError::WrongPayload)?.validate_child_reply(reply,router),
             ReplyValue::Mapping(reply)=>self.mapping.as_ref().ok_or(ProgramError::WrongPayload)?.validate_reply(reply,router),
             ReplyValue::Cache(reply)=>self.cache.as_ref().ok_or(ProgramError::WrongPayload)?.validate_reply(reply,router),
             ReplyValue::Product(reply)=>self.product.as_ref().ok_or(ProgramError::WrongPayload)?.validate_reply(reply,router),
@@ -288,7 +309,7 @@ impl GeometryProgram {
     /// Cooperative explicit cancellation discards this occurrence's partial work.
     pub(crate) fn cancel(&mut self) {
         self.cancelled = true; self.step = None;
-        if let Some(state) = &mut self.boolean { let _ = state.program.cancel(); }
+        if let Some(state) = &mut self.boolean { let _ = state.program.cancel(); state.cancel_child(); }
         if let Some(mapping)=&mut self.mapping {mapping.cancel()}
         if let Some(product)=&mut self.product {product.cancel()}
         if let Some(type_map)=&mut self.type_map {type_map.cancel()}

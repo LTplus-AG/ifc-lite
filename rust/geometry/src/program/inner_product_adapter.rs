@@ -32,6 +32,10 @@ impl ProductReadyWork {
     }
 }
 impl ProductAdapterReply {
+    pub(super) fn child_reply_mut(&mut self) -> Option<&mut ProgramReply> {
+        match &mut self.0 { Reply::Child(reply) | Reply::ExtractedChild(reply) | Reply::Layer(reply)=>Some(reply), _=>None }
+    }
+
     pub(super) fn wrap_child_reply(reply:ProgramReply)->Self {Self(Reply::ExtractedChild(Box::new(reply)))}
     pub(super) fn tag(&self)->u16 {match &self.0 {
         Reply::Product(reply)=>reply.tag(), Reply::Prelude(reply)=>32+reply.tag(),

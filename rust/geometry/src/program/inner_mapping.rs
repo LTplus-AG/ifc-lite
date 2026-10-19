@@ -33,6 +33,13 @@ impl MappingReadyWork {
         Self::Styled(ready)=>64+u16::from(ready.reply_tag()),
         Self::Texture(_)=>131,
     }}
+    pub(super) fn admit_retained(self) -> Result<(MappingReply, Vec<crate::program::RetainedPlanOperation>)> {
+        match self {
+            Self::Merged(ready) => ready.admit_retained().map(|(reply, operations)|
+                (MappingReply(Reply::Merged(reply)), operations)),
+            _ => Err(crate::Error::geometry("retained styled mapping operation unavailable")),
+        }
+    }
     pub(super) fn execute(self)->MappingReply {
         MappingReply(match self {
             Self::Merged(ready)=>Reply::Merged(ready.execute()),
@@ -48,6 +55,10 @@ enum Reply {
     TextureExecuted(Result<Option<SubMeshCollection>>),
 }
 impl MappingReply {
+    pub(super) fn child_reply_mut(&mut self) -> Option<&mut ProgramReply> {
+        match &mut self.0 { Reply::Child(reply)=>Some(reply), _=>None }
+    }
+
     pub(super) fn wrap_child_reply(reply:ProgramReply)->Self {Self(Reply::Child(Box::new(reply)))}
     pub(super) fn tag(&self)->u16 {match &self.0 {
         Reply::Merged(reply)=>reply.tag() as u16,

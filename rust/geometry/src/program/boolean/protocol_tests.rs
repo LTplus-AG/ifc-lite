@@ -14,7 +14,7 @@ fn host() -> Mesh {
 fn step(entity: DecodedEntity) -> BooleanProgram {
     BooleanProgram::with_path(Default::default(), TessellationQuality::Medium,
         Frame::Steps(Steps { nodes: vec![entity], depth: 0, solo_step: true,
-            mesh: host(), empty_recorded: false }))
+            mesh: host(), retained:None, empty_recorded: false }))
 }
 fn source(program: &mut BooleanProgram, recorder: &BooleanClippingProcessor,
     decoder: &mut EntityDecoder,
@@ -50,7 +50,7 @@ fn inner_boolean_source_rejection_preserves_reply_and_defers_reached_effects() {
 fn inner_boolean_wrong_sequence_and_kind_numerical_replies_publish_no_effects() {
     let recorder = BooleanClippingProcessor::new();
     let steps = Steps { nodes: Vec::new(), depth: 0, solo_step: true,
-        mesh: Mesh::new(), empty_recorded: false };
+        mesh: Mesh::new(), retained:None, empty_recorded: false };
     let plane = HalfSpacePlan { point: Point3::new(0., 0., 1.),
         normal: Vector3::new(0., 0., 1.), agreement: false };
     let mut program = BooleanProgram::with_path(Default::default(), TessellationQuality::Medium,
@@ -194,4 +194,31 @@ fn completed_boolean_occurrences_release_active_paths_in_release_builds() {
     assert!(!path.insert(900));
     assert!(path.insert(2), "the repeated child is available to later occurrences");
     assert!(path.insert(3), "the completed root is available to later occurrences");
+}
+
+#[test]
+fn p2_detached_retained_reply_keeps_prior_reports_available_to_cancellation() {
+    // A reached source diagnostic is owned by the continuation until either
+    // acceptance or cancellation consumes it. Detaching a logical reply must
+    // not move that diagnostic into an unaccepted external packet.
+    let mut decoder=EntityDecoder::new("#1=IFCCARTESIANPOINT((0.,0.,0.));
+        #2=IFCAXIS2PLACEMENT3D(#1,$,$);#3=IFCDIRECTION((0.,0.,1.));
+        #4=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,2.,4.);
+        #5=IFCEXTRUDEDAREASOLID(#4,#2,#3,3.);");
+    let entity=decoder.decode_by_id(5).unwrap();
+    let operation=crate::program::retained::capture(&entity,&mut decoder,1.,
+        crate::program::RetainedContract {source_epoch:7,source_revision:11},900).unwrap();
+    let mut state=BooleanState::new(Default::default(),TessellationQuality::Medium,
+        Frame::Numerical(work::Ready::Retained(operation),work::Continuation::RetainedOperand));
+    state.reports.face_refused.push(ifc_lite_core::IfcType::IfcAdvancedFace);
+    let recorder=BooleanClippingProcessor::new();
+    let mut program=BooleanProgram::from_test_state(state);
+    program.bind_test_emitter(&recorder);
+    let BooleanPoll::Ready(ready)=program.request().unwrap() else {panic!("retained numerical request")};
+    let (reply,operations)=ready.admit_retained().unwrap();
+    assert_eq!(operations.len(),1);
+    assert!(program.cancel().is_err());
+    assert_eq!(program.take_reports().face_refused,[ifc_lite_core::IfcType::IfcAdvancedFace]);
+    assert!(program.take_reports().face_refused.is_empty());
+    assert!(program.accept_numerical(reply,&recorder).is_err(),"cancellation also prevents late reply acceptance");
 }

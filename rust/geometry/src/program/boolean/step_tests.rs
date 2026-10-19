@@ -23,7 +23,7 @@ fn volume(mesh: &Mesh) -> f64 {
 }
 fn complete_step(processor: &BooleanClippingProcessor, entity: &DecodedEntity,
     mesh: Mesh, decoder: &mut EntityDecoder, solo_step: bool) -> (Mesh, bool) {
-    let steps = Steps { nodes: vec![entity.clone()], depth: 0, solo_step, mesh, empty_recorded: false };
+    let steps = Steps { nodes: vec![entity.clone()], depth: 0, solo_step, mesh, retained:None, empty_recorded: false };
     super::super::run(processor, decoder, &mut Default::default(), TessellationQuality::Medium,
         Frame::Steps(steps)).unwrap()
 }
@@ -74,7 +74,7 @@ fn solid_admission_hands_constructor_execution_to_the_continuation() {
     let entity = decoder.decode_by_id(3).unwrap();
     let processor = BooleanClippingProcessor::new();
     let steps = Steps { nodes: vec![entity.clone()], depth: 0, solo_step: true,
-        mesh: host(), empty_recorded: false };
+        mesh: host(), retained:None, empty_recorded: false };
     let mut program = super::super::BooleanProgram::with_path(Default::default(),
         TessellationQuality::Medium, Frame::Steps(steps));
     let super::super::BooleanPoll::Source(ticket) = program.request().unwrap() else { panic!("step source") };
@@ -112,7 +112,7 @@ fn empty_solid_completion_does_not_discover_an_unused_invalid_unit() {
     let mut decoder = EntityDecoder::new(source).with_strict_reals();
     let processor = BooleanClippingProcessor::new();
     let steps = Steps { nodes: Vec::new(), depth: 0, solo_step: true,
-        mesh: Mesh::new(), empty_recorded: false };
+        mesh: Mesh::new(), retained:None, empty_recorded: false };
     let mut state = BooleanState::new(Default::default(), TessellationQuality::Medium,
         Frame::AfterStep { steps, operator: BoolOp::Difference, host: host() });
     state.value = Some((Mesh::new(), true));

@@ -10,7 +10,7 @@ use super::{
 };
 use ifc_lite_geometry::{
     document::{EvaluationContract, GeometryDocument, RetainedRequest},
-    program::{LogicalRetainedDefinition, RetainedContract, RetainedPlanOperation, RetainedProductPlan},
+    program::{RetainedContract, RetainedPlanOperation, RetainedProductPlan},
 };
 use ifc_lite_geometry_runtime::{RetainedRealization, SmlibWorker};
 use ifc_lite_geometry::resource::{OwnedResourceContext, ProgramStop};
@@ -22,6 +22,9 @@ use std::sync::{
 mod acceptance;
 mod entry;
 mod native;
+mod value;
+mod issuance;
+pub use value::CommonRetainedRealization;
 pub use native::{
     CompletedCommonConstruction, IssuedCommonConstruction, RejectedCommonConstruction,
     RetainedCancellation,
@@ -59,32 +62,41 @@ struct PendingRetainedTransaction {
     common: ifc_lite_geometry::program::ProgramRequest,
     context: ProductionContextId,
     owner: OwnerStamp,
-    operation: PendingRetainedOperation,
+    operations: Vec<PendingRetainedOperation>,
     reply: Option<WorkReply>,
     cancellation: RetainedCancellation,
 }
-/// Only constructions cross the SDK seam in P1. Source-free append/mapping/
-/// product operations execute under their original common request and account.
-/// Physical affine/dependency operations need their own expected input leases
-/// and matrices here; a construction receipt cannot authenticate those results.
 enum PendingRetainedOperation {
-    Construction { expected: RetainedPlanOperation, request: RetainedRequest, document: GeometryDocument },
+    Construction { expected: Box<RetainedPlanOperation>, request: RetainedRequest, document: GeometryDocument },
+    Affine { expected: Box<RetainedPlanOperation>, input: Arc<CommonRetainedRealization>, matrix: [f64;16] },
+    Boolean { expected: Box<RetainedPlanOperation>, inputs: [Arc<CommonRetainedRealization>;2] },
+}
+impl PendingRetainedOperation {
+    fn into_expected(self) -> Box<RetainedPlanOperation> {
+        match self { Self::Construction {expected,..} | Self::Affine {expected,..} | Self::Boolean {expected,..}=>expected }
+    }
+
+    fn expected(&self) -> &RetainedPlanOperation {
+        match self { Self::Construction {expected,..} | Self::Affine {expected,..} | Self::Boolean {expected,..} => expected }
+    }
 }
 impl PendingRetainedTransaction {
+    #[cfg(test)]
     fn construction(&self) -> (&RetainedPlanOperation, &RetainedRequest, &GeometryDocument) {
-        match &self.operation { PendingRetainedOperation::Construction {expected,request,document} =>
-            (expected,request,document) }
+        match &self.operations[0] { PendingRetainedOperation::Construction {expected,request,document} =>
+            (expected,request,document), _=>panic!("construction test accessor") }
     }
 }
 struct DischargedValue {
-    definition: LogicalRetainedDefinition,
-    receipt: CompletedCommonConstruction,
+    operation: Box<RetainedPlanOperation>,
+    receipt: Arc<CommonRetainedRealization>,
 }
 
 /// Explicit opt-in execution of the existing reached product program. This
-/// checkpoint can discharge constructions and accumulate logical product values.
-/// Merged proper-rigid mapping and late product placement produce logical
-/// occurrences. Boolean/opening and appearance remain explicit requirements. There is deliberately no mesh publication method.
+/// checkpoint discharges constructions, physical affine copies and ordered binary
+/// Boolean operations from the existing common continuations. Proper rigid mapping
+/// and late product placement remain logical metadata. Halfspace, opening, layer
+/// and appearance closure remain explicit gaps. There is no mesh publication method.
 /// Captured resources cover reached work and ledger backing; source coefficient,
 /// SDK heap, numerical scratch and presentation allocations remain unqualified.
 pub struct RetainedProductExecution {
@@ -99,7 +111,7 @@ pub struct RetainedProductExecution {
 }
 impl RetainedProductExecution {
     /// Progress only the same reached source/control continuation, stopping at
-    /// its next real construction. No authored inventory or second source walk.
+    /// its next real operation batch. No authored inventory or second source walk.
     pub fn issue_next(
         &mut self,
         worker: &SmlibWorker,
@@ -190,23 +202,13 @@ impl RetainedProductExecution {
                 .validate_reply(&reply, decoder, router)
                 .map_err(protocol)?;
             self.validate_definitions(worker)?;
-            let Some(operation) = operation else {
-                self.state
-                    .accept_admission(reply, &self.context.borrowed(), decoder, router)
+            if operation.is_empty() {
+                self.state.accept_admission(reply, &self.context.borrowed(), decoder, router)
                     .map_err(|error| protocol(error.error))?;
                 continue;
-            };
-            let mut document = GeometryDocument::new();
-            let definition = document
-                .add_retained_construction(operation.construction().clone())
-                .map_err(|error| RetainedExecutionError::Unsupported(error.to_string()))?;
-            let runtime_request = document
-                .prepare_retained_extrusion(
-                    definition,
-                    EvaluationContract::RetainedBrep,
-                    worker.incarnation(),
-                )
-                .map_err(|error| RetainedExecutionError::Unsupported(error.to_string()))?;
+            }
+            let operations = self.prepare_operations(operation, worker)?;
+            let issued_operations = self.copy_issued_operations(&operations)?;
             let ticket = Arc::new(());
             let stage = Arc::new(AtomicU8::new(ISSUED));
             let cancellation = RetainedCancellation {
@@ -216,7 +218,7 @@ impl RetainedProductExecution {
             let issued = IssuedCommonConstruction {
                 ticket: ticket.clone(),
                 stage: stage.clone(),
-                request: runtime_request.clone(),
+                operations: issued_operations,
                 lifecycle: self.context.lifecycle(),
                 cancellation: cancellation.clone(),
                 resources: self.resources.clone(),
@@ -228,8 +230,7 @@ impl RetainedProductExecution {
                 common: request.inner.expect("reached common construction"),
                 context: self.context.id(),
                 owner: reply.owner,
-                operation: PendingRetainedOperation::Construction {expected:operation,
-                    request:runtime_request,document},
+                operations,
                 reply: Some(reply),
                 cancellation,
             });
@@ -241,8 +242,8 @@ impl RetainedProductExecution {
         for entry in &self.ledger {
             ifc_lite_geometry::resource::charge(ifc_lite_geometry::resource::Cost {
                 work:1,..Default::default() }).map_err(RetainedExecutionError::Stopped)?.retain();
-            entry.receipt.realization.validate_live().map_err(protocol)?;
-            if entry.receipt.realization.owner().incarnation() != Some(worker.incarnation()) {
+            entry.receipt.validate_live().map_err(protocol)?;
+            if entry.receipt.owner().incarnation() != Some(worker.incarnation()) {
                 return Err(protocol("retained definition belongs to a different runtime generation"));
             }
         }
@@ -257,7 +258,7 @@ impl RetainedProductExecution {
                 work:(seen.len()+self.ledger.len()) as u64,..Default::default()
             }).map_err(RetainedExecutionError::Stopped)?.retain();
             if seen.contains(&value.slot()) || !self.ledger.iter().any(|entry|
-                &entry.definition==value.definition() && entry.receipt.realization.validate_live().is_ok()) {
+                entry.operation.value().definition()==value.definition() && entry.receipt.validate_live().is_ok()) {
                 return Err(protocol("duplicate occurrence or undischarged retained definition"));
             }
             seen.push(value.slot());
@@ -354,3 +355,6 @@ mod mapping_tests;
 
 #[cfg(test)]
 mod styled_tests;
+
+#[cfg(test)]
+mod operation_tests;

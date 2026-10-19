@@ -9,6 +9,10 @@ impl BooleanState {
         reply: work::Reply, recorder: &BooleanClippingProcessor,
     ) -> Result<()> {
         match (next, reply) {
+            (work::Continuation::RetainedOperand, work::Reply::Retained(value)) => self.retained_value = Some(value?),
+            (work::Continuation::RetainedStep(mut steps), work::Reply::Retained(value)) => {
+                steps.retained=Some(value?);self.frames.push(Frame::Steps(steps));
+            }
             (work::Continuation::Operand { operand, op }, work::Reply::Constructor(done)) => {
                 let outer = crate::resource::observe(done.assemble(recorder))?;
                 self.begin_voids(operand, op, outer, recorder)?;

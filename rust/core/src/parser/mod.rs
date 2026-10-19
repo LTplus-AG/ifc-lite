@@ -39,7 +39,7 @@ mod report_sink;
 mod scanner;
 mod slots;
 mod tokenizer;
-#[cfg(test)]
+#[cfg(all(test, feature = "source-resource-tracking"))]
 pub(crate) use tokenizer::MAX_NESTING_DEPTH;
 
 pub use keyword::{find_keyword, keyword_ends_with, keyword_eq, keyword_starts_with};

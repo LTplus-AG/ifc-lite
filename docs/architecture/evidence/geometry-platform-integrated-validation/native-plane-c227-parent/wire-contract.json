@@ -1,0 +1,317 @@
+{
+  "certificate_version": 2,
+  "method_bit": 8,
+  "condition": "version2 iff rectangle_count>0 iff method&8; all other domains remain v1 without extension",
+  "maximum_records": 16,
+  "extension_offset_including_response_header": "324 + 136*cylinder_count",
+  "extension_header": {
+    "bytes": 16,
+    "fields": [
+      {
+        "field": "rectangle_count",
+        "type": "u32",
+        "count": 1,
+        "offset": 0,
+        "bytes": 4
+      },
+      {
+        "field": "rectangle_record_bytes",
+        "type": "u32",
+        "count": 1,
+        "offset": 4,
+        "bytes": 4
+      },
+      {
+        "field": "rectangle_edge_bytes",
+        "type": "u32",
+        "count": 1,
+        "offset": 8,
+        "bytes": 4
+      },
+      {
+        "field": "rectangle_reserved",
+        "type": "u32",
+        "count": 1,
+        "offset": 12,
+        "bytes": 4
+      }
+    ]
+  },
+  "extension_constants": {
+    "rectangle_record_bytes": 1376,
+    "rectangle_edge_bytes": 248,
+    "rectangle_reserved": 0
+  },
+  "record": {
+    "bytes": 1376,
+    "fields": [
+      {
+        "field": "version",
+        "type": "u32",
+        "count": 1,
+        "offset": 0,
+        "bytes": 4
+      },
+      {
+        "field": "source_face",
+        "type": "u32",
+        "count": 1,
+        "offset": 4,
+        "bytes": 4
+      },
+      {
+        "field": "u_axis",
+        "type": "u32",
+        "count": 1,
+        "offset": 8,
+        "bytes": 4
+      },
+      {
+        "field": "v_axis",
+        "type": "u32",
+        "count": 1,
+        "offset": 12,
+        "bytes": 4
+      },
+      {
+        "field": "normal_axis",
+        "type": "u32",
+        "count": 1,
+        "offset": 16,
+        "bytes": 4
+      },
+      {
+        "field": "loops",
+        "type": "u32",
+        "count": 1,
+        "offset": 20,
+        "bytes": 4
+      },
+      {
+        "field": "holes",
+        "type": "u32",
+        "count": 1,
+        "offset": 24,
+        "bytes": 4
+      },
+      {
+        "field": "edge_count",
+        "type": "u32",
+        "count": 1,
+        "offset": 28,
+        "bytes": 4
+      },
+      {
+        "field": "control_count",
+        "type": "u32",
+        "count": 1,
+        "offset": 32,
+        "bytes": 4
+      },
+      {
+        "field": "flags",
+        "type": "u32",
+        "count": 1,
+        "offset": 36,
+        "bytes": 4
+      },
+      {
+        "field": "reserved0",
+        "type": "u32",
+        "count": 1,
+        "offset": 40,
+        "bytes": 4
+      },
+      {
+        "field": "reserved1",
+        "type": "u32",
+        "count": 1,
+        "offset": 44,
+        "bytes": 4
+      },
+      {
+        "field": "controls",
+        "type": "f64",
+        "count": 16,
+        "offset": 48,
+        "bytes": 128
+      },
+      {
+        "field": "u",
+        "type": "f64",
+        "count": 4,
+        "offset": 176,
+        "bytes": 32
+      },
+      {
+        "field": "v",
+        "type": "f64",
+        "count": 4,
+        "offset": 208,
+        "bytes": 32
+      },
+      {
+        "field": "bounds",
+        "type": "f64",
+        "count": 6,
+        "offset": 240,
+        "bytes": 48
+      },
+      {
+        "field": "uv_hull",
+        "type": "f64",
+        "count": 4,
+        "offset": 288,
+        "bytes": 32
+      },
+      {
+        "field": "inverse",
+        "type": "f64",
+        "count": 8,
+        "offset": 320,
+        "bytes": 64
+      },
+      {
+        "field": "edges",
+        "type": "edge",
+        "count": 4,
+        "offset": 384,
+        "bytes": 992
+      }
+    ]
+  },
+  "edge": {
+    "bytes": 248,
+    "fields": [
+      {
+        "field": "flags",
+        "type": "u32",
+        "count": 1,
+        "offset": 0,
+        "bytes": 4
+      },
+      {
+        "field": "start_corner",
+        "type": "u32",
+        "count": 1,
+        "offset": 4,
+        "bytes": 4
+      },
+      {
+        "field": "end_corner",
+        "type": "u32",
+        "count": 1,
+        "offset": 8,
+        "bytes": 4
+      },
+      {
+        "field": "reserved",
+        "type": "u32",
+        "count": 1,
+        "offset": 12,
+        "bytes": 4
+      },
+      {
+        "field": "controls",
+        "type": "f64",
+        "count": 8,
+        "offset": 16,
+        "bytes": 64
+      },
+      {
+        "field": "knots",
+        "type": "f64",
+        "count": 4,
+        "offset": 80,
+        "bytes": 32
+      },
+      {
+        "field": "interval",
+        "type": "f64",
+        "count": 2,
+        "offset": 112,
+        "bytes": 16
+      },
+      {
+        "field": "start",
+        "type": "f64",
+        "count": 3,
+        "offset": 128,
+        "bytes": 24
+      },
+      {
+        "field": "end",
+        "type": "f64",
+        "count": 3,
+        "offset": 152,
+        "bytes": 24
+      },
+      {
+        "field": "line_origin",
+        "type": "f64",
+        "count": 3,
+        "offset": 176,
+        "bytes": 24
+      },
+      {
+        "field": "line_axis",
+        "type": "f64",
+        "count": 3,
+        "offset": 200,
+        "bytes": 24
+      },
+      {
+        "field": "step",
+        "type": "f64",
+        "count": 2,
+        "offset": 224,
+        "bytes": 16
+      },
+      {
+        "field": "scale",
+        "type": "f64",
+        "count": 1,
+        "offset": 240,
+        "bytes": 8
+      }
+    ]
+  },
+  "record_constants": {
+    "version": 1,
+    "loops": 1,
+    "holes": 0,
+    "edge_count": 4,
+    "control_count": 12,
+    "flags": 0,
+    "reserved0": 0,
+    "reserved1": 0
+  },
+  "edge_flags": {
+    "canonical_line": 1,
+    "inside_out": 2
+  },
+  "inverse": [
+    "u0",
+    "u1",
+    "P00[u_axis]",
+    "P10[u_axis]",
+    "v0",
+    "v1",
+    "P00[v_axis]",
+    "P01[v_axis]"
+  ],
+  "corners": "U in bit0, V in bit1; positive loop 0->1->3->2->0",
+  "edge_endpoint_orientation": "start/end increasing curve parameter; start_corner/end_corner oriented loop traversal",
+  "surface_controls": "raw homogeneous P00,P01,P10,P11; SDK NL_NOW sentinel preserved",
+  "source_face": "actual input GetFaces revision-local inventory index, not ancestry",
+  "maximum_success_response_bytes": 24532,
+  "request_bytes": 92,
+  "native_handoff_patch": "/tmp/ifclite-plane-source-records-5bcc-assignment.patch",
+  "parent_transport_hold": {
+    "native_worker_response": "no 4096 response cap",
+    "browser/module.mjs:20": "currently rejects response >4096",
+    "browser/client.mjs": "response frame checks also use 4096",
+    "rust/geometry-runtime/src/protocol.rs": "MAX_PAYLOAD_BYTES=4096; parent must audit response versus request uses",
+    "required": "bounded v2 response handling through 24532; preserve existing request bounds"
+  }
+}

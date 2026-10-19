@@ -1,0 +1,12 @@
+{
+  "source": "51c2d1ac0abab92ae80c5d36ee0d5dfc9119f24b",
+  "job": "511c0cc8-92d1-414d-b914-085ab03eb359",
+  "exit_code": 101,
+  "source_unchanged": true,
+  "workspace": "FAIL at test compilation E0382; no behavioral test result",
+  "strict_all_target_clippy": "FAIL at same E0382",
+  "failure": "inspection_tests.rs98 consumes non-Copy expected IfcType across repeated observations",
+  "correction": "0730e6fcd4 borrows both actual cached type and expected type; assertions unchanged; corrected execution UNRUN",
+  "actual_native_artifact": "475c source, SHA69851c21038602964acdabc9a22ac02a4421b9682bef4f6d3714e4ff02976e23 verified before Cargo; does not qualify subsequent nativeV2 integration",
+  "output_sha256": "2108eb359a7fa559224be7f6735de18a15cd39cc0c59e40159b75a4bc92d33e2"
+}

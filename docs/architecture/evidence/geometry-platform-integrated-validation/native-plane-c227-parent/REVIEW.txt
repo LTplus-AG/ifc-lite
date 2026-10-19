@@ -1,0 +1,137 @@
+Independent read-only review: native method8/v2 rectangle integration
+Candidate: c227cd078434b7a46333b1111a367148fe2ce2ab
+Base: 5bcc14113a4b90ef99728baaaca9fee4c8e41e1b
+Checkout: /home/louistrue/.t3/worktrees/ifc-lite/t3-89ed4b23
+SDK: c9c5979f04cea8c38213004d4f04df0dcfb40d05
+
+VERDICT
+Conditional source-review acceptance of the additive native design WITH the
+supplied parent-owned one-line assignment. The pinned commit alone is not
+production-ready: that assignment is absent. No additional demonstrated
+mathematical defect was found in the restricted unit-weight axis-rectangle
+proof. This is neither an executed numerical result nor integrated native /
+C ABI / Rust / browser approval. No 21/128 claim is made.
+
+CONCRETE BLOCKER IN THE PINNED CANDIDATE
+[P1] native/smlib-adapter/src/plane.cpp:163-167,198 and
+src/adapter.cpp:316-319; src/protocol.cpp:130-131:
+face_hull now admits method8, but clip_finite_plane still initializes version1
+and copies only cylinder records. It never calls populate_plane_source_records.
+The successful C ABI operation therefore stores an output with version1,
+method8 and zero rectangle records. Protocol dispatch subsequently throws
+"derived source proof requires certificate v2", after the native handle was
+already stored. This does not close the actual second Clip consumer.
+Required integration: apply parent-plane-assignment.patch immediately after
+cylinder copying, preserving the parent's outward/context/ledger work. The
+provided single call reaches the checked helper at plane_domain.cpp:353-364
+before cutter construction, Boolean execution or handle publication. Reviewed
+as a handoff, NOT represented as already applied or qualified.
+
+EXPLICIT INTEGRATION / QUALIFICATION HOLDS (not new child-scope defects)
+1. rust/geometry-runtime/src/plane.rs:70-88 accepts only v1, method<=7 and
+   the old exact cylinder-only length. Native v2 is rejected even below4096.
+   protocol.rs:10,320 and worker.rs:322 cap response bodies at4096;
+   browser/module.mjs:20 and browser/client.mjs:31 also reject >4096.
+   Parent Rust/JS parser work is intentionally outside this candidate.
+   Full decoding must bind actual handles/plane/side/mode and source indices,
+   validate all fixed fields/flags/reserved words, method/version/count
+   equivalence, distinct face records, proof coefficients and exact length,
+   and enforce quotas BEFORE count-based allocation or result publication.
+   Maximum body:324+136*16+16+1376*16=24532 bytes. Preserve request limits;
+   increasing the shared request/response constant wholesale is insufficient.
+   No review approval of a parser not included in this source is implied.
+2. CMakeLists.txt:51-52; tests/plane_tests.cpp:121-149;
+   tests/plane_source_domain_tests.cpp:137-250;
+   tests/plane_source_protocol_tests.cpp:44-75:
+   actual source-bound compilation/linking, SDK Boolean output eligibility,
+   C ABI packet agreement, immutability, tolerance and budget witnesses,
+   runtime consumers and browser witnesses all remain UNRUN here. Supplied
+   C++17/C11 syntax-only logs are no substitute. Chain/replacement/identity/
+   survey positives must PASS; unsupported/status7 cannot count as skips.
+   Historical parent native475 5/8 results and separately reported new-ledger
+   failures are not c227 qualification. Missing-trim runtime Clip remains red
+   until an actual integrated c227 run proves otherwise. No build/test/job
+   was submitted by this review.
+
+SOURCE REVIEW RESULTS
+- Production caller: plane_domain.cpp:188-208 takes the new path only for
+  exact generic SmBSplineSurface dispatch with at least one absent existing
+  effective trim. Complete effective trim sets continue through the existing
+  trim_domain/method2 path, including its existing support/metadata checks.
+  Derived support is not labelled authored UV. No trim is manufactured.
+- Shared accounting: plane_domain.cpp:175-184 charges twelve controls per
+  proof (four patch plus eight boundary controls), then all effective present
+  trims through curve_hull using the SAME PlaneDomain passed by the full face
+  loop. Global edge controls are additionally charged at:317-323. This is
+  conservative double accounting, not per-face scratch resetting. The public
+  whole-source path retains the million-control ceiling. The private test
+  seam's local ledger is not being mistaken for whole-operation admission.
+- Quotas: :203-204 rejects the seventeenth derived face before its theorem
+  evaluation/record insertion. PlaneDomain holds a fixed16-record array;
+  no record-count-controlled heap allocation is introduced. Face/edge/vertex
+  and preflight edgeuse ceilings remain. Existing SDK inventory enumeration
+  precedes returned-size checks, as previously scoped: these are owned valid
+  SDK graphs, not arbitrary malformed-pointer validation.
+- Source/ownership: :298-315 preserves whole-source finite-material,
+  representation/materialization preflight and non-evaluating manifold
+  checks; each face is now also checked against its actual source BRep.
+  plane_source_domain.cpp:99-132 retains exact generic dispatch, owned face,
+  one outer loop/no holes, upward orientation, edge/loop/mate ownership,
+  supported existing trims and materialization checks before lazy-capable
+  coefficient getters. No new Evaluate/heal/fit/cache-write path found.
+- The mathematical helper and dyadic implementation are BYTE-IDENTICAL to
+  the independently reviewed5bcc source. Exact degree1 2x2 homogeneous data,
+  weights1 or the SDK nonrational sentinel, clamped four-knot support,
+  independent coordinate axes and exact equalities give an injective affine
+  map. Complete unit-weight degree1 boundary curves, exact endpoint/vertex
+  equations, full hulls in the supported patch plane, four distinct sides,
+  positive parameter corner traversal and reciprocal cycle closure establish
+  the rectangular bounded interior. Canonical SmLine fields are separately
+  authenticated with exact dyadic equations, including reversal. Metadata,
+  clamp flags and the surface control net alone are not the proof.
+- Broader affine/sheared/curved patches, holes, nonunit weights, power form,
+  extrapolation, incomplete or inconsistent boundary ownership, unsupported
+  representations and present unmaterialized trims still refuse. Absence of
+  cached UV is accepted only by this theorem, not as general permission.
+- Tolerances: :311,315,323,326 retains source/face/edge/vertex aggregation;
+  :329 expands the FINAL full domain outward. Raw rectangle bounds remain
+  exact unexpanded patch bounds. Parent cutter clearance/outward assertions
+  are untouched by the candidate. The supplied handoff is a single call and
+  does not replace plane.cpp or carry an older outward implementation.
+- Record identity: plane_source_certificate.hpp:5-29 copies all actual raw
+  surface coefficients/knots, exact bounds/support, symbolic inverse,
+  boundary coefficients/knots/intervals/endpoints, canonical line data and
+  orientation/corner information. source_face comes from actual GetFaces
+  inventory iteration (:205); it is revision-local, not callback ancestry.
+  adapter.cpp:319 supplies enclosing actual input/output handles after store.
+  Incarnation sealing remains the parent's responsibility, unchanged here.
+- Layout: explicit little-endian u32/f64 emission at protocol.cpp:34-45
+  agrees with the reviewed1376-byte record /248-byte boundary record and
+  offsets in wire-contract.json. Record occupies48+128+32+32+48+32+64+992.
+  Extension starts at324+136*cylinder_count including the response header,
+  has16 header bytes, then fixed records. Serializer checks v2 header quotas
+  and constants at:121-129 before iterating the bounded records. Internal
+  generation creates record constants/zero reserves; this is not a decoder
+  for untrusted record bytes and cannot qualify a future Rust/JS decoder.
+- v1 WIRE preservation: existing prefix serialization and cylinder record
+  loops are unchanged; the helper emits v1/no extension for no derived faces.
+  Complete authored method2 behavior remains. Empty/planar/cylindrical v1
+  execution is unverified here. The public C struct grows, so this statement
+  concerns wire compatibility, not binary compatibility with an old-header
+  caller allocating the previous smaller certificate; rebuild native callers.
+
+EVIDENCE IDENTITY / SCOPE
+All15 supplied source hashes match both checkout bytes and git show at c227.
+All15 supplied SDK hashes match bytes and git show at the pinned SDK commit.
+The previous theorem/dyadic sources are unchanged. git diff --check for
+5bcc..c227 is clean (whitespace only). Both checkouts stayed unchanged.
+Only this report and its hash records were written outside the repository.
+No source edits, patch application, compilation, tests, SDK execution, heavy
+validation, jobs, publication, lock changes or cleanup were performed.
+Fleet status was inspected: Pop/PC reachable, admission denied; Mac disabled.
+
+Hash manifest: /tmp/ifclite-plane-v2-c227cd0784-review-hashes.json
+Manifest SHA256: caee3993e6b9543207b8cedab798952a1fadaee6e6d6be3b14ac7ba8504c6f3c
+Incremental patch SHA256:614e99b26f8eeffa0989c7b8901716d761e87387b30f237643f029e00b5a9c52
+Parent assignment SHA256:917a8149b8a149e905f297447d7952aef0e2ff4fd5afd769c609d196a3a9716d
+Wire contract SHA256:9bb4b67f935d54d69821ffee54ffaf62b25a5fac2d6a95b1ba4edb585e5f8928

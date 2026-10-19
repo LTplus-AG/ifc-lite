@@ -1,0 +1,22 @@
+{
+  "source": "51c2d1ac0abab92ae80c5d36ee0d5dfc9119f24b",
+  "pid": 2505343,
+  "task": "ifclite-workspace-region-51c2-20261019",
+  "command": [
+    "/home/louistrue/build-workers/ifc-fleet",
+    "run",
+    "--route",
+    "fleet",
+    "--storage-task",
+    "ifclite-workspace-region-51c2-20261019",
+    "--cwd",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361",
+    "--",
+    "bash",
+    "-c",
+    "source \"$HOME/build-workers/worker-env.sh\" || exit $?\npnpm fixtures || exit $?\ngit diff --exit-code 475c5edca5ab4c8ba99a92874504240b2fecffe3 HEAD -- native/smlib-adapter || exit $?\nexport IFCLITE_SMLIB_WORKER=\"/home/louistrue/build-workers/worker-state/caches/1c8ef91bc19f507e5b98a277/ifclite-smlib/native-475c5edca5ab4c8ba99a92874504240b2fecffe3-b6f0d1ab2604/ifclite_smlib_worker\"\nprintf '69851c21038602964acdabc9a22ac02a4421b9682bef4f6d3714e4ff02976e23  %s\\n' \"$IFCLITE_SMLIB_WORKER\" | sha256sum -c - || exit $?\nprintf 'Native executable source475c, source inputs unchanged; native lineage CTests remain failed. SDK-gated Rust tests enabled.\\n'\ncargo test --workspace --no-fail-fast\nworkspace_status=$?\ncargo clippy --workspace --all-targets -- -D warnings\nclippy_status=$?\nprintf 'workspace_exit=%s clippy_exit=%s\\n' \"$workspace_status\" \"$clippy_status\"\nif [ \"$workspace_status\" -ne 0 ]; then exit \"$workspace_status\"; fi\nexit \"$clippy_status\""
+  ],
+  "log": "/tmp/ifclite-workspace-region-51c2-20261019.log",
+  "launched_at": 1792407214.6006372,
+  "scope": "Full Rust workspace --no-fail-fast and strict all-target Clippy with actual source475c native artifact hash verified. Not nativeCTest/browser/Python/performance qualification"
+}

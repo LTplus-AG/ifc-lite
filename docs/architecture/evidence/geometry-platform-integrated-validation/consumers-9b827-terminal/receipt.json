@@ -1,0 +1,103 @@
+{
+  "id": "2a8de51f-69c1-4976-91b9-24f29c206620",
+  "host": {
+    "host": "pop-os",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 32,
+    "availableMemoryBytes": 114546958336,
+    "totalMemoryBytes": 134644969472,
+    "python": "3.12.3",
+    "time": 1792416193.4429448
+  },
+  "cwd": "/home/louistrue/build-workers/worker-state/checkouts/9b82767b4a254a5806817700cca0d709e2c31eff",
+  "sourceBefore": {
+    "commit": "9b82767b4a254a5806817700cca0d709e2c31eff",
+    "tree": "dad3ac2df50fc85b1867461fa2bb5402e0181325",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "abc0c942046a3726b4a35fd14f5d98e047de490c1983f47109029e00ed659472",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "4cf9cf1dc70cee40ab775df7d3d36665c55bd855514913fee9149209fc9b2edd"
+    }
+  },
+  "command": [
+    "bash",
+    "-c",
+    "# SPDX-License-Identifier: MPL-2.0\nsource \"$HOME/build-workers/worker-env.sh\" || exit $?\npnpm install --frozen-lockfile || exit $?\npnpm fixtures || exit $?\npnpm fixtures:check || exit $?\npnpm build:imported-geometry\nimported_status=$?\nnode scripts/build-imported-geometry.mjs --verify\nverify_status=$?\npnpm build:wasm\nwasm_status=$?\ngit diff --exit-code -- packages/ifcx/src/generated packages/wasm/pkg/ifc-lite.d.ts\ngenerated_status=$?\npnpm build\nbuild_status=$?\npnpm test:wasm-contract\ncontract_status=$?\npnpm typecheck\ntypecheck_status=$?\npnpm test\ntest_status=$?\nprintf 'repeat_imported_exit=%s imported_verify_exit=%s canonical_wasm_exit=%s generated_diff_exit=%s root_build_exit=%s wasm_contract_exit=%s root_typecheck_exit=%s root_test_exit=%s\\n' \"$imported_status\" \"$verify_status\" \"$wasm_status\" \"$generated_status\" \"$build_status\" \"$contract_status\" \"$typecheck_status\" \"$test_status\"\nfor result in \"$imported_status\" \"$verify_status\" \"$wasm_status\" \"$generated_status\" \"$build_status\" \"$contract_status\" \"$typecheck_status\" \"$test_status\"; do\n  if [ \"$result\" -ne 0 ]; then exit \"$result\"; fi\ndone\n"
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792416193.439985,
+  "resources": [
+    "/home/louistrue/build-workers/worker-state/checkouts/9b82767b4a254a5806817700cca0d709e2c31eff",
+    "/home/louistrue/build-workers/worker-state/caches/c34add72ed173ef8655294b4"
+  ],
+  "state": "failed",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "storageTask": "ifclite-consumers-9b827-20261019",
+  "storageTaskExplicit": true,
+  "storageResources": [
+    {
+      "path": "/home/louistrue/build-workers/worker-state/caches/c34add72ed173ef8655294b4",
+      "role": "cache",
+      "project": "ifc-lite",
+      "compatibilityKey": "c34add72ed173ef8655294b4"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/9b82767b4a254a5806817700cca0d709e2c31eff",
+      "role": "worktree"
+    }
+  ],
+  "fixtures": {},
+  "tools": {
+    "git": {
+      "path": "/usr/bin/git",
+      "exitCode": 0,
+      "version": "git version 2.43.0"
+    },
+    "rustc": {
+      "path": "/home/louistrue/build-workers/toolchains/cargo/bin/rustc",
+      "exitCode": 0,
+      "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+    },
+    "cargo": {
+      "path": "/home/louistrue/build-workers/toolchains/cargo/bin/cargo",
+      "exitCode": 0,
+      "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+    },
+    "node": {
+      "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+      "exitCode": 0,
+      "version": "v24.22.0"
+    },
+    "pnpm": {
+      "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/pnpm",
+      "exitCode": 0,
+      "version": "10.8.1"
+    }
+  },
+  "runnerSha256": "086190b0495aec8d7608a80241396e8fe90ca69c80dea8110eb4770fed2ca6f9",
+  "startedAt": 1792416194.4375026,
+  "queueSeconds": 0.9975178241729736,
+  "resourceScope": true,
+  "exitCode": 1,
+  "finishedAt": 1792416768.794364,
+  "sourceAfter": {
+    "commit": "9b82767b4a254a5806817700cca0d709e2c31eff",
+    "tree": "dad3ac2df50fc85b1867461fa2bb5402e0181325",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "abc0c942046a3726b4a35fd14f5d98e047de490c1983f47109029e00ed659472",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "4cf9cf1dc70cee40ab775df7d3d36665c55bd855514913fee9149209fc9b2edd"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {},
+  "outputSha256": "14e411bc11e5acebb094e764b31a7a7bbe46d6d166e08d29dce50cfc9bd05f44"
+}

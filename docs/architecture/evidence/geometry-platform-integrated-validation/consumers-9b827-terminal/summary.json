@@ -1,0 +1,28 @@
+{
+  "source": "9b82767b4a254a5806817700cca0d709e2c31eff",
+  "job": "2a8de51f-69c1-4976-91b9-24f29c206620",
+  "exit": 1,
+  "sourceUnchanged": true,
+  "outputSha256": "14e411bc11e5acebb094e764b31a7a7bbe46d6d166e08d29dce50cfc9bd05f44",
+  "repeatImported": 0,
+  "importedVerify": 0,
+  "canonicalWasm": 0,
+  "generatedDiff": 0,
+  "rootBuild": 1,
+  "wasmContract": {
+    "passed": 206,
+    "failed": 6,
+    "skipped": 1
+  },
+  "rootTypecheck": 134,
+  "rootTest": 1,
+  "sourceCauses": [
+    "Vite resolves optional absolute /smlib/client.mjs during default viewer-embed bundling",
+    "WASM serialization rejects numeric original-source record map keys; same defect causes6contractfailures and1of27wasmpackagetests"
+  ],
+  "environmentCause": "viewer and viewer-embed typechecks exhaust2GiB V8heap; no type verdict from aborted programs",
+  "repairs": {
+    "67a6357516": "fixed deployment module variable with vite-ignore;18protocolfixturesPASS, actualbundleUNRUN",
+    "f763b81c2f": "source records serialize textualIDkeys with originalnumericIDs/coefficients intact; extended real-WASM assertions, UNRUN"
+  }
+}

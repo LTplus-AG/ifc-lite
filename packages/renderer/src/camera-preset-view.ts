@@ -256,7 +256,8 @@ export function presetDirectionTarget(
 ): { position: Vec3; target: Vec3; up: Vec3 } | null {
   const length = Math.hypot(direction.x, direction.y, direction.z);
   if (!Number.isFinite(length) || length < 1e-9) return null;
-  if (Math.hypot(direction.x, direction.z) < 1e-9) return null;
+  // Written as a negated `>=` so a NaN component can never pass either bound.
+  if (!(Math.hypot(direction.x, direction.z) >= 1e-9)) return null;
 
   const rotationRadians = Number.isFinite(buildingRotation) ? (buildingRotation as number) : 0;
   const cosR = Math.cos(rotationRadians);

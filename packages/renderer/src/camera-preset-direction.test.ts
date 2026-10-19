@@ -56,7 +56,7 @@ describe('Camera.setPresetDirection', () => {
   });
 
   it('ignores a direction with no horizontal heading or no length', () => {
-    for (const bad of [{ x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: 0 }, { x: NaN, y: 1, z: 1 }]) {
+    for (const bad of [{ x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: 0 }, { x: NaN, y: 1, z: 1 }, { x: NaN, y: 0, z: 0 }, { x: 1, y: 0, z: NaN }, { x: Infinity, y: 0, z: 1 }]) {
       const camera = new Camera();
       const before = { position: camera.getPosition(), target: camera.getTarget() };
       // Time is advanced past the tween like the accepting cases, so a missing

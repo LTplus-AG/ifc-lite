@@ -1,0 +1,32 @@
+{
+  "source": "7fc122b55c429cb5f16f8c7e7de866eccf36c29f",
+  "pid": 2515833,
+  "task": "ifclite-workspace-exact-7fc12-20261019",
+  "command": [
+    "/home/louistrue/build-workers/ifc-fleet",
+    "run",
+    "--host",
+    "pc-wsl",
+    "--storage-task",
+    "ifclite-workspace-exact-7fc12-20261019",
+    "--cwd",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361",
+    "--",
+    "bash",
+    "-c",
+    "source \"$HOME/build-workers/worker-env.sh\" || exit $?\npnpm fixtures || exit $?\nunset IFCLITE_SMLIB_WORKER\nprintf 'Exact/default full workspace and region foundation; SDK-gated tests disabled and not qualified in this run.\\n'\ncargo test --workspace --no-fail-fast\nworkspace_status=$?\ncargo clippy --workspace --all-targets -- -D warnings\nclippy_status=$?\nprintf 'workspace_exit=%s clippy_exit=%s\\n' \"$workspace_status\" \"$clippy_status\"\nif [ \"$workspace_status\" -ne 0 ]; then exit \"$workspace_status\"; fi\nexit \"$clippy_status\""
+  ],
+  "log": "/tmp/ifclite-workspace-exact-7fc12-20261019.log",
+  "launched_at": 1792407737.7295082,
+  "scope": "Full Rust exact/default workspace and region foundation, strict all-target Clippy; SDK-gated earlyreturns explicitly excluded, not native/browser/Python/performance qualification",
+  "private_source_transfer": {
+    "commit": "7fc122b55c429cb5f16f8c7e7de866eccf36c29f",
+    "privateRef": "refs/ifc-fleet/7fc122b55c429cb5f16f8c7e7de866eccf36c29f",
+    "bundleSHA256": "92929affff355084ef19e898bea8a9f872cb2e1601481e385ee25a3549f7a98a",
+    "bundleBytes": 10135,
+    "verified": true,
+    "historyRewritten": false
+  },
+  "prior_provisioning_failure": "auto-d1a4b398c4b946919b37895d6f2b263a",
+  "prior_local_clean_check_failure": "ifclite-workspace-exact-5f103-20261019; no request or job created"
+}

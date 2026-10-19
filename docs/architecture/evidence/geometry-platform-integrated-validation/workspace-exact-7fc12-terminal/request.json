@@ -1,0 +1,18 @@
+{
+  "id": "auto-8ed21889bc2e468cba2595fffd265a7a",
+  "commit": "7fc122b55c429cb5f16f8c7e7de866eccf36c29f",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "-c",
+    "source \"$HOME/build-workers/worker-env.sh\" || exit $?\npnpm fixtures || exit $?\nunset IFCLITE_SMLIB_WORKER\nprintf 'Exact/default full workspace and region foundation; SDK-gated tests disabled and not qualified in this run.\\n'\ncargo test --workspace --no-fail-fast\nworkspace_status=$?\ncargo clippy --workspace --all-targets -- -D warnings\nclippy_status=$?\nprintf 'workspace_exit=%s clippy_exit=%s\\n' \"$workspace_status\" \"$clippy_status\"\nif [ \"$workspace_status\" -ne 0 ]; then exit \"$workspace_status\"; fi\nexit \"$clippy_status\""
+  ],
+  "storageTask": "ifclite-workspace-exact-7fc12-20261019",
+  "pools": [],
+  "requestedHost": "pc-wsl"
+}

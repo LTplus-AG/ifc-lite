@@ -1,0 +1,63 @@
+{
+  "autoClose": false,
+  "closeRequestedAt": 1792408832.8747897,
+  "closedAt": 1792408834.313729,
+  "createdAt": 1792407742.2768724,
+  "id": "ifclite-workspace-exact-7fc12-20261019",
+  "jobs": [
+    "7f6411df-8e5a-455c-bf16-606936370af2"
+  ],
+  "manifests": [
+    "pc-wsl-7f6411df-8e5a-455c-bf16-606936370af2-c3a71c13d5a6"
+  ],
+  "ownerPid": 20881,
+  "resources": [
+    {
+      "compatibilityKey": "a2df2b6cd1e05391484b84eb",
+      "path": "/home/louistrue/build-workers/worker-state/caches/a2df2b6cd1e05391484b84eb",
+      "project": "ifc-lite",
+      "role": "cache"
+    },
+    {
+      "metadata": {
+        "allocatedBytes": 2074501120,
+        "entries": 23340,
+        "signature": "21958981e472b4db61c9ae8e4480a3708ce07e0ae0a6fc13c927e74ba9cf6d66"
+      },
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/7fc122b55c429cb5f16f8c7e7de866eccf36c29f",
+      "role": "worktree",
+      "sourceCommit": "7fc122b55c429cb5f16f8c7e7de866eccf36c29f",
+      "action": "1383f3a492be4219ab94963134f36195",
+      "reclaimed": {
+        "id": "1383f3a492be4219ab94963134f36195",
+        "task": "ifclite-workspace-exact-7fc12-20261019",
+        "path": "/home/louistrue/build-workers/worker-state/checkouts/7fc122b55c429cb5f16f8c7e7de866eccf36c29f",
+        "state": "removed",
+        "sourceRef": "refs/heads/archive/storage/ifclite-workspace-exact-7fc12-20261019-7fc122b55c429cb5f16f8c7e7de866eccf36c29f",
+        "commit": "7fc122b55c429cb5f16f8c7e7de866eccf36c29f",
+        "sourceExtras": null,
+        "restoreCommand": "git --git-dir /home/louistrue/build-workers/ifc-lite.git worktree add /home/louistrue/build-workers/worker-state/checkouts/7fc122b55c429cb5f16f8c7e7de866eccf36c29f refs/heads/archive/storage/ifclite-workspace-exact-7fc12-20261019-7fc122b55c429cb5f16f8c7e7de866eccf36c29f",
+        "finishedAt": 1792408855.8708982
+      }
+    }
+  ],
+  "state": "reclaimed",
+  "updatedAt": 1792407742.2768862,
+  "retiredLogs": {
+    "7f6411df-8e5a-455c-bf16-606936370af2": {
+      "id": "e07a56c52d5841c8820fb0b480f2de6e",
+      "task": "ifclite-workspace-exact-7fc12-20261019",
+      "job": "7f6411df-8e5a-455c-bf16-606936370af2",
+      "path": "/home/louistrue/build-workers/worker-state/jobs/7f6411df-8e5a-455c-bf16-606936370af2/output.log",
+      "sha256": "65ea2e189cbb616cafe050442b09420e16ae686a0bf012cf39bbc43caab274ae",
+      "signature": [
+        1787057,
+        708472,
+        1792408606930444382
+      ],
+      "state": "removed",
+      "finishedAt": 1792408855.9914556
+    }
+  },
+  "reclaimedAt": 1792408856.0215802
+}

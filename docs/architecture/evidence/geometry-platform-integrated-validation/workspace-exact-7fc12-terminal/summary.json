@@ -1,0 +1,23 @@
+{
+  "source": "7fc122b55c429cb5f16f8c7e7de866eccf36c29f",
+  "job": "7f6411df-8e5a-455c-bf16-606936370af2",
+  "exit_code": 101,
+  "source_unchanged": true,
+  "passed": 6414,
+  "failed": 2,
+  "ignored": 47,
+  "test_summaries": 391,
+  "workspace": "FAIL: epsilon and positional-read guards only",
+  "strict_all_target_clippy": "PASS",
+  "region_foundation_and_lifetime_tests": "16 executed PASS",
+  "sdk_gated_tests": "IFCLITE_SMLIB_WORKER unset; early returns are NOT SDK numerical qualification",
+  "correction_source": "1fd20d1c99cd9e9264fdfe1d76a9651d34005e32",
+  "correction_status": "Source repairs, parse and metadata checks only; corrected Cargo tests/Clippy UNRUN",
+  "guards": "480 epsilon ceiling unchanged; no positional-read allowance raised; existing profile tolerance arithmetic shared, original values unchanged",
+  "output_sha256": "65ea2e189cbb616cafe050442b09420e16ae686a0bf012cf39bbc43caab274ae",
+  "publication": {
+    "id": "pc-wsl-7f6411df-8e5a-455c-bf16-606936370af2-c3a71c13d5a6",
+    "manifest_sha256": "359fb65334843cf6ca3d41b81e603d8f73f072c7b8c581b3525a6b2ac83fcf47",
+    "verified_output_sha256": "65ea2e189cbb616cafe050442b09420e16ae686a0bf012cf39bbc43caab274ae"
+  }
+}

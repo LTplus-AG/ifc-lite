@@ -1,0 +1,29 @@
+{
+  "id": "ifclite-workspace-exact-7fc12-20261019",
+  "state": "released",
+  "jobs": [
+    "7f6411df-8e5a-455c-bf16-606936370af2"
+  ],
+  "manifests": [
+    "pc-wsl-7f6411df-8e5a-455c-bf16-606936370af2-c3a71c13d5a6"
+  ],
+  "closedAt": 1792408834.313729,
+  "resources": [
+    {
+      "compatibilityKey": "a2df2b6cd1e05391484b84eb",
+      "path": "/home/louistrue/build-workers/worker-state/caches/a2df2b6cd1e05391484b84eb",
+      "project": "ifc-lite",
+      "role": "cache"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/7fc122b55c429cb5f16f8c7e7de866eccf36c29f",
+      "role": "worktree",
+      "metadata": {
+        "signature": "21958981e472b4db61c9ae8e4480a3708ce07e0ae0a6fc13c927e74ba9cf6d66",
+        "allocatedBytes": 2074501120,
+        "entries": 23340
+      },
+      "sourceCommit": "7fc122b55c429cb5f16f8c7e7de866eccf36c29f"
+    }
+  ]
+}

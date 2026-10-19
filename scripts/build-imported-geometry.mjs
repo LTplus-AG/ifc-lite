@@ -18,6 +18,8 @@ const directory = resolve(root, 'packages/ifcx/src/generated');
 // The workspace version and Cargo.lock (the crate has no dependencies) are not inputs.
 const sourceFiles = ['.cargo/config.toml', 'scripts/build-imported-geometry.mjs', 'scripts/lib/imported-artifacts.mjs', 'rust-toolchain.toml', 'rust/imported-geometry/Cargo.toml',
   ...readdirSync(resolve(root, 'rust/imported-geometry/src')).filter(name => name.endsWith('.rs')).sort().map(name => `rust/imported-geometry/src/${name}`)];
+// Cargo splits CARGO_ENCODED_RUSTFLAGS on ASCII 0x1F (unit separator).
+const UNIT_SEPARATOR = String.fromCharCode(0x1f);
 const digest = data => createHash('sha256').update(data).digest('hex');
 const sources = Object.fromEntries(sourceFiles.map(name => [name, digest(readFileSync(resolve(root, name)))]));
 sources['Cargo.toml#profile.release'] = digest(releaseProfile(readFileSync(resolve(root, 'Cargo.toml'), 'utf8')));
@@ -49,7 +51,7 @@ if (process.argv.includes('--copy')) {
   const sysroot = spawnSync('rustc', ['--print', 'sysroot'], { cwd: root, encoding: 'utf8' });
   if (sysroot.status !== 0) throw new Error('Cannot locate the Rust sysroot');
   const remap = ['--remap-path-prefix', `${sysroot.stdout.trim()}=/rust-sysroot`];
-  const build = spawnSync('cargo', args, { cwd: root, stdio: 'inherit', env: { ...process.env, CARGO_ENCODED_RUSTFLAGS: [...rustflags, ...remap].join('\u001f') } });
+  const build = spawnSync('cargo', args, { cwd: root, stdio: 'inherit', env: { ...process.env, CARGO_ENCODED_RUSTFLAGS: [...rustflags, ...remap].join(UNIT_SEPARATOR) } });
   if (build.status !== 0) process.exit(build.status ?? 1);
   const target = process.env.CARGO_TARGET_DIR || resolve(root, 'target');
   const bytes = readFileSync(resolve(target, 'wasm32-unknown-unknown/release/ifc_lite_imported_geometry.wasm'));

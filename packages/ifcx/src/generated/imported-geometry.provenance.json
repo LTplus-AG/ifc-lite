@@ -36,7 +36,7 @@
   "wasmSha256": "5436a9ab3590655b0887048850eca9d1d417284fedbef80b0b331f06c6db0c59",
   "sources": {
     ".cargo/config.toml": "648f6196c824ca8d5cb14f93105f57016d9c141fdf0c90c103b7c4250e87c679",
-    "scripts/build-imported-geometry.mjs": "b37dcc08ba4c202550c8b447b84f876bdb4a242c778e81e6541d1f11ca899f15",
+    "scripts/build-imported-geometry.mjs": "46cfd41cd681b2fc7da50a76b4c1354df028938cfd84319710b22b268187dd92",
     "scripts/lib/imported-artifacts.mjs": "fe8b65cbbeb83f29bb4f6c7f7632ea01afb69675066beb4860684bfb5779026d",
     "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
     "rust/imported-geometry/Cargo.toml": "adddc152ed0a19cea23d756aebcceb412e4f32921f4ff417053ac3e74713f837",

@@ -151,6 +151,50 @@ fn actual_sdk_sealed_empty_boolean_identities_preserve_independent_operands() {
 }
 
 #[test]
+fn actual_sdk_affine_chain_preserves_raw_lineage_and_independent_brep_ownership() {
+    use ifc_lite_geometry::document::BooleanOperation;
+    use ifc_lite_geometry_runtime::{RetainedDependency, RetainedLineage, RetainedTransformInput};
+    let Some(mut worker)=worker() else { return };
+    let (_document,request)=request(&worker);
+    let source=worker.evaluate_retained_extrusion(request.clone(),0.001,5.,MeshLimits::default()).unwrap();
+    let identity=[1.,0.,0.,0.,0.,1.,0.,0.,0.,0.,1.,0.,0.,0.,0.,1.];
+    let reflected=[-2.,0.,0.,0.,0.,3.,0.,0.,0.,0.,1.,0.,0.,0.,0.,1.];
+    let first=worker.copy_retained_affine(RetainedTransformInput::Source(&source),reflected).unwrap();
+    assert_eq!(first.operation_identity().input,source.solid());
+    assert_eq!(first.operation_identity().column_major,reflected);
+    assert!((worker.volume(first.solid(),1e-8).unwrap()-144.).abs()<144e-5);
+    let second=worker.copy_retained_affine(RetainedTransformInput::Affine(&first),identity).unwrap();
+    worker.release(source.solid()).unwrap();
+    assert!(source.validate_live().is_err()); first.validate_live().unwrap(); second.validate_live().unwrap();
+    let RetainedLineage::AffineCopy { input,.. }=second.lineage() else { panic!("missing repeated-copy lineage") };
+    let RetainedLineage::AffineCopy { input,column_major,.. }=input.as_ref() else { panic!("missing first transform") };
+    assert_eq!(*column_major,reflected);
+    let RetainedLineage::Definition { request:original,.. }=input.as_ref() else { panic!("missing original source coefficients") };
+    assert_eq!(original.as_ref(),&request);
+    let result=worker.evaluate_retained_boolean(
+        RetainedDependency::Affine {copy:&first,world_from_affine:identity},
+        RetainedDependency::Affine {copy:&second,world_from_affine:identity},
+        BooleanOperation::Union,0.001,5.,MeshLimits::default()).unwrap();
+    let final_copy=worker.copy_retained_affine(RetainedTransformInput::Result(&result),reflected).unwrap();
+    assert!((worker.volume(final_copy.solid(),1e-8).unwrap()-864.).abs()<864e-5);
+    let RetainedLineage::AffineCopy { input,.. }=final_copy.lineage() else { panic!("missing result-copy operation") };
+    assert!(matches!(input.as_ref(),RetainedLineage::Boolean { .. }));
+    let old_first=first.solid(); drop(first); worker.flush_releases().unwrap();
+    assert!(matches!(worker.volume(old_first,1e-8),Err(WorkerError::WrongWorker)));
+    second.validate_live().unwrap(); result.validate_live().unwrap(); final_copy.validate_live().unwrap();
+    assert!((worker.volume(second.solid(),1e-8).unwrap()-144.).abs()<144e-5);
+    drop(result); worker.flush_releases().unwrap();
+    final_copy.validate_live().unwrap();
+    assert!((worker.volume(final_copy.solid(),1e-8).unwrap()-864.).abs()<864e-5);
+    worker.release(second.solid()).unwrap();
+    let old_final=final_copy.solid(); drop(final_copy); worker.flush_releases().unwrap();
+    assert!(matches!(worker.volume(old_final,1e-8),Err(WorkerError::WrongWorker)));
+    let sibling=worker.create_box([0.;3],[1.;3]).unwrap();
+    assert!((worker.volume(sibling,1e-8).unwrap()-1.).abs()<1e-6);
+    worker.release(sibling).unwrap();
+}
+
+#[test]
 fn actual_sdk_managed_sources_and_chained_results_have_independent_lifetimes() {
     use ifc_lite_geometry::document::BooleanOperation;
     use ifc_lite_geometry_runtime::RetainedDependency;

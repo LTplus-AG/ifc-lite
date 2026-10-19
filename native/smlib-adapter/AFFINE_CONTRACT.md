@@ -98,8 +98,15 @@ liveness. Source, dependency-result and affine-copy inputs use the same explicit
 transform-input enum. Chained operations are bounded to 128. Baked copies enter
 Boolean dependencies only with an explicitly supplied proper-rigid
 world_from_affine frame and a Placed lineage node; file units or RTC never infer it.
-Receipt Drop does not retire the worker; the session owns the allocation until
-explicit worker.release(copy.solid()) or session destruction. Browser receipts
+Each native copy owns a registered Arc<ManagedObjectLease> from the lifetime
+owner's worker::objects implementation. Last Drop invalidates that exact lease
+and queues serial object release; explicit worker.release(copy.solid()) remains
+supported. The post-drain command validation includes CopyAffine, so a handle
+that became stale during deferred cleanup cannot reach SDK dispatch. Receipt
+Drop does not retire sibling objects; cancellation/unknown outcomes still retire
+the captured process. The standalone branch imports runtime-only lifetime changes
+from b20f191df7+0f3832cc03 as a separate dependency commit; parent745a3c3b33 already
+has that dependency and must not replay it as affine-owned work. Browser receipts
 use captured owner/object identity, asynchronous independent release and the same
 certificate. Foreign/stale admission occurs before dispatch. Unknown transport
 outcomes retire the captured browser domain; validated synchronized SDK refusals

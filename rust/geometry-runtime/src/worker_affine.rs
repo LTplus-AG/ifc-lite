@@ -40,14 +40,15 @@ pub struct AffineCopyIdentity {
     pub column_major: [f64; 16],
     pub certificate: AffineCertificate,
 }
-/// Independent session-owned BRep lease; explicitly release through the worker.
-/// Dropping the receipt does not retire other objects in its process. Session
-/// destruction reclaims any unreleased copy. No tessellation is performed here.
+/// Independent managed BRep lease. Last receipt Drop queues serial release of
+/// only this exact object generation; explicit raw release remains supported.
+/// Dropping one copy cannot retire sibling objects. No tessellation occurs here.
 #[derive(Debug)]
 pub struct RetainedAffineCopy {
     solid: BrepHandle,
     owner: RuntimeOwner,
     live: Arc<AtomicBool>,
+    _lease: Arc<super::objects::ManagedObjectLease>,
     identity: AffineCopyIdentity,
     lineage: Arc<RetainedLineage>,
     operations: usize,
@@ -86,8 +87,9 @@ impl SmlibWorker {
         if bytes.len()!=72 { return Err(self.poison("invalid affine result size")); }
         let certificate=AffineCertificate::decode(&bytes[16..]).map_err(|e| self.poison(e))?;
         let solid=self.handle(bytes[..16].to_vec())?;
+        let lease=self.manage_object(solid)?;
         let result=RetainedAffineCopy { solid, owner:RuntimeOwner::new(self.process_control(),self.identity),
-            live:self.object_liveness(solid)?, identity:AffineCopyIdentity {input,column_major,certificate:certificate.clone()},
+            live:self.object_liveness(solid)?, _lease:lease, identity:AffineCopyIdentity {input,column_major,certificate:certificate.clone()},
             lineage:Arc::new(RetainedLineage::AffineCopy { input:lineage,column_major,certificate }), operations };
         result.validate_live()?;
         Ok(result)

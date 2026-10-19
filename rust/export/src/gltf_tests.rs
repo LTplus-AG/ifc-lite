@@ -266,6 +266,101 @@ fn bounded_glb_with_index_is_byte_identical() {
     }
 }
 
+/// Writing pass 2 from the meshes pass 1 kept produces the same GLB as meshing
+/// the model again, whether the budget holds every mesh, runs out partway, or is
+/// too small for the first one.
+#[test]
+fn single_pass_budget_never_changes_the_bounded_glb() {
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
+    for quantize in [false, true] {
+        for include_metadata in [false, true] {
+            let opts = |budget| GltfOptions {
+                quantize,
+                include_metadata,
+                ..GltfOptions::default()
+            }
+            .with_single_pass_budget_bytes(budget);
+            let (two_pass, two_stats) =
+                try_export_glb_streaming_bounded(&bytes, &opts(0)).expect("has geometry");
+            for budget in [1, 64 * 1024, u64::MAX] {
+                let (one_pass, one_stats) =
+                    try_export_glb_streaming_bounded(&bytes, &opts(budget)).expect("has geometry");
+                assert!(
+                    two_pass == one_pass,
+                    "quantize={quantize} metadata={include_metadata} budget={budget}: GLB differs"
+                );
+                assert_eq!(two_stats, one_stats);
+            }
+        }
+    }
+}
+
+/// The single pass is opt-in: by default the bounded assembler keeps nothing.
+#[test]
+fn single_pass_is_off_by_default() {
+    assert_eq!(GltfOptions::default().single_pass_budget_bytes, 0);
+}
+
+/// The three budgets above take the three different routes: a budget that holds
+/// every shape keeps them, and one that runs out partway or cannot hold the
+/// first shape keeps none.
+#[test]
+fn single_pass_budget_decides_whether_pass_two_meshes_again() {
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
+    let plan = |budget| plan_bounded_glb(&bytes, &GltfOptions::default(), None, budget);
+    assert!(plan(u64::MAX).retained.is_some(), "everything fits");
+    assert!(plan(64 * 1024).retained.is_none(), "partway");
+    assert!(plan(1).retained.is_none(), "first shape");
+    assert!(plan(0).retained.is_none(), "disabled");
+}
+
+/// Meshes with the same content key share one kept shape, every mesh that writes
+/// bytes finds its shape, and no shape is kept that no writing mesh uses.
+#[test]
+fn single_pass_keeps_each_written_shape_once() {
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
+    let plan = plan_bounded_glb(&bytes, &GltfOptions::default(), None, u64::MAX);
+    let shapes = plan.retained.expect("every shape fits");
+    assert!(shapes.len() < plan.metas.len(), "the fixture repeats a shape");
+    for meta in plan.metas.iter().filter(|m| m.write.is_some()) {
+        let shape = &shapes[&meta.key];
+        assert_eq!(shape.indices.len(), meta.nidx as usize);
+        assert_eq!(shape.positions.len(), meta.nverts as usize * 3);
+    }
+    for key in shapes.keys() {
+        assert!(plan.metas.iter().any(|m| m.key == *key && m.write.is_some()));
+    }
+}
+
+/// A repeated key costs nothing, a budget that fits exactly keeps, and the
+/// shape that would pass the budget drops everything kept, after which nothing
+/// is kept.
+#[test]
+fn retention_drops_everything_once_the_budget_is_passed() {
+    let mut y = crate::frame::YUpScratch::new();
+    y.positions = vec![0.0f32; 9];
+    y.normals = vec![0.0f32; 9];
+    y.indices = vec![0u32; 3];
+    let mut shared = Retention::new(u64::MAX);
+    shared.keep(1, &y);
+    let one = shared.bytes;
+    shared.keep(1, &y);
+    assert_eq!((shared.kept.as_ref().map(|k| k.len()), shared.bytes), (Some(1), one));
+
+    let mut tight = Retention::new(one);
+    tight.keep(1, &y);
+    assert!(tight.kept.is_some(), "a budget that fits exactly keeps");
+    tight.keep(2, &y);
+    assert!(tight.kept.is_none());
+    tight.keep(3, &y);
+    assert!(tight.kept.is_none());
+    assert!(tight.finish(&[]).is_none());
+
+    let mut off = Retention::new(0);
+    off.keep(1, &y);
+    assert!(off.finish(&[]).is_none(), "a zero budget keeps nothing");
+}
+
 /// The shared-index MULTI-BUFFER path must produce an identical `.gltf` JSON
 /// and identical external buffers as the self-indexing one.
 #[test]

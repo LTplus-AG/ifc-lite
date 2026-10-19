@@ -3,6 +3,12 @@
 # Invoke through ifc-fleet run, never inside a second reservation.
 set -euo pipefail
 mode=${1:-native}
+consumers=${2:-}
+if [[ $# -gt 2 || ( -n "$consumers" && "$consumers" != --rust-consumers ) ||
+      ( -n "$consumers" && "$mode" != native ) ]]; then
+  printf 'usage: qualify.sh [native [--rust-consumers]|wasm]\n' >&2
+  exit 2
+fi
 revision=c9c5979f04cea8c38213004d4f04df0dcfb40d05
 cache=${IFCLITE_SDK_CACHE:-/tmp/ifclite-public-sdk-c9c5979}
 # Fleet supplies its lifecycle-managed target. Keep compiled SDK objects under
@@ -65,4 +71,15 @@ else
 fi
 cmake --build "$build" --parallel 4
 ctest --test-dir "$build" --output-on-failure
+if [[ "$consumers" == --rust-consumers ]]; then
+  # Use this build's actual worker, never a caller's stale executable or an
+  # absent environment variable that makes SDK-gated Rust tests skip.
+  export IFCLITE_SMLIB_WORKER="$build/ifclite_smlib_worker"
+  [[ -x "$IFCLITE_SMLIB_WORKER" ]] || {
+    printf 'qualified native worker is missing: %s\n' "$IFCLITE_SMLIB_WORKER" >&2
+    exit 2
+  }
+  printf 'qualification Rust consumers source=%s worker=%s\n' "$source_id" "$IFCLITE_SMLIB_WORKER"
+  cargo test -p ifc-lite-geometry-runtime -p ifc-lite-processing --all-targets --no-fail-fast -- --nocapture
+fi
 printf 'qualification build=%s\n' "$build"

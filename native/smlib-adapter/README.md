@@ -252,6 +252,17 @@ wrapper with `bash` (the wrapper need not be executable):
   bash native/smlib-adapter/qualify.sh native
 ```
 
+For native Rust consumer qualification, use `native --rust-consumers` in the
+same admitted command after fetching fixtures with root `pnpm fixtures`.
+After every CTest passes, this option sets `IFCLITE_SMLIB_WORKER` to the executable
+from that exact build, checks that it exists and is executable, then runs all
+runtime and processing Cargo targets with `--no-fail-fast -- --nocapture`.
+This includes model admission and lifecycle integration tests as well as common
+retained transactions. SDK-gated tests cannot skip for a missing worker variable;
+fixture-dependent tests still report absent fixtures, and those skips remain
+missing coverage. This command does not replace workspace tests, strict Clippy,
+WASM/browser tests, other consumers or performance qualification.
+
 Native surface witnesses count geometric planes for general extrusion surfaces
 using their complete positive-weight rational control hull and extrusion vector,
 then independently check evaluated surface points at the unchanged `1e-8`

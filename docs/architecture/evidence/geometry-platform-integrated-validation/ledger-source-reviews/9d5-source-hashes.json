@@ -1,0 +1,51 @@
+{
+  "reviewed_source": "9d5dc61e56f55e06e948285ae23f61e671b898b1",
+  "incremental_base": "2915e1a3c4c4544f5da64044b2b06e45501ba667",
+  "mode": "read-only source review; no builds or tests",
+  "files": [
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "sha256": "18a3819596b03bd53713c21cb9fa95e2b2c609dd455b942286647c795709cc7b"
+    },
+    {
+      "path": "native/smlib-adapter/FACE_LINEAGE_CONTRACT.md",
+      "sha256": "144db5868262416b2ae35a5ef185a651ba21062a8d2383fef742654392b1c34b"
+    },
+    {
+      "path": "native/smlib-adapter/evidence/face-lineage-2915/ASSEMBLY.md",
+      "sha256": "a22c2fc4c0d44db66aac5095cdbc98f79fbfc78ec84648220cd7bcb4b17ce38f"
+    },
+    {
+      "path": "native/smlib-adapter/evidence/face-lineage-2915/summary.json",
+      "sha256": "36c83c660b491cc7c41a80f45fa95f90ae1d1c63ec3c396037cb2f8a748ecc8c"
+    },
+    {
+      "path": "native/smlib-adapter/src/copy.cpp",
+      "sha256": "fa96fc26b40565b8cfcce991a752be5fbaab67cd82f6566272b7d3f8c3e18357"
+    },
+    {
+      "path": "native/smlib-adapter/src/copy.hpp",
+      "sha256": "31ae1bafac659b528420b5cc769fee0e8dab869c6ec16bbb77d85815a4acc416"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.cpp",
+      "sha256": "b4f9d3d065d3f34d33eadb739bd6866272a3d52b2c7cf4f2a709723eb46b1397"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.hpp",
+      "sha256": "db34c92e10e395ab7f2d788259ffba181bbf6ca9c0d56bf933054ac21e57cb91"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage_events.cpp",
+      "sha256": "300358c03e748efb53a886c17cfd2f9b86ee5276e19321973263970ffcd1c30c"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_lineage_tests.cpp",
+      "sha256": "9a5bd8a6149d34477988de431b40fa1fe8d7039060f1882dfd680e6ceb117749"
+    },
+    {
+      "path": "native/smlib-adapter/tests/paired_plane_observability_tests.cpp",
+      "sha256": "e6c742d94260facb9ddfcfb7c5ab90f1e99afe63c6f6a03f3dcc1b5ed9916b20"
+    }
+  ]
+}

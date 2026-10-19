@@ -1,0 +1,82 @@
+{
+  "license": "MPL-2.0",
+  "reviewed_source": "1afd9927873b98a9b4873acfff441c1c776534cf",
+  "incremental_base": "ef2b75163f3a24e65821c0ff8e7324c274f1a802",
+  "mode": "read-only source review; no builds/tests/SDK execution/numerical or paired qualification",
+  "prior_surface_finding": "closed in source",
+  "remaining_findings": 1,
+  "files": [
+    {
+      "path": "native/smlib-adapter/src/face_lineage.cpp",
+      "sha256": "f2fc504d66afacfc8be0fd71eacc3c3598051dc00701dd84fc8503814778f9df"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.hpp",
+      "sha256": "838238ae87d0ea29df577836715feaae1e86085d64b825e684d9b5e0a76ee70f"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage_events.cpp",
+      "sha256": "e6bea8278229c52a6d88870d28d3adb1985fb727575cad75a13836da2d5d3e9d"
+    },
+    {
+      "path": "native/smlib-adapter/src/copy.cpp",
+      "sha256": "fa96fc26b40565b8cfcce991a752be5fbaab67cd82f6566272b7d3f8c3e18357"
+    },
+    {
+      "path": "native/smlib-adapter/tests/root_issuance_tests.cpp",
+      "sha256": "f188acd7db78beadb8c854e8dec83d8c29cf2c08634bd35e3c63b2e323d37562"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_lineage_tests.cpp",
+      "sha256": "2337bbd87df3d3abca668c348b9774a013e6730d44c94badd65acbb7dabef52a"
+    },
+    {
+      "path": "native/smlib-adapter/INITIAL_ROOT_ISSUANCE.md",
+      "sha256": "841a1320d26b65745906bfbe5b9ee426db7dbf927326d8aa697fe2b17f415515"
+    }
+  ],
+  "sdk_revision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "sdk_files": [
+    {
+      "path": "source/SMLib/src/SmPlane.cpp",
+      "sha256": "5e554da57cd7b642ceb46c0528d582a906993fcde94779ab8a7a2328ec6e48e5"
+    },
+    {
+      "path": "source/SMLib/src/SmSurface.cpp",
+      "sha256": "218a360a80b68d4dec70a7b3e1cab5d8d89a375f41cd5564e2e058c6629740be"
+    },
+    {
+      "path": "source/SMLib/src/SmCurve.cpp",
+      "sha256": "f0c0a7fb5a6d800556bb206a5f0e80ac2c6f0a65edb101c1629ae2a2b33a6b24"
+    },
+    {
+      "path": "source/SMLib/src/SmEdge.cpp",
+      "sha256": "cb69520529d7e45c497478262cde2ed2fcbc2557f3a02bdf01a30017c8ead3a7"
+    },
+    {
+      "path": "source/SMLib/src/SmVertex.cpp",
+      "sha256": "e777a56bd5f0121de99b6b48916183abe5b160d4304aad4e231a40948636704c"
+    },
+    {
+      "path": "source/SMLib/src/SmFace.cpp",
+      "sha256": "6004846a29074d8f8923904caabc01e194eceaff7f57f33b68ecdbbec08c51f9"
+    },
+    {
+      "path": "source/SMLib/src/SmEdgeuse.cpp",
+      "sha256": "d117c7b53f010a699a73384907d4c23fbc2bdb078f09a3e97dfaa5a8d685505e"
+    },
+    {
+      "path": "source/SMLib/src/SmVertexuse.cpp",
+      "sha256": "61f5f4ed9857f225a51115386582d8f7700f4dd9a497d3fd9c4a7235df730d80"
+    },
+    {
+      "path": "source/SMLib/src/SmTopology.cpp",
+      "sha256": "6eabe0b108831caeffa807eb6a70a9339883b51e4a64d308170262566ecbecde"
+    },
+    {
+      "path": "source/SMLib/src/SmAObject.cpp",
+      "sha256": "2df3bf4093e2f35207b27b0857d405657591e7324c413855224ed1359ab8057b"
+    }
+  ],
+  "report_sha256": "acdb1ac12a7ea7ccc0fceac0817ecb56b8cd0497fd12757c96753043b6a2d464"
+}

@@ -1,0 +1,59 @@
+{
+  "review_commit": "d147fcdea234b89511a0392ff03039cec2115015",
+  "opening_repair_commit": "8972181db2e9ddc90ce8f1762051dc1038bdec97",
+  "method": "Independent read-only source review; no compilation, tests, builds, SDK execution or jobs",
+  "files": [
+    {
+      "path": "rust/processing/src/element/session_retained/clip_tests.rs",
+      "sha256": "0ff95ef4b7fc7a979766e4fcf9e745e76c4063b38e93e69f77cfc50b2a422fb0"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/mapping_tests.rs",
+      "sha256": "cca242b5bd872492cb16c8f532509f8210517c85e833cf514f58b775da88be1a"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/operation_tests.rs",
+      "sha256": "a01e64d3ce86a504683ca7b359e1e3d0587287f5feb99929d27805074b816f02"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/resource_tests.rs",
+      "sha256": "0369dc4c463e96aefd6b470491bf1478164b9e32b352737ad93e81610fd4731d"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/opening_tests.rs",
+      "sha256": "215a08698268640c04086f95a319c040176cc96658725cb5ea4c01cecae453e6"
+    },
+    {
+      "path": "rust/geometry/src/analytic/profile_topology_tests.rs",
+      "sha256": "f52b7b1b9fa90e4cb625fd85ae599c42f8157e452577c3feb6df53596a4d7d0b"
+    },
+    {
+      "path": "rust/geometry/src/program/retained.rs",
+      "sha256": "9c30032386cf3a1cd5f819f9cd97dc355315cce0613c50277efd7e829a9b7b7d"
+    },
+    {
+      "path": "rust/geometry/src/program/mapping/submesh_ready.rs",
+      "sha256": "bfa3274c8b2bdd37407ad01bb8591a958255f5cae794a468804de00b90d8fa9f"
+    },
+    {
+      "path": "rust/geometry/src/program/retained_presentation.rs",
+      "sha256": "808f0b1b34acefccb6fa9723b3597dd57d3eb00207600b1922675c75929ee2fe"
+    },
+    {
+      "path": "rust/processing/src/element/session_retained/acceptance.rs",
+      "sha256": "57f626a7eece85d2e89da301758e66625de48d8a5f0ce567f224a3b89149edbb"
+    },
+    {
+      "path": "rust/geometry/src/resource/storage.rs",
+      "sha256": "44d279e0d4333a1a1901e3bb6afdbaf4177c216b59e8ea491216f8bd721fcc4a"
+    },
+    {
+      "path": "native/smlib-adapter/src/adapter.cpp",
+      "sha256": "7f937d6b815d3248548929d299deb4d3909229d0810e8b2800e8b11e74aede08"
+    },
+    {
+      "path": "rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc",
+      "sha256": "da39f6cb98f56a9f9235e5f752213a9d4b56bd419ed867ccf7439b7d3b7a4eeb"
+    }
+  ]
+}

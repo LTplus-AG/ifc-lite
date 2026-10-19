@@ -1,0 +1,63 @@
+{
+  "reviewed_source": "ef2b75163f3a24e65821c0ff8e7324c274f1a802",
+  "incremental_base": "9d5dc61e56f55e06e948285ae23f61e671b898b1",
+  "mode": "read-only source review; no builds or tests",
+  "sdk_revision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "finding_count": 1,
+  "files": [
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "sha256": "ea68980ee0bce74c04106e514c8f5ec7350b42630f4098893467f15728a22920"
+    },
+    {
+      "path": "native/smlib-adapter/INITIAL_ROOT_ISSUANCE.md",
+      "sha256": "38443d360a843ecfcaf9be05bc7e63cc384683db7065972a05e497e9ee2230a7"
+    },
+    {
+      "path": "native/smlib-adapter/evidence/initial-issuance-9d5/ASSEMBLY.md",
+      "sha256": "d608c30db9e863f1703499edd6f378758c3a4e59dca20624fadf62e8ce6942da"
+    },
+    {
+      "path": "native/smlib-adapter/evidence/initial-issuance-9d5/summary.json",
+      "sha256": "33439185a3f5836b8d0ef8b69a323ed062a17e284057214c8d1737509a54bb47"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.cpp",
+      "sha256": "f2fc504d66afacfc8be0fd71eacc3c3598051dc00701dd84fc8503814778f9df"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.hpp",
+      "sha256": "838238ae87d0ea29df577836715feaae1e86085d64b825e684d9b5e0a76ee70f"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage_events.cpp",
+      "sha256": "dcb58ef5a9104b33964f7d78e62ab0992c0f95bc997a9c9376a393e80322148b"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_lineage_tests.cpp",
+      "sha256": "2337bbd87df3d3abca668c348b9774a013e6730d44c94badd65acbb7dabef52a"
+    },
+    {
+      "path": "native/smlib-adapter/tests/root_issuance_tests.cpp",
+      "sha256": "90aabda14dec2688021ac79460a97caf0732e571929d8b68d586b1ab66c5bb9b"
+    }
+  ],
+  "sdk_files": [
+    {
+      "path": "source/SMLib/src/SmFace.cpp",
+      "sha256": "6004846a29074d8f8923904caabc01e194eceaff7f57f33b68ecdbbec08c51f9"
+    },
+    {
+      "path": "source/SMLib/src/SmBrep.cpp",
+      "sha256": "5d44d6ac347fa42e4e83fead8bbde82ce46c5ff48e0a973b5c7cddc778a2fca1"
+    },
+    {
+      "path": "source/SMLib/src/SmSurface.cpp",
+      "sha256": "218a360a80b68d4dec70a7b3e1cab5d8d89a375f41cd5564e2e058c6629740be"
+    },
+    {
+      "path": "source/SMLib/src/SmPlane.cpp",
+      "sha256": "5e554da57cd7b642ceb46c0528d582a906993fcde94779ab8a7a2328ec6e48e5"
+    }
+  ]
+}

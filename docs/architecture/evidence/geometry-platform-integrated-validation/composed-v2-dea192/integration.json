@@ -1,0 +1,343 @@
+{
+  "source": "ed9586b7b2",
+  "groups": [
+    {
+      "group": "native_domain",
+      "base": "4e8274df6d04070ebd34ddeae633cfa674842cb0",
+      "child": "c227cd078434b7a46333b1111a367148fe2ce2ab",
+      "files": [
+        {
+          "path": "native/smlib-adapter/CMakeLists.txt",
+          "parent_sha256": "86913b244080f106debb0bb5434f00afbfbbb10685394460667b399d88e128b8",
+          "child_sha256": "dd87ba63a4beaa2983410a62741374d5f45a1b4f54d9ce8aa968587b57093de1",
+          "exact_match": false
+        },
+        {
+          "path": "native/smlib-adapter/PLANE_CONTRACT.md",
+          "parent_sha256": "fa04a69d309d29e20aed613372fc2cdb0555e8194b7945b1a71d15a5f0beb9ca",
+          "child_sha256": "fa04a69d309d29e20aed613372fc2cdb0555e8194b7945b1a71d15a5f0beb9ca",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/include/ifclite_smlib.h",
+          "parent_sha256": "1bbb99849e77f1287bf71b6e1b592d0ad6451fa0195b8c88cb4c3ec61d2eaef8",
+          "child_sha256": "1bbb99849e77f1287bf71b6e1b592d0ad6451fa0195b8c88cb4c3ec61d2eaef8",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/src/plane_domain.cpp",
+          "parent_sha256": "4e0873e84f285a799527fd39f913f4210cb749c0d4b00e5be7ba6ff5193a6af0",
+          "child_sha256": "4e0873e84f285a799527fd39f913f4210cb749c0d4b00e5be7ba6ff5193a6af0",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/src/plane_domain.hpp",
+          "parent_sha256": "08ead603a6be21e95bfb7f56f8367e899a8837434ac5553c031e8ffdafd91115",
+          "child_sha256": "08ead603a6be21e95bfb7f56f8367e899a8837434ac5553c031e8ffdafd91115",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/src/plane_dyadic.hpp",
+          "parent_sha256": "aef1b0b09c2a4162d42b3523adbe2516fe77b919a519df3939b726a2e0554831",
+          "child_sha256": "aef1b0b09c2a4162d42b3523adbe2516fe77b919a519df3939b726a2e0554831",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/src/plane_source_certificate.hpp",
+          "parent_sha256": "feee65cc9a25db8ec386345c0dc6559cec2e723dbd5de28d18d72f14fcd030db",
+          "child_sha256": "feee65cc9a25db8ec386345c0dc6559cec2e723dbd5de28d18d72f14fcd030db",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/src/plane_source_domain.cpp",
+          "parent_sha256": "4add7a2599ce54cc0e80f18f74d5bda6ef6c8eebc308dc496768cbd958ddeeec",
+          "child_sha256": "4add7a2599ce54cc0e80f18f74d5bda6ef6c8eebc308dc496768cbd958ddeeec",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/src/plane_source_domain.hpp",
+          "parent_sha256": "a0f5a7d4fb302fb78cf32b07d5e067599a219c1f3b77d4ede65b62f8f9de40f2",
+          "child_sha256": "a0f5a7d4fb302fb78cf32b07d5e067599a219c1f3b77d4ede65b62f8f9de40f2",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/src/protocol.cpp",
+          "parent_sha256": "d6ebee83a4a84ebd160a391885bbe7f05223e8374d66a588cdfd16fed6361e4a",
+          "child_sha256": "d6ebee83a4a84ebd160a391885bbe7f05223e8374d66a588cdfd16fed6361e4a",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/tests/c_header.c",
+          "parent_sha256": "9f991e9545244348815a3b89e76418d73f6aee50229613f97f08cd3efd91c371",
+          "child_sha256": "9f991e9545244348815a3b89e76418d73f6aee50229613f97f08cd3efd91c371",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/tests/plane_source_domain_tests.cpp",
+          "parent_sha256": "a06cd7fe97d67ed2f5dc904e404992a79e4d1f5288373593db13bfe6307749ab",
+          "child_sha256": "a06cd7fe97d67ed2f5dc904e404992a79e4d1f5288373593db13bfe6307749ab",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/tests/plane_source_protocol_tests.cpp",
+          "parent_sha256": "7127c522614006ce59730f3afb9ba5faebb8ad7743fe83b0e8281eef67bd041e",
+          "child_sha256": "7127c522614006ce59730f3afb9ba5faebb8ad7743fe83b0e8281eef67bd041e",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/tests/plane_tests.cpp",
+          "parent_sha256": "483ed29199127ab15d6c7c382684975bee9f39a4f8bc9d706b1cd984f28d9b04",
+          "child_sha256": "483ed29199127ab15d6c7c382684975bee9f39a4f8bc9d706b1cd984f28d9b04",
+          "exact_match": true
+        }
+      ]
+    },
+    {
+      "group": "lineage",
+      "base": "3cdbd93313a612d95792dfaa11cbd1884de56abc",
+      "child": "dea192484d99dc9d6713d25f478c7bddd2eaf871",
+      "files": [
+        {
+          "path": "native/smlib-adapter/CMakeLists.txt",
+          "parent_sha256": "86913b244080f106debb0bb5434f00afbfbbb10685394460667b399d88e128b8",
+          "child_sha256": "00d0744bd073743477ec481276749d3c1593c613f2e5932901245d5a29cc65a6",
+          "exact_match": false
+        },
+        {
+          "path": "native/smlib-adapter/GENERATED_PLANE_TRANSACTION.md",
+          "parent_sha256": "39433301b07d5919cded173c10f00b3794081e50e8f4ff9b412e8abbff9c0bdc",
+          "child_sha256": "39433301b07d5919cded173c10f00b3794081e50e8f4ff9b412e8abbff9c0bdc",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/evidence/generated-construction-3cdb/ASSEMBLY.md",
+          "parent_sha256": "708d39323e577c5eb622aa6731dc607590eece8f1e8de5e2a1dc92f9ed53dfdd",
+          "child_sha256": "708d39323e577c5eb622aa6731dc607590eece8f1e8de5e2a1dc92f9ed53dfdd",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/evidence/generated-construction-3cdb/REVIEW_RESPONSE.md",
+          "parent_sha256": "62e7b4bc212fe637f04394c8dbd8f1f1c817e9991a2e5e1f50807c809fde9a4b",
+          "child_sha256": "62e7b4bc212fe637f04394c8dbd8f1f1c817e9991a2e5e1f50807c809fde9a4b",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/evidence/generated-construction-3cdb/summary.json",
+          "parent_sha256": "e441f5395b029b7f739ef470ab3abedab6ec2a8826d6604b7e46d2c310199251",
+          "child_sha256": "e441f5395b029b7f739ef470ab3abedab6ec2a8826d6604b7e46d2c310199251",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/evidence/review-closure-af837/ASSEMBLY.md",
+          "parent_sha256": "cb9480160f1b3c6969f4045de049e1cdadd841a84494449066ddfc6edf0d87d7",
+          "child_sha256": "cb9480160f1b3c6969f4045de049e1cdadd841a84494449066ddfc6edf0d87d7",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/evidence/review-closure-af837/REVIEW_RESPONSE.md",
+          "parent_sha256": "51a962234341357471248d459527a5f0a7cca0f2d5379dffd3e830aeaea42e04",
+          "child_sha256": "51a962234341357471248d459527a5f0a7cca0f2d5379dffd3e830aeaea42e04",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/evidence/review-closure-af837/summary.json",
+          "parent_sha256": "b0dc687c13ba45c1be6f8ac42287118a5d61a3ad100c55f7bfb5edfda13fa00f",
+          "child_sha256": "b0dc687c13ba45c1be6f8ac42287118a5d61a3ad100c55f7bfb5edfda13fa00f",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/src/face_lineage.cpp",
+          "parent_sha256": "ed03a318bbb3a7d4073be0d1ad1b9569ea0364f40c37c54228f1b69d64b1cb6d",
+          "child_sha256": "ed03a318bbb3a7d4073be0d1ad1b9569ea0364f40c37c54228f1b69d64b1cb6d",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/src/face_lineage.hpp",
+          "parent_sha256": "49384c53198a62efeca24274c7d0b84c4b7c337fe6c947cd90513dd1d6725789",
+          "child_sha256": "49384c53198a62efeca24274c7d0b84c4b7c337fe6c947cd90513dd1d6725789",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/src/face_lineage_events.cpp",
+          "parent_sha256": "3b24a3dc0339cf10fb00a693ef746ca81c09ffd7276ddb52c001e2ff6570d8b5",
+          "child_sha256": "3b24a3dc0339cf10fb00a693ef746ca81c09ffd7276ddb52c001e2ff6570d8b5",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/src/face_lineage_geometry.cpp",
+          "parent_sha256": "55503c590951efe8b0a37dc7a84382ebc7223e56704a2202d11d4bbfe856ab64",
+          "child_sha256": "55503c590951efe8b0a37dc7a84382ebc7223e56704a2202d11d4bbfe856ab64",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/src/generated_plane.cpp",
+          "parent_sha256": "a7279559e35260ddaa94e9d43507d69a50941ef984ad229b015339c6576cc8ed",
+          "child_sha256": "a7279559e35260ddaa94e9d43507d69a50941ef984ad229b015339c6576cc8ed",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/src/generated_plane.hpp",
+          "parent_sha256": "75edcab37297c8152d9868b3594938f4e053624446dbc9ae31644caadd8e9416",
+          "child_sha256": "75edcab37297c8152d9868b3594938f4e053624446dbc9ae31644caadd8e9416",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/src/representation_seal.cpp",
+          "parent_sha256": "82cc39b3793ebbd6b2ce84a8e53e0b9130eb8143ab879c2ec991ce9d20b7ed21",
+          "child_sha256": "82cc39b3793ebbd6b2ce84a8e53e0b9130eb8143ab879c2ec991ce9d20b7ed21",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/src/representation_seal.hpp",
+          "parent_sha256": "d3b69151fa7b755c2ac730667279dd7133264be5de9ed72db03135cdd1279f2c",
+          "child_sha256": "d3b69151fa7b755c2ac730667279dd7133264be5de9ed72db03135cdd1279f2c",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/tests/face_extraction_tests.cpp",
+          "parent_sha256": "e86e49cbea26f4aafacf11c9c1297a5e1be543cadea53a25387e362de8e0dbb3",
+          "child_sha256": "e86e49cbea26f4aafacf11c9c1297a5e1be543cadea53a25387e362de8e0dbb3",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/tests/face_lineage_tests.cpp",
+          "parent_sha256": "7132809c10dff8049d8f8d86da0527b872e4d959152fe9fc214717fc64c25d65",
+          "child_sha256": "7132809c10dff8049d8f8d86da0527b872e4d959152fe9fc214717fc64c25d65",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/tests/root_issuance_tests.cpp",
+          "parent_sha256": "36984335fb36039db9255099463955047767495fcee4b58228dbb15b1e905cf8",
+          "child_sha256": "36984335fb36039db9255099463955047767495fcee4b58228dbb15b1e905cf8",
+          "exact_match": true
+        }
+      ]
+    },
+    {
+      "group": "consumers",
+      "base": "51c2d1ac0abab92ae80c5d36ee0d5dfc9119f24b",
+      "child": "6e2c61cf773e00753428106d44f1282a2f15efcb",
+      "files": [
+        {
+          "path": "native/smlib-adapter/CMakeLists.txt",
+          "parent_sha256": "86913b244080f106debb0bb5434f00afbfbbb10685394460667b399d88e128b8",
+          "child_sha256": "57e0adc7cb9815c1a88f6f1612d031789190442f95e7611ebbf1657208138df2",
+          "exact_match": false
+        },
+        {
+          "path": "native/smlib-adapter/browser/client.mjs",
+          "parent_sha256": "2f425f77f009f9c4560d4a2c392efca25a88d542942366bab4d42d6037ac6f57",
+          "child_sha256": "2f425f77f009f9c4560d4a2c392efca25a88d542942366bab4d42d6037ac6f57",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/browser/module.mjs",
+          "parent_sha256": "23b49a8196cb94baaa9d57aa42176c8471910464f3f08862e85c0b7a54d93c51",
+          "child_sha256": "23b49a8196cb94baaa9d57aa42176c8471910464f3f08862e85c0b7a54d93c51",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/browser/response-caps.test.mjs",
+          "parent_sha256": "efaaa243869aa7f5366c44237dff30165087ff3fc8f03198ec7f5397e53fa631",
+          "child_sha256": "efaaa243869aa7f5366c44237dff30165087ff3fc8f03198ec7f5397e53fa631",
+          "exact_match": true
+        },
+        {
+          "path": "native/smlib-adapter/browser/worker.mjs",
+          "parent_sha256": "5c2e5268b19b546ffecc25f6edeade7ab0809ba11a882a3506ebc70865d0d579",
+          "child_sha256": "5c2e5268b19b546ffecc25f6edeade7ab0809ba11a882a3506ebc70865d0d579",
+          "exact_match": true
+        },
+        {
+          "path": "rust/geometry-runtime/js/fixtures/plane-packets.mjs",
+          "parent_sha256": "23a0383844dfde412632dd280719728981b1ed7103faad950ab94da611cb16d1",
+          "child_sha256": "23a0383844dfde412632dd280719728981b1ed7103faad950ab94da611cb16d1",
+          "exact_match": true
+        },
+        {
+          "path": "rust/geometry-runtime/js/plane-certificate.mjs",
+          "parent_sha256": "dce7f55805932d7430c28cb270a09d1da92c9bd1bff10b1541cb017efe0e3afd",
+          "child_sha256": "dce7f55805932d7430c28cb270a09d1da92c9bd1bff10b1541cb017efe0e3afd",
+          "exact_match": true
+        },
+        {
+          "path": "rust/geometry-runtime/js/plane-certificate.test.mjs",
+          "parent_sha256": "b36e706b1649b0b50d8c4277b1a160c1ad990a400d32ce3c5dc34ee073e1c51a",
+          "child_sha256": "b36e706b1649b0b50d8c4277b1a160c1ad990a400d32ce3c5dc34ee073e1c51a",
+          "exact_match": true
+        },
+        {
+          "path": "rust/geometry-runtime/js/retained-driver.mjs",
+          "parent_sha256": "203311e3deb6ae3ddfdd13623498e6ad37a389cfe3b0749f50b365133c464355",
+          "child_sha256": "203311e3deb6ae3ddfdd13623498e6ad37a389cfe3b0749f50b365133c464355",
+          "exact_match": true
+        },
+        {
+          "path": "rust/geometry-runtime/js/retained-driver.test.mjs",
+          "parent_sha256": "822822e5f19a0fecae6da4f2fac0b3864f0dff1b0fdb2a46d19a43a86121aaa7",
+          "child_sha256": "822822e5f19a0fecae6da4f2fac0b3864f0dff1b0fdb2a46d19a43a86121aaa7",
+          "exact_match": true
+        },
+        {
+          "path": "rust/geometry-runtime/src/browser_bridge.rs",
+          "parent_sha256": "861d385dd75a4ebd3b1b61fdfe659a3312e94d75c370b223b8485dbd4892b7e6",
+          "child_sha256": "861d385dd75a4ebd3b1b61fdfe659a3312e94d75c370b223b8485dbd4892b7e6",
+          "exact_match": true
+        },
+        {
+          "path": "rust/geometry-runtime/src/browser_clip.rs",
+          "parent_sha256": "8884cc0351104e51408e1e7ca328e1295ab81adc80426e3f024c27343c9d0bc4",
+          "child_sha256": "5f7648f388e3345feb490caabb62a810765fa79b9fcae1938dbb96fe26616b39",
+          "exact_match": false
+        },
+        {
+          "path": "rust/geometry-runtime/src/lib.rs",
+          "parent_sha256": "5de020c953c9463888e2836a8b59cf49b178635f8a2dc45ec78a73756b437947",
+          "child_sha256": "5de020c953c9463888e2836a8b59cf49b178635f8a2dc45ec78a73756b437947",
+          "exact_match": true
+        },
+        {
+          "path": "rust/geometry-runtime/src/plane.rs",
+          "parent_sha256": "8b4f877daeda6274756989836de8b31273ebff0e5a56aacc8d79f4c6a5a104e7",
+          "child_sha256": "8b4f877daeda6274756989836de8b31273ebff0e5a56aacc8d79f4c6a5a104e7",
+          "exact_match": true
+        },
+        {
+          "path": "rust/geometry-runtime/src/plane_source.rs",
+          "parent_sha256": "9ee12a4224aaaa266311900390626edf669505d947c849c046a2409cfa90f11f",
+          "child_sha256": "9ee12a4224aaaa266311900390626edf669505d947c849c046a2409cfa90f11f",
+          "exact_match": true
+        },
+        {
+          "path": "rust/geometry-runtime/src/plane_tests.rs",
+          "parent_sha256": "92454b09cff1ba92b5bd360efef19cf3332d1ecb5557b84fd929d027f7551695",
+          "child_sha256": "92454b09cff1ba92b5bd360efef19cf3332d1ecb5557b84fd929d027f7551695",
+          "exact_match": true
+        },
+        {
+          "path": "rust/geometry-runtime/src/protocol.rs",
+          "parent_sha256": "256d301105d98b14b93b21e1a306207d93040794547f66d32705a229fb3eef21",
+          "child_sha256": "256d301105d98b14b93b21e1a306207d93040794547f66d32705a229fb3eef21",
+          "exact_match": true
+        },
+        {
+          "path": "rust/geometry-runtime/src/protocol_tests.rs",
+          "parent_sha256": "3e1c06ee594e792c30be96786c8e1dbc985fec361f19617a71a1e906bf925a6a",
+          "child_sha256": "3e1c06ee594e792c30be96786c8e1dbc985fec361f19617a71a1e906bf925a6a",
+          "exact_match": true
+        },
+        {
+          "path": "rust/geometry-runtime/src/worker.rs",
+          "parent_sha256": "72b850a3e1a9bf4144d330c3ccbe224dd396486534aa8700c35a45685a98a306",
+          "child_sha256": "72b850a3e1a9bf4144d330c3ccbe224dd396486534aa8700c35a45685a98a306",
+          "exact_match": true
+        }
+      ]
+    }
+  ],
+  "composition_exceptions": [
+    "CMake keeps all native lineage, generated-plane and source-domain units plus v2 JS fixtures",
+    "browser_clip uses super::bridge instead of unresolved bridge",
+    "plane.cpp supplied populate_plane_source_records handoff applied at00478339e0"
+  ]
+}

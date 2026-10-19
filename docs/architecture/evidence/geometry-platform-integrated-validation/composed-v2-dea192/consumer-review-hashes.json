@@ -1,0 +1,27 @@
+{
+  "base": "51c2d1ac0abab92ae80c5d36ee0d5dfc9119f24b",
+  "candidate": "6e2c61cf773e00753428106d44f1282a2f15efcb",
+  "report": "/tmp/ifclite-plane-v2-consumer-6e2c61cf-review.txt",
+  "report_sha256": "277376606eeaf4455622d73eab27ae6eb24ef4a9f4efbc7ce1df1755e761dc86",
+  "candidate_files_sha256": {
+    "native/smlib-adapter/CMakeLists.txt": "57e0adc7cb9815c1a88f6f1612d031789190442f95e7611ebbf1657208138df2",
+    "native/smlib-adapter/browser/client.mjs": "2f425f77f009f9c4560d4a2c392efca25a88d542942366bab4d42d6037ac6f57",
+    "native/smlib-adapter/browser/module.mjs": "23b49a8196cb94baaa9d57aa42176c8471910464f3f08862e85c0b7a54d93c51",
+    "native/smlib-adapter/browser/response-caps.test.mjs": "efaaa243869aa7f5366c44237dff30165087ff3fc8f03198ec7f5397e53fa631",
+    "native/smlib-adapter/browser/worker.mjs": "5c2e5268b19b546ffecc25f6edeade7ab0809ba11a882a3506ebc70865d0d579",
+    "rust/geometry-runtime/js/fixtures/plane-packets.mjs": "23a0383844dfde412632dd280719728981b1ed7103faad950ab94da611cb16d1",
+    "rust/geometry-runtime/js/plane-certificate.mjs": "dce7f55805932d7430c28cb270a09d1da92c9bd1bff10b1541cb017efe0e3afd",
+    "rust/geometry-runtime/js/plane-certificate.test.mjs": "b36e706b1649b0b50d8c4277b1a160c1ad990a400d32ce3c5dc34ee073e1c51a",
+    "rust/geometry-runtime/js/retained-driver.mjs": "203311e3deb6ae3ddfdd13623498e6ad37a389cfe3b0749f50b365133c464355",
+    "rust/geometry-runtime/js/retained-driver.test.mjs": "822822e5f19a0fecae6da4f2fac0b3864f0dff1b0fdb2a46d19a43a86121aaa7",
+    "rust/geometry-runtime/src/browser_bridge.rs": "861d385dd75a4ebd3b1b61fdfe659a3312e94d75c370b223b8485dbd4892b7e6",
+    "rust/geometry-runtime/src/browser_clip.rs": "5f7648f388e3345feb490caabb62a810765fa79b9fcae1938dbb96fe26616b39",
+    "rust/geometry-runtime/src/lib.rs": "5de020c953c9463888e2836a8b59cf49b178635f8a2dc45ec78a73756b437947",
+    "rust/geometry-runtime/src/plane.rs": "8b4f877daeda6274756989836de8b31273ebff0e5a56aacc8d79f4c6a5a104e7",
+    "rust/geometry-runtime/src/plane_source.rs": "9ee12a4224aaaa266311900390626edf669505d947c849c046a2409cfa90f11f",
+    "rust/geometry-runtime/src/plane_tests.rs": "92454b09cff1ba92b5bd360efef19cf3332d1ecb5557b84fd929d027f7551695",
+    "rust/geometry-runtime/src/protocol.rs": "256d301105d98b14b93b21e1a306207d93040794547f66d32705a229fb3eef21",
+    "rust/geometry-runtime/src/protocol_tests.rs": "3e1c06ee594e792c30be96786c8e1dbc985fec361f19617a71a1e906bf925a6a",
+    "rust/geometry-runtime/src/worker.rs": "72b850a3e1a9bf4144d330c3ccbe224dd396486534aa8700c35a45685a98a306"
+  }
+}

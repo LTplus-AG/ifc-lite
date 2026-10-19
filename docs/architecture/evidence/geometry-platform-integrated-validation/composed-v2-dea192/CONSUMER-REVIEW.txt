@@ -1,0 +1,103 @@
+Independent read-only consumer review
+Base: 51c2d1ac0abab92ae80c5d36ee0d5dfc9119f24b
+Candidate: 6e2c61cf773e00753428106d44f1282a2f15efcb
+Checkout: /home/louistrue/.t3/worktrees/ifc-lite/t3-13a27c3d
+Native contract: c227cd078434b7a46333b1111a367148fe2ce2ab
+
+VERDICT: BLOCKED by one concrete source integration error.
+
+[P1] rust/geometry-runtime/src/browser_clip.rs:80
+The new wasm-only call uses bridge::validate_plane_arguments, but bridge is
+not in this module's scope. Line 3 imports only BrowserObjectHandle and Owner.
+The sibling module is declared in browser.rs:10-12; siblings are not implicitly
+imported into a child module. The existing mesh/outcome calls at lines 109-110
+correctly use super::bridge::. This new call therefore produces an unresolved
+module/path error when compiling the wasm target, blocking the canonical
+viewer runtime and the snippet packaging path it was added to register.
+Use super::bridge::validate_plane_arguments (or a cfg-gated explicit import).
+This is a source-level conclusion, not a claimed compiler run. The supplied
+pure Rust protocol harness does not compile browser_clip.rs, and Node tests
+cannot catch Rust name resolution. The native c227 integration cannot cure it.
+
+REVIEWED SOURCE BEHAVIOR (subject to that blocker; not execution approval)
+- Rust plane.rs bounds payload to 312..24520, limits cylinder count to16 before
+  calculating its prefix, and verifies protocol version1/2, original plane
+  coefficient bits, side/mode, echoed input/output, nonzero session/generations,
+  same-session new output, topology budgets, frame orthonormality/orientation,
+  finite domain/cutter and empty rules. The private JS parser retains the old
+  identity/frame/domain guards while adding matching v2 structure checks.
+- plane_source.rs:57-79 and JS sourceRectangles enforce v1/no extension/no bit8;
+  v2 requires bit8 and1..16 records, record1376/edge248 constants, zero reserved,
+  exact full extension length, inventory/coefficient budgets and unique face
+  indices across both cylinder and rectangle collections. Fixed record headers,
+  axis permutation, finite raw coefficients, unit/sentinel weights, clamped
+  knots, inverse and UV-hull bit identity, boundary flags/corners/reserved and
+  structural hull/endpoint checks precede accepted certificates. f64 decode and
+  JS Object.is preserve signed zero and sentinel values. This does not replay
+  or authenticate native geometry math; no geometry/proof authority is claimed.
+- All count-dependent parsing allocations are bounded by16 records /4 edges.
+  Full extension length is checked before rectangle record allocation; cylinder
+  storage is bounded separately before extension checking. No output lease or
+  tessellation is accepted before full certificate parsing. Transport byte
+  buffers are allocated under command-specific caps, necessarily before parsing.
+- protocol.rs retains4096 for requests and legacy decoder responses. Only a
+  captured ClipPlane command selects24532 framed/24520 payload; failures above
+ 4096 reject. worker.rs:319-327 checks the announced size before allocating its
+  bounded receive body, then checks version/sequence/status. call():291-305
+  retires the actual process on IO/protocol/unknown status. worker_clip.rs:79
+  poisons malformed certificate input before handle/manage_object/tessellation.
+- browser/module.mjs checks request<=4096, captures its opcode before dispatch,
+  accepts larger success only for20 and always frees owned allocations. Worker
+  serializes batches and poisons on dispatcher rejection. client.mjs captures
+  per-frame limits before transfer, keys them by pending batch, rejects unknown
+  batches/mismatched counts and oversized legacy/failure responses, and poisons
+  the captured worker. Reordering a legacy frame into a large-response position
+  cannot produce retained acceptance: private driver #call additionally checks
+  version/sequence, then plane identity/full structure before #seal. A mismatched
+  batch position rejects at its captured cap; unknown opcodes retain4096.
+- JS clipPlane validates its private source lease before/after negotiation,
+  marks published immediately after successful opcode20, parses before #seal,
+  rejects output aliases through the existing lease map/release queue, and
+  retires on all malformed/truncated/oversized or post-success failures.
+  Typed synchronized refusal1..7 preserves inputs; unknown status retires.
+  Rust native and browser world frames remain separate from local plane data.
+  Existing browser InFlight cancellation and captured owner retirement survive;
+  the added call occurs before the guard and performs only argument validation.
+- Original92-byte request encoding and coefficient order are untouched; no
+  blanket cap increase. v1 is still exact312+136*cylinders with no extension,
+  method<=7 by bit8 exclusion. This child makes no native geometry change and
+  does not weaken the old native parse guards or relabel method2. Its old native
+  base is not reported as a new blocker: parent c227 + plane assignment are
+  explicitly given as integrated context, not replaced by this child CMake file.
+
+PACKAGING / QUALIFICATION GAPS
+- retained-driver.mjs statically imports ./plane-certificate.mjs. The added
+  wasm_bindgen local module declaration in browser_bridge.rs:12-16 explicitly
+  registers that module, with the intended live call at browser_clip.rs:80.
+  Both local paths are under the same crate /js directory; package.json already
+  allows pkg/snippets/**. Existing runtime asset closure tooling follows static
+  relative imports. No separate demonstrated JS-path/copy omission was found.
+  However the concrete Rust scope error prevents this seam from compiling.
+- CMakeLists.txt:84-85 already configure_file COPYONLYs module,worker,client;
+  the changed browser modules are in that list. The certificate helper belongs
+  to wasm-bindgen snippets, not the separate /smlib CMake deployment. Preserve
+  parent's native CMake additions when integrating the four-line test change.
+- Canonical scripts/build-wasm.sh, emitted snippet layout, package closure,
+  CMake configure/build/copied assets, full Cargo/clippy, SDK numerical work and
+  real browser execution were NOT run. Missing canonical build is a coverage
+  gap in addition to the demonstrated source blocker, not inferred green.
+- Supplied logs record13 pure Rust protocol tests and25 JS fixture tests passing.
+  Their scope is parser/protocol/fixture lifetime behavior only. The rustc
+  harness stubs BooleanOperation/NumericalOutcome and omits worker/browser
+  compilation. No numeric, full consumer, public proof or authorization claim.
+
+EVIDENCE / CONDUCT
+All supplied artifacts.sha256 entries match. All19 files.sha256 hashes match
+candidate git blobs. Exact git diff --binary base..candidate matches supplied
+consumer-base.patch SHA256:
+7b1ec29d0c0ef356141fbc0b353c6fe0c69f1ccf194203ed4c152e934b908b0e
+Wire-contract SHA256:
+9bb4b67f935d54d69821ffee54ffaf62b25a5fac2d6a95b1ba4edb585e5f8928
+No source edits, builds, tests, jobs, patch application, publication or cleanup.
+Only this report and its hash manifest are written outside the repository.
+Fleet status inspected: Pop/PC reachable but admission refused; Mac disabled.

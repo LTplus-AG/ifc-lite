@@ -290,3 +290,48 @@ fn p1_sdk_stop_while_capturing_affine_input_is_typed_before_any_affine_issuance(
     assert!((worker.volume(source_handle,1e-8).unwrap()-24.).abs()<1e-6,
         "the earlier independent source receipt survives this admission refusal");
 }
+
+#[test]
+fn p2_sdk_rigid_mapped_boolean_uses_sealed_placement_without_affine_conversion() {
+    let Some(mut worker)=worker() else {return};
+    let (_,context)=operation_context(104,"
+        #100=IFCBOOLEANRESULT(.UNION.,#93,#93);
+        #101=IFCSHAPEREPRESENTATION(#2,'Body','CSG',(#100));
+        #102=IFCREPRESENTATIONMAP(#5,#101);#103=IFCMAPPEDITEM(#102,#96);
+        #104=IFCBOOLEANRESULT(.UNION.,#103,#94);");
+    let mut decoder=context.source().unwrap().decoder();let router=router(&mut decoder);
+    let mut execution=execution(&context,&mut decoder,&router);
+    let mut first=None;let mut booleans=0;let mut polls=0;
+    while let Some(issued)=execution.issue_next(&worker,&mut decoder,&router).unwrap() {
+        polls+=1;assert!(polls<100,"bounded common transaction fixture");
+        let work=issued.execute(&mut worker,0.001,15.,MeshLimits::default()).unwrap();
+        for realization in work.realizations() {
+            match realization.kind() {
+                RealizationKind::Construction(_)=>{},
+                RealizationKind::Affine(_)=>panic!("rigid mapped result must not rationalize through opcode18"),
+                RealizationKind::Boolean(value)=> {
+                    assert!((worker.volume(value.solid(),1e-8).unwrap()-24.).abs()<1e-6);
+                    assert!(worker.is_manifold(value.solid()).unwrap());
+                    if let Some((solid,frame))=first {
+                        let mut placed=frame;placed[12]+=50.;
+                        assert_eq!(value.operation_identity().left,solid);
+                        assert_eq!(value.operation_identity().left_world_from_evaluation,placed);
+                        assert_eq!(value.operation_identity().right_world_from_evaluation,placed);
+                        assert_eq!(value.world_from_evaluation(),&placed);
+                    } else {first=Some((value.solid(),*value.world_from_evaluation()));}
+                    booleans+=1;
+                }
+            }
+        }
+        execution.accept(work,&mut decoder,&router).unwrap();
+    }
+    assert_eq!(booleans,2);
+    let plan=execution.traversal_plan().unwrap();assert_eq!(plan.values.len(),1);
+    assert_eq!(&plan.values[0].object_frame()[12..15],&[59.,18.,30.],
+        "late product placement follows source anchor and rigid map exactly once");
+    let (solid,frame)=first.unwrap();
+    let original=execution.ledger.iter().find(|entry|entry.receipt.solid()==solid).unwrap();
+    let RealizationKind::Boolean(value)=original.receipt.kind() else {panic!("original sealed Boolean")};
+    assert_eq!(value.world_from_evaluation(),&frame);value.validate_live().unwrap();
+    assert!(!plan.remaining.is_empty(),"logical closure is not final product publication");
+}

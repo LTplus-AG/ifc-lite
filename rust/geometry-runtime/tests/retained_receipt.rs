@@ -278,6 +278,9 @@ fn actual_sdk_placed_result_uses_replacement_frame_without_rational_conversion_o
     let Some(mut worker)=worker() else {return};
     let (_,req)=request(&worker);
     let a=worker.evaluate_retained_extrusion(req,0.001,15.,MeshLimits::default()).unwrap();
+    assert_eq!(a.completion().source_from_evaluation,
+        [1.,0.,0.,0.,0.,1.,0.,0.,0.,0.,1.,0.,0.,0.,0.,1.],
+        "profile Position(1,2) cancels its centred first corner(-1,-2)");
     let original=[1.,0.,0.,0.,0.,1.,0.,0.,0.,0.,1.,0.,1e9,2e9,3e9,1.];
     let base=worker.evaluate_retained_boolean(
         RetainedDependency::Source {realization:&a,world_from_source:original},

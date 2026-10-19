@@ -1,0 +1,18 @@
+{
+  "id": "auto-5c8b82eac04c4cca80caeca3e01b9dad",
+  "commit": "a3752756caae94594efcbc2016696ad22bd2bdc0",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "-c",
+    "# SPDX-License-Identifier: MPL-2.0\nsource \"$HOME/build-workers/worker-env.sh\" || exit $?\npnpm build:imported-geometry\nimported_status=$?\nnode scripts/build-imported-geometry.mjs --verify\nverify_status=$?\npnpm build:wasm\nwasm_status=$?\ngit diff --stat -- packages/ifcx/src/generated packages/wasm/pkg/ifc-lite.d.ts\nsha256sum packages/ifcx/src/generated/imported-geometry.ts packages/ifcx/src/generated/imported-geometry-static.js packages/ifcx/src/generated/imported-geometry-static.d.ts packages/ifcx/src/generated/imported-geometry.provenance.json packages/wasm/pkg/ifc-lite.d.ts\nprintf 'imported_generation_exit=%s imported_verify_exit=%s canonical_wasm_build_exit=%s\\n' \"$imported_status\" \"$verify_status\" \"$wasm_status\"\nfor result in \"$imported_status\" \"$verify_status\" \"$wasm_status\"; do\n  if [ \"$result\" -ne 0 ]; then exit \"$result\"; fi\ndone\n"
+  ],
+  "storageTask": "ifclite-artifacts-a375-20261019",
+  "pools": [],
+  "requestedHost": "pop-os"
+}

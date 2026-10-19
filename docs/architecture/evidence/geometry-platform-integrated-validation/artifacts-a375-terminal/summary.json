@@ -1,0 +1,43 @@
+{
+  "source": "a3752756caae94594efcbc2016696ad22bd2bdc0",
+  "job": "bb527c27-dc2e-44d2-aa06-5db172171ed1",
+  "host": "pop-os",
+  "generation": {
+    "imported": 0,
+    "importedVerify": 0,
+    "canonicalWasm": 0
+  },
+  "workerExit": 1,
+  "workerReason": "qualified command changed source",
+  "sourceUnchanged": false,
+  "outputSha256": "dc50cfef816c4b9fa9bb37582b75b8be76570a4c786366955db5783934baf2d5",
+  "outputs": [
+    {
+      "path": "packages/ifcx/src/generated/imported-geometry.ts",
+      "beforeSha256": "eb980e33b25e5a11d2c283d882f12e4dd8348fd3e6db5d1eda20887978522e4d",
+      "afterSha256": "eb980e33b25e5a11d2c283d882f12e4dd8348fd3e6db5d1eda20887978522e4d"
+    },
+    {
+      "path": "packages/ifcx/src/generated/imported-geometry-static.js",
+      "beforeSha256": "e50cfdfe881a56a99cc52faacb00ce9e8a071f4fa1f223f6f2f859380d0b40ac",
+      "afterSha256": "e50cfdfe881a56a99cc52faacb00ce9e8a071f4fa1f223f6f2f859380d0b40ac"
+    },
+    {
+      "path": "packages/ifcx/src/generated/imported-geometry-static.d.ts",
+      "beforeSha256": "ef70966d6b82a701ed2f50479ecccbf7b06cd991f28fda9d93a314d300357cb2",
+      "afterSha256": "ef70966d6b82a701ed2f50479ecccbf7b06cd991f28fda9d93a314d300357cb2"
+    },
+    {
+      "path": "packages/ifcx/src/generated/imported-geometry.provenance.json",
+      "beforeSha256": "bc5039b288a87ce898d30d8dc7c97888c16ff89dabd1f5d5b77dd8fc3c3b8af2",
+      "afterSha256": "d01c1f2c3ad223ac5e870309e02a4fd08c9b27864c57e10d81bd8878724689c5"
+    },
+    {
+      "path": "packages/wasm/pkg/ifc-lite.d.ts",
+      "beforeSha256": "bd2ed0045b50053a6e4d3dbac039565b6a4d99b58be3c061dc9b7a8fb72cb871",
+      "afterSha256": "1f74113af419f78fa0b79390aa9b4fafabe1566a04edc897da5ef5fd7e807041"
+    }
+  ],
+  "provenanceSourceHashesVerifiedAgainstIntegration": true,
+  "qualification": "Generation only; clean repeat and real consumer execution remain required. The private accessor warning was repaired after this source."
+}

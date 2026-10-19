@@ -526,6 +526,12 @@ export class IfcAPI {
     free(): void;
     [Symbol.dispose](): void;
     /**
+     * Explicit product selection from the installed coherent source. Ordinary
+     * model loading never creates an executor or requests /smlib assets.
+     */
+    admitRetainedProduct(product_id: number): RetainedBrowserProduct;
+    admitRetainedSource(source_key: any): RetainedBrowserSource;
+    /**
      * Admit this worker's installed bytes/index pair once before geometry.
      * Full canonical span validation is required across worker realms. This
      * does not authenticate arbitrary later data-taking compatibility calls.
@@ -1188,6 +1194,11 @@ export class IfcAPI {
      * Resolve styled-item spans against the installed source and entity index.
      */
     resolveStyledItemsShardFromSource(spans: Uint32Array): any;
+    /**
+     * Read-only choices from the actual installed canonical source. Does not
+     * start an SDK Worker, fetch SDK assets or grant execution qualification.
+     */
+    retainedSourceKeys(): any;
     /**
      * Fast entity scanning using SIMD-accelerated Rust scanner
      * Returns array of entity references for data model parsing
@@ -1936,6 +1947,91 @@ export class ProfileEntryJs {
 }
 
 /**
+ * Capture before starting an async operation so retirement remains callable
+ * while wasm-bindgen holds the executor's mutable borrow for that operation.
+ */
+export class RetainedBrowserCancellation {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    retire(): void;
+}
+
+export class RetainedBrowserExecutor {
+    free(): void;
+    [Symbol.dispose](): void;
+    cancellation(): RetainedBrowserCancellation;
+    /**
+     * Explicit allocation only. Canonical SDK adapter assets live at /smlib/.
+     */
+    constructor();
+    /**
+     * Actual same-Worker numerical witnesses; not full IFC/browser qualification.
+     */
+    qualifyNumericalRoutes(): Promise<void>;
+    retire(): void;
+}
+
+/**
+ * Owns the canonical load and immutable model snapshot. It accepts a product ID,
+ * never an authored source key, caller receipt, raw bytes or numeric worker ID.
+ */
+export class RetainedBrowserProduct {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Drive the existing shared issue/await/accept loop. This returns an inspection
+     * witness only; unresolved common requirements continue to prohibit output.
+     */
+    execute(executor: RetainedBrowserProductExecutor, chord_metres: number, angle_degrees: number, max_bytes: number): Promise<any>;
+    /**
+     * Inspection is revalidated against source, resource and actual object lives.
+     * No mesh, source-only display or final-net artifact is returned.
+     */
+    witness(): any;
+}
+
+export class RetainedBrowserProductCancellation {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    cancel(): void;
+}
+
+/**
+ * Explicit independent-lease executor for the shared common-product program.
+ * Capture cancellation before calling an async method that borrows this object.
+ */
+export class RetainedBrowserProductExecutor {
+    free(): void;
+    [Symbol.dispose](): void;
+    cancellation(): RetainedBrowserProductCancellation;
+    constructor();
+    qualifyNumericalRoutes(): Promise<void>;
+}
+
+/**
+ * One explicitly selected canonical source. This is source-only output, never
+ * an assertion that enclosing booleans/openings or representation are complete.
+ */
+export class RetainedBrowserSource {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Copies the common document's mesh/occurrences only after live source,
+     * Worker and object-lease validation. Coordinates remain IFC Z-up metres.
+     */
+    display(): any;
+    /**
+     * One linear pending ticket spans upload, actual Worker response and common
+     * assembly. Dropping the future retires that captured Worker and its leases.
+     */
+    execute(executor: RetainedBrowserExecutor, occurrence_index: number, chord_metres: number, angle_degrees: number, max_bytes: number): Promise<any>;
+}
+
+/**
  * The traced outline. Owns wasm memory: call `free()`.
  */
 export class ScanOutlineJs {
@@ -2511,6 +2607,12 @@ export function intersection2d(a: Contours2D, b: Contours2D): Contours2D;
 export function meshOutline2d(positions: Float32Array, indices: Uint32Array, axis: number, flipped: boolean): MeshOutlineJs | undefined;
 
 /**
+ * Execute source-independent imported tessellation using the same packet ABI
+ * as the small synchronous IFCX artifact. Errors are encoded in the packet.
+ */
+export function processImportedGeometryPacket(input: Uint8Array): Uint8Array;
+
+/**
  * Resolve a ring soup into disjoint outer/hole shapes without changing the
  * area it covers (a self-union). Use it to give a hand-built set — or a
  * `meshOutline2d` result — the shape grouping the operations produce.
@@ -2631,6 +2733,10 @@ export interface InitOutput {
     readonly __wbg_partitionedbatch_free: (a: number, b: number) => void;
     readonly __wbg_profilecollection_free: (a: number, b: number) => void;
     readonly __wbg_profileentryjs_free: (a: number, b: number) => void;
+    readonly __wbg_retainedbrowsercancellation_free: (a: number, b: number) => void;
+    readonly __wbg_retainedbrowserexecutor_free: (a: number, b: number) => void;
+    readonly __wbg_retainedbrowserproduct_free: (a: number, b: number) => void;
+    readonly __wbg_retainedbrowsersource_free: (a: number, b: number) => void;
     readonly __wbg_scanoutlinejs_free: (a: number, b: number) => void;
     readonly __wbg_simplifiedmeshes_free: (a: number, b: number) => void;
     readonly __wbg_spaceplatehandle_free: (a: number, b: number) => void;
@@ -2687,6 +2793,8 @@ export interface InitOutput {
     readonly gridaxisjs_gridId: (a: number) => number;
     readonly gridaxisjs_start: (a: number) => number;
     readonly gridaxisjs_tag: (a: number, b: number) => void;
+    readonly ifcapi_admitRetainedProduct: (a: number, b: number, c: number) => void;
+    readonly ifcapi_admitRetainedSource: (a: number, b: number, c: number) => void;
     readonly ifcapi_bindSourceModel: (a: number, b: number) => void;
     readonly ifcapi_buildPrePassOnce: (a: number, b: number, c: number) => number;
     readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
@@ -2754,6 +2862,7 @@ export interface InitOutput {
     readonly ifcapi_registerScanCorrespondences: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_resolveStyledItemsShard: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_resolveStyledItemsShardFromSource: (a: number, b: number, c: number, d: number) => void;
+    readonly ifcapi_retainedSourceKeys: (a: number, b: number) => void;
     readonly ifcapi_scanEntitiesFast: (a: number, b: number, c: number) => number;
     readonly ifcapi_scanEntitiesFastBytes: (a: number, b: number, c: number) => number;
     readonly ifcapi_scanEntityIndexShard: (a: number, b: number, c: number, d: number, e: number) => number;
@@ -2835,6 +2944,7 @@ export interface InitOutput {
     readonly partitionedbatch_instancedOccurrences: (a: number) => number;
     readonly partitionedbatch_takeMeshes: (a: number) => number;
     readonly partitionedbatch_takeShard: (a: number, b: number) => void;
+    readonly processImportedGeometryPacket: (a: number, b: number, c: number) => void;
     readonly profilecollection_get: (a: number, b: number) => number;
     readonly profilecollection_length: (a: number) => number;
     readonly profilecollection_skippedExpressIds: (a: number) => number;
@@ -2848,6 +2958,17 @@ export interface InitOutput {
     readonly profileentryjs_outerPoints: (a: number) => number;
     readonly profileentryjs_transform: (a: number) => number;
     readonly resolve2d: (a: number) => number;
+    readonly retainedbrowsercancellation_retire: (a: number) => void;
+    readonly retainedbrowserexecutor_cancellation: (a: number) => number;
+    readonly retainedbrowserexecutor_new: (a: number) => void;
+    readonly retainedbrowserexecutor_qualifyNumericalRoutes: (a: number) => number;
+    readonly retainedbrowserexecutor_retire: (a: number) => void;
+    readonly retainedbrowserproduct_execute: (a: number, b: number, c: number, d: number, e: number) => number;
+    readonly retainedbrowserproduct_witness: (a: number, b: number) => void;
+    readonly retainedbrowserproductexecutor_new: (a: number) => void;
+    readonly retainedbrowserproductexecutor_qualifyNumericalRoutes: (a: number) => number;
+    readonly retainedbrowsersource_display: (a: number, b: number) => void;
+    readonly retainedbrowsersource_execute: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
     readonly scanoutlinejs_coords: (a: number) => number;
     readonly scanoutlinejs_diagnostics: (a: number, b: number) => void;
     readonly scanoutlinejs_ringCount: (a: number) => number;
@@ -2959,6 +3080,7 @@ export interface InitOutput {
     readonly zonesplitjs_pieceCount: (a: number) => number;
     readonly zonesplitjs_remainderFailed: (a: number) => number;
     readonly meshoutlinejs_contourCount: (a: number) => number;
+    readonly __wbg_retainedbrowserproductexecutor_free: (a: number, b: number) => void;
     readonly get_memory: () => number;
     readonly symbolicpolyline_worldY: (a: number) => number;
     readonly symbolictext_colorA: (a: number) => number;
@@ -2974,11 +3096,18 @@ export interface InitOutput {
     readonly zonepiecejs_volume: (a: number) => number;
     readonly zonesplitjs_sumErrorRel: (a: number) => number;
     readonly zonesplitjs_wholeVolume: (a: number) => number;
+    readonly retainedbrowserproductcancellation_cancel: (a: number) => void;
+    readonly __wbg_retainedbrowserproductcancellation_free: (a: number, b: number) => void;
     readonly init: () => void;
+    readonly retainedbrowserproductexecutor_cancellation: (a: number) => number;
+    readonly imported_alloc: (a: number) => number;
+    readonly imported_free: (a: number, b: number) => void;
+    readonly imported_run: (a: number, b: number) => number;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;
     readonly __wbindgen_export4: (a: number, b: number, c: number) => void;
+    readonly __wbindgen_export5: (a: number, b: number) => void;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
     readonly __wbindgen_start: () => void;
 }

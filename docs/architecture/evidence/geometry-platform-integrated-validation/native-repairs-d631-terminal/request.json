@@ -1,0 +1,17 @@
+{
+  "id": "auto-7b5222e246ad4c729fd3a0f12c7e5271",
+  "commit": "d631427e75c5e24fdbbcf1c6ada005ee150d7908",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "-c",
+    "source \"$HOME/build-workers/worker-env.sh\" || exit $?; pnpm fixtures || exit $?; unset IFCLITE_ADAPTER_BUILD; bash native/smlib-adapter/qualify.sh native --rust-consumers; sdk_status=$?; cargo test -p ifc-lite-geometry --lib --no-fail-fast; controls_status=$?; cargo clippy --workspace --all-targets -- -D warnings; clippy_status=$?; printf \"native_sdk_and_consumers_exit=%s geometry_controls_exit=%s clippy_exit=%s\\n\" \"$sdk_status\" \"$controls_status\" \"$clippy_status\"; if [ \"$sdk_status\" -ne 0 ]; then exit \"$sdk_status\"; fi; if [ \"$controls_status\" -ne 0 ]; then exit \"$controls_status\"; fi; exit \"$clippy_status\""
+  ],
+  "storageTask": "ifclite-native-repairs-d631-20261019",
+  "pools": []
+}

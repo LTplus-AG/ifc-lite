@@ -1,0 +1,75 @@
+{
+  "license": "MPL-2.0",
+  "source": "d631427e75c5e24fdbbcf1c6ada005ee150d7908",
+  "job": "9c52f026-fc3c-4820-b55a-8208aa1f0911",
+  "host": "pc-wsl",
+  "state": "failed",
+  "exitCode": 8,
+  "sourceUnchanged": true,
+  "output_sha256": "c8e2cc5dcdd48adb52f5ea2a0530167e503471765375e927376ae6267e727753",
+  "ctest": {
+    "passed": 5,
+    "failed": 1,
+    "failed_test": "smlib_owned_boundary"
+  },
+  "actual_sdk_rust_consumers": {
+    "passed": 1326,
+    "failed": 7,
+    "ignored": 5,
+    "failed_tests": [
+      "actual_plane_runtime_box_survey_frame_chaining_and_independent_release",
+      "element::session_retained::clip_tests::p2_sdk_actual_authoring_roof_walls_follow_existing_positive_volume_invariant",
+      "element::session_retained::clip_tests::p2_sdk_issue_5314_source_edge_clip_obeys_existing_prism_integral",
+      "element::session_retained::opening_tests::p2_sdk_issue_3641_actual_voiding_feature_chain_preserves_index_and_closed_solid_invariants",
+      "element::session_retained::opening_tests::p2_sdk_issue_2019_original_opening_control_cuts_overlapping_ordered_sources",
+      "element::session_retained::opening_tests::p2_sdk_mixed_reference_opening_keeps_original_no_cutter_eligibility",
+      "element::session_retained::opening_tests::p2_sdk_repeated_mapped_opening_parts_keep_distinct_occurrences_and_host_styles"
+    ]
+  },
+  "geometry_controls": {
+    "passed": 1943,
+    "failed": 0,
+    "ignored": 1
+  },
+  "strict_all_target_clippy": "PASS",
+  "previously_failed_fixture_witnesses_now_executed_PASS": [
+    "p1_sdk_affine_batch_rejects_swapped_actual_outputs_before_any_common_acceptance",
+    "p1_sdk_stop_while_capturing_affine_input_is_typed_before_any_affine_issuance",
+    "actual_sealed_acceptance_charges_ledger_backing_to_original_account_after_caller_drop",
+    "p1_type_product_uses_actual_one_and_three_products_and_orphan_mode_consumers",
+    "p2_sdk_difference_empty_captured_cancel_or_refusal_precedes_compatibility_hold"
+  ],
+  "authored_region_exact_overlap_refusal_regression": "PASS; does not replace positive model qualification",
+  "plane_diagnostic": {
+    "raw_point": [
+      1,
+      1,
+      1
+    ],
+    "raw_normal": [
+      1,
+      1,
+      1
+    ],
+    "constructed_y": [
+      0.8164965809277261,
+      -0.4082482904638631,
+      -0.4082482904638631
+    ],
+    "post_stitch_x": [
+      0.816496580927726,
+      -0.408248290463863,
+      -0.4082482904638631
+    ],
+    "exact_raw_normal_dot_effective_x": "-1/18014398509481984",
+    "interpretation": "Supporting plane changed during orientation/rebuild; no epsilon relaxation authorized"
+  },
+  "remaining": {
+    "plane": "outward construction candidate5a5836 UNRUN in this source",
+    "trim_chaining": "missing certified existing trim; new diagnosticcf8ccd UNRUN",
+    "openings": "volume requests now valid but unchanged1e-6 actual-vs-exact assertions fail; value diagnosticsf82669 UNRUN",
+    "region": "870mm reversed overlap; source-preserving derived regularization not implemented at this source",
+    "ledger": "new child lineage/extraction source not integrated/qualified"
+  },
+  "release_verdict": "FAIL; no platform cutover/performance/browser/final-product claim"
+}

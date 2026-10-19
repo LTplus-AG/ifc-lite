@@ -1,0 +1,14 @@
+{
+  "allEightHeadsRecoverable": true,
+  "heads": [
+    "d2f07e41488178eb0688657fdde6e20c0d03d323",
+    "02b8e1981158559fd4ec9b385d2d80729079a633",
+    "3d2ef521dcead88104f13e6c7f532bbce8db4cfb",
+    "7c8cebfca7652cd0a8f4dab97cbc7e3b66c913db",
+    "11d4490e64db08c7073bbbe4f9b87b7c67a775e6",
+    "d3e281e1a234f8bca23cd59fb8ddf85926264a2f",
+    "c7cf41e902c20a99a828e952151e981f3cc2d048",
+    "12157693a84d9495fafd14a0ade6a5939bf3e0b8"
+  ],
+  "source": "Verified source/child/supplemental bundle root graph"
+}

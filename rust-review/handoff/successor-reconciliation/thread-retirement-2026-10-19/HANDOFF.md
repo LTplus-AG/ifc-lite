@@ -54,3 +54,7 @@ Open PRs linked to this thread (snapshot; verify live before resuming):
 - [#7917](https://github.com/LTplus-AG/ifc-lite/pull/7917) perf(core): reuse successful raw leaf reads with a bounded memo
 
 Authoritative local state: `../state.json`, `currentCheckpoint.retirement`. Full local artifact root: `/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa`.
+
+## Final disk cleanup
+
+At the user’s further request, 330.94 GiB of disposable compilation/cache allocations were removed across both machines, plus extra private Windows package caches/source copies. Rebuildable caches named in `disk-cleanup/` supersede their original retained-build relocation rows. All authored work, recovery bundles, unique evidence, immutable inputs and explicitly retained binary archives remain. Seven additional complete PC source clones, one failed partial checkout and an old mirror were removed after verifying bundled source coverage. The WSL online trim completed; no new build/test or benchmark ran. See `disk-cleanup/CLEANUP.md` and `SUMMARY.json`.

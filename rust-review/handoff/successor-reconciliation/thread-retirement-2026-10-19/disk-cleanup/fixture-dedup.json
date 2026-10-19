@@ -1,0 +1,30 @@
+{
+  "filesDeduplicated": 3,
+  "freedAllocatedBytes": 31928320,
+  "files": [
+    {
+      "canonical": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/repo-56/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "duplicate": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/repo-01/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "bytes": 2526511,
+      "freedAllocatedBytes": 2527232,
+      "metadata": "mode/uid/gid/mtime/size identical; exact file bytes verified; both paths retained"
+    },
+    {
+      "canonical": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/repo-24/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "duplicate": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/repo-23/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "bytes": 2526511,
+      "freedAllocatedBytes": 2527232,
+      "metadata": "mode/uid/gid/mtime/size identical; exact file bytes verified; both paths retained"
+    },
+    {
+      "canonical": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/repo-24/tests/models/ara3d/ISSUE_102_M3D-CON-CD.ifc",
+      "duplicate": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/retained-build-evidence/repo-23/tests/models/ara3d/ISSUE_102_M3D-CON-CD.ifc",
+      "sha256": "5f7423ef7a7c7db1a56e214b802edc9122315d32e7c3d43a4f3ebbeae5979e76",
+      "bytes": 26870837,
+      "freedAllocatedBytes": 26873856,
+      "metadata": "mode/uid/gid/mtime/size identical; exact file bytes verified; both paths retained"
+    }
+  ]
+}

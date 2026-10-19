@@ -1,0 +1,17 @@
+{
+  "at": "2026-10-19T05:28:43.689028+00:00",
+  "status": "completed",
+  "popBuildCacheAllocatedBytesRemoved": 205151952896,
+  "pcBuildCacheAllocatedBytesRemoved": 149295353856,
+  "duplicateAllocatedBytesRemoved": 891654144,
+  "auditedTotalAllocatedBytesRemoved": 355338960896,
+  "auditedTotalGiB": 330.94,
+  "scope": "Only owned inactive Cargo caches, private package caches and byte-identical duplicate backups; seven clean PC source clones plus one failed partial checkout and its reproducible mirror removed after source bundle coverage verification",
+  "windowsNativeCacheDeletion": "3 remaining package-cache directories removed successfully after switching from slow WSL metadata census; original interrupted helpers and quoting refusal retained as historical setup receipts",
+  "sourceAndEvidence": "All recovery bundles, authored patches, unique raw outputs, receipts, fixture bytes, old explicitly retained binary archives, runtime libraries and benchmark executables preserved",
+  "mixedOwnershipTargets": "Preserved",
+  "otherOwnersJobs": "Untouched",
+  "wslOnlineTrimBytes": 132997787648,
+  "wslTrimNotAddedToFreedTotal": true,
+  "noNewBuildTestOrQualification": true
+}

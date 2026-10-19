@@ -1,0 +1,7 @@
+{
+  "command": "sudo -n /usr/sbin/fstrim -v /",
+  "exitCode": 0,
+  "output": "/: 123.9 GiB (132997787648 bytes) trimmed",
+  "linuxAvailableAfter": "132G",
+  "windowsAvailableAfter": "784G"
+}

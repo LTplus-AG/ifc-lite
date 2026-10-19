@@ -16,8 +16,8 @@
   },
   {
     "path": "HANDOFF.md",
-    "bytes": 8876,
-    "sha256": "8c8fc10c1a0987910a0357df0da1bc876b3794ee76c757828bc7f248da21f414"
+    "bytes": 9561,
+    "sha256": "2a4561a914f037882cba82ec495a32323e0d8890c66d7e841c11c79654f100a9"
   },
   {
     "path": "bundle-identity.json",
@@ -70,6 +70,51 @@
     "sha256": "c0fafe309b060a5942671cf1407e1463575d70e07d0348ee398cb8b577bda282"
   },
   {
+    "path": "disk-cleanup/CLEANUP.md",
+    "bytes": 1702,
+    "sha256": "9dbeb717d7dfcccdb2c318344fcf1537e74cfcb7d54f185810cd751f79ae2ced"
+  },
+  {
+    "path": "disk-cleanup/PC-TRIM.json",
+    "bytes": 191,
+    "sha256": "dacb1257e6afd52629d80e51724cddb20c95e86dbae1611b7269c641b39a4821"
+  },
+  {
+    "path": "disk-cleanup/SUMMARY.json",
+    "bytes": 1183,
+    "sha256": "613727eac5d5a5075d8ddf14623fd0cf2b21b8cb15c9d6af9777c4f7c1f5695c"
+  },
+  {
+    "path": "disk-cleanup/build-cache-result.json",
+    "bytes": 324635,
+    "sha256": "fffcec4107d0d49819148a30b203310d16cdd25f72744649a25d01aa199f3d82"
+  },
+  {
+    "path": "disk-cleanup/exact-duplicate-dedup.json",
+    "bytes": 483,
+    "sha256": "85ddfb8469d67e3f1198ca2dd84bf966907bfd3d8e6490ae05f2c09e72bd9a10"
+  },
+  {
+    "path": "disk-cleanup/fixture-dedup.json",
+    "bytes": 1905,
+    "sha256": "3f681c2e0d8c2773da55cafafc79046899a1bea72ea8371682e3842608a614f2"
+  },
+  {
+    "path": "disk-cleanup/pc-cleanup-receipts.json",
+    "bytes": 90461,
+    "sha256": "476c15ec9a9f5c5c0b007ff8e4215f71406006cfa6726a94fc532fcd77500dc7"
+  },
+  {
+    "path": "disk-cleanup/pc-source-bundle-coverage.json",
+    "bytes": 507,
+    "sha256": "bc77bf69eca522d4819411616171826678c9d89f6b1ba70eaf630fffc7fc3587"
+  },
+  {
+    "path": "disk-cleanup/target-ownership.json",
+    "bytes": 28182,
+    "sha256": "5a56560546aff4b75df294c7c4aa5c7b8bd2cacf450b9140d95cf642e59c6bdc"
+  },
+  {
     "path": "fleet-pc-wsl-status.json",
     "bytes": 3,
     "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
@@ -111,8 +156,8 @@
   },
   {
     "path": "retirement-state.json",
-    "bytes": 1169,
-    "sha256": "16ea3f978d15a249b99f2c84047999ee5f87bea7d447ce27787c60ad56b8a6d8"
+    "bytes": 2402,
+    "sha256": "847925b9424d568f63fba54be8ffe3162e74b660d3bf1cb23d6c2d9b4027f582"
   },
   {
     "path": "root-cache-cleanup.json",
@@ -211,8 +256,8 @@
   },
   {
     "path": "state.json",
-    "bytes": 364681,
-    "sha256": "a3fdc880ea2fa7dbaeb8348a415da9eb3fa8a73b9df4532efc0991d16080a744"
+    "bytes": 365982,
+    "sha256": "0c2233696e2512cfdc43e77eb1022a5add35adab3399b0a63802d7498759e2cf"
   },
   {
     "path": "supplemental-store-identity.json",

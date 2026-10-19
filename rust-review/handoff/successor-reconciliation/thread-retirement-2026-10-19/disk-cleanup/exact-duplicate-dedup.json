@@ -1,0 +1,8 @@
+{
+  "canonical": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/d47-shared-set-budget/live-integration-v29/source.bundle",
+  "duplicate": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/retirement-20261019/D47-6a1ff028/source.bundle",
+  "sha256": "a789c89b272cad464d057851063fc43bb2962c9d4f1ec984be63c1dc5b200402",
+  "bytes": 859720396,
+  "allocatedBytesFreed": 859725824,
+  "method": "Hardlink exact same verified bytes; both restoration paths retained"
+}

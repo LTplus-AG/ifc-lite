@@ -1,0 +1,751 @@
+[
+  {
+    "path": "/home/louistrue/build-workers/worker-state/targets/899d43786f3f1d14e1ff",
+    "allReceiptsOwned": true,
+    "allTerminal": true,
+    "receipts": [
+      {
+        "job": "6c684c51-deac-4a74-b05c-9bd5b6f09576",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792334075.656893,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r3"
+      },
+      {
+        "job": "6c684c51-deac-4a74-b05c-9bd5b6f09576",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792334075.656893,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r3"
+      },
+      {
+        "job": "6c684c51-deac-4a74-b05c-9bd5b6f09576",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792334075.656893,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r3"
+      },
+      {
+        "job": "a40bb344-cdfc-4f86-9ea6-155d8cc6be2f",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792336560.5928676,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r3"
+      },
+      {
+        "job": "a40bb344-cdfc-4f86-9ea6-155d8cc6be2f",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792336560.5928676,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r3"
+      },
+      {
+        "job": "3693350e-faff-4f28-836b-c4275f7b5319",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792325696.0552647,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r3"
+      },
+      {
+        "job": "3702cd88-b983-437e-b467-597d1b231cbb",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792335117.378846,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r3"
+      },
+      {
+        "job": "3702cd88-b983-437e-b467-597d1b231cbb",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792335117.378846,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r3"
+      },
+      {
+        "job": "1a40479e-2f8d-400a-9590-e6b4cdaeaf84",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792330141.46426,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r3"
+      },
+      {
+        "job": "6778bf08-c313-42df-adb3-b288fa064894",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792329914.918287,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r3"
+      },
+      {
+        "job": "fa960a8c-cf28-40fd-984c-cc118d7bf243",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792325764.2266533,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r3"
+      }
+    ]
+  },
+  {
+    "path": "/home/louistrue/build-workers/worker-state/targets/49926200a29e09a7679b",
+    "allReceiptsOwned": true,
+    "allTerminal": true,
+    "receipts": [
+      {
+        "job": "0a8da302-6f26-4d60-ab40-9e62bbe1b7a0",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792325764.2402859,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4"
+      },
+      {
+        "job": "16460322-6835-4e49-a718-00e6df4fa528",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792335117.3646874,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4"
+      },
+      {
+        "job": "16460322-6835-4e49-a718-00e6df4fa528",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792335117.3646874,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4"
+      },
+      {
+        "job": "de3ed15c-fd6d-41b1-811a-539c75bafc0e",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792329909.2712967,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4"
+      },
+      {
+        "job": "2fae89ce-8575-40b6-bfd1-5a0d5caf39f7",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792342115.8893852,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4"
+      },
+      {
+        "job": "a20de8e4-9ea9-41af-b7ff-a75b964283a3",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792329991.9752164,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4"
+      },
+      {
+        "job": "87cdfa4c-8d54-40a0-9735-c3edccaf87f0",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792325695.8409562,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4"
+      },
+      {
+        "job": "4ef392b9-98d8-4993-bf11-254e2bc4b1cd",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792336902.8792741,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4"
+      },
+      {
+        "job": "4ef392b9-98d8-4993-bf11-254e2bc4b1cd",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792336902.8792741,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4"
+      },
+      {
+        "job": "48b9f953-994b-4ac3-bf2f-27a80d54c026",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792342744.7621822,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4"
+      },
+      {
+        "job": "05031469-9c72-4c10-9778-9a0c97623200",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792334075.3902156,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4"
+      },
+      {
+        "job": "05031469-9c72-4c10-9778-9a0c97623200",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792334075.3902156,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4"
+      },
+      {
+        "job": "05031469-9c72-4c10-9778-9a0c97623200",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792334075.3902156,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4"
+      },
+      {
+        "job": "da9a82a3-da11-4bd7-9be4-d944dac05ac5",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792332826.76203,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r4"
+      }
+    ]
+  },
+  {
+    "path": "/home/louistrue/build-workers/worker-state/targets/78b11116ea7b14ab1d98",
+    "allReceiptsOwned": true,
+    "allTerminal": true,
+    "receipts": [
+      {
+        "job": "bc88bde5-b6d9-4e67-9885-c1402e3d0ae7",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792348389.3878791,
+        "cwd": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2"
+      },
+      {
+        "job": "14318d82-511f-4dde-8bab-6a36a92d6f71",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792351582.347883,
+        "cwd": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2"
+      },
+      {
+        "job": "894179d9-f27f-4682-9be9-f28ae8b16175",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792351100.8273754,
+        "cwd": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2"
+      },
+      {
+        "job": "b5f2abcc-65a0-4e8e-bc10-fe084709977a",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792349592.4955335,
+        "cwd": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2"
+      },
+      {
+        "job": "a72215d8-3e27-43fa-8f8a-02e09c60c5b6",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792348219.1406307,
+        "cwd": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2"
+      },
+      {
+        "job": "8645dc93-0be7-4586-8a02-d8765b4b02f4",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792351820.0993874,
+        "cwd": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2"
+      },
+      {
+        "job": "bdf354f4-6ab3-4eba-9a61-06e7c258c494",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792348762.623572,
+        "cwd": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2"
+      },
+      {
+        "job": "833d9896-4c59-43a2-b49e-7f0ed80c6865",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792348547.542217,
+        "cwd": "/home/louistrue/build-workers/worker-state/checkouts/fc3635ae78665e95ea72328b88fc7b28ead148d2"
+      }
+    ]
+  },
+  {
+    "path": "/home/louistrue/build-workers/worker-state/targets/38628058a20934154a76",
+    "allReceiptsOwned": true,
+    "allTerminal": true,
+    "receipts": [
+      {
+        "job": "72c1de62-884f-41be-b27b-bd987ddb1e65",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792283325.5349007,
+        "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2b352d8c"
+      },
+      {
+        "job": "c419aa22-fab1-4fb6-9897-668e1cafe4de",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792300498.0656254,
+        "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2b352d8c"
+      },
+      {
+        "job": "2d57c816-3fa4-4a42-9818-ad54f7195e8f",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792282480.4171445,
+        "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2b352d8c"
+      },
+      {
+        "job": "8c208e38-5fa9-45aa-a217-72ef9f183a58",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792281001.8307025,
+        "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2b352d8c"
+      },
+      {
+        "job": "475355c1-8502-417b-82a5-40945bac1968",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792282854.5504794,
+        "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2b352d8c"
+      },
+      {
+        "job": "475355c1-8502-417b-82a5-40945bac1968",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792282854.5504794,
+        "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2b352d8c"
+      },
+      {
+        "job": "c7cda2a4-6490-4a08-98c0-ea43cd8fd9b8",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792283263.1297047,
+        "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2b352d8c"
+      },
+      {
+        "job": "bf23b089-0da9-492d-8575-87095def178f",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792288868.1154444,
+        "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2b352d8c"
+      },
+      {
+        "job": "37b7071b-513e-47a6-8e21-a1f93fd1f271",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792283355.9098916,
+        "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2b352d8c"
+      },
+      {
+        "job": "e38431c5-d0fd-41c8-99e4-aee36f803fc6",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792295636.4014375,
+        "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2b352d8c"
+      },
+      {
+        "job": "2757d5d0-ed84-4f14-ae1f-6613d7d3ceba",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792278932.4668906,
+        "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2b352d8c"
+      },
+      {
+        "job": "be3c99a9-83c9-4724-b841-d429bd9d0bd1",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792279478.0724115,
+        "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2b352d8c"
+      },
+      {
+        "job": "a68929b2-d405-4639-bc51-ef0152be4fb7",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792280963.1009579,
+        "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2b352d8c"
+      },
+      {
+        "job": "757f0aee-8991-4aed-8758-fec2d310e0cd",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792279379.9927557,
+        "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2b352d8c"
+      },
+      {
+        "job": "c4039094-2593-4502-b665-40e0316089e6",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792279151.9773388,
+        "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2b352d8c"
+      },
+      {
+        "job": "49e8d660-8610-4488-99bc-753ac60ed5d2",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792279751.6125624,
+        "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2b352d8c"
+      }
+    ]
+  },
+  {
+    "path": "/home/louistrue/build-workers/worker-state/targets/763c06558705be2d8476",
+    "allReceiptsOwned": true,
+    "allTerminal": true,
+    "receipts": [
+      {
+        "job": "3d567667-b76b-493e-b6c8-fed6b6bbc211",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792291292.220112,
+        "cwd": "/tmp/ifc7714-header-browser-599b"
+      },
+      {
+        "job": "b658009b-15e9-40bc-82e2-084c852aa356",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792291258.9685113,
+        "cwd": "/tmp/ifc7714-header-browser-599b"
+      },
+      {
+        "job": "ea88a676-9a69-494b-8eff-32e49a354f15",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792291319.7127562,
+        "cwd": "/tmp/ifc7714-header-browser-599b"
+      },
+      {
+        "job": "71c8f4de-504f-4b82-a378-c1623c786573",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792290896.874605,
+        "cwd": "/tmp/ifc7714-header-browser-599b"
+      },
+      {
+        "job": "06e2bfc0-d0f3-4567-9263-90fcf6262911",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792291361.3964982,
+        "cwd": "/tmp/ifc7714-header-browser-599b"
+      }
+    ]
+  },
+  {
+    "path": "/home/louistrue/build-workers/worker-state/targets/3a9c872d829495e0751f",
+    "allReceiptsOwned": true,
+    "allTerminal": true,
+    "receipts": [
+      {
+        "job": "c828c616-4fe2-4e80-b7e8-37d27486494f",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792329081.8976257,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r2"
+      },
+      {
+        "job": "d6066e60-b56e-4851-94ee-2b8662699981",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792327732.9065263,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r2"
+      },
+      {
+        "job": "d5603e84-6c1b-4226-8194-81c83fc89061",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792325695.8372526,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r2"
+      },
+      {
+        "job": "06457333-a94a-4314-a0b9-f145f975fc8a",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792335117.3599126,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r2"
+      },
+      {
+        "job": "06457333-a94a-4314-a0b9-f145f975fc8a",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792335117.3599126,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r2"
+      },
+      {
+        "job": "602e566b-f5b5-4b0a-a1dd-152ef49c4eee",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792336558.5453207,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r2"
+      },
+      {
+        "job": "602e566b-f5b5-4b0a-a1dd-152ef49c4eee",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792336558.5453207,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r2"
+      },
+      {
+        "job": "f4e1ce5c-3ec2-4318-9b82-5e31f4c5df36",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792330165.2696748,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r2"
+      },
+      {
+        "job": "a705ee40-f1e4-423c-a70c-aacb03928e4d",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792334083.8879793,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r2"
+      },
+      {
+        "job": "a705ee40-f1e4-423c-a70c-aacb03928e4d",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792334083.8879793,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r2"
+      },
+      {
+        "job": "a705ee40-f1e4-423c-a70c-aacb03928e4d",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792334083.8879793,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/integration-c24-fresh/native-workspace-prefixes-v6/source-r2"
+      }
+    ]
+  },
+  {
+    "path": "/home/louistrue/build-workers/worker-state/targets/d8d1902e8a2e658160a4",
+    "allReceiptsOwned": true,
+    "allTerminal": true,
+    "receipts": [
+      {
+        "job": "097f140b-d932-4bfa-a75f-b209c52e027c",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792280497.137386,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-base61"
+      },
+      {
+        "job": "dae5ce8a-4080-4056-9bc5-321a836a1ee1",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792282114.0571444,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-base61"
+      },
+      {
+        "job": "f8b93bc4-2f82-4169-8537-850beb02f828",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792282306.3124864,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-base61"
+      },
+      {
+        "job": "475355c1-8502-417b-82a5-40945bac1968",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792282854.5504794,
+        "cwd": "/home/louistrue/.t3/worktrees/ifc-lite/t3-2b352d8c"
+      },
+      {
+        "job": "84d84f88-9aa3-43d7-a9c1-cbce9aabc7c9",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792280963.2574487,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/qualification-base61"
+      }
+    ]
+  },
+  {
+    "path": "/home/louistrue/build-workers/worker-state/targets/ce67b33305d190a21549",
+    "allReceiptsOwned": false,
+    "allTerminal": true,
+    "receipts": [
+      {
+        "job": "be57928a-9c44-40b5-87db-92d8155714bd",
+        "owned": false,
+        "state": "completed",
+        "finishedAt": 1792284386.2760012,
+        "cwd": "/home/louistrue/build-workers/worker-state/checkouts/8dc407e240f4fa3abf6b41d744c19031a51bea63"
+      },
+      {
+        "job": "d13ace35-7dcb-42fd-bc9e-78426249f85e",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792287639.7081945,
+        "cwd": "/home/louistrue/build-workers/worker-state/checkouts/aad703ac56b31ac254d6c6b929e45c562e472f88"
+      },
+      {
+        "job": "d13ace35-7dcb-42fd-bc9e-78426249f85e",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792287639.7081945,
+        "cwd": "/home/louistrue/build-workers/worker-state/checkouts/aad703ac56b31ac254d6c6b929e45c562e472f88"
+      }
+    ]
+  },
+  {
+    "path": "/home/louistrue/build-workers/worker-state/targets/e9e957c995c413eefa43",
+    "allReceiptsOwned": true,
+    "allTerminal": true,
+    "receipts": [
+      {
+        "job": "573ead6d-6714-4066-a4cb-7b91f9762f29",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792309661.6321964,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/jsonld-property-classes/worktree"
+      },
+      {
+        "job": "25d0f439-c1f0-444e-905a-78abb78eb1f8",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792282225.0069373,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/jsonld-property-classes/worktree"
+      }
+    ]
+  },
+  {
+    "path": "/home/louistrue/build-workers/worker-state/targets/7ae71d1ebdeac77b27e3",
+    "allReceiptsOwned": true,
+    "allTerminal": true,
+    "receipts": [
+      {
+        "job": "2534a681-d29b-4c85-b878-c324581963c9",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792290711.0453646,
+        "cwd": "/tmp/ifc7714-header-parity-599b"
+      },
+      {
+        "job": "fd551b98-abe1-4d35-a567-a278091d826d",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792290885.6902375,
+        "cwd": "/tmp/ifc7714-header-parity-599b"
+      }
+    ]
+  },
+  {
+    "path": "/home/louistrue/build-workers/worker-state/targets/e42f09d8e9c85147092a",
+    "allReceiptsOwned": true,
+    "allTerminal": true,
+    "receipts": [
+      {
+        "job": "64192cd9-89c2-4cf5-ab12-ed11e00da8a0",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792347839.7352862,
+        "cwd": "/home/louistrue/build-workers/worker-state/checkouts/8657c2326e8974d3cc8fbb842b92c7a8f0af60ff"
+      }
+    ]
+  },
+  {
+    "path": "/home/louistrue/build-workers/worker-state/targets/f1ba7f8b01ce4debcc7c",
+    "allReceiptsOwned": false,
+    "allTerminal": true,
+    "receipts": [
+      {
+        "job": "01cd9f30-a21d-4795-b3e7-0b94e8e8e3e5",
+        "owned": false,
+        "state": "completed",
+        "finishedAt": 1792284397.9545004,
+        "cwd": "/home/louistrue/build-workers/worker-state/checkouts/aad703ac56b31ac254d6c6b929e45c562e472f88"
+      },
+      {
+        "job": "6a5a4a33-c1fd-4470-8559-0dceecd93efc",
+        "owned": false,
+        "state": "failed",
+        "finishedAt": 1792278064.7269337,
+        "cwd": "/home/louistrue/build-workers/worker-state/checkouts/aad703ac56b31ac254d6c6b929e45c562e472f88"
+      },
+      {
+        "job": "d13ace35-7dcb-42fd-bc9e-78426249f85e",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792287639.7081945,
+        "cwd": "/home/louistrue/build-workers/worker-state/checkouts/aad703ac56b31ac254d6c6b929e45c562e472f88"
+      },
+      {
+        "job": "d13ace35-7dcb-42fd-bc9e-78426249f85e",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792287639.7081945,
+        "cwd": "/home/louistrue/build-workers/worker-state/checkouts/aad703ac56b31ac254d6c6b929e45c562e472f88"
+      },
+      {
+        "job": "d13ace35-7dcb-42fd-bc9e-78426249f85e",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792287639.7081945,
+        "cwd": "/home/louistrue/build-workers/worker-state/checkouts/aad703ac56b31ac254d6c6b929e45c562e472f88"
+      }
+    ]
+  },
+  {
+    "path": "/home/louistrue/build-workers/worker-state/targets/03b9112e5cbd2336a644",
+    "allReceiptsOwned": false,
+    "allTerminal": true,
+    "receipts": [
+      {
+        "job": "0ded6d41-c9cc-4836-8513-6b9f90d020b7",
+        "owned": false,
+        "state": "completed",
+        "finishedAt": 1792322113.8341103,
+        "cwd": "/home/louistrue/build-workers/worker-state/checkouts/1bd0505602e0d650971d5cdc590bf780c56f8d5f"
+      },
+      {
+        "job": "c72bb237-d907-453b-92b7-b96ab2c116fd",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792385005.9040847,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/two-item-delivery/7911-integration/source-candidate"
+      }
+    ]
+  },
+  {
+    "path": "/home/louistrue/build-workers/worker-state/targets/2093351f271d99b33bf2",
+    "allReceiptsOwned": true,
+    "allTerminal": true,
+    "receipts": [
+      {
+        "job": "3058f69c-5be5-438f-8f50-bb1f559584f1",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792279558.7210503,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-4b-recovery/preparation-corpus-base"
+      }
+    ]
+  },
+  {
+    "path": "/home/louistrue/build-workers/worker-state/targets/ee83bcf70b4289b955d6",
+    "allReceiptsOwned": true,
+    "allTerminal": true,
+    "receipts": [
+      {
+        "job": "a923105e-01d2-4844-bf4a-7ad01d13531a",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792296085.2237551,
+        "cwd": "/tmp/ifc7714-header-native-599b"
+      },
+      {
+        "job": "a923105e-01d2-4844-bf4a-7ad01d13531a",
+        "owned": true,
+        "state": "failed",
+        "finishedAt": 1792296085.2237551,
+        "cwd": "/tmp/ifc7714-header-native-599b"
+      },
+      {
+        "job": "7920160b-ebc3-43f6-b6fc-ea56c4218e96",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792290650.6782987,
+        "cwd": "/tmp/ifc7714-header-native-599b"
+      }
+    ]
+  },
+  {
+    "path": "/home/louistrue/build-workers/worker-state/targets/d3c2fbd987108361355b",
+    "allReceiptsOwned": false,
+    "allTerminal": true,
+    "receipts": [
+      {
+        "job": "cdd8a980-48a8-42a6-afcc-b87f42f7b1fb",
+        "owned": false,
+        "state": "completed",
+        "finishedAt": 1792322116.6693435,
+        "cwd": "/home/louistrue/build-workers/worker-state/checkouts/f04d4f621e2dd0b168ef298e116a25a827161995"
+      },
+      {
+        "job": "c72bb237-d907-453b-92b7-b96ab2c116fd",
+        "owned": true,
+        "state": "completed",
+        "finishedAt": 1792385005.9040847,
+        "cwd": "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/two-item-delivery/7911-integration/source-candidate"
+      }
+    ]
+  }
+]

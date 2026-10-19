@@ -23,7 +23,7 @@ impl<T> Frames<T> {
     pub(super) fn pending_admission(&mut self) -> Option<Admission<T>> {
         if !self.initial && !self.pushes.iter().any(Option::is_some) { return None }
         Some(Admission { values:std::mem::take(&mut self.values),
-            pushes:std::mem::replace(&mut self.pushes,[None,None]), frame:None,
+            pushes:std::mem::take(&mut self.pushes), frame:None,
             initial:std::mem::take(&mut self.initial), occurrence:false })
     }
     pub(super) fn pop_control(&mut self) -> Option<T> { self.values.pop() }

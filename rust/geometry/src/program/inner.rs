@@ -253,7 +253,7 @@ impl GeometryProgram {
             .and_then(|processor|router.processor_emitter(processor.as_ref()))==Some(*emitter))
     }
     pub fn validate_reply(&self,reply:&ProgramReply,router:&GeometryRouter)->std::result::Result<(),ProgramError> {
-        let error = if !self.selected_matches(router){Some(ProgramError::WrongEmitter)} else if self.boolean.as_ref().is_some_and(|state|!state.matches_router(router)) {Some(ProgramError::WrongEmitter)} else if self.expected_router.is_some_and(|owner| owner != router.execution_identity()) { Some(ProgramError::WrongOwner) } else if self.cancelled { Some(ProgramError::Cancelled) } else {
+        let error = if !self.selected_matches(router) || self.boolean.as_ref().is_some_and(|state|!state.matches_router(router)) {Some(ProgramError::WrongEmitter)} else if self.expected_router.is_some_and(|owner| owner != router.execution_identity()) { Some(ProgramError::WrongOwner) } else if self.cancelled { Some(ProgramError::Cancelled) } else {
             match self.pending {
                 Some((pending, true)) if pending == reply.request => {
                     if self.expected_payload != Some(reply.value.tag()) {Some(ProgramError::WrongPayload)}

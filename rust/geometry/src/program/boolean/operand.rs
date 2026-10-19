@@ -68,8 +68,14 @@ impl BooleanState {
                 VoidFault::NoProcessor.message()));
             return Ok(());
         };
-        let meshes = Vec::with_capacity(voids.len());
-        let refs = voids.to_vec().into_iter();
+        let mut meshes = Vec::new();
+        crate::resource::reserve_headers(&mut meshes,voids.len())?.retain();
+        // The suspended source cursor must own its references, not borrow the
+        // operand's attribute list. Admit that backing before copying it.
+        let mut refs = Vec::new();
+        crate::resource::reserve_headers(&mut refs,voids.len())?.retain();
+        refs.extend_from_slice(voids);
+        let refs = refs.into_iter();
         self.frames.push(Frame::VoidsSource(VoidsState { outer, refs, meshes, kind, op,
             operand_type: operand.ifc_type }));
         Ok(())

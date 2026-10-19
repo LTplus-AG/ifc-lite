@@ -143,14 +143,11 @@ impl crate::program::openings::execute::Execution {
         // require at least one hole to have formed (a zero-hole result would signal
         // a projection error rather than a real cut).
         let (holed, n_shapes, corrections) = if cut.residual.is_some() {
-            {
-                let result = crate::resource::observe(subtract_staged_2d_counted(&cut.host_profile, &cut.footprints));
-                let result = match result {
-                    Ok(result) => result,
-                    Err(error @ crate::Error::ProgramStopped(_)) => return Err(error),
-                    Err(_) => return Ok(None),
-                };
-                result
+            let result = crate::resource::observe(subtract_staged_2d_counted(&cut.host_profile, &cut.footprints));
+            match result {
+                Ok(result) => result,
+                Err(error @ crate::Error::ProgramStopped(_)) => return Err(error),
+                Err(_) => return Ok(None),
             }
         } else {
             let result = crate::resource::observe(subtract_multiple_2d_counted(&cut.host_profile, &cut.footprints));

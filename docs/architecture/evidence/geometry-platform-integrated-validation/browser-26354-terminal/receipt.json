@@ -1,0 +1,103 @@
+{
+  "id": "cf149f9a-2efe-4e77-8888-f856b36c3d09",
+  "host": {
+    "host": "pop-os",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 32,
+    "availableMemoryBytes": 112061181952,
+    "totalMemoryBytes": 134644969472,
+    "python": "3.12.3",
+    "time": 1792413671.1189928
+  },
+  "cwd": "/home/louistrue/build-workers/worker-state/checkouts/26354b06cc798a36cd363b1ec9610334f03a7e33",
+  "sourceBefore": {
+    "commit": "26354b06cc798a36cd363b1ec9610334f03a7e33",
+    "tree": "3f15c692d8dafa8b7af0af8d73b31744f49695ff",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "abc0c942046a3726b4a35fd14f5d98e047de490c1983f47109029e00ed659472",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "4cf9cf1dc70cee40ab775df7d3d36665c55bd855514913fee9149209fc9b2edd"
+    }
+  },
+  "command": [
+    "bash",
+    "-c",
+    "# SPDX-License-Identifier: MPL-2.0\nsource \"$HOME/build-workers/worker-env.sh\" || exit $?\npnpm install --frozen-lockfile || exit $?\npnpm fixtures || exit $?\npnpm fixtures:check || exit $?\nsource_id=$(git rev-parse HEAD)\ncheckout_key=$(printf '%s' \"$(pwd -P)\" | sha256sum | cut -c1-12)\nexport IFCLITE_ADAPTER_BUILD=\"$CARGO_TARGET_DIR/ifclite-smlib/wasm-$source_id-$checkout_key\"\nbash native/smlib-adapter/qualify.sh wasm\nwasm_status=$?\ntest -f \"$IFCLITE_ADAPTER_BUILD/ifclite_smlib_browser.mjs\" || exit 2\nsdk=${SMLIB_SOURCE:-${IFCLITE_SDK_CACHE:-/tmp/ifclite-public-sdk-c9c5979}/usd-brep}\nfor crate in rust/geometry-runtime rust/processing rust/wasm-bindings; do\n  node scripts/stage-retained-browser-assets.mjs --build \"$IFCLITE_ADAPTER_BUILD\" --sdk \"$sdk\" --out \"$PWD/$crate/smlib\" || exit $?\ndone\nbrowser_tools=\"$CARGO_TARGET_DIR/ifclite-browser-tools/chrome-153.0.8010.52\"\nmkdir -p \"$browser_tools\"\ncurl --fail --silent --show-error https://storage.googleapis.com/chrome-for-testing-public/153.0.8010.52/linux64/chromedriver-linux64.zip -o \"$browser_tools/driver.zip\" || exit $?\ncurl --fail --silent --show-error https://storage.googleapis.com/chrome-for-testing-public/153.0.8010.52/linux64/chrome-linux64.zip -o \"$browser_tools/chrome.zip\" || exit $?\nprintf '7726029da262768fd8770212ac54296f4d31afe790a951f98d5580437da533b1  %s\\n' \"$browser_tools/driver.zip\" | sha256sum --check --strict || exit $?\nprintf 'e66f66d4802a46d4a022667e668aa950e277cadbfbed4b3777915b47413a0ef9  %s\\n' \"$browser_tools/chrome.zip\" | sha256sum --check --strict || exit $?\npython3 - \"$browser_tools\" <<'DRIVER'\nimport sys,zipfile,json\nfrom pathlib import Path\nroot=Path(sys.argv[1])\nfor name in ['driver','chrome']:\n    with zipfile.ZipFile(root/(name+'.zip')) as archive:\n        for entry in archive.infolist():\n            path=Path(entry.filename)\n            if path.is_absolute() or '..' in path.parts:\n                raise ValueError('invalid browser archive path')\n            if entry.is_dir(): continue\n            target=root/path\n            target.parent.mkdir(parents=True,exist_ok=True)\n            target.write_bytes(archive.read(entry))\n            mode=(entry.external_attr>>16)&0o777\n            if mode: target.chmod(mode)\nchrome=root/'chrome-linux64/chrome'\ndriver=root/'chromedriver-linux64/chromedriver'\nchrome.chmod(0o755);driver.chmod(0o755)\n(root/'webdriver.json').write_text(json.dumps({'goog:chromeOptions':{'binary':str(chrome),'w3c':False}})+'\\n')\nDRIVER\nbrowser_driver=\"$browser_tools/chromedriver-linux64/chromedriver\"\n\"$browser_tools/chrome-linux64/chrome\" --version || exit $?\n\"$browser_driver\" --version || exit $?\nsha256sum \"$browser_driver\" \"$browser_tools/chrome-linux64/chrome\"\nexport WASM_BINDGEN_TEST_WEBDRIVER_JSON=\"$browser_tools/webdriver.json\"\nexport WASM_BINDGEN_TEST_TIMEOUT=180\nexport RUST_BACKTRACE=1\nexport RUST_LOG=wasm_bindgen_test_runner=debug\nwasm-pack test --headless --chromedriver \"$browser_driver\" rust/geometry-runtime --lib\nruntime_status=$?\nwasm-pack test --headless --chromedriver \"$browser_driver\" rust/processing --lib -- session_retained\nprocessing_status=$?\nwasm-pack test --headless --chromedriver \"$browser_driver\" rust/wasm-bindings --lib -- retained_\napi_status=$?\npnpm build:wasm\nbuild_status=$?\ngit diff --exit-code -- packages/wasm/pkg/ifc-lite.d.ts\ntypes_status=$?\nnode scripts/stage-retained-browser-assets.mjs --build \"$IFCLITE_ADAPTER_BUILD\" --sdk \"$sdk\" --out \"$PWD/apps/viewer/public/smlib\" || exit $?\npnpm exec playwright install chromium || exit $?\npnpm test:retained-browser\njs_status=$?\npnpm typecheck\ntypecheck_status=$?\nprintf 'wasm_ctest_exit=%s browser_runtime_exit=%s browser_processing_exit=%s browser_api_exit=%s canonical_build_exit=%s generated_types_exit=%s browser_js_exit=%s root_typecheck_exit=%s\\n' \"$wasm_status\" \"$runtime_status\" \"$processing_status\" \"$api_status\" \"$build_status\" \"$types_status\" \"$js_status\" \"$typecheck_status\"\nfor result in \"$wasm_status\" \"$runtime_status\" \"$processing_status\" \"$api_status\" \"$build_status\" \"$types_status\" \"$js_status\" \"$typecheck_status\"; do\n  if [ \"$result\" -ne 0 ]; then exit \"$result\"; fi\ndone\n"
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792413671.1151266,
+  "resources": [
+    "/home/louistrue/build-workers/worker-state/checkouts/26354b06cc798a36cd363b1ec9610334f03a7e33",
+    "/home/louistrue/build-workers/worker-state/caches/c34add72ed173ef8655294b4"
+  ],
+  "state": "failed",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "storageTask": "ifclite-browser-pop-26354-20261019",
+  "storageTaskExplicit": true,
+  "storageResources": [
+    {
+      "path": "/home/louistrue/build-workers/worker-state/caches/c34add72ed173ef8655294b4",
+      "role": "cache",
+      "project": "ifc-lite",
+      "compatibilityKey": "c34add72ed173ef8655294b4"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/26354b06cc798a36cd363b1ec9610334f03a7e33",
+      "role": "worktree"
+    }
+  ],
+  "fixtures": {},
+  "tools": {
+    "git": {
+      "path": "/usr/bin/git",
+      "exitCode": 0,
+      "version": "git version 2.43.0"
+    },
+    "rustc": {
+      "path": "/home/louistrue/build-workers/toolchains/cargo/bin/rustc",
+      "exitCode": 0,
+      "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+    },
+    "cargo": {
+      "path": "/home/louistrue/build-workers/toolchains/cargo/bin/cargo",
+      "exitCode": 0,
+      "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+    },
+    "node": {
+      "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+      "exitCode": 0,
+      "version": "v24.22.0"
+    },
+    "pnpm": {
+      "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/pnpm",
+      "exitCode": 0,
+      "version": "10.8.1"
+    }
+  },
+  "runnerSha256": "086190b0495aec8d7608a80241396e8fe90ca69c80dea8110eb4770fed2ca6f9",
+  "startedAt": 1792413672.268426,
+  "queueSeconds": 1.1532995700836182,
+  "resourceScope": true,
+  "exitCode": 6,
+  "finishedAt": 1792414077.3087509,
+  "sourceAfter": {
+    "commit": "26354b06cc798a36cd363b1ec9610334f03a7e33",
+    "tree": "3f15c692d8dafa8b7af0af8d73b31744f49695ff",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "abc0c942046a3726b4a35fd14f5d98e047de490c1983f47109029e00ed659472",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "4cf9cf1dc70cee40ab775df7d3d36665c55bd855514913fee9149209fc9b2edd"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {},
+  "outputSha256": "a47a5f405528672b7c156af3e32a09015fd2031d82cca6e2fafd37f490ae39d9"
+}

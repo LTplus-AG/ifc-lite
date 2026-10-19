@@ -1,0 +1,63 @@
+{
+  "source": "26354b06cc798a36cd363b1ec9610334f03a7e33",
+  "request": "auto-d0d513c09e7143b3858076d9621839b2",
+  "job": "cf149f9a-2efe-4e77-8888-f856b36c3d09",
+  "host": "pop-os",
+  "exit": 6,
+  "sourceUnchanged": true,
+  "wasm_sdk_build": "281 compilation/link steps completed",
+  "ctest": [
+    {
+      "name": "smlib_sweep_upload_transport",
+      "outcome": "Passed"
+    },
+    {
+      "name": "retained_driver_protocol_lifetimes",
+      "outcome": "Passed"
+    },
+    {
+      "name": "smlib_browser_protocol",
+      "outcome": "***Failed"
+    },
+    {
+      "name": "smlib_owned_boundary",
+      "outcome": "***Failed"
+    },
+    {
+      "name": "smlib_copy_failure_boundary",
+      "outcome": "Passed"
+    },
+    {
+      "name": "smlib_paired_copy_observability",
+      "outcome": "***Failed"
+    },
+    {
+      "name": "smlib_checked_face_extraction",
+      "outcome": "Passed"
+    },
+    {
+      "name": "smlib_face_extraction_failure_boundary",
+      "outcome": "Passed"
+    }
+  ],
+  "actual_progress": [
+    "Checked face extraction CTest7 passes with exact UV transfer, canonical SAME ownership and audited numerical read fixes",
+    "Lineage CTest6 now passes both owned copies and sealed-surviving-volume before later topology-edit refusal"
+  ],
+  "remaining_sdk_failures": [
+    "Browser protocol oblique-annulus section keys split positive and negative rounded zero; source repair6896 unqualified",
+    "Owned boundary exact generic edge control y=4.4408920985006262e-16 differs from topology y=0; still a required positive chain failure",
+    "Lineage MakeEdgeInFace/DeleteEdge phase PRE_EDIT op10 SmEdge16016 first_failure15; no waiver applied"
+  ],
+  "terminal_cause": "curl DNS failure resolving storage.googleapis.com while provisioning matched ChromeDriver",
+  "not_executed": [
+    "Rust browser test target execution",
+    "canonical WASM build/type regeneration",
+    "canonical Playwright browser tests",
+    "root typecheck"
+  ],
+  "output_bytes": 4690279,
+  "output_sha256": "a47a5f405528672b7c156af3e32a09015fd2031d82cca6e2fafd37f490ae39d9",
+  "vault_readback_sha256": "a47a5f405528672b7c156af3e32a09015fd2031d82cca6e2fafd37f490ae39d9",
+  "storage": "Task remains active; newer Clippy job owns the same shared compatibility cache. No cleanup attempted."
+}

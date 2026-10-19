@@ -130,6 +130,13 @@ tests; validate normalized package feature edges; and run workspace strict Clipp
 on its actual assembled source. A command matrix accompanies the delivery. No
 build/test/check/lint/package/job is executed by this child.
 
+`node scripts/verify-source-resource-feature-boundary.mjs` builds each normal
+library and compiles the same external Rust import against it. Default and
+ordinary tracking must reject the absent test-support module with E0432; explicit
+test support must accept it. CI invokes this compiler probe. Like other Cargo
+graphs, run it inside the admitted build environment. A successful library build
+alone does not establish API absence, and this probe does not execute the gate.
+
 This supplies a combined source path and behavioral assertions, not executed
 evidence or production activation. Default/exact preservation, Global OOM,
 performance, baseline backing, complete cache authority and generation/revision

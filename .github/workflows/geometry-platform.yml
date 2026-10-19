@@ -25,6 +25,7 @@ on:
       - 'rust/wasm-bindings/tests/retained-browser-contract.*'
       - 'rust/wasm-bindings/src/api/product_job.rs'
       - 'scripts/stage-retained-browser-assets.mjs'
+      - 'scripts/verify-source-resource-feature-boundary.mjs'
       - 'scripts/perf/browser-static-server.ts'
       - 'scripts/perf/browser-cold-server-path.ts'
       - 'tests/e2e/retained-browser*'
@@ -48,11 +49,8 @@ jobs:
       - uses: ./.github/actions/setup-wasm-build
         with:
           cache-prefix: source-resource-account
-      - name: Compile ordinary and explicitly opted-in normal libraries
-        run: |
-          cargo build --locked -p ifc-lite-core --lib --no-default-features
-          cargo build --locked -p ifc-lite-core --lib --no-default-features --features source-resource-tracking
-          cargo build --locked -p ifc-lite-core --lib --no-default-features --features source-resource-gate-test-support
+      - name: Prove ordinary and explicitly opted-in normal-library API boundaries
+        run: node scripts/verify-source-resource-feature-boundary.mjs
       - name: Exercise the same normal core gate with the actual geometry account
         run: |
           cargo test --locked -p ifc-lite-core --lib --features source-resource-gate-test-support source_resources -- --nocapture

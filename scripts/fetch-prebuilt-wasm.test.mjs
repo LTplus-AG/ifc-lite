@@ -13,7 +13,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, test } from 'node:test';
@@ -31,25 +31,38 @@ const JS_STALE = 'export class A {}\nexport function f() {}\nasync function init
 const JS_AHEAD = JS_OK + 'export function brandNew() {}\n';
 
 /** Build a fake checkout; `published` is the js the stub npm will serve (or null for no stub). */
-function makeCheckout({ installedJs, published }) {
+function makeCheckout({ installedJs, published, installedAssets = {}, publishedAssets = {} }) {
   const root = mkdtempSync(join(tmpdir(), 'fetch-wasm-'));
   roots.push(root);
+  mkdirSync(join(root, 'node_modules'), { recursive: true });
+  symlinkSync(dirname(dirname(fileURLToPath(import.meta.resolve('typescript')))),
+    join(root, 'node_modules/typescript'), 'dir');
   mkdirSync(join(root, 'scripts'), { recursive: true });
   cpSync(join(here, 'fetch-prebuilt-wasm.mjs'), join(root, 'scripts/fetch-prebuilt-wasm.mjs'));
   cpSync(join(here, 'lib'), join(root, 'scripts/lib'), { recursive: true });
   mkdirSync(join(root, 'packages/wasm/pkg'), { recursive: true });
-  writeFileSync(join(root, 'packages/wasm/package.json'), JSON.stringify({ name: '@ifc-lite/wasm', version: '1.2.3' }));
+  writeFileSync(join(root, 'packages/wasm/package.json'), JSON.stringify({ name: '@ifc-lite/wasm', version: '1.2.3',
+    files: JSON.parse(readFileSync(join(here, '../packages/wasm/package.json'), 'utf8')).files }));
   writeFileSync(join(root, 'packages/wasm/pkg/ifc-lite.d.ts'), DTS);
+  writeFileSync(join(root, 'packages/wasm/pkg/.gitignore'), '*\n');
   if (installedJs !== undefined) {
     writeFileSync(join(root, 'packages/wasm/pkg/ifc-lite_bg.wasm'), 'INSTALLED-WASM');
     if (installedJs !== null) writeFileSync(join(root, 'packages/wasm/pkg/ifc-lite.js'), installedJs);
   }
+  function assets(directory, entries) {
+    for (const [name, text] of Object.entries(entries)) {
+      mkdirSync(dirname(join(directory, name)), { recursive: true });
+      writeFileSync(join(directory, name), text);
+    }
+  }
+  assets(join(root, 'packages/wasm/pkg'), installedAssets);
   const bin = join(root, 'bin');
   mkdirSync(bin);
   if (published !== null) {
     const src = join(root, 'published/package/pkg');
     mkdirSync(src, { recursive: true });
     writeFileSync(join(src, 'ifc-lite.js'), published);
+    assets(src, publishedAssets);
     writeFileSync(join(src, 'ifc-lite_bg.wasm'), 'PUBLISHED-WASM');
     writeFileSync(join(src, 'ifc-lite.d.ts'), 'export function publishedDtsMustNotBeInstalled(): void;\n');
   }
@@ -137,5 +150,92 @@ test('a fresh fetch of a matching package installs the runtime only, never the p
   const r = run(root);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.equal(read(root, 'ifc-lite.js'), JS_OK);
+  assert.equal(read(root, 'ifc-lite.d.ts'), DTS);
+});
+
+
+const JS_HELPER = "import { helper } from './snippets/private/driver.mjs';\n" + JS_OK;
+const HELPERS = {
+  'snippets/private/driver.mjs': "export const driver = 1; export { helper } from './nested/helper.js';\n",
+  // Top-level throw proves validation never evaluates even a copied helper.
+  'snippets/private/nested/helper.js': "throw new Error('must not execute'); export const helper = 1;\n" +
+    "export { driver } from '../driver.mjs';\n" +
+    "export async function lazy() { return import('/optional-sdk/worker.mjs'); }\n",
+};
+test('fetch copies the complete nested static helper closure without evaluating it', () => {
+  const root = makeCheckout({ published: JS_HELPER, publishedAssets: HELPERS });
+  const result = run(root);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.equal(read(root, 'ifc-lite.js'), JS_HELPER);
+  for (const [name, content] of Object.entries(HELPERS)) assert.equal(read(root, name), content);
+  assert.equal(read(root, 'ifc-lite.d.ts'), DTS);
+  // Exercise real local npm file selection with wasm-pack's broad .gitignore,
+  // not the fetch fixture's npm stub. No registry access or package build.
+  const pack = spawnSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
+    cwd: join(root, 'packages/wasm'), encoding: 'utf8', env: process.env,
+  });
+  assert.equal(pack.status, 0, pack.stdout + pack.stderr);
+  const packaged = JSON.parse(pack.stdout)[0].files.map(file => file.path);
+  for (const name of Object.keys(HELPERS)) assert(packaged.includes(`pkg/${name}`), name);
+  assert.equal(packaged.includes('pkg/.npmignore'), false);
+  // The installed-runtime path validates that same closure without fetching.
+  const installed = run(root);
+  assert.equal(installed.status, 0, installed.stdout + installed.stderr);
+  assert.doesNotMatch(installed.stdout, /Fetching/);
+});
+
+test('missing nested published helper rejects before replacing any installed runtime asset', () => {
+  const root = makeCheckout({ installedJs: JS_OK, published: JS_HELPER,
+    installedAssets: { 'snippets/previous.js': 'previous helper' },
+    publishedAssets: { 'snippets/private/driver.mjs': HELPERS['snippets/private/driver.mjs'] } });
+  const result = run(root, ['--force']);
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, /missing runtime asset.*nested/);
+  assert.equal(read(root, 'ifc-lite.js'), JS_OK);
+  assert.equal(read(root, 'ifc-lite_bg.wasm'), 'INSTALLED-WASM');
+  assert.equal(read(root, 'snippets/previous.js'), 'previous helper');
+  assert.equal(read(root, 'ifc-lite.d.ts'), DTS);
+  assert.equal(existsSync(join(root, 'packages/wasm/pkg/snippets/private/driver.mjs')), false);
+  assert.equal(existsSync(join(root, '.wasm-fetch-tmp')), false);
+  assert.equal(existsSync(join(root, 'stub.tgz')), false);
+});
+
+test('installed glue with matching exports but missing private helper is rejected untouched', () => {
+  const root = makeCheckout({ installedJs: JS_HELPER, published: null });
+  const result = run(root);
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, /incomplete.*missing runtime asset/);
+  assert.equal(read(root, 'ifc-lite.js'), JS_HELPER);
+  assert.equal(read(root, 'ifc-lite_bg.wasm'), 'INSTALLED-WASM');
+  assert.equal(read(root, 'ifc-lite.d.ts'), DTS);
+  assert.doesNotMatch(result.stdout, /Fetching/);
+});
+
+for (const specifier of ['elsewhere', 'https://example.invalid/driver.js', '/private/driver.js',
+  '../outside.js', './snippets/%2e%2e/driver.js']) {
+  test(`foreign/outside static import is refused before install: ${specifier}`, () => {
+    const published = `import '${specifier}';\n${JS_OK}`;
+    const root = makeCheckout({ installedJs: JS_OK, published });
+    const result = run(root, ['--force']);
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stderr, /foreign static runtime import|dependency escapes pkg/);
+    assert.equal(read(root, 'ifc-lite.js'), JS_OK);
+    assert.equal(read(root, 'ifc-lite_bg.wasm'), 'INSTALLED-WASM');
+    assert.equal(read(root, 'ifc-lite.d.ts'), DTS);
+  });
+}
+
+
+test('a symlinked published helper cannot import a foreign runtime asset', () => {
+  const root = makeCheckout({ installedJs: JS_OK, published: JS_HELPER,
+    publishedAssets: { 'snippets/private/padding.js': 'export const padding = 1;' } });
+  const foreign = join(root, 'foreign-helper.mjs');
+  writeFileSync(foreign, 'throw new Error("foreign code must never execute");');
+  symlinkSync(foreign, join(root, 'published/package/pkg/snippets/private/driver.mjs'));
+  const result = run(root, ['--force']);
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, /foreign runtime asset/);
+  assert.equal(read(root, 'ifc-lite.js'), JS_OK);
+  assert.equal(read(root, 'ifc-lite_bg.wasm'), 'INSTALLED-WASM');
   assert.equal(read(root, 'ifc-lite.d.ts'), DTS);
 });

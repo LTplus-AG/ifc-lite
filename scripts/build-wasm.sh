@@ -123,6 +123,11 @@ then
   exit 1
 fi
 
+# wasm-pack's pkg/.gitignore contains `*`. An explicit npm ignore file keeps
+# generated snippet directories publishable; packages/wasm/package.json's files
+# list remains the authoritative package allowlist. Keep this generated.
+printf '\n' > packages/wasm/pkg/.npmignore
+
 # NOTE: wasm-opt is disabled. The bundle is single-threaded (SIMD128 only,
 # no atomics/shared-memory), and the Rust compiler's LLVM -O3 (release
 # profile) already provides sufficient optimization. wasm-opt also has a

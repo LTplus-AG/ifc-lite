@@ -8,18 +8,19 @@
  *
  * Usage: node scripts/fetch-prebuilt-wasm.mjs [--force]
  *
- * The runtime (ifc-lite.js + ifc-lite_bg.wasm) is checked against the
+ * The runtime (JS glue, its static private helpers and WASM) is checked against the
  * COMMITTED ifc-lite.d.ts both when it is fetched and when one is already
  * installed. `--force` re-fetches even if a runtime is installed; the existing
  * runtime is replaced only if the fetched one passes the check.
  */
 
 import { execSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tarballNameFromPackOutput } from './lib/npm-pack-output.mjs';
 import { compareWasmExports } from './lib/wasm-export-parity.mjs';
+import { wasmRuntimeAssets } from './lib/wasm-runtime-assets.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(__dirname, '..');
@@ -35,7 +36,6 @@ const wasmFile = join(wasmOut, 'ifc-lite_bg.wasm');
 
 const force = process.argv.includes('--force');
 const committedDts = join(wasmOut, 'ifc-lite.d.ts');
-const RUNTIME_FILES = ['ifc-lite_bg.wasm', 'ifc-lite.js'];
 
 if (existsSync(wasmFile) && !force) {
   console.log(`Prebuilt WASM already present at ${wasmFile}`);
@@ -63,6 +63,12 @@ if (existsSync(wasmFile) && !force) {
     );
     process.exit(1);
   }
+  try { wasmRuntimeAssets(wasmOut); }
+  catch (error) {
+    console.error(`\nThe installed WASM runtime is incomplete: ${error.message}\n` +
+      'The installed runtime was left untouched. Rebuild or re-fetch with --force.');
+    process.exit(1);
+  }
   warnExtra(parity.extra);
   process.exit(0);
 }
@@ -88,8 +94,6 @@ execSync(`tar -xzf ${JSON.stringify(tgzName)} -C ${JSON.stringify(EXTRACT_DIR_NA
   stdio: 'inherit',
 });
 
-mkdirSync(wasmOut, { recursive: true });
-
 const pkgDir = join(extractDir, 'package/pkg');
 
 // Install only the runtime. `pkg/ifc-lite.d.ts` is COMMITTED and tracks this
@@ -103,7 +107,17 @@ const pkgDir = join(extractDir, 'package/pkg');
 // BEFORE installing anything: a stale bundle is never left behind for the
 // "already present" early exit to accept, and under --force the previously
 // installed runtime survives a failed fetch.
-const fetchedParity = parityAgainstCommittedDts(readFileSync(join(pkgDir, 'ifc-lite.js'), 'utf8'));
+let fetchedParity, runtimeFiles;
+try {
+  runtimeFiles = wasmRuntimeAssets(pkgDir);
+  fetchedParity = parityAgainstCommittedDts(readFileSync(join(pkgDir, 'ifc-lite.js'), 'utf8'));
+} catch (error) {
+  rmSync(extractDir, { recursive: true, force: true });
+  rmSync(join(rootDir, tgzName), { force: true });
+  console.error(`\nThe published ${tarball} has an incomplete runtime: ${error.message}\n` +
+    'Nothing was installed; the existing runtime and committed types were left untouched.');
+  process.exit(1);
+}
 if (fetchedParity.missing.length > 0) {
   rmSync(extractDir, { recursive: true, force: true });
   rmSync(join(rootDir, tgzName), { force: true });
@@ -116,10 +130,15 @@ if (fetchedParity.missing.length > 0) {
   process.exit(1);
 }
 
-for (const name of RUNTIME_FILES) {
+mkdirSync(wasmOut, { recursive: true });
+for (const name of runtimeFiles) {
+  mkdirSync(dirname(join(wasmOut, name)), { recursive: true });
   copyFileSync(join(pkgDir, name), join(wasmOut, name));
 }
 
+// Override wasm-pack's broad pkg/.gitignore for local npm packaging. The
+// package files allowlist still limits publication to generated runtime assets.
+writeFileSync(join(wasmOut, '.npmignore'), '\n');
 rmSync(extractDir, { recursive: true, force: true });
 rmSync(join(rootDir, tgzName), { force: true });
 

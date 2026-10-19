@@ -1,0 +1,96 @@
+{
+  "license": "MPL-2.0",
+  "lookup": {
+    "manifest": "pc-wsl-a3c15b59-2f25-4b8d-99fc-3581690ee39b-6f7cfe62fa1b",
+    "name": "output.log",
+    "evidence": {
+      "backend": "local",
+      "bytes": 448737,
+      "encoding": "gzip",
+      "originalPath": "/home/louistrue/build-workers/worker-state/jobs/a3c15b59-2f25-4b8d-99fc-3581690ee39b/output.log",
+      "originalSha256": "cc1ad83d8a337adff650a7ec08e7984bfbcf725a9ee3d629de12698791658ef6",
+      "sha256": "69bbfc4992c712e182f73ab40efed0debecca10bd79aaf0f08b3bc88a7a23a2c",
+      "storedBytes": 105002,
+      "verified": true
+    },
+    "verified": true
+  },
+  "manifest": {
+    "createdAt": 1792404187.7824082,
+    "exitCode": 8,
+    "expiresAt": 1794996187.7824082,
+    "files": {
+      "output.log": {
+        "backend": "local",
+        "bytes": 448737,
+        "encoding": "gzip",
+        "originalPath": "/home/louistrue/build-workers/worker-state/jobs/a3c15b59-2f25-4b8d-99fc-3581690ee39b/output.log",
+        "originalSha256": "cc1ad83d8a337adff650a7ec08e7984bfbcf725a9ee3d629de12698791658ef6",
+        "sha256": "69bbfc4992c712e182f73ab40efed0debecca10bd79aaf0f08b3bc88a7a23a2c",
+        "storedBytes": 105002,
+        "verified": true
+      }
+    },
+    "host": "pc-wsl",
+    "id": "pc-wsl-a3c15b59-2f25-4b8d-99fc-3581690ee39b-6f7cfe62fa1b",
+    "job": "a3c15b59-2f25-4b8d-99fc-3581690ee39b",
+    "kind": "ordinary",
+    "originalReceiptSha256": "7e17dce75563b5038cde4ff36245a81decb00922c5d5e5b8eb511a131565c04b",
+    "qualification": "Recorded original outcome; no reinterpretation or new performance approval",
+    "schema": 1,
+    "sourceAfter": {
+      "clean": true,
+      "commit": "1cefdab4966118967195422cd317ae38dd7b9922",
+      "toolchainInputs": {
+        "Cargo.lock": "c7b880d976fdd1c6676a47941fe1fe0308c643ac83476d122507d329b2cfbf0a",
+        "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937",
+        "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+      },
+      "tree": "10fa7d72478f207ce41ff0116ac9a1f263ace850",
+      "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "sourceBefore": {
+      "clean": true,
+      "commit": "1cefdab4966118967195422cd317ae38dd7b9922",
+      "toolchainInputs": {
+        "Cargo.lock": "c7b880d976fdd1c6676a47941fe1fe0308c643ac83476d122507d329b2cfbf0a",
+        "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937",
+        "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+      },
+      "tree": "10fa7d72478f207ce41ff0116ac9a1f263ace850",
+      "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "task": "ifclite-native-openings-1cefd-20261019",
+    "tools": {
+      "cargo": {
+        "exitCode": 0,
+        "path": "/home/louistrue/.cargo/bin/cargo",
+        "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+      },
+      "git": {
+        "exitCode": 0,
+        "path": "/usr/local/bin/git",
+        "version": "git version 2.53.0"
+      },
+      "node": {
+        "exitCode": 0,
+        "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node",
+        "version": "v24.21.0"
+      },
+      "pnpm": {
+        "exitCode": 0,
+        "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/pnpm",
+        "version": "10.8.1"
+      },
+      "rustc": {
+        "exitCode": 0,
+        "path": "/home/louistrue/.cargo/bin/rustc",
+        "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+      }
+    }
+  },
+  "owned_task": "ifclite-native-openings-1cefd-20261019",
+  "closure": "positively closed and reclaimed after archive verification; source archived by registered lifecycle; shared cache retained"
+}

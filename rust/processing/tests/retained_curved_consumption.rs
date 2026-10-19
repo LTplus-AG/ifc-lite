@@ -90,7 +90,7 @@ fn retained_round3_actual_copied_frames_and_boolean_opening_preserve_shared_sour
     assert!((worker.volume(a.solid(),1e-8).unwrap()-1.).abs()<1e-6);
     assert!((worker.volume(b.solid(),1e-8).unwrap()-1.).abs()<1e-6);
     assert!(cut.world_from_evaluation()[12]>1e8,"survey translation remains outside SDK");
-    left[0]=-1.;
+    left[0] = -1.;
     assert!(worker.evaluate_retained_boolean(RetainedDependency::Source{realization:&a,world_from_source:left},
         RetainedDependency::Result(&cut),BooleanOperation::Union,0.001,5.,MeshLimits::default()).is_err());
     worker.release(a.solid()).unwrap();worker.release(b.solid()).unwrap();

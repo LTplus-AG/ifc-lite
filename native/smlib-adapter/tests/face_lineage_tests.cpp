@@ -323,6 +323,80 @@ void split_merge() {
         owned.second.reset(); ledger.check(); release.finish(); ledger.check();
     } catch(...) { rethrow_tainted_kernel_domain("actual lineage split/merge witness"); }
 }
+void transition_target_switch_refusal() {
+    std::fprintf(stderr,"lineage BEGIN A-to-B-to-A retained target authority refusal\n");
+    Solids owned; owned.source=box(); Ledger ledger;
+    auto& context=*const_cast<SmContext*>(owned.source->GetContext());
+    Scope lifetime(ledger,context); admit(ledger,*owned.source);
+    owned.first=checked_brep_copy(owned.source.get(),&ledger);
+    owned.second=checked_brep_copy(owned.source.get(),&ledger);
+    auto* a=seeds(*owned.first).front().face; auto* b=seeds(*owned.second).front().face;
+    const auto first=PlanarTransition::roundtrip(ledger,*owned.source,*owned.first,*a);
+    PlanarTransition::consume(ledger,first,*owned.first);
+    RepresentationSeal b_seal(ledger,*owned.second); const auto b_identity=ledger.identity(b);
+    const auto events=ledger.event_size(),nodes=ledger.node_size(); bool switched=false;
+    try { PlanarTransition::roundtrip(ledger,*owned.source,*owned.second,*b); }
+    catch(const SweepFailure& e) { switched=e.status==IFCLITE_SMLIB_UNSUPPORTED; }
+    require(switched && events==ledger.event_size() && nodes==ledger.node_size() &&
+        ledger.identity(b)==b_identity && !kernel_domain_is_tainted(),"different target B refused before seal loss or SDK mutation");
+    b_seal.verify(); ledger.check();
+    const auto next=PlanarTransition::roundtrip(ledger,*owned.source,*owned.first,*a);
+    require(next.before()==first.after(),"untouched A can repeat after rejected switch to B");
+    PlanarTransition::consume(ledger,next,*owned.first);
+    bool invalid=false;
+    try { PlanarTransition::roundtrip(ledger,*owned.source,*owned.first,*b); }
+    catch(const SweepFailure& e) { invalid=e.status==IFCLITE_SMLIB_UNSUPPORTED; }
+    require(invalid && !kernel_domain_is_tainted(),"same-target invalid successor preflight preserves predecessor seal"); ledger.check();
+    SmTArray<SmLoop*> loops; a->GetLoops(loops); auto* lu=loops[0]->GetLoopuse();
+    auto* original=static_cast<SmEdgeuse*>(lu->GetEUorVU()); auto* rotated=original->GetCCWEdgeuse();
+    unsigned executed=0; const auto status=lu->CollectEdgeuses(rotated); ++executed;
+    require(status==SM_SUCCESS && rotated!=original && lu->GetEUorVU()==rotated && executed==1,
+        "actual A head rotation reached after refused B and invalid successor"); ledger.check();
+    bool refused=false;
+    try { PlanarTransition::roundtrip(ledger,*owned.source,*owned.first,*a); }
+    catch(const SweepFailure& e) { refused=e.status==IFCLITE_SMLIB_UNSUPPORTED; }
+    require(refused && ledger.failed()==Failure::RepresentationChanged && !kernel_domain_is_tainted(),
+        "A terminal authority survives B/preflight refusals and rejects silent head rotation before new SDK operation");
+    owned.second.reset(); owned.first.reset(); owned.source.reset(); lifetime.finish();
+}
+void transition_target_reuse_refusal() {
+    std::fprintf(stderr,"lineage BEGIN actual BRep target lifetime/address reuse refusal\n");
+    Solids owned; owned.source=box(); Ledger ledger;
+    auto& context=*const_cast<SmContext*>(owned.source->GetContext());
+    Scope lifetime(ledger,context); admit(ledger,*owned.source);
+    const auto construction=ledger.event_size(); owned.first=checked_brep_copy(owned.source.get(),&ledger);
+    const auto original_birth=ledger.event(construction).after[0];
+    require(original_birth.sequence && ledger.event(construction).operation==SM_NO_CONSTRUCTION,"actual copied target constructor receipt");
+    auto* a=seeds(*owned.first).front().face;
+    const auto receipt=PlanarTransition::roundtrip(ledger,*owned.source,*owned.first,*a);
+    PlanarTransition::consume(ledger,receipt,*owned.first);
+    const auto address=reinterpret_cast<uintptr_t>(owned.first.get());
+    const auto death=ledger.event_size(); owned.first.reset(); ledger.check();
+    unsigned deaths=0;
+    for(auto i=death;i<ledger.event_size();++i) deaths+=ledger.event(i).operation==SM_NO_DESTRUCTION &&
+        ledger.event(i).before[0]==original_birth;
+    require(deaths==1,"actual BRep destructor retires exact target generation once");
+    bool reused=false;
+    for(unsigned i=0;i<128 && !reused;++i) {
+        const auto start=ledger.event_size(); auto candidate=raw_context::construct_brep(&context); ledger.check();
+        const auto birth=ledger.event(start).after[0];
+        require(birth.sequence && birth!=original_birth && ledger.event(start).operation==SM_NO_CONSTRUCTION,
+            "actual replacement BRep has fresh constructor generation");
+        if(reinterpret_cast<uintptr_t>(candidate.get())==address) {
+            reused=true; bool refused=false; const auto events=ledger.event_size(),nodes=ledger.node_size();
+            try { PlanarTransition::roundtrip(ledger,*owned.source,*candidate,*seeds(*owned.source).front().face); }
+            catch(const SweepFailure& e) {
+                refused=e.status==IFCLITE_SMLIB_UNSUPPORTED &&
+                    std::strcmp(e.message,"transition target lifetime ended or its address was reused")==0;
+            }
+            require(refused && events==ledger.event_size() && nodes==ledger.node_size() && !kernel_domain_is_tainted(),
+                "same address cannot recover old target lifetime authority or start SDK operation"); ledger.check();
+        }
+        candidate.reset(); ledger.check();
+    }
+    require(reused,"BRep target alias witness did not reach allocator reuse; no alias qualification");
+    owned.source.reset(); ledger.check(); lifetime.finish(); ledger.check();
+}
 void transition_head_refusal() {
     std::fprintf(stderr,"lineage BEGIN actual post-receipt head-slot substitution refusal\n");
     Solids owned; owned.source=box(); Ledger ledger;
@@ -536,6 +610,6 @@ void terminal_budget_failure() {
 }
 void run_root_issuance_tests();
 void run_face_lineage_tests() {
-    run_root_issuance_tests(); direct_read_refusal(); copy_lifetime(); split_merge(); transition_frame_refusal(); transition_head_refusal(); mixed_origins(); address_reuse(); refusals(); terminal_budget_failure();
+    run_root_issuance_tests(); direct_read_refusal(); copy_lifetime(); split_merge(); transition_target_switch_refusal(); transition_target_reuse_refusal(); transition_frame_refusal(); transition_head_refusal(); mixed_origins(); address_reuse(); refusals(); terminal_budget_failure();
     std::fprintf(stderr,"lineage witnesses PASS; paired split/classification/extraction still unimplemented\n");
 }

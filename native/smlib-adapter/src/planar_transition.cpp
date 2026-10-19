@@ -15,13 +15,16 @@ TransitionReceipt PlanarTransition::roundtrip(Ledger& ledger,SmBrep& source,SmBr
     if(kernel_domain_is_tainted()) throw KernelDomainTainted{"transition refused after isolation failure"};
     require(!ledger.active_transition && !ledger.numerical.source && ledger.frame_count &&
         (!ledger.completed_transition || ledger.completed_transition->consumed),"unconsumed/nested transition");
-    require(source.GetContext()==working.GetContext() && working.GetContext(),"transition context mismatch");
-    // A prior owned transition's terminal seal remains the authority for this
-    // actual live target between calls. Never adopt a silent edit as a fresh pre-state.
-    if(ledger.completed_transition && &ledger.completed_transition->working==&working) {
-        ledger.verify_inventory(working); ledger.completed_transition->post_seal->verify();
+    // One issued transition target per Ledger. Preserve its terminal authority
+    // even when another body is submitted or a successor preflight refuses.
+    if(ledger.completed_transition) {
+        auto& prior=*ledger.completed_transition;
+        require(&prior.working==&working,"one transition target per ledger; different body refused");
+        prior.require_live_target();
+        require(ledger.identity(&prior.face)==prior.receipt.merged,"prior target face generation changed");
+        ledger.verify_inventory(working); prior.post_seal->verify();
     }
-    ledger.completed_transition.reset(); // consumed predecessor; bounded one retained plan
+    require(source.GetContext()==working.GetContext() && working.GetContext(),"transition context mismatch");
     auto& context=*const_cast<SmContext*>(working.GetContext());
     raw_context::Restore preserve(&context); Scope phase(ledger,context,&source);
     std::unique_ptr<PlanarTransition> plan;
@@ -34,9 +37,9 @@ TransitionReceipt PlanarTransition::roundtrip(Ledger& ledger,SmBrep& source,SmBr
         plan->insert(); plan->check_children();
         ledger.active_transition=nullptr; plan->numeric_check(true); ledger.active_transition=plan.get();
         plan->erase(); plan->restore(); working.m_bEditingEnabled=editing;
-        plan->discharge();
+        plan->discharge(); plan->pre_seal.reset(); // keep predecessor seal without increasing the four-seal bound
         ledger.active_transition=nullptr; plan->numeric_check(false);
-        plan->post_seal->verify(); plan->source_seal->verify();
+        plan->require_live_target(); plan->post_seal->verify(); plan->source_seal->verify();
         phase.finish(); ledger.check();
         plan->source_seal.reset(); plan->pre_seal.reset(); // only the new physical terminal seal survives
         const auto result=plan->receipt; ledger.completed_transition=std::move(plan); return result;
@@ -124,12 +127,18 @@ void PlanarTransition::consume(Ledger& ledger,const TransitionReceipt& receipt,S
     ledger.completed_transition->validate_receipt(receipt,working);
     ledger.completed_transition->consumed=true;
 }
+void PlanarTransition::require_live_target() {
+    const auto* entry=ledger.binding(&working,false);
+    require(entry && entry->alive && !entry->retired && entry->current==target_generation,
+        "transition target lifetime ended or its address was reused");
+}
 void PlanarTransition::validate_receipt(const TransitionReceipt& value,SmBrep& target) {
     require(!consumed && discharged && &target==&working && ledger.frame_count+1==frame &&
         ledger.frames[frame-2] && ledger.frames[frame-2]->serial==parent_frame_serial &&
         value.operation==receipt.operation && value.revision==receipt.revision && value.parent==receipt.parent &&
         value.children[0]==receipt.children[0] && value.children[1]==receipt.children[1] && value.merged==receipt.merged,
         "foreign/reused/stale transition receipt");
+    require_live_target();
     require(ledger.identity(&face)==receipt.merged,"transition physical face generation changed");
     post_seal->verify(); ledger.verify_inventory(working);
 }

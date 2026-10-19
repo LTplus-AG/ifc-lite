@@ -71,7 +71,8 @@ void Ledger::transition(Event& event,SmNotifyOperation op,SmObject* caller,SmObj
         if(entry && readonly(entry->owner)) fail(Failure::ReadOnlyMutation);
         return entry && failure==Failure::None;
     };
-    const bool leaf=caller && (caller->GetType()==SmEdge_TYPE || caller->GetType()==SmVertex_TYPE ||
+    const bool leaf=caller && (caller->GetType()==SmBrep_TYPE || caller->GetType()==SmEdge_TYPE ||
+        caller->GetType()==SmVertex_TYPE ||
         caller->GetType()==SmEdgeuse_TYPE || caller->GetType()==SmLoop_TYPE ||
         caller->GetType()==SmLoopuse_TYPE || caller->GetType()==SmFaceuse_TYPE);
     if(op==SM_NO_CONSTRUCTION && leaf) {

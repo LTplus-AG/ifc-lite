@@ -8,6 +8,11 @@ PlanarTransition::PlanarTransition(Ledger& value,SmBrep& immutable,SmBrep& owned
     ledger(value),source(immutable),working(owned),face(target) {
     require(&source!=&working && source.GetContext()==working.GetContext() && face.GetBrep()==&working,
         "transition requires distinct actual source/working ownership");
+    auto* target_binding=ledger.binding(&working,false);
+    require(target_binding && target_binding->alive && !target_binding->retired &&
+        ledger.node(target_binding->current) && ledger.node(target_binding->current)->change==Change::Construct,
+        "transition target requires its actual observed BRep constructor generation");
+    target_generation=target_binding->current;
     ledger.verify_inventory(source); ledger.verify_inventory(working);
     require(working.GetNumFaces()<=64 && working.GetNumEdges()<=128 && working.GetNumVertices()<=128 &&
         working.IsManifoldSolid(),"transition bounded closed manifold subset");

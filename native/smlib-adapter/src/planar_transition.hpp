@@ -31,7 +31,7 @@ class PlanarTransition {
     Ledger& ledger; SmBrep& source; SmBrep& working; SmFace& face;
     SmPlane* support=nullptr; SmFace* child=nullptr; SmSurface* child_surface=nullptr;
     SmEdge* diagonal=nullptr; Identity diagonal_birth{},child_birth{};
-    TransitionReceipt receipt;
+    TransitionReceipt receipt; Identity target_generation{};
     std::array<Slot,4> slots;
     struct OriginalSlot { SmTopology* object=nullptr; SmObject* owner=nullptr; Identity generation{}; };
     std::array<OriginalSlot,13> original_slots{}; unsigned original_count=0,head_restorations=0;
@@ -63,6 +63,7 @@ class PlanarTransition {
     bool event(Event&,SmNotifyOperation,SmObject*,SmObject*,SmObject*,SmObject*);
     uint64_t expected_slot_pointer(const void*) const;
     Identity expected_face_slot(SmFace*,Identity) const;
+    void require_live_target();
     void validate_receipt(const TransitionReceipt&,SmBrep&);
     friend class Ledger; friend class RepresentationSeal;
 public:

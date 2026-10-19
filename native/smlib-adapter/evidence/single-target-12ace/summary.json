@@ -1,0 +1,223 @@
+{
+  "base": "12ace76be215f697814aaf579a741c2f34273cbe",
+  "scope": "R1: exactly one generation-bound transition target per ledger; retain predecessor seal through successor refusal/execution",
+  "changed_paths": [
+    {
+      "path": "native/smlib-adapter/PLANAR_TRANSITION_CONTRACT.md",
+      "before_sha256": "11935a926542840f4ecb545f2b487bb27e675a82cdf913c5a3c0e5b577f9ff90",
+      "after_sha256": "1106f413d092a8c44b532ad028933e30b7486e8cfbf1f4c64f5216c6673136d8"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage_events.cpp",
+      "before_sha256": "4cfa13edc5ac650faacc7413f1f67c510f1dd9b4206886782f86e82d9e8348d9",
+      "after_sha256": "0e2d5b6c6c469b1299f84e2b857e8b252742e8c190a2dbdb74cb323e9621b475"
+    },
+    {
+      "path": "native/smlib-adapter/src/planar_transition.cpp",
+      "before_sha256": "e96ab156ed3d9a6b8bf60113062b5d22d2e60bfc1153c4f7cfda1eb87f8fea64",
+      "after_sha256": "991874c8046f5161ed4304ad3bc4b545a7648e36e2ba830b6fa70ea0658194e3"
+    },
+    {
+      "path": "native/smlib-adapter/src/planar_transition.hpp",
+      "before_sha256": "38316b59014b14dc10a302ff9064f47c674b53cd446849341b2855616be0955e",
+      "after_sha256": "6242319b08c69b6e4f0cb0685c8a825e6a363e5d7f7289c830f6ac114e85b5ed"
+    },
+    {
+      "path": "native/smlib-adapter/src/planar_transition_plan.cpp",
+      "before_sha256": "28bb3af03165cd3faaf05d6091b225ef6aa936e685198aa69533af599abb8c59",
+      "after_sha256": "048cc65c587439a6aebf782b7497d2c2b11ee3a5d4067a97968a1c9783ce47a6"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_lineage_tests.cpp",
+      "before_sha256": "d27cb66ded7172d47cf04ec78ae9e0dbb52f357b8f19107b61349622b215dacb",
+      "after_sha256": "3c9e64f028541cc6d03177d7f252f6d43e38d208fb9a369a1ceb2d0a6c4196b0"
+    }
+  ],
+  "unchanged_local_safeguards": [
+    {
+      "path": "native/smlib-adapter/CMakeLists.txt",
+      "sha256": "4686ef428948712e8d55feab5adec8e6412a84b63a27cbc96b85b2788cb968cc"
+    },
+    {
+      "path": "native/smlib-adapter/evidence/planar-transition-ff877/ASSEMBLY.md",
+      "sha256": "1444909aee41c2af5031e00214ab384098e09a3db606012799bbbc2eca0ee4bc"
+    },
+    {
+      "path": "native/smlib-adapter/evidence/planar-transition-ff877/REVIEW_RESPONSE.md",
+      "sha256": "75d2d9f5088581d77d9573c635b925b5fc8b53690dbfbc4fe71b45285502dbdb"
+    },
+    {
+      "path": "native/smlib-adapter/evidence/planar-transition-ff877/summary.json",
+      "sha256": "524bcf4b7a3b346a333641c4df5c7ceafa30fcc2ecedfe67073da9dcd8ac1e18"
+    },
+    {
+      "path": "native/smlib-adapter/include/ifclite_smlib.h",
+      "sha256": "f67077face61a64176dbb0f155aa4d96a13124135728d7ff016f138cadaf6fa3"
+    },
+    {
+      "path": "native/smlib-adapter/qualify.sh",
+      "sha256": "ec797fc4b79e24e07e40e0502ee054d3a9b42d0f0edbab47c34b20f3f4389e43"
+    },
+    {
+      "path": "native/smlib-adapter/src/context_metadata.hpp",
+      "sha256": "c105a819bb1aa5d7e678aadca403a4174a0312621eb26cbc2d850eb0f3d4b407"
+    },
+    {
+      "path": "native/smlib-adapter/src/copy.cpp",
+      "sha256": "0cfc60da6dccd1f91a7140fe53e5ee8be975e21cb3e827895e359d48105072bf"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_extraction.cpp",
+      "sha256": "c14ef3f235d32b96545d166f9e9df52f5e0b8973099ac9181c28a116edb539b6"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_extraction.hpp",
+      "sha256": "3fb84e78a780684ef71001d007c66cf75af05478c4a4be3e1603fb760ce9e09e"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.cpp",
+      "sha256": "7b381a7180d1014cd726a78dbaebb8bba47e7fc7de22a12573234333c23e4c30"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage.hpp",
+      "sha256": "a9da49c03a156903ff69b61da436ebf164359932db53e1507f099f087d6407da"
+    },
+    {
+      "path": "native/smlib-adapter/src/face_lineage_geometry.cpp",
+      "sha256": "7f1269991e88e82974e6f0a6bd142c6fb9fce372741915ac1bdd31b0faa3fb98"
+    },
+    {
+      "path": "native/smlib-adapter/src/generated_plane.cpp",
+      "sha256": "a7279559e35260ddaa94e9d43507d69a50941ef984ad229b015339c6576cc8ed"
+    },
+    {
+      "path": "native/smlib-adapter/src/planar_transition_detail.hpp",
+      "sha256": "238610814c7585df94e95d723ca8e058e0b5a31d38916a1d87b28654485db3bf"
+    },
+    {
+      "path": "native/smlib-adapter/src/planar_transition_events.cpp",
+      "sha256": "07a5555c9ef79ba4874faf1b82167194c5960148afe98f4c1a5be54646ef340d"
+    },
+    {
+      "path": "native/smlib-adapter/src/planar_transition_verify.cpp",
+      "sha256": "951044d46747b29150ee31b1997f4206d6a640c64a5cff17524a6a7dcbb7ae6f"
+    },
+    {
+      "path": "native/smlib-adapter/src/plane.cpp",
+      "sha256": "1c7ed1a9958693682696ca48b8cb6a893eb4c480d1192999b97974e51391cafe"
+    },
+    {
+      "path": "native/smlib-adapter/src/plane_domain.cpp",
+      "sha256": "3e500336a94fad265286eecaa3c6673c38a6a3752ac079b7b1032ef10a01357d"
+    },
+    {
+      "path": "native/smlib-adapter/src/protocol.cpp",
+      "sha256": "800e18af50520867897d70b25e814428e78cd279bcd643fc8d68e70abf520a8a"
+    },
+    {
+      "path": "native/smlib-adapter/src/representation_seal.cpp",
+      "sha256": "6e2377e515661599c13df6097777164462b60102a6d3c6775bc680687f1f250d"
+    },
+    {
+      "path": "native/smlib-adapter/src/representation_seal.hpp",
+      "sha256": "b2d4895a3b7510785ab428edd0600aa291328ebd2b646f0af5bbb25fd26cdc1d"
+    },
+    {
+      "path": "native/smlib-adapter/src/representation_seal_geometry.cpp",
+      "sha256": "2f0b20961c64e440213fe7382dd47414dd374fbe554a24d6c8dc37e642e4e2b3"
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_extraction_tests.cpp",
+      "sha256": "587068a2efdbf1679499a13d5cabe911f70ecf13e95772fabc01a9e9ae572bb1"
+    },
+    {
+      "path": "native/smlib-adapter/tests/paired_plane_observability_tests.cpp",
+      "sha256": "e6c742d94260facb9ddfcfb7c5ab90f1e99afe63c6f6a03f3dcc1b5ed9916b20"
+    },
+    {
+      "path": "native/smlib-adapter/tests/root_issuance_tests.cpp",
+      "sha256": "467a4d4869e0cf5d221027927d2e76f7cf4a937351f6bc3b63eff67ce3d77a94"
+    }
+  ],
+  "syntax": {
+    "result": "PASS",
+    "translation_units": [
+      "native/smlib-adapter/src/planar_transition.cpp",
+      "native/smlib-adapter/src/planar_transition_plan.cpp",
+      "native/smlib-adapter/src/planar_transition_events.cpp",
+      "native/smlib-adapter/src/planar_transition_verify.cpp",
+      "native/smlib-adapter/src/face_lineage.cpp",
+      "native/smlib-adapter/src/face_lineage_events.cpp",
+      "native/smlib-adapter/src/face_lineage_geometry.cpp",
+      "native/smlib-adapter/src/representation_seal.cpp",
+      "native/smlib-adapter/tests/face_lineage_tests.cpp"
+    ],
+    "flags": "-std=c++17 -fsyntax-only -Wall -Wextra -DSM_NO_DEBUG_CODE -DSM_NO_GFX_OUTPUT_CODE -DNDEBUG",
+    "diagnostics_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "diff_check": "PASS",
+  "production_modules": {
+    "native/smlib-adapter/src/face_lineage_events.cpp": 253,
+    "native/smlib-adapter/src/planar_transition.cpp": 145,
+    "native/smlib-adapter/src/planar_transition.hpp": 74,
+    "native/smlib-adapter/src/planar_transition_plan.cpp": 135
+  },
+  "sdk": {
+    "revision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+    "status": ""
+  },
+  "actual_qualification": "UNRUN: no child SDK execution, object compilation/link/build, CTest/native/WASM/Rust/Chrome or job/submission",
+  "review": {
+    "finding": "R1 P1 conditional same-body verification followed by unconditional reset loses A terminal authority across A-B-A",
+    "resolution": "different body refused before losing seal or SDK mutation; predecessor retained until successful same-target publication; actual BRep constructor/death generations enforce lifetime continuity",
+    "task": "node:delegated-task:command%3Amcp%3A55805d56-4cbd-47f7-89c1-076c896c961c%3Adelegate-task%3Aledger-12ace-fixed-transition-review-20261019-r1"
+  },
+  "source_proof": {
+    "path": "source/SMLib/src/SmBrep.cpp",
+    "revision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+    "lines": [
+      576,
+      682,
+      707
+    ],
+    "meaning": "default/copy constructor notifications and destructor notification before topology teardown"
+  },
+  "witnesses": [
+    {
+      "path": "native/smlib-adapter/tests/face_lineage_tests.cpp",
+      "function": "transition_target_switch_refusal",
+      "status": "UNRUN",
+      "obligations": [
+        "A complete/consume",
+        "B refusal before SDK events/nodes/geometry change",
+        "untouched A repeat success",
+        "invalid same-A successor refusal preserves old seal",
+        "actual public head rotation status/counter before A reentry representation refusal"
+      ]
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_lineage_tests.cpp",
+      "function": "transition_target_reuse_refusal",
+      "status": "UNRUN",
+      "obligations": [
+        "actual target constructor identity and matching destructor",
+        "bounded128 actual BRep allocations must reach same address",
+        "new constructor generation cannot recover old target authority",
+        "specific lifetime refusal before SDK events/nodes/taint"
+      ]
+    },
+    {
+      "path": "native/smlib-adapter/tests/face_lineage_tests.cpp",
+      "function": "split_merge and all existing negative/lifetime witnesses",
+      "status": "UNRUN unchanged obligations retained"
+    }
+  ],
+  "memory": "four retained seal bound unchanged: retain predecessor terminal seal; release successor pre-seal after typed discharge before final fixed read",
+  "remaining_holds": [
+    "independent pinned review",
+    "actual parent native/WASM qualification of this and 12ace source",
+    "multi-target terminal authority unsupported",
+    "complete shared intersection/partition/classification/paired extraction/interface/regularized-region proof unfinished",
+    "no21/cap128/persistent-face/layer-closure authority"
+  ]
+}

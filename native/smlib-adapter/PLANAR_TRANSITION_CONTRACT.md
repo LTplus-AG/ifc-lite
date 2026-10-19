@@ -83,7 +83,7 @@ The terminal normal seal uses the actual merged identity and rootsets. Captured
 old UV slot words are comparison roles, never historical-address lookups or
 old-object authority for new physical curves.
 
-The ledger now records constructor/destructor generations for loop, loopuse,
+The ledger now records constructor/destructor generations for BRep, loop, loopuse,
 edgeuse and faceuse as well as face/edge/vertex. These incomplete non-face nodes
 issue no boundary roots, authorship or persistent IDs. Original topology slots
 must have real observed constructors in the owned graph; unknown prior history
@@ -93,12 +93,25 @@ foreign ownership, stale/reused slots or missing destruction receipts refuse.
 
 Scope activation serials are monotonic and bounded by explicit exhaustion
 refusal. A new scope at the same depth/address cannot replay a prior operation.
-One completed plan is retained per ledger, consumed once. Receipt consumption
-requires the exact issuer, working object, all issued identities, enclosing
-activation and normal terminal seal. A subsequent transition verifies a retained
-terminal seal for that same live target before accepting another pre-state;
-an old consumed plan is released before allocating its successor. Known death
-and allocator reuse never recover prior generation authority.
+One transition **target** is supported per ledger. Once a target completes its
+first operation, submitting any different body refuses before dropping terminal
+authority, allocating a successor plan or starting SDK mutation. Multi-target
+terminal authority is not provided. The target must have an actual observed
+BRep constructor generation (c9c5979 SmBrep.cpp:576/682); its destructor at707
+retires that exact lifetime before topology teardown. A replacement at the same
+address has a new generation and cannot become the old transition target.
+These incomplete lifetime nodes supply no authored/source boundary identity.
+
+One completed plan is retained and consumed once. Receipt consumption requires
+the exact issuer, working body constructor generation, all issued identities,
+enclosing activation and normal terminal seal. Every successor on the same
+live target validates that generation, the previous merged face generation,
+complete inventory and retained terminal seal before accepting a new pre-state.
+The predecessor remains retained through successor preflight and execution;
+only successful publication replaces it. Rejected body switches, invalid
+successor arguments and failed preflights cannot discard the old seal. Target
+death is terminal for this ledger's transition authority; known allocator reuse
+never recovers it.
 
 Foreign callbacks are chained/restored by the existing scope, but any foreign
 hook remains an adoption/phase refusal even when returning SUCCESS. The system
@@ -122,8 +135,9 @@ diagonals, one cut UV copy, exactly16 new topology/support objects, thirteen
 original topology slots and seven numerical destruction receipts. Each retained
 seal has the existing1m-word/8192-object bounds; at most four seals coexist with
 fixed numerical reads (about65MiB including queues), plus the existing at-most
-64MiB ledger bound. A consumed predecessor retains only its terminal seal and
-is released before successor allocations. Callback storage is preallocated;
+64MiB ledger bound. A consumed predecessor retains its terminal seal until
+successful successor publication. The successor releases its pre-seal after
+typed discharge and before the final fixed read, preserving the four-seal bound. Callback storage is preallocated;
 there is no event-time SDK array collection or allocation.
 
 Preflight rejects outside this subset. Once private SDK construction/insertion
@@ -152,6 +166,13 @@ scope at the same depth; the activation generation must refuse replay.
 executes a valid fixed transition and one actual public cyclic head rotation
 (counter1/statusSUCCESS). Receipt consumption must fail through the *new normal
 post seal*, with RepresentationChanged, after that intended mutation.
+`transition_target_switch_refusal` completes/consumes A, rejects B without
+SDK events/nodes or changes to B, repeats untouched A successfully, refuses an
+invalid same-target successor, then executes an actual A head rotation and
+requires retained-authority refusal. `transition_target_reuse_refusal` observes
+A's BRep death and requires actual bounded allocator reuse; the new constructor
+generation at the same address must refuse before any SDK operation. Failure
+to reach reuse fails the witness rather than skipping alias coverage.
 These tests retain all earlier ordinary numerical, external/silent, replacement,
 owner, root, direct-read, callback, inventory, lifetime, budget and poison controls.
 All8 process boundaries remain; only four library cpp sources are added to CMake.

@@ -201,15 +201,11 @@ export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
                     tabIndex={isFace ? undefined : -1}
                     className={cn(
                       'flex items-center justify-center text-2xs font-bold transition-colors cursor-pointer border text-foreground/70',
-                      // Solid fills throughout (derived from the card colour, so both themes follow):
-                      // a translucent edge band disappears into the viewport behind it.
+                      // Every cell shares the face fill (white / black by theme); the cell borders alone
+                      // mark the edges and corners. Solid, so nothing bleeds into the viewport behind.
                       lit
                         ? 'bg-[color-mix(in_srgb,var(--color-primary)_55%,var(--color-card))] border-primary text-foreground'
-                        : isFace
-                          ? 'bg-card border-foreground/30'
-                          : zone.kind === 'edge'
-                            ? 'bg-[color-mix(in_srgb,var(--color-foreground)_11%,var(--color-card))] border-foreground/30'
-                            : 'bg-[color-mix(in_srgb,var(--color-foreground)_18%,var(--color-card))] border-foreground/30',
+                        : 'bg-card border-foreground/30',
                     )}
                     onMouseEnter={() => setHoveredKey(zone.key)}
                     onMouseLeave={() => setHoveredKey(null)}

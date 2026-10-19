@@ -1,0 +1,59 @@
+{
+  "status": "ALL_INDEXED_FACES_FULL_FINITE_SURFACE_PASS",
+  "case": "rectmerge054-068-143268-all",
+  "toleranceMetres": 0.0001,
+  "checkerSHA256": "0e359bf5c72fab13573f7bfd3e76e86111e00d7f7562d893b0dc4204790052e4",
+  "wrapperSHA256": "35ec1189f065943d85702a7b7ffd6db2ed674a9ff2e758104d975fe96e1cb609",
+  "source": {
+    "head": "054781ae8ac5c2df1a6b76e3512d2e3e3ce91542",
+    "tree": "532091be1cc44c90726ba32aaa90539169ca00cd",
+    "status": ""
+  },
+  "binarySHA256": "4413b952a5eee4cd8c00209dfd030fb8860a99ae799b2a1061f644b7b5deecd0",
+  "rawTriangles": {
+    "oracle": 124,
+    "base": 124,
+    "candidate": 2016
+  },
+  "planeCount": 22,
+  "positivePlanes": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21
+  ],
+  "receiptSHA256": "165cc62ffa689521cfae23f0f43ae5b4e2cd07ac5057243140c42549ad9f6351",
+  "nativePayloadSHA256": "644e49de55bb8e640b241d2948e975b610eb399c0e5f786572ad1ebd85fea946",
+  "oraclePayloadSHA256": "083458b62ab51056596b017db52442556f8dc61f168890bfcf3b4963f01bf296",
+  "scope": "Native public-router whole-wall finite surface; browser identity, other affected hosts, runtime and complete-stack landing remain pending.",
+  "allIndexedFacesAccounted": true,
+  "completeTargetSetBound": true,
+  "bothDirections": true,
+  "planeGroupsPassed": 22,
+  "samplingAcceptance": false,
+  "fixture": {
+    "path": "tests/models/ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc",
+    "sha256": "bd455803048d0dacf4af7de1027beb1968f0727cde38f22bdea65e57484ff121",
+    "host": 143268,
+    "context": "all seven original openings",
+    "coordinateFrame": "IFC Z-up absolute, origin + positions, RTC zero"
+  }
+}

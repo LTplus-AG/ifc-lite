@@ -106,10 +106,19 @@ impl RetainedProductExecution {
         // Actual semantic Empty classification resumes the original common step.
         // Validate every binding before taking the linear reply or publishing a value.
         let pending=self.pending.as_mut().expect("validated retained transaction");
-        for (operation,realization) in pending.operations.iter().zip(&work.realizations) {
-            let RealizationKind::Boolean(value)=realization.kind() else {continue};
-            if let Err(error)=pending.reply.as_mut().expect("original common reply")
-                .bind_retained_outcome(operation.expected().value().slot(),value.is_empty()) {
+        let boolean = pending.operations.iter().zip(&work.realizations).filter_map(|(operation,realization)|
+            match realization.kind() {RealizationKind::Boolean(value)=>Some((operation,value)),_=>None});
+        // One original reached Boolean numerical continuation has exactly one
+        // outcome slot. Reject a malformed multi-outcome packet before mutation.
+        if boolean.clone().count() > 1 {
+            return Err(Box::new(RejectedCommonConstruction {reason:protocol("multiple Boolean outcomes for one original reply"),work}));
+        }
+        for (operation,value) in boolean {
+            let engine = match &mut pending.reply.as_mut().expect("original common reply").payload {
+                super::super::session_protocol::WorkPayload::GeometryStep(reply,_)=>reply,
+                _=>return Err(Box::new(RejectedCommonConstruction {reason:protocol("missing original common engine reply"),work})),
+            };
+            if let Err(error)=engine.bind_retained_outcome(operation.expected().value().slot(),value.is_empty()) {
                 let reason=match self.resources.check() {
                     Err(stop)=>RetainedExecutionError::Stopped(stop),
                     Ok(())=>match error {

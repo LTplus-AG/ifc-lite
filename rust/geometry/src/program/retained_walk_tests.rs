@@ -159,3 +159,52 @@ fn retained_plain_styled_leaf_enters_ancestry_once_and_mapped_cycles_still_stop(
         #30=IFCBOOLEANRESULT(.UNION.,#5,#22);");
     bound(run(&cycle,None).unwrap_err(),Dimension::Representation);
 }
+
+#[test]
+fn retained_iterative_boolean_spine_preserves_exact_accepted_42_operand_chain() {
+    // Shared-walk preservation review: a legal FirstOperand spine is not 42
+    // recursive mapped children. Check the actual exact producer as the
+    // admission oracle; retained operation capture alone proves no arithmetic.
+    let mut body=String::new();let mut child=5;
+    for level in 0..42 {
+        let id=1000+level;
+        body.push_str(&format!("#{id}=IFCBOOLEANRESULT(.UNION.,#{child},#5);"));
+        child=id;
+    }
+    let input=source(child,&body);
+    let router=GeometryRouter::new();
+    let mut decoder=EntityDecoder::new(&input);
+    let mut exact=GeometryProgram::parts(decoder.decode_by_id(10).unwrap());
+    while let Some(request)=exact.request().unwrap() {
+        let reply=exact.execute(request,&router,&mut decoder).unwrap();
+        exact.accept(reply,&router).unwrap();
+    }
+    let parts=exact.finish_parts().unwrap();
+    assert_eq!(parts.len(),1);
+    assert!(crate::exact_topology::strict_closed_mesh(&parts[0]));
+    assert_eq!(crate::mesh_check::signed_volume(&parts[0]).abs(),24.);
+
+    let mut retained=GeometryProgram::retained_parts(decoder.decode_by_id(10).unwrap(),
+        RetainedContract {source_epoch:7,source_revision:11});
+    let mut prior=None;let mut boolean_count=0;
+    while let Some(request)=retained.request().unwrap() {
+        let (reply,operations)=retained.admit_retained_with_inputs(request,&router,&mut decoder,None,None).unwrap();
+        for operation in operations {
+            match operation.kind() {
+                RetainedOperationKind::Construction(_)=>{},
+                RetainedOperationKind::Boolean {inputs,operation:kind}=>{
+                    assert_eq!(*kind,crate::document::BooleanOperation::Union);
+                    if let Some(slot)=prior {assert_eq!(inputs[0].slot(),slot);}
+                    prior=Some(operation.value().slot());boolean_count+=1;
+                }
+                other=>panic!("plain Boolean spine produced {other:?}"),
+            }
+        }
+        retained.accept(reply,&router).unwrap();
+    }
+    let plan=retained.finish_retained().unwrap();
+    assert_eq!(boolean_count,42);
+    assert_eq!(plan.values.len(),1);
+    assert_eq!(plan.values[0].definition(),&LogicalRetainedDefinition::Operation(prior.unwrap()));
+    assert!(!plan.remaining.is_empty(),"source admission cannot certify final geometry");
+}

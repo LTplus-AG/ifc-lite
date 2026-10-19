@@ -44,7 +44,12 @@ if (process.argv.includes('--copy')) {
   // Cargo appends repository rustflags after rustc CLI options, so use its
   // documented highest-priority encoded flag channel for this scalar target.
   const rustflags = ['-C', 'link-arg=--max-memory=4294967296', '-C', 'link-arg=-zstack-size=1048576', '-C', 'target-feature=-simd128'];
-  const build = spawnSync('cargo', args, { cwd: root, stdio: 'inherit', env: { ...process.env, CARGO_ENCODED_RUSTFLAGS: rustflags.join('\u001f') } });
+  // std panic locations embed the local toolchain's absolute source path;
+  // remap the sysroot so the bytes do not depend on where rustup lives.
+  const sysroot = spawnSync('rustc', ['--print', 'sysroot'], { cwd: root, encoding: 'utf8' });
+  if (sysroot.status !== 0) throw new Error('Cannot locate the Rust sysroot');
+  const remap = ['--remap-path-prefix', `${sysroot.stdout.trim()}=/rust-sysroot`];
+  const build = spawnSync('cargo', args, { cwd: root, stdio: 'inherit', env: { ...process.env, CARGO_ENCODED_RUSTFLAGS: [...rustflags, ...remap].join('\u001f') } });
   if (build.status !== 0) process.exit(build.status ?? 1);
   const target = process.env.CARGO_TARGET_DIR || resolve(root, 'target');
   const bytes = readFileSync(resolve(target, 'wasm32-unknown-unknown/release/ifc_lite_imported_geometry.wasm'));
@@ -80,7 +85,7 @@ if (process.argv.includes('--copy')) {
     if (syntax.status !== 0) throw new Error(`Generated static module is invalid: ${syntax.stderr}`);
     const staticBytes = readFileSync(staticOutput);
     writeFileSync(resolve(directory, 'imported-geometry-static.d.ts'), header + '\nexport function createImportedGeometryKernel(): {\n  memory: { readonly buffer: ArrayBuffer };\n  imported_alloc(length: number): number;\n  imported_free(pointer: number, length: number): void;\n  imported_run(pointer: number, length: number): number;\n};\n');
-    writeFileSync(resolve(directory, 'imported-geometry.provenance.json'), `${JSON.stringify({ abi: 1, compiler: compiler.stdout.trim(), target: 'wasm32-unknown-unknown', profile: 'release', command: ['cargo', ...args], rustflags, wasm2jsArgs, wasm2jsSha256, wasm2jsVersion: spawnSync(wasm2js, ['--version'], { encoding: 'utf8' }).stdout.trim(), staticSha256: digest(staticBytes), staticBytes: staticBytes.length, wasmBytes: bytes.length, wasmSha256: digest(bytes), sources, artifacts: Object.fromEntries(['imported-geometry.ts', 'imported-geometry-static.js', 'imported-geometry-static.d.ts'].map(name => [name, digest(readFileSync(resolve(directory, name)))])) }, null, 2)}\n`);
+    writeFileSync(resolve(directory, 'imported-geometry.provenance.json'), `${JSON.stringify({ abi: 1, compiler: compiler.stdout.trim(), target: 'wasm32-unknown-unknown', profile: 'release', command: ['cargo', ...args], rustflags: [...rustflags, '--remap-path-prefix', '<sysroot>=/rust-sysroot'], wasm2jsArgs, wasm2jsSha256, wasm2jsVersion: spawnSync(wasm2js, ['--version'], { encoding: 'utf8' }).stdout.trim(), staticSha256: digest(staticBytes), staticBytes: staticBytes.length, wasmBytes: bytes.length, wasmSha256: digest(bytes), sources, artifacts: Object.fromEntries(['imported-geometry.ts', 'imported-geometry-static.js', 'imported-geometry-static.d.ts'].map(name => [name, digest(readFileSync(resolve(directory, name)))])) }, null, 2)}\n`);
   });
   console.log(check ? `Imported geometry artifacts are current (${bytes.length} wasm bytes)` : `Generated ${bytes.length} byte synchronous imported Rust WASM artifact`);
 }

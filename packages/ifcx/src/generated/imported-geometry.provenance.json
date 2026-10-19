@@ -19,7 +19,9 @@
     "-C",
     "link-arg=-zstack-size=1048576",
     "-C",
-    "target-feature=-simd128"
+    "target-feature=-simd128",
+    "--remap-path-prefix",
+    "<sysroot>=/rust-sysroot"
   ],
   "wasm2jsArgs": [
     "--all-features",
@@ -28,13 +30,13 @@
   ],
   "wasm2jsSha256": "fb4bc51da37e8ea8917552fdcb6edf8e1b77e9081c220579b78c50c429b29f2a",
   "wasm2jsVersion": "wasm2js version 124 (version_124-26-gcf756c929)",
-  "staticSha256": "c7d995d4209b34634eec48a16233728f7a98cfae1f1e94f790703ee9cc860d9c",
-  "staticBytes": 633792,
-  "wasmBytes": 91725,
-  "wasmSha256": "52f0e3b9e7e1ef1611791206668f21a9cc6be3d0da126a4eb30e0c8a35ffba31",
+  "staticSha256": "adc1b6b94f1d0e8d73e6550a24c72577fdd33344f3f1bba6eee359817bcfb24c",
+  "staticBytes": 633432,
+  "wasmBytes": 91453,
+  "wasmSha256": "acc901824c38871948e1531c09ae4a1f1f21513629e574edf8ca94132b95b798",
   "sources": {
     ".cargo/config.toml": "648f6196c824ca8d5cb14f93105f57016d9c141fdf0c90c103b7c4250e87c679",
-    "scripts/build-imported-geometry.mjs": "7faeb9ad372fef202b5821cf5faafe553b40837f294837cbab7ab482315147da",
+    "scripts/build-imported-geometry.mjs": "b37dcc08ba4c202550c8b447b84f876bdb4a242c778e81e6541d1f11ca899f15",
     "scripts/lib/imported-artifacts.mjs": "fe8b65cbbeb83f29bb4f6c7f7632ea01afb69675066beb4860684bfb5779026d",
     "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
     "rust/imported-geometry/Cargo.toml": "adddc152ed0a19cea23d756aebcceb412e4f32921f4ff417053ac3e74713f837",
@@ -51,8 +53,8 @@
     "Cargo.toml#profile.release": "126fb1a643ac7ff044110025cded97ebcaa6010ed5f84c3b0689d5f075e1937e"
   },
   "artifacts": {
-    "imported-geometry.ts": "452e70c18456b82835db7d3ce0607e9a303cfdf798c1f3bc7acf9f7292adce2f",
-    "imported-geometry-static.js": "c7d995d4209b34634eec48a16233728f7a98cfae1f1e94f790703ee9cc860d9c",
+    "imported-geometry.ts": "8280f3e13cfdfade6a579945e0c346db1d972185f504bc2d9d5250778fe509b3",
+    "imported-geometry-static.js": "adc1b6b94f1d0e8d73e6550a24c72577fdd33344f3f1bba6eee359817bcfb24c",
     "imported-geometry-static.d.ts": "ef70966d6b82a701ed2f50479ecccbf7b06cd991f28fda9d93a314d300357cb2"
   }
 }

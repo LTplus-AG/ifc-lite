@@ -24,7 +24,7 @@ Distinguish four artifacts: authored source, evaluated retained objects, display
 meshes and exported representations. A construction receipt certifies none of
 the enclosing product's openings, layers, appearance or final output by itself.
 
-## Current starting point
+## Initial production baseline
 
 Integration checkpoint: `4628a3c6f5` (2026-10-19). These observations supersede
 planning-time state; each receipt remains bound to its original source.
@@ -49,7 +49,7 @@ planning-time state; each receipt remains bound to its original source.
   `evidence/geometry-platform-integrated-validation/workspace-eda-terminal`.
   Compiled debug evidence identifies 34 KiB continuation values and at least
   64–140 KiB execution frames. Lazy owned controller storage and behavioral
-  assertion corrections are committed at `4628a3c6f5`; reruns remain pending.
+  assertion corrections are committed at `4628a3c6f5`; follow-up results are below.
 - Common native retained construction exists; full mapped/Boolean/opening/layer
   continuations, browser product transactions and final publication remain open.
   Isolated P1 implementation is underway. It cannot qualify or ship the affected
@@ -70,20 +70,39 @@ copy and keeps the stronger lifetime witness. Affine assembly records are under
 Twelve combined driver fixtures and changed Rust parsing pass; these checks do
 not qualify SDK numerical behavior or Rust types. Affine exclusions remain gaps.
 
-Baseline job `887916da-9ea2-4528-966a-8d90b4cca9e4` is bound to earlier source
-`9be1dcd3a0`: its first geometry suite passed 1,876 tests with one ignored, and
-workspace tests remain in progress. Its processing library reported 731 passed,
-one failed and one ignored: the existing two-map cancellation fixture caught a
-source-scope entrance-stop loss. Repair `bf9f12270d` retains the unchanged regression
-and passed independent source review; runtime rerun is pending. Evidence is under
-`evidence/geometry-platform-integrated-validation/processing-terminal-8879`.
-The earlier run does not qualify later integrated layers.
-Pop admission is currently refused by disk guard78; no replacement is submitted.
-Styled/type-map source `eafd759151` is under independent review. Common retained
-operation values, affine bake and Boolean continuation implementation is delegated
-from the assembled source; full opening/layer/browser/final publication closure,
-regenerated artifacts, consumer/platform/model/performance qualification and the
-remaining reviewable PR stack are still required.
+Baseline job `887916da-9ea2-4528-966a-8d90b4cca9e4` completed on earlier source
+`9be1dcd3a0`: standalone geometry passed 1,876 tests with one ignored; workspace
+reported 6,273 passed, one failed and 47 ignored. The sole failed target was the
+processing library's existing two-map cancellation fixture. Repair `bf9f12270d`
+preserves entrance cancellation across the actual source scope and retains the
+unchanged regression; independent source review passed, runtime rerun is pending.
+Clippy did not run after the workspace failure. Original terminal evidence is under
+`evidence/geometry-platform-integrated-validation/workspace-9be-terminal`.
+
+Styled/type-map source `2fbb172ddb` is integrated at `89d6a5db77`, with all 26 file
+hashes reproduced. Review repairs cover visibility, error classification and real
+0/1/3-product fixtures with independent authenticated owners. Its compiled and
+numerical qualification remains pending. The corrected workspace request at
+`9460a3de7b` was orphaned before admission, with no output or exit status, and has
+not been replayed; see `evidence/geometry-platform-integrated-validation/workspace-9460-orphan`.
+
+Actual SDK source `5f39d485ed` compiled/linked all 260 steps and passed four of five
+CTests. The main suite failed its new semantic-empty witness before later affine
+and region witnesses; the isolated copy-failure CTest passed. Raw SDK IsEmptyModel
+checks cleared list pointers and reports false even for a valid vacant BRep.
+Shared query/tessellation certificate repair `8441381f54` uses actual topology and
+strict void-region flags, with default-vacant/full-space/unknown/wire regressions.
+It passed independent source review. Fresh normal SDK request
+`auto-78be6c8f65c14c6fa827b54c54f7a2fb`, job `9a733441-6688-4c33-ba4a-abe97a0b5c45`,
+is queued on that exact source, followed by real-worker Rust runtime tests only if
+CTest passes. These observations are under the `sdk-5f39-empty-failure` and
+`semantic-empty-844` evidence directories. No complete SDK numerical pass is claimed.
+
+Common retained operation values, affine bake and Boolean continuations remain in
+isolated implementation. Full opening/layer/browser/final publication closure,
+regenerated artifacts, all-consumer/platform/model/performance qualification and
+the remaining reviewable PR stack are still required. Historical passes never
+qualify these later integrated layers.
 
 ## Release control and evidence
 

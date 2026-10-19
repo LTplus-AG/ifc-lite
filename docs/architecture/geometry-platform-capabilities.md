@@ -34,6 +34,21 @@ An acceptance receipt distinguishes:
 Every row below is **open for migrated execution**. Existing regressions remain
 tests; neither new topology nor a different triangle count alone proves a fix.
 
+## Production integration evidence — 2026-10-19
+
+These observations update execution state, not the open preservation requirements.
+
+| Slice | Source and observed state | Remaining proof |
+| --- | --- | --- |
+| Default common execution baseline | `9be1dcd3a0`: workspace 6,273 passed, one failed, 47 ignored; standalone geometry 1,876 passed, one ignored. Exact original receipt is in `evidence/geometry-platform-integrated-validation/workspace-9be-terminal`. | Cancellation defect repaired at `bf9f12270d`, source-reviewed; compiled rerun and strict Clippy still required. |
+| Styled mapping and type products | `2fbb172ddb` integrated at `89d6a5db77`; exact 26-file hashes, parser and metadata checks, independent source reviews. | Actual native/browser execution, real appearance/UVs and final-product qualification. The corrected workspace request was orphaned before admission and proves no tests. |
+| Affine, empty and managed lifetime SDK assembly | `5f39d485ed`: 260 build/link steps pass; four of five CTests pass, main boundary fails semantic-empty classification before later witnesses. | Complete numerical suite, actual-worker Rust receipt chains and browser target qualification. |
+| Semantic-empty correction | `8441381f54`: shared actual topology/strict void-region certificate; direct vacant/full-space/unknown/wire regressions; source-reviewed. | Queued normal SDK job `9a733441-6688-4c33-ba4a-abe97a0b5c45`; numerical and Rust/runtime results pending. |
+| Common retained operation/final-product closure | Existing common controls are being extended with typed Construction/Affine/Boolean values and original-reply acceptance. | Full Boolean/opening/layer/browser execution and final coverage discharge; no source-only result certifies final output. |
+
+All agreed family, fidelity, consumer, platform and performance obligations below
+remain in scope. A typed refusal records a limitation and does not close its row.
+
 ## Numerical and authored geometry contracts
 
 | Contract | Current owner and concrete evidence available | Target owner and remaining proof |

@@ -1,0 +1,103 @@
+{
+  "id": "58d9615c-8ed5-41e1-969f-b2ed0fe7b043",
+  "host": {
+    "host": "louistrue-pc",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 24,
+    "availableMemoryBytes": 64726831104,
+    "totalMemoryBytes": 67423580160,
+    "python": "3.14.4",
+    "time": 1792416216.4051218
+  },
+  "cwd": "/home/louistrue/build-workers/worker-state/checkouts/9b82767b4a254a5806817700cca0d709e2c31eff",
+  "sourceBefore": {
+    "commit": "9b82767b4a254a5806817700cca0d709e2c31eff",
+    "tree": "dad3ac2df50fc85b1867461fa2bb5402e0181325",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "abc0c942046a3726b4a35fd14f5d98e047de490c1983f47109029e00ed659472",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "4cf9cf1dc70cee40ab775df7d3d36665c55bd855514913fee9149209fc9b2edd"
+    }
+  },
+  "command": [
+    "bash",
+    "-c",
+    "# SPDX-License-Identifier: MPL-2.0\nsource \"$HOME/build-workers/worker-env.sh\" || exit $?\npnpm install --frozen-lockfile || exit $?\npnpm fixtures || exit $?\npnpm fixtures:check || exit $?\n# Reuse only this exact previously executed SDK build; numerical adapter inputs\n# must remain byte-identical. This does not rerun or reclassify its 6/8 CTests.\ngit diff --exit-code 38fac90894723638343e89cc4913ad347545fb2e HEAD -- native/smlib-adapter || exit $?\nexport IFCLITE_ADAPTER_BUILD=\"$CARGO_TARGET_DIR/ifclite-smlib/wasm-38fac90894723638343e89cc4913ad347545fb2e-3b5d55dc5f58\"\nprintf 'sdk_build_reference=86e9fd24-19d6-4539-9dad-cd6986f2d511 sdk_ctests_not_rerun=6_pass_2_fail\\n'\nsha256sum \"$IFCLITE_ADAPTER_BUILD/ifclite_smlib_browser.mjs\" \"$IFCLITE_ADAPTER_BUILD/ifclite_smlib_browser.wasm\" || exit $?\ntest -f \"$IFCLITE_ADAPTER_BUILD/ifclite_smlib_browser.mjs\" || exit 2\nsdk=${SMLIB_SOURCE:-${IFCLITE_SDK_CACHE:-/tmp/ifclite-public-sdk-c9c5979}/usd-brep}\nfor crate in rust/geometry-runtime rust/processing rust/wasm-bindings; do\n  node scripts/stage-retained-browser-assets.mjs --build \"$IFCLITE_ADAPTER_BUILD\" --sdk \"$sdk\" --out \"$PWD/$crate/smlib\" || exit $?\ndone\nbrowser_tools=\"$CARGO_TARGET_DIR/ifclite-browser-tools/chrome-153.0.8010.52\"\nmkdir -p \"$browser_tools\"\nfetch_browser_archive() {\n  local artifact_name=\"$1\" artifact_sha=\"$2\" artifact_url=\"$3\"\n  if [ -f \"$browser_tools/$artifact_name.zip\" ] && printf '%s  %s\\n' \"$artifact_sha\" \"$browser_tools/$artifact_name.zip\" | sha256sum --check --strict; then\n    return 0\n  fi\n  curl --fail --silent --show-error --retry 3 --retry-delay 2 --retry-all-errors --connect-timeout 20 --max-time 240 \"$artifact_url\" -o \"$browser_tools/$artifact_name.zip.pending\" || return $?\n  printf '%s  %s\\n' \"$artifact_sha\" \"$browser_tools/$artifact_name.zip.pending\" | sha256sum --check --strict || return $?\n  mv \"$browser_tools/$artifact_name.zip.pending\" \"$browser_tools/$artifact_name.zip\"\n}\nfetch_browser_archive driver 7726029da262768fd8770212ac54296f4d31afe790a951f98d5580437da533b1 https://storage.googleapis.com/chrome-for-testing-public/153.0.8010.52/linux64/chromedriver-linux64.zip || exit $?\nfetch_browser_archive chrome e66f66d4802a46d4a022667e668aa950e277cadbfbed4b3777915b47413a0ef9 https://storage.googleapis.com/chrome-for-testing-public/153.0.8010.52/linux64/chrome-linux64.zip || exit $?\npython3 - \"$browser_tools\" <<'DRIVER'\nimport sys,zipfile,json\nfrom pathlib import Path\nroot=Path(sys.argv[1])\nfor name in ['driver','chrome']:\n    with zipfile.ZipFile(root/(name+'.zip')) as archive:\n        for entry in archive.infolist():\n            path=Path(entry.filename)\n            if path.is_absolute() or '..' in path.parts:\n                raise ValueError('invalid browser archive path')\n            if entry.is_dir(): continue\n            target=root/path\n            target.parent.mkdir(parents=True,exist_ok=True)\n            target.write_bytes(archive.read(entry))\n            mode=(entry.external_attr>>16)&0o777\n            if mode: target.chmod(mode)\nchrome=root/'chrome-linux64/chrome'\ndriver=root/'chromedriver-linux64/chromedriver'\nchrome.chmod(0o755);driver.chmod(0o755)\n(root/'webdriver.json').write_text(json.dumps({'goog:chromeOptions':{'binary':str(chrome),'w3c':False}})+'\\n')\nDRIVER\nbrowser_driver=\"$browser_tools/chromedriver-linux64/chromedriver\"\n\"$browser_tools/chrome-linux64/chrome\" --version || exit $?\n\"$browser_driver\" --version || exit $?\nsha256sum \"$browser_driver\" \"$browser_tools/chrome-linux64/chrome\"\nexport WASM_BINDGEN_TEST_WEBDRIVER_JSON=\"$browser_tools/webdriver.json\"\nexport WASM_BINDGEN_TEST_TIMEOUT=180\nexport RUST_BACKTRACE=1\nexport RUST_LOG=wasm_bindgen_test_runner=debug\nwasm-pack test --headless --chrome --chromedriver \"$browser_driver\" rust/geometry-runtime --lib\nruntime_status=$?\nwasm-pack test --headless --chrome --chromedriver \"$browser_driver\" rust/processing --lib -- session_retained\nprocessing_status=$?\nwasm-pack test --headless --chrome --chromedriver \"$browser_driver\" rust/wasm-bindings --lib -- retained_\napi_status=$?\npnpm build:wasm\nbuild_status=$?\ngit diff --exit-code -- packages/wasm/pkg/ifc-lite.d.ts\ntypes_status=$?\nnode scripts/stage-retained-browser-assets.mjs --build \"$IFCLITE_ADAPTER_BUILD\" --sdk \"$sdk\" --out \"$PWD/apps/viewer/public/smlib\" || exit $?\npnpm exec playwright install chromium || exit $?\npnpm test:retained-browser\njs_status=$?\nprintf 'browser_runtime_exit=%s browser_processing_exit=%s browser_api_exit=%s canonical_build_exit=%s generated_types_exit=%s browser_js_exit=%s\\n' \"$runtime_status\" \"$processing_status\" \"$api_status\" \"$build_status\" \"$types_status\" \"$js_status\"\nfor result in \"$runtime_status\" \"$processing_status\" \"$api_status\" \"$build_status\" \"$types_status\" \"$js_status\"; do\n  if [ \"$result\" -ne 0 ]; then exit \"$result\"; fi\ndone\n"
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792416216.4020772,
+  "resources": [
+    "/home/louistrue/build-workers/worker-state/checkouts/9b82767b4a254a5806817700cca0d709e2c31eff",
+    "/home/louistrue/build-workers/worker-state/caches/c34add72ed173ef8655294b4"
+  ],
+  "state": "failed",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "storageTask": "ifclite-browser-runtime-9b827-20261019",
+  "storageTaskExplicit": true,
+  "storageResources": [
+    {
+      "path": "/home/louistrue/build-workers/worker-state/caches/c34add72ed173ef8655294b4",
+      "role": "cache",
+      "project": "ifc-lite",
+      "compatibilityKey": "c34add72ed173ef8655294b4"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/9b82767b4a254a5806817700cca0d709e2c31eff",
+      "role": "worktree"
+    }
+  ],
+  "fixtures": {},
+  "tools": {
+    "git": {
+      "path": "/usr/local/bin/git",
+      "exitCode": 0,
+      "version": "git version 2.53.0"
+    },
+    "rustc": {
+      "path": "/home/louistrue/.cargo/bin/rustc",
+      "exitCode": 0,
+      "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+    },
+    "cargo": {
+      "path": "/home/louistrue/.cargo/bin/cargo",
+      "exitCode": 0,
+      "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+    },
+    "node": {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node",
+      "exitCode": 0,
+      "version": "v24.21.0"
+    },
+    "pnpm": {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/pnpm",
+      "exitCode": 0,
+      "version": "10.8.1"
+    }
+  },
+  "runnerSha256": "e43e00e2d93ae926cf7369009285aa96f63d4722b8e3e0b266a1daa699fed7bb",
+  "startedAt": 1792416216.77393,
+  "queueSeconds": 0.3718533515930176,
+  "resourceScope": false,
+  "exitCode": 1,
+  "finishedAt": 1792416239.1362762,
+  "sourceAfter": {
+    "commit": "9b82767b4a254a5806817700cca0d709e2c31eff",
+    "tree": "dad3ac2df50fc85b1867461fa2bb5402e0181325",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "abc0c942046a3726b4a35fd14f5d98e047de490c1983f47109029e00ed659472",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "4cf9cf1dc70cee40ab775df7d3d36665c55bd855514913fee9149209fc9b2edd"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {},
+  "outputSha256": "cbd1429407363d19fd63d02052c405da3d37018f3c2dc04cc0e9bf43330fe46f"
+}

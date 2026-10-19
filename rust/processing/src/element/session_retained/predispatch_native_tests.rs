@@ -73,7 +73,7 @@ fn abandoning_a_returned_predispatch_packet_cancels_only_its_captured_domain() {
 fn terminal_predispatch_faults_outrank_invalid_limits_and_foreign_workers() {
     use ifc_lite_geometry::resource::{self,Cost,Dimension,ProgramStop};
     for mode in ["cancelled","resource","source"] {
-        let Some(mut worker)=worker() else {return};
+        let Some(worker)=worker() else {return};
         let Some(mut foreign)=self::worker() else {return};
         let foreign_solid=foreign.create_box([0.;3],[2.;3]).unwrap();
         let (model,context)=context();let mut decoder=context.source().unwrap().decoder();let router=router(&mut decoder);

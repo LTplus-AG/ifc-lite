@@ -134,7 +134,7 @@ fn p1_type_product_uses_actual_one_and_three_products_and_orphan_mode_consumers(
                 let mut issued_count=0;
                 while let Some(issued)=execution.issue_next(&worker,&mut product_decoder,&product_router).unwrap() {
                     let receipt=issued.execute(&mut worker,0.001,15.,MeshLimits::default()).unwrap();
-                    assert!((worker.volume(receipt.realization().solid(),1e-8).unwrap()-24.).abs()<1e-6);
+                    assert!((worker.volume(receipt.realization().expect("mapped primitive issues source construction").solid(),1e-8).unwrap()-24.).abs()<1e-6);
                     execution.accept(receipt,&mut product_decoder,&product_router).unwrap();issued_count+=1;
                 }
                 assert_eq!(issued_count,1,"one source construction per product-scoped admitted definition");
@@ -172,7 +172,7 @@ fn p1_type_product_uses_actual_one_and_three_products_and_orphan_mode_consumers(
             let mut actual=0;let mut direct_volume=0.;
             while let Some(issued)=execution.issue_next(&worker,&mut type_decoder,&type_router).unwrap() {
                 let receipt=issued.execute(&mut worker,0.001,15.,MeshLimits::default()).unwrap();
-                direct_volume+=worker.volume(receipt.realization().solid(),1e-8).unwrap();
+                direct_volume+=worker.volume(receipt.realization().expect("mapped primitive issues source construction").solid(),1e-8).unwrap();
                 execution.accept(receipt,&mut type_decoder,&type_router).unwrap();actual+=1;
             }
             assert_eq!(actual,expected_maps.len());assert_eq!(execution.discharged_count(),expected_maps.len());
@@ -195,7 +195,7 @@ fn p1_type_product_uses_actual_one_and_three_products_and_orphan_mode_consumers(
                 context.validate_decoder(decoder).unwrap();
                 assert!(decoder.try_execution_lease().is_err());assert!(router.try_execution_lease().is_err(),
                     "final-net obligations retain each independent exclusive owner");
-                for definition in &execution.ledger {definition.receipt.realization.validate_live().unwrap();}
+                for definition in &execution.ledger {definition.receipt.validate_live().unwrap();}
             }
         }
     }

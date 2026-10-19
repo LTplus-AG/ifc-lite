@@ -302,7 +302,7 @@ fn p2_sdk_rigid_mapped_boolean_uses_sealed_placement_without_affine_conversion()
         #104=IFCBOOLEANRESULT(.UNION.,#103,#94);");
     let mut decoder=context.source().unwrap().decoder();let router=router(&mut decoder);
     let mut execution=execution(&context,&mut decoder,&router);
-    let mut first=None;let mut booleans=0;let mut polls=0;
+    let mut first:Option<(ifc_lite_geometry_runtime::BrepHandle,[f64;16])>=None;let mut booleans=0;let mut polls=0;
     while let Some(issued)=execution.issue_next(&worker,&mut decoder,&router).unwrap() {
         polls+=1;assert!(polls<100,"bounded common transaction fixture");
         let work=issued.execute(&mut worker,0.001,15.,MeshLimits::default()).unwrap();

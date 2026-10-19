@@ -134,12 +134,10 @@ impl SmlibWorker {
         let transformed = self.copy_transform(b, relative)?;
         let boolean = self.boolean(a, transformed, operation);
         let cleanup = self.release(transformed);
-        let solid = match boolean { Ok(solid) => solid, Err(error) => return Err(error) };
-        if let Err(error) = cleanup {
-            // release already retired the owner. Preserve the cleanup error;
-            // no new work or retry is sent into that domain.
-            return Err(error);
-        }
+        // Both operations have already run: preserve the Boolean failure first,
+        // then the cleanup failure (release has retired an uncertain owner).
+        let solid = boolean?;
+        cleanup?;
         let mesh = match self.tessellate(solid, chord_metres, angle_degrees, limits) {
             Ok(mesh) => mesh,
             Err(error) => {

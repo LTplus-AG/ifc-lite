@@ -1,0 +1,16 @@
+{
+  "manifest": "pc-wsl-9c52f026-fc3c-4820-b55a-8208aa1f0911-c7a2717ff97d",
+  "name": "output.log",
+  "evidence": {
+    "backend": "local",
+    "bytes": 448230,
+    "encoding": "gzip",
+    "originalPath": "/home/louistrue/build-workers/worker-state/jobs/9c52f026-fc3c-4820-b55a-8208aa1f0911/output.log",
+    "originalSha256": "c8e2cc5dcdd48adb52f5ea2a0530167e503471765375e927376ae6267e727753",
+    "sha256": "2a4f2fc2921f3523b0c0cec71f6a46e138356542af87ab18fd0c28a7cca26ba6",
+    "storedBytes": 104954,
+    "verified": true
+  },
+  "verified": true,
+  "owned_task_closure": "Released and reclaimed by registered lifecycle after exact log publication verification; source pinned in archive ref; shared cache preserved"
+}

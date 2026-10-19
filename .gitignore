@@ -179,3 +179,6 @@ __pycache__/
 
 # Explicit retained-browser adapter staging (SDK binaries, modules and manifest).
 /apps/viewer/public/smlib/
+/rust/geometry-runtime/smlib/
+/rust/processing/smlib/
+/rust/wasm-bindings/smlib/

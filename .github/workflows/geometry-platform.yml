@@ -125,13 +125,15 @@ jobs:
         continue-on-error: true
         env:
           WASM_BINDGEN_TEST_TIMEOUT: 180
-        run: wasm-pack test --headless --chrome rust/processing --lib session_retained
+        # wasm-pack also invokes cargo build; only test-runner arguments belong
+        # after this separator, so the filter never reaches cargo build.
+        run: wasm-pack test --headless --chrome rust/processing --lib -- session_retained
       - name: Actual browser canonical source and product APIs
         id: browser-api
         continue-on-error: true
         env:
           WASM_BINDGEN_TEST_TIMEOUT: 180
-        run: wasm-pack test --headless --chrome rust/wasm-bindings --lib retained_
+        run: wasm-pack test --headless --chrome rust/wasm-bindings --lib -- retained_
       - name: Build canonical package for the actual JavaScript export contract
         run: pnpm build:wasm
       - name: Verify committed canonical declarations

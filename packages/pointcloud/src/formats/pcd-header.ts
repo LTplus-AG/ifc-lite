@@ -36,7 +36,7 @@ export function parseHeader(buffer: Uint8Array): PcdHeader {
     throw new Error('PCD: missing DATA line in header (scanned first ' + probeLen + ' bytes)');
   }
   const headerText = probe.slice(0, dataIdx);
-  const dataLineMatch = probe.slice(dataIdx).match(/^DATA\s+(\S+)\s*\n/);
+  const dataLineMatch = probe.slice(dataIdx).match(/^DATA[ \t]+(\S+)[ \t\r]*\n/);
   if (!dataLineMatch) {
     throw new Error('PCD: malformed DATA line');
   }

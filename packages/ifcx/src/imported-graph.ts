@@ -71,7 +71,9 @@ export function executeImportedGraph(composed: Map<string, ComposedNode>, pathTo
         const raw = node.attributes.get(ATTR.MESH) as UsdMesh;
         const admitted = source.admitMesh(frame, transforms, raw, identity);
         const reply = new ImportWriter(104).u32(handle).u32(sequence);
-        reply.rows(admitted.definition.points).values(admitted.definition.faceVertexIndices)
+        // A mesh authored without `faceVertexIndices` has always presented empty
+        // indices (the old `new Uint32Array(undefined)`); it must not abort the import.
+        reply.rows(admitted.definition.points).values(admitted.definition.faceVertexIndices ?? [])
           .u32(admitted.definition.faceVertexCounts ? 1 : 0);
         if (admitted.definition.faceVertexCounts) reply.values(admitted.definition.faceVertexCounts);
         reply.u32(admitted.definition.normals ? 1 : 0);

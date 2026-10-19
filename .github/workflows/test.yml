@@ -274,6 +274,9 @@ jobs:
               - '.cargo/config.toml'
               - 'scripts/build-imported-geometry.mjs'
               - 'scripts/lib/imported-artifacts.mjs'
+              # The committed kernel artifacts the `--check` step diffs against:
+              # a hand-edit or stale regeneration of them must trigger the check.
+              - 'packages/ifcx/src/generated/**'
               - 'tests/models/manifest.json'
               - '.github/workflows/test.yml'
             # AGENTS.md is the instruction file every agent reads, and

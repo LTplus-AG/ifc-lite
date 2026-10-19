@@ -112,7 +112,7 @@ export function stageTransform(stack: TransformStack): Float32Array | null {
   const p = new Packet(1); p.stack(stack); const values = p.run().floats(); return values.length ? values : null;
 }
 export function executeMesh(source: ImportedMeshSource, stack: TransformStack, identity?: ImportedOperationIdentity): { positions: Float32Array; normals: Float32Array; indices: Uint32Array } {
-  const p = new Packet(2); p.identity(identity); p.stack(stack); p.rows(source.points); p.values(source.faceVertexIndices);
+  const p = new Packet(2); p.identity(identity); p.stack(stack); p.rows(source.points); p.values(source.faceVertexIndices ?? []);
   p.u32(source.faceVertexCounts ? 1 : 0); if (source.faceVertexCounts) p.values(source.faceVertexCounts);
   p.u32(source.normals ? 1 : 0); if (source.normals) p.rows(source.normals);
   const result = p.run(); return { positions: result.floats(), normals: result.floats(), indices: result.indices() };

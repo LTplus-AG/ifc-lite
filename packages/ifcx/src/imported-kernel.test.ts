@@ -42,7 +42,15 @@ test('imported normal helpers preserve perpendicularity and degenerate fallback'
   const m = new Float32Array([2, 0, 0, 0, 1, 3, 0, 0, 0, 0, 4, 0, 0, 0, 0, 1]);
   assert.ok(computeNormalMatrix(m));
   assert.equal(computeNormalMatrix(new Float32Array(16)), null);
-  const result = executeMesh({ points: [[0, 0, 0], [1, 0, 1], [0, 1, 0]], faceVertexIndices: [0, 1, 2], normals: [[-1, 0, 1]] }, [[...Array(4)].map((_, i) => [...m.slice(i * 4, i * 4 + 4)])]);
+  // The authored normal points opposite to the triangle's computed face normal
+  // (-1, 0, 1), so a kernel that discards or zeroes it cannot pass.
+  const stack = [[...Array(4)].map((_, i) => [...m.slice(i * 4, i * 4 + 4)])];
+  const triangle = { points: [[0, 0, 0], [1, 0, 1], [0, 1, 0]], faceVertexIndices: [0, 1, 2] };
+  const computed = executeMesh(triangle, stack);
+  const result = executeMesh({ ...triangle, normals: [[1, 0, -1]] }, stack);
+  const opposed = result.normals[0] * computed.normals[0] + result.normals[1] * computed.normals[1] + result.normals[2] * computed.normals[2];
+  assert.ok(Math.hypot(result.normals[0], result.normals[1], result.normals[2]) > 0);
+  assert.ok(opposed < 0, 'authored normal must be kept, not recomputed');
   for (const end of [3, 6]) {
     let dot = 0;
     for (let j = 0; j < 3; j++) dot += (result.positions[end + j] - result.positions[j]) * result.normals[j];
@@ -52,6 +60,15 @@ test('imported normal helpers preserve perpendicularity and degenerate fallback'
   const invalid = computeNormals(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), new Uint32Array([0, 1, 0xaaaaaaab]));
   assert.ok([...invalid.slice(0, 6)].every(Number.isNaN));
   assert.deepEqual([...invalid.slice(6)], [0, 0, 0]);
+});
+
+test('a mesh without faceVertexIndices presents empty indices instead of throwing', () => {
+  const points = [[0, 0, 0], [1, 0, 0], [0, 1, 0]];
+  const bare = executeMesh({ points } as Parameters<typeof executeMesh>[0], []);
+  assert.equal(bare.indices.length, 0);
+  assert.equal(bare.positions.length, 9);
+  const counted = executeMesh({ points, faceVertexCounts: [], normals: undefined } as Parameters<typeof executeMesh>[0], []);
+  assert.equal(counted.indices.length, 0);
 });
 
 test('static imported target needs neither WebAssembly nor runtime code generation', () => {

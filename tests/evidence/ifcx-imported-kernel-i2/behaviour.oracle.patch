@@ -3,7 +3,7 @@ index 1f84253aaa..ce985160c5 100644
 --- a/packages/ifcx/src/imported-graph.ts
 +++ b/packages/ifcx/src/imported-graph.ts
 @@ -74,16 +74,16 @@ export function executeImportedGraph(composed: Map<string, ComposedNode>, pathTo
-         reply.rows(admitted.definition.points).values(admitted.definition.faceVertexIndices)
+         reply.rows(admitted.definition.points).values(admitted.definition.faceVertexIndices ?? [])
            .u32(admitted.definition.faceVertexCounts ? 1 : 0);
          if (admitted.definition.faceVertexCounts) reply.values(admitted.definition.faceVertexCounts);
 -        reply.u32(0);

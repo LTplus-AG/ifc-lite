@@ -99,6 +99,20 @@ describe('IFCX source-before-f32 handoff', () => {
     expect(Array.from(source.positions)).toEqual([...xyz, xyz[0] + 0.001, 1, xyz[2] - 0.001]);
   });
 
+  it('keeps a binary body that starts with 0x0A out of the DATA line terminator', () => {
+    const header = new TextEncoder().encode('FIELDS x y z\nSIZE 4 4 4\nTYPE F F F\nWIDTH 1\nPOINTS 1\nDATA binary\n');
+    // x = 1.4e-45 has little-endian bytes 01 00 00 00; use bytes 0A 00 00 00 (denormal) so
+    // the first body byte is a newline.
+    const body = new Uint8Array(12);
+    const view = new DataView(body.buffer);
+    view.setUint32(0, 0x0a, true); view.setFloat32(4, 2, true); view.setFloat32(8, 3, true);
+    const bytes = new Uint8Array(header.length + body.length);
+    bytes.set(header); bytes.set(body, header.length);
+    const source = decodeIfcxPointSource(attrs('pcd::base64', b64(bytes)))!;
+    expect(source.positions[0]).toBe(new Float32Array(new Uint32Array([0x0a]).buffer)[0]);
+    expect(Array.from(source.positions.slice(1))).toEqual([2, 3]);
+  });
+
   it('retains compressed-body size and binary truncation errors', () => {
     const compressed = pcd('binary_compressed');
     const brokenSize = compressed.slice();

@@ -171,3 +171,17 @@ it('retained authored matrices and presentation facts cannot change through the 
   assert.equal(meshes[0].positions[0], 6);
   assert.deepEqual(meshes[0].color, [0.2, 0.3, 0.4, 1]);
 });
+
+it('keeps a mesh without faceVertexIndices (or with only optional arrays missing) from aborting the import', () => {
+  const root = node('root', { [ATTR.CLASS]: { code: 'IfcWall' } });
+  const bare = node('bare', { [ATTR.MESH]: { points: triangle().points } });
+  const good = node('good', { [ATTR.MESH]: triangle() });
+  root.children.set('Bare', bare);
+  root.children.set('Good', good);
+  const composed = new Map([root, bare, good].map(item => [item.path, item]));
+  const meshes = extractGeometry(composed, new Map([['root', 1]]));
+  assert.equal(meshes.length, 2);
+  const byIndices = meshes.map(mesh => mesh.indices.length).sort();
+  assert.deepEqual(byIndices, [0, 3]);
+  for (const mesh of meshes) assert.equal(mesh.positions.length, 9);
+});

@@ -1,0 +1,22 @@
+{
+  "source": "1fb69c5fe0b433452fe7c0bf353bff3b8b650a26",
+  "job": "a736b101-c81f-4b47-8b61-5035c90afb81",
+  "request": "auto-a2987367aaa34d97ae5cc51d550eb35f",
+  "host": "pc-wsl",
+  "exit": 8,
+  "sourceUnchanged": true,
+  "build_link_steps": 265,
+  "ctest": {
+    "passed": 4,
+    "failed": 1,
+    "failure": "smlib_owned_boundary: actual source class conversion witnesses"
+  },
+  "reached": "semantic Empty identity cases then affine source class assertion",
+  "not_reached": [
+    "affine numeric oracles after class assertion",
+    "plane numeric witnesses",
+    "actual-worker runtime or processing tests"
+  ],
+  "output_sha256": "23191cc0e26a3ffda13ed7a5f856018ca6e31188a709d63c1252acb45fc46a39",
+  "diagnostic": "source-class diagnostics added without modifying original class/numerical oracle"
+}

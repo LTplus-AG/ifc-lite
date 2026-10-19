@@ -1,0 +1,17 @@
+{
+  "id": "auto-a2987367aaa34d97ae5cc51d550eb35f",
+  "commit": "1fb69c5fe0b433452fe7c0bf353bff3b8b650a26",
+  "kind": "ordinary",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "capabilities": [
+    "linux"
+  ],
+  "command": [
+    "bash",
+    "-c",
+    "source \"$HOME/build-workers/worker-env.sh\"; unset IFCLITE_ADAPTER_BUILD; bash native/smlib-adapter/qualify.sh native || exit $?; source_id=$(git rev-parse HEAD); checkout_key=$(printf \"%s\" \"$(pwd -P)\" | sha256sum | cut -c1-12); export IFCLITE_SMLIB_WORKER=\"$CARGO_TARGET_DIR/ifclite-smlib/native-$source_id-$checkout_key/ifclite_smlib_worker\"; cargo test -p ifc-lite-geometry-runtime --all-targets --no-fail-fast || exit $?; cargo test -p ifc-lite-processing --lib session_retained -- --nocapture || exit $?; cargo test -p ifc-lite-processing --test retained_authored_evaluator --test retained_curved_consumption --test retained_geometry --no-fail-fast"
+  ],
+  "storageTask": "ifclite-platform-native-1fb69-20261019",
+  "pools": []
+}

@@ -20,7 +20,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tarballNameFromPackOutput } from './lib/npm-pack-output.mjs';
 import { compareWasmExports } from './lib/wasm-export-parity.mjs';
-import { wasmRuntimeAssets } from './lib/wasm-runtime-assets.mjs';
+import { assertWasmRuntimeDestinations, wasmRuntimeAssets } from './lib/wasm-runtime-assets.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(__dirname, '..');
@@ -63,7 +63,11 @@ if (existsSync(wasmFile) && !force) {
     );
     process.exit(1);
   }
-  try { wasmRuntimeAssets(wasmOut); }
+  try {
+    const assets = wasmRuntimeAssets(wasmOut);
+    assertWasmRuntimeDestinations(rootDir, assets);
+    writeFileSync(join(wasmOut, '.npmignore'), '\n');
+  }
   catch (error) {
     console.error(`\nThe installed WASM runtime is incomplete: ${error.message}\n` +
       'The installed runtime was left untouched. Rebuild or re-fetch with --force.');
@@ -127,6 +131,16 @@ if (fetchedParity.missing.length > 0) {
       `\n\nNothing was installed. Either build from source with a Rust toolchain ` +
       `(pnpm build:wasm), or wait for a publish that includes these exports.`,
   );
+  process.exit(1);
+}
+
+try {
+  assertWasmRuntimeDestinations(rootDir, runtimeFiles);
+} catch (error) {
+  rmSync(extractDir, { recursive: true, force: true });
+  rmSync(join(rootDir, tgzName), { force: true });
+  console.error(`\nCannot install the WASM runtime: ${error.message}\n` +
+    'Nothing was installed; the existing runtime and committed types were left untouched.');
   process.exit(1);
 }
 

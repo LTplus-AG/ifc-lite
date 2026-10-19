@@ -13,7 +13,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, test } from 'node:test';
@@ -239,3 +239,97 @@ test('a symlinked published helper cannot import a foreign runtime asset', () =>
   assert.equal(read(root, 'ifc-lite_bg.wasm'), 'INSTALLED-WASM');
   assert.equal(read(root, 'ifc-lite.d.ts'), DTS);
 });
+
+
+// PR #7940, review r4310646739: installed runtimes also need npm metadata.
+test('already-installed complete helper runtime is publishable without fetching or changing runtime bytes', () => {
+  const root = makeCheckout({ installedJs: JS_HELPER, installedAssets: HELPERS, published: null });
+  const result = run(root);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.doesNotMatch(result.stdout, /Fetching/);
+  const pack = spawnSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
+    cwd: join(root, 'packages/wasm'), encoding: 'utf8', env: process.env,
+  });
+  assert.equal(pack.status, 0, pack.stdout + pack.stderr);
+  const packaged = JSON.parse(pack.stdout)[0].files.map(file => file.path);
+  for (const name of Object.keys(HELPERS)) assert(packaged.includes(`pkg/${name}`), name);
+  assert.equal(read(root, '.npmignore'), '\n');
+  assert.equal(read(root, 'ifc-lite.js'), JS_HELPER);
+  assert.equal(read(root, 'ifc-lite_bg.wasm'), 'INSTALLED-WASM');
+  assert.equal(read(root, 'ifc-lite.d.ts'), DTS);
+  for (const [name, content] of Object.entries(HELPERS)) assert.equal(read(root, name), content);
+});
+
+// PR #7940, review r4310646754: every destination must pass before the first copy.
+for (const obstruction of ['file symlink', 'parent symlink', 'pkg symlink', 'later directory',
+  'npmignore symlink', 'npmignore directory', 'types symlink', 'gitignore symlink']) {
+  test(`force fetch rejects destination ${obstruction} before changing any existing asset`, () => {
+    const root = makeCheckout({ installedJs: JS_OK, published: JS_HELPER, publishedAssets: HELPERS,
+      installedAssets: { 'snippets/previous.js': 'previous helper' } });
+    const output = join(root, 'packages/wasm/pkg');
+    const foreign = join(root, 'foreign');
+    mkdirSync(foreign);
+    const sentinel = join(foreign, 'sentinel');
+    writeFileSync(sentinel, 'outside must stay unchanged');
+    if (obstruction === 'file symlink') {
+      mkdirSync(join(output, 'snippets/private'));
+      symlinkSync(sentinel, join(output, 'snippets/private/driver.mjs'));
+    } else if (obstruction === 'parent symlink') {
+      mkdirSync(join(foreign, 'private'));
+      writeFileSync(join(foreign, 'private/driver.mjs'), 'outside driver');
+      symlinkSync(join(foreign, 'private'), join(output, 'snippets/private'), 'dir');
+    } else if (obstruction === 'pkg symlink') {
+      renameSync(output, join(foreign, 'pkg'));
+      symlinkSync(join(foreign, 'pkg'), output, 'dir');
+    } else if (obstruction === 'later directory') {
+      mkdirSync(join(output, 'snippets/private/nested/helper.js'), { recursive: true });
+    } else if (obstruction === 'npmignore directory') {
+      mkdirSync(join(output, '.npmignore'));
+    } else {
+      const name = obstruction === 'types symlink' ? 'ifc-lite.d.ts' :
+        obstruction === 'gitignore symlink' ? '.gitignore' : '.npmignore';
+      // Preserve the declaration content for parity to pass before destination validation.
+      if (name === 'ifc-lite.d.ts') writeFileSync(sentinel, DTS);
+      rmSync(join(output, name), { force: true });
+      symlinkSync(sentinel, join(output, name));
+    }
+    const result = run(root, ['--force']);
+    assert.equal(readFileSync(sentinel, 'utf8'), obstruction === 'types symlink' ? DTS : 'outside must stay unchanged');
+    assert.equal(read(root, 'ifc-lite_bg.wasm'), 'INSTALLED-WASM');
+    assert.equal(read(root, 'ifc-lite.js'), JS_OK);
+    assert.equal(read(root, 'ifc-lite.d.ts'), DTS);
+    assert.equal(read(root, 'snippets/previous.js'), 'previous helper');
+    if (obstruction === 'parent symlink') {
+      assert.equal(readFileSync(join(foreign, 'private/driver.mjs'), 'utf8'), 'outside driver');
+      assert.equal(existsSync(join(foreign, 'private/nested')), false);
+    }
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stderr, /unsafe runtime destination/);
+    assert.equal(existsSync(join(root, '.wasm-fetch-tmp')), false);
+    assert.equal(existsSync(join(root, 'stub.tgz')), false);
+    assert.equal(readFileSync(join(root, 'published/package/pkg/ifc-lite.js'), 'utf8'), JS_HELPER);
+    for (const [name, content] of Object.entries(HELPERS)) {
+      assert.equal(readFileSync(join(root, 'published/package/pkg', name), 'utf8'), content);
+    }
+  });
+}
+
+
+for (const obstruction of ['symlink', 'directory']) {
+  test(`installed runtime rejects npmignore ${obstruction} without modifying runtime or outside files`, () => {
+    const root = makeCheckout({ installedJs: JS_HELPER, installedAssets: HELPERS, published: null });
+    const foreign = join(root, 'outside-ignore');
+    writeFileSync(foreign, 'outside must stay unchanged');
+    if (obstruction === 'symlink') symlinkSync(foreign, join(root, 'packages/wasm/pkg/.npmignore'));
+    else mkdirSync(join(root, 'packages/wasm/pkg/.npmignore'));
+    const result = run(root);
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stderr, /unsafe runtime destination/);
+    assert.doesNotMatch(result.stdout, /Fetching/);
+    assert.equal(readFileSync(foreign, 'utf8'), 'outside must stay unchanged');
+    assert.equal(read(root, 'ifc-lite.js'), JS_HELPER);
+    assert.equal(read(root, 'ifc-lite_bg.wasm'), 'INSTALLED-WASM');
+    assert.equal(read(root, 'ifc-lite.d.ts'), DTS);
+    for (const [name, content] of Object.entries(HELPERS)) assert.equal(read(root, name), content);
+  });
+}

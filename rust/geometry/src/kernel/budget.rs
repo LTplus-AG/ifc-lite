@@ -3,6 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Deterministic per-boolean exact-predicate budget (issue #1109).
+//! Incidence traversal has a separate work allowance in `incidence_work`;
+//! its trip shares whole-boolean rejection, not exact-escalation telemetry.
 //!
 //! Every predicate over an implicit (intersection) point runs a cascade:
 //! `interval filter → fixed-width exact → BigRational` (`predicates.rs`). The
@@ -35,16 +37,20 @@
 //! #635 AABB box-cut fallback ("a square hole is dramatically less wrong than a
 //! missing void").
 
+pub(crate) mod incidence_work;
+#[cfg(test)]
+mod test_profile;
+#[cfg(test)]
+pub(crate) use test_profile::TestProfile;
+
 use std::cell::Cell;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-// Test configuration never changes the process profile seen by other tests.
+/// Serialises tests that share peak counters or other process-wide test state.
+/// Exact-budget fixtures use `TestProfile` rather than changing global caps.
 #[cfg(test)]
-#[path = "budget_test_caps.rs"]
-pub(crate) mod test_caps;
-#[cfg(test)]
-pub(crate) use test_caps::GLOBAL_CAP_LOCK;
+pub(crate) static GLOBAL_CAP_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Default per-boolean exact-evaluation cap for the interactive profile.
 ///
@@ -157,7 +163,7 @@ pub fn set_element_cap(cap: Option<u64>) {
 /// The active per-boolean cap, as configured (`None` ⇒ unbounded).
 pub fn cap() -> Option<u64> {
     #[cfg(test)]
-    if let Some(cap) = test_caps::configured_operation() { return cap; }
+    if let Some(profile) = test_profile::configured() { return profile.cap(); }
     match CAP.load(Ordering::Relaxed) {
         0 => None,
         n => Some(n),
@@ -167,7 +173,7 @@ pub fn cap() -> Option<u64> {
 /// The active per-element cap, as configured (`None` ⇒ unbounded).
 pub fn element_cap() -> Option<u64> {
     #[cfg(test)]
-    if let Some(cap) = test_caps::configured_element() { return cap; }
+    if let Some(profile) = test_profile::configured() { return profile.element_cap(); }
     match ELEMENT_CAP.load(Ordering::Relaxed) {
         0 => None,
         n => Some(n),
@@ -178,6 +184,7 @@ pub fn element_cap() -> Option<u64> {
 /// the cap. Call once at every public boolean entry in [`crate::csg`].
 #[inline]
 pub fn begin() {
+    incidence_work::begin();
     crate::progress::tick();
     // Fold the just-finished op's count into the global peak (calibration).
     let prev = COUNT.with(|c| c.get());
@@ -186,10 +193,8 @@ pub fn begin() {
     }
     let cap = match env_cap() {
         Some(v) => v, // env override wins (0 = unbounded)
-        None => CAP.load(Ordering::Relaxed),
+        None => cap().unwrap_or(0),
     };
-    #[cfg(test)]
-    let cap = test_caps::operation(cap);
     OP_CAP.with(|c| c.set(if cap == 0 { u64::MAX } else { cap }));
     COUNT.with(|c| c.set(0));
 }
@@ -207,6 +212,7 @@ pub fn begin() {
 /// the configured [`ELEMENT_CAP`] (or its `IFC_LITE_CSG_ELEMENT_BUDGET` override).
 #[inline]
 pub fn begin_element() {
+    incidence_work::begin_element();
     // Fold the just-finished element's total into the per-element peak.
     let prev = ELEM_COUNT.with(|c| c.get());
     if prev != 0 {
@@ -215,20 +221,16 @@ pub fn begin_element() {
     // Per-element cap is unbounded iff the per-boolean profile is unbounded.
     let boolean_unbounded = match env_cap() {
         Some(v) => v == 0,
-        None => CAP.load(Ordering::Relaxed) == 0,
+        None => cap().is_none(),
     };
-    #[cfg(test)]
-    let boolean_unbounded = test_caps::unbounded(boolean_unbounded);
     let elem_cap = if boolean_unbounded {
         0 // unbounded (server / offline export)
     } else {
         match env_element_cap() {
             Some(v) => v, // override (0 = unbounded)
-            None => ELEMENT_CAP.load(Ordering::Relaxed),
+            None => element_cap().unwrap_or(0),
         }
     };
-    #[cfg(test)]
-    let elem_cap = test_caps::element(elem_cap, boolean_unbounded);
     ELEM_CAP.with(|c| c.set(if elem_cap == 0 { u64::MAX } else { elem_cap }));
     ELEM_COUNT.with(|c| c.set(0));
 }
@@ -253,6 +255,7 @@ pub fn begin_element() {
 /// ```
 #[must_use = "dropping the scope immediately restores the enclosing element's budget"]
 pub struct ElementScope {
+    incidence: incidence_work::Snapshot,
     count: u64,
     op_cap: u64,
     elem_count: u64,
@@ -267,6 +270,7 @@ pub struct ElementScope {
 /// [`begin_element`], wherever element meshing can be re-entered on one thread.
 pub fn enter_element() -> ElementScope {
     let scope = ElementScope {
+        incidence: incidence_work::snapshot(),
         count: COUNT.with(Cell::get),
         op_cap: OP_CAP.with(Cell::get),
         elem_count: ELEM_COUNT.with(Cell::get),
@@ -279,6 +283,7 @@ pub fn enter_element() -> ElementScope {
 
 impl Drop for ElementScope {
     fn drop(&mut self) {
+        incidence_work::restore(self.incidence);
         // Fold the scope's last boolean and its element total into the peaks
         // before the restore overwrites them (`begin` / `begin_element` fold a
         // finished count only when the next one starts on this thread).
@@ -356,7 +361,7 @@ pub fn note_escalation() {
 /// not), so the element's remaining cuts bail to the #635 AABB fallback.
 #[inline]
 pub fn tripped() -> bool {
-    COUNT.with(|c| c.get()) >= OP_CAP.with(|c| c.get())
+    incidence_work::tripped() || COUNT.with(|c| c.get()) >= OP_CAP.with(|c| c.get())
         || ELEM_COUNT.with(|c| c.get()) >= ELEM_CAP.with(|c| c.get())
 }
 
@@ -376,10 +381,11 @@ pub fn element_count() -> u64 {
 
 /// Snapshot / restore the accumulators so a REFERENCE computation (`subtract_many`'s
 /// volume-safe oracle) can't charge or trip the caller's #1109 batch budget (codex P2).
-pub(crate) fn snapshot_counters() -> (u64, u64) {
-    (COUNT.with(|c| c.get()), ELEM_COUNT.with(|c| c.get()))
+pub(crate) fn snapshot_counters() -> (u64, u64, incidence_work::Snapshot) {
+    (COUNT.with(|c| c.get()), ELEM_COUNT.with(|c| c.get()), incidence_work::snapshot())
 }
-pub(crate) fn restore_counters((op, elem): (u64, u64)) {
+pub(crate) fn restore_counters((op, elem, incidence): (u64, u64, incidence_work::Snapshot)) {
+    incidence_work::restore(incidence);
     COUNT.with(|c| c.set(op));
     ELEM_COUNT.with(|c| c.set(elem));
 }

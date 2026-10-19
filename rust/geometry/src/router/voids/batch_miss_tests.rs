@@ -6,8 +6,8 @@ use super::*;
 use super::super::{VoidContext, coaxial_union, world_host_bounds};
 use nalgebra::Point3;
 
-// Process-global census invariants must not race ordinary geometry tests,
-// which do not acquire the fixture diagnostic/reset lock.
+// Process-global census/cap invariants must not race ordinary geometry tests,
+// which do not acquire the budget-mutator lock before entering element scopes.
 fn isolated_test(name: &str, marker: &str) -> bool {
     if std::env::var_os(marker).is_some() { return true; }
     let name = format!("{}::{name}", module_path!().split_once("::").unwrap().1);
@@ -211,15 +211,8 @@ fn exhausted_element_budget_does_not_turn_a_group_into_a_proven_miss_6516() {
         "IFC_LITE_6516_ELEMENT_CAP_CHILD") { return; }
     use crate::kernel::budget;
     let _lock = budget::GLOBAL_CAP_LOCK.lock().unwrap();
-    let _test_caps = budget::test_caps::scope();
-    struct RestoreElementCap(Option<u64>);
-    impl Drop for RestoreElementCap {
-        fn drop(&mut self) { budget::test_caps::set_element_cap(self.0); }
-    }
-    let _restore = RestoreElementCap(budget::element_cap());
-    // The test owns its local cap; ElementScope additionally restores this
-    // thread's counters/caps on exit.
-    budget::test_caps::set_element_cap(Some(1));
+    let profile = budget::TestProfile::new();
+    profile.set_element_cap(Some(1));
     let _scope = budget::enter_element();
     let host = tetra_host().subdivided(2);
     let actual = vertical_box(0.125, 0.125, 0.625, 0.625);
@@ -234,4 +227,71 @@ fn exhausted_element_budget_does_not_turn_a_group_into_a_proven_miss_6516() {
     assert_eq!(counts.group_rejections[2], 1, "group must report the trip");
     assert_eq!(counts.single_subtract_calls, 3, "a tripped group retains every member's fallback");
     assert!(budget::tripped(), "later begin calls must not reset the element budget");
+}
+
+/// #7024: capture the actual retaining-miss router path, not just its weld.
+#[cfg(feature = "csg_capture")]
+#[test]
+fn captured_group_replays_effective_miss_retention_7024() {
+    if !isolated_test("captured_group_replays_effective_miss_retention_7024",
+        "IFC_LITE_7024_CAPTURE_MISS_CHILD") { return; }
+    use crate::csg::{ClippingProcessor, GroupCut, GroupReject};
+    use crate::csg_capture::{self, CapturedCsgJob};
+    struct Recording;
+    impl Drop for Recording {
+        fn drop(&mut self) { csg_capture::set_enabled(false); }
+    }
+    let host = tetra_host().subdivided(1);
+    let openings = vec![vertical_box(0.6, 0.6, 0.8, 0.8),
+        vertical_box(0.85, 0.3, 0.95, 0.4)];
+    let cutters: Vec<&Mesh> = openings.iter().map(|o| o.mesh_cutter().unwrap().0).collect();
+    let csg = ClippingProcessor::new();
+    let retained = csg.subtract_mesh_many_retaining_miss(&host, &cutters);
+    let GroupCut::Retessellated(expected) = retained else {
+        panic!("the conforming miss must retain a count-changing mesh");
+    };
+    assert_ne!(expected.triangle_count(), host.triangle_count());
+    assert!(matches!(csg.subtract_mesh_many(&host, &cutters),
+        GroupCut::Rejected(GroupReject::Unchanged)), "the witness must distinguish policies");
+
+    drop(csg_capture::drain());
+    csg_capture::set_enabled(true);
+    let recording = Recording;
+    let routed = cut(host.clone(), openings);
+    drop(recording);
+    let captured = csg_capture::drain();
+    assert_eq!(captured.len(), 1, "the router must perform one actual grouped miss");
+    assert!(matches!(&captured[0], CapturedCsgJob::Many { opening: true, .. }));
+    let blob = csg_capture::serialize(&captured);
+    let decoded = csg_capture::deserialize(&blob).unwrap();
+    let GroupCut::Retessellated(replayed) = decoded[0].replay(&csg) else {
+        panic!("serialized replay must retain the router's retessellated miss");
+    };
+    assert!(replayed.positions.iter().map(|v| v.to_bits())
+        .eq(expected.positions.iter().map(|v| v.to_bits())));
+    assert_eq!(replayed.indices, expected.indices);
+    assert!(replayed.normals.iter().map(|v| v.to_bits())
+        .eq(expected.normals.iter().map(|v| v.to_bits())));
+    assert_eq!(replayed.rtc_applied, expected.rtc_applied);
+    assert_eq!(replayed.origin.map(f64::to_bits), expected.origin.map(f64::to_bits));
+    assert!(crate::mesh_check::closed_enough_to_emit(&routed));
+    assert!((super::super::geom::mesh_signed_volume(&routed).abs() - 1.0 / 6.0).abs() < 1e-8);
+
+    // Requested retention is disabled for >16 live cutters. Capture the
+    // effective false value on BOTH actual chunks, not the caller's true.
+    let many: Vec<OpeningType> = (0..17).map(|i| {
+        let y = 0.6 + f64::from(i) * 0.01;
+        vertical_box(0.6, y, 0.61, y + 0.005)
+    }).collect();
+    let refs: Vec<&Mesh> = many.iter().map(|o| o.mesh_cutter().unwrap().0).collect();
+    csg_capture::set_enabled(true);
+    let recording = Recording;
+    let _ = csg.subtract_mesh_many_retaining_miss(&host, &refs);
+    drop(recording);
+    let chunks = csg_capture::drain();
+    assert_eq!(chunks.len(), 2);
+    let decoded_chunks = csg_capture::deserialize(&csg_capture::serialize(&chunks)).unwrap();
+    assert!(decoded_chunks.iter().all(|job| matches!(job.replay(&csg),
+        GroupCut::Rejected(GroupReject::Unchanged))),
+        "each captured chunk must retain the effective non-retaining policy");
 }

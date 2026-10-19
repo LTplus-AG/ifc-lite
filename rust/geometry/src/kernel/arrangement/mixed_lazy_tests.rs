@@ -49,7 +49,6 @@ fn unculled_crossings(t: &Tri, segments: &[Supported], raw_count: usize) -> Vec<
 #[test]
 fn issue_7292_lazy_build_uncertain_defined_lpi_matches_unculled_crossing_order() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
-    let _test_caps = budget::test_caps::scope();
     let _element=budget::enter_element();budget::begin();
     let t=carrier();let endpoint=uncertain_endpoint();let x=-1./(2.*f64::EPSILON);
     assert!(interval::ilambda_cached(&endpoint).1.sign().is_none());
@@ -71,7 +70,6 @@ fn issue_7292_lazy_build_uncertain_defined_lpi_matches_unculled_crossing_order()
 #[test]
 fn issue_7292_lazy_build_unknown_invalid_candidates_never_fabricate_a_tpi() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
-    let _test_caps = budget::test_caps::scope();
     let _element=budget::enter_element();budget::begin();
     let t=carrier();let x=-1./(2.*f64::EPSILON);let endpoint=uncertain_endpoint();
     let undefined=ImplicitPoint::Lpi(Lpi {p:[0.,0.,1.],q:[1.,0.,2.],r:t[0],s:t[1],t:t[2]});
@@ -108,10 +106,7 @@ fn issue_7292_lazy_build_unknown_invalid_candidates_never_fabricate_a_tpi() {
 #[test]
 fn issue_7292_lazy_build_budget_trip_during_candidate_validation_is_sticky() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
-    let _test_caps = budget::test_caps::scope();
-    struct Reset(Option<u64>);
-    impl Drop for Reset { fn drop(&mut self) {budget::test_caps::set_cap(self.0);budget::begin();} }
-    let _reset=Reset(budget::cap());budget::test_caps::set_cap(Some(2));
+    let profile=budget::TestProfile::new();profile.set_cap(Some(2));
     let _element=budget::enter_element();budget::begin();
     let t=carrier();let x=-1./(2.*f64::EPSILON);
     let clips=vec![SupportedClip {a:uncertain_endpoint(),b:e([x+2.,0.,x+2.]),support:horizontal()},

@@ -33,7 +33,6 @@ fn slab(x0: f64, x1: f64) -> ZoneShape {
 /// `split_mesh_by_zones` for a host known to enclose volume.
 fn split_by(host: &[Tri], zones: &[ZoneShape]) -> ZoneSplit {
     let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let _test_caps = budget::test_caps::scope();
     split_mesh_by_zones(host, zones).expect("this host encloses volume")
 }
 
@@ -53,19 +52,14 @@ const EPS: f64 = 1e-9;
 #[test]
 fn issue_7292_zone_budget_failure_cannot_report_a_complete_empty_split() {
     let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let _test_caps = budget::test_caps::scope();
-    struct RestoreCap(Option<u64>);
-    impl Drop for RestoreCap {
-        fn drop(&mut self) { budget::test_caps::set_cap(self.0); }
-    }
-    let _restore = RestoreCap(budget::cap());
+    let profile = budget::TestProfile::new();
     let _element = budget::enter_element();
     let host = box_mesh([0.; 3], [1.; 3]);
     let occupied = ZoneBox { center: [0.5; 3], size: [1.; 3], rotation_y: 0. };
     let zones = [ZoneShape::Box(occupied)];
 
     // Establish actual intersection work, without pinning an incidental count.
-    budget::test_caps::set_cap(Some(budget::DEFAULT_CAP));
+    profile.set_cap(Some(budget::DEFAULT_CAP));
     budget::begin();
     let operand = orient_outward(host.clone());
     let intersection = boolean(&operand, &operand, BoolOp::Intersection);
@@ -73,7 +67,7 @@ fn issue_7292_zone_budget_failure_cannot_report_a_complete_empty_split() {
     assert!((signed_volume_of(&intersection) - 1.).abs() < EPS);
     assert!(budget::count() > 0, "the real coincident boxes must exercise budgeted work");
 
-    budget::test_caps::set_cap(Some(1));
+    profile.set_cap(Some(1));
     budget::begin();
     let interrupted = split_mesh_by_zones(&host, &zones);
     assert!(budget::tripped(), "the actual split must exhaust its tiny work budget");
@@ -81,7 +75,7 @@ fn issue_7292_zone_budget_failure_cannot_report_a_complete_empty_split() {
         "an aborted intersection must not become a successful whole-host remainder");
 
     // A new operation must recover from the preceding per-operation trip.
-    budget::test_caps::set_cap(Some(budget::DEFAULT_CAP));
+    profile.set_cap(Some(budget::DEFAULT_CAP));
     let split = split_mesh_by_zones(&host, &zones).expect("the occupied zone completes normally");
     assert!(!budget::tripped() && !split.remainder_failed);
     assert_eq!(split.pieces.len(), 1);

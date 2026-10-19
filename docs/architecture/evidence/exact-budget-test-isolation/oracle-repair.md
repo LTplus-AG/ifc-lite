@@ -14,3 +14,12 @@ module is present on main, ordinary inversion resumes.
 Patch application and whitespace checks passed locally. The actual baseline
 and mutated Cargo runs remain pending admitted execution/CI. Existing workspace
 qualification remains bound to its original source, unchanged by this record.
+
+Merge reconciliation: main's #7024 now supplies TestProfile and the migrated
+unit fixtures. This branch retains that implementation verbatim and deletes
+its superseded test_caps module, workflow exception and mutation patch.
+Additional concurrency/unwind witnesses now use TestProfile and are registered
+from the existing test-only budget_tests module. The subprocess public-setter
+witness remains. Historical qualification above does not qualify this merge;
+CI must execute the adapted tests. Fleet admission is currently refused on both
+hosts (guard 78), so no new local Cargo pass is claimed.

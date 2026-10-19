@@ -72,7 +72,7 @@ impl SourceAxes {
         original: [f64; 3],
         primary: [f64; 3],
         selected: Tri,
-        host_vertices: &HashSet<[u64; 3]>,
+        host_vertices: &HashSet<[u64; 3], impl std::hash::BuildHasher>,
     ) -> Option<[f64; 3]> {
         if host_vertices.contains(&vertex_bits(&primary)) {
             return None; // established host-corner identity is load-bearing

@@ -864,12 +864,7 @@ jobs:
           # only its geometric visibility constraint. The paired projection
           # witness must then assert the original wrong foreground ownership.
           # Once the module is on main, ordinary whole-change reverts resume.
-          # Keep the new test-cap API available to migrated fixtures. Removing
-          # its unwind restoration must fail the real operation snapshot test;
-          # whole-file inversion instead removes APIs and cannot compile.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/kernel/budget_test_caps.rs | grep -Fxq 'rust/geometry/src/kernel/budget_test_caps.rs'; then
-            oracle_args+=(--mutation tests/evidence/exact-budget-test-isolation/restore.oracle.patch)
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- packages/renderer/src/opaque-visibility-pass.ts | grep -Fxq 'packages/renderer/src/opaque-visibility-pass.ts'; then
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- packages/renderer/src/opaque-visibility-pass.ts | grep -Fxq 'packages/renderer/src/opaque-visibility-pass.ts'; then
             oracle_args+=(--mutation tests/evidence/reporter-6729/visibility.oracle.patch)
           # #7292: the initial exact-kernel modules/APIs must stay loadable;
           # a whole-production revert prevents the changed Rust tests compiling.

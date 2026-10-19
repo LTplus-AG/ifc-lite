@@ -337,8 +337,28 @@ fn issue_7949_an_open_sub_edge_split_along_a_fold_edge_is_not_a_tear_beyond_it()
     // fold's own boundary.
     let on_edges = represented(&[[1., 0., 0.], [0., 2., 0.], [0., 1., 0.]], &[[0, 1, 2]]);
     assert!(!tears_beyond_folds(&on_edges, &buckets, &supported));
-    // One corner in the fold's interior, off every edge: that boundary is not
-    // the fold's.
-    let off_edges = represented(&[[1., 0., 0.], [0., 2., 0.], [0.5, 0.5, 0.]], &[[0, 1, 2]]);
-    assert!(tears_beyond_folds(&off_edges, &buckets, &supported));
+    // One corner outside the fold: that boundary is not the fold's.
+    let off_fold = represented(&[[1., 0., 0.], [0., 2., 0.], [3., 3., 0.]], &[[0, 1, 2]]);
+    assert!(tears_beyond_folds(&off_fold, &buckets, &supported));
+}
+
+#[test]
+fn issue_7949_an_open_edge_joining_two_separate_fold_regions_is_a_tear_beyond_them() {
+    use super::super::{buckets::Buckets, plane_merge::PlaneTri, supported_cells::Supported};
+    use nalgebra::{Point3, Vector3};
+    // Two fold triangles five units apart. The edge between a corner of each
+    // has both endpoints on a fold and runs through neither.
+    let tri = |x: f64| PlaneTri {
+        v: [Point3::new(x, 0., 0.), Point3::new(x + 1., 0., 0.), Point3::new(x, 1., 0.)],
+        normal: Vector3::z(),
+        tag: None,
+    };
+    let mut buckets = Buckets::new();
+    buckets.insert((0, 0, 0, 0), vec![tri(0.)]);
+    buckets.insert((1, 0, 0, 0), vec![tri(5.)]);
+    let mut supported = Supported::default();
+    supported.folded_buckets.extend([(0, 0, 0, 0), (1, 0, 0, 0)]);
+
+    let bridge = represented(&[[0., 0., 0.], [5., 0., 0.], [0., 1., 0.]], &[[0, 1, 2]]);
+    assert!(tears_beyond_folds(&bridge, &buckets, &supported));
 }

@@ -1,0 +1,18 @@
+(node:1840168) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ driver fixture: immutable ordered Boolean operands and independent result lease (25.550925ms)
+✔ driver fixture: foreign, unsupported frame and qualification rejections are intact (7.578722ms)
+✔ driver fixture: invalidate exact lease before delayed release; replacement survives failure (5.905015ms)
+✔ driver fixture: unknown Boolean outcome retires only its captured owner and preserves primary error (7.241908ms)
+✔ driver fixture: source qualification cannot grant the dependency gate (8.261186ms)
+✔ driver fixture: a returned wire alias cannot mint an independent result lease (7.770372ms)
+✔ driver fixture: zero or malformed meshes need matching actual-query classification (47.759642ms)
+✔ driver fixture: construction refuses certified empty rather than widening source admission (5.548581ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 194.71564

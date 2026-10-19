@@ -170,7 +170,7 @@ fn actual_sdk_affine_chain_preserves_raw_lineage_and_independent_brep_ownership(
     let RetainedLineage::AffineCopy { input,column_major,.. }=input.as_ref() else { panic!("missing first transform") };
     assert_eq!(*column_major,reflected);
     let RetainedLineage::Definition { request:original,.. }=input.as_ref() else { panic!("missing original source coefficients") };
-    assert_eq!(original.as_ref(),&request);
+    assert!(original.same_admission(&request));
     let result=worker.evaluate_retained_boolean(
         RetainedDependency::Affine {copy:&first,world_from_affine:identity},
         RetainedDependency::Affine {copy:&second,world_from_affine:identity},

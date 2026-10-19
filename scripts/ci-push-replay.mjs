@@ -24,8 +24,8 @@
  *
  *   node scripts/ci-push-replay.mjs --probe
  *       `changes` job, push events. Writes `replay=true|false` and
- *       `replay_run=<run id>` to $GITHUB_OUTPUT. Exit 1 on an API failure, so
- *       the job goes red instead of guessing either way.
+ *       `replay_run=<run id>` to $GITHUB_OUTPUT. Unreadable API evidence
+ *       selects full validation; it never authorizes skipping a lane.
  *   node scripts/ci-push-replay.mjs --verify --run <id>
  *       Aggregate job, when `replay=true`. Re-reads the recorded run and
  *       refuses unless it is still a green run of this push's PR head with this
@@ -159,7 +159,17 @@ export function run(argv, env = process.env) {
   const pushTree = git('rev-parse', `${pushSha}^{tree}`);
   const parentSha = git('rev-parse', `${pushSha}^`);
   const before = env.PUSH_BEFORE ?? '';
-  const decision = decidePushReplay(readInputs(repo, pushSha, pushTree, parentSha, before));
+  let decision;
+  try {
+    decision = decidePushReplay(readInputs(repo, pushSha, pushTree, parentSha, before));
+  } catch (err) {
+    // The probe only saves work. Unreadable evidence must run the full suite,
+    // not fail `changes` and suppress every dependent lane (#7944). Once a
+    // replay was selected, --verify must still reject unreadable evidence.
+    if (mode !== 'probe' || !(err instanceof GhError)) throw err;
+    console.warn(`[push-replay] ${err.reason}: ${err.message}`);
+    decision = { replay: false, reason: 'replay evidence could not be read; full validation is required' };
+  }
 
   if (mode === 'probe') {
     if (decision.replay) {

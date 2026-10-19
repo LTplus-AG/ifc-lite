@@ -4,6 +4,11 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { delimiter, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { TREE_ARTIFACT_PREFIX, decidePushReplay } from './ci-push-replay.mjs';
 
 const h = (c) => c.repeat(40);
@@ -94,4 +99,60 @@ test('the newest matching green run is the one replayed', () => {
 test('malformed hashes refuse rather than guess', () => {
   assert.equal(decidePushReplay(base({ pushTree: 'abc' })).replay, false);
   assert.equal(decidePushReplay(base({ pushSha: '' })).replay, false);
+});
+
+// #7944: exercise the real CLI, Git input, gh subprocess and Actions outputs.
+// A failed optimization must schedule tests, while verification still refuses.
+test('unreadable replay evidence selects full validation only in probe mode', {
+  skip: process.platform === 'win32' ? 'POSIX gh executable fixture requires a Unix shell environment' : false,
+}, (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'push-replay-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const bin = join(root, 'bin');
+  mkdirSync(bin);
+  const git = (...args) => execFileSync('git', [
+    '-c', 'user.name=Replay fixture', '-c', 'user.email=replay@example.invalid',
+    '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args,
+  ], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  git('init', '-q');
+  writeFileSync(join(root, 'model.txt'), 'before');
+  git('add', 'model.txt');
+  git('commit', '-qm', 'before');
+  const before = git('rev-parse', 'HEAD');
+  writeFileSync(join(root, 'model.txt'), 'after');
+  git('commit', '-qam', 'after');
+  const head = git('rev-parse', 'HEAD');
+  const script = fileURLToPath(new URL('./ci-push-replay.mjs', import.meta.url));
+  const output = join(root, 'output');
+  const gh = join(bin, 'gh');
+  const env = {
+    ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`,
+    GITHUB_REPOSITORY: 'fixture/replay', GITHUB_SHA: head,
+    PUSH_BEFORE: before, GITHUB_OUTPUT: output,
+  };
+  for (const [failure, response] of [
+    ['GH_ERROR', 'console.error("unexpected end of JSON input"); process.exitCode = 1;'],
+    ['GH_BAD_JSON', 'process.stdout.write("{");'],
+    ['GH_BAD_SHAPE', 'process.stdout.write("{}");'],
+  ]) {
+    writeFileSync(gh, `#!/usr/bin/env node\n${response}\n`);
+    chmodSync(gh, 0o755);
+    writeFileSync(output, '');
+    const probe = spawnSync(process.execPath, [script, '--probe'], { cwd: root, env, encoding: 'utf8' });
+    assert.equal(probe.status, 0, probe.stderr);
+    assert.match(probe.stderr, new RegExp(failure));
+    assert.equal(readFileSync(output, 'utf8'), 'replay=false\nreplay_run=\n');
+    assert.match(probe.stdout, /full validation is required/);
+
+    writeFileSync(output, '');
+    const verify = spawnSync(process.execPath, [script, '--verify', '--run', '1'], { cwd: root, env, encoding: 'utf8' });
+    assert.equal(verify.status, 1, failure);
+    assert.match(verify.stderr, new RegExp(failure));
+    assert.equal(readFileSync(output, 'utf8'), '', 'verification must not publish replay success');
+  }
+  const invalidSource = spawnSync(process.execPath, [script, '--probe'], {
+    cwd: root, env: { ...env, GITHUB_SHA: 'missing-source-7944' }, encoding: 'utf8',
+  });
+  assert.equal(invalidSource.status, 1, 'invalid Git input must still fail');
+  assert.equal(readFileSync(output, 'utf8'), '');
 });

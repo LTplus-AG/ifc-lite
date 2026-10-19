@@ -18,6 +18,8 @@ pub(super) struct GateInner {
     #[cfg(test)]
     fixture: Option<Arc<Resources>>,
     source: Weak<SourceBundle>, binding: Mutex<Binding>,
+    #[cfg(feature = "source-resource-gate-test-support")]
+    delegation_fixture: super::delegation_fixture::DelegationFixture,
 }
 #[cfg(test)]
 impl Drop for GateInner {
@@ -73,7 +75,9 @@ impl Gate {
             #[cfg(test)]
             fixture,
             source: Arc::downgrade(&authority.source),
-            binding: Mutex::new(Binding { current: None, depth: 0 }) };
+            binding: Mutex::new(Binding { current: None, depth: 0 }),
+            #[cfg(feature = "source-resource-gate-test-support")]
+            delegation_fixture: Default::default() };
         AccountedArc::try_new(inner, &context, Some(original.clone())).map(Self).map_err(record)
     }
     pub fn scope<'source, T>(&self, decoder: &mut EntityDecoder<'source>, work: &ExecutionWork<'_>,
@@ -141,6 +145,30 @@ impl Gate {
         let selected = original.unwrap_or(stop);
         let selected = record_channels(&self.0.original, self.0.account.as_ref(), self.0.observer.as_ref(), selected);
         authority.map_or(selected, |active| active.stop(selected))
+    }
+    #[cfg(feature = "source-resource-gate-test-support")]
+    pub fn arm_simulated_error(&self, source_fault: bool) {
+        self.0.delegation_fixture.arm(source_fault);
+    }
+    #[cfg(feature = "source-resource-gate-test-support")]
+    pub fn simulated_error_state(&self) -> (usize, bool) {
+        (self.0.delegation_fixture.skipped(), self.0.delegation_fixture.armed())
+    }
+    #[cfg(feature = "source-resource-gate-test-support")]
+    pub fn skip_global_for_fixture(&self) -> bool {
+        let mode = self.0.delegation_fixture.consume();
+        if mode == 2 {
+            // Deterministic race witness: debit succeeded while healthy; source
+            // F becomes first fault before the simulated delegation error.
+            self.0.original.stop(super::failure(crate::resource_stop::Dimension::Work,
+                2, 1, crate::resource_stop::RefusalReason::Limit));
+        }
+        mode != 0
+    }
+    /// Exact live backing identity only; this grants no execution authority.
+    #[cfg(test)]
+    pub fn same_storage_domain(&self, other: &Self) -> bool {
+        std::ptr::eq(&*self.0, &*other.0)
     }
     pub fn backend(&self) -> &Arc<dyn AllocationAccount> { &self.0.account }
 }

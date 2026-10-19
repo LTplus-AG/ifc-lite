@@ -5,6 +5,8 @@ mod backend;
 mod containers;
 mod gate;
 #[cfg(feature = "source-resource-gate-test-support")]
+mod delegation_fixture;
+#[cfg(feature = "source-resource-gate-test-support")]
 pub(crate) mod witness;
 #[cfg(feature = "source-resource-gate-test-support")]
 mod witness_operations;

@@ -24,7 +24,7 @@ pub use crate::resource::boundary_witnesses::{
 #[cfg(feature = "source-resource-gate-test-support")]
 pub use crate::resource::gate_boundary_witnesses::{
     actual_gate_lifetime_witness, actual_gate_refused_growth_witness, actual_gate_first_fault_witness,
-    actual_gate_expired_work_witness,
+    actual_gate_expired_work_witness, actual_gate_simulated_delegation_witness,
 };
 
 /// Undirected edges NOT shared by exactly two triangles, vertices keyed by

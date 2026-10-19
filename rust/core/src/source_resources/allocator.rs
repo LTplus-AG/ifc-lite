@@ -11,6 +11,13 @@ use std::{alloc::{AllocError, Allocator, Global, Layout}, ptr::NonNull};
 pub(super) struct ResourceAllocator { gate: Gate }
 impl ResourceAllocator {
     pub fn new(gate: Gate) -> Self { Self { gate } }
+    #[cfg(feature = "source-resource-gate-test-support")]
+    pub fn arm_simulated_error(&self, source_fault: bool) { self.gate.arm_simulated_error(source_fault); }
+    /// Cleanup/storage compatibility, independent of current source admission.
+    #[cfg(test)]
+    pub fn same_storage_domain(&self, other: &Self) -> bool {
+        self.gate.same_storage_domain(&other.gate)
+    }
     pub fn enter_operation(&self) -> Result<(), ProgramStop> {
         self.gate.before(Cost { work: 1, ..Default::default() })
     }
@@ -47,7 +54,11 @@ impl ResourceAllocator {
     }
     fn allocate_impl(&self, layout: Layout, zeroed: bool) -> Result<NonNull<[u8]>, AllocError> {
         let bytes = self.debit(layout, 0)?;
-        let result = if zeroed { Global.allocate_zeroed(layout) } else { Global.allocate(layout) };
+        #[cfg(feature = "source-resource-gate-test-support")]
+        let simulated = self.gate.skip_global_for_fixture();
+        #[cfg(not(feature = "source-resource-gate-test-support"))]
+        let simulated = false;
+        let result = if simulated { Err(AllocError) } else if zeroed { Global.allocate_zeroed(layout) } else { Global.allocate(layout) };
         match result {
             Ok(memory) => {
                 if bytes != 0 { self.gate.backend().observe(StorageEvent::Allocated(bytes), AllocationClass::Container); }
@@ -61,12 +72,16 @@ impl ResourceAllocator {
         -> Result<NonNull<[u8]>, AllocError> {
         let copies = match mode { Resize::Shrink => new.size(), _ => old.size() };
         let bytes = self.debit(new, copies)?;
+        #[cfg(feature = "source-resource-gate-test-support")]
+        let simulated = self.gate.skip_global_for_fixture();
+        #[cfg(not(feature = "source-resource-gate-test-support"))]
+        let simulated = false;
         // SAFETY: delegated unchanged from this allocator's std trait methods.
-        let result = unsafe { match mode {
+        let result = if simulated { Err(AllocError) } else { unsafe { match mode {
             Resize::Grow => Global.grow(ptr, old, new),
             Resize::GrowZeroed => Global.grow_zeroed(ptr, old, new),
             Resize::Shrink => Global.shrink(ptr, old, new),
-        } };
+        } } };
         match result {
             Ok(memory) => {
                 if old.size() != 0 || bytes != 0 {

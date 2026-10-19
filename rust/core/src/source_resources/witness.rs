@@ -8,6 +8,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum GateWitnessCase {
     #[default] Lifetime, RefusedGrowth, ExpiredWork, FreshFault, PreStoppedEpoch, PreStoppedObserver,
+    SimulatedFresh, SimulatedGrow, SimulatedSourceGrow, SimulatedPreStopped,
 }
 /// Trusted instrumentation identifiers. No owner or execution capability is sent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +27,7 @@ pub struct GateWitnessReport {
     pub returned_stop: Option<ProgramStop>, pub original_stop: Option<ProgramStop>,
     pub fresh_stop: Option<ProgramStop>, pub observer_stop: Option<ProgramStop>,
     pub fresh_operation_entered: bool,
+    pub simulated_errors: usize, pub injection_still_armed: bool, pub fresh_backing_absent: bool,
 }
 /// Run one fixed, bounded fixture. The only resource input is the original paired
 /// context. The factory is consumed ONCE inside healthy actual published work.
@@ -58,7 +60,17 @@ pub fn run_gate_witness(case: GateWitnessCase, context: SourceResourceContext,
             operations::grow(payload.as_mut().ok_or_else(coverage)?, allocator, &mut report, &mut observe)
         });
         report.operation_stop = result.err();
-        if case == GateWitnessCase::RefusedGrowth {
+        if matches!(case, GateWitnessCase::SimulatedFresh | GateWitnessCase::SimulatedGrow
+            | GateWitnessCase::SimulatedSourceGrow | GateWitnessCase::SimulatedPreStopped) {
+            let expected = if matches!(case, GateWitnessCase::SimulatedSourceGrow | GateWitnessCase::SimulatedPreStopped) {
+                super::failure(Dimension::Work, 2, 1, RefusalReason::Limit)
+            } else {
+                report.operation_stop.filter(|stop| matches!(stop, ProgramStop::ResourceRefused(failure)
+                    if failure.dimension == Dimension::LiveBytes && failure.reason == RefusalReason::Allocation))
+                    .ok_or_else(coverage)?
+            };
+            if report.operation_stop != Some(expected) { return Err(coverage()); }
+        } else if case == GateWitnessCase::RefusedGrowth {
             if !matches!(report.operation_stop, Some(ProgramStop::ResourceRefused(failure))
                 if failure.dimension == Dimension::LiveBytes && failure.reason == RefusalReason::Limit) {
                 return Err(coverage());
@@ -72,7 +84,9 @@ pub fn run_gate_witness(case: GateWitnessCase, context: SourceResourceContext,
             report.refused_pointer_preserved = preserved;
             report.values_preserved &= preserved;
         }
-        if matches!(case, GateWitnessCase::FreshFault | GateWitnessCase::PreStoppedEpoch | GateWitnessCase::PreStoppedObserver) {
+        if matches!(case, GateWitnessCase::FreshFault | GateWitnessCase::PreStoppedEpoch | GateWitnessCase::PreStoppedObserver
+            | GateWitnessCase::SimulatedSourceGrow | GateWitnessCase::SimulatedPreStopped
+            | GateWitnessCase::SimulatedFresh | GateWitnessCase::SimulatedGrow) {
             observe(GateWitnessStage::InjectFault);
             let fault = super::failure(Dimension::Work, 2, 1, RefusalReason::Limit);
             report.attempted_original_stop = Some(original.stop(fault));
@@ -88,6 +102,7 @@ pub fn run_gate_witness(case: GateWitnessCase, context: SourceResourceContext,
             }).err();
             report.fresh_stop = fresh.check().err();
         }
+        (report.simulated_errors, report.injection_still_armed) = gate.simulated_error_state();
         report.original_stop = original.check().err();
         report.observer_stop = observer.check().err();
         observe(GateWitnessStage::TerminalObserved);

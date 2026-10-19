@@ -21,6 +21,23 @@ fn fault(dimension: Dimension, requested: u64) -> ProgramStop {
 }
 impl Instrumentation {
     fn snapshot(&self, stage: Stage) -> Snapshot { self.snapshots[stage as usize].unwrap() }
+    fn simulated_ledger(&self, before: Snapshot, after: Snapshot) {
+        assert_eq!(after.container, before.container, "only provisional new backing was refunded");
+        assert_eq!(after.usage.live_bytes, before.usage.live_bytes);
+        if self.case == Case::SimulatedPreStopped {
+            assert_eq!(after.usage, before.usage, "source refusal precedes debit and fixture consumption");
+        } else {
+            assert_eq!(after.usage.work, before.usage.work + 2, "operation and attempted allocation remain charged");
+            if self.case == Case::SimulatedFresh {
+                assert_eq!(after.usage.copy_bytes, before.usage.copy_bytes);
+            } else {
+                assert!(after.usage.copy_bytes > before.usage.copy_bytes);
+                // Exact old Layout is derived independently at WeakOnly.
+            }
+            assert!(after.usage.peak_live_bytes >= before.usage.live_bytes + 256 * 8,
+                "provisional full new Layout contributes to retained peak history");
+        }
+    }
     fn observe(&mut self, stage: Stage) {
         assert_eq!(self.foreign.usage(), Usage::default(), "ambient allowance must never be selected");
         if stage == Stage::ReleaseExternalOwners {
@@ -68,6 +85,10 @@ impl Instrumentation {
             Stage::AfterGrow => {
                 let before = self.snapshot(Stage::BeforeGrow);
                 assert_eq!(metadata, before.metadata);
+                if is_simulated(self.case) {
+                    self.simulated_ledger(before, current);
+                    return;
+                }
                 assert!(current.usage.work > before.usage.work);
                 assert!(current.usage.copy_bytes > before.usage.copy_bytes);
                 if self.case == Case::RefusedGrowth {
@@ -95,7 +116,8 @@ impl Instrumentation {
                         ProgramStop::Cancelled
                     } else { fault(Dimension::Work, 2) }),
                     Case::PreStoppedObserver => Some(fault(Dimension::OutputBytes, 4)),
-                    Case::RefusedGrowth => account.check().err(),
+                    Case::SimulatedSourceGrow | Case::SimulatedPreStopped => Some(fault(Dimension::Work, 2)),
+                    Case::RefusedGrowth | Case::SimulatedFresh | Case::SimulatedGrow => account.check().err(),
                 };
                 assert_eq!(account.check().err(), expected);
             }
@@ -106,8 +128,9 @@ impl Instrumentation {
                 assert_eq!(metadata, before.metadata, "Weak allocator retains both gate and observer backing");
                 let old_bytes = self.snapshot(Stage::BeforeGrow).container - container;
                 assert!(old_bytes > 0);
-                assert_eq!(before.usage.copy_bytes - self.snapshot(Stage::BeforeGrow).usage.copy_bytes, old_bytes);
-                if self.case != Case::RefusedGrowth {
+                let copied = if matches!(self.case, Case::SimulatedFresh | Case::SimulatedPreStopped) { 0 } else { old_bytes };
+                assert_eq!(before.usage.copy_bytes - self.snapshot(Stage::BeforeGrow).usage.copy_bytes, copied);
+                if self.case != Case::RefusedGrowth && !is_simulated(self.case) {
                     assert!(before.usage.peak_live_bytes >= before.usage.live_bytes + old_bytes,
                         "full old Vec Layout overlaps the new actual backing");
                 }
@@ -115,6 +138,9 @@ impl Instrumentation {
             _ => {}
         }
     }
+}
+fn is_simulated(case: Case) -> bool {
+    matches!(case, Case::SimulatedFresh | Case::SimulatedGrow | Case::SimulatedSourceGrow | Case::SimulatedPreStopped)
 }
 fn run_case(case: Case, cancelled: bool) -> GateWitnessReport {
     let pool = ModelResourcePool::new(32768);
@@ -192,8 +218,35 @@ pub fn actual_gate_first_fault_witness() {
     assert_eq!(report.fresh_stop, o);
     assert!(!report.fresh_operation_entered);
 }
+/// Simulated delegation errors: no Global call, no candidate block, no OOM claim.
+pub fn actual_gate_simulated_delegation_witness() {
+    for case in [Case::SimulatedFresh, Case::SimulatedGrow, Case::SimulatedSourceGrow, Case::SimulatedPreStopped] {
+        let report = run_case(case, false);
+        assert_eq!(report.new_capacity, report.old_capacity);
+        assert!(report.refused_pointer_preserved);
+        assert_eq!(report.original_stop, report.operation_stop);
+        assert_eq!(report.observer_stop, report.operation_stop);
+        let prevented = case == Case::SimulatedPreStopped;
+        assert_eq!(report.simulated_errors, if prevented { 0 } else { 1 });
+        assert_eq!(report.injection_still_armed, prevented);
+        assert_eq!(report.returned_stop, report.operation_stop);
+        assert_eq!(report.fresh_stop, report.operation_stop);
+        assert!(!report.fresh_operation_entered);
+        if case == Case::SimulatedFresh { assert!(report.fresh_backing_absent); }
+        if matches!(case, Case::SimulatedSourceGrow | Case::SimulatedPreStopped) {
+            let f = Some(fault(Dimension::Work, 2));
+            assert_eq!((report.operation_stop, report.returned_stop, report.fresh_stop), (f, f, f));
+            assert!(!report.fresh_operation_entered);
+        } else {
+            assert!(matches!(report.operation_stop, Some(ProgramStop::ResourceRefused(failure))
+                if failure.reason == RefusalReason::Allocation && failure.dimension == Dimension::LiveBytes));
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn actual_gate_simulated_delegation() { super::actual_gate_simulated_delegation_witness(); }
     #[test]
     fn actual_gate_lifetime() { super::actual_gate_lifetime_witness(); }
     #[test]

@@ -40,3 +40,9 @@ fn normal_identity_actual_gate_fresh_and_independently_stopped_faults() {
 fn normal_identity_actual_gate_expired_work_refuses_spare_capacity_mutation() {
     ifc_lite_geometry::test_support::actual_gate_expired_work_witness();
 }
+
+#[cfg(feature = "source-resource-gate-test-support")]
+#[test]
+fn normal_identity_actual_gate_simulated_delegation_rollback_and_source_precedence() {
+    ifc_lite_geometry::test_support::actual_gate_simulated_delegation_witness();
+}

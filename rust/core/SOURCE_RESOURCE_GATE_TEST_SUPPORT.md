@@ -28,7 +28,7 @@ feasibility bounds exist only inside unit/test-support code. None is production
 account workload authority, and none affects default acceptance. No dead-code or
 guard allowances are added.
 
-The public test-only module exports one runner, a six-case enum, scalar stage
+The public test-only module exports one runner, a fixed-case enum, scalar stage
 enum and plain Copy report. It exposes no decoder, gate, allocator, work callback,
 cache, source receipt or retained execution capability. This is additive Rust test
 surface behind an explicit feature, not a shipping loader or owner migration API.
@@ -135,3 +135,45 @@ evidence or production activation. Default/exact preservation, Global OOM,
 performance, baseline backing, complete cache authority and generation/revision
 proofs, Raw/cache/COW/escape migration and the major Rust owner migration remain
 open. No generated binding files or package versions are changed.
+
+## Additive simulated delegation-error prerequisite after 42c4
+
+Explicit test support now includes four fixed cases: SimulatedFresh,
+SimulatedGrow, SimulatedSourceGrow and SimulatedPreStopped. A fixed atomic record
+is inline in each funded GateInner. It has no independent backing, account,
+permit table or authority. Allocator clones share that gate; separate fixtures
+share no injection state. Only the private fixture runner can arm it. No new
+feature, dependency or production factory is introduced.
+
+After successful same-account debit, the allocate/resize adapters consume the
+one-shot arm immediately before their unchanged Global delegation. Armed calls
+produce a simulated AllocError instead of calling Global, then use the existing
+result match and failed_global path. This is neither process OOM nor a failed or
+successful actual Global call. No new block exists: there is no candidate free
+to claim. Successful/unarmed calls retain their original delegation and cleanup.
+Zeroed allocation, grow_zeroed and shrink share these adapters, but simulated
+failure through those specific entrypoints is NOT exercised or qualified here.
+
+The combined actual-Inner witnesses assert retained attempted work/copy and peak
+history, provisional live/category rollback, unchanged original Vec backing,
+empty fresh Vec backing, source/account/observer agreement, fresh-work refusal,
+Weak-only retention, final pool release and an untouched ambient account. Source
+F introduced after debit wins over the later Allocation failure; a source stopped
+before operation prevents debit and leaves the arm unconsumed, including reentry.
+The actual-account counters are not physical-storage instrumentation. A separate
+real-Global old-block unit witness retains storage-event checks: simulated grow
+creates/frees no new block, and the real original block is later deallocated
+before refund. Its fixture Budget is not authority in the combined account test.
+
+The parent's 85a44 sequential-drop correction is included verbatim. No be54 cache
+or authority files are copied into this branch. Apply the incremental patch by
+hunks to the assembled parent; preserve its live-cache and test-quota changes.
+Two cfg(test) storage-domain methods compare exact live GateInner identity via
+std::ptr::eq over immutable references. They confer no admission or source rights;
+separate gates remain foreign even with the same source/account. A unit witness
+checks sharing and foreign domains after source/work teardown, without charges.
+
+All new compilation, behavioral execution, feature/package checks, strict Clippy,
+wasm and performance qualification remain UNRUN. The earlier source-qualified
+parent results and failed original receipts are unchanged. This supplies bounded
+simulated-error assertions, not general Global-failure or production readiness.

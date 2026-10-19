@@ -269,3 +269,25 @@ fn p2_healthy_cleanup_handoff_refuses_prereserved_insertion_without_destination_
     assert!(destination.0.is_none());
     clean(&budget);
 }
+
+#[test]
+fn exact_storage_domain_survives_work_but_never_equates_separate_same_source_gates() {
+    let (original, shared, separate, budget) = run(4096, |decoder, work, gate, budget, _| {
+        let separate = super::gate::Gate::new(decoder, work).unwrap();
+        let original = gate.scope(decoder, work, |_, allocator| Ok(allocator.clone())).unwrap();
+        let shared = original.clone();
+        let separate = separate.scope(decoder, work, |_, allocator| Ok(allocator.clone())).unwrap();
+        (original, shared, separate, budget.clone())
+    }); // Authenticated work and source are gone; allocators retain refund owners.
+    let before = budget.stats();
+    assert!(original.same_storage_domain(&shared));
+    assert!(shared.same_storage_domain(&original));
+    assert!(!original.same_storage_domain(&separate));
+    assert!(!separate.same_storage_domain(&original));
+    let after = budget.stats();
+    assert_eq!((after.work, after.copies, after.refunded, after.allocations, after.frees, after.terminal),
+        (before.work, before.copies, before.refunded, before.allocations, before.frees, before.terminal));
+    assert_eq!(original.enter_operation(), Err(super::coverage()), "identity supplies no live work");
+    drop((original, shared, separate));
+    clean(&budget);
+}

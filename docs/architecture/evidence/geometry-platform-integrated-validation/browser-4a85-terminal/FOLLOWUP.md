@@ -10,6 +10,17 @@ Managed reclamation refuses the uncatalogued staged
 `rust/geometry-runtime/smlib/LICENSE` file. Both requests therefore leave the
 checkout intact. No manual deletion, catalog bypass or foreign cleanup follows.
 
+The subsequent explicit recovery task
+`ifclite-browser-4a85-assets-recovery-20261019` adopted only that owned checkout
+and selected 55 staged assets and browser-failure files (22,185,901 bytes).
+Publication stopped with `ValueError: archive needs explicit digest review; do
+not publish whole build trees` on the 4,661-byte Playwright trace archive.
+An authoritative task read confirms `evidence_pending` and no published manifests.
+The original staged assets and trace remain intact; this is not successful
+reclamation or recovered capacity. No archive renaming, policy change, manual
+deletion or repeat publication was used to bypass that refusal. The task state
+and exact selected-file hashes are retained in `storage-recovery-pending.json`.
+
 A fresh corrected-source attempt was submitted at
 `a2040ef13e279e8cb4dc93cfe53713b04d1412aa` as request
 `auto-4cdb3cc8bdbb4d50aa6cccd4fd17293c`. The original launcher terminates with:

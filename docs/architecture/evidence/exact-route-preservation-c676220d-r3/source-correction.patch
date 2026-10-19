@@ -1,0 +1,597 @@
+diff --git a/scripts/exact-route-compiler.mjs b/scripts/exact-route-compiler.mjs
+index e07c37f155..46aef77320 100644
+--- a/scripts/exact-route-compiler.mjs
++++ b/scripts/exact-route-compiler.mjs
+@@ -3,0 +4 @@
++import { unitEvidence } from './exact-route-units.mjs';
+@@ -18 +19 @@ export function compilerEnvironment(env) {
+-export function compilerEvidence(events, artifacts) {
++export function compilerEvidence(events, artifacts, context, files) {
+@@ -21,13 +22,6 @@ export function compilerEvidence(events, artifacts) {
+-  const example = events.filter(e => e.args.some((a, i) => a === '--crate-name' && e.args[i + 1] === 'exact_route_capture'));
+-  const artifact = artifacts.findLast(a => a.reason === 'compiler-artifact' && a.target?.name === 'exact_route_capture' && a.executable);
+-  if (!example.length || !artifact || artifact.fresh !== false || !artifact.profile ||
+-      artifact.profile.debug_assertions !== false || artifact.profile.test !== false) throw Error('no freshly compiled ordinary-profile capture example');
+-  const profile = artifact.profile;
+-  if (typeof profile.opt_level !== 'string' || !/^[0123sz]$/.test(profile.opt_level) ||
+-      !Object.hasOwn(profile, 'debuginfo') || !(profile.debuginfo === null ||
+-        [0, 1, 2, 'none', 'limited', 'full', 'line-tables-only', 'line-directives-only'].includes(profile.debuginfo)) ||
+-      typeof profile.overflow_checks !== 'boolean' || !Array.isArray(artifact.features) ||
+-      artifact.features.some(v => typeof v !== 'string')) throw Error('incomplete effective compiler profile/features');
+-  for (const event of example) {
+-    if (!event.args.some(a => a.includes('opt-level=')) ||
+-        event.args.some(a => /panic=(abort|immediate-abort)/.test(a))) throw Error('unexpected effective capture compiler policy');
++  const units = unitEvidence(events, artifacts, context, files);
++  const example = artifacts.findLast(a => a.reason === 'compiler-artifact' && a.target?.name === 'exact_route_capture' && a.executable);
++  const exampleUnits = units.filter(u => u.key.includes('/exact_route_capture/'));
++  if (!example || !exampleUnits.length || example.profile.debug_assertions !== false || example.profile.test !== false) throw Error('missing ordinary-profile example');
++  for (const event of events.filter(e => e.args.some((a, i) => a === '--crate-name' && e.args[i + 1] === 'exact_route_capture'))) {
++    if (!event.args.some(a => a.includes('opt-level=')) || event.args.some(a => /panic=(abort|immediate-abort)/.test(a))) throw Error('unexpected effective capture compiler policy');
+@@ -35,13 +29 @@ export function compilerEvidence(events, artifacts) {
+-  const policies = example.map(e => {
+-    const result = [];
+-    for (let i = 0; i < e.args.length; i++) {
+-      const arg = e.args[i];
+-      if (['-C', '-Z', '--target', '--cfg'].includes(arg)) {
+-        const value = e.args[++i];
+-        if (typeof value !== 'string') throw Error('incomplete compiler option');
+-        if (!/^(metadata|extra-filename|incremental)=/.test(value)) result.push(arg, value);
+-      } else if (/^(-C|-Z|--target=|--cfg=)/.test(arg) && !/^-C(metadata|extra-filename|incremental)=/.test(arg)) result.push(arg);
+-    }
+-    return { version: e.version, optionsInOrder: result };
+-  });
+-  return { events, exampleProfile: artifact.profile, exampleFeatures: artifact.features, policies };
++  return { events, exampleProfile: example.profile, exampleFeatures: example.features, policies: exampleUnits.map(u => u.policy), units };
+diff --git a/scripts/exact-route-compiler.test.mjs b/scripts/exact-route-compiler.test.mjs
+index 2969530f89..659226c682 100644
+--- a/scripts/exact-route-compiler.test.mjs
++++ b/scripts/exact-route-compiler.test.mjs
+@@ -5,0 +6 @@ import assert from 'node:assert/strict';
++import { compilerFixture } from './lib/exact-route-unit-fixture.mjs';
+@@ -19,9 +20,7 @@ test('flags and target compiler settings are recorded without discarding values'
+-test('unobserved cached capture and altered effective panic/debug assertions refuse', () => {
+-  const e = [{ compiler: 'rustc', version: 'pinned', args: ['--crate-name', 'exact_route_capture', '-C', 'opt-level=3'] }];
+-  const a = [{ reason: 'compiler-artifact', target: { name: 'exact_route_capture' }, executable: '/fixture/binary', fresh: false,
+-    features: [], profile: { debug_assertions: false, test: false, opt_level: '3', debuginfo: null, overflow_checks: false } }];
+-  assert.deepEqual(compilerEvidence(e, a).events, e);
+-  assert.throws(() => compilerEvidence([], a));
+-  assert.throws(() => compilerEvidence(e, [{ ...a[0], fresh: true }]));
+-  assert.throws(() => compilerEvidence(e, [{ ...a[0], profile: { debug_assertions: true, test: false } }]));
+-  assert.throws(() => compilerEvidence([{ ...e[0], args: [...e[0].args, '-C', 'panic=abort'] }], a));
++test('unobserved cached capture and altered effective panic/debug assertions refuse', t => {
++  const f = compilerFixture(t), evidence = () => compilerEvidence(f.events, f.artifacts, f.context, f.files);
++  assert.deepEqual(evidence().events, f.events);
++  assert.throws(() => compilerEvidence([], f.artifacts, f.context, f.files));
++  f.artifacts.at(-1).fresh = true; assert.throws(evidence); f.artifacts.at(-1).fresh = false;
++  f.artifacts.at(-1).profile.debug_assertions = true; assert.throws(evidence); f.artifacts.at(-1).profile.debug_assertions = false;
++  f.events.at(-1).args.push('-C', 'panic=abort'); assert.throws(evidence);
+diff --git a/scripts/exact-route-inputs.mjs b/scripts/exact-route-inputs.mjs
+new file mode 100644
+index 0000000000..10eb5f899a
+--- /dev/null
++++ b/scripts/exact-route-inputs.mjs
+@@ -0,0 +1,72 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
++import { dirname, join, resolve } from 'node:path';
++import { homedir } from 'node:os';
++import { sha256 } from './exact-route-source.mjs';
++export const canonical = v => JSON.stringify(v, (_key, value) => value && typeof value === 'object' && !Array.isArray(value)
++  ? Object.fromEntries(Object.keys(value).sort().map(k => [k, value[k]])) : value);
++export const digest = v => sha256(canonical(v));
++export function directoryInputs(root, packageRoot = false) {
++  const files = {};
++  function walk(directory, prefix) {
++    for (const name of readdirSync(directory).sort()) {
++      // Cargo-managed outputs and registry download bookkeeping are not inputs.
++      if (!prefix && packageRoot && ['.git', 'target', 'node_modules', '.cargo-ok'].includes(name)) continue;
++      const path = join(directory, name), key = prefix ? `${prefix}/${name}` : name, info = lstatSync(path);
++      if (info.isSymbolicLink()) throw Error(`unbound package source symlink: ${path}`);
++      if (info.isDirectory()) walk(path, key);
++      else if (info.isFile()) files[key] = sha256(readFileSync(path));
++      else throw Error(`unsupported package input: ${path}`);
++    }
++  }
++  walk(root, '');
++  if (packageRoot && !Object.hasOwn(files, 'Cargo.toml')) throw Error('package source snapshot lacks manifest');
++  return files;
++}
++export const packageInputs = root => directoryInputs(root, true);
++export function cargoConfiguration(cwd, env = process.env) {
++  const inputs = {};
++  let directory = resolve(cwd);
++  for (;;) {
++    for (const name of ['config', 'config.toml']) {
++      const path = join(directory, '.cargo', name);
++      if (existsSync(path)) inputs[path] = sha256(readFileSync(path));
++    }
++    const parent = dirname(directory); if (parent === directory) break; directory = parent;
++  }
++  for (const name of ['config', 'config.toml']) {
++    const path = join(env.CARGO_HOME ?? join(homedir(), '.cargo'), name);
++    if (existsSync(path)) inputs[path] = sha256(readFileSync(path));
++  }
++  return inputs;
++}
++export function compilerOutputs(args, cwd) {
++  const option = name => { const i = args.indexOf(name); return i < 0 ? null : args[i + 1]; };
++  const crate = option('--crate-name'), out = option('--out-dir');
++  if (!crate || !out) return {};
++  let suffix = '';
++  for (let i = 0; i < args.length; i++) {
++    const value = args[i] === '-C' ? args[i + 1] : args[i].startsWith('-C') ? args[i].slice(2) : '';
++    if (value?.startsWith('extra-filename=')) suffix = value.slice('extra-filename='.length);
++  }
++  const base = `${crate}${suffix}`, directory = resolve(cwd, out), files = {};
++  const names = new Set([base, `${base}.exe`, ...['rlib', 'rmeta', 'so', 'dylib', 'dll', 'a'].flatMap(ext =>
++    [`${base}.${ext}`, `lib${base}.${ext}`])]);
++  if (!existsSync(directory)) return files;
++  for (const name of readdirSync(directory)) if (names.has(name)) {
++    const path = join(directory, name);
++    if (!lstatSync(path).isFile()) throw Error(`non-file compiler output: ${path}`);
++    files[path] = sha256(readFileSync(path));
++  }
++  return files;
++}
++export function artifactHashes(artifacts) {
++  const files = {};
++  for (const unit of artifacts.filter(a => a.reason === 'compiler-artifact')) {
++    if (!Array.isArray(unit.filenames) || !unit.filenames.length) throw Error('missing Cargo artifact file list');
++    for (const path of unit.filenames) files[path] = sha256(readFileSync(path));
++  }
++  return files;
++}
+diff --git a/scripts/exact-route-receipts.mjs b/scripts/exact-route-receipts.mjs
+index f84d62b1b0..6a86fdff08 100644
+--- a/scripts/exact-route-receipts.mjs
++++ b/scripts/exact-route-receipts.mjs
+@@ -9,0 +10,2 @@ import { gitSource, verifyFleet, verifyHarnessManifest } from './exact-route-sou
++import { digest } from './exact-route-inputs.mjs';
++import { compareUnitPolicies } from './exact-route-units.mjs';
+@@ -42,2 +44,6 @@ export function compareReceipts(aDir, bDir, expectedBase, expectedBranch, manife
+-    const compiler = compilerEvidence(lines(invocations), lines(artifacts));
+-    if (difference(compiler.events, receipt.compiler?.events) ||
++    const context = read(dir, 'compiler-context.json'), files = read(dir, 'compiler-artifact-hashes.json');
++    if (digest(context) !== receipt.compilerContextSha256 || difference(context.source, source) ||
++        context.workspaceRoot !== receipt.cwd || context.toolchain !== receipt.toolchain ||
++        context.cargo !== receipt.cargo || difference(context.environment, receipt.environment)) throw Error('compiler context/source mismatch');
++    const compiler = compilerEvidence(lines(invocations), lines(artifacts), context, files);
++    if (difference(compiler.units, receipt.compiler?.units) || difference(compiler.events, receipt.compiler?.events) ||
+@@ -61,0 +68 @@ export function compareReceipts(aDir, bDir, expectedBase, expectedBranch, manife
++  compareUnitPolicies(a.compiler.units, b.compiler.units);
+diff --git a/scripts/exact-route-receipts.test.mjs b/scripts/exact-route-receipts.test.mjs
+index 3f5c0b6c24..2b212639dd 100644
+--- a/scripts/exact-route-receipts.test.mjs
++++ b/scripts/exact-route-receipts.test.mjs
+@@ -6 +6 @@ import assert from 'node:assert/strict';
+-import { writeFileSync } from 'node:fs';
++import { readFileSync, writeFileSync } from 'node:fs';
+@@ -61,0 +62,27 @@ for (const count of [0, 2]) test(`independent output log requires exactly one re
++
++for (const which of ['geometry', 'processing', 'external']) {
++  test(`identical scenes/example, internally rebound ${which} policy still refuses`, t => {
++    const c = cohort(t);
++    c.compiler(({ events, artifacts }) => {
++      const i = which === 'geometry' ? 2 : which === 'processing' ? 3 : 0;
++      artifacts[i].profile.opt_level = '0'; events[i].args.push('-C', 'opt-level=0');
++    });
++    assert.throws(c.compare, /dependency effective/);
++  });
++}
++
++test('identical scenes/example, internally rebound dependency arguments refuse', t => {
++  const c = cohort(t);
++  c.compiler(({ events }) => events[2].args.push('--sysroot', '/different/dependency-sysroot'));
++  assert.deepEqual(readFileSync(join(c.dirs[0], '0.json')), readFileSync(join(c.dirs[1], '0.json')));
++  assert.throws(c.compare, /dependency effective policy/);
++});
++test('identical scenes/example, cached dependency without qualified trace refuses', t => {
++  const c = cohort(t), path = join(c.dirs[1], 'cargo-artifacts.jsonl');
++  const artifacts = readFileSync(path, 'utf8').split('\n').filter(Boolean).map(v => JSON.parse(v));
++  artifacts[2].fresh = true; artifacts[2].retainedTrace = { trusted: true };
++  writeFileSync(path, artifacts.map(v => JSON.stringify(v)).join('\n'));
++  c.alter(r => r.compiler.artifactEventsSha256 = sha256(readFileSync(path)));
++  assert.deepEqual(readFileSync(join(c.dirs[0], '0.json')), readFileSync(join(c.dirs[1], '0.json')));
++  assert.throws(c.compare, /cached artifact has no qualified retained compile trace/);
++});
+diff --git a/scripts/exact-route-run.mjs b/scripts/exact-route-run.mjs
+index febc63765a..e0f73b49c3 100644
+--- a/scripts/exact-route-run.mjs
++++ b/scripts/exact-route-run.mjs
+@@ -12,0 +13 @@ import { compilerEnvironment, compilerEvidence } from './exact-route-compiler.mj
++import { cargoConfiguration, artifactHashes, digest } from './exact-route-inputs.mjs';
+@@ -15 +16 @@ const bundle = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+-const manifestPath = 'docs/architecture/evidence/exact-route-preservation-c676220d-r2/manifest.json';
++const manifestPath = 'docs/architecture/evidence/exact-route-preservation-c676220d-r3/manifest.json';
+@@ -82,0 +84,5 @@ function run(cwd, expectedHead, output) {
++    const context = { format: 'exact-route-compile-context-v1', workspaceRoot: cwd, source, environment,
++      toolchain: receipt.toolchain, cargo: receipt.cargo, configuration: cargoConfiguration(cwd) };
++    const contextFile = resolve(output, 'compiler-context.json');
++    writeFileSync(contextFile, JSON.stringify(context));
++    receipt.compilerContextSha256 = digest(context); save();
+@@ -84 +90 @@ function run(cwd, expectedHead, output) {
+-      env: { ...process.env, RUSTC_WRAPPER: resolve(bundle, 'scripts/exact-route-rustc.mjs'), EXACT_ROUTE_RUSTC_LOG: compilerLog } });
++      env: { ...process.env, RUSTC_WRAPPER: resolve(bundle, 'scripts/exact-route-rustc.mjs'), EXACT_ROUTE_RUSTC_LOG: compilerLog, EXACT_ROUTE_CONTEXT_FILE: contextFile } });
+@@ -91 +97,4 @@ function run(cwd, expectedHead, output) {
+-    const evidence = compilerEvidence(events, artifacts);
++    const files = artifactHashes(artifacts);
++    writeFileSync(resolve(output, 'compiler-artifact-hashes.json'), JSON.stringify(files));
++    if (digest(cargoConfiguration(cwd)) !== digest(context.configuration)) throw Error('Cargo configuration changed during build');
++    const evidence = compilerEvidence(events, artifacts, context, files);
+diff --git a/scripts/exact-route-rustc.mjs b/scripts/exact-route-rustc.mjs
+index de79aac609..60bd99f9a3 100755
+--- a/scripts/exact-route-rustc.mjs
++++ b/scripts/exact-route-rustc.mjs
+@@ -5 +5 @@
+-import { appendFileSync } from 'node:fs';
++import { appendFileSync, readFileSync } from 'node:fs';
+@@ -7,2 +7,7 @@ import { spawnSync } from 'node:child_process';
+-const [compiler, ...args] = process.argv.slice(2);
+-if (!compiler || !process.env.EXACT_ROUTE_RUSTC_LOG) throw Error('missing compiler evidence context');
++import { resolve } from 'node:path';
++import { sha256 } from './exact-route-source.mjs';
++import { cargoConfiguration, compilerOutputs, digest, directoryInputs, packageInputs } from './exact-route-inputs.mjs';
++const [compiler, ...args] = process.argv.slice(2), cwd = process.cwd();
++if (!compiler || !process.env.EXACT_ROUTE_RUSTC_LOG || !process.env.EXACT_ROUTE_CONTEXT_FILE) throw Error('missing compiler evidence context');
++const contextBytes = readFileSync(process.env.EXACT_ROUTE_CONTEXT_FILE), context = JSON.parse(contextBytes);
++if (context.workspaceRoot !== cwd) throw Error('compiler cwd differs from compile context');
+@@ -11 +16,11 @@ if (identity.error || identity.status !== 0) throw Error('cannot identify actual
+-appendFileSync(process.env.EXACT_ROUTE_RUSTC_LOG, `${JSON.stringify({ compiler, version: identity.stdout.trim(), args })}\n`);
++const pkg = process.env.CARGO_MANIFEST_DIR && process.env.CARGO_PKG_NAME && process.env.CARGO_PKG_VERSION ?
++  { root: resolve(process.env.CARGO_MANIFEST_DIR), name: process.env.CARGO_PKG_NAME, version: process.env.CARGO_PKG_VERSION } : null;
++const externs = () => Object.fromEntries(args.flatMap((arg, i) => {
++  if (arg !== '--extern') return [];
++  const split = args[i + 1]?.indexOf('='); if (!(split > 0)) throw Error('unbound compiler extern input');
++  const path = resolve(cwd, args[i + 1].slice(split + 1)); return [[path, sha256(readFileSync(path))]];
++}));
++const inputsBefore = pkg ? packageInputs(pkg.root) : null;
++const generatedRoot = process.env.OUT_DIR ? resolve(process.env.OUT_DIR) : null;
++const generatedInputsBefore = generatedRoot ? directoryInputs(generatedRoot) : null;
++const configurationBefore = cargoConfiguration(cwd), externInputs = externs();
+@@ -12,0 +28,7 @@ const result = spawnSync(compiler, args, { stdio: 'inherit' });
++const event = { compiler, version: identity.stdout.trim(), args, cwd, package: pkg,
++  contextSha256: digest(context), status: result.status, signal: result.signal,
++  generatedRoot, generatedInputsBefore, generatedInputsAfter: generatedRoot ? directoryInputs(generatedRoot) : null,
++  inputsBefore, inputsAfter: pkg ? packageInputs(pkg.root) : null,
++  configurationBefore, configurationAfter: cargoConfiguration(cwd), externInputs, externAfter: externs(),
++  outputs: result.status === 0 ? compilerOutputs(args, cwd) : {} };
++appendFileSync(process.env.EXACT_ROUTE_RUSTC_LOG, `${JSON.stringify(event)}\n`);
+diff --git a/scripts/exact-route-units.mjs b/scripts/exact-route-units.mjs
+new file mode 100644
+index 0000000000..fd460b1036
+--- /dev/null
++++ b/scripts/exact-route-units.mjs
+@@ -0,0 +1,141 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++import { dirname, isAbsolute, relative, resolve } from 'node:path';
++import { isDeepStrictEqual } from 'node:util';
++import { digest } from './exact-route-inputs.mjs';
++export const CRITICAL = ['ifc-lite-core', 'ifc-lite-geometry', 'ifc-lite-processing'];
++const hash = v => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
++const equal = (a, b, why) => { if (!isDeepStrictEqual(a, b)) throw Error(why); };
++const option = (args, name) => { const i = args.indexOf(name); return i < 0 ? null : args[i + 1]; };
++export function effectivePolicy(event, sourcePath) {
++  const result = [];
++  for (let i = 0; i < event.args.length; i++) {
++    const arg = event.args[i];
++    if (arg === '--out-dir') {
++      if (typeof event.args[++i] !== 'string') throw Error('incomplete output directory');
++      result.push(arg, '<OUTPUT_DIRECTORY>');
++    } else if (arg === '--extern') {
++      const value = event.args[++i], split = value?.indexOf('=');
++      if (!(split > 0)) throw Error('incomplete compiler extern');
++      result.push(arg, `${value.slice(0, split)}=<BOUND_ARTIFACT>`);
++    } else if (arg === '-L' && event.args[i + 1]?.startsWith('dependency=')) {
++      i++; result.push(arg, 'dependency=<BOUND_DEPENDENCY_DIRECTORY>');
++    } else if (arg.startsWith('-Ldependency=')) result.push('-Ldependency=<BOUND_DEPENDENCY_DIRECTORY>');
++    else if (arg === '-C' || arg.startsWith('-C')) {
++      const value = arg === '-C' ? event.args[++i] : arg.slice(2);
++      if (typeof value !== 'string') throw Error('incomplete compiler codegen option');
++      if (/^(metadata|extra-filename)=/.test(value)) continue;
++      result.push('-C', value.startsWith('incremental=') ? 'incremental=<DIRECTORY>' : value);
++    } else if (arg.endsWith('.rs') && resolve(event.cwd, arg) === resolve(sourcePath)) result.push('<SOURCE>');
++    else result.push(arg); // Every other argument remains policy-relevant, in order.
++  }
++  return { version: event.version, optionsInOrder: result };
++}
++function validateProfile(unit) {
++  const p = unit.profile;
++  if (!p || typeof p.opt_level !== 'string' || !/^[0123sz]$/.test(p.opt_level) ||
++      !Object.hasOwn(p, 'debuginfo') || !(p.debuginfo === null ||
++        [0, 1, 2, 'none', 'limited', 'full', 'line-tables-only', 'line-directives-only'].includes(p.debuginfo)) ||
++      ['debug_assertions', 'overflow_checks', 'test'].some(k => typeof p[k] !== 'boolean') ||
++      !Array.isArray(unit.features) || unit.features.some(v => typeof v !== 'string') ||
++      !unit.target || typeof unit.target.name !== 'string' || !Array.isArray(unit.target.kind) ||
++      !unit.target.kind.length || unit.target.kind.some(k => typeof k !== 'string') ||
++      typeof unit.target.src_path !== 'string' || typeof unit.package_id !== 'string') throw Error('incomplete dependency profile/identity');
++}
++function traceMatches(event, unit) {
++  if (!event.package || `${event.package.name}@${event.package.version}` !== unit.package_id.split('#').at(-1)) return false;
++  const source = unit.target.src_path;
++  const out = option(event.args, '--out-dir');
++  return out && event.args.some(a => a.endsWith('.rs') && resolve(event.cwd, a) === resolve(source)) &&
++    unit.filenames.every(path => dirname(path) === resolve(event.cwd, out));
++}
++function packageSource(event, context) {
++  const pkg = event.package;
++  if (!pkg || typeof pkg.name !== 'string' || !pkg.name || typeof pkg.version !== 'string' || !pkg.version || !isAbsolute(pkg.root)) throw Error('missing compiler package identity');
++  if (!event.inputsBefore || !Object.keys(event.inputsBefore).length ||
++      !Object.hasOwn(event.inputsBefore, 'Cargo.toml') || Object.values(event.inputsBefore).some(v => !hash(v))) throw Error('missing package source fingerprints');
++  equal(event.inputsBefore, event.inputsAfter, 'package input bytes changed during compilation');
++  const path = relative(context.workspaceRoot, pkg.root), workspace = !path.startsWith('..') && !isAbsolute(path);
++  if (workspace) for (const [file, sha] of Object.entries(event.inputsBefore)) {
++    const tracked = [path, file].filter(Boolean).join('/');
++    if (context.source.trackedSourceHashes[tracked] !== sha) throw Error(`workspace dependency input not Git-bound: ${tracked}`);
++  }
++  if (!Object.hasOwn(event, 'generatedRoot') || !Object.hasOwn(event, 'generatedInputsBefore') ||
++      !Object.hasOwn(event, 'generatedInputsAfter')) throw Error('missing generated compiler input provenance');
++  equal(event.generatedInputsBefore, event.generatedInputsAfter, 'generated compiler inputs changed');
++  if (event.generatedRoot === null) {
++    if (event.generatedInputsBefore !== null) throw Error('unbound generated compiler inputs');
++  } else if (!isAbsolute(event.generatedRoot) || !event.generatedInputsBefore || Array.isArray(event.generatedInputsBefore) ||
++      Object.values(event.generatedInputsBefore).some(v => !hash(v))) throw Error('malformed generated compiler inputs');
++  return { workspace, sourceDigest: digest({ package: event.inputsBefore, generated: event.generatedInputsBefore }) };
++}
++export function unitEvidence(events, artifacts, context, files) {
++  if (!context || context.format !== 'exact-route-compile-context-v1' || !isAbsolute(context.workspaceRoot) ||
++      !context.source?.trackedSourceHashes || !context.configuration || typeof context.toolchain !== 'string') throw Error('missing compile context');
++  if (!files || Object.values(files).some(v => !hash(v))) throw Error('missing actual artifact byte fingerprints');
++  const units = artifacts.filter(a => a.reason === 'compiler-artifact');
++  if (!units.length) throw Error('empty compilation unit cohort');
++  const result = [], used = new Set();
++  for (const unit of units) {
++    validateProfile(unit);
++    // No retained compile-trace import is implemented. Managed-cache hits remain
++    // unqualified; NEVER reinterpret `fresh` as policy evidence or erase caches.
++    if (unit.fresh !== false) throw Error(`cached artifact has no qualified retained compile trace: ${unit.package_id}/${unit.target.name}`);
++    if (!Array.isArray(unit.filenames) || !unit.filenames.length || unit.filenames.some(p => !isAbsolute(p) || !hash(files[p]))) throw Error('unbound Cargo artifact bytes');
++    const matches = events.map((event, index) => ({ event, index })).filter(({ event }) => traceMatches(event, unit));
++    if (matches.length !== 1) throw Error(`missing/ambiguous reached dependency compiler trace: ${unit.target.name}`);
++    const { event, index } = matches[0];
++    if (used.has(index)) throw Error('one compiler trace reused for multiple units'); used.add(index);
++    if (event.args.some(arg => arg.startsWith('@'))) throw Error('unbound compiler response file');
++    if (event.status !== 0 || event.signal !== null || event.contextSha256 !== digest(context) || event.version !== context.toolchain ||
++        event.cwd !== context.workspaceRoot) throw Error('dependency compiler source/config/toolchain context mismatch');
++    equal(event.configurationBefore, context.configuration, 'dependency config differs from admitted context');
++    equal(event.configurationAfter, context.configuration, 'dependency config changed during compilation');
++    const source = packageSource(event, context);
++    const inputPath = relative(event.package.root, unit.target.src_path);
++    if (inputPath.startsWith('..') || isAbsolute(inputPath) || !hash(event.inputsBefore[inputPath])) throw Error('compiler source not in bound package snapshot');
++    if (!event.outputs || !Object.keys(event.outputs).length || Object.values(event.outputs).some(v => !hash(v))) throw Error('missing terminal compiler output fingerprints');
++    for (const path of unit.filenames) {
++      // Cargo renames build-script executables after rustc completes. Their
++      // copied bytes must still equal the terminal compiler output's bytes.
++      const compiled = event.outputs[path] ?? (unit.target.kind.includes('custom-build') || unit.executable === path ?
++        Object.values(event.outputs).find(sha => sha === files[path]) : undefined);
++      if (compiled !== files[path]) throw Error(`compiler trace/artifact bytes mismatch: ${path}`);
++    }
++    equal(event.externInputs, event.externAfter, 'linked dependency bytes changed during compilation');
++    const linked = [];
++    for (let i = 0; i < event.args.length; i++) if (event.args[i] === '--extern') {
++      const value = event.args[++i], split = value?.indexOf('=');
++      if (!(split > 0)) throw Error('unbound --extern dependency');
++      const path = resolve(event.cwd, value.slice(split + 1));
++      if (!hash(files[path]) || event.externInputs?.[path] !== files[path]) throw Error(`linked dependency bytes not traced: ${path}`);
++      linked.push({ name: value.slice(0, split), path, sha256: files[path] });
++    }
++    const key = `${source.workspace ? 'workspace' : unit.package_id}/${event.package.name}@${event.package.version}/${unit.target.name}/${unit.target.kind.join(',')}`;
++    if (result.some(row => row.key === key)) throw Error(`duplicate compilation unit identity: ${key}`);
++    result.push({ key, package: event.package.name, workspace: source.workspace, sourceDigest: source.sourceDigest,
++      profile: unit.profile, features: unit.features, policy: effectivePolicy(event, unit.target.src_path), linked,
++      artifacts: Object.fromEntries(unit.filenames.map(p => [p, files[p]])), traceIndex: index });
++  }
++  for (const name of CRITICAL) if (!result.some(row => row.workspace && row.package === name)) throw Error(`missing critical workspace dependency: ${name}`);
++  return result;
++}
++export function compareUnitPolicies(a, b) {
++  const byKey = rows => new Map(rows.map(row => [row.key, row]));
++  const left = byKey(a), right = byKey(b);
++  if (left.size !== a.length || right.size !== b.length || left.size !== right.size) throw Error('dependency unit cohort differs or repeats');
++  for (const [key, row] of left) {
++    const other = right.get(key); if (!other) throw Error(`unpaired dependency unit policy: ${key}`);
++    for (const field of ['profile', 'features', 'policy']) equal(row[field], other[field], `dependency effective ${field} mismatch: ${key}`);
++    if (!row.workspace) equal(row.sourceDigest, other.sourceDigest, `external dependency source differs: ${key}`);
++    // Artifact bytes can legitimately change with workspace source, but every
++    // reached link must refer to another independently qualified unit's bytes.
++    const owners = (rows, links) => links.map(link => {
++      const owner = rows.filter(unit => unit.artifacts[link.path] === link.sha256);
++      if (owner.length !== 1) throw Error('ambiguous linked artifact owner');
++      return { name: link.name, unit: owner[0].key };
++    });
++    equal(owners(a, row.linked), owners(b, other.linked), `dependency link policy differs: ${key}`);
++  }
++}
+diff --git a/scripts/exact-route-units.test.mjs b/scripts/exact-route-units.test.mjs
+new file mode 100644
+index 0000000000..1e649e8d16
+--- /dev/null
++++ b/scripts/exact-route-units.test.mjs
+@@ -0,0 +1,75 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { compilerEvidence } from './exact-route-compiler.mjs';
++import { compareUnitPolicies } from './exact-route-units.mjs';
++import { digest } from './exact-route-inputs.mjs';
++import { compilerFixture } from './lib/exact-route-unit-fixture.mjs';
++const compiled = f => compilerEvidence(f.events, f.artifacts, f.context, f.files);
++const geometry = f => f.artifacts.findIndex(a => a.target.name === 'ifc-lite-geometry');
++test('every reached critical/external/example unit has bound source/config/toolchain/output policy', t => {
++  const a = compiled(compilerFixture(t)), b = compiled(compilerFixture(t));
++  assert.equal(a.units.length, 5);
++  assert.equal(a.units.filter(u => !u.workspace).length, 1);
++  assert.doesNotThrow(() => compareUnitPolicies(a.units, b.units));
++});
++for (const which of ['geometry', 'processing', 'external']) {
++  for (const change of ['profile', 'args', 'features']) test(`same example, differing ${which} ${change} refuses`, t => {
++    const a = compilerFixture(t), b = compilerFixture(t);
++    const i = which === 'geometry' ? geometry(b) : which === 'processing' ? 3 : 0;
++    if (change === 'profile') { b.artifacts[i].profile.opt_level = '0'; b.events[i].args.push('-C', 'opt-level=0'); }
++    if (change === 'args') b.events[i].args.push('-C', 'debug-assertions=yes');
++    if (change === 'features') b.artifacts[i].features.push('different-effective-feature');
++    const left = compiled(a), right = compiled(b);
++    assert.deepEqual(left.policies, right.policies); assert.deepEqual(left.exampleProfile, right.exampleProfile);
++    assert.throws(() => compareUnitPolicies(left.units, right.units));
++  });
++}
++for (const [name, mutate] of Object.entries({
++  cachedNoTrace: (f, i) => { f.artifacts[i].fresh = true; f.events.splice(i, 1); },
++  cachedWithUnqualifiedLabel: (f, i) => { f.artifacts[i].fresh = true; f.artifacts[i].retainedTrace = { trusted: true }; },
++  missingTrace: (f, i) => f.events.splice(i, 1),
++  wrongOutput: (f, i) => f.events[i].outputs[f.artifacts[i].filenames[0]] = 'b'.repeat(64),
++  wrongSource: (f, i) => { f.events[i].inputsBefore['src/lib.rs'] = 'b'.repeat(64); f.events[i].inputsAfter['src/lib.rs'] = 'b'.repeat(64); },
++  wrongContext: (f, i) => f.events[i].contextSha256 = 'b'.repeat(64),
++  configMutation: (f, i) => f.events[i].configurationAfter.global = 'b'.repeat(64),
++  unboundConfig: (f, i) => { f.events[i].configurationBefore.global = 'b'.repeat(64); f.events[i].configurationAfter.global = 'b'.repeat(64); },
++  wrongToolchain: (f, i) => f.events[i].version = 'other compiler',
++  failedCompile: (f, i) => f.events[i].status = 1,
++  missingArtifactHash: (f, i) => delete f.files[f.artifacts[i].filenames[0]],
++  wrongLinkedBytes: f => { const e = f.events.at(-1); e.externInputs[Object.keys(e.externInputs)[0]] = 'b'.repeat(64); },
++})) test(`dependency provenance negative: ${name}`, t => {
++  const f = compilerFixture(t); mutate(f, geometry(f)); assert.throws(() => compiled(f));
++});
++test('missing critical crate and unpaired dependency cohort refuse', t => {
++  const f = compilerFixture(t); f.artifacts.splice(geometry(f), 1); assert.throws(() => compiled(f));
++  const a = compiled(compilerFixture(t)); assert.throws(() => compareUnitPolicies(a.units, a.units.slice(1)));
++});
++test('external same-package source changes cannot hide behind matching example policy', t => {
++  const a = compilerFixture(t), b = compilerFixture(t);
++  b.events[0].inputsBefore['lib.rs'] = 'b'.repeat(64); b.events[0].inputsAfter['lib.rs'] = 'b'.repeat(64);
++  const left = compiled(a), right = compiled(b);
++  assert.deepEqual(left.policies, right.policies); assert.throws(() => compareUnitPolicies(left.units, right.units));
++});
++test('context digest binds actual source and selected configuration', t => {
++  const f = compilerFixture(t); f.context.configuration.external = 'c'.repeat(64);
++  assert.notEqual(f.events[0].contextSha256, digest(f.context)); assert.throws(() => compiled(f));
++});
++
++test('dependency arguments beyond codegen subset remain policy-relevant', t => {
++  const a = compilerFixture(t), b = compilerFixture(t);
++  b.events[geometry(b)].args.push('--sysroot', '/different/sysroot');
++  const left = compiled(a), right = compiled(b); assert.deepEqual(left.policies, right.policies);
++  assert.throws(() => compareUnitPolicies(left.units, right.units));
++});
++test('package version and selected source cannot detach from Cargo artifact identity', t => {
++  const f = compilerFixture(t); f.events[geometry(f)].package.version = '2.0.0'; assert.throws(() => compiled(f));
++});
++
++test('generated compiler input changes or omitted provenance refuse', t => {
++  const f = compilerFixture(t); delete f.events[geometry(f)].generatedInputsBefore; assert.throws(() => compiled(f));
++  const g = compilerFixture(t); g.events[geometry(g)].generatedInputsAfter = { generated: 'b'.repeat(64) };
++  assert.throws(() => compiled(g));
++});
+diff --git a/scripts/lib/exact-route-cohort.mjs b/scripts/lib/exact-route-cohort.mjs
+index cbaffe7881..bc8e2b24d8 100644
+--- a/scripts/lib/exact-route-cohort.mjs
++++ b/scripts/lib/exact-route-cohort.mjs
+@@ -12,0 +13,2 @@ import { compareReceipts } from '../exact-route-receipts.mjs';
++import { digest } from '../exact-route-inputs.mjs';
++import { unitFixture, writeCompilerSources } from './exact-route-unit-fixture.mjs';
+@@ -21,0 +24 @@ export function cohort(t) {
++  writeCompilerSources(repo);
+@@ -25 +28 @@ export function cohort(t) {
+-  const overlay = 'rust/capture.rs'; mkdirSync(join(repo, 'rust')); writeFileSync(join(repo, overlay), 'exact overlay fixture\n');
++  const overlay = 'rust/processing/examples/exact_route_capture.rs'; mkdirSync(join(repo, 'rust/processing/examples'), { recursive: true }); writeFileSync(join(repo, overlay), 'exact overlay fixture\n');
+@@ -46,6 +49,5 @@ export function cohort(t) {
+-    const binary = join(root, 'compiler-output'); writeFileSync(join(dir, 'capture-binary'), 'fixture executable bytes');
+-    const events = [{ compiler: 'rustc', version: 'fixture rustc', args: ['--crate-name', 'exact_route_capture', '-C', 'opt-level=3'] }];
+-    const artifacts = [{ reason: 'compiler-artifact', target: { name: 'exact_route_capture' }, executable: binary, fresh: false,
+-      features: [], profile: { debug_assertions: false, test: false, opt_level: '3', debuginfo: null, overflow_checks: false } }];
+-    writeFileSync(join(dir, 'compiler-invocations.jsonl'), JSON.stringify(events[0]));
+-    writeFileSync(join(dir, 'cargo-artifacts.jsonl'), JSON.stringify(artifacts[0]));
++    const { events, artifacts, files, context } = unitFixture(repo, dir, source);
++    const binary = artifacts.at(-1).executable; writeFileSync(join(dir, 'capture-binary'), readFileSync(binary));
++    writeFileSync(join(dir, 'compiler-invocations.jsonl'), events.map(e => JSON.stringify(e)).join('\n'));
++    writeFileSync(join(dir, 'cargo-artifacts.jsonl'), artifacts.map(e => JSON.stringify(e)).join('\n'));
++    json(join(dir, 'compiler-context.json'), context); json(join(dir, 'compiler-artifact-hashes.json'), files);
+@@ -58 +60 @@ export function cohort(t) {
+-      manifestSha256: sha256(readFileSync(manifestPath)), environment: {}, compiler: { ...compilerEvidence(events, artifacts),
++      manifestSha256: sha256(readFileSync(manifestPath)), compilerContextSha256: digest(context), environment: {}, compiler: { ...compilerEvidence(events, artifacts, context, files),
+@@ -76,0 +79,13 @@ export function cohort(t) {
++    compiler(change, i = 1) {
++      const dir = dirs[i], lines = file => readFileSync(join(dir, file), 'utf8').split('\n').filter(Boolean).map(s => JSON.parse(s));
++      const events = lines('compiler-invocations.jsonl'), artifacts = lines('cargo-artifacts.jsonl');
++      const context = JSON.parse(readFileSync(join(dir, 'compiler-context.json'))), files = JSON.parse(readFileSync(join(dir, 'compiler-artifact-hashes.json')));
++      change({ events, artifacts, context, files });
++      writeFileSync(join(dir, 'compiler-invocations.jsonl'), events.map(e => JSON.stringify(e)).join('\n'));
++      writeFileSync(join(dir, 'cargo-artifacts.jsonl'), artifacts.map(e => JSON.stringify(e)).join('\n'));
++      json(join(dir, 'compiler-context.json'), context); json(join(dir, 'compiler-artifact-hashes.json'), files);
++      const updated = compilerEvidence(events, artifacts, context, files);
++      this.alter(r => { r.compiler = { ...r.compiler, ...updated,
++        invocationSha256: sha256(readFileSync(join(dir, 'compiler-invocations.jsonl'))),
++        artifactEventsSha256: sha256(readFileSync(join(dir, 'cargo-artifacts.jsonl'))) }; }, i);
++    },
+diff --git a/scripts/lib/exact-route-unit-fixture.mjs b/scripts/lib/exact-route-unit-fixture.mjs
+new file mode 100644
+index 0000000000..b053c34d5a
+--- /dev/null
++++ b/scripts/lib/exact-route-unit-fixture.mjs
+@@ -0,0 +1,62 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++// Synthetic files and terminal compiler events for protocol tests, never builds.
++import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { dirname, join } from 'node:path';
++import { sha256 } from '../exact-route-source.mjs';
++import { packageInputs, digest } from '../exact-route-inputs.mjs';
++export const profile = () => ({ debug_assertions: false, test: false, opt_level: '3', debuginfo: null, overflow_checks: false });
++export function writeCompilerSources(repo) {
++  for (const name of ['core', 'geometry', 'processing']) {
++    const root = join(repo, 'rust', name); mkdirSync(join(root, 'src'), { recursive: true });
++    writeFileSync(join(root, 'Cargo.toml'), `[package]\nname = "ifc-lite-${name}"\nversion = "1.0.0"\n`);
++    writeFileSync(join(root, 'src/lib.rs'), `// ${name} protocol fixture\n`);
++  }
++}
++export function unitFixture(repo, output, source, environment = {}) {
++  const external = join(dirname(repo), 'external-fixture'); mkdirSync(external, { recursive: true });
++  writeFileSync(join(external, 'Cargo.toml'), '[package]\nname = "external-fixture"\nversion = "1.0.0"\n');
++  writeFileSync(join(external, 'lib.rs'), '// external protocol source\n');
++  const context = { format: 'exact-route-compile-context-v1', workspaceRoot: repo, source, environment,
++    toolchain: 'fixture rustc', cargo: 'fixture cargo', configuration: {} };
++  const events = [], artifacts = [], files = {};
++  const specs = [{ name: 'external-fixture', root: external, path: 'lib.rs' },
++    ...['core', 'geometry', 'processing'].map(name => ({ name: `ifc-lite-${name}`, root: join(repo, 'rust', name), path: 'src/lib.rs' })),
++    { name: 'ifc-lite-processing', root: join(repo, 'rust/processing'), path: 'examples/exact_route_capture.rs', example: true }];
++  mkdirSync(join(output, 'artifacts'), { recursive: true });
++  for (const spec of specs) {
++    const crate = spec.example ? 'exact_route_capture' : spec.name.replaceAll('-', '_');
++    const file = join(output, 'artifacts', spec.example ? `${crate}-fixture` : `lib${crate}-fixture.rlib`);
++    writeFileSync(file, `${crate} protocol artifact`); files[file] = sha256(readFileSync(file));
++    const args = ['--crate-name', crate, join(spec.root, spec.path), '--out-dir', join(output, 'artifacts'),
++      '--crate-type', spec.example ? 'bin' : 'lib', '-C', 'opt-level=3', '-C', 'extra-filename=-fixture'];
++    const externInputs = {};
++    if (spec.name === 'ifc-lite-processing') {
++      for (const dep of artifacts.filter(a => !a.executable)) {
++        args.push('--extern', `${dep.target.name.replaceAll('-', '_')}=${dep.filenames[0]}`);
++        externInputs[dep.filenames[0]] = files[dep.filenames[0]];
++      }
++    }
++    const inputs = packageInputs(spec.root);
++    events.push({ compiler: 'rustc', version: context.toolchain, args, cwd: repo,
++      package: { name: spec.name, version: '1.0.0', root: spec.root }, contextSha256: digest(context), status: 0, signal: null,
++      generatedRoot: null, generatedInputsBefore: null, generatedInputsAfter: null,
++      inputsBefore: inputs, inputsAfter: structuredClone(inputs), configurationBefore: {}, configurationAfter: {},
++      externInputs, externAfter: structuredClone(externInputs), outputs: { [file]: files[file] } });
++    artifacts.push({ reason: 'compiler-artifact', package_id: `${spec.root === external ? 'registry+fixture' : `path+file://${spec.root}`}#${spec.name}@1.0.0`,
++      target: { name: spec.example ? 'exact_route_capture' : spec.name, kind: [spec.example ? 'example' : 'lib'], src_path: join(spec.root, spec.path) },
++      executable: spec.example ? file : null, filenames: [file], fresh: false, features: [], profile: profile() });
++  }
++  return { events, artifacts, files, context };
++}
++
++export function compilerFixture(t) {
++  const root = mkdtempSync(join(tmpdir(), 'exact-route-compiler-protocol-'));
++  t.after(() => rmSync(root, { recursive: true, force: true }));
++  const repo = join(root, 'repo'); mkdirSync(repo); writeFileSync(join(repo, 'Cargo.toml'), '// root protocol manifest');
++  writeCompilerSources(repo); mkdirSync(join(repo, 'rust/processing/examples'), { recursive: true });
++  writeFileSync(join(repo, 'rust/processing/examples/exact_route_capture.rs'), '// example protocol source');
++  return unitFixture(repo, join(root, 'output'), { trackedSourceHashes: packageInputs(repo) });
++}

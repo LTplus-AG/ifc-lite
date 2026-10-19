@@ -1,0 +1,910 @@
+diff --git a/rust/processing/examples/exact_route_capture.rs b/rust/processing/examples/exact_route_capture.rs
+index 3d192d40d1..135d193846 100644
+--- a/rust/processing/examples/exact_route_capture.rs
++++ b/rust/processing/examples/exact_route_capture.rs
+@@ -28 +28,11 @@ fn capture(result: ProcessingResult) -> Result<Value, serde_json::Error> {
+-        put(&mut record, "serialized", mesh)?;
++        let mut serialized = bits::value(mesh)?;
++        for key in ["global_id", "name", "presentation_layer", "material_name", "geometry_item_id",
++            "material_id", "properties", "uvs", "texture"] {
++            serialized.as_object_mut().unwrap().entry(key).or_insert(Value::Null);
++        }
++        serialized["geometry_class"] = bits::value(&mesh.geometry_class)?;
++        serialized["origin"] = bits::value(&mesh.origin)?;
++        if let Some(texture) = serialized["texture"].as_object_mut() {
++            for key in ["rgba", "url"] { texture.entry(key).or_insert(Value::Null); }
++        }
++        record.insert("serialized".into(), serialized);
+@@ -70 +80,11 @@ fn capture(result: ProcessingResult) -> Result<Value, serde_json::Error> {
+-    put(&mut out, "metadata", &metadata)?;
++    let mut metadata = bits::value(&metadata)?;
++    for key in ["length_unit_scale", "length_unit_refused", "georeferencing"] {
++        metadata.as_object_mut().unwrap().entry(key).or_insert(Value::Null);
++    }
++    if let Some(georef) = metadata["georeferencing"].as_object_mut() {
++        for key in ["crs_name", "geodetic_datum", "vertical_datum", "map_projection", "crs_description",
++            "map_zone", "map_unit", "map_unit_scale", "source"] {
++            georef.entry(key).or_insert(Value::Null);
++        }
++    }
++    out.insert("metadata".into(), metadata);
+@@ -73 +93,12 @@ fn capture(result: ProcessingResult) -> Result<Value, serde_json::Error> {
+-    let mut stats = bits::value(&stats)?.as_object().unwrap().clone();
++    let mut serialized_stats = bits::value(&stats)?.as_object().unwrap().clone();
++    put(&mut serialized_stats, "refused_input_elements", &stats.refused_input_elements)?;
++    put(&mut serialized_stats, "refused_prepass_records", &stats.refused_prepass_records)?;
++    put(&mut serialized_stats, "geometry_diagnostics", &stats.geometry_diagnostics)?;
++    if let Some(hosts) = serialized_stats.get_mut("geometry_diagnostics").and_then(|v| v.get_mut("worstHosts")).and_then(Value::as_array_mut) {
++        for host in hosts {
++            for key in ["firstFailureLabel", "bbox", "triangleCount"] {
++                host.as_object_mut().unwrap().entry(key).or_insert(Value::Null);
++            }
++        }
++    }
++    let mut stats = serialized_stats;
+@@ -95 +126 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
+-    output["protocol"] = Value::String("exact-route-v1".into());
++    output["protocol"] = Value::String("exact-route-v2".into());
+diff --git a/scripts/exact-route-compare.mjs b/scripts/exact-route-compare.mjs
+index b1dacfb5fa..a1590211bd 100644
+--- a/scripts/exact-route-compare.mjs
++++ b/scripts/exact-route-compare.mjs
+@@ -7,15 +7,2 @@ import { pathToFileURL } from 'node:url';
+-function validate(value, path = '$') {
+-  if (typeof value === 'number' && !Number.isSafeInteger(value)) throw Error(`${path}: unsafe number`);
+-  if (typeof value === 'string' && /^f(32|64):/.test(value)) {
+-    const match = /^(f32):([0-9a-f]{8})$|^(f64):([0-9a-f]{16})$/.exec(value);
+-    if (!match) throw Error(`${path}: malformed float bits`);
+-    const bits = BigInt(`0x${match[2] ?? match[4]}`);
+-    const nonfinite = match[1] ? (bits & 0x7f800000n) === 0x7f800000n
+-      : (bits & 0x7ff0000000000000n) === 0x7ff0000000000000n;
+-    if (nonfinite) throw Error(`${path}: nonfinite output`);
+-  }
+-  if (Array.isArray(value)) value.forEach((v, i) => validate(v, `${path}[${i}]`));
+-  else if (value && typeof value === 'object') {
+-    for (const [key, child] of Object.entries(value)) validate(child, `${path}.${key}`);
+-  }
+-}
++import { validateCapture, OPTIONS } from './exact-route-schema.mjs';
++
+@@ -46,9 +33,2 @@ export function difference(a, b, path = '$') {
+-export function compare(a, b) {
+-  for (const capture of [a, b]) {
+-    validate(capture);
+-    if (capture.protocol !== 'exact-route-v1' || !capture.scene ||
+-        !Array.isArray(capture.scene.meshes) || !capture.fixture_sha256 || !capture.options) {
+-      throw Error('incomplete or unsupported capture');
+-    }
+-    if (!capture.scene.meshes.length) throw Error('empty mesh capture cannot qualify model preservation');
+-  }
++export function compare(a, b, expectedOptions = OPTIONS) {
++  for (const capture of [a, b]) validateCapture(capture, expectedOptions);
+diff --git a/scripts/exact-route-compare.test.mjs b/scripts/exact-route-compare.test.mjs
+index 7b3683bddc..5fa6175083 100644
+--- a/scripts/exact-route-compare.test.mjs
++++ b/scripts/exact-route-compare.test.mjs
+@@ -8,13 +8,3 @@ import { compare } from './exact-route-compare.mjs';
+-// Stated invariant: one changed bit, omitted field, reordered occurrence or lost
+-// duplicate must fail the pre-common-program preservation gate.
+-function fixture() {
+-  return { protocol: 'exact-route-v1', fixture_sha256: 'fixture', options: 'ordinary',
+-    scene: { meshes: [{ serialized: { express_id: 'u32:1', positions: ['f32:00000000'],
+-      normals: ['f32:3f800000'], indices: ['u32:0'], uvs: ['f32:00000000'],
+-      color: ['f32:3f800000'], texture: { rgba: ['u8:255'], width: 'u32:1' } },
+-      origin: ['f64:0000000000000000'], local_bounds: ['f32:00000000'],
+-      local_to_world: ['f64:3ff0000000000000'], instance: ['u128:340282366920938463463374607431768211455'] }],
+-      metadata: { schema: 'IFC4', entity_count: 'u64:3' }, frame: ['RawIfc'], instances: [['u32:1'], ['u32:2'], ['u32:1']],
+-      stats: { refused_input_elements: 'u64:0', total_csg_failures: 'u64:0' } },
+-    execution_only: { total_time_ms: 'u64:5' } };
+-}
++import { captureFixture as fixture } from './lib/exact-route-fixture.mjs';
++import { INSTANCE, MESH_INSTANCE } from './exact-route-schema.mjs';
++// Invariant: bits, metadata, array order and multiplicity are compatibility data.
+@@ -38,3 +28,3 @@ const mutations = {
+-  instanceIdentity: b => b.scene.meshes[0].instance[0] = 'u128:340282366920938463463374607431768211454',
+-  frame: b => b.scene.frame[0] = 'ModelRtc',
+-  metadata: b => b.scene.metadata.schema = 'IFC2X3',
++  instanceIdentity: b => b.scene.meshes[0][MESH_INSTANCE][3] = 'u128:340282366920938463463374607431768211454',
++  frame: b => b.scene.frame_variant_anchor_placement[0] = 'ModelRtc',
++  metadata: b => b.scene.metadata.schema_version = 'IFC2X3',
+@@ -42,2 +32,2 @@ const mutations = {
+-  duplicateLoss: b => b.scene.instances.pop(),
+-  occurrenceOrder: b => b.scene.instances.reverse().splice(0, 2, ['u32:2'], ['u32:1']),
++  duplicateLoss: b => b.scene[INSTANCE].pop(),
++  occurrenceOrder: b => b.scene[INSTANCE].reverse().splice(0, 2, b.scene[INSTANCE][1], b.scene[INSTANCE][0]),
+@@ -52 +42 @@ for (const [name, mutate] of Object.entries(mutations)) {
+-    assert.equal(compare(a, b).equal, false);
++    assert.throws(() => assert.equal(compare(a, b).equal, true));
+@@ -65,0 +56,21 @@ test('missing or empty captures never qualify', () => {
++
++for (const [name, mutate] of Object.entries({
++  skeletal: v => v.scene.meshes = [{}],
++  positions: v => v.scene.meshes[0].serialized.positions.pop(),
++  normals: v => v.scene.meshes[0].serialized.normals = [],
++  uvLength: v => v.scene.meshes[0].serialized.uvs.pop(),
++  rgbaLength: v => v.scene.meshes[0].serialized.texture.rgba.pop(),
++  missingNullableUV: v => delete v.scene.meshes[0].serialized.uvs,
++  missingInstance: v => delete v.scene.meshes[0][MESH_INSTANCE],
++  frameLength: v => v.scene.frame_world_matrix.pop(),
++  frameVariant: v => v.scene.frame_variant_anchor_placement = ['ModelRtc', null, null],
++  metadata: v => v.scene.metadata = {},
++  metadataType: v => v.scene.metadata.entity_count = 3,
++  stats: v => delete v.scene.stats.refused_input_elements,
++  options: v => v.options = 'paired alternate',
++  nonfinite: v => v.scene.meshes[0].serialized.positions[0] = 'f32:7f800000',
++})) {
++  test(`paired-identical malformed/truncated capture refuses: ${name}`, () => {
++    const a = fixture(); mutate(a); assert.throws(() => compare(a, structuredClone(a)));
++  });
++}
+diff --git a/scripts/exact-route-compiler.mjs b/scripts/exact-route-compiler.mjs
+new file mode 100644
+index 0000000000..e07c37f155
+--- /dev/null
++++ b/scripts/exact-route-compiler.mjs
+@@ -0,0 +1,48 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++export function compilerEnvironment(env) {
++  if (!env || typeof env !== 'object' || Array.isArray(env) || Object.values(env).some(v => typeof v !== 'string')) throw Error('invalid compiler environment evidence');
++  for (const key of Object.keys(env)) {
++    if (key.startsWith('CARGO_PROFILE_')) throw Error(`profile override refused: ${key}`);
++    if (key.startsWith('IFC_LITE_')) throw Error(`geometry override refused: ${key}`);
++  }
++  for (const key of ['RUSTC_WRAPPER', 'RUSTC_WORKSPACE_WRAPPER']) {
++    if (env[key]) throw Error(`unverifiable additional compiler wrapper refused: ${key}`);
++  }
++  const names = ['RUSTFLAGS', 'CARGO_ENCODED_RUSTFLAGS', 'RUSTUP_TOOLCHAIN', 'CARGO_BUILD_TARGET',
++    'CARGO_TARGET_DIR', 'RAYON_NUM_THREADS', 'RUSTC', 'RUSTDOCFLAGS', 'CARGO_BUILD_RUSTFLAGS'];
++  return Object.fromEntries(Object.entries(env).filter(([k]) => names.includes(k) ||
++    /^CARGO_TARGET_.*_(RUSTFLAGS|LINKER|RUNNER)$/.test(k)));
++}
++export function compilerEvidence(events, artifacts) {
++  if (!Array.isArray(events) || !events.length || events.some(e => typeof e.compiler !== 'string' || typeof e.version !== 'string' || !e.version ||
++      !Array.isArray(e.args) || e.args.some(a => typeof a !== 'string'))) throw Error('missing/malformed compiler arguments');
++  const example = events.filter(e => e.args.some((a, i) => a === '--crate-name' && e.args[i + 1] === 'exact_route_capture'));
++  const artifact = artifacts.findLast(a => a.reason === 'compiler-artifact' && a.target?.name === 'exact_route_capture' && a.executable);
++  if (!example.length || !artifact || artifact.fresh !== false || !artifact.profile ||
++      artifact.profile.debug_assertions !== false || artifact.profile.test !== false) throw Error('no freshly compiled ordinary-profile capture example');
++  const profile = artifact.profile;
++  if (typeof profile.opt_level !== 'string' || !/^[0123sz]$/.test(profile.opt_level) ||
++      !Object.hasOwn(profile, 'debuginfo') || !(profile.debuginfo === null ||
++        [0, 1, 2, 'none', 'limited', 'full', 'line-tables-only', 'line-directives-only'].includes(profile.debuginfo)) ||
++      typeof profile.overflow_checks !== 'boolean' || !Array.isArray(artifact.features) ||
++      artifact.features.some(v => typeof v !== 'string')) throw Error('incomplete effective compiler profile/features');
++  for (const event of example) {
++    if (!event.args.some(a => a.includes('opt-level=')) ||
++        event.args.some(a => /panic=(abort|immediate-abort)/.test(a))) throw Error('unexpected effective capture compiler policy');
++  }
++  const policies = example.map(e => {
++    const result = [];
++    for (let i = 0; i < e.args.length; i++) {
++      const arg = e.args[i];
++      if (['-C', '-Z', '--target', '--cfg'].includes(arg)) {
++        const value = e.args[++i];
++        if (typeof value !== 'string') throw Error('incomplete compiler option');
++        if (!/^(metadata|extra-filename|incremental)=/.test(value)) result.push(arg, value);
++      } else if (/^(-C|-Z|--target=|--cfg=)/.test(arg) && !/^-C(metadata|extra-filename|incremental)=/.test(arg)) result.push(arg);
++    }
++    return { version: e.version, optionsInOrder: result };
++  });
++  return { events, exampleProfile: artifact.profile, exampleFeatures: artifact.features, policies };
++}
+diff --git a/scripts/exact-route-compiler.test.mjs b/scripts/exact-route-compiler.test.mjs
+new file mode 100644
+index 0000000000..2969530f89
+--- /dev/null
++++ b/scripts/exact-route-compiler.test.mjs
+@@ -0,0 +1,28 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { compilerEnvironment, compilerEvidence } from './exact-route-compiler.mjs';
++for (const key of ['CARGO_PROFILE_SERVER_RELEASE_PANIC', 'CARGO_PROFILE_SERVER_RELEASE_DEBUG_ASSERTIONS',
++  'CARGO_PROFILE_RELEASE_OPT_LEVEL', 'CARGO_PROFILE_DEV_BUILD_OVERRIDE_DEBUG', 'CARGO_PROFILE_FUTURE_UNKNOWN_OPTION']) {
++  test(`every profile override refuses, including empty values: ${key}`, () => {
++    assert.throws(() => compilerEnvironment({ [key]: '1' }));
++    assert.throws(() => compilerEnvironment({ [key]: '' }));
++  });
++}
++test('flags and target compiler settings are recorded without discarding values', () => {
++  const env = { RUSTFLAGS: '-C opt-level=3', CARGO_ENCODED_RUSTFLAGS: '-C\x1fpanic=unwind',
++    CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: '-Ctarget-cpu=x86-64', RAYON_NUM_THREADS: '4' };
++  assert.deepEqual(compilerEnvironment(env), env);
++});
++test('unobserved cached capture and altered effective panic/debug assertions refuse', () => {
++  const e = [{ compiler: 'rustc', version: 'pinned', args: ['--crate-name', 'exact_route_capture', '-C', 'opt-level=3'] }];
++  const a = [{ reason: 'compiler-artifact', target: { name: 'exact_route_capture' }, executable: '/fixture/binary', fresh: false,
++    features: [], profile: { debug_assertions: false, test: false, opt_level: '3', debuginfo: null, overflow_checks: false } }];
++  assert.deepEqual(compilerEvidence(e, a).events, e);
++  assert.throws(() => compilerEvidence([], a));
++  assert.throws(() => compilerEvidence(e, [{ ...a[0], fresh: true }]));
++  assert.throws(() => compilerEvidence(e, [{ ...a[0], profile: { debug_assertions: true, test: false } }]));
++  assert.throws(() => compilerEvidence([{ ...e[0], args: [...e[0].args, '-C', 'panic=abort'] }], a));
++});
+diff --git a/scripts/exact-route-receipts.mjs b/scripts/exact-route-receipts.mjs
+index 01dd3f821d..f84d62b1b0 100644
+--- a/scripts/exact-route-receipts.mjs
++++ b/scripts/exact-route-receipts.mjs
+@@ -8,0 +9,2 @@ import { compare, difference } from './exact-route-compare.mjs';
++import { gitSource, verifyFleet, verifyHarnessManifest } from './exact-route-source.mjs';
++import { compilerEnvironment, compilerEvidence } from './exact-route-compiler.mjs';
+@@ -11 +13,5 @@ const sha = bytes => createHash('sha256').update(bytes).digest('hex');
+-export function compareReceipts(aDir, bDir, expectedBase, expectedBranch, manifest) {
++export function compareReceipts(aDir, bDir, expectedBase, expectedBranch, manifest, evidence) {
++  if (!evidence?.gitRepository || evidence.fleetReceipts?.length !== 2 || evidence.fleetLogs?.length !== 2 || !evidence.manifestPath) throw Error('independent Git, manifest and terminal fleet receipts required');
++  verifyHarnessManifest(manifest);
++  const manifestBytes = readFileSync(evidence.manifestPath);
++  if (difference(JSON.parse(manifestBytes), manifest)) throw Error('independent manifest mismatch');
+@@ -17,3 +23,8 @@ export function compareReceipts(aDir, bDir, expectedBase, expectedBranch, manife
+-  for (const [receipt, head] of [[a, expectedBase], [b, expectedBranch]]) {
+-    if (receipt.status !== 'captured-uncompared' || receipt.source !== head ||
+-        !receipt.binary?.sha256 || !receipt.sourceTree || !receipt.trackedSourceHashes ||
++  const fleets = [];
++  for (const [i, receipt, head, dir] of [[0, a, expectedBase, aDir], [1, b, expectedBranch, bDir]]) {
++    if (typeof receipt.toolchain !== 'string' || !receipt.toolchain || typeof receipt.cargo !== 'string' || !receipt.cargo ||
++        !receipt.runtime || typeof receipt.runtime.platform !== 'string' || typeof receipt.runtime.arch !== 'string' ||
++        !Number.isSafeInteger(receipt.runtime.availableParallelism) || receipt.runtime.availableParallelism < 1 ||
++        receipt.status !== 'captured-uncompared' || receipt.source !== head ||
++        !(/^[a-f0-9]{64}$/.test(receipt.binary?.sha256 ?? '')) || receipt.protocol !== 'exact-route-v2' ||
++        receipt.manifestSha256 !== sha(manifestBytes) ||
+@@ -22,0 +34,19 @@ export function compareReceipts(aDir, bDir, expectedBase, expectedBranch, manife
++    if (receipt.binary.artifact !== 'capture-binary' || sha(readFileSync(resolve(dir, receipt.binary.artifact))) !== receipt.binary.sha256) throw Error('binary artifact hash mismatch');
++    const source = gitSource(evidence.gitRepository, head, receipt.executionCommit, manifest);
++    for (const key of Object.keys(source)) if (difference(source[key], receipt[key])) throw Error(`Git blob/tree mismatch: ${key}`);
++    compilerEnvironment(receipt.environment);
++    const invocations = readFileSync(resolve(dir, 'compiler-invocations.jsonl'));
++    const artifacts = readFileSync(resolve(dir, 'cargo-artifacts.jsonl'));
++    const verbose = readFileSync(resolve(dir, 'cargo-stderr.log'));
++    const lines = raw => raw.toString().trim().split('\n').filter(Boolean).map(s => JSON.parse(s));
++    const compiler = compilerEvidence(lines(invocations), lines(artifacts));
++    if (difference(compiler.events, receipt.compiler?.events) ||
++        difference(compiler.exampleProfile, receipt.compiler?.exampleProfile) ||
++        difference(compiler.exampleFeatures, receipt.compiler?.exampleFeatures) || difference(compiler.policies, receipt.compiler?.policies) ||
++        receipt.compiler.invocationSha256 !== sha(invocations) ||
++        receipt.compiler.artifactEventsSha256 !== sha(artifacts) || receipt.compiler.verboseLogSha256 !== sha(verbose)) {
++      throw Error('effective compiler evidence mismatch');
++    }
++    const example = lines(artifacts).findLast(a => a.reason === 'compiler-artifact' && a.target?.name === 'exact_route_capture' && a.executable);
++    if (example.executable !== receipt.binary.path || compiler.policies.some(p => p.version !== receipt.toolchain)) throw Error('compiler/binary identity mismatch');
++    fleets.push(verifyFleet(evidence.fleetReceipts[i], evidence.fleetLogs[i], resolve(dir, 'receipt.json'), receipt, source));
+@@ -28,0 +59,3 @@ export function compareReceipts(aDir, bDir, expectedBase, expectedBranch, manife
++  for (const key of ['exampleProfile', 'exampleFeatures', 'policies']) {
++    if (difference(a.compiler[key], b.compiler[key])) throw Error(`effective compiler setting mismatch: ${key}`);
++  }
+@@ -37 +70 @@ export function compareReceipts(aDir, bDir, expectedBase, expectedBranch, manife
+-      if (parsed.fixture_sha256 !== fixture.sha256) throw Error('captured fixture mismatch');
++      if (parsed.fixture_sha256 !== fixture.sha256 || parsed.options !== manifest.options) throw Error('captured fixture mismatch');
+@@ -40 +73 @@ export function compareReceipts(aDir, bDir, expectedBase, expectedBranch, manife
+-    results.push({ path: fixture.path, ...compare(...captures) });
++    results.push({ path: fixture.path, ...compare(captures[0], captures[1], manifest.options) });
+@@ -42 +75 @@ export function compareReceipts(aDir, bDir, expectedBase, expectedBranch, manife
+-  return { equal: results.every(r => r.equal), results,
++  return { equal: results.every(r => r.equal), results, fleets,
+@@ -47,2 +80,2 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
+-    const [a, b, base, branch, manifestPath] = process.argv.slice(2);
+-    if (!manifestPath) throw Error('usage: exact-route-receipts.mjs BASE_DIR BRANCH_DIR BASE_HEAD BRANCH_HEAD MANIFEST');
++    const [a, b, base, branch, manifestPath, gitRepository, baseFleet, branchFleet, baseFleetLog, branchFleetLog] = process.argv.slice(2);
++    if (!manifestPath || !gitRepository || !baseFleet || !branchFleet || !baseFleetLog || !branchFleetLog) throw Error('usage: exact-route-receipts.mjs BASE_DIR BRANCH_DIR BASE_HEAD BRANCH_HEAD MANIFEST GIT_REPOSITORY BASE_FLEET_RECEIPT BRANCH_FLEET_RECEIPT BASE_FLEET_LOG BRANCH_FLEET_LOG');
+@@ -54 +87 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
+-    const result = compareReceipts(a, b, base, branch, manifest);
++    const result = compareReceipts(a, b, base, branch, manifest, { gitRepository, fleetReceipts: [baseFleet, branchFleet], fleetLogs: [baseFleetLog, branchFleetLog], manifestPath });
+diff --git a/scripts/exact-route-receipts.test.mjs b/scripts/exact-route-receipts.test.mjs
+index 22181a04c4..3f5c0b6c24 100644
+--- a/scripts/exact-route-receipts.test.mjs
++++ b/scripts/exact-route-receipts.test.mjs
+@@ -6,3 +6 @@ import assert from 'node:assert/strict';
+-import { createHash } from 'node:crypto';
+-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+-import { tmpdir } from 'node:os';
++import { writeFileSync } from 'node:fs';
+@@ -10 +8,2 @@ import { join } from 'node:path';
+-import { compareReceipts } from './exact-route-receipts.mjs';
++import { sha256 } from './exact-route-source.mjs';
++import { cohort } from './lib/exact-route-cohort.mjs';
+@@ -12,24 +11,3 @@ import { compareReceipts } from './exact-route-receipts.mjs';
+-// Invariant: equal scenes cannot qualify a truncated, wrong-source or tampered cohort.
+-function cohort(t) {
+-  const root = mkdtempSync(join(tmpdir(), 'exact-route-metadata-'));
+-  t.after(() => rmSync(root, { recursive: true, force: true }));
+-  const dirs = [join(root, 'base'), join(root, 'branch')];
+-  const manifest = { preCommonProgramBase: 'base', immediateIntegrationParent: 'parent', harness: { source: 'sha' }, options: 'ordinary', fixtures: [{ path: 'real.ifc', sha256: 'fixture' }] };
+-  dirs.forEach((dir, i) => {
+-    mkdirSync(dir);
+-    const capture = JSON.stringify({ protocol: 'exact-route-v1', fixture_sha256: 'fixture', options: 'ordinary',
+-      scene: { meshes: [{ positions: ['f32:3f800000'] }] } });
+-    writeFileSync(join(dir, '0.json'), capture);
+-    writeFileSync(join(dir, 'receipt.json'), JSON.stringify({ status: 'captured-uncompared', source: ['base', 'branch'][i],
+-      sourceTree: 'tree', trackedSourceHashes: { source: 'sha' }, binary: { sha256: 'binary' },
+-      harness: manifest.harness, options: manifest.options, toolchain: 'pinned', cargo: 'pinned',
+-      manifestSha256: 'manifest', environment: {}, fixtures: [{ ...manifest.fixtures[0], capture: '0.json',
+-        captureSha256: createHash('sha256').update(capture).digest('hex') }] }));
+-  });
+-  const alter = change => {
+-    const path = join(dirs[1], 'receipt.json');
+-    const receipt = JSON.parse(readFileSync(path)); change(receipt); writeFileSync(path, JSON.stringify(receipt));
+-  };
+-  return { dirs, manifest, alter, compare: () => compareReceipts(...dirs, 'base', 'branch', manifest) };
+-}
+-test('complete matched source-bound cohort compares', t => assert.equal(cohort(t).compare().equal, true));
++// Source mutations rebind the synthetic fleet output-log binding deliberately: an
++// internally consistent label/hash still cannot substitute for independent Git.
++test('complete Git-bound clean-fleet cohort compares', t => assert.equal(cohort(t).compare().equal, true));
+@@ -37,8 +15,9 @@ for (const [name, mutate] of Object.entries({
+-  missingFixture: r => r.fixtures.pop(),
+-  wrongSource: r => r.source = 'other',
+-  sourceOverlay: r => r.harness.source = 'other',
+-  failedBuild: r => r.status = 'FAILED',
+-  toolchain: r => r.toolchain = 'different',
+-  options: r => r.options = 'different',
+-  fixtureBytes: r => r.fixtures[0].sha256 = 'other',
+-  captureBytes: r => r.fixtures[0].captureSha256 = 'other',
++  missingFixture: r => r.fixtures.pop(), wrongSource: r => r.source = 'b'.repeat(40),
++  wrongTree: r => r.sourceTree = 'b'.repeat(40), wrongExecutionTree: r => r.executionTree = 'b'.repeat(40),
++  emptyHashes: r => r.trackedSourceHashes = {},
++  changedHash: r => r.trackedSourceHashes['Cargo.lock'] = 'b'.repeat(64),
++  missingHash: r => delete r.trackedSourceHashes['Cargo.lock'],
++  extraHash: r => r.trackedSourceHashes['not-in-tree'] = 'b'.repeat(64),
++  sourceOverlay: r => r.harness = {}, failedBuild: r => r.status = 'FAILED',
++  toolchain: r => r.toolchain = 'different', options: r => r.options = 'different',
++  fixtureBytes: r => r.fixtures[0].sha256 = 'b'.repeat(64), captureBytes: r => r.fixtures[0].captureSha256 = 'b'.repeat(64),
+@@ -46,5 +25,37 @@ for (const [name, mutate] of Object.entries({
+-})) {
+-  test(`receipt mutation-negative: ${name}`, t => {
+-    const c = cohort(t); c.alter(mutate); assert.throws(c.compare);
+-  });
+-}
++  hiddenProfileOverride: r => r.environment.CARGO_PROFILE_SERVER_RELEASE_PANIC = 'abort',
++  compilerArgs: r => r.compiler.events[0].args.push('-C', 'debug-assertions=yes'),
++  compilerLogPin: r => r.compiler.invocationSha256 = 'b'.repeat(64),
++  binaryHash: r => r.binary.sha256 = 'b'.repeat(64),
++})) test(`independent receipt mutation refuses: ${name}`, t => {
++  const c = cohort(t); c.alter(mutate); assert.throws(c.compare);
++});
++for (const [name, mutate] of Object.entries({
++  missingBefore: f => delete f.sourceBefore,
++  dirty: f => { f.sourceBefore.clean = false; f.sourceAfter.clean = false; },
++  changed: f => f.sourceUnchanged = false, nonterminal: f => f.state = 'running',
++  failure: f => f.exitCode = 1,
++  pairedWrongTree: f => { f.sourceBefore.tree = 'b'.repeat(40); f.sourceAfter.tree = 'b'.repeat(40); },
++  beforeAfterMismatch: f => f.sourceAfter.commit = 'b'.repeat(40),
++  toolchainBlob: f => { f.sourceBefore.toolchainInputs['Cargo.lock'] = 'b'.repeat(64); f.sourceAfter.toolchainInputs['Cargo.lock'] = 'b'.repeat(64); },
++  unboundOutput: f => f.outputSha256 = 'b'.repeat(64), command: f => f.command = ['true'],
++})) test(`external fleet mutation refuses: ${name}`, t => {
++  const c = cohort(t); c.fleet(mutate); assert.throws(c.compare);
++});
++test('real Git execution commit with a non-overlay source edit refuses', t => {
++  const c = cohort(t); writeFileSync(join(c.repo, 'Cargo.lock'), 'changed source'); c.git(['add', '.']);
++  const changed = c.commit('foreign source edit'); c.alter(r => r.executionCommit = changed); assert.throws(c.compare);
++});
++for (const [name, mutate] of Object.entries({
++  options: v => v.options = 'identical alternate options',
++  skeletal: v => v.scene.meshes = [{}],
++  metadata: v => v.scene.metadata = {},
++  truncatedNormals: v => v.scene.meshes[0].serialized.normals.pop(),
++})) test(`paired identical payload mutation with rebound hashes refuses: ${name}`, t => {
++  const c = cohort(t); c.capture(mutate, 0); c.capture(mutate, 1); assert.throws(c.compare);
++});
++
++for (const count of [0, 2]) test(`independent output log requires exactly one receipt marker: ${count}`, t => {
++  const c = cohort(t); writeFileSync(c.fleetLogs[1], 'EXACT_ROUTE_RECEIPT_SHA256 invalid\n'.repeat(count));
++  c.fleet(f => f.outputSha256 = sha256('EXACT_ROUTE_RECEIPT_SHA256 invalid\n'.repeat(count)));
++  assert.throws(c.compare);
++});
+diff --git a/scripts/exact-route-run.mjs b/scripts/exact-route-run.mjs
+index 8b68bd1870..febc63765a 100644
+--- a/scripts/exact-route-run.mjs
++++ b/scripts/exact-route-run.mjs
+@@ -7 +7 @@ import { spawnSync } from 'node:child_process';
+-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
++import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, utimesSync } from 'node:fs';
+@@ -10,0 +11,3 @@ import { availableParallelism, hostname } from 'node:os';
++import { gitSource, verifyWorktree, verifyHarnessManifest } from './exact-route-source.mjs';
++import { compilerEnvironment, compilerEvidence } from './exact-route-compiler.mjs';
++import { validateCapture } from './exact-route-schema.mjs';
+@@ -12 +15 @@ const bundle = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+-const manifestPath = 'docs/architecture/evidence/exact-route-preservation-c676220d/manifest.json';
++const manifestPath = 'docs/architecture/evidence/exact-route-preservation-c676220d-r2/manifest.json';
+@@ -20,4 +22,0 @@ function command(cwd, executable, args) {
+-function sourceFiles(cwd) {
+-  const files = command(cwd, 'git', ['ls-files', '-z', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo', 'rust']);
+-  return Object.fromEntries(files.split('\0').filter(Boolean).map(p => [p, hash(readFileSync(resolve(cwd, p)))]));
+-}
+@@ -25,2 +24 @@ function checkedBundle() {
+-  const canonical = JSON.stringify(Object.fromEntries(Object.entries(manifest.harness).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)));
+-  if (hash(canonical) !== manifest.harnessSha256) throw Error('aggregate harness hash mismatch');
++  verifyHarnessManifest(manifest);
+@@ -41,3 +39,6 @@ function prepare(cwd, expectedHead) {
+-    if (existsSync(target)) throw Error(`refuse replacing existing source: ${path}`);
+-    mkdirSync(dirname(target), { recursive: true });
+-    writeFileSync(target, readFileSync(resolve(bundle, path)), { flag: 'wx' });
++    if (existsSync(target)) {
++      if (hash(readFileSync(target)) !== manifest.harness[path]) throw Error(`existing overlay mismatch: ${path}`);
++    } else {
++      mkdirSync(dirname(target), { recursive: true });
++      writeFileSync(target, readFileSync(resolve(bundle, path)), { flag: 'wx' });
++    }
+@@ -45,2 +46,7 @@ function prepare(cwd, expectedHead) {
+-  console.log(JSON.stringify({ prepared: cwd, head: expectedHead, overlay: manifest.overlay,
+-    harness: manifest.harness, note: 'NO compilation or execution' }, null, 2));
++  command(cwd, 'git', ['add', '--', ...manifest.overlay]);
++  if (command(cwd, 'git', ['diff', '--cached', '--name-only'])) {
++    command(cwd, 'git', ['commit', '-m', 'Verification-only exact-route source overlay']);
++  }
++  const source = gitSource(cwd, expectedHead, command(cwd, 'git', ['rev-parse', 'HEAD']), manifest);
++  verifyWorktree(cwd, source);
++  console.log(JSON.stringify({ ...source, note: 'clean committed overlay; NO compilation or execution' }, null, 2));
+@@ -49,9 +55,3 @@ function run(cwd, expectedHead, output) {
+-  if (command(cwd, 'git', ['rev-parse', 'HEAD']) !== expectedHead) throw Error('wrong checkout HEAD');
+-  // A baseline compile repair is a separate reproduction experiment: this runner
+-  // refuses it. Preserve its patch/receipt separately; never call it unchanged base.
+-  if (command(cwd, 'git', ['diff', '--binary', 'HEAD'])) throw Error('tracked source changes refused; checkpoint or separate reproduction');
+-  const untracked = command(cwd, 'git', ['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean);
+-  if (untracked.some(p => !manifest.overlay.includes(p))) throw Error('unexpected untracked source');
+-  for (const path of manifest.overlay) {
+-    if (hash(readFileSync(resolve(cwd, path))) !== manifest.harness[path]) throw Error(`overlay mismatch: ${path}`);
+-  }
++  const source = gitSource(cwd, expectedHead, command(cwd, 'git', ['rev-parse', 'HEAD']), manifest);
++  verifyWorktree(cwd, source);
++  const environment = compilerEnvironment(process.env);
+@@ -60 +60,2 @@ function run(cwd, expectedHead, output) {
+-  const receipt = { protocol: 'exact-route-v1', status: 'started', source: expectedHead,
++  const receipt = { protocol: 'exact-route-v2', status: 'started', ...source, cwd,
++    requestedCommand: ['node', fileURLToPath(import.meta.url), 'run', cwd, expectedHead, output],
+@@ -62 +62,0 @@ function run(cwd, expectedHead, output) {
+-    sourceTree: command(cwd, 'git', ['rev-parse', 'HEAD^{tree}']),
+@@ -65 +65 @@ function run(cwd, expectedHead, output) {
+-    trackedSourceHashes: sourceFiles(cwd), harness: manifest.harness,
++    harness: manifest.harness,
+@@ -68,3 +68 @@ function run(cwd, expectedHead, output) {
+-    environment: Object.fromEntries(Object.entries(process.env).filter(([k]) =>
+-      ['RUSTFLAGS', 'CARGO_ENCODED_RUSTFLAGS', 'RUSTUP_TOOLCHAIN', 'CARGO_BUILD_TARGET',
+-        'CARGO_TARGET_DIR', 'RAYON_NUM_THREADS', 'RUSTC_WRAPPER', 'RUSTC_WORKSPACE_WRAPPER'].includes(k))),
++    environment,
+@@ -76,2 +74,6 @@ function run(cwd, expectedHead, output) {
+-    if (Object.keys(process.env).some(k => k.startsWith('IFC_LITE_'))) throw Error('IFC_LITE overrides refused');
+-    const args = ['build', '--locked', '--profile', 'server-release', '-p', 'ifc-lite-processing',
++    // Force a reached example compilation without changing any source bytes.
++    // A cached example cannot supply this run's actual compiler arguments.
++    const now = new Date();
++    utimesSync(resolve(cwd, manifest.overlay[0]), now, now);
++    receipt.freshnessOnlyMtimePath = manifest.overlay[0]; save();
++    const args = ['build', '-vv', '--locked', '--profile', 'server-release', '-p', 'ifc-lite-processing',
+@@ -80 +82,3 @@ function run(cwd, expectedHead, output) {
+-    const build = spawnSync('cargo', args, { cwd, encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 });
++    const compilerLog = resolve(output, 'compiler-invocations.jsonl');
++    const build = spawnSync('cargo', args, { cwd, encoding: 'utf8', maxBuffer: 128 * 1024 * 1024,
++      env: { ...process.env, RUSTC_WRAPPER: resolve(bundle, 'scripts/exact-route-rustc.mjs'), EXACT_ROUTE_RUSTC_LOG: compilerLog } });
+@@ -85,0 +90,5 @@ function run(cwd, expectedHead, output) {
++    const events = readFileSync(compilerLog, 'utf8').trim().split('\n').filter(Boolean).map(s => JSON.parse(s));
++    const evidence = compilerEvidence(events, artifacts);
++    receipt.compiler = { ...evidence, invocationSha256: hash(readFileSync(compilerLog)),
++      artifactEventsSha256: hash(readFileSync(resolve(output, 'cargo-artifacts.jsonl'))),
++      verboseLogSha256: hash(readFileSync(resolve(output, 'cargo-stderr.log'))) }; save();
+@@ -89 +98,2 @@ function run(cwd, expectedHead, output) {
+-    receipt.binary = { path: binary, sha256: hash(readFileSync(binary)) }; save();
++    copyFileSync(binary, resolve(output, 'capture-binary'));
++    receipt.binary = { path: binary, artifact: 'capture-binary', sha256: hash(readFileSync(binary)) }; save();
+@@ -98 +108,2 @@ function run(cwd, expectedHead, output) {
+-      const scene = JSON.parse(readFileSync(capture)).scene;
++      const parsed = JSON.parse(readFileSync(capture)); validateCapture(parsed, manifest.options);
++      const scene = parsed.scene;
+@@ -110,5 +121 @@ function run(cwd, expectedHead, output) {
+-    if (command(cwd, 'git', ['rev-parse', 'HEAD']) !== expectedHead ||
+-        command(cwd, 'git', ['diff', '--binary', 'HEAD']) ||
+-        JSON.stringify(sourceFiles(cwd)) !== JSON.stringify(receipt.trackedSourceHashes)) {
+-      throw Error('source changed during run');
+-    }
++    verifyWorktree(cwd, source);
+@@ -117,0 +125 @@ function run(cwd, expectedHead, output) {
++  console.log(`EXACT_ROUTE_RECEIPT_SHA256 ${hash(readFileSync(resolve(output, 'receipt.json')))}`);
+diff --git a/scripts/exact-route-rustc.mjs b/scripts/exact-route-rustc.mjs
+new file mode 100755
+index 0000000000..de79aac609
+--- /dev/null
++++ b/scripts/exact-route-rustc.mjs
+@@ -0,0 +1,15 @@
++#!/usr/bin/env node
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++import { appendFileSync } from 'node:fs';
++import { spawnSync } from 'node:child_process';
++const [compiler, ...args] = process.argv.slice(2);
++if (!compiler || !process.env.EXACT_ROUTE_RUSTC_LOG) throw Error('missing compiler evidence context');
++const identity = spawnSync(compiler, ['-vV'], { encoding: 'utf8' });
++if (identity.error || identity.status !== 0) throw Error('cannot identify actual compiler');
++appendFileSync(process.env.EXACT_ROUTE_RUSTC_LOG, `${JSON.stringify({ compiler, version: identity.stdout.trim(), args })}\n`);
++const result = spawnSync(compiler, args, { stdio: 'inherit' });
++if (result.error) throw result.error;
++if (result.signal) { console.error(`compiler terminated: ${result.signal}`); process.exit(1); }
++process.exit(result.status ?? 1);
+diff --git a/scripts/exact-route-schema.mjs b/scripts/exact-route-schema.mjs
+new file mode 100644
+index 0000000000..0da875e5b2
+--- /dev/null
++++ b/scripts/exact-route-schema.mjs
+@@ -0,0 +1,144 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++export const OPTIONS = 'process_geometry/full_pass/default-opening/default-quality/default-features/no-IFC_LITE-overrides';
++export const INSTANCE = 'instances_id_type_guid_name_layer_color_template_identity_transform_item';
++export const MESH_INSTANCE = 'instance_transform_local_canonical_identity_shareable';
++const fail = p => { throw Error(`invalid/incomplete capture: ${p}`); };
++export const object = (v, p) => { if (!v || typeof v !== 'object' || Array.isArray(v)) fail(p); return v; };
++const keys = (v, required, p, optional = []) => {
++  object(v, p);
++  if (required.some(k => !Object.hasOwn(v, k)) || Object.keys(v).some(k => ![...required, ...optional].includes(k))) fail(`${p}.keys`);
++};
++const str = (v, p) => { if (typeof v !== 'string') fail(p); };
++const bool = (v, p) => { if (typeof v !== 'boolean') fail(p); };
++const nullable = (v, fn, p) => { if (v !== null) fn(v, p); };
++export function uint(v, type, p) {
++  if (typeof v !== 'string' || !new RegExp(`^${type}:(0|[1-9][0-9]*)$`).test(v)) fail(p);
++  const n = BigInt(v.split(':')[1]);
++  if (n >= (1n << BigInt(type.slice(1)))) fail(p);
++  return n;
++}
++function float(v, type, p) {
++  const digits = type === 'f32' ? 8 : 16;
++  if (typeof v !== 'string' || !new RegExp(`^${type}:[a-f0-9]{${digits}}$`).test(v)) fail(p);
++  const bits = BigInt(`0x${v.split(':')[1]}`), mask = type === 'f32' ? 0x7f800000n : 0x7ff0000000000000n;
++  if ((bits & mask) === mask) fail(`${p}: nonfinite`);
++}
++const f32 = (v, p) => float(v, 'f32', p), f64 = (v, p) => float(v, 'f64', p);
++const u32 = (v, p) => uint(v, 'u32', p), u64 = (v, p) => uint(v, 'u64', p);
++const array = (v, fn, p, length) => {
++  if (!Array.isArray(v) || (length !== undefined && v.length !== length)) fail(p);
++  v.forEach((x, i) => fn(x, `${p}[${i}]`));
++};
++const vec = (fn, n) => (v, p) => array(v, fn, p, n);
++const mat32 = vec(f32, 16), mat64 = vec(f64, 16), color = vec(f32, 4);
++function texture(v, p) {
++  keys(v, ['texture_id', 'rgba', 'width', 'height', 'url', 'repeat_s', 'repeat_t'], p);
++  u32(v.texture_id, p); const w = u32(v.width, p), h = u32(v.height, p);
++  nullable(v.url, str, p); bool(v.repeat_s, p); bool(v.repeat_t, p);
++  if (v.rgba !== null) {
++    array(v.rgba, (n, q) => uint(n, 'u8', q), p);
++    if (!w || !h || BigInt(v.rgba.length) !== w * h * 4n || v.url !== null) fail(`${p}.rgba length/source`);
++  } else if (v.url === null) fail(`${p}.missing source`);
++}
++function mesh(v, p) {
++  keys(v, ['serialized', 'geometry_class', 'origin', 'local_bounds', 'local_to_world', MESH_INSTANCE], p);
++  const m = v.serialized;
++  keys(m, ['express_id', 'ifc_type', 'global_id', 'name', 'presentation_layer', 'positions', 'normals',
++    'indices', 'color', 'material_name', 'geometry_item_id', 'material_id', 'properties', 'uvs', 'texture', 'geometry_class', 'origin'], `${p}.serialized`);
++  u32(m.express_id, p); str(m.ifc_type, p);
++  for (const k of ['global_id', 'name', 'presentation_layer', 'material_name']) nullable(m[k], str, `${p}.${k}`);
++  for (const k of ['geometry_item_id', 'material_id']) nullable(m[k], u32, `${p}.${k}`);
++  if (m.properties !== null) { object(m.properties, p); Object.values(m.properties).forEach(x => str(x, p)); }
++  array(m.positions, f32, `${p}.positions`); array(m.normals, f32, `${p}.normals`, m.positions.length);
++  if (!m.positions.length || m.positions.length % 3) fail(`${p}.positions.length`);
++  array(m.indices, (n, q) => { if (u32(n, q) >= BigInt(m.positions.length / 3)) fail(q); }, `${p}.indices`);
++  if (!m.indices.length || m.indices.length % 3) fail(`${p}.indices.length`);
++  color(m.color, p); nullable(m.uvs, vec(f32, m.positions.length / 3 * 2), `${p}.uvs`);
++  nullable(m.texture, texture, `${p}.texture`);
++  if (m.texture !== null && m.uvs === null) fail(`${p}.texture without UVs`);
++  uint(m.geometry_class, 'u8', p); uint(v.geometry_class, 'u8', p);
++  vec(f64, 3)(m.origin, p); vec(f64, 3)(v.origin, p);
++  if (JSON.stringify(m.origin) !== JSON.stringify(v.origin) || m.geometry_class !== v.geometry_class) fail(`${p}.inconsistent explicit fields`);
++  nullable(v.local_bounds, vec(f32, 6), p); nullable(v.local_to_world, mat64, p);
++  nullable(v[MESH_INSTANCE], (i, q) => {
++    if (!Array.isArray(i) || i.length !== 5) fail(q);
++    mat64(i[0], q); nullable(i[1], mat64, q); nullable(i[2], mat64, q); uint(i[3], 'u128', q); bool(i[4], q);
++  }, p);
++}
++function instance(v, p) {
++  if (!Array.isArray(v) || v.length !== 10) fail(p);
++  u32(v[0], p); str(v[1], p);
++  for (const i of [2, 3, 4]) nullable(v[i], str, p);
++  color(v[5], p); u32(v[6], p); uint(v[7], 'u128', p); mat32(v[8], p); nullable(v[9], u32, p);
++}
++function georef(v, p) {
++  const floats = ['eastings', 'northings', 'orthogonal_height', 'x_axis_abscissa', 'x_axis_ordinate', 'scale',
++    'factor_x', 'factor_y', 'factor_z', 'rotation_degrees'];
++  const strings = ['crs_name', 'geodetic_datum', 'vertical_datum', 'map_projection', 'crs_description', 'map_zone', 'map_unit', 'source'];
++  keys(v, [...floats, 'transform_matrix', ...strings, 'map_unit_scale'], p);
++  floats.forEach(k => f64(v[k], `${p}.${k}`)); mat64(v.transform_matrix, p);
++  strings.forEach(k => nullable(v[k], str, p));
++  nullable(v.map_unit_scale, f64, p);
++}
++function metadata(v, p) {
++  keys(v, ['schema_version', 'entity_count', 'geometry_entity_count', 'coordinate_info',
++    'length_unit_scale', 'length_unit_refused', 'georeferencing'], p);
++  str(v.schema_version, p); u64(v.entity_count, p); u64(v.geometry_entity_count, p);
++  keys(v.coordinate_info, ['origin_shift', 'is_geo_referenced'], p);
++  vec(f64, 3)(v.coordinate_info.origin_shift, p); bool(v.coordinate_info.is_geo_referenced, p);
++  nullable(v.length_unit_scale, f64, p); nullable(v.length_unit_refused, u32, p); nullable(v.georeferencing, georef, p);
++}
++function counts(v, names, p) { keys(v, names, p); names.forEach(k => u64(v[k], `${p}.${k}`)); }
++function diagnostics(v, p) {
++  const scalar = ['totalCsgFailures', 'productsWithFailures', 'hostsWithOpenings', 'silentNoOps',
++    'oversizedRefDrops', 'totalUnsupportedItems'];
++  keys(v, ['schemaVersion', ...scalar, 'classification', 'failuresByReason', 'rectFast', 'worstHosts', 'unsupportedItemsByType'], p);
++  u32(v.schemaVersion, p); scalar.forEach(k => u64(v[k], `${p}.${k}`));
++  counts(v.classification, ['rectangular', 'diagonal', 'nonRectangular', 'total'], p);
++  counts(v.rectFast, ['fired', 'openingsCut', 'deferHostNotBox', 'deferNotThrough', 'deferOffFace',
++    'deferNearEdge', 'deferNoOpenings', 'deferTooManyOpenings'], p);
++  for (const k of ['failuresByReason', 'unsupportedItemsByType']) array(v[k], (x, q) => {
++    keys(x, ['reason', 'count'], q); str(x.reason, q); u64(x.count, q);
++  }, p);
++  array(v.worstHosts, (x, q) => {
++    keys(x, ['productId', 'ifcType', 'openings', 'csgFailures', 'firstFailureLabel', 'bbox', 'triangleCount'], q);
++    u32(x.productId, q); str(x.ifcType, q); u64(x.openings, q); u64(x.csgFailures, q);
++    nullable(x.firstFailureLabel, str, q); nullable(x.triangleCount, u64, q);
++    nullable(x.bbox, b => { keys(b, ['min', 'max'], q); vec(f32, 3)(b.min, q); vec(f32, 3)(b.max, q); }, q);
++  }, p);
++}
++export const EXECUTION_FIELDS = ['parse_time_ms', 'entity_scan_time_ms', 'lookup_time_ms', 'preprocess_time_ms',
++  'geometry_time_ms', 'total_time_ms', 'faceted_brep_time_ms', 'point_cache_hits', 'point_cache_misses'];
++export function validateCapture(v, expectedOptions = OPTIONS) {
++  keys(v, ['protocol', 'fixture_sha256', 'options', 'scene', 'execution_only'], '$');
++  if (v.protocol !== 'exact-route-v2' || v.options !== expectedOptions || expectedOptions !== OPTIONS ||
++      !/^[a-f0-9]{64}$/.test(v.fixture_sha256)) fail('protocol/options/fixture');
++  const s = v.scene;
++  keys(s, ['meshes', INSTANCE, 'mesh_coordinate_space', 'frame_variant_anchor_placement', 'frame_world_matrix',
++    'site_transform', 'building_transform', 'metadata', 'stats'], '$.scene');
++  array(s.meshes, mesh, '$.scene.meshes'); if (!s.meshes.length) fail('empty meshes');
++  array(s[INSTANCE], instance, '$.scene.instances');
++  // Check references without deduplicating occurrences or changing their order.
++  for (const i of s[INSTANCE]) if (!s.meshes.some(m => m.serialized.express_id === i[6])) fail('instance template absent');
++  const f = s.frame_variant_anchor_placement;
++  if (!Array.isArray(f) || f.length !== 3) fail('frame tuple');
++  const tag = { RawIfc: 'raw_ifc', ModelRtc: 'model_rtc', SiteLocal: 'site_local' }[f[0]];
++  if (!tag || tag !== s.mesh_coordinate_space) fail('frame tag');
++  if (f[0] === 'ModelRtc') { vec(f64, 3)(f[1], 'frame anchor'); if (f[2] !== null) fail('frame placement'); }
++  else if (f[0] === 'SiteLocal') { mat64(f[2], 'frame placement'); if (f[1] !== null) fail('frame anchor'); }
++  else if (f[1] !== null || f[2] !== null) fail('raw frame');
++  mat64(s.frame_world_matrix, 'world matrix'); nullable(s.site_transform, mat64, 'site'); nullable(s.building_transform, mat64, 'building');
++  metadata(s.metadata, 'metadata');
++  const names = ['total_meshes', 'total_vertices', 'total_triangles', 'total_csg_failures', 'products_with_failures',
++    'degenerate_triangles_dropped', 'refused_input_elements', 'refused_prepass_records'];
++  keys(s.stats, [...names, 'from_cache', 'geometry_diagnostics'], 'stats'); names.forEach(k => u64(s.stats[k], k));
++  bool(s.stats.from_cache, 'cache'); nullable(s.stats.geometry_diagnostics, diagnostics, 'diagnostics');
++  const totals = [s.meshes.length, s.meshes.reduce((n, m) => n + m.serialized.positions.length / 3, 0),
++    s.meshes.reduce((n, m) => n + m.serialized.indices.length / 3, 0)];
++  ['total_meshes', 'total_vertices', 'total_triangles'].forEach((k, i) => {
++    if (u64(s.stats[k], k) !== BigInt(totals[i])) fail(`stats.${k} inconsistency`);
++  });
++  counts(v.execution_only, EXECUTION_FIELDS, 'execution_only');
++}
+diff --git a/scripts/exact-route-source.mjs b/scripts/exact-route-source.mjs
+new file mode 100644
+index 0000000000..14c647ba22
+--- /dev/null
++++ b/scripts/exact-route-source.mjs
+@@ -0,0 +1,104 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++import { createHash } from 'node:crypto';
++import { execFileSync } from 'node:child_process';
++import { readFileSync } from 'node:fs';
++import { resolve } from 'node:path';
++import { isDeepStrictEqual } from 'node:util';
++export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
++const git = (repo, args, encoding = 'utf8') => execFileSync('git', ['-C', repo, ...args],
++  { encoding, maxBuffer: 128 * 1024 * 1024 });
++export function verifyHarnessManifest(manifest) {
++  if (!manifest || manifest.protocol !== 'exact-route-v2' || !manifest.harness || Array.isArray(manifest.harness) ||
++      !Object.keys(manifest.harness).length || !Array.isArray(manifest.overlay) || !manifest.overlay.length ||
++      new Set(manifest.overlay).size !== manifest.overlay.length || !Array.isArray(manifest.fixtures) || !manifest.fixtures.length) {
++    throw Error('incomplete harness manifest');
++  }
++  const pathOK = p => typeof p === 'string' && p.length && !p.startsWith('/') && !p.split('/').includes('..');
++  for (const [path, sha] of Object.entries(manifest.harness)) {
++    if (!pathOK(path) || !/^[a-f0-9]{64}$/.test(sha)) throw Error('invalid harness file/hash');
++  }
++  for (const path of manifest.overlay) if (!Object.hasOwn(manifest.harness, path)) throw Error('unpinned overlay');
++  const canonical = JSON.stringify(Object.fromEntries(Object.entries(manifest.harness).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)));
++  if (sha256(canonical) !== manifest.harnessSha256) throw Error('aggregate harness hash mismatch');
++  for (const fixture of manifest.fixtures) if (!pathOK(fixture.path) || !/^[a-f0-9]{64}$/.test(fixture.sha256)) throw Error('invalid fixture pin');
++  if (new Set(manifest.fixtures.map(f => f.path)).size !== manifest.fixtures.length) throw Error('duplicate fixture pin');
++}
++export function gitSource(repo, original, execution, manifest) {
++  for (const commit of [original, execution]) {
++    if (!/^[a-f0-9]{40}$/.test(commit) || git(repo, ['rev-parse', `${commit}^{commit}`]).trim() !== commit) {
++      throw Error('source must be an independently resolved full Git commit');
++    }
++  }
++  const originalTree = git(repo, ['rev-parse', `${original}^{tree}`]).trim();
++  const executionTree = git(repo, ['rev-parse', `${execution}^{tree}`]).trim();
++  const list = commit => git(repo, ['ls-tree', '-r', '-z', commit]).split('\0').filter(Boolean).map(row => {
++    const [header, path] = row.split('\t');
++    const [mode, type, oid] = header.split(' '); return { path, mode, type, oid };
++  });
++  const before = new Map(list(original).map(v => [v.path, v]));
++  const after = new Map(list(execution).map(v => [v.path, v]));
++  for (const path of new Set([...before.keys(), ...after.keys()])) {
++    const a = before.get(path), b = after.get(path);
++    if (JSON.stringify(a) === JSON.stringify(b)) continue;
++    if (a || !b || !manifest.overlay.includes(path) || b.mode !== '100644' || b.type !== 'blob' ||
++        sha256(git(repo, ['cat-file', 'blob', b.oid], null)) !== manifest.harness[path]) {
++      throw Error(`execution commit differs beyond the exact added overlay: ${path}`);
++    }
++  }
++  for (const path of manifest.overlay) {
++    const file = after.get(path);
++    if (!file || file.mode !== '100644' || sha256(git(repo, ['cat-file', 'blob', file.oid], null)) !== manifest.harness[path]) {
++      throw Error(`execution overlay blob mismatch: ${path}`);
++    }
++  }
++  const trackedSourceHashes = Object.fromEntries([...after.values()].filter(v =>
++    ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml'].includes(v.path) ||
++    v.path.startsWith('.cargo/') || v.path.startsWith('rust/')).map(v => {
++    if (v.type !== 'blob' || !['100644', '100755'].includes(v.mode)) throw Error(`unsupported source mode: ${v.path}`);
++    return [v.path, sha256(git(repo, ['cat-file', 'blob', v.oid], null))];
++  }));
++  const toolchainInputs = Object.fromEntries(['Cargo.lock', 'rust-toolchain.toml', 'pnpm-lock.yaml', 'package.json'].map(path => {
++    const file = after.get(path);
++    if (!file || file.type !== 'blob') throw Error(`missing fleet toolchain input: ${path}`);
++    return [path, sha256(git(repo, ['cat-file', 'blob', file.oid], null))];
++  }));
++  return { source: original, sourceTree: originalTree, executionCommit: execution, executionTree, trackedSourceHashes, toolchainInputs };
++}
++export function verifyWorktree(cwd, source) {
++  if (git(cwd, ['rev-parse', 'HEAD']).trim() !== source.executionCommit || git(cwd, ['status', '--porcelain']).trim()) {
++    throw Error('execution worktree must be clean and at its verified commit');
++  }
++  for (const [path, sha] of Object.entries(source.trackedSourceHashes)) {
++    if (sha256(readFileSync(resolve(cwd, path))) !== sha) throw Error(`working bytes differ from Git blob: ${path}`);
++  }
++}
++export function verifyFleet(path, outputPath, receiptPath, receipt, source) {
++  // This external terminal receipt is supplied independently by the parent, not
++  // selected by the capture receipt or accepted from a source-label assertion.
++  const raw = readFileSync(path), fleet = JSON.parse(raw);
++  if (fleet.state !== 'completed' || fleet.exitCode !== 0 || fleet.sourceUnchanged !== true ||
++      typeof fleet.id !== 'string' || !fleet.id || !fleet.sourceBefore || !fleet.sourceAfter) throw Error('fleet run incomplete/failed');
++  const toolchainInputs = fleet.sourceBefore.toolchainInputs;
++  if (!toolchainInputs || typeof toolchainInputs !== 'object') throw Error('missing fleet toolchain inputs');
++  for (const snapshot of [fleet.sourceBefore, fleet.sourceAfter]) {
++    if (snapshot.commit !== source.executionCommit || snapshot.tree !== source.executionTree || snapshot.clean !== true ||
++        snapshot.worktreeDigest !== sha256('') || !isDeepStrictEqual(snapshot, fleet.sourceBefore)) {
++      throw Error('fleet source is not clean, unchanged and Git-bound');
++    }
++  }
++  if (!isDeepStrictEqual(toolchainInputs, source.toolchainInputs)) throw Error('fleet toolchain blob mismatch');
++  if (fleet.tools?.rustc?.exitCode !== 0 || fleet.tools?.cargo?.exitCode !== 0 ||
++      fleet.tools.rustc.version !== receipt.toolchain.split('\n')[0] || fleet.tools.cargo.version !== receipt.cargo) throw Error('fleet compiler identity mismatch');
++  if (resolve(fleet.cwd) !== resolve(receipt.cwd)) throw Error('fleet/capture cwd mismatch');
++  const output = readFileSync(outputPath);
++  if (fleet.outputSha256 !== sha256(output)) throw Error('fleet output log hash mismatch');
++  const marker = `EXACT_ROUTE_RECEIPT_SHA256 ${sha256(readFileSync(receiptPath))}`;
++  const markers = output.toString().split(/\r?\n/).filter(line => line.startsWith('EXACT_ROUTE_RECEIPT_SHA256 '));
++  if (markers.length !== 1 || markers[0] !== marker) throw Error('fleet output does not bind the actual capture receipt bytes');
++  const expected = receipt.requestedCommand;
++  if (!Array.isArray(expected) || !Array.isArray(fleet.command) || expected.length < 6 ||
++      JSON.stringify(fleet.command.slice(-expected.length)) !== JSON.stringify(expected)) throw Error('fleet command does not bind capture invocation');
++  return { id: fleet.id, receiptSha256: sha256(raw), outputSha256: sha256(output) };
++}
+diff --git a/scripts/lib/exact-route-cohort.mjs b/scripts/lib/exact-route-cohort.mjs
+new file mode 100644
+index 0000000000..cbaffe7881
+--- /dev/null
++++ b/scripts/lib/exact-route-cohort.mjs
+@@ -0,0 +1,82 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++// Small synthetic Git/fleet/artifact metadata fixture. Never runtime evidence.
++import { execFileSync } from 'node:child_process';
++import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
++import { captureFixture } from './exact-route-fixture.mjs';
++import { gitSource, sha256 } from '../exact-route-source.mjs';
++import { compilerEvidence } from '../exact-route-compiler.mjs';
++import { compareReceipts } from '../exact-route-receipts.mjs';
++import { OPTIONS } from '../exact-route-schema.mjs';
++const json = (path, value) => writeFileSync(path, JSON.stringify(value));
++export function cohort(t) {
++  const root = mkdtempSync(join(tmpdir(), 'exact-route-metadata-'));
++  t.after(() => rmSync(root, { recursive: true, force: true }));
++  const repo = join(root, 'git'); mkdirSync(repo);
++  const git = args => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
++  git(['init', '-q']);
++  for (const path of ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'pnpm-lock.yaml', 'package.json']) writeFileSync(join(repo, path), `fixture ${path}`);
++  git(['add', '.']);
++  const commit = message => { git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', message]); return git(['rev-parse', 'HEAD']); };
++  const base = commit('original source');
++  const overlay = 'rust/capture.rs'; mkdirSync(join(repo, 'rust')); writeFileSync(join(repo, overlay), 'exact overlay fixture\n');
++  git(['add', '.']); const execution = commit('overlay only');
++  const manifest = { protocol: 'exact-route-v2', preCommonProgramBase: base, immediateIntegrationParent: base,
++    overlay: [overlay], harness: { [overlay]: sha256(readFileSync(join(repo, overlay))) }, harnessSha256: sha256(JSON.stringify({ [overlay]: sha256(readFileSync(join(repo, overlay))) })),
++    options: OPTIONS, fixtures: [{ path: 'real.ifc', sha256: 'a'.repeat(64) }] };
++  const manifestPath = join(root, 'manifest.json'); json(manifestPath, manifest);
++  const source = gitSource(repo, base, execution, manifest);
++  const dirs = [join(root, 'base'), join(root, 'branch')];
++  const fleetReceipts = dirs.map(d => `${d}-fleet.json`);
++  const fleetLogs = dirs.map(d => `${d}-fleet.log`);
++  const writeReceipt = (i, receipt) => {
++    json(join(dirs[i], 'receipt.json'), receipt);
++    const path = fleetReceipts[i];
++    if (readFileSyncSafe(path)) {
++      const fleet = JSON.parse(readFileSync(path));
++      writeFileSync(fleetLogs[i], `EXACT_ROUTE_RECEIPT_SHA256 ${sha256(readFileSync(join(dirs[i], 'receipt.json')))}\n`);
++      fleet.outputSha256 = sha256(readFileSync(fleetLogs[i])); json(path, fleet);
++    }
++  };
++  dirs.forEach((dir, i) => {
++    mkdirSync(dir); json(join(dir, '0.json'), captureFixture());
++    const binary = join(root, 'compiler-output'); writeFileSync(join(dir, 'capture-binary'), 'fixture executable bytes');
++    const events = [{ compiler: 'rustc', version: 'fixture rustc', args: ['--crate-name', 'exact_route_capture', '-C', 'opt-level=3'] }];
++    const artifacts = [{ reason: 'compiler-artifact', target: { name: 'exact_route_capture' }, executable: binary, fresh: false,
++      features: [], profile: { debug_assertions: false, test: false, opt_level: '3', debuginfo: null, overflow_checks: false } }];
++    writeFileSync(join(dir, 'compiler-invocations.jsonl'), JSON.stringify(events[0]));
++    writeFileSync(join(dir, 'cargo-artifacts.jsonl'), JSON.stringify(artifacts[0]));
++    writeFileSync(join(dir, 'cargo-stderr.log'), 'fixture verbose arguments');
++    const receipt = { protocol: 'exact-route-v2', status: 'captured-uncompared', ...source, cwd: repo,
++      requestedCommand: ['node', '/fixture/runner.mjs', 'run', repo, base, dir],
++      binary: { path: binary, artifact: 'capture-binary', sha256: sha256(readFileSync(join(dir, 'capture-binary'))) },
++      harness: manifest.harness, harnessSha256: manifest.harnessSha256, options: manifest.options,
++      toolchain: 'fixture rustc', cargo: 'fixture cargo', runtime: { platform: 'fixture', arch: 'fixture', availableParallelism: 1 },
++      manifestSha256: sha256(readFileSync(manifestPath)), environment: {}, compiler: { ...compilerEvidence(events, artifacts),
++        invocationSha256: sha256(readFileSync(join(dir, 'compiler-invocations.jsonl'))), artifactEventsSha256: sha256(readFileSync(join(dir, 'cargo-artifacts.jsonl'))),
++        verboseLogSha256: sha256(readFileSync(join(dir, 'cargo-stderr.log'))) },
++      fixtures: [{ ...manifest.fixtures[0], capture: '0.json', captureSha256: sha256(readFileSync(join(dir, '0.json'))) }] };
++    json(join(dir, 'receipt.json'), receipt);
++    const snapshot = { commit: execution, tree: source.executionTree, clean: true, worktreeDigest: sha256(''), toolchainInputs: source.toolchainInputs };
++    writeFileSync(fleetLogs[i], `EXACT_ROUTE_RECEIPT_SHA256 ${sha256(readFileSync(join(dir, 'receipt.json')))}\n`);
++    json(fleetReceipts[i], { outputSha256: sha256(readFileSync(fleetLogs[i])), id: `fixture-${i}`, cwd: repo, state: 'completed', exitCode: 0, sourceBefore: snapshot,
++      sourceAfter: structuredClone(snapshot), sourceUnchanged: true, command: receipt.requestedCommand,
++      tools: { rustc: { exitCode: 0, version: 'fixture rustc' }, cargo: { exitCode: 0, version: 'fixture cargo' } },
++      artifacts: { [join(dir, 'receipt.json')]: sha256(readFileSync(join(dir, 'receipt.json'))) } });
++  });
++  return { dirs, manifest, base, execution, repo, git, commit, manifestPath, fleetReceipts, fleetLogs,
++    alter(change, i = 1) { const r = JSON.parse(readFileSync(join(dirs[i], 'receipt.json'))); change(r); writeReceipt(i, r); },
++    fleet(change, i = 1) { const r = JSON.parse(readFileSync(fleetReceipts[i])); change(r); json(fleetReceipts[i], r); },
++    capture(change, i) {
++      const path = join(dirs[i], '0.json'); const v = JSON.parse(readFileSync(path)); change(v); json(path, v);
++      this.alter(r => r.fixtures[0].captureSha256 = sha256(readFileSync(path)), i);
++    },
++    compare: () => compareReceipts(...dirs, base, base, manifest, { gitRepository: repo, fleetReceipts, fleetLogs, manifestPath }) };
++}
++// Only fixture setup uses a missing path; all verification reads are strict.
++function readFileSyncSafe(path) {
++  try { return readFileSync(path); } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
++}
+diff --git a/scripts/lib/exact-route-fixture.mjs b/scripts/lib/exact-route-fixture.mjs
+new file mode 100644
+index 0000000000..3d26eb69ed
+--- /dev/null
++++ b/scripts/lib/exact-route-fixture.mjs
+@@ -0,0 +1,32 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++// Synthetic complete payload for schema/comparator invariant tests, NOT IFC evidence.
++import { OPTIONS, INSTANCE, MESH_INSTANCE, EXECUTION_FIELDS } from '../exact-route-schema.mjs';
++export const F32 = 'f32:00000000', F64 = 'f64:0000000000000000';
++export const matrix = () => Array.from({ length: 16 }, (_, i) => i % 5 === 0 ? 'f64:3ff0000000000000' : F64);
++export function captureFixture() {
++  const mesh = { express_id: 'u32:1', ifc_type: 'IfcWall', global_id: null, name: null,
++    presentation_layer: null, positions: [F32, F32, F32, 'f32:3f800000', F32, F32, F32, 'f32:3f800000', F32],
++    normals: [F32, F32, 'f32:3f800000', F32, F32, 'f32:3f800000', F32, F32, 'f32:3f800000'],
++    indices: ['u32:0', 'u32:1', 'u32:2'], color: ['f32:3f800000', F32, F32, 'f32:3f800000'],
++    material_name: null, geometry_item_id: null, material_id: null, properties: null,
++    uvs: [F32, F32, 'f32:3f800000', F32, F32, 'f32:3f800000'],
++    texture: { texture_id: 'u32:7', rgba: ['u8:255', 'u8:0', 'u8:0', 'u8:255'], width: 'u32:1', height: 'u32:1',
++      url: null, repeat_s: true, repeat_t: false }, geometry_class: 'u8:0', origin: [F64, F64, F64] };
++  const instance = id => [`u32:${id}`, 'IfcWall', null, null, null, [...mesh.color], 'u32:1',
++    'u128:340282366920938463463374607431768211455', matrix().map(v => v === F64 ? F32 : 'f32:3f800000'), null];
++  return { protocol: 'exact-route-v2', fixture_sha256: 'a'.repeat(64), options: OPTIONS,
++    scene: { meshes: [{ serialized: mesh, geometry_class: mesh.geometry_class, origin: [...mesh.origin],
++      local_bounds: [F32, F32, F32, 'f32:3f800000', 'f32:3f800000', F32], local_to_world: matrix(),
++      [MESH_INSTANCE]: [matrix(), null, null, 'u128:340282366920938463463374607431768211455', true] }],
++    [INSTANCE]: [instance(1), instance(2), instance(1)], mesh_coordinate_space: 'raw_ifc',
++    frame_variant_anchor_placement: ['RawIfc', null, null], frame_world_matrix: matrix(), site_transform: null, building_transform: null,
++    metadata: { schema_version: 'IFC4', entity_count: 'u64:3', geometry_entity_count: 'u64:1',
++      coordinate_info: { origin_shift: [F64, F64, F64], is_geo_referenced: false }, length_unit_scale: null,
++      length_unit_refused: null, georeferencing: null },
++    stats: { total_meshes: 'u64:1', total_vertices: 'u64:3', total_triangles: 'u64:1', from_cache: false,
++      total_csg_failures: 'u64:0', products_with_failures: 'u64:0', degenerate_triangles_dropped: 'u64:0',
++      refused_input_elements: 'u64:0', refused_prepass_records: 'u64:0', geometry_diagnostics: null } },
++    execution_only: Object.fromEntries(EXECUTION_FIELDS.map(k => [k, 'u64:0'])) };
++}

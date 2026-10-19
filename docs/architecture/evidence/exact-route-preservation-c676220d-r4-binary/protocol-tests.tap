@@ -1,0 +1,286 @@
+TAP version 13
+# Subtest: executes the saved compiled bytes after original shared-target replacement
+ok 1 - executes the saved compiled bytes after original shared-target replacement
+  ---
+  duration_ms: 41.157939
+  type: 'test'
+  ...
+# Subtest: replacement before snapshot refuses despite a valid executable path
+ok 2 - replacement before snapshot refuses despite a valid executable path
+  ---
+  duration_ms: 1.049358
+  type: 'test'
+  ...
+# Subtest: saved-copy mutation during execution refuses post-capture validation
+ok 3 - saved-copy mutation during execution refuses post-capture validation
+  ---
+  duration_ms: 34.752271
+  type: 'test'
+  ...
+# Subtest: replaced saved binary with rebound receipt hash and fleet marker still refuses unchanged compiler trace
+ok 4 - replaced saved binary with rebound receipt hash and fleet marker still refuses unchanged compiler trace
+  ---
+  duration_ms: 334.213463
+  type: 'test'
+  ...
+# Subtest: complete Git-bound clean-fleet cohort compares
+ok 5 - complete Git-bound clean-fleet cohort compares
+  ---
+  duration_ms: 331.91434
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: missingFixture
+ok 6 - independent receipt mutation refuses: missingFixture
+  ---
+  duration_ms: 236.626768
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: wrongSource
+ok 7 - independent receipt mutation refuses: wrongSource
+  ---
+  duration_ms: 239.364354
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: wrongTree
+ok 8 - independent receipt mutation refuses: wrongTree
+  ---
+  duration_ms: 335.375608
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: wrongExecutionTree
+ok 9 - independent receipt mutation refuses: wrongExecutionTree
+  ---
+  duration_ms: 331.706427
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: emptyHashes
+ok 10 - independent receipt mutation refuses: emptyHashes
+  ---
+  duration_ms: 332.132085
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: changedHash
+ok 11 - independent receipt mutation refuses: changedHash
+  ---
+  duration_ms: 336.842755
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: missingHash
+ok 12 - independent receipt mutation refuses: missingHash
+  ---
+  duration_ms: 334.498291
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: extraHash
+ok 13 - independent receipt mutation refuses: extraHash
+  ---
+  duration_ms: 335.158044
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: sourceOverlay
+ok 14 - independent receipt mutation refuses: sourceOverlay
+  ---
+  duration_ms: 235.603127
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: failedBuild
+ok 15 - independent receipt mutation refuses: failedBuild
+  ---
+  duration_ms: 230.747929
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: toolchain
+ok 16 - independent receipt mutation refuses: toolchain
+  ---
+  duration_ms: 329.88823
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: options
+ok 17 - independent receipt mutation refuses: options
+  ---
+  duration_ms: 241.415606
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: fixtureBytes
+ok 18 - independent receipt mutation refuses: fixtureBytes
+  ---
+  duration_ms: 330.947626
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: captureBytes
+ok 19 - independent receipt mutation refuses: captureBytes
+  ---
+  duration_ms: 337.794943
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: flags
+ok 20 - independent receipt mutation refuses: flags
+  ---
+  duration_ms: 330.901902
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: hiddenProfileOverride
+ok 21 - independent receipt mutation refuses: hiddenProfileOverride
+  ---
+  duration_ms: 339.433783
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: compilerArgs
+ok 22 - independent receipt mutation refuses: compilerArgs
+  ---
+  duration_ms: 376.345109
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: compilerLogPin
+ok 23 - independent receipt mutation refuses: compilerLogPin
+  ---
+  duration_ms: 347.305809
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: binaryHash
+ok 24 - independent receipt mutation refuses: binaryHash
+  ---
+  duration_ms: 233.555034
+  type: 'test'
+  ...
+# Subtest: external fleet mutation refuses: missingBefore
+ok 25 - external fleet mutation refuses: missingBefore
+  ---
+  duration_ms: 325.044051
+  type: 'test'
+  ...
+# Subtest: external fleet mutation refuses: dirty
+ok 26 - external fleet mutation refuses: dirty
+  ---
+  duration_ms: 338.943635
+  type: 'test'
+  ...
+# Subtest: external fleet mutation refuses: changed
+ok 27 - external fleet mutation refuses: changed
+  ---
+  duration_ms: 345.382799
+  type: 'test'
+  ...
+# Subtest: external fleet mutation refuses: nonterminal
+ok 28 - external fleet mutation refuses: nonterminal
+  ---
+  duration_ms: 330.486203
+  type: 'test'
+  ...
+# Subtest: external fleet mutation refuses: failure
+ok 29 - external fleet mutation refuses: failure
+  ---
+  duration_ms: 336.693674
+  type: 'test'
+  ...
+# Subtest: external fleet mutation refuses: pairedWrongTree
+ok 30 - external fleet mutation refuses: pairedWrongTree
+  ---
+  duration_ms: 347.139809
+  type: 'test'
+  ...
+# Subtest: external fleet mutation refuses: beforeAfterMismatch
+ok 31 - external fleet mutation refuses: beforeAfterMismatch
+  ---
+  duration_ms: 351.612007
+  type: 'test'
+  ...
+# Subtest: external fleet mutation refuses: toolchainBlob
+ok 32 - external fleet mutation refuses: toolchainBlob
+  ---
+  duration_ms: 362.892559
+  type: 'test'
+  ...
+# Subtest: external fleet mutation refuses: unboundOutput
+ok 33 - external fleet mutation refuses: unboundOutput
+  ---
+  duration_ms: 349.108549
+  type: 'test'
+  ...
+# Subtest: external fleet mutation refuses: command
+ok 34 - external fleet mutation refuses: command
+  ---
+  duration_ms: 354.061004
+  type: 'test'
+  ...
+# Subtest: real Git execution commit with a non-overlay source edit refuses
+ok 35 - real Git execution commit with a non-overlay source edit refuses
+  ---
+  duration_ms: 297.864849
+  type: 'test'
+  ...
+# Subtest: paired identical payload mutation with rebound hashes refuses: options
+ok 36 - paired identical payload mutation with rebound hashes refuses: options
+  ---
+  duration_ms: 346.722495
+  type: 'test'
+  ...
+# Subtest: paired identical payload mutation with rebound hashes refuses: skeletal
+ok 37 - paired identical payload mutation with rebound hashes refuses: skeletal
+  ---
+  duration_ms: 352.665913
+  type: 'test'
+  ...
+# Subtest: paired identical payload mutation with rebound hashes refuses: metadata
+ok 38 - paired identical payload mutation with rebound hashes refuses: metadata
+  ---
+  duration_ms: 353.168582
+  type: 'test'
+  ...
+# Subtest: paired identical payload mutation with rebound hashes refuses: truncatedNormals
+ok 39 - paired identical payload mutation with rebound hashes refuses: truncatedNormals
+  ---
+  duration_ms: 349.089973
+  type: 'test'
+  ...
+# Subtest: independent output log requires exactly one receipt marker: 0
+ok 40 - independent output log requires exactly one receipt marker: 0
+  ---
+  duration_ms: 332.807896
+  type: 'test'
+  ...
+# Subtest: independent output log requires exactly one receipt marker: 2
+ok 41 - independent output log requires exactly one receipt marker: 2
+  ---
+  duration_ms: 334.260965
+  type: 'test'
+  ...
+# Subtest: identical scenes/example, internally rebound geometry policy still refuses
+ok 42 - identical scenes/example, internally rebound geometry policy still refuses
+  ---
+  duration_ms: 350.776384
+  type: 'test'
+  ...
+# Subtest: identical scenes/example, internally rebound processing policy still refuses
+ok 43 - identical scenes/example, internally rebound processing policy still refuses
+  ---
+  duration_ms: 354.361797
+  type: 'test'
+  ...
+# Subtest: identical scenes/example, internally rebound external policy still refuses
+ok 44 - identical scenes/example, internally rebound external policy still refuses
+  ---
+  duration_ms: 355.637371
+  type: 'test'
+  ...
+# Subtest: identical scenes/example, internally rebound dependency arguments refuse
+ok 45 - identical scenes/example, internally rebound dependency arguments refuse
+  ---
+  duration_ms: 356.839413
+  type: 'test'
+  ...
+# Subtest: identical scenes/example, cached dependency without qualified trace refuses
+ok 46 - identical scenes/example, cached dependency without qualified trace refuses
+  ---
+  duration_ms: 342.829701
+  type: 'test'
+  ...
+1..46
+# tests 46
+# suites 0
+# pass 46
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 13830.859096

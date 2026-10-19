@@ -1,0 +1,175 @@
+{
+  "protocol": "exact-route-v2",
+  "state": "PROTOCOL_FIXTURES_PASS_RUST_AND_AB_UNRUN_CLOSURE_PENDING",
+  "preCommonProgramBase": "772522f9df7a06d5287c1e9934055206fd464866",
+  "firstCommonProgram": "e2e42bbfb8bd087a386450a0ab643bcb061c133c",
+  "immediateIntegrationParent": "475c5edca5ab4c8ba99a92874504240b2fecffe3",
+  "initialBranchSource": "475c5edca5ab4c8ba99a92874504240b2fecffe3",
+  "options": "process_geometry/full_pass/default-opening/default-quality/default-features/no-IFC_LITE-overrides",
+  "profile": "server-release",
+  "features": "default (no --features argument)",
+  "toolchainSource": {
+    "path": "rust-toolchain.toml",
+    "sha256": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+    "text": "[toolchain]\nchannel = \"nightly-2025-11-15\"\ncomponents = [\"rust-src\", \"clippy\"]\ntargets = [\"wasm32-unknown-unknown\"]\n"
+  },
+  "harness": {
+    "rust/processing/examples/exact_route_capture.rs": "21b47785c40fe527f6e323ebfbe9f107e0868c0b5b44fdf818a15f8a9d46a308",
+    "rust/processing/examples/exact_route_capture/bits.rs": "0279e27534698ef97bb0f847473bf1d55ff169ce0911a8beaa65b633fb6ccc77",
+    "scripts/exact-route-compare.mjs": "75a3057920295acb6a9067c92fc6a95c1b7b19ce20b8b99569080a82068668b5",
+    "scripts/exact-route-compare.test.mjs": "1c479dca97fbb72bba56d6f45f611729df803d3691e2ef92ab49c2a4d3f44531",
+    "scripts/exact-route-compiler.mjs": "b3402cb822808b8d616b5e361e1f7a59974a69b81e94f28b117fad6e64d35006",
+    "scripts/exact-route-compiler.test.mjs": "1189b07df14a69c67adc3c2fcc8818a66b52302179c0864bf8f853071db67b7c",
+    "scripts/exact-route-inputs.mjs": "aeaca64dc283cb9e63741ae25ec92f91f5c25b22d6fcce6ef8d25ea247422ee3",
+    "scripts/exact-route-receipts.mjs": "2f52bd2a600842edb7aaaf425137d6d5b9b5f9285f5ecb741f450323af01c1ba",
+    "scripts/exact-route-receipts.test.mjs": "39252868a415c3b20fbf8d158cbe12a49ce0460fc0b1416bf0e72458d445c8fe",
+    "scripts/exact-route-run.mjs": "75ae76530354a660e9b34b9cbca93bf61e9a6e5d4e3e1034da68ee08ea1a6639",
+    "scripts/exact-route-rustc.mjs": "2eccaadfe7ce6f094ace9c724869ebad1c52a083a141f48fe2108efb3c4933c4",
+    "scripts/exact-route-schema.mjs": "327e13db0e89830b2ed3372d3f3eb69f1588e306e5a7bac293520122d6a4ad6a",
+    "scripts/exact-route-source.mjs": "3a341c8e313ca7b2334810377f58bde311c0b8567fd6eaef13fe8b44517a2d47",
+    "scripts/exact-route-units.mjs": "c06dbac14e777f3f2480d264ca42135b6886ee287e0fe2a552e181957608cc8b",
+    "scripts/exact-route-units.test.mjs": "aa44a8f74512a32e66d2f6f00aaa5809440dc2c851a96f6e76fb0ad52bf67d7f",
+    "scripts/lib/exact-route-cohort.mjs": "2b111c1ef497f2deb29a42c6142afa787e986ebec881939b6820cc5d5ca5d21b",
+    "scripts/lib/exact-route-fixture.mjs": "21ef0b20adf2c97f8a2801802a8ba1561471d9a4e4806254f7077a59563284d4",
+    "scripts/lib/exact-route-unit-fixture.mjs": "e9d796c695375774b14024c86d57b4228e894790b701294d5a499756f175ea0e"
+  },
+  "overlay": [
+    "rust/processing/examples/exact_route_capture.rs",
+    "rust/processing/examples/exact_route_capture/bits.rs"
+  ],
+  "fixtures": [
+    {
+      "path": "rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc",
+      "sha256": "21625ddf0c241cd7562cc2b2fa0ab49a0d2218ba32da37b2ef4d34f1143c146f",
+      "bytes": 3867,
+      "intendedCoverage": [
+        "real-opening",
+        "overlapping-openings"
+      ],
+      "originCommit": "475c5edca5ab4c8ba99a92874504240b2fecffe3"
+    },
+    {
+      "path": "apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc",
+      "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+      "bytes": 2526544,
+      "intendedCoverage": [
+        "small-model"
+      ],
+      "originCommit": "475c5edca5ab4c8ba99a92874504240b2fecffe3"
+    },
+    {
+      "path": "apps/viewer/public/samples/building-architecture.ifc",
+      "sha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5",
+      "bytes": 225635,
+      "intendedCoverage": [
+        "small-model",
+        "style",
+        "type-library"
+      ],
+      "originCommit": "475c5edca5ab4c8ba99a92874504240b2fecffe3"
+    },
+    {
+      "path": "rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc",
+      "sha256": "3069997f0b7d555232180c88bea27d0f6ca4d9c309a9cf4b1c3a8c68bba166ad",
+      "bytes": 23440,
+      "intendedCoverage": [
+        "mapped-occurrences"
+      ],
+      "originCommit": "475c5edca5ab4c8ba99a92874504240b2fecffe3"
+    },
+    {
+      "path": "rust/geometry/tests/fixtures/mapped_instances_nested.ifc",
+      "sha256": "2fdaa6242992c855029f707cba8de6e4abb3441ddeb7737e91fa578b1ca1587b",
+      "bytes": 3566,
+      "intendedCoverage": [
+        "nested-maps"
+      ],
+      "originCommit": "475c5edca5ab4c8ba99a92874504240b2fecffe3"
+    },
+    {
+      "path": "rust/geometry/tests/fixtures/mapped_instances_site_rotated.ifc",
+      "sha256": "0e532d642b8e158b8990c9c3ae9407e31ea2574345902ab9cfbe23b01fe70a0d",
+      "bytes": 3028,
+      "intendedCoverage": [
+        "site-rotation-frame"
+      ],
+      "originCommit": "475c5edca5ab4c8ba99a92874504240b2fecffe3"
+    },
+    {
+      "path": "rust/geometry/tests/fixtures/mapped_instances_site_translated.ifc",
+      "sha256": "a3e9475d81fb30fb9f21ac51e16514dd53e4a6d8cc71ff5fc2fca756db9190b0",
+      "bytes": 2946,
+      "intendedCoverage": [
+        "site-translation-frame"
+      ],
+      "originCommit": "475c5edca5ab4c8ba99a92874504240b2fecffe3"
+    },
+    {
+      "path": "rust/geometry/tests/fixtures/mapped_instances_indexed_colour.ifc",
+      "sha256": "824711b6e195967a3a0d082a7d79c54e21560b0d69b36ceffab9cdb5df2c72c5",
+      "bytes": 2209,
+      "intendedCoverage": [
+        "indexed-color"
+      ],
+      "originCommit": "475c5edca5ab4c8ba99a92874504240b2fecffe3"
+    },
+    {
+      "path": "rust/geometry/tests/fixtures/p1-styled-textured-maps.ifc",
+      "sha256": "74cd2eb4a65f9eb4588fcf9b24b3125f5404cd4a77d8bd65c556fe143ad98700",
+      "bytes": 1148,
+      "intendedCoverage": [
+        "embedded-texture",
+        "uv",
+        "style"
+      ],
+      "originCommit": "475c5edca5ab4c8ba99a92874504240b2fecffe3"
+    }
+  ],
+  "coverageGaps": [
+    "Actual compilation and base/branch capture have NOT run.",
+    "Default process_geometry disables output instancing: instance fields retained, nonempty instance-record behavior unqualified.",
+    "Federation composition belongs to viewer; independent per-model frames here do not qualify actual federation.",
+    "Intended fixture features require nonzero actual output coverage; fixture labels are not execution evidence.",
+    "Synthetic mapped/texture fixtures complement rather than replace the committed real opening and house files.",
+    "Browser/WASM parity, generated artifacts, retained runtime, native SDK, region/oracle tests and performance are outside this harness.",
+    "Every Cargo cache hit is unqualified without a retained compile trace; no importer is implemented, and managed caches must not be deleted to manufacture freshness.",
+    "Unpaired/ambiguous dependency policy cohorts refuse until separately reconciled; no actual source-pair dependency inventory has been executed."
+  ],
+  "overlayArtifact": {
+    "path": "docs/architecture/evidence/exact-route-preservation-c676220d-r2/overlay.patch",
+    "sha256": "95c8838abad2c6af15b1498a90b8112f0402ac49b8f51bf0f8aaf31d4ce0c95c"
+  },
+  "harnessSha256": "258a46180586b3e9995977e18dc25ae072e3ca6244f1dad85ff72843962b6374",
+  "reviewedCheckpoint": "ec8020e8171497f56ad0dc103e8224665b6e01f3",
+  "originalManifestSha256": "3f036e3be9a019483ad8be86cfdcb2b10ea9e1ceb69dbd15cc10529f2b0ccab9",
+  "sourceCorrectionArtifact": {
+    "path": "docs/architecture/evidence/exact-route-preservation-c676220d-r3/source-correction.patch",
+    "sha256": "e5c8119ba59d854e165a1912d48a79c053e624ede453e0fe99856118a82af9ce",
+    "applyFlag": "--unidiff-zero"
+  },
+  "reviewResponse": {
+    "path": "docs/architecture/evidence/exact-route-preservation-c676220d-r3/REVIEW-RESPONSE.md",
+    "sha256": "f533ce52f8d9245f7a5adc8b137105801c2f6f7a1e1dac7eba4648b03a816be1"
+  },
+  "priorManifestSha256": "ab80bc21df806173f77ab650a197b6e4d7e05122dba5b0b5ccfaf5083cfd9b63",
+  "compileTraceProtocol": "exact-route-terminal-units-v1",
+  "cachedArtifactQualification": "REFUSE_ALL_CARGO_FRESH_TRUE_NO_RETAINED_TRACE_IMPORTER",
+  "protocolEvidence": [
+    {
+      "path": "docs/architecture/evidence/exact-route-preservation-c676220d-r3/protocol-tests.tap",
+      "sha256": "6f63ed53393179a49707e77e50465693f747bcafa93dd78714d3b2879748bf44"
+    },
+    {
+      "path": "docs/architecture/evidence/exact-route-preservation-c676220d-r3/protocol-results.json",
+      "sha256": "d87da09de032d0db306d6969e5398fb3811f02ccdc8e80a14589f83f1d7fa1fd"
+    },
+    {
+      "path": "docs/architecture/evidence/exact-route-preservation-c676220d-r3/protocol-tests-115.tap",
+      "sha256": "c6fac9fc7e10a8895ca7ef84bda2c6a75c3aa851afa4ecc62fb423f252a74420"
+    },
+    {
+      "path": "docs/architecture/evidence/exact-route-preservation-c676220d-r3/protocol-tests-115.sources.json",
+      "sha256": "fa4c88d37801094ca75a41ad43083254cbd3ef9c8816f54a7e4563780fdaccf7"
+    }
+  ]
+}

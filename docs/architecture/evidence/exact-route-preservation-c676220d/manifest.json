@@ -1,0 +1,130 @@
+{
+  "protocol": "exact-route-v1",
+  "state": "PREPARED_UNRUN",
+  "preCommonProgramBase": "772522f9df7a06d5287c1e9934055206fd464866",
+  "firstCommonProgram": "e2e42bbfb8bd087a386450a0ab643bcb061c133c",
+  "immediateIntegrationParent": "475c5edca5ab4c8ba99a92874504240b2fecffe3",
+  "initialBranchSource": "475c5edca5ab4c8ba99a92874504240b2fecffe3",
+  "options": "process_geometry/full_pass/default-opening/default-quality/default-features/no-IFC_LITE-overrides",
+  "profile": "server-release",
+  "features": "default (no --features argument)",
+  "toolchainSource": {
+    "path": "rust-toolchain.toml",
+    "sha256": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+    "text": "[toolchain]\nchannel = \"nightly-2025-11-15\"\ncomponents = [\"rust-src\", \"clippy\"]\ntargets = [\"wasm32-unknown-unknown\"]\n"
+  },
+  "harness": {
+    "rust/processing/examples/exact_route_capture.rs": "0be18eb730bfc5883c7c25bac1a9cad815a53d6f55a423ed0238b976ec6934b5",
+    "rust/processing/examples/exact_route_capture/bits.rs": "0279e27534698ef97bb0f847473bf1d55ff169ce0911a8beaa65b633fb6ccc77",
+    "scripts/exact-route-compare.mjs": "d36e2457f77b9c983282849d37fac14216b3e3f6fa7cbd60d2818d228f79b9b7",
+    "scripts/exact-route-compare.test.mjs": "226ef6cffc10fd27142e1c3da810013c7b23fc5d5108bf15dc05c7775a326eee",
+    "scripts/exact-route-receipts.mjs": "a14f30d4b357fc59c672af297e89af03c42a6e9be9aefdac6b29b4299f4704a9",
+    "scripts/exact-route-receipts.test.mjs": "e547fffd62c82364fd5c7855658ecb601d13cbb62b46ceba429fbc54530e79d4",
+    "scripts/exact-route-run.mjs": "126811a79cff704b5faddf69514d0f3ccf348dc7784853337857c784998fe6df"
+  },
+  "overlay": [
+    "rust/processing/examples/exact_route_capture.rs",
+    "rust/processing/examples/exact_route_capture/bits.rs"
+  ],
+  "fixtures": [
+    {
+      "path": "rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc",
+      "sha256": "21625ddf0c241cd7562cc2b2fa0ab49a0d2218ba32da37b2ef4d34f1143c146f",
+      "bytes": 3867,
+      "intendedCoverage": [
+        "real-opening",
+        "overlapping-openings"
+      ],
+      "originCommit": "475c5edca5ab4c8ba99a92874504240b2fecffe3"
+    },
+    {
+      "path": "apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc",
+      "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+      "bytes": 2526544,
+      "intendedCoverage": [
+        "small-model"
+      ],
+      "originCommit": "475c5edca5ab4c8ba99a92874504240b2fecffe3"
+    },
+    {
+      "path": "apps/viewer/public/samples/building-architecture.ifc",
+      "sha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5",
+      "bytes": 225635,
+      "intendedCoverage": [
+        "small-model",
+        "style",
+        "type-library"
+      ],
+      "originCommit": "475c5edca5ab4c8ba99a92874504240b2fecffe3"
+    },
+    {
+      "path": "rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc",
+      "sha256": "3069997f0b7d555232180c88bea27d0f6ca4d9c309a9cf4b1c3a8c68bba166ad",
+      "bytes": 23440,
+      "intendedCoverage": [
+        "mapped-occurrences"
+      ],
+      "originCommit": "475c5edca5ab4c8ba99a92874504240b2fecffe3"
+    },
+    {
+      "path": "rust/geometry/tests/fixtures/mapped_instances_nested.ifc",
+      "sha256": "2fdaa6242992c855029f707cba8de6e4abb3441ddeb7737e91fa578b1ca1587b",
+      "bytes": 3566,
+      "intendedCoverage": [
+        "nested-maps"
+      ],
+      "originCommit": "475c5edca5ab4c8ba99a92874504240b2fecffe3"
+    },
+    {
+      "path": "rust/geometry/tests/fixtures/mapped_instances_site_rotated.ifc",
+      "sha256": "0e532d642b8e158b8990c9c3ae9407e31ea2574345902ab9cfbe23b01fe70a0d",
+      "bytes": 3028,
+      "intendedCoverage": [
+        "site-rotation-frame"
+      ],
+      "originCommit": "475c5edca5ab4c8ba99a92874504240b2fecffe3"
+    },
+    {
+      "path": "rust/geometry/tests/fixtures/mapped_instances_site_translated.ifc",
+      "sha256": "a3e9475d81fb30fb9f21ac51e16514dd53e4a6d8cc71ff5fc2fca756db9190b0",
+      "bytes": 2946,
+      "intendedCoverage": [
+        "site-translation-frame"
+      ],
+      "originCommit": "475c5edca5ab4c8ba99a92874504240b2fecffe3"
+    },
+    {
+      "path": "rust/geometry/tests/fixtures/mapped_instances_indexed_colour.ifc",
+      "sha256": "824711b6e195967a3a0d082a7d79c54e21560b0d69b36ceffab9cdb5df2c72c5",
+      "bytes": 2209,
+      "intendedCoverage": [
+        "indexed-color"
+      ],
+      "originCommit": "475c5edca5ab4c8ba99a92874504240b2fecffe3"
+    },
+    {
+      "path": "rust/geometry/tests/fixtures/p1-styled-textured-maps.ifc",
+      "sha256": "74cd2eb4a65f9eb4588fcf9b24b3125f5404cd4a77d8bd65c556fe143ad98700",
+      "bytes": 1148,
+      "intendedCoverage": [
+        "embedded-texture",
+        "uv",
+        "style"
+      ],
+      "originCommit": "475c5edca5ab4c8ba99a92874504240b2fecffe3"
+    }
+  ],
+  "coverageGaps": [
+    "Actual compilation and base/branch capture have NOT run.",
+    "Default process_geometry disables output instancing: instance fields retained, nonempty instance-record behavior unqualified.",
+    "Federation composition belongs to viewer; independent per-model frames here do not qualify actual federation.",
+    "Intended fixture features require nonzero actual output coverage; fixture labels are not execution evidence.",
+    "Synthetic mapped/texture fixtures complement rather than replace the committed real opening and house files.",
+    "Browser/WASM parity, generated artifacts, retained runtime, native SDK, region/oracle tests and performance are outside this harness."
+  ],
+  "overlayArtifact": {
+    "path": "docs/architecture/evidence/exact-route-preservation-c676220d/overlay.patch",
+    "sha256": "f880558924442f7aefedd79898ad9f847588894a09edb75e855bbd1417f490d2"
+  },
+  "harnessSha256": "8a9baa54a3028011e116281a32295955b491f88f422bc8befb709a68a3c2686e"
+}

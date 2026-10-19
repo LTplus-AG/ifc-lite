@@ -1,0 +1,892 @@
+TAP version 13
+# Subtest: executes the saved compiled bytes after original shared-target replacement
+ok 1 - executes the saved compiled bytes after original shared-target replacement
+  ---
+  duration_ms: 42.86807
+  type: 'test'
+  ...
+# Subtest: replacement before snapshot refuses despite a valid executable path
+ok 2 - replacement before snapshot refuses despite a valid executable path
+  ---
+  duration_ms: 1.044974
+  type: 'test'
+  ...
+# Subtest: saved-copy mutation during execution refuses post-capture validation
+ok 3 - saved-copy mutation during execution refuses post-capture validation
+  ---
+  duration_ms: 36.905178
+  type: 'test'
+  ...
+# Subtest: replaced saved binary with rebound receipt hash and fleet marker still refuses unchanged compiler trace
+ok 4 - replaced saved binary with rebound receipt hash and fleet marker still refuses unchanged compiler trace
+  ---
+  duration_ms: 356.907404
+  type: 'test'
+  ...
+# Subtest: identical ordered scene matches; keyed object order and wall clocks are irrelevant
+ok 5 - identical ordered scene matches; keyed object order and wall clocks are irrelevant
+  ---
+  duration_ms: 10.124952
+  type: 'test'
+  ...
+# Subtest: mutation-negative: position
+ok 6 - mutation-negative: position
+  ---
+  duration_ms: 3.639396
+  type: 'test'
+  ...
+# Subtest: mutation-negative: negativeZero
+ok 7 - mutation-negative: negativeZero
+  ---
+  duration_ms: 1.719327
+  type: 'test'
+  ...
+# Subtest: mutation-negative: normal
+ok 8 - mutation-negative: normal
+  ---
+  duration_ms: 1.897893
+  type: 'test'
+  ...
+# Subtest: mutation-negative: index
+ok 9 - mutation-negative: index
+  ---
+  duration_ms: 2.000024
+  type: 'test'
+  ...
+# Subtest: mutation-negative: uv
+ok 10 - mutation-negative: uv
+  ---
+  duration_ms: 1.796238
+  type: 'test'
+  ...
+# Subtest: mutation-negative: color
+ok 11 - mutation-negative: color
+  ---
+  duration_ms: 1.559305
+  type: 'test'
+  ...
+# Subtest: mutation-negative: textureByte
+ok 12 - mutation-negative: textureByte
+  ---
+  duration_ms: 2.090034
+  type: 'test'
+  ...
+# Subtest: mutation-negative: origin
+ok 13 - mutation-negative: origin
+  ---
+  duration_ms: 1.00928
+  type: 'test'
+  ...
+# Subtest: mutation-negative: bounds
+ok 14 - mutation-negative: bounds
+  ---
+  duration_ms: 1.426501
+  type: 'test'
+  ...
+# Subtest: mutation-negative: transform
+ok 15 - mutation-negative: transform
+  ---
+  duration_ms: 1.201404
+  type: 'test'
+  ...
+# Subtest: mutation-negative: instanceIdentity
+ok 16 - mutation-negative: instanceIdentity
+  ---
+  duration_ms: 1.319547
+  type: 'test'
+  ...
+# Subtest: mutation-negative: frame
+ok 17 - mutation-negative: frame
+  ---
+  duration_ms: 1.174861
+  type: 'test'
+  ...
+# Subtest: mutation-negative: metadata
+ok 18 - mutation-negative: metadata
+  ---
+  duration_ms: 1.342952
+  type: 'test'
+  ...
+# Subtest: mutation-negative: omittedField
+ok 19 - mutation-negative: omittedField
+  ---
+  duration_ms: 0.737865
+  type: 'test'
+  ...
+# Subtest: mutation-negative: duplicateLoss
+ok 20 - mutation-negative: duplicateLoss
+  ---
+  duration_ms: 0.864345
+  type: 'test'
+  ...
+# Subtest: mutation-negative: occurrenceOrder
+ok 21 - mutation-negative: occurrenceOrder
+  ---
+  duration_ms: 1.174426
+  type: 'test'
+  ...
+# Subtest: mutation-negative: refusal
+ok 22 - mutation-negative: refusal
+  ---
+  duration_ms: 0.66673
+  type: 'test'
+  ...
+# Subtest: mutation-negative: csgLoss
+ok 23 - mutation-negative: csgLoss
+  ---
+  duration_ms: 0.67013
+  type: 'test'
+  ...
+# Subtest: mutation-negative: fixture
+ok 24 - mutation-negative: fixture
+  ---
+  duration_ms: 0.326257
+  type: 'test'
+  ...
+# Subtest: mutation-negative: options
+ok 25 - mutation-negative: options
+  ---
+  duration_ms: 0.276366
+  type: 'test'
+  ...
+# Subtest: reject nonfinite/malformed capture f32:7f800000
+ok 26 - reject nonfinite/malformed capture f32:7f800000
+  ---
+  duration_ms: 0.463308
+  type: 'test'
+  ...
+# Subtest: reject nonfinite/malformed capture f32:7fc00000
+ok 27 - reject nonfinite/malformed capture f32:7fc00000
+  ---
+  duration_ms: 0.351799
+  type: 'test'
+  ...
+# Subtest: reject nonfinite/malformed capture f64:fff0000000000000
+ok 28 - reject nonfinite/malformed capture f64:fff0000000000000
+  ---
+  duration_ms: 0.322865
+  type: 'test'
+  ...
+# Subtest: reject nonfinite/malformed capture f64:bad
+ok 29 - reject nonfinite/malformed capture f64:bad
+  ---
+  duration_ms: 0.378166
+  type: 'test'
+  ...
+# Subtest: missing or empty captures never qualify
+ok 30 - missing or empty captures never qualify
+  ---
+  duration_ms: 0.412887
+  type: 'test'
+  ...
+# Subtest: paired-identical malformed/truncated capture refuses: skeletal
+ok 31 - paired-identical malformed/truncated capture refuses: skeletal
+  ---
+  duration_ms: 0.281225
+  type: 'test'
+  ...
+# Subtest: paired-identical malformed/truncated capture refuses: positions
+ok 32 - paired-identical malformed/truncated capture refuses: positions
+  ---
+  duration_ms: 0.244832
+  type: 'test'
+  ...
+# Subtest: paired-identical malformed/truncated capture refuses: normals
+ok 33 - paired-identical malformed/truncated capture refuses: normals
+  ---
+  duration_ms: 0.170544
+  type: 'test'
+  ...
+# Subtest: paired-identical malformed/truncated capture refuses: uvLength
+ok 34 - paired-identical malformed/truncated capture refuses: uvLength
+  ---
+  duration_ms: 0.575047
+  type: 'test'
+  ...
+# Subtest: paired-identical malformed/truncated capture refuses: rgbaLength
+ok 35 - paired-identical malformed/truncated capture refuses: rgbaLength
+  ---
+  duration_ms: 0.284601
+  type: 'test'
+  ...
+# Subtest: paired-identical malformed/truncated capture refuses: missingNullableUV
+ok 36 - paired-identical malformed/truncated capture refuses: missingNullableUV
+  ---
+  duration_ms: 0.18481
+  type: 'test'
+  ...
+# Subtest: paired-identical malformed/truncated capture refuses: missingInstance
+ok 37 - paired-identical malformed/truncated capture refuses: missingInstance
+  ---
+  duration_ms: 0.157426
+  type: 'test'
+  ...
+# Subtest: paired-identical malformed/truncated capture refuses: frameLength
+ok 38 - paired-identical malformed/truncated capture refuses: frameLength
+  ---
+  duration_ms: 0.325217
+  type: 'test'
+  ...
+# Subtest: paired-identical malformed/truncated capture refuses: frameVariant
+ok 39 - paired-identical malformed/truncated capture refuses: frameVariant
+  ---
+  duration_ms: 0.296584
+  type: 'test'
+  ...
+# Subtest: paired-identical malformed/truncated capture refuses: metadata
+ok 40 - paired-identical malformed/truncated capture refuses: metadata
+  ---
+  duration_ms: 0.301677
+  type: 'test'
+  ...
+# Subtest: paired-identical malformed/truncated capture refuses: metadataType
+ok 41 - paired-identical malformed/truncated capture refuses: metadataType
+  ---
+  duration_ms: 0.3794
+  type: 'test'
+  ...
+# Subtest: paired-identical malformed/truncated capture refuses: stats
+ok 42 - paired-identical malformed/truncated capture refuses: stats
+  ---
+  duration_ms: 0.341787
+  type: 'test'
+  ...
+# Subtest: paired-identical malformed/truncated capture refuses: options
+ok 43 - paired-identical malformed/truncated capture refuses: options
+  ---
+  duration_ms: 0.13695
+  type: 'test'
+  ...
+# Subtest: paired-identical malformed/truncated capture refuses: nonfinite
+ok 44 - paired-identical malformed/truncated capture refuses: nonfinite
+  ---
+  duration_ms: 0.160993
+  type: 'test'
+  ...
+# Subtest: every profile override refuses, including empty values: CARGO_PROFILE_SERVER_RELEASE_PANIC
+ok 45 - every profile override refuses, including empty values: CARGO_PROFILE_SERVER_RELEASE_PANIC
+  ---
+  duration_ms: 1.267233
+  type: 'test'
+  ...
+# Subtest: every profile override refuses, including empty values: CARGO_PROFILE_SERVER_RELEASE_DEBUG_ASSERTIONS
+ok 46 - every profile override refuses, including empty values: CARGO_PROFILE_SERVER_RELEASE_DEBUG_ASSERTIONS
+  ---
+  duration_ms: 0.18531
+  type: 'test'
+  ...
+# Subtest: every profile override refuses, including empty values: CARGO_PROFILE_RELEASE_OPT_LEVEL
+ok 47 - every profile override refuses, including empty values: CARGO_PROFILE_RELEASE_OPT_LEVEL
+  ---
+  duration_ms: 0.14143
+  type: 'test'
+  ...
+# Subtest: every profile override refuses, including empty values: CARGO_PROFILE_DEV_BUILD_OVERRIDE_DEBUG
+ok 48 - every profile override refuses, including empty values: CARGO_PROFILE_DEV_BUILD_OVERRIDE_DEBUG
+  ---
+  duration_ms: 0.124477
+  type: 'test'
+  ...
+# Subtest: every profile override refuses, including empty values: CARGO_PROFILE_FUTURE_UNKNOWN_OPTION
+ok 49 - every profile override refuses, including empty values: CARGO_PROFILE_FUTURE_UNKNOWN_OPTION
+  ---
+  duration_ms: 0.123702
+  type: 'test'
+  ...
+# Subtest: flags and target compiler settings are recorded without discarding values
+ok 50 - flags and target compiler settings are recorded without discarding values
+  ---
+  duration_ms: 1.083806
+  type: 'test'
+  ...
+# Subtest: unobserved cached capture and altered effective panic/debug assertions refuse
+ok 51 - unobserved cached capture and altered effective panic/debug assertions refuse
+  ---
+  duration_ms: 9.866765
+  type: 'test'
+  ...
+# Subtest: Cargo host build-script copy, proc-macro shared object, and bare sysroot proc_macro are explicitly bound
+ok 52 - Cargo host build-script copy, proc-macro shared object, and bare sysroot proc_macro are explicitly bound
+  ---
+  duration_ms: 26.495233
+  type: 'test'
+  ...
+# Subtest: Cargo host artifact shape refuses bytes
+ok 53 - Cargo host artifact shape refuses bytes
+  ---
+  duration_ms: 6.017182
+  type: 'test'
+  ...
+# Subtest: Cargo host artifact shape refuses query
+ok 54 - Cargo host artifact shape refuses query
+  ---
+  duration_ms: 3.80402
+  type: 'test'
+  ...
+# Subtest: Cargo host artifact shape refuses missing
+ok 55 - Cargo host artifact shape refuses missing
+  ---
+  duration_ms: 3.651769
+  type: 'test'
+  ...
+# Subtest: Cargo host artifact shape refuses unknown
+ok 56 - Cargo host artifact shape refuses unknown
+  ---
+  duration_ms: 3.614775
+  type: 'test'
+  ...
+# Subtest: Cargo host artifact shape refuses build-copy
+ok 57 - Cargo host artifact shape refuses build-copy
+  ---
+  duration_ms: 3.891213
+  type: 'test'
+  ...
+# Subtest: different toolchain sysroot bytes cannot hide behind same rustc version
+ok 58 - different toolchain sysroot bytes cannot hide behind same rustc version
+  ---
+  duration_ms: 6.79122
+  type: 'test'
+  ...
+# Subtest: source-pinned native workspace additions and edges qualify with every unit policy retained
+ok 59 - source-pinned native workspace additions and edges qualify with every unit policy retained
+  ---
+  duration_ms: 730.287774
+  type: 'test'
+  ...
+# Subtest: explicit workspace removal is supported without shrinking provenance requirements
+ok 60 - explicit workspace removal is supported without shrinking provenance requirements
+  ---
+  duration_ms: 298.35824
+  type: 'test'
+  ...
+# Subtest: identical captures/example policy cannot waive args drift even in a re-pinned graph
+ok 61 - identical captures/example policy cannot waive args drift even in a re-pinned graph
+  ---
+  duration_ms: 513.485965
+  type: 'test'
+  ...
+# Subtest: identical captures/example policy cannot waive profile drift even in a re-pinned graph
+ok 62 - identical captures/example policy cannot waive profile drift even in a re-pinned graph
+  ---
+  duration_ms: 538.904711
+  type: 'test'
+  ...
+# Subtest: identical captures/example policy cannot waive features drift even in a re-pinned graph
+ok 63 - identical captures/example policy cannot waive features drift even in a re-pinned graph
+  ---
+  duration_ms: 479.113745
+  type: 'test'
+  ...
+# Subtest: identical captures/example policy cannot waive external-source drift even in a re-pinned graph
+ok 64 - identical captures/example policy cannot waive external-source drift even in a re-pinned graph
+  ---
+  duration_ms: 484.947266
+  type: 'test'
+  ...
+# Subtest: identical captures/example policy cannot waive external-args drift even in a re-pinned graph
+ok 65 - identical captures/example policy cannot waive external-args drift even in a re-pinned graph
+  ---
+  duration_ms: 513.573967
+  type: 'test'
+  ...
+# Subtest: changed added-unit compiler arguments cannot reuse the reviewed witness
+ok 66 - changed added-unit compiler arguments cannot reuse the reviewed witness
+  ---
+  duration_ms: 565.002325
+  type: 'test'
+  ...
+# Subtest: unknown additions require explicit workspace package ownership authorization
+ok 67 - unknown additions require explicit workspace package ownership authorization
+  ---
+  duration_ms: 521.772589
+  type: 'test'
+  ...
+# Subtest: independently pinned but false source/unit/edge expectation refuses
+ok 68 - independently pinned but false source/unit/edge expectation refuses
+  ---
+  duration_ms: 573.230451
+  type: 'test'
+  ...
+# Subtest: independently pinned but false source/unit/edge expectation refuses
+ok 69 - independently pinned but false source/unit/edge expectation refuses
+  ---
+  duration_ms: 517.946912
+  type: 'test'
+  ...
+# Subtest: independently pinned but false source/unit/edge expectation refuses
+ok 70 - independently pinned but false source/unit/edge expectation refuses
+  ---
+  duration_ms: 529.923207
+  type: 'test'
+  ...
+# Subtest: independently pinned but false source/unit/edge expectation refuses
+ok 71 - independently pinned but false source/unit/edge expectation refuses
+  ---
+  duration_ms: 541.015949
+  type: 'test'
+  ...
+# Subtest: independently pinned but false source/unit/edge expectation refuses
+ok 72 - independently pinned but false source/unit/edge expectation refuses
+  ---
+  duration_ms: 553.979581
+  type: 'test'
+  ...
+# Subtest: witness bytes require independent digest; receipt labels and edited witnesses cannot authorize
+ok 73 - witness bytes require independent digest; receipt labels and edited witnesses cannot authorize
+  ---
+  duration_ms: 779.977684
+  type: 'test'
+  ...
+# Subtest: unlisted external transition refuses; a literal reviewed source/policy transition qualifies
+ok 74 - unlisted external transition refuses; a literal reviewed source/policy transition qualifies
+  ---
+  duration_ms: 996.94436
+  type: 'test'
+  ...
+# Subtest: source-pinned feature declaration changes preserve enabled-feature and codegen checks
+ok 75 - source-pinned feature declaration changes preserve enabled-feature and codegen checks
+  ---
+  duration_ms: 995.583106
+  type: 'test'
+  ...
+# Subtest: common edge order cannot be normalized away by a reviewed graph
+ok 76 - common edge order cannot be normalized away by a reviewed graph
+  ---
+  duration_ms: 558.376263
+  type: 'test'
+  ...
+# Subtest: new external unit requires exact source, policy, owner edge and explicit expected transition
+ok 77 - new external unit requires exact source, policy, owner edge and explicit expected transition
+  ---
+  duration_ms: 1047.020183
+  type: 'test'
+  ...
+# Subtest: complete Git-bound clean-fleet cohort compares
+ok 78 - complete Git-bound clean-fleet cohort compares
+  ---
+  duration_ms: 352.596063
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: missingFixture
+ok 79 - independent receipt mutation refuses: missingFixture
+  ---
+  duration_ms: 265.628686
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: wrongSource
+ok 80 - independent receipt mutation refuses: wrongSource
+  ---
+  duration_ms: 225.010076
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: wrongTree
+ok 81 - independent receipt mutation refuses: wrongTree
+  ---
+  duration_ms: 347.994149
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: wrongExecutionTree
+ok 82 - independent receipt mutation refuses: wrongExecutionTree
+  ---
+  duration_ms: 343.554832
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: emptyHashes
+ok 83 - independent receipt mutation refuses: emptyHashes
+  ---
+  duration_ms: 359.76973
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: changedHash
+ok 84 - independent receipt mutation refuses: changedHash
+  ---
+  duration_ms: 321.828091
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: missingHash
+ok 85 - independent receipt mutation refuses: missingHash
+  ---
+  duration_ms: 318.739451
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: extraHash
+ok 86 - independent receipt mutation refuses: extraHash
+  ---
+  duration_ms: 341.4058
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: sourceOverlay
+ok 87 - independent receipt mutation refuses: sourceOverlay
+  ---
+  duration_ms: 220.499905
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: failedBuild
+ok 88 - independent receipt mutation refuses: failedBuild
+  ---
+  duration_ms: 238.36332
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: toolchain
+ok 89 - independent receipt mutation refuses: toolchain
+  ---
+  duration_ms: 353.954016
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: options
+ok 90 - independent receipt mutation refuses: options
+  ---
+  duration_ms: 263.421972
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: fixtureBytes
+ok 91 - independent receipt mutation refuses: fixtureBytes
+  ---
+  duration_ms: 359.752246
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: captureBytes
+ok 92 - independent receipt mutation refuses: captureBytes
+  ---
+  duration_ms: 349.573763
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: flags
+ok 93 - independent receipt mutation refuses: flags
+  ---
+  duration_ms: 366.84972
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: hiddenProfileOverride
+ok 94 - independent receipt mutation refuses: hiddenProfileOverride
+  ---
+  duration_ms: 359.706679
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: compilerArgs
+ok 95 - independent receipt mutation refuses: compilerArgs
+  ---
+  duration_ms: 341.704972
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: compilerLogPin
+ok 96 - independent receipt mutation refuses: compilerLogPin
+  ---
+  duration_ms: 350.149279
+  type: 'test'
+  ...
+# Subtest: independent receipt mutation refuses: binaryHash
+ok 97 - independent receipt mutation refuses: binaryHash
+  ---
+  duration_ms: 262.608058
+  type: 'test'
+  ...
+# Subtest: external fleet mutation refuses: missingBefore
+ok 98 - external fleet mutation refuses: missingBefore
+  ---
+  duration_ms: 363.23099
+  type: 'test'
+  ...
+# Subtest: external fleet mutation refuses: dirty
+ok 99 - external fleet mutation refuses: dirty
+  ---
+  duration_ms: 370.254497
+  type: 'test'
+  ...
+# Subtest: external fleet mutation refuses: changed
+ok 100 - external fleet mutation refuses: changed
+  ---
+  duration_ms: 370.925283
+  type: 'test'
+  ...
+# Subtest: external fleet mutation refuses: nonterminal
+ok 101 - external fleet mutation refuses: nonterminal
+  ---
+  duration_ms: 378.593929
+  type: 'test'
+  ...
+# Subtest: external fleet mutation refuses: failure
+ok 102 - external fleet mutation refuses: failure
+  ---
+  duration_ms: 366.248649
+  type: 'test'
+  ...
+# Subtest: external fleet mutation refuses: pairedWrongTree
+ok 103 - external fleet mutation refuses: pairedWrongTree
+  ---
+  duration_ms: 362.377014
+  type: 'test'
+  ...
+# Subtest: external fleet mutation refuses: beforeAfterMismatch
+ok 104 - external fleet mutation refuses: beforeAfterMismatch
+  ---
+  duration_ms: 362.379724
+  type: 'test'
+  ...
+# Subtest: external fleet mutation refuses: toolchainBlob
+ok 105 - external fleet mutation refuses: toolchainBlob
+  ---
+  duration_ms: 369.984175
+  type: 'test'
+  ...
+# Subtest: external fleet mutation refuses: unboundOutput
+ok 106 - external fleet mutation refuses: unboundOutput
+  ---
+  duration_ms: 364.598826
+  type: 'test'
+  ...
+# Subtest: external fleet mutation refuses: command
+ok 107 - external fleet mutation refuses: command
+  ---
+  duration_ms: 381.957819
+  type: 'test'
+  ...
+# Subtest: real Git execution commit with a non-overlay source edit refuses
+ok 108 - real Git execution commit with a non-overlay source edit refuses
+  ---
+  duration_ms: 316.566396
+  type: 'test'
+  ...
+# Subtest: paired identical payload mutation with rebound hashes refuses: options
+ok 109 - paired identical payload mutation with rebound hashes refuses: options
+  ---
+  duration_ms: 373.587346
+  type: 'test'
+  ...
+# Subtest: paired identical payload mutation with rebound hashes refuses: skeletal
+ok 110 - paired identical payload mutation with rebound hashes refuses: skeletal
+  ---
+  duration_ms: 370.269849
+  type: 'test'
+  ...
+# Subtest: paired identical payload mutation with rebound hashes refuses: metadata
+ok 111 - paired identical payload mutation with rebound hashes refuses: metadata
+  ---
+  duration_ms: 364.775046
+  type: 'test'
+  ...
+# Subtest: paired identical payload mutation with rebound hashes refuses: truncatedNormals
+ok 112 - paired identical payload mutation with rebound hashes refuses: truncatedNormals
+  ---
+  duration_ms: 374.756292
+  type: 'test'
+  ...
+# Subtest: independent output log requires exactly one receipt marker: 0
+ok 113 - independent output log requires exactly one receipt marker: 0
+  ---
+  duration_ms: 360.327779
+  type: 'test'
+  ...
+# Subtest: independent output log requires exactly one receipt marker: 2
+ok 114 - independent output log requires exactly one receipt marker: 2
+  ---
+  duration_ms: 359.068286
+  type: 'test'
+  ...
+# Subtest: identical scenes/example, internally rebound geometry policy still refuses
+ok 115 - identical scenes/example, internally rebound geometry policy still refuses
+  ---
+  duration_ms: 359.083158
+  type: 'test'
+  ...
+# Subtest: identical scenes/example, internally rebound processing policy still refuses
+ok 116 - identical scenes/example, internally rebound processing policy still refuses
+  ---
+  duration_ms: 359.138948
+  type: 'test'
+  ...
+# Subtest: identical scenes/example, internally rebound external policy still refuses
+ok 117 - identical scenes/example, internally rebound external policy still refuses
+  ---
+  duration_ms: 367.330961
+  type: 'test'
+  ...
+# Subtest: identical scenes/example, internally rebound dependency arguments refuse
+ok 118 - identical scenes/example, internally rebound dependency arguments refuse
+  ---
+  duration_ms: 357.444447
+  type: 'test'
+  ...
+# Subtest: identical scenes/example, cached dependency without qualified trace refuses
+ok 119 - identical scenes/example, cached dependency without qualified trace refuses
+  ---
+  duration_ms: 353.032347
+  type: 'test'
+  ...
+# Subtest: every reached critical/external/example unit has bound source/config/toolchain/output policy
+ok 120 - every reached critical/external/example unit has bound source/config/toolchain/output policy
+  ---
+  duration_ms: 13.919829
+  type: 'test'
+  ...
+# Subtest: same example, differing geometry profile refuses
+ok 121 - same example, differing geometry profile refuses
+  ---
+  duration_ms: 7.263698
+  type: 'test'
+  ...
+# Subtest: same example, differing geometry args refuses
+ok 122 - same example, differing geometry args refuses
+  ---
+  duration_ms: 5.709076
+  type: 'test'
+  ...
+# Subtest: same example, differing geometry features refuses
+ok 123 - same example, differing geometry features refuses
+  ---
+  duration_ms: 6.18104
+  type: 'test'
+  ...
+# Subtest: same example, differing processing profile refuses
+ok 124 - same example, differing processing profile refuses
+  ---
+  duration_ms: 7.256105
+  type: 'test'
+  ...
+# Subtest: same example, differing processing args refuses
+ok 125 - same example, differing processing args refuses
+  ---
+  duration_ms: 6.931892
+  type: 'test'
+  ...
+# Subtest: same example, differing processing features refuses
+ok 126 - same example, differing processing features refuses
+  ---
+  duration_ms: 6.498394
+  type: 'test'
+  ...
+# Subtest: same example, differing external profile refuses
+ok 127 - same example, differing external profile refuses
+  ---
+  duration_ms: 5.076413
+  type: 'test'
+  ...
+# Subtest: same example, differing external args refuses
+ok 128 - same example, differing external args refuses
+  ---
+  duration_ms: 11.774427
+  type: 'test'
+  ...
+# Subtest: same example, differing external features refuses
+ok 129 - same example, differing external features refuses
+  ---
+  duration_ms: 11.332134
+  type: 'test'
+  ...
+# Subtest: dependency provenance negative: cachedNoTrace
+ok 130 - dependency provenance negative: cachedNoTrace
+  ---
+  duration_ms: 5.679604
+  type: 'test'
+  ...
+# Subtest: dependency provenance negative: cachedWithUnqualifiedLabel
+ok 131 - dependency provenance negative: cachedWithUnqualifiedLabel
+  ---
+  duration_ms: 5.011378
+  type: 'test'
+  ...
+# Subtest: dependency provenance negative: missingTrace
+ok 132 - dependency provenance negative: missingTrace
+  ---
+  duration_ms: 5.692345
+  type: 'test'
+  ...
+# Subtest: dependency provenance negative: wrongOutput
+ok 133 - dependency provenance negative: wrongOutput
+  ---
+  duration_ms: 5.044131
+  type: 'test'
+  ...
+# Subtest: dependency provenance negative: wrongSource
+ok 134 - dependency provenance negative: wrongSource
+  ---
+  duration_ms: 3.379052
+  type: 'test'
+  ...
+# Subtest: dependency provenance negative: wrongContext
+ok 135 - dependency provenance negative: wrongContext
+  ---
+  duration_ms: 2.388466
+  type: 'test'
+  ...
+# Subtest: dependency provenance negative: configMutation
+ok 136 - dependency provenance negative: configMutation
+  ---
+  duration_ms: 2.209679
+  type: 'test'
+  ...
+# Subtest: dependency provenance negative: unboundConfig
+ok 137 - dependency provenance negative: unboundConfig
+  ---
+  duration_ms: 2.101192
+  type: 'test'
+  ...
+# Subtest: dependency provenance negative: wrongToolchain
+ok 138 - dependency provenance negative: wrongToolchain
+  ---
+  duration_ms: 2.088976
+  type: 'test'
+  ...
+# Subtest: dependency provenance negative: failedCompile
+ok 139 - dependency provenance negative: failedCompile
+  ---
+  duration_ms: 2.971018
+  type: 'test'
+  ...
+# Subtest: dependency provenance negative: missingArtifactHash
+ok 140 - dependency provenance negative: missingArtifactHash
+  ---
+  duration_ms: 2.258367
+  type: 'test'
+  ...
+# Subtest: dependency provenance negative: wrongLinkedBytes
+ok 141 - dependency provenance negative: wrongLinkedBytes
+  ---
+  duration_ms: 2.349489
+  type: 'test'
+  ...
+# Subtest: missing critical crate and unpaired dependency cohort refuse
+ok 142 - missing critical crate and unpaired dependency cohort refuse
+  ---
+  duration_ms: 4.484424
+  type: 'test'
+  ...
+# Subtest: external same-package source changes cannot hide behind matching example policy
+ok 143 - external same-package source changes cannot hide behind matching example policy
+  ---
+  duration_ms: 4.988322
+  type: 'test'
+  ...
+# Subtest: context digest binds actual source and selected configuration
+ok 144 - context digest binds actual source and selected configuration
+  ---
+  duration_ms: 2.178522
+  type: 'test'
+  ...
+# Subtest: dependency arguments beyond codegen subset remain policy-relevant
+ok 145 - dependency arguments beyond codegen subset remain policy-relevant
+  ---
+  duration_ms: 4.389186
+  type: 'test'
+  ...
+# Subtest: package version and selected source cannot detach from Cargo artifact identity
+ok 146 - package version and selected source cannot detach from Cargo artifact identity
+  ---
+  duration_ms: 2.462393
+  type: 'test'
+  ...
+# Subtest: generated compiler input changes or omitted provenance refuse
+ok 147 - generated compiler input changes or omitted provenance refuse
+  ---
+  duration_ms: 4.970527
+  type: 'test'
+  ...
+1..147
+# tests 147
+# suites 0
+# pass 147
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 14479.044485

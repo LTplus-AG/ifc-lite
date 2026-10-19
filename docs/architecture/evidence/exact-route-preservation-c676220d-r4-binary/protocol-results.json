@@ -1,0 +1,18 @@
+{
+  "command": [
+    "node",
+    "--test",
+    "--test-reporter=tap",
+    "scripts/exact-route-binary.test.mjs",
+    "scripts/exact-route-receipts.test.mjs"
+  ],
+  "counts": {
+    "tests": 46,
+    "pass": 46,
+    "fail": 0,
+    "skipped": 0
+  },
+  "harnessSha256": "c241f66173e88dddc7f8a8648546ecef696a5011011fd62560a64a1cf0a61ee9",
+  "rustAndAB": "UNRUN",
+  "scope": "Node executable/filesystem/Git protocol fixtures only"
+}

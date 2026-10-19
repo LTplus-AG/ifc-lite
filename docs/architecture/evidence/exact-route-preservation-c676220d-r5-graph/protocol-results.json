@@ -1,0 +1,44 @@
+{
+  "command": [
+    "node",
+    "--test",
+    "--test-reporter=tap",
+    "scripts/exact-route-*.test.mjs"
+  ],
+  "counts": {
+    "tests": 148,
+    "pass": 148,
+    "fail": 0,
+    "skipped": 0
+  },
+  "harnessSha256": "de08a50be1115c8964e410df8c5e7b9a09a5fe173456d2701b434a20ad9265ef",
+  "sourceHashes": {
+    "rust/processing/examples/exact_route_capture/bits.rs": "0279e27534698ef97bb0f847473bf1d55ff169ce0911a8beaa65b633fb6ccc77",
+    "rust/processing/examples/exact_route_capture.rs": "21b47785c40fe527f6e323ebfbe9f107e0868c0b5b44fdf818a15f8a9d46a308",
+    "scripts/exact-route-binary.mjs": "51f69fd04ec0ed2c21e55de297977875f9c49e1232efa3fe30fd14e1827441e5",
+    "scripts/exact-route-binary.test.mjs": "01245dc17add9cca4b84711dcc1d64aebc3d29ebe542183ece1f6028ba776002",
+    "scripts/exact-route-compare.mjs": "75a3057920295acb6a9067c92fc6a95c1b7b19ce20b8b99569080a82068668b5",
+    "scripts/exact-route-compare.test.mjs": "1c479dca97fbb72bba56d6f45f611729df803d3691e2ef92ab49c2a4d3f44531",
+    "scripts/exact-route-compiler.mjs": "b3402cb822808b8d616b5e361e1f7a59974a69b81e94f28b117fad6e64d35006",
+    "scripts/exact-route-compiler.test.mjs": "1189b07df14a69c67adc3c2fcc8818a66b52302179c0864bf8f853071db67b7c",
+    "scripts/exact-route-externs.mjs": "4120f82195843723d04717aed86aafc1f13ed87940756926efa02411600a0035",
+    "scripts/exact-route-externs.test.mjs": "0593fcaa01156a2c0dead949c7587d6c218ff248c5b460be3ddf833d63503688",
+    "scripts/exact-route-graph.mjs": "18d5c2bc0f694dd4291ac3ab41eeedc3faaf34c37036a02f7739df99f011c2e9",
+    "scripts/exact-route-graph.test.mjs": "f2e39f8ec42fec1c84eb6ba2dc0b69f21f4aaf1690e486e1802fb54049df6686",
+    "scripts/exact-route-inputs.mjs": "aeaca64dc283cb9e63741ae25ec92f91f5c25b22d6fcce6ef8d25ea247422ee3",
+    "scripts/exact-route-receipts.mjs": "137bff107a627c5d8f357f7a8b9769a7911d4e4436e793c6ea7df39cf8c4844c",
+    "scripts/exact-route-receipts.test.mjs": "39252868a415c3b20fbf8d158cbe12a49ce0460fc0b1416bf0e72458d445c8fe",
+    "scripts/exact-route-run.mjs": "c195c70ba020f52df361357703f40a75e3cea5e023ff326d4043c54ae7ebb0d2",
+    "scripts/exact-route-rustc.mjs": "bedb77200dd24dfbac1174467d60e33bbb68f2496be06aba9f737ea85903609d",
+    "scripts/exact-route-schema.mjs": "327e13db0e89830b2ed3372d3f3eb69f1588e306e5a7bac293520122d6a4ad6a",
+    "scripts/exact-route-source.mjs": "3a341c8e313ca7b2334810377f58bde311c0b8567fd6eaef13fe8b44517a2d47",
+    "scripts/exact-route-units.mjs": "91e9e59ace23d643022ceee9b650ced086014b4a36eff41b953ef4496cdef5aa",
+    "scripts/exact-route-units.test.mjs": "aa44a8f74512a32e66d2f6f00aaa5809440dc2c851a96f6e76fb0ad52bf67d7f",
+    "scripts/lib/exact-route-cohort.mjs": "0c8f9e84ff46cc1c904fe000543045bb70605d2e9830d51601b50a6a6b5f8f44",
+    "scripts/lib/exact-route-fixture.mjs": "21ef0b20adf2c97f8a2801802a8ba1561471d9a4e4806254f7077a59563284d4",
+    "scripts/lib/exact-route-unit-fixture.mjs": "8dc5eb56d601845788c35461756796a3eb572d7ac38e523c4cd9bacd95b14842"
+  },
+  "rustAndAB": "UNRUN",
+  "scope": "Small Node executable/filesystem/Git/compiler-metadata protocol fixtures only; no compiler invoked",
+  "tapSha256": "2331f7deaad9f1b65a2bb1a2ec02b707d4485b612f0ee741fb8715627f67d79f"
+}

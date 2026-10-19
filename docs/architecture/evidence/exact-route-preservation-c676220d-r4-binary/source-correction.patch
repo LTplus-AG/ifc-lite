@@ -1,0 +1,135 @@
+diff --git a/scripts/exact-route-binary.mjs b/scripts/exact-route-binary.mjs
+new file mode 100644
+index 0000000000..b95285f30a
+--- /dev/null
++++ b/scripts/exact-route-binary.mjs
+@@ -0,0 +1,37 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++import { chmodSync, constants, copyFileSync, lstatSync, readFileSync } from 'node:fs';
++import { spawnSync } from 'node:child_process';
++import { resolve } from 'node:path';
++import { sha256 } from './exact-route-source.mjs';
++export function verifyBinary(path, expected) {
++  if (!/^[a-f0-9]{64}$/.test(expected) || !lstatSync(path).isFile() || sha256(readFileSync(path)) !== expected) {
++    throw Error('saved executable differs from terminal compiled artifact');
++  }
++}
++export function saveCompiledBinary(compiled, saved, expected) {
++  copyFileSync(compiled, saved, constants.COPYFILE_EXCL);
++  chmodSync(saved, 0o500);
++  verifyBinary(saved, expected); // A shared-target replacement during copying refuses.
++  return { path: compiled, artifact: 'capture-binary', executedPath: resolve(saved), sha256: expected };
++}
++export function executeSavedBinary(binary, args, cwd) {
++  verifyBinary(binary.executedPath, binary.sha256);
++  const execution = spawnSync(binary.executedPath, args, { cwd, encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 });
++  verifyBinary(binary.executedPath, binary.sha256);
++  return { execution, provenance: { executable: binary.executedPath,
++    beforeSha256: binary.sha256, afterSha256: binary.sha256 } };
++}
++export function verifyExecutedBinary(receipt, output, example, files) {
++  const saved = resolve(output, 'capture-binary'), expected = files[example.executable];
++  if (receipt.binary.path !== example.executable || receipt.binary.artifact !== 'capture-binary' ||
++      receipt.binary.executedPath !== saved || receipt.binary.sha256 !== expected) throw Error('saved binary is not terminal compiled executable');
++  verifyBinary(saved, expected);
++  for (const [i, fixture] of receipt.fixtures.entries()) {
++    const p = fixture.execution;
++    if (!p || p.executable !== saved || p.beforeSha256 !== expected || p.afterSha256 !== expected ||
++        !receipt.commands?.some(c => Array.isArray(c) && c.length === 3 && c[0] === saved &&
++          c[2] === resolve(output, `${i}.json`))) throw Error('capture did not execute the verified saved binary');
++  }
++}
+diff --git a/scripts/exact-route-binary.test.mjs b/scripts/exact-route-binary.test.mjs
+new file mode 100644
+index 0000000000..ba3ff9bd21
+--- /dev/null
++++ b/scripts/exact-route-binary.test.mjs
+@@ -0,0 +1,38 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
++import { executeSavedBinary, saveCompiledBinary } from './exact-route-binary.mjs';
++import { sha256 } from './exact-route-source.mjs';
++import { cohort } from './lib/exact-route-cohort.mjs';
++const setup = t => { const root = mkdtempSync(join(tmpdir(), 'capture-binary-protocol-'));
++  t.after(() => rmSync(root, { recursive: true, force: true })); return root; };
++test('executes the saved compiled bytes after original shared-target replacement', t => {
++  const root = setup(t), compiled = join(root, 'shared'), saved = join(root, 'capture-binary');
++  writeFileSync(compiled, `#!${process.execPath}\nconsole.log('original compiled fixture');\n`); chmodSync(compiled, 0o700);
++  const expected = sha256(readFileSync(compiled)), binary = saveCompiledBinary(compiled, saved, expected);
++  writeFileSync(compiled, `#!${process.execPath}\nconsole.log('replaced shared target');\n`);
++  const result = executeSavedBinary(binary, [], root);
++  assert.equal(result.execution.status, 0); assert.equal(result.execution.stdout.trim(), 'original compiled fixture');
++  assert.equal(result.provenance.afterSha256, expected);
++});
++test('replacement before snapshot refuses despite a valid executable path', t => {
++  const root = setup(t), compiled = join(root, 'shared'); writeFileSync(compiled, 'replacement');
++  assert.throws(() => saveCompiledBinary(compiled, join(root, 'capture-binary'), sha256('original')));
++});
++test('saved-copy mutation during execution refuses post-capture validation', t => {
++  const root = setup(t), compiled = join(root, 'shared'), saved = join(root, 'capture-binary');
++  writeFileSync(compiled, `#!${process.execPath}\nconst fs=require('node:fs');fs.chmodSync(process.argv[1],0o700);fs.writeFileSync(process.argv[1],'mutated');\n`);
++  chmodSync(compiled, 0o700); const binary = saveCompiledBinary(compiled, saved, sha256(readFileSync(compiled)));
++  assert.throws(() => executeSavedBinary(binary, [], root), /terminal compiled artifact/);
++});
++test('replaced saved binary with rebound receipt hash and fleet marker still refuses unchanged compiler trace', t => {
++  const c = cohort(t), path = join(c.dirs[1], 'capture-binary'); writeFileSync(path, 'different executable');
++  c.alter(r => { r.binary.sha256 = sha256(readFileSync(path));
++    r.fixtures[0].execution.beforeSha256 = r.binary.sha256; r.fixtures[0].execution.afterSha256 = r.binary.sha256; });
++  assert.throws(c.compare, /terminal compiled executable/);
++});
+diff --git a/scripts/exact-route-receipts.mjs b/scripts/exact-route-receipts.mjs
+index 6a86fdff08..1a89cd858b 100644
+--- a/scripts/exact-route-receipts.mjs
++++ b/scripts/exact-route-receipts.mjs
+@@ -9,0 +10 @@ import { gitSource, verifyFleet, verifyHarnessManifest } from './exact-route-sou
++import { verifyExecutedBinary } from './exact-route-binary.mjs';
+@@ -56,0 +58 @@ export function compareReceipts(aDir, bDir, expectedBase, expectedBranch, manife
++    verifyExecutedBinary(receipt, dir, example, files);
+diff --git a/scripts/exact-route-run.mjs b/scripts/exact-route-run.mjs
+index e0f73b49c3..36f7a9b1b9 100644
+--- a/scripts/exact-route-run.mjs
++++ b/scripts/exact-route-run.mjs
+@@ -7 +7 @@ import { spawnSync } from 'node:child_process';
+-import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, utimesSync } from 'node:fs';
++import { existsSync, mkdirSync, readFileSync, writeFileSync, utimesSync } from 'node:fs';
+@@ -13,0 +14 @@ import { cargoConfiguration, artifactHashes, digest } from './exact-route-inputs
++import { executeSavedBinary, saveCompiledBinary, verifyBinary } from './exact-route-binary.mjs';
+@@ -16 +17 @@ const bundle = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+-const manifestPath = 'docs/architecture/evidence/exact-route-preservation-c676220d-r3/manifest.json';
++const manifestPath = 'docs/architecture/evidence/exact-route-preservation-c676220d-r4-binary/manifest.json';
+@@ -60 +61 @@ function run(cwd, expectedHead, output) {
+-  mkdirSync(output, { recursive: true });
++  mkdirSync(output, { recursive: true, mode: 0o700 });
+@@ -107,2 +108 @@ function run(cwd, expectedHead, output) {
+-    copyFileSync(binary, resolve(output, 'capture-binary'));
+-    receipt.binary = { path: binary, artifact: 'capture-binary', sha256: hash(readFileSync(binary)) }; save();
++    receipt.binary = saveCompiledBinary(binary, resolve(output, 'capture-binary'), files[binary]); save();
+@@ -112,2 +112,2 @@ function run(cwd, expectedHead, output) {
+-      receipt.commands.push([binary, fixturePath, capture]); save();
+-      const execution = spawnSync(binary, [fixturePath, capture], { cwd, encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 });
++      receipt.commands.push([receipt.binary.executedPath, fixturePath, capture]); save();
++      const { execution, provenance } = executeSavedBinary(receipt.binary, [fixturePath, capture], cwd);
+@@ -128 +128 @@ function run(cwd, expectedHead, output) {
+-      receipt.fixtures.push({ ...fixture, capture: `${i}.json`, captureSha256: hash(readFileSync(capture)), coverage }); save();
++      receipt.fixtures.push({ ...fixture, execution: provenance, capture: `${i}.json`, captureSha256: hash(readFileSync(capture)), coverage }); save();
+@@ -129,0 +130 @@ function run(cwd, expectedHead, output) {
++    verifyBinary(receipt.binary.executedPath, receipt.binary.sha256);
+diff --git a/scripts/lib/exact-route-cohort.mjs b/scripts/lib/exact-route-cohort.mjs
+index bc8e2b24d8..b73348d93d 100644
+--- a/scripts/lib/exact-route-cohort.mjs
++++ b/scripts/lib/exact-route-cohort.mjs
+@@ -57 +57,2 @@ export function cohort(t) {
+-      binary: { path: binary, artifact: 'capture-binary', sha256: sha256(readFileSync(join(dir, 'capture-binary'))) },
++      commands: [[join(dir, 'capture-binary'), '/fixture/real.ifc', join(dir, '0.json')]],
++      binary: { path: binary, artifact: 'capture-binary', executedPath: join(dir, 'capture-binary'), sha256: sha256(readFileSync(join(dir, 'capture-binary'))) },
+@@ -63 +64 @@ export function cohort(t) {
+-      fixtures: [{ ...manifest.fixtures[0], capture: '0.json', captureSha256: sha256(readFileSync(join(dir, '0.json'))) }] };
++      fixtures: [{ ...manifest.fixtures[0], execution: { executable: join(dir, 'capture-binary'), beforeSha256: files[binary], afterSha256: files[binary] }, capture: '0.json', captureSha256: sha256(readFileSync(join(dir, '0.json'))) }] };

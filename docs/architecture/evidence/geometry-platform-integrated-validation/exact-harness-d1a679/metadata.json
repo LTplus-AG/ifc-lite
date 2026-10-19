@@ -1,0 +1,42 @@
+{
+  "sourceParent": "4a85b7d6de82aae00673db2b025233d800ec3603",
+  "child": "d1a679ee093c596e7f3ce21b34e49fa523c778d2",
+  "reproducedFiles": 54,
+  "checks": [
+    {
+      "command": [
+        "node",
+        "scripts/check-test-wiring.mjs"
+      ],
+      "exitCode": 0,
+      "logSha256": "352fbc6c355d046d40fa80410f1cbd55f96d08a728854c84d4d6d1cff74d20c8"
+    },
+    {
+      "command": [
+        "node",
+        "scripts/check-test-glob-coverage.mjs"
+      ],
+      "exitCode": 0,
+      "logSha256": "3c47ced00879f9ba6e79b6662303cc1d6fd40d6fc0a4cb2b3a26ecb22826378b"
+    },
+    {
+      "command": [
+        "node",
+        "scripts/check-module-size.mjs"
+      ],
+      "exitCode": 0,
+      "logSha256": "c6c62685b981fc9226eb32dd8d83a5a22fe2c6da58c2c150f53ab56ab85df65f"
+    },
+    {
+      "command": [
+        "node",
+        "scripts/check-source-text-assertions.mjs"
+      ],
+      "exitCode": 0,
+      "logSha256": "3221eaedc83a93f5f997120a884de329f4ae7ac47c3b562635c4db21613c2290"
+    }
+  ],
+  "actualRustCompilation": "UNRUN",
+  "actualAB": "UNRUN",
+  "performance": "UNRUN"
+}

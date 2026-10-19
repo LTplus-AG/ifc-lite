@@ -9,7 +9,11 @@ use crate::processors::boolean::MAX_OPERAND_VISITS;
 // One Boolean operand allowance per mapped tier, shared across child programs.
 // Unlike ambient Compatibility accounting this admission is always finite.
 const WORK_LIMIT:u64=MAX_OPERAND_VISITS as u64 * MAX_MAPPED_ITEM_DEPTH as u64;
-struct Budget {spent:u64,limit:u64,terminal:Option<ProgramStop>}
+struct Budget {
+    spent:u64,limit:u64,terminal:Option<ProgramStop>,
+    #[cfg(test)]
+    sites:std::collections::BTreeMap<(&'static str,u32),(u64,u64)>,
+}
 #[derive(Clone)]
 pub(super) struct RetainedWalk {budget:Arc<Mutex<Budget>>,path:Arc<Vec<u32>>}
 thread_local! {static CURRENT:RefCell<Option<RetainedWalk>>=const {RefCell::new(None)};}
@@ -19,13 +23,15 @@ impl Drop for WalkScope {
 }
 impl RetainedWalk {
     fn fresh(path:Vec<u32>)->Self {
-        Self {budget:Arc::new(Mutex::new(Budget {spent:0,limit:WORK_LIMIT,terminal:None})),
+        Self {budget:Arc::new(Mutex::new(Budget {spent:0,limit:WORK_LIMIT,terminal:None,
+            #[cfg(test)] sites:Default::default()})),
             path:Arc::new(path)}
     }
     pub(super) fn root(id:u32)->Self { Self::fresh(vec![id]) }
     /// A styled plain-item wrapper delegates to the same reached leaf. Only
     /// that leaf enters its id; a standalone wrapper still owns a finite budget.
     pub(super) fn wrapper()->Self { current().unwrap_or_else(||Self::fresh(Vec::new())) }
+    #[cfg_attr(test,track_caller)]
     pub(super) fn child(id:u32)->crate::Result<Self> {
         let Some(parent)=current() else {return Ok(Self::root(id))};
         parent.charge(1)?;
@@ -53,11 +59,18 @@ impl RetainedWalk {
         let mut budget=self.budget.lock().unwrap_or_else(|e|e.into_inner());
         *budget.terminal.get_or_insert(stop)
     }
+    #[cfg_attr(test,track_caller)]
     fn charge(&self,work:u64)->Result<(),ProgramStop> {
         self.check()?;
         let mut budget=self.budget.lock().unwrap_or_else(|e|e.into_inner());
         let remaining=budget.limit.saturating_sub(budget.spent);
-        if work>remaining {drop(budget);return Err(self.refuse(Dimension::Work,work,remaining));}
+        if work>remaining {
+            #[cfg(test)]
+            budget.report_refusal(work,remaining,std::panic::Location::caller());
+            drop(budget);return Err(self.refuse(Dimension::Work,work,remaining));
+        }
+        #[cfg(test)]
+        budget.note(work,std::panic::Location::caller());
         budget.spent+=work;Ok(())
     }
     /// Validated reply adapters accept recursively without fallible envelope
@@ -66,6 +79,7 @@ impl RetainedWalk {
         self.check()?;
         Ok(WalkScope {prior:CURRENT.with(|slot|slot.replace(Some(self.clone())))})
     }
+    #[cfg_attr(test,track_caller)]
     pub(super) fn scope(&self)->Result<WalkScope,ProgramStop> {
         self.charge(1)?;
         Ok(WalkScope {prior:CURRENT.with(|slot|slot.replace(Some(self.clone())))})
@@ -80,6 +94,7 @@ impl RetainedWalk {
     }
 }
 pub(super) fn current()->Option<RetainedWalk> {CURRENT.with(|slot|slot.borrow().clone())}
+#[cfg_attr(test,track_caller)]
 pub(super) fn charge(work:u64)->crate::Result<()> {
     match current() {Some(walk)=>walk.charge(work).map_err(Into::into),None=>Ok(())}
 }
@@ -87,3 +102,22 @@ pub(super) fn charge(work:u64)->crate::Result<()> {
 #[cfg(test)]
 #[path="retained_walk_accept_tests.rs"]
 mod accept_tests;
+
+// Bounded test-only attribution for real retained traversal failures. No source
+// contents, resource/TLS mutation or numerical policy enter this diagnostic.
+#[cfg(test)]
+impl Budget {
+    fn note(&mut self,work:u64,caller:&'static std::panic::Location<'static>) {
+        let key=(caller.file(),caller.line());
+        // Call sites are compile-time locations, but bound storage explicitly.
+        let key=if self.sites.contains_key(&key) || self.sites.len()<127 {key} else {("<other>",0)};
+        let count=self.sites.entry(key).or_default();count.0+=work;count.1+=1;
+    }
+    fn report_refusal(&self,requested:u64,remaining:u64,caller:&std::panic::Location<'_>) {
+        eprintln!("retained walk Work refusal: spent={} limit={} requested={} remaining={} at {}:{}",
+            self.spent,self.limit,requested,remaining,caller.file(),caller.line());
+        for ((file,line),(work,calls)) in &self.sites {
+            eprintln!("retained walk accepted site {file}:{line}: work={work} calls={calls}");
+        }
+    }
+}

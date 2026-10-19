@@ -269,7 +269,7 @@ impl Action {
 
 impl ProductRootAdapter {
     pub(super) fn cancel_with_reports(&mut self,router:&GeometryRouter) {
-        if let Some(layer)=&mut self.layer { layer.cancel_with_reports(router); }
+        if let Some(layer)=&mut self.layer { layer.cancel_with_reports(router).expect("validated cancellation router"); }
         if let Some(child)=&mut self.child {child.program.cancel_with_reports(router).expect("validated cancellation router");}
         self.cancel();
     }

@@ -9,6 +9,7 @@
 #include <SmPlane.h>
 #include <algorithm>
 #include <array>
+#include <cstdio>
 namespace {
 using namespace plane_numeric;
 using Solid=std::unique_ptr<SmBrep>;
@@ -89,7 +90,7 @@ void enclosing_wall(SmFace* f,const Bounds& domain,const SmVector3d& inward,doub
     require(std::isfinite(gap) && gap>0 && distance.lo>gap,
         "actual derived sidewall/back does not strictly enclose finite input domain");
 }
-Solid cutter_for(SmBrep* source,const SmAxis2Placement& frame,const Bounds& b,const PlaneDomain& domain) {
+Solid cutter_for(SmBrep* source,const SmAxis2Placement& frame,const Bounds& b,const PlaneDomain& domain,const double* requested_plane) {
     Solid result=raw_context::construct_brep(source->GetContext());
     try {
         result->m_bEditingEnabled=TRUE;
@@ -113,10 +114,25 @@ Solid cutter_for(SmBrep* source,const SmAxis2Placement& frame,const Bounds& b,co
         }
         require(base->GetSurface()->GetType()==SmPlane_TYPE,"derived base plane lost");
         const auto& actual=static_cast<SmPlane*>(base->GetSurface())->GetPosition();
-        require(same(actual.GetOrigin(),p) &&
+        const bool unchanged=same(actual.GetOrigin(),p) &&
             ((same(actual.GetXAxis(),x) && same(actual.GetYAxis(),y)) ||
-             (same(actual.GetXAxis(),y) && same(actual.GetYAxis(),x))),
-            "SDK changed the requested clipping plane basis/origin");
+             (same(actual.GetXAxis(),y) && same(actual.GetYAxis(),x)));
+        if(!unchanged) {
+            // Diagnostic only: read stored analytic coefficients; no evaluation,
+            // mutation, changed predicate, tolerance or publication authority.
+            const auto ax=actual.GetXAxis(),ay=actual.GetYAxis();
+            const auto ao=actual.GetOrigin(); const auto az=ax*ay;
+            const auto scale=static_cast<SmPlane*>(base->GetSurface())->GetUVScale();
+            std::fprintf(stderr,"plane cutter rejection stage=after-StitchAndOrient basis/origin\n");
+            std::fprintf(stderr,"plane requested raw point=(%.17g %.17g %.17g) normal=(%.17g %.17g %.17g)\n",
+                requested_plane[0],requested_plane[1],requested_plane[2],
+                requested_plane[3],requested_plane[4],requested_plane[5]);
+            std::fprintf(stderr,"plane constructed origin=(%.17g %.17g %.17g) X=(%.17g %.17g %.17g) Y=(%.17g %.17g %.17g) Z=(%.17g %.17g %.17g)\n",
+                p.x,p.y,p.z,x.x,x.y,x.z,y.x,y.y,y.z,z.x,z.y,z.z);
+            std::fprintf(stderr,"plane effective origin=(%.17g %.17g %.17g) X=(%.17g %.17g %.17g) Y=(%.17g %.17g %.17g) crossXY=(%.17g %.17g %.17g) UVscale=(%.17g %.17g)\n",
+                ao.x,ao.y,ao.z,ax.x,ax.y,ax.z,ay.x,ay.y,ay.z,az.x,az.y,az.z,scale.x,scale.y);
+        }
+        require(unchanged,"SDK changed the requested clipping plane basis/origin");
         enclosing_wall(back,domain.bounds,z*-1,domain.tolerance);
         enclosing_wall(left,domain.bounds,x,domain.tolerance);
         enclosing_wall(right,domain.bounds,x*-1,domain.tolerance);
@@ -165,7 +181,7 @@ std::unique_ptr<SmBrep> clip_finite_plane(SmBrep* source,const double* plane,
         // Full SDK validators may evaluate/build trim data. Run them only on
         // the owned copy after source representation admission, never source.
         validate_plane_solid(a.get(),"copied host before Boolean");
-        bounded=cutter_for(source,frame,b,domain);
+        bounded=cutter_for(source,frame,b,domain,plane);
         SmBrep* raw=nullptr;
         const auto status=SmApiBoolean(a.get(),bounded.get(),SM_BO_INTERSECTION,raw);
         // SDK may mutate/delete operands before reporting failure. Never run

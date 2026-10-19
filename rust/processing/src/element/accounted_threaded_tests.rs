@@ -592,8 +592,10 @@ fn rejected_real_inner_reply_retains_its_admitted_box_until_packet_drop() {
         drop(rejected.reply);
         assert!(account.usage().live_bytes<=resident-header,"dropping the packet refunds its owned box backing");
         assert_eq!(calls.get(),0,"this real source admission precedes the constructor");
-        state.remember_stop(ProgramStop::Cancelled);
-        let stopped=state.finish(&decoder,&router);assert!(stopped.meshes.is_empty());
+        // Dropping a rejected packet releases storage, not the original work
+        // ticket. An outstanding continuation cannot publish, even when stopped.
+        assert_eq!(state.request(),Err(WorkError::Outstanding));
+        drop(state);
     });
     assert!(decoder.try_execution_lease().is_ok());assert!(router.try_execution_lease().is_ok());
 }

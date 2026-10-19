@@ -66,6 +66,7 @@ pub(super) fn append_prepared_retry(
         tris,
         groups,
         false,
+        baseline.bid,
         next_bid,
         length_unit_scale,
         retry.plane_area,
@@ -78,24 +79,30 @@ fn append_groups(
     tris: &[PlaneTri],
     groups: Vec<Vec<usize>>,
     use_tag: bool,
+    source_bid: u32,
     next_bid: &mut u32,
     length_unit_scale: f64,
     noise_area: f64,
     plans: &mut Vec<PlanBucket>,
 ) {
     for group in groups {
+        // Groups are ordered by first member, so exactly one starts at the
+        // bucket's first triangle and plans in the bucket's established frame.
+        // It keeps the replaced plan's id, by which the failed-conform
+        // source-boundary retry finds that frame (#7638 review). Every other
+        // group takes a fresh id, so seam ownership stays unique.
+        let bid = if group[0] == 0 {
+            source_bid
+        } else {
+            let fresh = *next_bid;
+            *next_bid += 1;
+            fresh
+        };
         // The common single-region path copies no source triangles
         // and allocates no temporary output Vec. On this retry every
         // triangle belongs to exactly one group.
         let own: Vec<_> = group.into_iter().map(|i| tris[i].clone()).collect();
-        let plan = plan_one(
-            &own,
-            use_tag,
-            *next_bid,
-            length_unit_scale,
-            Some(noise_area),
-        );
-        *next_bid += 1;
+        let plan = plan_one(&own, use_tag, bid, length_unit_scale, Some(noise_area));
         plans.push(plan);
     }
 }

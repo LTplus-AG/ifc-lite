@@ -325,7 +325,7 @@ impl GeometryRouter {
     /// tile a wall surface — each clip creates boundary triangles that get
     /// re-split by the next clip, causing O(2^N) growth.
     pub(super) fn merge_rectangular_openings(openings: &[OpeningType]) -> Vec<OpeningType> {
-        const MERGE_TOLERANCE: f64 = 0.01; // 1cm tolerance for adjacency
+        const MERGE_TOLERANCE: f64 = 0.01; // Broad phase only; never credit filled volume
 
         // Separate rectangular and non-rectangular openings
         let mut rects: Vec<(Point3<f64>, Point3<f64>, Option<Vector3<f64>>)> = Vec::new();
@@ -369,15 +369,15 @@ impl GeometryRouter {
                     // through BOTH walls. This still collapses the O(2^N) case the merge
                     // exists for — a wall tiled with aligned openings coincides on two
                     // axes per pair and folds row-by-row, then column-by-column.
-                    let coincides_x = (a_min.x - b_min.x).abs() <= MERGE_TOLERANCE
-                        && (a_max.x - b_max.x).abs() <= MERGE_TOLERANCE;
-                    let coincides_y = (a_min.y - b_min.y).abs() <= MERGE_TOLERANCE
-                        && (a_max.y - b_max.y).abs() <= MERGE_TOLERANCE;
-                    let coincides_z = (a_min.z - b_min.z).abs() <= MERGE_TOLERANCE
-                        && (a_max.z - b_max.z).abs() <= MERGE_TOLERANCE;
+                    let coincides_x = a_min.x == b_min.x && a_max.x == b_max.x;
+                    let coincides_y = a_min.y == b_min.y && a_max.y == b_max.y;
+                    let coincides_z = a_min.z == b_min.z && a_max.z == b_max.z;
                     let coincident_axes =
                         coincides_x as u8 + coincides_y as u8 + coincides_z as u8;
-                    let phantom_free = coincident_axes >= 2;
+                    let phantom_free = coincident_axes >= 2
+                        && a_min.x <= b_max.x && a_max.x >= b_min.x
+                        && a_min.y <= b_max.y && a_max.y >= b_min.y
+                        && a_min.z <= b_max.z && a_max.z >= b_min.z;
 
                     // Check direction compatibility before merging
                     let dirs_compatible = match (&rects[i].2, &rects[j].2) {

@@ -71,6 +71,10 @@ fn reduced_host() -> Vec<Tri> {
 /// #7635 candidate reduction: a closed slab with two four-corner holes.
 /// One hole is the cutter footprint; another short wall supplies the remote
 /// plane. No source-cap deficit or consolidation is involved.
+/// This preserves the captured slab's safety; the established guard already
+/// refuses its weld. `issue_7635_closed_edge_contact_exercises_production_finite_refusal`
+/// separately proves that the additional finite rule refuses a real movement
+/// (review r4310799395).
 #[test]
 fn issue_7635_extended_cutter_arris_preserves_closed_hole() {
     let h = reduced_host();

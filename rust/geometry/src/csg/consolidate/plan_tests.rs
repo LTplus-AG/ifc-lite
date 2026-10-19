@@ -555,3 +555,26 @@ fn issue_7633_retry_discards_old_peer_seams_and_reuses_original_cdt() {
         }
     }
 }
+
+/// #7638 review: the separated retry gives remote groups fresh seam ids. When
+/// its conform fails, the shared emitter's source-boundary rung must still find
+/// the split bucket's established frame and certify exactly the boundary the
+/// unsplit plan certifies, instead of declining the whole partition.
+#[test]
+fn issue_7633_split_bucket_keeps_its_source_boundary_frame() {
+    let tilt = 2f64.powi(-20);
+    let mut tris = quad([0., 1.], [0., 1.], 0.);
+    tris.push(triangle([[3., 0., 0.], [4., 0., 0.], [4., 1., tilt]]));
+    tris.push(triangle([[3., 0., 0.], [4., 1., tilt], [3., 1., tilt]]));
+    let buckets: crate::csg::consolidate::buckets::Buckets =
+        std::iter::once(((0, 0, 1000, 0), tris.clone())).collect();
+    let established = vec![plan_one(&tris, false, 0, 1., None)];
+    let split = plan_bucket(&tris, false, &mut 0, 1.);
+    assert_eq!(split.len(), 2, "the tilted remote patch must take the retry");
+    let source_boundary = crate::csg::consolidate::source_boundary::build;
+    let before = source_boundary(&established, &buckets).expect("disjoint planar patches certify");
+    let after = source_boundary(&split, &buckets).expect("a split bucket keeps its source frame");
+    assert_eq!(before.positions, after.positions);
+    assert_eq!(before.normals, after.normals);
+    assert_eq!(before.indices, after.indices);
+}

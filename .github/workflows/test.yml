@@ -971,6 +971,17 @@ jobs:
           # whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/profile_cap.rs | grep -Fxq 'rust/geometry/src/profile_cap.rs'; then
             oracle_args+=(--mutation tests/evidence/issue-7631/profile-cap.oracle.patch)
+          # #7941: the new opening-merge fixture tests carry the changed tests,
+          # so a whole-change revert deletes them (INCONCLUSIVE). Keep them and
+          # break ONLY the behaviour: rectangular opening boxes coalesce again
+          # within 1 cm and without interval contact, coaxial depth slabs are
+          # extended after slicing with no sub-grid slab refusal, and a split
+          # bucket's first group loses its source plan id. The merge-gap,
+          # sub-grid slab and source-boundary frame tests turn RED. Once
+          # opening_merge_fixture_tests.rs is on main, ordinary whole-change
+          # revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/router/voids/opening_merge_fixture_tests.rs | grep -Fxq 'rust/geometry/src/router/voids/opening_merge_fixture_tests.rs'; then
+            oracle_args+=(--mutation tests/evidence/issue-7941/opening-union.oracle.patch)
           # #7673: the new large-stack geometry pool module carries its own
           # tests, so a whole-file revert deletes them (INCONCLUSIVE). Keep the
           # module and remove ONLY the large worker stack: the deep par_iter

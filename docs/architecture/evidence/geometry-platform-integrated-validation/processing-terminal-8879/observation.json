@@ -1,0 +1,10 @@
+{
+  "job_id": "887916da-9ea2-4528-966a-8d90b4cca9e4",
+  "request_id": "auto-75bdd3bf62164776888b9cb5f8a247e3",
+  "source": "9be1dcd3a036be4327686e8b56029cc4ff8f67aa",
+  "observation": "In-progress output excerpt; original receipt and output remain live and unchanged. Not a terminal run summary.",
+  "excerpt_sha256": "7cec69e665cad130260479d5495176eb50374446b4f0282d1798bd905b72a41e",
+  "processing_lib": "731 passed, 1 failed, 1 ignored",
+  "repair": "bf9f12270d",
+  "repair_qualification": "Rust parse and whitespace only; regression fixture unchanged, rerun pending admission."
+}

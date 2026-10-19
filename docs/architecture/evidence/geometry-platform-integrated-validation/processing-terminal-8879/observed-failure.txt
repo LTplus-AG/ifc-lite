@@ -1,0 +1,12 @@
+---- element::session::terminal_tests::stopped_valid_reply_cannot_assemble_after_an_earlier_type_map_was_accepted stdout ----
+
+thread 'element::session::terminal_tests::stopped_valid_reply_cannot_assemble_after_an_earlier_type_map_was_accepted' (1898042) panicked at rust/processing/src/element/session_terminal_tests.rs:159:5:
+assertion failed: execution.request().unwrap().is_none()
+
+
+failures:
+    element::session::terminal_tests::stopped_valid_reply_cannot_assemble_after_an_earlier_type_map_was_accepted
+
+test result: FAILED. 731 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out; finished in 64.86s
+
+error: test failed, to rerun pass `-p ifc-lite-processing --lib`

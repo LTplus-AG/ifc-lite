@@ -56,7 +56,15 @@ void witness(const M& m,bool cylinder) {
     std::fprintf(stderr,"affine source=%s classes=",cylinder?"cylinder":"box");
     for(unsigned i=0;i<12;++i) std::fprintf(stderr,"%s%u",i?",":"",cert.source_classes[i]);
     std::fprintf(stderr," matrix_diag=%.17g,%.17g,%.17g\n",m[0],m[5],m[10]);
-    require(cylinder?cert.source_classes[8]>0:cert.source_classes[7]==6,"actual source class conversion witnesses");
+    // The pinned BRep cylinder overload calls CreateCone with equal radii:
+    // two plane caps, one SmCone, two circle edges and one line seam. The
+    // separate surface-only cylinder overload creates SmCylinder instead.
+    // Keep the complete class table exact; the numerical oracles below still
+    // independently require the original cylinder geometry under every matrix.
+    const std::array<uint32_t,12> classes=cylinder?
+        std::array<uint32_t,12>{0,1,2,0,0,0,0,2,0,1,0,0}:
+        std::array<uint32_t,12>{0,12,0,0,0,0,0,6,0,0,0,0};
+    require(std::equal(classes.begin(),classes.end(),cert.source_classes),"actual source class conversion witnesses");
     double unchanged=0; ok(ifclite_smlib_volume(session,source,1e-8,&unchanged));
     require(std::abs(unchanged-original)<=original*1e-5,"source unchanged by affine copy");
     ok(ifclite_smlib_release(session,source)); // Copy must survive original release.

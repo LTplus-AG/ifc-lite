@@ -1,0 +1,22 @@
+{
+  "source": "d441b5a78b03756249bb3fe1ea8b44e0940ea42b",
+  "pid": 2495135,
+  "task": "ifclite-opening-oracle-d441-20261019",
+  "command": [
+    "/home/louistrue/build-workers/ifc-fleet",
+    "run",
+    "--host",
+    "pc-wsl",
+    "--storage-task",
+    "ifclite-opening-oracle-d441-20261019",
+    "--cwd",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361",
+    "--",
+    "bash",
+    "-c",
+    "source \"$HOME/build-workers/worker-env.sh\" || exit $?\ngit diff --exit-code 475c5edca5ab4c8ba99a92874504240b2fecffe3 HEAD -- native/smlib-adapter || exit $?\nexport IFCLITE_SMLIB_WORKER=\"$CARGO_TARGET_DIR/ifclite-smlib/native-475c5edca5ab4c8ba99a92874504240b2fecffe3-b6f0d1ab2604/ifclite_smlib_worker\"\ntest -x \"$IFCLITE_SMLIB_WORKER\" || exit 2\nprintf 'actual native artifact built at 475c5edca5; all native source inputs unchanged; native lineage CTests remain failed\\n'\nsha256sum \"$IFCLITE_SMLIB_WORKER\"\ncargo test -p ifc-lite-processing --lib element::session_retained -- --nocapture\nproduct_status=$?\ncargo clippy --workspace --all-targets -- -D warnings\nclippy_status=$?\nprintf 'retained_product_exit=%s clippy_exit=%s\\n' \"$product_status\" \"$clippy_status\"\nif [ \"$product_status\" -ne 0 ]; then exit \"$product_status\"; fi\nexit \"$clippy_status\""
+  ],
+  "log": "/tmp/ifclite-opening-oracle-d441-20261019.log",
+  "launched_at": 1792406783.6657147,
+  "scope": "Retained processing lib tests with same-native-inputs built475c worker; strict workspace all-target Clippy. No native CTest qualification transfer, no fullworkspace/browser/perf verdict"
+}

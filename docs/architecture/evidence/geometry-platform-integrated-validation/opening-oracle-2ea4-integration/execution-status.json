@@ -1,0 +1,13 @@
+{
+  "first_job": "9e2ea7ba-3442-42a9-b9f5-f64083f9971e",
+  "source": "d441b5a78b03756249bb3fe1ea8b44e0940ea42b",
+  "exit_code": 2,
+  "source_unchanged": true,
+  "tests_clippy": "NOT RUN; native executable lookup failed before Cargo because new dev-dependency lock selected another managed compatibility cache",
+  "corrected_request": "auto-5d7d074db09e4aa98c1bff9d6eb17242",
+  "corrected_source": "f6639c82d4eb445e6c3ee4a5c7a9b8258d17a13d",
+  "corrected_source_scope": "Only integration evidence added; ten test/dependency source hashes unchanged",
+  "corrected_outcome": "REFUSED BEFORE EXECUTION: requested PC host job kind disabled under guard78; no job",
+  "artifact_sha256": "69851c21038602964acdabc9a22ac02a4421b9682bef4f6d3714e4ff02976e23",
+  "qualification": "All changed tests/Clippy remain UNRUN at corrected source"
+}

@@ -1,0 +1,25 @@
+{
+  "source": "f6639c82d4eb445e6c3ee4a5c7a9b8258d17a13d",
+  "pid": 2496977,
+  "task": "ifclite-opening-oracle-explicit-worker-d441-20261019",
+  "command": [
+    "/home/louistrue/build-workers/ifc-fleet",
+    "run",
+    "--host",
+    "pc-wsl",
+    "--storage-task",
+    "ifclite-opening-oracle-explicit-worker-d441-20261019",
+    "--cwd",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3-f778e361",
+    "--",
+    "bash",
+    "-c",
+    "source \"$HOME/build-workers/worker-env.sh\" || exit $?\ngit diff --exit-code 475c5edca5ab4c8ba99a92874504240b2fecffe3 HEAD -- native/smlib-adapter || exit $?\nexport IFCLITE_SMLIB_WORKER=\"/home/louistrue/build-workers/worker-state/caches/1c8ef91bc19f507e5b98a277/ifclite-smlib/native-475c5edca5ab4c8ba99a92874504240b2fecffe3-b6f0d1ab2604/ifclite_smlib_worker\"\ntest -x \"$IFCLITE_SMLIB_WORKER\" || exit 2\nprintf 'actual native artifact built at 475c5edca5; all native source inputs unchanged; native lineage CTests remain failed\\n'\nprintf '69851c21038602964acdabc9a22ac02a4421b9682bef4f6d3714e4ff02976e23  %s\\n' \"$IFCLITE_SMLIB_WORKER\" | sha256sum -c - || exit $?\ncargo test -p ifc-lite-processing --lib element::session_retained -- --nocapture\nproduct_status=$?\ncargo clippy --workspace --all-targets -- -D warnings\nclippy_status=$?\nprintf 'retained_product_exit=%s clippy_exit=%s\\n' \"$product_status\" \"$clippy_status\"\nif [ \"$product_status\" -ne 0 ]; then exit \"$product_status\"; fi\nexit \"$clippy_status\""
+  ],
+  "log": "/tmp/ifclite-opening-oracle-explicit-worker-d441-20261019.log",
+  "launched_at": 1792406846.1232126,
+  "scope": "Retained processing lib tests with same-native-inputs built475c worker; strict workspace all-target Clippy. No native CTest qualification transfer, no fullworkspace/browser/perf verdict",
+  "controller_source": "f6639c82d4eb445e6c3ee4a5c7a9b8258d17a13d",
+  "prior_terminal_setup_job": "9e2ea7ba-3442-42a9-b9f5-f64083f9971e",
+  "native_artifact_sha256": "69851c21038602964acdabc9a22ac02a4421b9682bef4f6d3714e4ff02976e23"
+}

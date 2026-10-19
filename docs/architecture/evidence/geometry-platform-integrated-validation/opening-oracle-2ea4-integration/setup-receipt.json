@@ -1,0 +1,103 @@
+{
+  "id": "9e2ea7ba-3442-42a9-b9f5-f64083f9971e",
+  "host": {
+    "host": "louistrue-pc",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 24,
+    "availableMemoryBytes": 64230989824,
+    "totalMemoryBytes": 67423580160,
+    "python": "3.14.4",
+    "time": 1792406793.536215
+  },
+  "cwd": "/home/louistrue/build-workers/worker-state/checkouts/d441b5a78b03756249bb3fe1ea8b44e0940ea42b",
+  "sourceBefore": {
+    "commit": "d441b5a78b03756249bb3fe1ea8b44e0940ea42b",
+    "tree": "c5f907f310ba5231712867da2c8e8dc3c5a9a7d9",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "b006ec6433690a164f71539412558d230e5935c9852c7cb296762ca4bd2ea1e0",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+    }
+  },
+  "command": [
+    "bash",
+    "-c",
+    "source \"$HOME/build-workers/worker-env.sh\" || exit $?\ngit diff --exit-code 475c5edca5ab4c8ba99a92874504240b2fecffe3 HEAD -- native/smlib-adapter || exit $?\nexport IFCLITE_SMLIB_WORKER=\"$CARGO_TARGET_DIR/ifclite-smlib/native-475c5edca5ab4c8ba99a92874504240b2fecffe3-b6f0d1ab2604/ifclite_smlib_worker\"\ntest -x \"$IFCLITE_SMLIB_WORKER\" || exit 2\nprintf 'actual native artifact built at 475c5edca5; all native source inputs unchanged; native lineage CTests remain failed\\n'\nsha256sum \"$IFCLITE_SMLIB_WORKER\"\ncargo test -p ifc-lite-processing --lib element::session_retained -- --nocapture\nproduct_status=$?\ncargo clippy --workspace --all-targets -- -D warnings\nclippy_status=$?\nprintf 'retained_product_exit=%s clippy_exit=%s\\n' \"$product_status\" \"$clippy_status\"\nif [ \"$product_status\" -ne 0 ]; then exit \"$product_status\"; fi\nexit \"$clippy_status\""
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792406793.5326724,
+  "resources": [
+    "/home/louistrue/build-workers/worker-state/checkouts/d441b5a78b03756249bb3fe1ea8b44e0940ea42b",
+    "/home/louistrue/build-workers/worker-state/caches/a2df2b6cd1e05391484b84eb"
+  ],
+  "state": "failed",
+  "cpu": 4,
+  "memoryGiB": 12,
+  "storageTask": "ifclite-opening-oracle-d441-20261019",
+  "storageTaskExplicit": true,
+  "storageResources": [
+    {
+      "path": "/home/louistrue/build-workers/worker-state/caches/a2df2b6cd1e05391484b84eb",
+      "role": "cache",
+      "project": "ifc-lite",
+      "compatibilityKey": "a2df2b6cd1e05391484b84eb"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/d441b5a78b03756249bb3fe1ea8b44e0940ea42b",
+      "role": "worktree"
+    }
+  ],
+  "fixtures": {},
+  "tools": {
+    "git": {
+      "path": "/usr/local/bin/git",
+      "exitCode": 0,
+      "version": "git version 2.53.0"
+    },
+    "rustc": {
+      "path": "/home/louistrue/.cargo/bin/rustc",
+      "exitCode": 0,
+      "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+    },
+    "cargo": {
+      "path": "/home/louistrue/.cargo/bin/cargo",
+      "exitCode": 0,
+      "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+    },
+    "node": {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node",
+      "exitCode": 0,
+      "version": "v24.21.0"
+    },
+    "pnpm": {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/pnpm",
+      "exitCode": 0,
+      "version": "10.8.1"
+    }
+  },
+  "runnerSha256": "e43e00e2d93ae926cf7369009285aa96f63d4722b8e3e0b266a1daa699fed7bb",
+  "startedAt": 1792406794.1782238,
+  "queueSeconds": 0.6455516815185547,
+  "resourceScope": false,
+  "exitCode": 2,
+  "finishedAt": 1792406794.1910956,
+  "sourceAfter": {
+    "commit": "d441b5a78b03756249bb3fe1ea8b44e0940ea42b",
+    "tree": "c5f907f310ba5231712867da2c8e8dc3c5a9a7d9",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "b006ec6433690a164f71539412558d230e5935c9852c7cb296762ca4bd2ea1e0",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {},
+  "outputSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

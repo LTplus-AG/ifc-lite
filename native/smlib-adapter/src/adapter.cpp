@@ -201,8 +201,13 @@ int32_t ifclite_smlib_boolean(uint64_t session, ifclite_smlib_handle left,
         case IFCLITE_SMLIB_DIFFERENCE: selected = SM_BO_DIFFERENCE; break;
         default: throw Failure{IFCLITE_SMLIB_INVALID_ARGUMENT, "unknown boolean operation"};
         }
-        Solid a = copy(solid(session, left));
-        Solid b = copy(solid(session, right));
+        Solid a,b;
+        try {
+            a=copy(solid(session,left)); b=copy(solid(session,right));
+        } catch(...) {
+            if(kernel_domain_is_tainted()) { a.release(); b.release(); }
+            throw;
+        }
         SmBrep* raw = nullptr;
         checked(SmApiBoolean(a.get(), b.get(), selected, raw));
         // Supported operations delete b and return a on success (upstream contract).

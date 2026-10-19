@@ -15,11 +15,15 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use std::cell::RefCell;
 
 use super::csg_primitive::CsgSolidProcessor;
-use super::helpers::parse_axis2_placement_3d;
 
+mod bounded_prism_plan;
+mod brep_void_plan;
 mod brep_voids;
 mod cut_heuristics;
 mod failures;
+mod half_space_plan;
+mod polygonal_chain;
+use half_space_plan::HalfSpacePlan;
 mod operand;
 mod halfspace_cap;
 mod polygonal_boundary;
@@ -101,73 +105,6 @@ impl BooleanClippingProcessor {
         }
     }
 
-    /// Parse IfcHalfSpaceSolid to get clipping plane
-    /// Returns (plane_point, plane_normal, agreement_flag)
-    fn parse_half_space_solid(
-        &self,
-        half_space: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Result<(Point3<f64>, Vector3<f64>, bool)> {
-        // IfcHalfSpaceSolid attributes:
-        // 0: BaseSurface (IfcSurface - usually IfcPlane)
-        // 1: AgreementFlag (boolean - true means material is on positive side)
-
-        let surface_attr = half_space
-            .get(0)
-            .ok_or_else(|| Error::geometry("HalfSpaceSolid missing BaseSurface".to_string()))?;
-
-        let surface = decoder
-            .resolve_ref(surface_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve BaseSurface".to_string()))?;
-
-        // Get agreement flag - defaults to true
-        let agreement = half_space.get_bool(1).unwrap_or(true);
-
-        // Parse IfcPlane
-        if surface.ifc_type != IfcType::IfcPlane {
-            return Err(Error::geometry(format!(
-                "Expected IfcPlane for HalfSpaceSolid, got {}",
-                surface.ifc_type
-            )));
-        }
-
-        // IfcPlane has one attribute: Position (IfcAxis2Placement3D)
-        let position_attr = surface
-            .get(0)
-            .ok_or_else(|| Error::geometry("IfcPlane missing Position".to_string()))?;
-
-        let position = decoder
-            .resolve_ref(position_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve Plane position".to_string()))?;
-
-        // Parse IfcAxis2Placement3D to get transformation matrix
-        // The Position defines the plane's coordinate system:
-        // - Location = plane point (in the representation item's local,
-        //   pre-placement, pre-scale coordinates — this function does not
-        //   compose the element's ObjectPlacement, which is folded in later
-        //   by apply_placement at the element level)
-        // - Z-axis (Axis) = plane normal (in local coordinates, needs transformation)
-        let position_transform = parse_axis2_placement_3d(&position, decoder)?;
-
-        // Plane point is the Position's Location (translation part of transform)
-        let location = Point3::new(
-            position_transform[(0, 3)],
-            position_transform[(1, 3)],
-            position_transform[(2, 3)],
-        );
-
-        // Plane normal is the Position's Z-axis transformed to world coordinates
-        // Extract Z-axis from transform matrix (third column)
-        let normal = Vector3::new(
-            position_transform[(0, 2)],
-            position_transform[(1, 2)],
-            position_transform[(2, 2)],
-        )
-        .normalize();
-
-        Ok((location, normal, agreement))
-    }
-
     /// Apply half-space clipping to mesh
     fn clip_mesh_with_half_space(
         &self,
@@ -207,64 +144,6 @@ impl BooleanClippingProcessor {
         // that consumer doesn't exist yet, so the bool is bound, not routed.
         let _capped = cap_half_space_clip(&mut clipped, plane_point, clip_normal);
         Ok(clipped)
-    }
-
-    /// Walk the left-spine of a chained
-    /// `IfcBooleanClippingResult(.DIFFERENCE., x, polygonalBoundedHalfSpace)`
-    /// pattern (typical for gable walls clipped by a segmented roof) and
-    /// collect every consecutive `IfcPolygonalBoundedHalfSpace` cutter, plus
-    /// the base solid the chain bottoms out on.
-    ///
-    /// Returns `(base_entity, cutters)` with `cutters` ordered innermost-first.
-    /// Consumed by [`Self::try_union_polygonal_chain`], which unions the cutter
-    /// prisms (a true CSG union — overlap-safe, unlike the old mesh-*merge*
-    /// batching) and subtracts once. See that method for why a single unioned
-    /// subtract beats sequential subtraction here (issue #960: seam slivers +
-    /// deep-chain depth-limit drops).
-    fn collect_polygonal_chain(
-        &self,
-        entity: DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Result<(DecodedEntity, Vec<DecodedEntity>)> {
-        let mut chain: Vec<DecodedEntity> = Vec::new();
-        let mut current = entity;
-        // Guard against self-referential / cyclic FirstOperand chains in
-        // malformed input (e.g. `#10=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#10,
-        // #20)`), which would otherwise walk `current = first` forever and grow
-        // `chain` without bound (hang + OOM in the wasm geometry worker, where
-        // panic=abort takes down the whole instance). A visited-id set breaks on
-        // the first repeat WITHOUT capping legitimate deep-but-finite chains —
-        // this walk was made iterative in #960 precisely to bypass
-        // MAX_BOOLEAN_DEPTH for those, so a low depth cap would regress them.
-        let mut visited: std::collections::HashSet<u32> = std::collections::HashSet::new();
-        loop {
-            if !visited.insert(current.id) {
-                break;
-            }
-            if !matches!(
-                current.ifc_type,
-                IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult
-            ) {
-                break;
-            }
-            // Operator must be DIFFERENCE (an unreadable one on a bare
-            // IfcBooleanResult is not).
-            if operand::boolean_operator(&current) != Ok(BoolOp::Difference) {
-                break;
-            }
-            let Some(second_attr) = current.get(2) else { break };
-            let Ok(Some(second)) = decoder.resolve_ref(second_attr) else { break };
-            if second.ifc_type != IfcType::IfcPolygonalBoundedHalfSpace {
-                break;
-            }
-            chain.push(second);
-            let Some(first_attr) = current.get(1) else { break };
-            let Ok(Some(first)) = decoder.resolve_ref(first_attr) else { break };
-            current = first;
-        }
-        // Reverse so chain[0] is the innermost (first-applied) clip.
-        chain.reverse();
-        Ok((current, chain))
     }
 
     /// Resolve a left-deep chain of
@@ -326,7 +205,7 @@ impl BooleanClippingProcessor {
         for cutter in &cutters {
             // Unreadable plane: defer; the sequential step records it (#7688).
             let Ok((plane_point, plane_normal, agreement)) =
-                self.parse_half_space_solid(cutter, decoder) else { return self.defer_after(mark) };
+                HalfSpacePlan::lower(cutter, decoder).map(HalfSpacePlan::components) else { return self.defer_after(mark) };
             match self.build_polygonal_bounded_half_space_mesh(
                 cutter,
                 decoder,

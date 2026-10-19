@@ -8,6 +8,7 @@
 //! operand arm gained its diagnostic record (#3821).
 
 use super::brep_voids::brep_with_voids_shell_kind;
+use super::half_space_plan::HalfSpacePlan;
 use super::{BooleanClippingProcessor, CsgSolidProcessor};
 use crate::diagnostics::{BoolFailureReason, BoolOp};
 use crate::router::builtin_processor;
@@ -125,7 +126,7 @@ impl BooleanClippingProcessor {
     }
 
     /// A half-space cutter's plane, or `None` with the dropped cut on record
-    /// (#7688 PROC-S17). `parse_half_space_solid` refuses a base surface that
+    /// (#7688 PROC-S17). `HalfSpacePlan::lower` refuses a base surface that
     /// is not an `IfcPlane` or a plane without a usable Position; through `?`
     /// that refusal deleted the host. Now the host stays uncut, exactly as for
     /// every other unreadable cutter (see `process_operand_checked`).
@@ -134,7 +135,9 @@ impl BooleanClippingProcessor {
         half_space: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Option<(Point3<f64>, Vector3<f64>, bool)> {
-        let plane = self.parse_half_space_solid(half_space, decoder).ok();
+        let plane = HalfSpacePlan::lower(half_space, decoder)
+            .map(HalfSpacePlan::components)
+            .ok();
         if plane.is_none() {
             self.record_failure(
                 BoolOp::Difference,

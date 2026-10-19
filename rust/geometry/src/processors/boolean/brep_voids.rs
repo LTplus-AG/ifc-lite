@@ -10,6 +10,7 @@
 //! out: an over-cut, silently. The kernel subtracts the void shells (it
 //! orients each operand outward itself, so either authored winding works).
 
+use super::brep_void_plan::BrepVoidPlan;
 use super::BooleanClippingProcessor;
 use crate::diagnostics::{BoolFailureReason, BoolOp};
 use crate::router::builtin_processor;
@@ -50,18 +51,18 @@ impl BooleanClippingProcessor {
             );
             (Mesh::new(), true)
         };
-        let Some(voids) = operand.get(1).and_then(|attr| attr.as_list()) else {
+        let Some(plan) = BrepVoidPlan::read(operand) else {
             return (outer, false);
         };
-        if voids.is_empty() || outer.is_empty() {
+        if outer.is_empty() {
             return (outer, false);
         }
         let Some(processor) = builtin_processor(shell_kind.clone(), &self.schema) else {
             return refuse("no shell processor");
         };
-        let mut void_meshes = Vec::with_capacity(voids.len());
-        for void in voids {
-            let Some(shell_id) = void.as_entity_ref() else { return refuse("void is not a shell reference") };
+        let mut void_meshes = Vec::with_capacity(plan.shells.len());
+        for shell in &plan.shells {
+            let Some(shell_id) = *shell else { return refuse("void is not a shell reference") };
             // The plain brep type over this shell: the processors read the
             // shell from attribute 0 and nothing else.
             let as_brep = DecodedEntity::new(shell_id, shell_kind.clone(), vec![AttributeValue::EntityRef(shell_id)]);

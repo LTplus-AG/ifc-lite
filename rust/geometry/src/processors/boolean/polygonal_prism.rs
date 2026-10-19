@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use super::super::helpers::parse_axis2_placement_3d;
+use super::bounded_prism_plan::BoundedPrismPlan;
 use super::BooleanClippingProcessor;
 use crate::{
     calculate_normals, ClippingProcessor, Error, GroupCut, GroupReject, Mesh, Point2, Point3,
@@ -34,27 +34,23 @@ impl BooleanClippingProcessor {
         (plane_point, plane_normal, agreement): (Point3<f64>, Vector3<f64>, bool),
         quality: TessellationQuality,
     ) -> Result<Option<Mesh>> {
-        let position_attr = half_space.get(2).ok_or_else(|| {
-            Error::geometry("PolygonalBoundedHalfSpace missing Position".to_string())
-        })?;
-        let position = decoder.resolve_ref(position_attr)?.ok_or_else(|| {
-            Error::geometry("Failed to resolve bounded half-space Position".to_string())
-        })?;
-        let transform = parse_axis2_placement_3d(&position, decoder)?;
-
-        let Some(contour_2d) = self.bounded_half_space_contour(half_space, decoder, quality)? else { return Ok(None) };
-
-        let origin = Point3::new(transform[(0, 3)], transform[(1, 3)], transform[(2, 3)]);
-        let x_axis =
-            Vector3::new(transform[(0, 0)], transform[(1, 0)], transform[(2, 0)]).normalize();
-        let y_axis =
-            Vector3::new(transform[(0, 1)], transform[(1, 1)], transform[(2, 1)]).normalize();
-        // Per IFC spec (IfcPolygonalBoundedHalfSpace): the polygon is in
-        // Position's XY plane and is extruded INFINITELY along Position's
-        // Z-axis to form an unbounded prism. The bounded half-space is the
-        // intersection of that prism with the IfcHalfSpaceSolid.
-        let z_axis =
-            Vector3::new(transform[(0, 2)], transform[(1, 2)], transform[(2, 2)]).normalize();
+        let Some(plan) = BoundedPrismPlan::lower(
+            self,
+            half_space,
+            decoder,
+            quality,
+        )?
+        else {
+            return Ok(None);
+        };
+        let BoundedPrismPlan {
+            contour: contour_2d,
+            origin,
+            x_axis,
+            y_axis,
+            z_axis,
+            ..
+        } = plan;
 
         // The half-space "material" side (the side we SUBTRACT from the host)
         // depends on AgreementFlag. Per IFC spec, AgreementFlag=TRUE means the

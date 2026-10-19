@@ -50,6 +50,16 @@ const FACES: { id: CubeFace; label: string; transform: (h: number) => string }[]
 
 const ZONES_BY_FACE = Object.fromEntries(CUBE_FACES.map((f) => [f, zonesForFace(f)])) as Record<CubeFace, CubeZone[]>;
 
+// Lines between cells: hairlines that stay invisible until the pointer is over
+// the cube, then fade in very faintly. Each face draws its own outline on the
+// grid, so an idle cube is as clean as a plain one.
+const SEPARATORS = [
+  'group-hover/cube:border-l-foreground/[0.045]',
+  'group-hover/cube:border-r-foreground/[0.045]',
+  'group-hover/cube:border-t-foreground/[0.045]',
+  'group-hover/cube:border-b-foreground/[0.045]',
+];
+
 const cubeTransform = (x: number, y: number) => `rotateX(${x}deg) rotateY(${y}deg)`;
 
 export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
@@ -157,7 +167,7 @@ export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
       // Mouse dragging changes the cube orientation; the child face buttons provide keyboard views.
       // eslint-disable-next-line jsx-a11y/no-static-element-interactions
       <div
-        className="relative select-none drop-shadow-md"
+        className="group/cube relative select-none drop-shadow-md"
         style={{
           width: size,
           height: size,
@@ -176,7 +186,7 @@ export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
           {FACES.map(({ id, label, transform }) => (
             <div
               key={id}
-              className="absolute w-full h-full grid"
+              className="absolute w-full h-full grid border border-foreground/30"
               style={{
                 transform: transform(half),
                 backfaceVisibility: 'hidden',
@@ -196,20 +206,27 @@ export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
                         .join(' / '),
                     })}
                     data-viewcube-zone={zone.kind}
+                    // The face button's box spans the whole face; the edge and corner pieces sit on
+                    // top and take the clicks in the outer band, so only the middle of the face
+                    // selects the face view.
+                    style={isFace
+                      ? { gridArea: '1 / 1 / -1 / -1' }
+                      : { gridColumn: zone.col + 2, gridRow: zone.row + 2, zIndex: 1 }}
                     // Keyboard users get the six face views (as before) plus the view shortcuts;
                     // 20 more stops, many of them facing away, would bloat the tab order.
                     tabIndex={isFace ? undefined : -1}
                     className={cn(
-                      'flex items-center justify-center text-2xs font-bold transition-colors cursor-pointer border text-foreground/70',
-                      // Solid fills throughout (derived from the card colour, so both themes follow):
-                      // a translucent edge band disappears into the viewport behind it.
+                      'flex items-center justify-center text-2xs font-bold cursor-pointer border text-foreground/70',
+                      'transition-[background-color,border-color,color] duration-150 ease-out',
+                      // Every cell shares the face fill (white / black by theme), solid so nothing
+                      // bleeds through from the viewport behind. The hovered piece (and its twins on
+                      // the neighbouring faces) gets a clear outline of its own.
+                      'border-transparent',
+                      ...SEPARATORS,
                       lit
-                        ? 'bg-[color-mix(in_srgb,var(--color-primary)_55%,var(--color-card))] border-primary text-foreground'
-                        : isFace
-                          ? 'bg-card border-foreground/30'
-                          : zone.kind === 'edge'
-                            ? 'bg-[color-mix(in_srgb,var(--color-foreground)_11%,var(--color-card))] border-foreground/30'
-                            : 'bg-[color-mix(in_srgb,var(--color-foreground)_18%,var(--color-card))] border-foreground/30',
+                        ? 'bg-[color-mix(in_srgb,var(--color-primary)_50%,var(--color-card))] text-foreground active:bg-[color-mix(in_srgb,var(--color-primary)_70%,var(--color-card))]'
+                        : 'bg-card',
+                      zone.key === hoveredKey && '!border-primary/80',
                     )}
                     onMouseEnter={() => setHoveredKey(zone.key)}
                     onMouseLeave={() => setHoveredKey(null)}

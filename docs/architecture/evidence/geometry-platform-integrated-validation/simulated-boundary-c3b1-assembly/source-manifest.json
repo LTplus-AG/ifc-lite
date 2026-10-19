@@ -1,0 +1,41 @@
+{
+  "base": "f1689d65064ce333e4277bc6a6adc866221644b2",
+  "source": "c3b1ae95fbf8939258e1038ee8a94d5f3739ba28",
+  "files": [
+    {
+      "path": "rust/core/src/source_resources/allocator.rs",
+      "before_sha256": "a65cb0a9e33794c320c20d6da278265ed2a3e37f5cfc68051a32599a6149e29b",
+      "after_sha256": "80d170bdf40f1c423dd6c834fb4cc4cbecc6ec003866c4d2de280de250a1f611",
+      "before_blob": "1db9456f6114d77dcb5b600105ae11a354f8078f",
+      "after_blob": "8433e3d974bfe2b33094c233cfc962a21c422c73"
+    },
+    {
+      "path": "rust/core/src/source_resources/delegation_fixture.rs",
+      "before_sha256": "2801b836627f6fa2d594681a41c72ec7aded04f68da30cc023590bf2ee573313",
+      "after_sha256": "a9da3b470a6d896fc2121793a4fbe6cdb27c6ee8ef094774cf54edb3e41ebc4c",
+      "before_blob": "3522166d0bbc2081911914046fef3f61212bf799",
+      "after_blob": "096457e4c73d6a13134f36060a8cfb1f4cf4990a"
+    },
+    {
+      "path": "rust/core/src/source_resources/gate.rs",
+      "before_sha256": "b9b2db2dd69832313618c3fab016ddd8ffe9de685134c80d46e639ecaf52619c",
+      "after_sha256": "080040969d37ba53bb251b465ac04db7783b95dfbc5e8b1c587d2cb3a42ecea1",
+      "before_blob": "91e855cc41e8018eae5c207a992492aece0f8762",
+      "after_blob": "af264a16d674d872a80f670d1966174bf7e1940d"
+    },
+    {
+      "path": "rust/core/src/source_resources/witness.rs",
+      "before_sha256": "25f96d4eec2e05287d29770dffe0e153bc5890d322307d007d6f4d446db89dfe",
+      "after_sha256": "58fe3b6b7660484b0c9c64625e047b6cb10fa15be1233d2bab54039b5d383632",
+      "before_blob": "dfe5e724edc9bc85c6db33b6030efb1f819423bf",
+      "after_blob": "ea160bb46ea99b5445c59a5fb38e00b6592c4fee"
+    },
+    {
+      "path": "rust/geometry/src/resource/gate_boundary_witnesses_tests.rs",
+      "before_sha256": "4fdd42f05a3decfc3cc1b218af1dffe3b7b3d176e83abe761b476e92190ee3e4",
+      "after_sha256": "0605bad3c8f397e4b2bbf43a3dbbfbadbc75323fc4e22e9a41b4390c2d9c36e6",
+      "before_blob": "d6242c5caad7d859a036114a48dcd809d52c52c8",
+      "after_blob": "63a26a376dc3ccd3607e45c91858d08c2841be5b"
+    }
+  ]
+}

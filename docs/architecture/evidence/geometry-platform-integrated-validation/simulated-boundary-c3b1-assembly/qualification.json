@@ -1,0 +1,40 @@
+{
+  "base": "f1689d65064ce333e4277bc6a6adc866221644b2",
+  "source": "c3b1ae95fbf8939258e1038ee8a94d5f3739ba28",
+  "status": "UNRUN",
+  "jobs_submitted": false,
+  "classification": "Witness repair only; no allocator implementation defect identified or claimed fixed",
+  "mapping": [
+    {
+      "finding": "P2-1 account self-comparison",
+      "source": "rust/geometry/src/resource/gate_boundary_witnesses_tests.rs",
+      "witness": "normal_identity_actual_gate_simulated_delegation_rollback_and_source_precedence -> actual_gate_simulated_delegation_witness -> run_case independent captured account_stop == complete operation_stop",
+      "result": "UNRUN"
+    },
+    {
+      "finding": "P2-2 insufficient 2048 peak threshold",
+      "source": [
+        "rust/core/src/source_resources/allocator.rs",
+        "rust/core/src/source_resources/delegation_fixture.rs",
+        "rust/core/src/source_resources/gate.rs",
+        "rust/core/src/source_resources/witness.rs",
+        "rust/geometry/src/resource/gate_boundary_witnesses_tests.rs"
+      ],
+      "witness": "actual requested Layout scalar at existing skip boundary; exact_simulated_peak equality with captured before/after actual-account Usage",
+      "result": "UNRUN"
+    }
+  ],
+  "commands_not_run": [
+    "cargo test -p ifc-lite-core --lib --features source-resource-gate-test-support normal_identity_actual_gate_simulated_delegation -- --nocapture",
+    "cargo test -p ifc-lite-geometry --lib --features source-resource-gate-test-support actual_gate_simulated_delegation -- --nocapture",
+    "cargo test -p ifc-lite-core --lib --features source-resource-gate-test-support source_resources -- --nocapture",
+    "cargo clippy --workspace --all-targets --features ifc-lite-core/source-resource-gate-test-support -- -D warnings"
+  ],
+  "residuals_unchanged": [
+    "All current compilation/execution/feature/package/wasm/Clippy/performance qualification UNRUN",
+    "Simulated zeroed/grow_zeroed/shrink failure entrypoints unexercised",
+    "No Global call/new candidate/OOM on injected attempt",
+    "No parser/cache/owner/ProductOwner activation or whole-migration claim"
+  ],
+  "parent_prior_evidence": "Parent says 420800fd still old85 source; no new-source runtime qualification transferred"
+}

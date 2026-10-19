@@ -130,10 +130,28 @@ test('unreadable replay evidence selects full validation only in probe mode', {
     GITHUB_REPOSITORY: 'fixture/replay', GITHUB_SHA: head,
     PUSH_BEFORE: before, GITHUB_OUTPUT: output,
   };
+  const apiResponse = (pulls, workflow_runs = [], artifacts = []) => `
+    const path = process.argv[3];
+    const response = path.includes('/commits/') ? ${JSON.stringify(pulls)}
+      : path.includes('/artifacts?') ? ${JSON.stringify({ artifacts })}
+      : ${JSON.stringify({ workflow_runs })};
+    process.stdout.write(JSON.stringify(response));
+  `;
+  const merged = { ...base().pulls[0], merge_commit_sha: head };
   for (const [failure, response] of [
     ['GH_ERROR', 'console.error("unexpected end of JSON input"); process.exitCode = 1;'],
     ['GH_BAD_JSON', 'process.stdout.write("{");'],
     ['GH_BAD_SHAPE', 'process.stdout.write("{}");'],
+    // #7944 review: nested records must not escape as unclassified TypeErrors.
+    ...[undefined, {}, { sha: 42 }, { sha: 'short' }].map((head) => [
+      'GH_BAD_SHAPE', apiResponse([{ ...merged, head }]),
+    ]),
+    ...[null, {}, { id: 'not-a-run-id' }].map((run) => [
+      'GH_BAD_SHAPE', apiResponse([merged], [run]),
+    ]),
+    ...[null, {}, { name: 42, expired: false }].map((artifact) => [
+      'GH_BAD_SHAPE', apiResponse([merged], [{ id: 1 }], [artifact]),
+    ]),
   ]) {
     writeFileSync(gh, `#!/usr/bin/env node\n${response}\n`);
     chmodSync(gh, 0o755);

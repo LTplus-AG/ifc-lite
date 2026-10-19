@@ -128,12 +128,18 @@ function readInputs(repo, pushSha, pushTree, parentSha, before) {
   const runs = [];
   const artifactNamesByRun = {};
   for (const p of merged) {
+    if (typeof p.head?.sha !== 'string' || !SHA.test(p.head.sha)) {
+      throw new GhError('GH_BAD_SHAPE', 'commits/{sha}/pulls item carried no valid head.sha');
+    }
     const page = gh(
       ['api', `repos/${repo}/actions/workflows/${TEST_WORKFLOW_FILE}/runs?head_sha=${p.head.sha}&event=pull_request&status=success&per_page=30`, '--method', 'GET'],
       `the green Test runs of ${p.head.sha.slice(0, 9)}`,
     );
     if (!page || !Array.isArray(page.workflow_runs)) throw new GhError('GH_BAD_SHAPE', 'workflow runs response carried no workflow_runs array');
     for (const r of page.workflow_runs) {
+      if (!r || !Number.isSafeInteger(r.id) || r.id <= 0) {
+        throw new GhError('GH_BAD_SHAPE', 'workflow_runs item carried no valid run id');
+      }
       runs.push(r);
       artifactNamesByRun[String(r.id)] = artifactNames(repo, r.id);
     }
@@ -147,6 +153,9 @@ function artifactNames(repo, runId) {
     `the artifacts of run ${runId}`,
   );
   if (!page || !Array.isArray(page.artifacts)) throw new GhError('GH_BAD_SHAPE', 'artifacts response carried no artifacts array');
+  if (page.artifacts.some((a) => !a || typeof a.name !== 'string' || typeof a.expired !== 'boolean')) {
+    throw new GhError('GH_BAD_SHAPE', 'artifacts item carried no valid name or expiration flag');
+  }
   return page.artifacts.filter((a) => !a.expired).map((a) => a.name);
 }
 

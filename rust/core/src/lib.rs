@@ -4,7 +4,7 @@
 
 #![cfg_attr(feature = "source-resource-tracking", feature(allocator_api))]
 #![cfg_attr(
-    all(test, feature = "source-resource-tracking"),
+    all(feature = "source-resource-tracking", any(test, feature = "source-resource-gate-test-support")),
     feature(try_reserve_kind, vec_push_within_capacity)
 )]
 
@@ -159,5 +159,11 @@ pub use source_bundle::SourceBundle;
 pub use decoder::source_caches::{SourceCache, TrustedDecoderInputs};
 
 // Private feasibility only: enabling the feature does not activate production decoding.
-#[cfg(all(test, feature = "source-resource-tracking"))]
+#[cfg(all(feature = "source-resource-tracking", any(test, feature = "source-resource-gate-test-support")))]
 mod source_resources;
+
+/// Fixed-fixture test instrumentation only. No tracked decoder API is exposed.
+#[cfg(all(feature = "source-resource-tracking", feature = "source-resource-gate-test-support"))]
+pub mod source_resource_gate_test_support {
+    pub use crate::source_resources::witness::{run_gate_witness, GateWitnessCase, GateWitnessReport, GateWitnessStage};
+}

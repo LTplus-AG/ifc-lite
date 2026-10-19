@@ -21,6 +21,7 @@ opening-perf-trace = []
 default = []
 # Resource boundary only; does not activate decoder/parser/cache tracking.
 source-resource-tracking = ["ifc-lite-core/source-resource-tracking"]
+source-resource-gate-test-support = ["source-resource-tracking", "test-support", "ifc-lite-core/source-resource-gate-test-support"]
 debug_geometry = []
 # Measurement-only: record the (host, cutters) of every kernel subtract into a
 # global buffer so a bench can replay the real CSG corpus under varying thread

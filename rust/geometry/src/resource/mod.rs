@@ -7,6 +7,9 @@ mod owned;
 #[cfg(all(feature = "source-resource-tracking", any(test, feature = "test-support")))]
 #[path = "boundary_witnesses_tests.rs"]
 pub(crate) mod boundary_witnesses;
+#[cfg(feature = "source-resource-gate-test-support")]
+#[path = "gate_boundary_witnesses_tests.rs"]
+pub(crate) mod gate_boundary_witnesses;
 pub use owned::OwnedResourceContext;
 pub(crate) use storage::reserve_headers;
 pub mod mesh;

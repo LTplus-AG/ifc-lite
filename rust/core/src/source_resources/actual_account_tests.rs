@@ -18,3 +18,25 @@ fn actual_published_inner_survives_joined_worker_account_recovery() {
 fn actual_zero_account_refuses_metadata_before_allocation_without_ambient_fallback() {
     ifc_lite_geometry::test_support::actual_zero_metadata_witness();
 }
+
+#[cfg(feature = "source-resource-gate-test-support")]
+#[test]
+fn normal_identity_actual_gate_container_metadata_and_weak_pool_lifetime() {
+    ifc_lite_geometry::test_support::actual_gate_lifetime_witness();
+}
+#[cfg(feature = "source-resource-gate-test-support")]
+#[test]
+fn normal_identity_actual_gate_refused_growth_keeps_original_backing() {
+    ifc_lite_geometry::test_support::actual_gate_refused_growth_witness();
+}
+#[cfg(feature = "source-resource-gate-test-support")]
+#[test]
+fn normal_identity_actual_gate_fresh_and_independently_stopped_faults() {
+    ifc_lite_geometry::test_support::actual_gate_first_fault_witness();
+}
+
+#[cfg(feature = "source-resource-gate-test-support")]
+#[test]
+fn normal_identity_actual_gate_expired_work_refuses_spare_capacity_mutation() {
+    ifc_lite_geometry::test_support::actual_gate_expired_work_witness();
+}

@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Private, opt-in unit-test prototype. No production source activation.
+//! Private implementation shared by unit and explicit test support; no activation.
 mod allocator;
 mod backend;
 mod containers;
 mod gate;
+#[cfg(feature = "source-resource-gate-test-support")]
+pub(crate) mod witness;
+#[cfg(feature = "source-resource-gate-test-support")]
+mod witness_operations;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

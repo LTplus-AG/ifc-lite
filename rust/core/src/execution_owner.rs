@@ -296,6 +296,6 @@ mod tests;
 #[path = "execution_owner/resource_context_tests.rs"]
 mod resource_context_tests;
 
-#[cfg(all(test, feature = "source-resource-tracking"))]
+#[cfg(all(feature = "source-resource-tracking", any(test, feature = "source-resource-gate-test-support")))]
 #[path = "source_resources/authority.rs"]
 pub(crate) mod resource_prototype;

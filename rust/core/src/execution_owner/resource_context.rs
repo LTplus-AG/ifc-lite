@@ -25,7 +25,7 @@ impl SourceResourceContext {
     pub fn is_accounted(&self) -> bool { self.account.is_some() }
     #[cfg(feature = "source-resource-tracking")]
     pub(crate) fn allocation_account(&self) -> Option<Arc<dyn super::AllocationAccount>> { self.account.clone() }
-    #[cfg(all(test, feature = "source-resource-tracking"))]
+    #[cfg(all(feature = "source-resource-tracking", any(test, feature = "source-resource-gate-test-support")))]
     pub(crate) fn same_account(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.payload, &other.payload) && self.account.is_some() && other.account.is_some()
     }

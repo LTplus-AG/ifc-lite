@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 use super::allocator::ResourceAllocator;
-use super::backend::{Cost, Resources, MAX_BINDINGS, fixture_resources};
+use super::backend::{Cost, MAX_BINDINGS};
+#[cfg(test)]
+use super::backend::{Resources, fixture_resources};
 use super::coverage;
 use crate::execution_owner::{resource_prototype::{Authority, work_original_stop}, ExecutionWork,
     AccountedArc, AllocationAccount, AllocationObserverHandle, SourceResourceContext, SourceStopHandle};
@@ -13,9 +15,11 @@ pub(super) struct GateInner {
     account: Arc<dyn AllocationAccount>, context: SourceResourceContext,
     original: SourceStopHandle, observer: Option<AllocationObserverHandle>,
     // Historical fixture feasibility counters, never production account quotas.
+    #[cfg(test)]
     fixture: Option<Arc<Resources>>,
     source: Weak<SourceBundle>, binding: Mutex<Binding>,
 }
+#[cfg(test)]
 impl Drop for GateInner {
     fn drop(&mut self) { if let Some(resources) = &self.fixture { resources.release_gate(); } }
 }
@@ -41,6 +45,7 @@ impl Drop for Restore {
     }
 }
 impl Gate {
+    #[cfg(test)]
     pub fn new(decoder: &EntityDecoder<'_>, work: &ExecutionWork<'_>) -> Result<Self, ProgramStop> {
         Self::new_with_observer(decoder, work, None)
     }
@@ -59,10 +64,15 @@ impl Gate {
         original.check().map_err(record)?;
         account.check().map_err(record)?;
         if let Some(observer) = &observer { observer.check().map_err(record)?; }
+        #[cfg(test)]
         let fixture = fixture_resources(&context);
+        #[cfg(test)]
         if let Some(resources) = &fixture { resources.reserve_gate().map_err(record)?; }
         let inner = GateInner { account: account.clone(), context: context.clone(), original: original.clone(),
-            observer: observer.clone(), fixture, source: Arc::downgrade(&authority.source),
+            observer: observer.clone(),
+            #[cfg(test)]
+            fixture,
+            source: Arc::downgrade(&authority.source),
             binding: Mutex::new(Binding { current: None, depth: 0 }) };
         AccountedArc::try_new(inner, &context, Some(original.clone())).map(Self).map_err(record)
     }
@@ -142,6 +152,7 @@ fn record_channels(source: &SourceStopHandle, account: &dyn AllocationAccount,
 }
 /// Existing owner/epoch backing is baseline; new gate/observer Arc backing is
 /// explicitly admitted. Stack binding frames allocate no backing of their own.
+#[cfg(test)]
 pub(super) fn control_sizes() -> [usize; 8] {
     let (state, epoch) = crate::execution_owner::resource_prototype::metadata_sizes();
     [std::mem::size_of::<Resources>(), std::mem::size_of::<GateInner>(),

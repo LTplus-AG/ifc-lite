@@ -108,7 +108,7 @@ impl<T: ?Sized> AccountedWeak<T> {
 #[derive(Clone)]
 pub struct AllocationObserverHandle(Arc<dyn AllocationObserver, MetadataAllocator>);
 impl AllocationObserverHandle {
-    #[cfg(all(test, feature = "source-resource-tracking"))]
+    #[cfg(all(feature = "source-resource-tracking", any(test, feature = "source-resource-gate-test-support")))]
     pub(crate) fn account_context(&self) -> Option<SourceResourceContext> { self.0.account_context() }
     pub fn check(&self) -> Result<(), ProgramStop> { self.0.check() }
     pub fn record(&self, stop: ProgramStop) -> ProgramStop { self.0.record(stop) }

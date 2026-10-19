@@ -21,6 +21,11 @@ pub use crate::resource::boundary_witnesses::{
     actual_metadata_weak_and_pool_witness, actual_owned_fault_witness,
     actual_joined_payload_witness, actual_zero_metadata_witness,
 };
+#[cfg(feature = "source-resource-gate-test-support")]
+pub use crate::resource::gate_boundary_witnesses::{
+    actual_gate_lifetime_witness, actual_gate_refused_growth_witness, actual_gate_first_fault_witness,
+    actual_gate_expired_work_witness,
+};
 
 /// Undirected edges NOT shared by exactly two triangles, vertices keyed by
 /// exact f32 bits: 0 on a closed 2-manifold whose coincident vertices share

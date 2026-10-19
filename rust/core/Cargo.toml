@@ -14,6 +14,8 @@ exclude = ["examples/test_real_ifc.rs"]
 [features]
 default = []
 source-resource-tracking = ["dep:hashbrown", "ifc-lite-geometry/source-resource-tracking"]
+# Explicit fixed-fixture test runner; ordinary tracking does not enable this.
+source-resource-gate-test-support = ["source-resource-tracking", "ifc-lite-geometry/source-resource-gate-test-support"]
 
 [dependencies]
 
@@ -30,7 +32,7 @@ memchr.workspace = true
 # Parser
 nom = "7.1"
 
-# Private, test-target-only standard-allocator feasibility prototype.
+# Private unit/explicit-test-support standard-allocator feasibility prototype.
 hashbrown = { version = "=0.15.5", optional = true, default-features = false, features = ["nightly"] }
 
 # Fast hashing

@@ -82,6 +82,7 @@ impl Authority {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn metadata_sizes() -> (usize, usize) {
     (std::mem::size_of::<State>(), std::mem::size_of::<WorkEpoch>())
 }

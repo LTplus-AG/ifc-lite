@@ -18,7 +18,7 @@ import { createBCFFromIDSReport, writeBCF } from '@ifc-lite/bcf';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { bcfExportFilename, downloadBlob } from '@/lib/export/download';
 import { IDS_BCF_MAX_TOPICS, idsBcfSnapshotTargets } from '@/lib/ids/bcf-topic-estimate';
-import { getEntityBounds } from '@/utils/viewportUtils';
+import { collectIdsBcfEntityBounds } from './idsBcfBounds';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { bcfWorldOffset, projectViewpointsToWorld } from '@/hooks/bcf/viewpoint-world-frame';
 import type { FederatedModel } from '@/store';
@@ -72,54 +72,11 @@ export async function runIdsBcfExport({
   if (includeCamera || includeSnapshots) {
     setBcfExportProgress({ phase: 'building', current: 0, total: 1, message: 'Computing entity bounds...' });
 
-    entityBounds = new Map();
-    const geomResult = legacyGeometryResult;
-
-    // Collect geometry from all models
-    const allMeshData: Array<{ meshes: unknown[]; idOffset: number; modelId: string }> = [];
-    for (const [modelId, model] of models.entries()) {
-      if (model.geometryResult?.meshes) {
-        allMeshData.push({
-          meshes: model.geometryResult.meshes,
-          idOffset: model.idOffset ?? 0,
-          modelId,
-        });
-      }
-    }
-
-    // Also include legacy single-model geometry
-    if (geomResult?.meshes && allMeshData.length === 0) {
-      allMeshData.push({
-        meshes: geomResult.meshes,
-        idOffset: 0,
-        modelId: 'default',
-      });
-    }
-
-    // Compute bounds for each entity that appears in the report
-    for (const specResult of report.specificationResults) {
-      for (const entity of specResult.entityResults) {
-        if (entity.passed && !includePassingEntities) continue;
-        const boundsKey = `${entity.modelId}:${entity.expressId}`;
-        if (entityBounds.has(boundsKey)) continue;
-
-        // Find matching model geometry
-        for (const modelData of allMeshData) {
-          if (modelData.modelId === entity.modelId || allMeshData.length === 1) {
-            const globalExpressId = toViewerGlobalId(entity.modelId, entity.expressId);
-            if (globalExpressId == null) break;
-            const bounds = getEntityBounds(
-              modelData.meshes as Parameters<typeof getEntityBounds>[0],
-              globalExpressId,
-            );
-            if (bounds) {
-              entityBounds.set(boundsKey, bounds);
-            }
-            break;
-          }
-        }
-      }
-    }
+    const scene = getGlobalRenderer()?.getScene();
+    entityBounds = collectIdsBcfEntityBounds(
+      report, includePassingEntities, models, legacyGeometryResult, toViewerGlobalId,
+      (id) => scene?.getEntityBoundingBox(id) ?? scene?.getInstancedEntityBounds(id),
+    );
   }
 
   // Phase 2: Batch snapshots if requested

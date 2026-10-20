@@ -882,6 +882,13 @@ jobs:
           # Once the module is on main, ordinary whole-change reverts resume.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- packages/renderer/src/opaque-visibility-pass.ts | grep -Fxq 'packages/renderer/src/opaque-visibility-pass.ts'; then
             oracle_args+=(--mutation tests/evidence/reporter-6729/visibility.oracle.patch)
+          # #7974: whole-change revert deletes the new bounds helper imported
+          # by the changed tests, so collection fails before an assertion runs.
+          # Keep it loadable and restore ONLY the old mesh-only bounds lookup:
+          # instanced/released failures must lose their grouped camera. Once
+          # idsBcfBounds.ts is on main, whole-change reverts resume automatically.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/viewer/src/hooks/ids/idsBcfBounds.ts | grep -Fxq 'apps/viewer/src/hooks/ids/idsBcfBounds.ts'; then
+            oracle_args+=(--mutation tests/evidence/ids-bcf-7974/bounds.oracle.patch)
           # #7292: the initial exact-kernel modules/APIs must stay loadable;
           # a whole-production revert prevents the changed Rust tests compiling.
           # Reverse ONLY geometric signed-zero key normalization in SourceAxes:

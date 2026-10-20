@@ -238,7 +238,11 @@ int32_t ifclite_smlib_manifold(uint64_t session, ifclite_smlib_handle handle, ui
 int32_t ifclite_smlib_release(uint64_t session, ifclite_smlib_handle handle) {
     return boundary([&] {
         Slot& slot = lookup(session, handle);
-        slot.solid.reset(); slot.mesh.reset(); ++slot.generation;
+        slot.solid.reset(); slot.mesh.reset();
+        // Saturate rather than wrap: a slot whose generation reaches UINT32_MAX
+        // stays retired (store() skips it), so a stale handle can never match a
+        // recycled generation.
+        if (slot.generation != UINT32_MAX) ++slot.generation;
     });
 }
 int32_t ifclite_smlib_tessellate(uint64_t session, ifclite_smlib_handle handle,

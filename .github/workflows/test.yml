@@ -1170,6 +1170,14 @@ jobs:
           # main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/swept/disk_plan.rs | grep -Fxq 'rust/geometry/src/processors/swept/disk_plan.rs'; then
             oracle_args+=(--mutation tests/evidence/geometry-swept-plans-b4/behaviour.oracle.patch)
+          # #7955 B6: the owned alignment, sectioned and surface plans add
+          # alignment_plan.rs, sectioned_plan.rs and surface_plan.rs, which their tests
+          # import, so a whole-change revert cannot compile them (INCONCLUSIVE). Keep the
+          # plan types and break ONLY the behaviour: ribbon winding is reversed, the
+          # sectioned end cap is dropped and the surface RTC rebase is skipped. Once
+          # alignment_plan.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/alignment_plan.rs | grep -Fxq 'rust/geometry/src/processors/alignment_plan.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-alignment-section-plans-b6/behaviour.oracle.patch)
           # #7682: keep the new STEP-writer modules, StepStats fields and the TS
           # allocatedExpressId export loadable while disabling ONLY the guards the
           # changed tests pin (value/name/id-reuse refusals, the id-space refusal,

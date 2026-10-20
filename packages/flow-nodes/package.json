@@ -54,7 +54,7 @@
     "@types/node": "^26.6.4",
     "ajv": "^8.17.1",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.5"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

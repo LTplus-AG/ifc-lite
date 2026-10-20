@@ -171,3 +171,45 @@ fn issue_5787_combined_walk_matches_standalone_views_and_ordinals() {
         assert_eq!(instance.mapping_path, description.mapping_path);
     }
 }
+
+#[test]
+fn issue_7955_captured_definitions_own_the_authored_rational_directrix() {
+    use ifc_lite_geometry::analytic::{with_source_capture, AnalyticStatus, OwnedDirectrix, SourceValue};
+    let model = fixture().replace(
+        "#43=IFCSWEPTDISKSOLID(#42,14.5,$,0.,2750.);",
+        "#60=IFCCARTESIANPOINT((2000.,0.,0.));\n#61=IFCCARTESIANPOINT((2000.,2000.,0.));\n\
+#62=IFCCARTESIANPOINT((0.,2000.,0.));\n\
+#63=IFCRATIONALBSPLINECURVEWITHKNOTS(2,(#60,#61,#62),.CIRCULAR_ARC.,.F.,.F.,(3,3),(2.,6.),.UNSPECIFIED.,(1.,0.7071067811865476,1.));\n\
+#43=IFCSWEPTDISKSOLID(#63,14.5,$,3.5,4.5);",
+    );
+    let plain = extract_swept_disk_definitions(model.as_bytes(), None);
+    assert!(plain.sources[0].source.is_none() && plain.sources[0].owned_directrix.is_none());
+    let view = with_source_capture(|| extract_swept_disk_definitions(model.as_bytes(), None));
+    assert_eq!(serde_json::to_value(&view).unwrap(), serde_json::to_value(&plain).unwrap(),
+        "opt-in source never changes serialized output");
+    let source = &view.sources[0];
+    assert!(source.directrix.is_empty());
+    assert!(matches!(source.status, AnalyticStatus::Unsupported(_)));
+    assert_eq!((source.start_param, source.end_param), (Some(3.5), Some(4.5)));
+    let Some(OwnedDirectrix::Rational(curve)) = &source.owned_directrix else {
+        panic!("missing owned rational directrix");
+    };
+    // Raw file millimetres and the original weights/knot interval; the length
+    // unit is applied once, by each instance's world_from_source.
+    assert_eq!(curve.control_points[1], [2000., 2000., 0.]);
+    assert_eq!(curve.weights, vec![1., std::f64::consts::FRAC_1_SQRT_2, 1.]);
+    assert_eq!(curve.parameter_range, [3.5, 4.5]);
+    assert!((view.instances[&50][0].world_from_source.unwrap()[0] - 0.001).abs() < 1e-15);
+    let graph = source.source.as_ref().unwrap();
+    assert_eq!(graph.capture_status, AnalyticStatus::Complete);
+    assert_eq!(graph.records[&43].attributes["Directrix"], SourceValue::EntityRef(63));
+    assert_eq!(graph.records[&60].attributes["Coordinates"], SourceValue::List(
+        vec![SourceValue::Real(2000.), SourceValue::Real(0.), SourceValue::Real(0.)]));
+
+    let trimmed = with_source_capture(|| extract_swept_disk_definitions(fixture().as_bytes(), None));
+    let line = &trimmed.sources[0];
+    assert_eq!(line.owned_directrix, Some(OwnedDirectrix::Segments(line.directrix.clone())));
+    let graph = line.source.as_ref().unwrap();
+    assert_eq!(graph.capture_status, AnalyticStatus::Complete);
+    assert!(graph.records.contains_key(&42) && graph.records.contains_key(&41));
+}

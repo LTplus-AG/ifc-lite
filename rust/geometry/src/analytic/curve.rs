@@ -194,6 +194,8 @@ impl CurveWalk {
         start: Option<f64>,
         end: Option<f64>,
     ) -> Result<Option<Vec<Segment>>> {
+        // This walk does not enter `extract` for the composite itself.
+        self.source.record(curve, decoder);
         let refs = curve
             .get_list(0)
             .ok_or_else(|| invalid("CompositeCurve missing Segments"))?;
@@ -202,16 +204,20 @@ impl CurveWalk {
         }
         let mut pieces_with_spans = Vec::new();
         let mut total = 0.0;
-        for reference in refs {
+        for (index, reference) in refs.iter().enumerate() {
             let segment = resolve(Some(reference), decoder)?;
             if segment.ifc_type != IfcType::IfcCompositeCurveSegment {
+                self.source_rest(&refs[index..], decoder);
                 return Ok(None);
             }
+            self.source.record(&segment, decoder);
             let parent = resolve(segment.get(2), decoder)?;
             let Some(pieces) = self.extract(&parent, decoder)? else {
+                self.source_rest(&refs[index + 1..], decoder);
                 return Ok(None);
             };
             let Some(mut spans) = parent_piece_spans(&parent, &pieces, decoder)? else {
+                self.source_rest(&refs[index + 1..], decoder);
                 return Ok(None);
             };
             let same_sense = segment.get_bool(1).unwrap_or(true);
@@ -223,6 +229,7 @@ impl CurveWalk {
             };
             for (piece, span) in pieces.into_iter().zip(spans) {
                 if !span.is_finite() || span <= 0.0 {
+                    self.source_rest(&refs[index + 1..], decoder);
                     return Ok(None);
                 }
                 total += span;
@@ -262,15 +269,17 @@ impl CurveWalk {
             return Err(invalid("CompositeCurve exceeds work bound"));
         }
         let mut out = Vec::new();
-        for reference in refs {
+        for (index, reference) in refs.iter().enumerate() {
             let segment = resolve(Some(reference), decoder)?;
             if segment.ifc_type != IfcType::IfcCompositeCurveSegment {
+                self.source_rest(&refs[index..], decoder);
                 return Ok(None);
             }
             self.source.record(&segment, decoder);
             let same_sense = segment.get_bool(1).unwrap_or(true);
             let parent = resolve(segment.get(2), decoder)?;
             let Some(mut pieces) = self.extract(&parent, decoder)? else {
+                self.source_rest(&refs[index + 1..], decoder);
                 return Ok(None);
             };
             if !same_sense {
@@ -281,6 +290,29 @@ impl CurveWalk {
         Ok(Some(out))
     }
 
+    /// Once interpretation has already refused a composite, keep only the
+    /// authored source of its remaining segments, so captured provenance never
+    /// looks complete while missing them. Interpretation errors here refuse the
+    /// capture instead of changing the already-decided `None` result.
+    fn source_rest(&mut self, refs: &[AttributeValue], decoder: &mut EntityDecoder) {
+        if !self.source.is_enabled() {
+            return;
+        }
+        for reference in refs {
+            let segment = match resolve(Some(reference), decoder) {
+                Ok(segment) if segment.ifc_type == IfcType::IfcCompositeCurveSegment => segment,
+                Ok(_) => return self.source.fail("unsupported composite member".to_owned()),
+                Err(error) => return self.source.fail(error.to_string()),
+            };
+            self.source.record(&segment, decoder);
+            let walked = resolve(segment.get(2), decoder)
+                .and_then(|parent| self.extract(&parent, decoder));
+            if let Err(error) = walked {
+                return self.source.fail(error.to_string());
+            }
+        }
+    }
+
     fn trimmed(
         &mut self,
         curve: &DecodedEntity,
@@ -289,6 +321,18 @@ impl CurveWalk {
         let basis = resolve(curve.get(0), decoder)?;
         if matches!(basis.ifc_type, IfcType::IfcLine | IfcType::IfcCircle) {
             self.source.record(&basis, decoder);
+        } else if self.source.is_enabled() {
+            // Other leaf bases (e.g. a rational B-spline) are not line/arc
+            // geometry, but their original records are the authored source.
+            // Recording a nested composite basis would omit its segments, and
+            // walking it would spend the interpreter's own work bound.
+            if basis.ifc_type.is_subtype_of(IfcType::IfcCompositeCurve)
+                || basis.ifc_type == IfcType::IfcTrimmedCurve
+            {
+                self.source.fail("unsupported trimmed-curve basis source".to_owned());
+            } else {
+                self.source.record(&basis, decoder);
+            }
         }
         Ok(decode_trimmed_primitive(curve, &basis, decoder, TrimRecovery::RequireBoth)?
             .map(|primitive| vec![match primitive {

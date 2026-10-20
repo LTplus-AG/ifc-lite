@@ -116,7 +116,11 @@ impl SourceCapture {
         }
     }
 
-    fn fail(&mut self, reason: String) {
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub fn fail(&mut self, reason: String) {
         self.records.clear();
         self.enabled = false;
         if self.failure.is_none() {
@@ -181,6 +185,30 @@ impl SourceCapture {
             IfcType::IfcExtrudedAreaSolid => {
                 &["SweptArea", "Position", "ExtrudedDirection", "Depth"]
             }
+            IfcType::IfcSweptDiskSolid => {
+                &["Directrix", "Radius", "InnerRadius", "StartParam", "EndParam"]
+            }
+            IfcType::IfcBSplineCurveWithKnots => &[
+                "Degree",
+                "ControlPointsList",
+                "CurveForm",
+                "ClosedCurve",
+                "SelfIntersect",
+                "KnotMultiplicities",
+                "Knots",
+                "KnotSpec",
+            ],
+            IfcType::IfcRationalBSplineCurveWithKnots => &[
+                "Degree",
+                "ControlPointsList",
+                "CurveForm",
+                "ClosedCurve",
+                "SelfIntersect",
+                "KnotMultiplicities",
+                "Knots",
+                "KnotSpec",
+                "WeightsData",
+            ],
             IfcType::IfcCircle => &["Position", "Radius"],
             IfcType::IfcAxis2Placement2D => &["Location", "RefDirection"],
             IfcType::IfcAxis2Placement3D => &["Location", "Axis", "RefDirection"],
@@ -238,8 +266,18 @@ impl SourceCapture {
                 dependencies.push(Self::coefficient(id, expected, decoder)?);
             }
         }
-        if entity.ifc_type == IfcPolyline {
-            if let Some(points) = entity.get_list(ifc_lite_core::slot::IfcPolyline::POINTS.index()) {
+        let points = match entity.ifc_type {
+            IfcPolyline => Some(ifc_lite_core::slot::IfcPolyline::POINTS.index()),
+            IfcBSplineCurveWithKnots => {
+                Some(ifc_lite_core::slot::IfcBSplineCurveWithKnots::CONTROL_POINTS_LIST.index())
+            }
+            IfcRationalBSplineCurveWithKnots => Some(
+                ifc_lite_core::slot::IfcRationalBSplineCurveWithKnots::CONTROL_POINTS_LIST.index(),
+            ),
+            _ => None,
+        };
+        if let Some(slot) = points {
+            if let Some(points) = entity.get_list(slot) {
                 for point in points {
                     if let Some(id) = point.as_entity_ref() {
                         dependencies.push(Self::coefficient(id, &[IfcCartesianPoint], decoder)?);

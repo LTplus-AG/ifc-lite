@@ -119,4 +119,15 @@ describe('#7974 grouped IDS BCF cameras', () => {
     const project = createBCFFromIDSReport(input, { topicGrouping: 'per-specification', entityBounds: bounds });
     assert.equal([...project.topics.values()][0].viewpoints[0].perspectiveCamera, undefined);
   });
+
+  it('frames the whole scene entity when flat meshes retain only some of its pieces', () => {
+    const whole = { min: near.min, max: far.max };
+    const bounds = collectIdsBcfEntityBounds(report(), false,
+      new Map([['A', { geometryResult: { meshes: [mesh(10)] } }]]), null,
+      (_model, id) => id, id => id === 10 ? whole : far);
+    const project = createBCFFromIDSReport(report(), { topicGrouping: 'per-specification', entityBounds: bounds });
+    const camera = [...project.topics.values()][0].viewpoints[0].perspectiveCamera;
+    assert.ok(camera);
+    assertFramed(camera, whole);
+  });
 });

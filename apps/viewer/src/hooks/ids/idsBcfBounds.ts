@@ -41,8 +41,10 @@ export function collectIdsBcfEntityBounds(
       // different model's geometry when multiple models are loaded.
       const geometry = models.get(entity.modelId)?.geometryResult
         ?? (models.size <= 1 ? singleGeometry ?? legacyGeometry : undefined);
-      let bounds: EntityBoundsInput | null | undefined;
-      if (geometry) {
+      // The scene unions flat and instanced pieces of a hybrid entity. Reading
+      // only its retained flat pieces would silently frame a partial element.
+      let bounds = sceneBounds(id);
+      if (!bounds && geometry) {
         let read = meshReaders.get(geometry);
         if (!read) {
           read = createEntityBoundsLookup(geometry.meshes);
@@ -57,7 +59,6 @@ export function collectIdsBcfEntityBounds(
           };
         }
       }
-      bounds ??= sceneBounds(id);
       if (bounds) result.set(key, bounds);
     }
   }

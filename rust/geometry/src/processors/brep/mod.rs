@@ -8,7 +8,9 @@
 //! All deal with boundary representations composed of face loops.
 
 mod faceted;
+mod faceted_plan;
 mod surface_model;
+mod surface_model_plan;
 
 #[cfg(test)]
 mod planar_tests;

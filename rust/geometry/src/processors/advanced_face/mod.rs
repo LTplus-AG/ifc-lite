@@ -197,3 +197,38 @@ pub(super) fn process_advanced_face(
 
     result
 }
+
+/// Run `operation` and return its result together with the refusal reports it
+/// raised, leaving the thread's previously pending reports untouched.
+pub(super) fn capture_reports<T>(operation: impl FnOnce() -> T) -> (T, FaceReports) {
+    struct Scope(Option<(bool, Vec<ifc_lite_core::IfcType>)>);
+    impl Drop for Scope {
+        fn drop(&mut self) {
+            if let Some((curve_capped, faces)) = self.0.take() {
+                let during = (take_curve_capped(), take_face_refused());
+                restore_reports(curve_capped, &faces);
+                restore_reports(during.0, &during.1);
+            }
+        }
+    }
+    let scope = Scope(Some((take_curve_capped(), take_face_refused())));
+    let result = operation();
+    let captured = FaceReports {
+        curve_capped: take_curve_capped(),
+        face_refused: take_face_refused(),
+    };
+    drop(scope);
+    (result, captured)
+}
+
+/// Refusal reports raised by one deferred construction step.
+pub(super) struct FaceReports {
+    curve_capped: bool,
+    face_refused: Vec<ifc_lite_core::IfcType>,
+}
+
+impl FaceReports {
+    pub(super) fn restore(&self) {
+        restore_reports(self.curve_capped, &self.face_refused);
+    }
+}

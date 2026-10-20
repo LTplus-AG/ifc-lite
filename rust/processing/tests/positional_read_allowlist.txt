@@ -55,8 +55,6 @@
 1 rust/geometry/src/processors/boolean/mod.rs
 2 rust/geometry/src/processors/boolean/operand.rs
 1 rust/geometry/src/processors/boolean/polygonal_boundary.rs
-1 rust/geometry/src/processors/brep/faceted.rs
-1 rust/geometry/src/processors/brep/surface_model.rs
 5 rust/geometry/src/processors/csg_primitive.rs
 1 rust/geometry/src/processors/extrusion.rs
 4 rust/geometry/src/processors/extrusion_params.rs

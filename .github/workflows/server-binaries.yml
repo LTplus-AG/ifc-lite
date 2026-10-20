@@ -104,7 +104,7 @@ jobs:
         # target std was only ever installed for `stable`, never for the
         # nightly that actually runs, so those targets need std rebuilt from
         # source instead of relying on a prebuilt one that was never fetched.
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master 2026-05
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-05
         with:
           toolchain: stable
           targets: ${{ matrix.rust-target }}
@@ -251,7 +251,7 @@ jobs:
         # target std was only ever installed for `stable`, never for the
         # nightly that actually runs, so those targets need std rebuilt from
         # source instead of relying on a prebuilt one that was never fetched.
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master 2026-05
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-05
         with:
           toolchain: stable
           targets: ${{ matrix.rust-target }}
@@ -425,7 +425,7 @@ jobs:
         # target std was only ever installed for `stable`, never for the
         # nightly that actually runs, so those targets need std rebuilt from
         # source instead of relying on a prebuilt one that was never fetched.
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master 2026-05
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-05
         with:
           toolchain: stable
           targets: ${{ matrix.rust-target }}

@@ -41,7 +41,8 @@ impl BrepOperandPlan {
             IfcType::IfcAdvancedBrepWithVoids => (
                 Outer::Advanced(advanced_plan::lower_brep(entity, decoder, quality, None)?),
                 ShellKind::Advanced),
-            _ => unreachable!("only contextual WithVoids operands use this constructor"),
+            _ => return Err(crate::Error::geometry(format!(
+                "{:?} is not a contextual WithVoids operand", entity.ifc_type))),
         };
         let voids = VoidShellPlan::lower(entity, shell_kind, decoder, quality);
         Ok(Self { outer, voids, operator, operand_type: entity.ifc_type.clone(),

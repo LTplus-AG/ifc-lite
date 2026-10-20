@@ -93,10 +93,11 @@ impl ConstructionBatch {
     /// Refuse the entire batch before evaluation if any root is unresolved;
     /// there is no successful partial result that silently drops geometry.
     pub fn evaluate(self) -> std::result::Result<ConstructionEvaluation, ConstructionExecutionError> {
-        if let Some(node) = self.nodes.iter().find(|node| node.requirement().is_some()) {
+        if let Some((node, requirement)) = self.nodes.iter()
+            .find_map(|node| node.requirement().map(|requirement| (node, requirement))) {
             return Err(ConstructionExecutionError {
                 root_source_id: Some(node.source_id), failed_source_id: Some(node.source_id),
-                error: Box::new(Error::geometry(format!("Construction item #{} requires {:?}", node.source_id, node.requirement().unwrap()))),
+                error: Box::new(Error::geometry(format!("Construction item #{} requires {:?}", node.source_id, requirement))),
                 diagnostics: Vec::new(), reports: self.reports,
             });
         }

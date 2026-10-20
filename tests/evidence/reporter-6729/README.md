@@ -86,3 +86,65 @@ and does not establish identity with the full 23.74 MB `OUT.IFC`.
 These observations provide no physical-display GPU or performance acceptance
 for #6709/#6975 and do not automatically close #6729. No deployment, user
 report admission or model-upload system is activated by this workflow.
+
+## Paired projection depth isolation
+
+`tests/e2e/projection-depth.e2e.spec.ts` supplies a separate synthetic invariant
+for the residual ordering defect. Run it without a shared preview or IFC/WASM
+runtime:
+
+```sh
+pnpm test:projection-depth
+```
+
+The dedicated config requests software WebGPU on full Chrome. An existing full
+Chromium binary can be selected with `DEPTH_WITNESS_CHROME=/absolute/path/to/chrome`.
+The root command builds the small `load-trace` dependency through Turbo first;
+it does not require a full viewer build or a WASM runtime. This preparation is
+required in a fresh fleet checkout as well as on a developer machine.
+An unavailable adapter or lost device is a failure, never a skip or acceptance.
+The spec is also included in both regular viewer E2E project matchers.
+Root `pnpm typecheck` checks the witness's browser, fixture, spec and config
+through `projection-depth.tsconfig.json` in the existing typecheck tail.
+`DEPTH_WITNESS_GPU=native` requests the normal native ANGLE path instead;
+only the returned adapter identity establishes whether physical hardware ran.
+
+The same two opaque squares and eye/target/up are rendered in perspective and
+orthographic projection with matched center-plane scale. The foreground square
+must hide the background square across five orbit angles, both draw orders,
+1/4/30mm separations, three scene depth ranges, MSAA 1/4, and the actual flat,
+quantized and instanced colour vertex stages. A diagnostic fragment reports
+front/rear sample ownership as red/green, excluding lighting and selection.
+An independent f64 ray/plane oracle establishes front-first visibility and
+silhouette clearance over the entire central probe, including all possible
+hardware sample positions. It never uses the depth-nudge formula as an oracle.
+
+The control shader replaces only the composed nudge helper with identity.
+It does not modify production files or geometry. The report retains shader
+digests, actual packed IDs/lanes, matrices, geometric clearance, pixel counts,
+adapter/browser identity, source revision, dirty-tree status and source hashes.
+All 1,440 distinct visibility cases must pass, including the orthographic 1mm and 4mm
+invariants that the former depth-ranking mechanism violated. The 1,080 orthographic
+rows sweep scene range; the 360 perspective controls use the real infinite-far
+projection and record `range: null`. Earlier 2,160-row reports repeated those
+perspective controls three times; they do not establish additional range coverage. Production cases
+execute the actual geometric prepass and guarded colour pass; identity-nudge
+controls retain their independent single-pass path. The same command also runs
+240 real selection/hover mask cases, including maximal-rank hidden sources
+behind rank-zero 1mm occluders. Intentional hidden selection silhouettes remain
+present. Reports require zero GPU validation errors.
+
+With a built viewer dependency graph and real WASM runtime, run existing
+coplanar ownership, annotation, override and clipping controls plus the reduced
+reporter recorder using `DEPTH_WITNESS_VIEWER=1 pnpm test:projection-depth`.
+Set `REPORTER_6729_IFC` to the pinned public attachment and `E2E_GPU_STRICT=1`
+for the reporter cohort; its absence skips that cohort rather than granting
+acceptance. This uses the same isolated browser and private source servers.
+
+This isolates the renderer's ordering mechanism. It is not an authentic
+nut/bolt or plate topology check, selection acceptance, continuous viewer-motion
+test, native-GPU verdict or claim that the reporter's exact model is repaired.
+
+The implementation, final coverage and explicit acceptance limits are recorded
+in [orthographic-fix.md](./orthographic-fix.md). The synthetic command also
+executes the real textured fragment with cutout and partial-index witnesses.

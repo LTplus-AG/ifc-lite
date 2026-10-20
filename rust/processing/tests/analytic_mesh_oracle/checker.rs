@@ -13,8 +13,8 @@ use ifc_lite_geometry::{
 };
 use ifc_lite_processing::{
     build_geometry_data_export, extract_swept_disk_descriptions,
-    process_geometry_filtered_with_quality_and_ids, ExportedElement, MeshCoordinateSpace,
-    OpeningFilterMode, SweptDiskOccurrence,
+    process, ExportedElement, MeshCoordinateSpace, ProcessingRequest,
+    SweptDiskOccurrence,
 };
 
 type Point = [f64; 3];
@@ -319,12 +319,10 @@ pub(super) fn compare_model(
 
 pub(super) fn mesh_for_product(source: &[u8], expected_id: u32) -> Result<ExportedElement, String> {
     let ids = HashSet::from([expected_id]);
-    let result = process_geometry_filtered_with_quality_and_ids(
-        source,
-        OpeningFilterMode::Default,
-        TessellationQuality::High,
-        Some(&ids),
-    );
+    let request = ProcessingRequest::full_pass()
+        .quality(TessellationQuality::High)
+        .ids(Some(std::sync::Arc::new(ids)));
+    let result = process(source, &request, &mut ());
     let site_rotation = if result.mesh_coordinate_space == MeshCoordinateSpace::SiteLocal {
         result.site_transform.as_deref()
     } else {

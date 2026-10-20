@@ -106,17 +106,27 @@ fn shared_signature_cache_retains_large_brep_threshold() {
     assert!(cache.0.lock().unwrap().is_empty());
 }
 
+/// F4 M-geom (CORE-10): trivia between the `=` and the keyword is trivia. The
+/// keyword read used to compare the bytes after `=`, so `#8=/* root */IFCFACETEDBREP(`
+/// was "not a brep" and took the generic walk (a different key space, and no
+/// share through the cache); it is the same brep as the plain record now, with
+/// the same signature, shared the same way.
 #[test]
-fn brep_keyword_trivia_keeps_the_original_signature_path() {
-    let content = triangle_brep(1.0).replace("#8=IFCFACETEDBREP", "#8=/* root */IFCFACETEDBREP");
-    let mut decoder = EntityDecoder::new(&content);
-    let item = decoder.decode_by_id(8).unwrap();
-    let cache = GeometryRouter::new_brep_signature_cache();
-    let shared = router(cache.clone(), 1.0, TessellationQuality::Medium);
-    let actual = shared.item_dedup_key(&item, &mut decoder);
-    let mut fresh = GeometryRouter::new();
-    fresh.enable_content_dedup_shared(GeometryRouter::new_dedup_cache());
-    let mut fresh_decoder = EntityDecoder::new(&content);
-    assert_eq!(actual, fresh.item_dedup_key(&item, &mut fresh_decoder));
-    assert!(cache.0.lock().unwrap().is_empty());
+fn brep_keyword_trivia_is_the_same_brep_signature() {
+    let key_of = |content: &str| {
+        let mut decoder = EntityDecoder::new(content);
+        let item = decoder.decode_by_id(8).unwrap();
+        let cache = GeometryRouter::new_brep_signature_cache();
+        let shared = router(cache.clone(), 1.0, TessellationQuality::Medium);
+        let key = shared.item_dedup_key(&item, &mut decoder);
+        let shared_entries = cache.0.lock().unwrap().len();
+        (key, shared_entries)
+    };
+    let plain = triangle_brep(1.0);
+    let (plain_key, plain_shared) = key_of(&plain);
+    assert!(plain_key.is_some() && plain_shared == 1, "control: the plain brep is shared");
+    for head in ["#8=/* root */IFCFACETEDBREP", "#8= /* a, ( */ IFCFACETEDBREP", "#8=ifcfacetedbrep"] {
+        let content = plain.replace("#8=IFCFACETEDBREP", head);
+        assert_eq!(key_of(&content), (plain_key, plain_shared), "{head}");
+    }
 }

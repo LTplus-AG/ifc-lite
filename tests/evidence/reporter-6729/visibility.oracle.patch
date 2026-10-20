@@ -1,0 +1,11 @@
+diff --git a/packages/renderer/src/opaque-visibility-pass.ts b/packages/renderer/src/opaque-visibility-pass.ts
+--- a/packages/renderer/src/opaque-visibility-pass.ts
++++ b/packages/renderer/src/opaque-visibility-pass.ts
+@@ -85,7 +85,6 @@ export class OpaqueVisibilityPass {
+   }
+ 
+   begin(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor, orthographic: boolean, width: number, height: number): GPURenderPassEncoder {
+-    orthographic = false;
+     this.active = orthographic;
+     const main = encoder.beginRenderPass(descriptor);
+     if (!orthographic) { this.releaseTexture(); return main; }

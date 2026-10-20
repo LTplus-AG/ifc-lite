@@ -35,6 +35,16 @@ describe('colorForUser', () => {
     expect(sample.size).toBeGreaterThanOrEqual(3);
   });
 
+  it('fnv1a matches the canonical FNV-1a 32-bit vectors (#7925)', () => {
+    // The module promises the same color for the same id "across machines",
+    // which only holds while the hash itself is pinned. A determinism check
+    // (f(x) equals f(x)) passes for any constants, so these are the published
+    // reference vectors for offset basis 0x811c9dc5 and prime 16777619.
+    expect(fnv1a('')).toBe(0x811c9dc5);
+    expect(fnv1a('a')).toBe(0xe40c292c);
+    expect(fnv1a('foobar')).toBe(0xbf9cf968);
+  });
+
   it('fnv1a returns an unsigned 32-bit integer', () => {
     const h = fnv1a('test');
     expect(Number.isInteger(h)).toBe(true);

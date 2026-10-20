@@ -1,0 +1,35 @@
+diff --git b/rust/geometry/src/resource/mesh.rs a/rust/geometry/src/resource/mesh.rs
+index 217b5a07b6..b187994009 100644
+--- b/rust/geometry/src/resource/mesh.rs
++++ a/rust/geometry/src/resource/mesh.rs
+@@ -229,7 +229,13 @@ fn terminal(error: MeshAdmissionError) -> ProgramStop {
+ /// Shared raster payloads are not copied here; this helper operates on Mesh.
+ pub(crate) fn clone_mesh(source: &Mesh) -> Result<(Mesh, Reservation), ProgramStop> {
+     let bytes = MeshLengths::of(source).bytes().map_err(terminal)?;
+-    let permit = super::charge(Cost::default())?;
++    let permit = super::charge(Cost {
++        work: bytes / 4,
++        copy_bytes: bytes,
++        output_bytes: bytes,
++        live_bytes: bytes,
++        ..Cost::default()
++    })?;
+     let mesh = clone_reserved(source).map_err(terminal)?;
+     Ok((mesh, permit))
+ }
+@@ -286,8 +292,13 @@ pub(crate) fn merge_mesh(target: &mut Mesh, incoming: &Mesh) -> Result<Reservati
+     let work = (copy_bytes / 4)
+         .checked_add(incoming.indices.len() as u64)
+         .ok_or_else(super::overflow)?;
+-    let _ = (work, copy_bytes, live_bytes);
+-    let permit = super::charge(Cost::default())?;
++    let permit = super::charge(Cost {
++        work,
++        copy_bytes,
++        output_bytes: bytes,
++        live_bytes,
++        ..Cost::default()
++    })?;
+     reserve_merge(target, incoming).map_err(terminal)?;
+     target.merge(incoming);
+     Ok(permit)

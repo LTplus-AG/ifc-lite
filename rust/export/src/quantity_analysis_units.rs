@@ -1,21 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Unit resolution and physical-value comparison for authored quantities.
 
+use ifc_lite_processing::data_model::quantity::QuantityKind;
 use ifc_lite_core::{EntityDecoder, ProjectUnits, ResolvedUnit, resolve_unit_by_ref};
 
 use super::{AuthoredQuantity, QuantityUnit};
 
 pub(super) fn express_kind(kind: &str) -> Option<&'static str> {
-    match kind {
-        "Length" => Some("IfcQuantityLength"),
-        "Area" => Some("IfcQuantityArea"),
-        "Volume" => Some("IfcQuantityVolume"),
-        "Count" => Some("IfcQuantityCount"),
-        "Number" => Some("IfcQuantityNumber"),
-        "Weight" => Some("IfcQuantityWeight"),
-        "Time" => Some("IfcQuantityTime"),
-        _ => None,
-    }
+    QuantityKind::parse(kind).map(QuantityKind::ifc_entity)
 }
 
 fn quantity_measure(kind: &str) -> Option<(&'static str, &'static str)> {

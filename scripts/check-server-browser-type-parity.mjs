@@ -150,7 +150,9 @@ const RUST_SPATIAL = 'rust/processing/src/data_model/spatial.rs';
 const TS_SPATIAL = 'packages/data/src/spatial-types.ts';
 const RUST_PROPS = 'rust/processing/src/data_model/properties.rs';
 const TS_PROPS = 'packages/parser/src/property-value-parser.ts';
-const RUST_QTY = 'rust/processing/src/data_model/quantities.rs';
+// C6-8 (#7783): the server's quantity kinds come from `QuantityKind::keyword`,
+// the one vocabulary it shares with the flat exports.
+const RUST_QTY = 'rust/processing/src/data_model/quantity.rs';
 const TS_QTY_MAP = 'packages/parser/src/columnar-parser-indexes.ts';
 const TS_QTY_COLLECT = 'packages/parser/src/quantity-collect.ts';
 const RUST_MATERIALS = 'rust/processing/src/data_model/materials.rs';

@@ -2773,7 +2773,7 @@ fn check_server_budget_case(case: &serde_json::Value) {
 
 /// The vector's `dataLines` with each `{"repeat": [..], "from", "count"}` run
 /// expanded: `{i}` in each line is `from`, `from + 1`, ... for `count` rounds.
-fn expand_budget_lines(lines: &serde_json::Value) -> Vec<String> {
+pub(super) fn expand_budget_lines(lines: &serde_json::Value) -> Vec<String> {
     let mut out = Vec::new();
     for line in lines.as_array().unwrap() {
         if let Some(text) = line.as_str() {

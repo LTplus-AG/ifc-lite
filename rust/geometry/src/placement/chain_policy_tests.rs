@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! F3b X2: the chain refuses what it cannot read (D30, drift 3.5/3.8/3.10)
+//! #7779 / #7877, F3b X2: the chain refuses what it cannot read (D30, drift 3.5/3.8/3.10)
 //! instead of drawing the element at a fallback position. Every case below
 //! resolved to the identity (or a displaced garbage frame) on the base commit.
 
@@ -97,4 +97,215 @@ fn a_refusal_poisons_neither_its_ancestors_nor_a_second_asker() {
     let root = decoder.decode_by_id(10).unwrap();
     assert_eq!(resolve_chain(&root, &mut decoder).unwrap()[(0, 3)], 1.0);
     assert_eq!(decoder.refused_records(), 1, "one bad record, counted once");
+}
+
+/// #7779/#7877: optional means absent, never a present value of the wrong kind.
+#[test]
+fn typed_present_chain_references_refuse_without_memoising_success() {
+    for body in [
+        "#10=IFCLOCALPLACEMENT(IFCLABEL('bad'),#1);",
+        "#10=IFCLOCALPLACEMENT($,IFCLABEL('bad'));",
+        "#10=IFCLOCALPLACEMENT($,#1);#20=IFCWALL('g',$,$,$,$,IFCLABEL('bad'),$,$,$);",
+    ] {
+        let content = doc(&format!("{FRAMES}{body}"));
+        let mut decoder = EntityDecoder::new(&content);
+        let id = if body.contains("IFCWALL") { 20 } else { 10 };
+        let node = decoder.decode_by_id(id).unwrap();
+        for _ in 0..2 {
+            let refused = if id == 20 {
+                resolve_object_placement(&node, &mut decoder).is_err()
+            } else {
+                resolve_chain(&node, &mut decoder).is_err()
+            };
+            assert!(refused, "{body}");
+            assert!(decoder.get_placement_transform_cached(id).is_none());
+            assert_eq!(decoder.refused_records(), 1, "deduplicated record: {body}");
+        }
+    }
+}
+
+#[test]
+fn missing_object_placement_keeps_identity_without_a_refusal_7877() {
+    for value in ["$", "*"] {
+        let content = doc(&format!("#20=IFCWALL('g',$,$,$,$,{value},$,$,$);"));
+        let mut decoder = EntityDecoder::new(&content);
+        let product = decoder.decode_by_id(20).unwrap();
+        assert!(resolve_object_placement(&product, &mut decoder).unwrap().is_none());
+        assert_eq!(decoder.refused_records(), 0);
+    }
+}
+
+#[test]
+fn dimension_specific_axis_readers_refuse_wrong_record_types_7877() {
+    let content = doc(FRAMES);
+    let mut decoder = EntityDecoder::new(&content);
+    let planar = decoder.decode_by_id(2).unwrap();
+    let spatial = decoder.decode_by_id(1).unwrap();
+    assert!(Axis2Placement::read_3d(&planar, &mut decoder).is_err());
+    assert!(Axis2Placement::read_2d(&spatial, &mut decoder).is_err());
+    assert_eq!(decoder.refused_records(), 2);
+    assert!(Axis2Placement::read(&planar, &mut decoder).unwrap().planar);
+    assert!(!Axis2Placement::read(&spatial, &mut decoder).unwrap().planar);
+}
+
+const LINEAR: &str = "#30=IFCCARTESIANPOINT((0.,0.,0.));
+#31=IFCCARTESIANPOINT((10.,0.,0.));#32=IFCPOLYLINE((#30,#31));
+#33=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(5.),$,$,$,#32);
+#34=IFCAXIS2PLACEMENTLINEAR(#33,$,$);
+";
+
+#[test]
+fn unreadable_authored_linear_frame_never_falls_through_to_sampling_7877() {
+    for authored in ["IFCLABEL('bad')", "#3", "#999", "#35"] {
+        let body = format!("{FRAMES}{LINEAR}#35=IFCAXIS2PLACEMENT3D($,$,$);#10=IFCLINEARPLACEMENT($,#34,{authored});");
+        let content = doc(&body).replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC4X3'))");
+        let mut decoder = EntityDecoder::new(&content);
+        let node = decoder.decode_by_id(10).unwrap();
+        assert!(resolve_chain(&node, &mut decoder).is_err(), "{authored}");
+        assert!(decoder.get_placement_transform_cached(10).is_none());
+    }
+    // Anti-vacuity: genuinely absent CartesianPosition still samples to +5 X.
+    let content = doc(&format!("{LINEAR}#10=IFCLINEARPLACEMENT($,#34,$);"))
+        .replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC4X3'))");
+    let mut decoder = EntityDecoder::new(&content);
+    let node = decoder.decode_by_id(10).unwrap();
+    assert_eq!(resolve_chain(&node, &mut decoder).unwrap()[(0, 3)], 5.0);
+    assert_eq!(decoder.refused_records(), 0);
+}
+
+const GRID: &str = "#30=IFCCARTESIANPOINT((0.,0.));
+#31=IFCCARTESIANPOINT((10.,0.));#32=IFCPOLYLINE((#30,#31));
+#33=IFCGRIDAXIS('U',#32,.T.);#34=IFCCARTESIANPOINT((0.,10.));
+#35=IFCPOLYLINE((#30,#34));#36=IFCGRIDAXIS('V',#35,.T.);
+#37=IFCVIRTUALGRIDINTERSECTION((#33,#36),(0.,0.));
+";
+
+#[test]
+fn unreadable_grid_direction_refuses_but_readable_zero_keeps_repair_7877() {
+    for (direction, record, valid) in [
+        ("$", "", true),
+        ("#38", "#38=IFCDIRECTION((0.,0.));", true),
+        ("#38", "#38=IFCDIRECTION((0.,1.));", true),
+        ("#38", "#38=IFCDIRECTION((IFCREAL(0.),1.));", false),
+        ("#38", "#38=IFCDIRECTION((1.));", false),
+        ("#30", "", false),
+        ("IFCLABEL('bad')", "", false),
+    ] {
+        let content = doc(&format!("{GRID}{record}#10=IFCGRIDPLACEMENT($,#37,{direction});"))
+            .replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC4X3'))");
+        let mut decoder = EntityDecoder::new(&content);
+        let node = decoder.decode_by_id(10).unwrap();
+        let result = resolve_chain(&node, &mut decoder);
+        if valid {
+            let matrix = result.unwrap();
+            let expected = if record.contains("(0.,1.)") { (0., 1.) } else { (1., 0.) };
+            assert_eq!((matrix[(0, 0)], matrix[(1, 0)]), expected);
+            assert_eq!(decoder.refused_records(), 0);
+        } else {
+            assert!(result.is_err(), "{direction} {record}");
+            assert_eq!(decoder.refused_records(), 1);
+            assert!(decoder.get_placement_transform_cached(10).is_none());
+        }
+    }
+}
+
+#[test]
+fn unreadable_sampled_linear_fields_refuse_and_count_their_record_7877() {
+    for bad_linear in [
+        LINEAR.replace("IFCLENGTHMEASURE(5.)", "IFCLABEL('bad')"),
+        LINEAR.replace("IFCLENGTHMEASURE(5.),$", "IFCLENGTHMEASURE(5.),IFCLABEL('bad')"),
+        LINEAR.replace("IFCAXIS2PLACEMENTLINEAR(#33,$,$)", "IFCAXIS2PLACEMENTLINEAR(#33,IFCLABEL('bad'),$)"),
+        LINEAR.replace("IFCAXIS2PLACEMENTLINEAR(#33,$,$)", "IFCAXIS2PLACEMENTLINEAR(#33,#39,$)")
+            + "#39=IFCDIRECTION((1.));",
+    ] {
+        let content = doc(&format!("{bad_linear}#10=IFCLINEARPLACEMENT($,#34,$);"))
+            .replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC4X3'))");
+        let mut decoder = EntityDecoder::new(&content);
+        let node = decoder.decode_by_id(10).unwrap();
+        for _ in 0..2 {
+            assert!(resolve_chain(&node, &mut decoder).is_err());
+            assert_eq!(decoder.refused_records(), 1, "{bad_linear}");
+            assert!(decoder.get_placement_transform_cached(10).is_none());
+        }
+    }
+}
+
+#[test]
+fn unreadable_grid_offsets_are_not_replaced_with_zero_7877() {
+    let content = doc(&format!("{GRID}#10=IFCGRIDPLACEMENT($,#37,$);"))
+        .replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC4X3'))")
+        .replace("(0.,0.));\n#10=IFCGRIDPLACEMENT", "(IFCLABEL('bad'),0.));\n#10=IFCGRIDPLACEMENT");
+    let mut decoder = EntityDecoder::new(&content);
+    let node = decoder.decode_by_id(10).unwrap();
+    assert!(resolve_chain(&node, &mut decoder).is_err());
+    assert_eq!(decoder.refused_records(), 1);
+    assert!(decoder.get_placement_transform_cached(10).is_none());
+}
+
+#[test]
+fn sampled_frame_execution_stops_are_not_malformed_input_7877() {
+    use crate::resource::{ExecutionAccount, ExecutionPolicy, ResourceLimits};
+    for body in [
+        format!("{LINEAR}#10=IFCLINEARPLACEMENT($,#34,$);"),
+        format!("{GRID}#10=IFCGRIDPLACEMENT($,#37,$);"),
+    ] {
+        let content = doc(&body).replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC4X3'))");
+        let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+        account.cancel();
+        let mut decoder = EntityDecoder::new(&content);
+        let node = decoder.decode_by_id(10).unwrap();
+        let error = account.scope(|| resolve_chain(&node, &mut decoder)).unwrap_err();
+        assert!(matches!(error, PlacementError::ProgramStopped(_)), "{error:?}");
+        assert!(matches!(crate::Error::from(error), crate::Error::ProgramStopped(_)));
+        assert_eq!(decoder.refused_records(), 0);
+        assert!(decoder.get_placement_transform_cached(10).is_none());
+        // A separate uncancelled scope/source still resolves the valid input.
+        let mut fresh = EntityDecoder::new(&content);
+        let node = fresh.decode_by_id(10).unwrap();
+        assert!(resolve_chain(&node, &mut fresh).is_ok());
+    }
+}
+
+#[test]
+fn grid_direction_uses_canonical_leaf_source_authority_7877() {
+    let content = doc(&format!("{GRID}#38=IFCDIRECTION((0.,1.));#10=IFCGRIDPLACEMENT($,#37,#38);"))
+        .replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC4X3'))");
+    let mut donor = EntityDecoder::new("#38=IFCDIRECTION((1.,0.));");
+    donor.decode_by_id(38).unwrap();
+    let cache = donor.drain_cache();
+    let mut decoder = EntityDecoder::new(&content);
+    decoder.inject_shared_cache(&cache);
+    let node = decoder.decode_by_id(10).unwrap();
+    let matrix = resolve_chain(&node, &mut decoder).unwrap();
+    assert_eq!((matrix[(0, 0)], matrix[(1, 0)]), (0., 1.), "the raw valid leaf wins contradictory decoded values");
+    assert_eq!(decoder.refused_records(), 0);
+}
+
+/// #7877: a prior quota refusal remains terminal through real frame sampling.
+#[test]
+fn sampled_frame_preserves_resource_refusal_without_malformed_or_memo_7877() {
+    use crate::resource::{Cost, ExecutionAccount, ExecutionPolicy, ProgramStop, ResourceLimits};
+    for body in [
+        format!("{LINEAR}#10=IFCLINEARPLACEMENT($,#34,$);"),
+        format!("{GRID}#10=IFCGRIDPLACEMENT($,#37,$);"),
+    ] {
+        let content = doc(&body).replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC4X3'))");
+        let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits {
+            work: Some(0), ..ResourceLimits::default()
+        }));
+        let mut decoder = EntityDecoder::new(&content);
+        let node = decoder.decode_by_id(10).unwrap();
+        account.scope(|| {
+            let stop = crate::resource::charge(Cost { work: 1, ..Cost::default() }).unwrap_err();
+            assert!(matches!(stop, ProgramStop::ResourceRefused(_)));
+            let error = resolve_chain(&node, &mut decoder).unwrap_err();
+            assert!(matches!(error, PlacementError::ProgramStopped(found) if found == stop), "{error:?}");
+            assert!(matches!(crate::Error::from(error), crate::Error::ProgramStopped(found) if found == stop));
+        });
+        assert_eq!(decoder.refused_records(), 0, "quota refusal is not malformed source");
+        assert!(decoder.get_placement_transform_cached(10).is_none());
+        let mut fresh = EntityDecoder::new(&content);
+        let node = fresh.decode_by_id(10).unwrap();
+        assert!(resolve_chain(&node, &mut fresh).is_ok(), "uncapped positive control");
+    }
 }

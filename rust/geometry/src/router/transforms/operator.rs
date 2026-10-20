@@ -8,7 +8,7 @@
 use crate::math::tol;
 use super::super::GeometryRouter;
 use crate::{Point3, Result, Vector3};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix4;
 
 impl GeometryRouter {
@@ -60,10 +60,12 @@ pub(crate) fn parse_transformation_operator(
             | IfcType::IfcCartesianTransformationOperator2DnonUniform
     );
 
-    // Get LocalOrigin (attribute 2), under the leaf rule: a point that does
-    // not read is refused and counted, never (0, 0, 0).
-    let origin = Point3::from(decoder.point3_at(entity, 2)?
-        .ok_or_else(|| decoder.refuse_malformed(entity.id))?);
+    // LocalOrigin is mandatory under the leaf rule (#7779 / #7906):
+    // missing and unreadable points are refused and counted, never invented.
+    let origin = Point3::from(decoder.point3_at(
+        entity,
+        slot::IfcCartesianTransformationOperator::LOCAL_ORIGIN.index(),
+    )?.ok_or_else(|| decoder.refuse_malformed(entity.id))?);
 
     // Get Scale (attribute 3). For IfcCartesianTransformationOperator3DNonUniform
     // this is Scale1 (X axis only); attrs 5+6 supply per-axis Y and Z scales,
@@ -73,7 +75,7 @@ pub(crate) fn parse_transformation_operator(
     // Zero and negative pass through: zero collapses the item, and a negative
     // scale is a reflection that real exporters do write (Scale = -1), which the
     // 3D matrix represents exactly.
-    let scale = match entity.get_float(3) {
+    let scale = match entity.real_at(slot::IfcCartesianTransformationOperator::SCALE) {
         Some(v) if v.is_finite() => v,
         _ => 1.0,
     };
@@ -86,10 +88,10 @@ pub(crate) fn parse_transformation_operator(
     // 3DnonUniform: Scale2 at attr 5, Scale3 at attr 6.
     let (scale_y, scale_z) = match (is_non_uniform, is_2d) {
         (false, _) => (scale, scale),
-        (true, true) => (finite_scale(entity.get_float(4), scale), scale),
+        (true, true) => (finite_scale(entity.real_at(slot::IfcCartesianTransformationOperator2DnonUniform::SCALE2), scale), scale),
         (true, false) => (
-            finite_scale(entity.get_float(5), scale),
-            finite_scale(entity.get_float(6), scale),
+            finite_scale(entity.real_at(slot::IfcCartesianTransformationOperator3DnonUniform::SCALE2), scale),
+            finite_scale(entity.real_at(slot::IfcCartesianTransformationOperator3DnonUniform::SCALE3), scale),
         ),
     };
 
@@ -97,12 +99,12 @@ pub(crate) fn parse_transformation_operator(
     // Directions are read under the leaf rule: one that does not read is
     // refused and counted, never a ratio of 0.
     let x_axis_raw = decoder
-        .direction3_at(entity, 0)?
+        .direction3_at(entity, slot::IfcCartesianTransformationOperator::AXIS1.index())?
         .map_or_else(|| Vector3::new(1.0, 0.0, 0.0), Vector3::from);
 
     // Get Axis2 (raw local Y, attribute 1), used below only when it is
     // INCONSISTENT with Axis3 × Axis1 (see the y_axis derivation).
-    let y_axis_raw = decoder.direction3_at(entity, 1)?.map(Vector3::from);
+    let y_axis_raw = decoder.direction3_at(entity, slot::IfcCartesianTransformationOperator::AXIS2.index())?.map(Vector3::from);
 
     let x_axis_raw = base_axis_2d_x(entity, is_2d, x_axis_raw, y_axis_raw);
 
@@ -113,7 +115,7 @@ pub(crate) fn parse_transformation_operator(
         Vector3::new(0.0, 0.0, 1.0)
     } else {
         decoder
-            .direction3_at(entity, 4)?
+            .direction3_at(entity, slot::IfcCartesianTransformationOperator3D::AXIS3.index())?
             .map_or_else(|| Vector3::new(0.0, 0.0, 1.0), Vector3::from)
     };
 
@@ -182,7 +184,7 @@ fn base_axis_2d_x(
     x_axis_raw: Vector3<f64>,
     y_axis_raw: Option<Vector3<f64>>,
 ) -> Vector3<f64> {
-    let axis1_absent = entity.get(0).is_none_or(|attr| attr.is_null());
+    let axis1_absent = entity.attr(slot::IfcCartesianTransformationOperator::AXIS1).is_none_or(|attr| attr.is_null());
     match y_axis_raw {
         Some(d) if is_2d && axis1_absent && d.xy().norm() > 1e-9 => Vector3::new(d.y, -d.x, 0.0),
         _ => x_axis_raw,

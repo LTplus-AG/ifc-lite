@@ -1276,7 +1276,7 @@ fn issue_4627_production_rejects_removal_larger_than_committed_cutter() {
         let invalid_host = mesh_from_ptris(&triangles, &host);
         assert!(directed_closed(&invalid_host));
         let opening = box_opening(placed_box_mesh(case, [-0.01; 3], [1.01; 3]));
-        let mut prism = prepare_prism(&opening, invalid_host.origin).expect("fixed box prism");
+        let mut prism = prepare_prism(&opening, &invalid_host).expect("fixed box prism");
         let bounds = triangles.iter().map(PTri::aabb).collect::<Vec<_>>();
         extend_prism_caps(&mut prism, &triangles, &bounds);
         extend_profile_edges(&mut prism, &triangles, &bounds);

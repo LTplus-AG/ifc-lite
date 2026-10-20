@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use ifc_lite_core::parser::StepRecord;
 
 fn node(id: u32, children: Vec<u32>) -> QuickSpatialNodeEntry {
     QuickSpatialNodeEntry {
@@ -18,20 +19,24 @@ fn node(id: u32, children: Vec<u32>) -> QuickSpatialNodeEntry {
     }
 }
 
-/// #2323 double-collapse guard. This module un-doubles `''` on its OWN
-/// raw-byte path (it never builds a `Token`, so `AttributeValue::from_token`
-/// never runs over the same bytes). Exactly ONE un-doubling pass must
-/// happen here: `''''` is two literal apostrophes, not one.
+/// #2323 double-collapse guard. The name is read through core's one literal
+/// decoder (`StepRecord::string_at`), so exactly ONE un-doubling pass runs:
+/// a literal of six apostrophes is two literal apostrophes, not one.
 #[test]
-fn parse_step_string_un_doubles_exactly_once() {
-    assert_eq!(parse_step_string(b"'O''Brien'").as_deref(), Some("O'Brien"));
-    assert_eq!(parse_step_string(b"''''''").as_deref(), Some("''"));
-    // The decoder now collapses the doubled reverse solidus too, and this
-    // path picks that up for free rather than needing its own pass.
-    assert_eq!(parse_step_string(br"'C:\\temp'").as_deref(), Some(r"C:\temp"));
-    // Unicode escapes still decode, and plain text is untouched.
-    assert_eq!(parse_step_string(br"'caf\X2\00E9\X0\'").as_deref(), Some("caf\u{e9}"));
-    assert_eq!(parse_step_string(b"'Plain Name'").as_deref(), Some("Plain Name"));
+fn name_un_doubles_exactly_once() {
+    let name = |literal: &str| {
+        let record = format!("#1=IFCBUILDINGSTOREY('g',$,{literal},$);");
+        extract_name(StepRecord::parse(record.as_bytes()).as_ref(), "fallback")
+    };
+    assert_eq!(name("'O''Brien'"), "O'Brien");
+    assert_eq!(name("''''''"), "''");
+    assert_eq!(name(r"'C:\\temp'"), r"C:\temp");
+    assert_eq!(name(r"'caf\X2\00E9\X0\'"), "caf\u{e9}");
+    assert_eq!(name("'Plain Name'"), "Plain Name");
+    // No value: `$`, blank, a quoted `$`, a comment-only slot.
+    for none in ["$", "''", "'  '", "'$'", "/* n */ $"] {
+        assert_eq!(name(none), "fallback", "{none}");
+    }
 }
 
 // A malformed IfcRelAggregates graph making two nodes each other's child would
@@ -226,12 +231,23 @@ fn issue_4687_step_arguments_treat_comments_as_trivia() {
         b"#50=IFCRELAGGREGATES('0YvctVUKr0kugbFTf53O9L',$,$,/* it's */$,#1,(#2,#3));",
         b"#50=IFCRELAGGREGATES('0YvctVUKr0kugbFTf53O9L',$,$,$,#1 /* x */,(#2, /* door */ #3));",
     ] {
-        let args = parse_step_arguments(record);
-        let text = String::from_utf8_lossy(record);
-        assert_eq!(args.len(), 6, "{text}");
-        assert_eq!(args.get(4).and_then(|token| parse_step_ref(token)), Some(1), "{text}");
-        assert_eq!(parse_step_ref_list(args[5]), [2, 3], "{text}");
+        let text = String::from_utf8_lossy(record).into_owned();
+        let record = StepRecord::parse(record);
+        assert_eq!(record.as_ref().and_then(|r| r.ref_at(4)), Some(1), "{text}");
+        assert_eq!(ref_items(record.as_ref(), 5), [2, 3], "{text}");
     }
+}
+
+/// PROCESSING-15: a reference is `#digits` and nothing else. The scan used
+/// `str::parse::<u32>`, which read `#+5` as 5; `#12abc` and an id past
+/// `u32::MAX` are skipped, not turned into another node's id.
+#[test]
+fn processing_15_refs_are_exactly_hash_digits() {
+    let record = StepRecord::parse(b"#9=IFCRELAGGREGATES('g',$,$,$,#+5,(#1,#+2,#3abc,#4294967296,#7 /* x */));");
+    assert_eq!(record.as_ref().and_then(|r| r.ref_at(4)), None);
+    assert_eq!(ref_items(record.as_ref(), 5), [1, 7]);
+    assert_eq!(ref_items(record.as_ref(), 9), Vec::<u32>::new());
+    assert_eq!(ref_items(None, 5), Vec::<u32>::new());
 }
 
 /// Control fixture for the drift guard above. A regression that made the

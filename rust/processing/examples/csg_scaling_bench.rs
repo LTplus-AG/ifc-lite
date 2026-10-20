@@ -37,15 +37,9 @@ use std::time::Instant;
 /// triangle-index count — a deterministic fingerprint of the work performed.
 fn replay(job: &CapturedCsgJob) -> usize {
     let csg = ClippingProcessor::new();
-    match job {
-        CapturedCsgJob::Single { host, cutter } => csg.subtract_mesh(host, cutter),
-        CapturedCsgJob::Many { host, cutters } => {
-            let refs: Vec<&Mesh> = cutters.iter().collect();
-            csg.subtract_mesh_many(host, &refs)
-        }
-    }
-    .into_mesh()
-    .map_or(0, |m| m.indices.len())
+    job.replay(&csg)
+        .into_mesh()
+        .map_or(0, |m| m.indices.len())
 }
 
 fn run_pool(jobs: &[CapturedCsgJob], threads: usize) -> (u128, usize) {
@@ -96,13 +90,13 @@ fn main() {
     let (mut n_single, mut n_many, mut n_cutters, mut host_tris, mut cutter_tris) = (0usize, 0usize, 0usize, 0usize, 0usize);
     for j in &jobs {
         match j {
-            CapturedCsgJob::Single { host, cutter } => {
+            CapturedCsgJob::Single { host, cutter, .. } => {
                 n_single += 1;
                 n_cutters += 1;
                 host_tris += host.indices.len() / 3;
                 cutter_tris += cutter.indices.len() / 3;
             }
-            CapturedCsgJob::Many { host, cutters } => {
+            CapturedCsgJob::Many { host, cutters, .. } => {
                 n_many += 1;
                 n_cutters += cutters.len();
                 host_tris += host.indices.len() / 3;
@@ -111,8 +105,8 @@ fn main() {
         }
     }
     let working_set_mb = jobs.iter().map(|j| match j {
-        CapturedCsgJob::Single { host, cutter } => mesh_bytes(host) + mesh_bytes(cutter),
-        CapturedCsgJob::Many { host, cutters } => mesh_bytes(host) + cutters.iter().map(mesh_bytes).sum::<usize>(),
+        CapturedCsgJob::Single { host, cutter, .. } => mesh_bytes(host) + mesh_bytes(cutter),
+        CapturedCsgJob::Many { host, cutters, .. } => mesh_bytes(host) + cutters.iter().map(mesh_bytes).sum::<usize>(),
     }).sum::<usize>() as f64 / 1e6;
 
     println!("[capture] full pipeline ran in {cap_ms} ms (incl. parse+decode+extrude+CSG)");

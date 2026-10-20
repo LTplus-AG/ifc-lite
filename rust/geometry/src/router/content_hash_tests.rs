@@ -15,6 +15,30 @@ fn parse_first_ref_reads_an_ordinary_ref() {
     assert_eq!(parse_first_ref(b"#5=IFCFACETEDBREP(#137924)"), Some(137924));
 }
 
+/// F4 M-geom (CORE-1, CORE-10): trivia is trivia. The first-ref read took the
+/// first `#` after the first `(` and the type read compared the bytes after
+/// `=`, so a comment in either place bound the brep to the wrong shell, or hid
+/// that the record is a brep at all.
+#[test]
+fn faceted_brep_head_and_shell_ref_read_through_trivia() {
+    for record in [
+        &b"#5=IFCFACETEDBREP(#7);"[..],
+        b"#5 = ifcfacetedbrep (#7);",
+        b"#5=/* IFCWALL( */ IFCFACETEDBREP /* x */ ( /* #9 */ #7 /* #8 */ );",
+    ] {
+        let text = String::from_utf8_lossy(record);
+        assert!(type_token_is(record, b"IFCFACETEDBREP"), "{text}");
+        assert_eq!(parse_first_ref(record), Some(7), "{text}");
+    }
+    // A longer identifier is another type; a `#` in a literal or a `$` first
+    // attribute is no shell reference (it used to be the next `#`).
+    assert!(!type_token_is(b"#5=IFCFACETEDBREPX(#7);", b"IFCFACETEDBREP"));
+    assert!(!type_token_is(b"#5=IFCFACETEDBREPWITHVOIDS(#7,(#8));", b"IFCFACETEDBREP"));
+    assert_eq!(parse_first_ref(b"#5=IFCFACETEDBREP($,#7);"), None);
+    assert_eq!(parse_first_ref(b"#5=IFCFACETEDBREP('a#9',#7);"), None);
+    assert_eq!(parse_first_ref(b"#5=IFCFACETEDBREP(#+7);"), None);
+}
+
 /// Boundary: a ref at exactly `u32::MAX` is not refused (issue #3421).
 #[test]
 fn parse_first_ref_accepts_a_ref_at_exactly_u32_max() {

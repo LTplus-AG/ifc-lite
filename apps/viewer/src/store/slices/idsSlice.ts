@@ -196,17 +196,6 @@ const DEFAULT_DISPLAY_OPTIONS: IDSDisplayOptions = {
   passedColor: [0.2, 0.8, 0.2, 1.0], // Green
 };
 
-const getDefaultLocale = (): SupportedLocale => {
-  // Try to get from browser language
-  if (typeof navigator !== 'undefined') {
-    const lang = navigator.language.split('-')[0];
-    if (lang === 'de' || lang === 'fr') {
-      return lang as SupportedLocale;
-    }
-  }
-  return 'en';
-};
-
 // ============================================================================
 // Slice Creator
 // ============================================================================
@@ -245,7 +234,7 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
   idsLoading: false,
   idsProgress: null,
   idsError: null,
-  idsLocale: getDefaultLocale(),
+  idsLocale: 'en',
   idsDisplayOptions: DEFAULT_DISPLAY_OPTIONS,
   idsFilterMode: 'all',
   idsIsolationScope: 'ids',

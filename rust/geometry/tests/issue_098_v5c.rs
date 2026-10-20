@@ -140,8 +140,20 @@ const PINNED_VOLUME_M3: Option<f64> = None;
 // loses a third of the wall: both volumes now sit next to the default build's
 // 33.398 m3. Its unpaired edges moved in opposite directions under the two
 // gate combinations, so both are re-measured here, not assumed.
+//
+// #7952: 214 -> 224 (manifold gate alone), moved by #7607 (5b730c6fdb) alone;
+// its parent reads 214 and the reading has not moved since. The fallback still
+// runs after the same five rejected Difference results (one of them now has 1
+// over-used edge where it had 5). The surface is the
+// same: 33.475 m3 against 33.474, and 152.174 m2 against 152.174. It is
+// triangulated with more T-vertices, from #7607's collinear operand seam split
+// and its shared-kernel changes. Once every unpaired edge is split at the
+// vertices lying within 0.1 mm of it, the remaining gap is SHORTER than the
+// parent's: 58.933 m of boundary against 67.505 m. The volume pin stays. Both
+// gates read 702 / 34.559, unchanged, and the default build improved
+// (74 -> 70).
 #[cfg(all(feature = "csg_manifold_gate", not(feature = "csg_topology_gate")))]
-const PINNED_OPEN_EDGES: Option<i64> = Some(214);
+const PINNED_OPEN_EDGES: Option<i64> = Some(224);
 #[cfg(all(feature = "csg_manifold_gate", not(feature = "csg_topology_gate")))]
 const PINNED_VOLUME_M3: Option<f64> = Some(33.474);
 

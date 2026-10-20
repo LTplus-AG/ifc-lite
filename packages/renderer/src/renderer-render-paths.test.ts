@@ -9,6 +9,8 @@ import { Picker } from './picker.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { RenderOptions, BatchedMesh, Mesh } from './types.js';
 import type { Scene } from './scene.js';
+import { OpaqueVisibilityPass } from './opaque-visibility-pass.js';
+import { mainShaderSource } from './shaders/main.wgsl.js';
 import type { RenderPipeline } from './pipeline.js';
 import { DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { rteRelativePositionF32 } from './relative-to-eye.js';
@@ -98,6 +100,7 @@ interface Harness {
     knobs: {
         /** 'texture' = getCurrentTexture succeeds; 'null' = returns null */
         textureMode: 'texture' | 'null';
+        visibilityCompilation: Promise<GPURenderPipeline> | null;
         /** make command encoding throw (mid-encode device fault) */
         encodeThrows: boolean;
         /** make queue.submit() throw after the color readback has been encoded */
@@ -130,14 +133,14 @@ interface Harness {
     settlePendingMaps(reason?: unknown): void;
 }
 
-const OPAQUE_PIPELINE = { label: 'opaque' };
+const OPAQUE_PIPELINE = { label: 'opaque', getBindGroupLayout: () => ({}) };
 const TRANSPARENT_PIPELINE = { label: 'transparent' };
 const GHOST_PIPELINE = { label: 'ghost' };
 
 function makeHarness(): Harness {
     const stats: Harness['stats'] = { push: 0, pop: 0, submissions: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], commands: [], passes: [], createdTextures: 0, textures: [], destroyedTextures: [], boundColorTables: [] };
     const knobs: Harness['knobs'] = {
-        textureMode: 'texture', encodeThrows: false, submitThrows: false, popRejects: false, gpuDead: false,
+        textureMode: 'texture', visibilityCompilation: null, encodeThrows: false, submitThrows: false, popRejects: false, gpuDead: false,
         deferMaps: false, pickFault: null,
     };
     let loseDevice!: () => void;
@@ -274,6 +277,7 @@ function makeHarness(): Harness {
                 // Picker builds real pipelines in its constructor and binds
                 // through the auto layout, so both arms must return objects.
                 case 'createShaderModule': return () => ({});
+                case 'createRenderPipelineAsync': return () => knobs.visibilityCompilation ?? Promise.resolve({ getBindGroupLayout: () => ({}) });
                 case 'createComputePipeline':
                 case 'createRenderPipeline': return () => ({ getBindGroupLayout: () => ({}) });
                 // Destroying a device also completes every map still pending
@@ -312,6 +316,7 @@ function makeHarness(): Harness {
     wdev['contextConfigured'] = true;
     wdev['lastWidth'] = 256;
     wdev['lastHeight'] = 256;
+    const visibility = new OpaqueVisibilityPass(fakeGpuDevice as unknown as GPUDevice, 1);
     // Permissive pipeline stub: draw-state getters return inert objects,
     // sizing predicates return stable values, everything else no-ops.
     (renderer as unknown as Record<string, unknown>)['pipeline'] = new Proxy(
@@ -319,6 +324,7 @@ function makeHarness(): Harness {
         {
             get(_t, prop) {
                 switch (prop) {
+                    case 'visibility': return visibility;
                     case 'needsResize': return () => false;
                     case 'getSampleCount': return () => 1;
                     case 'getMultisampleTextureView': return () => null;
@@ -511,6 +517,37 @@ describe('render() error-scope balance', () => {
 });
 
 describe('captureColorFrame() lifecycle (#5051 strict GPU evidence)', () => {
+    it('cancels a discarded orthographic capture and permits a fresh capture after async validation (#6729)', async () => {
+        const h = makeHarness();
+        let finish!: (pipeline: GPURenderPipeline) => void;
+        h.knobs.visibilityCompilation = new Promise(resolve => { finish = resolve; });
+        const pipeline = h.renderer['pipeline']!;
+        const module = {} as GPUShaderModule;
+        pipeline.visibility.register(OPAQUE_PIPELINE as unknown as GPURenderPipeline, {
+            layout: 'auto', vertex: { module, entryPoint: 'vs_main' },
+            fragment: { module, entryPoint: 'fs_main', targets: [{ format: 'rgba8unorm' }] },
+            depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'greater' },
+        }, mainShaderSource);
+        h.renderer.getCamera().setProjectionMode('orthographic');
+        try {
+            let settled = false;
+            const discarded = h.renderer.captureColorFrame();
+            void discarded.then(() => { settled = true; });
+            h.renderer.consumeRenderRequest(); h.render(); await h.settle();
+            assert.equal(h.stats.submissions, 0, 'a compiling frame never submits');
+            assert.equal(settled, true, 'an unsubmitted frame must not retain a coalesced capture');
+            assert.equal(await discarded, null);
+            finish(OPAQUE_PIPELINE as unknown as GPURenderPipeline);
+            await pipeline.visibility.prepare(); await h.settle();
+            h.renderer.consumeRenderRequest();
+            const fresh = h.renderer.captureColorFrame();
+            assert.notStrictEqual(fresh, discarded, 'the discarded request cannot absorb a later capture');
+            h.render();
+            assert.ok(await fresh, 'a validated replacement frame supplies actual readback bytes');
+            assert.equal(h.stats.submissions, 1); assert.equal(h.stats.mapAsync, 1);
+        } finally { finish(OPAQUE_PIPELINE as unknown as GPURenderPipeline); h.renderer.destroy(); }
+    });
+
     it('coalesces concurrent callers into one bounded next-frame readback', async () => {
         const h = makeHarness();
         const first = h.renderer.captureColorFrame();

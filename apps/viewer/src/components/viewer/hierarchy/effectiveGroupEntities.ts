@@ -6,6 +6,7 @@ import { edgeSurvives, IFC_ENTITY_NAMES, RelationshipType } from '@ifc-lite/data
 import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
 import type { GroupMember, IfcDataStore } from '@ifc-lite/parser';
 import { effectiveMutationRelationships } from '@/sdk/adapters/query-overlay-relations.js';
+import { entityOwnership } from '@/utils/entity-ownership';
 import { GROUP_ENTITY_TYPES } from './groupEntityTypes.js';
 import { effectiveTreeEntityName } from './effectiveTypeEntities.js';
 import { effectiveTreeType } from './treeOverlay.js';
@@ -94,15 +95,15 @@ export function effectiveGroupMembers(
   for (const id of assignments.byGroup.get(groupId) ?? []) memberIds.add(id);
 
   const members: GroupMember[] = [];
+  const owns = entityOwnership(store, view);
   for (const id of memberIds) {
-    if (view?.isDeleted(id)) continue;
+    if (!owns(id)) continue;
     // @raw-entity-enumeration-ok point lookup of an effective relationship target, with created and deleted entities handled here
     const parsedType = store.entityIndex?.byId?.get(id)?.type
       ?? store.deferredEntityIndex?.get(id)?.type
       ?? store.entities.getTypeName(id);
     const authoredType = view?.getNewEntity(id)?.type;
-    if (!authoredType && (!parsedType || parsedType === 'Unknown')) continue;
-    const type = effectiveTreeType(view, id, authoredType ?? parsedType);
+    const type = effectiveTreeType(view, id, authoredType ?? parsedType ?? 'Unknown');
     if (!type) continue;
     const name = effectiveTreeEntityName(store, view, id);
     members.push({ id, name: name === `#${id}` ? undefined : name,

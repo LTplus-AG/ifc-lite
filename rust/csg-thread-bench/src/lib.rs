@@ -18,7 +18,6 @@
 
 use ifc_lite_geometry::csg::ClippingProcessor;
 use ifc_lite_geometry::csg_capture::{deserialize, CapturedCsgJob};
-use ifc_lite_geometry::mesh::Mesh;
 use std::sync::OnceLock;
 use wasm_bindgen::prelude::*;
 
@@ -34,34 +33,56 @@ static CORPUS: OnceLock<Vec<CapturedCsgJob>> = OnceLock::new();
 /// triangle-index count — a deterministic, order-independent work fingerprint.
 fn replay_one(job: &CapturedCsgJob) -> usize {
     let csg = ClippingProcessor::new();
-    match job {
-        CapturedCsgJob::Single { host, cutter } => csg.subtract_mesh(host, cutter),
-        CapturedCsgJob::Many { host, cutters } => {
-            let refs: Vec<&Mesh> = cutters.iter().collect();
-            csg.subtract_mesh_many(host, &refs)
-        }
-    }
-    .into_mesh()
-    .map_or(0, |m| m.indices.len())
+    job.replay(&csg)
+        .into_mesh()
+        .map_or(0, |m| m.indices.len())
 }
 
-/// Load the captured corpus blob. Returns the job count.
+/// Load the captured corpus blob. Returns the job count or throws the decode
+/// error, including the recapture requirement for obsolete corpus formats.
 #[wasm_bindgen]
-pub fn load_corpus(blob: &[u8]) -> usize {
-    match deserialize(blob) {
-        Ok(jobs) => {
-            let n = jobs.len();
-            // OnceLock: first load wins. If the corpus is already initialized
-            // (a second call in the same wasm instance), keep the existing one
-            // and report ITS length — so the returned count never disagrees
-            // with what `replay` actually iterates.
-            match CORPUS.set(jobs) {
-                Ok(()) => n,
-                Err(_) => CORPUS.get().map_or(0, Vec::len),
-            }
+pub fn load_corpus(blob: &[u8]) -> Result<usize, JsValue> {
+    load_corpus_into(&CORPUS, blob).map_err(JsValue::from_str)
+}
+
+fn load_corpus_into(
+    corpus: &OnceLock<Vec<CapturedCsgJob>>,
+    blob: &[u8],
+) -> Result<usize, &'static str> {
+    let jobs = deserialize(blob)?;
+    let n = jobs.len();
+    // First valid load wins. Decode errors must still reach the caller, even
+    // when a previous corpus is available: replaying it would measure stale jobs.
+    Ok(match corpus.set(jobs) {
+        Ok(()) => n,
+        Err(_) => corpus.get().map_or(0, Vec::len),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ifc_lite_geometry::{csg_capture::serialize, Mesh};
+
+    #[test]
+    fn issue6940_rejected_corpus_is_not_a_successful_empty_or_stale_load() {
+        let corpus = OnceLock::new();
+        assert_eq!(load_corpus_into(&corpus, &serialize(&[])), Ok(0));
+        for blob in [b"CSG2\0\0\0\0".as_slice(), b"unversioned", b"CSG3"] {
+            assert!(load_corpus_into(&corpus, blob).is_err());
         }
-        // Controlled failure (returns 0) instead of trapping on a bad blob.
-        Err(_) => 0,
+
+        let populated = OnceLock::new();
+        let job = CapturedCsgJob::Single {
+            host: Mesh::new(),
+            cutter: Mesh::new(),
+            opening: true,
+        };
+        assert_eq!(load_corpus_into(&populated, &serialize(&[job])), Ok(1));
+        let error = load_corpus_into(&populated, b"CSG2\0\0\0\0").unwrap_err();
+        assert!(error.contains("recapture corpus"));
+        assert_eq!(populated.get().unwrap().len(), 1);
+        assert_eq!(load_corpus_into(&populated, &serialize(&[])), Ok(1));
     }
 }
 

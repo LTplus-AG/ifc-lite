@@ -187,7 +187,17 @@ async function recoverRendererDeviceOnce(
       return initializedPreparation;
     }
     if (host.recovery.quantizedBatchesRequested && host.pipeline) {
-      const quantized = await host.pipeline.ensureQuantizedPipelines();
+      const pipeline = host.pipeline;
+      const quantized = await pipeline.ensureQuantizedPipelines();
+      // #7655: init/destroy can supersede this recovery while validation yields.
+      // Recheck before admitting a layout OR allocating restored scene buffers.
+      if (generation !== host.initGeneration || host.destroyed || host.pipeline !== pipeline) {
+        host.teardown(true);
+        return { ok: false, reason: 'renderer-destroyed' };
+      }
+      if (host.deviceLossSequence !== lossSequence) {
+        throw new Error('Replacement GPU device was lost during quantized pipeline validation');
+      }
       if (!sourceValid()) return sourceRefused();
       host.scene.setQuantizedBatches(quantized);
     }

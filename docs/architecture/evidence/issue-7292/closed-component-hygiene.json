@@ -1,0 +1,172 @@
+{
+  "issue": 7292,
+  "reviewComment": "https://github.com/LTplus-AG/ifc-lite/pull/7802#discussion_r4304375117",
+  "testedHead": "61d59430540c5a66ba005ad4efcb04f12e10abdd",
+  "redHead": "d2138bd57b72bd4025dcea278ba3e23abfb2f7c6",
+  "change": "Skip threshold-based cleanup for an already exactly directed-edge-closed represented boundary. Closure of the cleaned remainder cannot prove that a disconnected component survived. Open/invalid sources retain ordinary cleanup.",
+  "invariant": "Both separated closed cubes, including all faces of the SNAP_GRID/4 cube, retain their original positions, indices and normals. Exact closure is not a solid simplicity, outward-orientation or positive-volume certificate.",
+  "sourceReview": {
+    "schemaVersion": 1,
+    "kind": "independent-source-review",
+    "reviewedAtUtc": "2026-10-17T21:17:06.876374+00:00",
+    "base": "d7231691605348dd979353e50431c3bec1d79c4d",
+    "redTestCommit": "d2138bd57b72bd4025dcea278ba3e23abfb2f7c6",
+    "head": "61d59430540c5a66ba005ad4efcb04f12e10abdd",
+    "patchSha256": "9f1e8c0774fb73d592a3533cbb80d4ea5434832b586556ef9227ee33b13d508d",
+    "changedPaths": [
+      "rust/geometry/src/router/voids/hygiene.rs"
+    ],
+    "verdict": "PASS_SOURCE_ONLY",
+    "findings": [],
+    "assessment": [
+      "The original post-cleanup closure test cannot detect deletion of an entire disconnected closed component. Returning before cleanup for an already exact-closed mesh preserves all represented boundaries.",
+      "strict_closed_mesh checks finite exact-nondegenerate triangles, valid indices and one forward/reverse use per geometric edge; this is not a simplicity, outward orientation or positive-volume proof.",
+      "The no-sliver fast path and ordinary cleanup for inputs failing exact closure remain unchanged. The exact-closed sliver path avoids cloning, cleanup and a second topology hash.",
+      "The regression uses two disjoint axis-aligned cubes, with small edge SNAP_GRID/4=2^-18 at x=2. All coordinates remain exactly representable in f32; Mesh::merge concatenates these same-origin coordinates without rebasing.",
+      "The test demonstrates ordinary cleanup loses 12 faces while retaining exact closure, then asserts the helper preserves original indices, positions and normals. This directly exercises the reported component loss."
+    ],
+    "scopeRisks": [
+      "Exactly incidence-closed thin slivers are now retained even where cleanup could simplify them without opening the mesh. This is an intentional conservative boundary-preservation policy."
+    ],
+    "validationPerformed": "Read-only committed patch and relevant exact_topology, Mesh cleanup/probe/merge, box_mesh, tris_to_mesh and three void-output callers inspected. No compilation or runtime tests performed by this reviewer.",
+    "qualificationBoundary": "This is a production change. Prior D1 runtime/artifact/browser/performance evidence is no longer source-identical and cannot qualify this changed implementation. New runtime and artifact qualification remains outstanding; root is separately performing red/green targeted tests and exact workspace Clippy."
+  },
+  "sourceReviewSHA256": "c15ca215d3d9667ce83cf08c77807dc142b72c4d407c4fbc7e23b00d46f4ecd9",
+  "validation": {
+    "red": {
+      "status": "EXPECTED_RED_REPRODUCED",
+      "mode": "red",
+      "head": "d2138bd57b72bd4025dcea278ba3e23abfb2f7c6",
+      "sourceRoot": "/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1",
+      "target": "/tmp/7292-ac02-local-census-target-v1",
+      "sourceManifestSHA256": "091238e7eb9b25d248dd1d3a8ad302a4ce737907292fb8a7cccab4accc233cb1",
+      "sourceGitBlobVerified": true,
+      "owners": {
+        "/tmp/7292-ac02-local-census-target-v1/.ifclite-owned-repo.json": "a858334803bf65411caf7faa5e9c8826dc05d2c32bf82a7c919bd79ffd3f957f",
+        "/tmp/7292-ac02-local-census-target-v1/.7292-ba457-measured-metadata-validation.json": "09f217b62c55e2794be8a5101c90af25107260ccd4b3955cba3921fb60415765"
+      },
+      "helperSHA256": "f047750d9515ae313c0b3de53192ca3b9a03f22fcdf5d6b1c4f09ea975481f2f",
+      "steps": [
+        {
+          "stage": "hygiene-tests",
+          "argv": [
+            "nice",
+            "-n",
+            "19",
+            "cargo",
+            "test",
+            "--locked",
+            "-p",
+            "ifc-lite-geometry",
+            "--lib",
+            "router::voids::hygiene::tests",
+            "--",
+            "--test-threads=1"
+          ],
+          "holdAbsentAtSpawn": true,
+          "jobs": 1,
+          "startedNs": 1792271788543829569,
+          "ownedPID": 35390,
+          "exitCode": 101,
+          "reaped": true,
+          "ownedPIDAbsent": true,
+          "logPath": "/tmp/7292-closed-component-hygiene-validation-v1/red-hygiene-tests.log",
+          "logSHA256": "6e514ae1a4b21aedc9c1c3f5b16766642822024c54430dc3f9ab44d2866f7c98",
+          "finishedNs": 1792271871587063939
+        }
+      ],
+      "allChildrenReaped": true,
+      "sourceUnchanged": true,
+      "ownersUnchanged": true,
+      "finishedNs": 1792271876849411527
+    },
+    "green": {
+      "status": "THREE_HYGIENE_TESTS_AND_EXACT_WORKSPACE_CLIPPY_PASS",
+      "mode": "green",
+      "head": "61d59430540c5a66ba005ad4efcb04f12e10abdd",
+      "sourceRoot": "/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1",
+      "target": "/tmp/7292-ac02-local-census-target-v1",
+      "sourceManifestSHA256": "f56fc2eae10838d79def8c42accb0f13190d8d46557dda67827abbe7b7d579e2",
+      "sourceGitBlobVerified": true,
+      "owners": {
+        "/tmp/7292-ac02-local-census-target-v1/.ifclite-owned-repo.json": "a858334803bf65411caf7faa5e9c8826dc05d2c32bf82a7c919bd79ffd3f957f",
+        "/tmp/7292-ac02-local-census-target-v1/.7292-ba457-measured-metadata-validation.json": "09f217b62c55e2794be8a5101c90af25107260ccd4b3955cba3921fb60415765"
+      },
+      "helperSHA256": "f047750d9515ae313c0b3de53192ca3b9a03f22fcdf5d6b1c4f09ea975481f2f",
+      "steps": [
+        {
+          "stage": "hygiene-tests",
+          "argv": [
+            "nice",
+            "-n",
+            "19",
+            "cargo",
+            "test",
+            "--locked",
+            "-p",
+            "ifc-lite-geometry",
+            "--lib",
+            "router::voids::hygiene::tests",
+            "--",
+            "--test-threads=1"
+          ],
+          "holdAbsentAtSpawn": true,
+          "jobs": 1,
+          "startedNs": 1792271887879590568,
+          "ownedPID": 48827,
+          "exitCode": 0,
+          "reaped": true,
+          "ownedPIDAbsent": true,
+          "logPath": "/tmp/7292-closed-component-hygiene-validation-v1/green-hygiene-tests.log",
+          "logSHA256": "336c720c12c2432bcd9a10eb9d2f9eb6416a4d02c245e9db229097833317b20a",
+          "finishedNs": 1792272006897360555
+        },
+        {
+          "stage": "workspace-clippy",
+          "argv": [
+            "nice",
+            "-n",
+            "19",
+            "cargo",
+            "clippy",
+            "--workspace",
+            "--all-targets",
+            "--",
+            "-D",
+            "warnings"
+          ],
+          "holdAbsentAtSpawn": true,
+          "jobs": 1,
+          "startedNs": 1792272006897659327,
+          "ownedPID": 56932,
+          "exitCode": 0,
+          "reaped": true,
+          "ownedPIDAbsent": true,
+          "logPath": "/tmp/7292-closed-component-hygiene-validation-v1/green-workspace-clippy.log",
+          "logSHA256": "3dddd15f12ac4ccd4a72ebe729e1e5838d2b016de81026c3d9d6efbb32ec884e",
+          "finishedNs": 1792272056327174993
+        }
+      ],
+      "allChildrenReaped": true,
+      "sourceUnchanged": true,
+      "ownersUnchanged": true,
+      "finishedNs": 1792272062031757134
+    }
+  },
+  "logs": {
+    "red-hygiene-tests": {
+      "sha256": "6e514ae1a4b21aedc9c1c3f5b16766642822024c54430dc3f9ab44d2866f7c98",
+      "text": "   Compiling ifc-lite-geometry v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/geometry)\n   Compiling ifc-lite-testkit v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/testkit)\n    Finished `test` profile [unoptimized] target(s) in 1m 22s\n     Running unittests src/lib.rs (/tmp/7292-ac02-local-census-target-v1/debug/deps/ifc_lite_geometry-814be669f3748a13)\n\nrunning 3 tests\ntest router::voids::hygiene::tests::issue_7292_void_hygiene_cannot_open_a_positive_closed_subgrid_layer ... ok\ntest router::voids::hygiene::tests::issue_7292_void_hygiene_preserves_a_separate_closed_subgrid_component ... FAILED\ntest router::voids::hygiene::tests::issue_7292_void_hygiene_still_drops_an_unsupported_open_flap ... ok\n\nfailures:\n\n---- router::voids::hygiene::tests::issue_7292_void_hygiene_preserves_a_separate_closed_subgrid_component stdout ----\n\nthread 'router::voids::hygiene::tests::issue_7292_void_hygiene_preserves_a_separate_closed_subgrid_component' (38158) panicked at rust/geometry/src/router/voids/hygiene.rs:42:9:\nassertion `left == right` failed: both closed boundaries must survive\n  left: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35]\n right: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    router::voids::hygiene::tests::issue_7292_void_hygiene_preserves_a_separate_closed_subgrid_component\n\ntest result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 1518 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `-p ifc-lite-geometry --lib`\n"
+    },
+    "green-hygiene-tests": {
+      "sha256": "336c720c12c2432bcd9a10eb9d2f9eb6416a4d02c245e9db229097833317b20a",
+      "text": "   Compiling ifc-lite-geometry v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/geometry)\n   Compiling ifc-lite-testkit v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/testkit)\n    Finished `test` profile [unoptimized] target(s) in 1m 58s\n     Running unittests src/lib.rs (/tmp/7292-ac02-local-census-target-v1/debug/deps/ifc_lite_geometry-814be669f3748a13)\n\nrunning 3 tests\ntest router::voids::hygiene::tests::issue_7292_void_hygiene_cannot_open_a_positive_closed_subgrid_layer ... ok\ntest router::voids::hygiene::tests::issue_7292_void_hygiene_preserves_a_separate_closed_subgrid_component ... ok\ntest router::voids::hygiene::tests::issue_7292_void_hygiene_still_drops_an_unsupported_open_flap ... ok\n\ntest result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 1518 filtered out; finished in 0.00s\n\n"
+    },
+    "green-workspace-clippy": {
+      "sha256": "3dddd15f12ac4ccd4a72ebe729e1e5838d2b016de81026c3d9d6efbb32ec884e",
+      "text": "    Checking ifc-lite-geometry v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/geometry)\n    Checking ifc-lite-testkit v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/testkit)\n    Checking ifc-lite-processing v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/processing)\n    Checking ifc-lite-landxml v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/landxml)\n    Checking ifc-lite-export v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/export)\n    Checking ifc-lite-wasm v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/wasm-bindings)\n    Checking ifc-lite-server v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/apps/server)\n    Checking ifc-lite-ffi v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/ffi)\n    Checking ifc-lite-core v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/core)\n    Finished `dev` profile [unoptimized] target(s) in 49.15s\n"
+    }
+  },
+  "qualificationLimit": "This production change is not source-identical to the previously qualified D1 runtime. Prior archive/build/browser/finite-geometry receipts remain historical, not qualification of this change. Fresh final-source artifact, runtime/geometry and performance qualification remains outstanding.",
+  "mergeDisposition": "NOT MERGE READY. Restored O3 performance remains NO_VERDICT and the measured budget approval remains conditional. No new timing window, runtime artifact or performance claim is made."
+}

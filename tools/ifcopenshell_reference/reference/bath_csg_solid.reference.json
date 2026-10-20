@@ -22,7 +22,7 @@
    "volume": 0.548286
   }
  ],
- "engine": "ifcopenshell 0.8.2",
+ "engine": "ifcopenshell 0.9.0.post1",
  "fixture": "bath_csg_solid.ifc",
  "settings": {
   "use_world_coords": true,

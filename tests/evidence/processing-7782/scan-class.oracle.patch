@@ -1,0 +1,46 @@
+diff --git b/rust/processing/src/prepass.rs a/rust/processing/src/prepass.rs
+index 0052b979bd..3cacbf89b9 100644
+--- b/rust/processing/src/prepass.rs
++++ a/rust/processing/src/prepass.rs
+@@ -75,7 +75,7 @@ impl PrepassSpans {
+             ScanClass::RelAssociatesMaterial => &mut self.rel_associates_material,
+             ScanClass::RelVoidsElement => &mut self.void_rels,
+             ScanClass::RelFillsElement => &mut self.fills_rels,
+-            ScanClass::RelAggregates => &mut self.void_rels,
++            ScanClass::RelAggregates => &mut self.aggregate_rels,
+             ScanClass::RelDefinesByType => &mut self.defines_by_type,
+             _ => return false,
+         };
+diff --git b/rust/processing/src/scan.rs a/rust/processing/src/scan.rs
+index 526f2a75b4..d48157828a 100644
+--- b/rust/processing/src/scan.rs
++++ a/rust/processing/src/scan.rs
+@@ -82,7 +82,7 @@ impl ScanClass {
+             10 if is(raw, "IFCPROJECT") => Self::Project,
+             11 if is(raw, "IFCBUILDING") => Self::Building,
+             13 if is(raw, "IFCSTYLEDITEM") => Self::StyledItem,
+-            13 if is(raw, "IFCMAPPEDITEM") => Self::Other,
++            13 if is(raw, "IFCMAPPEDITEM") => Self::MappedItem,
+             14 if is(raw, "IFCPROPERTYSET") => Self::PropertySet,
+             16 if is(raw, "IFCRELAGGREGATES") => Self::RelAggregates,
+             18 if is(raw, "IFCRELVOIDSELEMENT") => Self::RelVoidsElement,
+@@ -99,7 +99,9 @@ impl ScanClass {
+             }
+             _ => Self::Other,
+         };
+-
++        if class == Self::Other && keyword_starts_with(type_name, "IFCPROPERTY") {
++            return Self::Property;
++        }
+         class
+     }
+ 
+@@ -115,7 +117,7 @@ impl ScanClass {
+             Self::MaterialDefinitionRepresentation => w::PREPASS_CLASS_MATERIAL_DEF_REPR,
+             Self::RelAssociatesMaterial => w::PREPASS_CLASS_REL_ASSOCIATES_MATERIAL,
+             Self::RelVoidsElement => w::PREPASS_CLASS_REL_VOIDS,
+-            Self::RelFillsElement => w::PREPASS_CLASS_REL_VOIDS,
++            Self::RelFillsElement => w::PREPASS_CLASS_REL_FILLS,
+             Self::RelAggregates => w::PREPASS_CLASS_REL_AGGREGATES,
+             Self::MappedItem => w::PREPASS_CLASS_MAPPED_ITEM,
+             Self::RelDefinesByType => w::PREPASS_CLASS_REL_DEFINES_BY_TYPE,

@@ -12,6 +12,18 @@ use rustc_hash::FxHashMap;
 /// the T-junction the cross-bucket conform targets (a 0.1 mm-scale chord deviation
 /// merges away), so the conform's accept/reject decision uses 0.1 mm — the same grid
 /// the #098 / #217 measurements are taken on.
+///
+/// A triangle edge whose two ends merge on this grid (`x == y`) is counted OPEN,
+/// permanently: it can never cancel against a twin. That is deliberate and
+/// load-bearing, not an oversight. The count feeds the conform's closure bar
+/// (`complete_conformed_candidate`), the `signed_boundary_worse` comparison and
+/// the raw-vs-consolidated preference, and a sub-grid collapse is the cheapest
+/// sign that a candidate was only made to LOOK closed by the snap. Skipping
+/// collapsed edges was measured (#7949 follow-up): the per-PR census regressed on
+/// six hosts (S_Office #426329 0 -> 12 open edges, rvt01 #17615 244 -> 111
+/// triangles with 3 open edges, ...) because candidates the conform previously
+/// rejected were accepted. Change the treatment only together with that census.
+/// [`open_edge_endpoints_at`], which only has to LOCATE open edges, skips them.
 pub(in crate::csg) fn count_open_boundary_edges_at(mesh: &Mesh, scale: f64) -> usize {
     if mesh.positions.len() < 9 || mesh.indices.len() < 3 {
         return 0;

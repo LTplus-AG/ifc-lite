@@ -271,6 +271,12 @@ jobs:
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
               - 'scripts/build-wasm.sh'
+              - '.cargo/config.toml'
+              - 'scripts/build-imported-geometry.mjs'
+              - 'scripts/lib/imported-artifacts.mjs'
+              # The committed kernel artifacts the `--check` step diffs against:
+              # a hand-edit or stale regeneration of them must trigger the check.
+              - 'packages/ifcx/src/generated/**'
               - 'tests/models/manifest.json'
               - '.github/workflows/test.yml'
             # AGENTS.md is the instruction file every agent reads, and
@@ -599,9 +605,10 @@ jobs:
       # Rust + wasm-pack for the wasm32 build (pure-Rust CSG kernel — no
       # C++ toolchain needed since M9). Single-sourced in
       # .github/actions/setup-wasm-build so the four wasm-building
-      # workflows stay in lock-step. Skipped on the prebuilt fast path.
+      # workflows stay in lock-step. Skipped on the prebuilt fast path unless the
+      # imported-geometry freshness check below needs cargo.
       - name: Setup WASM build toolchain
-        if: needs.changes.outputs.wasm_prebuilt != 'true'
+        if: needs.changes.outputs.wasm_prebuilt != 'true' || needs.changes.outputs.rust == 'true'
         uses: ./.github/actions/setup-wasm-build
         with:
           cache-prefix: ci-build
@@ -677,6 +684,15 @@ jobs:
             exit 1
           fi
           echo "✅ committed wasm types match the Rust source"
+
+      # The generated IFCX imported-geometry kernel must match the Rust crate it
+      # is built from. Regenerates into a temp dir and diffs; not a build gate for
+      # packages (their --verify is Rust-free). Needs cargo, so 'Setup WASM build toolchain'
+      # is also enabled whenever the rust filter is true, even on the prebuilt fast path
+      # (the script provisions its own pinned wasm2js).
+      - name: Verify imported geometry artifacts are current
+        if: needs.changes.outputs.rust == 'true'
+        run: node scripts/build-imported-geometry.mjs --check
 
       # Build all workspace packages so their dist/ artifacts exist for
       # downstream consumers — turbo handles the dep graph.
@@ -989,6 +1005,16 @@ jobs:
           # geometry_pool.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/geometry_pool.rs | grep -Fxq 'rust/processing/src/geometry_pool.rs'; then
             oracle_args+=(--mutation tests/evidence/geometry-pool-7673/stack-size.oracle.patch)
+          # #7955 I2: the IFCX consumer adds imported-graph.ts, imported-kernel.ts
+          # and the generated imported-geometry artifact, which its tests name,
+          # so a whole-change revert cannot load them (REVERT-BROKE-BUILD).
+          # Keep the modules and break ONLY the behaviour: the graph driver
+          # stops forwarding authored point colours and mesh normals to the
+          # Rust kernel. Listed before I1 because this branch also adds the I1
+          # crate. Once packages/ifcx/src/imported-graph.ts is on main, ordinary
+          # whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- packages/ifcx/src/imported-graph.ts | grep -Fxq 'packages/ifcx/src/imported-graph.ts'; then
+            oracle_args+=(--mutation tests/evidence/ifcx-imported-kernel-i2/behaviour.oracle.patch)
           # #7955 I1: the imported-geometry crate adds math.rs, graph.rs and
           # scene.rs, which its tests name, so a whole-change revert cannot
           # compile them (INCONCLUSIVE). Keep the types and break ONLY the

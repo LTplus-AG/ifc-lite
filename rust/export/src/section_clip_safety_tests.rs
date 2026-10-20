@@ -8,14 +8,22 @@ impl ifc_lite_processing::ProcessingSink for AuditSink {
 
 #[test]
 fn issue_7711_partial_product_is_refused_inside_and_crossing() {
+    // Ordinary unsupported items enter the router's Err/drop-and-continue arm.
+    // Unlike a top-level broken mapped item, this does not abort the entire body.
+    // Every child reference is readable, so source integrity cannot explain refusal.
     let source = slab("$", 0.).replace(
-        "#44=IFCSHAPEREPRESENTATION", "#60=IFCMAPPEDITEM(#999,#61);\n#61=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#12,1.,$);\n#44=IFCSHAPEREPRESENTATION",
+        "#44=IFCSHAPEREPRESENTATION", "#60=IFCGEOMETRICSET((#12));\n#44=IFCSHAPEREPRESENTATION",
     ).replace("'SweptSolid',(#42)", "'SweptSolid',(#42,#60)");
+    let mut decoder = EntityDecoder::new(&source);
+    let unsupported = decoder.decode_by_id(60).unwrap();
+    assert_eq!(decoder.resolve_ref_list(unsupported.get(0).unwrap()).unwrap()[0].id, 12);
     let mut sink = AuditSink(Default::default());
     let partial = process(source.as_bytes(), &ProcessingRequest::full_pass(), &mut sink);
-    assert!(partial.meshes.iter().any(|p| p.express_id == 50), "the valid slab still meshes beside the bad map");
-    // The source-integrity gate also covers a dangling item a selected-body
-    // strategy never attempted; a clean diagnostic receipt alone is insufficient.
+    let surviving: Vec<_> = partial.meshes.iter().filter(|p| p.express_id == 50).collect();
+    assert!(!surviving.is_empty() && surviving.iter().all(|p| !p.indices.is_empty()), "the supported slab must survive the ordinary item drop");
+    // This assertion runs BEFORE the section planner/source-integrity gate.
+    let receipt = sink.0.require_complete(50).unwrap_err();
+    assert!(receipt.contains("dropped representation items") && receipt.contains("IfcGeometricSet"), "{receipt}");
     let mut clean_sink = AuditSink(Default::default());
     process(slab("$", 0.).as_bytes(), &ProcessingRequest::full_pass(), &mut clean_sink);
     clean_sink.0.require_complete(50).unwrap();
@@ -25,6 +33,19 @@ fn issue_7711_partial_product_is_refused_inside_and_crossing() {
             let error = plan_section_export(source.as_bytes(), &[SectionExportPlane { normal: [1.,0.,0.], offset }], trim).unwrap_err();
             assert!(error.contains("incomplete product #50"), "{error}");
         }
+    }
+}
+
+#[test]
+fn issue_7711_dangling_mapped_source_is_refused_without_claiming_a_partial_mesh() {
+    let source = slab("$", 0.).replace(
+        "#44=IFCSHAPEREPRESENTATION", "#60=IFCMAPPEDITEM(#999,#61);\n#61=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#12,1.,$);\n#44=IFCSHAPEREPRESENTATION",
+    ).replace("'SweptSolid',(#42)", "'SweptSolid',(#42,#60)");
+    // This malformed source can abort meshing the body altogether; it is NOT
+    // the witness for admitting a partially meshed product with readable refs.
+    for offset in [10., 0.] {
+        let error = plan_section_export(source.as_bytes(), &[SectionExportPlane {normal:[1.,0.,0.],offset}], true).unwrap_err();
+        assert!(error.contains("unmeshed") || error.contains("incomplete product #50"), "{error}");
     }
 }
 
@@ -93,4 +114,32 @@ fn issue_7711_textured_crossing_refuses_but_inside_keeps_the_authored_mapping() 
     assert!(error.contains("cannot trim textured product #50"), "{error}");
     let whole = plan_section_export(source.as_bytes(), &[SectionExportPlane {normal:[1.,0.,0.],offset:0.5}], false).unwrap();
     assert!(whole.replacements.is_empty() && whole.outside.is_empty());
+}
+
+#[test]
+fn issue_7711_source_texture_discovery_is_independent_of_mesh_uvs_and_other_attachments() {
+    let inverse = include_str!("../tests/fixtures/section_inverse_texture.ifc");
+    let plain = inverse.replace("#82=IFCTEXTUREMAP((#80),(#81,#86,#87,#88),#42);", "");
+    let styled = plain.replace("#80=IFCIMAGETEXTURE", "#83=IFCSTYLEDITEM(#42,(#84),$);\n#84=IFCSURFACESTYLE('Texture',.BOTH.,(#85));\n#85=IFCSURFACESTYLEWITHTEXTURES((#80));\n#80=IFCIMAGETEXTURE");
+    let mapped = inverse.replace("#44=IFCSHAPEREPRESENTATION(#10,'Body','SurfaceModel',(#46));", r"
+#104=IFCSHAPEREPRESENTATION(#10,'Body','SurfaceModel',(#46));
+#105=IFCREPRESENTATIONMAP(#11,#104);
+#106=IFCCARTESIANPOINT((0.25,0.,0.));
+#107=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#106,1.,$);
+#108=IFCMAPPEDITEM(#105,#107);
+#44=IFCSHAPEREPRESENTATION(#10,'Body','MappedRepresentation',(#108));");
+    // No inverse map/StyledItem in this positive control; the same open face
+    // can be cropped, so an unrelated mesher refusal cannot satisfy this test.
+    let plane = [SectionExportPlane {normal:[1.,0.,0.],offset:0.5}];
+    assert_eq!(plan_section_export(plain.as_bytes(), &plane, true).unwrap().replacements.len(), 1);
+    for (label, source) in [("inverse-only", inverse), ("styled-only", styled.as_str()), ("mapped inverse-only", mapped.as_str())] {
+        let processed = process_geometry(&source);
+        let parts: Vec<_> = processed.meshes.iter().filter(|p| p.express_id == 50).collect();
+        assert!(!parts.is_empty(), "{label}: the face must genuinely mesh");
+        assert!(parts.iter().all(|p| p.texture.is_none() && p.uvs.is_none()), "{label}: this witness must depend on source attachments, not decoded mesh texture/UV guards");
+        let inside = plan_section_export(source.as_bytes(), &[SectionExportPlane {normal:[1.,0.,0.],offset:2.}], true).unwrap();
+        assert!(inside.replacements.is_empty() && inside.outside.is_empty(), "{label}");
+        let error = plan_section_export(source.as_bytes(), &plane, true).unwrap_err();
+        assert!(error.contains("cannot trim textured product #50"), "{label}: {error}");
+    }
 }

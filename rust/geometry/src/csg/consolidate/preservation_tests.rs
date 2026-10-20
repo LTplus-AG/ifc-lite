@@ -277,3 +277,142 @@ fn issue_7292_public_f32_weld_preserves_actual_nary_caller_contract() {
     assert!(!public_weld_closed(&rim));
     assert!(!crate::exact_topology::strict_closed_mesh(&baseline), "the caller bar is not exact closure");
 }
+
+fn fold_fixture() -> (Mesh, super::super::buckets::Buckets, super::super::supported_cells::Supported) {
+    use super::super::plane_merge::PlaneTri;
+    use nalgebra::{Point3, Vector3};
+    let mut closed = tris_to_mesh(&box_mesh([0.; 3], [1.; 3]));
+    let first: Vec<u32> = closed.indices[..3].to_vec();
+    // Drop one triangle: its three edges open, and only those.
+    let open = {
+        let mut m = closed.clone();
+        m.indices.drain(..3);
+        m
+    };
+    let corner = |i: u32| {
+        let b = i as usize * 3;
+        Point3::new(closed.positions[b] as f64, closed.positions[b + 1] as f64, closed.positions[b + 2] as f64)
+    };
+    let key = (0, 0, 0, 0);
+    let mut buckets = super::super::buckets::Buckets::new();
+    buckets.insert(
+        key,
+        vec![PlaneTri { v: [corner(first[0]), corner(first[1]), corner(first[2])], normal: Vector3::z(), tag: None }],
+    );
+    let mut supported = super::super::supported_cells::Supported::default();
+    supported.folded_buckets.push(key);
+    closed.indices.clear();
+    (open, buckets, supported)
+}
+
+#[test]
+fn issue_7949_open_edges_on_the_fold_are_not_a_tear_beyond_it() {
+    let (open, buckets, supported) = fold_fixture();
+    assert!(!tears_beyond_folds(&open, &buckets, &supported), "the hole sits on the fold's own vertices");
+}
+
+#[test]
+fn issue_7949_open_edges_off_the_fold_are_a_tear_beyond_it() {
+    let (open, buckets, _) = fold_fixture();
+    let no_fold = super::super::supported_cells::Supported::default();
+    assert!(tears_beyond_folds(&open, &buckets, &no_fold), "with no fold to explain it the hole is a tear");
+    let closed = tris_to_mesh(&box_mesh([0.; 3], [1.; 3]));
+    assert!(!tears_beyond_folds(&closed, &buckets, &no_fold), "a closed host tears nothing");
+}
+
+#[test]
+fn issue_7949_an_open_sub_edge_split_along_a_fold_edge_is_not_a_tear_beyond_it() {
+    use super::super::{buckets::Buckets, plane_merge::PlaneTri, supported_cells::Supported};
+    use nalgebra::{Point3, Vector3};
+    // One retained fold triangle. A peer seam splits its bottom edge at (1,0): a
+    // vertex the fold never owned, but which lies on it.
+    let key = (0, 0, 0, 0);
+    let (a, b, c) = (Point3::new(0., 0., 0.), Point3::new(2., 0., 0.), Point3::new(0., 2., 0.));
+    let mut buckets = Buckets::new();
+    buckets.insert(key, vec![PlaneTri { v: [a, b, c], normal: Vector3::z(), tag: None }]);
+    let mut supported = Supported::default();
+    supported.folded_buckets.push(key);
+
+    // The fold re-cut at (1,0): every open edge runs along the fold's boundary
+    // (the shared a-split diagonal is paired, so it is not open).
+    let split = represented(
+        &[[0., 0., 0.], [1., 0., 0.], [2., 0., 0.], [0., 2., 0.]],
+        &[[0, 1, 3], [1, 2, 3]],
+    );
+    assert!(!tears_beyond_folds(&split, &buckets, &supported));
+    // A chord through the fold's interior, both endpoints on its boundary, is
+    // not the fold's boundary.
+    let chord = represented(&[[1., 0., 0.], [0., 2., 0.], [0., 1., 0.]], &[[0, 1, 2]]);
+    assert!(tears_beyond_folds(&chord, &buckets, &supported));
+    // One corner outside the fold altogether.
+    let off_fold = represented(&[[1., 0., 0.], [0., 2., 0.], [3., 3., 0.]], &[[0, 1, 2]]);
+    assert!(tears_beyond_folds(&off_fold, &buckets, &supported));
+}
+
+#[test]
+fn issue_7949_an_open_edge_joining_two_separate_fold_regions_is_a_tear_beyond_them() {
+    use super::super::{buckets::Buckets, plane_merge::PlaneTri, supported_cells::Supported};
+    use nalgebra::{Point3, Vector3};
+    // Two fold triangles five units apart. The edge between a corner of each
+    // has both endpoints on a fold and runs through neither.
+    let tri = |x: f64| PlaneTri {
+        v: [Point3::new(x, 0., 0.), Point3::new(x + 1., 0., 0.), Point3::new(x, 1., 0.)],
+        normal: Vector3::z(),
+        tag: None,
+    };
+    let mut buckets = Buckets::new();
+    buckets.insert((0, 0, 0, 0), vec![tri(0.)]);
+    buckets.insert((1, 0, 0, 0), vec![tri(5.)]);
+    let mut supported = Supported::default();
+    supported.folded_buckets.extend([(0, 0, 0, 0), (1, 0, 0, 0)]);
+
+    let bridge = represented(&[[0., 0., 0.], [5., 0., 0.], [0., 1., 0.]], &[[0, 1, 2]]);
+    assert!(tears_beyond_folds(&bridge, &buckets, &supported));
+}
+
+#[test]
+fn issue_7949_far_negative_coordinates_still_find_the_fold_edge() {
+    use super::super::{buckets::Buckets, plane_merge::PlaneTri, supported_cells::Supported};
+    use nalgebra::{Point3, Vector3};
+    // The f32 rounding allowance scales with the coordinate's MAGNITUDE; a
+    // signed maximum would be negative here and reject a point exactly on the edge.
+    let o = -5000.0;
+    let key = (0, 0, 0, 0);
+    let mut buckets = Buckets::new();
+    buckets.insert(
+        key,
+        vec![PlaneTri {
+            v: [Point3::new(o, o, o), Point3::new(o + 2., o, o), Point3::new(o, o + 2., o)],
+            normal: Vector3::z(),
+            tag: None,
+        }],
+    );
+    let mut supported = Supported::default();
+    supported.folded_buckets.push(key);
+    let split = represented(
+        &[[o as f32, o as f32, o as f32], [(o + 1.) as f32, o as f32, o as f32],
+          [(o + 2.) as f32, o as f32, o as f32], [o as f32, (o + 2.) as f32, o as f32]],
+        &[[0, 1, 3], [1, 2, 3]],
+    );
+    assert!(!tears_beyond_folds(&split, &buckets, &supported));
+}
+
+#[test]
+fn issue_7949_an_open_edge_must_be_covered_end_to_end_not_at_sampled_points() {
+    use nalgebra::Point3;
+    let p = |x: f64| Point3::new(x, 0., 0.);
+    let reach = 2.0e-4;
+    // Fold edges along y=0 over [0,1] and [1.05,2], with a 0.05 gap between.
+    // Five evenly spaced samples of (0..2) all land on a fold edge; only
+    // continuous coverage sees the gap.
+    let gapped = [[p(0.), p(1.)], [p(1.05), p(2.)]];
+    assert!(!edge_covered_by(&p(0.), &p(2.), &gapped, reach));
+    // Closing the gap, in either listing order, covers the edge.
+    let joined = [[p(1.), p(2.)], [p(0.), p(1.)]];
+    assert!(edge_covered_by(&p(0.), &p(2.), &joined, reach));
+    // A sub-edge of one longer fold edge is covered; a sibling off the line is not.
+    assert!(edge_covered_by(&p(0.25), &p(0.75), &[[p(0.), p(1.)]], reach));
+    assert!(!edge_covered_by(&p(0.25), &p(0.75), &[[Point3::new(0., 1., 0.), Point3::new(1., 1., 0.)]], reach));
+    // Reversed fold-edge orientation covers it just the same.
+    assert!(edge_covered_by(&p(0.), &p(1.), &[[p(1.), p(0.)]], reach));
+}

@@ -41,3 +41,27 @@ pub(in crate::csg) fn count_open_boundary_edges_at(mesh: &Mesh, scale: f64) -> u
     }
     bal.values().filter(|&&v| v != 0).count()
 }
+
+/// Open-edge endpoints on the same `scale` grid as [`count_open_boundary_edges_at`],
+/// quantised, for callers that ask WHERE a mesh is open and not only how much.
+pub(in crate::csg) fn open_edge_endpoints_at(mesh: &Mesh, scale: f64) -> Vec<[(i64, i64, i64); 2]> {
+    if mesh.positions.len() < 9 || mesh.indices.len() < 3 {
+        return Vec::new();
+    }
+    let q = |i: usize| {
+        let f = |v: f32| (v as f64 * scale).round() as i64;
+        (f(mesh.positions[i * 3]), f(mesh.positions[i * 3 + 1]), f(mesh.positions[i * 3 + 2]))
+    };
+    let mut bal: FxHashMap<((i64, i64, i64), (i64, i64, i64)), i32> = FxHashMap::default();
+    for tri in mesh.indices.chunks_exact(3) {
+        let (a, b, c) = (q(tri[0] as usize), q(tri[1] as usize), q(tri[2] as usize));
+        for (x, y) in [(a, b), (b, c), (c, a)] {
+            if x == y {
+                continue;
+            }
+            let (key, s) = if x < y { ((x, y), 1) } else { ((y, x), -1) };
+            *bal.entry(key).or_insert(0) += s;
+        }
+    }
+    bal.into_iter().filter(|&(_, v)| v != 0).map(|((a, b), _)| [a, b]).collect()
+}

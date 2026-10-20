@@ -26,7 +26,7 @@ mod raw;
 mod snap;
 
 pub(super) use emit::emit_plans;
-pub(super) use open_edges::count_open_boundary_edges_at;
+pub(super) use open_edges::{count_open_boundary_edges_at, open_edge_endpoints_at};
 use raw::conform_raw_triangles;
 use snap::snap_near_duplicates;
 

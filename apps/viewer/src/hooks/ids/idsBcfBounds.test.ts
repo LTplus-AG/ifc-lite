@@ -121,7 +121,7 @@ describe('#7974 grouped IDS BCF cameras', () => {
   });
 
   it('frames the whole scene entity when flat meshes retain only some of its pieces', () => {
-    const whole = { min: near.min, max: far.max };
+    const whole = { min: { x: 0, y: 0, z: -20 }, max: { x: 52, y: 13, z: 1 } };
     const bounds = collectIdsBcfEntityBounds(report(), false,
       new Map([['A', { geometryResult: { meshes: [mesh(10)] } }]]), null,
       (_model, id) => id, id => id === 10 ? whole : far);

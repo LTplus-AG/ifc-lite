@@ -441,6 +441,12 @@ and an empty `Uint32Array` means "the filter is active and matched nothing",
 which produces an empty `@graph`. Collapsing the two would hand a user who
 asked for a subset the entire model.
 
+Each property node's `@type` preserves its IFC class: `IfcPropertySingleValue`,
+`IfcPropertyEnumeratedValue`, `IfcPropertyListValue`, `IfcPropertyBoundedValue`,
+`IfcPropertyTableValue`, `IfcPropertyReferenceValue`, or `IfcComplexProperty`.
+Single values retain their JSON primitive; the other kinds retain their flat
+text display in `ifc:nominalValue`.
+
 ### JSON-LD Structure
 
 ```json

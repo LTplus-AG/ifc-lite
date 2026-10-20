@@ -23,7 +23,10 @@
 //!
 //! The fix is at the ROOT: cluster the facets of each authored plane (same
 //! quantised normal, offsets within a tight jitter tolerance) and project their
-//! vertices onto ONE fitted common plane BEFORE the kernel cut. After welding,
+//! vertices onto one fitted plane per edge-connected patch BEFORE the cut.
+//! Remote patches admitted by the same approximate plane bucket do not share
+//! a fit (#7633): short f32 edges can give their normals different errors,
+//! whose fitted-plane offset grows with the distance between the patches. After welding,
 //! those facets share an EXACT offset, so `consolidate_coplanar` coalesces them
 //! into one region, the CDT refines the slope-with-opening-hole, and the
 //! far-corner sliver fan is gone — while the opening stays a clean hole.
@@ -69,6 +72,11 @@
 
 use crate::mesh::Mesh;
 use std::collections::BTreeMap;
+
+mod components;
+mod eligibility;
+mod fit;
+use fit::Facet;
 
 /// f32-snap / kernel-reconcile grid (metres). Power of two ⇒ `(c/G).round()*G`
 /// is an EXACT f64 op, bit-deterministic across targets. The kernel's own
@@ -262,12 +270,6 @@ pub fn weld_near_coplanar_facets(mesh: &Mesh) -> Mesh {
 
     // ── Step 2: per-facet canonical triangle, unit normal, area, plane
     // offset — normal and offset computed in the anchor-local frame (Step 1.5).
-    struct Facet {
-        tri: [usize; 3],
-        normal: [f64; 3],
-        offset: f64, // signed-normal plane offset, anchor-local: n·(v0 - anchor)
-        area2: f64,
-    }
     let mut facets: Vec<Facet> = Vec::with_capacity(tri_count);
     for c in mesh.indices.chunks_exact(3) {
         let (i0, i1, i2) = (c[0] as usize, c[1] as usize, c[2] as usize);
@@ -320,12 +322,16 @@ pub fn weld_near_coplanar_facets(mesh: &Mesh) -> Mesh {
     // ── Step 4: within each normal bucket, cluster facets by plane offset
     // (sign-aligned to the bucket's canonical normal) using a single-linkage
     // sweep with the tight `MAX_OFFSET_JITTER` gap. Each cluster = one authored
-    // plane; fit ONE area-weighted plane per cluster.
+    // plane candidate. Fit each full-edge-connected patch independently (#7633),
+    // using the existing canonical vertex IDs and unchanged admission bands.
     //
     // A "plane" is `(unit normal, offset)`. We accumulate per-vertex candidate
     // projected positions and average them (Step 5) so a crease vertex shared by
     // two clusters gets one deterministic final position.
     let mut vertex_moves: Vec<Vec<[f64; 3]>> = vec![Vec::new(); n_canon];
+    // Full-edge components are ambiguous on nonconforming triangle soups.
+    // Evaluate the source certificate only if a cluster actually splits.
+    let mut partition_eligible = None;
 
     for fis in normal_buckets.values() {
         if fis.len() < 2 {
@@ -362,67 +368,15 @@ pub fn weld_near_coplanar_facets(mesh: &Mesh) -> Mesh {
             if slice.len() < 2 {
                 return;
             }
-            // Area-weighted average normal (sign-aligned to ref_n) + offset, in
-            // facet-index order for a deterministic FMA-free sum.
             let mut members: Vec<usize> = slice.iter().map(|&(_, fi)| fi).collect();
             members.sort_unstable();
-            let mut acc_n = [0.0f64, 0.0, 0.0];
-            let mut acc_off = 0.0f64;
-            let mut wsum = 0.0f64;
-            for &fi in &members {
-                let n = facets[fi].normal;
-                let dotv = n[0] * ref_n[0] + n[1] * ref_n[1] + n[2] * ref_n[2];
-                let s = if dotv < 0.0 { -1.0 } else { 1.0 };
-                let w = facets[fi].area2;
-                acc_n[0] += s * n[0] * w;
-                acc_n[1] += s * n[1] * w;
-                acc_n[2] += s * n[2] * w;
-                acc_off += s * facets[fi].offset * w;
-                wsum += w;
-            }
-            if wsum <= 0.0 {
-                return;
-            }
-            let len = (acc_n[0] * acc_n[0] + acc_n[1] * acc_n[1] + acc_n[2] * acc_n[2]).sqrt();
-            if len <= 0.0 {
-                return;
-            }
-            // Plane: unit normal `pn`, offset `pd` so pn·x = pd (anchor-local —
-            // `acc_off` was accumulated from anchor-local per-facet offsets).
-            // `acc_n · x = acc_off` is the accumulated (non-unit) plane
-            // equation: Σ wᵢnᵢ · x = Σ wᵢ(nᵢ·vᵢ), true by construction for any
-            // x each member facet's own plane passes through. Converting it to
-            // unit-normal form means dividing BOTH sides by the SAME scalar —
-            // `|acc_n|` (`len`) — not dividing `acc_n` by `len` while dividing
-            // `acc_off` by `wsum`: those differ whenever member facets' normals
-            // aren't identical (`len ≤ wsum`, Cauchy–Schwarz, equality only at
-            // zero spread), which scales the two sides of the SAME equation by
-            // different amounts and desyncs `pd` from `pn` (review: PR #2611).
-            let pn = [acc_n[0] / len, acc_n[1] / len, acc_n[2] / len];
-            let pd = acc_off / len;
-            // Project each cluster vertex onto the plane, capped by MAX_VERTEX_MOVE.
-            // Same anchor-local frame as the plane: `p` is `v - anchor`, so
-            // `dist` multiplies a mesh-extent magnitude, not the raw world
-            // position — the anchor is added back once the projection is done.
-            let mut seen_v: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
-            for &fi in &members {
-                for &cv in &facets[fi].tri {
-                    if !seen_v.insert(cv) {
-                        continue;
-                    }
-                    let p = anchored(canon_pos[cv]);
-                    let dist = p[0] * pn[0] + p[1] * pn[1] + p[2] * pn[2] - pd;
-                    if dist.abs() > MAX_VERTEX_MOVE {
-                        continue; // crease / far vertex — over-weld guard
-                    }
-                    let proj = [
-                        p[0] - dist * pn[0] + anchor[0],
-                        p[1] - dist * pn[1] + anchor[1],
-                        p[2] - dist * pn[2] + anchor[2],
-                    ];
-                    vertex_moves[cv].push(proj);
-                }
-            }
+            components::for_each(&members, |fi| facets[fi].tri, |groups| {
+                *partition_eligible.get_or_insert_with(|| eligibility::source_is_conforming(mesh, &canon_of, &canon_pos))
+                    && !eligibility::patch_is_planar(&facets, &members, &canon_pos, anchor)
+                    && groups.iter().all(|group| eligibility::patch_is_planar(&facets, group, &canon_pos, anchor))
+            }, |component| {
+                fit::project_component(&facets, component, ref_n, &canon_pos, anchor, &mut vertex_moves);
+            });
         };
 
         for i in 1..keyed.len() {
@@ -918,3 +872,7 @@ fn refine_high_aspect_slivers_impl(
 #[cfg(test)]
 #[path = "facet_weld_scoped_tests.rs"]
 mod facet_weld_scoped_tests;
+
+#[cfg(test)]
+#[path = "facet_weld/remote_tests.rs"]
+mod remote_tests;

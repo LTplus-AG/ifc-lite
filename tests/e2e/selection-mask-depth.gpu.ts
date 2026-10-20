@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { OpaqueVisibilityPass } from '../../packages/renderer/src/opaque-visibility-pass.js';
+import { takeOpaqueVisibilityCommands } from '../../packages/renderer/src/opaque-visibility-commands.js';
 import { SelectionMaskPass } from '../../packages/renderer/src/selection-mask-pass.js';
 import { MESH_UNIFORM_FLOATS } from '../../packages/renderer/src/mesh-rte-uniforms.js';
 import { mainShaderSource } from '../../packages/renderer/src/shaders/main.wgsl.js';
@@ -13,7 +15,8 @@ import type { WebGPUDevice } from '../../packages/renderer/src/device.js';
 import type { InstancedMaskTemplate } from '../../packages/renderer/src/selection-mask-pipelines.js';
 
 const SIZE = 64;
-const ID = 256; // Hash zero isolates visibility from the separate mesh-nudge contract.
+const ZERO_HASH_ID = 256;
+const HIGH_HASH_ID = 175; // (175 * 2654435761) & 255 === 255.
 const flatLayout: GPUVertexBufferLayout = {
   arrayStride: 28, attributes: [
     { shaderLocation: 0, offset: 0, format: 'float32x3' },
@@ -29,7 +32,7 @@ const identity = () => new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 
 
 type Family = 'flat' | 'quantized' | 'instanced';
 export interface MaskDepthRow {
-  samples: number; family: Family; perspective: boolean; slope: number;
+  samples: number; family: Family; perspective: boolean; slope: number; geometric: boolean;
   case: 'same-source' | 'occluded-1mm' | 'transparent-front' | 'transparent-selected' | 'transparent-occluded';
   selected: number; hovered: number; all: number;
 }
@@ -57,8 +60,10 @@ export async function runMaskDepthWitness(sampledDepthView = false): Promise<Mas
   const shader = device.createShaderModule({ code: mainShaderSource });
   const indices = buffer(new Uint32Array([0, 1, 2, 2, 1, 3]), GPUBufferUsage.INDEX);
   try {
-    for (const samples of [1, 4]) for (const family of ['flat', 'quantized', 'instanced'] as const)
+    for (const geometric of [false, true]) for (const samples of [1, 4]) for (const family of ['flat', 'quantized', 'instanced'] as const)
       for (const perspective of [false, true]) for (const slope of [0, 0.125]) {
+        const ID = geometric ? HIGH_HASH_ID : ZERO_HASH_ID;
+        const visibility = new OpaqueVisibilityPass(device, samples);
         const projection = identity();
         if (perspective) {
           // Reverse-Z infinite projection: depth=near/distance, camera at z=0.
@@ -92,12 +97,17 @@ export async function runMaskDepthWitness(sampledDepthView = false): Promise<Mas
         const vertexState: GPUVertexState = { module: shader,
           entryPoint: family === 'instanced' ? 'vs_instanced' : family === 'quantized' ? 'vs_main_quantized' : 'vs_main',
           buffers: family === 'instanced' ? INSTANCED_VERTEX_BUFFERS : [family === 'quantized' ? quantLayout : flatLayout] };
-        const scenePipeline = (writes: boolean) => device.createRenderPipeline({
-          layout: device.createPipelineLayout({ bindGroupLayouts: [meshLayout] }), vertex: vertexState,
+        const sceneSource = mainShaderSource + `
+          @fragment fn fs_depth(input: VertexOutput) -> @location(0) vec4<f32> { return vec4<f32>(1); }`;
+        const sceneShader = device.createShaderModule({ code: sceneSource });
+        const scenePipeline = (writes: boolean) => visibility.create({
+          layout: device.createPipelineLayout({ bindGroupLayouts: [meshLayout, device.createBindGroupLayout({ entries: [] })] }), vertex: { ...vertexState, module: sceneShader },
+          fragment: { module: sceneShader, entryPoint: 'fs_depth', targets: [] },
           primitive: { topology: 'triangle-list', cullMode: 'none' },
           depthStencil: { format: 'depth24plus-stencil8', depthWriteEnabled: writes, depthCompare: 'greater' }, multisample: { count: samples },
-        });
+        }, sceneSource);
         const opaque = scenePipeline(true), transparent = scenePipeline(false);
+        await visibility.prepare();
         const mask = new SelectionMaskPass({ getDevice: () => device } as WebGPUDevice, meshLayout, samples);
         try {
           for (const kind of ['same-source', 'occluded-1mm', 'transparent-front', 'transparent-selected', 'transparent-occluded'] as const) {
@@ -114,10 +124,10 @@ export async function runMaskDepthWitness(sampledDepthView = false): Promise<Mas
             const sourceTemplate = { ...template, instanceBuffer: buffer(sourceRecord, GPUBufferUsage.VERTEX) };
             const depth = device.createTexture({ size: [SIZE, SIZE], format: 'depth24plus-stencil8', sampleCount: samples, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING }); owned.push(depth);
             const encoder = device.createCommandEncoder();
-            const scene = encoder.beginRenderPass({ colorAttachments: [], depthStencilAttachment: {
+            const scene = visibility.begin(encoder, { colorAttachments: [], depthStencilAttachment: {
               view: depth.createView(), depthLoadOp: 'clear', depthStoreOp: 'store', depthClearValue: 0,
               stencilLoadOp: 'clear', stencilStoreOp: 'store', stencilClearValue: 0,
-            } });
+            } }, geometric && !perspective, SIZE, SIZE);
             scene.setPipeline(opaque); scene.setBindGroup(0, bindGroup); scene.setVertexBuffer(0, vertex); scene.setIndexBuffer(indices, 'uint32');
             if (family === 'instanced') { scene.setVertexBuffer(1, template.instanceBuffer); scene.setVertexBuffer(2, template.rteDeltas.buffer); }
             // Alter the model's world z, retaining all source rasterization inputs.
@@ -132,7 +142,23 @@ export async function runMaskDepthWitness(sampledDepthView = false): Promise<Mas
             const movedGroup = device.createBindGroup({ layout: meshLayout, entries: [{ binding: 0,
               resource: { buffer: buffer(moved, GPUBufferUsage.UNIFORM) } }] });
             scene.setBindGroup(0, movedGroup);
+            // The nearer opaque occluder has rank zero; the hidden source has
+            // maximal rank. Without geometric acceptance its 1 mm gap leaks.
+            if (geometric && offset > 0) {
+              if (family === 'instanced') {
+                const occluder = record.slice(); occluder[14] = offset;
+                new Uint32Array(occluder.buffer)[16] = ZERO_HASH_ID;
+                scene.setVertexBuffer(1, buffer(occluder, GPUBufferUsage.VERTEX));
+              } else {
+                const occluder = packed.slice();
+                const lanes = new Uint32Array(occluder.buffer);
+                for (let i = 0; i < 4; i++) lanes[i * 7 + 6] = ZERO_HASH_ID;
+                const q = family === 'quantized' ? quantizeInterleaved(occluder, 7) : null;
+                scene.setVertexBuffer(0, buffer(q ? q.vertexData : occluder, GPUBufferUsage.VERTEX));
+              }
+            }
             scene.drawIndexed(6);
+            scene.setVertexBuffer(0, vertex);
             if (kind === 'transparent-front') {
               scene.setPipeline(transparent);
               if (family === 'instanced') {
@@ -164,15 +190,16 @@ export async function runMaskDepthWitness(sampledDepthView = false): Promise<Mas
             // Instanced uniforms are shared but GPU writes complete before submit;
             // distinct source/mask vertex state is prepared below using its own record.
             const views = mask.encode({ encoder, width: SIZE, height: SIZE, depthView: depth.createView({ aspect: sampledDepthView ? 'depth-only' : 'all' }),
+              geometricVisibility: visibility.getBinding(),
               selected: family === 'instanced' ? [] : [{ ...sourceIndividual, bindGroup: sourceBindGroup }],
               hovered: family === 'instanced' ? [] : [{ ...sourceIndividual, bindGroup: sourceBindGroup }],
               ...(family === 'instanced' ? { instanced: { uniforms: sourceUniforms, rteCamera: [0, 0, 0] as const, selected: [sourceTemplate], hovered: [sourceTemplate], hoveredId: ID } } : {}),
             });
             const visible = await readMask(device, encoder, views.visibleView);
             const all = await readMask(device, device.createCommandEncoder(), views.allView);
-            rows.push({ samples, family, perspective, slope, case: kind, selected: visible[0], hovered: visible[1], all: all[0] });
+            rows.push({ samples, family, perspective, slope, geometric, case: kind, selected: visible[0], hovered: visible[1], all: all[0] });
           }
-        } finally { mask.destroy(); }
+        } finally { mask.destroy(); visibility.destroy(); }
       }
     await device.queue.onSubmittedWorkDone();
     return { adapter: { vendor: adapter.info.vendor, architecture: adapter.info.architecture, device: adapter.info.device, description: adapter.info.description }, rows, errors };
@@ -193,7 +220,7 @@ async function readMask(device: GPUDevice, encoder: GPUCommandEncoder, source: G
   try {
     const pass = encoder.beginRenderPass({ colorAttachments: [{ view: target.createView(), loadOp: 'clear', storeOp: 'store' }] }); pass.setPipeline(pipeline);
     pass.setBindGroup(0, device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: source }] })); pass.draw(3); pass.end();
-    encoder.copyTextureToBuffer({ texture: target }, { buffer: read, bytesPerRow: 256 }, [SIZE, SIZE]); device.queue.submit([encoder.finish()]); await read.mapAsync(GPUMapMode.READ);
+    encoder.copyTextureToBuffer({ texture: target }, { buffer: read, bytesPerRow: 256 }, [SIZE, SIZE]); device.queue.submit([...takeOpaqueVisibilityCommands(encoder), encoder.finish()]); await read.mapAsync(GPUMapMode.READ);
     const bytes = new Uint8Array(read.getMappedRange()); const counts: [number, number] = [0, 0];
     for (let y = 20; y < 44; y++) for (let x = 20; x < 44; x++) { if (bytes[y * 256 + x * 4]) counts[0]++; if (bytes[y * 256 + x * 4 + 1]) counts[1]++; }
     read.unmap(); return counts;

@@ -9,6 +9,9 @@ mod disk;
 mod revolved;
 mod surface_curve;
 
+pub(crate) use disk::SweptDiskPlan;
+pub(crate) use revolved::RevolvedPlan;
+pub(crate) use surface_curve::SurfaceCurveSweepPlan;
 pub use disk::SweptDiskSolidProcessor;
 pub use revolved::RevolvedAreaSolidProcessor;
 pub use surface_curve::SurfaceCurveSweptAreaSolidProcessor;

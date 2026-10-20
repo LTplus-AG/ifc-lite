@@ -1,0 +1,39 @@
+diff --git b/rust/geometry/src/processors/extrusion_plan.rs a/rust/geometry/src/processors/extrusion_plan.rs
+index 2aca89e595..5fe8eaa97b 100644
+--- b/rust/geometry/src/processors/extrusion_plan.rs
++++ a/rust/geometry/src/processors/extrusion_plan.rs
+@@ -95,7 +95,7 @@ impl ExtrusionPlan {
+             } => {
+                 let transform = super::extrusion_local_transform(direction, *depth);
+                 let mut mesh = extrude_regions(regions, *depth, transform)?;
+-                if let Some(position) = position.as_ref().filter(|_| false) {
++                if let Some(position) = position {
+                     apply_transform(&mut mesh, position);
+                 }
+                 Ok(mesh)
+diff --git b/rust/geometry/src/processors/extrusion_tapered_plan.rs a/rust/geometry/src/processors/extrusion_tapered_plan.rs
+index 577b32bb7f..ac980acd1a 100644
+--- b/rust/geometry/src/processors/extrusion_tapered_plan.rs
++++ a/rust/geometry/src/processors/extrusion_tapered_plan.rs
+@@ -125,7 +125,7 @@ impl TaperedExtrusionPlan {
+             None => extrude_regions(start_regions, *depth, transform)?,
+         };
+ 
+-        if let Some(pos) = position.as_ref().filter(|_| false) {
++        if let Some(pos) = position {
+             apply_transform(&mut mesh, pos);
+         }
+ 
+diff --git b/rust/geometry/src/processors/primitive_plan.rs a/rust/geometry/src/processors/primitive_plan.rs
+index 33eead2645..e095ad14b6 100644
+--- b/rust/geometry/src/processors/primitive_plan.rs
++++ a/rust/geometry/src/processors/primitive_plan.rs
+@@ -92,7 +92,7 @@ impl BlockPlan {
+     pub(crate) fn evaluate(&self) -> Mesh {
+         let [x, y, z] = self.dimensions;
+         let mut mesh = super::build_axis_aligned_box(x, y, z);
+-        if let Some(position) = self.position.as_ref().filter(|_| false) {
++        if let Some(position) = &self.position {
+             apply_transform(&mut mesh, position);
+         }
+         mesh

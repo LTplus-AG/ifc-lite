@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { en, de, fr, it as itLocale } from './locales/index.js';
+import { en, de, fr, it as itLocale, ru } from './locales/index.js';
 import { createTranslationService } from './index.js';
 import type { IDSRequirement, SupportedLocale } from '../types.js';
 
@@ -29,7 +29,7 @@ function leaves(tree: Tree, prefix = ''): Map<string, string> {
 
 const placeholders = (text: string): string[] => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 
-const LOCALES: Record<Exclude<SupportedLocale, 'en'>, Tree> = { de, fr, it: itLocale };
+const LOCALES: Record<Exclude<SupportedLocale, 'en'>, Tree> = { de, fr, it: itLocale, ru };
 
 describe('translation catalogues are complete', () => {
   const reference = leaves(en);

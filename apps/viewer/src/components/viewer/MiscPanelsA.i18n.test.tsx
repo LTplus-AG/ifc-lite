@@ -240,21 +240,20 @@ describe('ExportChangesReviewDialog localization (#4918)', () => {
       afterDom,
     );
 
-    // `changesSummary` nests a second `t()` call (`modelsCount`) inside its
+    // `changesSummaryOneFile` nests a second `t()` call (`modelsCount`) inside its
     // own template, the same shape as `SpaceMousePanel`'s `layoutLine` above
     // — resolve both the inner and outer piece at the SAME locale on each
     // side, rather than freezing the inner value from before the switch.
     const summaryParams = (): TranslationParameters => ({
       count: 5,
       models: resolve('exportChangesReviewDialog.modelsCount' as never, { count: 1 }),
-      fileSuffix: '',
     });
-    const englishSummary = resolve('exportChangesReviewDialog.changesSummary' as never, summaryParams()).trim();
+    const englishSummary = resolve('exportChangesReviewDialog.changesSummaryOneFile' as never, summaryParams()).trim();
     assert.ok(domHas(englishDom, englishSummary), 'expected the English changes-summary line on screen before the locale switch');
     act(() => setLocale(PSEUDO_LOCALE));
     let pseudoSummary: string;
     try {
-      pseudoSummary = resolve('exportChangesReviewDialog.changesSummary' as never, summaryParams()).trim();
+      pseudoSummary = resolve('exportChangesReviewDialog.changesSummaryOneFile' as never, summaryParams()).trim();
     } finally {
       act(() => setLocale(BASELINE_LOCALE));
     }

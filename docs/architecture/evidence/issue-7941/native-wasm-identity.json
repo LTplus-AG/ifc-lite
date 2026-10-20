@@ -1,0 +1,190 @@
+{
+  "status": "ALL16_EXACT_FILLED_SURFACE_MATCH",
+  "source": {
+    "head": "054781ae8ac5c2df1a6b76e3512d2e3e3ce91542",
+    "tree": "532091be1cc44c90726ba32aaa90539169ca00cd",
+    "status": ""
+  },
+  "nativePayloadSHA256": "644e49de55bb8e640b241d2948e975b610eb399c0e5f786572ad1ebd85fea946",
+  "wasmReceiptSHA256": "a7bc82a4877cf91ee5729bb832570e4866473e088a17c34a2884801ed2096f84",
+  "contract": "All indexed triangle occurrences, exact binary64 world-coordinate values, IFC Z-up, multiplicity preserved. Winding and cyclic vertex order ignored only for filled-surface identity; original WASM incidence reported separately. No quantization, fitting, sampling, face removal or metadata substitution.",
+  "rows": [
+    {
+      "host": 43810,
+      "context": "none",
+      "nativeTriangles": 292,
+      "wasmTriangles": 292,
+      "exactFilledSurfaceMultiset": true,
+      "nativeOnlyTriangleOccurrences": 0,
+      "wasmOnlyTriangleOccurrences": 0,
+      "collapsedWasmTriangles": 0,
+      "unmatchedWasmEdges": 0
+    },
+    {
+      "host": 43810,
+      "context": "all",
+      "nativeTriangles": 28232,
+      "wasmTriangles": 28232,
+      "exactFilledSurfaceMultiset": true,
+      "nativeOnlyTriangleOccurrences": 0,
+      "wasmOnlyTriangleOccurrences": 0,
+      "collapsedWasmTriangles": 0,
+      "unmatchedWasmEdges": 698
+    },
+    {
+      "host": 52476,
+      "context": "none",
+      "nativeTriangles": 172,
+      "wasmTriangles": 172,
+      "exactFilledSurfaceMultiset": true,
+      "nativeOnlyTriangleOccurrences": 0,
+      "wasmOnlyTriangleOccurrences": 0,
+      "collapsedWasmTriangles": 0,
+      "unmatchedWasmEdges": 0
+    },
+    {
+      "host": 52476,
+      "context": "all",
+      "nativeTriangles": 483,
+      "wasmTriangles": 483,
+      "exactFilledSurfaceMultiset": true,
+      "nativeOnlyTriangleOccurrences": 0,
+      "wasmOnlyTriangleOccurrences": 0,
+      "collapsedWasmTriangles": 0,
+      "unmatchedWasmEdges": 47
+    },
+    {
+      "host": 52944,
+      "context": "none",
+      "nativeTriangles": 292,
+      "wasmTriangles": 292,
+      "exactFilledSurfaceMultiset": true,
+      "nativeOnlyTriangleOccurrences": 0,
+      "wasmOnlyTriangleOccurrences": 0,
+      "collapsedWasmTriangles": 0,
+      "unmatchedWasmEdges": 0
+    },
+    {
+      "host": 52944,
+      "context": "all",
+      "nativeTriangles": 6694,
+      "wasmTriangles": 6694,
+      "exactFilledSurfaceMultiset": true,
+      "nativeOnlyTriangleOccurrences": 0,
+      "wasmOnlyTriangleOccurrences": 0,
+      "collapsedWasmTriangles": 0,
+      "unmatchedWasmEdges": 140
+    },
+    {
+      "host": 53921,
+      "context": "none",
+      "nativeTriangles": 292,
+      "wasmTriangles": 292,
+      "exactFilledSurfaceMultiset": true,
+      "nativeOnlyTriangleOccurrences": 0,
+      "wasmOnlyTriangleOccurrences": 0,
+      "collapsedWasmTriangles": 0,
+      "unmatchedWasmEdges": 0
+    },
+    {
+      "host": 53921,
+      "context": "all",
+      "nativeTriangles": 4376,
+      "wasmTriangles": 4376,
+      "exactFilledSurfaceMultiset": true,
+      "nativeOnlyTriangleOccurrences": 0,
+      "wasmOnlyTriangleOccurrences": 0,
+      "collapsedWasmTriangles": 0,
+      "unmatchedWasmEdges": 106
+    },
+    {
+      "host": 143268,
+      "context": "none",
+      "nativeTriangles": 292,
+      "wasmTriangles": 292,
+      "exactFilledSurfaceMultiset": true,
+      "nativeOnlyTriangleOccurrences": 0,
+      "wasmOnlyTriangleOccurrences": 0,
+      "collapsedWasmTriangles": 0,
+      "unmatchedWasmEdges": 0
+    },
+    {
+      "host": 143268,
+      "context": "all",
+      "nativeTriangles": 2016,
+      "wasmTriangles": 2016,
+      "exactFilledSurfaceMultiset": true,
+      "nativeOnlyTriangleOccurrences": 0,
+      "wasmOnlyTriangleOccurrences": 0,
+      "collapsedWasmTriangles": 0,
+      "unmatchedWasmEdges": 60
+    },
+    {
+      "host": 143664,
+      "context": "none",
+      "nativeTriangles": 292,
+      "wasmTriangles": 292,
+      "exactFilledSurfaceMultiset": true,
+      "nativeOnlyTriangleOccurrences": 0,
+      "wasmOnlyTriangleOccurrences": 0,
+      "collapsedWasmTriangles": 0,
+      "unmatchedWasmEdges": 0
+    },
+    {
+      "host": 143664,
+      "context": "all",
+      "nativeTriangles": 4540,
+      "wasmTriangles": 4540,
+      "exactFilledSurfaceMultiset": true,
+      "nativeOnlyTriangleOccurrences": 0,
+      "wasmOnlyTriangleOccurrences": 0,
+      "collapsedWasmTriangles": 0,
+      "unmatchedWasmEdges": 74
+    },
+    {
+      "host": 891553,
+      "context": "none",
+      "nativeTriangles": 292,
+      "wasmTriangles": 292,
+      "exactFilledSurfaceMultiset": true,
+      "nativeOnlyTriangleOccurrences": 0,
+      "wasmOnlyTriangleOccurrences": 0,
+      "collapsedWasmTriangles": 0,
+      "unmatchedWasmEdges": 0
+    },
+    {
+      "host": 891553,
+      "context": "all",
+      "nativeTriangles": 2194,
+      "wasmTriangles": 2194,
+      "exactFilledSurfaceMultiset": true,
+      "nativeOnlyTriangleOccurrences": 0,
+      "wasmOnlyTriangleOccurrences": 0,
+      "collapsedWasmTriangles": 0,
+      "unmatchedWasmEdges": 4
+    },
+    {
+      "host": 893133,
+      "context": "none",
+      "nativeTriangles": 292,
+      "wasmTriangles": 292,
+      "exactFilledSurfaceMultiset": true,
+      "nativeOnlyTriangleOccurrences": 0,
+      "wasmOnlyTriangleOccurrences": 0,
+      "collapsedWasmTriangles": 0,
+      "unmatchedWasmEdges": 0
+    },
+    {
+      "host": 893133,
+      "context": "all",
+      "nativeTriangles": 3320,
+      "wasmTriangles": 3320,
+      "exactFilledSurfaceMultiset": true,
+      "nativeOnlyTriangleOccurrences": 0,
+      "wasmOnlyTriangleOccurrences": 0,
+      "collapsedWasmTriangles": 0,
+      "unmatchedWasmEdges": 98
+    }
+  ],
+  "runtimeApproval": false
+}

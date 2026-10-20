@@ -406,7 +406,9 @@ pub fn triangulate_polygon_with_holes(
 /// coplanar-consolidation path), NOT from callers that map indices onto a fixed
 /// input ring — those must use [`triangulate_polygon_with_holes`]. Returns the
 /// outer+holes vertex list and an earcut index list (no Steiner) if the CDT
-/// declines, so the caller always gets a usable result.
+/// declines, so the caller always gets a usable result. A caller that cannot
+/// afford earcut on a large declined ring uses
+/// [`triangulate_polygon_with_holes_refined_bounded`].
 ///
 /// Refinement is interior-only and NEVER touches the outer/hole rings, so a
 /// region whose boundary is SHARED with neighbouring plane buckets (the
@@ -417,6 +419,31 @@ pub fn triangulate_polygon_with_holes_refined(
     outer: &[Point2<f64>],
     holes: &[Vec<Point2<f64>>],
 ) -> Result<(Vec<Point2<f64>>, Vec<usize>)> {
+    refined_impl(outer, holes, usize::MAX)
+}
+
+/// The most vertices [`triangulate_polygon_with_holes_refined_bounded`] hands
+/// to earcut. The rings the quality CDT declines include degenerate ones, and
+/// earcut can be quadratic on those: about a second at 3,500 vertices and
+/// minutes at 50,000, on one thread while the rest of the geometry pool waits.
+pub const EARCUT_FALLBACK_MAX_VERTICES: usize = 4096;
+
+/// [`triangulate_polygon_with_holes_refined`] with its earcut fallback limited
+/// to `max_earcut_vertices`: a larger ring set the quality CDT declines is an
+/// `Err`. At or below the limit the two functions are identical.
+pub fn triangulate_polygon_with_holes_refined_bounded(
+    outer: &[Point2<f64>],
+    holes: &[Vec<Point2<f64>>],
+    max_earcut_vertices: usize,
+) -> Result<(Vec<Point2<f64>>, Vec<usize>)> {
+    refined_impl(outer, holes, max_earcut_vertices)
+}
+
+fn refined_impl(
+    outer: &[Point2<f64>],
+    holes: &[Vec<Point2<f64>>],
+    max_earcut_vertices: usize,
+) -> Result<(Vec<Point2<f64>>, Vec<usize>)> {
     if outer.len() < 3 {
         return Err(Error::TriangulationError(
             "Need at least 3 points in outer boundary".to_string(),
@@ -424,6 +451,17 @@ pub fn triangulate_polygon_with_holes_refined(
     }
     let valid_holes: Vec<Vec<Point2<f64>>> =
         holes.iter().filter(|h| h.len() >= 3).cloned().collect();
+
+    // Past the caller's earcut limit, the quality CDT or nothing.
+    let total = outer.len() + valid_holes.iter().map(Vec::len).sum::<usize>();
+    if total > max_earcut_vertices {
+        return crate::cdt::triangulate_refined(outer, &valid_holes).ok_or_else(|| {
+            Error::TriangulationError(format!(
+                "the quality CDT declined {total} vertices, past the earcut limit of \
+                 {max_earcut_vertices}"
+            ))
+        });
+    }
 
     // Quality CDT + bounded refinement.
     if let Some((pts, idx)) = crate::cdt::triangulate_refined(outer, &valid_holes) {

@@ -1,0 +1,55 @@
+diff --git b/rust/geometry/src/processors/alignment_plan.rs a/rust/geometry/src/processors/alignment_plan.rs
+index a7f04f8f49..e63a5b3f83 100644
+--- b/rust/geometry/src/processors/alignment_plan.rs
++++ a/rust/geometry/src/processors/alignment_plan.rs
+@@ -90,8 +90,8 @@ impl AlignmentPlan {
+             let c = a + 2; // left @ i+1
+             let d = a + 3; // right @ i+1
+                            // Two triangles per quad, CCW when viewed from +Z.
+-            mesh.add_triangle(a, d, b);
+-            mesh.add_triangle(a, c, d);
++            mesh.add_triangle(a, b, d);
++            mesh.add_triangle(a, d, c);
+         }
+ 
+         mesh
+diff --git b/rust/geometry/src/processors/sectioned_plan.rs a/rust/geometry/src/processors/sectioned_plan.rs
+index 431f6e6d31..cb2616fcc5 100644
+--- b/rust/geometry/src/processors/sectioned_plan.rs
++++ a/rust/geometry/src/processors/sectioned_plan.rs
+@@ -239,15 +239,13 @@ impl SectionedPlan {
+             }
+         }
+         let last = sections.len() - 1;
+-        if false {
+-            emit_caps(
+-                &mut mesh,
+-                &sections[last],
+-                &rings_3d[last],
+-                frames[last].tangent,
+-                !flip,
+-            )?;
+-        }
++        emit_caps(
++            &mut mesh,
++            &sections[last],
++            &rings_3d[last],
++            frames[last].tangent,
++            !flip,
++        )?;
+ 
+         Ok(mesh)
+     }
+diff --git b/rust/geometry/src/processors/surface_plan.rs a/rust/geometry/src/processors/surface_plan.rs
+index 63debda7cd..fed9659d2e 100644
+--- b/rust/geometry/src/processors/surface_plan.rs
++++ a/rust/geometry/src/processors/surface_plan.rs
+@@ -107,7 +107,7 @@ impl LinearExtrusionSurfacePlan {
+         for offset in [Vector3::zeros(), *extrusion] {
+             for point in curve_points {
+                 let p3d = position_transform.transform_point(&Point3::new(point.x, point.y, 0.0));
+-                let p = p3d + offset;
++                let p = p3d + offset - rtc;
+                 positions.extend_from_slice(&[p.x as f32, p.y as f32, p.z as f32]);
+             }
+         }

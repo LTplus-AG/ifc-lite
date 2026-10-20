@@ -33,6 +33,8 @@ export const validationEditorEn = {
   'validationEditor.ruleSetEditor.emptyRulesHint': 'No rules yet — add one to start.',
   'validationEditor.ruleSetEditor.addRule': 'Add rule',
 
+  'validationEditor.ruleCard.moveUp': 'Move rule "{name}" up',
+  'validationEditor.ruleCard.moveDown': 'Move rule "{name}" down',
   'validationEditor.ruleCard.namePlaceholder': 'Rule name',
   'validationEditor.ruleCard.nameAriaLabel': 'Rule name',
   'validationEditor.ruleCard.descriptionPlaceholder': 'Description (optional)',

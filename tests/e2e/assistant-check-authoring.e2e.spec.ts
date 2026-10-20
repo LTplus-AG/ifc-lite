@@ -90,6 +90,14 @@ test('assistant check drafts are dry-run natively and saved only after review', 
       `data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify(answer) } }] })}\n\ndata: [DONE]\n\n` });
   });
   const assistant = page.getByRole('region', { name: 'Assistant', exact: true });
+  // #7919: captured model evidence can be stale when the Assistant opens.
+  // Exercise the supported JSON-proposal flow with an explicit user refresh;
+  // stale-evidence admission stays enforced, alongside the separate IDS tool flow.
+  const refreshEvidence = async () => {
+    await assistant.getByRole('button', { name: 'Refresh evidence and start a new conversation', exact: true }).click();
+    await expect(assistant.getByLabel('Ask about these results')).toBeEnabled();
+    await expect(assistant.locator('[data-message-index]')).toHaveCount(0);
+  };
   const ask = async (prompt: string) => {
     await assistant.getByLabel('Ask about these results').fill(prompt);
     await assistant.getByRole('button', { name: 'Send', exact: true }).click();
@@ -99,6 +107,7 @@ test('assistant check drafts are dry-run natively and saved only after review', 
   await page.evaluate(() => (globalThis as unknown as { __ifc_lite_viewer_store__: { getState(): StoreState } })
     .__ifc_lite_viewer_store__.getState().openPanelInHome('loadReport'));
   await page.getByRole('region', { name: 'Load report', exact: true }).getByRole('button', { name: 'Discuss with AI', exact: true }).click();
+  await refreshEvidence();
   // The suggestion chip starts the request; the user completes it.
   await assistant.getByRole('button', { name: /^Draft IDS specifications for review:/ }).click();
   await ask('Draft IDS specifications for review: external walls flagged, slabs at least 200 mm; escape doors open outwards.');
@@ -123,7 +132,7 @@ test('assistant check drafts are dry-run natively and saved only after review', 
   expect((await state(page)).selected, 'a failing sample selects in the model').not.toBeNull();
   await expect(saveIds).toBeEnabled();
   await ids.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: testInfo.outputPath('p07-ids-dry-run.png') });
+  await page.screenshot({ path: testInfo.outputPath('assistant-p07-ids-dry-run.png') });
   await saveIds.click();
   await expect(ids).toContainText('Saved to the Data validation IDS library');
   await ids.getByRole('button', { name: 'Open in Data validation', exact: true }).click();
@@ -133,12 +142,13 @@ test('assistant check drafts are dry-run natively and saved only after review', 
   await expect.poll(async () => (await state(page)).report?.length ?? 0, { timeout: 60_000 }).toBe(2);
   const native = (await state(page)).report!;
   expect(native.map(({ applicable, passed, failed }) => ({ applicable, passed, failed }))).toEqual(dryCounts);
-  await page.screenshot({ path: testInfo.outputPath('p07-ids-native-run.png') });
+  await page.screenshot({ path: testInfo.outputPath('assistant-p07-ids-native-run.png') });
 
   // Information rules from the load report: per-element and set requirements IDS cannot express.
   await page.evaluate(() => (globalThis as unknown as { __ifc_lite_viewer_store__: { getState(): StoreState } })
     .__ifc_lite_viewer_store__.getState().openPanelInHome('loadReport'));
   await page.getByRole('region', { name: 'Load report', exact: true }).getByRole('button', { name: 'Discuss with AI', exact: true }).click();
+  await refreshEvidence();
   await ask('Draft information rules (uniqueness, counts, comparisons) for review: doors need a fire rating, wall names unique.');
   const rules = assistant.getByRole('region', { name: 'Review information rules', exact: true });
   await expect(rules).toContainText('property Pset_DoorCommon.FireRating isSet');
@@ -147,11 +157,11 @@ test('assistant check drafts are dry-run natively and saved only after review', 
   await rules.getByRole('button', { name: 'Dry run on loaded models', exact: true }).click();
   await expect(rules.getByRole('region', { name: 'Dry-run results', exact: true })).toContainText(/\d+ applicable · \d+ passed · \d+ failed/);
   await rules.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: testInfo.outputPath('p07-rules-dry-run.png') });
+  await page.screenshot({ path: testInfo.outputPath('assistant-p07-rules-dry-run.png') });
   await rules.getByRole('button', { name: 'Save as rule set', exact: true }).click();
   await rules.getByRole('button', { name: 'Open in the rule editor', exact: true }).click();
   expect((await state(page)).ruleEditing).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath('p07-rules-editor.png') });
+  await page.screenshot({ path: testInfo.outputPath('assistant-p07-rules-editor.png') });
 
   // Report outline from the native validation result, bound to the live report. Opening the saved rule set
   // made it the active definition, which (as any library switch does) cleared the shown report: run the IDS again.
@@ -162,12 +172,13 @@ test('assistant check drafts are dry-run natively and saved only after review', 
   expect((await state(page)).report).toEqual(native);
   outlineSpec = native[0].id;
   await page.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
+  await refreshEvidence();
   await ask('Outline a validation report with live result tables');
   await expect(assistant).toContainText('2 sections · 1 requirement not checkable');
   const outline = assistant.getByRole('region', { name: 'Review report outline', exact: true });
   await expect(outline).toContainText(`live: ${native[0].failed} failed row`);
   await outline.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: testInfo.outputPath('p07-outline-review.png') });
+  await page.screenshot({ path: testInfo.outputPath('assistant-p07-outline-review.png') });
   await outline.getByRole('button', { name: 'Save as new document', exact: true }).click();
   await expect(outline).toContainText('Saved to the Documents library');
   await outline.getByRole('button', { name: 'Open in Documents', exact: true }).click();
@@ -176,5 +187,5 @@ test('assistant check drafts are dry-run natively and saved only after review', 
   expect(doc?.tables).toEqual([outlineSpec]);
   expect(saved.activeDocumentId).toBe(doc?.id);
   await expect(page.getByText('Outline drafted with AI assistance', { exact: false }).last()).toBeVisible({ timeout: 15_000 });
-  await page.screenshot({ path: testInfo.outputPath('p07-outline-document.png') });
+  await page.screenshot({ path: testInfo.outputPath('assistant-p07-outline-document.png') });
 });

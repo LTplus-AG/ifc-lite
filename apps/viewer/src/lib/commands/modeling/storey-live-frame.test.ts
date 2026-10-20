@@ -62,12 +62,30 @@ test('#7306 identical source ids in two models retain model-local current placem
  const active=buildStoreyWorkplane(useViewerStore.getState(),SAMPLE_MODEL,f.storey,0),other=buildStoreyWorkplane(useViewerStore.getState(),'other',f.storey,0);assert.ok(isWorkplane(active));assert.ok(isWorkplane(other));assert.deepEqual(active.localToRender([1,2,0]),[13,5,-21]);
  const legacy=other.localToRender([1,2,0]);for(let i=0;i<3;i++)assert.ok(Math.abs(legacy[i]-[4,0,-5][i])<1e-9,'Other native model retains original source frame');
 });
-test('#7306 over-256 live placement walk refuses and reports its bound without truncating a source frame',async()=>{
- const f=await editedFrame(),editor=new StoreEditor(f.source,f.view);let parent:number|null=null;
- for(let i=0;i<257;i++)parent=editor.addEntity('IfcLocalPlacement',[parent===null?null:`#${parent}`,`#${f.axis}`]).expressId;
- assert.ok(parent);editor.setPositionalAttribute(f.storey,5,`#${parent}`);
- const independent=await parseIfc(editedModelBytes(f.source,f.view));assert.ok(storeyPlanFrame(independent,f.storey),'Unbounded historical source-only API remains readable; current view refuses excessive work');
- const plane=buildStoreyWorkplane(useViewerStore.getState(),SAMPLE_MODEL,f.storey,0);assert.ok('refused' in plane);assert.match(plane.refused,/256/);
+async function editedDeepPlacementFrame(cyclic=false) {
+ const f=await editedFrame(),editor=new StoreEditor(f.source,f.view);
+ const point=editor.addEntity('IfcCartesianPoint',[[0,0,0]]),vertical=editor.addEntity('IfcDirection',[[0,0,1]]),x=editor.addEntity('IfcDirection',[[1,0,0]]);
+ const identityAxis=editor.addEntity('IfcAxis2Placement3D',[`#${point.expressId}`,`#${vertical.expressId}`,`#${x.expressId}`]);
+ // #7791/#7306: the shared placement walk is iterative and cycle-guarded; a legal chain has no arbitrary depth cap.
+ const root=editor.addEntity('IfcLocalPlacement',[null,`#${f.axis}`]).expressId;let leaf=root;
+ for(let i=0;i<256;i++)leaf=editor.addEntity('IfcLocalPlacement',[`#${leaf}`,`#${identityAxis.expressId}`]).expressId;
+ editor.setPositionalAttribute(f.storey,5,`#${leaf}`);
+ if(cyclic)editor.setPositionalAttribute(root,0,`#${leaf}`);
+ const independent=await parseIfc(editedModelBytes(f.source,f.view));
+ return {f,independent};
+}
+
+test('#7306 current frame preserves a valid 257-link placement chain',async()=>{
+ const {f,independent}=await editedDeepPlacementFrame();
+ const savedFrame=storeyPlanFrame(independent,f.storey);assert.ok(savedFrame);assert.deepEqual(savedFrame.origin,[15,20]);assert.deepEqual(savedFrame.axisX,[0,1]);
+ const plane=buildStoreyWorkplane(useViewerStore.getState(),SAMPLE_MODEL,f.storey,0);assert.ok(isWorkplane(plane));
+ assert.deepEqual(plane.localToRender([1,2,0]),[13,5,-21],'All 257 links resolve to the independently saved frame');
+});
+
+test('#7306 current and independently saved frames refuse a deep placement cycle',async()=>{
+ const {f,independent}=await editedDeepPlacementFrame(true);
+ assert.equal(storeyPlanFrame(independent,f.storey),null,'Independent STEP reparse confirms the cycle is unreadable');
+ const plane=buildStoreyWorkplane(useViewerStore.getState(),SAMPLE_MODEL,f.storey,0);assert.equal(isWorkplane(plane),false);assert.ok('refused' in plane);assert.match(plane.refused,/cyclic/,'The actual workplane refusal describes the detected cycle rather than a removed depth cap');
 });
 
 test('#7306 current frame reads preserve a held native preparation lease and follow Undo/Redo',async()=>{
@@ -81,3 +99,23 @@ test('#7306 source-free original placement does not resurrect a retained source 
  const f=await editedFrame(),state=useViewerStore.getState(),model=state.models.get(SAMPLE_MODEL)!;useViewerStore.setState({models:new Map([[SAMPLE_MODEL,{...model,ifcDataStore:{...f.source,source:EMPTY_SOURCE_BYTES}}]])});
  const plane=buildStoreyWorkplane(useViewerStore.getState(),SAMPLE_MODEL,f.storey,0);assert.equal(isWorkplane(plane),false,'Unreadable original storey remains unavailable even while authored placement records are known');
 });
+
+test('#7306 / #7791 long live placement composes every link and still refuses cycles',async()=>{
+ const f=await editedFrame(),editor=new StoreEditor(f.source,f.view);let parent:number|null=null,first:number|null=null;
+ editor.setPositionalAttribute(f.direction,0,[1,0,0]);
+ for(let i=0;i<257;i++){parent=editor.addEntity('IfcLocalPlacement',[parent===null?null:`#${parent}`,`#${f.axis}`]).expressId;if(first===null)first=parent;}
+ assert.ok(parent);assert.ok(first);editor.setPositionalAttribute(f.storey,5,`#${parent}`);
+ const independent=await parseIfc(editedModelBytes(f.source,f.view)),frame=storeyPlanFrame(independent,f.storey);assert.ok(frame);
+ // Every identity-oriented link translates (15,20) metres; dropping even
+ // one link changes the analytic total (257*15,257*20).
+ assert.deepEqual(frame.origin,[3855,5140]);assert.deepEqual(frame.axisX,[1,0]);
+ const state=useViewerStore.getState(),model=state.models.get(SAMPLE_MODEL)!;
+ const savedPlane=buildStoreyWorkplane({...state,models:new Map([[SAMPLE_MODEL,{...model,ifcDataStore:independent}]]),mutationViews:new Map()},SAMPLE_MODEL,f.storey,0);assert.ok(isWorkplane(savedPlane));
+ const plane=buildStoreyWorkplane(state,SAMPLE_MODEL,f.storey,0);assert.ok(isWorkplane(plane));
+ assert.deepEqual(plane.localToRender([1,2,0]),[3856,5,-5142],'Every chain translation contributes to the analytic point; storey elevation is unchanged');
+ assert.deepEqual(plane.localToRender([1,2,0]),savedPlane.localToRender([1,2,0]),'Live and independently saved source compose the full chain');
+ editor.setPositionalAttribute(first,0,`#${parent}`);
+ const cyclic=await parseIfc(editedModelBytes(f.source,f.view));assert.equal(storeyPlanFrame(cyclic,f.storey),null,'A real cycle has no complete source frame');
+ const refused=buildStoreyWorkplane(useViewerStore.getState(),SAMPLE_MODEL,f.storey,0);assert.ok('refused' in refused);assert.match(refused.refused,/unreadable/);
+});
+

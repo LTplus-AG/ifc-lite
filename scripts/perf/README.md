@@ -4338,8 +4338,14 @@ Section clipping is an opt-in export operation after the normal mutation-resolve
 STEP serialization. It reuses canonical meshing and the exact intersection kernel;
 ordinary loading and ordinary STEP export do not invoke it. The WASM and geometry
 bridge changes expose that operation without changing the load pipeline.
-Palette fragments are rejoined by source representation item before choosing
-solid clipping; appearance partitioning cannot decide whether a cut is capped.
+Palette fragments are rejoined by source representation item and f64 origin
+before choosing solid clipping; appearance partitioning cannot decide whether a
+cut is capped, and a repeated leaf cannot collapse distant occurrences into one
+f32 clip frame. Strict export additionally requests per-product processing
+receipts and validates source references. Ordinary processing sinks do not
+request or allocate those receipts. These export-only integrity checks and the
+conservative diagnostic/texture refusals still require exact-head performance
+and real-model qualification.
 Retained face colours use bounded BVH attribution after the exact topology cut.
 
 Performance qualification is pending. Concurrent owned work on the shared host

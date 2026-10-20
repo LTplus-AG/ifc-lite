@@ -247,6 +247,8 @@ pub(super) fn process_entity_job(
         &local_router,
     );
 
+    diag.drain_job(job.id, &local_router, &decoder, &produced);
+
     // Fold this element's point-cache activity into the pass tallies. The warm
     // cache is moved back to the worker by `WorkerCacheGuard::drop`, on every
     // exit path. `hits + misses > 0` means this element was a faceted brep that
@@ -342,10 +344,8 @@ pub(super) fn process_entity_job(
             acc.defer_no_openings += rf.defer_no_openings;
         }
     }
-    diag.drain_job(&local_router, &decoder);
 
-    // #1623 Phase 2: hand this element's don't-bake occurrences to the shared
-    // collector (resolved into InstanceRecords later; empty on the flat path).
+    // Hand don't-bake occurrences to finalization (#1623).
     if !produced.instance_occurrences.is_empty() {
         if let Ok(mut acc) = raw_instance_collector.lock() {
             acc.extend(produced.instance_occurrences);

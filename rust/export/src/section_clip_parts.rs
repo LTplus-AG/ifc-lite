@@ -14,8 +14,14 @@ pub(super) struct CutPart {
 pub(super) fn cut_parts(parts: &[&MeshData], frame: MeshFrame, planes: &[SectionExportPlane], trim: bool) -> Result<(Vec<CutPart>, bool), String> {
     // Palette/material boundaries do not own topology. Layer skins have no
     // item id: their owning occurrence supplies the collectively closed body.
+    // A leaf id is not an occurrence id. Keep independent f64 origins separate:
+    // rebasing a remote occurrence here would lose detail in the open f32 clipper.
     let mut owners = BTreeMap::new();
-    for part in parts { owners.entry(part.geometry_item_id).or_insert_with(Vec::new).push(*part); }
+    for part in parts {
+        if part.origin.iter().any(|v| !v.is_finite()) { return Err("non-finite section item origin".into()); }
+        let key = (part.geometry_item_id, part.origin.map(|v| if v == 0.0 { 0 } else { v.to_bits() }));
+        owners.entry(key).or_insert_with(Vec::new).push(*part);
+    }
     let mut changed = false;
     let mut result = Vec::new();
     for parts in owners.values() {
@@ -23,9 +29,8 @@ pub(super) fn cut_parts(parts: &[&MeshData], frame: MeshFrame, planes: &[Section
         let mut source = Vec::new();
         let mut colors = Vec::new();
         for part in parts {
-            let delta = v3::sub(part.origin, origin);
             for tri in mesh::triangles(part)? {
-                source.push(tri.map(|p| v3::add(p, delta)));
+                source.push(tri);
                 colors.push(part.color);
             }
         }

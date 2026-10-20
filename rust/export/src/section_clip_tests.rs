@@ -173,3 +173,6 @@ fn issue_7711_material_layer_slices_are_occurrence_geometry() {
     let total: f64 = plan.replacements[0].parts.iter().map(volume).sum();
     assert!((total-1.8).abs()<1e-5, "all material slices contribute to the half-wall: {total}");
 }
+
+#[path = "section_clip_safety_tests.rs"]
+mod safety;

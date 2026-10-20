@@ -32,6 +32,7 @@ slice by the phases it changes and by output identity, not by a ±2% move in an 
 | B2 #7960 tessellated plans | identical | BWK 0.0% (±1), Holter −0.1% (±9), ISSUE_098 −2.5% (±8), ISSUE_068 +0.3% (±13), schependomlaan −1.0% (±4), ISSUE_129 +0.2% (±5) | neutral: no phase outside noise |
 | A2 #7957 owned element scopes | identical | BWK −0.8% (±5), Holter −3.0% (±10), ISSUE_098 −3.2% (±9), ISSUE_068 0.0% (±14), schependomlaan −0.6% (±4), ISSUE_129 +0.9% (±8) | neutral: no phase outside noise |
 | B3 #7961 faceted BRep / surface-model plans | identical | BWK 0.0% (±3), Holter −7.5% (±13), ISSUE_098 +0.9% (±10), ISSUE_068 −3.5% (±15), schependomlaan −0.6% (±6), ISSUE_129 −1.3% (±10); peak RSS unchanged (Holter ~0.90 GB, BWK ~0.77 GB, base = branch within 0.3%) | neutral: no phase outside noise; face buffering adds no peak memory |
+| B1 #7963 primitive/extrusion plans | identical | BWK −0.8% (±6), schependomlaan −1.0% (±12), ISSUE_068 −3.5% (±28) (11-round rerun; first 7-round run flagged schependomlaan +4.3%, not reproduced) | neutral: no phase outside noise |
 
 ## Exact rectangular opening union (#7941)
 

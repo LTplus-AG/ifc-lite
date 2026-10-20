@@ -19,6 +19,14 @@ fn lower(inner: &str) -> SweptDiskPlan {
         .unwrap()
 }
 
+/// Area of the regular 24-gon inscribed in the UNIT circle (vertices on the
+/// circle, as the radius assertions below pin). The ring is a polygon scaled
+/// uniformly, so its area scales with radius squared: annulus R=2, r=1 gives
+/// (2^2 - 1^2) * A1 and the rod (R=2, no bore) gives 2^2 * A1.
+fn unit_24gon_area() -> f64 {
+    0.5 * 24.0 * (2.0 * std::f64::consts::PI / 24.0).sin()
+}
+
 fn signed_volume(mesh: &Mesh) -> f64 {
     mesh.indices
         .chunks_exact(3)
@@ -41,7 +49,9 @@ fn owned_disk_retains_raw_units_bore_and_normals_after_source_disposal() {
     // Source and decoder were dropped by lower(); volume is independently the
     // regular 24-gon annulus area times the authored four-unit path length.
     let mesh = plan.evaluate();
-    let expected = 0.5 * 24.0 * (2.0 * std::f64::consts::PI / 24.0).sin() * 3.0 * 4.0;
+    let expected = unit_24gon_area() * (2.0_f64.powi(2) - 1.0_f64.powi(2)) * 4.0; // ~37.3
+    // The true circular annulus (12*pi ~ 37.70) must NOT satisfy this.
+    assert!((expected - 12.0 * std::f64::consts::PI).abs() > 0.3);
     assert!((signed_volume(&mesh) - expected).abs() < 1e-5);
     assert_eq!(mesh.normals.len(), mesh.positions.len());
     assert!(mesh.normals.iter().all(|n| n.is_finite()));
@@ -56,7 +66,7 @@ fn owned_disk_retains_raw_units_bore_and_normals_after_source_disposal() {
 fn owned_disk_preserves_invalid_inner_radius_rod_policy() {
     for inner in ["$", "0.", "-1.", "2.", "3."] {
         let mesh = lower(inner).evaluate();
-        let expected = 0.5 * 24.0 * (2.0 * std::f64::consts::PI / 24.0).sin() * 4.0 * 4.0;
+        let expected = unit_24gon_area() * 2.0_f64.powi(2) * 4.0; // ~49.7, not 16*pi
         assert!(
             (signed_volume(&mesh) - expected).abs() < 1e-5,
             "inner radius {inner}"

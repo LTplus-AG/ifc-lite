@@ -280,3 +280,32 @@ fn grid_direction_uses_canonical_leaf_source_authority_7877() {
     assert_eq!((matrix[(0, 0)], matrix[(1, 0)]), (0., 1.), "the raw valid leaf wins contradictory decoded values");
     assert_eq!(decoder.refused_records(), 0);
 }
+
+/// #7877: a prior quota refusal remains terminal through real frame sampling.
+#[test]
+fn sampled_frame_preserves_resource_refusal_without_malformed_or_memo_7877() {
+    use crate::resource::{Cost, ExecutionAccount, ExecutionPolicy, ProgramStop, ResourceLimits};
+    for body in [
+        format!("{LINEAR}#10=IFCLINEARPLACEMENT($,#34,$);"),
+        format!("{GRID}#10=IFCGRIDPLACEMENT($,#37,$);"),
+    ] {
+        let content = doc(&body).replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC4X3'))");
+        let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits {
+            work: Some(0), ..ResourceLimits::default()
+        }));
+        let mut decoder = EntityDecoder::new(&content);
+        let node = decoder.decode_by_id(10).unwrap();
+        account.scope(|| {
+            let stop = crate::resource::charge(Cost { work: 1, ..Cost::default() }).unwrap_err();
+            assert!(matches!(stop, ProgramStop::ResourceRefused(_)));
+            let error = resolve_chain(&node, &mut decoder).unwrap_err();
+            assert!(matches!(error, PlacementError::ProgramStopped(found) if found == stop), "{error:?}");
+            assert!(matches!(crate::Error::from(error), crate::Error::ProgramStopped(found) if found == stop));
+        });
+        assert_eq!(decoder.refused_records(), 0, "quota refusal is not malformed source");
+        assert!(decoder.get_placement_transform_cached(10).is_none());
+        let mut fresh = EntityDecoder::new(&content);
+        let node = fresh.decode_by_id(10).unwrap();
+        assert!(resolve_chain(&node, &mut fresh).is_ok(), "uncapped positive control");
+    }
+}

@@ -4357,3 +4357,28 @@ original failed result and raw bytes remain unchanged, with no probe rerun.
 Lesson: keep missing-face refusal local, distinguish output identity from
 inconclusive timing, and reject unknown diagnostic schemas instead of treating
 missing fields as zero. The wider Rust charter obligations remain separate.
+
+The final recovery `f05119b6d92a` also excludes absent-face polygonal sets from
+opt-in extra dedup, retaining healthy cache reuse and a refusal on every fresh
+router. Removing only that exclusion fails the second-router report assertion;
+exact restoration passes. Its source-specific native workspace and strict
+clippy qualification passed.
+
+The fixed final-source timing cohort against the retained, authenticated main
+arm preserves all mesh fingerprints, counts and failure counters. Its report
+remains noisy and inconclusive overall, but flags the Haus parse phase as
+slower; complete-load wall medians also increase on all controls. Preserve that
+adverse result rather than substituting the earlier recovery's timing or calling
+this neutral. Causal attribution and performance acceptance remain open. This
+default-off dedup/native cohort establishes no opt-in or browser performance
+claim.
+
+The separate final-source full-payload witness passes on the same frozen arms:
+the control models preserve ordered meshes, exact float payloads, frame/metadata
+and diagnostic bytes. Controlled damage again preserves the reference-removed
+geometry and adds the missing-face refusal. Its first preflight failed before
+any model call because a negative parser control caught the wrong exception
+type. A separately reviewed derivative corrects only that control and binds both
+the original verifier and its own reviewed bytes; all model calls then pass.
+The original failure remains preserved. Correctness and timing are separate
+verdicts: this witness does not resolve performance acceptance.

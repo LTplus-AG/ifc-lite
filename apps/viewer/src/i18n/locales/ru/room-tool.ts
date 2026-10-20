@@ -1,0 +1,56 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const roomToolRu = {
+  "roomTool.options.minArea": "Минимальная площадь (м²)",
+  "roomTool.options.namePattern": "Шаблон имени",
+  "roomTool.options.nameHint": "Токен {token} вставляет номер помещения.",
+  "roomTool.options.classification": "IfcSpace.{attribute}",
+  "roomTool.options.objectType": "IfcSpace.ObjectType",
+  "roomTool.options.invalid": "Введите положительную минимальную площадь и непустой шаблон названия помещения",
+  "roomTool.options.objectTypeRequired": "Введите IfcSpace.ObjectType для помещения USERDEFINED",
+  "roomTool.preview.total": {
+    one: "{countDisplay} новое помещение · всего {area} м²",
+    few: "{countDisplay} новых помещения · всего {area} м²",
+    many: "{countDisplay} новых помещений · всего {area} м²",
+    other: "{countDisplay} нового помещения · всего {area} м²",
+  },
+  "roomTool.preview.graph": "Стен {walls} · вершин планировки {vertices} · рёбер планировки {edges}",
+  "roomTool.preview.leaks": "Открытых концов стен {openEnds} · не ограничивающих ни одного помещения стен {unboundedWalls}",
+  "roomTool.label": "Помещение",
+  "commands.model.room": "Создать помещения из стен или нарисовать их (рабочая область модели)",
+  "roomTool.hint.pick": "Нажмите внутри стен, чтобы создать помещение · Авто создаёт все помещения на этом этаже",
+  "roomTool.hint.taken": "В этой области уже есть помещение",
+  "roomTool.hint.drawCorner": "Нажмите на углы помещения",
+  "roomTool.hint.drawClose": "Enter, двойной щелчок или щелчок по первому углу замыкает помещение",
+  "roomTool.mode.label": "Как создать помещение",
+  "roomTool.mode.pick": "Выбрать",
+  "roomTool.mode.draw": "Рисовать",
+  "roomTool.boundary.label": "По какой грани стены проходит граница помещения",
+  "roomTool.boundary.inner": "Внутренняя",
+  "roomTool.boundary.center": "Ось",
+  "roomTool.boundary.outer": "Внешняя",
+  "roomTool.auto.label": "Авто · {countDisplay}",
+  "roomTool.auto.title": "Создать помещения во всех замкнутых стенами областях этого этажа, где помещений ещё нет, одним отменяемым действием",
+  "roomTool.auto.none": "Во всех замкнутых стенами областях этого этажа уже есть помещения",
+  "roomTool.update.label": "Обновить помещения",
+  "roomTool.update.title": "Заново определить контуры выбранных помещений по текущим стенам",
+  "roomTool.update.noSelection": "Сначала выберите помещения для обновления",
+  "roomTool.update.none": "Ни одно выбранное помещение не удалось обновить: каждое должно быть экструзией плоского контура на этаже, внутри стен",
+  "roomTool.update.skipped": {
+    one: "{countDisplay} выбранное помещение оставлено без изменений: не является экструзией плоского контура на этаже либо не ограничено стенами",
+    few: "{countDisplay} выбранных помещения оставлены без изменений: они не являются экструзиями плоских контуров на этаже либо не ограничены стенами",
+    many: "{countDisplay} выбранных помещений оставлены без изменений: они не являются экструзиями плоских контуров на этаже либо не ограничены стенами",
+    other: "{countDisplay} выбранного помещения оставлено без изменений: не является экструзией плоского контура на этаже либо не ограничено стенами",
+  },
+  "roomTool.wasmFailed": "Ядро помещений не загрузилось, поэтому помещения нельзя определить: перезагрузите страницу и повторите попытку",
+  "roomTool.palette": "Создать помещения",
+  "roomTool.loading": "Чтение стен… повторите попытку через мгновение",
+  "roomTool.noWalls": "На этом этаже стены не ограничивают помещение: нарисуйте стены или переключитесь в режим рисования",
+  "roomTool.pick.none": "Эта точка не ограничена стенами: щёлкните внутри помещения или переключитесь в режим рисования",
+  "roomTool.pick.taken": "В этой области уже есть помещение",
+  "roomTool.draw.needThree": "В помещении должно быть как минимум три угла",
+} satisfies Catalogue;

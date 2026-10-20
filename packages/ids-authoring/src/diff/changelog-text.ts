@@ -12,6 +12,7 @@
 import type { RequirementOptionality, SupportedLocale } from '@ifc-lite/ids';
 import type { Section } from '../document/types.js';
 import type { InfoField, SpecCardinality } from '../ops/types.js';
+import { ru } from './changelog-ru.js';
 
 export interface ChangelogCatalogue {
   section: Record<Section, string>;
@@ -158,7 +159,7 @@ const it: ChangelogCatalogue = {
   relation: 'relazione',
 };
 
-const CATALOGUES: Record<SupportedLocale, ChangelogCatalogue> = { en, de, fr, it };
+const CATALOGUES: Record<SupportedLocale, ChangelogCatalogue> = { en, de, fr, it, ru };
 
 export function catalogue(locale: SupportedLocale): ChangelogCatalogue {
   return CATALOGUES[locale] ?? en;

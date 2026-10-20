@@ -262,10 +262,7 @@ impl Drop for ExecutionLease {
     }
 }
 
-/// Short-lived trusted execution scope. It borrows its reservation and is
-/// thread-bound; no active scope may cross a yield. Dropping it, including on
-/// panic, never acknowledges changed configuration. Normal executor completion
-/// must explicitly commit against the same live owner's fresh identity.
+/// Why an execution lease, work scope or source borrow was refused.
 /// Admission/acceptance failures have no geometry or diagnostic side effects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecutionLeaseError {

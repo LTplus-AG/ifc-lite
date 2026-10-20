@@ -3,6 +3,10 @@
 //! issued by an [`ExecutionLease`](super::ExecutionLease).
 use super::*;
 
+/// Short-lived trusted execution scope. It borrows its reservation and is
+/// thread-bound; no active scope may cross a yield. Dropping it, including on
+/// panic, never acknowledges changed configuration. Normal executor completion
+/// must explicitly commit against the same live owner's fresh identity.
 #[derive(Debug)]
 pub struct ExecutionWork<'a> {
     pub(super) lease: &'a mut ExecutionLease,

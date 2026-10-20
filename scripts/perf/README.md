@@ -34,6 +34,7 @@ slice by the phases it changes and by output identity, not by a ±2% move in an 
 | B3 #7961 faceted BRep / surface-model plans | identical | BWK 0.0% (±3), Holter −7.5% (±13), ISSUE_098 +0.9% (±10), ISSUE_068 −3.5% (±15), schependomlaan −0.6% (±6), ISSUE_129 −1.3% (±10); peak RSS unchanged (Holter ~0.90 GB, BWK ~0.77 GB, base = branch within 0.3%) | neutral: no phase outside noise; face buffering adds no peak memory |
 | B1 #7963 primitive/extrusion plans | identical | BWK −0.8% (±6), schependomlaan −1.0% (±12), ISSUE_068 −3.5% (±28) (11-round rerun; first 7-round run flagged schependomlaan +4.3%, not reproduced) | neutral: no phase outside noise |
 | C4 #7966 material layer slicing | identical | BWK −0.4% (±1), Holter −0.8% (±9), ISSUE_098 −3.1% (±14), ISSUE_068 +1.5% (±21), schependomlaan −1.6% (±6), ISSUE_129 −0.9% (±4) | neutral: no phase outside noise |
+| B4 #7964 revolved/swept plans | identical | BWK +2.8% (±2), Holter +1.5% (±12), ISSUE_098 +0.4% (±28), ISSUE_068 −5.7% (±32), schependomlaan +3.2% (±8), ISSUE_129 −1.3% (±6) | neutral: geometry within noise; BWK total is the untouched parse phase (+3.2%, layout jitter) |
 
 ## Exact rectangular opening union (#7941)
 

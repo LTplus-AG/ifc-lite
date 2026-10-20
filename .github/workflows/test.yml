@@ -1162,6 +1162,14 @@ jobs:
           # resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/extrusion_plan.rs | grep -Fxq 'rust/geometry/src/processors/extrusion_plan.rs'; then
             oracle_args+=(--mutation tests/evidence/geometry-extrusion-plans-b1/behaviour.oracle.patch)
+          # #7955 B4: the owned swept plans add disk_plan.rs, revolved_plan.rs and
+          # surface_plan.rs, which their tests import, so a whole-change revert cannot
+          # compile them (INCONCLUSIVE). Keep the plan types and break ONLY the behaviour:
+          # disk smooth normals are skipped, the revolved Position transform is skipped
+          # and the surface sweep vertex budget is not enforced. Once disk_plan.rs is on
+          # main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/swept/disk_plan.rs | grep -Fxq 'rust/geometry/src/processors/swept/disk_plan.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-swept-plans-b4/behaviour.oracle.patch)
           # #7682: keep the new STEP-writer modules, StepStats fields and the TS
           # allocatedExpressId export loadable while disabling ONLY the guards the
           # changed tests pin (value/name/id-reuse refusals, the id-space refusal,

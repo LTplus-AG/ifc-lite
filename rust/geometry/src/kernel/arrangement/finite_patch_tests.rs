@@ -9,7 +9,7 @@ fn center(t: &Tri) -> [f64;3] { std::array::from_fn(|k|(t[0][k]+t[1][k]+t[2][k])
 
 #[test]
 fn actual_29degree_source_pair_covers_whole_near_cell_7292_5635() {
-    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap();let _element=budget::enter_element();budget::begin();
+    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);let _element=budget::enter_element();budget::begin();
     // Actual first29° call B651 versus original host faces196/197. The source
     // planes differ after f32 import, but they retain their exact shared edge.
     let own=[[10.36499595569326,-0.8939971923828125,0.04000854486308749],
@@ -35,7 +35,7 @@ fn actual_29degree_source_pair_covers_whole_near_cell_7292_5635() {
 
 #[test]
 fn finite_patch_rejects_a_concave_pair_gap_7292() {
-    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap();let _element=budget::enter_element();budget::begin();
+    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);let _element=budget::enter_element();budget::begin();
     let t=[[0.,0.,0.],[2.,0.,0.],[0.,2.,0.]];
     let u=[[2.,0.,0.],[0.,0.,0.],[3.,-0.1,0.]];
     // This triangle's first corner is in the convex hull, but outside BOTH
@@ -46,7 +46,7 @@ fn finite_patch_rejects_a_concave_pair_gap_7292() {
 
 #[test]
 fn finite_patch_keeps_symbolic_outer_boundary_all_axes_and_windings_7292() {
-    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap();let _element=budget::enter_element();budget::begin();
+    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);let _element=budget::enter_element();budget::begin();
     for axis in 0..3 { for offset in [-1.,1.] { for reverse in [false,true] {
         let perm=|p:[f64;3]|[p[axis%3],p[(axis+1)%3],p[(axis+2)%3]];
         let gap=offset/65536.;
@@ -68,7 +68,7 @@ fn finite_patch_keeps_symbolic_outer_boundary_all_axes_and_windings_7292() {
 
 #[test]
 fn actual_489_pair_cannot_borrow_a_plane_outside_whole_cell_band_7292() {
-    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap();let _element=budget::enter_element();budget::begin();
+    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);let _element=budget::enter_element();budget::begin();
     // Actual A4 and promoted B10/B11. Their projected union covers A4, but
     // B10's plane exceeds the unchanged envelope at A4's lower corner.
     let own=[[95.,12000.,-325.],[95.,11945.,-320.],[95.,12000.,-320.]];

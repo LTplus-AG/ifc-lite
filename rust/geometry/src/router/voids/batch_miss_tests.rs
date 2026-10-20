@@ -210,7 +210,7 @@ fn exhausted_element_budget_does_not_turn_a_group_into_a_proven_miss_6516() {
     if !isolated_test("exhausted_element_budget_does_not_turn_a_group_into_a_proven_miss_6516",
         "IFC_LITE_6516_ELEMENT_CAP_CHILD") { return; }
     use crate::kernel::budget;
-    let _lock = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _lock = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let profile = budget::TestProfile::new();
     profile.set_element_cap(Some(1));
     let _scope = budget::enter_element();

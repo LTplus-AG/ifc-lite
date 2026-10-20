@@ -53,6 +53,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Serialises tests that share peak counters or other process-wide test state.
 /// Exact-budget fixtures use `TestProfile` rather than changing global caps.
+/// Lock via `unwrap_or_else(PoisonError::into_inner)`: one panic must not fail every holder (#7982).
 #[cfg(test)]
 pub(crate) static GLOBAL_CAP_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 

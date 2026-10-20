@@ -125,14 +125,15 @@ impl RepresentationWalk {
         // their Items. Report an item-list failure inside the entered scope.
         let last = run.path.len() - 1;
         let rep = &run.path[last].mapped_rep;
-        match Self::level_items(rep, decoder) {
+        match self.level_items(&mut run.items, rep, decoder) {
             Ok(items) => tasks.push(Task::List {
                 rep: Some(rep.clone()), items: items.into_iter(), first_mapped: None,
             }),
             Err(why) => {
                 let at = WalkCtx { element: run.element, shape_rep: None, path: &run.path[..last] };
+                let terminal = matches!(why, WalkRefusal::Budget { .. });
                 run.visitor.refused(item, why, &at);
-                if bail { return Flow::Stop; }
+                if bail || terminal { return Flow::Stop; }
             }
         }
         Flow::Continue
@@ -151,10 +152,39 @@ impl RepresentationWalk {
         Ok((map, mapped_rep))
     }
 
+    /// Pay for every member, including ignored non-reference values, BEFORE
+    /// resolve_ref_list allocates or decodes. Repeated DAG occurrences pay again.
+    /// This complements the mapped-level meter: N entries into the same N-leaf
+    /// source can no longer materialize N² items under an N-level allowance.
+    pub(super) fn admit_items(&self, used: &mut u32, count: usize) -> Result<(), WalkRefusal> {
+        if let NestedMaps::Expand { max_levels, .. } = self.nested {
+            if count > (max_levels - *used) as usize {
+                return Err(WalkRefusal::Budget { max_levels });
+            }
+            *used += count as u32; // bounded by the u32 allowance above
+        }
+        Ok(())
+    }
+
+    /// The product/map root is admitted too, before materializing its list.
+    /// Root failures retain ShapeError; budget refusal uses the visitor channel.
+    pub(super) fn root_items<V: WalkVisitor>(
+        &self, run: &mut Run<'_, V>, rep: &DecodedEntity, decoder: &mut EntityDecoder,
+    ) -> Result<Option<Vec<DecodedEntity>>, ShapeError> {
+        let list = rep.attr(IfcRepresentation::ITEMS).ok_or(ShapeError::MissingItems)?;
+        if let Err(why) = self.admit_items(&mut run.items, list.as_list().map_or(0, |items| items.len())) {
+            let at = WalkCtx { element: run.element, shape_rep: Some(rep), path: &run.path };
+            run.visitor.refused(rep, why, &at);
+            return Ok(None);
+        }
+        Ok(Some(decoder.resolve_ref_list(list)?))
+    }
+
     fn level_items(
-        rep: &DecodedEntity, decoder: &mut EntityDecoder,
+        &self, used: &mut u32, rep: &DecodedEntity, decoder: &mut EntityDecoder,
     ) -> Result<Vec<DecodedEntity>, WalkRefusal> {
         let list = rep.attr(IfcRepresentation::ITEMS).ok_or(WalkRefusal::MissingItems)?;
+        self.admit_items(used, list.as_list().map_or(0, |items| items.len()))?;
         decoder.resolve_ref_list(list).map_err(WalkRefusal::Decode)
     }
 }

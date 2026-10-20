@@ -133,3 +133,6 @@ pub fn rep_items(
 
 #[cfg(test)]
 mod walk_tests;
+
+#[cfg(test)]
+mod work_budget_tests;

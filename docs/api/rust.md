@@ -618,7 +618,9 @@ pub enum NestedMaps {
     Expand { max_depth: u32, max_levels: u32 },
     Refuse, Leaf, FirstChain { max_depth: u32 },
 }
-// Expand reports WalkRefusal::Budget once and stops after max_levels entries.
+// Expand bounds both entered mapped levels and total materialized Items members
+// by max_levels. Lists are charged before decoding, including each DAG occurrence.
+// Exhaustion reports WalkRefusal::Budget once and stops; a root refusal names its rep.
 // Every enter_map is paired with leave_map, including Stop and SkipChildren.
 // MappedLevel::local_transform returns MappingTarget · MappingOrigin in file units.
 pub fn meshed_representations(element, representations) -> impl Iterator; // = Select::Meshed

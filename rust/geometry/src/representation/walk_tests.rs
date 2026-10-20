@@ -226,7 +226,8 @@ fn a_branching_dag_exhausts_the_work_budget_and_ends_the_walk() {
     walk.mapped_item(&top, &mut d, &mut trace);
     let entered = trace.events.iter().filter(|e| e.starts_with("enter")).count();
     let left = trace.events.iter().filter(|e| e.starts_with("leave")).count();
-    assert_eq!((entered, left), (100, 100), "every entered level is left");
+    assert_eq!(entered, left, "every entered level is left");
+    assert!(entered > 0 && entered <= 100, "finite total expansion work");
     assert_eq!(trace.refused.len(), 1, "reported once");
     assert!(trace.refused[0].1.contains("work budget of 100 levels"), "{:?}", trace.refused);
 }

@@ -71,6 +71,15 @@ impl GeometryRouter {
         if !(base || extra) {
             return None;
         }
+        // #7911: a surviving polygonal sibling now produces a nonempty partial
+        // mesh when a face record is absent. Do not cache that partial result:
+        // a fresh router must rebuild it and report the absent face itself.
+        // Keep the generic hash sentinel and other diagnostic/cache contracts.
+        if item.ifc_type == IfcType::IfcPolygonalFaceSet
+            && polygonal_has_absent_face(item, decoder)
+        {
+            return None;
+        }
         // #1909: retain the large-BREP bypass. A completed shared hit already
         // passed this threshold and can skip even the face-count traversal.
         if item.ifc_type == IfcType::IfcFacetedBrep {
@@ -116,6 +125,17 @@ impl GeometryRouter {
         ))
     }
 
+}
+
+/// Only absent records qualify, exactly as in polygonal lowering. Present
+/// malformed records retain their existing error path. This bounded list scan
+/// borrows decoded input and is reached only for an enabled dedup family.
+fn polygonal_has_absent_face(item: &DecodedEntity, decoder: &mut EntityDecoder) -> bool {
+    item.attr(ifc_lite_core::slot::IfcPolygonalFaceSet::FACES)
+        .and_then(|faces| faces.as_list())
+        .is_some_and(|faces| faces.iter().any(|face| {
+            face.as_entity_ref().is_some_and(|id| decoder.get_raw_bytes(id).is_none())
+        }))
 }
 
 #[cfg(test)]

@@ -1463,6 +1463,16 @@ jobs:
           # retained coefficients, trim selectors and traversal flags must turn RED.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/analytic/source.rs | grep -Fxq 'rust/geometry/src/analytic/source.rs'; then
             oracle_args+=(--mutation tests/evidence/analytic-source-7955/behaviour.oracle.patch)
+          # #7955 D2: the item/cache controller adds program/inner.rs, item.rs,
+          # inner_cache.rs and router/item_cache_program.rs, which its tests
+          # name, so a whole-change revert cannot compile them (INCONCLUSIVE).
+          # Keep the controller and break ONLY the behaviour: foreign owners are
+          # no longer refused, a ticket is marked executed only after its
+          # callback returns, the selected RTC hook is skipped and shared cache
+          # hits are ignored. Once program/inner.rs is on main, ordinary
+          # whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/inner.rs | grep -Fxq 'rust/geometry/src/program/inner.rs'; then
+            oracle_args+=(--mutation tests/evidence/item-cache-controller-d2/behaviour.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

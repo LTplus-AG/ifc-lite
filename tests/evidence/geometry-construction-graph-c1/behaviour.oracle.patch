@@ -1,0 +1,52 @@
+diff --git b/rust/geometry/src/construction/lowering.rs a/rust/geometry/src/construction/lowering.rs
+index 2eb10b9f7e..1ac1a06cef 100644
+--- b/rust/geometry/src/construction/lowering.rs
++++ a/rust/geometry/src/construction/lowering.rs
+@@ -56,7 +56,7 @@ impl ConstructionBatch {
+                 nodes.push(ConstructionNode { source_id, family, construction });
+                 index
+             });
+-            occurrences.push(index.min(0));
++            occurrences.push(index);
+         }
+         Self { nodes, occurrences, program: compiler.program,
+             program_sources: compiler.program_sources, reports: Default::default() }
+diff --git b/rust/geometry/src/construction/mod.rs a/rust/geometry/src/construction/mod.rs
+index 4b758d4f28..7d7463d871 100644
+--- b/rust/geometry/src/construction/mod.rs
++++ a/rust/geometry/src/construction/mod.rs
+@@ -93,7 +93,7 @@ impl ConstructionBatch {
+     /// Refuse the entire batch before evaluation if any root is unresolved;
+     /// there is no successful partial result that silently drops geometry.
+     pub fn evaluate(self) -> std::result::Result<ConstructionEvaluation, ConstructionExecutionError> {
+-        if let Some(node) = self.nodes.iter().find(|_| false) {
++        if let Some(node) = self.nodes.iter().find(|node| node.requirement().is_some()) {
+             return Err(ConstructionExecutionError {
+                 root_source_id: Some(node.source_id), failed_source_id: Some(node.source_id),
+                 error: Box::new(Error::geometry(format!("Construction item #{} requires {:?}", node.source_id, node.requirement().unwrap()))),
+diff --git b/rust/geometry/src/construction/source.rs a/rust/geometry/src/construction/source.rs
+index bd00772c88..ea446de26f 100644
+--- b/rust/geometry/src/construction/source.rs
++++ a/rust/geometry/src/construction/source.rs
+@@ -42,7 +42,7 @@ pub(super) fn admit(router: &GeometryRouter, schema: &IfcSchema,
+     if router.length_unit_refused() { return Err(Requirement::LengthUnitRefused); }
+     let entity = decoder.decode_by_id(key.0)
+         .map_err(|error| Requirement::SourceAdmission(error.to_string()))?;
+-    if key.1 == Role::Root && router.processor_origin(&entity.ifc_type) == Some(ProcessorOrigin::Builtin) && false {
++    if key.1 == Role::Root && router.processor_origin(&entity.ifc_type) == Some(ProcessorOrigin::Custom) {
+         return Err(Requirement::CustomProcessor);
+     }
+     match entity.ifc_type {
+diff --git b/rust/geometry/src/processors/tessellated/triangulated.rs a/rust/geometry/src/processors/tessellated/triangulated.rs
+index ec06adf73d..219b699482 100644
+--- b/rust/geometry/src/processors/tessellated/triangulated.rs
++++ a/rust/geometry/src/processors/tessellated/triangulated.rs
+@@ -60,7 +60,7 @@ impl GeometryProcessor for TriangulatedFaceSetProcessor {
+         _quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+         -> Option<crate::Result<crate::program::OwnedConstructor>> {
+         use crate::program::constructor::Constructor;
+-        Some(triangulated_plan::lower(entity, decoder, None).map(|plan| crate::program::OwnedConstructor::new(Constructor::Triangles(plan))))
++        Some(triangulated_plan::lower(entity, decoder, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::Triangles(plan))))
+     }
+ 
+     #[inline]

@@ -2519,6 +2519,11 @@ Reuse checked ID-prefix accumulation and the scanner's existing ASCII proof; obt
   on both sides** — which reads exactly like "no regression" but is a control,
   not a measurement. If the diff is under `rust/processing/src/symbolic/`, say so
   and drive `extract_symbolic_data` directly, rather than pasting a zero.
+  The `symbolic_probe` processing example times that public API and reports
+  complete symbolic JSON fingerprints outside the timed interval. Build the
+  same example at both source pins, then interleave the binaries; pass a fixture
+  and `1` for one extraction per fresh process. This supplements the geometry
+  worker-pool probe and does not establish browser performance.
   - **And pick the fixture by whether it exercises the branch, not by the default.**
     #2358 only does extra work when a symbolic rep's `ContextOfItems` is a full
     `IfcGeometricRepresentationContext`. The default fixture AC20-FZK-Haus has

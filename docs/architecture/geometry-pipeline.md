@@ -413,6 +413,11 @@ circle primitive under similarities. Under a foreshortening projection they
 use the bounded sampled-polyline representation already used for ellipses,
 including an edge-on circle whose projection is a line. Trimmed circular
 arcs likewise transform sampled points rather than multiplying a scalar radius.
+Polyline, indexed-curve and fill vertices use the same full frame, including
+local Z and the representative vertex elevation. A projected arc becomes a
+chord only if it has no interior reversal along that chord; coincident endpoints
+can still enclose a visible segment. Text baselines stay unit length after
+projection, independently of the scalar text-height convention.
 
 ### Large Coordinate Handling
 

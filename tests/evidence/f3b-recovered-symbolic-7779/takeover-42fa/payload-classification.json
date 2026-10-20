@@ -1,0 +1,98 @@
+{
+  "duplex": {
+    "changes": [
+      {
+        "path": [
+          "polylines",
+          53,
+          "points",
+          38
+        ],
+        "base": 1.6542323e-14,
+        "branch": 1.6551813e-14,
+        "absDelta": 9.490000000001659e-18,
+        "entity": {
+          "express_id": 6757,
+          "ifc_type": "IfcDoor",
+          "representation": "Plan"
+        }
+      },
+      {
+        "path": [
+          "polylines",
+          412,
+          "points",
+          1
+        ],
+        "base": -1.2950752e-13,
+        "branch": -1.2949011e-13,
+        "absDelta": 1.740999999998306e-17,
+        "entity": {
+          "express_id": 21821,
+          "ifc_type": "IfcDoor",
+          "representation": "Plan"
+        }
+      }
+    ],
+    "changedScalarCount": 2,
+    "structuralChangeCount": 0,
+    "maxAbsoluteDelta": 1.740999999998306e-17
+  },
+  "issue129": {
+    "changedScalarCount": 606,
+    "structuralChangeCount": 0,
+    "maxAbsoluteDelta": 16.568251,
+    "changedEntities": [
+      151535,
+      163008,
+      328726,
+      329009,
+      330721,
+      330970,
+      331271,
+      331536,
+      331814,
+      332706,
+      333054
+    ]
+  },
+  "scope": "All differing ISSUE129 values are points; primitive counts, point-array lengths and metadata unchanged. IFC placement oracle classifies the eleven downward-Z beam axes as corrections.",
+  "capture": {
+    "scope": "Diagnostic allocation capture from frozen measured binaries; all payloads match measured complete JSON length and FNV. Instrumented timings are invalid and excluded.",
+    "captureSourceSha256": "ead69e0b8b76bee785a2c2749d035ee42af9897ad9c7906c0eff2221e362af2d",
+    "records": [
+      {
+        "fixture": "duplex",
+        "arm": "base",
+        "bytes": 102787,
+        "fnv1a64": "88e44dc0248b4457",
+        "sha256": "c4aec46871f689fc42ae682613a9ddb6c2989850f1dcd2590ff7c858bae4281e",
+        "binarySha256": "29f3215c24d6ee5566e047b5e002d7428e3c3ffc472888962b115fcd7991ce1d"
+      },
+      {
+        "fixture": "duplex",
+        "arm": "branch",
+        "bytes": 102787,
+        "fnv1a64": "38e8b670333c4837",
+        "sha256": "a327ee811552422d32dde9eda1773239b39fd65ea8a9963fafaf816c72ab478b",
+        "binarySha256": "d0bb573d97512268df2025733911067475c3eaf5744fcb261a17e18fb0cbe16b"
+      },
+      {
+        "fixture": "issue129",
+        "arm": "base",
+        "bytes": 156394,
+        "fnv1a64": "9179283a8a4f033d",
+        "sha256": "942551e0f682c9a4b5ba9e9f91d89de44cefcb46f7fc1c35cfafc58ce351ff2a",
+        "binarySha256": "29f3215c24d6ee5566e047b5e002d7428e3c3ffc472888962b115fcd7991ce1d"
+      },
+      {
+        "fixture": "issue129",
+        "arm": "branch",
+        "bytes": 156465,
+        "fnv1a64": "d9bf1089feb30d5b",
+        "sha256": "a2f7debdbd2d733a96ed3e9a7866aa2f7467f67254368d620facd4ccfe4788b0",
+        "binarySha256": "d0bb573d97512268df2025733911067475c3eaf5744fcb261a17e18fb0cbe16b"
+      }
+    ]
+  }
+}

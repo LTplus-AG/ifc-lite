@@ -1,0 +1,65 @@
+{
+  "job": "94ac70ac-8e8c-4bdc-84f9-025f4a22f079",
+  "host": "pc-wsl",
+  "sourceBefore": {
+    "commit": "42fa46cfd093d82b45e0f36427649637a5c0f7af",
+    "tree": "52b1e54879619191b48f61ad2dfddfe804e6c56b",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "sourceAfter": {
+    "commit": "42fa46cfd093d82b45e0f36427649637a5c0f7af",
+    "tree": "52b1e54879619191b48f61ad2dfddfe804e6c56b",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "sourceUnchanged": true,
+  "build": "PASS root pnpm build,72/72 tasks",
+  "typecheck": "PASS root pnpm typecheck including tail audit,127/127 Turbo tasks",
+  "realWasmContract": {
+    "passed": 212,
+    "failed": 0,
+    "skipped": 1,
+    "skip": "matched historical fingerprint fallback"
+  },
+  "rootTests": {
+    "verdict": "FAIL_OBSERVED_THEN_INTERRUPTED",
+    "completedTurboTasks": 139,
+    "totalTurboTasks": 140,
+    "viewer": {
+      "tests": 13555,
+      "suites": 2037,
+      "passed": 12954,
+      "failed": 1,
+      "cancelled": 588,
+      "skipped": 12
+    },
+    "assertion": "#7306 over-256 live placement walk refuses and reports its bound without truncating a source frame: assert.ok('refused' in plane)",
+    "file": "apps/viewer/src/lib/commands/modeling/storey-live-frame.test.ts:70",
+    "knownMainCorrection": {
+      "pr": 7916,
+      "commit": "9ffcc10e80f75b0645ba622e042961cd23bbc42e"
+    },
+    "interruption": "Owner sent SIGINT only to worker46167 after verifying its open log matched this exact job; remaining test cancellations are not additional observed regressions."
+  },
+  "receiptExitCode": 0,
+  "receiptCaveat": "Worker receipt completed0 after SIGINT, but test log reports one assertion failure and588 cancellations. This is NOT a passing root test graph. Fleet console decoding additionally failed on final partial UTF-8 output; original binary log SHA retained.",
+  "outputSha256": "61117ab561eb5559aac1f50ef77e4eb5eeac852fbc74a52602a74689d43b8c6d",
+  "command": [
+    "bash",
+    "-c",
+    "node scripts/fixtures/fetch-fixtures.mjs && export CI=1 NODE_OPTIONS=--max-old-space-size=4096 && pnpm build && pnpm test:wasm-contract && pnpm typecheck && pnpm test"
+  ]
+}

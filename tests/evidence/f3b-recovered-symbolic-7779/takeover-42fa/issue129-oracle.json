@@ -1,0 +1,174 @@
+{
+  "oracle": "IfcOpenShell placement utilities + authored curve equations; renderer frame registered only from unchanged direct Axis polylines",
+  "ifcopenshellVersion": "0.8.5",
+  "fixtureSha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131",
+  "unitScale": 1,
+  "angleToRadians": 0.0174532925199433,
+  "unchangedAnchorPoints": 694,
+  "unchangedAnchorEntities": 347,
+  "anchorMaxErrorMetres": 6.4551038635307495e-06,
+  "worldOrigin": [
+    1661264.7159132995,
+    8178634.853841584
+  ],
+  "renderOrigin": [
+    -8.510814254129688,
+    -27.28323135916424
+  ],
+  "worldToRenderPlan": [
+    [
+      1.0000000000000002,
+      -2.1942789973086633e-09
+    ],
+    [
+      -2.1942788903742403e-09,
+      -0.9999999999999998
+    ]
+  ],
+  "records": [
+    {
+      "expressId": 151535,
+      "ifcType": "IfcBeam",
+      "curveType": "IfcTrimmedCurve",
+      "samples": 65,
+      "baselineMaxErrorMetres": 18.0032061521573,
+      "branchMaxErrorMetres": 1.3375843858968636e-06,
+      "placementZAxis": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    {
+      "expressId": 163008,
+      "ifcType": "IfcBeam",
+      "curveType": "IfcTrimmedCurve",
+      "samples": 22,
+      "baselineMaxErrorMetres": 2.322504163894762,
+      "branchMaxErrorMetres": 1.1499526173525173e-06,
+      "placementZAxis": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    {
+      "expressId": 328726,
+      "ifcType": "IfcBeam",
+      "curveType": "IfcTrimmedCurve",
+      "samples": 65,
+      "baselineMaxErrorMetres": 5.477069326555865,
+      "branchMaxErrorMetres": 1.929623888290498e-06,
+      "placementZAxis": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    {
+      "expressId": 329009,
+      "ifcType": "IfcBeam",
+      "curveType": "IfcTrimmedCurve",
+      "samples": 45,
+      "baselineMaxErrorMetres": 8.960619140981825,
+      "branchMaxErrorMetres": 1.1944935718905067e-06,
+      "placementZAxis": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    {
+      "expressId": 330721,
+      "ifcType": "IfcBeam",
+      "curveType": "IfcTrimmedCurve",
+      "samples": 2,
+      "baselineMaxErrorMetres": 2.207893444480694,
+      "branchMaxErrorMetres": 7.391886291799423e-07,
+      "placementZAxis": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    {
+      "expressId": 330970,
+      "ifcType": "IfcBeam",
+      "curveType": "IfcTrimmedCurve",
+      "samples": 2,
+      "baselineMaxErrorMetres": 3.271954020945426,
+      "branchMaxErrorMetres": 1.0493260511059435e-06,
+      "placementZAxis": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    {
+      "expressId": 331271,
+      "ifcType": "IfcBeam",
+      "curveType": "IfcTrimmedCurve",
+      "samples": 29,
+      "baselineMaxErrorMetres": 4.676708139729201,
+      "branchMaxErrorMetres": 1.2325913737209646e-06,
+      "placementZAxis": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    {
+      "expressId": 331536,
+      "ifcType": "IfcBeam",
+      "curveType": "IfcTrimmedCurve",
+      "samples": 2,
+      "baselineMaxErrorMetres": 3.4994154888931597,
+      "branchMaxErrorMetres": 9.519281891213841e-07,
+      "placementZAxis": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    {
+      "expressId": 331814,
+      "ifcType": "IfcBeam",
+      "curveType": "IfcTrimmedCurve",
+      "samples": 39,
+      "baselineMaxErrorMetres": 7.457881310926473,
+      "branchMaxErrorMetres": 1.1620587104327781e-06,
+      "placementZAxis": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    {
+      "expressId": 332706,
+      "ifcType": "IfcBeam",
+      "curveType": "IfcTrimmedCurve",
+      "samples": 2,
+      "baselineMaxErrorMetres": 4.241542365118495,
+      "branchMaxErrorMetres": 6.031349774805826e-07,
+      "placementZAxis": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    {
+      "expressId": 333054,
+      "ifcType": "IfcBeam",
+      "curveType": "IfcTrimmedCurve",
+      "samples": 30,
+      "baselineMaxErrorMetres": 5.8996766903371665,
+      "branchMaxErrorMetres": 9.578857078391432e-07,
+      "placementZAxis": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    }
+  ],
+  "pass": true
+}

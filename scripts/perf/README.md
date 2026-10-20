@@ -4093,3 +4093,23 @@ Lesson: preserve full frames for correctness, retain every negative measurement,
 and attribute public API work separately before any performance acceptance.
 No new profile, rerun, optimization, repin, publication, merge or issue closure is
 authorized by this evidence.
+
+### Raw symbolic takeover qualification (#7914)
+
+The [raw-layer qualification packet](../../tests/evidence/f3b-recovered-symbolic-7779/takeover-42fa/README.md)
+records a separate, exclusively admitted paired comparison of the ordered parent
+and corrected symbolic source. Its verdict is **mixed, held**: some fixture wall
+medians increased and others decreased; this is no overall win or neutral result.
+It does not waive the distinct private integration regressions or the upstream
+instruction-budget hold. Full native mesh counts and hashes matched; full symbolic
+payloads needed their own comparison because the native probe does not execute
+the public symbolic API. The larger real-model coordinate changes are corrected
+negative-Z placement projection, independently checked using IfcOpenShell
+placements and authored curve equations, then the actual browser WASM boundary.
+
+Lesson: check executable provenance before timing. Cargo's shared relocation
+cache reused a baseline artifact during the first branch preparation despite a
+clean, correctly pinned checkout. That pair was rejected before measurements;
+fresh workspace compilation, embedded source paths and frozen executable hashes
+established the replacement pair. Keep source correctness, complete output
+identity and performance acceptance as separate evidence questions.

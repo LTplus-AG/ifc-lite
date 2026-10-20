@@ -1,0 +1,524 @@
+{
+  "symbolic-haus": {
+    "medianMs": {
+      "base": 23.74634,
+      "branch": 24.116158499999997
+    },
+    "deltaPct": 1.5573705253104198,
+    "pairedMedianDeltaPct": -2.3541133229659508,
+    "samplesMs": {
+      "base": [
+        23.934575,
+        23.534359,
+        22.778746,
+        27.205311,
+        23.558105,
+        22.821219,
+        22.676746,
+        25.774202,
+        22.787591,
+        22.65778,
+        23.487577,
+        25.830073,
+        27.560147,
+        27.071158,
+        22.870978,
+        24.343491,
+        23.011304,
+        26.905808,
+        26.769557,
+        27.945854
+      ],
+      "branch": [
+        22.572821,
+        22.996759,
+        28.972866,
+        24.401362,
+        27.308129,
+        23.078751,
+        22.731633,
+        27.199773,
+        22.235241,
+        22.316177,
+        22.750953,
+        23.830955,
+        26.699628,
+        26.075152,
+        22.13153,
+        22.650153,
+        24.969081,
+        26.35434,
+        26.790865,
+        27.168889
+      ]
+    },
+    "outputIdentity": {
+      "base": {
+        "symbolicJsonFnv1a64": [
+          "\"fb41ad46ecef8798\""
+        ],
+        "symbolicJsonBytes": [
+          "50987"
+        ],
+        "polylineCount": [
+          "248"
+        ],
+        "circleCount": [
+          "0"
+        ],
+        "fillCount": [
+          "0"
+        ],
+        "textCount": [
+          "65"
+        ],
+        "gridCount": [
+          "0"
+        ]
+      },
+      "branch": {
+        "symbolicJsonFnv1a64": [
+          "\"fb41ad46ecef8798\""
+        ],
+        "symbolicJsonBytes": [
+          "50987"
+        ],
+        "polylineCount": [
+          "248"
+        ],
+        "circleCount": [
+          "0"
+        ],
+        "fillCount": [
+          "0"
+        ],
+        "textCount": [
+          "65"
+        ],
+        "gridCount": [
+          "0"
+        ]
+      }
+    },
+    "stableWithinArms": true,
+    "identical": true
+  },
+  "symbolic-duplex": {
+    "medianMs": {
+      "base": 26.371143500000002,
+      "branch": 26.6677985
+    },
+    "deltaPct": 1.124922777808246,
+    "pairedMedianDeltaPct": 0.21849567904371203,
+    "samplesMs": {
+      "base": [
+        22.735384,
+        24.85517,
+        22.516758,
+        22.548013,
+        23.30274,
+        22.621212,
+        24.192103,
+        27.371336,
+        25.632793,
+        26.405436,
+        26.336851,
+        26.857283,
+        26.680918,
+        27.150061,
+        27.004306,
+        27.176176,
+        27.147542,
+        26.932665,
+        26.706581,
+        23.584879
+      ],
+      "branch": [
+        22.45884,
+        22.5424,
+        27.573443,
+        22.916952,
+        25.916726,
+        22.588616,
+        25.208141,
+        27.826567,
+        27.848725,
+        25.999199,
+        26.698975,
+        26.636622,
+        27.283108,
+        26.970242,
+        26.873934,
+        26.754371,
+        26.73068,
+        27.089167,
+        26.503213,
+        26.484332
+      ]
+    },
+    "outputIdentity": {
+      "base": {
+        "symbolicJsonFnv1a64": [
+          "\"88e44dc0248b4457\""
+        ],
+        "symbolicJsonBytes": [
+          "102787"
+        ],
+        "polylineCount": [
+          "695"
+        ],
+        "circleCount": [
+          "0"
+        ],
+        "fillCount": [
+          "0"
+        ],
+        "textCount": [
+          "0"
+        ],
+        "gridCount": [
+          "0"
+        ]
+      },
+      "branch": {
+        "symbolicJsonFnv1a64": [
+          "\"38e8b670333c4837\""
+        ],
+        "symbolicJsonBytes": [
+          "102787"
+        ],
+        "polylineCount": [
+          "695"
+        ],
+        "circleCount": [
+          "0"
+        ],
+        "fillCount": [
+          "0"
+        ],
+        "textCount": [
+          "0"
+        ],
+        "gridCount": [
+          "0"
+        ]
+      }
+    },
+    "stableWithinArms": true,
+    "identical": false
+  },
+  "symbolic-issue129": {
+    "medianMs": {
+      "base": 89.9277905,
+      "branch": 89.9783105
+    },
+    "deltaPct": 0.05617840682965447,
+    "pairedMedianDeltaPct": -0.10793450093848911,
+    "samplesMs": {
+      "base": [
+        90.107206,
+        89.884258,
+        91.723711,
+        87.836041,
+        89.971323,
+        90.013921,
+        90.24654,
+        89.645207,
+        88.895065,
+        89.640827,
+        94.197293,
+        87.93253,
+        92.520667,
+        99.479063,
+        89.171746,
+        89.141561,
+        88.95997,
+        89.305406,
+        90.276274,
+        90.366836
+      ],
+      "branch": [
+        92.786285,
+        90.136183,
+        89.53995,
+        88.550155,
+        89.966417,
+        90.112127,
+        89.796227,
+        90.950481,
+        90.133935,
+        88.17172,
+        89.238169,
+        96.720332,
+        89.990204,
+        92.969542,
+        88.077818,
+        90.137536,
+        103.519426,
+        89.117493,
+        89.779486,
+        89.390287
+      ]
+    },
+    "outputIdentity": {
+      "base": {
+        "symbolicJsonFnv1a64": [
+          "\"9179283a8a4f033d\""
+        ],
+        "symbolicJsonBytes": [
+          "156394"
+        ],
+        "polylineCount": [
+          "481"
+        ],
+        "circleCount": [
+          "0"
+        ],
+        "fillCount": [
+          "0"
+        ],
+        "textCount": [
+          "0"
+        ],
+        "gridCount": [
+          "0"
+        ]
+      },
+      "branch": {
+        "symbolicJsonFnv1a64": [
+          "\"d9bf1089feb30d5b\""
+        ],
+        "symbolicJsonBytes": [
+          "156465"
+        ],
+        "polylineCount": [
+          "481"
+        ],
+        "circleCount": [
+          "0"
+        ],
+        "fillCount": [
+          "0"
+        ],
+        "textCount": [
+          "0"
+        ],
+        "gridCount": [
+          "0"
+        ]
+      }
+    },
+    "stableWithinArms": true,
+    "identical": false
+  },
+  "native-haus": {
+    "medianMs": {
+      "base": 38.3522155,
+      "branch": 38.9411495
+    },
+    "deltaPct": 1.535593165406568,
+    "pairedMedianDeltaPct": 2.592611667213096,
+    "samplesMs": {
+      "base": [
+        36.939078,
+        38.505794,
+        40.049973,
+        40.687874,
+        36.412469,
+        38.198637
+      ],
+      "branch": [
+        39.824604,
+        38.057695,
+        54.182228,
+        41.885004,
+        37.229198999999994,
+        36.494733000000004
+      ]
+    },
+    "outputIdentity": {
+      "base": {
+        "meshFingerprintsFnv1a64": [
+          "[\"7377db33331a3523\", \"7377db33331a3523\", \"7377db33331a3523\", \"7377db33331a3523\", \"7377db33331a3523\"]"
+        ],
+        "meshes": [
+          "285"
+        ],
+        "vertices": [
+          "35940"
+        ],
+        "triangles": [
+          "20322"
+        ]
+      },
+      "branch": {
+        "meshFingerprintsFnv1a64": [
+          "[\"7377db33331a3523\", \"7377db33331a3523\", \"7377db33331a3523\", \"7377db33331a3523\", \"7377db33331a3523\"]"
+        ],
+        "meshes": [
+          "285"
+        ],
+        "vertices": [
+          "35940"
+        ],
+        "triangles": [
+          "20322"
+        ]
+      }
+    },
+    "stableWithinArms": true,
+    "identical": true,
+    "phaseMedians": {
+      "base": {
+        "parseMs": 12.0,
+        "geometryMs": 22.0,
+        "totalMs": 34.5
+      },
+      "branch": {
+        "parseMs": 12.5,
+        "geometryMs": 20.5,
+        "totalMs": 33.5
+      }
+    }
+  },
+  "native-duplex": {
+    "medianMs": {
+      "base": 53.281279,
+      "branch": 51.9541125
+    },
+    "deltaPct": -2.4908683216857463,
+    "pairedMedianDeltaPct": -0.556687451503346,
+    "samplesMs": {
+      "base": [
+        53.479417,
+        54.39228799999999,
+        50.973745,
+        53.083141,
+        59.060676,
+        52.771504
+      ],
+      "branch": [
+        50.26918,
+        50.653788,
+        52.751576,
+        54.116518,
+        67.64978400000001,
+        51.156649
+      ]
+    },
+    "outputIdentity": {
+      "base": {
+        "meshFingerprintsFnv1a64": [
+          "[\"3362e22e16f5749a\", \"3362e22e16f5749a\", \"3362e22e16f5749a\", \"3362e22e16f5749a\", \"3362e22e16f5749a\"]"
+        ],
+        "meshes": [
+          "486"
+        ],
+        "vertices": [
+          "51578"
+        ],
+        "triangles": [
+          "30374"
+        ]
+      },
+      "branch": {
+        "meshFingerprintsFnv1a64": [
+          "[\"3362e22e16f5749a\", \"3362e22e16f5749a\", \"3362e22e16f5749a\", \"3362e22e16f5749a\", \"3362e22e16f5749a\"]"
+        ],
+        "meshes": [
+          "486"
+        ],
+        "vertices": [
+          "51578"
+        ],
+        "triangles": [
+          "30374"
+        ]
+      }
+    },
+    "stableWithinArms": true,
+    "identical": true,
+    "phaseMedians": {
+      "base": {
+        "parseMs": 14.0,
+        "geometryMs": 26.5,
+        "totalMs": 41.5
+      },
+      "branch": {
+        "parseMs": 14.0,
+        "geometryMs": 27.5,
+        "totalMs": 42.0
+      }
+    }
+  },
+  "native-issue129": {
+    "medianMs": {
+      "base": 3668.3514059999998,
+      "branch": 3633.42495
+    },
+    "deltaPct": -0.9521022425189041,
+    "pairedMedianDeltaPct": -1.3148289097160648,
+    "samplesMs": {
+      "base": [
+        3663.805005,
+        3672.897807,
+        3760.660212,
+        3598.904552,
+        3636.232928,
+        3710.1602380000004
+      ],
+      "branch": [
+        3614.298267,
+        3727.049037,
+        3538.3425150000003,
+        3722.1304499999997,
+        3589.746618,
+        3652.551633
+      ]
+    },
+    "outputIdentity": {
+      "base": {
+        "meshFingerprintsFnv1a64": [
+          "[\"19b0b1c8ca8da958\", \"19b0b1c8ca8da958\", \"19b0b1c8ca8da958\", \"19b0b1c8ca8da958\", \"19b0b1c8ca8da958\"]"
+        ],
+        "meshes": [
+          "1402"
+        ],
+        "vertices": [
+          "219404"
+        ],
+        "triangles": [
+          "136377"
+        ]
+      },
+      "branch": {
+        "meshFingerprintsFnv1a64": [
+          "[\"19b0b1c8ca8da958\", \"19b0b1c8ca8da958\", \"19b0b1c8ca8da958\", \"19b0b1c8ca8da958\", \"19b0b1c8ca8da958\"]"
+        ],
+        "meshes": [
+          "1402"
+        ],
+        "vertices": [
+          "219404"
+        ],
+        "triangles": [
+          "136377"
+        ]
+      }
+    },
+    "stableWithinArms": true,
+    "identical": true,
+    "phaseMedians": {
+      "base": {
+        "parseMs": 35.0,
+        "geometryMs": 3550.5,
+        "totalMs": 3585.5
+      },
+      "branch": {
+        "parseMs": 34.0,
+        "geometryMs": 3451.0,
+        "totalMs": 3486.5
+      }
+    }
+  }
+}

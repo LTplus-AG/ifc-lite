@@ -1,0 +1,42 @@
+{
+  "job": "ffd73d72-daa1-4df6-a6b5-2b2901f9603c",
+  "host": "pop-os",
+  "request": "auto-1de6bd3163d341538f1f157d5a5149b6",
+  "command": [
+    "bash",
+    "-c",
+    "node scripts/fixtures/fetch-fixtures.mjs && cargo test --workspace && cargo clippy --workspace --all-targets -- -D warnings"
+  ],
+  "sourceBefore": {
+    "commit": "42fa46cfd093d82b45e0f36427649637a5c0f7af",
+    "tree": "52b1e54879619191b48f61ad2dfddfe804e6c56b",
+    "clean": true,
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "d19c45c892239d9972b1443a2db16b067db1f953dce484eeab460994244ad5b4",
+      "pnpm-lock.yaml": "75ff0731caa7c2d60c001a9d8065ddd6b5804c9d449d082fc8f266c9ea02469e",
+      "package.json": "c75849d892d87fdb24de413de22de9ebcb53ab5a1d7d6d8092fe5476be35d24b"
+    }
+  },
+  "sourceAfter": {
+    "commit": "42fa46cfd093d82b45e0f36427649637a5c0f7af",
+    "tree": "52b1e54879619191b48f61ad2dfddfe804e6c56b",
+    "clean": true
+  },
+  "sourceUnchanged": true,
+  "exitCode": 0,
+  "fixtures": {
+    "fetched": 182,
+    "skipped": 0,
+    "errors": 0
+  },
+  "workspaceTests": {
+    "passed": 5417,
+    "failed": 0,
+    "declaredIgnored": 46,
+    "reportedSuites": 361
+  },
+  "strictClippy": "PASS",
+  "outputLogSha256": "9cd3a72dfb6ee1402232c792fff4ef34d4fdae1f0580eb2c5df082255a658733",
+  "scope": "Exact42fa production/test source; later dce commit adds only browser evidence. No hosted/current-main/parent or performance acceptance is implied."
+}

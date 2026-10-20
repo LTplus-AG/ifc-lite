@@ -1,0 +1,29 @@
+{
+  "observer": "tests",
+  "baseline": {
+    "kind": "pass",
+    "passed": 51,
+    "total": 51
+  },
+  "reverted": {
+    "kind": "assertion-failure",
+    "passed": 42,
+    "failed": 9,
+    "total": 51,
+    "evidence": []
+  },
+  "schemaVersion": 2,
+  "channel": "pull-request",
+  "verdict": "OBSERVED",
+  "exitCode": 0,
+  "reason": "reverting production turned an assertion RED in rust/processing/src/symbolic/projected_conic_tests.rs; that file has a green, attributable baseline.",
+  "base": "7cdd67bc3e5b5998ba6d6f048665f94a3451fd31",
+  "head": "dceadbbe57ea8dfdcda4b5d3e790f6238e8607ae",
+  "invocationId": "90a1a4da-e46c-4796-b854-ceffd60442f4",
+  "timing": {
+    "startedAt": "2026-10-20T21:45:58.620Z",
+    "finishedAt": "2026-10-20T21:48:29.568Z"
+  },
+  "restoration": "verified",
+  "fullLedgerSha256": "ab25b37ec1801d4849a8e3e8236524dd845f9643b65b1782e2245133c4239729"
+}

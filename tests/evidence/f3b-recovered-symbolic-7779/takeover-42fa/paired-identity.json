@@ -1,0 +1,74 @@
+{
+  "platform": "Linux-6.17.9-76061709-generic-x86_64-with-glibc2.39",
+  "cpuCount": 32,
+  "driverSha256": "04c8c4ed28019f6e75e5a947472fb6c028965a3a98f7ef2b59cf8cb47aebb7a4",
+  "protocol": {
+    "symbolicPairs": 20,
+    "nativePairs": 6,
+    "nativeIterations": 5,
+    "order": "AB on even rounds, BA on odd rounds; fixture order fixed",
+    "outputs": "complete symbolic JSON FNV; ordered mesh FNV excludes appearance and auxiliary payloads"
+  },
+  "env": {
+    "RUST_TEST_THREADS": "4",
+    "CARGO_BUILD_JOBS": "8",
+    "RAYON_NUM_THREADS": "8"
+  },
+  "fixtures": {
+    "haus": {
+      "path": "AC20-FZK-Haus.ifc",
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "bytes": 2526511
+    },
+    "duplex": {
+      "path": "duplex.ifc",
+      "sha256": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+      "bytes": 2380763
+    },
+    "issue129": {
+      "path": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "sha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131",
+      "bytes": 12030684
+    }
+  },
+  "arms": {
+    "base": {
+      "source": "13832a244b954699a54de7d80c33c485a0896c8e",
+      "tree": "7221ad7296b589724cc7ec8217faed410875c95c",
+      "binaries": {
+        "perf_probe": {
+          "sha256": "57ed99ddc83de89451efa1700c188bffd8c4f25aad928d55dc851d085b2cdbd0",
+          "bytes": 24727536
+        },
+        "symbolic_probe": {
+          "sha256": "29f3215c24d6ee5566e047b5e002d7428e3c3ffc472888962b115fcd7991ce1d",
+          "bytes": 6240792
+        }
+      }
+    },
+    "branch": {
+      "source": "dceadbbe57ea8dfdcda4b5d3e790f6238e8607ae",
+      "tree": "d9dc8c89fd2f00220fca7e5304167d53f137bea9",
+      "runtimeEquivalentTo": "42fa46cfd093d82b45e0f36427649637a5c0f7af",
+      "allWorkspaceArtifactsRecompiled": true,
+      "binaries": {
+        "perf_probe": {
+          "sha256": "047c4bdad0a84588e933417af8f0699af4b70e91d8c4bd23da1e7b252b246235",
+          "bytes": 24727536,
+          "fresh": false
+        },
+        "symbolic_probe": {
+          "sha256": "d0bb573d97512268df2025733911067475c3eaf5744fcb261a17e18fb0cbe16b",
+          "bytes": 6214864,
+          "fresh": false
+        }
+      }
+    }
+  },
+  "orderedBase": "7cdd67bc3e5b5998ba6d6f048665f94a3451fd31",
+  "receipt": "c719db7c-3722-4c8d-80e0-d3a688b38a97",
+  "identityAfter": {
+    "finished": 1792533677.6447873,
+    "binaryAndFixtureHashesUnchanged": true
+  }
+}

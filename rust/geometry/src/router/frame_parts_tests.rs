@@ -171,3 +171,144 @@ fn frames_merge_below_the_mapped_origin_limit_only() {
     // A NaN origin is already broken input; it keeps the historical merge.
     assert!(frames_mergeable([f64::NAN, 0.0, 0.0], [0.0; 3]));
 }
+
+fn bounded(limits: crate::resource::ResourceLimits) -> crate::resource::ExecutionAccount {
+    use crate::resource::{ExecutionAccount, ExecutionPolicy};
+    ExecutionAccount::new(ExecutionPolicy::Bounded(limits))
+}
+
+fn unit_triangle(origin: [f64; 3]) -> Mesh {
+    let mut mesh = Mesh::new();
+    mesh.positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+    mesh.normals = vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+    mesh.indices = vec![0, 1, 2];
+    mesh.origin = origin;
+    mesh
+}
+
+// The real multi-frame fixture must retain source order through the audited
+// source-parts materialization, including every triangle buffer.
+#[test]
+fn resource_source_parts_materialization_preserves_fixture_order_and_frames() {
+    use crate::resource::ResourceLimits;
+    let source = include_str!("../../tests/fixtures/issue_6446_mapped_source_frames.ifc");
+    let run = || {
+        let mut decoder = EntityDecoder::new(source);
+        let item = decoder.decode_by_id(66).unwrap();
+        GeometryRouter::new().process_mapped_item_parts(&item, &mut decoder).unwrap()
+    };
+    let expected = run();
+    let account = bounded(ResourceLimits::default());
+    let actual = account.scope(run);
+    assert_eq!(actual.len(), expected.len());
+    for (actual, expected) in actual.iter().zip(&expected) {
+        assert_eq!(actual.positions, expected.positions);
+        assert_eq!(actual.normals, expected.normals);
+        assert_eq!(actual.indices, expected.indices);
+        assert_eq!(actual.origin, expected.origin);
+        assert_eq!(actual.local_bounds, expected.local_bounds);
+        assert_eq!(actual.rtc_applied, expected.rtc_applied);
+    }
+    assert!(account.usage().copy_bytes > 0, "the accounted run charged its copies");
+}
+
+#[test]
+fn resource_zero_allowance_refuses_source_merge_before_any_growth() {
+    use crate::resource::ResourceLimits;
+    let incoming = unit_triangle([0.0; 3]);
+    for limits in [
+        ResourceLimits { copy_bytes: Some(0), ..Default::default() },
+        ResourceLimits { live_bytes: Some(0), ..Default::default() },
+        ResourceLimits { work: Some(0), ..Default::default() },
+    ] {
+        let account = bounded(limits);
+        account.scope(|| {
+            let mut source = super::SourceParts::default();
+            source.merge(&incoming);
+            assert!(source.into_parts().is_err(), "{limits:?}");
+        });
+        assert_eq!(account.usage().live_bytes, 0, "{limits:?}");
+        assert_eq!(account.usage().copy_bytes, 0, "{limits:?}");
+    }
+}
+
+#[test]
+fn resource_far_frame_scan_is_charged_per_candidate() {
+    use crate::resource::ResourceLimits;
+    let account = bounded(ResourceLimits { work: Some(1_000_000), ..Default::default() });
+    account.scope(|| {
+        let mut source = super::SourceParts::default();
+        source.merge(&unit_triangle([0.0; 3]));
+        source.merge(&unit_triangle([5_000_000.0, 0.0, 0.0]));
+        let before = account.usage().work;
+        source.merge(&unit_triangle([9_000_000.0, 0.0, 0.0]));
+        assert!(account.usage().work - before >= 2, "two candidates were visited");
+        assert_eq!(source.into_parts().unwrap().len(), 3);
+    });
+}
+
+#[test]
+fn resource_default_source_merge_is_unaccounted_and_unchanged() {
+    assert!(!crate::resource::is_active());
+    let mut source = super::SourceParts::default();
+    source.merge(&unit_triangle([0.0; 3]));
+    source.merge(&unit_triangle([0.0; 3]));
+    let parts = source.into_parts().unwrap();
+    assert_eq!(parts.len(), 1);
+    assert_eq!(parts[0].indices, vec![0, 1, 2, 3, 4, 5]);
+}
+
+#[test]
+fn resource_empty_source_materialization_admits_placeholder_header_before_allocation() {
+    use crate::resource::ResourceLimits;
+    let denied = bounded(ResourceLimits { live_bytes: Some(0), ..Default::default() });
+    denied.scope(|| {
+        assert!(super::SourceParts::default().into_parts().is_err());
+        assert!(denied.check().is_err());
+    });
+    let accepted = bounded(ResourceLimits::default());
+    accepted.scope(|| {
+        let parts = super::SourceParts::default().into_parts().unwrap();
+        assert_eq!(parts.len(), 1);
+        assert!(parts[0].positions.is_empty());
+        assert!(accepted.usage().live_bytes >= std::mem::size_of::<Mesh>() as u64);
+    });
+}
+
+#[test]
+fn resource_element_parts_match_default_output_and_refuse_zero_allowances() {
+    use crate::resource::{ProgramStop, ResourceLimits};
+    let source = fixture("#11,#16,#51", "#33");
+    let run = || {
+        let mut decoder = EntityDecoder::new(&source);
+        let element = decoder.decode_by_id(20).unwrap();
+        rtc_router().process_element_parts(&element, &mut decoder)
+    };
+    let expected = run().unwrap();
+    let accounted = bounded(ResourceLimits::default()).scope(run).unwrap();
+    assert_eq!(accounted.len(), expected.len());
+    for (a, e) in accounted.iter().zip(&expected) {
+        assert_eq!((&a.positions, &a.normals, &a.indices), (&e.positions, &e.normals, &e.indices));
+        assert_eq!((a.origin, a.local_bounds), (e.origin, e.local_bounds));
+    }
+    for limits in [
+        ResourceLimits { copy_bytes: Some(0), ..Default::default() },
+        ResourceLimits { live_bytes: Some(0), ..Default::default() },
+    ] {
+        let result = bounded(limits).scope(run);
+        assert!(matches!(result, Err(crate::Error::ProgramStopped(ProgramStop::ResourceRefused(_)))), "{limits:?}");
+    }
+}
+
+#[test]
+fn resource_zero_output_allowance_refuses_mapped_cache_clone() {
+    use crate::resource::{ProgramStop, ResourceLimits};
+    let source = include_str!("../../tests/fixtures/issue_6446_mapped_source_frames.ifc");
+    let mut decoder = EntityDecoder::new(source);
+    let item = decoder.decode_by_id(66).unwrap();
+    let router = GeometryRouter::new();
+    let account = bounded(ResourceLimits { output_bytes: Some(0), ..Default::default() });
+    let result = account.scope(|| router.process_mapped_item_parts(&item, &mut decoder));
+    assert!(matches!(result, Err(crate::Error::ProgramStopped(ProgramStop::ResourceRefused(_)))));
+    assert!(router.mapped_item_cache.borrow().is_empty(), "nothing was cached after the refusal");
+}

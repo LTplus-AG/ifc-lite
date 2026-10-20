@@ -304,3 +304,6 @@ pub use void_index::{
 };
 
 mod exact_topology;
+
+/// Explicit resource admission for audited canonical execution sites.
+pub mod resource;

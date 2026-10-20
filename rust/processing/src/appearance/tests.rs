@@ -274,7 +274,7 @@ fn issue_4243_world_projection_reports_cyclic_placement_instead_of_partial_trans
     };
     let plan = plan_appearance(cyclic.as_bytes(), &req).unwrap();
     assert!(plan.created.is_empty());
-    assert!(plan.exclusions[0].reason.contains("cycle/depth"));
+    assert!(plan.exclusions[0].reason.contains("cyclic"));
 }
 #[test]
 fn issue_4243_wire_contract_has_camelcase_variants_and_stable_allocation_start() {

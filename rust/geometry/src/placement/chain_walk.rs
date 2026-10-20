@@ -10,7 +10,7 @@ use super::grid_frame::{owning_grid_frame, GridPlacementLayout, OwningFrame};
 use super::{PlacementError, PlacementResult};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix4;
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 
 /// Paths this short are checked by scanning; longer ones switch to a hash set
@@ -41,11 +41,13 @@ pub(super) struct Climb {
     pub(super) base: Matrix4<f64>,
     /// The record that ended the climb because it is not a placement.
     pub(super) stopped_at: Option<(u32, IfcType)>,
+    /// A suffix verified by this source-local, fixed-policy validation session.
+    pub(super) verified_root: Option<u32>,
 }
 
 impl Climb {
     pub(super) fn new() -> Self {
-        Self { frames: SmallVec::new(), base: Matrix4::identity(), stopped_at: None }
+        Self { frames: SmallVec::new(), base: Matrix4::identity(), stopped_at: None, verified_root: None }
     }
 }
 
@@ -98,11 +100,16 @@ pub(super) fn climb(
     decoder: &mut EntityDecoder,
     memo: bool,
     first_checked: bool,
+    verified: Option<&FxHashMap<u32, u32>>,
 ) -> PlacementResult<()> {
     let mut seen = Seen(None);
     let mut current = first.clone();
     let mut skip_lookup = first_checked;
     loop {
+        if let Some(root) = verified.and_then(|known| known.get(&current.id)) {
+            out.verified_root = Some(*root);
+            break;
+        }
         if memo && !skip_lookup {
             if let Some(m) = decoder.get_placement_transform_cached(current.id) {
                 out.base = Matrix4::from_column_slice(&m);
@@ -148,6 +155,8 @@ pub(super) fn climb(
                 parent
             }
         };
+        #[cfg(test)]
+        VALIDATION_WORK.with(|count| count.set(count.get() + 1));
         out.frames.push(Frame { entity: current, kind, grid, alias });
         match parent {
             Some(p) => current = p,
@@ -155,4 +164,9 @@ pub(super) fn climb(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+thread_local! {
+    pub(super) static VALIDATION_WORK: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }

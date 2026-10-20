@@ -181,9 +181,9 @@ fn export(content: &[u8], product_ids: &[u32], options: &LandXmlTerrainOptions) 
     // The default router keeps placements in project units, which is what
     // `IfcMapConversion` consumes.
     let router = GeometryRouter::new();
-    let mut validated = HashSet::new();
+    let mut validator = ifc_lite_geometry::placement::ChainValidator::new(&mut decoder, crate::step_map_transform::preflight::CHAIN_POLICY);
     let terrains = ids.iter()
-        .map(|id| tin::read_terrain(*id, &facts, &router, &mut validated, &mut decoder))
+        .map(|id| tin::read_terrain(*id, &facts, &router, &mut validator))
         .collect::<Result<Vec<_>, _>>()?;
     let crs = terrains[0].crs.clone();
     if let Some(other) = terrains.iter().find(|terrain| terrain.crs != crs) {

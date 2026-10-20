@@ -120,11 +120,11 @@ pub fn plan_map_conversion_normalization(content: &[u8]) -> Result<MapConversion
         let mut output = writer::Writer::new(&records)?;
         let inverse_scale = Matrix4::new_nonuniform_scaling(&nalgebra::Vector3::repeat(1.0 / scale));
         let mut shapes = BTreeMap::new();
-        let mut validated = std::collections::HashSet::new();
+        let mut validator = ifc_lite_geometry::placement::ChainValidator::new(&mut decoder, preflight::CHAIN_POLICY);
         for record in records.iter().filter(|record| record.kind.is_subtype_of(IfcType::IfcProduct)) {
-            let product = decoder.decode_by_id(record.id).map_err(|error| error.to_string())?;
-            preflight::placement(&product, &router, &mut validated, &mut decoder)?;
-            let matrix = router.resolve_scaled_placement_strict(&product, &mut decoder)
+            let product = validator.decoder().decode_by_id(record.id).map_err(|error| error.to_string())?;
+            preflight::placement(&product, &router, &mut validator)?;
+            let matrix = router.resolve_scaled_placement_strict(&product, validator.decoder())
                 .map_err(|error| error.to_string())?;
             let mut placement = Matrix4::from_column_slice(&matrix);
             for row in 0..3 { placement[(row, 3)] /= unit; }
@@ -134,6 +134,7 @@ pub fn plan_map_conversion_normalization(content: &[u8]) -> Result<MapConversion
             plan.replacements.push(writer::replace(record, &[(5, format!("#{new_placement}"))])?);
             if let Some(shape) = product.get_ref(6) { shapes.insert(shape, ()); }
         }
+        drop(validator);
         for shape_id in shapes.keys() {
             let shape = decoder.decode_by_id(*shape_id).map_err(|error| error.to_string())?;
             let reps = shape.get_refs(2).ok_or("ProductDefinitionShape has no Representations")?;

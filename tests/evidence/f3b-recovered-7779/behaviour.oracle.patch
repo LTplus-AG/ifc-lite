@@ -1,0 +1,33 @@
+diff --git a/rust/geometry/src/placement/validated_chain.rs b/rust/geometry/src/placement/validated_chain.rs
+--- a/rust/geometry/src/placement/validated_chain.rs
++++ b/rust/geometry/src/placement/validated_chain.rs
+@@ -40,7 +40,7 @@
+         }
+         let start = self.decoder.decode_by_id(id)?;
+         let mut climbed = Climb::new();
++        climb(&mut climbed, &start, self.decoder, false, false, Some(&self.verified))?;
+-        climb(&mut climbed, &start, self.decoder, false, false, None)?;
+         if let Some((at, found)) = climbed.stopped_at {
+             return Err(unsupported(self.decoder, at, found));
+         }
+diff --git a/rust/geometry/src/placement/validate.rs b/rust/geometry/src/placement/validate.rs
+--- a/rust/geometry/src/placement/validate.rs
++++ b/rust/geometry/src/placement/validate.rs
+@@ -49,7 +49,7 @@
+         let at = frame.entity.id;
+         match frame.kind {
+             LinkKind::Local => check_relative(frame, decoder, policy)?,
++            LinkKind::Linear if policy.linear => super::linear::validate_source(&frame.entity, decoder)?,
+-            LinkKind::Linear if policy.linear => {},
+             LinkKind::Grid if policy.grid => {}
+             LinkKind::Linear => return Err(PlacementError::Policy { at, rule: "IfcLinearPlacement is not accepted" }),
+             LinkKind::Grid => return Err(PlacementError::Policy { at, rule: "IfcGridPlacement is not accepted" }),
+@@ -106,7 +106,7 @@
+     // Defaults participate in the WR too. Explicit +X Axis with omitted
+     // RefDirection (default +X) is parallel, just like two explicit +X axes.
+     let axis = unit(frame.axis.unwrap_or(super::Z))?;
++    let reference = unit(frame.ref_direction.unwrap_or(super::X))?;
+-    let reference = unit(frame.ref_direction.unwrap_or([0., 1., 0.]))?;
+     if axis.cross(&reference).norm() <= 1e-12 {
+         return Err(PlacementError::Policy { at: rel.id, rule: "Axis is parallel to RefDirection" });
+     }

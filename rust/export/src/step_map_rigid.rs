@@ -4,7 +4,8 @@
 
 use super::{preflight, writer, MapConversionNormalizationPlan, Record};
 use crate::step_text::attribute_of;
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType, MAX_PLACEMENT_DEPTH};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_geometry::placement::{ChainValidator, LinkKind};
 use ifc_lite_geometry::GeometryRouter;
 use nalgebra::Matrix4;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -20,66 +21,8 @@ pub(super) fn plan(
 ) -> Result<MapConversionNormalizationPlan, String> {
     preflight::context_frame(context, decoder)?;
     preflight::rigid_frame(affine, map.id)?;
-    let mut roots = BTreeSet::new();
-    let mut placements = HashMap::new();
-    let mut representations = HashSet::new();
-    let mut shapes = HashSet::new();
-    let mut products = HashSet::new();
-    for record in records {
-        // Alignments and their linear placements are ordinary root-frame
-        // consumers (see `placement_root`); grids and structural analysis
-        // models carry frames this root edit does not own.
-        if record.kind.is_subtype_of(IfcType::IfcStructuralItem)
-            || matches!(record.kind, IfcType::IfcGrid | IfcType::IfcGridPlacement)
-        {
-            return Err(format!(
-                "{} #{} has unsupported engineering-frame consumers",
-                record.kind.name(),
-                record.id
-            ));
-        }
-        if !record.kind.is_subtype_of(IfcType::IfcProduct) {
-            continue;
-        }
-        let product = decoder
-            .decode_by_id(record.id)
-            .map_err(|error| error.to_string())?;
-        let shape = product.get(6).filter(|attr| !attr.is_null());
-        let placement = product.get(5).filter(|attr| !attr.is_null());
-        if let Some(attr) = placement {
-            let id = attr
-                .as_entity_ref()
-                .ok_or("ObjectPlacement is not a reference")?;
-            roots.insert(placement_root(id, &mut placements, decoder)?);
-            products.insert(product.id);
-        } else if shape.is_some() {
-            return Err(format!(
-                "represented product #{} has no ObjectPlacement",
-                product.id
-            ));
-        }
-        if let Some(attr) = shape {
-            let id = attr
-                .as_entity_ref()
-                .ok_or("product Representation is not a reference")?;
-            shapes.insert(id);
-            let shape = decoder
-                .decode_by_id(id)
-                .map_err(|error| error.to_string())?;
-            if shape.ifc_type != IfcType::IfcProductDefinitionShape {
-                return Err(format!(
-                    "product #{} does not use a ProductDefinitionShape",
-                    product.id
-                ));
-            }
-            representations.extend(
-                shape
-                    .get_refs(2)
-                    .filter(|refs| !refs.is_empty())
-                    .ok_or("ProductDefinitionShape has no Representations")?,
-            );
-        }
-    }
+    let PlacementConsumers { roots, placements, representations, shapes, products } =
+        placement_consumers(records, decoder)?;
     if roots.is_empty() {
         return Err("no represented placement roots to normalize".into());
     }
@@ -187,73 +130,109 @@ pub(super) fn plan(
     Ok(plan)
 }
 
+#[derive(Default)]
+struct PlacementConsumers {
+    roots: BTreeSet<u32>,
+    placements: HashMap<u32, u32>,
+    representations: HashSet<u32>,
+    shapes: HashSet<u32>,
+    products: HashSet<u32>,
+}
+
+/// Discover and verify the source's consumers once under a fixed policy.
+fn placement_consumers(records: &[Record<'_>], decoder: &mut EntityDecoder) -> Result<PlacementConsumers, String> {
+    let mut consumers = PlacementConsumers::default();
+    let mut validator = ChainValidator::new(decoder, preflight::CHAIN_POLICY);
+    for record in records {
+        // Alignments and their linear placements are ordinary root-frame
+        // consumers (see `placement_root`); grids and structural analysis
+        // models carry frames this root edit does not own.
+        if record.kind.is_subtype_of(IfcType::IfcStructuralItem)
+            || matches!(record.kind, IfcType::IfcGrid | IfcType::IfcGridPlacement)
+        {
+            return Err(format!(
+                "{} #{} has unsupported engineering-frame consumers",
+                record.kind.name(),
+                record.id
+            ));
+        }
+        if !record.kind.is_subtype_of(IfcType::IfcProduct) {
+            continue;
+        }
+        let product = validator.decoder()
+            .decode_by_id(record.id)
+            .map_err(|error| error.to_string())?;
+        let shape = product.attr(slot::IfcProduct::REPRESENTATION).filter(|attr| !attr.is_null());
+        let placement = product.attr(slot::IfcProduct::OBJECT_PLACEMENT).filter(|attr| !attr.is_null());
+        if let Some(attr) = placement {
+            let id = attr
+                .as_entity_ref()
+                .ok_or("ObjectPlacement is not a reference")?;
+            consumers.roots.insert(placement_root(id, &mut consumers.placements, &mut validator)?);
+            consumers.products.insert(product.id);
+        } else if shape.is_some() {
+            return Err(format!(
+                "represented product #{} has no ObjectPlacement",
+                product.id
+            ));
+        }
+        if let Some(attr) = shape {
+            let id = attr
+                .as_entity_ref()
+                .ok_or("product Representation is not a reference")?;
+            consumers.shapes.insert(id);
+            let shape = validator.decoder()
+                .decode_by_id(id)
+                .map_err(|error| error.to_string())?;
+            if shape.ifc_type != IfcType::IfcProductDefinitionShape {
+                return Err(format!(
+                    "product #{} does not use a ProductDefinitionShape",
+                    product.id
+                ));
+            }
+            consumers.representations.extend(
+                shape
+                    .ref_list_at(slot::IfcProductRepresentation::REPRESENTATIONS)
+                    .filter(|refs| !refs.is_empty())
+                    .ok_or("ProductDefinitionShape has no Representations")?,
+            );
+        }
+    }
+    Ok(consumers)
+}
+
 /// The renderer's canonical frame for an `IfcAxis2Placement3D`.
 fn local_frame(frame: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Matrix4<f64>, String> {
     let placement = ifc_lite_geometry::placement::Axis2Placement::read_3d(frame, decoder);
     Ok(placement.map_err(|error| error.to_string())?.matrix())
 }
 
-/// Pure (root, path length) result: global memoization handles aliases without
-/// repeating walks. Iterative traversal cannot exhaust the native/WASM stack.
+/// The root of `id`'s placement chain, after validating it with the shared
+/// walk (visited set, no depth cap, D27) under the preflight policy. The
+/// memo is per placement id, so aliases are not walked twice.
 fn placement_root(
     id: u32,
-    memo: &mut HashMap<u32, (u32, usize)>,
-    decoder: &mut EntityDecoder,
+    memo: &mut HashMap<u32, u32>,
+    validator: &mut ChainValidator,
 ) -> Result<u32, String> {
-    let mut path = Vec::new();
-    let mut seen = HashSet::new();
-    let mut current = id;
-    let (root, mut depth) = loop {
-        if let Some(result) = memo.get(&current) {
-            break *result;
-        }
-        if path.len() >= MAX_PLACEMENT_DEPTH || !seen.insert(current) {
+    if let Some(root) = memo.get(&id) {
+        return Ok(*root);
+    }
+    let (root, links) = validator.validate(id).map_err(|error| error.to_string())?;
+    // A linear placement is baked below into an IfcLocalPlacement relative to
+    // the same parent. Without a parent the basis curve is read in the
+    // untransformed world frame, which a root edit cannot carry.
+    for link in links.iter().filter(|link| link.kind == LinkKind::Linear) {
+        let placement = validator.decoder().decode_by_id(link.id).map_err(|error| error.to_string())?;
+        if placement.attr(slot::IfcObjectPlacement::PLACEMENT_REL_TO).is_none_or(|attr| attr.is_null()) {
             return Err(format!(
-                "ObjectPlacement #{id} is cyclic or exceeds the placement-work bound"
+                "IfcLinearPlacement #{} has no PlacementRelTo to carry its basis curve",
+                link.id
             ));
         }
-        let placement = decoder
-            .decode_by_id(current)
-            .map_err(|error| error.to_string())?;
-        let parent = placement.get(0).filter(|attr| !attr.is_null());
-        match placement.ifc_type {
-            IfcType::IfcLocalPlacement => {
-                let frame = decoder
-                    .decode_by_id(placement.get_ref(1).ok_or("RelativePlacement is missing")?)
-                    .map_err(|error| error.to_string())?;
-                preflight::axis(&frame, decoder)?;
-            }
-            // Baked below into an IfcLocalPlacement relative to the same
-            // parent. Without a parent the basis curve is read in the
-            // untransformed world frame, which a root edit cannot carry.
-            IfcType::IfcLinearPlacement if parent.is_some() => {}
-            IfcType::IfcLinearPlacement => {
-                return Err(format!(
-                    "IfcLinearPlacement #{current} has no PlacementRelTo to carry its basis curve"
-                ));
-            }
-            _ => {
-                return Err(format!(
-                    "ObjectPlacement #{current} is not an IfcLocalPlacement or IfcLinearPlacement"
-                ));
-            }
-        }
-        path.push(current);
-        match parent {
-            None => break (current, 0),
-            Some(attr) => {
-                current = attr
-                    .as_entity_ref()
-                    .ok_or("PlacementRelTo is not a reference")?
-            }
-        }
-    };
-    for id in path.into_iter().rev() {
-        depth += 1;
-        if depth > MAX_PLACEMENT_DEPTH {
-            return Err("ObjectPlacement exceeds the placement-work bound".into());
-        }
-        memo.insert(id, (root, depth));
+    }
+    for link in &links {
+        memo.insert(link.id, root);
     }
     Ok(root)
 }

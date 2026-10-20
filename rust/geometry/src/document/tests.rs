@@ -25,7 +25,10 @@ fn admissions_advance_revision_and_keep_source_attribution() {
     let placed = document.occurrence(occurrence).unwrap();
     assert_eq!(placed.source_entity_id, 20);
     assert_eq!(placed.definition, definition);
-    assert_eq!(document.mesh(definition).unwrap().positions, triangle().positions);
+    assert_eq!(
+        document.mesh(definition).unwrap().positions,
+        triangle().positions
+    );
 }
 
 #[test]
@@ -105,8 +108,14 @@ fn cross_document_handles_never_alias_same_slots() {
     let foreign_occurrence = first.add_occurrence(foreign, 1, IDENTITY).unwrap();
     let own = second.add_mesh_definition(2, triangle()).unwrap();
     second.add_occurrence(own, 2, IDENTITY).unwrap();
-    assert_eq!(second.mesh(foreign).unwrap_err(), DocumentError::WrongDocument);
-    assert_eq!(second.source_entity_id(foreign), Err(DocumentError::WrongDocument));
+    assert_eq!(
+        second.mesh(foreign).unwrap_err(),
+        DocumentError::WrongDocument
+    );
+    assert_eq!(
+        second.source_entity_id(foreign),
+        Err(DocumentError::WrongDocument)
+    );
     assert!(matches!(
         second.occurrence(foreign_occurrence),
         Err(DocumentError::WrongDocument)

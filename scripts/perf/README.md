@@ -4369,7 +4369,7 @@ arm preserves all mesh fingerprints, counts and failure counters. Its report
 remains noisy and inconclusive overall, but flags the Haus parse phase as
 slower; complete-load wall medians also increase on all controls. Preserve that
 adverse result rather than substituting the earlier recovery's timing or calling
-this neutral. Causal attribution and performance acceptance remain open. This
+this neutral. Causal attribution remains unproven. This
 default-off dedup/native cohort establishes no opt-in or browser performance
 claim.
 
@@ -4381,4 +4381,12 @@ any model call because a negative parser control caught the wrong exception
 type. A separately reviewed derivative corrects only that control and binds both
 the original verifier and its own reviewed bytes; all model calls then pass.
 The original failure remains preserved. Correctness and timing are separate
-verdicts: this witness does not resolve performance acceptance.
+verdicts: output identity does not establish performance neutrality.
+
+Disposition: accept the disclosed native cost for this localized Class X
+correctness change, which preserves valid neighboring geometry with a counted
+refusal. Independent adversarial review approves its source and correctness
+evidence. The charter requires a performance verdict for this class; this is an
+adverse verdict, with causal attribution still unproven, rather than a neutrality
+claim. Existing native-instruction, bundle, parity and required CI ceilings stay
+binding. No benchmark rerun, baseline, acceptance band or pin change is made.

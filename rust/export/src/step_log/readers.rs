@@ -11,19 +11,24 @@
 //! writer's parity target is what those readers answer, not what the record
 //! means.
 
+use ifc_lite_core::parser::is_step_space;
 use ifc_lite_core::step_encoding::step_string_literal_end;
 
 use crate::step_record_frame::{record_frame, record_head};
 
+/// JavaScript's `\s` over ASCII is the STEP whitespace set (space, tab, LF,
+/// CR, FF and VT): core's [`is_step_space`]. `u8::is_ascii_whitespace` leaves
+/// out the vertical tab, so a VT before a `(` ended a match the TypeScript
+/// regex continued (F4 M-export-a, CORE-1).
 fn ws(b: &[u8], mut i: usize) -> usize {
-    while i < b.len() && b[i].is_ascii_whitespace() {
+    while i < b.len() && is_step_space(b[i]) {
         i += 1;
     }
     i
 }
 
 fn ws_back(b: &[u8], mut i: usize) -> usize {
-    while i > 0 && b[i - 1].is_ascii_whitespace() {
+    while i > 0 && is_step_space(b[i - 1]) {
         i -= 1;
     }
     i

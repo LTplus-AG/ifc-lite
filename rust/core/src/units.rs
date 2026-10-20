@@ -10,6 +10,7 @@
 use crate::decoder::EntityDecoder;
 use crate::error::{Error, Result};
 use crate::schema_gen::DecodedEntity;
+use crate::slot;
 
 #[path = "units_length.rs"]
 mod length;
@@ -39,7 +40,7 @@ fn assigned_units(decoder: &mut EntityDecoder, project_id: u32) -> Result<Option
         return Ok(None); // Not a project.
     }
     // IFCPROJECT attribute 8: UnitsInContext (IFCUNITASSIGNMENT).
-    let Some(units_ref) = project.get(8).and_then(|attr| attr.as_entity_ref()) else {
+    let Some(units_ref) = project.ref_at(slot::IfcProject::UNITS_IN_CONTEXT) else {
         return Ok(None);
     };
     let assignment = decoder.decode_by_id(units_ref)?;
@@ -48,7 +49,7 @@ fn assigned_units(decoder: &mut EntityDecoder, project_id: u32) -> Result<Option
     }
     // IFCUNITASSIGNMENT has a single attribute: Units (list of IFCUNIT).
     Ok(assignment
-        .get(0)
+        .attr(slot::IfcUnitAssignment::UNITS)
         .and_then(|attr| attr.as_list())
         .map(|list| list.iter().filter_map(|unit| unit.as_entity_ref()).collect()))
 }
@@ -56,13 +57,13 @@ fn assigned_units(decoder: &mut EntityDecoder, project_id: u32) -> Result<Option
 /// Is this unit declared for `unit_type` (`"LENGTHUNIT"`, `"PLANEANGLEUNIT"`)?
 /// `IFCSIUNIT` and `IFCCONVERSIONBASEDUNIT` both carry `UnitType` at attr 1.
 fn is_unit_type(unit: &DecodedEntity, unit_type: &str) -> bool {
-    unit.get(1).and_then(|attr| attr.as_enum()) == Some(unit_type)
+    unit.enum_at(slot::IfcNamedUnit::UNIT_TYPE) == Some(unit_type)
 }
 
 /// The SI-prefix multiplier of an `IFCSIUNIT` (attr 2): absent, `$` or
 /// unreadable means the base unit.
 fn si_prefix_scale(unit: &DecodedEntity) -> f64 {
-    match unit.get(2) {
+    match unit.attr(slot::IfcSIUnit::PREFIX) {
         Some(prefix) if !prefix.is_null() => prefix.as_enum().map_or(1.0, get_si_prefix_multiplier),
         _ => 1.0,
     }
@@ -104,14 +105,13 @@ pub fn extract_length_unit_scale(decoder: &mut EntityDecoder, project_id: u32) -
             "IFCCONVERSIONBASEDUNIT" if is_unit_type(&unit, "LENGTHUNIT") => {
                 // Try to get the unit name first for known conversion factors
                 if let Some(factor) = unit
-                    .get(2)
-                    .and_then(|name| name.as_string())
+                    .string_at(slot::IfcConversionBasedUnit::NAME)
                     .and_then(get_conversion_based_unit_factor)
                 {
                     return Ok(factor);
                 }
                 // If name lookup fails, try to extract from ConversionFactor.
-                let Some(conversion_factor_ref) = unit.get_ref(3) else {
+                let Some(conversion_factor_ref) = unit.ref_at(slot::IfcConversionBasedUnit::CONVERSION_FACTOR) else {
                     continue;
                 };
                 return conversion_factor_length_scale(decoder, conversion_factor_ref);
@@ -137,7 +137,7 @@ fn conversion_factor_length_scale(decoder: &mut EntityDecoder, factor_ref: u32) 
     // IFCMEASUREWITHUNIT: [0] ValueComponent, [1] UnitComponent
     let measure_with_unit = decoder.decode_by_id(factor_ref).map_err(|_| unusable(false))?;
     // `as_float` unwraps typed values and reads integers too.
-    let raw = measure_with_unit.get(0).and_then(|attr| attr.as_float());
+    let raw = measure_with_unit.real_at(slot::IfcMeasureWithUnit::VALUE_COMPONENT);
     let conversion_value = raw
         .filter(|v| v.is_finite() && *v > 0.0)
         .ok_or_else(|| unusable(raw == Some(f64::INFINITY)))?;
@@ -146,7 +146,7 @@ fn conversion_factor_length_scale(decoder: &mut EntityDecoder, factor_ref: u32) 
     // If UnitComponent is a prefixed SI unit (e.g., millimeters),
     // we must multiply by that unit's scale factor.
     let unit_component_scale = measure_with_unit
-        .get_ref(1)
+        .ref_at(slot::IfcMeasureWithUnit::UNIT_COMPONENT)
         .and_then(|component| decoder.decode_by_id(component).ok())
         .filter(|component| component.ifc_type.as_str() == "IFCSIUNIT")
         .map_or(1.0, |component| si_prefix_scale(&component));
@@ -239,8 +239,8 @@ pub fn try_extract_plane_angle_to_radians(
                 // A missing ref or one not yet indexed means we cannot
                 // resolve confidently — `None` makes `UnitScales::resolve`
                 // retry on a full index.
-                let measure = decoder.decode_by_id(unit.get_ref(3)?).ok()?;
-                let value = measure.get(0).and_then(|a| a.as_float()).unwrap_or(0.0);
+                let measure = decoder.decode_by_id(unit.ref_at(slot::IfcConversionBasedUnit::CONVERSION_FACTOR)?).ok()?;
+                let value = measure.real_at(slot::IfcMeasureWithUnit::VALUE_COMPONENT).unwrap_or(0.0);
                 return (value > 0.0 && value.is_finite()).then_some(value);
             }
             _ => {}
@@ -283,12 +283,12 @@ pub fn extract_plane_angle_to_radians(decoder: &mut EntityDecoder, project_id: u
                 // UnitComponent. For PLANEANGLEUNIT the UnitComponent is required
                 // by IFC to be the SI radian, so the value IS the multiplier to
                 // radians and we don't need to chase UnitComponent.
-                let Some(measure) = unit.get_ref(3).and_then(|r| decoder.decode_by_id(r).ok()) else {
+                let Some(measure) = unit.ref_at(slot::IfcConversionBasedUnit::CONVERSION_FACTOR).and_then(|r| decoder.decode_by_id(r).ok()) else {
                     continue;
                 };
                 // as_float() unwraps typed-value wrappers like
                 // IFCRATIOMEASURE(0.01745…) automatically.
-                let value = measure.get(0).and_then(|a| a.as_float()).unwrap_or(0.0);
+                let value = measure.real_at(slot::IfcMeasureWithUnit::VALUE_COMPONENT).unwrap_or(0.0);
                 if value > 0.0 && value.is_finite() {
                     return Ok(value);
                 }

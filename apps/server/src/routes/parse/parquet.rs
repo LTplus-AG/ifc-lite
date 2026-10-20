@@ -26,7 +26,7 @@ use axum::{
     response::Response,
 };
 use ifc_lite_processing::{
-    extract_symbolic_data_with_provenance_in_frame, process_geometry_filtered_with_quality,
+    extract_symbolic_data_with_provenance_in_frame, process, ProcessingRequest,
     MeshCoordinateSpace,
 };
 use serde::{Deserialize, Serialize};
@@ -167,7 +167,7 @@ pub async fn parse_parquet(
             // First: extract geometry and the data model in parallel.
             // #5984: the finish index is a third independent read of the bytes.
             let (mut geometry_result, (mut data_model, mut finishes)) = rayon::join(
-                || process_geometry_filtered_with_quality(&content, opening_filter, tessellation_quality),
+                || process(&content, &ProcessingRequest::full_pass().opening_filter(opening_filter).quality(tessellation_quality), &mut ()),
                 || rayon::join(|| extract_data_model(&content), || ModelFinishes::from_content(&content)),
             );
             let meshes = finish_meshes(&mut finishes, std::mem::take(&mut geometry_result.meshes));

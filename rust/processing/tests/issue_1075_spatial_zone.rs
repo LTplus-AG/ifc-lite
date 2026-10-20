@@ -16,10 +16,9 @@
 //!    vanish from the quick-bootstrap spatial tree. They must be promoted to
 //!    spatial child nodes alongside aggregated spaces.
 
-use ifc_lite_processing::{
-    process_geometry, process_geometry_streaming_with_options_and_bootstrap, QuickMetadataBootstrap,
-    StreamingOptions,
-};
+use ifc_lite_processing::process_geometry;
+
+mod common;
 
 const ZONES_IFC: &str = r#"ISO-10303-21;
 HEADER;
@@ -83,20 +82,7 @@ fn spatial_zone_with_a_body_meshes_like_a_space() {
 
 #[test]
 fn contained_spaces_and_zones_become_spatial_tree_nodes() {
-    let mut captured: Option<QuickMetadataBootstrap> = None;
-    let options = StreamingOptions {
-        emit_quick_metadata_bootstrap: true,
-        ..Default::default()
-    };
-    process_geometry_streaming_with_options_and_bootstrap(
-        ZONES_IFC.as_bytes(),
-        options,
-        |_, _, _| {},
-        |_| {},
-        |b| captured = Some(b.clone()),
-    );
-
-    let boot = captured.expect("a quick-metadata bootstrap should be emitted");
+    let boot = common::quick_metadata::bootstrap(ZONES_IFC);
     let tree = boot.spatial_tree.expect("a spatial tree should be built");
 
     // Project -> Site -> Building -> Storey.
@@ -156,21 +142,7 @@ fn referenced_in_links_do_not_steal_spatial_ownership() {
     // A space contained in storey 1 and merely *referenced* from storey 2
     // (IfcRelReferencedInSpatialStructure) must stay owned by storey 1; the
     // referenced link must not re-parent it under storey 2 (#1075 review).
-    let mut captured: Option<QuickMetadataBootstrap> = None;
-    let options = StreamingOptions {
-        emit_quick_metadata_bootstrap: true,
-        ..Default::default()
-    };
-    process_geometry_streaming_with_options_and_bootstrap(
-        REFERENCED_IFC.as_bytes(),
-        options,
-        |_, _, _| {},
-        |_| {},
-        |b| captured = Some(b.clone()),
-    );
-
-    let tree = captured
-        .expect("bootstrap emitted")
+    let tree = common::quick_metadata::bootstrap(REFERENCED_IFC)
         .spatial_tree
         .expect("spatial tree built");
 

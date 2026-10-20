@@ -6,15 +6,15 @@
 
 use super::chain_walk::GridCtx;
 use super::grid_frame::GridPlacementLayout;
+use super::{missing, sampled, unsupported, PlacementResult};
 use crate::profiles::ProfileProcessor;
 use crate::{Point2, Point3, TessellationQuality, Vector2, Vector3};
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcSchema, IfcType};
+use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 
 /// The grid-local frame of an `IfcGridPlacement`: the grid-axis intersection
 /// of `PlacementLocation`, oriented by the optional `PlacementRefDirection`.
-/// `None` when the structure is malformed or the axes are parallel (the
-/// caller refuses the placement, D30).
+/// Malformed structure or parallel axes refuse the placement (D30).
 ///
 /// The placement's world is `grid frame * this`, where the grid frame is
 ///   • IFC4X1+: `PlacementRelTo` (the grid's own placement), composed like
@@ -27,38 +27,39 @@ pub(super) fn local_frame(
     placement: &DecodedEntity,
     ctx: &GridCtx,
     decoder: &mut EntityDecoder,
-) -> Option<Matrix4<f64>> {
-    let location = ctx.location.as_ref()?;
+) -> PlacementResult<Matrix4<f64>> {
+    let location = ctx.location.as_ref()
+        .ok_or_else(|| missing(decoder, placement.id, "PlacementLocation"))?;
     try_resolve_grid_intersection(placement, location, &ctx.layout, decoder)
 }
 
 /// Decode `IfcGridPlacement.PlacementLocation` (an
 /// `IfcVirtualGridIntersection`) into a grid-local transform: locate the
 /// grid-axis intersection point and orient it by the optional
-/// `PlacementRefDirection`. Returns `None` (→ the caller refuses the
-/// placement) when the structure is malformed or the axes are parallel.
+/// `PlacementRefDirection`. Malformed structure or parallel axes refuse the
+/// placement; only a missing or readable-degenerate direction stays axis-aligned.
 fn try_resolve_grid_intersection(
     placement: &DecodedEntity,
     location: &DecodedEntity,
     layout: &GridPlacementLayout,
     decoder: &mut EntityDecoder,
-) -> Option<Matrix4<f64>> {
-    let p = grid_intersection_point(location, decoder)?;
+) -> PlacementResult<Matrix4<f64>> {
+    let p = grid_intersection_point(location, decoder)?
+        .ok_or_else(|| missing(decoder, placement.id, "a resolvable grid intersection"))?;
 
     // Orientation from PlacementRefDirection:
     //   • IfcDirection              → its XY is local +X directly.
     //   • IfcVirtualGridIntersection → local +X points from this location
     //                                  to that second intersection.
-    //   • null / unresolved         → axis-aligned (inherit grid orientation).
-    let ref_attr = layout.ref_direction.and_then(|i| placement.get(i));
-    let mut m = match grid_ref_direction_vector(ref_attr, &p, decoder) {
+    //   • null / readable zero       → axis-aligned (inherit grid orientation).
+    let mut m = match grid_ref_direction_vector(placement, layout.ref_direction, &p, decoder)? {
         Some(x_dir) => orient_x_in_plane(x_dir),
         None => Matrix4::identity(),
     };
     m[(0, 3)] = p.x;
     m[(1, 3)] = p.y;
     m[(2, 3)] = p.z; // grid axes are planar (z = 0); elevation via offset
-    Some(m)
+    Ok(m)
 }
 
 /// Resolve an `IfcVirtualGridIntersection` to a grid-local point: intersect
@@ -68,33 +69,23 @@ fn try_resolve_grid_intersection(
 fn grid_intersection_point(
     intersection: &DecodedEntity,
     decoder: &mut EntityDecoder,
-) -> Option<Point3<f64>> {
+) -> PlacementResult<Option<Point3<f64>>> {
     // IntersectingAxes (attr 0) — a set of exactly two IfcGridAxis.
-    let axes_attr = intersection.get(0)?;
-    let axes = decoder.resolve_ref_list(axes_attr).ok()?;
-    if axes.len() < 2 {
-        return None;
+    let Some(axes_attr) = intersection.attr(slot::IfcVirtualGridIntersection::INTERSECTING_AXES) else {
+        return Ok(None);
+    };
+    let axes = decoder.resolve_ref_list(axes_attr)?;
+    if axes.len() != 2 || axes.iter().any(|axis| axis.ifc_type != IfcType::IfcGridAxis) {
+        return Ok(None);
     }
-    let (a0, a_dir) = grid_axis_line(&axes[0], decoder)?;
-    let (b0, b_dir) = grid_axis_line(&axes[1], decoder)?;
+    let Some((a0, a_dir)) = grid_axis_line(&axes[0], decoder)? else { return Ok(None) };
+    let Some((b0, b_dir)) = grid_axis_line(&axes[1], decoder)? else { return Ok(None) };
 
     // OffsetDistances (attr 1, optional) — [from axis 1, from axis 2,
     // elevation]. The first two are perpendicular distances from each
     // axis (the point lies on a line parallel to the axis at that
     // distance); the third is a vertical offset.
-    let offsets = intersection.get_list(1);
-    let off_u = offsets
-        .and_then(|o| o.first())
-        .and_then(|v| v.as_float())
-        .unwrap_or(0.0);
-    let off_v = offsets
-        .and_then(|o| o.get(1))
-        .and_then(|v| v.as_float())
-        .unwrap_or(0.0);
-    let off_z = offsets
-        .and_then(|o| o.get(2))
-        .and_then(|v| v.as_float())
-        .unwrap_or(0.0);
+    let Some([off_u, off_v, off_z]) = grid_offsets(intersection) else { return Ok(None) };
 
     // Shift each axis line parallel to itself toward its left normal by the
     // corresponding offset, then intersect the offset lines.
@@ -102,8 +93,22 @@ fn grid_intersection_point(
     let n_b = left_normal(b_dir);
     let pa = Point2::new(a0.x + n_a.x * off_u, a0.y + n_a.y * off_u);
     let pb = Point2::new(b0.x + n_b.x * off_v, b0.y + n_b.y * off_v);
-    let p = line_intersection_2d(pa, a_dir, pb, b_dir)?;
-    Some(Point3::new(p.x, p.y, off_z))
+    Ok(line_intersection_2d(pa, a_dir, pb, b_dir).map(|p| Point3::new(p.x, p.y, off_z)))
+}
+
+/// Existing zero defaults apply only to missing offsets, never unreadable ones.
+fn grid_offsets(intersection: &DecodedEntity) -> Option<[f64; 3]> {
+    let offsets = match intersection.attr(slot::IfcVirtualGridIntersection::OFFSET_DISTANCES) {
+        None | Some(AttributeValue::Null | AttributeValue::Derived) => return Some([0.0; 3]),
+        Some(AttributeValue::List(items)) if (2..=3).contains(&items.len()) => items,
+        Some(_) => return None,
+    };
+    let values = [
+        offsets.first()?.as_float()?,
+        offsets.get(1)?.as_float()?,
+        offsets.get(2).map(|v| v.as_float()).unwrap_or(Some(0.0))?,
+    ];
+    values.iter().all(|v| v.is_finite()).then_some(values)
 }
 
 /// Read an `IfcGridAxis` into a point-and-direction line in the grid
@@ -114,26 +119,24 @@ fn grid_intersection_point(
 fn grid_axis_line(
     axis: &DecodedEntity,
     decoder: &mut EntityDecoder,
-) -> Option<(Point2<f64>, Vector2<f64>)> {
-    let curve_attr = axis.get(1)?;
-    if curve_attr.is_null() {
-        return None;
-    }
-    let curve = decoder.resolve_ref(curve_attr).ok().flatten()?;
+) -> PlacementResult<Option<(Point2<f64>, Vector2<f64>)>> {
+    let Some(curve) = decoder.resolve_optional(axis, slot::IfcGridAxis::AXIS_CURVE.index())? else {
+        return Ok(None);
+    };
     let processor = ProfileProcessor::new(IfcSchema::new());
-    let pts = processor
-        .get_curve_points(&curve, decoder, TessellationQuality::Medium)
-        .ok()?;
+    let Some(pts) = sampled(processor.get_curve_points(&curve, decoder, TessellationQuality::Medium))? else {
+        return Ok(None);
+    };
     if pts.len() < 2 {
-        return None;
+        return Ok(None);
     }
-    let start = pts.first()?;
-    let end = pts.last()?;
+    let start = &pts[0];
+    let end = &pts[pts.len() - 1];
     let dir = Vector2::new(end.x - start.x, end.y - start.y);
     if dir.norm() < 1e-9 {
-        return None;
+        return Ok(None);
     }
-    Some((Point2::new(start.x, start.y), dir))
+    Ok(Some((Point2::new(start.x, start.y), dir)))
 }
 
 /// Resolve the optional `PlacementRefDirection` into a 2D local +X
@@ -142,33 +145,29 @@ fn grid_axis_line(
 ///   • `IfcDirection`              → its XY components.
 ///   • `IfcVirtualGridIntersection` → the vector from `origin` (the
 ///     placement location) to that second intersection point.
-/// `None` for a null, missing, unresolved, or degenerate (zero-length)
-/// ref direction, so the caller stays axis-aligned.
+/// Missing and readable-degenerate directions keep the inherited orientation;
+/// present unreadable directions refuse instead of fabricating identity (#7877).
 fn grid_ref_direction_vector(
-    dir_attr: Option<&AttributeValue>,
+    placement: &DecodedEntity,
+    direction_slot: Option<usize>,
     origin: &Point3<f64>,
     decoder: &mut EntityDecoder,
-) -> Option<Vector2<f64>> {
-    let dir_attr = dir_attr?;
-    if dir_attr.is_null() {
-        return None;
-    }
-    let entity = decoder.resolve_ref(dir_attr).ok().flatten()?;
+) -> PlacementResult<Option<Vector2<f64>>> {
+    let Some(direction_slot) = direction_slot else { return Ok(None) };
+    let Some(entity) = decoder.resolve_optional(placement, direction_slot)? else { return Ok(None) };
     let x = match entity.ifc_type {
         IfcType::IfcDirection => {
-            let d = decoder.direction3(entity.id).ok()?;
+            let d = decoder.direction3(entity.id)?;
             Vector2::new(d[0], d[1])
         }
         IfcType::IfcVirtualGridIntersection => {
-            let q = grid_intersection_point(&entity, decoder)?;
+            let q = grid_intersection_point(&entity, decoder)?
+                .ok_or_else(|| missing(decoder, entity.id, "a resolvable grid intersection"))?;
             Vector2::new(q.x - origin.x, q.y - origin.y)
         }
-        _ => return None,
+        _ => return Err(unsupported(decoder, entity.id, entity.ifc_type)),
     };
-    if x.norm() < 1e-9 {
-        return None;
-    }
-    Some(x)
+    Ok((x.norm() >= 1e-9).then_some(x))
 }
 
 /// Build a rotation matrix whose local +X follows the given in-plane

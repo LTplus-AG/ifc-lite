@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: MPL-2.0
+# Opt-in qualification of the isolated NVIDIA SMLib native adapter and its Rust
+# worker client. Nothing in core/geometry/processing/wasm depends on either, so
+# this workflow is path-filtered to them and is intentionally NOT a required check.
+name: Geometry platform (native adapter)
+
+on:
+  pull_request:
+    paths:
+      - 'native/**'
+      - 'rust/geometry-runtime/**'
+      - '.github/workflows/geometry-platform.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-adapter:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+      - name: Checkout pinned upstream SDK (fetched, never vendored)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          repository: NVIDIA-Omniverse/usd-brep
+          ref: c9c5979f04cea8c38213004d4f04df0dcfb40d05
+          path: upstream-smlib
+          persist-credentials: false
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build
+      - name: Build native owned boundary and worker
+        run: |
+          cmake -S native/smlib-adapter -B "$RUNNER_TEMP/smlib-native" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DSMLIB_SOURCE="$GITHUB_WORKSPACE/upstream-smlib"
+          cmake --build "$RUNNER_TEMP/smlib-native" --parallel 4
+      - name: Execute every native owned boundary
+        id: native-ctest
+        continue-on-error: true
+        run: ctest --test-dir "$RUNNER_TEMP/smlib-native" --output-on-failure
+      - uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: geometry-platform
+      - name: Real Rust subprocess integration
+        id: native-consumers
+        continue-on-error: true
+        env:
+          IFCLITE_SMLIB_PATH: ${{ runner.temp }}/smlib-native/ifclite_smlib_worker
+        run: |
+          test -x "$IFCLITE_SMLIB_PATH"
+          IFCLITE_SMLIB_WORKER="$IFCLITE_SMLIB_PATH" \
+            cargo test --locked -p ifc-lite-geometry-runtime --all-targets --no-fail-fast
+      # Gather independent failures, then preserve a failing overall verdict.
+      - name: Require every independent result
+        if: always()
+        env:
+          NATIVE_CTEST: ${{ steps.native-ctest.outcome }}
+          NATIVE_CONSUMERS: ${{ steps.native-consumers.outcome }}
+        run: |
+          failed=0
+          for lane in NATIVE_CTEST NATIVE_CONSUMERS; do
+            printf '%s=%s\n' "$lane" "${!lane}"
+            if [[ "${!lane}" != success ]]; then failed=1; fi
+          done
+          exit "$failed"

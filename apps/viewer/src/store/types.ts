@@ -319,6 +319,8 @@ export interface CameraViewpoint {
 
 export interface CameraCallbacks {
   setPresetView?: (view: 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right') => void;
+  /** ViewCube edge/corner: camera offset in the face frame (+X right, +Y top, +Z front). */
+  setPresetDirection?: (direction: { x: number; y: number; z: number }) => void;
   fitAll?: () => void;
   home?: () => void;
   zoomIn?: () => void;

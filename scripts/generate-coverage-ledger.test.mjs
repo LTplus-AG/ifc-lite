@@ -291,8 +291,8 @@ test('mutation sensitivity: removing the IFCWALL record from the fixture corpus 
 
 test('vacuity guard: emptied processor_registry.rs TYPES array fails loudly, not silently', () => {
   const src = real.get('rust/geometry/src/router/processor_registry.rs');
-  assert.ok(src.includes('const TYPES'), 'test anchor drifted — real source no longer has `const TYPES`'); // @source-text-assertion-ok mutation anchor guard, not a subject assertion
-  const mutated = src.replace(/const TYPES: \[&\[IfcType\]; \d+\] = \[[\s\S]*?\];/, 'const TYPES: [&[IfcType]; 0] = [];');
+  assert.ok(src.includes('processor_families! { schema;'), 'test anchor drifted — real source no longer invokes `processor_families!`'); // @source-text-assertion-ok mutation anchor guard, not a subject assertion
+  const mutated = src.replace(/processor_families! \{ schema;[\s\S]*?\n\}/, 'processor_families! { schema;\n}');
   assert.notEqual(mutated, src, 'mutation regex did not match — test anchor drifted');
   const { status, log, ledger } = runOn({ 'rust/geometry/src/router/processor_registry.rs': mutated });
   assert.equal(status, 1);
@@ -423,8 +423,8 @@ test('rendered ledger documents the writable and fixture columns, crediting #420
 
 test('mutation sensitivity: removing IfcSphere from the geometry TYPES table flips its row', () => {
   const src = real.get('rust/geometry/src/router/processor_registry.rs');
-  assert.ok(src.includes('&[IfcType::IfcSphere],'), 'test anchor drifted — IfcSphere line not found verbatim'); // @source-text-assertion-ok mutation anchor guard, not a subject assertion
-  const mutated = src.replace('    &[IfcType::IfcSphere],\n', '');
+  assert.ok(src.includes('    Sphere => [IfcSphere] => SphereProcessor::new();\n'), 'test anchor drifted — IfcSphere row not found verbatim'); // @source-text-assertion-ok mutation anchor guard, not a subject assertion
+  const mutated = src.replace('    Sphere => [IfcSphere] => SphereProcessor::new();\n', '');
   assert.notEqual(mutated, src);
 
   const before = runOn();

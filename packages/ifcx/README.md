@@ -28,6 +28,16 @@ console.log(`Schema: ${result.schemaVersion}`); // 'IFC5'
 renderer.loadGeometry(result.meshes);
 ```
 
+Geometry extraction uses a Rust-owned imported-geometry program. The synchronous
+`extractGeometry` and `extractPointClouds` helpers keep their existing return
+shapes and require no initialization. A bundled static JavaScript target is
+compiled from the same Rust implementation as the native and WebAssembly entry;
+it needs no runtime WebAssembly compilation or dynamic code generation.
+Composition, layer provenance, images and point-cloud codecs remain with this
+package's existing format adapter. Display buffers preserve the current Float32
+staging and Y-up frame while the internal import owner retains original source
+coefficients and traversal identities.
+
 ## Auto-detect format
 
 ```typescript

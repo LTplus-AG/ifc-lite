@@ -153,7 +153,7 @@ jobs:
           pnpm exec playwright test --config=tests/e2e/reporter-6729.config.ts
           CAPTURE
           cp "$capture_script" test-results/reporter-6729-provenance/capture.sh
-          timeout --signal=INT --kill-after=30s 7m xvfb-run -a -s '-screen 0 1600x1000x24' bash -e "$capture_script" 2>&1 | tee test-results/reporter-6729-provenance/browser-process.log
+          timeout --signal=INT --kill-after=30s 15m xvfb-run -a -s '-screen 0 1600x1000x24' bash -e "$capture_script" 2>&1 | tee test-results/reporter-6729-provenance/browser-process.log
       - name: Require complete witness, never skipped fixture acceptance
         run: |
           python3 - <<'PY'

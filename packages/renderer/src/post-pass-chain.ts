@@ -61,6 +61,7 @@ export interface PostPassFrame {
   edl: Required<EdlPassOptions> | null;
   /** Selection/hover outline (#5390), or null while nothing is selected or hovered. */
   selectionOutline: SelectionOutlineFrame | null;
+  geometricVisibility?: GPUBindGroup;
 }
 
 type PassName = 'ambient occlusion' | 'edges' | 'eye-dome lighting' | 'selection outline';
@@ -137,6 +138,7 @@ export class PostPassChain {
         selected: frame.selectionOutline.selected,
         hovered: frame.selectionOutline.hovered,
         instanced: frame.selectionOutline.instanced,
+        geometricVisibility: frame.geometricVisibility,
       });
       if (mask) {
         this.edges?.encodeOutline({

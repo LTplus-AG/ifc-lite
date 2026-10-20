@@ -137,7 +137,7 @@ impl GeometryRouter {
             None => self.mapped_item_cache.borrow().get(&source_id).cloned(),
         };
         if let Some(cached_mesh) = cached_source {
-            let mut mesh = cached_mesh.as_ref().clone();
+            let mut mesh = self.clone_cached_mesh(cached_mesh.as_ref())?;
             let mut local_rm = None;
             if let Some(mut transform) = mapping_transform {
                 self.scale_transform(&mut transform);
@@ -237,7 +237,7 @@ impl GeometryRouter {
         }
         // The merge above is short, so every enclosing level's is too.
         *truncated |= level_truncated;
-        let mut parts = source.into_parts();
+        let mut parts = source.into_parts()?;
         // A multi-frame source is never cached or instanced: both assume one
         // source-coords mesh per map (#6446). No fixture-corpus map is one.
         let single_frame = parts.len() == 1;
@@ -271,7 +271,7 @@ impl GeometryRouter {
                     && !crate::kernel::budget::tripped()
                     && !level_truncated
                 {
-                    let source_arc = Arc::new(parts[0].clone());
+                    let source_arc = self.clone_source_for_cache(&parts[0])?;
                     shared
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
@@ -279,7 +279,7 @@ impl GeometryRouter {
                 }
             }
             None => {
-                let source_arc = Arc::new(parts[0].clone());
+                let source_arc = self.clone_source_for_cache(&parts[0])?;
                 self.mapped_item_cache.borrow_mut().insert(source_id, source_arc);
             }
         }
@@ -306,6 +306,26 @@ impl GeometryRouter {
         }
 
         Ok(parts)
+    }
+
+    /// Deep-copy a source mesh for a mapped-item cache. Without an installed
+    /// account this is `Mesh::clone`; with one, the copy is admitted (and its
+    /// storage charged, never refunded) before any allocation, so a zero or
+    /// overflowing allowance refuses it. Cache residency beyond the account's
+    /// lifetime is not tracked here.
+    fn clone_source_for_cache(&self, mesh: &Mesh) -> Result<Arc<Mesh>> {
+        self.clone_cached_mesh(mesh).map(Arc::new)
+    }
+
+    /// Accounted copy for both cache population and every cache hit, so a
+    /// repeated occurrence is charged (or refused) like the first one.
+    fn clone_cached_mesh(&self, mesh: &Mesh) -> Result<Mesh> {
+        if !crate::resource::is_active() {
+            return Ok(mesh.clone());
+        }
+        let (copy, permit) = crate::resource::mesh::clone_mesh(mesh)?;
+        permit.retain();
+        Ok(copy)
     }
 
     /// Mesh one plain (non-`IfcMappedItem`) item of a mapped source into

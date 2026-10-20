@@ -1,0 +1,187 @@
+diff --git a/rust/geometry/src/csg/consolidate/plan.rs b/rust/geometry/src/csg/consolidate/plan.rs
+index 1ab60142cb..1d2b416d62 100644
+--- a/rust/geometry/src/csg/consolidate/plan.rs
++++ b/rust/geometry/src/csg/consolidate/plan.rs
+@@ -66,6 +66,7 @@ pub(super) fn append_prepared_retry(
+         tris,
+         groups,
+         false,
++        baseline.bid,
+         next_bid,
+         length_unit_scale,
+         retry.plane_area,
+@@ -78,24 +79,30 @@ fn append_groups(
+     tris: &[PlaneTri],
+     groups: Vec<Vec<usize>>,
+     use_tag: bool,
++    source_bid: u32,
+     next_bid: &mut u32,
+     length_unit_scale: f64,
+     noise_area: f64,
+     plans: &mut Vec<PlanBucket>,
+ ) {
+     for group in groups {
++        // Groups are ordered by first member, so exactly one starts at the
++        // bucket's first triangle and plans in the bucket's established frame.
++        // It keeps the replaced plan's id, by which the failed-conform
++        // source-boundary retry finds that frame (#7638 review). Every other
++        // group takes a fresh id, so seam ownership stays unique.
++        let bid = if group[0] == 0 {
++            source_bid
++        } else {
++            let fresh = *next_bid;
++            *next_bid += 1;
++            fresh
++        };
+         // The common single-region path copies no source triangles
+         // and allocates no temporary output Vec. On this retry every
+         // triangle belongs to exactly one group.
+         let own: Vec<_> = group.into_iter().map(|i| tris[i].clone()).collect();
+-        let plan = plan_one(
+-            &own,
+-            use_tag,
+-            *next_bid,
+-            length_unit_scale,
+-            Some(noise_area),
+-        );
+-        *next_bid += 1;
++        let plan = plan_one(&own, use_tag, bid, length_unit_scale, Some(noise_area));
+         plans.push(plan);
+     }
+ }
+diff --git a/rust/geometry/src/router/voids/coaxial_union.rs b/rust/geometry/src/router/voids/coaxial_union.rs
+index a91f29f78e..b77aff4a5f 100644
+--- a/rust/geometry/src/router/voids/coaxial_union.rs
++++ b/rust/geometry/src/router/voids/coaxial_union.rs
+@@ -300,9 +300,9 @@ impl GeometryRouter {
+ 
+     /// Build the pairwise-disjoint re-extruded prisms for a COAXIAL cluster via
+     /// 2.5D depth-slicing along `axis`: the depth axis is cut at every cutter's
+-    /// authored z-boundary, and within each depth SLAB the footprints of the
++    /// prepared z-boundary, and within each depth SLAB the footprints of the
+     /// cutters that FULLY SPAN it are unioned (one i_overlay pass) and re-extruded
+-    /// over exactly that slab. A cutter never contributes outside its authored
++    /// over exactly that slab. A cutter never contributes outside its prepared
+     /// [z_lo, z_hi], so a partial-depth / blind cutter is cut faithfully — never
+     /// stretched to a through-cut. Slabs are Z-disjoint (they share only boundary
+     /// planes, which the conforming N-ary subtract dissolves). Returns `None`
+@@ -327,8 +327,15 @@ impl GeometryRouter {
+     ) -> Option<(Vec<Mesh>, bool, Vec<usize>, f64)> {
+         let (u, v, d) = ortho_frame(axis)?;
+         let mut fps: Vec<Footprint> = Vec::with_capacity(members.len());
++        let mut cutter_volumes = Vec::with_capacity(members.len());
+         for &m in members {
+-            fps.push(cutter_footprint(&cands[m].mesh, &u, &v, &d)?);
++            // Adjust only the original cutter's caps. A depth slice introduces
++            // internal seams, not authored exits/jambs: pulling those seams in
++            // independently leaves a gap inside a through opening (#6940,
++            // rvt01 #6305 at the 12 mm render/core interface).
++            let prepared = Self::extend_opening_mesh_through_host(&cands[m].mesh, result, d);
++            fps.push(cutter_footprint(&prepared, &u, &v, &d)?);
++            cutter_volumes.push(mesh_signed_volume(&prepared).abs());
+         }
+ 
+         // Reject an invalid total depth span before constructing source slabs.
+@@ -357,6 +364,13 @@ impl GeometryRouter {
+         if coalesced.len() < 2 || coalesced.len() > 9 {
+             return None;
+         }
++        // Neighbouring cells can straddle a rounding boundary only nanometres
++        // apart (#7640, review r4310799293). Do not re-extrude that thin slab
++        // or merge its distinct depths: the exact 3D union keeps both original
++        // cutters and decides their geometry on the unchanged kernel grid.
++        if coalesced.windows(2).any(|w| w[1] - w[0] < crate::kernel::mesh_bridge::SNAP_GRID) {
++            return None;
++        }
+ 
+         // Frame → world: local (x, y, z) ↦ x·u + y·v + z·d (orthonormal basis
+         // through the origin, so no translation column).
+@@ -400,15 +414,12 @@ impl GeometryRouter {
+                 }
+                 let mut prism = extrude_profile_watertight(shape, slab_depth, Some(base)).ok()?;
+                 apply_transform(&mut prism, &m_world);
+-                // Push caps a hair past any FLUSH host face along the axis so the
+-                // subtract is a clean transversal crossing. A slab boundary INTERIOR
+-                // to the host (no host facet there) is left untouched — the two
+-                // slabs meeting at it tile the void with no gap.
+-                let ext = Self::extend_opening_mesh_through_host(&prism, result, d);
+-                if !mesh_is_closed_exact(&ext) {
++                // Generated seams must stay coincident so adjacent slabs tile
++                // the prepared cutter without gaps or extra removed material.
++                if !mesh_is_closed_exact(&prism) {
+                     return None;
+                 }
+-                prisms.push(ext);
++                prisms.push(prism);
+             }
+         }
+         if prisms.is_empty() {
+@@ -420,28 +431,10 @@ impl GeometryRouter {
+         // prisms that the N-ary subtract handles directly.
+         let multi_slab = coalesced.len() > 2;
+         let contributors: Vec<usize> = (0..fps.len()).filter(|&i| contributed[i]).collect();
+-        // Removed-volume upper bound: Σ over contributing cutters of the volume of the
+-        // SAME through-host extension the prisms use. The union of the reconstructed
+-        // prisms equals the union of the actual cutters, so the removed (host-clipped)
+-        // volume `Vol(∪prism ∩ host) = Vol(∪cutter ∩ host) ≤ Σ Vol(cutter_i ∩ host) ≤
+-        // Σ Vol(extended cutter_i)` — a subtract that removes MORE (an inflated /
+-        // bridged prism reconstruction) is over-cutting and is rejected downstream.
+-        // Using the EXTENDED cutter (not `area × authored_depth`) is essential: a
+-        // through-cut of a host THICKER than the authored opening legitimately removes
+-        // more than the authored volume, and must not be mistaken for an over-cut.
+-        // 2% relative slack absorbs the f32 volume-differencing noise of a large host.
+-        let max_removed = 1.02
+-            * contributors
+-                .iter()
+-                .map(|&i| {
+-                    let ext = Self::extend_opening_mesh_through_host(
+-                        &cands[members[i]].mesh,
+-                        result,
+-                        d,
+-                    );
+-                    mesh_signed_volume(&ext).abs()
+-                })
+-                .sum::<f64>();
++        // The reconstructed union cannot remove more than the sum of its
++        // prepared cutters' volumes; retain the existing 2% f32 slack. Use the
++        // same preparations as the footprints, without adjusting a seam again.
++        let max_removed = 1.02 * contributors.iter().map(|&i| cutter_volumes[i]).sum::<f64>();
+         Some((prisms, multi_slab, contributors, max_removed))
+     }
+ 
+diff --git a/rust/geometry/src/router/voids/synthesis.rs b/rust/geometry/src/router/voids/synthesis.rs
+index fe674c2d42..6e7f9cbeb5 100644
+--- a/rust/geometry/src/router/voids/synthesis.rs
++++ b/rust/geometry/src/router/voids/synthesis.rs
+@@ -325,7 +325,7 @@ impl GeometryRouter {
+     /// tile a wall surface — each clip creates boundary triangles that get
+     /// re-split by the next clip, causing O(2^N) growth.
+     pub(super) fn merge_rectangular_openings(openings: &[OpeningType]) -> Vec<OpeningType> {
+-        const MERGE_TOLERANCE: f64 = 0.01; // 1cm tolerance for adjacency
++        const MERGE_TOLERANCE: f64 = 0.01; // Broad phase only; never credit filled volume
+ 
+         // Separate rectangular and non-rectangular openings
+         let mut rects: Vec<(Point3<f64>, Point3<f64>, Option<Vector3<f64>>)> = Vec::new();
+@@ -369,15 +369,15 @@ impl GeometryRouter {
+                     // through BOTH walls. This still collapses the O(2^N) case the merge
+                     // exists for — a wall tiled with aligned openings coincides on two
+                     // axes per pair and folds row-by-row, then column-by-column.
+-                    let coincides_x = (a_min.x - b_min.x).abs() <= MERGE_TOLERANCE
+-                        && (a_max.x - b_max.x).abs() <= MERGE_TOLERANCE;
+-                    let coincides_y = (a_min.y - b_min.y).abs() <= MERGE_TOLERANCE
+-                        && (a_max.y - b_max.y).abs() <= MERGE_TOLERANCE;
+-                    let coincides_z = (a_min.z - b_min.z).abs() <= MERGE_TOLERANCE
+-                        && (a_max.z - b_max.z).abs() <= MERGE_TOLERANCE;
++                    let coincides_x = a_min.x == b_min.x && a_max.x == b_max.x;
++                    let coincides_y = a_min.y == b_min.y && a_max.y == b_max.y;
++                    let coincides_z = a_min.z == b_min.z && a_max.z == b_max.z;
+                     let coincident_axes =
+                         coincides_x as u8 + coincides_y as u8 + coincides_z as u8;
+-                    let phantom_free = coincident_axes >= 2;
++                    let phantom_free = coincident_axes >= 2
++                        && a_min.x <= b_max.x && a_max.x >= b_min.x
++                        && a_min.y <= b_max.y && a_max.y >= b_min.y
++                        && a_min.z <= b_max.z && a_max.z >= b_min.z;
+ 
+                     // Check direction compatibility before merging
+                     let dirs_compatible = match (&rects[i].2, &rects[j].2) {

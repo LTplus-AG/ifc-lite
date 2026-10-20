@@ -73,6 +73,24 @@ describe('PolygonBuilder — material-layer colour split', () => {
     expect(polygons[0].color).toBeUndefined();
   });
 
+  it('still records the source colour on a single-material polygon (#7950 element-colour caps)', () => {
+    const polygons = new PolygonBuilder().buildPolygons(rectSegments(0, 0, 1, 1, 200, RED));
+    expect(polygons[0].sourceColor).toEqual(RED);
+  });
+
+  it('records each layer\'s own colour as sourceColor on a multi-material cut', () => {
+    const polygons = new PolygonBuilder().buildPolygons([
+      ...rectSegments(0, 0, 1, 1, 100, RED),
+      ...rectSegments(1, 0, 2, 1, 100, BLUE),
+    ]);
+    for (const p of polygons) expect(p.sourceColor).toEqual(p.color);
+  });
+
+  it('leaves sourceColor off when the segments carry no colour', () => {
+    const polygons = new PolygonBuilder().buildPolygons(rectSegments(0, 0, 1, 1, 300));
+    expect(polygons[0].sourceColor).toBeUndefined();
+  });
+
   it('groups same-colour layers but still yields a polygon per spatial loop', () => {
     // Finish material used on BOTH faces (layers 0 and 2) — same colour, two
     // disjoint rectangles. They share a colour bucket but the loop builder

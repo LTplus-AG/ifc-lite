@@ -7,6 +7,8 @@
 
 use super::*;
 use std::sync::Arc;
+use ifc_lite_core::{DecodedEntity, IfcType};
+use ifc_lite_processing::data_model::render::flat::render_attributes;
 
 /// #4203: bounded exporter strata are geometry-bearing product aliases, but
 /// retain their exact owned keyword instead of being remapped to an EXPRESS

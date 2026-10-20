@@ -1,0 +1,45 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const extrusionInspectionRu = {
+  "properties.extrusion.heading": "Заданные источники экструзии",
+  "properties.extrusion.sourceNote": "Точные параметры профиля и экструзии IFC. Глубина, радиус и периметр используют метры или выбранную вами единицу; координаты профиля и смещения систем координат остаются в метрах. Профили представляют исходную геометрию до размещения, вырезания проёмов и других отсечений.",
+  "properties.extrusion.loading": "Чтение выбранных источников данных об экструзии…",
+  "properties.extrusion.solid": "IfcExtrudedAreaSolid #{id}",
+  "properties.extrusion.status": "Статус",
+  "properties.extrusion.complete": "Завершено",
+  "properties.extrusion.unsupported": "Неподдерживаемый",
+  "properties.extrusion.missingSource": "Определение источника недоступно для этого экземпляра.",
+  "properties.extrusion.sourceModified": "Источник изменён операциями CSG",
+  "properties.extrusion.modifiedHint": "Заданный профиль может отличаться от видимого результата.",
+  "properties.extrusion.yes": "Да",
+  "properties.extrusion.no": "Нет",
+  "properties.extrusion.none": "Нет",
+  "properties.extrusion.mappingPath": "Путь сопоставления",
+  "properties.extrusion.depth": "Глубина",
+  "properties.extrusion.direction": "Компоненты ExtrudedDirection",
+  "properties.extrusion.position": "Положение тела",
+  "properties.extrusion.profile": "SweptArea",
+  "properties.extrusion.profileType": "ProfileType",
+  "properties.extrusion.profilePosition": "Положение профиля",
+  "properties.extrusion.placement": "Размещение источника",
+  "properties.extrusion.placementNote": "Смещения профиля и тела переведены из единиц файла IFC в метры. Мировое смещение задано в абсолютных координатах IFC, в метрах, с осью Z вверх. Смещение начала координат визуализации Viewer не применяется. Векторы осей учитывают масштаб экземпляра общей геометрии.",
+  "properties.extrusion.profileFrame": "Система координат положения профиля",
+  "properties.extrusion.solidFrame": "Система координат положения тела",
+  "properties.extrusion.worldFrame": "Из исходной системы координат в мировую",
+  "properties.extrusion.translation": "Смещение",
+  "properties.extrusion.xBasis": "Столбец базиса X",
+  "properties.extrusion.yBasis": "Столбец базиса Y",
+  "properties.extrusion.zBasis": "Столбец базиса Z",
+  "properties.extrusion.center": "центр",
+  "properties.extrusion.radius": "радиус",
+  "properties.extrusion.normal": "нормаль",
+  "properties.extrusion.xAxis": "ось x",
+  "properties.extrusion.loop": "Контур {index}",
+  "properties.extrusion.segments": "сегменты",
+  "properties.extrusion.perimeter": "Периметр",
+  "properties.extrusion.signedArea": "Площадь со знаком",
+} satisfies Catalogue;

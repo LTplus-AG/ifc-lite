@@ -1,0 +1,13 @@
+diff --git a/rust/geometry/src/profile_cap.rs b/rust/geometry/src/profile_cap.rs
+index 1bd1a6d0f9..e0b689b714 100644
+--- a/rust/geometry/src/profile_cap.rs
++++ b/rust/geometry/src/profile_cap.rs
+@@ -187,7 +187,7 @@ fn unrepresentable_face(data: &[f64], indices: &[usize]) -> Option<bool> {
+         if !rounded.iter().flatten().all(|v| v.is_finite()) {
+             return None;
+         }
+-        found |= orientation(original[0], original[1], original[2]) <= 0;
++        found |= orientation(rounded[0], rounded[1], rounded[2]) <= 0;
+     }
+     Some(found)
+ }

@@ -7,7 +7,8 @@ use crate::types::response::{
     QuickMetadataSpatialNode,
 };
 use ifc_lite_core::limits::LARGE_COORD_THRESHOLD_METERS;
-use ifc_lite_core::{keyword_eq, parse_step_real, IfcType, StepListItems, IFC_TYPES};
+use ifc_lite_core::parser::{parse_ref, StepRecord};
+use ifc_lite_core::{keyword_eq, optional_text, parse_step_real, IfcType, StepListItems, IFC_TYPES};
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
@@ -86,42 +87,67 @@ pub fn is_quick_spatial_type_ci(type_name: &str) -> bool {
         .any(|candidate| keyword_eq(type_name, candidate))
 }
 
-/// A record's top-level attributes, trimmed of STEP trivia. The split is
-/// core's [`StepListItems`], so a comment is trivia here too (#4687).
-pub(super) fn parse_step_arguments(entity_bytes: &[u8]) -> Vec<&[u8]> {
-    StepListItems::of_record(entity_bytes).map(Iterator::collect).unwrap_or_default()
-}
-
-fn parse_step_string(token: &[u8]) -> Option<String> {
-    let trimmed = token.trim_ascii();
-    if trimmed.len() < 2 || trimmed[0] != b'\'' || trimmed[trimmed.len() - 1] != b'\'' {
-        return None;
-    }
-    let unescaped = String::from_utf8_lossy(&trimmed[1..trimmed.len() - 1]).replace("''", "'");
-    // Decode STEP unicode escapes so quick-metadata names match the from_token
-    // path and the TS parser (e.g. a name stored as Br\X2\00FC\X0\cke).
-    Some(ifc_lite_core::decode_ifc_string(&unescaped).into_owned())
-}
-
-pub(super) fn parse_step_ref(token: &[u8]) -> Option<u32> {
-    std::str::from_utf8(token.trim_ascii().strip_prefix(b"#")?)
-        .ok()?
-        .parse()
-        .ok()
-}
-
-pub(super) fn parse_step_ref_list(token: &[u8]) -> Vec<u32> {
+/// The references in attribute `index`: every `#n` item of a list, or the one
+/// reference the attribute is. An item that is not exactly `#digits` (`#+5`,
+/// `#12abc`, an id past `u32::MAX`) is skipped, not guessed.
+pub(super) fn ref_items(record: Option<&StepRecord<'_>>, index: usize) -> Vec<u32> {
+    let Some(token) = record.and_then(|record| record.attr(index)) else {
+        return Vec::new();
+    };
     match StepListItems::of_list(token) {
-        Some(items) => items.filter_map(parse_step_ref).collect(),
-        None => parse_step_ref(token).into_iter().collect(),
+        Some(items) => items.filter_map(parse_ref).collect(),
+        None => parse_ref(token).into_iter().collect(),
     }
 }
 
-pub(super) fn extract_name_from_args(args: &[&[u8]], fallback: &str) -> String {
-    args.get(2)
-        .and_then(|token| parse_step_string(token))
-        .filter(|value| !value.trim().is_empty())
+/// The spatial node's `Name` (attribute 2), or `fallback` when it is absent,
+/// `$`, or blank.
+pub(super) fn extract_name(record: Option<&StepRecord<'_>>, fallback: &str) -> String {
+    record
+        .and_then(|record| record.string_at(2))
+        .and_then(|name| optional_text(Some(&name)).map(str::to_owned))
         .unwrap_or_else(|| fallback.to_string())
+}
+
+/// A spatial-node entry from its scanned record (name, and a storey's raw
+/// elevation). One call from the scan loop, kept out of line so the loop's
+/// own code (the hottest in the product) does not change shape with the
+/// reader behind it.
+#[inline(never)]
+pub(super) fn spatial_node_entry(bytes: &[u8], type_name: &str, id: u32) -> QuickSpatialNodeEntry {
+    let record = StepRecord::parse(bytes);
+    let fallback = format!("{type_name} #{id}");
+    QuickSpatialNodeEntry {
+        express_id: id,
+        type_name: type_name.to_string(),
+        name: extract_name(record.as_ref(), &fallback),
+        elevation: None,
+        raw_elevation: keyword_eq(type_name, "IFCBUILDINGSTOREY").then(|| read_storey_elevation(record.as_ref())),
+        children: Vec::new(),
+        contained: Vec::new(),
+        elements: Vec::new(),
+        named_as_child: false,
+    }
+}
+
+/// `(parent, children)` of a spatial relationship record: attribute
+/// `parent_index` is the one reference, attribute `list_index` the list.
+#[inline(never)]
+pub(super) fn rel_links(bytes: &[u8], parent_index: usize, list_index: usize) -> Option<(u32, Vec<u32>)> {
+    let record = StepRecord::parse(bytes)?;
+    Some((record.ref_at(parent_index)?, ref_items(Some(&record), list_index)))
+}
+
+/// Attribute `index` of a scanned record when it is exactly one reference.
+#[inline(never)]
+pub(super) fn record_ref_at(bytes: &[u8], index: usize) -> Option<u32> {
+    StepRecord::parse(bytes)?.ref_at(index)
+}
+
+/// The references in attribute `index` of a scanned record ([`ref_items`]).
+#[inline(never)]
+pub(super) fn record_refs_at(bytes: &[u8], index: usize) -> Vec<u32> {
+    ref_items(StepRecord::parse(bytes).as_ref(), index)
 }
 
 /// A storey's elevation as the scan reads it, in the file's own length unit.
@@ -158,14 +184,15 @@ impl RawElevation {
     }
 }
 
-/// Read a storey's raw elevation from its record arguments.
-pub(super) fn read_storey_elevation(args: &[&[u8]]) -> RawElevation {
+/// Read a storey's raw elevation from its record.
+pub(super) fn read_storey_elevation(record: Option<&StepRecord<'_>>) -> RawElevation {
+    let Some(record) = record else {
+        return RawElevation::default();
+    };
     // Through the core STEP literal reader, not `str::parse::<f64>`, which
     // read `inf`, `NaN` and an overflowing `1.E400` as elevations (#7678).
-    let declared = [9usize, 8usize]
-        .into_iter()
-        .find_map(|index| args.get(index).and_then(|token| parse_step_real(token)));
-    let numeric = args.iter().filter_map(|token| parse_step_real(token)).collect();
+    let declared = [9usize, 8usize].into_iter().find_map(|index| record.real_at(index));
+    let numeric = record.attrs().filter_map(parse_step_real).collect();
     RawElevation { declared, numeric }
 }
 
@@ -173,7 +200,8 @@ pub(super) fn read_storey_elevation(args: &[&[u8]]) -> RawElevation {
 /// `length_unit_scale` metres.
 #[cfg(test)]
 pub(super) fn extract_storey_elevation_from_args(args: &[&[u8]], length_unit_scale: f64) -> Option<f64> {
-    read_storey_elevation(args).to_metres(length_unit_scale)
+    let text = [&b"#1=IFCBUILDINGSTOREY("[..], &args.join(&b","[..]), b");"].concat();
+    read_storey_elevation(StepRecord::parse(&text).as_ref()).to_metres(length_unit_scale)
 }
 
 impl QuickSpatialNodeEntry {

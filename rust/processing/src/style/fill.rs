@@ -76,9 +76,6 @@ fn fill_info(
     Some(super::GeometryStyleInfo {
         color: extract_color_from_fill_area_style(style, decoder)?,
         shading_color: None,
-        material_name: style
-            .get_string(0)
-            .filter(|s| !s.trim().is_empty())
-            .map(str::to_owned),
+        material_name: ifc_lite_core::optional_text(style.get_string(0)).map(str::to_owned),
     })
 }

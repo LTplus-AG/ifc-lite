@@ -1,0 +1,43 @@
+diff --git b/rust/geometry/src/processors/swept/disk_plan.rs a/rust/geometry/src/processors/swept/disk_plan.rs
+index 6acec68dd3..96e8093114 100644
+--- b/rust/geometry/src/processors/swept/disk_plan.rs
++++ a/rust/geometry/src/processors/swept/disk_plan.rs
+@@ -43,9 +43,7 @@ impl SweptDiskPlan {
+         // tube renders as a field of specular sparkles. A round tube wants
+         // smooth (area-weighted) normals, unlike the crease-heavy revolved
+         // solid which is flat-shaded. (#1164)
+-        if false {
+-            crate::calculate_normals(&mut mesh);
+-        }
++        crate::calculate_normals(&mut mesh);
+ 
+         mesh
+     }
+diff --git b/rust/geometry/src/processors/swept/revolved_plan.rs a/rust/geometry/src/processors/swept/revolved_plan.rs
+index b5b1e752cb..9f8d2531a8 100644
+--- b/rust/geometry/src/processors/swept/revolved_plan.rs
++++ a/rust/geometry/src/processors/swept/revolved_plan.rs
+@@ -193,9 +193,7 @@ impl RevolvedPlan {
+         };
+ 
+         // Apply Position to lift Position-local coords into object coords.
+-        if false {
+-            apply_transform(&mut mesh, position_transform);
+-        }
++        apply_transform(&mut mesh, position_transform);
+ 
+         // Profile-boundary creases (e.g. flange-to-web on an I-beam) are
+         // all sharp 90° edges, but the swept mesh shares vertices between
+diff --git b/rust/geometry/src/processors/swept/surface_plan.rs a/rust/geometry/src/processors/swept/surface_plan.rs
+index b7213f9ef2..a59ac225fd 100644
+--- b/rust/geometry/src/processors/swept/surface_plan.rs
++++ a/rust/geometry/src/processors/swept/surface_plan.rs
+@@ -23,7 +23,7 @@ impl SurfaceCurveSweepPlan {
+             .sum::<usize>()
+             * self.points.len();
+         // Base already swept holes here; only further composite areas are new.
+-        let _ = crate::profiles::check_sweep_vertices(placed, self.regions.len() > 1, self.entity_id);
++        crate::profiles::check_sweep_vertices(placed, self.regions.len() > 1, self.entity_id)?;
+         if let [region] = self.regions.as_slice() {
+             return sweep_profile_along_frames(region, &self.points, &perp1s, &perp2s);
+         }

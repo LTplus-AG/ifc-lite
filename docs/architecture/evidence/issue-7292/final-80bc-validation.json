@@ -1,0 +1,718 @@
+{
+  "schemaVersion": 1,
+  "status": "SCOPED_VALIDATION_RECORDED_ENGINE_SIZE_FAIL_NO_QUALIFIED_PERFORMANCE_VERDICT",
+  "source": {
+    "validatedRevision": "80bc1bff690e307c82111cfb23edf7639bd40679",
+    "laterDocumentationCommitQualified": false,
+    "productionTreeSha256": "a701a004843c1a2bc552c84da74687983765bafe3c5a08d23478031f7cd142d8",
+    "nativeAndConsumerSourceManifestsIdentical": true,
+    "sourceManifestEntries": 1511,
+    "nativeSourceBeforeSHA256": "6a1fe42e507842299fa6ae71f4bb0da737ba16c569206cb049f742d33d741048",
+    "sourceUnchangedDuringNativeAndConsumerStages": true,
+    "sourceManifestScope": "The exact 1511-entry source manifest is embedded in the retained native and consumer receipts; this public summary publishes their hashes, not those local receipts."
+  },
+  "artifacts": {
+    "nativeReceipt": {
+      "sha256": "c88b3b143efa4a3d25edcd2c8a9ac5302f4ed4082ecf9540650d96b118bb6be9",
+      "bytes": 193396,
+      "availability": "Retained local original; not published by this summary."
+    },
+    "consumerQualificationReceipt": {
+      "sha256": "884f30976f7095a22bb70a438a83eb951f7e1e90c5feb75339eec6f1f270fda7",
+      "bytes": 185431,
+      "availability": "Retained local original; not published by this summary."
+    },
+    "viewerBuildReceipt": {
+      "sha256": "3a47701333f1888d15ee17c541112acdefbd56387d6a722fdea966787f5f8eec",
+      "bytes": 2537,
+      "availability": "Retained local original; not published by this summary."
+    },
+    "functionalCompositeReceipt": {
+      "sha256": "26c41a95353befab92fe46a18c8c62c36fd5adfecf899f06e2c5c84c0d289dca",
+      "bytes": 4237,
+      "availability": "Retained local original; not published by this summary."
+    },
+    "functionalNativeReceipt": {
+      "sha256": "4cba35d45b04816e4a7b3b3b31eb44dde7c699b1174d3bc1a19e3adad0c3f8db",
+      "bytes": 2917349,
+      "availability": "Retained local original; not published by this summary."
+    },
+    "functionalPins": {
+      "sha256": "7d21e7adfd1c3c08135166b909194d76219c2dbfa1192c6829aba0c00d4402b4",
+      "bytes": 178554,
+      "availability": "Retained local original; not published by this summary."
+    },
+    "geometryAttestation": {
+      "sha256": "05a842ffdc06ffe953acb6cf18843f5f60ded4600e656e04c6db753c9ff36011",
+      "bytes": 14961,
+      "availability": "Retained local original; not published by this summary."
+    },
+    "geometryAttestationReceipt": {
+      "sha256": "206b2d871eb6c1e8849be40f215a44abae8b770a9e0e89c0f9e98ef84913f86f",
+      "bytes": 825,
+      "availability": "Retained local original; not published by this summary."
+    },
+    "geometryInputPins": {
+      "sha256": "fc667a37919f606ab8e72e586c270086cac5a89e426322c2d957d9398deb0422",
+      "bytes": 7958,
+      "availability": "Retained local original; not published by this summary."
+    },
+    "geometryReport": {
+      "sha256": "0b3e68868e8dc4da46c32e2ea5b183fc6a13bd5a1116a72c221f85cecd24c904",
+      "bytes": 2122,
+      "availability": "Retained local original; not published by this summary."
+    }
+  },
+  "native": {
+    "status": "PASS_TARGETED_NATIVE_AND_EXACT_CLIPPY",
+    "stages": [
+      {
+        "stage": "issue-7292-signed-zero",
+        "exitCode": 0,
+        "childReaped": true,
+        "log": {
+          "sha256": "90d3541f8752bc95a5758aa63405a2d48acf9ccf0c851538789011b5b42d861b",
+          "bytes": 545,
+          "availability": "Retained local original; not published by this summary."
+        },
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0
+      },
+      {
+        "stage": "issue-1109-budget",
+        "exitCode": 0,
+        "childReaped": true,
+        "log": {
+          "sha256": "9fb2d28a464b192edd18e608375d8638fc74264c39f72d553e42f2bf4e787315",
+          "bytes": 553,
+          "availability": "Retained local original; not published by this summary."
+        },
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0
+      },
+      {
+        "stage": "issue-7292-unit",
+        "exitCode": 0,
+        "childReaped": true,
+        "log": {
+          "sha256": "c3e56b775a07c30bd1f8dbe42ee892cf42394d8db3d61f2a6b794148c62b5abe",
+          "bytes": 15058,
+          "availability": "Retained local original; not published by this summary."
+        },
+        "passed": 121,
+        "failed": 0,
+        "ignored": 0
+      },
+      {
+        "stage": "mesh-bridge-unit",
+        "exitCode": 0,
+        "childReaped": true,
+        "log": {
+          "sha256": "e4336d7ea9808277bf9a0bac10b103c1dddef76a4c2027d0de6004eeb93420d8",
+          "bytes": 1956,
+          "availability": "Retained local original; not published by this summary."
+        },
+        "passed": 18,
+        "failed": 0,
+        "ignored": 0
+      },
+      {
+        "stage": "issue-7688-subtract-budget",
+        "exitCode": 0,
+        "childReaped": true,
+        "log": {
+          "sha256": "903951d0c58f05d1d8aedf24c8b4ec53aac46bf068703ea6141d4d61eed22659",
+          "bytes": 681,
+          "availability": "Retained local original; not published by this summary."
+        },
+        "passed": 3,
+        "failed": 0,
+        "ignored": 0
+      },
+      {
+        "stage": "module-size-ratchet",
+        "exitCode": 0,
+        "childReaped": true,
+        "log": {
+          "sha256": "c7d3cecb4f3880d81b2effe4881fa853112f6f272514180887b895aacee49658",
+          "bytes": 1407,
+          "availability": "Retained local original; not published by this summary."
+        },
+        "passed": 8,
+        "failed": 0,
+        "ignored": 0
+      },
+      {
+        "stage": "function-length-ratchet",
+        "exitCode": 0,
+        "childReaped": true,
+        "log": {
+          "sha256": "e55f2ef76beea7d78ffc3ffa4807c32f3edf55164def35a3c0ae909ff5c27a75",
+          "bytes": 2171,
+          "availability": "Retained local original; not published by this summary."
+        },
+        "passed": 17,
+        "failed": 0,
+        "ignored": 1
+      },
+      {
+        "stage": "clippy",
+        "exitCode": 0,
+        "childReaped": true,
+        "log": {
+          "sha256": "2f901692c1d22ad3d5055f5b8432fb73edcf49050ddf253a23a030b3cbbd855f",
+          "bytes": 930,
+          "availability": "Retained local original; not published by this summary."
+        },
+        "command": [
+          "cargo",
+          "clippy",
+          "--workspace",
+          "--all-targets",
+          "--",
+          "-D",
+          "warnings"
+        ]
+      }
+    ],
+    "scope": "Targeted tests and full workspace/all-target Clippy; no full workspace test sweep. The separate signed-zero case is also in the 121 issue_7292 unit tests; stage counts are not a count of distinct tests."
+  },
+  "consumer": {
+    "status": "SOURCE_CURRENT_VIEWER_BUILD_TYPECHECK_AND_WASM_CONTRACT_COMPLETE_NOT_GEOMETRY_QUALIFICATION",
+    "stages": [
+      {
+        "stage": "typecheck",
+        "exitCode": 0,
+        "childReaped": true,
+        "log": {
+          "sha256": "51455b6ab1e1a7fd2dc7da7554841ff9ef6f12ef3de7246f5a0fb95393bd60c1",
+          "bytes": 54612,
+          "availability": "Retained local original; not published by this summary."
+        }
+      },
+      {
+        "stage": "wasm-contract",
+        "exitCode": 0,
+        "childReaped": true,
+        "log": {
+          "sha256": "229a954a1716dd2ffe12de97ecd0b8365da231a80c68581589b6e90aa3f9f6d9",
+          "bytes": 71270,
+          "availability": "Retained local original; not published by this summary."
+        }
+      },
+      {
+        "stage": "wasm-package",
+        "exitCode": 0,
+        "childReaped": true,
+        "log": {
+          "sha256": "99fd4b5b668b44fed9e01cad2491f57454a485a9fd911711cfbefcf5880971c7",
+          "bytes": 6962,
+          "availability": "Retained local original; not published by this summary."
+        }
+      },
+      {
+        "stage": "viewer",
+        "exitCode": 0,
+        "childReaped": true,
+        "log": {
+          "sha256": "a47e3769a765d309aad85ec98d4370baaefbbecb531f28a1ab39829359c56ff6",
+          "bytes": 95049,
+          "availability": "Retained local original; not published by this summary."
+        }
+      }
+    ],
+    "rootTypecheck": {
+      "command": [
+        "pnpm",
+        "typecheck"
+      ],
+      "turboSuccessfulTasks": 127
+    },
+    "wasmContract": {
+      "passed": 210,
+      "failed": 0,
+      "skipped": 1
+    },
+    "publicWasmPackageTests": {
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0
+    },
+    "forcedViewerBuild": {
+      "turboSuccessfulTasks": 56
+    },
+    "officialWasmBuild": {
+      "exitCode": 0,
+      "logSHA256": "83bc9636815e029cb380281795113070e441ab0c94e16b4a89b530847f96dcf4",
+      "wasmReceiptSHA256": "9d4dd2b78940b14b8e3178b911357aa814a6e34ac190eab957f4c457f2583ec3"
+    },
+    "runtimeWasmSHA256": "184eac0411b2a47d93592b03cbc5ae0467b7768f958e57314ad52cc08518d13d",
+    "frozenDistSHA256": "b4ad3be0d3fcf3c555fc2573e74d0964cada21cb51a6c08897f53cb485071a28",
+    "engineSizeVerdict": "FAIL",
+    "engineSizeReceiptSHA256": "9d4dd2b78940b14b8e3178b911357aa814a6e34ac190eab957f4c457f2583ec3",
+    "mergeBlockedByEngineSize": true,
+    "scope": "Actual completed source-built WASM and consumer stages; the engine-size failure was retained and did not prevent consumer qualification."
+  },
+  "functionalBrowser": {
+    "status": "NATIVE_CAPTURE_AND_FINAL_LINUX_SOURCE_VERIFICATION_COMPLETE_NOT_GEOMETRY_QUALIFICATION",
+    "gates": {
+      "sourceBefore": true,
+      "nativeProcess": true,
+      "nativeCaptureCleanupProtected": true,
+      "sourceAfter": true,
+      "pinsUnchanged": true,
+      "supervisorNoError": true
+    },
+    "nativeReceiptUnmodified": true,
+    "browserVersion": "155.0.8059.40",
+    "physicalAdapter": {
+      "vendor": "nvidia",
+      "architecture": "blackwell"
+    },
+    "caseCount": 5,
+    "cases": [
+      {
+        "case": "derived5pct",
+        "fixtureSHA256": "531b9c50003464faa56aaf94f9d24e009f8cc8257af648860b6de5dc4a12b983",
+        "receipt": {
+          "sha256": "bef073225e8922b5e7daf171eae0232d644ea344c16f2eb6a2d3d3d36cee7ef0",
+          "bytes": 517032,
+          "availability": "Retained local original; not published by this summary."
+        },
+        "raw": {
+          "sha256": "248d35d8838accf3876e606e0335c3a61cec7ded4d5915d8d34b7599485c068b",
+          "bytes": 16641,
+          "availability": "Retained local original; not published by this summary."
+        },
+        "verified200RuntimeResponses": 562,
+        "optionalDeploymentAnalytics404": 2,
+        "status": "BROWSER_RUNTIME_CAPTURE_COMPLETE_GEOMETRY_ADJUDICATION_REQUIRED"
+      },
+      {
+        "case": "literal2pct",
+        "fixtureSHA256": "b4a31ae378ba8a762810b89affa40135a5ef49fed8ca1ffc87c0826d17c58d0e",
+        "receipt": {
+          "sha256": "51e6c7d92a3096d5c966b970e6c0fabad5d4a49ff7bfbc157a7de0b6dbd3bd15",
+          "bytes": 517062,
+          "availability": "Retained local original; not published by this summary."
+        },
+        "raw": {
+          "sha256": "41ce79e90d4d55591885b2778da5f0e1867038f02284462d30bd3e73e24010b4",
+          "bytes": 19784,
+          "availability": "Retained local original; not published by this summary."
+        },
+        "verified200RuntimeResponses": 562,
+        "optionalDeploymentAnalytics404": 2,
+        "status": "BROWSER_RUNTIME_CAPTURE_COMPLETE_GEOMETRY_ADJUDICATION_REQUIRED"
+      },
+      {
+        "case": "soffice-target-first",
+        "fixtureSHA256": "38c4ecbbc67d0759dfcffb2c90664f5b5231e6c48fc54597c62975b41bb629db",
+        "receipt": {
+          "sha256": "759f5dc4976365e561666f70bbf2e6ee6d08068d1e192df02146e6914a7d1785",
+          "bytes": 548287,
+          "availability": "Retained local original; not published by this summary."
+        },
+        "raw": {
+          "sha256": "740633070f406f701fb5f8908073319afa818f740bda7a4c3978f48b103c1379",
+          "bytes": 424358,
+          "availability": "Retained local original; not published by this summary."
+        },
+        "verified200RuntimeResponses": 567,
+        "optionalDeploymentAnalytics404": 2,
+        "status": "BROWSER_RUNTIME_CAPTURE_COMPLETE_GEOMETRY_ADJUDICATION_REQUIRED"
+      },
+      {
+        "case": "stacked2pct",
+        "fixtureSHA256": "cee0913394812c39c1bd19586f88d78cb9accef4d8a5b918bbd897c45f722900",
+        "receipt": {
+          "sha256": "7caf2354609e3b4d9a2d69652f069f2fb2959d55ebeb947082c67dbde2f2b9bf",
+          "bytes": 517037,
+          "availability": "Retained local original; not published by this summary."
+        },
+        "raw": {
+          "sha256": "534f22f45026f8d1f18ea9daf65eb22b8e58b66296701eb3b0d6da3974c8e9d6",
+          "bytes": 15739,
+          "availability": "Retained local original; not published by this summary."
+        },
+        "verified200RuntimeResponses": 562,
+        "optionalDeploymentAnalytics404": 2,
+        "status": "BROWSER_RUNTIME_CAPTURE_COMPLETE_GEOMETRY_ADJUDICATION_REQUIRED"
+      },
+      {
+        "case": "stacked5pct",
+        "fixtureSHA256": "62fcc25f2b4353bf194c27169fd1a9b59f9ca606c3ef9522376faacd95995505",
+        "receipt": {
+          "sha256": "7bab0faa525e67fddad65d9f54b22c515a93ab98572c356df7bcad0e81e7185d",
+          "bytes": 516935,
+          "availability": "Retained local original; not published by this summary."
+        },
+        "raw": {
+          "sha256": "162fe813cfc6e97ed6f82ccf5e898232274e3f0b29697648aad3417923874829",
+          "bytes": 15094,
+          "availability": "Retained local original; not published by this summary."
+        },
+        "verified200RuntimeResponses": 562,
+        "optionalDeploymentAnalytics404": 2,
+        "status": "BROWSER_RUNTIME_CAPTURE_COMPLETE_GEOMETRY_ADJUDICATION_REQUIRED"
+      }
+    ],
+    "runtimeObservation": "Correctness-only route.fetch/body-read/fulfill capture. Verified delivered JavaScript/WASM bytes match the pinned frozen distribution; this intercepted capture is not performance evidence. Optional absent deployment analytics remains explicit.",
+    "cleanup": {
+      "originalCleanupError": null,
+      "finalOwnedCleanupError": null,
+      "attempts": 1,
+      "configuredMaxAttempts": 2,
+      "configuredBudgetMs": 60000,
+      "elapsedMs": 1134,
+      "sameStrictUtility": true,
+      "sameRootWitnessClosure": true,
+      "contextCleanupErrorPresent": false,
+      "ownedIdentityErrorPresent": false,
+      "finalGuardErrorPresent": false,
+      "protectedCompleteBefore": true,
+      "protectedCompleteAfter": true,
+      "protectedRootCountsEqual": true,
+      "nativeProtectedCleanupCompositeGate": true,
+      "privateInventoryOrProfileDataCopied": false
+    },
+    "privateInventoryOrProfileDataIncluded": false
+  },
+  "finiteSurface": {
+    "status": "FOUR_EXACT_INPUT_PROOFS_TRANSFERRED_WITHOUT_ORACLE_RERUN",
+    "originalOracleSourceRevision": "8ae04cf8b893462fe6621dce674aa2ad7784c6a2",
+    "comparatorVersion": "finite-coverage-v3",
+    "positionToleranceMetres": 0.0001,
+    "helpers": {
+      "docs/architecture/evidence/issue-7292/compare_surface.py": {
+        "sha256": "5d45d645a570decb669e1148fe7f3abfbf3b84bf92fb55d81d79c4648382a7c7",
+        "old8ae_final80bc_and_worktree_bytes_identical": true
+      },
+      "docs/architecture/evidence/issue-7292/finite_coverage.py": {
+        "sha256": "e609308852ef4b85fb8fc9557033ba0ccb1638fefb336646377c9d938148102c",
+        "old8ae_final80bc_and_worktree_bytes_identical": true
+      },
+      "tools/ifcopenshell_reference/reference_validation.py": {
+        "sha256": "0a59b5c31f7236aca95e91a83e26d839c7bfffa88644e5b0b7f5d22142c320c7",
+        "old8ae_final80bc_and_worktree_bytes_identical": true
+      },
+      "tools/ifcopenshell_reference/reference_worker.py": {
+        "sha256": "441650e62f32ee1c674538b9d591751717f5ef5c16c5fc5dc6c3f2c559b3259c",
+        "old8ae_final80bc_and_worktree_bytes_identical": true
+      },
+      "tools/ifcopenshell_reference/requirements.lock": {
+        "sha256": "6194ce3e02ab203eb3eac89cb326041567160f05fbc1886dd34a4da2ef116b11",
+        "old8ae_final80bc_and_worktree_bytes_identical": true
+      }
+    },
+    "reporterCases": [
+      {
+        "key": "literal2pct",
+        "rawBytes": 19784,
+        "rawSHA256": "41ce79e90d4d55591885b2778da5f0e1867038f02284462d30bd3e73e24010b4",
+        "final80bcAnd8aeRawEntireFileIdentical": true,
+        "coordinateFrameAndInfoCoveredByFullInputIdentity": true,
+        "fixtureSHA256": "b4a31ae378ba8a762810b89affa40135a5ef49fed8ca1ffc87c0826d17c58d0e",
+        "originalOracleReceiptSHA256": "70672e78257e9a056f31e1f71264a7f628c787d7c684703b8f779140650ded5d",
+        "originalOracleSource": "8ae04cf8b893462fe6621dce674aa2ad7784c6a2",
+        "originalExit": 0,
+        "comparatorVersion": "finite-coverage-v3",
+        "positionToleranceMetres": 0.0001,
+        "missingAreaBeyondToleranceM2": 0,
+        "extraAreaBeyondToleranceM2": 0,
+        "unresolvedMissingCells": 0,
+        "unresolvedExtraCells": 0,
+        "finalCaseReceiptSHA256": "51e6c7d92a3096d5c966b970e6c0fabad5d4a49ff7bfbc157a7de0b6dbd3bd15",
+        "verdict": "FINITE_FILLED_SURFACE_PASS_TRANSFERRED_BY_EXACT_COMPARATOR_INPUT_IDENTITY_NO_RERUN"
+      },
+      {
+        "key": "derived5pct",
+        "rawBytes": 16641,
+        "rawSHA256": "248d35d8838accf3876e606e0335c3a61cec7ded4d5915d8d34b7599485c068b",
+        "final80bcAnd8aeRawEntireFileIdentical": true,
+        "coordinateFrameAndInfoCoveredByFullInputIdentity": true,
+        "fixtureSHA256": "531b9c50003464faa56aaf94f9d24e009f8cc8257af648860b6de5dc4a12b983",
+        "originalOracleReceiptSHA256": "527fcefb9d64180b47e34a14cd904455f24328f0e6b63c9bd489c725e74c7dc3",
+        "originalOracleSource": "8ae04cf8b893462fe6621dce674aa2ad7784c6a2",
+        "originalExit": 0,
+        "comparatorVersion": "finite-coverage-v3",
+        "positionToleranceMetres": 0.0001,
+        "missingAreaBeyondToleranceM2": 0,
+        "extraAreaBeyondToleranceM2": 0,
+        "unresolvedMissingCells": 0,
+        "unresolvedExtraCells": 0,
+        "finalCaseReceiptSHA256": "bef073225e8922b5e7daf171eae0232d644ea344c16f2eb6a2d3d3d36cee7ef0",
+        "verdict": "FINITE_FILLED_SURFACE_PASS_TRANSFERRED_BY_EXACT_COMPARATOR_INPUT_IDENTITY_NO_RERUN"
+      },
+      {
+        "key": "stacked2pct",
+        "rawBytes": 15739,
+        "rawSHA256": "534f22f45026f8d1f18ea9daf65eb22b8e58b66296701eb3b0d6da3974c8e9d6",
+        "final80bcAnd8aeRawEntireFileIdentical": true,
+        "coordinateFrameAndInfoCoveredByFullInputIdentity": true,
+        "fixtureSHA256": "cee0913394812c39c1bd19586f88d78cb9accef4d8a5b918bbd897c45f722900",
+        "originalOracleReceiptSHA256": "90f7267c24fcd9d346fc4db2528db497ba69e185c5c89d180616132ab266cd73",
+        "originalOracleSource": "8ae04cf8b893462fe6621dce674aa2ad7784c6a2",
+        "originalExit": 0,
+        "comparatorVersion": "finite-coverage-v3",
+        "positionToleranceMetres": 0.0001,
+        "missingAreaBeyondToleranceM2": 0,
+        "extraAreaBeyondToleranceM2": 0,
+        "unresolvedMissingCells": 0,
+        "unresolvedExtraCells": 0,
+        "finalCaseReceiptSHA256": "7caf2354609e3b4d9a2d69652f069f2fb2959d55ebeb947082c67dbde2f2b9bf",
+        "verdict": "FINITE_FILLED_SURFACE_PASS_TRANSFERRED_BY_EXACT_COMPARATOR_INPUT_IDENTITY_NO_RERUN"
+      },
+      {
+        "key": "stacked5pct",
+        "rawBytes": 15094,
+        "rawSHA256": "162fe813cfc6e97ed6f82ccf5e898232274e3f0b29697648aad3417923874829",
+        "final80bcAnd8aeRawEntireFileIdentical": true,
+        "coordinateFrameAndInfoCoveredByFullInputIdentity": true,
+        "fixtureSHA256": "62fcc25f2b4353bf194c27169fd1a9b59f9ca606c3ef9522376faacd95995505",
+        "originalOracleReceiptSHA256": "0d4bfd55c4e5bce8e3fc55d496c94ef666e176d0ee4a24891fc3c32ab0ec0027",
+        "originalOracleSource": "8ae04cf8b893462fe6621dce674aa2ad7784c6a2",
+        "originalExit": 0,
+        "comparatorVersion": "finite-coverage-v3",
+        "positionToleranceMetres": 0.0001,
+        "missingAreaBeyondToleranceM2": 0,
+        "extraAreaBeyondToleranceM2": 0,
+        "unresolvedMissingCells": 0,
+        "unresolvedExtraCells": 0,
+        "finalCaseReceiptSHA256": "7bab0faa525e67fddad65d9f54b22c515a93ab98572c356df7bcad0e81e7185d",
+        "verdict": "FINITE_FILLED_SURFACE_PASS_TRANSFERRED_BY_EXACT_COMPARATOR_INPUT_IDENTITY_NO_RERUN"
+      }
+    ],
+    "scope": "Unoriented filled finite-surface coverage for these four exact reporter inputs. All raw JSON bytes, fixtures and helper/version/tolerance pins matched the prior successful proofs. No topology, closure, winding, multiplicity or volume proof."
+  },
+  "sofficeSelectedPayloads": {
+    "status": "SIX_SELECTED_FLAT_TYPED_PAYLOADS_IDENTICAL_TO8AE_STRUCTURAL_RENDER_CHECKS_PASS_NOT_FULL_SOLID_ORACLE",
+    "selectedIds": [
+      794361,
+      798142,
+      437170,
+      94664,
+      473458,
+      489647
+    ],
+    "meshes": [
+      {
+        "expressId": 94664,
+        "vertices": 150,
+        "triangles": 110,
+        "typedPayloadSHA256": "3c63c23fc52e5697590c1a5f0a6c2292acb3c6418d79916b38aba96354030fdb",
+        "localBufferBounds": {
+          "min": [
+            -1.8649994134902954,
+            -1.93499755859375,
+            -0.004995040129870176
+          ],
+          "max": [
+            1.865000605583191,
+            1.9350025653839111,
+            0.005004961509257555
+          ]
+        },
+        "indicesInRange": true,
+        "typedFloatBitsAndNumericArraysConsistent": true,
+        "exact8aePayloadMatch": true,
+        "transformMetadataFinite": true
+      },
+      {
+        "expressId": 473458,
+        "vertices": 74,
+        "triangles": 42,
+        "typedPayloadSHA256": "fa5461266d29af28429d1eb838167846e092ec09c75647938774a33538ec0f02",
+        "localBufferBounds": {
+          "min": [
+            -0.005004427395761013,
+            -1.9174981117248535,
+            -0.1250004768371582
+          ],
+          "max": [
+            0.004995573312044144,
+            1.9175019264221191,
+            0.12500014901161194
+          ]
+        },
+        "indicesInRange": true,
+        "typedFloatBitsAndNumericArraysConsistent": true,
+        "exact8aePayloadMatch": true,
+        "transformMetadataFinite": true
+      },
+      {
+        "expressId": 489647,
+        "vertices": 54,
+        "triangles": 28,
+        "typedPayloadSHA256": "481bde5099812be964f1958f232db4bcd7b24c78f38728e289e734cd8647e061",
+        "localBufferBounds": {
+          "min": [
+            -5.787502765655518,
+            -0.16249391436576843,
+            -0.0025037007872015238
+          ],
+          "max": [
+            5.7874979972839355,
+            0.162506103515625,
+            0.002496294444426894
+          ]
+        },
+        "indicesInRange": true,
+        "typedFloatBitsAndNumericArraysConsistent": true,
+        "exact8aePayloadMatch": true,
+        "transformMetadataFinite": true
+      },
+      {
+        "expressId": 798142,
+        "vertices": 276,
+        "triangles": 148,
+        "typedPayloadSHA256": "c657d8db383d3df553c2e010f2952c695f18bb0a1f82ce43b61f441a82251a0e",
+        "localBufferBounds": {
+          "min": [
+            -0.38593780994415283,
+            -0.39015427231788635,
+            -0.12500032782554626
+          ],
+          "max": [
+            0.38592708110809326,
+            0.39013922214508057,
+            0.12499997019767761
+          ]
+        },
+        "indicesInRange": true,
+        "typedFloatBitsAndNumericArraysConsistent": true,
+        "exact8aePayloadMatch": true,
+        "transformMetadataFinite": true
+      },
+      {
+        "expressId": 794361,
+        "vertices": 214,
+        "triangles": 113,
+        "typedPayloadSHA256": "fbb9d506d9a85490c8ce869b8236a7038ff45b279a19924669cc6d20fdc9c4ef",
+        "localBufferBounds": {
+          "min": [
+            -0.3859391510486603,
+            -0.3901512920856476,
+            -0.12500032782554626
+          ],
+          "max": [
+            0.38592642545700073,
+            0.3901543915271759,
+            0.12499997019767761
+          ]
+        },
+        "indicesInRange": true,
+        "typedFloatBitsAndNumericArraysConsistent": true,
+        "exact8aePayloadMatch": true,
+        "transformMetadataFinite": true
+      },
+      {
+        "expressId": 437170,
+        "vertices": 384,
+        "triangles": 256,
+        "typedPayloadSHA256": "3283322f569f61032aa9c32ae7ae3491071bef8c8a1a506cc4df7e6e3c22bedf",
+        "localBufferBounds": {
+          "min": [
+            -26.000009536743164,
+            -0.04000667482614517,
+            -7.250000953674316
+          ],
+          "max": [
+            25.9999942779541,
+            0.03999330848455429,
+            7.25
+          ]
+        },
+        "indicesInRange": true,
+        "typedFloatBitsAndNumericArraysConsistent": true,
+        "exact8aePayloadMatch": true,
+        "transformMetadataFinite": true
+      }
+    ],
+    "changedTopLevelFields": [
+      "coordinateInfo"
+    ],
+    "wholeRawBytesIdentical": false,
+    "wholeSceneCounts": {
+      "entityCount": 5596,
+      "meshCount": 8865,
+      "totalVertices": 1050134,
+      "totalTriangles": 627176
+    },
+    "geometryWorkerCalls": {
+      "geom-1": 3,
+      "geom-2": 3,
+      "geom-0": 3,
+      "geom-3": 3
+    },
+    "actualWorkerCount": 4,
+    "adapter": {
+      "vendor": "nvidia",
+      "architecture": "blackwell"
+    },
+    "gpuErrorCountersZero": true,
+    "pageErrors": 0,
+    "requestFailures": 0,
+    "readinessEnded": true,
+    "canvasHasContent": true,
+    "drawCallsPositive": true,
+    "priorAssessmentSHA256": "170a8536d99d005a4fa56ac0a0d75f7d115c65fb45a149a98fbc8f0f68d7627f",
+    "finalRawSHA256": "740633070f406f701fb5f8908073319afa818f740bda7a4c3978f48b103c1379",
+    "oldRawSHA256": "0fb64ecd0d433576ea18f0b8ced13d9ce155893762e984be181f0de2bf7b7325",
+    "screenshotSHA256": "0caca4016a40f8b0062af8e2316713fd4799c1bcd6df1ab553d3c3749b080b5a",
+    "boundsScope": "Local buffer bounds and finite metadata only; localToWorld is not reapplied to already exported payload; no full-scene geometry identity inferred."
+  },
+  "visualEvidence": {
+    "newScreenshotsPublished": false,
+    "scope": "Root reports viewing new SOffice and literal screenshots: populated building and line-strip view. This hash attestation does not add image inspection, occluded closeups or a solid-volume proof."
+  },
+  "preservedFailures": [
+    {
+      "scope": "Original 80bc qualification driver",
+      "outcome": "Failed after official WASM completed, at an unallowed redundant hold-stage label before compression. Separate continuation retained completed evidence and performed the remaining stages; the failed attempt was not relabelled."
+    },
+    {
+      "scope": "Engine transfer-size acceptance",
+      "outcome": "FAIL; remains a merge blocker."
+    },
+    {
+      "scope": "Browser worker-pool cohort",
+      "acceptedRows": 0,
+      "outcome": "First FZK base sample completed timed load but failed subsequent passive delivered-runtime proof: response.body: Response body is unavailable. Missing worker-script byte proof prevents acceptance. Cleanup succeeded on second strict attempt; original failure retained."
+    },
+    {
+      "scope": "Native paired-probe cohort",
+      "acceptedRows": 0,
+      "outcome": "Host admission refused CPU observations 0/12/1 percent against the unchanged maximum 10 percent. No accepted native timing sample."
+    }
+  ],
+  "performance": {
+    "qualifiedEndToEndWorkerPoolVerdict": false,
+    "qualifiedNativeTimingVerdict": false,
+    "speedOrRegressionClaim": false,
+    "cohortFailureProvenance": "Semantic browser/native attempt outcomes supplied by the coordinating owner; those attempt receipts are not republished or rehashed by this summary."
+  },
+  "limitations": [
+    "Finite-coverage-v3 proves unoriented filled finite surfaces for these exact four reporter inputs at unchanged100um tolerance. No topology, winding, multiplicity, volume, full-SOffice oracle, whole-scene equivalence, performance or merge verdict. SOffice global bounds metadata differs despite six exact selected payloads; cause unestablished. Existing engine-size blocker remains outside this geometry result. Old8ae evidence and failed historical aggregates unchanged.",
+    "This file is a public derived summary with original artifact SHA-256 references. It does not add these local originals, raw bundles, frozen runtime binaries or screenshots to any existing archive. Hash references identify retained evidence; they do not make unpublished originals independently downloadable or replayable.",
+    "No new builds, tests, browser runs, host observations or oracle computations were performed to prepare this summary.",
+    "This summary does not qualify a later documentation-only commit, required hosted CI or cross-platform determinism, and makes no merge-readiness claim."
+  ],
+  "initialPublicationMutation": {
+    "path": "docs/architecture/evidence/issue-7292/signed-zero.oracle.patch",
+    "sha256": "2947a0475655b387de62b4a1ae608f6c0683a03c9743a6a8fb81291f4c8752af",
+    "direction": "Forward c4b8 SourceAxes -> 80bc; harness reverse-applies to restore raw signed-zero keys without removing modules or types.",
+    "test": "issue_7292_signed_zero_shared_corner_keeps_one_production_weld_target",
+    "historicalUnfixedRevision": "c4b8b8e7ff7a5cc6f54544c4c7fd033917f9909b",
+    "historicalRedExitCode": 101,
+    "historicalRedTestCount": 1,
+    "historicalRedLogSHA256": "0e9165e090b8c5f8a72403ad70e4dc909569608d01886158cb09877fc019582b",
+    "fixedRevision": "80bc1bff690e307c82111cfb23edf7639bd40679",
+    "fixedPassed": 1,
+    "fullMutantHostedVerdict": "PENDING; not inferred from historical narrow RED/GREEN",
+    "scope": "One actual production seam witness. All changed tests remain selected on both sides. No claim of exhaustive observation of every production hunk.",
+    "staticReverseAndForwardByteProof": "An isolated file copy reverse-applies byte-exact to c4b8 SourceAxes and forward-restores byte-exact to 80bc; no production worktree mutation or test execution."
+  }
+}

@@ -3,7 +3,7 @@
 //!
 //! Window/door occurrences come from `extract_profiles` (per-occurrence, in the SAME
 //! Y-up→Z-up frame as the rooms — no meshing, no frame calibration, and safe in
-//! wasm/CLI/browser; the native mesher `process_geometry_filtered` traps in wasm). Each
+//! wasm/CLI/browser; the native mesher `process` traps in wasm). Each
 //! occurrence's profile prisms (base ring + extruded ring) form a point cloud that is
 //! projected onto the matched exterior wall face, yielding a coplanar sub-face within the
 //! parent boundary — uniform for vertical-glazed windows and vertically-extruded door leaves.

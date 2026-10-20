@@ -19,6 +19,9 @@ use std::sync::Arc;
 
 #[path = "decoder/caches.rs"]
 mod caches;
+pub(crate) mod source_caches;
+#[path = "decoder/execution.rs"]
+mod execution;
 #[path = "decoder/fast_buffers.rs"]
 mod fast_buffers;
 #[path = "decoder/leaf_read.rs"]
@@ -61,7 +64,10 @@ where
 /// String attributes are decoded lossily when tokens become `AttributeValue`s;
 /// structural scanning and byte offsets always use the original source bytes.
 pub struct EntityDecoder<'a> {
-    content: &'a [u8],
+    pub(crate) execution_owner: crate::execution_owner::ExecutionOwner,
+    pub(crate) content: &'a [u8],
+    pub(crate) source_bundle: Option<Arc<crate::SourceBundle>>,
+    pub(crate) cache_revision: u64,
     /// Cache of decoded entities (entity_id -> `Arc<DecodedEntity>`)
     /// Using Arc avoids expensive clones on cache hits
     cache: FxHashMap<u32, Arc<DecodedEntity>>,
@@ -136,7 +142,10 @@ impl<'a> EntityDecoder<'a> {
     {
         let content = content.as_ref();
         Self {
+            execution_owner: Default::default(),
             content,
+            source_bundle: None,
+            cache_revision: 0,
             cache: FxHashMap::default(),
             raw_leaf_memo: None,
             #[cfg(test)]
@@ -163,65 +172,18 @@ impl<'a> EntityDecoder<'a> {
     where
         T: AsRef<[u8]> + ?Sized,
     {
-        let content = content.as_ref();
-        Self {
-            content,
-            cache: FxHashMap::default(),
-            raw_leaf_memo: None,
-            #[cfg(test)]
-            raw_leaf_parse_attempts: 0,
-            entity_index: Some(EntityIndexStore::Hash(Arc::new(index))),
-            point_cache: FxHashMap::default(),
-            point_cache_hits: 0,
-            point_cache_misses: 0,
-            plane_angle_to_radians_cache: None,
-            project_id_cache: None,
-            length_unit_scale_cache: None,
-            geometric_precision_cache: None,
-            placement_transform_cache: FxHashMap::default(),
-            styled_item_index: std::sync::OnceLock::new(),
-            schema_version_cache: None,
-            grid_axis_index: Arc::default(),
-            strict_reals: false,
-            refused_records: std::sync::Mutex::default(),
-        }
+        Self::with_arc_index(content, Arc::new(index))
     }
 
-    /// Create decoder with shared Arc index (for parallel processing)
+    /// Create decoder with shared Arc index (for parallel processing).
+    /// The caller must pair the index with the exact original source bytes.
     pub fn with_arc_index<T>(content: &'a T, index: Arc<EntityIndex>) -> Self
     where
         T: AsRef<[u8]> + ?Sized,
     {
-        let content = content.as_ref();
-        Self {
-            content,
-            cache: FxHashMap::default(),
-            raw_leaf_memo: None,
-            #[cfg(test)]
-            raw_leaf_parse_attempts: 0,
-            entity_index: Some(EntityIndexStore::Hash(index)),
-            point_cache: FxHashMap::default(),
-            point_cache_hits: 0,
-            point_cache_misses: 0,
-            plane_angle_to_radians_cache: None,
-            project_id_cache: None,
-            length_unit_scale_cache: None,
-            geometric_precision_cache: None,
-            placement_transform_cache: FxHashMap::default(),
-            styled_item_index: std::sync::OnceLock::new(),
-            schema_version_cache: None,
-            grid_axis_index: Arc::default(),
-            strict_reals: false,
-            refused_records: std::sync::Mutex::default(),
-        }
-    }
-
-    /// Install a pre-built index into this decoder. Used when the caller already
-    /// built the index during another pass (e.g. the processor scan loop) so the
-    /// decoder does not lazily rebuild it via `build_index`. Set it before any
-    /// `decode_by_id`/ref-resolving call; afterwards `build_index` no-ops.
-    pub fn set_entity_index(&mut self, index: Arc<EntityIndex>) {
-        self.entity_index = Some(EntityIndexStore::Hash(index));
+        let mut decoder = Self::new(content);
+        decoder.entity_index = Some(EntityIndexStore::Hash(index));
+        decoder
     }
 
     /// Build entity index for O(1) lookups
@@ -245,6 +207,13 @@ impl<'a> EntityDecoder<'a> {
     #[inline]
     pub fn decode_at(&mut self, start: usize, end: usize) -> Result<DecodedEntity> {
         let (id, ifc_type, tokens) = self.parse_at(start, end, "decode_at")?;
+        // Direct reads may name an earlier duplicate. They remain readable,
+        // but cannot populate the canonical last-occurrence ID cache.
+        if self.source_bundle.is_some()
+            && self.entity_index.as_ref().and_then(|index| index.lookup(id)) != Some((start, end))
+        {
+            return self.admit(id, ifc_type, &tokens).map(|(entity, _)| entity);
+        }
 
         // Check cache first - return clone of inner DecodedEntity
         if let Some(entity_arc) = self.cache.get(&id) {
@@ -295,6 +264,8 @@ impl<'a> EntityDecoder<'a> {
     /// The default stays lossless, so a decoder that is missed behaves as
     /// before rather than silently losing data.
     pub fn with_strict_reals(mut self) -> Self {
+        self.raw_leaf_memo = None;
+        self.execution_owner.changed();
         self.strict_reals = true;
         self
     }
@@ -512,7 +483,11 @@ impl<'a> EntityDecoder<'a> {
     /// every arc-bearing element re-pays the scan (≈135 ms each on a 75 MB
     /// file). The orchestrator resolves both scales once on a warm shared
     /// decoder and seeds each worker decoder here.
+    /// Seeded scales are caller-supplied inputs, so seeding revokes coherent
+    /// source authority like the other raw cache importers.
     pub fn seed_unit_scales(&mut self, length_unit_scale: f64, plane_angle_to_radians: f64) {
+        self.revoke_cache_authority();
+        self.execution_owner.changed();
         self.length_unit_scale_cache = Some(length_unit_scale);
         self.plane_angle_to_radians_cache = Some(plane_angle_to_radians);
     }
@@ -557,6 +532,8 @@ impl<'a> EntityDecoder<'a> {
     }
 
     /// Inject a pre-warmed Arc-shared cache into this decoder's local cache.
+    /// Trusted-input compatibility API: entries must belong to this source.
+    /// Revokes coherent authority; use `inject_source_cache` for checked reuse.
     ///
     /// Used by the de-normalized parallel path: a serial pre-pass builds a
     /// shared `Arc<FxHashMap<u32, Arc<DecodedEntity>>>` containing all
@@ -570,6 +547,8 @@ impl<'a> EntityDecoder<'a> {
     /// total, ~90 ms wall (incurred ONCE at task setup; the parallel
     /// hot path then runs lock-free against the populated cache).
     pub fn inject_shared_cache(&mut self, shared: &FxHashMap<u32, Arc<DecodedEntity>>) {
+        self.revoke_cache_authority();
+        self.execution_owner.changed();
         self.cache.reserve(shared.len());
         for (&id, entity) in shared.iter() {
             self.cache.insert(id, Arc::clone(entity));

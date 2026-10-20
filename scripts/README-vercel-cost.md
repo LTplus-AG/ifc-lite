@@ -191,6 +191,18 @@ production ──────●────────────────
 
 Consequences to know about:
 
+- **Ref writes need the repository secret `DEPLOY_PAT`.** Use a dedicated
+  fine-grained PAT scoped to `LTplus-AG/ifc-lite`, with **Contents: Read and
+  write** and **Workflows: Read and write** (and organization approval if
+  required). `GITHUB_TOKEN` cannot advance `production` across changes to
+  `.github/workflows/` (#7830); `actions: write` does not grant that permission.
+  Only ref creation/update uses this credential; API reads and issue reporting
+  use `GITHUB_TOKEN`. Do not reuse `RELEASE_PAT`, whose account and API quota
+  are reserved for releases. Rotate `DEPLOY_PAT` in repository secrets when it
+  expires. After landing the fix and configuring the secret, start a fresh
+  *Nightly Vercel Deploy* run on `main`; rerunning an old run uses its old
+  workflow. The workflow still requires a green commit and an unforced update,
+  and closes the stuck-production issue only after Vercel verification.
 - **`www.ifclite.com` can lag `main` by up to 24h.** That is the trade being
   made. To ship sooner, run the workflow manually (Actions → *Nightly Vercel
   Deploy* → Run workflow). That is the only hotfix path, deliberately.

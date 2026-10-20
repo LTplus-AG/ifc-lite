@@ -211,19 +211,14 @@ fn fzk_haus_gable_wall_67828_is_watertight() {
 
 // ────────────────────── known-bad: opening-cut path ───────────────────
 //
-// The next three elements all currently emit sliver triangles that the
-// CSG output-quality guard would flag, but the slivers come from BEFORE
-// the CSG kernel — either the input profile tessellation
-// (multi-extrusion windows) or the rectangular-box cut helper
-// (`cut_multiple_rectangular_openings` in `router/voids.rs`), which has
-// its own clipping that bypasses `ClippingProcessor::consolidate_coplanar`.
-//
+// The duplex window below still emits sliver triangles that the CSG
+// output-quality guard flags, but the slivers come from BEFORE the CSG
+// kernel: the input profile tessellation of overlapping narrow extrusions.
 // Identical spike counts appeared under both deleted legacy kernels (BSP and
-// Manifold), confirming the kernel is not at fault. Left `#[ignore]`d with the
-// current spike-count baseline so the suite documents the issue and
-// becomes a tightening gate when the upstream paths are cleaned up
-// (mirrors the same convention as the `#[ignore]`d cases in
-// `wall_opening_cut_regression.rs`).
+// Manifold), confirming the kernel is not at fault. It stays `#[ignore]`d so
+// the suite documents the issue and becomes a tightening gate when the
+// upstream path is cleaned up. The two advanced_model walls that used to sit
+// here no longer produce spikes and run as ordinary tests.
 
 /// duplex window #6426 — multi-extrusion (frame + sash + glass + lining)
 /// produces 72 spike triangles (worst ratio ~392:1) on both kernels.
@@ -242,7 +237,6 @@ fn duplex_window_6426_no_spike_triangles() {
 /// advanced_model wall #553010 — 8 spike tris (worst ~198:1), produced
 /// in the rectangular-opening clip path.
 #[test]
-#[ignore = "pre-existing: 8 spike tris from `cut_multiple_rectangular_openings`, not the CSG kernel"]
 fn advanced_model_wall_553010_no_spike_triangles() {
     let Some(content) = fixture("ara3d/advanced_model.ifc") else {
         return;
@@ -256,7 +250,6 @@ fn advanced_model_wall_553010_no_spike_triangles() {
 /// the MW 11.5 wall. Worth fixing as a separate follow-up, but unrelated
 /// to the CSG kernel and to this audit.
 #[test]
-#[ignore = "pre-existing: 23 spike tris (worst 3077:1) in the opening-cut helper, not the CSG kernel"]
 fn advanced_model_wall_612315_no_spike_triangles() {
     let Some(content) = fixture("ara3d/advanced_model.ifc") else {
         return;

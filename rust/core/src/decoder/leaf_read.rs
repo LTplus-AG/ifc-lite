@@ -27,7 +27,9 @@ const DIRECTION_KEYWORD: &[u8] = b"IFCDIRECTION";
 
 /// At most one successful raw parse. References into immutable decoder content
 /// preserve Send/Sync; no raw pointer, decoded entity, fallback or error is kept.
+/// The canonical execution generation invalidates reuse after configuration changes.
 pub(super) struct RawLeafMemo<'a> {
+    identity: crate::execution_owner::ExecutionIdentity,
     id: u32,
     keyword: &'static [u8],
     raw: &'a [u8],
@@ -114,6 +116,10 @@ impl EntityDecoder<'_> {
     fn leaf3(&mut self, id: u32, keyword: &'static [u8], ifc_type: IfcType) -> Result<[f64; 3]> {
         // Obtain the CURRENT selected slice even on a hit: index replacement
         // and duplicate ids can select different immutable source spans.
+        let identity = self.execution_identity();
+        if self.raw_leaf_memo.as_ref().is_some_and(|memo| memo.identity != identity) {
+            self.raw_leaf_memo = None;
+        }
         if let Some(bytes) = self.get_raw_bytes(id) {
             if let Some(memo) = &self.raw_leaf_memo {
                 if memo.id == id && memo.keyword == keyword
@@ -126,7 +132,7 @@ impl EntityDecoder<'_> {
             #[cfg(test)]
             { self.raw_leaf_parse_attempts += 1; }
             if let Some(value) = fast_leaf(bytes, keyword) {
-                self.raw_leaf_memo = Some(RawLeafMemo { id, keyword, raw: bytes, value });
+                self.raw_leaf_memo = Some(RawLeafMemo { identity, id, keyword, raw: bytes, value });
                 return Ok(value);
             }
         }

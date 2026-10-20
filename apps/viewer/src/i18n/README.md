@@ -807,7 +807,7 @@ per the house rule against fragmenting a translated message — the basket
 dock's `{count} in basket`, the deviation stats line, the SpaceMouse
 diagnostics report line — rather than left split across raw JSX text and a
 bare unit suffix; `spaceMousePanel.layoutLine` and
-`exportChangesReviewDialog.changesSummary` instead nest a second `t()` call
+`exportChangesReviewDialog.changesSummaryOneFile` instead nest a second `t()` call
 for a sub-label (the layout source, the model count) inside their own
 template, the same shape `RoomPanel.tsx`'s `statusRoom` already uses.
 `spaceMousePanel.headerLabel` / `deviceNameFallback` / `connectButton` keep

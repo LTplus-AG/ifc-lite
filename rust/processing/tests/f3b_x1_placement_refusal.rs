@@ -100,3 +100,43 @@ fn a_two_component_location_promotes_to_z_zero_and_is_not_refused() {
         explicit.meshes.iter().find(|m| m.express_id == 100).unwrap().positions,
     );
 }
+
+fn world_bounds(result: &ifc_lite_processing::ProcessingResult, id: u32) -> [[f64; 3]; 2] {
+    let mesh = result.meshes.iter().find(|mesh| mesh.express_id == id).expect("product mesh");
+    let mut bounds = [[f64::INFINITY; 3], [f64::NEG_INFINITY; 3]];
+    for point in mesh.positions.chunks_exact(3) {
+        for axis in 0..3 {
+            let value = mesh.origin[axis] + f64::from(point[axis]);
+            bounds[0][axis] = bounds[0][axis].min(value);
+            bounds[1][axis] = bounds[1][axis].max(value);
+        }
+    }
+    bounds
+}
+
+/// #7877/#7779: prove the 2D chain reaches native product vertices, not only a matrix.
+#[test]
+fn rotated_2d_parent_places_product_geometry_and_reports_bad_frames_7877() {
+    let frames = "#30=IFCCARTESIANPOINT((0.,5.));\n#31=IFCDIRECTION((0.,1.));\n\
+#32=IFCAXIS2PLACEMENT2D(#30,#31);\n#33=IFCLOCALPLACEMENT($,#32);\n";
+    let placed = wall(100, "(1.,0.,0.)", "(0.,0.,1.)")
+        .replace("#109=IFCLOCALPLACEMENT(#21,#108)", "#109=IFCLOCALPLACEMENT(#33,#108)")
+        .replace("IFCRECTANGLEPROFILEDEF(.AREA.,$,#6,1.,1.)", "IFCRECTANGLEPROFILEDEF(.AREA.,$,#6,2.,1.)");
+    let neighbor = wall(200, "(10.,0.,0.)", "(0.,0.,1.)");
+    let control = run(&neighbor);
+    let body = format!("{frames}{placed}{neighbor}");
+    let result = run(&body);
+    assert_eq!(result.stats.refused_input_elements, 0);
+    let bounds = world_bounds(&result, 100);
+    for (actual, expected) in bounds.into_iter().flatten().zip([-0.5, 5.0, 0.0, 0.5, 7.0, 1.0]) {
+        assert!((actual - expected).abs() < 1e-6, "rotated product bounds: {bounds:?}");
+    }
+    let mesh = result.meshes.iter().find(|mesh| mesh.express_id == 100).unwrap();
+    assert_eq!(mesh.indices.len() / 3, 12, "one complete rectangular solid");
+    assert_eq!(world_bounds(&result, 200), world_bounds(&control, 200));
+
+    let refused = run(&body.replace("#31=IFCDIRECTION((0.,1.))", "#31=IFCDIRECTION((1.))"));
+    assert!(refused.meshes.iter().all(|mesh| mesh.express_id != 100));
+    assert_eq!(refused.stats.refused_input_elements, 1, "bad authored parent is reported once");
+    assert_eq!(world_bounds(&refused, 200), world_bounds(&control, 200));
+}

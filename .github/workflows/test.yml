@@ -271,6 +271,12 @@ jobs:
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
               - 'scripts/build-wasm.sh'
+              - '.cargo/config.toml'
+              - 'scripts/build-imported-geometry.mjs'
+              - 'scripts/lib/imported-artifacts.mjs'
+              # The committed kernel artifacts the `--check` step diffs against:
+              # a hand-edit or stale regeneration of them must trigger the check.
+              - 'packages/ifcx/src/generated/**'
               - 'tests/models/manifest.json'
               - '.github/workflows/test.yml'
             # AGENTS.md is the instruction file every agent reads, and
@@ -599,9 +605,10 @@ jobs:
       # Rust + wasm-pack for the wasm32 build (pure-Rust CSG kernel — no
       # C++ toolchain needed since M9). Single-sourced in
       # .github/actions/setup-wasm-build so the four wasm-building
-      # workflows stay in lock-step. Skipped on the prebuilt fast path.
+      # workflows stay in lock-step. Skipped on the prebuilt fast path unless the
+      # imported-geometry freshness check below needs cargo.
       - name: Setup WASM build toolchain
-        if: needs.changes.outputs.wasm_prebuilt != 'true'
+        if: needs.changes.outputs.wasm_prebuilt != 'true' || needs.changes.outputs.rust == 'true'
         uses: ./.github/actions/setup-wasm-build
         with:
           cache-prefix: ci-build
@@ -677,6 +684,15 @@ jobs:
             exit 1
           fi
           echo "✅ committed wasm types match the Rust source"
+
+      # The generated IFCX imported-geometry kernel must match the Rust crate it
+      # is built from. Regenerates into a temp dir and diffs; not a build gate for
+      # packages (their --verify is Rust-free). Needs cargo, so 'Setup WASM build toolchain'
+      # is also enabled whenever the rust filter is true, even on the prebuilt fast path
+      # (the script provisions its own pinned wasm2js).
+      - name: Verify imported geometry artifacts are current
+        if: needs.changes.outputs.rust == 'true'
+        run: node scripts/build-imported-geometry.mjs --check
 
       # Build all workspace packages so their dist/ artifacts exist for
       # downstream consumers — turbo handles the dep graph.
@@ -780,7 +796,7 @@ jobs:
       # lane, but make its formatter dependency explicit rather than relying
       # on a runner image incidental.
       - name: Install Rust formatter for codegen freshness
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master 2026-05
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-05
         with:
           toolchain: stable
           components: rustfmt
@@ -860,12 +876,42 @@ jobs:
           E2E_GPU_STRICT: '0'
         run: |
           oracle_args=(--base origin/main --ci --json)
+          # #6729: keep the newly introduced GPU pass importable and remove
+          # only its geometric visibility constraint. The paired projection
+          # witness must then assert the original wrong foreground ownership.
+          # Once the module is on main, ordinary whole-change reverts resume.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- packages/renderer/src/opaque-visibility-pass.ts | grep -Fxq 'packages/renderer/src/opaque-visibility-pass.ts'; then
+            oracle_args+=(--mutation tests/evidence/reporter-6729/visibility.oracle.patch)
+          # #7974: whole-change revert deletes the new bounds helper imported
+          # by the changed tests, so collection fails before an assertion runs.
+          # Keep it loadable and restore ONLY the old mesh-only bounds lookup:
+          # instanced/released failures must lose their grouped camera. Once
+          # idsBcfBounds.ts is on main, whole-change reverts resume automatically.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/viewer/src/hooks/ids/idsBcfBounds.ts | grep -Fxq 'apps/viewer/src/hooks/ids/idsBcfBounds.ts'; then
+            oracle_args+=(--mutation tests/evidence/ids-bcf-7974/bounds.oracle.patch)
+          # #7292: the initial exact-kernel modules/APIs must stay loadable;
+          # a whole-production revert prevents the changed Rust tests compiling.
+          # Reverse ONLY geometric signed-zero key normalization in SourceAxes:
+          # the actual production weld must split one shared corner and turn RED.
+          # All changed tests still run on BOTH sides, with unchanged selection
+          # and timeout. Once source_axes.rs is on main, whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/kernel/plane_weld/source_axes.rs | grep -Fxq 'rust/geometry/src/kernel/plane_weld/source_axes.rs'; then
+            oracle_args+=(--mutation docs/architecture/evidence/issue-7292/signed-zero.oracle.patch)
+          # #7955 D1: the new resource module carries the audited mesh clone and
+          # merge admission. Whole-change revert removes the module the tests
+          # import, so no assertion runs; this reverses ONLY the cost charged
+          # before reserve/copy: zero copy/live/output allowances then admit
+          # the merge and the accounted-merge tests turn RED. All changed tests
+          # still run on both sides. Once resource/mesh.rs is on main, ordinary
+          # whole-change revert resumes automatically.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/resource/mesh.rs | grep -Fxq 'rust/geometry/src/resource/mesh.rs'; then
+            oracle_args+=(--mutation tests/evidence/resource-accounts-d1/behaviour.oracle.patch)
           # #7495: deleting the newly introduced report service prevents test
           # collection. Its initial qualification instead removes ONLY the
           # approved NDA digest check: wrong-digest acceptance must turn RED.
           # All changed tests still run on both sides; once agreement.ts is on
           # main, the ordinary whole-change revert resumes automatically.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- apps/report-service/src/agreement.ts | grep -Fxq 'apps/report-service/src/agreement.ts'; then
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/report-service/src/agreement.ts | grep -Fxq 'apps/report-service/src/agreement.ts'; then
             oracle_args+=(--mutation apps/report-service/test/fixtures/approved-digest.oracle.patch)
           # The initial publication transport adds modules imported by its
           # witnesses. Keep them loadable while disabling ONLY refusal of an
@@ -919,6 +965,64 @@ jobs:
           # RED. Once the script is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/viewer-test-shards.mjs | grep -Fxq 'scripts/viewer-test-shards.mjs'; then
             oracle_args+=(--mutation tests/evidence/ci-viewer-test-shards/selection.oracle.patch)
+          # #7633: the new facet_weld component/eligibility/fit modules carry
+          # the changed tests, so a whole-change revert cannot compile them
+          # (INCONCLUSIVE). Keep the modules and disable ONLY the edge-connected
+          # split: every admitted cluster again shares one fit, so remote patches
+          # lose their source corners and the remote-patch tests turn RED. Once
+          # components.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/facet_weld/components.rs | grep -Fxq 'rust/geometry/src/facet_weld/components.rs'; then
+            oracle_args+=(--mutation tests/evidence/issue-7633/connected-patches.oracle.patch)
+          # #7638 (#7633): the new consolidate plan/recovery modules carry the
+          # changed plan/closure tests, so a whole-change revert cannot compile
+          # them (INCONCLUSIVE). Keep the modules, the retry plumbing and the
+          # closure certificate, and break ONLY the projected-gap proof:
+          # separated_groups never certifies independent groups, so no bucket
+          # regroups onto its own source plane and the prior single-plane union
+          # stays. The partition/noise and remote-prism plan tests turn RED. Once
+          # plan/disjoint.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/csg/consolidate/plan/disjoint.rs | grep -Fxq 'rust/geometry/src/csg/consolidate/plan/disjoint.rs'; then
+            oracle_args+=(--mutation tests/evidence/issue-7633/disjoint-plane.oracle.patch)
+          # #7635: the new finite-incidence and exit-cap-local modules carry the
+          # changed tests, so a whole-change revert cannot compile them
+          # (INCONCLUSIVE). Keep both modules and disable ONLY the new behaviour:
+          # the opening weld drops its finite arris refusal, every coplanar host
+          # facet counts as local jamb contact, and coaxial depths coalesce again
+          # within 1% of span. The closed-edge production refusal, remote-floor
+          # recess, crossing-contact and intervening-pier tests turn RED. Once
+          # finite.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/kernel/plane_weld/finite.rs | grep -Fxq 'rust/geometry/src/kernel/plane_weld/finite.rs'; then
+            oracle_args+=(--mutation tests/evidence/issue-7635/finite-incidence.oracle.patch)
+          # #7631: the new profile_cap module carries the changed cap, predicate
+          # and adjoint tests, so a whole-change revert cannot compile them
+          # (INCONCLUSIVE). Keep the module and its retry wired into
+          # triangulate_rings; break ONLY the f32 lost-face trigger, which again
+          # reads the f64 orientation, so the retry never runs. The multi-hole
+          # cap, adjoint, f32-predicate, rvt01 13797 census and MiniBIM 135923
+          # slab tests turn RED. Once profile_cap.rs is on main, ordinary
+          # whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/profile_cap.rs | grep -Fxq 'rust/geometry/src/profile_cap.rs'; then
+            oracle_args+=(--mutation tests/evidence/issue-7631/profile-cap.oracle.patch)
+          # #7941: the new opening-merge fixture tests carry the changed tests,
+          # so a whole-change revert deletes them (INCONCLUSIVE). Keep them and
+          # break ONLY the behaviour: rectangular opening boxes coalesce again
+          # within 1 cm and without interval contact, coaxial depth slabs are
+          # extended after slicing with no sub-grid slab refusal, and a split
+          # bucket's first group loses its source plan id. The merge-gap,
+          # sub-grid slab and source-boundary frame tests turn RED. Once
+          # opening_merge_fixture_tests.rs is on main, ordinary whole-change
+          # revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/router/voids/opening_merge_fixture_tests.rs | grep -Fxq 'rust/geometry/src/router/voids/opening_merge_fixture_tests.rs'; then
+            oracle_args+=(--mutation tests/evidence/issue-7941/opening-union.oracle.patch)
+          # #7982: the changed closure/topology tests call the new
+          # ClosureVerdict::for_mesh_in_units, so a whole-change revert cannot
+          # compile them (INCONCLUSIVE). Keep the API and break ONLY its unit
+          # handling: the closure grid is the metre grid for every scale again,
+          # so the millimetre closure and topology-audit regressions turn RED.
+          # Once closure.rs no longer differs from main, ordinary whole-change
+          # revert resumes.
+          elif git diff origin/main...HEAD -- rust/geometry/src/mesh_check/closure.rs | grep -Fq 'fn for_mesh_in_units'; then
+            oracle_args+=(--mutation tests/evidence/issue-7982/unit-grid.oracle.patch)
           # #7673: the new large-stack geometry pool module carries its own
           # tests, so a whole-file revert deletes them (INCONCLUSIVE). Keep the
           # module and remove ONLY the large worker stack: the deep par_iter
@@ -926,6 +1030,90 @@ jobs:
           # geometry_pool.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/geometry_pool.rs | grep -Fxq 'rust/processing/src/geometry_pool.rs'; then
             oracle_args+=(--mutation tests/evidence/geometry-pool-7673/stack-size.oracle.patch)
+          # #7955 I2: the IFCX consumer adds imported-graph.ts, imported-kernel.ts
+          # and the generated imported-geometry artifact, which its tests name,
+          # so a whole-change revert cannot load them (REVERT-BROKE-BUILD).
+          # Keep the modules and break ONLY the behaviour: the graph driver
+          # stops forwarding authored point colours and mesh normals to the
+          # Rust kernel. Listed before I1 because this branch also adds the I1
+          # crate. Once packages/ifcx/src/imported-graph.ts is on main, ordinary
+          # whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- packages/ifcx/src/imported-graph.ts | grep -Fxq 'packages/ifcx/src/imported-graph.ts'; then
+            oracle_args+=(--mutation tests/evidence/ifcx-imported-kernel-i2/behaviour.oracle.patch)
+          # #7955 I1: the imported-geometry crate adds math.rs, graph.rs and
+          # scene.rs, which its tests name, so a whole-change revert cannot
+          # compile them (INCONCLUSIVE). Keep the types and break ONLY the
+          # behaviour: mesh placement transforms are not applied and
+          # homogeneous-denominator checks never reject. Once
+          # rust/imported-geometry/src/math.rs is on main, ordinary whole-change
+          # revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/imported-geometry/src/math.rs | grep -Fxq 'rust/imported-geometry/src/math.rs'; then
+            oracle_args+=(--mutation tests/evidence/imported-geometry-i1/behaviour.oracle.patch)
+          # #7955 B5: owned advanced-face plans add advanced_face/plan.rs,
+          # advanced_plan.rs and the structural plans, which their tests name,
+          # so a whole-change revert cannot compile them (INCONCLUSIVE). Keep
+          # the types and break ONLY the behaviour: parameterized faces ignore
+          # a false SameSense; oriented edges ignore their orientation;
+          # structural_face_plan.rs turns a dangling FaceSurface into an error
+          # instead of an empty plan, swaps rtc_applied between the planar and
+          # non-planar branches and stops reversing planar indices; the B3
+          # mutations (faceted-brep bound refusal, surface-model report replay
+          # order and the late collection error) and the A2 scope mutations
+          # (census, budget_state, pending_diagnostics, element_degenerate
+          # scope restore and peak folding) are stacked, as the patch still
+          # carries their hunks. Once
+          # advanced_plan.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/advanced_plan.rs | grep -Fxq 'rust/geometry/src/processors/advanced_plan.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-advanced-face-b5/behaviour.oracle.patch)
+          # #7955 B3: owned brep plans add faceted_plan.rs and
+          # surface_model_plan.rs, which their tests name, so a whole-change
+          # revert cannot compile them (INCONCLUSIVE). Keep the types and break
+          # ONLY the behaviour: faces with unreadable bounds are no longer
+          # refused, surface-model reports are not replayed in order, the late
+          # collection error is dropped, and the A2 scope mutation is stacked
+          # (this branch includes A2). Once faceted_plan.rs is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/brep/faceted_plan.rs | grep -Fxq 'rust/geometry/src/processors/brep/faceted_plan.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-brep-plans-b3/behaviour.oracle.patch)
+          # #7955 C4: layer slicing is split into planes.rs, slice.rs,
+          # stack.rs, source.rs and stages.rs, which the layer tests name, so a
+          # whole-change revert cannot compile them (INCONCLUSIVE). Keep the
+          # modules and break ONLY the behaviour: interface offsets stop
+          # accumulating, the carve no longer advances its remainder, thin
+          # layers are not merged, an empty host is accepted, frames ignore the
+          # placement and the slice diagnostic misreports; the A2 scope
+          # mutation is stacked (this branch includes A2). Once slice.rs is on
+          # main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/router/layers/slice.rs | grep -Fxq 'rust/geometry/src/router/layers/slice.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-layer-slicing-c4/behaviour.oracle.patch)
+          # #7955 A2: diagnostic scopes add pending_diagnostics.rs,
+          # budget_state.rs, CsgCensus and ElementState, which its tests name,
+          # so a whole-change revert cannot compile them (INCONCLUSIVE). Keep
+          # the types and break ONLY the behaviour: scopes stop restoring the
+          # caller's budget counters, pending reports and CSG sink, and the
+          # degenerate tally is no longer retained by its owner. Once
+          # pending_diagnostics.rs is on main, ordinary whole-change revert
+          # resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/pending_diagnostics.rs | grep -Fxq 'rust/geometry/src/pending_diagnostics.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-diagnostic-scopes-a2/behaviour.oracle.patch)
+          # #7955 G1: the SMLib adapter adds the ifc-lite-geometry-runtime crate,
+          # whose protocol, supervisor and process-control tests name the new
+          # production types, so a whole-change revert cannot compile them
+          # (INCONCLUSIVE). Keep the types and break ONLY the behaviour: response
+          # request ids are no longer matched and oversized mesh chunk requests
+          # are encoded. Once rust/geometry-runtime/src/protocol.rs is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry-runtime/src/protocol.rs | grep -Fxq 'rust/geometry-runtime/src/protocol.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-runtime-g1/behaviour.oracle.patch)
+          # #7955 A1: core execution ownership adds execution_owner.rs,
+          # source_bundle.rs and source caches, which its tests name, so a
+          # whole-change revert cannot compile them (INCONCLUSIVE). Keep the
+          # types and break ONLY the behaviour: configuration changes stop
+          # advancing the owner generation, foreign caches are accepted and
+          # every decoder counts as bundle-owned. Once execution_owner.rs is
+          # on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/execution_owner.rs | grep -Fxq 'rust/core/src/execution_owner.rs'; then
+            oracle_args+=(--mutation tests/evidence/core-execution-owner-a1/behaviour.oracle.patch)
           # #7676: the upload admission change adds ApiError::UploadTimeout, which
           # its tests name, so a whole-change revert cannot compile them
           # (INCONCLUSIVE). Keep the type and break ONLY the behaviour: the
@@ -1009,6 +1197,46 @@ jobs:
           # whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/tessellated/indices.rs | grep -Fxq 'rust/geometry/src/processors/tessellated/indices.rs'; then
             oracle_args+=(--mutation tests/evidence/tessellation-indices-7689/index-rule.oracle.patch)
+          # #7955 B2: the owned tessellated plans add triangulated_plan.rs and
+          # polygonal_plan.rs, which their tests import, so a whole-change revert cannot
+          # compile them (INCONCLUSIVE). Keep the plan types and break ONLY the behaviour:
+          # closed shells are no longer oriented outward when a plan is evaluated. Once
+          # triangulated_plan.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/tessellated/triangulated_plan.rs | grep -Fxq 'rust/geometry/src/processors/tessellated/triangulated_plan.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-tessellated-plans-b2/behaviour.oracle.patch)
+          # #7955 B1: the owned extrusion/primitive plans add extrusion_plan.rs,
+          # extrusion_tapered_plan.rs and primitive_plan.rs, which their tests import, so a
+          # whole-change revert cannot compile them (INCONCLUSIVE). Keep the plan types and
+          # break ONLY the behaviour: the Position transform is skipped when a plan is
+          # evaluated. Once extrusion_plan.rs is on main, ordinary whole-change revert
+          # resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/extrusion_plan.rs | grep -Fxq 'rust/geometry/src/processors/extrusion_plan.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-extrusion-plans-b1/behaviour.oracle.patch)
+          # #7955 B4: the owned swept plans add disk_plan.rs, revolved_plan.rs and
+          # surface_plan.rs, which their tests import, so a whole-change revert cannot
+          # compile them (INCONCLUSIVE). Keep the plan types and break ONLY the behaviour:
+          # disk smooth normals are skipped, the revolved Position transform is skipped
+          # and the surface sweep vertex budget is not enforced. Once disk_plan.rs is on
+          # main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/swept/disk_plan.rs | grep -Fxq 'rust/geometry/src/processors/swept/disk_plan.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-swept-plans-b4/behaviour.oracle.patch)
+          # #7955 B6: the owned alignment, sectioned and surface plans add
+          # alignment_plan.rs, sectioned_plan.rs and surface_plan.rs, which their tests
+          # import, so a whole-change revert cannot compile them (INCONCLUSIVE). Keep the
+          # plan types and break ONLY the behaviour: ribbon winding is reversed, the
+          # sectioned end cap is dropped and the surface RTC rebase is skipped. Once
+          # alignment_plan.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/alignment_plan.rs | grep -Fxq 'rust/geometry/src/processors/alignment_plan.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-alignment-section-plans-b6/behaviour.oracle.patch)
+          # #7955 C1: the construction graph adds construction/ and program/, which
+          # its tests import, so a whole-change revert cannot compile them
+          # (INCONCLUSIVE). Keep the graph and break ONLY the behaviour: unresolved
+          # roots no longer block evaluation, a custom processor is no longer
+          # refused, the RTC frame is dropped from lowering and repeated roots lose
+          # their occurrence order. Once construction/lowering.rs is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/construction/lowering.rs | grep -Fxq 'rust/geometry/src/construction/lowering.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-construction-graph-c1/behaviour.oracle.patch)
           # #7682: keep the new STEP-writer modules, StepStats fields and the TS
           # allocatedExpressId export loadable while disabling ONLY the guards the
           # changed tests pin (value/name/id-reuse refusals, the id-space refusal,
@@ -1185,6 +1413,56 @@ jobs:
           # placement/chain.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/placement/chain.rs | grep -Fxq 'rust/geometry/src/placement/chain.rs'; then
             oracle_args+=(--mutation tests/evidence/placement-7779/behaviour.oracle.patch)
+          # #7782 (C4-1): `process`, `ProcessingRequest`, `ProcessingSink` and
+          # `FrameEvent` are new items the changed tests import, so a
+          # whole-change revert cannot compile them (INCONCLUSIVE). Keep them
+          # and restore ONLY behaviour the tests pin: no `on_frame` event, the
+          # baked-basis slot never filled, `fast_first` dropped by
+          # `from_streaming`, and the id allow-list ignored by the
+          # `_and_ids` delegate. Once request.rs is on main, ordinary
+          # whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/processor/request.rs | grep -Fxq 'rust/processing/src/processor/request.rs'; then
+            oracle_args+=(--mutation tests/evidence/processing-7782/behaviour.oracle.patch)
+          # #7783: C6-7 adds data_model/property.rs, which the changed export and
+          # processing tests import, so a whole-change revert cannot compile
+          # them. Keep the module and break ONLY its behaviour: the list/
+          # enumerated kind split, the single-value scope and complex resolution.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/data_model/property.rs | grep -Fxq 'rust/processing/src/data_model/property.rs'; then
+            oracle_args+=(--mutation tests/evidence/data-model-property-7783/behaviour.oracle.patch)
+          # #7782 (C4-5): `ScanClass` is a new module its own tests import, so a
+          # whole-change revert cannot compile them (INCONCLUSIVE). Keep it and
+          # restore ONLY the table: mapped items unclassified, the fills code
+          # shared with voids, `IFCPROPERTY...` records unclassified and
+          # aggregates stashed with voids. Once scan.rs is on main, ordinary
+          # whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/scan.rs | grep -Fxq 'rust/processing/src/scan.rs'; then
+            oracle_args+=(--mutation tests/evidence/processing-7782/scan-class.oracle.patch)
+          # #7783: C6-8 moves the export model into data_model::{rows,inherit,
+          # render::flat} and adds QuantityKind, so the moved tests do not exist
+          # on the base. Keep the move; break ONLY QuantityKind's spellings and
+          # class mapping.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/data_model/quantity.rs | grep -Fxq 'rust/processing/src/data_model/quantity.rs'; then
+            oracle_args+=(--mutation tests/evidence/data-model-rows-7783/behaviour.oracle.patch)
+          # #7783: C6-9 adds data_model/type_assignments.rs (its tests live in the
+          # file). Keep the module and make a second type overwrite the first.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/data_model/type_assignments.rs | grep -Fxq 'rust/processing/src/data_model/type_assignments.rs'; then
+            oracle_args+=(--mutation tests/evidence/type-assignments-7783/behaviour.oracle.patch)
+          # #7783: C6-10 adds data_model/spatial_walk.rs, which the changed
+          # export tests import through the CSV and IFCX writers. Keep the
+          # module and reverse its sibling order.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/data_model/spatial_walk.rs | grep -Fxq 'rust/processing/src/data_model/spatial_walk.rs'; then
+            oracle_args+=(--mutation tests/evidence/spatial-walk-7783/behaviour.oracle.patch)
+          # #7955 C5a: the new host-attempt module and typed telemetry seam are
+          # entered by the changed tests, so a whole revert removes the seam.
+          # Keep them and drop ONLY restore-on-drop and attempt buffering:
+          # rejected attempts must leak failures and telemetry (RED).
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/router/voids/attempt.rs | grep -Fxq 'rust/geometry/src/router/voids/attempt.rs'; then
+            oracle_args+=(--mutation tests/evidence/opening-telemetry-c5a/behaviour.oracle.patch)
+          # #7955: F1a adds analytic/source.rs, which the changed analytic tests
+          # import. Keep the module and make source capture record nothing: the
+          # retained coefficients, trim selectors and traversal flags must turn RED.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/analytic/source.rs | grep -Fxq 'rust/geometry/src/analytic/source.rs'; then
+            oracle_args+=(--mutation tests/evidence/analytic-source-7955/behaviour.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.
@@ -3187,7 +3465,7 @@ jobs:
       # high enough: >=1.93.0 needed, got 1.93.0-nightly"). The gate invokes it
       # as `cargo +stable semver-checks`, so this only has to exist.
       - name: Install stable Rust
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master 2026-05
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-05
         with:
           toolchain: stable
 

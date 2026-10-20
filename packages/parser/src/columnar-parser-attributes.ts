@@ -93,7 +93,7 @@ export function findQuotedAttrRange(
  * `$`. False (not true) when the record's attribute list is too short to
  * reach `attrIndex` at all, matching how `entity.get(N).is_some_and(|a|
  * !a.is_null())` reads a missing attribute on the Rust export side
- * (`rust/export/src/model.rs`) — an absent slot means "no value", not
+ * (`rust/processing/src/data_model/rows/mod.rs`) — an absent slot means "no value", not
  * "assume present".
  *
  * Used for `Representation` (index 6) on `IfcProduct` descendants: GlobalId,

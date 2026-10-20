@@ -1,0 +1,53 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const aiReportsRu = {
+  "aiReports.language": "Язык текста отчёта",
+  "aiReports.languageHint": "Текст отчёта запрашивается на этом языке. Язык средства просмотра остаётся неизменным.",
+  "aiReports.draftWithAi": "Создать черновик отчёта с помощью ИИ",
+  "aiReports.requestPrompt": "Подготовь текст отчёта по этим подтверждающим данным для координационной проверки, со структурированными утверждениями отчёта. {instruction}",
+  "aiReports.languageMismatch": "В ответе указан язык {declared}, а не выбранный {chosen}. Создайте черновик снова или выберите этот язык.",
+  "aiReports.claims": "Утверждения, проверенные по зафиксированным данным",
+  "aiReports.noClaims": "В этом ответе нет структурированных утверждений. Проверены только ссылки на строки; проверьте каждое утверждение самостоятельно.",
+  "aiReports.statusSupported": "Подтверждено данными",
+  "aiReports.statusUnverifiable": "Непроверяемо",
+  "aiReports.statusContradicted": "Опровергнуто",
+  "aiReports.claimEdited": "Отредактировано вами",
+  "aiReports.editClaim": "Редактировать утверждение",
+  "aiReports.claimText": "Текст утверждения",
+  "aiReports.saveClaim": "Использовать отредактированный текст",
+  "aiReports.cancelEdit": "Отменить",
+  "aiReports.removeClaim": "Удалить утверждение",
+  "aiReports.contradictedBlocks": {
+    one: "{count} утверждение противоречит зафиксированным данным. Измените или удалите перед сохранением.",
+    few: "{count} утверждения противоречат зафиксированным данным. Измените или удалите перед сохранением.",
+    many: "{count} утверждений противоречат зафиксированным данным. Измените или удалите перед сохранением.",
+    other: "{count} утверждения противоречит зафиксированным данным. Измените или удалите перед сохранением.",
+  },
+  "aiReports.unknownCitation": "{citation}: отсутствует в зафиксированных подтверждающих данных",
+  "aiReports.factLine": "{citation} {field}: заявлено {claimed}",
+  "aiReports.reportRecord": "Отчёт ИИ · {language} · версия {revision} · данные зафиксированы {capturedAt}",
+  "aiReports.blockOrigins": "Текстовые блоки: {generated} создано ИИ, {edited} отредактировано людьми.",
+  "aiReports.refreshEvidence": "Обновить подтверждающие данные",
+  "aiReports.refreshHint": "Повторно получает данные встроенного источника, проверяет все утверждения и заново генерирует текст ИИ, который вы не редактировали. Ваши правки сохраняются, если ниже вы не выберете другое.",
+  "aiReports.refreshClaim": "{id}: {before} → {after}; {changed} изменено, {missing} отсутствует",
+  "aiReports.conflicts": "Отредактированные блоки, которые затронет обновление",
+  "aiReports.noConflicts": "Ни один отредактированный блок не затрагивается.",
+  "aiReports.replaceEdit": "Заменить мою правку повторно сгенерированным текстом",
+  "aiReports.removeEdit": "Удалить этот отредактированный блок; обновление больше не создаёт его",
+  "aiReports.yourText": "Ваш текст",
+  "aiReports.regeneratedText": "Повторно сгенерированный текст",
+  "aiReports.applyRefresh": "Применить обновление",
+  "aiReports.cancelRefresh": "Отменить обновление",
+  "aiReports.refreshApplied": "Подтверждающие данные обновлены. Изменившиеся и отсутствующие факты отмечены в документе.",
+  "aiReports.originGenerated": "Сгенерировано ИИ",
+  "aiReports.originEdited": "Текст ИИ отредактирован",
+  "aiReports.sourceUnsupported": "В этом средстве просмотра невозможно повторно получить данные этого источника отчёта.",
+  "aiReports.noNativeResult": "Для этого источника нет встроенного результата. Запустите его в его панели, затем обновите подтверждающие данные.",
+  "aiReports.analysisStale": "Результат встроенной проверки устарел: модель изменилась после её запуска. Повторите проверку в соответствующей панели, затем обновите подтверждающие данные.",
+  "aiReports.documentChanged": "Документ изменился, пока было открыто обновление. Обновите подтверждающие данные снова.",
+  "aiReports.modelsChanged": "Загруженные модели отличаются от тех, на основе которых был составлен этот отчёт. Утверждения будут повторно проверены по загруженным моделям.",
+} satisfies Catalogue;

@@ -37,6 +37,10 @@ import { onFieldTelemetry } from '@/lib/perf/fieldTelemetryLoader';
  *  so the copy can never advertise less (or more) than the picker accepts. */
 const MODEL_FORMATS_LABEL = MODEL_FILE_EXTENSIONS.join(' ');
 
+const DISABLED_ACTION_CLASSES = 'border-zinc-200 dark:border-[#3b4261]/50 text-zinc-300 dark:text-[#565f89]/50 cursor-not-allowed';
+const SECONDARY_ACTION_CLASSES = 'border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#7a82a5] hover:border-primary hover:text-primary cursor-pointer';
+const SECONDARY_BUTTON_CLASS_PREFIX = 'group inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-2xs border border-dashed transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ';
+
 const FLOAT_SLOW_KEYFRAMES = `
   @keyframes float-slow {
     0%, 100% { transform: translateY(0px) rotate(0deg); }
@@ -143,7 +147,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
         disabled={actionsDisabled || demoLoading}
         className={`group w-full flex items-center justify-center gap-3 px-6 py-3 font-mono text-sm font-bold border transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
           actionsDisabled
-            ? 'border-zinc-200 dark:border-[#3b4261]/50 text-zinc-300 dark:text-[#565f89]/50 cursor-not-allowed'
+            ? DISABLED_ACTION_CLASSES
             : 'border-primary bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer'
         }`}
       >
@@ -165,7 +169,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
         disabled={actionsDisabled}
         className={`group w-full flex items-center justify-center gap-3 px-6 py-3 font-mono text-sm border transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
           actionsDisabled
-            ? 'border-zinc-200 dark:border-[#3b4261]/50 text-zinc-300 dark:text-[#565f89]/50 cursor-not-allowed'
+            ? DISABLED_ACTION_CLASSES
             : 'border-zinc-300 dark:border-[#3b4261] text-zinc-600 dark:text-[#a9b1d6] hover:border-primary hover:text-primary cursor-pointer'
         }`}
       >
@@ -203,10 +207,10 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
           type="button"
           onClick={onStartBlank}
           disabled={actionsDisabled}
-          className={`group inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-2xs border border-dashed transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
+          className={`${SECONDARY_BUTTON_CLASS_PREFIX}${
             actionsDisabled
-              ? 'border-zinc-200 dark:border-[#3b4261]/50 text-zinc-300 dark:text-[#565f89]/50 cursor-not-allowed'
-              : 'border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#7a82a5] hover:border-primary hover:text-primary cursor-pointer'
+              ? DISABLED_ACTION_CLASSES
+              : SECONDARY_ACTION_CLASSES
           }`}
         >
           <PackagePlus className="h-3 w-3 transition-transform group-enabled:group-hover:-translate-y-0.5" />
@@ -216,10 +220,10 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
           type="button"
           onClick={() => useViewerStore.getState().openPanelInHome('sources')}
           disabled={actionsDisabled}
-          className={`group inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-2xs border border-dashed transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
+          className={`${SECONDARY_BUTTON_CLASS_PREFIX}${
             actionsDisabled
-              ? 'border-zinc-200 dark:border-[#3b4261]/50 text-zinc-300 dark:text-[#565f89]/50 cursor-not-allowed'
-              : 'border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#7a82a5] hover:border-primary hover:text-primary cursor-pointer'
+              ? DISABLED_ACTION_CLASSES
+              : SECONDARY_ACTION_CLASSES
           }`}
         >
           <Cloud className="h-3 w-3 transition-transform group-enabled:group-hover:-translate-y-0.5" />
@@ -245,8 +249,8 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
           disabled={actionsDisabled}
           className={`group hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-2xs border border-dashed transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
             actionsDisabled
-              ? 'border-zinc-200 dark:border-[#3b4261]/50 text-zinc-300 dark:text-[#565f89]/50 cursor-not-allowed'
-              : 'border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#7a82a5] hover:border-primary hover:text-primary cursor-pointer'
+              ? DISABLED_ACTION_CLASSES
+              : SECONDARY_ACTION_CLASSES
           }`}
         >
           <GitMerge className="h-3 w-3 transition-transform group-enabled:group-hover:-translate-y-0.5" />

@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""#7723 actual engine-diagnostic admission and owned-process contracts."""
+"""#7723/#7732 actual engine-diagnostic admission and owned-process contracts."""
 import hashlib
 import gzip
 from contextlib import contextmanager
@@ -79,6 +79,20 @@ class BooleanDiagnosticAdmission(unittest.TestCase):
         self.assertFalse(diagnostics('{"level":"Error","message":"unknown engine failure"}')['referenceUsable'])
         self.assertFalse(diagnostics('{"level":"Notice","message":') ['referenceUsable'])
 
+    def test_7732_engine_upgrade_does_not_admit_conversion_errors(self):
+        for level, message, instance in [
+            ('Error', 'Failed to convert:', '#212=IfcExtrudedAreaSolid(...)'),
+            ('Error', 'Failed to convert:', '#212=IfcMaterialLayerSet(...)'),
+            ('Error', 'Failed to convert:', "#212=IfcMaterial('Ceramic',$,$)"),
+            ('Fatal', 'Failed to convert:', "#212=IfcMaterial('Ceramic',$,$)"),
+            ('Error', 'Unknown material failure', "#212=IfcMaterial('Ceramic',$,$)"),
+            ('Error', 'Failed to convert:', ''),
+        ]:
+            with self.subTest(level=level, message=message, instance=instance):
+                result = diagnostics(json.dumps(dict(level=level, message=message, instance=instance)))
+                self.assertFalse(result['referenceUsable'])
+                self.assertEqual(len(result['errors']), 1)
+
     def test_7723_plain_or_truncated_native_error_cannot_be_reference(self):
         self.assertFalse(diagnostics('Error: failed Boolean conversion')['referenceUsable'])
         self.assertFalse(diagnostics('No longer attempting boolean operation with higher fuzz')['referenceUsable'])
@@ -91,9 +105,33 @@ class OwnedReferenceConversion(unittest.TestCase):
         try:
             import ifcopenshell
         except ImportError:
-            raise unittest.SkipTest('Pinned IfcOpenShell required; install requirements.lock')
-        if ifcopenshell.version != '0.8.5':
-            raise unittest.SkipTest('Requires pinned IfcOpenShell 0.8.5')
+            raise unittest.SkipTest('IfcOpenShell required; install requirements.lock')
+
+    def test_7732_bath_geometry_survives_materials_with_clean_diagnostics(self):
+        import ifcopenshell
+        fixture = ROOT/'rust/geometry/tests/fixtures/bath_csg_solid.ifc'
+        with case_directory('bath-material') as tmp:
+            folder = Path(tmp)
+            settings = {'use-world-coords': True, 'weld-vertices': True}
+            with ReferenceSession(fixture, settings, folder/'original') as session:
+                original = session.shape(225)
+            receipt = json.loads((session.output/'receipt.json').read_bytes())
+            logged = receipt['calls'][0]['diagnostics']
+            self.assertTrue(receipt['finalLogsValidated'])
+            self.assertEqual(logged['errors'], [])
+
+            # Independent positive control: remove appearance from the same
+            # real fixture, then compare the complete mesh, not just its bbox.
+            model = ifcopenshell.open(str(fixture))
+            for relation in model.by_type('IfcRelAssociatesMaterial'):
+                model.remove(relation)
+            unstyled = folder/'unstyled.ifc'
+            model.write(str(unstyled))
+            with ReferenceSession(unstyled, settings, folder/'unstyled') as session:
+                self.assertEqual(session.shape(225), original)
+            clean = json.loads((session.output/'receipt.json').read_bytes())
+            self.assertEqual(clean['calls'][0]['diagnostics']['errors'], [])
+            self.assertTrue(clean['finalLogsValidated'])
 
     def test_7723_real_reporter_conversion_preserves_mesh_and_reaps_worker(self):
         fixture = ROOT/'rust/geometry/tests/fixtures/issue_7292_sloped_coplanar_difference.ifc'

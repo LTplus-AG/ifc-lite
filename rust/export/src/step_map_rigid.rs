@@ -4,7 +4,7 @@
 
 use super::{preflight, writer, MapConversionNormalizationPlan, Record};
 use crate::step_text::attribute_of;
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType, MAX_PLACEMENT_DEPTH};
+use ifc_lite_core::{slot, EntityDecoder, IfcType, MAX_PLACEMENT_DEPTH};
 use ifc_lite_geometry::GeometryRouter;
 use nalgebra::Matrix4;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -44,8 +44,8 @@ pub(super) fn plan(
         let product = decoder
             .decode_by_id(record.id)
             .map_err(|error| error.to_string())?;
-        let shape = product.get(6).filter(|attr| !attr.is_null());
-        let placement = product.get(5).filter(|attr| !attr.is_null());
+        let shape = product.attr(slot::IfcProduct::REPRESENTATION).filter(|attr| !attr.is_null());
+        let placement = product.attr(slot::IfcProduct::OBJECT_PLACEMENT).filter(|attr| !attr.is_null());
         if let Some(attr) = placement {
             let id = attr
                 .as_entity_ref()
@@ -74,7 +74,7 @@ pub(super) fn plan(
             }
             representations.extend(
                 shape
-                    .get_refs(2)
+                    .ref_list_at(slot::IfcProductRepresentation::REPRESENTATIONS)
                     .filter(|refs| !refs.is_empty())
                     .ok_or("ProductDefinitionShape has no Representations")?,
             );
@@ -92,7 +92,7 @@ pub(super) fn plan(
         .decode_by_id(project_record.id)
         .map_err(|error| error.to_string())?;
     let declared: HashSet<_> = project
-        .get_refs(7)
+        .ref_list_at(slot::IfcProject::REPRESENTATION_CONTEXTS)
         .ok_or("Project RepresentationContexts is invalid")?
         .into_iter()
         .collect();
@@ -114,14 +114,15 @@ pub(super) fn plan(
             .decode_by_id(id)
             .map_err(|error| error.to_string())?;
         let frame_id = placement
-            .get_ref(1)
+            .ref_at(slot::IfcLocalPlacement::RELATIVE_PLACEMENT)
             .ok_or("root RelativePlacement is missing")?;
         let frame = decoder
             .decode_by_id(frame_id)
             .map_err(|error| error.to_string())?;
-        // Validation already checked every axis. Reuse the renderer's canonical
-        // orthonormalization; point and directions are in authored project units.
-        let local = local_frame(&frame, decoder)?;
+        // Validation checked every axis; reuse canonical orthonormalization in file units.
+        let local = ifc_lite_geometry::placement::Axis2Placement::read_3d(&frame, decoder)
+            .map(|placement| placement.matrix())
+            .map_err(|error| error.to_string())?;
         let normalized = affine * local;
         preflight::rigid_frame(&normalized, id)?;
         let new_frame = output.frame(&normalized)?;
@@ -187,12 +188,6 @@ pub(super) fn plan(
     Ok(plan)
 }
 
-/// The renderer's canonical frame for an `IfcAxis2Placement3D`.
-fn local_frame(frame: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Matrix4<f64>, String> {
-    let placement = ifc_lite_geometry::placement::Axis2Placement::read_3d(frame, decoder);
-    Ok(placement.map_err(|error| error.to_string())?.matrix())
-}
-
 /// Pure (root, path length) result: global memoization handles aliases without
 /// repeating walks. Iterative traversal cannot exhaust the native/WASM stack.
 fn placement_root(
@@ -215,11 +210,11 @@ fn placement_root(
         let placement = decoder
             .decode_by_id(current)
             .map_err(|error| error.to_string())?;
-        let parent = placement.get(0).filter(|attr| !attr.is_null());
+        let parent = placement.attr(slot::IfcObjectPlacement::PLACEMENT_REL_TO).filter(|attr| !attr.is_null());
         match placement.ifc_type {
             IfcType::IfcLocalPlacement => {
                 let frame = decoder
-                    .decode_by_id(placement.get_ref(1).ok_or("RelativePlacement is missing")?)
+                    .decode_by_id(placement.ref_at(slot::IfcLocalPlacement::RELATIVE_PLACEMENT).ok_or("RelativePlacement is missing")?)
                     .map_err(|error| error.to_string())?;
                 preflight::axis(&frame, decoder)?;
             }

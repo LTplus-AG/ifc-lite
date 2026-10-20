@@ -12,6 +12,18 @@ use rustc_hash::FxHashMap;
 /// the T-junction the cross-bucket conform targets (a 0.1 mm-scale chord deviation
 /// merges away), so the conform's accept/reject decision uses 0.1 mm — the same grid
 /// the #098 / #217 measurements are taken on.
+///
+/// A triangle edge whose two ends merge on this grid (`x == y`) is counted OPEN,
+/// permanently: it can never cancel against a twin. That is deliberate and
+/// load-bearing, not an oversight. The count feeds the conform's closure bar
+/// (`complete_conformed_candidate`), the `signed_boundary_worse` comparison and
+/// the raw-vs-consolidated preference, and a sub-grid collapse is the cheapest
+/// sign that a candidate was only made to LOOK closed by the snap. Skipping
+/// collapsed edges was measured (#7949 follow-up): the per-PR census regressed on
+/// six hosts (S_Office #426329 0 -> 12 open edges, rvt01 #17615 244 -> 111
+/// triangles with 3 open edges, ...) because candidates the conform previously
+/// rejected were accepted. Change the treatment only together with that census.
+/// [`open_edge_endpoints_at`], which only has to LOCATE open edges, skips them.
 pub(in crate::csg) fn count_open_boundary_edges_at(mesh: &Mesh, scale: f64) -> usize {
     if mesh.positions.len() < 9 || mesh.indices.len() < 3 {
         return 0;
@@ -40,4 +52,28 @@ pub(in crate::csg) fn count_open_boundary_edges_at(mesh: &Mesh, scale: f64) -> u
         }
     }
     bal.values().filter(|&&v| v != 0).count()
+}
+
+/// Open-edge endpoints on the same `scale` grid as [`count_open_boundary_edges_at`],
+/// quantised, for callers that ask WHERE a mesh is open and not only how much.
+pub(in crate::csg) fn open_edge_endpoints_at(mesh: &Mesh, scale: f64) -> Vec<[(i64, i64, i64); 2]> {
+    if mesh.positions.len() < 9 || mesh.indices.len() < 3 {
+        return Vec::new();
+    }
+    let q = |i: usize| {
+        let f = |v: f32| (v as f64 * scale).round() as i64;
+        (f(mesh.positions[i * 3]), f(mesh.positions[i * 3 + 1]), f(mesh.positions[i * 3 + 2]))
+    };
+    let mut bal: FxHashMap<((i64, i64, i64), (i64, i64, i64)), i32> = FxHashMap::default();
+    for tri in mesh.indices.chunks_exact(3) {
+        let (a, b, c) = (q(tri[0] as usize), q(tri[1] as usize), q(tri[2] as usize));
+        for (x, y) in [(a, b), (b, c), (c, a)] {
+            if x == y {
+                continue;
+            }
+            let (key, s) = if x < y { ((x, y), 1) } else { ((y, x), -1) };
+            *bal.entry(key).or_insert(0) += s;
+        }
+    }
+    bal.into_iter().filter(|&(_, v)| v != 0).map(|((a, b), _)| [a, b]).collect()
 }

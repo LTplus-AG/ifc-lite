@@ -37,6 +37,7 @@
  * the depth test are the same code as the non-instanced variant.
  */
 import { meshUniformsWgsl } from './mesh-uniforms.wgsl.js';
+import { opaqueVisibilityWgsl } from './opaque-visibility.wgsl.js';
 
 /**
  * Bind-group index of the hovered-entity uniform (`vec4<u32>`, x = id) in the
@@ -66,7 +67,7 @@ function occurrenceFilterWgsl(instanced: boolean): string {
         }`;
 }
 
-export function selectionMaskFragmentSource(instanced = false): string {
+export function selectionMaskFragmentSource(instanced = false, samples?: number): string {
   const instanceVaryings = instanced
     ? `
           @location(2) @interpolate(flat) entityId: u32,
@@ -74,12 +75,14 @@ export function selectionMaskFragmentSource(instanced = false): string {
     : '';
   return `
         ${meshUniformsWgsl}
+        ${samples === undefined ? '' : opaqueVisibilityWgsl(samples)}
 
         // The subset of the vertex stage's VertexOutput the mask reads (locations match).
         struct MaskInput {
           @builtin(position) fragPos: vec4<f32>,
           @location(0) worldPos: vec3<f32>,
           @location(6) eyePos: vec3<f32>,${instanceVaryings}
+          ${samples === undefined ? '' : '@location(8) @interpolate(linear, sample) geometricDepth: f32,'}
         }
         ${occurrenceFilterWgsl(instanced)}
 
@@ -88,14 +91,16 @@ export function selectionMaskFragmentSource(instanced = false): string {
         }
 
         @fragment
-        fn fs_mask_selected_visible(input: MaskInput) -> @location(0) vec4<f32> {
+        fn fs_mask_selected_visible(input: MaskInput${samples === undefined ? '' : ', @builtin(sample_index) sampleIndex: u32'}) -> @location(0) vec4<f32> {
           if (!isSelectedOccurrence(input) || isCut(input)) { discard; }
+          ${samples === undefined ? '' : 'if (geometricallyOccluded(input.fragPos.xy, input.geometricDepth, sampleIndex)) { discard; }'}
           return vec4<f32>(1.0, 0.0, 0.0, 0.0);
         }
 
         @fragment
-        fn fs_mask_hover_visible(input: MaskInput) -> @location(0) vec4<f32> {
+        fn fs_mask_hover_visible(input: MaskInput${samples === undefined ? '' : ', @builtin(sample_index) sampleIndex: u32'}) -> @location(0) vec4<f32> {
           if (!isHoveredOccurrence(input) || isCut(input)) { discard; }
+          ${samples === undefined ? '' : 'if (geometricallyOccluded(input.fragPos.xy, input.geometricDepth, sampleIndex)) { discard; }'}
           return vec4<f32>(0.0, 1.0, 0.0, 0.0);
         }
 

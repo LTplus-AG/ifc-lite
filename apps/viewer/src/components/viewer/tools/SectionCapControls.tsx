@@ -6,9 +6,12 @@
  * Cap-surface appearance, inside the Section bar's Cap popover (#5499):
  *
  *   Display   [Surfaces] [Lines]
- *   Hatch     <pattern>
- *   Colours   ■ Fill  ■ Hatch
+ *   Fill      ■  [Uniform] [Element colour]
+ *   Hatch     <pattern ▾>  ■
  *   Spacing / Angle / Width
+ *
+ * Each choice sits with the colour it uses: the fill source with the fill
+ * colour, the hatch pattern with the hatch colour.
  *
  * Surfaces and Lines toggle independently (outlines only, a hatched fill,
  * or both); the hatch inputs are disabled while Surfaces is off. Styled as
@@ -18,9 +21,12 @@
 
 import { useCallback, useId } from 'react';
 import { useViewerStore } from '@/store';
-import type { SectionCapHatchId } from '@/store/types';
+import type { SectionCapHatchId, SectionCapStyle } from '@/store/types';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { HudToggle } from '../../viewport-ui/hud/HudToggle';
+import { HudSegmented } from '../../viewport-ui/hud/HudSegmented';
+
+type SectionCapFillMode = NonNullable<SectionCapStyle['fillMode']>;
 
 const PATTERN_LABEL_KEYS: Record<SectionCapHatchId, TranslationKey> = {
   solid:      'sectionCap.pattern.solid',
@@ -68,6 +74,10 @@ export function SectionCapControls(): React.JSX.Element {
     setCapStyle({ pattern: e.target.value as SectionCapHatchId });
   }, [setCapStyle]);
 
+  const onFillMode = useCallback((mode: SectionCapFillMode) => {
+    setCapStyle({ fillMode: mode });
+  }, [setCapStyle]);
+
   const onFillColor = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setCapStyle({ fillColor: hexToRgba(e.target.value, sectionPlane.capStyle.fillColor[3]) });
   }, [setCapStyle, sectionPlane.capStyle.fillColor]);
@@ -106,14 +116,19 @@ export function SectionCapControls(): React.JSX.Element {
   const angleId   = `${baseId}-angle`;
   const widthId   = `${baseId}-width`;
 
+  const fillMode = sectionPlane.capStyle.fillMode ?? 'uniform';
   const hatchInputsDisabled = !sectionPlane.showCap;
 
+  const swatch = 'h-5 w-5 shrink-0 cursor-pointer rounded-sm border border-border bg-transparent p-0';
+  const ROW = 'flex items-center gap-2';
+  const ROW_LABEL = `${CAPTION} w-14 shrink-0`;
+
   return (
-    <div className="space-y-2.5" data-section-cap-controls>
+    <div className="space-y-2" data-section-cap-controls>
       {/* Display toggles — surfaces and lines independently. */}
-      <div className="flex items-center justify-between gap-2">
-        <span className={CAPTION}>{t('sectionCap.display')}</span>
-        <div className="flex items-center gap-0.5">
+      <div className={ROW}>
+        <span className={ROW_LABEL}>{t('sectionCap.display')}</span>
+        <div className="ml-auto flex items-center gap-0.5">
           <HudToggle pressed={sectionPlane.showCap} onPressedChange={onToggleCap}
             title={t(sectionPlane.showCap ? 'sectionCap.hideSurfaces' : 'sectionCap.showSurfaces')}>
             {t('sectionCap.surfaces')}
@@ -125,53 +140,59 @@ export function SectionCapControls(): React.JSX.Element {
         </div>
       </div>
 
-      {/* Hatch style — disabled while surfaces are off. */}
+      {/* Surface look, disabled while surfaces are off. Each row pairs a choice with the colour it uses:
+          the fill source with the fill colour, the hatch pattern with the hatch colour. */}
       <fieldset
         disabled={hatchInputsDisabled}
         className={`space-y-2 ${hatchInputsDisabled ? 'opacity-50 pointer-events-none' : ''}`}
       >
-        <div className="flex items-center justify-between gap-2">
-          <label htmlFor={patternId} className={CAPTION}>
-            {t('sectionCap.patternLabel')}
-          </label>
+        <div className={ROW}>
+          <span className={ROW_LABEL}>{t('sectionCap.fillLabel')}</span>
+          <input
+            id={fillId}
+            type="color"
+            value={rgbaToHex(sectionPlane.capStyle.fillColor)}
+            onChange={onFillColor}
+            className={swatch}
+            aria-label={t('sectionCap.fillAriaLabel')}
+            title={t(fillMode === 'element' ? 'sectionCap.fillColorFallbackTitle' : 'sectionCap.fillColorTitle')}
+          />
+          <HudSegmented<SectionCapFillMode>
+            aria-label={t('sectionCap.fillMode')}
+            value={fillMode}
+            onChange={onFillMode}
+            className="ml-auto"
+            options={[
+              { value: 'uniform', label: t('sectionCap.fillMode.uniform'), title: t('sectionCap.fillMode.uniformTitle') },
+              { value: 'element', label: t('sectionCap.fillMode.element'), title: t('sectionCap.fillMode.elementTitle') },
+            ]}
+          />
+        </div>
+
+        <div className={ROW}>
+          <label htmlFor={patternId} className={ROW_LABEL}>{t('sectionCap.patternLabel')}</label>
           <select
             id={patternId}
             value={sectionPlane.capStyle.pattern}
             onChange={onPattern}
-            className={`${FIELD} w-36`}
+            className={`${FIELD} min-w-0 flex-1`}
           >
             {PATTERN_IDS.map((id) => (
               <option key={id} value={id}>{t(PATTERN_LABEL_KEYS[id])}</option>
             ))}
           </select>
+          <input
+            id={strokeId}
+            type="color"
+            value={rgbaToHex(sectionPlane.capStyle.strokeColor)}
+            onChange={onStrokeColor}
+            className={swatch}
+            aria-label={t('sectionCap.hatchAriaLabel')}
+            title={t('sectionCap.hatchLabel')}
+          />
         </div>
 
-        <div className="flex items-center gap-3">
-          <label htmlFor={fillId} className="flex items-center gap-1.5 text-xs">
-            <input
-              id={fillId}
-              type="color"
-              value={rgbaToHex(sectionPlane.capStyle.fillColor)}
-              onChange={onFillColor}
-              className="h-5 w-5 cursor-pointer rounded-sm border border-border bg-transparent p-0"
-              aria-label={t('sectionCap.fillAriaLabel')}
-            />
-            {t('sectionCap.fillLabel')}
-          </label>
-          <label htmlFor={strokeId} className="flex items-center gap-1.5 text-xs">
-            <input
-              id={strokeId}
-              type="color"
-              value={rgbaToHex(sectionPlane.capStyle.strokeColor)}
-              onChange={onStrokeColor}
-              className="h-5 w-5 cursor-pointer rounded-sm border border-border bg-transparent p-0"
-              aria-label={t('sectionCap.hatchAriaLabel')}
-            />
-            {t('sectionCap.hatchLabel')}
-          </label>
-        </div>
-
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-2 pt-0.5">
           <div>
             <label htmlFor={spacingId} className="mb-0.5 block text-2xs text-muted-foreground">{t('sectionCap.spacingLabel')}</label>
             <input id={spacingId} type="number" min="2" max="64" step="1" value={sectionPlane.capStyle.spacingPx} onChange={onSpacing} className={FIELD} />

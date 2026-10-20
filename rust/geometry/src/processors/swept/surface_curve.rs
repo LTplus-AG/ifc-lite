@@ -14,8 +14,11 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 
 use crate::placement::Axis2Placement;
-use super::disk::{build_tube_rmf, directrix_is_sweepable};
+use super::disk::directrix_is_sweepable;
 use crate::router::GeometryProcessor;
+#[path = "surface_plan.rs"]
+mod plan;
+pub(crate) use plan::SurfaceCurveSweepPlan;
 
 /// Processor for `IfcSurfaceCurveSweptAreaSolid` and `IfcFixedReferenceSweptAreaSolid`.
 ///
@@ -47,16 +50,13 @@ impl SurfaceCurveSweptAreaSolidProcessor {
             profile_processor: ProfileProcessor::new(schema),
         }
     }
-}
 
-impl GeometryProcessor for SurfaceCurveSweptAreaSolidProcessor {
-    fn process(
-        &self,
-        entity: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        _schema: &IfcSchema,
+    /// Resolve profiles, directrix samples and solid Position using the same
+    /// production admission. Retains raw file units, before router placement.
+    pub(crate) fn lower(
+        &self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
         quality: TessellationQuality,
-    ) -> Result<Mesh> {
+    ) -> Result<Option<SurfaceCurveSweepPlan>> {
         // Shared IfcSweptAreaSolid attributes plus the swept-curve extension:
         //   0: SweptArea  (IfcProfileDef)         - 2D section in xy of Position
         //   1: Position   (IfcAxis2Placement3D)   - places the whole solid (opt.)
@@ -80,7 +80,7 @@ impl GeometryProcessor for SurfaceCurveSweptAreaSolidProcessor {
             .process_regions(&profile_entity, decoder, quality)?;
         regions.retain(|region| region.outer.len() >= 3);
         if regions.is_empty() {
-            return Ok(Mesh::new());
+            return Ok(None);
         }
 
         // --- Directrix -> 3D sample points -----------------------------------------
@@ -107,7 +107,7 @@ impl GeometryProcessor for SurfaceCurveSweptAreaSolidProcessor {
         // Refuse a non-finite sample before the dedupe below, whose `>`
         // comparison would silently drop it (#5191).
         if !directrix_is_sweepable(&curve_points)? {
-            return Ok(Mesh::new());
+            return Ok(None);
         }
         // Drop consecutive coincident samples — a zero-length step yields a NaN
         // tangent in the RMF and shatters the tube.
@@ -121,7 +121,7 @@ impl GeometryProcessor for SurfaceCurveSweptAreaSolidProcessor {
             }
         }
         if points.len() < 2 {
-            return Ok(Mesh::new());
+            return Ok(None);
         }
 
         // --- Position: place the whole solid ---------------------------------------
@@ -137,22 +137,33 @@ impl GeometryProcessor for SurfaceCurveSweptAreaSolidProcessor {
         }
         // The placement is file data too: re-gate the placed samples (#5191).
         if !directrix_is_sweepable(&points)? {
-            return Ok(Mesh::new());
+            return Ok(None);
         }
 
-        // --- Sweep the profile along the placed directrix --------------------------
-        let (_, perp1s, perp2s) = build_tube_rmf(&points);
-        let placed = regions.iter().map(crate::profiles::region_points).sum::<usize>() * points.len();
-        // Base already swept holes here; only further composite areas are new.
-        crate::profiles::check_sweep_vertices(placed, regions.len() > 1, entity.id)?;
-        if let [region] = regions.as_slice() {
-            return sweep_profile_along_frames(region, &points, &perp1s, &perp2s);
+        Ok(Some(SurfaceCurveSweepPlan { regions, points, entity_id: entity.id }))
+    }
+}
+
+impl GeometryProcessor for SurfaceCurveSweptAreaSolidProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<crate::Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        if rtc_file_units.is_some() { return None; }
+        Some(self.lower(entity, decoder, quality).map(|plan| crate::program::OwnedConstructor::new(plan.map_or(Constructor::Empty, Constructor::SweptArea))))
+    }
+
+    fn process(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        _schema: &IfcSchema,
+        quality: TessellationQuality,
+    ) -> Result<Mesh> {
+        match self.lower(entity, decoder, quality)? {
+            Some(plan) => plan.evaluate(),
+            None => Ok(Mesh::new()),
         }
-        let mut mesh = Mesh::new();
-        for region in &regions {
-            mesh.merge(&sweep_profile_along_frames(region, &points, &perp1s, &perp2s)?);
-        }
-        Ok(mesh)
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

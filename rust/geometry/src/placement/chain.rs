@@ -16,7 +16,7 @@
 use super::chain_walk::{climb, Climb, Frame};
 use super::{grid, linear, missing, unsupported, Axis2Placement, PlacementResult};
 use crate::math::mat4;
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 use smallvec::SmallVec;
 
@@ -37,9 +37,6 @@ pub struct Link {
     pub id: u32,
     pub kind: LinkKind,
 }
-
-/// The `ObjectPlacement` attribute of an `IfcProduct`.
-const OBJECT_PLACEMENT: usize = 5;
 
 /// The unscaled world transform of `placement`, composed
 /// `((T_root·L_1)·L_2)…·L_leaf` up `PlacementRelTo`.
@@ -71,16 +68,13 @@ pub fn resolve_chain(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> 
 
 
 /// The unscaled world transform of `product`'s `ObjectPlacement` (attribute 5).
-/// `Ok(None)` iff it is `$`, absent or not a reference: "genuinely missing"
+/// `Ok(None)` iff it is `$`, `*` or absent: "genuinely missing"
 /// stays the identity at the caller (#2256).
 pub fn resolve_object_placement(
     product: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> PlacementResult<Option<Matrix4<f64>>> {
-    let Some(attr) = product.get(OBJECT_PLACEMENT).filter(|attr| !attr.is_null()) else {
-        return Ok(None);
-    };
-    match decoder.resolve_ref(attr)? {
+    match decoder.resolve_optional(product, slot::IfcProduct::OBJECT_PLACEMENT.index())? {
         Some(placement) => resolve_chain(&placement, decoder).map(Some),
         None => Ok(None),
     }
@@ -105,21 +99,16 @@ pub(super) fn frame_matrix(frame: &Frame, decoder: &mut EntityDecoder) -> Placem
     let at = entity.id;
     Ok(match frame.kind {
         LinkKind::Local => {
-            let rel = entity
-                .get(1)
-                .filter(|attr| !attr.is_null())
-                .map(|attr| decoder.resolve_ref(attr))
-                .transpose()?
-                .flatten()
+            let rel = decoder
+                .resolve_optional(entity, slot::IfcLocalPlacement::RELATIVE_PLACEMENT.index())?
                 .ok_or_else(|| missing(decoder, at, "RelativePlacement"))?;
             Axis2Placement::read(&rel, decoder)?.matrix()
         }
-        LinkKind::Linear => linear::local_frame(entity, decoder)
-            .ok_or_else(|| missing(decoder, at, "a resolvable CartesianPosition or RelativePlacement"))?,
-        LinkKind::Grid => frame
-            .grid
-            .as_ref()
-            .and_then(|ctx| grid::local_frame(entity, ctx, decoder))
-            .ok_or_else(|| missing(decoder, at, "a resolvable grid intersection"))?,
+        LinkKind::Linear => linear::local_frame(entity, decoder)?,
+        LinkKind::Grid => {
+            let ctx = frame.grid.as_ref()
+                .ok_or_else(|| missing(decoder, at, "a resolvable grid intersection"))?;
+            grid::local_frame(entity, ctx, decoder)?
+        }
     })
 }

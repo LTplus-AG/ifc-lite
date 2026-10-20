@@ -7,7 +7,7 @@
 //! module-size ratchet.
 
 use crate::{Error, Point3, Result};
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder};
 
 /// Parse rational weights from IfcRationalBSplineSurfaceWithKnots.
 /// Attribute 12: WeightsData (LIST of LIST of REAL), mandatory.
@@ -19,7 +19,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder};
 /// against the control points by [`check_weights_match`].
 pub(crate) fn parse_rational_weights(bspline: &DecodedEntity) -> Result<Vec<Vec<f64>>> {
     let malformed = || Error::geometry("RationalBSplineSurface WeightsData is missing or malformed".to_string());
-    let rows = bspline.get(12).and_then(|a| a.as_list()).ok_or_else(malformed)?;
+    let rows = bspline.get(slot::IfcRationalBSplineSurfaceWithKnots::WEIGHTS_DATA.index()).and_then(|a| a.as_list()).ok_or_else(malformed)?;
     rows.iter()
         .map(|row| {
             row.as_list()
@@ -73,7 +73,7 @@ fn numeric_list<T>(
 /// not a list — [`parse_control_points`] still runs and reports that
 /// specific error; this is a fast pre-check, not a replacement.
 pub(super) fn control_point_grid_dims(bspline: &DecodedEntity) -> (usize, usize) {
-    let Some(rows) = bspline.get(2).and_then(|a| a.as_list()) else {
+    let Some(rows) = bspline.get(slot::IfcBSplineSurface::CONTROL_POINTS_LIST.index()).and_then(|a| a.as_list()) else {
         return (0, 0);
     };
     let max_row_len = rows.iter().filter_map(|row| row.as_list()).map(<[_]>::len).max().unwrap_or(0);
@@ -87,7 +87,7 @@ pub(super) fn parse_control_points(
 ) -> Result<Vec<Vec<Point3<f64>>>> {
     // Attribute 2: ControlPointsList (LIST of LIST of IfcCartesianPoint)
     let cp_list_attr = bspline
-        .get(2)
+        .get(slot::IfcBSplineSurface::CONTROL_POINTS_LIST.index())
         .ok_or_else(|| Error::geometry("BSplineSurface missing ControlPointsList".to_string()))?;
 
     let rows = cp_list_attr
@@ -110,7 +110,7 @@ pub(super) fn parse_control_points(
                 Error::geometry("BSplineSurface control point is not a reference".to_string())
             })?;
             let point = decoder.decode_by_id(point_id)?;
-            let coords = point.get(0).and_then(|v| v.as_list()).ok_or_else(|| {
+            let coords = point.get(slot::IfcCartesianPoint::COORDINATES.index()).and_then(|v| v.as_list()).ok_or_else(|| {
                 Error::geometry("CartesianPoint missing coordinates".to_string())
             })?;
 
@@ -171,10 +171,10 @@ pub(super) fn parse_knot_vectors(bspline: &DecodedEntity) -> Result<(Vec<f64>, V
     // 10: VKnots (LIST of REAL)
     // 11: KnotSpec
 
-    let u_mults = numeric_list(bspline, 7, "UMultiplicities", |v| v.as_int())?;
-    let v_mults = numeric_list(bspline, 8, "VMultiplicities", |v| v.as_int())?;
-    let u_knot_values = numeric_list(bspline, 9, "UKnots", |v| v.as_float())?;
-    let v_knot_values = numeric_list(bspline, 10, "VKnots", |v| v.as_float())?;
+    let u_mults = numeric_list(bspline, slot::IfcBSplineSurfaceWithKnots::U_MULTIPLICITIES.index(), "UMultiplicities", |v| v.as_int())?;
+    let v_mults = numeric_list(bspline, slot::IfcBSplineSurfaceWithKnots::V_MULTIPLICITIES.index(), "VMultiplicities", |v| v.as_int())?;
+    let u_knot_values = numeric_list(bspline, slot::IfcBSplineSurfaceWithKnots::U_KNOTS.index(), "UKnots", |v| v.as_float())?;
+    let v_knot_values = numeric_list(bspline, slot::IfcBSplineSurfaceWithKnots::V_KNOTS.index(), "VKnots", |v| v.as_float())?;
 
     // Expand knot vectors with multiplicities
     let u_knots = expand_knots(&u_knot_values, &u_mults);

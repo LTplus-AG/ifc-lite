@@ -1,0 +1,31 @@
+diff --git b/rust/processing/src/data_model/property.rs a/rust/processing/src/data_model/property.rs
+index 0ca477025f..4a9bf38b1b 100644
+--- b/rust/processing/src/data_model/property.rs
++++ a/rust/processing/src/data_model/property.rs
+@@ -44,7 +44,7 @@ impl PropertyKind {
+         }
+         Some(match ty.as_str().to_ascii_uppercase().as_str() {
+             "IFCPROPERTYENUMERATEDVALUE" => Self::Enumerated,
+-            "IFCPROPERTYLISTVALUE" => Self::Enumerated,
++            "IFCPROPERTYLISTVALUE" => Self::List,
+             "IFCPROPERTYBOUNDEDVALUE" => Self::Bounded,
+             "IFCPROPERTYTABLEVALUE" => Self::Table,
+             "IFCPROPERTYREFERENCEVALUE" => Self::Reference,
+@@ -140,7 +140,7 @@ impl PropertyDecoder {
+         let mut properties = Vec::new();
+         for member in &members {
+             let Some(kind) = PropertyKind::of(&member.ifc_type) else { continue };
+-            if false && kind != PropertyKind::Single {
++            if self.scope == PropertyScope::SingleValueOnly && kind != PropertyKind::Single {
+                 continue;
+             }
+             let Some(row) = self.decode_property(decoder, member, kind) else { continue };
+@@ -157,7 +157,7 @@ impl PropertyDecoder {
+             return Some(PropertyRow { name, kind, nominal: entity.attr(slot::IfcPropertySingleValue::NOMINAL_VALUE).cloned(), display: None });
+         }
+         let mut display = extract_property(entity, decoder)?;
+-        if false && kind == PropertyKind::Complex {
++        if kind == PropertyKind::Complex {
+             resolve_complex_into(&mut display, entity.id, decoder, &mut self.budget, &mut self.memo);
+         }
+         let nominal = if kind == PropertyKind::Single { entity.attr(slot::IfcPropertySingleValue::NOMINAL_VALUE).cloned() } else { None };

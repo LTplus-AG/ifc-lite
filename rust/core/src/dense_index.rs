@@ -60,6 +60,8 @@ impl EntityDecoder<'_> {
     /// Install an immutable direct-address index for this decoder's source.
     /// Like `set_columnar_index`, source bytes and indexed spans must agree.
     pub fn set_dense_index(&mut self, index: Arc<DenseEntityIndex>) {
+        self.execution_owner.changed();
+        self.source_bundle = None;
         self.set_grid_axis_index(index.grid_axis_index.clone());
         self.entity_index = Some(EntityIndexStore::Dense(index));
     }

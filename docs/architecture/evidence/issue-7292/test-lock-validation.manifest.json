@@ -1,0 +1,36 @@
+{
+  "scope": "Two test-only shared budget-cap lock additions, nine targeted tests and exact workspace clippy PASS; captured production source and runtime artifacts unchanged.",
+  "archive": {
+    "path": "docs/architecture/evidence/issue-7292/test-lock-validation.tar.gz",
+    "bytes": 159132,
+    "sha256": "d69b3b4814b2b31bbf11e388b7c4c1abe570f2b22b384093999d20b51834bb89"
+  },
+  "decodedBytes": 393241,
+  "files": [
+    {
+      "path": "docs/architecture/evidence/issue-7292/test-lock-final/receipt.json",
+      "bytes": 388949,
+      "sha256": "a127c693151023d2ff95ed9551a6a3858fd233cbd5e8f7fc3847dccf07d09adb"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/test-lock-final/summary.json",
+      "bytes": 1377,
+      "sha256": "5a0baeb8404ac97eb9acf96e74d54b2dad0ed2c04cb873c8a9ae4db88e29ab8d"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/test-lock-final/test-only-delta.patch",
+      "bytes": 1252,
+      "sha256": "bd3d462a80f0be99dd97aebabd41ee4c06e0a0dd4fe745c74f421d2465207344"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/test-lock-final/transversal-tests.log",
+      "bytes": 1493,
+      "sha256": "2cf9ab5cf2a500d49df018e74f78af70d2de3d2464a784086bc03ed052e171b0"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/test-lock-final/workspace-clippy.log",
+      "bytes": 170,
+      "sha256": "304d31f3993f4ba01eda9c15cf7c15de181abeb5bb6598a9f892e56047e6e65a"
+    }
+  ]
+}

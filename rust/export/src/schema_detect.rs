@@ -16,18 +16,7 @@ pub(crate) fn detect_schema(content: &[u8]) -> String {
         .unwrap_or_else(|| "IFC4".to_string())
 }
 
-/// The first declared `FILE_SCHEMA` entry that has a bundled attribute
-/// registry, or `None`. Attribute positions are schema-specific, so a reader
-/// of attributes by name must fail closed here rather than take the IFC4
-/// layout [`detect_schema`] falls back to. The attribute export and the rebar
-/// schedule both resolve through this, so they agree (#7681).
-pub(crate) fn attribute_schema(content: &[u8]) -> Option<String> {
-    crate::source_header::declared_schemas(content).into_iter().find(|schema| {
-        // IfcProject exists in every bundled registry, so this is a schema
-        // recognition probe rather than an entity-specific fallback.
-        ifc_lite_core::attribute_names_for_schema(schema, "IFCPROJECT").is_some()
-    })
-}
+pub(crate) use ifc_lite_processing::data_model::rows::attribute_schema;
 
 #[cfg(test)]
 #[path = "schema_detect_tests.rs"]

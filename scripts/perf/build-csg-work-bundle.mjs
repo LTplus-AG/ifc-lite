@@ -18,6 +18,9 @@ const exec = promisify(execFile);
 const runTimeoutMs = 10 * 60 * 1000;
 const maxLogBytes = 8 * 1024 * 1024;
 const maxArtifactBytes = 64 * 1024 * 1024;
+const rustToolchain = 'nightly-2025-11-15';
+const wasmTarget = 'wasm32-unknown-unknown';
+const rustLibraryLockSha256 = '363bc2d86e4957b123a4c52b0b0f2278f773527db0d42d158e280b2a10b4c7e1';
 const sourceSpecs = [
   {
     name: 'release6', commit: 'e69750fb08e2cc5bbb62e63737d658a852f8a03f',
@@ -95,6 +98,44 @@ export async function run(id, file, args, options = {}) {
   return { ...result, rawStdout: stdout };
 }
 
+export async function inspectRustLibraryProvenance(sysroot, expectedLockSha256 = rustLibraryLockSha256) {
+  const libraryRoot = join(sysroot, 'lib', 'rustlib', 'src', 'rust', 'library');
+  const manifestPath = join(libraryRoot, 'Cargo.toml');
+  const lockPath = join(libraryRoot, 'Cargo.lock');
+  for (const [path, label] of [[manifestPath, 'Cargo.toml'], [lockPath, 'Cargo.lock']]) {
+    let info;
+    try { info = await lstat(path); } catch (error) {
+      if (error.code === 'ENOENT') throw new Error(`pinned Rust source ${label} missing: ${path}`);
+      throw error;
+    }
+    if (!info.isFile()) throw new Error(`pinned Rust source ${label} is not a regular file: ${path}`);
+  }
+  const manifestSha256 = await hashFile(manifestPath);
+  const lockSha256 = await hashFile(lockPath);
+  if (lockSha256 !== expectedLockSha256) {
+    throw new Error(`pinned Rust standard-library Cargo.lock SHA-256 mismatch: expected ${expectedLockSha256}, got ${lockSha256}`);
+  }
+  return { manifestPath, lockPath, manifestSha256, lockSha256 };
+}
+
+async function prefetchRustLibrary(repo, env) {
+  // -Z build-std resolves rust-src's separate lockfile, which the project fetch cannot populate.
+  const sysrootResult = await run('rust-sysroot', 'rustup', ['run', rustToolchain, 'rustc', '--print', 'sysroot'], {
+    cwd: repo, env, timeout: runTimeoutMs,
+  });
+  const sysroot = sysrootResult.rawStdout.trim();
+  if (!sysroot || sysroot.includes('\n')) throw new Error('pinned rustc returned an invalid sysroot path');
+  const before = await inspectRustLibraryProvenance(sysroot);
+  await run('cargo-fetch-rust-library', 'rustup', [
+    'run', rustToolchain, 'cargo', 'fetch', '--locked', '--manifest-path', before.manifestPath, '--target', wasmTarget,
+  ], { cwd: repo, env, timeout: runTimeoutMs });
+  const after = await inspectRustLibraryProvenance(sysroot);
+  if (after.manifestSha256 !== before.manifestSha256 || after.lockSha256 !== before.lockSha256) {
+    throw new Error('pinned Rust standard-library source changed during dependency prefetch');
+  }
+  return { toolchain: rustToolchain, target: wasmTarget, manifestSha256: after.manifestSha256, cargoLockSha256: after.lockSha256 };
+}
+
 async function git(source, args, id) {
   const r = await run(id, 'git', args, { cwd: source });
   return r;
@@ -162,7 +203,7 @@ async function prepareSource(repo, spec, source) {
   for (const path of expectedSourceChanges) patchedSourcePins.push({ path, sha256: await hashFile(join(source, path)) });
   return { source, outputDir, targetDir, lockPath, lockSha256, stablePins, patchedSourcePins };
 }
-async function buildFeature(repo, spec, prepared) {
+async function buildFeature(repo, spec, prepared, rustLibraryPrefetch) {
   const env = { ...process.env };
   for (const key of ['RUSTFLAGS', 'CARGO_ENCODED_RUSTFLAGS', 'RUSTC_WRAPPER', 'RUSTC_WORKSPACE_WRAPPER', 'RUSTC', 'CARGO_INCREMENTAL', 'FEATURES', 'CARGO_UNSTABLE_BUILD_STD', 'CARGO_BUILD_TARGET', 'CARGO_PROFILE_RELEASE_OPT_LEVEL', 'CARGO_PROFILE_RELEASE_LTO', 'CARGO_PROFILE_RELEASE_CODEGEN_UNITS', 'CARGO_PROFILE_RELEASE_DEBUG', 'CARGO_PROFILE_RELEASE_STRIP', 'CARGO_PROFILE_RELEASE_PANIC']) delete env[key];
   Object.assign(env, {
@@ -171,11 +212,21 @@ async function buildFeature(repo, spec, prepared) {
   });
   const fetchEnv = { ...env };
   delete fetchEnv.CARGO_NET_OFFLINE;
-  await run(`cargo-fetch-${spec.name}`, 'rustup', ['run', 'nightly-2025-11-15', 'cargo', 'fetch', '--locked', '--target', 'wasm32-unknown-unknown'], {
+  // wasm-pack runs unfiltered cargo metadata, so prefetch every locked target before forcing offline mode.
+  await run(`cargo-fetch-${spec.name}`, 'rustup', ['run', rustToolchain, 'cargo', 'fetch', '--locked'], {
     cwd: prepared.source, env: fetchEnv, timeout: runTimeoutMs,
   });
-  const args = ['run', 'nightly-2025-11-15', 'wasm-pack', 'build', 'rust/wasm-bindings', '--target', 'web', '--out-dir', '../../packages/wasm/pkg-csg-work-census', '--out-name', 'ifc-lite', '--release', '--', '--features', 'csg-work-census'];
+  if (!rustLibraryPrefetch.promise) rustLibraryPrefetch.promise = prefetchRustLibrary(repo, fetchEnv);
+  const rustLibrary = await rustLibraryPrefetch.promise;
+  const args = ['run', rustToolchain, 'wasm-pack', 'build', 'rust/wasm-bindings', '--target', 'web', '--out-dir', '../../packages/wasm/pkg-csg-work-census', '--out-name', 'ifc-lite', '--release', '--', '--features', 'csg-work-census'];
   const command = await run(`wasm-pack-${spec.name}`, 'rustup', args, { cwd: prepared.source, env, timeout: runTimeoutMs });
+  const sysroot = (await run(`rust-sysroot-after-${spec.name}`, 'rustup', ['run', rustToolchain, 'rustc', '--print', 'sysroot'], {
+    cwd: repo, env: fetchEnv, timeout: runTimeoutMs,
+  })).rawStdout.trim();
+  const rustLibraryAfter = await inspectRustLibraryProvenance(sysroot);
+  if (rustLibraryAfter.manifestSha256 !== rustLibrary.manifestSha256 || rustLibraryAfter.lockSha256 !== rustLibrary.cargoLockSha256) {
+    throw new Error(`${spec.name} pinned Rust standard-library source changed during build`);
+  }
   if (await hashFile(prepared.lockPath) !== prepared.lockSha256) throw new Error(`${spec.name} Cargo.lock changed during build`);
   for (const pin of prepared.stablePins) if (await hashFile(join(prepared.source, pin.path)) !== pin.sha256) throw new Error(`${spec.name} protected source changed: ${pin.path}`);
   const afterHead = (await git(prepared.source, ['rev-parse', 'HEAD'], `git-${spec.name}-head-after`, repo)).rawStdout.trim();
@@ -235,11 +286,12 @@ async function main() {
   const deliveryCommit = (await git(repo, ['rev-parse', 'HEAD'], 'git-delivery-head')).rawStdout.trim();
   const sourcePaths = { release6: resolve(repo, args.source6), release7: resolve(repo, args.source7) };
   const repoBuild = [];
+  const rustLibraryPrefetch = {};
   for (const spec of sourceSpecs) {
     const patchPath = join(repo, spec.patch);
     await copyFile(patchPath, join(outRoot, 'provenance', `${spec.name}.patch`));
     const prepared = await prepareSource(repo, spec, sourcePaths[spec.name]);
-    const built = await buildFeature(repo, spec, prepared);
+    const built = await buildFeature(repo, spec, prepared, rustLibraryPrefetch);
     const stockDir = join(outRoot, 'projects', `${spec.name}-stock`);
     const onDir = join(outRoot, 'projects', `${spec.name}-on`);
     await installStockProject(spec, stockDir);
@@ -294,7 +346,8 @@ async function main() {
   await mkdir(join(outRoot, 'provenance'), { recursive: true });
   const manifest = {
     schemaVersion: 'csg-work-bundle-v1', nodeMajor: 24, files: await treeRows(outRoot), projects,
-    deliveryCommit, sourceBuilds: repoBuild, toolchain, commands: execRecords.map(({ id, file, args, cwd, exitCode, stdout, stdoutSha256, stderr, stderrSha256 }) => ({ id, file, args, cwd, exitCode, stdout, stdoutSha256, stderr, stderrSha256 })),
+    deliveryCommit, sourceBuilds: repoBuild, rustLibraryPrefetch: await rustLibraryPrefetch.promise, toolchain,
+    commands: execRecords.map(({ id, file, args, cwd, exitCode, stdout, stdoutSha256, stderr, stderrSha256 }) => ({ id, file, args, cwd, exitCode, stdout, stdoutSha256, stderr, stderrSha256 })),
     license: { path: 'LICENSE', sha256: await hashFile(join(outRoot, 'LICENSE')) },
     publicSelfCheckExpectedOutputs: { release6: { convertedMeshSha256: sourceSpecs[0].meshSha256 }, release7: { convertedMeshSha256: sourceSpecs[1].meshSha256 }, scope: 'Expected outputs only; builder does not qualify model execution. See separate launcher receipts.' },
   };

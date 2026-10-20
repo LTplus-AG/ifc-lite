@@ -6,15 +6,17 @@
 
 use crate::math::tol;
 use crate::{
-    extrusion::{apply_transform, extrude_regions},
     profiles::ProfileProcessor,
-    Error, Mesh, Result, TessellationQuality, Vector3,
+    Mesh, Result, TessellationQuality, Vector3,
 };
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 
 use crate::router::GeometryProcessor;
 use crate::scalar::{magnitude_squared3, GeomScalar};
+
+#[path = "extrusion_plan.rs"]
+pub(crate) mod plan;
 
 /// Local (pre-`Position`) transform an `IfcExtrudedAreaSolid` needs for its
 /// `ExtrudedDirection`, generic over the scalar.
@@ -106,9 +108,29 @@ impl ExtrudedAreaSolidProcessor {
             profile_processor: ProfileProcessor::new(schema),
         }
     }
+
+    /// Decode the admitted production profile and parameters into owned data.
+    /// Region boundaries may already approximate curves at `quality`; this
+    /// preserves current construction semantics rather than analytic source data.
+    pub(crate) fn lower(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        quality: TessellationQuality,
+    ) -> Result<plan::ExtrusionPlan> {
+        plan::lower(entity, decoder, quality, &self.profile_processor)
+    }
 }
 
 impl GeometryProcessor for ExtrudedAreaSolidProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<crate::Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        if rtc_file_units.is_some() { return None; }
+        Some(self.lower(entity, decoder, quality).map(|plan| crate::program::OwnedConstructor::new(Constructor::Extrusion(plan))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,
@@ -116,48 +138,7 @@ impl GeometryProcessor for ExtrudedAreaSolidProcessor {
         _schema: &IfcSchema,
         quality: TessellationQuality,
     ) -> Result<Mesh> {
-        // IfcExtrudedAreaSolid attributes:
-        // 0: SweptArea (IfcProfileDef)
-        // 1: Position (IfcAxis2Placement3D)
-        // 2: ExtrudedDirection (IfcDirection)
-        // 3: Depth (IfcPositiveLengthMeasure)
-
-        // Get profile
-        let profile_attr = entity
-            .get(0)
-            .ok_or_else(|| Error::geometry("ExtrudedAreaSolid missing SweptArea".to_string()))?;
-
-        let profile_entity = decoder
-            .resolve_ref(profile_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve SweptArea".to_string()))?;
-
-        // One solid per disjoint area: a composite profile is several (#7685).
-        // Its budget is armed once per solid. An extrusion places two copies
-        // of each point (within MAX_SWEEP_VERTICES under the point budget),
-        // and base already extruded holes, so it needs no output cap.
-        self.profile_processor.arm_solid_budget();
-        let mut regions = self
-            .profile_processor
-            .process_regions(&profile_entity, decoder, quality)?;
-        regions.retain(|region| !region.outer.is_empty());
-        if regions.is_empty() {
-            return Ok(Mesh::new());
-        }
-
-        let super::extrusion_params::ExtrusionParams { direction, depth, position: pos_transform } =
-            super::extrusion_params::ExtrusionParams::decode(entity, decoder, "ExtrudedAreaSolid")?;
-
-        let transform = extrusion_local_transform(&direction, depth);
-
-        // Extrude the profile
-        let mut mesh = extrude_regions(&regions, depth, transform)?;
-
-        // Apply Position transform
-        if let Some(pos) = pos_transform {
-            apply_transform(&mut mesh, &pos);
-        }
-
-        Ok(mesh)
+        self.lower(entity, decoder, quality)?.evaluate()
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

@@ -34,7 +34,7 @@ pub(super) fn compound_plane_angle_to_degrees(entity: &DecodedEntity, index: usi
     let seconds = list[2].as_float()?;
     // The optional fourth component: absent is 0; present but non-numeric
     // is refused like the mandatory three.
-    let millionths = match list.get(3) {
+    let millionths = match list[3..].first() {
         Some(value) => value.as_float()?,
         None => 0.0,
     };

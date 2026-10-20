@@ -19,6 +19,8 @@ export const validationEditorRu = {
   "validationEditor.ruleSetEditor.targets": "Целевые модели",
   "validationEditor.ruleSetEditor.emptyRulesHint": "Правил пока нет — добавьте одно для начала.",
   "validationEditor.ruleSetEditor.addRule": "Добавить правило",
+  'validationEditor.ruleCard.moveUp': 'Переместить правило «{name}» вверх',
+  'validationEditor.ruleCard.moveDown': 'Переместить правило «{name}» вниз',
   "validationEditor.ruleCard.namePlaceholder": "Название правила",
   "validationEditor.ruleCard.nameAriaLabel": "Название правила",
   "validationEditor.ruleCard.descriptionPlaceholder": "Описание (необязательно)",

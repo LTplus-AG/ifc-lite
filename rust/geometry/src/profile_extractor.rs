@@ -294,7 +294,7 @@ fn extract_extruded_solid(
 ) -> Result<ExtractedProfile> {
     // SweptArea (attr 0)
     let profile_attr = solid
-        .get(0)
+        .attr(ifc_lite_core::slot::IfcExtrudedAreaSolid::SWEPT_AREA)
         .ok_or_else(|| Error::geometry("ExtrudedAreaSolid missing SweptArea"))?;
     let profile_entity = decoder
         .resolve_ref(profile_attr)?

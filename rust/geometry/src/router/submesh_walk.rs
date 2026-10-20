@@ -138,11 +138,10 @@ impl SubMeshSink<'_> {
 
 impl WalkVisitor for SubMeshSink<'_> {
     fn item(&mut self, item: &DecodedEntity, at: &WalkCtx<'_>, decoder: &mut EntityDecoder) -> Flow {
-        // A plain item below the depth cap is refused like a mapped one.
-        if at.path.len() >= MAX_MAPPED_ITEM_DEPTH as usize {
-            self.router.record_unsupported_item(item.ifc_type.clone());
-            return Flow::Continue;
-        }
+        // #7887: the walk bounds MAP levels, not the terminal solid. A leaf
+        // under exactly 32 maps is valid; entering map 33 is refused by the
+        // shared walk. A second leaf cap here silently lost that valid solid
+        // whenever a shallow sibling made submesh production succeed.
         self.router.submesh_plain_item(item, decoder, self.sub_meshes, at.path.len(), self.texture_index);
         if crate::resource::check_current().is_err() { Flow::Stop } else { Flow::Continue }
     }

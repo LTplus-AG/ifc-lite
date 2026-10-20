@@ -599,6 +599,14 @@ impl Mesh {
 
 Related mesh types: `SubMesh`, `SubMeshCollection`, `InstanceMeta`.
 
+`extract_profiles_with_diagnostics` selects the same meshed representations as
+ordinary element production, including mapped-duplicate exclusion. It extracts
+constant `IfcExtrudedAreaSolid` profiles through the shared representation walk,
+with the router's placement, mapping transforms and length units. The shared
+32-map bound admits terminal solids beneath 32 mapped levels and refuses entry
+to level 33; cycle, depth and work-budget refusals produce `SkippedProfile`
+records. Repeated sources on different DAG paths remain distinct occurrences.
+
 #### representation
 
 `ifc_lite_geometry::representation` is the decoder-only home of a product's

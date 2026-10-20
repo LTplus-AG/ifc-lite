@@ -60,7 +60,6 @@
 5 rust/geometry/src/processors/swept/surface_curve.rs
 2 rust/geometry/src/processors/tessellated/mod.rs
 14 rust/geometry/src/processors/texture/mod.rs
-8 rust/geometry/src/profile_extractor.rs
 14 rust/geometry/src/profiles/curves_2d.rs
 19 rust/geometry/src/profiles/curves_3d.rs
 4 rust/geometry/src/profiles/directrix.rs

@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
+use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder};
 use ifc_lite_geometry::placement::{self, Axis2Placement, PlacementError};
 use nalgebra::Matrix4;
 
@@ -159,6 +159,26 @@ impl Transform2D {
         let rx = self.m00 * x + self.m01 * y;
         let ry = self.m10 * x + self.m11 * y;
         (rx + self.tx, ry + self.ty)
+    }
+
+    /// Project a vertex in metres through the same full frame as a conic's
+    /// Position. Elevation is the transformed first vertex, not local Z plus
+    /// the frame's translation (#7914).
+    pub(super) fn transform_point3(&self, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
+        let rx = self.m00 * x + self.m01 * y + self.m02 * z;
+        let ry = self.m10 * x + self.m11 * y + self.m12 * z;
+        let rz = self.m20 * x + self.m21 * y + self.m22 * z;
+        (rx + self.tx, ry + self.ty, rz + self.tz)
+    }
+
+    /// The existing symbolic coordinate-list policy, shared by polyline,
+    /// indexed-curve and fill consumers. Scale each coordinate exactly once
+    /// before applying the frame; absent Z promotes a 2D point to z=0.
+    pub(super) fn transform_coordinates(&self, coords: &[AttributeValue], unit_scale: f64) -> (f64, f64, f64) {
+        let [x, y, z] = std::array::from_fn(|index| {
+            coords.get(index).and_then(|value| value.as_float()).unwrap_or(0.0) * unit_scale
+        });
+        self.transform_point3(x, y, z)
     }
 }
 

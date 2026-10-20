@@ -155,13 +155,10 @@ pub(super) fn extract_symbolic_item_inner(
                             Some(c) => c,
                             None => continue,
                         };
-                        let local_x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
-                        let local_y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
-                        let local_z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
+                        let (wx, wy, wz) = transform.transform_coordinates(coords, unit_scale);
                         if first_z.is_none() {
-                            first_z = Some(local_z);
+                            first_z = Some(wz);
                         }
-                        let (wx, wy) = transform.transform_point(local_x, local_y);
                         // Plan pair incl. the Y-flip to match section-cut handedness.
                         let (x, y) = rebase.plan(wx, wy);
                         push_finite_point(&mut points, x, y);
@@ -171,7 +168,7 @@ pub(super) fn extract_symbolic_item_inner(
                         let is_closed = n >= 4
                             && (points[0] - points[n - 2]).abs() < 0.001
                             && (points[1] - points[n - 1]).abs() < 0.001;
-                        let world_y = rebase.elevation(first_z.unwrap_or(0.0) + transform.tz);
+                        let world_y = rebase.elevation(first_z.unwrap_or(transform.tz));
                         out.push_polyline(SymbolicPolyline {
                             express_id,
                             ifc_type: ifc_type.to_string(),
@@ -193,13 +190,10 @@ pub(super) fn extract_symbolic_item_inner(
             let mut first_z: Option<f64> = None;
             for coord in coord_list {
                 let Some(coords) = coord.as_list() else { continue };
-                let local_x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
-                let local_y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
-                let local_z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
+                let (wx, wy, wz) = transform.transform_coordinates(coords, unit_scale);
                 if first_z.is_none() {
-                    first_z = Some(local_z);
+                    first_z = Some(wz);
                 }
-                let (wx, wy) = transform.transform_point(local_x, local_y);
                 let (x, y) = rebase.plan(wx, wy);
                 push_finite_point(&mut points, x, y);
             }
@@ -208,7 +202,7 @@ pub(super) fn extract_symbolic_item_inner(
                 let is_closed = n >= 4
                     && (points[0] - points[n - 2]).abs() < 0.001
                     && (points[1] - points[n - 1]).abs() < 0.001;
-                let world_y = rebase.elevation(first_z.unwrap_or(0.0) + transform.tz);
+                let world_y = rebase.elevation(first_z.unwrap_or(transform.tz));
                 out.push_polyline(SymbolicPolyline {
                     express_id,
                     ifc_type: ifc_type.to_string(),

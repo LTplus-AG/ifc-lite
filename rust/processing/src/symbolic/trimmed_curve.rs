@@ -91,7 +91,7 @@ pub(super) fn extract_trimmed_curve(
     let (end_x, end_y) = circle.point_at(end_angle);
     let chord_dx = end_x - start_x;
     let chord_dy = end_y - start_y;
-    let chord_len = (chord_dx * chord_dx + chord_dy * chord_dy).sqrt();
+    let chord_len = chord_dx.hypot(chord_dy);
     // A sweep of at least a half turn passes through two opposite points, so
     // it is never a straight segment whatever its chord (a near-full turn has
     // a short one). Under a half turn the sagitta test decides:
@@ -100,7 +100,7 @@ pub(super) fn extract_trimmed_curve(
     let angle_span = (end_angle - start_angle).abs();
     let is_near_collinear = if angle_span >= std::f64::consts::PI {
         false
-    } else if chord_len > 0.0001 {
+    } else if chord_len > 0.0 && chord_is_monotone(&circle, start_angle, end_angle, chord_dx, chord_dy) {
         let mid_angle = (start_angle + end_angle) / 2.0;
         let (mid_x, mid_y) = circle.point_at(mid_angle);
         // Keep the projected-shape test translation invariant. World-coordinate
@@ -110,7 +110,7 @@ pub(super) fn extract_trimmed_curve(
         let sagitta = (chord_dx * mid_dy - chord_dy * mid_dx).abs() / chord_len;
         sagitta < chord_len * 0.02
     } else {
-        true
+        false // Coincident endpoints or a reversal can hide a nonempty arc (#7914).
     };
 
     if is_near_collinear {
@@ -152,6 +152,20 @@ pub(super) fn extract_trimmed_curve(
             });
         }
     }
+}
+
+/// For a sub-half-turn projected circle, the tangent's component along the
+/// chord can change sign at most once. Opposite endpoint signs therefore
+/// prove an interior extremum; a chord would discard that part of the arc.
+fn chord_is_monotone(circle: &Conic, start: f64, end: f64, dx: f64, dy: f64) -> bool {
+    let along = |angle: f64| {
+        let (sin, cos) = angle.sin_cos();
+        let tx = -circle.basis.m00 * sin + circle.basis.m01 * cos;
+        let ty = -circle.basis.m10 * sin + circle.basis.m11 * cos;
+        tx * dx + ty * dy
+    };
+    let (a, b) = (along(start), along(end));
+    (a >= 0.0 && b >= 0.0) || (a <= 0.0 && b <= 0.0)
 }
 
 /// Resolve one `IfcTrimmingSelect` SET to an angle in RADIANS on the circle.

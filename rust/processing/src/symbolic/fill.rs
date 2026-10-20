@@ -94,9 +94,7 @@ fn extract_curve_ring(
                     continue;
                 }
                 let Some(coords) = pe.get(0).and_then(|a| a.as_list()) else { continue };
-                let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
-                let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
-                let (wx, wy) = transform.transform_point(x, y);
+                let (wx, wy, _) = transform.transform_coordinates(coords, unit_scale);
                 let (px, py) = rebase.plan(wx, wy);
                 push_finite_point(&mut out, px, py);
             }
@@ -110,9 +108,7 @@ fn extract_curve_ring(
             let mut out = Vec::with_capacity(coord_list.len() * 2);
             for tuple in coord_list {
                 let Some(coords) = tuple.as_list() else { continue };
-                let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
-                let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
-                let (wx, wy) = transform.transform_point(x, y);
+                let (wx, wy, _) = transform.transform_coordinates(coords, unit_scale);
                 let (px, py) = rebase.plan(wx, wy);
                 push_finite_point(&mut out, px, py);
             }
@@ -135,8 +131,8 @@ fn extract_curve_ring(
     }
 }
 
-/// Peek at the boundary curve's first 3D point Z so a fill / line can carry
-/// its elevation forward. Conic centers use the full composed 3D frame.
+/// Transform the boundary curve's first 3D point so a fill carries its
+/// elevation forward. Conic centers use the full composed 3D frame.
 /// Returns the ambient elevation for 2D-only curves and NaN (unresolved,
 /// serialised as `null`) for a conic whose mandatory `Position` is missing.
 fn sample_curve_world_y(curve_id: u32, decoder: &mut EntityDecoder, unit_scale: f64, transform: &Transform2D) -> f64 {
@@ -144,7 +140,7 @@ fn sample_curve_world_y(curve_id: u32, decoder: &mut EntityDecoder, unit_scale: 
     if matches!(curve.ifc_type, IfcType::IfcCircle | IfcType::IfcEllipse) {
         return compose_transforms(transform, &conic_basis(&curve, decoder, unit_scale)).tz;
     }
-    let local_z = match curve.ifc_type {
+    match curve.ifc_type {
         IfcType::IfcPolyline => {
             let Some(points_attr) = curve.get(0) else { return transform.tz };
             let Ok(point_entities) = decoder.resolve_ref_list(points_attr) else { return transform.tz };
@@ -153,11 +149,10 @@ fn sample_curve_world_y(curve_id: u32, decoder: &mut EntityDecoder, unit_scale: 
                     continue;
                 }
                 if let Some(coords) = pe.get(0).and_then(|a| a.as_list()) {
-                    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
-                    return z + transform.tz;
+                    return transform.transform_coordinates(coords, unit_scale).2;
                 }
             }
-            0.0
+            transform.tz
         }
         IfcType::IfcIndexedPolyCurve => {
             let Some(points_ref) = curve.get_ref(0) else { return transform.tz };
@@ -165,11 +160,10 @@ fn sample_curve_world_y(curve_id: u32, decoder: &mut EntityDecoder, unit_scale: 
             let Some(coord_list_attr) = points_entity.get(0) else { return transform.tz };
             let Some(coord_list) = coord_list_attr.as_list() else { return transform.tz };
             if let Some(first) = coord_list.first().and_then(|v| v.as_list()) {
-                return first.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale + transform.tz;
+                return transform.transform_coordinates(first, unit_scale).2;
             }
-            0.0
+            transform.tz
         }
-        _ => 0.0,
-    };
-    local_z + transform.tz
+        _ => transform.tz,
+    }
 }

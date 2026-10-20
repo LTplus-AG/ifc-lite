@@ -12,18 +12,18 @@ index 2eb10b9f7e..1ac1a06cef 100644
          Self { nodes, occurrences, program: compiler.program,
              program_sources: compiler.program_sources, reports: Default::default() }
 diff --git b/rust/geometry/src/construction/mod.rs a/rust/geometry/src/construction/mod.rs
-index 4b758d4f28..7d7463d871 100644
+index 17d6be313c..b8f819cbf0 100644
 --- b/rust/geometry/src/construction/mod.rs
 +++ a/rust/geometry/src/construction/mod.rs
-@@ -93,7 +93,7 @@ impl ConstructionBatch {
-     /// Refuse the entire batch before evaluation if any root is unresolved;
+@@ -94,7 +94,7 @@ impl ConstructionBatch {
      /// there is no successful partial result that silently drops geometry.
      pub fn evaluate(self) -> std::result::Result<ConstructionEvaluation, ConstructionExecutionError> {
--        if let Some(node) = self.nodes.iter().find(|_| false) {
-+        if let Some(node) = self.nodes.iter().find(|node| node.requirement().is_some()) {
+         if let Some((node, requirement)) = self.nodes.iter()
+-            .find_map(|node| node.requirement().filter(|_| false).map(|requirement| (node, requirement))) {
++            .find_map(|node| node.requirement().map(|requirement| (node, requirement))) {
              return Err(ConstructionExecutionError {
                  root_source_id: Some(node.source_id), failed_source_id: Some(node.source_id),
-                 error: Box::new(Error::geometry(format!("Construction item #{} requires {:?}", node.source_id, node.requirement().unwrap()))),
+                 error: Box::new(Error::geometry(format!("Construction item #{} requires {:?}", node.source_id, requirement))),
 diff --git b/rust/geometry/src/construction/source.rs a/rust/geometry/src/construction/source.rs
 index bd00772c88..ea446de26f 100644
 --- b/rust/geometry/src/construction/source.rs

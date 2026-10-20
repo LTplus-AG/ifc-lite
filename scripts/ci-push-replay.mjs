@@ -24,8 +24,8 @@
  *
  *   node scripts/ci-push-replay.mjs --probe
  *       `changes` job, push events. Writes `replay=true|false` and
- *       `replay_run=<run id>` to $GITHUB_OUTPUT. Exit 1 on an API failure, so
- *       the job goes red instead of guessing either way.
+ *       `replay_run=<run id>` to $GITHUB_OUTPUT. Unreadable API evidence
+ *       selects full validation; it never authorizes skipping a lane.
  *   node scripts/ci-push-replay.mjs --verify --run <id>
  *       Aggregate job, when `replay=true`. Re-reads the recorded run and
  *       refuses unless it is still a green run of this push's PR head with this
@@ -128,12 +128,18 @@ function readInputs(repo, pushSha, pushTree, parentSha, before) {
   const runs = [];
   const artifactNamesByRun = {};
   for (const p of merged) {
+    if (typeof p.head?.sha !== 'string' || !SHA.test(p.head.sha)) {
+      throw new GhError('GH_BAD_SHAPE', 'commits/{sha}/pulls item carried no valid head.sha');
+    }
     const page = gh(
       ['api', `repos/${repo}/actions/workflows/${TEST_WORKFLOW_FILE}/runs?head_sha=${p.head.sha}&event=pull_request&status=success&per_page=30`, '--method', 'GET'],
       `the green Test runs of ${p.head.sha.slice(0, 9)}`,
     );
     if (!page || !Array.isArray(page.workflow_runs)) throw new GhError('GH_BAD_SHAPE', 'workflow runs response carried no workflow_runs array');
     for (const r of page.workflow_runs) {
+      if (!r || !Number.isSafeInteger(r.id) || r.id <= 0) {
+        throw new GhError('GH_BAD_SHAPE', 'workflow_runs item carried no valid run id');
+      }
       runs.push(r);
       artifactNamesByRun[String(r.id)] = artifactNames(repo, r.id);
     }
@@ -147,6 +153,9 @@ function artifactNames(repo, runId) {
     `the artifacts of run ${runId}`,
   );
   if (!page || !Array.isArray(page.artifacts)) throw new GhError('GH_BAD_SHAPE', 'artifacts response carried no artifacts array');
+  if (page.artifacts.some((a) => !a || typeof a.name !== 'string' || typeof a.expired !== 'boolean')) {
+    throw new GhError('GH_BAD_SHAPE', 'artifacts item carried no valid name or expiration flag');
+  }
   return page.artifacts.filter((a) => !a.expired).map((a) => a.name);
 }
 
@@ -159,7 +168,17 @@ export function run(argv, env = process.env) {
   const pushTree = git('rev-parse', `${pushSha}^{tree}`);
   const parentSha = git('rev-parse', `${pushSha}^`);
   const before = env.PUSH_BEFORE ?? '';
-  const decision = decidePushReplay(readInputs(repo, pushSha, pushTree, parentSha, before));
+  let decision;
+  try {
+    decision = decidePushReplay(readInputs(repo, pushSha, pushTree, parentSha, before));
+  } catch (err) {
+    // The probe only saves work. Unreadable evidence must run the full suite,
+    // not fail `changes` and suppress every dependent lane (#7944). Once a
+    // replay was selected, --verify must still reject unreadable evidence.
+    if (mode !== 'probe' || !(err instanceof GhError)) throw err;
+    console.warn(`[push-replay] ${err.reason}: ${err.message}`);
+    decision = { replay: false, reason: 'replay evidence could not be read; full validation is required' };
+  }
 
   if (mode === 'probe') {
     if (decision.replay) {

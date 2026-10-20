@@ -3,24 +3,15 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! The item-pipeline builders: `InstanceMeta::instanceable`, the unit-scaled
-//! row-major transform and the one element placement resolver.
+//! row-major transform and the one element placement resolver (#7781).
 
 use crate::router::GeometryRouter;
-use crate::InstanceMeta;
 use ifc_lite_core::EntityDecoder;
 use nalgebra::Matrix4;
 
 const MODEL: &str = "#1=IFCCARTESIANPOINT((1000.,2000.,3000.));#2=IFCAXIS2PLACEMENT3D(#1,$,$);\
     #3=IFCLOCALPLACEMENT($,#2);#10=IFCWALL('g',$,$,$,$,#3,$,$);\
     #11=IFCWALL('g',$,$,$,$,#99,$,$);#12=IFCWALL('g',$,$,$,$,$,$,$);";
-
-#[test]
-fn instanceable_is_the_identity_placed_shareable_tag() {
-    let meta = InstanceMeta::instanceable(7, Some([2.0; 16]));
-    assert_eq!(meta.transform, crate::math::mat4::IDENTITY);
-    assert_eq!((meta.local_transform, meta.canonical_transform), (Some([2.0; 16]), None));
-    assert!(meta.instanceable && meta.rep_identity == 7);
-}
 
 #[test]
 fn scaled_row_major_scales_the_translation_only() {

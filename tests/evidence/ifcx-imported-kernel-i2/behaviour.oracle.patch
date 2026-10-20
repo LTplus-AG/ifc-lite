@@ -1,0 +1,25 @@
+diff --git a/packages/ifcx/src/imported-graph.ts b/packages/ifcx/src/imported-graph.ts
+index 1f84253aaa..ce985160c5 100644
+--- a/packages/ifcx/src/imported-graph.ts
++++ b/packages/ifcx/src/imported-graph.ts
+@@ -74,16 +74,16 @@ export function executeImportedGraph(composed: Map<string, ComposedNode>, pathTo
+         reply.rows(admitted.definition.points).values(admitted.definition.faceVertexIndices ?? [])
+           .u32(admitted.definition.faceVertexCounts ? 1 : 0);
+         if (admitted.definition.faceVertexCounts) reply.values(admitted.definition.faceVertexCounts);
+-        reply.u32(0);
+-        if (false as boolean && admitted.definition.normals) reply.rows(admitted.definition.normals);
++        reply.u32(admitted.definition.normals ? 1 : 0);
++        if (admitted.definition.normals) reply.rows(admitted.definition.normals);
+         reply.run();
+       } else if (kind === 4) {
+         const points = source.pointDefinitions.get(node.path) ?? decodeIfcxPointSource(node.attributes);
+         const reply = new ImportWriter(105).u32(handle).u32(sequence).u32(points ? 1 : 0);
+         if (points) {
+           source.admitPoints(frame, transforms, points, identity);
+-          reply.values(points.positions).u32(0);
+-          if (false as boolean && points.colors) reply.values(points.colors);
++          reply.values(points.positions).u32(points.colors ? 1 : 0);
++          if (points.colors) reply.values(points.colors);
+           reply.f64(points.pointCount).string(points.sourcePrecision).string(points.sourceEncoding);
+         }
+         reply.run();

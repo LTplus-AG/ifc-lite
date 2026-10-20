@@ -231,6 +231,20 @@ pub fn decode_ifc_string(s: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
+/// The text of an optional STEP string attribute, or `None` when it carries
+/// no value: trimmed of STEP whitespace ([`is_step_space`](crate::parser::is_step_space),
+/// never Unicode `trim`), and an empty result or a bare `$` is `None`
+/// (PROCESSING-15). The one normaliser for names and labels read off a
+/// decoded entity (`get_string`): the processing crate had four copies that
+/// disagreed on a quoted `'$'` and on Unicode spaces.
+pub fn optional_text(raw: Option<&str>) -> Option<&str> {
+    let text = raw?;
+    let start = text.bytes().position(|b| !crate::parser::is_step_space(b)).unwrap_or(text.len());
+    let end = text.bytes().rposition(|b| !crate::parser::is_step_space(b)).map_or(start, |p| p + 1);
+    let text = &text[start..end];
+    (!text.is_empty() && text != "$").then_some(text)
+}
+
 /// Value of one ASCII hex digit (either case), `None` for anything else.
 #[inline]
 pub fn hex_val(b: u8) -> Option<u8> {

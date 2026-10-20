@@ -155,8 +155,10 @@ impl GeometryRouter {
         // is the identity, which is the placeholder already.
         let row_major = mat4::from_na(&transform);
         for sub in &mut sub_meshes.sub_meshes {
-            if let Some(im) = sub.mesh.instance_meta.as_mut() {
-                im.transform = row_major;
+            if instancing_enabled() {
+                if let Some(im) = sub.mesh.instance_meta.as_mut() {
+                    im.transform = row_major;
+                }
             }
             self.transform_mesh_world(&mut sub.mesh, &transform);
         }

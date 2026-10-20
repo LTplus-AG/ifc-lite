@@ -25,6 +25,8 @@ import type { WorldPoint } from './relative-to-eye.js';
 import type { InstancedTemplateGPU } from './scene-instance-types.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
 import { PIPELINE_CONSTANTS } from './constants.js';
+import { opaqueVisibilityLayout } from './opaque-visibility-pass.js';
+import { OPAQUE_VISIBILITY_GROUP } from './shaders/opaque-visibility.wgsl.js';
 import {
   SELECTION_MASK_HOVER_GROUP,
   selectionMaskFragmentSource,
@@ -43,6 +45,16 @@ const ADDITIVE_BLEND: GPUBlendState = {
 export type MaskKind = 'selectedVisible' | 'hoverVisible' | 'selectedAll';
 
 export type MaskPipelines = Record<MaskKind, GPURenderPipeline>;
+
+export function createGeometricMaskPipelines(device: GPUDevice, meshLayout: GPUBindGroupLayout, samples: number, hoverLayout?: GPUBindGroupLayout): MaskPipelines {
+  const instanced = hoverLayout !== undefined;
+  const layout = device.createPipelineLayout({ bindGroupLayouts: [meshLayout, hoverLayout ?? device.createBindGroupLayout({ entries: [] }), opaqueVisibilityLayout(device, samples)] });
+  const vertex: GPUVertexState = {
+    module: device.createShaderModule({ code: mainShaderSource.replace('@location(8) @interpolate(linear)', '@location(8) @interpolate(linear, sample)') }),
+    entryPoint: instanced ? 'vs_instanced' : 'vs_main', buffers: instanced ? INSTANCED_VERTEX_BUFFERS : [INSTANCED_VERTEX_BUFFERS[0]],
+  };
+  return createMaskPipelines(device, 'geometric-mask', layout, vertex, device.createShaderModule({ code: selectionMaskFragmentSource(instanced, samples) }), samples);
+}
 
 const MASK_OUTPUTS: Record<MaskKind, { label: string; entryPoint: string; format: GPUTextureFormat }> = {
   selectedVisible: { label: 'selected-visible', entryPoint: 'fs_mask_selected_visible', format: MASK_VISIBLE_FORMAT },
@@ -115,6 +127,9 @@ export function isInstancedMaskEmpty(frame: InstancedMaskFrame | null | undefine
  * frame that has an instanced selection or hover.
  */
 export class InstancedSelectionMask {
+  private geometricPipelines: MaskPipelines | null = null;
+  private readonly hoverLayout: GPUBindGroupLayout;
+  private readonly sampleCount: number;
   private readonly device: GPUDevice;
   private readonly pipelines: MaskPipelines;
   private readonly meshBindGroupLayout: GPUBindGroupLayout;
@@ -126,12 +141,14 @@ export class InstancedSelectionMask {
   private runs = new Map<InstancedMaskTemplate, readonly InstanceRun[]>();
 
   constructor(device: GPUDevice, meshBindGroupLayout: GPUBindGroupLayout, sampleCount: number) {
+    this.sampleCount = sampleCount;
     this.device = device;
     this.meshBindGroupLayout = meshBindGroupLayout;
     const hoverLayout = device.createBindGroupLayout({
       label: 'selection-mask-instanced-hover-bgl',
       entries: [{ binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }],
     });
+    this.hoverLayout = hoverLayout;
     const groups: GPUBindGroupLayout[] = [];
     groups[0] = meshBindGroupLayout;
     groups[SELECTION_MASK_HOVER_GROUP] = hoverLayout;
@@ -185,9 +202,12 @@ export class InstancedSelectionMask {
   }
 
   /** Draw `templates` into the open mask pass, one instanced draw per in-envelope run. */
-  draw(pass: GPURenderPassEncoder, kind: MaskKind, templates: readonly InstancedMaskTemplate[]): void {
+  draw(pass: GPURenderPassEncoder, kind: MaskKind, templates: readonly InstancedMaskTemplate[], geometricVisibility?: GPUBindGroup): void {
     if (templates.length === 0 || !this.meshUniform) return;
-    pass.setPipeline(this.pipelines[kind]);
+    if (geometricVisibility && kind !== 'selectedAll') {
+      this.geometricPipelines ??= createGeometricMaskPipelines(this.device, this.meshBindGroupLayout, this.sampleCount, this.hoverLayout);
+      pass.setPipeline(this.geometricPipelines[kind]); pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, geometricVisibility);
+    } else pass.setPipeline(this.pipelines[kind]);
     pass.setBindGroup(0, this.meshUniform.bindGroup);
     pass.setBindGroup(SELECTION_MASK_HOVER_GROUP, this.hoverBindGroup);
     for (const t of templates) {

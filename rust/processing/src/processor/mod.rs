@@ -7,14 +7,8 @@
 //! Originally contributed by Mathias Søndergaard (Sonderwoods/Linkajou).
 
 use crate::types::mesh::{InstanceRecord, MeshData, RawInstanceOccurrence};
-use crate::types::response::{
-    CoordinateInfo, ModelMetadata, ProcessingStats, QuickMetadataBootstrap,
-    QuickMetadataEntitySummary,
-};
-use ifc_lite_core::{
-    keyword_eq, keyword_starts_with, EntityDecoder,
-    EntityIndex, EntityScanner, IfcType,
-};
+use crate::types::response::{CoordinateInfo, ModelMetadata, ProcessingStats};
+use ifc_lite_core::{EntityDecoder, EntityIndex, IfcType};
 use ifc_lite_geometry::TessellationQuality;
 use ifc_lite_geometry::GeometryRouter;
 use rayon::prelude::*;
@@ -31,11 +25,11 @@ mod diagnostics;
 mod entity_index;
 use entity_index::{IndexBuilder, ProcessingIndex};
 mod entry_points;
+#[allow(deprecated)] // the deprecated delegates stay exported until the next major
 pub use entry_points::{
     process_geometry, process_geometry_filtered, process_geometry_filtered_with_quality,
-    process_geometry_filtered_with_quality_and_ids,
-    process_geometry_streaming, process_geometry_streaming_filtered,
-    process_geometry_streaming_filtered_with_baked_basis,
+    process_geometry_filtered_with_quality_and_ids, process_geometry_streaming,
+    process_geometry_streaming_filtered, process_geometry_streaming_filtered_with_baked_basis,
     process_geometry_streaming_filtered_with_options, process_geometry_streaming_with_options,
     process_geometry_streaming_with_options_and_bootstrap, process_geometry_with_index,
 };
@@ -44,13 +38,15 @@ pub use request::{Batching, Features, ProcessingRequest};
 mod sink;
 #[doc(hidden)]
 pub use sink::ClosureSink;
-pub use sink::{FrameEvent, ProcessingSink};
+pub use sink::{FrameEvent, OnBatch, ProcessingSink};
 pub(crate) mod instancing;
 mod jobs;
 mod opening_filter;
 mod phase_marks;
 use phase_marks::{mark, Mark};
 mod properties;
+mod quick_collector;
+mod scan;
 mod quick_metadata;
 mod schema_detection;
 mod site_local;
@@ -63,16 +59,9 @@ pub(crate) use site_local::site_local_rotation_invalidates_captured_transforms;
 use jobs::{build_color_updates_for_jobs, process_entity_job};
 
 pub(crate) use color_layer::resolve_element_color_for_product_definition_shape;
-use color_layer::{
-    collect_presentation_layer_assignments,
-    resolve_presentation_layer_for_product_definition_shape,
-};
+use color_layer::resolve_presentation_layer_for_product_definition_shape;
 use opening_filter::apply_opening_filter;
 use properties::resolve_space_zone_properties_lazy;
-use quick_metadata::{
-    build_quick_spatial_tree_node, extract_name_from_args, read_storey_elevation,
-    parse_step_arguments, parse_step_ref, parse_step_ref_list, QuickSpatialNodeEntry,
-};
 use crate::mesh_frame::{MeshCoordinateSpace, MeshFrame};
 
 /// Wall-clock timer for diagnostic `ProcessingStats`. On wasm32
@@ -312,11 +301,7 @@ fn populate_entity_job_metadata(
 use crate::style::GeometryStyleInfo;
 
 pub(super) fn normalize_optional_string(raw: Option<&str>) -> Option<String> {
-    let value = raw?.trim();
-    if value.is_empty() || value == "$" {
-        return None;
-    }
-    Some(value.to_string())
+    ifc_lite_core::optional_text(raw).map(str::to_owned)
 }
 
 fn geometry_priority_score(ifc_type: &IfcType) -> u8 {
@@ -389,345 +374,24 @@ pub fn process(
     };
     tracing::debug!("Entity index will be built inline during the scan");
 
-    // Styled items / indexed colour maps / material chain / voids / fills /
-    // aggregates are span-stashed during the scan and resolved afterwards by
-    // the SHARED resolver (`crate::prepass::resolve_prepass`) — the exact code
-    // the browser prepasses run, so the #858/#913-class resolution drift
-    // cannot recur.
-    let mut prepass_spans = crate::prepass::PrepassSpans::default();
-    let mut project_id: Option<u32> = None;
-    let mut presentation_layer_by_assigned_id: FxHashMap<u32, String> = FxHashMap::default();
-    // Space/zone property resolution is demand-driven (see the lookup phase and
-    // `resolve_space_zone_properties_lazy`). The scan only stashes the
-    // IfcRelDefinesByProperties spans; property sets and property atoms are
-    // decoded later, and only for the handful a space/zone actually references —
-    // skipping the eager decode of ~25% of a model's entities that was the
-    // dominant single-threaded cold-load cost on parse-bound models.
-    let mut rel_defines_spans: Vec<(usize, usize)> = Vec::new();
-
-    // Collect geometry entities
-    let mut scanner = EntityScanner::new(content);
-    let mut georeferencing_candidates = Vec::new();
-    let mut entity_jobs: Vec<EntityJob> = Vec::with_capacity(2000);
-    // #957: type-product geometry (IfcXxxType + its RepresentationMaps) and the
-    // set of RepresentationMaps already instantiated by an IfcMappedItem. After
-    // the scan, RepresentationMaps NOT in the referenced set are rendered as
-    // orphan type geometry (buildingSMART annex-E showcase files).
-    let mut type_product_geometry: Vec<(u32, usize, usize, IfcType, Vec<u32>)> = Vec::new();
-    let mut referenced_representation_maps: FxHashSet<u32> = FxHashSet::default();
-    // #1623 Phase 2 don't-bake plan (built only when `enable_instancing`):
-    // `IfcRepresentationMap` id ⇒ (occurrence count, min IfcMappedItem express id).
-    // The min-id occurrence is the deterministic template that materializes; the
-    // rest instance against it. Filtered to count >= 2 after the scan.
-    let mut mapped_item_plan: FxHashMap<u32, (u32, u32)> = FxHashMap::default();
-    // #957 follow-up: type ids that an IfcRelDefinesByType instantiates (the type
-    // has at least one occurrence). Such a type's geometry is already drawn through
-    // its occurrences — directly or via an IfcMappedItem — so it must NOT also be
-    // rendered as orphan type-only geometry. Real-world exporters (e.g. ArchiCAD
-    // AC20) attach a RepresentationMap to nearly every door/window/furniture type
-    // while the occurrence carries its own body, leaving the type map referenced by
-    // no IfcMappedItem; without this gate every such type double-renders at its
-    // MappingOrigin (duplicate boxes at the wrong position).
-    let mut instantiated_type_ids: FxHashSet<u32> = FxHashSet::default();
-    let quick_metadata_enabled = req.features.quick_metadata_bootstrap;
-    let mut quick_spatial_nodes =
-        quick_metadata_enabled.then(HashMap::<u32, QuickSpatialNodeEntry>::new);
-    let mut quick_aggregate_links = if quick_metadata_enabled {
-        Vec::<(u32, Vec<u32>)>::new()
-    } else {
-        Vec::new()
-    };
-    let mut quick_containment_links = if quick_metadata_enabled {
-        Vec::<(u32, Vec<u32>)>::new()
-    } else {
-        Vec::new()
-    };
-    // IfcRelReferencedInSpatialStructure is a *secondary* (non-owning) link — a
-    // space referenced from another storey for context. It must NOT establish
-    // primary tree ownership, so it is kept separate from containment links and
-    // only ever contributes elements, never parent/child node ownership (#1075).
-    let mut quick_referenced_links = if quick_metadata_enabled {
-        Vec::<(u32, Vec<u32>)>::new()
-    } else {
-        Vec::new()
-    };
-    let mut quick_element_summaries = if quick_metadata_enabled {
-        HashMap::<u32, QuickMetadataEntitySummary>::new()
-    } else {
-        HashMap::new()
-    };
-    let mut total_entities = 0usize;
-    let mut site_entity_pos: Option<(usize, usize)> = None;
-    let mut building_entity_pos: Option<(usize, usize)> = None;
+    let scan::ScanOutput {
+        mut entity_jobs,
+        prepass_spans,
+        project_id,
+        presentation_layer_by_assigned_id,
+        rel_defines_spans,
+        georeferencing_candidates,
+        mapped_item_plan,
+        quick,
+        total_entities,
+        site_entity_pos,
+        building_entity_pos,
+    } = scan::scan_entities(content, req, &mut decoder, &mut inline_index, building_index);
 
     let defer_style_updates = req.batching.fast_first
         && req.opening_filter == OpeningFilterMode::Default
         && !req.features.presentation_layers;
 
-    while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        total_entities += 1;
-        if let Some(ifc_type) = crate::georeferencing::georeferencing_candidate_type(type_name) {
-            georeferencing_candidates.push((id, ifc_type));
-        }
-        if building_index {
-            inline_index.insert(id, (start, end));
-        }
-        if let Some(spatial_nodes) = quick_spatial_nodes.as_mut() {
-            // Case-insensitive check without allocating a new uppercase string.
-            if is_quick_spatial_type_ci(type_name) {
-                let args = parse_step_arguments(&content[start..end]);
-                let fallback = format!("{type_name} #{id}");
-                spatial_nodes.entry(id).or_insert(QuickSpatialNodeEntry {
-                    express_id: id,
-                    type_name: type_name.to_string(),
-                    name: extract_name_from_args(&args, &fallback),
-                    elevation: None,
-                    raw_elevation: keyword_eq(type_name, "IFCBUILDINGSTOREY").then(|| read_storey_elevation(&args)),
-                    children: Vec::new(),
-                    contained: Vec::new(),
-                    elements: Vec::new(),
-                    named_as_child: false,
-                });
-            } else if keyword_eq(type_name, "IFCRELAGGREGATES") {
-                let args = parse_step_arguments(&content[start..end]);
-                if let Some(parent_id) = args.get(4).and_then(|token| parse_step_ref(token)) {
-                    quick_aggregate_links.push((
-                        parent_id,
-                        args.get(5)
-                            .map(|token| parse_step_ref_list(token))
-                            .unwrap_or_default(),
-                    ));
-                }
-            } else if keyword_eq(type_name, "IFCRELCONTAINEDINSPATIALSTRUCTURE") {
-                let args = parse_step_arguments(&content[start..end]);
-                if let Some(parent_id) = args.get(5).and_then(|token| parse_step_ref(token)) {
-                    quick_containment_links.push((
-                        parent_id,
-                        args.get(4)
-                            .map(|token| parse_step_ref_list(token))
-                            .unwrap_or_default(),
-                    ));
-                }
-            } else if keyword_eq(type_name, "IFCRELREFERENCEDINSPATIALSTRUCTURE") {
-                let args = parse_step_arguments(&content[start..end]);
-                if let Some(parent_id) = args.get(5).and_then(|token| parse_step_ref(token)) {
-                    quick_referenced_links.push((
-                        parent_id,
-                        args.get(4)
-                            .map(|token| parse_step_ref_list(token))
-                            .unwrap_or_default(),
-                    ));
-                }
-            }
-        }
-
-        if keyword_eq(type_name, "IFCINDEXEDCOLOURMAP") {
-            // Span-stashed for the shared post-scan resolver (#663, #858).
-            prepass_spans.indexed_colour_maps.push((id, start, end));
-            continue;
-        }
-
-        if keyword_eq(type_name, "IFCSTYLEDITEM") {
-            // Span-stashed; the shared resolver classifies orphan (material
-            // appearance, #407 — always resolved up front) vs
-            // geometry-attached (deferred in fast_first_batch mode, #913 §2c).
-            prepass_spans.styled_items.push((id, start, end));
-            continue;
-        } else if keyword_eq(type_name, "IFCMATERIALDEFINITIONREPRESENTATION") {
-            prepass_spans.material_def_reprs.push((id, start, end));
-            continue;
-        } else if keyword_eq(type_name, "IFCRELASSOCIATESMATERIAL") {
-            prepass_spans.rel_associates_material.push((id, start, end));
-            continue;
-        } else if keyword_eq(type_name, "IFCPRESENTATIONLAYERASSIGNMENT") {
-            if !req.features.presentation_layers {
-                continue;
-            }
-            if let Ok(layer_assignment) = decoder.decode_at(start, end) {
-                collect_presentation_layer_assignments(
-                    &mut presentation_layer_by_assigned_id,
-                    &layer_assignment,
-                );
-            }
-            continue;
-        } else if keyword_eq(type_name, "IFCPROPERTYSET") {
-            // Decoded lazily in the lookup phase, and only when referenced by a
-            // space/zone (its sole consumer). The inline index holds the span.
-            continue;
-        } else if keyword_eq(type_name, "IFCRELDEFINESBYPROPERTIES") {
-            if req.features.properties {
-                rel_defines_spans.push((start, end));
-            }
-            continue;
-        } else if keyword_starts_with(type_name, "IFCPROPERTY") {
-            // Individual property values are resolved lazily by id in the lookup
-            // phase (only those a referenced space/zone property set lists).
-            continue;
-        } else if keyword_eq(type_name, "IFCRELVOIDSELEMENT") {
-            prepass_spans.void_rels.push((id, start, end));
-        } else if keyword_eq(type_name, "IFCRELFILLSELEMENT") {
-            prepass_spans.fills_rels.push((id, start, end));
-        } else if keyword_eq(type_name, "IFCRELAGGREGATES") {
-            // Independent of quick-metadata mode: the shared resolver decodes
-            // these into the parent → children map that pushes voids down to
-            // aggregated parts when the host has no body of its own
-            // (IfcWallElementedCase, #845).
-            prepass_spans.aggregate_rels.push((id, start, end));
-        } else if keyword_eq(type_name, "IFCPROJECT") && project_id.is_none() {
-            project_id = Some(id);
-        } else if keyword_eq(type_name, "IFCSITE") && site_entity_pos.is_none() {
-            site_entity_pos = Some((start, end));
-        } else if keyword_eq(type_name, "IFCBUILDING") && building_entity_pos.is_none() {
-            building_entity_pos = Some((start, end));
-        }
-
-        let (has_geometry, representationless_spatial) =
-            ifc_lite_core::geometry_flags_by_name(type_name);
-        if has_geometry {
-            // Legacy-aware so a remapped entity (IfcProxy, IfcSolidStratum, …)
-            // labels its node with the real base type, not "Unknown", and matches
-            // the attribute pass's row type (#1496).
-            let ifc_type = ifc_lite_core::ifc_type_from_keyword(type_name);
-            if quick_metadata_enabled {
-                quick_element_summaries.insert(
-                    id,
-                    QuickMetadataEntitySummary {
-                        express_id: id,
-                        type_name: type_name.to_string(),
-                        name: format!("{type_name} #{id}"),
-                        global_id: None,
-                        kind: "element".to_string(),
-                        has_children: false,
-                        element_count: None,
-                        elevation: None,
-                    },
-                );
-            }
-            entity_jobs.push(EntityJob {
-                id,
-                ifc_type: ifc_type.clone(),
-                start,
-                end,
-                product_definition_shape_id: None,
-                element_color: crate::style::default_color_for_type(ifc_type).to_array(),
-                global_id: None,
-                name: None,
-                presentation_layer: None,
-                space_zone_properties: None,
-                representation_map_id: None,
-            });
-        } else if representationless_spatial
-            && ifc_lite_core::nth_attribute_is_present(&content[start..end], 6)
-        {
-            // #1910: `has_geometry_by_name` excludes spatial containers like
-            // `IfcBuilding` because in virtually every real file they are
-            // pure hierarchy nodes with a null Representation. A DGM/terrain
-            // export that attaches its `IfcShellBasedSurfaceModel` directly
-            // to `IfcBuilding` (no `IfcBuildingElement` children at all) is
-            // the exceptional counter-example: its geometry must still be
-            // scheduled for meshing, or the file loads with correct metadata
-            // but renders nothing. Deliberately skips the
-            // `quick_element_summaries` insert above — the spatial tree
-            // already carries this entity as a node (`spatial_nodes`), so an
-            // extra "element" summary row would duplicate it in the UI tree.
-            let ifc_type = ifc_lite_core::ifc_type_from_keyword(type_name);
-            entity_jobs.push(EntityJob {
-                id,
-                ifc_type: ifc_type.clone(),
-                start,
-                end,
-                product_definition_shape_id: None,
-                element_color: crate::style::default_color_for_type(ifc_type).to_array(),
-                global_id: None,
-                name: None,
-                presentation_layer: None,
-                space_zone_properties: None,
-                representation_map_id: None,
-            });
-        }
-        // #957: collect type-product geometry (IfcXxxType carrying its own
-        // RepresentationMaps) and every IfcMappedItem's MappingSource, so after
-        // the scan we can render the RepresentationMaps that NO occurrence
-        // instantiates (orphan library/showcase geometry). The cheap suffix
-        // pre-filter keeps the is_subtype_of check off the hot path for the
-        // ~all-non-type majority of entities.
-        else if keyword_eq(type_name, "IFCMAPPEDITEM") {
-            let args = parse_step_arguments(&content[start..end]);
-            if let Some(source_id) = args.first().and_then(|token| parse_step_ref(token)) {
-                referenced_representation_maps.insert(source_id);
-                // #1623 Phase 2: tally occurrences per source + track the min-id
-                // (deterministic template) occurrence. `id` is this IfcMappedItem's
-                // express id (the router's `item.id` at mesh time).
-                if req.instancing {
-                    mapped_item_plan
-                        .entry(source_id)
-                        .and_modify(|(count, template)| {
-                            *count += 1;
-                            if id < *template {
-                                *template = id;
-                            }
-                        })
-                        .or_insert((1, id));
-                }
-            }
-        } else if keyword_eq(type_name, "IFCRELDEFINESBYTYPE") {
-            // IfcRelDefinesByType.RelatingType is the last attribute (index 5);
-            // record it so its type-only geometry is suppressed (it has occurrences).
-            let args = parse_step_arguments(&content[start..end]);
-            if let Some(type_id) = args.get(5).and_then(|token| parse_step_ref(token)) {
-                instantiated_type_ids.insert(type_id);
-            }
-            // Also feed the shared resolver's type-material fallback.
-            prepass_spans.defines_by_type.push((id, start, end));
-        } else if let Some(type_ty) = ifc_lite_core::type_product_ifc_type(type_name) {
-            let args = parse_step_arguments(&content[start..end]);
-            // IfcTypeProduct.RepresentationMaps is attribute index 6.
-            let rep_map_ids = args
-                .get(6)
-                .map(|token| parse_step_ref_list(token))
-                .unwrap_or_default();
-            if !rep_map_ids.is_empty() {
-                type_product_geometry.push((id, start, end, type_ty, rep_map_ids));
-            }
-        }
-    }
-
-    // The whole-file scan: refused ids (#3395) + a malformed stop (#3695).
-    ifc_lite_core::report_scan_diagnostics(scanner.skipped_oversized_ids(), scanner.malformed_record_start().is_some());
-
-    // #957: synthesize render jobs for orphan type-product geometry — a
-    // RepresentationMap on an IfcXxxType that no IfcMappedItem instantiates.
-    // Normally-instanced typed products keep their geometry on the occurrence
-    // (whose IfcMappedItem references the map), so those maps are in
-    // `referenced_representation_maps` and skipped here — no double render.
-    // buildingSMART annex-E "tessellated shape with style" files declare the
-    // geometry only on the type, so without this they render nothing (#957).
-    for (type_id, start, end, ifc_type, rep_map_ids) in &type_product_geometry {
-        // The orphan/instanced decision is canonical in
-        // `element::plan_type_geometry`; the native pipeline suppresses
-        // instanced types entirely (an export must never duplicate geometry),
-        // so every planned map here renders as an orphan (class 1).
-        for (rep_map_id, _class) in crate::element::plan_type_geometry(
-            rep_map_ids,
-            &referenced_representation_maps,
-            instantiated_type_ids.contains(type_id),
-            crate::element::TypeGeometryMode::SuppressInstanced,
-        ) {
-            entity_jobs.push(EntityJob {
-                id: *type_id,
-                ifc_type: ifc_type.clone(),
-                start: *start,
-                end: *end,
-                product_definition_shape_id: None,
-                element_color: crate::style::default_color_for_type(ifc_type.clone()).to_array(),
-                global_id: None,
-                name: None,
-                presentation_layer: None,
-                space_zone_properties: None,
-                representation_map_id: Some(rep_map_id),
-            });
-        }
-    }
 
     // The inline index is now complete — identical to `build_entity_index` over
     // the same scanner. Install it into the decoder so `resolve_prepass` and the
@@ -830,100 +494,9 @@ pub fn process(
         "Resolved unit scales"
     );
     decoder.seed_unit_scales(unit_scales.geometry_length_scale(), unit_scales.plane_angle_to_radians);
-    if let Some(mut spatial_nodes) = quick_spatial_nodes.take() {
-        // A refused unit has no metre scale; its elevation stays in file units.
-        spatial_nodes.values_mut().for_each(|n| n.finish_elevation(unit_scales.geometry_length_scale()));
-        for (parent_id, child_ids) in quick_aggregate_links {
-            if !spatial_nodes.contains_key(&parent_id) {
-                continue;
-            }
-            for child_id in child_ids {
-                if !spatial_nodes.contains_key(&child_id) {
-                    continue;
-                }
-                if let Some(parent) = spatial_nodes.get_mut(&parent_id) {
-                    parent.children.push(child_id);
-                }
-                if let Some(child) = spatial_nodes.get_mut(&child_id) {
-                    child.named_as_child = true;
-                }
-            }
-        }
-        for (parent_id, element_ids) in quick_containment_links {
-            if !spatial_nodes.contains_key(&parent_id) {
-                continue;
-            }
-            for child_id in element_ids {
-                // A spatial element (IfcSpace / IfcSpatialZone) attached to a
-                // storey via IfcRelContainedInSpatialStructure — what Revit
-                // Family + Dynamo emits instead of IfcRelAggregates — is a real
-                // node of the spatial tree, not a contained product. Promote it
-                // to a child node so it shows in the hierarchy (#1075); anything
-                // that isn't itself a spatial node stays a contained element.
-                //
-                // Recorded even when an aggregate also names the child: whether
-                // that aggregate's parent is reachable from the root is not
-                // known here, and an edge from an orphan or from the child's
-                // own descendant must not take the space out of the tree
-                // (#4689). `ContainmentPlan` lets a settled aggregate win.
-                if spatial_nodes.contains_key(&child_id) {
-                    if let Some(parent) = spatial_nodes.get_mut(&parent_id) {
-                        parent.contained.push(child_id);
-                    }
-                    if let Some(child) = spatial_nodes.get_mut(&child_id) {
-                        child.named_as_child = true;
-                    }
-                } else if let Some(parent) = spatial_nodes.get_mut(&parent_id) {
-                    parent.elements.push(child_id);
-                }
-            }
-        }
-        // Referenced-in links are non-owning: they only contribute elements and
-        // never promote to (or re-parent) a spatial node, so a space referenced
-        // from a second storey can't steal ownership from its containing storey.
-        for (parent_id, element_ids) in quick_referenced_links {
-            if !spatial_nodes.contains_key(&parent_id) {
-                continue;
-            }
-            for child_id in element_ids {
-                // A child that is itself a spatial node keeps the ownership it
-                // got from its IfcRelContainedInSpatialStructure/aggregate link.
-                if spatial_nodes.contains_key(&child_id) {
-                    continue;
-                }
-                if let Some(parent) = spatial_nodes.get_mut(&parent_id) {
-                    parent.elements.push(child_id);
-                }
-            }
-        }
-        // `type_name` is the raw keyword; `min` rather than `find` because
-        // `spatial_nodes` is a HashMap, so a file with two roots (or no
-        // IfcProject) would otherwise pick a different tree per run.
-        let root_id = spatial_nodes
-            .values()
-            .filter(|node| keyword_eq(&node.type_name, "IFCPROJECT"))
-            .map(|node| node.express_id)
-            .min()
-            .or_else(|| {
-                // Prefer a node no edge names as a child, but when every node
-                // is one (a back-edge to the top node) still build from the
-                // lowest id rather than emit no tree (#4689).
-                spatial_nodes
-                    .values()
-                    .min_by_key(|node| (node.named_as_child, node.express_id))
-                    .map(|node| node.express_id)
-            });
-        let (spatial_tree, pruned_aggregate_edges) = root_id
-            .and_then(|root| {
-                build_quick_spatial_tree_node(root, &spatial_nodes, &quick_element_summaries).ok()
-            })
-            .unzip();
-        sink.on_bootstrap(&QuickMetadataBootstrap {
-            schema_version: schema_version.clone(),
-            entity_count: total_entities,
-            spatial_tree,
-            pruned_aggregate_edges: pruned_aggregate_edges.unwrap_or_default(),
-        });
+    if let Some(quick) = quick {
+        let length_unit_scale = unit_scales.geometry_length_scale();
+        sink.on_bootstrap(&quick.finish(length_unit_scale, &schema_version, total_entities));
     }
 
     // Preprocess complex geometry

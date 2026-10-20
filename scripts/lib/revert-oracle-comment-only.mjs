@@ -25,8 +25,14 @@
  * code and `/*` on the same line) just mean the branch still needs a real
  * test, which is the safe direction.
  *
- * Scoped to the extensions where `//`/`/*` is the comment syntax; Rust and
- * Python files are not covered.
+ * Scoped to the extensions where `//`/`/*` is the comment syntax, plus Rust
+ * with a STRICTER line rule (#7949): only a blank line or one starting with `//`
+ * (which covers `///` and `//!` doc comments). Rust cannot share the JS rule
+ * because a line starting with `*` is not necessarily a block-comment
+ * continuation there (`*p += 1;` is a statement), and `/*` is left out for the
+ * same fail-closed reason. A docs-only Rust change documenting why a function
+ * behaves as it does (the test pins existing behaviour) would otherwise end
+ * UNOBSERVED by construction. Python files are not covered.
  *
  * Pure function over diff text, same shape as `revert-oracle-version-bump.mjs`.
  */
@@ -38,6 +44,12 @@ function isCommentLine(line) {
   return t === '' || t.startsWith('//') || t.startsWith('/*') || t.startsWith('*');
 }
 
+/** Rust: `//` only (see the module comment for why `*` and `/*` are excluded). */
+function isRustCommentLine(line) {
+  const t = line.trim();
+  return t === '' || t.startsWith('//');
+}
+
 /**
  * @param {string} path repo-relative path of the changed file
  * @param {string} diffText `git diff -U0 <base> <head> -- <path>` output
@@ -47,12 +59,13 @@ function isCommentLine(line) {
  *   comment-only -- there is nothing here to certify as inert prose.
  */
 export function isCommentOnlyDiff(path, diffText) {
-  if (!COMMENT_SYNTAX_EXTS.some((ext) => path.endsWith(ext))) return false;
+  const rust = path.endsWith('.rs');
+  if (!rust && !COMMENT_SYNTAX_EXTS.some((ext) => path.endsWith(ext))) return false;
   const changed = [];
   for (const line of diffText.split('\n')) {
     if (line.startsWith('@@') || line.startsWith('--- ') || line.startsWith('+++ ')) continue;
     if (line.startsWith('-') || line.startsWith('+')) changed.push(line.slice(1));
   }
   if (changed.length === 0) return false;
-  return changed.every(isCommentLine);
+  return changed.every(rust ? isRustCommentLine : isCommentLine);
 }

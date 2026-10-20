@@ -1,0 +1,37 @@
+diff --git a/rust/geometry/src/router/voids/attempt.rs b/rust/geometry/src/router/voids/attempt.rs
+index 8f83f35e9a..0e406df6f9 100644
+--- a/rust/geometry/src/router/voids/attempt.rs
++++ b/rust/geometry/src/router/voids/attempt.rs
+@@ -75,7 +75,9 @@ impl<'a> AttemptGuard<'a> {
+ 
+ impl Drop for AttemptGuard<'_> {
+     fn drop(&mut self) {
+-        let _ = self.router;
++        if let Some(snapshot) = self.snapshot.take() {
++            snapshot.restore(self.router);
++        }
+     }
+ }
+ 
+diff --git a/rust/geometry/src/telemetry_transaction.rs b/rust/geometry/src/telemetry_transaction.rs
+index 4be21a34b3..15a5b8ecdc 100644
+--- a/rust/geometry/src/telemetry_transaction.rs
++++ b/rust/geometry/src/telemetry_transaction.rs
+@@ -72,7 +72,16 @@ thread_local! {
+ 
+ /// Buffer into the innermost open attempt, or publish immediately when none.
+ pub(crate) fn record(event: Event) {
+-    event.publish();
++    let buffered = PENDING.with(|pending| match pending.borrow_mut().last_mut() {
++        Some(buffer) => {
++            buffer.push(event);
++            true
++        }
++        None => false,
++    });
++    if !buffered {
++        event.publish();
++    }
+ }
+ 
+ /// Must stay on the thread that owns its buffer, including during unwinding.

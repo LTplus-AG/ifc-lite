@@ -5,11 +5,11 @@
 //! Streaming geometry processing with Server-Sent Events.
 //!
 //! Thin bridge over the canonical `ifc_lite_processing` pipeline: the
-//! blocking task runs `process_geometry_streaming_filtered_with_baked_basis`
-//! (`..._with_options` plus the frame published before the first batch,
-//! #5407; the same code path as `POST /api/v1/parse` and the wasm
-//! `processGeometryBatch` boundary) and forwards its batch callbacks through
-//! a bounded channel as [`StreamEvent`]s (see [`EVENT_BUFFER_EVENTS`]).
+//! blocking task runs `ifc_lite_processing::process` (the same code path as
+//! `POST /api/v1/parse` and the wasm `processGeometryBatch` boundary) and
+//! forwards the sink's `on_batch` events, with the frame it announces before
+//! the first batch (#5407), through a bounded channel as [`StreamEvent`]s
+//! (see [`EVENT_BUFFER_EVENTS`]).
 //!
 //! This file used to host a third, bespoke geometry pipeline with its own
 //! scan, style index (SurfaceColour-only, no material chain, no indexed
@@ -26,8 +26,8 @@ use ifc_lite_processing::style::ModelFinishes;
 use async_stream::stream;
 use futures::Stream;
 use ifc_lite_processing::{
-    extract_symbolic_data_with_provenance_in_frame, process_geometry_streaming_filtered_with_baked_basis, OpeningFilterMode,
-    StreamingOptions, TessellationQuality,
+    extract_symbolic_data_with_provenance_in_frame, process, Batching, FrameEvent, MeshData,
+    OpeningFilterMode, ProcessingRequest, ProcessingSink, TessellationQuality,
 };
 use std::pin::Pin;
 use tokio::sync::mpsc;
@@ -52,6 +52,59 @@ use tokio::sync::mpsc;
 /// goes away makes a parked send return at once, and the next callback sees
 /// `tx.is_closed()` and cancels.
 pub(crate) const EVENT_BUFFER_EVENTS: usize = 4;
+
+/// What the SSE bridge hears from the pipeline, forwarded as [`StreamEvent`]s.
+struct SseSink<'a> {
+    tx: mpsc::Sender<StreamEvent>,
+    /// Flipped when the client has gone, so the pipeline stops between chunks.
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    finishes: ModelFinishes<'a>,
+    /// The basis the batches are baked in, delivered before the first batch (#5407).
+    baked_basis: Option<[f64; 16]>,
+    started: bool,
+    batch_number: usize,
+    last_type: String,
+}
+
+impl ProcessingSink for SseSink<'_> {
+    fn on_frame(&mut self, frame: &FrameEvent) {
+        self.baked_basis = Some(frame.baked_basis);
+    }
+
+    fn on_batch(&mut self, meshes: &[MeshData], processed: usize, total: usize) {
+        if self.tx.is_closed() {
+            self.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+            return;
+        }
+        if !self.started {
+            self.started = true;
+            let _ = self.tx.blocking_send(StreamEvent::Start { total_estimate: total });
+            let _ = self.tx.blocking_send(StreamEvent::Progress {
+                processed: 0,
+                total,
+                current_type: "indexing".into(),
+            });
+        }
+        if let Some(mesh) = meshes.last() {
+            self.last_type = mesh.ifc_type.clone();
+        }
+        if !meshes.is_empty() {
+            self.batch_number += 1;
+            let _ = self.tx.blocking_send(StreamEvent::Batch {
+                meshes: finish_meshes(&mut self.finishes, meshes.to_vec()),
+                batch_number: self.batch_number,
+                baked_basis: self.baked_basis,
+            });
+        }
+        let _ = self.tx.blocking_send(StreamEvent::Progress {
+            processed,
+            total,
+            current_type: self.last_type.clone(),
+        });
+    }
+    // Styling is eager on this path (`fast_first` is off), so `on_color_update`
+    // never fires and keeps its default.
+}
 
 /// Generate streaming geometry events backed by the canonical pipeline.
 ///
@@ -103,68 +156,29 @@ pub fn process_streaming(
     let handle = tokio::task::spawn_blocking(move || {
         let _admission = admission_for_task;
 
-        let mut started = false;
-        let mut batch_number = 0usize;
-        let mut last_type = String::new();
-        // Filled by the pipeline once it has chosen the frame, before the
-        // first batch (#5407).
-        let baked_basis = std::sync::OnceLock::new();
         // #5984: every batch's meshes carry their IFC-authored finish. One
         // styled-item scan up front; a file that authors none joins nothing.
-        let mut finishes = ModelFinishes::from_content(&content);
+        let mut sink = SseSink {
+            tx: tx.clone(),
+            cancel: std::sync::Arc::clone(&cancel_for_task),
+            finishes: ModelFinishes::from_content(&content),
+            baked_basis: None,
+            started: false,
+            batch_number: 0,
+            last_type: String::new(),
+        };
 
-        let result = process_geometry_streaming_filtered_with_baked_basis(
-            &content,
-            opening_filter,
-            StreamingOptions {
-                initial_batch_size,
-                throughput_batch_size: max_batch_size,
-                tessellation_quality,
-                // Batches are forwarded as they are emitted — retaining them
-                // in the ProcessingResult would double peak memory.
-                retain_emitted_meshes: false,
-                cancel: Some(std::sync::Arc::clone(&cancel_for_task)),
-                ..StreamingOptions::default()
-            },
-            &baked_basis,
-            |meshes, processed, total| {
-                if tx.is_closed() {
-                    cancel_for_task.store(true, std::sync::atomic::Ordering::Relaxed);
-                    return;
-                }
-                if !started {
-                    started = true;
-                    let _ = tx.blocking_send(StreamEvent::Start {
-                        total_estimate: total,
-                    });
-                    let _ = tx.blocking_send(StreamEvent::Progress {
-                        processed: 0,
-                        total,
-                        current_type: "indexing".into(),
-                    });
-                }
-                if let Some(mesh) = meshes.last() {
-                    last_type = mesh.ifc_type.clone();
-                }
-                if !meshes.is_empty() {
-                    batch_number += 1;
-                    let _ = tx.blocking_send(StreamEvent::Batch {
-                        meshes: finish_meshes(&mut finishes, meshes.to_vec()),
-                        batch_number,
-                        baked_basis: baked_basis.get().copied(),
-                    });
-                }
-                let _ = tx.blocking_send(StreamEvent::Progress {
-                    processed,
-                    total,
-                    current_type: last_type.clone(),
-                });
-            },
-            // Styling is eager on this path (`fast_first_batch` defaults to
-            // false), so colour updates never fire.
-            |_| {},
-            |_| {},
-        );
+        let request = ProcessingRequest::default()
+            .opening_filter(opening_filter)
+            .quality(tessellation_quality)
+            .batching(Batching::new(initial_batch_size, max_batch_size))
+            // Batches are forwarded as they are emitted - retaining them
+            // in the ProcessingResult would double peak memory.
+            .retain_meshes(false)
+            .cancel(std::sync::Arc::clone(&cancel_for_task));
+        let result = process(&content, &request, &mut sink);
+        let started = sink.started;
+        drop(sink);
 
         if cancel_for_task.load(std::sync::atomic::Ordering::Relaxed) || tx.is_closed() {
             // Client gone: the partial result must not be presented as a

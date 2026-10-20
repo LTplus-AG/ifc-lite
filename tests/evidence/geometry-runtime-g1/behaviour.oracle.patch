@@ -1,0 +1,24 @@
+diff --git a/rust/geometry-runtime/src/protocol.rs b/rust/geometry-runtime/src/protocol.rs
+index 13bc27fdc8..ef6a9fc830 100644
+--- a/rust/geometry-runtime/src/protocol.rs
++++ b/rust/geometry-runtime/src/protocol.rs
+@@ -283,7 +283,7 @@ fn encode_arguments(command: &KernelCommand, out: &mut Vec<u8>) -> Result<(), Pr
+             offset,
+             count,
+         } => {
+-            if offset.checked_add(*count).is_none() {
++            if *count > MAX_MESH_CHUNK_SCALARS || offset.checked_add(*count).is_none() {
+                 return Err(ProtocolError::MeshChunkSize);
+             }
+             write_solid(out, *session, *mesh);
+@@ -308,7 +308,9 @@ pub fn decode_response(request_id: u32, bytes: &[u8]) -> Result<KernelResponse<'
+     if bytes[..4] != VERSION.to_le_bytes() {
+         return Err(ProtocolError::Version);
+     }
+-    let _ = request_id;
++    if bytes[4..8] != request_id.to_le_bytes() {
++        return Err(ProtocolError::RequestId);
++    }
+     let status = i32::from_le_bytes(bytes[8..12].try_into().expect("four bytes"));
+     if status == 0 {
+         return Ok(KernelResponse::Success(&bytes[12..]));

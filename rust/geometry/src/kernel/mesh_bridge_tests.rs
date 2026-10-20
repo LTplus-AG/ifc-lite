@@ -505,7 +505,7 @@ fn subtract_many_reports_unchanged_when_no_cutter_reaches_the_host() {
         )
     };
     let disjoint = tetra(0.0);
-    let (miss, conforming, _) = subtract_many_with_conformity(&host, &[&disjoint], false);
+    let (miss, conforming, _) = subtract_many_with_conformity(&host, &[&disjoint], false, false);
     assert!(conforming, "#6516: only a conforming miss can suppress sequential fallback");
     assert!(
         matches!(miss, BatchSubtract::Unchanged),
@@ -690,8 +690,8 @@ mod issue_3353_nary_near_coplanar {
     }
 }
 
-/// A two-cutter group whose arrangement does not conform, so `subtract_many`
-/// reaches its lenient batch and the volume oracle. Captured (exact f32 coords)
+/// A captured two-cutter group used to exercise the lenient batch volume oracle.
+/// Strict recovery can also conform for this fixture (#7292). Exact f32 coords
 /// from the public `ara3d/dental_clinic.ifc` fixture: a gable wall already
 /// holding three windows, a stepped cutter trimming its sloped end, and a
 /// window cutter sharing the `z = 7.21` plane with it.
@@ -761,17 +761,29 @@ fn lenient_gable_group() -> (Mesh, Mesh, Mesh) {
     (wall, notch, window)
 }
 
+// Exercise the production fallback with actual kernel output even when improved
+// constraint recovery makes this captured fixture conform on the strict path.
+fn volume_checked_lenient_batch(host: &Mesh, cutters: &[&Mesh]) -> (BatchSubtract, bool, Option<Mesh>) {
+    let h = orient_outward(mesh_to_tris(host));
+    let components: Vec<Vec<Tri>> = cutters.iter().map(|m| {
+        let mut c = mesh_to_tris(m);
+        promote_cutter_verts_onto_host_faces(&mut c, &h);
+        orient_outward(c)
+    }).collect();
+    let refs: Vec<&[Tri]> = components.iter().map(Vec::as_slice).collect();
+    let (batch, changed) = difference_all_lenient(&h, &refs);
+    validate_lenient_batch(&h, &components, &batch, changed)
+}
+
 #[test]
-fn lenient_group_keeps_its_conformity_provenance_6516() {
+fn lenient_volume_oracle_accepts_real_cut_and_rejects_uncertain_recut_6516() {
     let (wall, notch, window) = lenient_gable_group();
-    let (outcome, conforming, _) = subtract_many_with_conformity(&wall, &[&notch, &window], true);
-    assert!(!conforming, "real gable fixture must reach the volume-checked path");
+    // Exercise real lenient output and its volume oracle directly. This fixture
+    // can now recover strictly, so it does not prove public lenient routing.
+    let (outcome, _, _) = volume_checked_lenient_batch(&wall, &[&notch, &window]);
     let cut = expect_cut(outcome, "the validated lenient group remains a real cut");
-    // Re-cutting the already removed notch is nonconforming: having no
-    // intended volume left to remove does not make its classification proof.
-    let (retry, conforms, retained) = subtract_many_with_conformity(&cut, &[&notch], true);
-    assert!(!conforms);
-    assert!(retained.is_none(), "an uncertain miss cannot be retained as proof");
+    // Having no intended volume left to remove does not validate the recut.
+    let (retry, _, _) = volume_checked_lenient_batch(&cut, &[&notch]);
     assert!(matches!(retry, BatchSubtract::Nonconforming));
     let retry = crate::csg::ClippingProcessor::new().subtract_mesh_many(&cut, &[&notch]);
     assert!(!retry.found_no_overlap(), "uncertain recut must keep its sequential fallback");
@@ -785,7 +797,7 @@ fn lenient_group_keeps_its_conformity_provenance_6516() {
 /// so when the cut trims the host's bounding box, the flux of a crack the cut
 /// never touched lands in the removed volume.
 ///
-/// Fixture: the non-conforming gable group above, plus a closed 0.1 m rod
+/// Fixture: the captured gable group above, plus a closed 0.1 m rod
 /// standing 0.13 m off the wall's +Y end (1.87 m long) and a third cutter that
 /// takes its outer metre. That moves the AABB centre 0.5 m in −Y. The open host
 /// adds one unpaired triangle inside the wall at `y = 45` (normal ±Y, 0.47 m²),
@@ -795,7 +807,7 @@ fn lenient_group_keeps_its_conformity_provenance_6516() {
 /// `volume_reference(&batch)` again and the open-host assertion fails.
 #[test]
 fn lenient_batch_on_an_open_host_reads_both_volumes_about_one_point_4693() {
-    use super::super::arrangement::{box_mesh, difference_all};
+    use super::super::arrangement::box_mesh;
     use crate::router::voids::geom::mesh_signed_volume_about;
     let (wall, notch, window) = lenient_gable_group();
     let rod = tris_to_mesh(&box_mesh([0.2, 50.6, 6.0], [0.3, 52.47, 6.1]));
@@ -806,23 +818,10 @@ fn lenient_batch_on_an_open_host_reads_both_volumes_about_one_point_4693() {
     open.merge(&mesh_of(&[[0.15, 45.0, 4.8], [0.35, 45.0, 4.8], [0.25, 45.0, 9.5]], &[[0, 1, 2]]));
     let cutters = [&notch, &window, &tip];
 
-    // Guard: the group must reach the lenient path, or nothing here reads the oracle.
-    let h = orient_outward(mesh_to_tris(&open));
-    let comps: Vec<Vec<Tri>> = cutters
-        .iter()
-        .map(|m| {
-            let mut c = mesh_to_tris(m);
-            promote_cutter_verts_onto_host_faces(&mut c, &h);
-            orient_outward(c)
-        })
-        .collect();
-    let refs: Vec<&[Tri]> = comps.iter().map(|c| c.as_slice()).collect();
-    assert!(difference_all(&h, &refs).is_none(), "the group must not conform");
-
     // Host and cut read about one point on the unpaired triangle's plane, so
     // the triangle adds nothing to either reading, snapped or not.
     let removed = |host: &Mesh, what: &str| {
-        let cut = expect_cut(subtract_many(host, &cutters), what);
+        let cut = expect_cut(volume_checked_lenient_batch(host, &cutters).0, what);
         let o = [0.25, 45.0, 7.0];
         mesh_signed_volume_about(host, &o) - mesh_signed_volume_about(&cut, &o)
     };
@@ -832,4 +831,176 @@ fn lenient_batch_on_an_open_host_reads_both_volumes_about_one_point_4693() {
         (open_removed - closed_removed).abs() < 1e-4,
         "open host removed {open_removed} m³, closed host {closed_removed} m³"
     );
+}
+
+/// The upper cutter cap is one grid step above the host. The opening guard
+/// must examine a real promotion proposal; ordinary operands must not spend
+/// that opening-only allowance. Both inputs are closed boxes, independently
+/// of the hole-wall fixture whose policy outputs became equal after #7607.
+fn opening_policy_witness_7024() -> (Mesh, Mesh) {
+    use super::super::arrangement::box_mesh;
+    (
+        tris_to_mesh(&box_mesh([0., 0., 0.], [8., 8., 0.25])),
+        tris_to_mesh(&box_mesh([1., 1., -0.1], [2., 2., 0.25 + SNAP_GRID])),
+    )
+}
+
+#[test]
+fn issue_7024_public_subtract_retains_boolean_operand_weld() {
+    use crate::kernel::budget::{self, incidence_work};
+    let (host, cutter) = opening_policy_witness_7024();
+    incidence_work::with_limit(0, || {
+        let public = subtract(&host, &cutter);
+        assert!(!budget::tripped(), "public operand subtraction entered opening admission");
+        // Analytic box difference: 8*8*.25 - 1*1*.25, independent of either
+        // subtraction implementation or weld-policy argument.
+        assert!((mesh_volume(&public) - 15.75).abs() < 1e-6);
+    });
+}
+
+#[test]
+fn issue_7024_public_batch_subtract_retains_boolean_operand_weld() {
+    use crate::kernel::budget::{self, incidence_work};
+    let (host, cutter) = opening_policy_witness_7024();
+    incidence_work::with_limit(0, || {
+        let public = expect_cut(subtract_many(&host, &[&cutter]), "ordinary batch operand");
+        assert!(!budget::tripped(), "public batch operands entered opening admission");
+        assert!((mesh_volume(&public) - 15.75).abs() < 1e-6);
+    });
+}
+
+/// Equal output geometry is insufficient to detect a replay choosing the wrong
+/// weld. The near-cap proposal makes opening admission observable even when
+/// the normal-budget policies would ultimately return identical triangles.
+#[cfg(feature = "csg_capture")]
+#[test]
+fn issue_6940_serialized_replay_keeps_operand_admission_and_exact_payload() {
+    use crate::csg::{ClippingProcessor, GroupCut, GroupReject};
+    use crate::csg_capture::{self, CapturedCsgJob};
+    use crate::kernel::budget::{self, incidence_work};
+    let (host, cutter) = opening_policy_witness_7024();
+    let csg = ClippingProcessor::new();
+    let jobs = [false, true].into_iter().flat_map(|opening| [
+        CapturedCsgJob::Single { host: host.clone(), cutter: cutter.clone(), opening },
+        CapturedCsgJob::Many { host: host.clone(), cutters: vec![cutter.clone()], opening, retain_miss: false },
+    ]).collect::<Vec<_>>();
+    let jobs = csg_capture::deserialize(&csg_capture::serialize(&jobs)).unwrap();
+    let payload = |m: Mesh| (m.positions, m.normals, m.indices);
+    // The expected plain batch payload comes from the public raw operand API,
+    // then the same documented consolidation stage used by GroupCut replay.
+    let expected_single = incidence_work::with_limit(0, || {
+        let raw = subtract(&host, &cutter);
+        assert!(!budget::tripped());
+        assert!((mesh_volume(&raw) - 15.75).abs() < 1e-6);
+        payload(csg.consolidate(raw))
+    });
+    let expected_batch = incidence_work::with_limit(0, || {
+        let raw = expect_cut(subtract_many(&host, &[&cutter]), "plain replay reference");
+        assert!(!budget::tripped());
+        assert!((mesh_volume(&raw) - 15.75).abs() < 1e-6);
+        payload(csg.consolidate(raw))
+    });
+    for (index, job) in jobs.iter().enumerate() {
+        incidence_work::with_limit(0, || {
+            let outcome = job.replay(&csg);
+            if index < 2 {
+                let mesh = outcome.into_mesh().expect("plain replay must bypass opening admission");
+                assert!(!budget::tripped());
+                assert!((mesh_volume(&mesh) - 15.75).abs() < 1e-6);
+                let expected = if index == 0 { &expected_single } else { &expected_batch };
+                assert_eq!(&payload(mesh), expected, "plain replay preserves the exact payload");
+            } else {
+                assert!(matches!(outcome, GroupCut::Rejected(GroupReject::BudgetTripped)),
+                    "opening replay must exercise admission, got {outcome:?}");
+                assert!(budget::tripped());
+            }
+        });
+    }
+}
+
+
+/// #7024: incidence exhaustion is a whole-operation rejection, never a
+/// successful cut of partially welded operands. Near-cap proposal fixture.
+#[test]
+fn incidence_work_exhaustion_rejects_single_and_batch_atomically_7024() {
+    use crate::csg::{ClippingProcessor, GroupCut, GroupReject};
+    use crate::kernel::budget::{self, incidence_work};
+    use super::super::arrangement::box_mesh;
+    // #7607 already refuses every movement in the old hole-wall fixture.
+    // This near-cap cutter actually reaches proposal admission under both
+    // guard implementations, so zero allowance exercises atomic rejection.
+    let host = tris_to_mesh(&box_mesh([0., 0., 0.], [8., 8., 0.25]));
+    let cutter = tris_to_mesh(&box_mesh([1., 1., -0.1], [2., 2., 0.25 + SNAP_GRID]));
+    let original = (host.positions.clone(), host.indices.clone(), cutter.positions.clone(), cutter.indices.clone());
+    incidence_work::with_limit(0, || {
+        let clipper = ClippingProcessor::new();
+        let outcome = clipper.subtract_mesh(&host, &cutter);
+        assert!(matches!(outcome, GroupCut::Rejected(GroupReject::BudgetTripped)), "expected atomic budget rejection, got {outcome:?}; host triangles {}, cutter triangles {}", host.triangle_count(), cutter.triangle_count());
+        assert!(budget::tripped());
+        assert!(matches!(clipper.subtract_mesh_many(&host, &[&cutter]), GroupCut::Rejected(GroupReject::BudgetTripped)));
+        assert_eq!((host.positions.clone(), host.indices.clone(), cutter.positions.clone(), cutter.indices.clone()), original);
+    });
+    // #6940: this near-cap proposal consumes opening incidence work, but an
+    // ordinary Boolean operand must not enter that policy. A separate scope
+    // avoids inheriting the preceding opening operation's sticky exhaustion.
+    incidence_work::with_limit(0, || {
+        let clipper = ClippingProcessor::new();
+        assert!(clipper.subtract_operand(&host, &cutter).into_mesh().is_some());
+        assert!(!budget::tripped(), "ordinary operand entered opening-only admission");
+    });
+    incidence_work::with_limit(incidence_work::OP_LIMIT, || {
+        let clipper = ClippingProcessor::new();
+        assert!(!matches!(clipper.subtract_mesh(&host, &cutter), GroupCut::Rejected(GroupReject::BudgetTripped)),
+            "the actual fixture must complete under normal allowance");
+    });
+}
+
+#[test]
+fn budget_aborted_partition_cover_retains_failure_provenance_7607() {
+    use crate::kernel::{arrangement::box_mesh, budget};
+    let _serial = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let profile = budget::TestProfile::new();
+    let _element = budget::enter_element();
+    profile.set_cap(None);
+
+    // Two separated host components, each covered by its own closed cutter.
+    // The cutter AABBs are disjoint even after snap-band inflation. A genuine
+    // completed difference is empty, so volume agreement alone cannot identify
+    // an empty result returned after exhausting the batch's work budget.
+    let left = tris_to_mesh(&box_mesh([0., 0., 0.], [1., 1., 1.]));
+    let right = tris_to_mesh(&box_mesh([3., 0., 0.], [4., 1., 1.]));
+    let mut host = left.clone();
+    host.merge(&right);
+    let h = orient_outward(mesh_to_tris(&host));
+    let components = [&left, &right].map(|m| orient_outward(mesh_to_tris(m)));
+    let refs = components.iter().map(Vec::as_slice).collect::<Vec<_>>();
+    budget::begin();
+    let (complete, changed) = difference_all_lenient(&h, &refs);
+    let batch_work = budget::count();
+    assert!(complete.is_empty() && changed && !budget::tripped());
+
+    let mut oracle_work = 0;
+    let mut removed = 0.;
+    for component in &components {
+        budget::begin();
+        let intersection = boolean(&h, component, BoolOp::Intersection);
+        assert!(!budget::tripped());
+        oracle_work = oracle_work.max(budget::count());
+        removed += signed_volume6(&intersection).abs();
+    }
+    assert_eq!(removed, signed_volume6(&h).abs(), "the actual disjoint intersections cover the host");
+    let cap = oracle_work + 1;
+    assert!(batch_work >= cap, "premise: batch work {batch_work} exceeds each oracle's {oracle_work}");
+    profile.set_cap(Some(cap));
+    for component in &components {
+        budget::begin();
+        let _intersection = boolean(&h, component, BoolOp::Intersection);
+        assert!(!budget::tripped(), "every independent oracle completes under the same cap");
+    }
+
+    budget::begin();
+    let result = subtract_many(&host, &[&left, &right]);
+    assert!(budget::tripped(), "the public batch naturally exhausts its per-boolean budget");
+    assert!(matches!(result, BatchSubtract::Nonconforming),
+        "a tripped batch must be rejected before fresh oracle budgets can validate it: {result:?}");
 }

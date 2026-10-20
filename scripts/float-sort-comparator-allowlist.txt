@@ -8,4 +8,4 @@
 # A file's use count must EQUAL its row: a new use fails, and a removed use
 # fails as stale until the row is lowered or deleted.
 1 rust/geometry/src/float_order.rs  # the sanctioned NaN-last comparator itself; `None` maps to NaN last
-1 rust/geometry/src/router/processing.rs  # enclosing_f32 matches Some(Greater/Less) and treats None (NaN) as "no rounding"; not a comparator
+1 rust/geometry/src/router/item.rs  # enclosing_f32 matches Some(Greater/Less) and treats None (NaN) as "no rounding"; not a comparator

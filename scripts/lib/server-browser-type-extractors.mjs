@@ -303,7 +303,9 @@ export function tsPropertyTypes(src) {
 export function rustQuantityTypes(src) {
   const code = stripComments(src);
   const found = new Set();
-  for (const m of code.matchAll(/eq_ignore_ascii_case\("(IFCQUANTITY[A-Z]+|IFCPHYSICALCOMPLEXQUANTITY)"\)/g)) {
+  // Every quoted keyword: `QuantityKind::keyword`'s arms (C6-8, #7783), or an
+  // `eq_ignore_ascii_case("...")` chain should one come back.
+  for (const m of code.matchAll(/"(IFCQUANTITY[A-Z]+|IFCPHYSICALCOMPLEXQUANTITY)"/g)) {
     found.add(m[1]);
   }
   return found;

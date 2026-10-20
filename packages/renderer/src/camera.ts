@@ -375,6 +375,19 @@ export class Camera {
   }
 
   /**
+   * Diagonal preset for a ViewCube edge or corner. `direction` is the
+   * camera's offset from the model in the named presets' face frame
+   * (+X right, +Y top, +Z front), e.g. `{x:1,y:1,z:0}` is the top-right edge.
+   */
+  setPresetDirection(
+    direction: Vec3,
+    bounds?: { min: Vec3; max: Vec3 },
+    buildingRotation?: number
+  ): void {
+    this.animator.setPresetDirection(direction, bounds, buildingRotation);
+  }
+
+  /**
    * Reset velocity (stop inertia)
    */
   stopInertia(): void {

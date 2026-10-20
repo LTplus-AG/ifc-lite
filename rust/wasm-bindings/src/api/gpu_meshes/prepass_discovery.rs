@@ -6,6 +6,8 @@
 //! reproduces the serial scan loop's job/span collection from the shard
 //! class columns, so the pre-pass never byte-scans the file.
 
+use ifc_lite_core::parser::StepRecord;
+
 /// Everything the pre-pass scan loop discovers, filled from the shard class
 /// columns instead of a byte scan (stage 2 of the sharded pre-pass). The
 /// class byte was computed at shard-scan time from the SAME predicates the
@@ -22,19 +24,18 @@ pub(super) struct ColumnsDiscovery {
     pub has_layer_set: bool,
 }
 
-/// Parse the raw STEP keyword at a record start (`#id=KEYWORD(...`). Only
-/// called for the few records that need it (geometry jobs + type candidates),
-/// never for the 19M-entity bulk. A span outside `content` (columns stitched
-/// against a different buffer) yields `""`, like a record with no keyword.
+/// The raw STEP keyword at a record start (`#id=KEYWORD(...`), read through
+/// core's [`StepRecord`] so trivia between the `=` and the keyword (`#1= /*c*/
+/// IFCWALL(`) is skipped. Only called for the few records that need it
+/// (geometry jobs + type candidates), never for the 19M-entity bulk. A span
+/// outside `content` (columns stitched against a different buffer) yields
+/// `""`, like a record with no keyword.
 fn keyword_at(content: &[u8], start: usize, end: usize) -> &str {
-    let span = content.get(start..end.min(content.len())).unwrap_or_default();
-    let eq = span.iter().position(|&b| b == b'=').map(|p| p + 1).unwrap_or(0);
-    let kw_end = span[eq..]
-        .iter()
-        .position(|&b| b == b'(')
-        .map(|p| eq + p)
-        .unwrap_or(span.len());
-    std::str::from_utf8(&span[eq..kw_end]).unwrap_or("").trim()
+    content
+        .get(start..end.min(content.len()))
+        .and_then(StepRecord::parse)
+        .and_then(|record| record.keyword())
+        .unwrap_or("")
 }
 
 /// Is the raw keyword `kw` in the caller's load-time skip set? The set holds

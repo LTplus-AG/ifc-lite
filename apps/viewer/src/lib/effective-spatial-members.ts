@@ -6,6 +6,7 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { effectiveSpatialMemberIds, type IfcDataStore } from '@ifc-lite/parser';
 import { effectiveMutationRelationships } from '@/sdk/adapters/query-overlay-relations';
 import { effectiveContextType } from '@/components/viewer/EntityContextMenu.effective-selection';
+import { entityOwnership } from '@/utils/entity-ownership';
 
 /** Direct members of a spatial container in one model's current session. */
 export function effectiveSpatialMembers(
@@ -13,10 +14,10 @@ export function effectiveSpatialMembers(
   view: MutablePropertyView | null | undefined,
   containerId: number,
 ): number[] {
-  if (!view?.hasPendingChanges()) return effectiveSpatialMemberIds(store, containerId);
-  return effectiveSpatialMemberIds(store, containerId, {
+  const context = view?.hasPendingChanges() ? {
     relationships: effectiveMutationRelationships(store, view),
-    isDeleted: (id) => view.isDeleted(id),
-    typeName: (id) => effectiveContextType(store, view, id),
-  });
+    isDeleted: (id: number) => view.isDeleted(id),
+    typeName: (id: number) => effectiveContextType(store, view, id),
+  } : undefined;
+  return effectiveSpatialMemberIds(store, containerId, context).filter(entityOwnership(store, view));
 }

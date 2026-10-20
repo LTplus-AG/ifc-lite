@@ -38,6 +38,8 @@ interface Stubs {
     capDraws: DrawCall[];
     /** The planes each primary / extra cap draw was told to clip against (#7545). */
     primaryClippedBy: unknown[];
+    /** Every highlight the draw handed the cap (#7950). */
+    highlights: unknown[];
     extraDraws: Array<{ params: Record<string, unknown>; caps: Array<{ key: string; clippedBy: unknown[] }> }>;
 }
 
@@ -47,7 +49,9 @@ function makeStubs(capHasGeometry = true, extraHasGeometry = false): Stubs {
     const capDraws: DrawCall[] = [];
     const primaryClippedBy: unknown[] = [];
     const extraDraws: Stubs['extraDraws'] = [];
+    const highlights: unknown[] = [];
     return {
+        highlights,
         gizmoDraws,
         capDraws,
         primaryClippedBy,
@@ -58,6 +62,7 @@ function makeStubs(capHasGeometry = true, extraHasGeometry = false): Stubs {
         cap: {
             hasGeometry: () => capHasGeometry,
             hasExtraGeometry: () => extraHasGeometry,
+            setCapHighlight(highlight: unknown) { highlights.push(highlight); },
             draw(_pass: unknown, params: Record<string, unknown>, clippedBy: unknown[] = []) {
                 capDraws.push({ params });
                 primaryClippedBy.push(clippedBy);
@@ -90,6 +95,15 @@ describe('the extracted section draw keeps its parameters (#2451 review)', () =>
         assert.strictEqual(s.gizmoDraws[0].params.isPreview, false);
         assert.strictEqual(s.gizmoDraws[0].params.bounds, BOUNDS);
         assert.strictEqual(s.capDraws.length, 1);
+    });
+
+    it('hands the cap the selection / hover highlight, or null when there is none (#7950)', () => {
+        const s = makeStubs();
+        const highlight = new Map([['*:5', [0.3, 0.6, 1, 1] as const]]);
+        const base = ctxFor({ axis: 'side', position: 40, enabled: true });
+        drawSectionOverlays(PASS, s.gizmo, s.cap, { ...base, options: { ...base.options, capHighlight: highlight } });
+        drawSectionOverlays(PASS, s.gizmo, s.cap, base);
+        assert.deepStrictEqual(s.highlights, [highlight, null]);
     });
 
     it('draws the gizmo as PREVIEW and no cap when the section is off', () => {

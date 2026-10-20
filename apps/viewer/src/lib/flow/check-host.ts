@@ -67,7 +67,7 @@ export async function validateChecks(run: WorkflowRun, workflowId: string, model
         const model = state.models.get(id);
         if (!model?.ifcDataStore) throw new Error(`Missing IDS model ${id}`);
         await retain(await runIdsCheck({ document: input.value, modelId: id, dataStore: model.ifcDataStore,
-          mutationView: state.getMutationView(id), models: state.models, locale: 'en', signal: run.controller.signal }));
+          mutationView: state.getMutationView(id), models: state.models, locale: state.idsLocale, signal: run.controller.signal }));
       }
     } else throw new Error('Expected a validation resource');
   }

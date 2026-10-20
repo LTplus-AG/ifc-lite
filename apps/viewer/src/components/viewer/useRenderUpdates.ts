@@ -89,6 +89,7 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
     show3DOverlay,
     showHiddenLines,
   } = params;
+  const fillMode = sectionPlane.capStyle?.fillMode;
 
   // Theme-aware clear color update, and the renderer's overlay theme (#5484):
   // selection, section-plane preview, every overlay line channel (annotation /
@@ -120,7 +121,7 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
     if (!renderer || !isInitialized) return;
 
     if (activeTool === 'section' && drawing2D && drawingIsThisPlanes && drawing2D.cutPolygons.length > 0 && show3DOverlay) {
-      const { polygons, lines } = capOverlayInput(drawing2D, showHiddenLines);
+      const { polygons, lines } = capOverlayInput(drawing2D, showHiddenLines, fillMode);
       const customPlane = capOverlayBasis(sectionPlane.custom);
 
       renderer.uploadSection2DOverlay(
@@ -151,14 +152,14 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
       const cap = extraCaps[plane.id];
       if (!cap || !cap.signature.endsWith(`:${capSignature(plane)}`)) continue;
       if (cap.cutPolygons.length === 0) { renderer.clearSection2DOverlay(plane.id); continue; }
-      const { polygons, lines } = capOverlayInput(cap, showHiddenLines);
+      const { polygons, lines } = capOverlayInput(cap, showHiddenLines, fillMode);
       renderer.uploadSection2DOverlay(
         polygons, lines, plane.axis, plane.position, planeRange(plane, sectionBoundsRef?.current) ?? undefined,
         plane.flipped, capOverlayBasis(plane.custom), plane.id,
       );
     }
     renderer.requestRender();
-  }, [extraCaps, inactiveSectionPlanes, activeTool, isInitialized, coordinateInfo, show3DOverlay, showHiddenLines]);
+  }, [extraCaps, inactiveSectionPlanes, activeTool, isInitialized, coordinateInfo, show3DOverlay, showHiddenLines, fillMode]);
 
   // Re-render when visibility, selection, or section plane changes
   useEffect(() => {

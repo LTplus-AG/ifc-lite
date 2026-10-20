@@ -1,0 +1,83 @@
+{
+  "status": "ALL_INDEXED_FACES_FULL_FINITE_SURFACE_PASS",
+  "case": "rectmerge054-068-143268-all",
+  "toleranceMetres": 0.0001,
+  "checkerSHA256": "0e359bf5c72fab13573f7bfd3e76e86111e00d7f7562d893b0dc4204790052e4",
+  "wrapperSHA256": "35ec1189f065943d85702a7b7ffd6db2ed674a9ff2e758104d975fe96e1cb609",
+  "source": {
+    "head": "054781ae8ac5c2df1a6b76e3512d2e3e3ce91542",
+    "tree": "532091be1cc44c90726ba32aaa90539169ca00cd",
+    "status": ""
+  },
+  "binarySHA256": "4413b952a5eee4cd8c00209dfd030fb8860a99ae799b2a1061f644b7b5deecd0",
+  "rawTriangles": {
+    "oracle": 124,
+    "base": 124,
+    "candidate": 2016
+  },
+  "planeCount": 22,
+  "positivePlanes": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21
+  ],
+  "receiptSHA256": "165cc62ffa689521cfae23f0f43ae5b4e2cd07ac5057243140c42549ad9f6351",
+  "nativePayloadSHA256": "644e49de55bb8e640b241d2948e975b610eb399c0e5f786572ad1ebd85fea946",
+  "oraclePayloadSHA256": "083458b62ab51056596b017db52442556f8dc61f168890bfcf3b4963f01bf296",
+  "scope": "Native whole-wall finite surface for host143268, transferred to identical real WASM browser-batch API geometry in Node. Actual browser renderer, other affected hosts, alternate census and performance remain separate.",
+  "allIndexedFacesAccounted": true,
+  "completeTargetSetBound": true,
+  "bothDirections": true,
+  "planeGroupsPassed": 22,
+  "samplingAcceptance": false,
+  "fixture": {
+    "path": "tests/models/ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc",
+    "sha256": "bd455803048d0dacf4af7de1027beb1968f0727cde38f22bdea65e57484ff121",
+    "host": 143268,
+    "context": "all seven original openings",
+    "coordinateFrame": "IFC Z-up absolute, origin + positions, RTC zero"
+  },
+  "publicEquivalentGeometryCommit": "482d5ea54db632ae91f924dba34213b55cf6ef97",
+  "wasmBatchApi": {
+    "execution": "Node, real source-built WASM processGeometryBatch API",
+    "wasmSHA256": "9233ab4f9d0f72e482534e8d400733a5fb3538a625b4a55a54371ed774edc913",
+    "nativeJoinReceiptSHA256": "951d8081ba78a2ac10eae150e0a5cc5270aec3b0410e6c7549bfe5634b9ec1d2",
+    "contract": "All indexed triangle occurrences, exact binary64 world-coordinate values, IFC Z-up, multiplicity preserved. Winding and cyclic vertex order ignored only for filled-surface identity; original WASM incidence reported separately. No quantization, fitting, sampling, face removal or metadata substitution.",
+    "allSixteenNativeWasmCasesMatch": true,
+    "143268AllTriangles": 2016,
+    "actualBrowserRenderApproval": false
+  },
+  "mini27": {
+    "receiptSHA256": "859a570e669c5e788c79da3a5d4e577facc85aec6de8e617671f78e4718adc04",
+    "calls": 27,
+    "allZeroUnmatchedEdges": true,
+    "allZeroCollapsedTriangles": true,
+    "grid": "1/65536 metre"
+  },
+  "crossPlatformDeterminism": {
+    "url": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39213098050",
+    "head": "b9863e1a2b3bcba9720d7be625f200e747a325e5",
+    "arm64": "success",
+    "wasm32": "success",
+    "scope": "Full pipeline output manifests, exact predicates, native snapshot parity and export golden corpus; no runtime performance claim"
+  }
+}

@@ -22,8 +22,9 @@ impl RepresentationWalk {
         &self, run: &mut Run<'_, V>, rep: Option<&DecodedEntity>,
         items: &[DecodedEntity], decoder: &mut EntityDecoder,
     ) -> Flow {
+        let owned_items = items.to_vec();
         self.execute(run, Task::List {
-            rep: rep.cloned(), items: items.to_vec().into_iter(), first_mapped: None,
+            rep: rep.cloned(), items: owned_items.into_iter(), first_mapped: None,
         }, decoder)
     }
 

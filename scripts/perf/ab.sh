@@ -39,6 +39,8 @@
 #                  INCLUDING uncommitted changes — is "after".
 #   --iters <N>    interleaved rounds per side (default 5). Higher = less noise.
 #   --json <path>  also write the machine-readable report to <path>.
+#   --print-branch-bin  print where the branch probe is read from and exit,
+#                  building nothing (honours an inherited CARGO_TARGET_DIR).
 #   --print-base   print the base this run would build and exit, building
 #                  nothing. What a test (or you) can ask before a long A/B.
 #
@@ -57,6 +59,7 @@ BASE_REF=""
 ITERS=5
 JSON_OUT=""
 PRINT_BASE=0
+PRINT_BRANCH_BIN=0
 FIXTURES=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -64,7 +67,8 @@ while [ $# -gt 0 ]; do
     --iters) ITERS="${2:?--iters needs a number}"; shift 2;;
     --json) JSON_OUT="${2:?--json needs a path}"; shift 2;;
     --print-base) PRINT_BASE=1; shift;;
-    -h|--help) sed -n '2,47p' "$0"; exit 0;;
+    --print-branch-bin) PRINT_BRANCH_BIN=1; shift;;
+    -h|--help) sed -n '2,49p' "$0"; exit 0;;
     -*) echo "ab.sh: unknown flag $1" >&2; exit 2;;
     *) FIXTURES+=("$1"); shift;;
   esac
@@ -103,6 +107,13 @@ if [ -z "$BASE_REF" ]; then
   MAIN_REF="$(node "$ROOT/scripts/lib/canonical-main-ref.mjs" 2>/dev/null || echo origin/main)"
   BASE_REF="$(git merge-base HEAD "$MAIN_REF" 2>/dev/null || git rev-parse HEAD~1)"
 fi
+# Honour an inherited CARGO_TARGET_DIR (fleet workers set one): cargo writes
+# the branch binary there, not under $ROOT/target.
+BRANCH_BIN="${CARGO_TARGET_DIR:-$ROOT/target}/profiling/examples/perf_probe"
+if [ "$PRINT_BRANCH_BIN" -eq 1 ]; then
+  echo "$BRANCH_BIN"
+  exit 0
+fi
 if [ "$PRINT_BASE" -eq 1 ]; then
   echo "$BASE_REF"
   exit 0
@@ -121,9 +132,6 @@ echo "ab.sh: base=$BASE_SHA ($BASE_REF)  branch=$BRANCH_DESC  iters=$ITERS" >&2
 # --- Build the branch (working-tree) probe --------------------------------
 echo "ab.sh: building branch perf_probe (working tree)…" >&2
 cargo build --profile profiling -p ifc-lite-processing --example perf_probe >&2
-# Honour an inherited CARGO_TARGET_DIR (fleet workers set one): cargo wrote
-# the branch binary there, not under $ROOT/target.
-BRANCH_BIN="${CARGO_TARGET_DIR:-$ROOT/target}/profiling/examples/perf_probe"
 
 # --- Build the base probe in a throwaway worktree -------------------------
 # build-at-ref.sh gives it its own CARGO_TARGET_DIR so the base build never

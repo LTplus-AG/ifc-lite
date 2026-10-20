@@ -92,3 +92,24 @@ fn real_revit_extrusion_keeps_profile_hole_and_position() {
     assert!((extrusion.depth.unwrap() - 0.06).abs() < 1e-12);
     assert!(extrusion.position_matrix.is_some());
 }
+
+
+#[test]
+fn original_solid_position_axis_and_ref_direction_survive_normalization() {
+    use crate::analytic::SourceValue;
+    let bytes = include_str!("../../tests/fixtures/mapped_instances_synthetic.ifc");
+    let bytes = bytes.replace("#11=IFCAXIS2PLACEMENT3D(#10,$,$);",
+        "#11=IFCAXIS2PLACEMENT3D(#10,#990,#991);\n#990=IFCDIRECTION((0.,0.,7.));\n#991=IFCDIRECTION((3.,0.,0.));");
+    assert!(bytes.contains("#990=IFCDIRECTION"), "fixture placement must be replaced");
+    let source = read(bytes.as_bytes(), 12);
+    assert_eq!(source.status, AnalyticStatus::Complete);
+    let original = source.source.unwrap();
+    assert_eq!(original.capture_status, AnalyticStatus::Complete);
+    assert_eq!(original.records[&11].attributes["Axis"], SourceValue::EntityRef(990));
+    assert_eq!(original.records[&11].attributes["RefDirection"], SourceValue::EntityRef(991));
+    assert_eq!(original.records[&990].attributes["DirectionRatios"],
+        SourceValue::List(vec![SourceValue::Real(0.), SourceValue::Real(0.), SourceValue::Real(7.)]));
+    assert_eq!(original.records[&991].attributes["DirectionRatios"],
+        SourceValue::List(vec![SourceValue::Real(3.), SourceValue::Real(0.), SourceValue::Real(0.)]));
+    assert_eq!(source.position_matrix.unwrap()[0], 1.);
+}

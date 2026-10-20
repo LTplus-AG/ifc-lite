@@ -88,14 +88,40 @@ fn run_entity_export(
 /// returned in 4.3.0, and which affects `property_sets` and `quantity_sets`
 /// alike.
 ///
+/// Each property dictionary contains `name`, `value` and `value_type`.
 /// Every property kind is decoded (EXPORT-DATA-2, D47). An
-/// `IfcPropertySingleValue` keeps its typed nominal value; an enumerated, list,
-/// bounded, table, reference or complex property arrives as its display string
-/// (`"A, B"`, `"2 [1 – 5]"`, `"Table (2 rows)"`, the referenced object's name,
-/// `"Inner: a, Other: 2.5"`) with `kind` `"text"` and `value_type` set to the
-/// members' shared type tag, else the property class keyword
-/// (`IFCPROPERTYTABLEVALUE`, ...). Complex properties share the model's
-/// complex-property budget (#7675).
+/// `IfcPropertySingleValue` returns its nominal value as a string; an
+/// enumerated, list, bounded, table, reference or complex property returns its
+/// display string (`"A, B"`, `"2 [1 – 5]"`, `"Table (2 rows)"`,
+/// `"Inner: a, Other: 2.5"`). A reference uses the target's nonblank `Name`,
+/// else its nonblank `Identification`, else `#<id>`. For
+/// `IfcPropertySingleValue`, `value_type` is the nominal value's rendered type
+/// tag (for example, `IFCLABEL` or `IFCREAL`). For other property kinds, it is
+/// the members' shared type tag, else the property class keyword
+/// (`IFCPROPERTYTABLEVALUE`, ...).
+/// Complex properties share the model's complex-property budget (#7675).
+/// Quantity dictionaries contain `name`, a numeric `value` and `kind`.
+///
+/// For `ifc_bytes` containing property and quantity sets, including a
+/// `Text` single-value property with an `IFCLABEL` nominal value:
+///
+/// >>> import ifclite_geom
+/// >>> rows = ifclite_geom.entity_data(ifc_bytes)["entities"].values()
+/// >>> prop = next(p for row in rows for ps in row["property_sets"] for p in ps["properties"])
+/// >>> sorted(prop)
+/// ['name', 'value', 'value_type']
+/// >>> isinstance(prop["value"], str)
+/// True
+/// >>> "kind" in prop
+/// False
+/// >>> text = next(p for row in rows for ps in row["property_sets"] for p in ps["properties"] if p["name"] == "Text")
+/// >>> text["value_type"]
+/// 'IFCLABEL'
+/// >>> quantity = next(q for row in rows for qs in row["quantity_sets"] for q in qs["quantities"])
+/// >>> sorted(quantity)
+/// ['kind', 'name', 'value']
+/// >>> isinstance(quantity["value"], float)
+/// True
 ///
 /// **Schema-declared entity attributes** arrive in their own `attributes` list,
 /// on by default. These are unrelated to the `IfcTypeObject` inheritance above,

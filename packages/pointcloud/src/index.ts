@@ -11,6 +11,7 @@
  * Phase 2: streaming `.laz` (laz-perf in the worker).
  */
 
+export type { IfcxPointSource } from './point-source.js';
 export type { DecodedPointChunk, PointCloudBBox, PointNormalState } from './types.js';
 
 // Inline / IFCx decoders (Phase 0)
@@ -26,6 +27,7 @@ export {
   POINTCLOUD_ATTR,
   POINTCLOUD_ATTR_KEYS,
   decodeIfcxPointAttribute,
+  decodeIfcxPointSource,
 } from './from-ifcx-attributes.js';
 
 // LAS reader primitives

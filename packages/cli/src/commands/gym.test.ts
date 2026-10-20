@@ -188,8 +188,11 @@ describe('clash reward shaping', () => {
 // slowest in the package. #1910 raised that cost legitimately: AB22 is an
 // infra model with ten IFCFACILITYPART entities that all carry a non-null
 // Representation, and generalising the container-geometry exception means
-// those ten road-surface solids are now meshed instead of silently skipped
-// (clash count 19 -> 75 for the same input). Locally that is ~0.4s, well
+// those ten road-surface solids are now meshed instead of silently skipped.
+// The default clash count on AB22 is no longer a useful signal: it rose from
+// 19 to 75 with that change, fell back to 19 when spatial containers stopped
+// being clash bodies (#2572), and is 0 since contact within f32 noise counts
+// as touch (#5564). Locally that is ~0.4s, well
 // inside the 5s default, but CI runs this file roughly 5x slower and the
 // benign-property case began timing out there. The work is correct, so the
 // budget moves rather than the coverage.
@@ -258,7 +261,10 @@ describe.skipIf(!MODEL_AVAILABLE)('gymCommand (fixture: AB22.ifc)', { timeout: A
     // separate field so a maximizing agent is never rewarded for clashes.
     expect(clash!.score).toBeGreaterThan(0);
     expect(clash!.score).toBeLessThanOrEqual(1);
-    expect(clash!.totalClashes).toBeGreaterThanOrEqual(0);
+    // AB22 itself currently meshes to a clash-free set, so the count cannot
+    // be pinned here; the seeded-episode test below drives a model with real
+    // clashes through the same channel.
+    expect(Number.isInteger(clash!.totalClashes)).toBe(true);
     expect(clash!.score).toBe(clashScoreFromCount(clash!.totalClashes));
     expect(typeof schema!.score).toBe('number');
   });
@@ -513,6 +519,19 @@ describe('gymCommand episode factory (--seed, B2.2)', () => {
     const resets = lines.filter(isReset);
     expect(resets).toHaveLength(1);
     expect(resets[0].episode!.seed).toBe(42);
+  });
+});
+
+describe('gymCommand clash channel on a seeded episode', () => {
+  it('reports the real clash count and a score below 1 when the model has clashes (#7925)', async () => {
+    const lines = await runGym(['--seed', '42', '--checks', 'clash'], [{ type: 'close' }]);
+    const clash = expectReset(lines.find(isReset)).channels.clash;
+    expect(clash).toBeDefined();
+    // A detector that silently reported zero clashes would score a perfect 1
+    // and still satisfy `score === clashScoreFromCount(totalClashes)`.
+    expect(clash!.totalClashes).toBeGreaterThan(0);
+    expect(clash!.score).toBeLessThan(1);
+    expect(clash!.score).toBe(clashScoreFromCount(clash!.totalClashes));
   });
 });
 

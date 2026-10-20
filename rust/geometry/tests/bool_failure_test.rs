@@ -125,6 +125,21 @@ fn near_coplanar_overlapping_boxes() -> Mesh {
 
 #[test]
 fn subtract_trips_escalation_budget_and_falls_back_deterministically() {
+    // This integration binary links the production library: keep its real
+    // process-global profile changes away from parallel geometry tests.
+    const CHILD: &str = "IFC_LITE_EXACT_BUDGET_FAILURE_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "subtract_trips_escalation_budget_and_falls_back_deterministically", "--nocapture"])
+            .env(CHILD, "1")
+            .env_remove("IFC_LITE_CSG_BUDGET").env_remove("IFC_LITE_CSG_ELEMENT_BUDGET")
+            .output().unwrap();
+        assert!(output.status.success(), "{}\n{}", String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr));
+        assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed; 0 failed"),
+            "the child must execute the original geometry fixture");
+        return;
+    }
     use ifc_lite_geometry::kernel::budget;
     let host = near_coplanar_overlapping_boxes();
     let cutter = unit_box_at(Point3::new(2.0, 1.0, 0.0));

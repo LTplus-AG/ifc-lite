@@ -19,21 +19,27 @@
 
 mod advanced;
 mod advanced_face;
-mod alignment;
-mod boolean;
+pub(crate) mod advanced_plan;
+pub(crate) mod alignment;
+pub(crate) mod diagnostic_capture;
+pub(crate) mod boolean;
 mod brep;
-mod csg_primitive;
+pub(crate) mod csg_primitive;
 mod sphere;
 pub(crate) mod extrusion;
 pub(crate) mod extrusion_params;
-mod extrusion_tapered;
+pub(crate) mod extrusion_tapered;
 mod helpers;
-mod sectioned;
-mod structural_edge;
+pub(crate) mod sectioned;
+pub(crate) mod structural_edge;
 mod structural_face;
-mod surface;
-mod swept;
+pub(crate) mod structural_face_plan;
+pub(crate) mod surface;
+pub(crate) mod swept;
 mod tessellated;
+pub(crate) use tessellated::{polygonal_plan, triangulated_plan};
+pub(crate) use brep::{faceted_plan, SurfaceModelPlan};
+pub(crate) use swept::{SurfaceCurveSweepPlan, SweptDiskPlan};
 pub mod texture;
 
 #[cfg(test)]
@@ -43,7 +49,7 @@ mod tests;
 pub use advanced::{AdvancedBrepProcessor, BSplineSurfaceProcessor};
 // Drained by the router once per representation item to report a capped
 // B-spline curve edge (#4901); see `advanced_face::bspline_budget`.
-pub(crate) use advanced_face::{take_curve_capped, take_face_refused};
+pub(crate) use advanced_face::{restore_reports, take_curve_capped, take_face_refused};
 pub(crate) use brep::carrier::{
     bounded_faces as faceted_carrier_bounded_faces,
     source_may_normalize as faceted_carrier_source_may_normalize,

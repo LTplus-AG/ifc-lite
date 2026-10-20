@@ -157,10 +157,10 @@ ara3d/ISSUE_126_model.ifc	50766	SweptSolid	0	58	0	0	0	-	0	141910
 ara3d/ISSUE_126_model.ifc	52352	SweptSolid	0	34	0	0	0	-	0	38325
 ara3d/ISSUE_126_model.ifc	56758	SweptSolid	0	30	0	0	0	-	0	312981
 ara3d/ISSUE_126_model.ifc	73237	SweptSolid	0	28	0	0	0	-	0	696566
-ara3d/ISSUE_126_model.ifc	73349	SweptSolid	0	264	0	0	0	-	0	5861784
+ara3d/ISSUE_126_model.ifc	73349	SweptSolid	0	248	0	0	0	-	0	5846483
 ara3d/ISSUE_126_model.ifc	77438	SweptSolid	0	80	0	0	0	-	0	86496
 ara3d/ISSUE_126_model.ifc	78232	SweptSolid	0	52	0	0	0	-	0	471427
-ara3d/ISSUE_126_model.ifc	78975	SweptSolid	0	264	0	0	0	-	0	4301247
+ara3d/ISSUE_126_model.ifc	78975	SweptSolid	0	238	0	0	0	-	0	4283373
 ara3d/ISSUE_126_model.ifc	82108	SweptSolid	0	28	0	0	0	-	0	173347
 ara3d/ISSUE_126_model.ifc	82925	SweptSolid	0	34	0	0	0	-	0	38318
 ara3d/ISSUE_126_model.ifc	83323	SweptSolid	0	66	0	0	0	-	0	840110
@@ -168,21 +168,21 @@ ara3d/ISSUE_126_model.ifc	83694	SweptSolid	0	20	0	0	0	-	0	59590
 ara3d/ISSUE_126_model.ifc	84442	SweptSolid	0	34	0	0	0	-	0	38318
 ara3d/ISSUE_126_model.ifc	86446	SweptSolid	0	54	0	0	0	-	0	141887
 ara3d/ISSUE_126_model.ifc	86609	SweptSolid	0	28	0	0	0	-	0	862544
-ara3d/ISSUE_126_model.ifc	98282	SweptSolid	0	186	0	0	0	-	0	1776930
+ara3d/ISSUE_126_model.ifc	98282	SweptSolid	0	124	0	0	0	-	0	1767818
 ara3d/ISSUE_126_model.ifc	100504	SweptSolid	0	50	0	0	0	-	0	474969
 ara3d/ISSUE_126_model.ifc	111997	SweptSolid	0	32	0	0	0	-	0	290818
 ara3d/ISSUE_126_model.ifc	131771	SweptSolid	0	96	0	0	0	-	0	660647
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	6891	Clipping	0	594	0	0	0	-	0	9688788
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	7526	SweptSolid	0	2154	0	0	0	-	0	1028308689
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	8434	Clipping	0	52	0	0	0	-	0	7955440
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	8756	Clipping	5	51	0	0	5	7	5	-
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	9094	SweptSolid	52	805	1	0	52	0	52	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	8756	Clipping	0	42	0	0	0	-	0	8078148
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	9094	SweptSolid	27	677	0	0	27	0	27	-
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	11115	Clipping	0	126	0	0	0	-	0	6419464
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	12381	SweptSolid	25	7565	1	0	25	0	26	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	12381	SweptSolid	15	7571	1	0	15	0	16	-
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	32810	SweptSolid	3	3207	0	0	3	0	3	-
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	34385	SweptSolid	0	1436	0	0	0	-	0	1486458247
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	36735	SweptSolid	0	2274	0	0	0	-	0	136222143
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	57084	SweptSolid	22	84	0	0	0	0	22	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	57084	SweptSolid	0	54	1	0	0	-	0	7719690
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	57776	SweptSolid	0	224	0	0	36	-	0	6569300
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	57944	Clipping	0	202	0	0	0	-	0	7092437
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	58297	Clipping	0	76	0	0	0	-	0	5854663
@@ -190,10 +190,10 @@ ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	59111	SweptSolid
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	59957	SweptSolid	0	24	0	0	0	-	0	1291997
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	60118	SweptSolid	0	20	0	0	0	-	0	2397942
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	60344	SweptSolid	0	32	0	0	0	-	0	2076017
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	61300	Clipping	29	3946	1	0	32	18	50	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	61300	Clipping	12	3954	1	0	15	18	33	-
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	63146	Clipping	0	32	0	0	0	-	0	3188903
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	63466	Clipping	0	114	0	0	0	-	0	8248179
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	63721	SweptSolid	0	122	0	0	0	-	0	1656983
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	63721	SweptSolid	0	122	0	0	0	-	0	1656981
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	68263	Clipping	0	68	0	0	0	-	0	2174358
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	68943	Clipping	0	66	0	0	0	-	0	3409159
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	69569	Clipping	0	32	0	0	0	-	0	1300126
@@ -214,17 +214,17 @@ ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	145897	SweptSoli
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	148665	SweptSolid	0	1280	1	0	0	-	0	377486955
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	148864	SweptSolid	0	32	0	0	0	-	0	71781386
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	149277	SweptSolid	0	1042	0	0	0	-	0	520107664
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	149280	SweptSolid	0	760	0	0	0	-	0	646633017
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	149280	SweptSolid	0	760	0	0	0	-	0	646633014
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	196139	SweptSolid	0	500	0	0	0	-	0	12908775
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	196326	SweptSolid	0	338	0	0	0	-	0	11140587
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	233296	SweptSolid	0	36	0	0	0	-	0	19398911
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	244479	SweptSolid	0	1190	0	0	0	-	0	507487107
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	244479	SweptSolid	0	1182	0	0	0	-	0	507461596
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	247051	Clipping	0	60	0	0	0	-	0	1374934
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	247203	Clipping	0	60	0	0	0	-	0	1408384
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	247726	Clipping	0	142	0	0	0	-	0	1374850
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	247726	Clipping	0	154	0	0	0	-	0	1374860
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	247953	Clipping	0	218	0	0	0	-	0	1408320
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	295370	SweptSolid	39	539	0	0	50	0	39	-
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	296868	SweptSolid	12	564	1	0	14	0	12	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	295370	SweptSolid	18	547	1	0	31	0	18	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	296868	SweptSolid	10	572	1	0	9	0	10	-
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	299369	SweptSolid	0	32	0	0	0	-	0	223044386
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	299638	SweptSolid	0	46	0	0	0	-	0	809574
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	316547	SweptSolid	0	788	0	0	0	-	0	23862133
@@ -269,25 +269,25 @@ ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	63516	SweptSolid	0	28	0	0	0	-	0	353129
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	64036	SweptSolid	0	44	0	0	0	-	0	1773116
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	76544	SweptSolid	0	60	0	0	0	-	0	2155562
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	78513	SweptSolid	0	156	0	0	0	-	0	59578912
-ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	78918	Clipping	0	118	0	0	0	-	0	10613872
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	78918	Clipping	0	120	0	0	0	-	0	10613871
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	79070	Clipping	0	44	0	0	0	-	0	3444647
-ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	79197	Clipping	0	44	0	0	0	-	0	6406662
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	79197	Clipping	0	46	0	0	0	-	0	6406662
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	79969	AdvancedBrep	0	80	0	0	0	-	0	21521856
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	80101	Clipping	0	80	0	0	0	-	0	2427538
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	81274	Clipping	0	1226	0	0	0	-	0	7417317
-ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	83292	Clipping	0	252	0	0	0	-	0	2126634
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	83292	Clipping	0	196	0	0	0	-	0	2126634
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	87331	Clipping	0	132	0	0	0	-	0	8850111
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	87839	Clipping	0	44	1	0	0	-	0	1298858
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	88116	Clipping	0	46	1	0	0	-	0	659909
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	88776	Clipping	0	76	1	0	0	-	0	2773015
-ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	92201	Clipping	0	806	0	0	0	-	0	5969183
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	92201	Clipping	0	676	0	0	0	-	0	5969183
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	94199	Clipping	0	54	0	0	0	-	0	3861856
-ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	95188	Clipping	0	118	0	0	0	-	0	10613872
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	95188	Clipping	0	120	0	0	0	-	0	10613871
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	95332	Clipping	0	40	0	0	0	-	0	3444647
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	95459	Clipping	0	44	0	0	0	-	0	6406662
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	95605	Clipping	0	80	0	0	0	-	0	2427538
-ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	96778	Clipping	0	1270	0	0	0	-	0	7417064
-ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	98786	Clipping	0	240	0	0	0	-	0	2126636
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	96778	Clipping	0	280	0	0	0	-	0	7416989
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	98786	Clipping	0	184	0	0	0	-	0	2126636
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	100558	Clipping	0	44	1	0	0	-	0	1298862
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	100835	Clipping	0	46	1	0	0	-	0	659909
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	101495	Clipping	0	76	1	0	0	-	0	2773019
@@ -408,12 +408,12 @@ ara3d/S_Office_Integrated Design Archi.ifc	89384	SweptSolid	0	232	0	0	0	-	0	1702
 ara3d/S_Office_Integrated Design Archi.ifc	89504	SweptSolid	0	232	0	0	0	-	0	3866404
 ara3d/S_Office_Integrated Design Archi.ifc	89624	SweptSolid	0	232	0	0	0	-	0	9674865
 ara3d/S_Office_Integrated Design Archi.ifc	90617	Curve2D	0	0	0	0	0	-	0	0
-ara3d/S_Office_Integrated Design Archi.ifc	91291	CSG	0	182	1	0	0	-	0	75770
+ara3d/S_Office_Integrated Design Archi.ifc	91291	CSG	0	120	0	0	0	-	0	75770
 ara3d/S_Office_Integrated Design Archi.ifc	91968	CSG	0	120	0	0	0	-	0	76182
-ara3d/S_Office_Integrated Design Archi.ifc	92642	CSG	12	68	1	0	13	9	13	-
-ara3d/S_Office_Integrated Design Archi.ifc	93316	CSG	0	64	0	0	0	-	0	1124166
+ara3d/S_Office_Integrated Design Archi.ifc	92642	CSG	9	67	1	0	9	6	10	-
+ara3d/S_Office_Integrated Design Archi.ifc	93316	CSG	0	60	0	0	0	-	0	1124166
 ara3d/S_Office_Integrated Design Archi.ifc	93990	CSG	0	108	0	0	0	-	0	124089
-ara3d/S_Office_Integrated Design Archi.ifc	94664	CSG	4	160	0	0	4	4	4	-
+ara3d/S_Office_Integrated Design Archi.ifc	94664	CSG	0	110	0	0	0	-	0	122959
 ara3d/S_Office_Integrated Design Archi.ifc	99549	SweptSolid	0	52	0	0	0	-	0	920535
 ara3d/S_Office_Integrated Design Archi.ifc	368885	SweptSolid	0	36	0	0	0	-	0	1758145
 ara3d/S_Office_Integrated Design Archi.ifc	414959	SweptSolid	0	40	0	0	0	-	0	5896872
@@ -441,23 +441,23 @@ ara3d/S_Office_Integrated Design Archi.ifc	719862	SweptSolid	0	32	0	0	0	-	0	1375
 ara3d/S_Office_Integrated Design Archi.ifc	722750	Curve2D	0	0	0	0	0	-	0	0
 ara3d/S_Office_Integrated Design Archi.ifc	723436	CSG	0	216	0	0	0	-	0	55347
 ara3d/S_Office_Integrated Design Archi.ifc	724125	CSG	0	216	0	0	0	-	0	55954
-ara3d/S_Office_Integrated Design Archi.ifc	724811	CSG	3	81	0	0	3	3	3	-
-ara3d/S_Office_Integrated Design Archi.ifc	725497	CSG	7	185	0	0	7	12	7	-
+ara3d/S_Office_Integrated Design Archi.ifc	724811	CSG	0	196	0	0	0	-	0	87409
+ara3d/S_Office_Integrated Design Archi.ifc	725497	CSG	0	124	0	0	0	-	0	726461
 ara3d/S_Office_Integrated Design Archi.ifc	726183	CSG	0	212	0	0	0	-	0	79838
 ara3d/S_Office_Integrated Design Archi.ifc	726869	CSG	0	212	0	0	0	-	0	78771
 ara3d/S_Office_Integrated Design Archi.ifc	730647	SweptSolid	0	32	0	0	0	-	0	1239586
 ara3d/S_Office_Integrated Design Archi.ifc	753197	SweptSolid	0	52	0	0	0	-	0	292564
 ara3d/S_Office_Integrated Design Archi.ifc	763256	Curve2D	0	0	0	0	0	-	0	0
-ara3d/S_Office_Integrated Design Archi.ifc	763898	CSG	0	122	0	0	0	-	0	75231
-ara3d/S_Office_Integrated Design Archi.ifc	764543	CSG	0	124	0	0	0	-	0	75640
-ara3d/S_Office_Integrated Design Archi.ifc	765185	CSG	0	118	0	0	0	-	0	116307
-ara3d/S_Office_Integrated Design Archi.ifc	765827	CSG	0	64	0	0	0	-	0	899738
-ara3d/S_Office_Integrated Design Archi.ifc	766469	CSG	0	112	0	0	0	-	0	99193
+ara3d/S_Office_Integrated Design Archi.ifc	763898	CSG	0	120	0	0	0	-	0	75231
+ara3d/S_Office_Integrated Design Archi.ifc	764543	CSG	0	120	0	0	0	-	0	75640
+ara3d/S_Office_Integrated Design Archi.ifc	765185	CSG	0	112	0	0	0	-	0	116307
+ara3d/S_Office_Integrated Design Archi.ifc	765827	CSG	0	60	0	0	0	-	0	899738
+ara3d/S_Office_Integrated Design Archi.ifc	766469	CSG	0	108	0	0	0	-	0	99193
 ara3d/S_Office_Integrated Design Archi.ifc	767111	CSG	0	108	0	0	0	-	0	98168
 ara3d/S_Office_Integrated Design Archi.ifc	767445	Curve2D	0	0	0	0	0	-	0	0
 ara3d/S_Office_Integrated Design Archi.ifc	768209	CSG	0	224	0	0	0	-	0	58476
 ara3d/S_Office_Integrated Design Archi.ifc	768976	CSG	0	232	0	0	0	-	0	59521
-ara3d/S_Office_Integrated Design Archi.ifc	769740	CSG	0	280	0	0	0	-	0	92429
+ara3d/S_Office_Integrated Design Archi.ifc	769740	CSG	0	228	0	0	0	-	0	92429
 ara3d/S_Office_Integrated Design Archi.ifc	770504	CSG	0	100	0	0	0	-	0	835195
 ara3d/S_Office_Integrated Design Archi.ifc	771268	CSG	0	196	0	0	0	-	0	91977
 ara3d/S_Office_Integrated Design Archi.ifc	772032	CSG	0	196	0	0	0	-	0	91674
@@ -477,10 +477,10 @@ ara3d/S_Office_Integrated Design Archi.ifc	857799	SweptSolid	0	156	0	0	0	-	0	417
 ara3d/S_Office_Integrated Design Archi.ifc	857839	SweptSolid	0	156	0	0	0	-	0	4172920
 ara3d/S_Office_Integrated Design Archi.ifc	866873	SweptSolid	0	36	0	0	0	-	0	1623759
 ara3d/S_Office_Integrated Design Archi.ifc	867376	Curve2D	0	0	0	0	0	-	0	0
-ara3d/S_Office_Integrated Design Archi.ifc	868018	CSG	0	122	0	0	0	-	0	75231
-ara3d/S_Office_Integrated Design Archi.ifc	868663	CSG	0	124	0	0	0	-	0	75640
-ara3d/S_Office_Integrated Design Archi.ifc	869305	CSG	0	118	0	0	0	-	0	116307
-ara3d/S_Office_Integrated Design Archi.ifc	869947	CSG	0	64	0	0	0	-	0	899741
+ara3d/S_Office_Integrated Design Archi.ifc	868018	CSG	0	120	0	0	0	-	0	75231
+ara3d/S_Office_Integrated Design Archi.ifc	868663	CSG	0	120	0	0	0	-	0	75640
+ara3d/S_Office_Integrated Design Archi.ifc	869305	CSG	0	112	0	0	0	-	0	116307
+ara3d/S_Office_Integrated Design Archi.ifc	869947	CSG	0	60	0	0	0	-	0	899738
 ara3d/S_Office_Integrated Design Archi.ifc	870589	CSG	0	108	0	0	0	-	0	99193
 ara3d/S_Office_Integrated Design Archi.ifc	871231	CSG	0	108	0	0	0	-	0	98168
 ara3d/S_Office_Integrated Design Archi.ifc	902095	SweptSolid	0	36	0	0	0	-	0	6031220
@@ -489,7 +489,7 @@ ara3d/S_Office_Integrated Design Archi.ifc	904243	SweptSolid	0	32	0	0	0	-	0	1239
 ara3d/S_Office_Integrated Design Archi.ifc	904620	Curve2D	0	0	0	0	0	-	0	0
 ara3d/S_Office_Integrated Design Archi.ifc	905288	CSG	0	216	0	0	0	-	0	55347
 ara3d/S_Office_Integrated Design Archi.ifc	905959	CSG	0	216	0	0	0	-	0	55954
-ara3d/S_Office_Integrated Design Archi.ifc	906627	CSG	6	82	0	0	6	6	6	-
+ara3d/S_Office_Integrated Design Archi.ifc	906627	CSG	0	196	0	0	0	-	0	87409
 ara3d/S_Office_Integrated Design Archi.ifc	907295	CSG	0	52	0	0	0	-	0	726273
 ara3d/S_Office_Integrated Design Archi.ifc	907963	CSG	0	212	0	0	0	-	0	79465
 ara3d/S_Office_Integrated Design Archi.ifc	908631	CSG	0	216	0	0	0	-	0	78400
@@ -506,9 +506,9 @@ ara3d/S_Office_Integrated Design Archi.ifc	930704	SweptSolid	0	32	0	0	0	-	0	1390
 ara3d/S_Office_Integrated Design Archi.ifc	951036	Curve2D	0	0	0	0	0	-	0	0
 ara3d/S_Office_Integrated Design Archi.ifc	951723	CSG	0	216	0	0	0	-	0	55347
 ara3d/S_Office_Integrated Design Archi.ifc	952413	CSG	0	216	0	0	0	-	0	55954
-ara3d/S_Office_Integrated Design Archi.ifc	953100	CSG	3	137	1	0	3	0	3	-
+ara3d/S_Office_Integrated Design Archi.ifc	953100	CSG	3	129	1	0	3	0	3	-
 ara3d/S_Office_Integrated Design Archi.ifc	953787	CSG	0	116	0	0	0	-	0	726268
-ara3d/S_Office_Integrated Design Archi.ifc	954474	CSG	13	225	0	0	4	7	13	-
+ara3d/S_Office_Integrated Design Archi.ifc	954474	CSG	0	218	0	0	0	-	0	79464
 ara3d/S_Office_Integrated Design Archi.ifc	955161	CSG	0	216	0	0	0	-	0	78399
 ara3d/S_Office_Integrated Design Archi.ifc	955764	SweptSolid	0	32	0	0	0	-	0	1239586
 ara3d/S_Office_Integrated Design Archi.ifc	969935	Curve2D	0	0	0	0	0	-	0	0
@@ -528,7 +528,7 @@ ara3d/S_Office_Integrated Design Archi.ifc	976762	Curve2D	0	0	0	0	0	-	0	0
 ara3d/S_Office_Integrated Design Archi.ifc	977404	CSG	0	120	0	0	0	-	0	75232
 ara3d/S_Office_Integrated Design Archi.ifc	978049	CSG	0	120	0	0	0	-	0	75641
 ara3d/S_Office_Integrated Design Archi.ifc	978691	CSG	0	112	0	0	0	-	0	116308
-ara3d/S_Office_Integrated Design Archi.ifc	979333	CSG	0	32	0	0	0	-	0	899738
+ara3d/S_Office_Integrated Design Archi.ifc	979333	CSG	0	60	0	0	0	-	0	899738
 ara3d/S_Office_Integrated Design Archi.ifc	979975	CSG	0	116	0	0	0	-	0	99194
 ara3d/S_Office_Integrated Design Archi.ifc	980617	CSG	0	108	0	0	0	-	0	98168
 ara3d/S_Office_Integrated Design Archi.ifc	986525	SweptSolid	0	36	0	0	0	-	0	5804378
@@ -628,7 +628,7 @@ ara3d/dental_clinic.ifc	157	SweptSolid	0	92	0	0	0	-	0	6941948
 ara3d/dental_clinic.ifc	159	SweptSolid	0	108	0	0	0	-	0	10300887
 ara3d/dental_clinic.ifc	163	SweptSolid	0	128	0	0	0	-	0	8898936
 ara3d/dental_clinic.ifc	166	SweptSolid	0	76	0	0	0	-	0	5718352
-ara3d/dental_clinic.ifc	167	Clipping	10	192	0	0	10	0	10	-
+ara3d/dental_clinic.ifc	167	Clipping	0	282	0	0	0	-	0	24163293
 ara3d/dental_clinic.ifc	169	SweptSolid	0	28	0	0	0	-	0	9630151
 ara3d/dental_clinic.ifc	175	Clipping	0	168	0	0	0	-	0	8568865
 ara3d/dental_clinic.ifc	180	Clipping	0	168	0	0	0	-	0	8568865
@@ -645,7 +645,7 @@ ara3d/dental_clinic.ifc	213	SweptSolid	0	44	0	0	0	-	0	4086273
 ara3d/dental_clinic.ifc	214	SweptSolid	0	76	0	0	0	-	0	6479706
 ara3d/dental_clinic.ifc	215	SweptSolid	0	68	0	0	0	-	0	14986377
 ara3d/dental_clinic.ifc	216	SweptSolid	0	92	0	0	0	-	0	18694928
-ara3d/dental_clinic.ifc	217	SweptSolid	0	26	0	0	0	-	0	235593
+ara3d/dental_clinic.ifc	217	SweptSolid	0	36	0	0	0	-	0	235593
 ara3d/dental_clinic.ifc	218	SweptSolid	0	32	0	0	0	-	0	354594
 ara3d/dental_clinic.ifc	231	SweptSolid	0	60	0	0	0	-	0	3537529
 ara3d/dental_clinic.ifc	232	SweptSolid	0	44	0	0	0	-	0	2355584
@@ -819,7 +819,7 @@ ara3d/dental_clinic.ifc	1242	SweptSolid	0	28	0	0	0	-	0	1945789
 ara3d/dental_clinic.ifc	1252	SweptSolid	0	28	0	0	0	-	0	2018855
 ara3d/dental_clinic.ifc	1253	SweptSolid	0	28	0	0	0	-	0	2018853
 ara3d/dental_clinic.ifc	1310	SweptSolid	0	164	0	0	0	-	0	315746
-ara3d/dental_clinic.ifc	1311	Clipping	15	92	1	0	15	0	16	-
+ara3d/dental_clinic.ifc	1311	Clipping	0	166	1	0	0	-	0	4383087
 ara3d/dental_clinic.ifc	1314	SweptSolid	0	58	0	0	0	-	0	409703
 ara3d/dental_clinic.ifc	1331	SweptSolid	0	28	0	0	0	-	0	137144
 ara3d/dental_clinic.ifc	1643	Clipping	0	30	0	0	0	-	0	1739830
@@ -969,7 +969,7 @@ ara3d/tested_sample_project.ifc	186	SweptSolid	0	192	0	0	0	-	0	2995683
 ara3d/tested_sample_project.ifc	294	SweptSolid	0	28	0	0	0	-	0	2022122
 buildingsmart/wall-with-opening-and-window.ifc	45	unknown	0	32	0	0	0	-	0	1500015
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	135719	Tessellation	0	334	0	0	0	-	0	18548173
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	135923	SweptSolid	390	761	1	0	392	28	390	-
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	135923	SweptSolid	0	892	0	0	0	-	0	169594268
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	136462	Tessellation	0	76	0	0	0	-	0	1074993
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	136970	Tessellation	0	78	0	0	0	-	0	630934
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	137017	Tessellation	0	64	0	0	0	-	0	1497205
@@ -978,7 +978,7 @@ georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	137116	Tessellation	0	104	0	0	0	-	0	832
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	137246	Tessellation	0	78	0	0	0	-	0	165757
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	137317	Tessellation	0	98	0	0	0	-	0	165754
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	137489	Tessellation	0	234	0	0	0	-	0	14571910
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	137627	SweptSolid	39	499	0	0	39	0	39	-
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	137627	SweptSolid	0	512	0	0	0	-	0	132176407
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	137836	Tessellation	0	116	0	0	0	-	0	3647478
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	138286	Tessellation	0	76	0	0	0	-	0	1074993
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	138749	Tessellation	0	72	0	0	0	-	0	630933
@@ -989,7 +989,7 @@ georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	138985	Tessellation	0	78	0	0	0	-	0	1657
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	139056	Tessellation	0	98	0	0	0	-	0	165754
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	139274	Tessellation	0	222	0	0	0	-	0	14571995
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	139407	Tessellation	0	230	0	0	0	-	0	14571911
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	139545	SweptSolid	39	499	0	0	39	0	39	-
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	139545	SweptSolid	0	512	0	0	0	-	0	132176407
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	139754	Tessellation	0	114	0	0	0	-	0	3647478
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	140204	Tessellation	0	76	0	0	0	-	0	1074993
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	140667	Tessellation	0	78	0	0	0	-	0	630934
@@ -1000,7 +1000,7 @@ georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	140903	Tessellation	0	78	0	0	0	-	0	1657
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	140974	Tessellation	0	98	0	0	0	-	0	165754
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	141163	Tessellation	0	232	0	0	0	-	0	14571954
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	141296	Tessellation	0	230	0	0	0	-	0	14571911
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	141434	SweptSolid	39	499	0	0	39	0	39	-
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	141434	SweptSolid	0	512	0	0	0	-	0	132176407
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	141643	Tessellation	0	114	0	0	0	-	0	3647478
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	142093	Tessellation	0	76	0	0	0	-	0	1074993
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	142556	Tessellation	0	78	0	0	0	-	0	630934
@@ -1011,7 +1011,7 @@ georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	142792	Tessellation	0	78	0	0	0	-	0	1657
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	142863	Tessellation	0	98	0	0	0	-	0	165754
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	143052	Tessellation	0	232	0	0	0	-	0	14571954
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	143185	Tessellation	0	230	0	0	0	-	0	14571911
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	143323	SweptSolid	39	499	0	0	39	0	39	-
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	143323	SweptSolid	0	512	0	0	0	-	0	132176407
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	143532	Tessellation	0	114	0	0	0	-	0	3647478
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	143982	Tessellation	0	76	0	0	0	-	0	1074993
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	144445	Tessellation	0	78	0	0	0	-	0	630934
@@ -1022,7 +1022,7 @@ georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	144681	Tessellation	0	78	0	0	0	-	0	1657
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	144752	Tessellation	0	98	0	0	0	-	0	165754
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	144941	Tessellation	0	232	0	0	0	-	0	14571954
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	145074	Tessellation	0	230	0	0	0	-	0	14571911
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	145212	SweptSolid	39	499	0	0	39	0	39	-
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	145212	SweptSolid	0	512	0	0	0	-	0	132176407
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	145421	Tessellation	0	114	0	0	0	-	0	3647478
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	145871	Tessellation	0	76	0	0	0	-	0	1074993
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	146334	Tessellation	0	78	0	0	0	-	0	630934
@@ -1056,12 +1056,12 @@ georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	150455	Tessellation	0	74	0	0	0	-	0	6309
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	150502	Tessellation	0	64	0	0	0	-	0	1497197
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	150695	Tessellation	0	126	0	0	0	-	0	28660641
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	150794	Tessellation	0	120	0	0	0	-	0	28660376
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	150890	SweptSolid	53	337	1	0	50	0	53	-
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	150890	SweptSolid	0	388	0	0	0	-	0	158302789
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	151287	Tessellation	0	84	0	0	0	-	0	191272
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	151334	Tessellation	0	46	0	0	0	-	0	5998797
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	151425	Tessellation	0	250	0	0	0	-	0	24865520
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	151622	Tessellation	0	230	0	0	0	-	0	14571911
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	151760	SweptSolid	39	499	0	0	39	0	39	-
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	151760	SweptSolid	0	512	0	0	0	-	0	132176407
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	151969	Tessellation	0	114	0	0	0	-	0	3647478
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	152419	Tessellation	0	76	0	0	0	-	0	1074993
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	152882	Tessellation	0	78	0	0	0	-	0	630934
@@ -1076,7 +1076,7 @@ georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	153909	Tessellation	0	64	0	0	0	-	0	6309
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	153956	Tessellation	0	64	0	0	0	-	0	1497197
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	154376	SweptSolid	0	144	0	0	0	-	0	134662518
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	154488	Tessellation	0	230	0	0	0	-	0	14571911
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	154626	SweptSolid	39	499	0	0	39	0	39	-
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	154626	SweptSolid	0	512	0	0	0	-	0	132176407
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	154835	Tessellation	0	114	0	0	0	-	0	3647478
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	155285	Tessellation	0	76	0	0	0	-	0	1074993
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	155500	Tessellation	0	78	0	0	0	-	0	630934
@@ -1187,7 +1187,7 @@ georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	175125	Tessellation	0	52	1	0	0	-	0	3375
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	175267	Tessellation	0	74	0	0	0	-	0	1100792
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	175348	Tessellation	0	82	0	0	0	-	0	249012
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	175573	Tessellation	0	186	0	0	0	-	0	337625
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	175715	Tessellation	0	90	0	0	0	-	0	1100856
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	175715	Tessellation	0	74	0	0	0	-	0	1100868
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	175796	Tessellation	0	82	0	0	0	-	0	249014
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	176043	Tessellation	0	60	0	0	0	-	0	342512
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	176110	Tessellation	0	84	0	0	0	-	0	1998133
@@ -1198,7 +1198,7 @@ georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	176546	Tessellation	0	84	0	0	0	-	0	1997
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	176637	Tessellation	0	70	0	0	0	-	0	319014
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	176756	Tessellation	0	76	0	0	0	-	0	355487
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	176887	Tessellation	0	60	0	0	0	-	0	342513
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	176954	Tessellation	0	84	0	0	0	-	0	1998091
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	176954	Tessellation	0	96	0	0	0	-	0	1998094
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	177045	Tessellation	0	72	0	0	0	-	0	319006
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	177164	Tessellation	0	96	0	0	0	-	0	355487
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	177283	Tessellation	0	76	0	0	0	-	0	935738
@@ -1305,7 +1305,7 @@ georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	188145	Tessellation	0	62	0	0	0	-	0	4269
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	188190	Tessellation	0	64	0	0	0	-	0	578219
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	188233	Tessellation	0	22	1	0	0	-	0	1279279
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	188326	Tessellation	0	134	0	0	0	-	0	468262
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	188373	Tessellation	0	122	0	0	0	-	0	811997
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	188373	Tessellation	0	122	0	0	0	-	0	811994
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	188644	Tessellation	0	134	0	0	0	-	0	1747545
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	188691	Tessellation	0	68	0	0	0	-	0	124508
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	188820	Tessellation	0	62	0	0	0	-	0	426985
@@ -1331,43 +1331,43 @@ georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	190965	Tessellation	0	112	0	0	0	-	0	495
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	191032	Tessellation	0	138	0	0	0	-	0	1747046
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	191151	Tessellation	0	76	0	0	0	-	0	83263
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	191210	Tessellation	0	78	0	0	0	-	0	495729
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	191371	Tessellation	0	50	0	0	0	-	0	249033
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	191371	Tessellation	0	50	0	0	0	-	0	249032
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	191470	Tessellation	0	108	0	0	0	-	0	550730
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	191565	Tessellation	0	116	0	0	0	-	0	495736
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	191632	Tessellation	0	128	0	0	0	-	0	1747069
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	191751	Tessellation	0	76	0	0	0	-	0	83263
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	191810	Tessellation	0	74	0	0	0	-	0	495725
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	191971	Tessellation	0	50	0	0	0	-	0	249033
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	191971	Tessellation	0	50	0	0	0	-	0	249032
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	192070	Tessellation	0	108	0	0	0	-	0	550730
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	192165	Tessellation	0	116	0	0	0	-	0	495736
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	192232	Tessellation	0	128	0	0	0	-	0	1747069
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	192351	Tessellation	0	76	0	0	0	-	0	83263
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	192410	Tessellation	0	74	0	0	0	-	0	495725
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	192571	Tessellation	0	50	0	0	0	-	0	249033
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	192571	Tessellation	0	50	0	0	0	-	0	249032
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	192670	Tessellation	0	108	0	0	0	-	0	550730
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	192765	Tessellation	0	116	0	0	0	-	0	495736
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	192832	Tessellation	0	128	0	0	0	-	0	1747069
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	192951	Tessellation	0	76	0	0	0	-	0	83263
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	193010	Tessellation	0	74	0	0	0	-	0	495725
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	193171	Tessellation	0	50	0	0	0	-	0	249033
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	193171	Tessellation	0	50	0	0	0	-	0	249032
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	193270	Tessellation	0	108	0	0	0	-	0	550730
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	193365	Tessellation	0	116	0	0	0	-	0	495736
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	193432	Tessellation	0	128	0	0	0	-	0	1747069
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	193551	Tessellation	0	76	0	0	0	-	0	83263
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	193610	Tessellation	0	74	0	0	0	-	0	495725
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	193771	Tessellation	0	50	0	0	0	-	0	249033
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	193771	Tessellation	0	50	0	0	0	-	0	249032
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	193870	Tessellation	0	108	0	0	0	-	0	550730
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	193965	Tessellation	0	116	0	0	0	-	0	495736
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	194032	Tessellation	0	128	0	0	0	-	0	1747069
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	194151	Tessellation	0	76	0	0	0	-	0	83263
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	194210	Tessellation	0	74	0	0	0	-	0	495725
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	194371	Tessellation	0	50	0	0	0	-	0	249033
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	194371	Tessellation	0	50	0	0	0	-	0	249032
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	194470	Tessellation	0	108	0	0	0	-	0	550730
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	194565	Tessellation	0	116	0	0	0	-	0	495736
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	194632	Tessellation	0	128	0	0	0	-	0	1747069
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	194751	Tessellation	0	76	0	0	0	-	0	83263
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	194810	Tessellation	0	74	0	0	0	-	0	495725
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	194971	Tessellation	0	50	0	0	0	-	0	249033
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	194971	Tessellation	0	50	0	0	0	-	0	249032
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	195070	Tessellation	0	108	0	0	0	-	0	550730
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	195323	Tessellation	0	194	0	0	0	-	0	1500796
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	195394	Tessellation	0	220	0	0	0	-	0	1032746
@@ -1439,8 +1439,8 @@ georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	203064	Tessellation	0	102	0	0	0	-	0	166
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	203151	Tessellation	0	84	0	0	0	-	0	715751
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	203314	Tessellation	0	104	0	0	0	-	0	468271
 ifc5/Hello_Wall_hello-wall.ifc	1222	SweptSolid	0	68	0	0	0	-	0	2784170
-ifcopenshell/faceted_brep_csg.ifc	1096640	CSG	0	58	0	0	0	-	0	8535046
-issues/1007_roof_brep_opening_winding.ifc	1112	Brep	0	98	0	0	0	-	0	179976451
+ifcopenshell/faceted_brep_csg.ifc	1096640	CSG	0	56	0	0	0	-	0	8535046
+issues/1007_roof_brep_opening_winding.ifc	1112	Brep	0	102	0	0	0	-	0	179976451
 issues/218_IFC-test-lite.ifc	417	SweptSolid	0	80	0	0	0	-	16	12550218
 issues/821_TallBuilding.ifc	615	Clipping	0	52	0	0	0	-	0	5644588
 issues/821_TallBuilding.ifc	810	Clipping	0	52	0	0	0	-	0	5890594
@@ -1464,7 +1464,7 @@ issues/841_house_stack_overflow.ifc	144	SweptSolid	0	28	0	0	0	-	0	4127946
 issues/841_house_stack_overflow.ifc	192	SweptSolid	0	68	0	0	0	-	0	5595916
 issues/841_house_stack_overflow.ifc	240	SweptSolid	0	32	0	0	0	-	0	4757945
 issues/841_house_stack_overflow.ifc	336	SweptSolid	0	174	0	0	0	-	0	935989
-issues/841_house_stack_overflow.ifc	384	SweptSolid	0	60	1	0	0	-	0	1895966
+issues/841_house_stack_overflow.ifc	384	SweptSolid	0	292	1	0	0	-	3	1895967
 issues/841_house_stack_overflow.ifc	432	SweptSolid	0	338	1	0	0	-	0	936016
 issues/841_house_stack_overflow.ifc	528	SweptSolid	0	60	0	0	0	-	0	3929954
 issues/841_house_stack_overflow.ifc	576	SweptSolid	0	28	0	0	0	-	0	2500062
@@ -1475,15 +1475,15 @@ issues/841_house_stack_overflow.ifc	1070	SweptSolid	0	58	0	0	0	-	0	1031908
 issues/841_house_stack_overflow.ifc	1118	SweptSolid	0	60	0	0	0	-	0	569540
 issues/841_house_stack_overflow.ifc	1166	SweptSolid	0	36	0	0	0	-	0	1914121
 issues/841_house_stack_overflow.ifc	1362	Clipping	0	92	0	0	0	-	0	6379215
-issues/841_house_stack_overflow.ifc	1878	Clipping	0	114	0	0	0	-	0	13371611
-issues/841_house_stack_overflow.ifc	2152	Clipping	55	236	1	0	6	3	55	-
-issues/841_house_stack_overflow.ifc	2797	Clipping	0	44	0	0	0	-	0	5717671
-issues/841_house_stack_overflow.ifc	3698	Clipping	0	68	0	0	0	-	0	5599761
-issues/841_house_stack_overflow.ifc	4148	Clipping	0	142	0	0	0	-	0	9474529
+issues/841_house_stack_overflow.ifc	1878	Clipping	0	236	0	0	0	-	0	13371611
+issues/841_house_stack_overflow.ifc	2152	Clipping	54	237	1	0	0	3	54	-
+issues/841_house_stack_overflow.ifc	2797	Clipping	0	48	0	0	0	-	0	5717671
+issues/841_house_stack_overflow.ifc	3698	Clipping	0	112	0	0	0	-	0	5599761
+issues/841_house_stack_overflow.ifc	4148	Clipping	0	144	0	0	0	-	0	9474529
 issues/841_house_stack_overflow.ifc	4219	Clipping	0	52	0	0	0	-	0	4105196
 issues/841_house_stack_overflow.ifc	4267	SweptSolid	0	30	0	0	0	-	0	3649551
 issues/841_house_stack_overflow.ifc	4374	Clipping	0	62	0	0	0	-	0	3266357
-issues/841_house_stack_overflow.ifc	4897	Clipping	0	130	0	0	0	-	0	986400
+issues/841_house_stack_overflow.ifc	4897	Clipping	0	96	0	0	0	-	0	986410
 issues/841_house_stack_overflow.ifc	5904	Clipping	0	124	0	0	0	-	0	13960888
 issues/841_house_stack_overflow.ifc	13928	SweptSolid	0	28	0	0	0	-	0	18321124
 issues/845_wall_elemented_case.ifc	130	SweptSolid	0	224	0	0	0	-	0	30972
@@ -1492,10 +1492,10 @@ issues/845_wall_elemented_case.ifc	145	SweptSolid	0	224	0	0	0	-	56	106539
 issues/845_wall_elemented_case.ifc	146	SweptSolid	0	200	0	0	0	-	7	106412
 issues/845_wall_elemented_case.ifc	148	unknown	0	0	0	0	0	-	0	0
 issues/853_slab_pocket.ifc	303	SweptSolid	0	260	0	0	0	-	0	1185753
-issues/953_trimmed_curve_cartesian_arc.ifc	1112	Brep	0	98	0	0	0	-	0	179976451
-issues/960_house_segmented_roof_clip.ifc	2152	Clipping	55	236	1	0	6	3	55	-
-issues/960_house_segmented_roof_clip.ifc	2797	Clipping	0	44	0	0	0	-	0	5717671
-issues/960_house_segmented_roof_clip.ifc	4148	Clipping	0	142	0	0	0	-	0	9474529
+issues/953_trimmed_curve_cartesian_arc.ifc	1112	Brep	0	102	0	0	0	-	0	179976451
+issues/960_house_segmented_roof_clip.ifc	2152	Clipping	54	237	1	0	0	3	54	-
+issues/960_house_segmented_roof_clip.ifc	2797	Clipping	0	48	0	0	0	-	0	5717671
+issues/960_house_segmented_roof_clip.ifc	4148	Clipping	0	144	0	0	0	-	0	9474529
 issues/960_house_segmented_roof_clip.ifc	4374	Clipping	0	62	0	0	0	-	0	3266357
 issues/960_house_segmented_roof_clip.ifc	5904	Clipping	0	124	0	0	0	-	0	13960888
 issues/964_slab_arbitrary_profile_voids.ifc	6443	SweptSolid	0	454	0	0	0	-	0	1119619
@@ -1579,9 +1579,9 @@ various/rvt01.ifc	6588	SweptSolid	0	54	0	0	0	-	10	578997
 various/rvt01.ifc	6724	SweptSolid	0	232	0	0	0	-	26	1158108
 various/rvt01.ifc	6810	SweptSolid	28	292	0	0	28	28	56	-
 various/rvt01.ifc	6934	SweptSolid	0	356	1	0	0	-	10	3552955
-various/rvt01.ifc	7013	SweptSolid	41	91	0	0	42	0	64	-
-various/rvt01.ifc	7075	SweptSolid	0	278	0	0	0	-	42	2915290
-various/rvt01.ifc	7137	SweptSolid	52	170	1	0	32	0	57	-
+various/rvt01.ifc	7013	SweptSolid	42	92	0	0	0	0	65	-
+various/rvt01.ifc	7075	SweptSolid	0	276	0	0	0	-	44	2915294
+various/rvt01.ifc	7137	SweptSolid	45	181	1	0	37	0	57	-
 various/rvt01.ifc	7216	SweptSolid	0	180	0	0	0	-	7	1047958
 various/rvt01.ifc	7295	SweptSolid	0	188	0	0	0	-	4	180758
 various/rvt01.ifc	7403	Tessellation	0	172	1	0	0	-	6	1309071
@@ -1598,10 +1598,10 @@ various/rvt01.ifc	9901	SweptSolid	0	228	0	0	0	-	29	638718
 various/rvt01.ifc	10191	Tessellation	0	172	0	0	0	-	0	7452
 various/rvt01.ifc	10335	Tessellation	0	116	0	0	0	-	0	28455
 various/rvt01.ifc	10526	Tessellation	0	112	0	0	0	-	0	25761
-various/rvt01.ifc	10632	Tessellation	6	166	0	0	7	0	6	-
+various/rvt01.ifc	10632	Tessellation	0	172	0	0	0	-	0	35139
 various/rvt01.ifc	11110	Tessellation	0	120	0	0	0	-	0	20862
 various/rvt01.ifc	11168	Tessellation	0	84	0	0	0	-	0	39576
-various/rvt01.ifc	11232	Tessellation	0	144	0	0	0	-	0	39336
+various/rvt01.ifc	11232	Tessellation	0	154	0	0	0	-	0	39344
 various/rvt01.ifc	11304	Tessellation	0	128	0	0	0	-	0	9525
 various/rvt01.ifc	11477	Tessellation	0	154	0	0	0	-	0	20154
 various/rvt01.ifc	11563	Tessellation	0	148	0	0	0	-	0	10313
@@ -1611,11 +1611,11 @@ various/rvt01.ifc	11753	Tessellation	0	156	0	0	0	-	0	20266
 various/rvt01.ifc	11803	SweptSolid	0	104	0	0	0	-	0	451981
 various/rvt01.ifc	12235	SweptSolid	0	24	0	0	0	-	0	723933
 various/rvt01.ifc	12345	SweptSolid	0	172	0	0	0	-	8	702242
-various/rvt01.ifc	12449	Tessellation	27	235	1	0	21	0	36	-
+various/rvt01.ifc	12449	Tessellation	11	241	1	0	13	0	20	-
 various/rvt01.ifc	13735	SweptSolid	0	80	0	0	0	-	16	5531986
-various/rvt01.ifc	13797	Tessellation	65	394	1	0	85	40	126	-
+various/rvt01.ifc	13797	Tessellation	59	402	1	0	119	34	121	-
 various/rvt01.ifc	14014	SweptSolid	0	88	0	0	0	-	16	3247957
-various/rvt01.ifc	14132	SweptSolid	32	212	0	0	32	0	52	-
+various/rvt01.ifc	14132	SweptSolid	0	232	0	0	0	-	34	3374347
 various/rvt01.ifc	14194	SweptSolid	0	88	0	0	0	-	16	1322947
 various/rvt01.ifc	14256	SweptSolid	0	96	0	0	0	-	12	1086658
 various/rvt01.ifc	14447	SweptSolid	0	180	0	0	0	-	13	847248
@@ -1625,22 +1625,22 @@ various/rvt01.ifc	15020	SweptSolid	8	204	0	0	9	0	16	-
 various/rvt01.ifc	15301	SweptSolid	0	124	0	0	0	-	16	1578355
 various/rvt01.ifc	15857	SweptSolid	0	240	0	0	0	-	36	1248477
 various/rvt01.ifc	15917	SweptSolid	0	336	0	0	0	-	58	1362147
-various/rvt01.ifc	16231	SweptSolid	34	80	0	0	34	0	41	-
+various/rvt01.ifc	16231	SweptSolid	31	81	0	0	31	0	38	-
 various/rvt01.ifc	16286	SweptSolid	0	220	0	0	0	-	24	851988
 various/rvt01.ifc	16805	SweptSolid	0	228	0	0	0	-	29	572254
 various/rvt01.ifc	17553	Tessellation	0	116	0	0	0	-	0	21926
 various/rvt01.ifc	17615	Tessellation	0	244	0	0	0	-	0	21887
 various/rvt01.ifc	17919	Tessellation	0	116	0	0	0	-	0	11133
 various/rvt01.ifc	17985	Tessellation	0	112	0	0	0	-	0	19415
-various/rvt01.ifc	18169	SweptSolid	35	101	0	0	35	0	51	-
+various/rvt01.ifc	18169	SweptSolid	34	104	0	0	34	0	50	-
 various/rvt01.ifc	21999	SweptSolid	0	200	0	0	0	-	16	67238
 various/rvt01.ifc	25694	Tessellation	0	136	0	0	0	-	0	82340
-various/rvt01.ifc	25914	SweptSolid	28	84	0	0	28	0	31	-
+various/rvt01.ifc	25914	SweptSolid	25	87	0	0	25	0	28	-
 various/rvt01.ifc	26166	Tessellation	0	172	0	0	0	-	8	147558
 various/rvt01.ifc	26300	Tessellation	0	172	0	0	0	-	8	147894
 various/rvt01.ifc	26610	Tessellation	0	86	0	0	0	-	0	8668
-various/rvt01.ifc	26681	Tessellation	35	191	1	0	33	0	35	-
-various/rvt01.ifc	26832	Tessellation	11	162	1	0	11	0	11	-
+various/rvt01.ifc	26681	Tessellation	44	210	1	0	10	0	44	-
+various/rvt01.ifc	26832	Tessellation	0	182	1	0	0	-	0	3656
 various/rvt01.ifc	30054	Tessellation	0	160	0	0	0	-	0	61257
 various/rvt01.ifc	30125	Tessellation	0	200	0	0	0	-	0	80811
 various/rvt01.ifc	30518	Tessellation	0	244	0	0	0	-	0	156363

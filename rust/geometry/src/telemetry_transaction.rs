@@ -12,31 +12,86 @@ use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-type Event = Box<dyn FnOnce()>;
+/// Plain owned route facts. A detached effect set carries no executable
+/// callbacks, so it can cross a thread boundary and be committed exactly once.
+#[derive(Clone, Copy)]
+pub(crate) enum Event {
+    ParametricCut,
+    PlanarCut {
+        footprints: u64,
+    },
+    #[cfg(any(
+        feature = "observability",
+        feature = "csg_capture",
+        feature = "debug_geometry"
+    ))]
+    PrismDefer {
+        reason: usize,
+    },
+    #[cfg(any(
+        feature = "observability",
+        feature = "csg_capture",
+        feature = "debug_geometry"
+    ))]
+    PrismCut {
+        committed: u64,
+        residual: u64,
+    },
+}
+
+impl Event {
+    /// Add this fact to the owning process-global counter.
+    fn publish(self) {
+        match self {
+            Self::ParametricCut => crate::rect_fast::publish_param_fire(),
+            Self::PlanarCut { footprints } => {
+                crate::router::voids::bool2d_path::publish_cut(footprints)
+            }
+            #[cfg(any(
+                feature = "observability",
+                feature = "csg_capture",
+                feature = "debug_geometry"
+            ))]
+            Self::PrismDefer { reason } => crate::router::voids::prism_cut::publish_defer(reason),
+            #[cfg(any(
+                feature = "observability",
+                feature = "csg_capture",
+                feature = "debug_geometry"
+            ))]
+            Self::PrismCut {
+                committed,
+                residual,
+            } => crate::router::voids::prism_cut::publish_cut(committed, residual),
+        }
+    }
+}
+
 thread_local! {
     static PENDING: RefCell<Vec<Vec<Event>>> = const { RefCell::new(Vec::new()) };
 }
 
-pub(crate) fn record(event: impl FnOnce() + 'static) {
-    let mut event = Some(event);
-    PENDING.with(|pending| {
-        if let Some(buffer) = pending.borrow_mut().last_mut() {
-            buffer.push(Box::new(event.take().unwrap()));
+/// Buffer into the innermost open attempt, or publish immediately when none.
+pub(crate) fn record(event: Event) {
+    let buffered = PENDING.with(|pending| match pending.borrow_mut().last_mut() {
+        Some(buffer) => {
+            buffer.push(event);
+            true
         }
+        None => false,
     });
-    if let Some(event) = event {
-        event();
+    if !buffered {
+        event.publish();
     }
 }
 
 /// Must stay on the thread that owns its buffer, including during unwinding.
-pub(crate) struct Transaction {
+struct Transaction {
     active: bool,
     _same_thread: PhantomData<Rc<()>>,
 }
 
 impl Transaction {
-    pub(crate) fn new() -> Self {
+    fn new() -> Self {
         PENDING.with(|pending| pending.borrow_mut().push(Vec::new()));
         Self {
             active: true,
@@ -44,21 +99,10 @@ impl Transaction {
         }
     }
 
-    pub(crate) fn commit(mut self) {
-        let events = PENDING.with(|pending| {
-            let mut pending = pending.borrow_mut();
-            let events = pending.pop().expect("active telemetry transaction");
-            if let Some(parent) = pending.last_mut() {
-                parent.extend(events);
-                Vec::new()
-            } else {
-                events
-            }
-        });
+    fn detach(mut self) -> EffectSet {
+        let events = PENDING.with(|pending| pending.borrow_mut().pop().unwrap_or_default());
         self.active = false;
-        for event in events {
-            event();
-        }
+        EffectSet(events)
     }
 }
 
@@ -71,3 +115,29 @@ impl Drop for Transaction {
         }
     }
 }
+
+/// Detached events have no TLS buffer or transaction guard. They are linear:
+/// dropping discards only these events; committing publishes once into the
+/// currently reached parent scope (or the aggregate sinks).
+pub(crate) struct EffectSet(Vec<Event>);
+
+impl EffectSet {
+    pub(crate) fn commit(self) {
+        for event in self.0 {
+            record(event);
+        }
+    }
+}
+
+/// The thread-bound guard exists only while one synchronous numerical step
+/// runs; an unwinding step discards its buffer and the original panic
+/// propagates untouched.
+pub(crate) fn capture<T>(run: impl FnOnce() -> T) -> (T, EffectSet) {
+    let transaction = Transaction::new();
+    let value = run();
+    (value, transaction.detach())
+}
+
+#[cfg(test)]
+#[path = "telemetry_transaction_tests.rs"]
+mod tests;

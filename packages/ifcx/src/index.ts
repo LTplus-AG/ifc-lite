@@ -17,8 +17,7 @@ import { ATTR, SPATIAL_TYPES, isTypedPropertyValue, parseV5aKey } from './types.
 import { composeIfcx } from './composition.js';
 import { extractEntities } from './entity-extractor.js';
 import { extractProperties, mirroredFlatPropertyKeys, routesToQuantityTable } from './property-extractor.js';
-import { extractGeometry } from './geometry-extractor.js';
-import { extractPointClouds } from './pointcloud-extractor.js';
+import { extractImportedScene } from './imported-scene.js';
 import { buildHierarchy } from './hierarchy-builder.js';
 import {
   StringTable,
@@ -42,6 +41,7 @@ import {
 // see the comment on IFCX_VERSION itself.
 export { IFCX_VERSION } from '@ifc-lite/data';
 
+export { detectFormat } from './detect-format.js';
 export * from './types.js';
 export { encodeIfcxImage, IFCX_APPEARANCE, IFCX_IMAGE, IFCX_APPEARANCE_SCHEMAS, type IfcxPixels, type IfcxEncodedImage } from './appearance-wire.js';
 export { composeIfcx, findRoots, getDescendants } from './composition.js';
@@ -168,8 +168,7 @@ export async function parseIfcx(
 
   // Phase 5: Extract geometry
   options.onProgress?.({ phase: 'geometry', percent: 0 });
-  const meshes = extractGeometry(composed, pathToId);
-  const pointClouds = extractPointClouds(composed, pathToId);
+  const { meshes, pointClouds } = extractImportedScene(composed, pathToId);
   options.onProgress?.({ phase: 'geometry', percent: 100 });
 
   // Phase 6: Build hierarchy
@@ -360,37 +359,6 @@ function buildQuantities(
   return builder.build();
 }
 
-/**
- * Detect if a buffer contains IFCX (JSON), IFC (STEP), or GLB (binary glTF) format.
- */
-export function detectFormat(buffer: ArrayBuffer): 'ifcx' | 'ifc' | 'glb' | 'unknown' {
-  // Check GLB magic bytes first (binary format, 4-byte magic: 0x46546C67 = 'glTF')
-  if (buffer.byteLength >= 4) {
-    const magic = new DataView(buffer).getUint32(0, true);
-    if (magic === 0x46546c67) {
-      return 'glb';
-    }
-  }
-
-  const bytes = new Uint8Array(buffer, 0, Math.min(100, buffer.byteLength));
-  // SAB-safe: the upload entry path streams the file directly into a
-  // SharedArrayBuffer for files ≥ STREAM_SAB_THRESHOLD, and both Firefox
-  // and Chromium reject TextDecoder.decode() on SAB-backed views.
-  const start = safeUtf8Decode(bytes).trim();
-
-  // IFCX is JSON starting with {
-  if (start.startsWith('{')) {
-    return 'ifcx';
-  }
-
-  // IFC STEP starts with ISO-10303-21
-  if (start.includes('ISO-10303-21') || start.startsWith('ISO')) {
-    return 'ifc';
-  }
-
-  return 'unknown';
-}
-
 // ============================================================================
 // Federated IFCX Parsing
 // ============================================================================
@@ -555,8 +523,7 @@ function finalizeFederatedResult(
 
   // Phase 5: Extract geometry
   options.onProgress?.({ phase: 'geometry', percent: 0 });
-  const meshes = extractGeometry(composed, pathToId);
-  const pointClouds = extractPointClouds(composed, pathToId);
+  const { meshes, pointClouds } = extractImportedScene(composed, pathToId);
   options.onProgress?.({ phase: 'geometry', percent: 100 });
 
   // Phase 6: Build hierarchy

@@ -1,0 +1,26 @@
+--- a/apps/viewer/src/hooks/ids/idsBcfBounds.ts
++++ b/apps/viewer/src/hooks/ids/idsBcfBounds.ts
+@@ -43,7 +43,7 @@
+         ?? (models.size <= 1 ? singleGeometry ?? legacyGeometry : undefined);
+       // The scene unions flat and instanced pieces of a hybrid entity. Reading
+       // only its retained flat pieces would silently frame a partial element.
+-      let bounds: EntityBoundsInput | null | undefined;
++      let bounds = sceneBounds(id);
+       if (!bounds && geometry) {
+         let read = meshReaders.get(geometry);
+         if (!read) {
+@@ -51,7 +51,13 @@
+           meshReaders.set(geometry, read);
+         }
+         bounds = read(id);
+-
++        const occurrence = geometry.instancedGeometryAabbs?.get(id);
++        if (!bounds && occurrence) {
++          bounds = {
++            min: { x: occurrence.min[0], y: occurrence.min[1], z: occurrence.min[2] },
++            max: { x: occurrence.max[0], y: occurrence.max[1], z: occurrence.max[2] },
++          };
++        }
+       }
+       if (bounds) result.set(key, bounds);
+     }

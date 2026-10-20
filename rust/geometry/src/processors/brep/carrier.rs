@@ -22,6 +22,9 @@ pub(crate) fn bounded_faces(count: usize) -> bool {
 /// Consult the same necessary carrier selection as the normalization transaction.
 /// This decides cache identity; it does not replace the STEP reference reader.
 pub(crate) fn source_may_normalize(decoder: &mut EntityDecoder, id: u32) -> bool {
+    if crate::resource::check_current().is_err() {
+        return false;
+    }
     let Ok(entity) = decoder.decode_by_id(id) else {
         return false;
     };
@@ -78,20 +81,45 @@ pub(super) fn normalize(
     entity: &DecodedEntity,
     decoder: &mut EntityDecoder,
     faces: &mut [FaceData],
-) -> Option<Witness> {
+) -> crate::Result<Option<Witness>> {
+    crate::resource::check_current()?;
+    let corners = faces.iter().try_fold(0usize, |count, face| {
+        count.checked_add(face.outer_points.len())
+    });
     if entity.ifc_type != IfcType::IfcFacetedBrep
         || !bounded_faces(faces.len())
-        || !faces
-            .iter()
-            .any(|f| warped(&f.outer_points, |p| [p.x, p.y, p.z]))
+        || corners.is_none_or(|n| n > 128)
+        || faces.iter().any(|f| !f.hole_points.is_empty())
+        || !faces.iter().any(|f| warped(&f.outer_points, |p| [p.x, p.y, p.z]))
     {
-        return None;
+        return Ok(None);
     }
+    // Bounded admits audited mesh/storage operations, not opaque numerical
+    // allocations. Run the same exact transaction under both policies; Strict
+    // coverage is refused by account construction, before invocation (#7994).
+    let witness = transaction(entity, decoder, faces);
+    crate::resource::check_current()?;
+    Ok(witness)
+}
+
+fn transaction(
+    entity: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    faces: &mut [FaceData],
+) -> Option<Witness> {
     let (mut shell, face_ids) = read_shell(entity, decoder)?;
     if shell.faces.len() != faces.len() {
         return None;
     }
     let before: Vec<Vec<P>> = shell.faces.iter().map(|r| ring(&shell, r)).collect();
+    // The certificate and authored loops must describe this decoder's source,
+    // including order/orientation. Never apply a certificate to foreign loops.
+    for (source, face) in before.iter().zip(faces.iter()) {
+        let rounded: Option<Vec<_>> = source.iter().map(exact::rounded).collect();
+        if rounded? != face.outer_points || !face.hole_points.is_empty() {
+            return None;
+        }
+    }
     let (planes, carrier_indices) = carrier_planes(&shell)?;
     let carriers = carrier_indices
         .into_iter()
@@ -205,6 +233,13 @@ pub(super) fn ring(shell: &Shell, ids: &[u32]) -> Vec<P> {
 }
 
 fn read_shell(entity: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<(Shell, Vec<u32>)> {
+    let canonical = decoder.decode_by_id(entity.id).ok()?;
+    if canonical.ifc_type != IfcType::IfcFacetedBrep
+        || canonical.ref_at(slot::IfcManifoldSolidBrep::OUTER)
+            != entity.ref_at(slot::IfcManifoldSolidBrep::OUTER)
+    {
+        return None;
+    }
     let outer = decoder
         .decode_by_id(entity.ref_at(slot::IfcManifoldSolidBrep::OUTER)?)
         .ok()?;
@@ -276,3 +311,7 @@ fn read_shell(entity: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<(Sh
 #[cfg(test)]
 #[path = "carrier_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "carrier_admission_tests.rs"]
+mod admission_tests;

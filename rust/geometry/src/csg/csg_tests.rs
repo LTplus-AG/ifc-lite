@@ -600,10 +600,7 @@ fn topology_tear_not_recorded_for_closed_results() {
 // the group comes back un-cut. That is the gate working, not the diagnostic
 // breaking: there is no "worse number" to pin here, only a fixture the feature
 // makes unreachable.
-#[cfg(all(
-    not(feature = "csg_topology_gate"),
-    not(feature = "csg_manifold_gate")
-))]
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
 #[test]
 fn topology_tear_recorded_once_per_batched_subtract_not_once_per_chunk() {
     let open_host = open_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(20.0, 1.0, 1.0));
@@ -710,6 +707,28 @@ fn hairline_t_junction_is_not_recorded_as_a_topology_tear() {
         p.take_failures(),
         vec![],
         "a T-junction the analytic path accepts at every gate must not be recorded as a tear"
+    );
+}
+
+/// #7982: the audit (and, under `csg_topology_gate`, the gate) reads the
+/// processor's own length unit. The `processors/boolean` paths cut in file
+/// units through `with_unit_scale`; a millimetre seam inside the documented
+/// 0.1 mm grid is not a tear there, while the same coordinates in metres are.
+#[test]
+fn topology_audit_grid_follows_the_processor_length_unit_7982() {
+    let mesh = crate::mesh_check::closure_tests::split_apex_tetrahedron();
+    let mm = ClippingProcessor::with_unit_scale(0.001);
+    mm.record_topology_tear(BoolOp::Difference, &mesh);
+    assert_eq!(mm.take_failures(), vec![], "a 0.04 mm seam is not a tear in millimetres");
+    assert!(!mm.topology_gate_reject(BoolOp::Difference, &mesh));
+
+    let metres = ClippingProcessor::new();
+    metres.record_topology_tear(BoolOp::Difference, &mesh);
+    assert_eq!(metres.take_failures().len(), 1, "a 4 cm hole is a tear in metres");
+    assert_eq!(
+        metres.topology_gate_reject(BoolOp::Difference, &mesh),
+        cfg!(feature = "csg_topology_gate"),
+        "the gate rejects exactly when its feature is on"
     );
 }
 
@@ -1030,10 +1049,7 @@ fn manifold_gate_accepts_a_clean_boolean_result() {
 /// non-manifold, so with THAT feature on the other gate rejects it and the
 /// un-cut host comes back for a reason this test is not about. Naming both
 /// features keeps the assertion measuring the thing in its own name.
-#[cfg(all(
-    not(feature = "csg_manifold_gate"),
-    not(feature = "csg_topology_gate")
-))]
+#[cfg(not(any(feature = "csg_manifold_gate", feature = "csg_topology_gate")))]
 #[test]
 fn manifold_gate_is_a_true_noop_without_the_feature() {
     let host = finned_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));

@@ -1,6 +1,6 @@
 --- a/rust/core/src/decoder/precision_certificate.rs
 +++ b/rust/core/src/decoder/precision_certificate.rs
-@@ -58,7 +58,7 @@
+@@ -57,7 +57,7 @@
                  } else {
                      &shared.permissive
                  };

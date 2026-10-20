@@ -115,18 +115,22 @@ impl FrameParts {
     /// Merge a non-empty `mesh` into the first part sharing its frame, or
     /// open a new part.
     pub(super) fn merge(&mut self, mesh: &Mesh, bounds: [f32; 6]) {
-        match self
-            .parts
-            .iter_mut()
-            .find(|(part, _)| frames_mergeable(part.origin, mesh.origin))
-        {
+        let index = match matching_frame(self.parts.iter().map(|(part, _)| part.origin), mesh.origin) {
+            Ok(index) => index,
+            Err(_) => return,
+        };
+        match index.map(|index| &mut self.parts[index]) {
             Some((part, part_bounds)) => {
-                part.merge(mesh);
+                if !merge_admitted(part, mesh) {
+                    return;
+                }
                 union_bounds(part_bounds, bounds);
             }
             None => {
                 let mut part = Mesh::new();
-                part.merge(mesh);
+                if !merge_admitted(&mut part, mesh) || !reserve_part(&mut self.parts) {
+                    return;
+                }
                 self.parts.push((part, Some(bounds)));
             }
         }
@@ -160,9 +164,15 @@ impl SourceParts {
         if mesh.is_empty() {
             return; // Mesh::merge would ignore it too
         }
-        match self.parts.iter_mut().find(|part| frames_mergeable(part.mesh.origin, mesh.origin)) {
+        let index = match matching_frame(self.parts.iter().map(|part| part.mesh.origin), mesh.origin) {
+            Ok(index) => index,
+            Err(_) => return,
+        };
+        match index.map(|index| &mut self.parts[index]) {
             Some(part) => {
-                part.mesh.merge(mesh);
+                if !merge_admitted(&mut part.mesh, mesh) {
+                    return;
+                }
                 match (part.bounds, mesh.local_bounds) {
                     (Some(_), Some(incoming)) => union_bounds(&mut part.bounds, incoming),
                     _ => part.bounds = None,
@@ -170,7 +180,9 @@ impl SourceParts {
             }
             None => {
                 let mut part = Mesh::new();
-                part.merge(mesh);
+                if !merge_admitted(&mut part, mesh) || !reserve_part(&mut self.parts) {
+                    return;
+                }
                 self.parts.push(SourcePart { mesh: part, bounds: mesh.local_bounds });
             }
         }
@@ -181,17 +193,35 @@ impl SourceParts {
     /// published them: an item rebased into its f64 origin does (#7690), and
     /// its positions alone would not give its object-frame extent. Ordinary
     /// items do not, so an ordinary source carries none, as it never did.
-    pub(super) fn into_parts(self) -> Vec<Mesh> {
-        if self.parts.is_empty() {
-            return vec![Mesh::new()];
+    ///
+    /// Under an installed resource account a refused merge is only recorded
+    /// as the account's sticky terminal stop; it surfaces here, before any
+    /// partial source can be published.
+    pub(super) fn into_parts(self) -> Result<Vec<Mesh>> {
+        if crate::resource::is_active() {
+            crate::resource::check_current()?;
+            let mut output = Vec::new();
+            crate::resource::reserve_headers(&mut output, self.parts.len().max(1))?.retain();
+            if self.parts.is_empty() {
+                output.push(Mesh::new());
+            }
+            for SourcePart { mut mesh, bounds } in self.parts {
+                mesh.local_bounds = bounds;
+                output.push(mesh);
+            }
+            return Ok(output);
         }
-        self.parts
+        if self.parts.is_empty() {
+            return Ok(vec![Mesh::new()]);
+        }
+        Ok(self
+            .parts
             .into_iter()
             .map(|SourcePart { mut mesh, bounds }| {
                 mesh.local_bounds = bounds;
                 mesh
             })
-            .collect()
+            .collect())
     }
 }
 
@@ -208,11 +238,23 @@ impl GeometryRouter {
         far_parts: FrameParts,
         (mut rebased, rebased_bounds): (Mesh, Option<[f32; 6]>),
     ) -> Result<Vec<Mesh>> {
-        let mut parts = vec![primary];
+        let accounted = crate::resource::is_active();
+        let mut parts = if accounted {
+            crate::resource::check_current()?;
+            let mut parts = Vec::new();
+            crate::resource::reserve_headers(&mut parts, 1)?.retain();
+            parts.push(primary);
+            parts
+        } else {
+            vec![primary]
+        };
         for (mut part, bounds) in far_parts.into_parts() {
             part.local_bounds = bounds;
             hygiene.for_router(self).apply(&mut part);
             self.apply_placement(element, decoder, &mut part)?;
+            if accounted {
+                crate::resource::reserve_headers(&mut parts, 1)?.retain();
+            }
             parts.push(part);
         }
         if rebased.positions.is_empty() {
@@ -223,15 +265,27 @@ impl GeometryRouter {
         // Mesh::merge accounts for each mesh's f64 origin. Keep the local
         // bucket's origin so a distant raw item cannot quantize it early;
         // a raw item too far from every part stays its own part (#6349).
-        match parts.iter_mut().find(|p| frames_mergeable(p.origin, rebased.origin)) {
+        let index = if accounted {
+            matching_frame(parts.iter().map(|part| part.origin), rebased.origin)?
+        } else {
+            parts.iter().position(|p| frames_mergeable(p.origin, rebased.origin))
+        };
+        match index.map(|index| &mut parts[index]) {
             Some(part) => {
-                part.merge(&rebased);
+                if accounted {
+                    crate::resource::mesh::merge_mesh(part, &rebased)?.retain();
+                } else {
+                    part.merge(&rebased);
+                }
                 if let Some(bounds) = rebased_bounds {
                     union_bounds(&mut part.local_bounds, bounds);
                 }
             }
             None => {
                 rebased.local_bounds = rebased_bounds;
+                if accounted {
+                    crate::resource::reserve_headers(&mut parts, 1)?.retain();
+                }
                 parts.push(rebased);
             }
         }
@@ -242,3 +296,49 @@ impl GeometryRouter {
 #[cfg(test)]
 #[path = "frame_parts_tests.rs"]
 mod tests;
+
+/// Merge `incoming` into `target`. Without an installed account this is exactly
+/// `Mesh::merge`; with one, admission precedes reserve/copy and a refusal leaves
+/// `target` untouched, recorded as the account's sticky terminal stop.
+pub(super) fn merge_admitted(target: &mut Mesh, incoming: &Mesh) -> bool {
+    if !crate::resource::is_active() {
+        target.merge(incoming);
+        return true;
+    }
+    match crate::resource::mesh::merge_mesh(target, incoming) {
+        Ok(permit) => {
+            permit.retain();
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+fn reserve_part<T>(parts: &mut Vec<T>) -> bool {
+    match crate::resource::reserve_headers(parts, 1) {
+        Ok(permit) => {
+            permit.retain();
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// Index of the first part sharing `origin`'s frame. Under an account every
+/// candidate visit is charged, so the scan is bounded; without one it is the
+/// historical `position` scan.
+fn matching_frame(
+    origins: impl Iterator<Item = [f64; 3]>,
+    origin: [f64; 3],
+) -> std::result::Result<Option<usize>, crate::resource::ProgramStop> {
+    if !crate::resource::is_active() {
+        return Ok(origins.into_iter().position(|candidate| frames_mergeable(candidate, origin)));
+    }
+    for (index, candidate) in origins.enumerate() {
+        crate::resource::charge(crate::resource::Cost { work: 1, ..Default::default() })?;
+        if frames_mergeable(candidate, origin) {
+            return Ok(Some(index));
+        }
+    }
+    Ok(None)
+}

@@ -105,6 +105,26 @@ test('#5800 review: a Python helper in a Cargo fixture tree remains support', ()
   }
 });
 
+test('#7949: a Rust crate golden under tests/manifests is support, not an attribution gap', () => {
+  const root = mkdtempSync(join(tmpdir(), 'oracle-rust-golden-'));
+  try {
+    const project = join(root, 'rust', 'example');
+    const manifests = join(project, 'tests', 'manifests');
+    mkdirSync(manifests, { recursive: true });
+    writeFileSync(join(root, 'Cargo.toml'), '[workspace]\nmembers = ["rust/example"]\n');
+    writeFileSync(join(project, 'Cargo.toml'), '[package]\nname = "example"\nversion = "0.1.0"\n');
+    writeFileSync(join(manifests, 'census.tsv'), 'model\topen\n');
+
+    const file = 'rust/example/tests/manifests/census.tsv';
+    const { plans, unassigned, support } = planRuns([file], root);
+    assert.deepEqual(plans, []);
+    assert.deepEqual(unassigned, [], 'a pinned golden must not read as an attribution gap');
+    assert.deepEqual(support, [file]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // pythonRunner
 // ---------------------------------------------------------------------------

@@ -20,11 +20,11 @@ impl GeometryProcessor for BooleanClippingProcessor {
         &self,
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
-        schema: &IfcSchema,
+        _schema: &IfcSchema,
         quality: TessellationQuality,
     ) -> Result<Mesh> {
         let mut visited = OperandPath::default();
-        self.process_with_depth(entity, decoder, schema, 0, quality, &mut visited)
+        self.execute_boolean(entity, decoder, 0, quality, &mut visited)
             .map(|(mesh, _)| mesh)
     }
 
@@ -76,8 +76,8 @@ impl BooleanClippingProcessor {
     /// Discard everything recorded since `mark`.
     ///
     /// Only for a SPECULATIVE attempt whose work the caller is about to redo.
-    /// `try_union_polygonal_chain` is a batched attempt at a chain the
-    /// sequential walk also resolves; when it gives up, `process_with_depth`
+    /// `cut_polygonal_chain` is a batched attempt at a chain the
+    /// sequential walk also resolves; when it gives up, the spine walk
     /// re-meshes the same base operand and the same cutters and records the
     /// same losses again. Its trial subtracts already dropped their own probe
     /// failures for this reason, but the base operand did not, so one authored
@@ -94,16 +94,8 @@ impl BooleanClippingProcessor {
         self.failures.borrow_mut().truncate(mark);
     }
 
-    /// [`Self::rewind_to`] plus the deferral itself, so a guard in
-    /// `try_union_polygonal_chain` reads as one line and cannot rewind without
-    /// deferring or defer without rewinding.
-    pub(super) fn defer_after<T>(&self, mark: usize) -> crate::Result<Option<T>> {
-        self.rewind_to(mark);
-        Ok(None)
-    }
-
     /// Record the `EmptyOperand` consequence for an operand that meshed
-    /// empty — UNLESS [`Self::process_operand_checked`] reports its loss
+    /// empty — UNLESS [`Self::leaf_operand`] (or the continuation) reports its loss
     /// already on record (an unsupported operand, or a nested one emptied by
     /// a drop inside it). One dropped step, one record: see the flag's
     /// rationale there.

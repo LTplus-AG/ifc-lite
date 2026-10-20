@@ -36,6 +36,7 @@ impl GeometryRouter {
     ) -> Result<()> {
         if item.ifc_type != IfcType::IfcMappedItem {
             self.submesh_plain_item(item, decoder, sub_meshes, 0, texture_index);
+            crate::resource::check_current()?;
             return Ok(());
         }
         let mut sink = SubMeshSink {
@@ -51,6 +52,7 @@ impl GeometryRouter {
             nested: NestedMaps::Expand { max_depth: MAX_MAPPED_ITEM_DEPTH, max_levels: MAX_WALK_LEVELS },
         };
         walk.mapped_item(item, decoder, &mut sink);
+        crate::resource::check_current()?;
         sink.error.map_or(Ok(()), Err)
     }
 
@@ -142,7 +144,7 @@ impl WalkVisitor for SubMeshSink<'_> {
             return Flow::Continue;
         }
         self.router.submesh_plain_item(item, decoder, self.sub_meshes, at.path.len(), self.texture_index);
-        Flow::Continue
+        if crate::resource::check_current().is_err() { Flow::Stop } else { Flow::Continue }
     }
 
     fn enter_map(&mut self, level: &MappedLevel, at: &WalkCtx<'_>, decoder: &mut EntityDecoder) -> Flow {
@@ -249,6 +251,9 @@ impl WalkVisitor for SubMeshSink<'_> {
                 // emit_sub_meshes resolves the occurrence colour identically to the
                 // flat/template sub-mesh.
                 router.ensure_shared_mapped_source(&level.mapped_rep, source_id, decoder);
+                if crate::resource::check_current().is_err() {
+                    return inert(self);
+                }
                 let local_rm = mapping_transform.map(|t| router.scaled_row_major(&t));
                 let mut placeholder = Mesh::new();
                 placeholder.instance_meta = Some(InstanceMeta::instanceable(source_id as u128, local_rm));
@@ -340,28 +345,5 @@ impl WalkVisitor for SubMeshSink<'_> {
 }
 
 #[cfg(test)]
-mod shared_cap_tests {
-    /// `MAX_MAPPED_ITEM_DEPTH` must be the one in `ifc_lite_core::limits`, not
-    /// a private copy that happens to hold the same number today.
-    ///
-    /// This is not redundant with the constant being shared. Sharing removes
-    /// the drift that EXISTS; it does not stop anyone reintroducing a local
-    /// `const MAX_MAPPED_ITEM_DEPTH` that shadows the import. Verified by
-    /// mutation: with the import replaced by a private `= 16`, 800 tests stayed
-    /// green until this test existed. A mid-review revision of #2864 held
-    /// exactly that value against the router's 32, so the shadow is not a
-    /// hypothetical shape.
-    ///
-    /// The assertion is on the VALUE, not on identity, so a private copy
-    /// holding the same 32 still passes. That is the honest ceiling: Rust has
-    /// no cheap const-identity check, and a same-value shadow is harmless until
-    /// the shared value is next tuned, at which point this fires.
-    #[test]
-    fn mapped_item_depth_is_the_shared_constant() {
-        assert_eq!(
-            super::MAX_MAPPED_ITEM_DEPTH,
-            ifc_lite_core::MAX_MAPPED_ITEM_DEPTH,
-            "use the shared cap from ifc_lite_core::limits, not a private copy"
-        );
-    }
-}
+#[path = "processing_shared_cap_tests.rs"]
+mod shared_cap_tests;

@@ -43,7 +43,7 @@ compile_error!(
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 use ifc_lite_processing::{
-    process_geometry_filtered, run_on_geometry_pool, OpeningFilterMode, ParseResponse,
+    process, run_on_geometry_pool, OpeningFilterMode, ParseResponse, ProcessingRequest,
 };
 use panic_log::{ensure_panic_logging, InFlightPath};
 use std::slice;
@@ -88,7 +88,7 @@ fn parse_impl(path_str: &str, mode: OpeningFilterMode) -> Result<Vec<u8>, i32> {
     let content = std::fs::read(path_str).map_err(|_| 2)?;
 
     run_in_pool(path_str, move || {
-        let result = process_geometry_filtered(&content, mode);
+        let result = process(&content, &ProcessingRequest::full_pass().opening_filter(mode), &mut ());
         // The source text is not needed past geometry; free it before the
         // JSON buffer is built next to the meshes.
         drop(content);

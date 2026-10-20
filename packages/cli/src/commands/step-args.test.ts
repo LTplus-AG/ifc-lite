@@ -181,3 +181,26 @@ describe('splitTopLevelStepArgs', () => {
     });
   });
 });
+
+describe('splitTopLevelStepArgs: the shared literal grammar (F4 M-export-a)', () => {
+  it('accepts every number spelling core reads', () => {
+    expect(splitTopLevelStepArgs('.5,+1,1.E5,-0.,1.')).toEqual(['.5', '+1', '1.E5', '-0.', '1.']);
+  });
+
+  it('refuses a number that is a dropped separator in disguise', () => {
+    for (const bad of ['1..2,$', '1.2.3,$', '5x,$', '+,$', "'g',1e,$"]) {
+      expect(splitTopLevelStepArgs(bad), bad).toBeNull();
+    }
+  });
+
+  it('holds a binary literal to a [0-3] indicator and hex digits, either case', () => {
+    expect(splitTopLevelStepArgs('"0f3A",$')).toEqual(['"0f3A"', '$']);
+    for (const bad of ['"4F",$', '"0G",$', '"",$', `"0'F",$`]) {
+      expect(splitTopLevelStepArgs(bad), bad).toBeNull();
+    }
+  });
+
+  it('keeps an enumeration and a reference loose', () => {
+    expect(splitTopLevelStepArgs('.NOTDEFINED.,#12,$')).toEqual(['.NOTDEFINED.', '#12', '$']);
+  });
+});

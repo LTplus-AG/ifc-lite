@@ -29,7 +29,7 @@
    159 rust/export/src/gltf.rs push_mesh_quantized
    158 rust/export/src/gltf.rs write_bounded_glb
    260 rust/export/src/merged/mod.rs export_merged_models
-   328 rust/export/src/model.rs stream_export_model_with_options
+   328 rust/processing/src/data_model/rows/mod.rs stream_rows
    269 rust/export/src/rebar_schedule_build.rs build_rebar_schedule_impl
    238 rust/export/src/step.rs emit
    178 rust/export/src/step_log/write.rs emit
@@ -37,22 +37,13 @@
    155 rust/export/src/step_map_rigid_contexts.rs representation_contexts
    186 rust/export/src/usd.rs export_usd
    161 rust/geometry/src/alignment.rs parse_horizontal
-   368 rust/geometry/src/csg/consolidate.rs ClippingProcessor::consolidate_coplanar_with_unit_scale
    341 rust/geometry/src/facet_weld.rs refine_high_aspect_slivers_impl
    332 rust/geometry/src/facet_weld.rs weld_near_coplanar_facets
    231 rust/geometry/src/instancing/group.rs collate_refs_impl
    166 rust/geometry/src/instancing/wire.rs encode_refs_with_finishes
-   218 rust/geometry/src/kernel/retriangulate_recover.rs recover_subsegment
    185 rust/geometry/src/mesh_orient.rs orient_mesh_outward_verdict
    175 rust/geometry/src/processors/advanced_face/polyline.rs sample_curve_polyline_guarded
-   229 rust/geometry/src/processors/advanced_face/revolution.rs process_surface_of_revolution_face
-   157 rust/geometry/src/processors/advanced_face/surfaces.rs process_cylindrical_face
    300 rust/geometry/src/processors/boolean/halfspace_cap.rs cap_half_space_clip
-   192 rust/geometry/src/processors/boolean/mod.rs BooleanClippingProcessor::apply_boolean_step
-   172 rust/geometry/src/processors/boolean/mod.rs BooleanClippingProcessor::try_union_polygonal_chain
-   162 rust/geometry/src/processors/boolean/polygonal_prism.rs BooleanClippingProcessor::build_polygonal_bounded_half_space_mesh
-   174 rust/geometry/src/processors/sectioned.rs SectionedSolidHorizontalProcessor@GeometryProcessor::process
-   164 rust/geometry/src/processors/swept/revolved.rs RevolvedAreaSolidProcessor@GeometryProcessor::process
    181 rust/geometry/src/processors/tessellated/triangulate.rs PolygonalFaceSetProcessor::triangulate_polygon
    182 rust/geometry/src/profiles/simplify.rs simplify_smooth_curve_polyline
    189 rust/geometry/src/router/transforms/operator.rs parse_transformation_operator
@@ -66,7 +57,7 @@
    193 rust/geometry/src/router/voids/prism_cut.rs detect_prism
    155 rust/geometry/src/router/voids/probe.rs GeometryRouter::get_opening_item_bounds_with_direction
    247 rust/geometry/src/router/voids/synthesis.rs GeometryRouter::classify_openings_impl
-   215 rust/geometry/src/router/voids/synthesis.rs GeometryRouter::extend_opening_along_direction
+   214 rust/geometry/src/router/voids/synthesis.rs GeometryRouter::extend_opening_along_direction
    168 rust/geometry/src/router/voids/synthesis/membrane.rs GeometryRouter::remove_internal_membrane
    269 rust/geometry/src/simplify/cavities.rs drop_enclosed_cavities
    159 rust/geometry/src/space_dcel/arrangement.rs Arrangement::resolve
@@ -83,7 +74,7 @@
    156 rust/processing/src/element.rs emit_sub_meshes
    181 rust/processing/src/pdf_vector/interpret_ops.rs Interpreter::operation
    259 rust/processing/src/processor/jobs.rs process_entity_job
-  1161 rust/processing/src/processor/mod.rs process
+   749 rust/processing/src/processor/mod.rs process
    165 rust/processing/src/simplify_session.rs simplify_element
    312 rust/processing/src/symbolic/items.rs extract_symbolic_item_inner
    183 rust/processing/src/symbolic/mod.rs extract_symbolic_data_into_frame

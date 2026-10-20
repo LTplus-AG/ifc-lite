@@ -7,6 +7,13 @@
 //!
 //! Split out of `consolidate.rs` to keep it under the module-size ratchet.
 
+#[path = "ring_guard.rs"]
+mod topology;
+#[path = "ring_regions.rs"]
+mod regions;
+#[cfg(test)]
+pub(super) use regions::clean_shapes;
+
 /// Rim noise as a fraction of a ring's own size, `2⁻¹³`, used by
 /// [`weld_near_coincident_2d`] before its absolute cap is applied.
 const RIM_NOISE_OF_SIZE: f64 = 1.0 / 8192.0;
@@ -93,7 +100,15 @@ pub(super) fn weld_near_coincident_2d(
 /// i_overlay union of many small fragments often leaves "phantom"
 /// vertices on every fragment boundary that crosses the outer outline;
 /// without this pass earcut would emit one sliver triangle per phantom.
+#[cfg(test)]
 pub(super) fn simplify_2d_collinear(ring: &[nalgebra::Point2<f64>]) -> Vec<nalgebra::Point2<f64>> {
+    simplify_with_guard(ring, |_, _, _, _, _, _| true)
+}
+
+fn simplify_with_guard(
+    ring: &[nalgebra::Point2<f64>],
+    mut admits: impl FnMut(&[nalgebra::Point2<f64>], &[bool], usize, usize, usize, usize) -> bool,
+) -> Vec<nalgebra::Point2<f64>> {
     let n = ring.len();
     #[cfg(feature = "opening-perf-trace")]
     let mut work = crate::opening_perf_trace::RingSimplifierWork {
@@ -106,6 +121,7 @@ pub(super) fn simplify_2d_collinear(ring: &[nalgebra::Point2<f64>]) -> Vec<nalge
         return ring.to_vec();
     }
     let mut keep = vec![true; n];
+    let mut live = n;
     let mut changed = true;
     while changed {
         #[cfg(feature = "opening-perf-trace")]
@@ -163,8 +179,11 @@ pub(super) fn simplify_2d_collinear(ring: &[nalgebra::Point2<f64>]) -> Vec<nalge
             // (cavity 6-seg per quadrant ⇒ 15°/segment ⇒ sin ≈ 0.26); the
             // i_overlay union of split fragments leaves "phantom" vertices
             // whose sin(angle) ranges 1e-7..1e-5, all caught here.
-            if denom < 1.0e-18 || (cross.abs() / denom) < 1.0e-4 {
+            if (denom < 1.0e-18 || (cross.abs() / denom) < 1.0e-4)
+                && admits(ring, &keep, prev, i, next, live)
+            {
                 keep[i] = false;
+                live -= 1;
                 changed = true;
                 #[cfg(feature = "opening-perf-trace")]
                 {
@@ -181,9 +200,9 @@ pub(super) fn simplify_2d_collinear(ring: &[nalgebra::Point2<f64>]) -> Vec<nalge
         .collect()
 }
 
-/// One i_overlay union ring, cleaned for triangulation: rim duplicates welded
-/// (the #1007 diagonal-sliver source) BEFORE collinear phantoms are dropped, then
-/// `None` if what is left is noise ([`ring_is_noise`]).
+/// Keep the same weld/noise decision while retaining an optional pre-simplify
+/// contour for a baseline region that otherwise emits no surviving cells.
+#[cfg(test)]
 pub(super) fn clean_ring(
     ring: &[[f64; 2]],
     plane_area: f64,

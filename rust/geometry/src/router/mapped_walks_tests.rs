@@ -97,3 +97,61 @@ fn router_26_capped_curve_in_a_shared_source_is_reported_for_that_source() {
     let after_plain = router.take_unsupported_items();
     assert!(after_plain.is_empty(), "the plain item inherited a drop: {after_plain:?}");
 }
+
+/// #7781 / #7873 r4303907552: refusing an unentered repeat of the current
+/// item must retain both earlier and later solid siblings in that frame.
+#[test]
+fn issue_7781_current_item_cycle_retains_solid_siblings() {
+    for items in ["#900,#1005", "#1005,#900"] {
+        let content = RAW_WORLD_MAP.replace("(#900)", &format!("({items})"));
+        let mut decoder = EntityDecoder::new(&content);
+        let router = shared_rtc_router();
+        let item = decoder.decode_by_id(1005).unwrap();
+        let parts = router.process_mapped_item_parts(&item, &mut decoder).unwrap();
+        assert_eq!(parts.len(), 1, "the valid tetrahedron was discarded: {items}");
+        assert_eq!(parts[0].indices.len(), 12, "one reachable tetrahedron: {items}");
+        let drops = router.take_unsupported_items();
+        assert_eq!(drops.get("IfcMappedItem"), Some(&1), "one cycle refusal: {drops:?}");
+        let cache = router.shared_mapped_item_cache.as_ref().unwrap().lock().unwrap();
+        assert!(!cache.contains_key(&1003), "a cycle-truncated source is not shared");
+    }
+}
+
+/// Positive control for #7781: reaching the same source down separate paths
+/// contributes twice; the cycle set is scoped to the active path.
+#[test]
+fn issue_7781_shared_source_siblings_both_contribute() {
+    let content = format!("{RAW_WORLD_MAP}#2000=IFCMAPPEDITEM(#2001,#1004);\
+        #2001=IFCREPRESENTATIONMAP(#2,#2002);\
+        #2002=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#1005,#1005));");
+    let mut decoder = EntityDecoder::new(&content);
+    let router = shared_rtc_router();
+    let item = decoder.decode_by_id(2000).unwrap();
+    let parts = router.process_mapped_item_parts(&item, &mut decoder).unwrap();
+    assert_eq!(parts.len(), 1);
+    assert_eq!(parts[0].indices.len(), 24, "both tetrahedron occurrences survive");
+    assert!(router.take_unsupported_items().is_empty());
+}
+
+/// The cycle correction must keep the entered-frame failure policy (#7781):
+/// missing Items fails the top call, or drops just that nested frame.
+#[test]
+fn issue_7781_entered_frame_missing_items_keeps_its_failure_scope() {
+    let content = RAW_WORLD_MAP.replace("'Tessellation',(#900)", "'Tessellation'");
+    let mut decoder = EntityDecoder::new(&content);
+    let router = shared_rtc_router();
+    let item = decoder.decode_by_id(1005).unwrap();
+    let error = router.process_mapped_item_parts(&item, &mut decoder).unwrap_err();
+    assert!(error.to_string().contains("missing Items"), "{error}");
+
+    let content = format!("{content}#2000=IFCMAPPEDITEM(#2001,#1004);\
+        #2001=IFCREPRESENTATIONMAP(#2,#2002);\
+        #2002=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#900,#1005));");
+    let mut decoder = EntityDecoder::new(&content);
+    let router = shared_rtc_router();
+    let item = decoder.decode_by_id(2000).unwrap();
+    let parts = router.process_mapped_item_parts(&item, &mut decoder).unwrap();
+    assert_eq!(parts.len(), 1);
+    assert_eq!(parts[0].indices.len(), 12);
+    assert_eq!(router.take_unsupported_items().get("IfcMappedItem"), Some(&1));
+}

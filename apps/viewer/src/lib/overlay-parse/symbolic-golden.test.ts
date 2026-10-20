@@ -52,6 +52,7 @@ interface GoldenFixture {
   minPrimitives: number;
 }
 
+// Main #7728 intentionally preserves RTC coordinates as f64 (#7741).
 const FIXTURES: GoldenFixture[] = [
   // #7741: #7728 intentionally preserves f64 symbolic coordinates. Regenerated
   // from the d8c110166a CI build after that precision change.

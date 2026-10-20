@@ -131,11 +131,14 @@ fn element_escalations(host: &Mesh, cutters: &[Mesh]) -> (u64, Mesh) {
 fn issue_1109_per_element_budget_bounds_pathological_csg() {
     // A host slab cut by several coplanar-fragment slabs at staggered internal
     // heights — the dense-coplanar-cut pattern that hung the exact kernel.
+    // #7292's proper-crossing short circuit skips irrelevant exact predicates.
+    // Keep enough real facets to exercise the unchanged work cap; a dyadic
+    // grid also keeps the host boundaries off the cutter's subdivision edges.
     let host = box_mesh([0.0, 0.0, 0.0], [10.0, 10.0, 10.0]);
     let cutters: Vec<Mesh> = (0..5)
         .map(|k| {
             let z = 1.0 + k as f32 * 1.5;
-            faceted_slab([-1.0, -1.0, -1.0], [11.0, 11.0, z], 40, z)
+            faceted_slab([-1.0, -1.0, -1.0], [11.0, 11.0, z], 64, z)
         })
         .collect();
 

@@ -9,7 +9,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use ifc_lite_core::{keyword_eq, EntityDecoder, EntityScanner};
+use ifc_lite_core::{keyword_eq, slot, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{ExtractedProfile, LayerBuildup, MaterialLayerIndex};
 
 use crate::hbjson::{EnergyMaterial, ModelEnergy, OpaqueConstruction};
@@ -74,7 +74,7 @@ fn material_names(content: &[u8], decoder: &mut EntityDecoder) -> HashMap<u32, S
             continue;
         }
         if let Ok(e) = decoder.decode_at_with_id(id, start, end) {
-            if let Some(name) = e.get(0).and_then(|a| a.as_string()) {
+            if let Some(name) = e.string_at(slot::IfcMaterial::NAME) {
                 if !name.is_empty() {
                     names.insert(id, name.to_string());
                 }

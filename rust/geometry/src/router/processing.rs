@@ -4,7 +4,9 @@
 
 //! Core element processing: resolving representations, processing items, and caching.
 
-use super::frame_parts::{frames_mergeable, mesh_bounds, single_frame, union_bounds, FrameParts};
+use super::frame_parts::{
+    frames_mergeable, merge_admitted, mesh_bounds, single_frame, union_bounds, FrameParts,
+};
 use super::transforms::instancing_enabled;
 use super::GeometryRouter;
 use crate::{InstanceMeta, Mesh, Result, SubMeshCollection};
@@ -12,7 +14,6 @@ use crate::representation::{product_shape, rep_items, Select};
 
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::rc::Rc;
-
 
 /// Which source hygiene an element's meshes get before placement (#5313).
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -25,6 +26,9 @@ pub(super) enum SourceHygiene {
     /// those inputs changed the cut on ~20 void hosts of the public corpus, so
     /// it is a separate, measured change.
     IndexOnly,
+    /// Boolean inputs also split exactly collinear cap seams at an existing
+    /// same-face apex index, without changing vertex arrays (#7292).
+    BooleanOperand,
 }
 
 impl SourceHygiene {
@@ -38,6 +42,7 @@ impl SourceHygiene {
         match self {
             Self::Watertight => mesh.clean_degenerate_watertight(),
             Self::IndexOnly => mesh.clean_degenerate(),
+            Self::BooleanOperand => mesh.clean_degenerate_exact_indexed(),
         }
     }
 }
@@ -108,7 +113,7 @@ impl GeometryRouter {
 
         // Body representations only ('Axis', 'FootPrint', 'Box' are skipped), and
         // a MappedRepresentation is skipped when direct geometry duplicates it.
-        for shape_rep in shape.select(element, Select::Meshed) {
+        'items: for shape_rep in shape.select(element, Select::Meshed) {
             let items = rep_items(shape_rep, decoder)?;
             let fill_only = super::annotation::is_fill_only_representation(element, shape_rep);
 
@@ -145,13 +150,17 @@ impl GeometryRouter {
                     // return different RTC frames. Merge only like frames until
                     // placement has brought both into the world/RTC frame.
                     if mesh.rtc_applied {
-                        rebased_mesh.merge(&mesh);
+                        if !merge_admitted(&mut rebased_mesh, &mesh) {
+                            break 'items;
+                        }
                         union_bounds(&mut rebased_bounds, bounds);
                         continue;
                     } else if combined_mesh.positions.is_empty()
                         || frames_mergeable(combined_mesh.origin, mesh.origin)
                     {
-                        combined_mesh.merge(&mesh);
+                        if !merge_admitted(&mut combined_mesh, &mesh) {
+                            break 'items;
+                        }
                     } else {
                         far_parts.merge(&mesh, bounds);
                         continue;
@@ -159,6 +168,11 @@ impl GeometryRouter {
                     union_bounds(&mut captured_local_bounds, bounds);
                 }
             }
+        }
+        // A refused merge only records the account's sticky stop; surface it
+        // before hygiene or placement run over partial output.
+        if crate::resource::is_active() {
+            crate::resource::check_current()?;
         }
         if combined_mesh.positions.is_empty() {
             std::mem::swap(&mut combined_mesh, &mut rebased_mesh);

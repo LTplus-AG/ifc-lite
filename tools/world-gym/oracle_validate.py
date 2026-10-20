@@ -7,8 +7,8 @@
 
 Reads a sample descriptor JSON (written by oracle-validate.mjs) listing
 regenerated model files plus their World Gym labels, and validates each
-label against IfcOpenShell - the same pinned engine
-(tools/ifcopenshell_reference/requirements.lock: ifcopenshell==0.8.5) the
+label against IfcOpenShell - the same reference engine
+(tools/ifcopenshell_reference/requirements.lock: latest stable ifcopenshell) the
 repo's geometry parity harness uses.
 
 Per-model checks (each an independent read of the bytes by a foreign

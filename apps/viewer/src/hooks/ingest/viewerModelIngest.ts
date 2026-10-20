@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { CompactEntityIndex, parseIfcx, createSyntheticDataStore, attachDataStoreAccessors, contiguousSourceBytes, type IfcDataStore, type IfcSourceBytes, type IfcStoreData, type PointCloudExtraction } from '@ifc-lite/parser';
+import type { parseIfcx as ParseIfcx } from '@ifc-lite/ifcx';
+import { CompactEntityIndex, createSyntheticDataStore, attachDataStoreAccessors, contiguousSourceBytes, type IfcDataStore, type IfcSourceBytes, type IfcStoreData, type PointCloudExtraction } from '@ifc-lite/parser';
 import { type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
 import { parseGLB, parseGLBToMeshData, parseGLBImageResources } from '@ifc-lite/cache';
 import type { SchemaVersion } from '../../store/types.js';
@@ -117,7 +118,7 @@ export function getMaxExpressId(
  * is only carried into the store (never read here), so it is optional — which keeps
  * the regression test from having to fabricate a full hierarchy.
  */
-type IfcxParse = Awaited<ReturnType<typeof parseIfcx>>;
+type IfcxParse = Awaited<ReturnType<typeof ParseIfcx>>;
 type IfcxStoreInput = Pick<
   IfcxParse,
   'fileSize' | 'entityCount' | 'parseTime' | 'strings' | 'entities' | 'properties' | 'quantities' | 'relationships' | 'georeferencing'
@@ -205,6 +206,9 @@ export async function parseIfcxViewerModel(
   onProgress?: (progress: { phase: string; percent: number }) => void,
   opts?: ParseIfcxOptions,
 ): Promise<ViewerModelPayload> {
+  // Dynamic: the IFCX parser carries the generated imported-geometry kernel
+  // (~600 KB). Importing it on demand keeps it out of the eager startup chunks.
+  const { parseIfcx } = await import('@ifc-lite/ifcx');
   const ifcxResult = await parseIfcx(buffer, {
     onProgress: (progress) => {
       onProgress?.({

@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! `IfcMappedItem` source resolution: caching, cyclic/depth-bounded recursion,
+//! `IfcMappedItem` source resolution: caching, bounded iterative traversal,
 //! and merging an `IfcRepresentationMap`'s items into one source-coords mesh
 //! per f64 frame (#6446).
 //! Split out of `processing.rs` to stay within its module-size budget (#3691).
@@ -14,6 +14,7 @@ use crate::representation::{NestedMaps, RepresentationWalk, Select, MAX_WALK_LEV
 use super::GeometryRouter;
 use crate::{Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use std::sync::Arc;
 
 // Maximum nested IfcMappedItem depth for a single geometry item. Shared with
 // `ifc_lite_processing::element` and the wasm styling colour resolver, which
@@ -51,6 +52,7 @@ impl GeometryRouter {
             nested: NestedMaps::Expand { max_depth: MAX_MAPPED_ITEM_DEPTH, max_levels: MAX_WALK_LEVELS },
         };
         walk.mapped_item(item, decoder, &mut sink);
+        crate::resource::check_current()?;
         match sink.error {
             Some(error) => Err(error),
             None => Ok(sink.parts.unwrap_or_default()),
@@ -68,6 +70,26 @@ impl GeometryRouter {
             return self.process_representation_item(item, decoder).map(|mesh| vec![mesh]);
         }
         self.process_mapped_item_parts(item, decoder)
+    }
+
+    /// Deep-copy a source mesh for a mapped-item cache. Without an installed
+    /// account this is `Mesh::clone`; with one, the copy is admitted (and its
+    /// storage charged, never refunded) before any allocation, so a zero or
+    /// overflowing allowance refuses it. Cache residency beyond the account's
+    /// lifetime is not tracked here.
+    pub(super) fn clone_source_for_cache(&self, mesh: &Mesh) -> Result<Arc<Mesh>> {
+        self.clone_cached_mesh(mesh).map(Arc::new)
+    }
+
+    /// Accounted copy for both cache population and every cache hit, so a
+    /// repeated occurrence is charged (or refused) like the first one.
+    pub(super) fn clone_cached_mesh(&self, mesh: &Mesh) -> Result<Mesh> {
+        if !crate::resource::is_active() {
+            return Ok(mesh.clone());
+        }
+        let (copy, permit) = crate::resource::mesh::clone_mesh(mesh)?;
+        permit.retain();
+        Ok(copy)
     }
 
     /// Mesh one plain (non-`IfcMappedItem`) item of a mapped source into

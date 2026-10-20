@@ -10,6 +10,7 @@
 //! this one definition.
 
 use crate::math::tol;
+use ifc_lite_core::slot::{IfcMappedItem, IfcRepresentationMap};
 use crate::{Error, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix4;
@@ -40,7 +41,7 @@ pub(crate) fn mapping_target(
     item: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Result<Option<Matrix4<f64>>> {
-    match item.get(1) {
+    match item.attr(IfcMappedItem::MAPPING_TARGET) {
         Some(attr) if !attr.is_null() => match decoder.resolve_ref(attr)? {
             Some(entity) => Ok(Some(crate::router::transforms::operator::parse_transformation_operator(
                 &entity, decoder,
@@ -74,7 +75,7 @@ pub(crate) fn mapping_origin(
     source: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Result<Option<Matrix4<f64>>> {
-    let Some(origin_attr) = source.get(0).filter(|a| !a.is_null()) else {
+    let Some(origin_attr) = source.attr(IfcRepresentationMap::MAPPING_ORIGIN).filter(|a| !a.is_null()) else {
         return Ok(None);
     };
     let Some(origin) = decoder.resolve_ref(origin_attr)? else {

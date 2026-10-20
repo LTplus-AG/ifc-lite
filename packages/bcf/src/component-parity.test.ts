@@ -28,6 +28,8 @@ function projectWith(viewpoint: BCFViewpoint, version: '2.1' | '3.0' = '2.1'): {
   const topic: BCFTopic = {
     guid: generateUuid(),
     title: 'component parity',
+    topicType: 'Issue',
+    topicStatus: 'Open',
     creationDate: '2026-01-01T00:00:00.000Z',
     creationAuthor: 'test',
     comments: [],

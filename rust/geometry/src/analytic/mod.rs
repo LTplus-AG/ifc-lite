@@ -6,6 +6,10 @@
 //! A description does not claim to include later boolean operations.
 
 mod curve;
+mod source;
+#[cfg(test)]
+mod source_tests;
+pub use source::{with_source_capture, AnalyticBoundarySource, SourceRecord, SourceValue};
 mod frame;
 mod helpers;
 mod profile;

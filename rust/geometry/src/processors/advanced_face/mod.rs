@@ -34,6 +34,17 @@ pub(crate) use bspline_budget::take_curve_capped;
 pub(crate) use bounds::take_face_refused;
 pub(super) use bounds::note_face_refused;
 
+/// Restore reports captured by an owner between synchronous slices without
+/// discarding reports already pending for the caller on this thread.
+pub(crate) fn restore_reports(curve_capped: bool, face_types: &[ifc_lite_core::IfcType]) {
+    if curve_capped {
+        bspline_budget::note_curve_capped();
+    }
+    for ty in face_types {
+        bounds::note_face_refused(ty);
+    }
+}
+
 use revolution::process_surface_of_revolution_face;
 use surfaces::{process_cylindrical_face, process_planar_face_rebased};
 

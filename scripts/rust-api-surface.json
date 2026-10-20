@@ -189,6 +189,7 @@
     "OpeningDiagnostic": "struct { kind: OpeningKindDiag; opening_id: u32; vertex_count: usize }",
     "OpeningKindDiag": "enum { Diagonal; NonRectangular; Rectangular }",
     "OrientVerdict": "struct { all_closed: bool; all_orientable: bool; components: u32; flipped: bool }",
+    "PendingDiagnosticState": "struct {  }",
     "Plane": "struct { normal: Vector3<f64>; point: Point3<f64> }",
     "PlaneFrame": "struct { origin: [f64; 3]; u_axis: [f64; 3]; v_axis: [f64; 3] }",
     "Point2": "external re-export",

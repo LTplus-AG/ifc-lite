@@ -22,6 +22,10 @@
 use std::cell::RefCell;
 use std::fmt;
 
+#[path = "pending_diagnostics.rs"]
+mod pending;
+pub use pending::PendingDiagnosticState;
+
 thread_local! {
     /// Pending boolean failures from contexts that have no direct router
     /// handle. Historically fed by `MappedItemProcessor`'s transient

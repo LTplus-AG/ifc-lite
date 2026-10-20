@@ -30,6 +30,7 @@ slice by the phases it changes and by output identity, not by a ±2% move in an 
 | --- | --- | --- | --- |
 | C2 #7969 boolean operand seams | identical | BWK +1.1% (±2), Holter −3.2% (±30), ISSUE_098 +0.7% (±10), ISSUE_068 −3.3% (±15), schependomlaan +2.3% (±4), ISSUE_129 +1.8% (±6) | neutral: no phase outside noise |
 | B2 #7960 tessellated plans | identical | BWK 0.0% (±1), Holter −0.1% (±9), ISSUE_098 −2.5% (±8), ISSUE_068 +0.3% (±13), schependomlaan −1.0% (±4), ISSUE_129 +0.2% (±5) | neutral: no phase outside noise |
+| A2 #7957 owned element scopes | identical | BWK −0.8% (±5), Holter −3.0% (±10), ISSUE_098 −3.2% (±9), ISSUE_068 0.0% (±14), schependomlaan −0.6% (±4), ISSUE_129 +0.9% (±8) | neutral: no phase outside noise |
 
 ## Exact rectangular opening union (#7941)
 

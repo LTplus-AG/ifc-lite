@@ -86,7 +86,7 @@ fn owned_oblique_holed_plan_replays_without_source_or_decoder() {
     let mesh = plan.evaluate().unwrap();
     // Area 16 - 4, vertical height 5 * (4 / 5); shear shifts top by +3 Y.
     assert_eq!(bounds(&mesh), ([5., 9., 13.], [9., 16., 17.]));
-    assert!((signed_volume(&mesh).abs() - 48.).abs() < 1e-9);
+    assert!((signed_volume(&mesh) - 48.).abs() < 1e-9);
     let replay = plan.clone().evaluate().unwrap();
     assert_eq!(mesh.positions, replay.positions);
     assert_eq!(mesh.indices, replay.indices);
@@ -133,7 +133,7 @@ fn disjoint_composite_regions_replay_as_separate_areas_with_their_holes() {
     assert!(regions[1].holes.is_empty());
     let mesh = plan.evaluate().unwrap();
     assert_eq!(bounds(&mesh), ([5., 9., 13.], [28., 16., 17.]));
-    assert!((signed_volume(&mesh).abs() - 64.).abs() < 1e-9);
+    assert!((signed_volume(&mesh) - 64.).abs() < 1e-9);
 }
 
 #[test]
@@ -186,7 +186,7 @@ fn production_direction_defaults_and_missing_position_remain_admitted() {
     assert!(position.is_none());
     let mesh = plan.evaluate().unwrap();
     assert_eq!(bounds(&mesh), ([-2., -2., 0.], [2., 2., 5.]));
-    assert!((signed_volume(&mesh).abs() - 60.).abs() < 1e-9);
+    assert!((signed_volume(&mesh) - 60.).abs() < 1e-9);
 }
 
 #[test]
@@ -199,5 +199,5 @@ fn production_processor_uses_owned_construction_for_holed_solid() {
         .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
         .unwrap();
     assert_eq!(bounds(&mesh), ([5., 9., 13.], [9., 16., 17.]));
-    assert!((signed_volume(&mesh).abs() - 48.).abs() < 1e-9);
+    assert!((signed_volume(&mesh) - 48.).abs() < 1e-9);
 }

@@ -49,7 +49,6 @@ fn volume(mesh: &Mesh) -> f64 {
             point(triangle[0]).dot(&point(triangle[1]).cross(&point(triangle[2]))) / 6.
         })
         .sum::<f64>()
-        .abs()
 }
 
 #[test]

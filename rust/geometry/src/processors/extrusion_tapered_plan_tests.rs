@@ -32,7 +32,6 @@ fn volume(mesh: &Mesh) -> f64 {
             point(triangle[0]).dot(&point(triangle[1]).cross(&point(triangle[2]))) / 6.
         })
         .sum::<f64>()
-        .abs()
 }
 
 #[test]
@@ -93,5 +92,14 @@ fn empty_start_short_circuits_and_invalid_direction_precedes_end_admission() {
     assert_eq!(
         lower(&source).unwrap_err().to_string(),
         "Geometry processing error: ExtrudedAreaSolidTapered has zero-length ExtrudedDirection"
+    );
+}
+
+#[test]
+fn end_swept_area_slot_is_the_schema_attribute_read_on_main() {
+    // Main read `entity.get(4)`; the named slot must keep addressing that attribute.
+    assert_eq!(
+        ifc_lite_core::slot::IfcExtrudedAreaSolidTapered::END_SWEPT_AREA.index(),
+        4
     );
 }

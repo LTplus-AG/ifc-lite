@@ -9,7 +9,7 @@ use ifc_lite_core::{build_entity_index, EntityDecoder};
 fn profile(data: &[u8], id: u32) -> super::AnalyticProfile {
     let mut decoder = EntityDecoder::with_index(data, build_entity_index(data));
     let entity = decoder.decode_by_id(id).unwrap();
-    extract_analytic_profile(&entity, &mut decoder)
+    super::with_source_capture(|| extract_analytic_profile(&entity, &mut decoder))
 }
 
 fn semicircle(master: &str, sense: bool, reverse: bool) -> String {
@@ -207,4 +207,20 @@ fn trimmed_line_keeps_raw_vector_and_descending_selector_parameters() {
             value: Box::new(SourceValue::Real(2.)),
         }])
     );
+}
+
+#[test]
+fn default_extraction_captures_no_source_and_scope_restores() {
+    let data = semicircle("CARTESIAN", true, false);
+    let mut decoder = EntityDecoder::with_index(data.as_bytes(), build_entity_index(data.as_bytes()));
+    let entity = decoder.decode_by_id(33).unwrap();
+    let plain = extract_analytic_profile(&entity, &mut decoder);
+    assert_eq!(plain.status, AnalyticStatus::Complete);
+    assert!(plain.loops.iter().all(|boundary| boundary.source.is_none()));
+    let captured = super::with_source_capture(|| extract_analytic_profile(&entity, &mut decoder));
+    assert!(captured.loops.iter().all(|boundary| boundary.source.is_some()));
+    assert_eq!(captured.loops[0].segments, plain.loops[0].segments, "capture never changes geometry");
+    let unwound = std::panic::catch_unwind(|| super::with_source_capture(|| panic!("unwind")));
+    assert!(unwound.is_err());
+    assert!(!super::source::requested(), "the scope is closed on every exit");
 }

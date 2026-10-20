@@ -101,7 +101,8 @@ fn original_solid_position_axis_and_ref_direction_survive_normalization() {
     let bytes = bytes.replace("#11=IFCAXIS2PLACEMENT3D(#10,$,$);",
         "#11=IFCAXIS2PLACEMENT3D(#10,#990,#991);\n#990=IFCDIRECTION((0.,0.,7.));\n#991=IFCDIRECTION((3.,0.,0.));");
     assert!(bytes.contains("#990=IFCDIRECTION"), "fixture placement must be replaced");
-    let source = read(bytes.as_bytes(), 12);
+    assert!(read(bytes.as_bytes(), 12).source.is_none(), "capture is opt-in");
+    let source = crate::analytic::with_source_capture(|| read(bytes.as_bytes(), 12));
     assert_eq!(source.status, AnalyticStatus::Complete);
     let original = source.source.unwrap();
     assert_eq!(original.capture_status, AnalyticStatus::Complete);

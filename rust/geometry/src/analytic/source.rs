@@ -7,6 +7,7 @@
 use crate::{Error, Result};
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 use serde::{Deserialize, Serialize};
+use std::cell::Cell;
 use std::collections::BTreeMap;
 pub(super) const MAX_SOURCE_VALUE_DEPTH: usize = 32;
 pub(super) const MAX_SOURCE_VALUES: usize = 1_000_000;
@@ -60,6 +61,30 @@ fn serialize_source_records<S: serde::Serializer>(
     serializer: S,
 ) -> std::result::Result<S::Ok, S::Error> {
     serializer.collect_map(records.iter().map(|(id, record)| (id.to_string(), record)))
+}
+
+thread_local! {
+    static REQUESTED: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Run `f` with original-source capture on for this thread. Outside such a
+/// scope every `source` field stays `None` and extraction does no source
+/// traversal: the capture costs 3-24% of analytic export time, so it is
+/// paid only by a consumer that asks for it. The previous state is restored
+/// on every exit, including a panic.
+pub fn with_source_capture<R>(f: impl FnOnce() -> R) -> R {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            REQUESTED.with(|requested| requested.set(self.0));
+        }
+    }
+    let _restore = Restore(REQUESTED.with(|requested| requested.replace(true)));
+    f()
+}
+
+pub(super) fn requested() -> bool {
+    REQUESTED.with(Cell::get)
 }
 
 #[derive(Default)]

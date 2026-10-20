@@ -17,7 +17,8 @@ pub struct AnalyticExtrusion {
     pub solid_id: u32,
     /// Original solid attributes and Position/ExtrudedDirection coefficient graph.
     /// SweptArea traversal is retained separately in each profile boundary source.
-    /// Not serialized: export output stays unchanged until a consumer opts in.
+    /// `None` unless extracted inside [`super::with_source_capture`]. Not
+    /// serialized: export output stays unchanged until a consumer opts in.
     #[serde(skip)]
     pub source: Option<super::AnalyticBoundarySource>,
     #[serde(rename = "SweptArea")]
@@ -50,9 +51,11 @@ pub fn extract_analytic_extrusion(
         extruded_direction_id: solid.get_ref(2), direction_ratios: None,
         axis_unit_vector: None, depth: None, status: AnalyticStatus::Complete,
     };
-    let mut capture = super::source::SourceCapture::enabled();
-    capture.record(solid, decoder);
-    result.source = Some(capture.finish(solid.id, decoder.plane_angle_to_radians()));
+    if super::source::requested() {
+        let mut capture = super::source::SourceCapture::enabled();
+        capture.record(solid, decoder);
+        result.source = Some(capture.finish(solid.id, decoder.plane_angle_to_radians()));
+    }
     let parsed = parse_extrusion(solid, decoder, &mut result);
     if let Err(reason) = parsed {
         result.status = AnalyticStatus::Unsupported(reason);

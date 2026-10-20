@@ -31,7 +31,8 @@ pub struct AnalyticProfileLoop {
     pub perimeter: f64,
     /// Original source convention, separate from interpreted segment geometry.
     /// Parameterized profiles retain their original dimensions and placement here too.
-    /// Not serialized: export output stays unchanged until a consumer opts in.
+    /// `None` unless extracted inside [`super::with_source_capture`]. Not
+    /// serialized: export output stays unchanged until a consumer opts in.
     #[serde(skip)]
     pub source: Option<super::AnalyticBoundarySource>,
 }
@@ -112,7 +113,9 @@ fn parse_profile(
         }
         _ => return Err(format!("unsupported profile {}", profile.ifc_type.name())),
     };
-    if matches!(profile.ifc_type, IfcType::IfcRectangleProfileDef | IfcType::IfcCircleProfileDef) {
+    if super::source::requested()
+        && matches!(profile.ifc_type, IfcType::IfcRectangleProfileDef | IfcType::IfcCircleProfileDef)
+    {
         let mut capture = super::source::SourceCapture::enabled();
         capture.record(profile, decoder);
         result.loops[0].source = Some(capture.finish(profile.id, decoder.plane_angle_to_radians()));
@@ -174,13 +177,16 @@ fn curve_loop(
     id: u32, kind: ProfileLoopKind, decoder: &mut EntityDecoder,
 ) -> Result<AnalyticProfileLoop, String> {
     let curve = decoder.decode_by_id(id).map_err(|error| format!("curve #{id}: {error}"))?;
-    let mut walk = CurveWalk::with_source();
+    let capture = super::source::requested();
+    let mut walk = if capture { CurveWalk::with_source() } else { CurveWalk::default() };
     let segments = walk.extract(&curve, decoder)
         .map_err(|error| format!("curve #{id}: {error}"))?
         .ok_or_else(|| format!("curve #{id} is not exact line/arc geometry"))?;
     let mut boundary = loop_from_segments(kind, segments)
         .map_err(|reason| format!("curve #{id}: {reason}"))?;
-    boundary.source = Some(walk.source.finish(id, decoder.plane_angle_to_radians()));
+    if capture {
+        boundary.source = Some(walk.source.finish(id, decoder.plane_angle_to_radians()));
+    }
     Ok(boundary)
 }
 

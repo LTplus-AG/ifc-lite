@@ -820,7 +820,7 @@
    "volume": 0.023856
   }
  ],
- "engine": "ifcopenshell 0.8.2",
+ "engine": "ifcopenshell 0.9.0.post1",
  "fixture": "IfcOpenHouse_IFC4.ifc",
  "settings": {
   "use_world_coords": true,

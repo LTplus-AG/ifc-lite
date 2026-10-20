@@ -594,7 +594,7 @@ export interface ValidationProgress {
 // ============================================================================
 
 /** Supported locales for translation */
-export type SupportedLocale = 'en' | 'de' | 'fr' | 'it';
+export type SupportedLocale = 'en' | 'de' | 'fr' | 'it' | 'ru';
 
 /** Translation service interface */
 export interface TranslationService {

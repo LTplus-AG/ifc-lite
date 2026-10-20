@@ -5,6 +5,77 @@
 use super::*;
 use crate::ClippingProcessor;
 
+// #7292 / review4304598525: a cleaned-away sibling must not survive as a
+// bounds-only rectangular opening in the real classification fallback.
+struct MixedBoundsProducer7292;
+impl crate::GeometryProcessor for MixedBoundsProducer7292 {
+    fn process(&self, entity: &DecodedEntity, _decoder: &mut EntityDecoder,
+        _schema: &ifc_lite_core::IfcSchema, _quality: crate::TessellationQuality) -> crate::Result<Mesh> {
+        if entity.id == 10 {
+            return Ok(crate::kernel::mesh_bridge::tris_to_mesh(
+                &crate::kernel::arrangement::box_mesh([0.; 3], [1.; 3])));
+        }
+        let mut mesh = Mesh::new();
+        mesh.positions = vec![4., 0., 0., 5., 0., 0., 6., 0., 0.];
+        mesh.normals = vec![0.; 9];
+        mesh.indices = vec![0, 1, 2];
+        Ok(mesh)
+    }
+    fn supported_types(&self) -> Vec<ifc_lite_core::IfcType> {
+        vec![ifc_lite_core::IfcType::IfcBlock]
+    }
+}
+
+const MIXED_BOUNDS_OPENING_7292: &str = "
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCAXIS2PLACEMENT3D(#1,$,$);
+#3=IFCLOCALPLACEMENT($,#2);
+#4=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#2,$);
+#10=IFCBLOCK(#2,1.,1.,1.);
+#13=IFCBLOCK(#2,1.,1.,1.);
+#11=IFCSHAPEREPRESENTATION(#4,'Body','CSG',(#10,#13));
+#12=IFCPRODUCTDEFINITIONSHAPE($,$,(#11));
+#20=IFCOPENINGELEMENT('0000000000000000000001',$,'Opening',$,$,#3,#12,$,.OPENING.);
+";
+
+#[test]
+fn issue_7292_cleaned_item_bounds_match_surviving_cutters() {
+    for preserve_order in [false, true] {
+        let mut decoder = EntityDecoder::new(MIXED_BOUNDS_OPENING_7292);
+        let opening = decoder.decode_by_id(20).unwrap();
+        let mut router = GeometryRouter::new();
+        router.register(Box::new(MixedBoundsProducer7292));
+        router.set_preserve_triangle_order(preserve_order);
+        let cutters = router.get_opening_item_meshes_world(&opening, &mut decoder).unwrap();
+        assert_eq!(cutters.len(), 1, "positive control: cleanup rejects the zero-area sibling");
+        let bounds = router.get_opening_item_bounds_with_direction(&opening, &mut decoder).unwrap();
+        assert_eq!(bounds.len(), cutters.len(), "removed faces must not leave an extra bound");
+        assert_eq!(bounds[0].0, Point3::origin());
+        assert_eq!(bounds[0].1, Point3::new(1., 1., 1.));
+    }
+}
+
+#[test]
+fn issue_7292_cleaned_item_cannot_be_resurrected_by_rectangular_fallback() {
+    let valid_only = MIXED_BOUNDS_OPENING_7292.replace("(#10,#13)", "(#10)");
+    for preserve_order in [false, true] {
+        for source in [valid_only.as_str(), MIXED_BOUNDS_OPENING_7292] {
+            let mut decoder = EntityDecoder::new(source);
+            let opening = decoder.decode_by_id(20).unwrap();
+            let mut router = GeometryRouter::new();
+            router.register(Box::new(MixedBoundsProducer7292));
+            router.set_preserve_triangle_order(preserve_order);
+            let classified = router.classify_openings(&opening, &[20], &mut decoder);
+            assert_eq!(classified.len(), 1, "only the valid item may supply a cut");
+            let OpeningType::Rectangular(min, max, _) = &classified[0] else {
+                panic!("the valid box retains its ordinary rectangular bounds path");
+            };
+            assert_eq!(*min, Point3::origin());
+            assert_eq!(*max, Point3::new(1., 1., 1.));
+        }
+    }
+}
+
 /// Append a quad, ordering its winding so the facet normal points along
 /// `target`. Deriving the winding instead of hand-listing corner order keeps
 /// the fixture self-checking: an outward-facing fixture cannot silently become
@@ -883,3 +954,34 @@ mod issue_4611_far_field_threshold {
         );
     }
 }
+
+
+#[test]
+fn issue_6940_rectangular_merge_preserves_small_gaps_and_steps() {
+    let rect = |lo: [f64; 3], hi: [f64; 3]| OpeningType::Rectangular(
+        Point3::from(lo), Point3::from(hi), Some(Vector3::z()));
+    let covered = |openings: &[OpeningType], p: [f64; 3]| openings.iter().any(|o| {
+        let OpeningType::Rectangular(lo, hi, _) = o else { panic!("rectangular fixture") };
+        (0..3).all(|k| p[k] >= lo[k] && p[k] <= hi[k])
+    });
+    for (original, witness) in [
+        (vec![rect([0.,0.,0.], [1.,1.,1.]), rect([1.001,0.,0.], [2.,1.,1.])], [1.0005,0.5,0.5]),
+        (vec![rect([0.,0.,0.], [1.,1.,1.]), rect([0.5,0.005,0.], [2.,1.005,1.])], [1.5,0.002,0.5]),
+    ] {
+        assert!(!covered(&original, witness), "witness is authored solid, not an opening");
+        let merged = GeometryRouter::merge_rectangular_openings(&original);
+        assert!(!covered(&merged, witness), "near adjacency must not manufacture a cut");
+        for p in [[0.25,0.5,0.5], [1.5,0.5,0.5]] {
+            assert!(covered(&original, p) && covered(&merged, p), "both real cutters survive");
+        }
+    }
+    let tiled = vec![rect([0.,0.,0.], [1.,1.,1.]), rect([1.,0.,0.], [2.,1.,1.])];
+    let merged = GeometryRouter::merge_rectangular_openings(&tiled);
+    assert_eq!(merged.len(), 1, "an exact rectangular union still coalesces");
+    for p in [[0.5,0.5,0.5], [1.,0.5,0.5], [1.5,0.5,0.5]] {
+        assert!(covered(&merged, p));
+    }
+}
+
+#[path = "opening_merge_fixture_tests.rs"]
+mod opening_merge_fixture_tests;

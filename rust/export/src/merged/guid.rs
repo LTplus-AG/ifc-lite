@@ -54,21 +54,9 @@ pub fn extract_global_id_fast(type_upper: &str, line: &[u8]) -> Option<String> {
 }
 
 /// The uppercase entity type token of a `#id=TYPE(...)` line, tolerating
-/// whitespace after `=` (some exporters write `#1= IFCPROJECT(`).
+/// whitespace or a comment after `=` (some exporters write `#1= IFCPROJECT(`).
 pub fn entity_type_upper(line: &[u8]) -> Option<String> {
-    let eq = line.iter().position(|&b| b == b'=')?;
-    let mut i = eq + 1;
-    while i < line.len() && line[i].is_ascii_whitespace() {
-        i += 1;
-    }
-    let start = i;
-    while i < line.len() && line[i] != b'(' && !line[i].is_ascii_whitespace() {
-        i += 1;
-    }
-    if i == start {
-        return None;
-    }
-    std::str::from_utf8(&line[start..i]).ok().map(|s| s.to_ascii_uppercase())
+    ifc_lite_core::parser::StepRecord::parse(line)?.keyword().map(str::to_ascii_uppercase)
 }
 
 /// The leading GlobalId of a raw STEP entity line, classified by TYPE (not just

@@ -140,3 +140,12 @@ lever.
 Native: `cargo run --release -p ifc-lite-processing --example csg_scaling_bench --features csg-capture -- <model.ifc>`
 WASM: build `rust/csg-thread-bench` plain + threaded (see crate header), serve
 `web/` with COOP/COEP (`node serve.mjs`), open `index.html?pkg=threaded&mode=…`.
+
+Captured jobs retain the opening-versus-operand weld policy and each batch
+invocation's effective conforming-miss retention policy after the router's
+chunk-size guard. Both native and WASM harnesses replay these through
+`CapturedCsgJob::replay`. Serialized corpora start with `CSG3`; batch tags
+encode both policies. Older unversioned blobs lack weld policy, and `CSG2`
+lacks miss-retention policy. Both are rejected because either can mix callers
+with different policies. Recapture with the current native dumper instead
+of guessing a default or relabeling an old blob.

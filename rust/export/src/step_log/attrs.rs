@@ -153,41 +153,13 @@ fn is_ref(s: &str) -> bool {
     s.len() >= 2 && s.starts_with('#') && s[1..].chars().all(|c| c.is_ascii_digit())
 }
 
-/// `/^-?\d+(?:\.\d+)?(?:E[+-]?\d+)?$/i`.
-fn is_plain_number(s: &str) -> bool {
-    let b = s.as_bytes();
-    let mut i = usize::from(b.first() == Some(&b'-'));
-    let start = i;
-    while i < b.len() && b[i].is_ascii_digit() {
-        i += 1;
-    }
-    if i == start {
-        return false;
-    }
-    if i < b.len() && b[i] == b'.' {
-        i += 1;
-        let frac = i;
-        while i < b.len() && b[i].is_ascii_digit() {
-            i += 1;
-        }
-        if i == frac {
-            return false;
-        }
-    }
-    if i < b.len() && (b[i] == b'e' || b[i] == b'E') {
-        i += 1;
-        if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
-            i += 1;
-        }
-        let exp = i;
-        while i < b.len() && b[i].is_ascii_digit() {
-            i += 1;
-        }
-        if i == exp {
-            return false;
-        }
-    }
-    i == b.len()
+/// `isCompleteStepNumericLiteral`: the whole of `s` is one STEP `REAL` or
+/// `INTEGER` literal, by core's one numeric grammar. This was a port of the
+/// regex `/^-?\d+(?:\.\d+)?(?:E[+-]?\d+)?$/i`, which refused `.5`, `+1`,
+/// `1.E5`, `+1.` and `-0.`, so a slot already written that way was rewritten
+/// quoted (F4 M-export-a, CORE-6).
+fn is_step_number(s: &str) -> bool {
+    ifc_lite_core::parser::step_numeric_literal_len(s.as_bytes()) == Some(s.len())
 }
 
 /// `serializeAttributeValue`: infer the token from the one it replaces.
@@ -215,13 +187,9 @@ fn attribute_value(value: &str, current_token: &str) -> String {
             _ => ".U.".to_string(),
         };
     }
-    let current_numeric = current.starts_with(|c: char| c.is_ascii_digit())
-        || (current.starts_with('-') && current[1..].starts_with(|c: char| c.is_ascii_digit()));
-    if is_plain_number(trimmed) && current_numeric {
-        let n: f64 = trimmed.parse().unwrap_or(f64::NAN);
-        if !n.is_finite() {
-            return "$".to_string();
-        }
+    if is_step_number(trimmed) && is_step_number(current) {
+        // A literal `f64` cannot hold (`1.E400`) is no value: `$`.
+        let Some(n) = ifc_lite_core::parse_step_real(trimmed.as_bytes()) else { return "$".to_string() };
         let real_slot = current.contains('.') || current.contains(['e', 'E']);
         return if !real_slot && n.fract() == 0.0 { integral_token(n) } else { format_step_real(n) };
     }
@@ -322,3 +290,7 @@ pub(crate) fn apply_positional(
     }
     Ok(frame.with_args(text, &args.join(",")))
 }
+
+#[cfg(test)]
+#[path = "attrs_tests.rs"]
+mod tests;

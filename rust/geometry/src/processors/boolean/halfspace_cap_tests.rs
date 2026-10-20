@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use crate::{Mesh, Point3, Vector3};
 use crate::csg::{ClippingProcessor, Plane};
 
 /// Outward-wound watertight unit cube, one face per quad → two triangles,

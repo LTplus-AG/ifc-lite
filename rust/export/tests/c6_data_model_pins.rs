@@ -87,10 +87,10 @@ fn inheritance_is_opt_in_and_the_occurrence_wins() {
     assert_eq!(wall.quantity_sets.iter().map(|q| q.name.as_str()).collect::<Vec<_>>(), ["Qto_AllKinds"]);
     // `Pset_Occurrence.Text` is the occurrence's; a type set of the same name would only add to it.
     assert_eq!(wall.lookup("Pset_Occurrence", "Text").as_deref(), Some("occurrence wins"));
-    // Only the single-valued kinds of `Pset_AllKinds` are decoded today (EXPORT-DATA-2, C6-7).
+    // Every kind of `Pset_AllKinds` is decoded, in the set's member order (EXPORT-DATA-2, D47).
     let all_kinds = wall.property_sets.iter().find(|p| p.name == "Pset_AllKinds").unwrap();
     let names: Vec<_> = all_kinds.properties.iter().map(|p| p.name.as_str()).collect();
-    assert_eq!(names, ["Text", "Flag", "Unknown", "Thickness"]);
+    assert_eq!(names, ["Text", "Flag", "Unknown", "Thickness", "Status", "Range", "Sizes", "Curve", "Ref", "Complex"]);
     // `IfcQuantityNumber` is dropped by the flat export (C6-14).
     let qto = &wall.quantity_sets[0];
     let kinds: Vec<_> = qto.quantities.iter().map(|q| q.kind).collect();
@@ -133,4 +133,14 @@ fn attributes_render_what_the_class_declares_and_skip_unset_ones() {
     assert!(storey.attributes.iter().any(|a| a.name == "Elevation" && a.value == "0" && a.value_type == "IFCREAL"));
     // Off by default.
     assert!(row(&self::rows(false, false), 310).attributes.is_empty());
+}
+
+/// EXPORT-DATA-3 (D42, C6-9): `relationships().type_of` agrees with the
+/// inheritance merge above: #310 is typed by A (#352 relates it to #350) before
+/// B (#353 relates it to #351), and A wins. It used to take B, the last.
+#[test]
+fn relationships_type_of_takes_the_first_type_like_the_inheritance_merge() {
+    let rel = ifc_lite_export::relationships(SYNTHETIC);
+    assert_eq!(rel.type_of.get(&310), Some(&350));
+    assert_eq!(rel.type_of.get(&320), Some(&350));
 }

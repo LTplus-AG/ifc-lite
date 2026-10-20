@@ -1,0 +1,15 @@
+[package]
+name = "ifc-lite-imported-geometry"
+# Fixed: the emitted artifact embeds crate identity, so workspace release bumps must not change it.
+version = "0.1.0"
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Source-independent imported tessellation numeric program"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[lints]
+workspace = true

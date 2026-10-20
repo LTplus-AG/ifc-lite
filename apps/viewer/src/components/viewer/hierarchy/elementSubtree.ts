@@ -15,7 +15,8 @@
  * view, so an element authored this session is labelled like any other (#6233).
  */
 
-import { getAggregatedChildren, collectAggregatedDescendants, type AggregationRelationships } from '@/utils/aggregation';
+import { getAggregatedChildren, collectAggregatedDescendants } from '@/utils/aggregation';
+import { entityOwnership, ownedAggregationRelationships } from '@/utils/entity-ownership';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
@@ -58,7 +59,7 @@ export function makeShapeTest(
   geometryKnown = !!geometricIds && geometricIds.size > 0,
 ): ((id: number) => boolean) | null {
   if (!geometryKnown) return null;
-  const assemblyGeometry = makeAssemblyGeometry(dataStore, modelId, models, geometricIds, true);
+  const assemblyGeometry = makeAssemblyGeometry(dataStore, modelId, models, geometricIds, true, view);
   return (id: number) =>
     assemblyGeometry.renders(
       elementRowType(dataStore, view, id),
@@ -140,7 +141,8 @@ export function emitElementSubtree(
   sortMode: HierarchySortMode,
   noGeometry = false,
 ): void {
-  const relationships = dataStore.relationships as AggregationRelationships | undefined;
+  if (!entityOwnership(dataStore, view)(elementId)) return;
+  const relationships = ownedAggregationRelationships(dataStore, view);
   const globalId = resolveTreeGlobalId(modelId, elementId, models);
   const entityType = elementRowType(dataStore, view, elementId);
   // Reuse entityType so an unnamed element resolves its type name only once.
@@ -233,7 +235,7 @@ export function emitElementsWithOtherBucket(
   hasShape: ((id: number) => boolean) | null,
   otherNodeId: string,
 ): void {
-  const ordered = orderElementIdsByName(elementIds as number[], dataStore, view, sortMode);
+  const ordered = orderElementIdsByName(elementIds.filter(entityOwnership(dataStore, view)), dataStore, view, sortMode);
 
   if (!hasShape) {
     for (const elementId of ordered) {

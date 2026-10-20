@@ -400,7 +400,7 @@ describe('splitTopLevelListItems skips comment content in the outer scan (#4227)
  * export instead of refusing one edit.
  *
  * Three cases, because the bound has to be right in three different ways: it
- * must not refuse what it was set above (real files nest 3 deep at most, so 64
+ * must not refuse what it was set above (real files nest 3 deep at most, so 256
  * has room to spare), it must actually refuse past itself, and — the case the
  * bound exists for — it must turn the depth that used to blow the stack into a
  * clean `null`. Depth 5000 was measured to throw here before the bound (fresh
@@ -411,18 +411,18 @@ describe('a slot nested past the grammar bound is refused, not thrown out of', (
   const nested = (depth: number): string => `'g',${'('.repeat(depth)}1${')'.repeat(depth)},'b'`;
 
   it('accepts nesting just under the bound', () => {
-    // The parts, not the count. A length assertion passes even if the 64-deep
+    // The parts, not the count. A length assertion passes even if the deep
     // middle slot comes back truncated or rewritten, which is the one payload
     // the accept side of the bound exists to protect.
-    expect(splitTopLevelStepArguments(nested(64))).toEqual([
+    expect(splitTopLevelStepArguments(nested(256))).toEqual([
       "'g'",
-      `${'('.repeat(64)}1${')'.repeat(64)}`,
+      `${'('.repeat(256)}1${')'.repeat(256)}`,
       "'b'",
     ]);
   });
 
   it('returns null one level past the bound', () => {
-    expect(splitTopLevelStepArguments(nested(65))).toBeNull();
+    expect(splitTopLevelStepArguments(nested(257))).toBeNull();
   });
 
   it('returns null at a depth that used to throw, rather than throwing', () => {

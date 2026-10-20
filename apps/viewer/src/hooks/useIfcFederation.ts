@@ -17,7 +17,7 @@ import { useCallback, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore, type FederatedModel } from '../store/index.js';
 import { layerStackEntry } from '../lib/layers/stack.js';
-import { detectFormat, parseFederatedIfcx, type IfcDataStore } from '@ifc-lite/parser';
+import { detectFormat, type IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import { chooseSharedRtcOffset } from '@ifc-lite/geometry/world-frame';
 import { IfcQuery } from '@ifc-lite/query';
@@ -387,6 +387,8 @@ export function useIfcFederation(
       setProgress({ phase: 'Parsing federated IFCX', percent: 0 });
 
       // Parse federated IFCX files
+      // Dynamic: keeps the IFCX parser and its imported-geometry kernel out of the eager chunks.
+      const { parseFederatedIfcx } = await import('@ifc-lite/ifcx');
       const result = await parseFederatedIfcx(buffers, {
         onProgress: (prog: { phase: string; percent: number }) => {
           setProgress({ phase: `IFCX ${prog.phase}`, percent: prog.percent });

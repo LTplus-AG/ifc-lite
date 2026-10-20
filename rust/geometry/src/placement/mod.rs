@@ -40,7 +40,7 @@ pub use validate::{validate_chain, ChainPolicy};
 
 use crate::math::tol;
 use crate::axis_projection::perpendicular_x_axis;
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::{Matrix4, Point3, Vector3};
 
 /// Why a placement could not be resolved.
@@ -60,6 +60,9 @@ pub enum PlacementError {
     /// A consumer's limit, not bad input.
     #[error("#{at}: {rule}")]
     Policy { at: u32, rule: &'static str },
+    /// A source execution cancellation or resource refusal, never bad geometry.
+    #[error(transparent)]
+    ProgramStopped(#[from] crate::resource::ProgramStop),
     /// A dangling id or a core decode refusal.
     #[error(transparent)]
     Decode(#[from] ifc_lite_core::Error),
@@ -69,6 +72,7 @@ impl From<PlacementError> for crate::Error {
     fn from(error: PlacementError) -> Self {
         match error {
             PlacementError::Decode(core) => Self::CoreError(core),
+            PlacementError::ProgramStopped(stop) => Self::ProgramStopped(stop),
             other => Self::GeometryError(other.to_string()),
         }
     }
@@ -98,24 +102,30 @@ pub struct Axis2Placement {
 
 impl Axis2Placement {
     /// Read the attribute layout of an `IfcAxis2Placement3D`: Location (0),
-    /// Axis (1), RefDirection (2). The caller selected the type.
+    /// Axis (1), RefDirection (2). A wrong record type is refused and counted.
     pub fn read_3d(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> PlacementResult<Self> {
+        if placement.ifc_type != IfcType::IfcAxis2Placement3D {
+            return Err(unsupported(decoder, placement.id, placement.ifc_type.clone()));
+        }
         Ok(Self {
             location: location(placement, decoder)?,
-            axis: decoder.direction3_at(placement, 1)?,
-            ref_direction: decoder.direction3_at(placement, 2)?,
+            axis: decoder.direction3_at(placement, slot::IfcAxis2Placement3D::AXIS.index())?,
+            ref_direction: decoder.direction3_at(placement, slot::IfcAxis2Placement3D::REF_DIRECTION.index())?,
             planar: false,
         })
     }
 
     /// Read the attribute layout of an `IfcAxis2Placement2D`: Location (0),
     /// RefDirection (1). The Axis is +Z, so [`Self::matrix`] is the XY frame
-    /// of [`build_axis2_matrix`]. The caller selected the type.
+    /// of [`build_axis2_matrix`]. A wrong record type is refused and counted.
     pub fn read_2d(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> PlacementResult<Self> {
+        if placement.ifc_type != IfcType::IfcAxis2Placement2D {
+            return Err(unsupported(decoder, placement.id, placement.ifc_type.clone()));
+        }
         Ok(Self {
             location: location(placement, decoder)?,
             axis: Some(Z),
-            ref_direction: decoder.direction3_at(placement, 1)?,
+            ref_direction: decoder.direction3_at(placement, slot::IfcAxis2Placement2D::REF_DIRECTION.index())?,
             planar: true,
         })
     }
@@ -159,7 +169,7 @@ impl Axis1Placement {
         if placement.ifc_type != IfcType::IfcAxis1Placement {
             return Err(unsupported(decoder, placement.id, placement.ifc_type.clone()));
         }
-        Ok(Self { location: location(placement, decoder)?, axis: decoder.direction3_at(placement, 1)? })
+        Ok(Self { location: location(placement, decoder)?, axis: decoder.direction3_at(placement, slot::IfcAxis1Placement::AXIS.index())? })
     }
 
     /// The Axis, or the IFC derived default +Z. A consumer whose WR rules the
@@ -172,7 +182,7 @@ impl Axis1Placement {
 /// The mandatory Location (attribute 0) under the leaf rule.
 fn location(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> PlacementResult<[f64; 3]> {
     decoder
-        .point3_at(placement, 0)?
+        .point3_at(placement, slot::IfcPlacement::LOCATION.index())?
         .ok_or_else(|| missing(decoder, placement.id, "Location"))
 }
 
@@ -188,6 +198,18 @@ pub(super) fn missing(decoder: &EntityDecoder, at: u32, attr: &'static str) -> P
 pub(super) fn unsupported(decoder: &EntityDecoder, at: u32, found: IfcType) -> PlacementError {
     let _counted = decoder.refuse_malformed(at);
     PlacementError::Unsupported { at, found }
+}
+
+/// Sampling may fail to produce a frame, but execution stops retain their
+/// resource/source authority and must not be counted as malformed input.
+fn sampled<T>(result: crate::Result<T>) -> PlacementResult<Option<T>> {
+    crate::resource::check_current()?;
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(crate::Error::ProgramStopped(stop)) => Err(PlacementError::ProgramStopped(stop)),
+        Err(crate::Error::CoreError(error)) => Err(PlacementError::Decode(error)),
+        Err(_) => Ok(None), // Unsupported/unusable curves are refused by the frame caller.
+    }
 }
 
 /// Orthonormalize a placement's raw axes + location into a column-major 4×4

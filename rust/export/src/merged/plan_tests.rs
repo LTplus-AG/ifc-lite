@@ -80,8 +80,16 @@ fn resolve_included_with_no_counter_still_excludes_the_oversized_reference() {
 
 #[test]
 fn parse_ref_helpers() {
-    assert_eq!(parse_single_ref(" #42 "), Some(42));
-    assert_eq!(parse_single_ref("$"), None);
     assert_eq!(parse_ref_list("(#1,#2,#3)"), vec![1, 2, 3]);
     assert_eq!(parse_ref_list("()"), Vec::<u32>::new());
+}
+
+/// PROCESSING-15 / CORE-1 (F4 M-export-b): a reference is `#digits`, a comment
+/// is trivia. `trim_start_matches('(') + split(',')` accepted `#+5` and dropped
+/// `#5 /* c */`.
+#[test]
+fn ref_lists_read_through_core() {
+    assert_eq!(parse_ref_list("(#1, #2 /* c, ( */ ,#3)"), vec![1, 2, 3]);
+    assert_eq!(parse_ref_list("(#+5,#12abc,#7)"), vec![7]);
+    assert_eq!(parse_ref_list("#9"), Vec::<u32>::new());
 }

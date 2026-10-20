@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use ifc_lite_core::slot;
 
 /// The length scale from the same `ProjectUnits` as the area scale
 /// (EXPORT-DATA-9): one resolution, one scan for the project. A length unit
@@ -32,7 +33,7 @@ pub(super) fn build_rebar_schedule_impl(
     let mut bars = BTreeMap::new();
     let mut types = HashMap::new();
     let mut unreadable_types = HashSet::new();
-    let mut type_candidates: HashMap<u32, Vec<u32>> = HashMap::new();
+    let mut type_candidates = ifc_lite_processing::data_model::type_assignments::TypeAssignments::new();
     let mut type_ref_budget = MAX_TYPE_RELATION_REFERENCES;
     let mut type_ref_budget_reported = false;
     let mut type_link_diagnostics = 0;
@@ -61,7 +62,7 @@ pub(super) fn build_rebar_schedule_impl(
             }
         } else if keyword_eq(kind, "IFCRELDEFINESBYTYPE") {
             if let Ok(rel) = decoder.decode_at_with_id(id, start, end) {
-                if let (Some(related), Some(type_id)) = (rel.get_list(4), rel.get_ref(5)) {
+                if let (Some(related), Some(type_id)) = (rel.attr(slot::IfcRelDefinesByType::RELATED_OBJECTS).and_then(|a| a.as_list()), rel.ref_at(slot::IfcRelDefinesByType::RELATING_TYPE)) {
                     if related.is_empty() {
                         links::report(&mut diagnostics, &mut type_link_diagnostics, "type relationship", id, "RelatedObjects is empty");
                     }
@@ -79,12 +80,12 @@ pub(super) fn build_rebar_schedule_impl(
                         // even its otherwise valid members.
                         for item in related {
                             let bar_id = item.as_entity_ref().expect("validated RelatedObjects member");
-                            type_candidates.entry(bar_id).or_default().push(type_id);
+                            type_candidates.record(bar_id, type_id);
                         }
                     }
                     type_ref_budget = type_ref_budget.saturating_sub(related.len());
                 } else {
-                    let reason = if rel.get_list(4).is_none() { "RelatedObjects is not a reference list" }
+                    let reason = if rel.attr(slot::IfcRelDefinesByType::RELATED_OBJECTS).and_then(|a| a.as_list()).is_none() { "RelatedObjects is not a reference list" }
                         else { "RelatingType is not a reference" };
                     links::report(&mut diagnostics, &mut type_link_diagnostics, "type relationship", id, reason);
                 }
@@ -120,11 +121,7 @@ pub(super) fn build_rebar_schedule_impl(
         let mut type_diagnostics = Vec::new();
         let mut conflicting_type_assignments = false;
         let mut nominal_diameter_conflict = false;
-        let mut seen_types = HashSet::new();
-        for candidate in type_candidates.remove(&id).unwrap_or_default() {
-            if !seen_types.insert(candidate) {
-                continue;
-            }
+        for candidate in type_candidates.candidates(id) {
             if unreadable_types.contains(&candidate) {
                 type_diagnostics.push(format!("assigned type #{candidate} could not decode"));
             } else if !types.contains_key(&candidate) {
@@ -142,8 +139,8 @@ pub(super) fn build_rebar_schedule_impl(
         }
         let bar_type = type_id.and_then(|type_id| types.get(&type_id));
         let mut row = RebarScheduleRow {
-            GlobalId: bar.get_string(0).map(str::to_owned),
-            Name: bar.get_string(2).map(str::to_owned),
+            GlobalId: bar.string_at(slot::IfcRoot::GLOBAL_ID).map(str::to_owned),
+            Name: bar.string_at(slot::IfcRoot::NAME).map(str::to_owned),
             type_id,
             authored: BTreeMap::new(),
             sweeps: Vec::new(),

@@ -70,24 +70,9 @@ fn extract_quantity_value(entity: &DecodedEntity) -> Option<Quantity> {
     // PERF: Use eq_ignore_ascii_case to avoid string allocation per comparison
     let ifc_type = entity.ifc_type.as_str();
 
-    // Map IFC type to quantity type string
-    let quantity_type = if ifc_type.eq_ignore_ascii_case("IFCQUANTITYLENGTH") {
-        "length"
-    } else if ifc_type.eq_ignore_ascii_case("IFCQUANTITYAREA") {
-        "area"
-    } else if ifc_type.eq_ignore_ascii_case("IFCQUANTITYVOLUME") {
-        "volume"
-    } else if ifc_type.eq_ignore_ascii_case("IFCQUANTITYCOUNT") {
-        "count"
-    } else if ifc_type.eq_ignore_ascii_case("IFCQUANTITYWEIGHT") {
-        "weight"
-    } else if ifc_type.eq_ignore_ascii_case("IFCQUANTITYTIME") {
-        "time"
-    } else if ifc_type.eq_ignore_ascii_case("IFCQUANTITYNUMBER") {
-        "number"
-    } else {
-        return None; // Not a recognized quantity type
-    };
+    // One vocabulary with the flat exports (EXPORT-DATA-17): all seven kinds.
+    let quantity_type =
+        super::quantity::QuantityKind::from_keyword(ifc_type)?.lower();
 
     // All IFC quantity types have:
     // [0]=Name, [1]=Description, [2]=Unit, [3]=*Value, [4]=Formula (optional, IFC4)

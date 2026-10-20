@@ -1,0 +1,31 @@
+{
+  "scope": "Packaging only: exact existing browser/performance summaries and native/performance indexes; original source identities, failures and limitations retained. No qualification of later source.",
+  "archive": {
+    "path": "docs/architecture/evidence/issue-7292/validation-summaries.tar.gz",
+    "bytes": 7696,
+    "sha256": "9769c87527587d717fc5a0a69d59e4bdac638c81fafe667822cc4fae2df8ca7a"
+  },
+  "decodedBytes": 27505,
+  "files": [
+    {
+      "path": "docs/architecture/evidence/issue-7292/browser-validation.json",
+      "bytes": 3495,
+      "sha256": "dc8d58f0d7e97615ec067e1c120eca9c9003be77cf8624263227d12d8814b013"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-validation.manifest.json",
+      "bytes": 9261,
+      "sha256": "4c550e48510270959eaadcf9c6bede293ec34613933de75f6a2354d999b2ff23"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/performance-validation.manifest.json",
+      "bytes": 9268,
+      "sha256": "5e76782baa65ec5ccae5d7b878f75cdf56b8c152e2a351964f1c78a93aaaae34"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/performance-verdict.json",
+      "bytes": 5481,
+      "sha256": "6aa75871686253a95e17eff121823d9c7672979c67a769336b74a83b287e0225"
+    }
+  ]
+}

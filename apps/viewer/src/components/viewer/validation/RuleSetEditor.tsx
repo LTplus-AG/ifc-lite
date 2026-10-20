@@ -4,9 +4,8 @@
 
 /**
  * `RuleSetEditor` — a `RuleSetFile`'s list of `InformationRule`s (#5138
- * plan §6): add / remove / rename (the name field on each `RuleCard`),
- * the model-target picker, and per-rule editing via `RuleCard`. Reorder is
- * explicitly NOT required by the plan.
+ * plan §6): add / remove / rename / reorder (#7975), the model-target
+ * picker, and per-rule editing via `RuleCard`.
  *
  * Presentational/controlled only, like every file in this PR — no panel
  * registry entry, no store slice (PR 4 owns the panel, PR 3 the engine).
@@ -45,6 +44,14 @@ export function RuleSetEditor({ file, onChange, models }: RuleSetEditorProps) {
     onChange({ ...file, rules: file.rules.map((r, i) => (i === index ? next : r)) });
   const removeRule = (index: number) =>
     onChange({ ...file, rules: file.rules.filter((_, i) => i !== index) });
+
+  const moveRule = (index: number, offset: -1 | 1) => {
+    const destination = index + offset;
+    if (destination < 0 || destination >= file.rules.length) return;
+    const rules = [...file.rules];
+    [rules[index], rules[destination]] = [rules[destination], rules[index]];
+    onChange({ ...file, rules });
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -94,6 +101,12 @@ export function RuleSetEditor({ file, onChange, models }: RuleSetEditorProps) {
             onChange={(next) => updateRule(i, next)}
             onRemove={() => removeRule(i)}
             models={models}
+            reorder={{
+              canMoveUp: i > 0,
+              canMoveDown: i < file.rules.length - 1,
+              onMoveUp: () => moveRule(i, -1),
+              onMoveDown: () => moveRule(i, 1),
+            }}
           />
         ))}
         <Button type="button" variant="ghost" size="sm" onClick={addRule} className="h-8 w-fit gap-1 text-xs">

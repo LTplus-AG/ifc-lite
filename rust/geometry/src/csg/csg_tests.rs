@@ -713,6 +713,28 @@ fn hairline_t_junction_is_not_recorded_as_a_topology_tear() {
     );
 }
 
+/// #7982: the audit (and, under `csg_topology_gate`, the gate) reads the
+/// processor's own length unit. The `processors/boolean` paths cut in file
+/// units through `with_unit_scale`; a millimetre seam inside the documented
+/// 0.1 mm grid is not a tear there, while the same coordinates in metres are.
+#[test]
+fn topology_audit_grid_follows_the_processor_length_unit_7982() {
+    let mesh = crate::mesh_check::closure_tests::split_apex_tetrahedron();
+    let mm = ClippingProcessor::with_unit_scale(0.001);
+    mm.record_topology_tear(BoolOp::Difference, &mesh);
+    assert_eq!(mm.take_failures(), vec![], "a 0.04 mm seam is not a tear in millimetres");
+    assert!(!mm.topology_gate_reject(BoolOp::Difference, &mesh));
+
+    let metres = ClippingProcessor::new();
+    metres.record_topology_tear(BoolOp::Difference, &mesh);
+    assert_eq!(metres.take_failures().len(), 1, "a 4 cm hole is a tear in metres");
+    assert_eq!(
+        metres.topology_gate_reject(BoolOp::Difference, &mesh),
+        cfg!(feature = "csg_topology_gate"),
+        "the gate rejects exactly when its feature is on"
+    );
+}
+
 /// `union_meshes` must audit the mesh it RETURNS, once — not every
 /// intermediate its pairwise loop throws away. `processors/boolean` unions the
 /// cutter prisms through this method and drains the same clipper into the

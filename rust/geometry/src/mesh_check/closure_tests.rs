@@ -142,6 +142,42 @@ fn closure_verdict_preserves_strict_and_emit_semantics_4796() {
     assert!(!verdict.closed_enough_to_emit());
 }
 
+/// A closed 1000-unit tetrahedron whose apex is spelled 0.04 units apart in
+/// ONE of its three triangles: a sub-0.1 mm seam when the unit is the
+/// millimetre, a 4 cm hole when it is the metre (#7982).
+pub(crate) fn split_apex_tetrahedron() -> Mesh {
+    mesh_of(
+        &[
+            [0.0, 0.0, 0.0],
+            [1000.0, 0.0, 0.0],
+            [0.0, 1000.0, 0.0],
+            [0.0, 0.0, 1000.0],
+            [0.0, 0.04, 1000.0],
+        ],
+        &[[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 4]],
+    )
+}
+
+/// #7982: the closure verdict's 0.1 mm grid is a physical length, so it has to
+/// follow the mesh's unit. Read as millimetres the split apex is one grid
+/// point and the tetrahedron is closed; read as metres it is a real hole the
+/// hairline slack (0.2 mm) does not cover. Scale 1.0 is the metre verdict.
+#[test]
+fn closure_verdict_grid_follows_the_length_unit_7982() {
+    let mesh = split_apex_tetrahedron();
+    let mm = ClosureVerdict::for_mesh_in_units(&mesh, 0.001);
+    assert!(mm.is_directed_closed(), "a 0.04 mm seam is inside the 0.1 mm grid");
+    let metres = ClosureVerdict::for_mesh_in_units(&mesh, 1.0);
+    assert!(!metres.closed_enough_to_emit(), "a 4 cm hole is not a hairline");
+    assert!(!ClosureVerdict::for_mesh(&mesh).closed_enough_to_emit());
+    for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+        assert!(
+            !ClosureVerdict::for_mesh_in_units(&mesh, bad).closed_enough_to_emit(),
+            "an unusable scale ({bad}) falls back to the metre grid"
+        );
+    }
+}
+
 /// THREE triangles on one shared edge: the fin. The signed tally nets to zero
 /// on that edge (two uses one way, one the other, plus the fin's own boundary
 /// is what actually fails there), so the interesting assertion is the doubled

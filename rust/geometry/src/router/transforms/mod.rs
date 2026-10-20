@@ -115,8 +115,10 @@ impl GeometryRouter {
         // instance metadata BEFORE it is baked + RTC-folded by transform_mesh_world.
         // Only fires when processing already marked this mesh instanceable (so the
         // metadata exists); a no-op otherwise, keeping the flat path untouched.
-        if let Some(im) = mesh.instance_meta.as_mut() {
-            im.transform = mat4::from_na(&transform);
+        if element.ref_at(slot::IfcProduct::OBJECT_PLACEMENT).is_some() {
+            if let Some(im) = mesh.instance_meta.as_mut() {
+                im.transform = mat4::from_na(&transform);
+            }
         }
         self.transform_mesh_world(mesh, &transform);
         Ok(())

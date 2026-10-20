@@ -64,18 +64,25 @@ fn placement_application_preserves_unplaced_instance_metadata() {
     mesh.instance_meta = Some(supplied);
 
     for id in [12, 10] {
-        let mut parts = SubMeshCollection::new();
-        parts.add(20, mesh.clone());
-        let element = decoder.decode_by_id(id).unwrap();
-        router.apply_submesh_placement(&mut parts, &element, &mut decoder).unwrap();
-        let output = &parts.sub_meshes[0].mesh;
-        let metadata = output.instance_meta.as_ref().expect("instance metadata survives placement");
-        if id == 12 {
-            assert_eq!(metadata.transform, supplied_transform);
-            assert_eq!(output.positions, mesh.positions);
-        } else {
-            assert_eq!((metadata.transform[3], metadata.transform[7], metadata.transform[11]), (1000., 2000., 3000.));
-            assert_eq!(&output.positions[..3], &[1000., 2000., 3000.]);
+        for submesh_path in [false, true] {
+            let element = decoder.decode_by_id(id).unwrap();
+            let mut output = mesh.clone();
+            if submesh_path {
+                let mut parts = SubMeshCollection::new();
+                parts.add(20, output);
+                router.apply_submesh_placement(&mut parts, &element, &mut decoder).unwrap();
+                output = parts.sub_meshes.remove(0).mesh;
+            } else {
+                router.apply_placement(&element, &mut decoder, &mut output).unwrap();
+            }
+            let metadata = output.instance_meta.as_ref().expect("instance metadata survives placement");
+            if id == 12 {
+                assert_eq!(metadata.transform, supplied_transform);
+                assert_eq!(output.positions, mesh.positions);
+            } else {
+                assert_eq!((metadata.transform[3], metadata.transform[7], metadata.transform[11]), (1000., 2000., 3000.));
+                assert_eq!(&output.positions[..3], &[1000., 2000., 3000.]);
+            }
         }
     }
 }

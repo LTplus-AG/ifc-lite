@@ -21,18 +21,18 @@ index ded66a4b61..3a23061d3f 100644
          Ok(ProgramReply { request, value })
      }
 diff --git a/rust/geometry/src/program/item.rs b/rust/geometry/src/program/item.rs
-index 712c459aa3..e44bec6dcc 100644
+index c1c12b6711..a376a24825 100644
 --- a/rust/geometry/src/program/item.rs
 +++ b/rust/geometry/src/program/item.rs
-@@ -145,7 +145,7 @@ fn execute_source(
+@@ -151,7 +151,7 @@ fn execute_source(
              ItemPhase::LowerRtc => match router.raw_item_rtc_file_units(item, decoder, offset) {
                  Some(rtc) => match processor.lower_owned(item, decoder, quality, Some(rtc)) {
                      Some(plan) => Lowered::Plan(plan, true),
--                    None => Lowered::Next(ItemPhase::LowerPlain),
+-                    None => lower_plain(decoder),
 +                    None => Lowered::Next(ItemPhase::RtcExtension(rtc)),
                  },
-                 None => Lowered::Next(ItemPhase::LowerPlain),
-             },
+                 // No rebase: plain lowering is the same source stage, so it
+                 // runs in this step rather than costing a round trip per item.
 diff --git a/rust/geometry/src/router/item_cache_program.rs b/rust/geometry/src/router/item_cache_program.rs
 index aa0adac95b..b71675575e 100644
 --- a/rust/geometry/src/router/item_cache_program.rs

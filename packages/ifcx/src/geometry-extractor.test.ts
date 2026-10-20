@@ -50,6 +50,9 @@ describe('extractGeometry', () => {
     assert.strictEqual(empty.length, 1);
     assert.deepStrictEqual([...empty[0].indices], [0, 1, 2]);
     assert.deepStrictEqual([...empty[0].indices], [...absent[0].indices]);
+    // Independent oracle: IFC Z-up fixture points mapped to viewer Y-up (x, z, -y).
+    const expected = createMesh().points.flatMap(([x, y, z]) => [x, z, -y]);
+    assert.deepStrictEqual([...empty[0].positions], expected);
     assert.deepStrictEqual([...empty[0].positions], [...absent[0].positions]);
   });
 

@@ -897,6 +897,15 @@ jobs:
           # and timeout. Once source_axes.rs is on main, whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/kernel/plane_weld/source_axes.rs | grep -Fxq 'rust/geometry/src/kernel/plane_weld/source_axes.rs'; then
             oracle_args+=(--mutation docs/architecture/evidence/issue-7292/signed-zero.oracle.patch)
+          # #7955 D1: the new resource module carries the audited mesh clone and
+          # merge admission. Whole-change revert removes the module the tests
+          # import, so no assertion runs; this reverses ONLY the cost charged
+          # before reserve/copy: zero copy/live/output allowances then admit
+          # the merge and the accounted-merge tests turn RED. All changed tests
+          # still run on both sides. Once resource/mesh.rs is on main, ordinary
+          # whole-change revert resumes automatically.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/resource/mesh.rs | grep -Fxq 'rust/geometry/src/resource/mesh.rs'; then
+            oracle_args+=(--mutation tests/evidence/resource-accounts-d1/behaviour.oracle.patch)
           # #7495: deleting the newly introduced report service prevents test
           # collection. Its initial qualification instead removes ONLY the
           # approved NDA digest check: wrong-digest acceptance must turn RED.

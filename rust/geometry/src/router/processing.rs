@@ -4,7 +4,9 @@
 
 //! Core element processing: resolving representations, processing items, and caching.
 
-use super::frame_parts::{frames_mergeable, mesh_bounds, single_frame, union_bounds, FrameParts};
+use super::frame_parts::{
+    frames_mergeable, merge_admitted, mesh_bounds, single_frame, union_bounds, FrameParts,
+};
 use super::transforms::instancing_enabled;
 use crate::math::mat4;
 use super::{GeometryProcessor, GeometryRouter};
@@ -164,7 +166,7 @@ impl GeometryRouter {
 
         // Body representations only ('Axis', 'FootPrint', 'Box' are skipped), and
         // a MappedRepresentation is skipped when direct geometry duplicates it.
-        for shape_rep in shape.select(element, Select::Meshed) {
+        'items: for shape_rep in shape.select(element, Select::Meshed) {
             let items = rep_items(shape_rep, decoder)?;
             let fill_only = super::annotation::is_fill_only_representation(element, shape_rep);
 
@@ -201,13 +203,17 @@ impl GeometryRouter {
                     // return different RTC frames. Merge only like frames until
                     // placement has brought both into the world/RTC frame.
                     if mesh.rtc_applied {
-                        rebased_mesh.merge(&mesh);
+                        if !merge_admitted(&mut rebased_mesh, &mesh) {
+                            break 'items;
+                        }
                         union_bounds(&mut rebased_bounds, bounds);
                         continue;
                     } else if combined_mesh.positions.is_empty()
                         || frames_mergeable(combined_mesh.origin, mesh.origin)
                     {
-                        combined_mesh.merge(&mesh);
+                        if !merge_admitted(&mut combined_mesh, &mesh) {
+                            break 'items;
+                        }
                     } else {
                         far_parts.merge(&mesh, bounds);
                         continue;
@@ -215,6 +221,11 @@ impl GeometryRouter {
                     union_bounds(&mut captured_local_bounds, bounds);
                 }
             }
+        }
+        // A refused merge only records the account's sticky stop; surface it
+        // before hygiene or placement run over partial output.
+        if crate::resource::is_active() {
+            crate::resource::check_current()?;
         }
         if combined_mesh.positions.is_empty() {
             std::mem::swap(&mut combined_mesh, &mut rebased_mesh);

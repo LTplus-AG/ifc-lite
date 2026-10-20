@@ -111,7 +111,9 @@ impl GeometryRouter {
                 }
             }
         }
-        let mut parts = source.into_parts();
+        let Ok(mut parts) = source.into_parts() else {
+            return;
+        };
         if parts.len() == 1
             && !parts[0].positions.is_empty()
             && !crate::kernel::budget::tripped()

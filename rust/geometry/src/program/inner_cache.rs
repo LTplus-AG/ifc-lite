@@ -6,7 +6,7 @@
 //! are separate steps. Publication capability stays here until validated
 //! acceptance; the hash step owns derived geometry only.
 use super::inner::{ProgramError, ProgramStage};
-use super::item::{ItemControl, ItemStep};
+use super::item::ItemControl;
 use crate::router::item_cache_program::{direct_rep_identity, CacheAdmission, CacheContext};
 use crate::{GeometryRouter, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
@@ -23,7 +23,7 @@ enum State<'a> {
 
 pub(super) enum CacheReply {
     Begin(CacheAdmission),
-    Item(ItemStep),
+    Item,
     Hash(Mesh, Option<u128>),
 }
 
@@ -54,7 +54,7 @@ impl<'a> CacheControl<'a> {
             State::Begin => {
                 return Ok(CacheReply::Begin(router.admit_item_cache(self.item, decoder, self.offset)));
             }
-            State::Child(_, item) => return item.execute(router, decoder).map(CacheReply::Item),
+            State::Child(_, item) => return item.execute(router, decoder).map(|()| CacheReply::Item),
             _ => {}
         }
         match std::mem::replace(&mut self.state, State::Taken) {
@@ -76,8 +76,8 @@ impl<'a> CacheControl<'a> {
             (State::Begin, CacheReply::Begin(CacheAdmission::Miss(context))) => {
                 State::Child(context, ItemControl::new(self.item, self.offset))
             }
-            (State::Child(context, mut item), CacheReply::Item(step)) => {
-                item.accept(step, router);
+            (State::Child(context, mut item), CacheReply::Item) => {
+                item.accept(router);
                 match item.take_result() {
                     None => State::Child(context, item),
                     Some(Ok(mesh)) => State::Hash(context, router.accept_local_item_cache(mesh)),

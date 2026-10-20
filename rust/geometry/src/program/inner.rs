@@ -4,7 +4,7 @@
 //! replay work, and a foreign router or decoder is refused before any recipe
 //! is moved. Only the Item and Cache controllers exist so far.
 use super::inner_cache::{CacheControl, CacheReply};
-use super::item::{ItemControl, ItemStep};
+use super::item::ItemControl;
 use crate::{Error, GeometryRouter, Mesh, Result};
 use ifc_lite_core::execution_owner::ExecutionIdentity;
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
@@ -74,15 +74,16 @@ pub(crate) struct ProgramReply {
     value: ReplyValue,
 }
 enum ReplyValue {
-    Item(ItemStep),
+    /// The item's next step is staged in place; the reply is its tag only.
+    Item,
     Cache(CacheReply),
 }
 impl ReplyValue {
     fn tag(&self) -> Payload {
         match self {
-            Self::Item(_) => Payload::Item,
+            Self::Item => Payload::Item,
             Self::Cache(CacheReply::Begin(_)) => Payload::CacheBegin,
-            Self::Cache(CacheReply::Item(_)) => Payload::CacheItem,
+            Self::Cache(CacheReply::Item) => Payload::CacheItem,
             Self::Cache(CacheReply::Hash(..)) => Payload::CacheHash,
         }
     }
@@ -163,7 +164,10 @@ impl<'a> GeometryProgram<'a> {
         // cannot replay work after its recipe was moved into a lexical call.
         self.pending = Some((request, true));
         let value = match &mut self.control {
-            Control::Item(control) => ReplyValue::Item(control.execute(router, decoder)?),
+            Control::Item(control) => {
+                control.execute(router, decoder)?;
+                ReplyValue::Item
+            }
             Control::Cache(control) => ReplyValue::Cache(control.execute(router, decoder)?),
         };
         self.expected_payload = Some(value.tag());
@@ -191,7 +195,7 @@ impl<'a> GeometryProgram<'a> {
         }
         let request = reply.request;
         match (&mut self.control, reply.value) {
-            (Control::Item(control), ReplyValue::Item(step)) => control.accept(step, router),
+            (Control::Item(control), ReplyValue::Item) => control.accept(router),
             (Control::Cache(control), ReplyValue::Cache(reply)) => control.accept(reply, router),
             (_, value) => {
                 let reply = ProgramReply { request, value };

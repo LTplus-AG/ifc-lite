@@ -20,7 +20,7 @@ pub(super) enum ItemPhase {
     PlainExtension,
 }
 
-/// One owned step of an item occurrence. Replies move it; tickets never hold it.
+/// One owned step of an item occurrence, held in place by its controller.
 pub(super) enum ItemStep {
     Source { phase: ItemPhase, reports: ConstructionReports },
     Ready(ReadyItem),
@@ -66,22 +66,27 @@ impl<'a> ItemControl<'a> {
     }
 
     /// Move the requested step out before any callback can unwind, so a
-    /// panicking processor leaves no recipe behind to replay.
+    /// panicking processor leaves no recipe behind to replay. The next step is
+    /// staged in place: the reply carries only its payload tag, so the inline
+    /// constructor is never copied through replies. It takes effect only once
+    /// its reply is validated and accepted (the program stays outstanding).
     pub(super) fn execute(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder)
-        -> std::result::Result<ItemStep, ProgramError> {
-        Ok(match self.step.take().ok_or(ProgramError::StaleRequest)? {
+        -> std::result::Result<(), ProgramError> {
+        let next = match self.step.take().ok_or(ProgramError::StaleRequest)? {
             ItemStep::Source { phase, reports } => {
                 execute_source(self.item, self.offset, phase, reports, router, decoder)
             }
             ItemStep::Ready(ready) => ItemStep::Complete(ready.execute()),
             ItemStep::Complete(value) => ItemStep::Complete(value),
-        })
+        };
+        self.step = Some(next);
+        Ok(())
     }
 
-    /// Accept a validated step. A completed item publishes its source and
-    /// numerical reports to the router exactly once, success or failure.
-    pub(super) fn accept(&mut self, mut step: ItemStep, router: &GeometryRouter) {
-        if let ItemStep::Complete(value) = &mut step {
+    /// Accept the validated staged step. A completed item publishes its source
+    /// and numerical reports to the router exactly once, success or failure.
+    pub(super) fn accept(&mut self, router: &GeometryRouter) {
+        if let Some(ItemStep::Complete(value)) = &mut self.step {
             let reports = std::mem::take(&mut value.reports);
             if reports.curve_capped {
                 router.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
@@ -93,7 +98,6 @@ impl<'a> ItemControl<'a> {
                 router.record_unsupported_item(face_type);
             }
         }
-        self.step = Some(step);
     }
 
     pub(super) fn take_result(&mut self) -> Option<Result<Mesh>> {

@@ -33,3 +33,5 @@ apps/viewer/public/samples/**/*.IFC -filter -diff -merge text
 apps/viewer/src/lib/export/__fixtures__/landxml-1.2/LandXML-1.2.xsd -text linguist-vendored=true
 # Verbatim live AI evaluation streams: collapsed on GitHub, no textual diff locally (summaries stay diffable)
 tests/ai-eval/live-runs/*/recordings/** linguist-generated=true -diff
+# Digest-pinned generated artifact: keep exact bytes on every platform
+packages/ifcx/src/generated/** -text linguist-generated=true

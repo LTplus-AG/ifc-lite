@@ -13,6 +13,7 @@
 
 use super::*;
 use crate::kernel::arrangement::box_mesh;
+use crate::kernel::budget;
 
 /// A 6 x 1 x 1 m wall from x = 0 to x = 6, so a boundary at x = c leaves
 /// exactly `c` m3 below it. Volume 6.
@@ -31,6 +32,7 @@ fn slab(x0: f64, x1: f64) -> ZoneShape {
 
 /// `split_mesh_by_zones` for a host known to enclose volume.
 fn split_by(host: &[Tri], zones: &[ZoneShape]) -> ZoneSplit {
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     split_mesh_by_zones(host, zones).expect("this host encloses volume")
 }
 
@@ -46,6 +48,50 @@ fn volume_of(split: &ZoneSplit, zone: Option<usize>) -> f64 {
 /// Tight, because these are exact-arithmetic cuts of axis-aligned boxes: the
 /// residue is f64 accumulation in the divergence sum and nothing else.
 const EPS: f64 = 1e-9;
+
+#[test]
+fn issue_7292_zone_budget_failure_cannot_report_a_complete_empty_split() {
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let profile = budget::TestProfile::new();
+    let _element = budget::enter_element();
+    let host = box_mesh([0.; 3], [1.; 3]);
+    let occupied = ZoneBox { center: [0.5; 3], size: [1.; 3], rotation_y: 0. };
+    let zones = [ZoneShape::Box(occupied)];
+
+    // Establish actual intersection work, without pinning an incidental count.
+    profile.set_cap(Some(budget::DEFAULT_CAP));
+    budget::begin();
+    let operand = orient_outward(host.clone());
+    let intersection = boolean(&operand, &operand, BoolOp::Intersection);
+    assert!(!intersection.is_empty() && !budget::tripped());
+    assert!((signed_volume_of(&intersection) - 1.).abs() < EPS);
+    assert!(budget::count() > 0, "the real coincident boxes must exercise budgeted work");
+
+    profile.set_cap(Some(1));
+    budget::begin();
+    let interrupted = split_mesh_by_zones(&host, &zones);
+    assert!(budget::tripped(), "the actual split must exhaust its tiny work budget");
+    assert!(interrupted.is_none(),
+        "an aborted intersection must not become a successful whole-host remainder");
+
+    // A new operation must recover from the preceding per-operation trip.
+    profile.set_cap(Some(budget::DEFAULT_CAP));
+    let split = split_mesh_by_zones(&host, &zones).expect("the occupied zone completes normally");
+    assert!(!budget::tripped() && !split.remainder_failed);
+    assert_eq!(split.pieces.len(), 1);
+    assert_eq!(split.pieces[0].zone, Some(0));
+    assert!((volume_of(&split, Some(0)) - 1.).abs() < EPS);
+    assert!(split.sum_error_rel() < 1e-12);
+
+    // This touching zone enters the kernel but has genuinely empty volume.
+    let touching = [ZoneShape::Box(ZoneBox { center: [1.5, 0.5, 0.5], ..occupied })];
+    let empty = split_mesh_by_zones(&host, &touching).expect("a genuine empty intersection completes");
+    assert!(!budget::tripped() && !empty.remainder_failed);
+    assert_eq!(empty.pieces.len(), 1);
+    assert_eq!(empty.pieces[0].zone, None);
+    assert!((volume_of(&empty, None) - 1.).abs() < EPS);
+    assert!(empty.sum_error_rel() < 1e-12);
+}
 
 #[test]
 fn wall_crossing_one_boundary_splits_at_the_known_fraction() {

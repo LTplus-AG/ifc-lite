@@ -1,0 +1,45 @@
+{
+  "scope": "Current-source build and selected geometry proof. No whole-browser protocol, timing, or merge-readiness PASS. Original browser cleanup failure and separate recovery remain intact.",
+  "source": {
+    "native": "e5f47238294ec4c089e3ce70c9696fa4f7312501",
+    "build": "440bb1f4f11183887f9fcc6fa5f05eff4eb4e2ef",
+    "wasmSHA256": "4bce6ba583225eb6feee1d352359c3c12f4590559cb9f2becd48dc14a8b15374"
+  },
+  "results": {
+    "native": "67 targeted tests + exact workspace Clippy PASS; separately indexed in review-followups",
+    "consumers": "Root typecheck including 4221 test files; WASM contract 204 pass/1 existing skip; public WASM tests 22 pass; forced viewer build PASS",
+    "symbolicPins": "2 tests PASS without update mode; fresh engine and unchanged minimum primitive counts",
+    "browser": "5 completed records, real S_Office first, four-worker pool and physical NVIDIA. Aggregate remains PRESERVED_FAILURE_OR_UNKNOWN solely cleanup; separate strict recovery exit 0",
+    "finiteSurfaces": "4 cases, six planes each; missing/extra/unresolved 0 at unchanged 100 micrometres. Literal width 0.025000095m. Independent surface adjudication only",
+    "engineSize": "FAIL: 2279444 Brotli bytes versus allowed 2243651 (35793 over). Includes upstream main changes; not an isolated PR delta",
+    "timing": "No accepted end-to-end cohort; no speed claim"
+  },
+  "archive": {
+    "path": "docs/architecture/evidence/issue-7292/current-engine-validation.tar.gz",
+    "bytes": 2941971,
+    "sha256": "04036a0af6c5737139177b4c777ec8cc8df54293ebc68178ae58a5bf700f6038"
+  },
+  "filesIndex": {
+    "path": "e/files.json",
+    "bytes": 23722,
+    "sha256": "4ab11be60ee3c1258f36628f93acef45f1b3cfd8ee97fbaf19a35c0b7515142b"
+  },
+  "decodedFiles": 144,
+  "decodedBytes": 11975712,
+  "layout": {
+    "e/w": "Official WASM run",
+    "e/wp": "WASM source preparation",
+    "e/v": "Successful consumer/build run",
+    "e/v-failed": "Preserved stale-dependency consumer failure",
+    "e/build": "Build drivers",
+    "e/p": "Windows native-loopback transport, generation and capture sources",
+    "e/b1": "Preserved admission failure and recovery",
+    "e/b": "Five current-engine records and strict cleanup recovery",
+    "e/o": "Independent fresh finite-surface oracle results/diagnostics",
+    "e/server": "Owned static-server start/retirement",
+    "e/followups": "Size and symbolic pin validation",
+    "e/size-diagnosis": "Read-only function-cloning diagnosis; no verified lever",
+    "e/source-bridge.json": "Derived source bridge and four exact oracle output-receipt hashes"
+  },
+  "omissions": "No runtime binary, frozen dist copy, IFC model, browser Local State or system-wide process snapshot. Runtime/dist/source maps and raw selected geometry are included."
+}

@@ -54,7 +54,13 @@ describe('createMemorySandboxFactory — basic eval', () => {
   });
 
   it('records duration', async () => {
-    const handle = await createHandle();
+    // An injected clock gives the duration one correct value; a bare `>= 0`
+    // check also passes for a constant 0.
+    const ticks = [100, 142];
+    const handle = await createMemorySandboxFactory({ now: () => ticks.shift() ?? 0 }).create({
+      extensionId: 'ext-test',
+      permissions: {},
+    });
     const wrap = wrapEntrySource(
       'function activate(ctx) { return 1; }',
       { entryFnName: 'activate' },
@@ -62,8 +68,7 @@ describe('createMemorySandboxFactory — basic eval', () => {
     if (!wrap.ok) throw new Error('wrap failed');
     await handle.setGlobal('__ifclite_ctx__', { bim: null });
     const r = await handle.run(wrap.value);
-    expect(typeof r.durationMs).toBe('number');
-    expect(r.durationMs).toBeGreaterThanOrEqual(0);
+    expect(r.durationMs).toBe(42);
   });
 
   it('propagates thrown errors', async () => {

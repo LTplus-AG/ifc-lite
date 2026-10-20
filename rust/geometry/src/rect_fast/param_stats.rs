@@ -6,9 +6,10 @@ static PARAM_FIRES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64:
 
 /// Count one parametric fast-path fire (the analytic cut was emitted).
 pub fn param_record_fire() {
-    crate::telemetry_transaction::record(|| {
-        PARAM_FIRES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    });
+    crate::telemetry_transaction::record(crate::telemetry_transaction::Event::ParametricCut);
+}
+pub(crate) fn publish_param_fire() {
+    PARAM_FIRES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 }
 /// Read + reset the parametric fast-path fire counter.
 pub fn take_param_fires() -> u64 {

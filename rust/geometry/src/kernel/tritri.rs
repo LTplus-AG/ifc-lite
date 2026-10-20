@@ -15,6 +15,8 @@
 
 use super::predicates::orient3d_explicit;
 use super::{ImplicitPoint, Lpi, Sign};
+use num_rational::BigRational as R;
+use num_traits::Zero;
 
 #[inline]
 fn e(p: [f64; 3]) -> ImplicitPoint {
@@ -203,15 +205,11 @@ fn ti_dot(a: [f64; 3], b: [f64; 3]) -> f64 {
 /// sub-band-sized transversal micro-sliver CAN now qualify, but its entire
 /// geometric effect is below the import-noise floor by construction, and the
 /// coplanar overlay's degenerate-projection guards (`w0 == Zero`) handle it.
-fn near_coplanar(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> bool {
+fn near_coplanar(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3], band: &NearBand) -> bool {
     let (n1, n2) = (plane_normal(t1), plane_normal(t2));
     let (nn1, nn2) = (ti_dot(n1, n1), ti_dot(n2, n2));
     if nn1 <= 0.0 || nn2 <= 0.0 || !nn1.is_finite() || !nn2.is_finite() {
         return false; // a degenerate triangle is never a flush coplanar partner
-    }
-    let mut band = NearBand::default();
-    for p in t1.iter().chain(t2.iter()) {
-        band.observe_point(p);
     }
     // All three vertices of `t` within the band of `plane`'s supporting plane?
     // The band is resolved against THAT plane's own normal, so an operand far
@@ -226,17 +224,87 @@ fn near_coplanar(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> bool {
     in_slab(t2, t1, n1, nn1) || in_slab(t1, t2, n2, nn2)
 }
 
+fn exact_vector(p: [f64; 3]) -> Option<[R; 3]> {
+    Some([R::from_float(p[0])?, R::from_float(p[1])?, R::from_float(p[2])?])
+}
+fn rational_normal([a, b, c]: [[R; 3]; 3]) -> [R; 3] {
+    let u: [R; 3] = std::array::from_fn(|k| &b[k] - &a[k]);
+    let v: [R; 3] = std::array::from_fn(|k| &c[k] - &a[k]);
+    std::array::from_fn(|k| {
+        &u[(k + 1) % 3] * &v[(k + 2) % 3] - &u[(k + 2) % 3] * &v[(k + 1) % 3]
+    })
+}
+fn exact_plane_normal(t: &[[f64; 3]; 3]) -> Option<[R; 3]> {
+    Some(rational_normal([exact_vector(t[0])?, exact_vector(t[1])?, exact_vector(t[2])?]))
+}
+fn parallel_normals(a: &[R; 3], b: &[R; 3]) -> bool {
+    a.iter().any(|x| !x.is_zero()) && b.iter().any(|x| !x.is_zero()) && (0..3).all(|k| {
+        &a[(k + 1) % 3] * &b[(k + 2) % 3] == &a[(k + 2) % 3] * &b[(k + 1) % 3]
+    })
+}
+fn charge_parallel_certificate() -> bool {
+    if super::budget::tripped() { return false; }
+    super::budget::note_escalation();
+    !super::budget::tripped()
+}
+
+/// A distant operand vertex may widen the offset allowance, but cannot erase
+/// a genuine crossing line. Rounded f64 normal equality is not a certificate.
+fn exactly_parallel_planes(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> bool {
+    if !charge_parallel_certificate() { return false; }
+    let (Some(a), Some(b)) = (exact_plane_normal(a), exact_plane_normal(b)) else { return false; };
+    parallel_normals(&a, &b)
+}
+
+fn exact_symbolic_point(p: &ImplicitPoint) -> Option<[R; 3]> {
+    let finite = |p: &[f64; 3]| p.iter().all(|x| x.is_finite());
+    let valid = match p {
+        ImplicitPoint::Explicit(p) => return exact_vector(*p),
+        ImplicitPoint::Lpi(l) => [l.p, l.q, l.r, l.s, l.t].iter().all(finite),
+        ImplicitPoint::Tpi(t) => t.planes.iter().flatten().all(finite),
+    };
+    if !valid { return None; }
+    let (lambda, d) = super::rational::lambda_of(p);
+    if d.is_zero() { return None; }
+    Some(lambda.map(|x| x / &d))
+}
+
+/// Arranged faces retain their original symbolic plane, including off-grid
+/// LPI/TPI corners. Undefined constructions cannot certify parallelism.
+pub(super) fn exactly_parallel_symbolic_plane(a: [&ImplicitPoint; 3], b: &[[f64; 3]; 3]) -> bool {
+    if !charge_parallel_certificate() { return false; }
+    let Some(b) = exact_plane_normal(b) else { return false; };
+    let [Some(a), Some(c), Some(d)] = a.map(exact_symbolic_point) else { return false; };
+    parallel_normals(&rational_normal([a, c, d]), &b)
+}
+
 /// Exact triangle–triangle intersection: the overlap of each triangle's
 /// plane-interval along line L = `[max(lo1,lo2), min(hi1,hi2)]`. Handles clean
 /// crossings AND Touches (on-plane vertices/edges). Coplanar is deferred to
 /// `coplanar.rs`; a single shared point returns `Point` (no cut).
 pub fn tri_tri_intersection(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> TriTri {
+    tri_tri_intersection_scoped(t1, t2, None)
+}
+
+/// Arrangement overlay and classification share the complete operand context.
+/// Standalone triangle callers keep their original two-triangle context above.
+pub(crate) fn tri_tri_intersection_with_band(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3], band: &NearBand) -> TriTri {
+    tri_tri_intersection_scoped(t1, t2, Some(band))
+}
+
+fn tri_tri_intersection_scoped(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3], paired_band: Option<&NearBand>) -> TriTri {
     use PlaneInterval as PI;
     // Near-coplanar guard (the flush-cap fix): an intended-flush coplanar
     // interface that per-axis snapping pushed just off exact coplanarity is
     // routed to the exact coplanar handler so the footprint is carved (otherwise
     // a sliver bridges the opening). See `near_coplanar`.
-    if near_coplanar(t1, t2) {
+    let local_band = NearBand::from_operands(&[*t1], &[*t2]);
+    // Keep the legacy two-triangle slab class, including transversal microfaces.
+    // Only exact parallel planes may gain the larger operand offset allowance.
+    // The legacy local slab still admits its original tilted noise microfaces.
+    if near_coplanar(t1, t2, &local_band) || paired_band.is_some_and(|band|
+        super::arrangement::coincident_planes(plane_normal(t1), plane_normal(t2))
+            && near_coplanar(t1, t2, band) && exactly_parallel_planes(t1, t2)) {
         return TriTri::Coplanar;
     }
     let (i1, i2) = (plane_interval(t1, t2), plane_interval(t2, t1));
@@ -276,3 +344,7 @@ pub fn tri_tri_intersection(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> TriTri {
 #[cfg(test)]
 #[path = "tritri_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tritri_band_tests.rs"]
+mod band_tests;

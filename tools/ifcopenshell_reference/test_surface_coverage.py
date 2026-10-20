@@ -36,6 +36,24 @@ def adjudicate(oracle,base,candidate):
 
 
 class FiniteCoverage(unittest.TestCase):
+    def test_7732_engine_update_refuses_stale_surface_cache(self):
+        raw = {'positions':[v for p in horizontal() for v in p], 'indices':[0,1,2],
+               'fixture_sha256':'fixture', 'ifcopenshell':'different-engine-version'}
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            compact = folder/'compact.json'
+            compact.write_text(json.dumps(raw))
+            with self.assertRaisesRegex(ValueError, 'Oracle fixture hash/engine mismatch'):
+                C.cached_oracle(compact, 'fixture')
+            content = json.dumps(raw).encode()
+            (folder/'oracle-raw-mesh.json').write_bytes(content)
+            receipt = {'fixture_sha256':'fixture',
+                       'engines':{'ifcopenshell':'different-engine-version', 'shapely':'2.0.7'},
+                       'oracle_raw_mesh_sha256':hashlib.sha256(content).hexdigest()}
+            (folder/'receipt.json').write_text(json.dumps(receipt))
+            with self.assertRaisesRegex(ValueError, 'Oracle engine pins mismatch'):
+                C.cached_oracle(folder, 'fixture')
+
     def test_7661_corpus_cli_requires_no_void_oracle_before_native_frame_checks(self):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
@@ -44,7 +62,7 @@ class FiniteCoverage(unittest.TestCase):
             content = json.dumps(raw).encode()
             (folder/'oracle-raw-mesh.json').write_bytes(content)
             receipt = {'fixture_sha256':hashlib.sha256(fixture.read_bytes()).hexdigest(),
-                       'engines':{'ifcopenshell':'0.8.5','shapely':'2.0.7'},
+                       'engines':{'ifcopenshell':C.ifcopenshell.version,'shapely':'2.0.7'},
                        'oracle_raw_mesh_sha256':hashlib.sha256(content).hexdigest()}
             (folder/'receipt.json').write_text(json.dumps(receipt))
             result = subprocess.run([sys.executable,'-B',str(ROOT/'docs/architecture/evidence/issue-7292/compare_surface.py'),
@@ -74,7 +92,7 @@ class FiniteCoverage(unittest.TestCase):
             content = json.dumps(raw).encode()
             (folder/'oracle-raw-mesh.json').write_bytes(content)
             digest = hashlib.sha256(content).hexdigest()
-            receipt = {'fixture_sha256':'fixture','engines':{'ifcopenshell':'0.8.5','shapely':'2.0.7'}}
+            receipt = {'fixture_sha256':'fixture','engines':{'ifcopenshell':C.ifcopenshell.version,'shapely':'2.0.7'}}
             for field in ['oracle_raw_mesh_sha256','oracle_raw_sha256']:
                 for expected in [None,'','0'*64,digest]:
                     with self.subTest(field=field,expected=expected):
@@ -104,7 +122,7 @@ class FiniteCoverage(unittest.TestCase):
             digest = hashlib.sha256(content).hexdigest()
             for name in ['oracle-raw-mesh.json','oracle-no-void-raw-mesh.json']:
                 (folder/name).write_bytes(content)
-            receipt = {'fixture_sha256':'fixture','engines':{'ifcopenshell':'0.8.5','shapely':'2.0.7'},
+            receipt = {'fixture_sha256':'fixture','engines':{'ifcopenshell':C.ifcopenshell.version,'shapely':'2.0.7'},
                        'oracle_raw_mesh_sha256':digest}
             for expected in [None,'','0'*64,digest]:
                 with self.subTest(expected=expected):
@@ -160,7 +178,7 @@ class FiniteCoverage(unittest.TestCase):
 
     def test_7723_legacy_cache_is_explicitly_unverified_not_boolean_proof(self):
         raw = {'positions':[v for p in horizontal() for v in p],'indices':[0,1,2],
-               'fixture_sha256':'fixture','ifcopenshell':'0.8.5'}
+               'fixture_sha256':'fixture','ifcopenshell':C.ifcopenshell.version}
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)/'legacy.json'
             path.write_text(json.dumps(raw))
@@ -170,7 +188,7 @@ class FiniteCoverage(unittest.TestCase):
 
     def test_7723_explicit_invalid_cache_refused_despite_valid_hash_and_arrays(self):
         raw = {'positions':[v for p in horizontal() for v in p],'indices':[0,1,2],
-               'fixture_sha256':'fixture','ifcopenshell':'0.8.5'}
+               'fixture_sha256':'fixture','ifcopenshell':C.ifcopenshell.version}
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
             compact = folder/'compact.json'
@@ -179,7 +197,7 @@ class FiniteCoverage(unittest.TestCase):
                 C.cached_oracle(compact,'fixture')
             content = json.dumps(raw).encode()
             (folder/'oracle-raw-mesh.json').write_bytes(content)
-            receipt = {'fixture_sha256':'fixture','engines':{'ifcopenshell':'0.8.5','shapely':'2.0.7'},
+            receipt = {'fixture_sha256':'fixture','engines':{'ifcopenshell':C.ifcopenshell.version,'shapely':'2.0.7'},
                        'oracle_raw_mesh_sha256':hashlib.sha256(content).hexdigest(),
                        'reference_validation':{'status':'INVALID_REFERENCE'}}
             (folder/'receipt.json').write_text(json.dumps(receipt))

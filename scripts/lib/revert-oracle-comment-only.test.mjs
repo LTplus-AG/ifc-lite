@@ -66,7 +66,19 @@ test('a non-JS/TS file is never comment-only, even with an all-# diff', () => {
   assert.equal(isCommentOnlyDiff('tools/ifcopenshell_reference/canonical.py', diff), false);
 });
 
-test('a .rs file is never comment-only even with an all-// diff', () => {
-  const diff = ['@@ -1 +1 @@', '-// old note', '+// new note'].join('\n');
-  assert.equal(isCommentOnlyDiff('crates/ifc-lite-geom/src/walk.rs', diff), false);
+test('a Rust file is comment-only for an all-// (and /// and //!) diff (#7949)', () => {
+  const diff = ['@@ -1 +1,3 @@', '-// old note', '+/// new note', '+//! more', '+'].join('\n');
+  assert.equal(isCommentOnlyDiff('crates/ifc-lite-geom/src/walk.rs', diff), true);
+});
+
+test('Rust code, a trailing comment, a leading * or a /* are NOT comment-only (#7949)', () => {
+  for (const line of ['let x = 1;', 'let x = 1; // note', '*p += 1;', '* continuation', '/* block */']) {
+    const diff = ['@@ -1 +1 @@', '-// old note', `+${line}`].join('\n');
+    assert.equal(isCommentOnlyDiff('crates/ifc-lite-geom/src/walk.rs', diff), false, line);
+  }
+});
+
+test('the JS/TS rule is unchanged by the Rust one: a leading * is still a comment continuation there (#7949)', () => {
+  const diff = ['@@ -1 +1 @@', '- * old note', '+ * new note'].join('\n');
+  assert.equal(isCommentOnlyDiff('a.ts', diff), true);
 });

@@ -299,6 +299,7 @@ export const propertiesEn = {
   'properties.locationMap.geometryLocation': 'Showing the model location; the declared origin remains unchanged. Pick a location to update the origin.',
   'properties.locationMap.geometryGoogleMapsTooltip': 'Open physical geometry location in Google Maps',
   'properties.locationMap.geometryOpenStreetMapTooltip': 'Open physical geometry location in OpenStreetMap',
+  'properties.locationMap.siteDistance': 'IfcSite RefLatitude/RefLongitude differs from the site placement transformed through IfcMapConversion by about {value} m. Check the coordinates and datum in the source model.',
   'properties.locationMap.geometryDistance': 'The geometry centre is about {value} km from the declared georeference origin. Check the element placements in the source model; the footprint, 3D world and geometry exports use those placements.',
   'properties.locationMap.easting': 'Easting',
   'properties.locationMap.northing': 'Northing',

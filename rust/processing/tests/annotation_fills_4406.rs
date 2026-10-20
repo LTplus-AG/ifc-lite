@@ -220,3 +220,17 @@ ENDSEC;END-ISO-10303-21;";
     }
     assert!(failures.is_empty(), "{failures:#?}");
 }
+
+/// F4 M-proc (PROCESSING-15, drift row 16): a quoted `'$'` or a blank label is
+/// no material name. `fill.rs` kept it while the other three `$`/empty
+/// normalisers dropped it.
+#[test]
+fn annotation_4406_quoted_dollar_or_blank_fill_name_is_no_name() {
+    for label in ["'$'", "'  '", "' \u{b} '"] {
+        let result = process_geometry(FILL.replace("'Cyan fill'", label).as_bytes());
+        assert_eq!(result.meshes.len(), 2, "{label}: {:?}", result.stats);
+        for mesh in &result.meshes {
+            assert_eq!(mesh.material_name, None, "{label}");
+        }
+    }
+}

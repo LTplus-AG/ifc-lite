@@ -192,6 +192,40 @@ fn vs_main(input: VertexInput) -> VertexOutput {
 
 The instanced variant (`vs_instanced`) reads the model matrix, entityId, color, and flags per occurrence from the instance buffer instead.
 
+### Orthographic geometric visibility (#6729)
+
+Orthographic frames first replay the actual opaque draw submissions into an
+unbiased `depth32float` attachment at the scene's MSAA sample count. The
+`OpaqueVisibilityPass` intercepts those submissions, so full and partial
+batches, instances, individual meshes and textured draws share the existing
+visibility decisions and exact GPU buffers. The derived depth fragment invokes
+the original fragment eligibility, preserving clipping and texture cutouts.
+Perspective frames return the original render pass directly.
+
+Colour and visible selection/hover masks compare their unbiased geometric depth
+with the matching prepass sample before applying the existing coplanar depth
+rank. This prevents hash rank from pulling a farther opaque face through a
+nearer one. The deliberate hidden-selection silhouette remains independent.
+Both prepass storage and acceptance use the same sample-interpolated depth;
+mixing that value with fixed-function MSAA depth does not reliably compare the
+same raster position on all backends.
+
+Acceptance permits four float32 ULPs for numerical coincidence, independent of
+entity rank. This is a numerical tie interval, not a physical clearance promise
+for every positive separation: sufficiently close surfaces at extreme depth
+ranges can still tie. The paired ray/plane witness requires correct ownership
+at 1/4/30mm separation over 5.2m, 40m and 1km depth ranges, both draw orders,
+five orbit angles, all mesh vertex families and MSAA 1/4. Existing coplanar and
+clip-plane viewer tests cover the ranking and clipping contracts separately.
+
+The extra depth attachment and opaque replay cost apply to orthographic frames.
+GPU timing reports the additional `opaque-visibility` pass separately. The depth
+attachment is released when switching back to perspective. Colour/depth variants
+use asynchronous pipeline validation; an orthographic frame that needs a pending
+variant is discarded before submission and requested again when validation
+finishes. Failed variants reach renderer diagnostics, never an unconstrained
+colour-pipeline fallback.
+
 ### Fragment Shader
 
 ```wgsl

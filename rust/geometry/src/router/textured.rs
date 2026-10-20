@@ -71,7 +71,7 @@ impl GeometryRouter {
         for (part, _uvs, _texture) in parts {
             mesh.merge(&part);
         }
-        single_frame_source("IfcRepresentationMap", rep_map.id, mesh.into_parts())
+        single_frame_source("IfcRepresentationMap", rep_map.id, mesh.into_parts()?)
     }
 
     /// Texture-aware variant of [`Self::process_representation_map`] (issue
@@ -95,7 +95,7 @@ impl GeometryRouter {
         )>,
     > {
         // attr 1: MappedRepresentation (IfcShapeRepresentation)
-        let mapped_rep_attr = rep_map.get(1).ok_or_else(|| {
+        let mapped_rep_attr = rep_map.attr(ifc_lite_core::slot::IfcRepresentationMap::MAPPED_REPRESENTATION).ok_or_else(|| {
             Error::geometry("RepresentationMap missing MappedRepresentation".to_string())
         })?;
         let mapped_rep = decoder
@@ -104,7 +104,7 @@ impl GeometryRouter {
 
         // attr 3: Items
         let items_attr = mapped_rep
-            .get(3)
+            .attr(ifc_lite_core::slot::IfcRepresentation::ITEMS)
             .ok_or_else(|| Error::geometry("Representation missing Items".to_string()))?;
         let items = decoder.resolve_ref_list(items_attr)?;
 
@@ -139,11 +139,12 @@ impl GeometryRouter {
         };
         let walk = RepresentationWalk { select: Select::Any, nested: NestedMaps::Leaf };
         walk.items_of(&mapped_rep, &items, decoder, &mut sink);
+        crate::resource::check_current()?;
         let TypeMapSink { untextured, textured, .. } = sink;
 
         // attr 0: MappingOrigin (IfcAxis2Placement3D) — the only 3D transform;
         // UVs are 2D and unaffected. Parse once, bake into every part.
-        let origin_transform: Option<nalgebra::Matrix4<f64>> = match rep_map.get(0) {
+        let origin_transform: Option<nalgebra::Matrix4<f64>> = match rep_map.attr(ifc_lite_core::slot::IfcRepresentationMap::MAPPING_ORIGIN) {
             Some(origin_attr) if !origin_attr.is_null() => {
                 match decoder.resolve_ref(origin_attr)? {
                 Some(origin) if origin.ifc_type == IfcType::IfcAxis2Placement3D => {
@@ -173,7 +174,7 @@ impl GeometryRouter {
             mesh.clean_degenerate();
             out.push((mesh, uvs, Some(texture)));
         }
-        for mut untextured in untextured.into_parts().into_iter().filter(|mesh| !mesh.is_empty()) {
+        for mut untextured in untextured.into_parts()?.into_iter().filter(|mesh| !mesh.is_empty()) {
             if let Some(t) = &origin_transform {
                 self.transform_mesh_local(&mut untextured, t);
             }
@@ -206,13 +207,13 @@ impl WalkVisitor for TypeMapSink<'_> {
                 Ok(sub_parts) => sub_parts.iter().for_each(|part| self.untextured.merge(part)),
                 Err(e) => router.drop_item(item, &e, "nested IfcMappedItem in representation map"),
             }
-            return Flow::Continue;
+            return if crate::resource::check_current().is_err() { Flow::Stop } else { Flow::Continue };
         }
         // Textured tessellated face set → its own part with per-vertex UVs (#961),
         // rebased like the plain items below (#5698, #7690).
         if let Some(map) = self.texture_index.get(&item.id) {
             if let Some((mut sub_mesh, sub_uvs)) =
-                router.textured_face_set(item, decoder, map, Some(router.rtc_offset()))
+                router.textured_face_set(item, decoder, map, Some(router.rtc_offset))
             {
                 router.keep_rebase_in_origin(&mut sub_mesh);
                 self.textured.push((sub_mesh, sub_uvs, map.attachment()));
@@ -220,6 +221,6 @@ impl WalkVisitor for TypeMapSink<'_> {
             }
         }
         router.merge_source_item(item, decoder, &mut self.untextured, "representation-map");
-        Flow::Continue
+        if crate::resource::check_current().is_err() { Flow::Stop } else { Flow::Continue }
     }
 }

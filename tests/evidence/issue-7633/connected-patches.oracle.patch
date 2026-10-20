@@ -1,0 +1,13 @@
+diff --git b/rust/geometry/src/facet_weld/components.rs a/rust/geometry/src/facet_weld/components.rs
+index 4864d2d528..45c11e9668 100644
+--- b/rust/geometry/src/facet_weld/components.rs
++++ a/rust/geometry/src/facet_weld/components.rs
+@@ -70,7 +70,7 @@ pub(super) fn for_each(
+             }
+         }
+     }
+-    if components.count >= 1 {
++    if components.count == 1 {
+         visit(members);
+         return;
+     }

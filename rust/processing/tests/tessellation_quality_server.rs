@@ -6,16 +6,19 @@
 //!
 //! The wasm path has honoured `setTessellationQuality` since #1025; the
 //! server pipeline silently pinned `Medium`. These tests pin that
-//! `process_geometry_filtered_with_quality` actually threads the level into
+//! `ProcessingRequest::quality` actually threads the level into
 //! the per-job routers — so a server consumer requesting `highest` gets the
 //! same densification a browser consumer gets, and the default stays
 //! byte-identical to the historical output (cache keys for `medium` map to
 //! the legacy shape, see `apps/server/src/routes/parse.rs`).
 
 use ifc_lite_processing::{
-    process_geometry_filtered, process_geometry_filtered_with_quality, OpeningFilterMode,
-    TessellationQuality,
+    process, process_geometry, ProcessingRequest, ProcessingResult, TessellationQuality,
 };
+
+fn at_quality(quality: TessellationQuality) -> ProcessingResult {
+    process(PIPE_IFC.as_bytes(), &ProcessingRequest::full_pass().quality(quality), &mut ())
+}
 
 /// One pipe (`IfcFlowSegment` with a swept-disk body) — the tube ring count
 /// scales with quality, so vertex counts must rise monotonically.
@@ -46,8 +49,7 @@ END-ISO-10303-21;
 "#;
 
 fn vertex_count(quality: TessellationQuality) -> usize {
-    let result =
-        process_geometry_filtered_with_quality(PIPE_IFC, OpeningFilterMode::Default, quality);
+    let result = at_quality(quality);
     assert!(
         !result.meshes.is_empty(),
         "pipe fixture produced no meshes at {quality:?}"
@@ -71,10 +73,9 @@ fn quality_threads_into_server_geometry() {
 /// The `Medium` output on `PIPE_IFC`, pinned as literals.
 ///
 /// The equality assertion below cannot carry this test on its own:
-/// `process_geometry_filtered` IS
-/// `..._with_quality(content, filter, TessellationQuality::default())`
-/// (`processor/mod.rs`), and `TessellationQuality::default()` IS `Medium`
-/// (`geometry/src/tessellation.rs`) — so both sides run the identical code
+/// `process_geometry` IS a `full_pass()` request whose quality is
+/// `TessellationQuality::default()` (`processor/entry_points.rs`), and that
+/// default IS `Medium` (`geometry/src/tessellation.rs`) — so both sides run the identical code
 /// path and the equality only observes `default() == Medium`. Any change to
 /// what `Medium` actually produces moves both sides together and stays green.
 /// These literals are what make such a change visible; the doc comment on this
@@ -88,12 +89,8 @@ const MEDIUM_TRIANGLES: usize = 96;
 
 #[test]
 fn default_quality_is_byte_identical_to_legacy_entrypoint() {
-    let legacy = process_geometry_filtered(PIPE_IFC, OpeningFilterMode::Default);
-    let medium = process_geometry_filtered_with_quality(
-        PIPE_IFC,
-        OpeningFilterMode::Default,
-        TessellationQuality::Medium,
-    );
+    let legacy = process_geometry(PIPE_IFC);
+    let medium = at_quality(TessellationQuality::Medium);
     assert_eq!(legacy.stats.total_vertices, medium.stats.total_vertices);
     assert_eq!(legacy.stats.total_triangles, medium.stats.total_triangles);
 

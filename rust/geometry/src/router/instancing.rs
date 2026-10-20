@@ -5,7 +5,7 @@
 //! #1623 Phase 2 "don't-bake" router helpers: eligibility of a mapped source for
 //! instancing, and the one-time source mesh into the shared registry that backs the
 //! finalize's orphan recovery. The don't-bake decision itself lives at the top-level
-//! mapped-item branch of `collect_submeshes_from_item_inner` (see `processing.rs`).
+//! mapped-item branch of `SubMeshSink` (see `submesh_walk.rs`).
 
 use super::frame_parts::SourceParts;
 use super::GeometryRouter;
@@ -28,7 +28,7 @@ impl GeometryRouter {
         mapped_repr: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Option<u32> {
-        let items_attr = mapped_repr.get(3)?;
+        let items_attr = mapped_repr.attr(ifc_lite_core::slot::IfcRepresentation::ITEMS)?;
         let items = decoder.resolve_ref_list(items_attr).ok()?;
         match items.as_slice() {
             [only] if only.ifc_type != IfcType::IfcMappedItem => Some(only.id),
@@ -102,15 +102,15 @@ impl GeometryRouter {
         // writes this same cache entry, so both mesh the item through the one
         // per-item step (RTC rebase, curve-cap drain; #7690).
         let mut sink = SharedSourceSink { router: self, source: SourceParts::default(), bailed: false };
-        if let Some(items) = mapped_repr.get(3).and_then(|attr| decoder.resolve_ref_list(attr).ok()) {
+        if let Some(items) = mapped_repr.attr(ifc_lite_core::slot::IfcRepresentation::ITEMS).and_then(|attr| decoder.resolve_ref_list(attr).ok()) {
             let walk = RepresentationWalk { select: Select::Any, nested: NestedMaps::Refuse };
             walk.items_of(mapped_repr, &items, decoder, &mut sink);
         }
-        if sink.bailed {
+        if sink.bailed || crate::resource::check_current().is_err() {
             return;
         }
         let source = sink.source;
-        let mut parts = source.into_parts();
+        let Ok(mut parts) = source.into_parts() else { return; };
         if parts.len() == 1
             && !parts[0].positions.is_empty()
             && !crate::kernel::budget::tripped()
@@ -135,7 +135,7 @@ struct SharedSourceSink<'a> {
 impl WalkVisitor for SharedSourceSink<'_> {
     fn item(&mut self, item: &DecodedEntity, _at: &WalkCtx<'_>, decoder: &mut EntityDecoder) -> Flow {
         self.router.merge_source_item(item, decoder, &mut self.source, "shared-source");
-        Flow::Continue
+        if crate::resource::check_current().is_err() { Flow::Stop } else { Flow::Continue }
     }
 
     fn refused(&mut self, _item: &DecodedEntity, _why: WalkRefusal, _at: &WalkCtx<'_>) {

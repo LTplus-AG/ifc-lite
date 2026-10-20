@@ -36,6 +36,7 @@ impl GeometryRouter {
     ) -> Result<()> {
         if item.ifc_type != IfcType::IfcMappedItem {
             self.submesh_plain_item(item, decoder, sub_meshes, 0, texture_index);
+            crate::resource::check_current()?;
             return Ok(());
         }
         let mut sink = SubMeshSink {
@@ -51,6 +52,7 @@ impl GeometryRouter {
             nested: NestedMaps::Expand { max_depth: MAX_MAPPED_ITEM_DEPTH, max_levels: MAX_WALK_LEVELS },
         };
         walk.mapped_item(item, decoder, &mut sink);
+        crate::resource::check_current()?;
         sink.error.map_or(Ok(()), Err)
     }
 
@@ -71,7 +73,7 @@ impl GeometryRouter {
         // (mapped) item rebases by the model RTC (#5698) into its origin,
         // since its mapping targets and placement still apply (#7690).
         if let Some(map) = texture_index.and_then(|ti| ti.get(&item.id)) {
-            let textured = self.textured_face_set(item, decoder, map, Some(self.rtc_offset()));
+            let textured = self.textured_face_set(item, decoder, map, Some(self.rtc_offset));
             if let Some((mut mesh, uvs)) = textured {
                 if depth > 0 {
                     self.keep_rebase_in_origin(&mut mesh);
@@ -142,7 +144,7 @@ impl WalkVisitor for SubMeshSink<'_> {
             return Flow::Continue;
         }
         self.router.submesh_plain_item(item, decoder, self.sub_meshes, at.path.len(), self.texture_index);
-        Flow::Continue
+        if crate::resource::check_current().is_err() { Flow::Stop } else { Flow::Continue }
     }
 
     fn enter_map(&mut self, level: &MappedLevel, at: &WalkCtx<'_>, decoder: &mut EntityDecoder) -> Flow {
@@ -166,21 +168,9 @@ impl WalkVisitor for SubMeshSink<'_> {
             }
         };
         let source_id = level.map.id;
-        // #1623 Phase 2/3 "don't-bake": if this top-level mapped item's source is
-        // a REPEATED (count >= 2) single-solid `IfcRepresentationMap` the armed
-        // plan lists, exactly ONE occurrence (the "template") materializes its
-        // geometry; every OTHER occurrence skips the per-occurrence vertex clone /
-        // MappingTarget bake / weld and emits an instance-only placeholder (empty
-        // geometry carrying the mapping transform + rep_identity in `InstanceMeta`).
-        // `apply_submesh_placement` folds the world placement into `im.transform`;
-        // the finalize turns the placeholder into an occurrence against the template.
-        //
-        // `instance_solid_id` is the nested SOLID's id (used as the placeholder's
-        // geometry_id so colour resolves EXACTLY as the flat/template sub-mesh).
-        // Only fires at the TOP level — a mapped item nested inside another map is
-        // part of its parent's shared geometry, not an independent occurrence — and
-        // only when `allow_instancing` (the non-void path). With no armed plan this
-        // is skipped entirely, so the flat output is unchanged.
+        // #1623: a repeated single-solid source materializes one template;
+        // other top-level occurrences carry only InstanceMeta. Nested sources
+        // remain part of their parent's geometry. The solid id preserves colour.
         let instance_solid_id: Option<u32> = if self.allow_instancing && top {
             router
                 .output_instancing_plan()
@@ -206,12 +196,8 @@ impl WalkVisitor for SubMeshSink<'_> {
         } else {
             None
         };
-        // Which occurrence MATERIALIZES the template. Native (global) mode: the
-        // plan's deterministic min-id occurrence, so all occurrences resolve
-        // against ONE model-wide template across the rayon pool. WASM batch-local
-        // mode: the FIRST occurrence of this source seen by this router/batch (the
-        // rest don't-bake), so each per-batch shard is self-contained. Both emit
-        // geometrically identical world triangles.
+        // Native plans pick the min-id occurrence; WASM batches materialize
+        // their first occurrence so each shard contains its own template.
         let is_template = match instance_solid_id {
             None => true, // not eligible ⇒ materialize flat as usual
             Some(_) if router.instancing_batch_local() => {
@@ -240,15 +226,12 @@ impl WalkVisitor for SubMeshSink<'_> {
         };
         if let Some(solid_item_id) = instance_solid_id {
             if !is_template {
-                // NON-template occurrence: don't-bake. Ensure the shared registry
-                // holds the source geometry (meshed once model-wide) so the
-                // finalize can recover geometry even in the (effectively
-                // unreachable) case that the template occurrence never
-                // materialized, then push the instance-only placeholder. Its
-                // geometry_id is the nested SOLID's id (not the mapped-item id) so
-                // emit_sub_meshes resolves the occurrence colour identically to the
-                // flat/template sub-mesh.
+                // Keep source geometry for orphan recovery; placeholders retain
+                // the nested solid id so appearance matches the template.
                 router.ensure_shared_mapped_source(&level.mapped_rep, source_id, decoder);
+                if crate::resource::check_current().is_err() {
+                    return inert(self);
+                }
                 let local_rm = mapping_transform.map(|t| router.scaled_row_major(&t));
                 let mut placeholder = Mesh::new();
                 placeholder.instance_meta = Some(InstanceMeta::instanceable(source_id as u128, local_rm));
@@ -308,16 +291,9 @@ impl WalkVisitor for SubMeshSink<'_> {
                 }
             }
         }
-        // #1623 Phase 2/3: this is the don't-bake TEMPLATE occurrence. It
-        // materialized normally (byte-identical to a flat occurrence — a
-        // single-solid source ⇒ exactly one sub-mesh). Re-tag its `rep_identity`
-        // to the source id and record the (scaled) MappingTarget as
-        // `local_transform`, MATCHING the instance placeholders so the finalize
-        // collates them onto this template. The baked geometry is untouched — the
-        // MappingTarget is already folded into both the vertices AND
-        // `local_transform`, which is consistent (the template's world geometry is
-        // `transform · local_transform · source`, so `m_ref` recovers the same
-        // `source` the placeholders reference). See the finalize in processor/mod.rs.
+        // Re-tag the materialized template to match its placeholders. Geometry
+        // and local_transform both include the target, letting finalize recover
+        // the canonical source from transform · local_transform · source (#1623).
         if frame.instance_solid_id.is_some() && frame.is_template {
             let local_rm = frame.mapping_transform.map(|t| router.scaled_row_major(&t));
             for sub in &mut self.sub_meshes.sub_meshes[frame.start..] {
@@ -340,28 +316,5 @@ impl WalkVisitor for SubMeshSink<'_> {
 }
 
 #[cfg(test)]
-mod shared_cap_tests {
-    /// `MAX_MAPPED_ITEM_DEPTH` must be the one in `ifc_lite_core::limits`, not
-    /// a private copy that happens to hold the same number today.
-    ///
-    /// This is not redundant with the constant being shared. Sharing removes
-    /// the drift that EXISTS; it does not stop anyone reintroducing a local
-    /// `const MAX_MAPPED_ITEM_DEPTH` that shadows the import. Verified by
-    /// mutation: with the import replaced by a private `= 16`, 800 tests stayed
-    /// green until this test existed. A mid-review revision of #2864 held
-    /// exactly that value against the router's 32, so the shadow is not a
-    /// hypothetical shape.
-    ///
-    /// The assertion is on the VALUE, not on identity, so a private copy
-    /// holding the same 32 still passes. That is the honest ceiling: Rust has
-    /// no cheap const-identity check, and a same-value shadow is harmless until
-    /// the shared value is next tuned, at which point this fires.
-    #[test]
-    fn mapped_item_depth_is_the_shared_constant() {
-        assert_eq!(
-            super::MAX_MAPPED_ITEM_DEPTH,
-            ifc_lite_core::MAX_MAPPED_ITEM_DEPTH,
-            "use the shared cap from ifc_lite_core::limits, not a private copy"
-        );
-    }
-}
+#[path = "processing_shared_cap_tests.rs"]
+mod shared_cap_tests;

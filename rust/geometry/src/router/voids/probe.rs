@@ -391,8 +391,8 @@ impl GeometryRouter {
         }
         let center_local = Point3::new(off_x, off_y, 0.0) + w * (depth * 0.5);
         let center_native = m.transform_point(&center_local);
-        let s = self.unit_scale();
-        let (rx, ry, rz) = self.rtc_offset();
+        let s = self.unit_scale;
+        let (rx, ry, rz) = self.rtc_offset;
         Some(RectParam {
             r: Matrix3::from_columns(&[uu, vv, ww]),
             center: Point3::new(
@@ -511,7 +511,7 @@ impl GeometryRouter {
                     Err(error) => Err(error),
                 };
                 let Ok(item_parts) = item_parts else { continue };
-                for mut mesh in item_parts.into_iter().filter(|mesh| !mesh.is_empty()) {
+                for mut mesh in item_parts.into_iter().filter_map(|mesh| super::hygiene::clean_opening_item(mesh, self)) {
                     // Keep ordinary opening cutters in the world/RTC frame. A large
                     // mapped origin, or a cutter far from the RTC origin (#6478),
                     // would lose its fractional translation when the world point is
@@ -604,7 +604,7 @@ impl GeometryRouter {
                 let Ok(item_parts) = self.process_representation_item_parts(&item, decoder) else {
                     continue;
                 };
-                for mesh in item_parts.into_iter().filter(|mesh| !mesh.is_empty()) {
+                for mesh in item_parts.into_iter().filter_map(|mesh| super::hygiene::clean_opening_item(mesh, self)) {
                     // Mesh::bounds is local to mesh.positions. Mapped items can
                     // carry a large f64 origin that must be folded in before the
                     // element placement, or the cutter box lands near zero.
@@ -666,7 +666,7 @@ impl GeometryRouter {
 
                     // Apply RTC offset to opening bounds so they match wall mesh coordinate system
                     // Wall mesh positions have RTC subtracted during transform_mesh, so opening bounds must match
-                    let rtc = self.rtc_offset();
+                    let rtc = self.rtc_offset;
                     let rtc_min = Point3::new(
                         world_min.x - rtc.0,
                         world_min.y - rtc.1,
@@ -740,7 +740,7 @@ impl GeometryRouter {
         // several disjoint areas (#7685) defers to the 3D path.
         let [profile] = <[_; 1]>::try_from(
             ProfileProcessor::new(self.schema.clone())
-                .process_regions(&profile_entity, decoder, self.tessellation_quality())
+                .process_regions(&profile_entity, decoder, self.tessellation_quality)
                 .ok()?,
         )
         .ok()?;

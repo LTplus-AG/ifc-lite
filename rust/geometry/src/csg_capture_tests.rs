@@ -38,7 +38,7 @@ fn deserialize_defaults_welded_in_object_frame_to_false() {
         welded_in_object_frame: true,
         plane_tags: None,
     };
-    let job = CapturedCsgJob::Single { host: mesh.clone(), cutter: mesh.clone() };
+    let job = CapturedCsgJob::Single { host: mesh.clone(), cutter: mesh.clone(), opening: false };
     let blob = serialize(&[job]);
     let back = deserialize(&blob).expect("round trip");
 

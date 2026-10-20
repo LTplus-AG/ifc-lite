@@ -1,0 +1,489 @@
+{
+  "status": "FINAL_USER_AUTHORIZED_O3_WINDOW_ENDED_NO_PERFORMANCE_VERDICT_NOT_MERGE_READY",
+  "candidate": "43ecf3aa3e240e1a7c41c5c799212b60df010ebd",
+  "base": "b0b670f0cfd704ceb7c78a622f5730d0cd9510de",
+  "publishedProductIdenticalHead": "6df37c75a55cc90e01d088ecde7f61ed8295b062",
+  "window": {
+    "firstActualOpenUTC": "2026-10-18T08:32:44.657Z",
+    "hardUntilUTC": "2026-10-18T09:02:44.657Z",
+    "actualEarlyReleaseUTC": "2026-10-18T08:52:05.481285+00:00",
+    "authorization": "Actual user answer: Use the already-approved final benchmark drain",
+    "coordinatorArchived": true,
+    "rootOwnedWindow": true,
+    "holdRemoved": true,
+    "allTimingProcessesReaped": true
+  },
+  "acceptanceUnchanged": {
+    "cpuMaximumPercentEachOfThreeObservations": 10,
+    "minimumLinuxAvailableKiB": 41943040,
+    "zeroActiveBuildTestGraphs": true,
+    "fivePairedRoundsPerFixture": [
+      "FZK",
+      "ISSUE129"
+    ],
+    "fourActualWorkers": true,
+    "nativeNvidiaBlackwellDpr1p5FocusFullDeliveredByteSourceAndCleanupRequired": true,
+    "noFailedRowReusedOrPooled": true,
+    "noCompleteCohort": true
+  },
+  "collectorCorrections": {
+    "originalFailure": "Original runtime request/status gate checked before a late original same-ID worker response status arrived. The retained actual trace later contains both request and status.",
+    "boundedOriginalMetadataWaitMs": 10000,
+    "originalRequestIdsStatusesAndBodyCoverageStillRequired": true,
+    "replayAndMissingConflictingEventControlsPass": true,
+    "actualFreshUntimedQualificationPass": true,
+    "qualificationRowsNotReusedForTiming": true,
+    "presampleIdleWait": "Retain every admission observation and wait before any sample is launched. Measured rows are never retried; original strict post-sample gate remains unchanged.",
+    "postSampleLimitsNotRelaxed": true,
+    "productAndBuildConfigurationUnchanged": true
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "producerStatus": "PRESERVED_FAILURE_OR_UNKNOWN_NO_PERF_VERDICT",
+      "error": "Error: Actual host idle admission failed; preserve no timing verdict",
+      "acceptedRows": 0,
+      "reaped": true,
+      "exitCode": 2,
+      "receiptSHA256": "68249317969b50bbb0515d5a99fcbbd4586975289a32999b1f37dea8956fd245",
+      "actualAdmissions": [
+        {
+          "file": "FZK-0-base-host-before.json",
+          "capturedAt": "2026-10-18T08:32:52.679Z",
+          "cpuPercent": [
+            5,
+            14,
+            5
+          ],
+          "activeGraphs": 0,
+          "availableLinuxKiB": 62048464,
+          "quiet": false
+        }
+      ],
+      "runtimeChecks": []
+    },
+    {
+      "attempt": 2,
+      "producerStatus": "PRESERVED_FAILURE_OR_UNKNOWN_NO_PERF_VERDICT",
+      "error": "Error: Native Windows sample failure/unknown, not replaced",
+      "acceptedRows": 0,
+      "reaped": true,
+      "exitCode": 2,
+      "receiptSHA256": "b215672b21ca335c7fdeff1487e6d893ee1a6b413eca4e1131384d3348dbe55b",
+      "actualAdmissions": [
+        {
+          "file": "FZK-0-base-host-before.json",
+          "capturedAt": "2026-10-18T08:34:36.483Z",
+          "cpuPercent": [
+            1,
+            4,
+            7
+          ],
+          "activeGraphs": 0,
+          "availableLinuxKiB": 61979340,
+          "quiet": true
+        }
+      ],
+      "runtimeChecks": [
+        {
+          "sample": "FZK-0-base",
+          "compositeStatus": "PRESERVED_FAILURE_OR_UNKNOWN",
+          "gates": {
+            "sourceBefore": true,
+            "nativeProcess": false,
+            "nativeCaptureCleanupProtected": false,
+            "sourceAfter": true,
+            "pinsUnchanged": true,
+            "supervisorNoError": true
+          },
+          "nativeStartedUTC": "2026-10-18T08:34:37.447007+00:00",
+          "nativeFinishedUTC": "2026-10-18T08:34:42.303727+00:00",
+          "nativeExit": 2,
+          "compositeSHA256": "55b1ad6b90e1555a54da973ae8de59432c8547db7b867a72803adabefc1a6cea",
+          "privateOriginalRetainedNotPublished": true
+        }
+      ]
+    },
+    {
+      "attempt": 3,
+      "producerStatus": "PRESERVED_FAILURE_OR_UNKNOWN_NO_PERF_VERDICT",
+      "error": "Error: Actual host idle admission failed; preserve no timing verdict",
+      "acceptedRows": 0,
+      "reaped": true,
+      "exitCode": 2,
+      "receiptSHA256": "ba7c7a81a9ff17ec923f64e894ac0414af551781f4d22916b53d0b23efe6a9bc",
+      "actualAdmissions": [
+        {
+          "file": "FZK-0-base-host-before.json",
+          "capturedAt": "2026-10-18T08:36:24.108Z",
+          "cpuPercent": [
+            11,
+            18,
+            5
+          ],
+          "activeGraphs": 0,
+          "availableLinuxKiB": 62038144,
+          "quiet": false
+        }
+      ],
+      "runtimeChecks": []
+    },
+    {
+      "attempt": 4,
+      "producerStatus": "PRESERVED_FAILURE_OR_UNKNOWN_NO_PERF_VERDICT",
+      "error": "Error: Postsample canonical host admission failed; no accepted row",
+      "acceptedRows": 0,
+      "reaped": true,
+      "exitCode": 2,
+      "receiptSHA256": "4530f7d9665358e6cf3505a330ea0479c7b081a55fc4ba062a12ac065294cee9",
+      "actualAdmissions": [
+        {
+          "file": "FZK-0-base-host-after.json",
+          "capturedAt": "2026-10-18T08:40:22.898Z",
+          "cpuPercent": [
+            7,
+            11,
+            4
+          ],
+          "activeGraphs": 0,
+          "availableLinuxKiB": 61867940,
+          "quiet": false
+        },
+        {
+          "file": "FZK-0-base-host-before.json",
+          "capturedAt": "2026-10-18T08:39:56.729Z",
+          "cpuPercent": [
+            5,
+            5,
+            3
+          ],
+          "activeGraphs": 0,
+          "availableLinuxKiB": 61884860,
+          "quiet": true
+        }
+      ],
+      "runtimeChecks": [
+        {
+          "sample": "FZK-0-base",
+          "compositeStatus": "NATIVE_CAPTURE_AND_FINAL_LINUX_SOURCE_VERIFICATION_COMPLETE_NOT_GEOMETRY_QUALIFICATION",
+          "gates": {
+            "sourceBefore": true,
+            "nativeProcess": true,
+            "nativeCaptureCleanupProtected": true,
+            "sourceAfter": true,
+            "pinsUnchanged": true,
+            "supervisorNoError": true
+          },
+          "nativeStartedUTC": "2026-10-18T08:39:57.725400+00:00",
+          "nativeFinishedUTC": "2026-10-18T08:40:16.566115+00:00",
+          "nativeExit": 0,
+          "compositeSHA256": "15a9a3bf00dc7a4b9bc019af1d072c4741674db25ad978f98af73721804cb09c",
+          "privateOriginalRetainedNotPublished": true
+        }
+      ]
+    },
+    {
+      "attempt": 5,
+      "producerStatus": "PRESERVED_FAILURE_OR_UNKNOWN_NO_PERF_VERDICT",
+      "error": "Error: Native Windows sample failure/unknown, not replaced",
+      "acceptedRows": 0,
+      "reaped": true,
+      "exitCode": 2,
+      "receiptSHA256": "c1d7b232c4485a31c6a874fc14906e1eda7dd7e34faa92642903eb94687d4053",
+      "actualAdmissions": [
+        {
+          "file": "FZK-0-base-host-before.json",
+          "capturedAt": "2026-10-18T08:42:18.412Z",
+          "cpuPercent": [
+            10,
+            7,
+            7
+          ],
+          "activeGraphs": 0,
+          "availableLinuxKiB": 62003952,
+          "quiet": true
+        }
+      ],
+      "runtimeChecks": [
+        {
+          "sample": "FZK-0-base",
+          "compositeStatus": "PRESERVED_FAILURE_OR_UNKNOWN",
+          "gates": {
+            "sourceBefore": true,
+            "nativeProcess": false,
+            "nativeCaptureCleanupProtected": false,
+            "sourceAfter": true,
+            "pinsUnchanged": true,
+            "supervisorNoError": true
+          },
+          "nativeStartedUTC": "2026-10-18T08:42:19.425935+00:00",
+          "nativeFinishedUTC": "2026-10-18T08:42:35.941191+00:00",
+          "nativeExit": 2,
+          "compositeSHA256": "ef36824f19e1c256dbe6e7e3153d12761e6e591acfe3584d208fe88fbbf424f9",
+          "privateOriginalRetainedNotPublished": true
+        }
+      ]
+    },
+    {
+      "attempt": 6,
+      "producerStatus": "PRESERVED_FAILURE_OR_UNKNOWN_NO_PERF_VERDICT",
+      "error": "Error: Actual host idle admission failed; preserve no timing verdict",
+      "acceptedRows": 2,
+      "reaped": true,
+      "exitCode": 2,
+      "receiptSHA256": "a988330bf247e9f0cf21c1e8495a43ed8f0928bbf973c0d988e7160ae81ac16d",
+      "actualAdmissions": [
+        {
+          "file": "FZK-0-base-host-after.json",
+          "capturedAt": "2026-10-18T08:47:11.282Z",
+          "cpuPercent": [
+            4,
+            2,
+            5
+          ],
+          "activeGraphs": 0,
+          "availableLinuxKiB": 61999456,
+          "quiet": true
+        },
+        {
+          "file": "FZK-0-base-host-before.json",
+          "capturedAt": "2026-10-18T08:46:46.270Z",
+          "cpuPercent": [
+            5,
+            6,
+            4
+          ],
+          "activeGraphs": 0,
+          "availableLinuxKiB": 61990988,
+          "quiet": true
+        },
+        {
+          "file": "FZK-0-branch-host-after.json",
+          "capturedAt": "2026-10-18T08:47:42.912Z",
+          "cpuPercent": [
+            9,
+            3,
+            5
+          ],
+          "activeGraphs": 0,
+          "availableLinuxKiB": 61941416,
+          "quiet": true
+        },
+        {
+          "file": "FZK-0-branch-host-before.json",
+          "capturedAt": "2026-10-18T08:47:16.558Z",
+          "cpuPercent": [
+            9,
+            0,
+            3
+          ],
+          "activeGraphs": 0,
+          "availableLinuxKiB": 61993292,
+          "quiet": true
+        },
+        {
+          "file": "FZK-1-base-host-before.json",
+          "capturedAt": "2026-10-18T08:47:48.191Z",
+          "cpuPercent": [
+            4,
+            23,
+            0
+          ],
+          "activeGraphs": 0,
+          "availableLinuxKiB": 61936348,
+          "quiet": false
+        }
+      ],
+      "runtimeChecks": [
+        {
+          "sample": "FZK-0-base",
+          "compositeStatus": "NATIVE_CAPTURE_AND_FINAL_LINUX_SOURCE_VERIFICATION_COMPLETE_NOT_GEOMETRY_QUALIFICATION",
+          "gates": {
+            "sourceBefore": true,
+            "nativeProcess": true,
+            "nativeCaptureCleanupProtected": true,
+            "sourceAfter": true,
+            "pinsUnchanged": true,
+            "supervisorNoError": true
+          },
+          "nativeStartedUTC": "2026-10-18T08:46:47.253243+00:00",
+          "nativeFinishedUTC": "2026-10-18T08:47:04.980128+00:00",
+          "nativeExit": 0,
+          "compositeSHA256": "2720cba1ff1ab64f6bc273a8eb0c5573165b892a4629986d43fd29031249868a",
+          "privateOriginalRetainedNotPublished": true
+        },
+        {
+          "sample": "FZK-0-branch",
+          "compositeStatus": "NATIVE_CAPTURE_AND_FINAL_LINUX_SOURCE_VERIFICATION_COMPLETE_NOT_GEOMETRY_QUALIFICATION",
+          "gates": {
+            "sourceBefore": true,
+            "nativeProcess": true,
+            "nativeCaptureCleanupProtected": true,
+            "sourceAfter": true,
+            "pinsUnchanged": true,
+            "supervisorNoError": true
+          },
+          "nativeStartedUTC": "2026-10-18T08:47:17.583434+00:00",
+          "nativeFinishedUTC": "2026-10-18T08:47:36.668201+00:00",
+          "nativeExit": 0,
+          "compositeSHA256": "fed01dc8c8567b803039c544b30eb3653897132c6846f27a31d3e63d0a83b51b",
+          "privateOriginalRetainedNotPublished": true
+        }
+      ]
+    },
+    {
+      "attempt": 7,
+      "producerStatus": "PRESERVED_FAILURE_OR_UNKNOWN_NO_PERF_VERDICT",
+      "error": "Error: Postsample canonical host admission failed; no accepted row",
+      "acceptedRows": 0,
+      "reaped": true,
+      "exitCode": 2,
+      "receiptSHA256": "21c989622eee47fd53b68bee83f6c57a2ed2c1953718154e7f319a634804f984",
+      "actualAdmissions": [
+        {
+          "file": "FZK-0-base-host-after.json",
+          "capturedAt": "2026-10-18T08:50:14.047Z",
+          "cpuPercent": [
+            9,
+            8,
+            13
+          ],
+          "activeGraphs": 0,
+          "availableLinuxKiB": 61746532,
+          "quiet": false
+        },
+        {
+          "file": "FZK-0-base-host-before.json",
+          "capturedAt": "2026-10-18T08:49:48.393Z",
+          "cpuPercent": [
+            9,
+            5,
+            1
+          ],
+          "activeGraphs": 0,
+          "availableLinuxKiB": 61885356,
+          "quiet": true
+        }
+      ],
+      "runtimeChecks": [
+        {
+          "sample": "FZK-0-base",
+          "compositeStatus": "NATIVE_CAPTURE_AND_FINAL_LINUX_SOURCE_VERIFICATION_COMPLETE_NOT_GEOMETRY_QUALIFICATION",
+          "gates": {
+            "sourceBefore": true,
+            "nativeProcess": true,
+            "nativeCaptureCleanupProtected": true,
+            "sourceAfter": true,
+            "pinsUnchanged": true,
+            "supervisorNoError": true
+          },
+          "nativeStartedUTC": "2026-10-18T08:49:49.383295+00:00",
+          "nativeFinishedUTC": "2026-10-18T08:50:07.694433+00:00",
+          "nativeExit": 0,
+          "compositeSHA256": "fb868c384891bd632bb1dcd92987aa34287c071a5308704ffef6362cfa33cbb4",
+          "privateOriginalRetainedNotPublished": true
+        }
+      ]
+    },
+    {
+      "attempt": 8,
+      "producerStatus": "PRESERVED_FAILURE_OR_UNKNOWN_NO_PERF_VERDICT",
+      "error": "Error: Postsample canonical host admission failed; no accepted row",
+      "acceptedRows": 0,
+      "reaped": true,
+      "exitCode": 2,
+      "receiptSHA256": "62788ee26b36901191885a0cfae3a29d49ecaaf780ea41b8c8022c23a228c3de",
+      "actualAdmissions": [
+        {
+          "file": "FZK-0-base-host-after.json",
+          "capturedAt": "2026-10-18T08:52:05.467Z",
+          "cpuPercent": [
+            5,
+            9,
+            15
+          ],
+          "activeGraphs": 0,
+          "availableLinuxKiB": 62019492,
+          "quiet": false
+        },
+        {
+          "file": "FZK-0-base-host-before.json",
+          "capturedAt": "2026-10-18T08:51:40.346Z",
+          "cpuPercent": [
+            3,
+            4,
+            6
+          ],
+          "activeGraphs": 0,
+          "availableLinuxKiB": 61970512,
+          "quiet": true
+        }
+      ],
+      "runtimeChecks": [
+        {
+          "sample": "FZK-0-base",
+          "compositeStatus": "NATIVE_CAPTURE_AND_FINAL_LINUX_SOURCE_VERIFICATION_COMPLETE_NOT_GEOMETRY_QUALIFICATION",
+          "gates": {
+            "sourceBefore": true,
+            "nativeProcess": true,
+            "nativeCaptureCleanupProtected": true,
+            "sourceAfter": true,
+            "pinsUnchanged": true,
+            "supervisorNoError": true
+          },
+          "nativeStartedUTC": "2026-10-18T08:51:41.352584+00:00",
+          "nativeFinishedUTC": "2026-10-18T08:51:59.150178+00:00",
+          "nativeExit": 0,
+          "compositeSHA256": "6921ae958d941756032f72f9e0f44c55e3902bf887aa6e2d9abe15496bcb06c1",
+          "privateOriginalRetainedNotPublished": true
+        }
+      ]
+    }
+  ],
+  "remainingBlocker": "No complete five-pair FZK + ISSUE129 cohort passed the unchanged host admission. The latest full runtime capture passed but its post-sample Windows CPU observation exceeded 10%. No claim about the root cause of the host CPU spikes is made.",
+  "conditionalEngineBudgetApproval": "UNFULFILLED: corrected-O3 runtime qualification still lacks a verdict. Engine 2300876 bytes remains within the conditionally approved 2299706-byte ceiling plus unchanged 0.5% tolerance.",
+  "noNewIssueCreated": true,
+  "reviewOnlyPullRequestsClosedUnmerged": [
+    7730,
+    7731,
+    7802
+  ],
+  "landingPullRequestStillOpen": 7607,
+  "issueStillOpenUntilFixLands": 7292,
+  "privateEvidencePolicy": "All original native/composite/source/cleanup receipts remain locally retained. Private protected-browser inventories and outer native receipts are not published; composite statuses, gate results and exact hashes above identify the originals. All selected full fixture raw payloads and case receipts are published without truncation.",
+  "archive": {
+    "name": "final-43ec-window-evidence.tar.gz",
+    "selectedMembers": 69,
+    "bytes": 12042175,
+    "sha256": "a9e89bc4eedded21b1de8c92ac863aaa10eb21695c0037513b1a82ce52515076"
+  },
+  "finalCleanup": {
+    "status": "OWN_BROWSER_AND_WINDOW_REAPED_PROTECTED_REGULAR_ROOT_PRESERVED",
+    "currentChromeRoots": 1,
+    "protectedRootIdentitiesExactlyUnchanged": true,
+    "ownChromeProfilesAbsentFromCompleteCanonicalInventory": true,
+    "holdAbsent": true,
+    "stoppedOnlyIdentityVerifiedOwnedProcesses": [
+      {
+        "pid": 40626,
+        "identityVerified": true,
+        "signal": "SIGTERM",
+        "scope": "own frozen artifact server"
+      },
+      {
+        "pid": 40715,
+        "identityVerified": true,
+        "signal": "SIGTERM",
+        "scope": "own frozen artifact server"
+      },
+      {
+        "pid": 37211,
+        "identityVerified": true,
+        "signal": "SIGTERM",
+        "scope": "own obsolete hash-guarded hold-expiry timer"
+      }
+    ],
+    "foreignSignalsSent": false,
+    "completedUTC": "2026-10-18T08:54:38.139778+00:00"
+  }
+}

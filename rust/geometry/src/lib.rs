@@ -182,6 +182,9 @@ mod scalar_adjoint;
 mod telemetry_transaction;
 pub use rect_fast::RectFastStats;
 pub(crate) mod router;
+/// Owned, explicitly partial construction batches before router publication.
+pub mod construction;
+pub mod program;
 /// Vector outlines traced from a slab of scan points (#6871). Reached through
 /// the root-level re-exports below.
 pub(crate) mod scan_outline;
@@ -223,7 +226,7 @@ pub use contour_bool2d::{
 pub use clash_solid::{intersection_solid, DegenerateReason, IntersectionSolid};
 pub use union_find::UnionFind;
 pub use csg::{calculate_normals, ClippingProcessor, GroupCut, GroupReject, Plane, Triangle};
-pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
+pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp, PendingDiagnosticState};
 pub use error::{Error, Result};
 pub use float_order::cmp_f64_nan_last;
 pub use geom_hash::{
@@ -280,7 +283,7 @@ pub use router::{
     GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, FACETED_BREP_DEDUP_FACE_LIMIT,
     ClassificationSummary, GeometryDiagnostics, GeometryProcessor, GeometryRouter,
     HostOpeningDiagnostic, ItemDedupCache, MappedInstancePlan, OpeningDiagnostic, OpeningKindDiag,
-    ReasonCount, RectFastSummary, RectParam, RouterConfig, SharedMappedItemCache, SharedBrepSignatureCache, WorstHost,
+    ReasonCount, RectFastSummary, RectParam, SharedMappedItemCache, SharedBrepSignatureCache, WorstHost,
 };
 
 /// The large-coordinate threshold and its predicate, defined in
@@ -302,3 +305,8 @@ pub use void_index::{
     build_aggregate_children_index, compute_parts_to_skip, propagate_voids_to_parts,
     propagate_voids_via_aggregates, VoidIndex,
 };
+
+mod exact_topology;
+
+/// Explicit resource admission for audited canonical execution sites.
+pub mod resource;

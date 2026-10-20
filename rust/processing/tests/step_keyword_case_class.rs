@@ -21,11 +21,9 @@
 //! sharded path.
 
 use ifc_lite_processing::determinism::FIXTURE_IFC;
-use ifc_lite_processing::{
-    classify_type_name, process_geometry_streaming_with_options_and_bootstrap,
-    QuickMetadataBootstrap, QuickMetadataSpatialNode, StreamingOptions,
-    PREPASS_CLASS_NONE,
-};
+use ifc_lite_processing::{classify_type_name, QuickMetadataSpatialNode, PREPASS_CLASS_NONE};
+
+mod common;
 
 /// The determinism fixture carries no spatial tree; append one so the
 /// quick-metadata bootstrap (`IFCPROJECT` / `IFCSITE` / `IFCBUILDING` /
@@ -136,17 +134,7 @@ fn tree(node: &QuickMetadataSpatialNode) -> Tree {
 }
 
 fn surface(ifc: &str) -> Surface {
-    let mut bootstrap: Option<QuickMetadataBootstrap> = None;
-    let result = process_geometry_streaming_with_options_and_bootstrap(
-        ifc.as_bytes(),
-        StreamingOptions {
-            emit_quick_metadata_bootstrap: true,
-            ..StreamingOptions::default()
-        },
-        |_, _, _| {},
-        |_| {},
-        |b| bootstrap = Some(b.clone()),
-    );
+    let (result, bootstrap) = common::quick_metadata::run_with_bootstrap(ifc.as_bytes());
     let mut meshes: Vec<_> = result
         .meshes
         .iter()
@@ -171,7 +159,6 @@ fn surface(ifc: &str) -> Surface {
         entity_count: result.metadata.entity_count,
         geometry_entity_count: result.metadata.geometry_entity_count,
         spatial_tree: bootstrap
-            .expect("quick metadata bootstrap was requested")
             .spatial_tree
             .as_ref()
             .map(tree),

@@ -6,33 +6,11 @@
 //! `IfcMappedItem` MappingTarget operator, parsed into a 4x4.
 
 use crate::math::tol;
-#[cfg(test)]
-use super::super::GeometryRouter;
 use crate::{Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix4;
 
-#[cfg(test)]
-impl GeometryRouter {
-    /// Parse IfcCartesianTransformationOperator (2D or 3D)
-    /// Used for MappedItem MappingTarget transformation
-    #[cfg(test)]
-    pub(crate) fn parse_cartesian_transformation_operator(
-        &self,
-        entity: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Result<Matrix4<f64>> {
-        parse_transformation_operator(entity, decoder)
-    }
-}
-
-/// The router-free form of [`GeometryRouter::parse_cartesian_transformation_operator`].
-///
-/// This is the SINGLE definition of the operator's attribute layout and frame
-/// derivation. `profiles` (`IfcDerivedProfileDef`'s 2D operator) calls it too: it used to
-/// carry its own copy, which drifted — it missed the non-uniform per-axis scales,
-/// the 2D attribute layout, and `Axis2`, so the same `MappingTarget` produced a
-/// different transform for a drawing than for the mesh. #1985
+/// Parse the shared IFC transformation-operator layout and authored frame.
 pub(crate) fn parse_transformation_operator(
     entity: &DecodedEntity,
     decoder: &mut EntityDecoder,
@@ -278,10 +256,8 @@ mod tests {
 #3=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#1,$,$,$,$);
 ";
         let mut decoder = EntityDecoder::new(content);
-        let router = GeometryRouter::new();
         let entity = decoder.decode_by_id(3).unwrap();
-        let m = router
-            .parse_cartesian_transformation_operator(&entity, &mut decoder)
+        let m = parse_transformation_operator(&entity, &mut decoder)
             .expect("operator should still parse");
         assert!(m.iter().all(|v| v.is_finite()), "NaN in transform matrix: {m:?}");
     }
@@ -297,10 +273,8 @@ mod tests {
 #2=IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM($,$,#1,2.,5.);
 ";
         let mut decoder = EntityDecoder::new(content);
-        let router = GeometryRouter::new();
         let entity = decoder.decode_by_id(2).unwrap();
-        let m = router
-            .parse_cartesian_transformation_operator(&entity, &mut decoder)
+        let m = parse_transformation_operator(&entity, &mut decoder)
             .expect("2D non-uniform operator should parse");
         assert!((m[(0, 0)] - 2.0).abs() < 1e-12, "X scale: {m:?}");
         assert!((m[(1, 1)] - 5.0).abs() < 1e-12, "Y scale (Scale2, attr 4): {m:?}");
@@ -322,10 +296,8 @@ mod tests {
 #5=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#1,#2,#4,$,#3);
 ";
         let mut decoder = EntityDecoder::new(content);
-        let router = GeometryRouter::new();
         let entity = decoder.decode_by_id(5).unwrap();
-        let m = router
-            .parse_cartesian_transformation_operator(&entity, &mut decoder)
+        let m = parse_transformation_operator(&entity, &mut decoder)
             .expect("mirroring operator should parse");
         assert!(
             (m[(1, 1)] + 1.0).abs() < 1e-12,
@@ -355,12 +327,10 @@ mod tests {
 #4=IFCCARTESIANPOINT((0.,0.,0.));
 #5=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#1,$,#4,$,#3);
 ";
-        let router = GeometryRouter::new();
         let parse = |content: &str| {
             let mut decoder = EntityDecoder::new(content);
             let entity = decoder.decode_by_id(5).unwrap();
-            router
-                .parse_cartesian_transformation_operator(&entity, &mut decoder)
+            parse_transformation_operator(&entity, &mut decoder)
                 .expect("operator should parse")
         };
         let a = parse(with_axis2);

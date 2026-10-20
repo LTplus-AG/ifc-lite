@@ -257,6 +257,8 @@ export interface RenderOptions {
   selectedId?: number | null;     // Currently selected mesh (for highlighting)
   selectedIds?: Set<number>;      // Multi-selection support
   selectedItemId?: number;        // #4382: narrows selectedId's highlight to one representation item (geometryItemId); no effect on selectedIds
+  /** `capHighlightKey(modelIndex, id)` → RGBA (0–1) painted over that element's section-cap polygons (selection / hover); compared by content each frame. */
+  capHighlight?: ReadonlyMap<string, readonly [number, number, number, number]> | null;
   hoverOutline?: { id: number; modelIndex?: number } | null; // #5390 thin visible-only pre-highlight; modelIndex scopes federation
   /**
    * Render the active colour overrides almost full-bright so they POP like a

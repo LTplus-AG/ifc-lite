@@ -24,24 +24,55 @@ import { readBCF } from './reader.js';
 import type { BCFProject, BCFTopic, BCFViewpoint } from './types.js';
 import { generateUuid } from '@ifc-lite/encoding';
 
-function projectWith(viewpoint: BCFViewpoint): { project: BCFProject; topic: BCFTopic } {
+function projectWith(viewpoint: BCFViewpoint, version: '2.1' | '3.0' = '2.1'): { project: BCFProject; topic: BCFTopic } {
   const topic: BCFTopic = {
     guid: generateUuid(),
     title: 'component parity',
+    topicType: 'Issue',
+    topicStatus: 'Open',
     creationDate: '2026-01-01T00:00:00.000Z',
     creationAuthor: 'test',
     comments: [],
     viewpoints: [viewpoint],
   };
-  return { project: { version: '2.1', topics: new Map([[topic.guid, topic]]) }, topic };
+  return { project: { version, topics: new Map([[topic.guid, topic]]) }, topic };
 }
 
-async function roundTrip(viewpoint: BCFViewpoint): Promise<BCFViewpoint> {
-  const { project, topic } = projectWith(viewpoint);
+async function roundTrip(viewpoint: BCFViewpoint, version: '2.1' | '3.0' = '2.1'): Promise<BCFViewpoint> {
+  const { project, topic } = projectWith(viewpoint, version);
   const blob = await writeBCF(project);
   const read = await readBCF(await blob.arrayBuffer());
   return read.topics.get(topic.guid)!.viewpoints[0];
 }
+
+describe.each(['2.1', '3.0'] as const)('BCF %s coloring containers (#7987)', (version) => {
+  it.each([false, true])('preserves every color group and component (metadata first: %s)', async (metadataFirst) => {
+    const plain = { ifcGuid: '0J$yPqHBD6x8gKzNrV3mAb' };
+    const identified = { authoringToolId: 'wall & panel', originatingSystem: 'Authoring tool' };
+    const components = {
+      selection: [plain],
+      visibility: { defaultVisibility: false, exceptions: [identified] },
+      coloring: [
+        { color: 'FF0000', components: metadataFirst ? [identified, plain] : [plain, identified] },
+        { color: '00FF00', components: [plain] },
+        { color: '0000FF', components: [identified] },
+      ],
+    };
+    const out = await roundTrip({
+      guid: generateUuid(),
+      orthogonalCamera: {
+        cameraViewPoint: { x: 0, y: 0, z: 10 },
+        cameraDirection: { x: 0, y: 0, z: -1 },
+        cameraUpVector: { x: 0, y: 1, z: 0 },
+        viewToWorldScale: 10,
+        aspectRatio: 1,
+      },
+      components,
+    }, version);
+
+    expect(out.components).toEqual(components);
+  });
+});
 
 describe('BCF <Component> writer/reader agreement', () => {
   it('round-trips OriginatingSystem and AuthoringToolId on a selection component', async () => {

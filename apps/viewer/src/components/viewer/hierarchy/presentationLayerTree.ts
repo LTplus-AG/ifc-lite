@@ -32,7 +32,7 @@ export function buildPresentationLayerTree(
     const attributedModelId = ownerModelIds.length === 1 ? modelId : undefined;
     const view = overlayViewFor(overlay, modelId);
     const geometryKnown = ownerModelIds.some((owner) => geometryReadyModelIds.has(owner));
-    const geometry = makeAssemblyGeometry(store, modelId, models, geometricIds, geometryKnown);
+    const geometry = makeAssemblyGeometry(store, modelId, models, geometricIds, geometryKnown, view);
     const productRows = new Map<number, TreeNode>();
     const layers = resolvePresentationLayers(store, view).sort((a, b) =>
       names.compare(a.Name, b.Name) || a.expressId - b.expressId);

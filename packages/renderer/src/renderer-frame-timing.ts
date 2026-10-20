@@ -5,6 +5,7 @@
 /** Bounded, opt-in renderer timing ownership (#6975). No instrumentation globals. */
 import { GpuFrameTimingRecorder } from './frame-timing-gpu.js';
 import { passDurationsMs } from './frame-timing.js';
+import { takeOpaqueVisibilityCommands } from './opaque-visibility-commands.js';
 
 const MAX_SAMPLES = 256;
 const MAX_PASSES = 16;
@@ -87,9 +88,15 @@ export function renderPassTimestampWrites(encoder: GPUCommandEncoder, label: str
   return writes ?? undefined;
 }
 
+export function opaqueVisibilityTimestampWrites(main: GPUCommandEncoder, before: GPUCommandEncoder): GPURenderPassTimestampWrites | undefined {
+  const frame = encoders.get(main);
+  if (frame) encoders.set(before, frame);
+  return renderPassTimestampWrites(before, 'opaque-visibility');
+}
+
 export function submitRendererGpuTiming(owner: object, device: GPUDevice, encoder: GPUCommandEncoder): void {
   encoders.get(encoder)?.recorder.endFrame(encoder);
-  device.queue.submit([encoder.finish()]);
+  device.queue.submit([...takeOpaqueVisibilityCommands(encoder), encoder.finish()]);
   settleRendererGpuTiming(owner, encoder);
 }
 

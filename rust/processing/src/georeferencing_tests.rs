@@ -469,14 +469,9 @@ fn native_scan_candidates_preserve_georeferencing_with_properties_disabled() {
         IFC2X3_PSET_IFC, IFC2X3_EPSET_LOWERCASE_IFC, SITE_ONLY_IFC,
     ] {
         let expected = extract_georeferencing(content).expect("fixture has georeferencing");
-        let result = crate::processor::process_geometry_streaming_with_options_and_bootstrap(
-            content.as_bytes(),
-            crate::processor::StreamingOptions {
-                include_properties: false,
-                ..Default::default()
-            },
-            |_, _, _| {}, |_| {}, |_| {},
-        );
+        let request = crate::processor::ProcessingRequest::default()
+            .features(crate::processor::Features::default().properties(false));
+        let result = crate::processor::process(content.as_bytes(), &request, &mut ());
         assert_eq!(result.metadata.georeferencing, Some(expected));
     }
 }

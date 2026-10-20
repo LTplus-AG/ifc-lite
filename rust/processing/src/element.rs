@@ -49,6 +49,8 @@ use std::collections::BTreeMap;
 /// serve this file's produce/emit cycle.
 #[path = "element_degenerate.rs"]
 mod degenerate;
+#[path = "element_scopes.rs"]
+mod element_scopes;
 mod element_color;
 use element_color::{find_indexed_colour_for_element, infer_opening_subpart_material_name};
 // Re-exported because they have callers outside this module: the colour
@@ -250,14 +252,22 @@ pub fn produce_element_meshes(
     // cuts bail to the #635 AABB fallback — instead of grinding the geometry
     // stream past the 95% watchdog. The per-boolean cap alone could not see this
     // distributed cost. Unbounded under the server/offline-export profile.
-    // Both scopes restore the enclosing element's counters on drop: a rayon
-    // work-steal can run another element to completion inside this one.
-    let _budget_scope = ifc_lite_geometry::kernel::budget::enter_element();
-    ifc_lite_geometry::progress::tick();
+    // The element's budget, degenerate tally and pending reports are one owned
+    // state, installed for this synchronous call and restored on return or
+    // unwind: a rayon work-steal can run another element to completion inside
+    // this one.
+    element_scopes::ElementScopes::new()
+        .with_scope(|| produce_in_scope(job, ctx, opts, decoder, router))
+}
 
-    // Open this element's degenerate-backstop scope; see the `degenerate` child
-    // module.
-    let _degenerate_scope = degenerate::begin_element();
+fn produce_in_scope(
+    job: &ElementMeshJob<'_>,
+    ctx: &MeshProductionContext<'_>,
+    opts: &MeshProductionOptions,
+    decoder: &mut EntityDecoder,
+    router: &GeometryRouter,
+) -> ProducedElementMeshes {
+    ifc_lite_geometry::progress::tick();
 
     let mut hasher = match (&job.kind, opts.geometry_hash) {
         (ElementJobKind::Product, Some(cfg)) => {

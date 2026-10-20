@@ -36,3 +36,33 @@ fn tpi_point_parallel_planes_is_finite_not_panic() {
     let pt = tpi_point(&t);
     assert!(pt.iter().all(|c| c.to_f64().unwrap().is_finite()));
 }
+
+// #7292: analytic determinant signs cover the shared exact tier directly,
+// including products that underflow/overflow f64. No floating determinant or
+// wrapper/helper equality is used as the oracle.
+#[test]
+fn issue_7292_exact_orientation_preserves_analytic_signs_across_scales() {
+    for exponent in [-400, 0, 400] {
+        let s = 2.0_f64.powi(exponent);
+        let [a, b, c, d] = [
+            [0.0; 3], [s, 0.0, 0.0], [0.0, s, 0.0], [0.0, 0.0, s],
+        ];
+        // Shewchuk convention: det(a-d,b-d,c-d) = -s^3.
+        assert_eq!(orient3d_exact(a, b, c, d), Sign::Negative);
+        assert_eq!(orient3d_exact(a, c, b, d), Sign::Positive);
+        assert_eq!(orient3d_exact(a, b, c, [s, s, 0.0]), Sign::Zero);
+        // These power-of-two shifts and their one-s increments are all
+        // exactly representable; a common translation leaves the determinant.
+        let shift = [8.0 * s, -16.0 * s, 32.0 * s];
+        let translate = |p: [f64; 3]| std::array::from_fn(|k| p[k] + shift[k]);
+        assert_eq!(orient3d_exact(translate(a), translate(b), translate(c), translate(d)), Sign::Negative);
+    }
+    // For B=0, C=X, D=Y, det(A-D,B-D,C-D) = A.z = 1/11 > 0.
+    // The other two non-dyadic coordinates cannot affect this analytic sign.
+    let point = [
+        BigRational::new(1.into(), 3.into()),
+        BigRational::new(1.into(), 7.into()),
+        BigRational::new(1.into(), 11.into()),
+    ];
+    assert_eq!(orient3d_exact_pt(&point, [0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]), Sign::Positive);
+}

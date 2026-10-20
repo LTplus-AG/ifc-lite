@@ -104,6 +104,7 @@ export const mainShaderSource = `
           // intentionally separate from worldPos: shadow maps still consume
           // their established world-space light matrix until their depth pass
           // is migrated as one transaction.
+          @location(8) @interpolate(linear) geometricDepth: f32,
           @location(6) eyePos: vec3<f32>,
         }
 
@@ -164,6 +165,7 @@ export const mainShaderSource = `
           // Anti z-fighting depth nudge — see vs_main's comment.
           let colorSalt = (entityId >> 24u) * 2654435761u;
           let zHash = (((entityId & 0x00FFFFFFu) ^ colorSalt) * 2654435761u) & 255u;
+          output.geometricDepth = output.position.z / output.position.w;
           output.position.z = nudgedClipZ(output.position, zHash, uniforms.viewProj);
           output.worldPos = worldPos.xyz;
           output.normal = normalize((uniforms.model * vec4<f32>(localNormal, 0.0)).xyz);
@@ -204,6 +206,7 @@ export const mainShaderSource = `
           // batch. The step size per projection is in depth-nudge.wgsl.ts.
           let colorSalt = (input.entityId >> 24u) * 2654435761u;
           let zHash = (((input.entityId & 0x00FFFFFFu) ^ colorSalt) * 2654435761u) & 255u;
+          output.geometricDepth = output.position.z / output.position.w;
           output.position.z = nudgedClipZ(output.position, zHash, uniforms.viewProj);
           output.worldPos = worldPos.xyz;
           output.normal = normalize((uniforms.model * vec4<f32>(input.normal, 0.0)).xyz);
@@ -232,6 +235,7 @@ export const mainShaderSource = `
           // instanced path never redraws an occurrence with a second draw
           // colour, so the raw picking id is enough to separate coplanar entities.
           let zHash = ((inst.instEntityId & 0x00FFFFFFu) * 2654435761u) & 255u;
+          output.geometricDepth = output.position.z / output.position.w;
           output.position.z = nudgedClipZ(output.position, zHash, uniforms.viewProj);
           output.worldPos = worldPos.xyz;
           output.normal = normalize((instMat * vec4<f32>(input.normal, 0.0)).xyz);

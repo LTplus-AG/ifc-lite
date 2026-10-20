@@ -48,9 +48,9 @@ impl GeometryRouter {
             _ => None,
         }?;
         Some((
-            point.0 * self.unit_scale(),
-            point.1 * self.unit_scale(),
-            point.2 * self.unit_scale(),
+            point.0 * self.unit_scale,
+            point.1 * self.unit_scale,
+            point.2 * self.unit_scale,
         ))
     }
 

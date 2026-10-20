@@ -15,7 +15,7 @@ use super::GeometryRouter;
 use crate::math::mat4;
 use crate::placement;
 use crate::{Mesh, Result, SubMeshCollection};
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 
 static LOCAL_FRAME_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
@@ -86,7 +86,7 @@ pub(crate) fn instancing_enabled() -> bool {
 
 impl GeometryRouter {
     pub(super) fn local_frame_enabled(&self) -> bool {
-        self.config.local_frame.unwrap_or_else(local_frame_enabled)
+        self.local_frame_enabled.unwrap_or_else(local_frame_enabled)
     }
 
     /// Apply local placement transformation to mesh
@@ -115,8 +115,10 @@ impl GeometryRouter {
         // instance metadata BEFORE it is baked + RTC-folded by transform_mesh_world.
         // Only fires when processing already marked this mesh instanceable (so the
         // metadata exists); a no-op otherwise, keeping the flat path untouched.
-        if let Some(im) = mesh.instance_meta.as_mut() {
-            im.transform = mat4::from_na(&transform);
+        if element.ref_at(slot::IfcProduct::OBJECT_PLACEMENT).is_some() {
+            if let Some(im) = mesh.instance_meta.as_mut() {
+                im.transform = mat4::from_na(&transform);
+            }
         }
         self.transform_mesh_world(mesh, &transform);
         Ok(())
@@ -154,9 +156,13 @@ impl GeometryRouter {
         // occurrence and they all stack on the first one. A placement-less element
         // is the identity, which is the placeholder already.
         let row_major = mat4::from_na(&transform);
+        // Preserve producer-supplied metadata when no authored placement exists.
+        let has_placement = element.ref_at(slot::IfcProduct::OBJECT_PLACEMENT).is_some();
         for sub in &mut sub_meshes.sub_meshes {
-            if let Some(im) = sub.mesh.instance_meta.as_mut() {
-                im.transform = row_major;
+            if instancing_enabled() && has_placement {
+                if let Some(im) = sub.mesh.instance_meta.as_mut() {
+                    im.transform = row_major;
+                }
             }
             self.transform_mesh_world(&mut sub.mesh, &transform);
         }

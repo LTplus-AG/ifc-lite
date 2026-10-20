@@ -4,25 +4,25 @@
    "bbox": {
     "max": [
      12125.0,
-     64600.0,
-     11240.0
+     64600.000048,
+     11240.000001
     ],
     "min": [
      11875.0,
      64350.0,
-     -700.0
+     -700.000001
     ]
    },
-   "closed": true,
+   "closed": false,
    "express_id": 113218,
    "ifc_type": "IfcColumn",
    "status": "ok",
    "tri_count": 2944,
-   "vertex_count": 1472,
-   "volume": 79302453.423546
+   "vertex_count": 2164,
+   "volume": null
   }
  ],
- "engine": "ifcopenshell 0.8.2",
+ "engine": "ifcopenshell 0.9.0.post1",
  "fixture": "issue_1155_halfspace_flyaway.ifc",
  "settings": {
   "use_world_coords": true,

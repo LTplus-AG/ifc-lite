@@ -10,28 +10,26 @@ pub(crate) mod annotation;
 mod annotation_polygon;
 mod annotation_style;
 mod caching;
-mod config;
 mod brep_signatures;
 mod content_hash;
 mod diagnostics;
 mod diagnostics_recording;
 mod frame_parts;
 mod instancing;
-mod item; mod item_direct;
+mod item;
+mod item_direct;
 mod item_dedup_cache;
 mod layers;
 mod mapped_item; mod mapped_sink;
 mod processing;
 mod processor;
-mod rtc_offset;
-mod submesh_walk;
+mod rtc_offset; mod submesh_walk;
 pub(crate) mod structural;
 mod textured;
 mod unit_admission;
 pub(crate) mod transforms;
 pub(crate) mod voids;
 
-pub use config::RouterConfig;
 pub use processor::GeometryProcessor;
 pub use brep_signatures::SharedBrepSignatureCache;
 pub use item_dedup_cache::{ItemDedupCache, ItemDedupCacheState};
@@ -54,7 +52,10 @@ mod tests;
 use crate::material_layer_index::MaterialLayerIndex;
 use crate::processors::{BooleanClippingProcessor, CsgSolidProcessor};
 mod processor_registry;
-pub(crate) use processor_registry::builtin_processor;
+mod construction;
+mod registration;
+pub(crate) use processor_registry::{builtin_family, builtin_processor, ProcessorOrigin};
+pub use processor_registry::ConstructionFamily;
 use processor_registry::ProcessorRegistry;
 use crate::tessellation::TessellationQuality;
 use crate::{BoolFailure, Mesh, Result};
@@ -62,7 +63,6 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex, OnceLock};
 
 /// Test/env override for [`GeometryRouter::build_dedup_extra_enabled`]:
@@ -147,11 +147,18 @@ pub struct GeometryRouter {
     shared_brep_signatures: Option<SharedBrepSignatureCache>,
     /// Content-hash refs refused above `u32::MAX` (#3421/#3752); diagnostic only.
     content_hash_oversized_ref_drops: RefCell<usize>,
+    /// Unit scale factor (e.g., 0.001 for millimeters -> meters), applied to
+    /// all mesh positions after processing.
+    unit_scale: f64,
     /// The length unit was refused (#7678): nothing is meshed (`unit_admission`).
     length_unit_refused: bool,
-    /// How this router meshes: scale, RTC, quality, local frame, small-cut
-    /// skip and the batch-local template mode (see [`RouterConfig`]).
-    config: RouterConfig,
+    /// RTC (Relative-to-Center) offset, subtracted from world positions in f64
+    /// before converting to f32 to preserve precision (e.g. Swiss UTM).
+    rtc_offset: (f64, f64, f64),
+    /// Per-router local-frame choice. `None` retains the target/env default;
+    /// appearance authoring sets this explicitly so its canonical surface
+    /// identity cannot vary between native and wasm builds (#4550).
+    local_frame_enabled: Option<bool>,
     /// Material-layer buildup index. When set, `process_element_with_submeshes`
     /// and `process_element_with_submeshes_and_voids` first attempt to slice
     /// single-solid elements by their `IfcMaterialLayerSetUsage` buildup.
@@ -190,6 +197,17 @@ pub struct GeometryRouter {
     /// and the element pipeline falls back to the un-cut host, re-rendering a
     /// spurious solid. Queried via [`Self::host_consumed_by_void`].
     voids_consumed_hosts: RefCell<FxHashSet<u32>>,
+    /// Tessellation detail level. Immutable per router instance and passed to
+    /// every processor's `process`. Defaults to [`TessellationQuality::Medium`]
+    /// (historical hardcoded behavior).
+    tessellation_quality: TessellationQuality,
+    /// Per-build small-cut skip (#1286). Injected into the boolean / CSG /
+    /// mapped processors at construction so a solid-solid DIFFERENCE with a tiny
+    /// cutter can be dropped without forcing a preview tessellation tier. Scoped
+    /// to this router (one per loaded build) so concurrent native builds never
+    /// bleed the flag into one another — it used to be a process-wide static.
+    /// `false` (default) ⇒ every cut runs, byte-identical to before.
+    skip_small_cuts: bool,
     /// #1623 Phase 2 don't-bake plan (see [`MappedInstancePlan`]). `None` (default)
     /// ⇒ every mapped-item occurrence materializes a full mesh, byte-identical to
     /// the historical flat path. When armed, single-solid ordinary occurrences of a
@@ -210,6 +228,17 @@ pub struct GeometryRouter {
     /// is split by triangle index, #858). Source hygiene then stays index-only,
     /// because the #5313 T-junction repair reorders and re-counts triangles.
     preserve_triangle_order: std::cell::Cell<bool>,
+    /// #1623 Phase 3 template-selection mode for the don't-bake path. `false`
+    /// (default, NATIVE): the deterministic global template is the plan's min-id
+    /// occurrence (`item.id == template_item_id`), so every occurrence resolves
+    /// against ONE model-wide template across the rayon pool. `true` (the WASM
+    /// per-BATCH path): this router meshes ONE batch onto ONE thread serially, so
+    /// the FIRST occurrence of each source THIS router sees is the template (tracked
+    /// in [`Self::instanced_sources_materialized`]) and the rest don't-bake — each
+    /// per-batch shard is then self-contained (its occurrences' template is in the
+    /// same shard), so a batch never depends on a template materialized in another
+    /// batch. Both modes emit geometrically identical world triangles.
+    instancing_batch_local: bool,
     /// #1623 Phase 3 (batch-local mode only): the `IfcRepresentationMap` source ids
     /// this router has already materialized as a batch-local template. The first
     /// occurrence of a source inserts its id (materializes); later occurrences see
@@ -236,8 +265,10 @@ impl GeometryRouter {
             content_sig_memo: RefCell::new(FxHashMap::default()),
             shared_brep_signatures: None,
             content_hash_oversized_ref_drops: RefCell::new(0),
+            unit_scale: 1.0,             // Default to base meters
             length_unit_refused: false,
-            config: RouterConfig::default(),
+            rtc_offset: (0.0, 0.0, 0.0), // Default to no offset
+            local_frame_enabled: None,
             material_layer_index: None,
             csg_failures: RefCell::new(FxHashMap::default()),
             classification_stats: RefCell::new(ClassificationStats::default()),
@@ -245,9 +276,12 @@ impl GeometryRouter {
             rect_fast_stats: RefCell::new(crate::rect_fast::RectFastStats::default()),
             layer_slice_diag: RefCell::new(Vec::new()),
             voids_consumed_hosts: RefCell::new(FxHashSet::default()),
+            tessellation_quality: TessellationQuality::Medium,
+            skip_small_cuts: false,
             output_instancing_plan: None, // armed by `enable_output_instancing`
             indexed_colour_split_ids: None, // armed by `enable_indexed_colour_split_guard`
             preserve_triangle_order: std::cell::Cell::new(false),
+            instancing_batch_local: false, // native global-template mode by default
             instanced_sources_materialized: RefCell::new(FxHashSet::default()),
             unsupported: RefCell::new(Default::default()),
         }
@@ -302,7 +336,7 @@ impl GeometryRouter {
     /// geometry is produced.
     pub fn with_scale_and_local_frame(unit_scale: f64, enabled: bool) -> Self {
         let mut router = Self::with_scale(unit_scale);
-        router.config.local_frame = Some(enabled);
+        router.local_frame_enabled = Some(enabled);
         router
     }
 
@@ -426,13 +460,13 @@ impl GeometryRouter {
     /// batch materializes its OWN first-seen template per source and stays a
     /// self-contained shard; the native path leaves it off (global min-id template).
     pub fn set_instancing_batch_local(&mut self, on: bool) {
-        self.config.instancing_batch_local = on;
+        self.instancing_batch_local = on;
     }
 
     /// Whether batch-local template selection is active (see the field doc).
     #[inline]
     pub(super) fn instancing_batch_local(&self) -> bool {
-        self.config.instancing_batch_local
+        self.instancing_batch_local
     }
 
     /// Batch-local don't-bake template decision: returns `true` (materialize as the
@@ -499,7 +533,7 @@ impl GeometryRouter {
     /// Use this for georeferenced models (e.g., Swiss UTM coordinates)
     pub fn with_rtc(rtc_offset: (f64, f64, f64)) -> Self {
         let mut router = Self::new();
-        router.config.rtc_offset = rtc_offset;
+        router.rtc_offset = rtc_offset;
         router
     }
 
@@ -507,14 +541,14 @@ impl GeometryRouter {
     pub fn with_scale_and_rtc(unit_scale: f64, rtc_offset: (f64, f64, f64)) -> Self {
         let mut router = Self::new();
         router.set_unit_scale(unit_scale);
-        router.config.rtc_offset = rtc_offset;
+        router.rtc_offset = rtc_offset;
         router
     }
 
     /// Create router with a specific tessellation quality level
     pub fn with_quality(quality: TessellationQuality) -> Self {
         let mut router = Self::new();
-        router.config.tessellation_quality = quality;
+        router.tessellation_quality = quality;
         router
     }
 
@@ -522,7 +556,7 @@ impl GeometryRouter {
     pub fn with_scale_and_quality(unit_scale: f64, quality: TessellationQuality) -> Self {
         let mut router = Self::new();
         router.set_unit_scale(unit_scale);
-        router.config.tessellation_quality = quality;
+        router.tessellation_quality = quality;
         router
     }
 
@@ -533,10 +567,10 @@ impl GeometryRouter {
     /// counted, since every source is re-walked; both are cleared here. The
     /// content-hash-keyed caches stay correct.
     pub fn set_tessellation_quality(&mut self, quality: TessellationQuality) {
-        if self.tessellation_quality() == quality {
+        if self.tessellation_quality == quality {
             return;
         }
-        self.config.tessellation_quality = quality;
+        self.tessellation_quality = quality;
         self.mapped_item_cache.get_mut().clear();
         self.unsupported.get_mut().forget_sources();
     }
@@ -544,7 +578,7 @@ impl GeometryRouter {
     /// Get the current tessellation quality level
     #[inline]
     pub fn tessellation_quality(&self) -> TessellationQuality {
-        self.config.tessellation_quality
+        self.tessellation_quality
     }
 
     /// Set the per-build small-cut skip (#1286) and re-register the boolean /
@@ -557,17 +591,17 @@ impl GeometryRouter {
     /// across builds). `false` (default) keeps every cut, byte-identical to
     /// before the optimization.
     pub fn set_skip_small_cuts(&mut self, on: bool) {
-        if self.config.skip_small_cuts == on {
+        if self.skip_small_cuts == on {
             return;
         }
-        self.config.skip_small_cuts = on;
+        self.skip_small_cuts = on;
         self.register_skip_dependent_processors();
     }
 
     /// Get the current per-build small-cut skip flag.
     #[inline]
     pub fn skip_small_cuts(&self) -> bool {
-        self.config.skip_small_cuts
+        self.skip_small_cuts
     }
 
     /// (Re)register the processors whose behavior depends on `skip_small_cuts`
@@ -579,33 +613,35 @@ impl GeometryRouter {
     /// never discard records the pipeline had not drained yet (#3821).
     fn register_skip_dependent_processors(&mut self) {
         self.drain_processor_failures();
-        self.register(Box::new(BooleanClippingProcessor::with_skip_small_cuts(
-            self.config.skip_small_cuts,
-        )));
-        self.register(Box::new(CsgSolidProcessor::with_skip_small_cuts(
-            self.config.skip_small_cuts,
-        )));
+        self.register_with_origin(
+            Box::new(BooleanClippingProcessor::with_skip_small_cuts(self.skip_small_cuts)),
+            ProcessorOrigin::ConfiguredBuiltin,
+        );
+        self.register_with_origin(
+            Box::new(CsgSolidProcessor::with_skip_small_cuts(self.skip_small_cuts)),
+            ProcessorOrigin::ConfiguredBuiltin,
+        );
     }
 
     /// Set the RTC offset for large coordinate handling
     pub fn set_rtc_offset(&mut self, offset: (f64, f64, f64)) {
-        self.config.rtc_offset = offset;
+        self.rtc_offset = offset;
     }
 
     /// Get the current RTC offset
     pub fn rtc_offset(&self) -> (f64, f64, f64) {
-        self.config.rtc_offset
+        self.rtc_offset
     }
 
     /// Check if RTC offset is active (non-zero)
     #[inline]
     pub fn has_rtc_offset(&self) -> bool {
-        self.rtc_offset().0 != 0.0 || self.rtc_offset().1 != 0.0 || self.rtc_offset().2 != 0.0
+        self.rtc_offset.0 != 0.0 || self.rtc_offset.1 != 0.0 || self.rtc_offset.2 != 0.0
     }
 
     /// Get the current unit scale factor
     pub fn unit_scale(&self) -> f64 {
-        self.config.unit_scale
+        self.unit_scale
     }
 
     /// Attach a material-layer buildup index. After this, sub-mesh processing
@@ -634,8 +670,8 @@ impl GeometryRouter {
     /// Only applies scaling if unit_scale != 1.0
     #[inline]
     fn scale_mesh(&self, mesh: &mut Mesh) {
-        if self.unit_scale() != 1.0 {
-            let scale = self.unit_scale() as f32;
+        if self.unit_scale != 1.0 {
+            let scale = self.unit_scale as f32;
             for pos in mesh.positions.iter_mut() {
                 *pos *= scale;
             }
@@ -646,18 +682,10 @@ impl GeometryRouter {
     /// The rotation/scale part stays unchanged, only translation (column 3) is scaled
     #[inline]
     fn scale_transform(&self, transform: &mut Matrix4<f64>) {
-        if self.unit_scale() != 1.0 {
-            transform[(0, 3)] *= self.unit_scale();
-            transform[(1, 3)] *= self.unit_scale();
-            transform[(2, 3)] *= self.unit_scale();
-        }
-    }
-
-    /// Register a geometry processor
-    pub fn register(&mut self, processor: Box<dyn GeometryProcessor>) {
-        let processor_rc: Rc<dyn GeometryProcessor> = Rc::from(processor);
-        for ifc_type in processor_rc.supported_types() {
-            self.processors.insert(ifc_type, Rc::clone(&processor_rc));
+        if self.unit_scale != 1.0 {
+            transform[(0, 3)] *= self.unit_scale;
+            transform[(1, 3)] *= self.unit_scale;
+            transform[(2, 3)] *= self.unit_scale;
         }
     }
 

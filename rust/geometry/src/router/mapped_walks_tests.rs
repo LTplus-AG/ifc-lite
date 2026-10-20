@@ -97,3 +97,114 @@ fn router_26_capped_curve_in_a_shared_source_is_reported_for_that_source() {
     let after_plain = router.take_unsupported_items();
     assert!(after_plain.is_empty(), "the plain item inherited a drop: {after_plain:?}");
 }
+
+/// #7781 / #7873 r4303907552: refusing an unentered repeat of the current
+/// item must retain both earlier and later solid siblings in that frame.
+#[test]
+fn issue_7781_current_item_cycle_retains_solid_siblings() {
+    for items in ["#900,#1005", "#1005,#900"] {
+        let content = RAW_WORLD_MAP.replace("(#900)", &format!("({items})"));
+        let mut decoder = EntityDecoder::new(&content);
+        let router = shared_rtc_router();
+        let item = decoder.decode_by_id(1005).unwrap();
+        let parts = router.process_mapped_item_parts(&item, &mut decoder).unwrap();
+        assert_eq!(parts.len(), 1, "the valid tetrahedron was discarded: {items}");
+        assert_eq!(parts[0].indices.len(), 12, "one reachable tetrahedron: {items}");
+        let drops = router.take_unsupported_items();
+        assert_eq!(drops.get("IfcMappedItem"), Some(&1), "one cycle refusal: {drops:?}");
+        let cache = router.shared_mapped_item_cache.as_ref().unwrap().lock().unwrap();
+        assert!(!cache.contains_key(&1003), "a cycle-truncated source is not shared");
+    }
+}
+
+/// Positive control for #7781: reaching the same source down separate paths
+/// contributes twice; the cycle set is scoped to the active path.
+#[test]
+fn issue_7781_shared_source_siblings_both_contribute() {
+    let content = format!("{RAW_WORLD_MAP}#2000=IFCMAPPEDITEM(#2001,#1004);\
+        #2001=IFCREPRESENTATIONMAP(#2,#2002);\
+        #2002=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#1005,#1005));");
+    let mut decoder = EntityDecoder::new(&content);
+    let router = shared_rtc_router();
+    let item = decoder.decode_by_id(2000).unwrap();
+    let parts = router.process_mapped_item_parts(&item, &mut decoder).unwrap();
+    assert_eq!(parts.len(), 1);
+    assert_eq!(parts[0].indices.len(), 24, "both tetrahedron occurrences survive");
+    assert!(router.take_unsupported_items().is_empty());
+}
+
+/// The cycle correction must keep the entered-frame failure policy (#7781):
+/// missing Items fails the top call, or drops just that nested frame.
+#[test]
+fn issue_7781_entered_frame_missing_items_keeps_its_failure_scope() {
+    let content = RAW_WORLD_MAP.replace("'Tessellation',(#900)", "'Tessellation'");
+    let mut decoder = EntityDecoder::new(&content);
+    let router = shared_rtc_router();
+    let item = decoder.decode_by_id(1005).unwrap();
+    let error = router.process_mapped_item_parts(&item, &mut decoder).unwrap_err();
+    assert!(error.to_string().contains("missing Items"), "{error}");
+
+    let content = format!("{content}#2000=IFCMAPPEDITEM(#2001,#1004);\
+        #2001=IFCREPRESENTATIONMAP(#2,#2002);\
+        #2002=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#900,#1005));");
+    let mut decoder = EntityDecoder::new(&content);
+    let router = shared_rtc_router();
+    let item = decoder.decode_by_id(2000).unwrap();
+    let parts = router.process_mapped_item_parts(&item, &mut decoder).unwrap();
+    assert_eq!(parts.len(), 1);
+    assert_eq!(parts[0].indices.len(), 12);
+    assert_eq!(router.take_unsupported_items().get("IfcMappedItem"), Some(&1));
+}
+
+/// #7873: traversal allowance is per walk, not per router. A partial B cannot
+/// satisfy a later normal load with fresh allowance, even without a shared cache.
+#[test]
+fn issue_7873_local_cache_never_publishes_work_or_depth_truncated_source() {
+    use crate::representation::{NestedMaps, RepresentationWalk, Select, MAX_WALK_LEVELS};
+    let content = format!("{RAW_WORLD_MAP}\
+        #2000=IFCMAPPEDITEM(#2001,#1004);#2001=IFCREPRESENTATIONMAP(#2,#2002);\
+        #2002=IFCSHAPEREPRESENTATION($,'Body','Brep',(#2100,#2200));\
+        #2100=IFCMAPPEDITEM(#2101,#1004);#2101=IFCREPRESENTATIONMAP(#2,#2102);\
+        #2102=IFCSHAPEREPRESENTATION($,'Body','Brep',(#900));\
+        #2200=IFCMAPPEDITEM(#2201,#1004);#2201=IFCREPRESENTATIONMAP(#2,#2202);\
+        #2202=IFCSHAPEREPRESENTATION($,'Body','Brep',(#900,#2300));\
+        #2300=IFCMAPPEDITEM(#2301,#1004);#2301=IFCREPRESENTATIONMAP(#2,#2302);\
+        #2302=IFCSHAPEREPRESENTATION($,'Body','Brep',(#900));");
+    for (max_depth, max_levels) in [(32, 5), (2, MAX_WALK_LEVELS)] {
+        let mut decoder = EntityDecoder::new(&content);
+        let mut router = GeometryRouter::with_scale_and_local_frame(1.0, false);
+        router.set_rtc_offset((SITE[0], SITE[1], SITE[2]));
+        let root = decoder.decode_by_id(2000).unwrap();
+        let mut sink = crate::router::mapped_sink::MergeSink::new(&router);
+        RepresentationWalk { select: Select::Any,
+            nested: NestedMaps::Expand { max_depth, max_levels },
+        }.mapped_item(&root, &mut decoder, &mut sink);
+        assert!(sink.error.is_none(), "nested refusal keeps earlier solids");
+        let parts = sink.parts.unwrap();
+        assert_eq!(parts.iter().map(|p| p.indices.len()).sum::<usize>(), 24);
+        assert!(!router.mapped_item_cache.borrow().contains_key(&2201), "partial B was cached");
+        assert_eq!(router.take_unsupported_items().get("IfcMappedItem"), Some(&1));
+        // B previously contributed one tetrahedron; a fresh walk reaches both.
+        let b = decoder.decode_by_id(2200).unwrap();
+        let complete = router.process_mapped_item_parts(&b, &mut decoder).unwrap();
+        assert_eq!(complete.iter().map(|p| p.indices.len()).sum::<usize>(), 24);
+        assert!(router.take_unsupported_items().is_empty(), "fresh B must be complete");
+    }
+}
+
+/// #7873: refusing a cycle must also withhold the local cache. Rewalking it
+/// retains the valid solid, rather than treating the partial source as complete.
+#[test]
+fn issue_7873_local_cache_never_publishes_cycle_truncated_source() {
+    let content = RAW_WORLD_MAP.replace("(#900)", "(#900,#1005)");
+    let mut decoder = EntityDecoder::new(&content);
+    let mut router = GeometryRouter::with_scale_and_local_frame(1.0, false);
+    router.set_rtc_offset((SITE[0], SITE[1], SITE[2]));
+    let item = decoder.decode_by_id(1005).unwrap();
+    for _ in 0..2 {
+        let parts = router.process_mapped_item_parts(&item, &mut decoder).unwrap();
+        assert_eq!(parts.iter().map(|p| p.indices.len()).sum::<usize>(), 12);
+        assert!(!router.mapped_item_cache.borrow().contains_key(&1003));
+    }
+    assert_eq!(router.take_unsupported_items().get("IfcMappedItem"), Some(&1));
+}

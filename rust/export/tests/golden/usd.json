@@ -19,8 +19,8 @@
       "bytes": 2674
     },
     "c6_data_model_synthetic": {
-      "fnv1a64": "2938571d01049f7e",
-      "bytes": 8687
+      "fnv1a64": "7256bbb9d5d9503b",
+      "bytes": 9193
     },
     "duplex": {
       "fnv1a64": "5030edf1483c8e0a",
@@ -31,8 +31,8 @@
       "bytes": 69468
     },
     "wall_two_openings": {
-      "fnv1a64": "2f30be83f92b468f",
-      "bytes": 16984
+      "fnv1a64": "3b0dc6e802db792c",
+      "bytes": 17432
     }
   }
 }

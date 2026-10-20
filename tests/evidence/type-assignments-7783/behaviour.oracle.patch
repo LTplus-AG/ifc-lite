@@ -1,0 +1,12 @@
+diff --git b/rust/processing/src/data_model/type_assignments.rs a/rust/processing/src/data_model/type_assignments.rs
+index 24793aefcc..41d9d476b9 100644
+--- b/rust/processing/src/data_model/type_assignments.rs
++++ a/rust/processing/src/data_model/type_assignments.rs
+@@ -64,7 +64,6 @@ impl TypeAssignments {
+             return Recorded::Same;
+         }
+         self.all.insert(object, vec![first, type_id]);
+-        self.first.insert(object, type_id);
+         self.order.push(object);
+         Recorded::NewConflict
+     }

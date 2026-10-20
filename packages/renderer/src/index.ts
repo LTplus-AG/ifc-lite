@@ -15,6 +15,7 @@ export type { SceneContents } from './scene-contents.js';
 export { appearanceSourceTriangle, expandAppearanceCorners, equivalentAppearanceGeometry } from './appearance-uvs.js';
 export { sameCompanionParts } from './appearance-companions.js';
 export { invertAppearancePartition, validateAppearancePartition, type AppearancePreview, type AppearanceOwner, type AppearanceToken, type AppearanceChange, type AppearancePartition, type AppearancePartitionPart } from './appearance-preview.js';
+import { deferOpaqueVisibilityFrame } from './opaque-visibility-pass.js';
 import type { AppearancePreview } from './appearance-preview.js';
 import { createReferenceImageManager } from './reference-image-host.js';
 export type { ReferenceImages, ReferenceImageInput, ReferenceImageHit, ReferenceCorners } from './reference-image-types.js';
@@ -54,6 +55,7 @@ export { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
 export type { SectionCapStyle, HatchPatternId } from './section-cap-style.js';
 export { planeBasis, nearestCardinalAxis } from './section-plane-basis.js';
 export type { PlaneBasis, Vec3Tuple } from './section-plane-basis.js';
+export { capHighlightKey } from './section-2d-overlay.js';
 export type { Section2DOverlayOptions, Section2DOverlayCapStyle, CutPolygon2D, DrawingLine2D, LineOverlayChannel } from './section-2d-overlay.js';
 export { LINE_OVERLAY_CHANNELS } from './section-2d-overlay.js';
 export { Raycaster } from './raycaster.js';
@@ -220,6 +222,7 @@ import type { DeviationDistances } from './deviation/deviation-statistics.js';
 export { computeDeviationStatistics, computeDeviationStatisticsAsync, countWithinToleranceAsync, deviationHistogramAsync, summarizeDeviationAssetsAsync } from './deviation/deviation-statistics.js';
 export type { DeviationAssetRange, DeviationAssetSummary, DeviationAsyncOptions, DeviationDistances, DeviationHistogram, DeviationHistogramRange, DeviationStatistics, DeviationStatisticsOptions, DeviationToleranceShare } from './deviation/deviation-statistics.js';
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
+import { enableRendererQuantizedBatches } from './quantized-lifecycle.js';
 import { recoverRendererDevice, rendererDeviceLostError, type DeviceRecoveryOmission, type DeviceRecoveryResult, type RendererRecoveryHost } from './device-recovery.js';
 
 
@@ -578,6 +581,7 @@ export class Renderer {
         // init there is nothing to invalidate and this is a no-op.
         const generation = ++this.initGeneration;
         this.ready = false;
+        this.scene.setQuantizedBatches(false); // #7655: admission belongs to the retired GPU lifetime.
         // Re-arm `whenReady()`: this instance is being brought back up, so a
         // wait requested from here on is "not ready yet" again, not "destroyed".
         this.destroyed = false;
@@ -1531,11 +1535,7 @@ export class Renderer {
      * rejecting pipeline creation) batches stay on the f32 path.
      */
     async enableQuantizedBatches(): Promise<boolean> {
-        this.recovery.quantizedBatchesRequested = true;
-        if (!this.pipeline) return false;
-        const ok = await this.pipeline.ensureQuantizedPipelines();
-        if (ok) this.scene.setQuantizedBatches(true);
-        return ok;
+        return enableRendererQuantizedBatches(this as unknown as RendererRecoveryHost);
     }
 
     /** Draw a frame through the shared submission path, preserving the void API. */
@@ -2179,7 +2179,7 @@ export class Renderer {
                 storeOp: (needsObjectIdPass ? 'store' : 'discard') as GPUStoreOp,
             });
 
-            const pass = encoder.beginRenderPass({
+            const pass = this.pipeline.visibility.begin(encoder, {
                 timestampWrites: renderPassTimestampWrites(encoder, 'main'),
                 colorAttachments,
                 depthStencilAttachment: {
@@ -2193,7 +2193,7 @@ export class Renderer {
                     stencilLoadOp: 'clear',
                     stencilStoreOp: 'store',
                 },
-            });
+            }, this.camera.getProjectionMode() === 'orthographic', this.canvas.width, this.canvas.height);
 
             // Global lighting environment: write the uniform once per frame.
             // The group(1) bind is deferred until AFTER the sky pass below —
@@ -3084,7 +3084,7 @@ export class Renderer {
                 pixelRatio: this.pixelRatio,
                 // EDL only when point clouds are loaded and the user enabled it.
                 edl: this.edlOptions.enabled && this.pointCloudRenderer?.hasAssets() ? this.edlOptions : null,
-                selectionOutline,
+                selectionOutline, geometricVisibility: this.pipeline.visibility.getBinding(),
             });
 
             colorReadback = colorCapture && encodeRendererColorFrameCapture(device, encoder, colorCapture);
@@ -3153,8 +3153,9 @@ export class Renderer {
             // `getOrCreatePartialBatch`'s CPU-side geometry merge running out of
             // host memory, and that throws a `RangeError` — which is exactly why
             // the discriminator keys on the TYPE and not on "a frame threw".
-            this.containFrameThrow(error, 'encode');
-            cancelRendererColorFrame(this); return false;
+            cancelRendererColorFrame(this);
+            if (deferOpaqueVisibilityFrame(error, () => this.requestRender())) return false;
+            this.containFrameThrow(error, 'encode'); return false;
         }
     }
 
@@ -3644,6 +3645,7 @@ export class Renderer {
         // Render pipelines (textures + uniform buffers)
         this.pipeline?.destroy();
         this.pipeline = null;
+        this.scene.setQuantizedBatches(false);
 
         // Picker GPU resources. The manager holds its own reference, so clear
         // that too — otherwise its `if (!this.picker) return null` guard keeps

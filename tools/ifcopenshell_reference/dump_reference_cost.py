@@ -5,7 +5,7 @@
 
 """Reference (IfcOpenShell) side of the cost differential parity pair.
 
-Uses the pinned IfcOpenShell purely as a black-box data-access library (the
+Uses the installed IfcOpenShell purely as a black-box data-access library (the
 documented `ifcopenshell.file` API: `by_type`, attribute access, `.id()`) to
 read `IfcCostSchedule` / `IfcCostItem` / `IfcCostValue` / `IfcQuantity*` /
 `IfcRel*` entities straight off the STEP file. The traversal, the shared-

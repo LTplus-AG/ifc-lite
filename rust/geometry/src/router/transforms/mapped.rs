@@ -34,9 +34,9 @@ impl GeometryRouter {
         origin: F,
     ) -> Result<Option<[f64; 16]>>
     where F: FnOnce(&mut EntityDecoder) -> Result<Option<Matrix4<f64>>> {
-        let target = crate::representation::mapping_target(item, decoder)?;
+        let target = self.mapping_target_transform(item, decoder)?;
         let origin = origin(decoder)?;
-        let Some(mut matrix) = crate::representation::compose_mapped_transform(target, origin) else {
+        let Some(mut matrix) = Self::compose_mapped_transform(target, origin) else {
             return Ok(None);
         };
         self.scale_transform(&mut matrix);
@@ -64,7 +64,19 @@ impl GeometryRouter {
         source: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Matrix4<f64>>> {
-        crate::representation::mapped_item_local_transform(item, source, decoder)
+        crate::representation::mapped_transform::mapped_item_local_transform(item, source, decoder)
+    }
+
+    fn mapping_target_transform(
+        &self, item: &DecodedEntity, decoder: &mut EntityDecoder,
+    ) -> Result<Option<Matrix4<f64>>> {
+        crate::representation::mapped_transform::mapping_target(item, decoder)
+    }
+
+    fn compose_mapped_transform(
+        target: Option<Matrix4<f64>>, origin: Option<Matrix4<f64>>,
+    ) -> Option<Matrix4<f64>> {
+        crate::representation::mapped_transform::compose(target, origin)
     }
 
     /// `IfcRepresentationMap.MappingOrigin` (attr 0) as a 4x4, or `None` when it
@@ -83,7 +95,7 @@ impl GeometryRouter {
         source: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Matrix4<f64>>> {
-        crate::representation::mapping_origin(source, decoder)
+        crate::representation::mapped_transform::mapping_origin(source, decoder)
     }
 }
 #[cfg(test)]

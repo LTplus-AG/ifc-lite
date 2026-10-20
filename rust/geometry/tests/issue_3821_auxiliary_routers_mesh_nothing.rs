@@ -189,7 +189,7 @@ fn the_prepass_affinity_router_meshes_nothing() {
     assert_eq!(drained(&router), Vec::<String>::new());
 }
 
-/// `rust/export/src/model.rs` — placement resolution only.
+/// `rust/processing/src/data_model/rows/mod.rs` — placement resolution only.
 #[test]
 fn the_export_model_router_meshes_nothing() {
     let mut dec = decoder();

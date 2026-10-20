@@ -188,13 +188,130 @@ fn rewrite_refs_keeps_a_page_operand_inside_its_string_7589() {
     assert_eq!(out, r"#13=IFCWALL('g',#12,'Para \S\' #9 5',$,#14);");
 }
 
-/// #7589: the slot splitter and the argument-span scan read a PAGE operand as
+/// #7589: canonical attribute boundaries read a PAGE operand as
 /// text, so the reference after the literal is classified in its own slot.
 #[test]
-fn split_args_and_arg_span_keep_a_page_operand_inside_its_string_7589() {
-    assert_eq!(split_args(r"'Para \S\' 5','Art \S\' 7',#4,(#5,#6)"), vec![r"'Para \S\' 5'", r"'Art \S\' 7'", "#4", "(#5,#6)"]);
+fn attribute_edits_keep_a_page_operand_inside_its_string_7589() {
     let line = r"#1=IFCWALL('Para \S\') 5',#2);";
-    assert_eq!(arg_span(line), Some((10, line.len() - 2)));
+    assert_eq!(classify_refs(line), Some(vec![(2, RefSlot::Single)]));
     let slots = classify_refs(r"#9=IFCRELAGGREGATES('g',$,'Para \S\' #7 5',$,#4,(#5,#6));").expect("parseable line");
     assert_eq!(slots, vec![(4, RefSlot::Single), (5, RefSlot::ListElement), (6, RefSlot::ListElement)]);
+}
+
+/// Retained #7891: the comment's `(` cannot become the argument opener.
+#[test]
+fn trivia_edit_boundaries_preserve_unrelated_bytes_7891() {
+    let line = "#10=/* ( */IFCRELDEFINESBYPROPERTIES('g',$,'a ''(,)''',IFCLABEL('x) (y'), /* before */ ( /* lead */ #2 /* tail */ ) /* after */,#5);";
+    assert_eq!(classify_refs(line), Some(vec![(2, RefSlot::ListElement), (5, RefSlot::Single)]));
+    let expected = line.replace("#2 /* tail */ )", "#2 /* tail */ ,#3)");
+    assert_eq!(append_to_list_attr(line, 4, &[3]), Some(expected));
+    assert_eq!(append_to_list_attr(line, 4, &[]).as_deref(), Some(line));
+    assert!(matches!(decide_line(line, &dropped(&[5])), LineDecision::Skip));
+    assert!(matches!(decide_line(line, &dropped(&[2])), LineDecision::Skip));
+    let empty = "#10=/* ( */IFCX( /* before */ ( /* empty ( , */ ) /* after */ );";
+    assert_eq!(append_to_list_attr(empty, 0, &[3]), Some(empty.replace("/* empty ( , */ )", "/* empty ( , */ #3)")));
+}
+
+/// Every deletion position, including consecutive leading/trailing removals,
+/// keeps comments/whitespace and gives the same canonical list of survivors.
+#[test]
+fn trivia_list_removals_keep_layout_and_survivors_7891() {
+    let line = "#10=/* ( */IFCX('a ''(,)''', /* outside */ ( /* a */ #1 /* b, */ , /* c */ #2 /* d */ , /* e */ #3 /* f */ ),#9);";
+    for mask in 1..8 {
+        let ids: Vec<u32> = (1..=3).filter(|id| mask & (1 << (id - 1)) != 0).collect();
+        let decision = decide_line(line, &dropped(&ids));
+        if mask == 7 {
+            assert!(matches!(decision, LineDecision::Skip));
+            continue;
+        }
+        let LineDecision::Rewrite(out) = decision else { panic!("mask {mask}: expected rewrite") };
+        let mut refs = Vec::new();
+        StepRecord::parse(out.as_bytes()).unwrap().ref_list_at(1, &mut refs).unwrap();
+        assert_eq!(refs, (1..=3).filter(|id| !ids.contains(id)).collect::<Vec<_>>());
+        let layout = |text: &str| text.replace("#1", "").replace("#2", "").replace("#3", "").replace(',', "");
+        assert_eq!(layout(&out), layout(line), "mask {mask}: {out}");
+        for unchanged in ["/* ( */", "'a ''(,)'''", "/* b, */", "/* outside */"] {
+            assert!(out.contains(unchanged), "mask {mask}: {out}");
+        }
+        assert_eq!(StepRecord::parse(out.as_bytes()).unwrap().ref_at(2), Some(9));
+    }
+}
+
+#[test]
+fn unreadable_edit_frames_are_conservative_7891() {
+    for line in ["#10=/* ( */IFCX((#2),#5", "#10=/* unclosed ( IFCX((#2),#5);", "#10=IFCX((#2), 'unclosed);"] {
+        assert!(classify_refs(line).is_none(), "{line}");
+        assert!(append_to_list_attr(line, 0, &[3]).is_none(), "{line}");
+        assert!(matches!(decide_line(line, &dropped(&[2])), LineDecision::Keep), "{line}");
+    }
+}
+
+/// F4 M-export-b (CORE-1, CORE-8): a comment is trivia everywhere the scanner
+/// looks. An apostrophe in a comment opened a phantom string that hid every
+/// later reference; a `#` in one was rewritten as if it were a reference.
+#[test]
+fn comments_are_skipped_by_the_reference_scanner() {
+    let line = "#5=IFCRELX('g',$,/* it's #99 */$,(#1,#2),#3);";
+    let mut refs = Vec::new();
+    crate::step_text::refs_in_line(line.as_bytes(), &mut refs);
+    assert_eq!(refs, vec![5, 1, 2, 3]);
+    let out = rewrite_refs(line.as_bytes(), 100, &|_| None);
+    assert_eq!(out, "#105=IFCRELX('g',$,/* it's #99 */$,(#101,#102),#103);");
+    assert_eq!(crate::step_text::substitute_ref_in_attr("/* #1 */ (#1,#12)", 1, 9).as_deref(), Some("/* #1 */ (#9,#12)"));
+    assert_eq!(classify_refs("#5=IFCX(/* ) */ #1,'a)');"), Some(vec![(1, RefSlot::Single)]));
+    assert_eq!(classify_refs("#5=IFCX(#1 /* , */,#2);"), Some(vec![(1, RefSlot::Single), (2, RefSlot::Single)]));
+}
+
+#[test]
+fn argument_references_do_not_start_inside_head_trivia_7891() {
+    let line = b"#12 /* = #99 */ = /* ( ' #88 */ IFCX(#1,(#2));";
+    let mut refs = Vec::new();
+    arg_refs(line, &mut refs);
+    assert_eq!(refs, vec![1, 2]);
+    // An unreadable tail still protects every reference seen before it.
+    refs.clear();
+    arg_refs(b"#12 /* = */ = IFCX(#1,(#2", &mut refs);
+    assert_eq!(refs, vec![1, 2]);
+}
+
+#[test]
+fn trivia_in_every_head_gap_uses_the_same_edit_boundaries_7891() {
+    for line in [
+        "#10 = IFCX ( #2, (#3) );",
+        "#10 /* = ( */ = /* ( */ IFCX /* ( */ ( /* #99 */ #2, /* list */ (#3) );",
+    ] {
+        assert_eq!(classify_refs(line), Some(vec![(2, RefSlot::Single), (3, RefSlot::ListElement)]));
+        assert_eq!(append_to_list_attr(line, 1, &[4]), Some(line.replace("(#3)", "(#3,#4)")));
+        assert!(matches!(decide_line(line, &dropped(&[2])), LineDecision::Skip));
+    }
+}
+
+/// Independent review of a3e55ee3d (#7891): closing the first list does not
+/// consume an attribute with a second list after it. Both references must
+/// block pruning, and neither edit helper may act on the first list alone.
+#[test]
+fn list_shaped_suffixes_are_conservatively_nested_7891() {
+    for members in ["(#2) (#3)", "(#2) /* ) , ' */ (#3)"] {
+        let line = format!("#10=IFCRELAGGREGATES('g',$,$,$,#1,{members});");
+        assert_eq!(classify_refs(&line), Some(vec![
+            (1, RefSlot::Single), (2, RefSlot::Nested), (3, RefSlot::Nested),
+        ]));
+        assert!(append_to_list_attr(&line, 5, &[4]).is_none());
+        for id in [2, 3] {
+            assert!(matches!(decide_line(&line, &dropped(&[id])), LineDecision::Keep));
+        }
+    }
+}
+
+#[test]
+fn complete_list_with_legal_trailing_trivia_remains_editable_7891() {
+    let line = "#10=/* ( */IFCRELAGGREGATES('g',$,$,$,#1, /* before */ (#2,#3) /* ) , ' #99 */ \x0b\x0c);";
+    assert_eq!(classify_refs(line), Some(vec![
+        (1, RefSlot::Single), (2, RefSlot::ListElement), (3, RefSlot::ListElement),
+    ]));
+    assert_eq!(append_to_list_attr(line, 5, &[4]), Some(line.replace("(#2,#3)", "(#2,#3,#4)")));
+    let LineDecision::Rewrite(out) = decide_line(line, &dropped(&[3])) else {
+        panic!("the complete list is editable");
+    };
+    assert_eq!(out, line.replace("(#2,#3)", "(#2)"));
 }

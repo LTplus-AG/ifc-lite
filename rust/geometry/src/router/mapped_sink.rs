@@ -13,7 +13,7 @@ use super::transforms::instancing_enabled;
 use super::GeometryRouter;
 use crate::math::mat4;
 use crate::representation::{Flow, MappedLevel, WalkCtx, WalkRefusal, WalkVisitor};
-use crate::{Error, InstanceMeta, Mesh};
+use crate::{Error, InstanceMeta, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 use std::sync::Arc;
@@ -29,8 +29,6 @@ struct Frame<'r> {
     truncated: bool,
     mapping_transform: Option<Matrix4<f64>>,
     source_id: u32,
-    /// The `IfcMappedItem` of this level.
-    item_id: u32,
     /// The finished parts of a source-cache hit.
     hit: Option<Vec<Mesh>>,
     /// The level's transform failed: it contributes nothing.
@@ -56,12 +54,13 @@ impl<'a> MergeSink<'a> {
 
     /// A level that could not run: the top one fails the call; a nested one
     /// truncates its parent and is counted as the lost `IfcMappedItem`.
-    fn level_failed(&mut self, item: &DecodedEntity, error: Error, top: bool) {
+    fn level_failed(&mut self, item: &DecodedEntity, error: Error, top: bool, entered: bool) {
         // Failing the items of an entered level: that level (the last frame)
         // contributes nothing and the parent is the one below it.
-        let own = self.frames.last().is_some_and(|f| f.item_id == item.id && !f.failed);
-        let parent = self.frames.len().saturating_sub(if own { 2 } else { 1 });
-        if own {
+        // An unentered cycle may repeat the current frame's id. Ownership
+        // follows the enter/Items phase, never the entity id (#7873).
+        let parent = self.frames.len().saturating_sub(if entered { 2 } else { 1 });
+        if entered {
             if let Some(frame) = self.frames.last_mut() {
                 frame.failed = true;
             }
@@ -80,11 +79,12 @@ impl<'a> MergeSink<'a> {
     }
 
     /// The finished parts of a level whose items were merged.
-    fn finish(&self, frame: Frame<'_>) -> (Vec<Mesh>, bool) {
+    fn finish(&self, frame: Frame<'_>) -> Result<(Vec<Mesh>, bool)> {
+        crate::resource::check_current()?;
         let router = self.router;
         let level_truncated = frame.truncated;
         let source_id = frame.source_id;
-        let mut parts = frame.source.into_parts();
+        let mut parts = frame.source.into_parts()?;
         // A multi-frame source is never cached or instanced: both assume one
         // source-coords mesh per map (#6446). No fixture-corpus map is one.
         let single_frame = parts.len() == 1;
@@ -96,35 +96,24 @@ impl<'a> MergeSink<'a> {
         match &router.shared_mapped_item_cache {
             _ if !single_frame => {}
             Some(shared) => {
-                // Mirror the item-dedup #1257 guard: a mapped source can contain
-                // IfcBooleanResult/IfcCsgSolid, and on a per-element CSG-budget trip
-                // the boolean bails and returns the UNCUT host. Caching that degraded
-                // source MODEL-WIDE would serve the wrong (uncut) mesh to a later
-                // occurrence in a fresh-budget element that would otherwise get the
-                // full exact cut. Skip the shared insert on a trip (or empty mesh) —
-                // the next occurrence re-meshes and a clean element caches it. The
-                // RefCell fallback arm below stays UNGUARDED: it is per-element
-                // (consistent budget within the element), reproducing main exactly.
-                //
-                // `level_truncated` is the same shape for the nesting bounds: the
-                // depth cap and the visited set depend on where in the walk the
-                // source was reached, which `source_id` does not encode. A source
-                // first met at depth 31 loses everything below it, and caching that
-                // model-wide would serve the short mesh to a later occurrence reached
-                // at depth 0, which would otherwise walk the whole chain. Non-empty
-                // and budget-clean, so only this catches it.
+                // #1257: shared CSG-budget fallbacks must not escape to fresh
+                // elements. Keep that policy separate from traversal truncation:
+                // depth, cycles and per-walk work depend on the current path and
+                // allowance, which source_id cannot encode. Neither cache may
+                // publish those partial sources, even within the same router.
                 if !parts[0].positions.is_empty()
                     && !crate::kernel::budget::tripped()
                     && !level_truncated
                 {
-                    let source_arc = Arc::new(parts[0].clone());
+                    let source_arc = router.clone_source_for_cache(&parts[0])?;
                     shared.lock().unwrap_or_else(|e| e.into_inner()).insert(source_id, source_arc);
                 }
             }
-            None => {
-                let source_arc = Arc::new(parts[0].clone());
+            None if !level_truncated => {
+                let source_arc = router.clone_source_for_cache(&parts[0])?;
                 router.mapped_item_cache.borrow_mut().insert(source_id, source_arc);
             }
+            None => {}
         }
         // Apply MappingTarget transformation to this instance
         let mut local_rm = None;
@@ -140,7 +129,7 @@ impl<'a> MergeSink<'a> {
         if instancing_enabled() && single_frame {
             parts[0].instance_meta = Some(InstanceMeta::instanceable(source_id as u128, local_rm));
         }
-        (parts, level_truncated)
+        Ok((parts, level_truncated))
     }
 }
 
@@ -149,7 +138,7 @@ impl WalkVisitor for MergeSink<'_> {
         if let Some(frame) = self.frames.last_mut() {
             self.router.merge_source_item(item, decoder, &mut frame.source, "mapped-source");
         }
-        Flow::Continue
+        if crate::resource::check_current().is_err() { Flow::Stop } else { Flow::Continue }
     }
 
     fn enter_map(&mut self, level: &MappedLevel, at: &WalkCtx<'_>, decoder: &mut EntityDecoder) -> Flow {
@@ -160,13 +149,12 @@ impl WalkVisitor for MergeSink<'_> {
         let mapping_transform = match level.local_transform(decoder) {
             Ok(transform) => transform,
             Err(error) => {
-                self.level_failed(&level.item, error, at.path.is_empty());
+                self.level_failed(&level.item, error, at.path.is_empty(), false);
                 self.frames.push(Frame {
                     source: SourceParts::default(),
                     truncated: false,
                     mapping_transform: None,
                     source_id,
-                    item_id: level.item.id,
                     hit: None,
                     failed: true,
                     _drop_scope: None,
@@ -192,13 +180,20 @@ impl WalkVisitor for MergeSink<'_> {
             truncated: false,
             mapping_transform,
             source_id,
-            item_id: level.item.id,
             hit: None,
             failed: false,
             _drop_scope: None,
         };
         if let Some(cached_mesh) = cached_source {
-            let mut mesh = cached_mesh.as_ref().clone();
+            let mut mesh = match router.clone_cached_mesh(cached_mesh.as_ref()) {
+                Ok(mesh) => mesh,
+                Err(error) => {
+                    self.error = Some(error);
+                    frame.failed = true;
+                    self.frames.push(frame);
+                    return Flow::Stop;
+                }
+            };
             let mut local_rm = None;
             if let Some(mut transform) = mapping_transform {
                 router.scale_transform(&mut transform);
@@ -225,13 +220,16 @@ impl WalkVisitor for MergeSink<'_> {
 
     fn leave_map(&mut self, _level: &MappedLevel) {
         let Some(mut frame) = self.frames.pop() else { return };
-        if frame.failed {
+        if frame.failed || self.error.is_some() {
             return;
         }
         let parts = match frame.hit.take() {
             Some(hit) => hit,
             None => {
-                let (parts, truncated) = self.finish(frame);
+                let (parts, truncated) = match self.finish(frame) {
+                    Ok(finished) => finished,
+                    Err(error) => { self.error = Some(error); return; }
+                };
                 // The merge is short, so every enclosing level's is too.
                 if let Some(parent) = self.frames.last_mut() {
                     parent.truncated |= truncated;
@@ -246,7 +244,8 @@ impl WalkVisitor for MergeSink<'_> {
     }
 
     fn refused(&mut self, item: &DecodedEntity, why: WalkRefusal, at: &WalkCtx<'_>) {
+        let entered = self.frames.len() > at.path.len();
         let error = why.into_error(item.id);
-        self.level_failed(item, error, at.path.is_empty());
+        self.level_failed(item, error, at.path.is_empty(), entered);
     }
 }

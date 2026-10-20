@@ -21,8 +21,9 @@
 //! lives here exactly once. The historic #858/#913-class drift was always in
 //! this resolution layer, not in the span stashing.
 
+use crate::scan::ScanClass;
 use crate::style::{FullIndexedColourMap, GeometryStyleInfo, SpecularMaterial};
-use ifc_lite_core::{keyword_eq, DecodedEntity, EntityDecoder};
+use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use rustc_hash::FxHashMap;
 
 /// One stashed entity span: `(express_id, start, end)`.
@@ -57,29 +58,26 @@ impl PrepassSpans {
     ///
     /// `type_name` is the raw keyword from `EntityScanner::next_entity`, in
     /// whatever case the file wrote it, so the dispatch goes through
-    /// [`keyword_eq`]. Every scan loop that only needs the span lists calls
-    /// this instead of spelling the same keyword table again; `processor::mod`
-    /// keeps its own arms (its `continue`s interleave with other work) but
-    /// compares the same way.
+    /// [`ScanClass::classify`]. Every scan loop that only needs the span lists
+    /// calls this instead of spelling the same keyword table again; the native
+    /// scan classifies once for its other arms too and calls
+    /// [`Self::stash_class`].
     pub fn stash(&mut self, type_name: &str, id: u32, start: usize, end: usize) -> bool {
-        let list = if keyword_eq(type_name, "IFCSTYLEDITEM") {
-            &mut self.styled_items
-        } else if keyword_eq(type_name, "IFCINDEXEDCOLOURMAP") {
-            &mut self.indexed_colour_maps
-        } else if keyword_eq(type_name, "IFCMATERIALDEFINITIONREPRESENTATION") {
-            &mut self.material_def_reprs
-        } else if keyword_eq(type_name, "IFCRELASSOCIATESMATERIAL") {
-            &mut self.rel_associates_material
-        } else if keyword_eq(type_name, "IFCRELVOIDSELEMENT") {
-            &mut self.void_rels
-        } else if keyword_eq(type_name, "IFCRELFILLSELEMENT") {
-            &mut self.fills_rels
-        } else if keyword_eq(type_name, "IFCRELAGGREGATES") {
-            &mut self.aggregate_rels
-        } else if keyword_eq(type_name, "IFCRELDEFINESBYTYPE") {
-            &mut self.defines_by_type
-        } else {
-            return false;
+        self.stash_class(ScanClass::classify(type_name), id, start, end)
+    }
+
+    /// [`Self::stash`] for a scan that has already classified the keyword.
+    pub fn stash_class(&mut self, class: ScanClass, id: u32, start: usize, end: usize) -> bool {
+        let list = match class {
+            ScanClass::StyledItem => &mut self.styled_items,
+            ScanClass::IndexedColourMap => &mut self.indexed_colour_maps,
+            ScanClass::MaterialDefinitionRepresentation => &mut self.material_def_reprs,
+            ScanClass::RelAssociatesMaterial => &mut self.rel_associates_material,
+            ScanClass::RelVoidsElement => &mut self.void_rels,
+            ScanClass::RelFillsElement => &mut self.fills_rels,
+            ScanClass::RelAggregates => &mut self.aggregate_rels,
+            ScanClass::RelDefinesByType => &mut self.defines_by_type,
+            _ => return false,
         };
         list.push((id, start, end));
         true
@@ -576,10 +574,7 @@ fn extract_surface_style_info(
 }
 
 fn normalize_style_name(raw: Option<&str>) -> Option<String> {
-    let name = raw?.trim();
-    if name.is_empty() || name == "$" {
-        return None;
-    }
+    let name = ifc_lite_core::optional_text(raw)?;
     if name.eq_ignore_ascii_case("<unnamed>") || name.eq_ignore_ascii_case("unnamed") {
         return None;
     }

@@ -31,6 +31,8 @@ pub struct AnalyticProfileLoop {
     pub perimeter: f64,
     /// Original source convention, separate from interpreted segment geometry.
     /// Parameterized profiles retain their original dimensions and placement here too.
+    /// Not serialized: export output stays unchanged until a consumer opts in.
+    #[serde(skip)]
     pub source: Option<super::AnalyticBoundarySource>,
 }
 

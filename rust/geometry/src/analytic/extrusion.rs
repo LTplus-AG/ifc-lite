@@ -17,6 +17,8 @@ pub struct AnalyticExtrusion {
     pub solid_id: u32,
     /// Original solid attributes and Position/ExtrudedDirection coefficient graph.
     /// SweptArea traversal is retained separately in each profile boundary source.
+    /// Not serialized: export output stays unchanged until a consumer opts in.
+    #[serde(skip)]
     pub source: Option<super::AnalyticBoundarySource>,
     #[serde(rename = "SweptArea")]
     pub swept_area_id: Option<u32>,

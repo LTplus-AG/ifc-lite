@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { StepExporter, exportSectionedStep, countStepEntities, type SectionExportOptions, type StepExportOptions } from '@ifc-lite/export';
+import { StepExporter, countStepEntities, type SectionExportOptions, type StepExportOptions } from '@ifc-lite/export';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { prepareAppearanceSerialization } from '../appearance/serialization.js';
@@ -36,6 +36,7 @@ export async function exportModelStep(input: {
     : result;
   if (!input.section) return { content: spliced.content, stats: result.stats, resources: serialized.resources };
   const bytes = typeof spliced.content === 'string' ? new TextEncoder().encode(spliced.content) : spliced.content;
+  const { exportSectionedStep } = await import('@ifc-lite/export');
   const cropped = await exportSectionedStep(bytes, input.section);
   return { content: cropped.content, stats: { ...result.stats, entityCount: countStepEntities(cropped.content) }, resources: serialized.resources };
 }

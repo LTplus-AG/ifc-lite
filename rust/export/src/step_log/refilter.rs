@@ -19,6 +19,7 @@ const STYLE_RESCUE_TYPES: &[&str] = &[
     "IFCINDEXEDTRIANGLETEXTUREMAP",
     "IFCINDEXEDPOLYGONALTEXTUREMAP",
     "IFCTEXTUREMAP",
+    "IFCINDEXEDCOLOURMAP",
 ];
 
 /// What the source pass does with one line.

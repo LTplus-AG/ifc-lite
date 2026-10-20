@@ -59,6 +59,27 @@ fn issue_7914_projected_arcs_retain_interior_extrema_and_reversed_trims() {
     }
 }
 
+// #7914: preserving a hidden extremum must not stop genuinely stationary
+// trims or ordinary shallow arcs from using the established chord output.
+#[test]
+fn issue_7914_zero_span_and_shallow_arcs_keep_the_chord_path() {
+    for end in [0.0, 0.01] {
+        let geometry = format!(r#"
+#30=IFCAXIS2PLACEMENT2D(#31,$);
+#31=IFCCARTESIANPOINT((0.,0.));
+#32=IFCCIRCLE(#30,1.);
+#33=IFCTRIMMEDCURVE(#32,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE({end})),.T.,.PARAMETER.);
+"#);
+        let data = extract_symbolic_data(&fixture("0.,0.,1.", "#33", &geometry));
+        assert_eq!(data.polylines.len(), 1);
+        let points = &data.polylines[0].points;
+        assert_eq!(points.len(), 4);
+        assert_eq!(&points[..2], &[1.0, 0.0]);
+        assert!((f64::from(points[2]) - end.cos()).abs() < 0.000001);
+        assert!((f64::from(points[3]) + end.sin()).abs() < 0.000001);
+    }
+}
+
 fn mixed_geometry(unit: f64, z: f64) -> String {
     let r = 1.0 / unit;
     let z = z / unit;
@@ -126,12 +147,17 @@ fn issue_7914_vertex_elevation_uses_the_full_frame() {
 // projected frame is not a similarity. Area scale is not X-column length.
 #[test]
 fn issue_7914_tilted_text_keeps_a_unit_baseline() {
-    let geometry = "#30=IFCAXIS2PLACEMENT3D(#12,$,$);\n#32=IFCTEXTLITERAL('T',#30,.RIGHT.);";
-    for axis in ["0.,0.,1.", "0.8660254037844386,0.,0.5"] {
+    let geometry = "#30=IFCAXIS2PLACEMENT3D(#12,$,#33);\n#32=IFCTEXTLITERAL('T',#30,.RIGHT.);\n#33=IFCDIRECTION((1.,1.,0.));";
+    for (axis, expected_x, expected_y) in [
+        ("0.,0.,1.", std::f32::consts::FRAC_1_SQRT_2, -std::f32::consts::FRAC_1_SQRT_2),
+        ("0.8660254037844386,0.,0.5", 1.0 / 5_f32.sqrt(), -2.0 / 5_f32.sqrt()),
+    ] {
         let data = extract_symbolic_data(&fixture(axis, "#32", geometry));
         assert_eq!(data.texts.len(), 1);
         let text = &data.texts[0];
         let length = text.dir_x.hypot(text.dir_y);
         assert!((length - 1.0).abs() < 0.000001, "baseline length {length}: {text:?}");
+        assert!((text.dir_x - expected_x).abs() < 0.000001, "baseline X: {text:?}");
+        assert!((text.dir_y - expected_y).abs() < 0.000001, "baseline Y: {text:?}");
     }
 }

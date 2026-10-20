@@ -100,6 +100,10 @@ pub(super) fn extract_trimmed_curve(
     let angle_span = (end_angle - start_angle).abs();
     let is_near_collinear = if angle_span >= std::f64::consts::PI {
         false
+    } else if angle_span == 0.0 || (circle.basis.m00 == 0.0 && circle.basis.m01 == 0.0
+        && circle.basis.m10 == 0.0 && circle.basis.m11 == 0.0)
+    {
+        true // A genuinely stationary trim/projection still emits its two endpoints.
     } else if chord_len > 0.0 && chord_is_monotone(&circle, start_angle, end_angle, chord_dx, chord_dy) {
         let mid_angle = (start_angle + end_angle) / 2.0;
         let (mid_x, mid_y) = circle.point_at(mid_angle);

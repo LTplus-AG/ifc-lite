@@ -13,6 +13,9 @@ if(NOT revision STREQUAL IFCLITE_SMLIB_REVISION)
 endif()
 execute_process(COMMAND git diff --quiet HEAD -- source/SMLib source/SM_API
   WORKING_DIRECTORY "${SMLIB_SOURCE}" RESULT_VARIABLE modified)
+# Deliberately NO --exclude-standard: plain `--others` also lists ignored files
+# (.gitignore, info/exclude and global excludes are not consulted), so an ignored
+# extra .cpp that the file(GLOB) below would compile still fails this check.
 execute_process(COMMAND git ls-files --others -- source/SMLib source/SM_API
   WORKING_DIRECTORY "${SMLIB_SOURCE}" OUTPUT_VARIABLE untracked
   COMMAND_ERROR_IS_FATAL ANY)

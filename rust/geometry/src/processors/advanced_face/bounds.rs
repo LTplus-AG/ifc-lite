@@ -25,7 +25,7 @@ pub(super) struct FaceBounds {
 // could lose faces, or every face, and report nothing. Same shape as
 // `bspline_budget::CURVE_CAPPED`: a thread-local flag set where a face is
 // refused and drained once per representation item by the router
-// (`process_item_in_rtc_frame`), which records the REAL face type: an
+// (the common item program, `program/item.rs`), which records the REAL face type: an
 // `IfcAdvancedFace` / `IfcFaceSurface` for a surface face, an `IfcFace` for a
 // faceted brep or surface-model polyloop face, an
 // `IfcIndexedPolygonalFaceWithVoids` for a tessellated face. They were all

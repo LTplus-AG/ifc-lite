@@ -1034,6 +1034,17 @@ jobs:
           # ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/brep/faceted_plan.rs | grep -Fxq 'rust/geometry/src/processors/brep/faceted_plan.rs'; then
             oracle_args+=(--mutation tests/evidence/geometry-brep-plans-b3/behaviour.oracle.patch)
+          # #7955 C4: layer slicing is split into planes.rs, slice.rs,
+          # stack.rs, source.rs and stages.rs, which the layer tests name, so a
+          # whole-change revert cannot compile them (INCONCLUSIVE). Keep the
+          # modules and break ONLY the behaviour: interface offsets stop
+          # accumulating, the carve no longer advances its remainder, thin
+          # layers are not merged, an empty host is accepted, frames ignore the
+          # placement and the slice diagnostic misreports; the A2 scope
+          # mutation is stacked (this branch includes A2). Once slice.rs is on
+          # main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/router/layers/slice.rs | grep -Fxq 'rust/geometry/src/router/layers/slice.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-layer-slicing-c4/behaviour.oracle.patch)
           # #7955 A2: diagnostic scopes add pending_diagnostics.rs,
           # budget_state.rs, CsgCensus and ElementState, which its tests name,
           # so a whole-change revert cannot compile them (INCONCLUSIVE). Keep

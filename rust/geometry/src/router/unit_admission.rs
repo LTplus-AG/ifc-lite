@@ -25,6 +25,7 @@ impl GeometryRouter {
     /// non-finite or non-positive scale (a refused unit's `NaN` on the wasm
     /// wire, or an overflowing factor's infinity) refuses the router.
     pub(super) fn set_unit_scale(&mut self, unit_scale: f64) {
+        self.execution_owner.changed();
         if unit_scale.is_finite() && unit_scale > 0.0 {
             self.unit_scale = unit_scale;
         } else {
@@ -37,6 +38,7 @@ impl GeometryRouter {
     /// that resolve units themselves (`UnitScales::length_unit_refused`,
     /// `StreamMeta::length_unit_refused`) call this on every router they build.
     pub fn refuse_length_unit(&mut self) {
+        self.execution_owner.changed();
         self.length_unit_refused = true;
     }
 

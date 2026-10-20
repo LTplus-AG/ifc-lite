@@ -206,7 +206,9 @@ const SCAN_ROOTS = [
 // #7873: iterative RepresentationWalk removes the items/enter recursion pair.
 // The consumer layer also removes the two merged-source cycle members and
 // the recursive submesh collector: 28 candidates remain, all still guarded.
-const CANDIDATE_FLOOR = 28;
+// #7887: profile extraction now delegates to RepresentationWalk, deleting
+// extract_mapped_item_profiles recursion. Exactly 27 guarded candidates remain.
+const CANDIDATE_FLOOR = 27;
 
 /**
  * Allowlist for candidates that are genuinely unguarded and must stay that

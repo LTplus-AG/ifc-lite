@@ -47,6 +47,7 @@ fn mapped_chain_deeper_than_the_old_cap_draws() {
 
     let (at_cap, skipped) = extract_profiles_with_diagnostics(&chain(MAX_MAPPED_ITEM_DEPTH), 0);
     assert_eq!(at_cap.len(), 1, "a chain at the shared cap draws: {skipped:?}");
+    assert!(skipped.is_empty(), "{skipped:?}");
 }
 
 /// Past the shared cap the chain is refused and the drop is recorded once.

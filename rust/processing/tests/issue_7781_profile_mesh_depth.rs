@@ -20,9 +20,14 @@ fn mixed_chain(levels: u32) -> String {
 }
 
 fn check(levels: u32, expected: usize, refusals: usize) {
+    assert_eq!(MAX_MAPPED_ITEM_DEPTH, 32, "#7887 keeps the shared 32-map policy");
     let content = mixed_chain(levels);
     let (profiles, skipped) = extract_profiles_with_diagnostics(&content, 0);
     assert_eq!(profiles.len(), expected, "drawing: {skipped:?}");
+    let mut depths: Vec<_> = profiles.iter().map(|p| p.extrusion_depth).collect();
+    depths.sort_by(f32::total_cmp);
+    let expected_depths = if expected == 2 { vec![1.0, 2.5] } else { vec![2.5] };
+    assert_eq!(depths, expected_depths, "drawing keeps each distinct solid");
     assert_eq!(skipped.len(), refusals, "drawing refusals: {skipped:?}");
     if refusals > 0 {
         assert!(skipped[0].reason.contains("maximum depth"), "{skipped:?}");

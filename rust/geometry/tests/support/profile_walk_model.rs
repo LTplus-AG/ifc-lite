@@ -65,4 +65,3 @@ pub fn chain(levels: u32) -> String {
     }
     wall("#160", &entities)
 }
-

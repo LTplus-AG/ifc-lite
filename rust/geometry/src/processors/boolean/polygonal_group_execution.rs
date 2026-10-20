@@ -164,3 +164,7 @@ impl BooleanClippingProcessor {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "polygonal_group_execution_tests.rs"]
+mod tests;

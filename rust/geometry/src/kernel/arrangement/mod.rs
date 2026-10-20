@@ -38,6 +38,8 @@ pub(super) use coincident::coincident_planes;
 mod ray_parity;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+pub(crate) mod issue_7292_fixtures;
 
 pub use self::admission::{operands_admitted, MAX_OPERAND_COORD};
 pub use self::boolean::{

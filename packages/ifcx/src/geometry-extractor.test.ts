@@ -38,6 +38,21 @@ function createMesh(): UsdMesh {
 }
 
 describe('extractGeometry', () => {
+  it('uses flat faceVertexIndices when faceVertexCounts is present but empty', () => {
+    const extract = (counts: number[] | undefined) => {
+      const entity = createNode('entity');
+      entity.attributes.set(ATTR.CLASS, ifcClass('IfcWall'));
+      entity.attributes.set(ATTR.MESH, { ...createMesh(), ...(counts ? { faceVertexCounts: counts } : {}) });
+      return extractGeometry(new Map([[entity.path, entity]]), new Map([[entity.path, 1]]));
+    };
+    const absent = extract(undefined);
+    const empty = extract([]);
+    assert.strictEqual(empty.length, 1);
+    assert.deepStrictEqual([...empty[0].indices], [0, 1, 2]);
+    assert.deepStrictEqual([...empty[0].indices], [...absent[0].indices]);
+    assert.deepStrictEqual([...empty[0].positions], [...absent[0].positions]);
+  });
+
   it('traverses disconnected cycle components even when other roots exist', () => {
     const root = createNode('root');
     root.attributes.set(ATTR.CLASS, ifcClass('IfcWall'));

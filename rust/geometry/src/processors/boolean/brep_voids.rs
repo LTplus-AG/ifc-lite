@@ -10,11 +10,11 @@
 //! out: an over-cut, silently. The kernel subtracts the void shells (it
 //! orients each operand outward itself, so either authored winding works).
 
+use super::brep_void_plan::{refuse, void_refs, ReadyVoids, ShellKind, ShellPlan, VoidFault};
 use super::BooleanClippingProcessor;
-use crate::diagnostics::{BoolFailureReason, BoolOp};
-use crate::router::builtin_processor;
-use crate::{GroupCut, GroupReject, Mesh, TessellationQuality};
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
+use crate::diagnostics::BoolOp;
+use crate::{Mesh, TessellationQuality};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
 /// The plain-brep type whose processor meshes one shell given as attribute 0,
 /// for a `*BrepWithVoids` type; `None` for every other type.
@@ -43,53 +43,34 @@ impl BooleanClippingProcessor {
         decoder: &mut EntityDecoder,
         quality: TessellationQuality,
     ) -> (Mesh, bool) {
-        let refuse = |why: &str| {
-            self.record_failure(
-                op,
-                BoolFailureReason::KernelError(format!("{} cutter voids: {why}", operand.ifc_type)),
-            );
-            (Mesh::new(), true)
-        };
-        let Some(voids) = operand.get(1).and_then(|attr| attr.as_list()) else {
+        let Some(voids) = void_refs(operand) else {
             return (outer, false);
         };
-        if voids.is_empty() || outer.is_empty() {
+        if outer.is_empty() {
             return (outer, false);
         }
-        let Some(processor) = builtin_processor(shell_kind.clone(), &self.schema) else {
-            return refuse("no shell processor");
+        let refuse = |fault: VoidFault| refuse(self, op, &operand.ifc_type, fault.message());
+        let Some(kind) = ShellKind::from_type(&shell_kind) else {
+            return refuse(VoidFault::NoShellProcessor);
         };
         let mut void_meshes = Vec::with_capacity(voids.len());
-        for void in voids {
-            let Some(shell_id) = void.as_entity_ref() else { return refuse("void is not a shell reference") };
-            // The plain brep type over this shell: the processors read the
-            // shell from attribute 0 and nothing else.
-            let as_brep = DecodedEntity::new(shell_id, shell_kind.clone(), vec![AttributeValue::EntityRef(shell_id)]);
-            match processor.process(&as_brep, decoder, &self.schema, quality) {
+        for value in voids {
+            let Some(shell_id) = value.as_entity_ref() else {
+                return refuse(VoidFault::NotReference);
+            };
+            // One shell at a time: an earlier shell that fails to mesh stops
+            // before any later shell is read.
+            match ShellPlan::lower(shell_id, kind, decoder, quality).and_then(ShellPlan::evaluate) {
                 Ok(mesh) if !mesh.is_empty() => void_meshes.push(mesh),
-                _ => return refuse("void shell did not mesh"),
+                _ => return refuse(VoidFault::ShellDidNotMesh),
             }
         }
-        let clipper = crate::ClippingProcessor::with_unit_scale(decoder.length_unit_scale());
-        let refs: Vec<&Mesh> = void_meshes.iter().collect();
-        match clipper.subtract_mesh_many(&outer, &refs) {
-            // No void reaches the Outer solid: the cutter IS its Outer shell.
-            GroupCut::Rejected(GroupReject::NoOverlap | GroupReject::Unchanged) => (outer, false),
-            GroupCut::Cut(hollow) | GroupCut::Retessellated(hollow) if !hollow.is_empty() => {
-                self.absorb_failures(clipper.take_failures());
-                (hollow, false)
-            }
-            // A refused cutter is ONE record: the kernel's own (InvalidOutput,
-            // GateRejected) is replaced by the refusal, not counted twice.
-            GroupCut::Rejected(reject) => {
-                let _ = clipper.take_failures();
-                refuse(&format!("subtract rejected ({reject:?})"))
-            }
-            // The voids engulf the Outer: nothing is left to cut with.
-            GroupCut::Cut(_) | GroupCut::Retessellated(_) => {
-                let _ = clipper.take_failures();
-                refuse("voids engulf the outer shell")
-            }
-        }
+        ReadyVoids::new(void_meshes).subtract(
+            outer,
+            decoder.length_unit_scale(),
+            self,
+            op,
+            &operand.ifc_type,
+        )
     }
 }

@@ -511,7 +511,7 @@ impl GeometryRouter {
                     Err(error) => Err(error),
                 };
                 let Ok(item_parts) = item_parts else { continue };
-                for mut mesh in item_parts.into_iter().filter(|mesh| !mesh.is_empty()) {
+                for mut mesh in item_parts.into_iter().filter_map(|mesh| super::hygiene::clean_opening_item(mesh, self)) {
                     // Keep ordinary opening cutters in the world/RTC frame. A large
                     // mapped origin, or a cutter far from the RTC origin (#6478),
                     // would lose its fractional translation when the world point is
@@ -604,7 +604,7 @@ impl GeometryRouter {
                 let Ok(item_parts) = self.process_representation_item_parts(&item, decoder) else {
                     continue;
                 };
-                for mesh in item_parts.into_iter().filter(|mesh| !mesh.is_empty()) {
+                for mesh in item_parts.into_iter().filter_map(|mesh| super::hygiene::clean_opening_item(mesh, self)) {
                     // Mesh::bounds is local to mesh.positions. Mapped items can
                     // carry a large f64 origin that must be folded in before the
                     // element placement, or the cutter box lands near zero.

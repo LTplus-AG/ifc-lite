@@ -62,6 +62,11 @@ pub(super) fn enabled() -> bool {
 static FIRES: AtomicU64 = AtomicU64::new(0);
 static FOOTPRINTS: AtomicU64 = AtomicU64::new(0);
 
+pub(crate) fn publish_cut(footprints: u64) {
+    FIRES.fetch_add(1, Ordering::Relaxed);
+    FOOTPRINTS.fetch_add(footprints, Ordering::Relaxed);
+}
+
 /// Read + reset the 2D-path telemetry: (hosts cut via the 2D path, opening
 /// footprints subtracted in those hosts). Process-global; used by the perf
 /// harness to report the fast-path hit-rate. Relaxed atomics — a stale read
@@ -293,9 +298,8 @@ impl GeometryRouter {
             })
             .collect::<Option<Vec<_>>>()?;
         let footprints = cut.footprints.len() as u64;
-        crate::telemetry_transaction::record(move || {
-            FIRES.fetch_add(1, Ordering::Relaxed);
-            FOOTPRINTS.fetch_add(footprints, Ordering::Relaxed);
+        crate::telemetry_transaction::record(crate::telemetry_transaction::Event::PlanarCut {
+            footprints,
         });
         Some((out, corrections))
     }

@@ -1,0 +1,227 @@
+{
+  "status": "D1A5_O3_PERFORMANCE_NO_VERDICT_NOT_MERGE_READY",
+  "qualificationSourceRevision": "d1a5a415a9a97a1254cf92b381414b8521ca3311",
+  "baselineRevision": "592d84c9709a10360b788af021965ee38d5bba86",
+  "futureDocumentationParent": "d1a5a415a9a97a1254cf92b381414b8521ca3311",
+  "nativeAndPythonActualSourceRevision": "ba457b1283e85f1f09ea1eec23926b92b98cbc38",
+  "native": {
+    "censusAndExactClippyReceiptSHA256": "2e23b37baa16e7dba2d5b333184bd75552c5882839c0845c9bb411f551d173fa",
+    "targetedRegressionReceiptSHA256": "d87e8d86cb416a4386425774f1b172234e5e94667f6d647beb9f064de9e1aadc",
+    "actualPassCounts": {
+      "wholeTriangulationTarget": 71,
+      "issue7292Unit": 155,
+      "slopedIntegration": 1,
+      "nonfinite": 1,
+      "functionRatchet": 17,
+      "moduleRatchet": 8,
+      "positionalRatchet": 16
+    },
+    "sourceFixturesAndTargetOwnerUnchanged": true,
+    "originalUnblessedFailurePreserved": true,
+    "scope": "Actual two-stage census/Clippy producer plus five-stage regression producer; no synthetic native9.",
+    "fullWorkspace": {
+      "receiptSHA256": "e4c6182b4ec0500a2f1f1e52d73a44e6d698b14744974bb60e53f4597b099aa5",
+      "passed": 5601,
+      "failed": 0,
+      "ignored": 47,
+      "countScope": "Sum of365actual native/doctest summaryblocks; ignoredtests not claimed executed",
+      "authenticatedFixtureCount": 182,
+      "original118Preserved": true,
+      "originalWorkspace101Preserved": true
+    }
+  },
+  "pythonWheel": {
+    "receiptSHA256": "b51f596035042bf478bb56d89d0ebede054d5dc7ef629338d4adce71d8b5626d",
+    "passed": 49,
+    "goldenUnchanged": true,
+    "ownAndRootLocksUnchanged": true,
+    "wheelSHA256": "6d9e2ad800ae1ac441ab46a52a10fc324ab9854a2638ddd14e709d40f15be9b6",
+    "nativeModuleSHA256": "3dad599068915ef3f617fe130b165cddf69725a110c4050691d255c58ad62b53",
+    "issue098FNV": "3069c3083d5c115b",
+    "provenance": "Worker native Python3.12.3 Linux GNU; not CI Python3.9 or manylinux container"
+  },
+  "nativeApplicability": {
+    "witnessSHA256": "cf5f91555eda87960784b941872fef54ffd1cf2b084e57f43dd1759ebe170a6a",
+    "onlyChangesSinceNativeProof": [
+      "scripts/build-wasm.sh",
+      "packages/wasm/pkg/ifc-lite.d.ts",
+      "tests/perf-ratchets/bundle.json"
+    ],
+    "allOtherModeTypeOIDEntriesIdentical": true,
+    "actualProducerHeadsNotRelabeled": true
+  },
+  "currentOfficialAndConsumers": {
+    "producerReceiptSHA256": "1f234d80c8ab3577e9d4f29cc7fd3358dcfabed54d8c2e9998f09f5429365670",
+    "transferReceiptSHA256": "4ae63700fe24d425e8de097f48b40732e49b185a85def6df84b90e9e9d553232",
+    "status": "FINAL_OFFICIAL_WASM_AND_ALL_CONSUMERS_COMPLETE_NOT_GEOMETRY_BROWSER_OR_PERFORMANCE_QUALIFIED",
+    "engineBrotliBytes": 2299706,
+    "conditionallyApprovedCeiling": 2299706,
+    "sameRelativeTolerance": 0.005,
+    "allowedBytes": 2311204,
+    "engineVerdict": "PASS",
+    "wasmSHA256": "849020874b02b16e20486e50b643758d998ffca297aa486ec0d72ad90084ee1f",
+    "generatedDtsSHA256": "4b2799a5c8670c65620afb3b368bbab57da0bfbd53621c2ecf10b86d5c0bc7c9",
+    "sixConsumerStages": [
+      "build-nonwasm",
+      "typecheck",
+      "typecheck-tail",
+      "wasm-contract",
+      "wasm-package",
+      "viewer-storey-live-frame"
+    ],
+    "officialSelectedSourceFiles": 16624,
+    "scope": "Actual complete official O3 source/types/size and six root consumers, not a performance verdict."
+  },
+  "currentBrowserAndGeometry": {
+    "attestationSHA256": "05a927273352121a2b07c22f32c4fd68fc5f899f7b1a1ff5ad13f5dce5b8bf6e",
+    "functionalCompositeSHA256": "ec95c2aeefa71a306be07cd6af0090327ad07a12933dd3be30dcea5efc885c67",
+    "rootVisualReviewSHA256": "9e4bc86e91be701af06765666b29fd53f2c360c0c8b47155199f3287bbe71663",
+    "reporterCases": [
+      {
+        "key": "literal2pct",
+        "rawSHA256": "449713f6b0a450fed7b2c72aa0cee4d60ccd43be7102af6f04436ece000c357e",
+        "comparatorConsumedBinarySHA256": "13cfce0cddc85ce12f6ce95455eda8779eb6cf45b6291e124a2b164b51f88128",
+        "priorActualFiniteReceiptSHA256": "b378c893756589cb554979706d6f7c42f52fadfd6cca5d965c27b512b7cc207a",
+        "verdict": "FINITE_FILLED_SURFACE_PASS_TRANSFERRED_BY_EXACT_WHOLE_RAW_AND_CONSUMED_INPUT_IDENTITY",
+        "toleranceMetres": 0.0001,
+        "maxWorkUnits": 2000000
+      },
+      {
+        "key": "derived5pct",
+        "rawSHA256": "bd828bfb6f2f481181d1424f6b52bb307f19300b7b9e69e9e808f6c4fc5400a2",
+        "comparatorConsumedBinarySHA256": "d26b7d5e5ba5434ce288e5fb1623ae46f26c43fef8393ac0f82137c7d59c9d55",
+        "priorActualFiniteReceiptSHA256": "f5ee01fdae4f5cdd1b7b7de0088b0f44913c625f2d7c5650204dfc015374c4bf",
+        "verdict": "FINITE_FILLED_SURFACE_PASS_TRANSFERRED_BY_EXACT_WHOLE_RAW_AND_CONSUMED_INPUT_IDENTITY",
+        "toleranceMetres": 0.0001,
+        "maxWorkUnits": 2000000
+      },
+      {
+        "key": "stacked2pct",
+        "rawSHA256": "68d50c68223e2347ae414c70686ff4580c0302f371317f13661bea68ada8e6b3",
+        "comparatorConsumedBinarySHA256": "923f1c4a87326f80aa0d4fef8ac459be4d6fff34caa043dbf2827e5e1fd63f9d",
+        "priorActualFiniteReceiptSHA256": "90f7267c24fcd9d346fc4db2528db497ba69e185c5c89d180616132ab266cd73",
+        "verdict": "FINITE_FILLED_SURFACE_PASS_TRANSFERRED_BY_EXACT_WHOLE_RAW_AND_CONSUMED_INPUT_IDENTITY",
+        "toleranceMetres": 0.0001,
+        "maxWorkUnits": 2000000
+      },
+      {
+        "key": "stacked5pct",
+        "rawSHA256": "71bbf58ff72ec56cfd153885be17158174caf15cbb1c0b81142bf9c4297ae60c",
+        "comparatorConsumedBinarySHA256": "6d46c376ce14c54b2e34e233d260f2badfa61cfc7e52dce7bde2686c2ea57410",
+        "priorActualFiniteReceiptSHA256": "0d4bfd55c4e5bce8e3fc55d496c94ef666e176d0ee4a24891fc3c32ab0ec0027",
+        "verdict": "FINITE_FILLED_SURFACE_PASS_TRANSFERRED_BY_EXACT_WHOLE_RAW_AND_CONSUMED_INPUT_IDENTITY",
+        "toleranceMetres": 0.0001,
+        "maxWorkUnits": 2000000
+      }
+    ],
+    "freshOracleRuns": 0,
+    "sofficeScope": "Six selected payloads structural/render readiness only; no independent full solid oracle.",
+    "controllers": [
+      {
+        "controller": "functional",
+        "sourceHead": "d1a5a415a9a97a1254cf92b381414b8521ca3311",
+        "originalCompositeSHA256": "ec95c2aeefa71a306be07cd6af0090327ad07a12933dd3be30dcea5efc885c67",
+        "originalNativeReceiptSHA256": "586527cc8f6bb3a0c92864b75452b087a07e895dc52e2b8b7ceda206db858674",
+        "allSixCompositeGatesTrue": true,
+        "actualCleanupAttempts": 2,
+        "originalCleanupErrorSHA256": "a64cfaad149d2f87a212fb6e1c2c0e5b326e60936c2660d4db55536c5c885fee",
+        "originalCleanupFailurePreserved": true,
+        "sameStrictUtility": true,
+        "finalCleanupError": null,
+        "scope": "Selected projection. Full original raw receipts including private Windows inventory and owned profile command lines retained locally, not published."
+      },
+      {
+        "controller": "candidate-FZK",
+        "sourceHead": "d1a5a415a9a97a1254cf92b381414b8521ca3311",
+        "originalCompositeSHA256": "8974a82b5bb884c0eee84d7493128f8898d921ae31e30a0b67722cdc5e79963a",
+        "originalNativeReceiptSHA256": "475a8ed549f59a980404045e6784f20a0ab37785ec391cd38f7da94582f0a4cd",
+        "allSixCompositeGatesTrue": true,
+        "actualCleanupAttempts": 2,
+        "originalCleanupErrorSHA256": "a9aae26cc6680df8c930f6ce4456c3557e6109e19f716cc300446ec5d62a8858",
+        "originalCleanupFailurePreserved": true,
+        "sameStrictUtility": true,
+        "finalCleanupError": null,
+        "scope": "Selected projection. Full original raw receipts including private Windows inventory and owned profile command lines retained locally, not published."
+      }
+    ]
+  },
+  "currentPerformance": {
+    "verdict": "NO_VERDICT_NOT_MERGE_READY",
+    "candidateRows": 0,
+    "baseRows": 1,
+    "completedPairs": 0,
+    "attempts": [
+      {
+        "version": 1,
+        "originalWholeReceiptSHA256": "12f2538a08bcab622d4c9da2d7441add5bae301b2d29dfbddffa39eecf7e56e1",
+        "acceptedBaseRows": 0,
+        "acceptedCandidateRows": 0,
+        "completedPairs": 0
+      },
+      {
+        "version": 2,
+        "originalWholeReceiptSHA256": "b02a2731060ba57f105ef9165470ec1139d1d21b6ee1d4e61345da2139533b02",
+        "acceptedBaseRows": 0,
+        "acceptedCandidateRows": 0,
+        "completedPairs": 0
+      },
+      {
+        "version": 3,
+        "originalWholeReceiptSHA256": "22745c088189df8613358a82ff558e5179b1d7305b72098f09c463236e167d81",
+        "acceptedBaseRows": 1,
+        "acceptedCandidateRows": 0,
+        "completedPairs": 0
+      }
+    ],
+    "finalRefusal": "Next branch preCPU3/3/14%; branch Chrome never launched. One baseFZK row had pre2/0/2 and post6/0/7.",
+    "allAuthoritiesRevoked": true,
+    "coordinatorReleaseUTC": "2026-10-17T20:46:00Z",
+    "scope": "No comparison or completed cohort. No inference about restored-O3 speed; no acceptance threshold relaxed."
+  },
+  "historicalMeasuredOsRuntime": {
+    "head": "ba457b1283e85f1f09ea1eec23926b92b98cbc38",
+    "verdict": "REGRESSION_NOT_READY",
+    "cohortReceiptSHA256": "ef658c924a61e64d278c9a5012854bae4f221cdc0fcf99344be32bc8a96997dc",
+    "reportSHA256": "12059e5a5c107604539f4f07156f251b434d5fdd60030658fe41530fefbb99f2",
+    "nativeAttribution": {
+      "verdict": "NO_VERDICT",
+      "originalReceiptSHA256": "7e81c73b4ba78fd66022d29aa61c3802d531641c2afb49fff6b8bf1869249f02",
+      "acceptedFzkRows": 6,
+      "reason": "Incomplete after canonical pre-sample host CPU admission refused; no completed native cohort."
+    },
+    "policyConfound": "Measured branch shipping WASM used LLVM Os while matched main used O3. Actual shipping regression remains; trace overlap does not quantify the flag effect or prove one kernel cause.",
+    "scope": "Actual completed ba457 Os shipping regression retained; not a current D1A5 O3 timing result."
+  },
+  "originalE2009Failures": {
+    "head": "e2009a31bc3fe8217776b07a479a647a4ba30e87",
+    "originalOfficialFailedReceiptSHA256": "4f8af979cd5dfbe9910e09fd5fdd4b266aae66dda354a1a7355a08da3de0704e",
+    "canonicalSizeReceiptSHA256": "cb43594193c76c1c95cf07b502178c5ed46414305333ba6f72c42e6f110d031d",
+    "transferReceiptSHA256": "9de6dc8374b6a0fdbff1a36099ced0db7e65b2a278b18c1f1343ed2047edbefe",
+    "officialBuildChildExit": 0,
+    "officialBuildChildReaped": true,
+    "engineSizeVerdict": "FAIL",
+    "engineBrotliBytes": 2299706,
+    "unchangedAllowedBytes": 2258864,
+    "overAllowedBytes": 40842,
+    "originalSourceGuardPassed": false,
+    "originalDtsSyncClaim": false,
+    "checkpointStatePreservedButGuardStillUnresolved": true,
+    "consumersRun": false,
+    "fallbackOrFurtherOptimizationRun": false,
+    "replacementRuntimeOrPerformanceQualified": false,
+    "scope": "Actual O3 size checkpoint preserves the prior failed generated-d.ts state. Unchanged checkpoint state is NOT a restored source guard or clean qualification.",
+    "failureScope": "Original E2009 producer/checkpoint only; current D1A5 commits and verifies actual generated types and approved budget."
+  },
+  "conditionalUserBudgetApproval": {
+    "receiptSHA256": "1e2d5076c1514d68b6d7823a850a479ef1862b314058a98d00f1d9835625e241",
+    "condition": "Restored O3 functional and fresh source-bound runtime qualification pass before merge",
+    "functionalPass": true,
+    "runtimePerformanceConditionFulfilled": false,
+    "mergeAcceptance": false
+  },
+  "remainingBlocker": {
+    "issue": 7292,
+    "description": "Fresh restored-O3 end-to-end performance qualification remains unfulfilled after canonical host admission refusals. No new issue or further campaign created."
+  },
+  "publicReplayLimits": "Selected original producer receipts/logs, scoped raw/finite inputs, screenshots and projections are included; complete private host/process inventories, huge full timing/body records and runtime binaries remain locally retained under original hashes. No universal solid/volume/topology/winding/multiplicity or manylinux identity claim."
+}

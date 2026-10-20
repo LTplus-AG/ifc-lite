@@ -1,0 +1,24 @@
+{
+  "baseCommit": "0137bf750ea4aa29e9fc43cb93ff699573d63209",
+  "sourcePatchSHA256": "414f5932cd9ba7e2d714e79f796b839eb0f5d3d975c71327f467ca8087c825cd",
+  "scope": "Low-level public API budget-failure provenance. Unguarded result Unchanged, not demonstrated Cut(empty). Existing production router already rejects preserved trip. Final unchanged-source named regression and workspace clippy PASS; earlier mid-build rename run explicitly separate. Prior browser and performance captures retain their original source identity.",
+  "archive": {
+    "path": "docs/architecture/evidence/issue-7292/budget-guard-validation.tar.gz",
+    "bytes": 5754,
+    "sha256": "7564c811475bd814720449a37e1d0a286f397893be384343bda5aecf0390b4da"
+  },
+  "decodedBytes": 19751,
+  "files": [
+    {"path":"docs/architecture/evidence/issue-7292/budget-guard/aggregate-seal.json","bytes":2113,"sha256":"f3d8c3dedd76f264008914a1f20a50107e94c4c8df7d4892e9fb3f02b6b5d970"},
+    {"path":"docs/architecture/evidence/issue-7292/budget-guard/final-clippy.log","bytes":72,"sha256":"2bc683fb4e4f4f21ee9ee39e2b8ecce2efe20d3b1be57bda5316aa519ab3d30a"},
+    {"path":"docs/architecture/evidence/issue-7292/budget-guard/final-frozen-receipt.json","bytes":1954,"sha256":"a0ed0fd733583772b07b7b16beb2369fa5a07f29eb9627a5d6e09311a2fad498"},
+    {"path":"docs/architecture/evidence/issue-7292/budget-guard/final-name.log","bytes":511,"sha256":"d079f1f4b471fa941049145e9aa10cbff627fc674b696330b3cc6866858f587a"},
+    {"path":"docs/architecture/evidence/issue-7292/budget-guard/final.patch","bytes":3868,"sha256":"414f5932cd9ba7e2d714e79f796b839eb0f5d3d975c71327f467ca8087c825cd"},
+    {"path":"docs/architecture/evidence/issue-7292/budget-guard/primary-integration.json","bytes":596,"sha256":"db743d445aa1b799ea017071a1ba03cdd6618b549a0276f1678ba132d28796a2"},
+    {"path":"docs/architecture/evidence/issue-7292/budget-guard/release-receipt.json","bytes":2560,"sha256":"eb91dec73cb6fac78c66046ad157be1091d45834adfbea497efcad6caa97b1dd"},
+    {"path":"docs/architecture/evidence/issue-7292/budget-guard/test-name-bridge.json","bytes":556,"sha256":"751a38fbbb3d6efed08006dd4f0c2f4a65785b7c802a62e4b5aee03054f0f26e"},
+    {"path":"docs/architecture/evidence/issue-7292/budget-guard/with-guard-mesh-bridge.log","bytes":2054,"sha256":"3cd95125d6f48dcaa015defd7a62c801fd9578405febe3d4e62f3e4fdea87935"},
+    {"path":"docs/architecture/evidence/issue-7292/budget-guard/without-guard-native.log","bytes":1045,"sha256":"477fdd1f418ccf3f0c60c5c1d2cce8010d81c7d8a5df29dc1865f4409e8c86c4"},
+    {"path":"docs/architecture/evidence/issue-7292/budget-guard/without-guard.log","bytes":4422,"sha256":"d412dfe6b7d42acdcdc1ab7174a26858c9b04f247c2edf226a7976b03d825bc0"}
+  ]
+}

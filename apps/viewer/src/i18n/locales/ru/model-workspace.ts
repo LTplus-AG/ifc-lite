@@ -1,0 +1,48 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const modelWorkspaceRu = {
+  "modelWorkspace.rail.aria": "Инструменты моделирования",
+  "modelWorkspace.rail.hosted": "Проёмы, двери и окна",
+  "modelWorkspace.rail.circulation": "Лестницы и ограждения",
+  "modelWorkspace.rail.active": "Активный инструмент",
+  "modelWorkspace.tool.select": "Выбрать",
+  "modelWorkspace.tool.wall": "Стена",
+  "modelWorkspace.tool.slab": "Плита",
+  "modelWorkspace.tool.column": "Колонна",
+  "modelWorkspace.tool.beam": "Балка",
+  "modelWorkspace.tool.split": "Разделить",
+  "modelWorkspace.tool.leave": "Выйти из рабочей области модели",
+  "modelWorkspace.tool.shortcutHint": "· {key}",
+  "modelWorkspace.blocked.noStorey": "В этой модели нет этажа для рисования",
+  "modelWorkspace.blocked.split": "Выберите элемент для разделения в первую очередь",
+  "modelWorkspace.storey.none": "Нет этажа",
+  "modelWorkspace.storey.withModel": "{model} · {storey}",
+  "modelWorkspace.storey.elevation": "{elevation} м",
+  "modelWorkspace.storey.pick": "Выбрать этаж, на котором будете рисовать",
+  "modelWorkspace.storey.listAria": "Этажи",
+  "modelWorkspace.storey.isolate": "Показать только этот этаж",
+  "modelWorkspace.storey.showAll": "Показать все этажи",
+  "modelWorkspace.noStorey.title": "Нет этажа для рисования",
+  "modelWorkspace.noStorey.description": "В этой модели нет IfcBuildingStorey, поэтому стенам не на что опираться.",
+  "modelWorkspace.plan.title": "План",
+  "modelWorkspace.plan.show": "Показать план",
+  "modelWorkspace.plan.hide": "Скрыть план",
+  "modelWorkspace.plan.noRoom": "Нет места для плана рядом с 3D: расширьте окно или закройте боковую панель",
+  "modelWorkspace.plan.noPlane": "На этом этаже нет плоскости, на которой можно было бы составить план.",
+  "modelWorkspace.plan.cutting": "Построение сечения…",
+  "modelWorkspace.plan.cutFailed": "Не удалось построить сечение",
+  "modelWorkspace.plan.retry": "Повторить",
+  "modelWorkspace.plan.simplified": "Упрощённый план",
+  "modelWorkspace.plan.simplifiedTitle": "Эта модель слишком велика для построения сечения при каждой правке, поэтому на плане показаны только оси стен",
+  "modelWorkspace.plan.grid": "Сетка",
+  "modelWorkspace.plan.fit": "Вписать план в область просмотра",
+  "modelWorkspace.layout.aria": "Макет",
+  "modelWorkspace.layout.plan": "План",
+  "modelWorkspace.layout.split": "Разделить",
+  "modelWorkspace.layout.3d": "3D",
+  "modelWorkspace.hint.onboarding": "W стена · Shift+S плита · нажмите элемент для редактирования · E выход",
+} satisfies Catalogue;

@@ -1,0 +1,15 @@
+# Issue #7292 saved geometry evidence
+
+The CAS archive retains every file from the original evidence package, deduplicating only byte-identical content. `object-map.json` maps original relative paths to SHA-256 objects. The complete 1100-input inventory, proof receipts/index, exact generated mesh JSON, source/frame hashes, checked-reference worker meshes/logs, helper bytes, reproduction commands, and pin-adjudication reports are inside the archive. No original or derived IFC file is included. The compact public manifest identifies the archive and the internal map.
+
+Extract the archive into a new directory. Run `python3 restore.py --out NEW_DIRECTORY` from that directory. It verifies every object and reconstructs all original relative files byte-for-byte; the output directory must not exist. `new-public-metadata/` contains the later pin-review reports. No live source or evidence needs to be overwritten. Refer to the restored README and commands for fixture catalog hashes, the pinned IOS/Shapely environment, original absolute-path mapping, new output paths, and runtime receipt arguments. The exact 77-byte derived #384 recipe is included; its IFC copy is excluded.
+
+Twelve of fourteen Gate 2 IDs have filled-surface evidence at the specifically recorded phases: 57084, 7075, 869947, 92642, 7013, 7137, 26681, 96778, 11753, 13797, 953100 and 384. The index is authoritative; this is not a blanket all-mode claim. Repaired #26832 DEFAULT/ALT and checked #58297 evidence are also retained. Certificates use 100 micrometres and one shared 2M work budget. They prove bounded set coverage, not winding, multiplicity, exact volume, topology, universal Boolean truth, or performance.
+
+#384's original material conversion remains invalid. Its accepted reference is explicitly geometry-only: exact deletion of one material association with every other entity unchanged, layer-set slicing disabled, unchanged opening subtraction, and all checked worker/log/fixture gates retained.
+
+#9094 and #295370 remain unresolved globally after the preserved capped attempts. For #9094, the recorded triangle count is 805→785, approximate total area changes by -0.010968896143822349 m² (-0.0010970556994172043%), bounds are unchanged and 458 oriented triangles match exactly. The area change is small and nonzero; these magnitude observations do not certify full surface preservation.
+
+The separate 43-row expected-output disposition records 16 retessellations, five volume movements and 22 reclassifications. Host keys are unchanged with no missing/added hosts; maximum integer-volume movement is 12 cm³. Closure, rounded volume and triangle magnitude remain limited diagnostics, not full oracle coverage. All row dispositions and limits are archived verbatim.
+
+The historical whole-18 census at 826d4400d03fde7b5d8830728e9e20f848ac5327 exited 101 despite complete observation. Its 54 saved mesh payloads/frames match prior inputs. The a8e01 test log separately records two real-model closure regressions passing. None of this relabels old failures or supplies a new final-source build, census PASS, browser, performance, CI, or merge verdict.

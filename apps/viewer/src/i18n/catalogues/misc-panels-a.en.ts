@@ -114,9 +114,13 @@ export const miscPanelsAEn = {
   'exportChangesReviewDialog.entityTypeIdNameLabel': '{type} #{id} — {name}',
   'exportChangesReviewDialog.noPendingChanges': 'No pending changes to export.',
   'exportChangesReviewDialog.modelsCount': { one: '{count} model', other: '{count} models' },
-  'exportChangesReviewDialog.changesSummary': {
-    one: '{count} change across {models} will be applied to the exported file{fileSuffix}.',
-    other: '{count} changes across {models} will be applied to the exported file{fileSuffix}.',
+  'exportChangesReviewDialog.changesSummaryOneFile': {
+    one: '{count} change across {models} will be applied to the exported file.',
+    other: '{count} changes across {models} will be applied to the exported file.',
+  },
+  'exportChangesReviewDialog.changesSummaryMultipleFiles': {
+    one: '{count} change across {models} will be applied to the exported files.',
+    other: '{count} changes across {models} will be applied to the exported files.',
   },
   'exportChangesReviewDialog.emptyStateMessage':
     'Nothing has changed since the last export — there is no overlay to apply.',

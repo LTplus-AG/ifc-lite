@@ -70,7 +70,7 @@ impl GeometryRouter {
         for (part, _uvs, _texture) in parts {
             mesh.merge(&part);
         }
-        single_frame_source("IfcRepresentationMap", rep_map.id, mesh.into_parts())
+        single_frame_source("IfcRepresentationMap", rep_map.id, mesh.into_parts()?)
     }
 
     /// Texture-aware variant of [`Self::process_representation_map`] (issue
@@ -207,7 +207,7 @@ impl GeometryRouter {
             mesh.clean_degenerate();
             out.push((mesh, uvs, Some(texture)));
         }
-        for mut untextured in untextured.into_parts().into_iter().filter(|mesh| !mesh.is_empty()) {
+        for mut untextured in untextured.into_parts()?.into_iter().filter(|mesh| !mesh.is_empty()) {
             if let Some(t) = &origin_transform {
                 self.transform_mesh_local(&mut untextured, t);
             }

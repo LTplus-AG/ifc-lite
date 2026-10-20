@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use std::sync::Arc;
 
 const SOURCE: &str =
     include_str!("../../../geometry/tests/fixtures/issue_7714_soffice_carrier.ifc");
@@ -139,17 +140,14 @@ fn issue_7714_fresh_concurrent_decoders_scan_once_for_certificate_or_decline() {
         (SOURCE.to_string(), true),
         (SOURCE.replace("3,0.01,#80", "3,$,#80"), false),
     ] {
-        let shared = Arc::new(UniformContextPrecisionCache::default());
-        let index = Arc::new(crate::build_entity_index(&source));
+        let source = crate::SourceBundle::new(source.into_bytes());
         let scans: usize = std::thread::scope(|scope| {
             let workers: Vec<_> = (0..2)
                 .map(|_| {
                     scope.spawn(|| {
                         let mut scans = 0;
                         for _ in 0..4 {
-                            let mut decoder = EntityDecoder::with_arc_index(&source, index.clone())
-                                .with_strict_reals();
-                            decoder.set_uniform_context_precision_cache(shared.clone());
+                            let mut decoder = source.decoder().with_strict_reals();
                             for _ in 0..2 {
                                 let result = decoder.uniform_context_precision();
                                 assert_eq!(result.is_some(), accepted);
@@ -207,23 +205,14 @@ fn issue_7714_compact_source_indexes_carry_success_and_decline_across_fresh_deco
         let columns = Arc::new(
             crate::ColumnarEntityIndex::from_hashmap(&crate::build_entity_index(&source)).unwrap(),
         );
-        let dense = Arc::new(
-            crate::DenseEntityIndex::try_from_columns(
-                columns.ids(),
-                columns.starts(),
-                columns.lengths(),
-            )
-            .unwrap(),
-        );
-        for compact in [false, true] {
+        let bytes = Arc::new(source.into_bytes());
+        let delivered = crate::SourceBundle::with_columnar_index(bytes.clone(), columns).unwrap();
+        let scanned = crate::SourceBundle::columnar(bytes.clone()).unwrap();
+        let dense = crate::SourceBundle::dense_for_certificate_test(bytes);
+        for source in [delivered, scanned, dense] {
             let mut scans = 0;
             for _ in 0..8 {
-                let mut decoder = EntityDecoder::new(&source).with_strict_reals();
-                if compact {
-                    decoder.set_columnar_index(columns.clone());
-                } else {
-                    decoder.set_dense_index(dense.clone());
-                }
+                let mut decoder = source.decoder().with_strict_reals();
                 let result = decoder.uniform_context_precision();
                 assert_eq!(result.is_some(), accepted);
                 if let Some(c) = result {
@@ -245,19 +234,17 @@ fn issue_7714_source_cache_keeps_strict_and_permissive_admission_separate() {
     // geometry admission refuses the entire record. A cached permissive
     // certificate must never make strict certification accept that input.
     let source = SOURCE.replace("3,0.01,#80,$", "3,0.01,#80,1.E400");
-    let cache = Arc::new(UniformContextPrecisionCache::default());
-    let mut first = EntityDecoder::new(&source);
-    first.set_uniform_context_precision_cache(cache.clone());
+    let source = crate::SourceBundle::new(source.into_bytes());
+    let mut first = source.decoder();
     assert!(first.uniform_context_precision().is_some());
     let mut first = first.with_strict_reals();
     assert!(first.uniform_context_precision().is_none());
     assert_eq!(first.uniform_precision_cache.scans, 2);
     for strict in [true, false] {
-        let mut decoder = EntityDecoder::new(&source);
+        let mut decoder = source.decoder();
         if strict {
             decoder = decoder.with_strict_reals();
         }
-        decoder.set_uniform_context_precision_cache(cache.clone());
         assert_eq!(decoder.uniform_context_precision().is_some(), !strict);
         assert_eq!(decoder.uniform_precision_cache.scans, 0);
     }
@@ -283,4 +270,48 @@ fn issue_7714_relevant_context_records_must_match_canonical_reference_lookup() {
             "shadowed declaration #{id}"
         );
     }
+}
+
+#[test]
+fn issue_7714_certificate_authority_is_bound_to_owned_bytes_not_shared_index() {
+    let columns = Arc::new(
+        crate::ColumnarEntityIndex::from_hashmap(&crate::build_entity_index(SOURCE)).unwrap(),
+    );
+    // Same offsets, length, ids and index allocation; different Precision.
+    let declined = SOURCE.replace("3,0.01,#80", "3,0.00,#80");
+    let accepted = crate::SourceBundle::with_columnar_index(
+        Arc::new(SOURCE.as_bytes().to_vec()), columns.clone(),
+    ).unwrap();
+    let declined = crate::SourceBundle::with_columnar_index(
+        Arc::new(declined.into_bytes()), columns,
+    ).unwrap();
+    for _ in 0..2 {
+        assert_eq!(accepted.decoder().uniform_context_precision().unwrap().precision, 0.01);
+        assert!(declined.decoder().uniform_context_precision().is_none());
+    }
+}
+
+#[test]
+fn issue_7714_raw_index_replacement_revokes_local_certificate() {
+    let source = crate::SourceBundle::new(SOURCE.as_bytes().to_vec());
+    let mut decoder = source.decoder();
+    assert!(decoder.uniform_context_precision().is_some());
+    // Replacing the index with one missing the root must not reuse either the
+    // local answer or the original bundle's successful once cell.
+    let mut index = crate::build_entity_index(SOURCE);
+    index.remove(&83);
+    decoder.set_entity_index(Arc::new(index));
+    assert!(!source.owns_decoder(&decoder));
+    assert!(decoder.uniform_context_precision().is_none());
+    assert!(source.decoder().uniform_context_precision().is_some());
+}
+
+#[test]
+fn issue_7714_warmed_borrowed_certificate_cannot_acquire_bundle_authority() {
+    let source = crate::SourceBundle::new(SOURCE.as_bytes().to_vec());
+    let mut decoder = EntityDecoder::new(source.bytes());
+    assert!(decoder.uniform_context_precision().is_some());
+    assert!(!source.bind_decoder(&mut decoder));
+    assert!(!source.owns_decoder(&decoder));
+    assert!(source.decoder().uniform_context_precision().is_some());
 }

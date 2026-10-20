@@ -1096,6 +1096,15 @@ jobs:
           # ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry-runtime/src/protocol.rs | grep -Fxq 'rust/geometry-runtime/src/protocol.rs'; then
             oracle_args+=(--mutation tests/evidence/geometry-runtime-g1/behaviour.oracle.patch)
+          # #7955 A1: core execution ownership adds execution_owner.rs,
+          # source_bundle.rs and source caches, which its tests name, so a
+          # whole-change revert cannot compile them (INCONCLUSIVE). Keep the
+          # types and break ONLY the behaviour: configuration changes stop
+          # advancing the owner generation, foreign caches are accepted and
+          # every decoder counts as bundle-owned. Once execution_owner.rs is
+          # on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/execution_owner.rs | grep -Fxq 'rust/core/src/execution_owner.rs'; then
+            oracle_args+=(--mutation tests/evidence/core-execution-owner-a1/behaviour.oracle.patch)
           # #7676: the upload admission change adds ApiError::UploadTimeout, which
           # its tests name, so a whole-change revert cannot compile them
           # (INCONCLUSIVE). Keep the type and break ONLY the behaviour: the

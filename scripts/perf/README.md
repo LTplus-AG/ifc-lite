@@ -37,6 +37,7 @@ slice by the phases it changes and by output identity, not by a ±2% move in an 
 | B4 #7964 revolved/swept plans | identical | BWK +2.8% (±2), Holter +1.5% (±12), ISSUE_098 +0.4% (±28), ISSUE_068 −5.7% (±32), schependomlaan +3.2% (±8), ISSUE_129 −1.3% (±6) | neutral: geometry within noise; BWK total is the untouched parse phase (+3.2%, layout jitter) |
 | B6 #7965 alignment/sectioned plans | identical | BWK +1.7% (±2), Holter −5.7% (±20), ISSUE_098 +4.8% (±16), ISSUE_068 +2.9% (±18), schependomlaan +1.0% (±6), ISSUE_129 −1.0% (±31) | neutral: geometry within noise; BWK total is the untouched parse phase (+3.2%, layout jitter) |
 | B5 #7971 advanced face / spline / structural plans | identical | BWK +1.8% (±1), Holter +2.8% (±17), ISSUE_098 −2.0% (±11), ISSUE_068 −3.7% (±15), schependomlaan −0.3% (±6), ISSUE_129 +0.3% (±6) | neutral: geometry within noise; BWK total is the untouched parse phase (+1.9%, layout jitter) |
+| A1 #7956 core execution ownership | identical | 11-round rerun: BWK +1.4% (±4), schependomlaan +1.3% (±6), ISSUE_068 −4.0% (±11); deterministic FZK instruction counts vs main: parse −0.02%, entity-scan −0.06%, total +0.03% | neutral: the only slice touching the decoder; its ±2% parse timing is layout jitter, instruction counts unchanged |
 
 ## Exact rectangular opening union (#7941)
 

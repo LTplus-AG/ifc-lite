@@ -122,7 +122,7 @@ fn reference_report(tris: &[Tri], axes: &[[f64; 3]], a: &Mesh, b: &Mesh) -> (f64
 
 #[test]
 fn issue_7292_rotated_clash_reports_actual_thinnest_violating_component() {
-    let _lock = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _lock = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     for cells in [1u32, 2, 4, 6, 8] {
         let depth = cells as f64 / 65536.0;
         for n in TESSELLATIONS {

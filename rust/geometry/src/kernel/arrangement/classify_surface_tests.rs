@@ -31,7 +31,7 @@ fn issue_7292_whole_flush_triangle_retains_near_shared_face_admission() {
 fn issue_7292_boundary_centroid_uses_exact_arranged_points_on_a_tilted_plane() {
     // Exact triangle is on Z=X+Y. Its rounded centroid has a nonzero exact
     // plane residual of 3/2^54, so a rounded-centroid incidence rejects it.
-    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _element = budget::enter_element();
     budget::begin();
     let t = [[0.0, 0.0, 0.0], [1.0, 0.0, 1.0], [0.0, 4.0, 4.0]];
@@ -46,7 +46,7 @@ fn issue_7292_boundary_centroid_uses_exact_arranged_points_on_a_tilted_plane() {
 
 #[test]
 fn issue_7292_exact_boundary_work_reports_budget_and_returns_no_partial_faces() {
-    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _element = budget::enter_element();
     budget::begin();
     let host = crate::kernel::arrangement::box_mesh([0.0; 3], [1.0; 3]);
@@ -93,7 +93,7 @@ fn implicit_at_7292(p: [f64; 3], reverse: bool, triple: bool) -> crate::kernel::
 #[test]
 fn issue_7292_centroid_interval_rejections_equal_exact_for_mixed_symbolic_points() {
     use crate::kernel::{ImplicitPoint, interval, rational};
-    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _element = budget::enter_element();
     budget::begin();
     let points = [[0.0, 0.0, 0.0], [1.0, 0.0, 1.0], [0.0, 4.0, 4.0]];
@@ -131,7 +131,7 @@ fn issue_7292_centroid_interval_rejections_equal_exact_for_mixed_symbolic_points
 
 #[test]
 fn issue_7292_centroid_interval_rejects_without_rational_work_and_caches_exact_fallback() {
-    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _element = budget::enter_element();
     budget::begin();
     let t = [[0.0, 0.0, 0.0], [1.0, 0.0, 1.0], [0.0, 4.0, 4.0]];
@@ -167,7 +167,7 @@ fn issue_7292_centroid_interval_range_failures_use_exact_fallback() {
     let symbolic = t.map(crate::kernel::ImplicitPoint::Explicit);
     let iv = centroid_interval(symbolic.each_ref().map(ilambda_cached)).expect("finite homogeneous inputs");
     assert!(centroid_plane_sign(&iv, &t).is_none(), "an unsafe determinant range must escalate even when all inputs are finite");
-    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _element = budget::enter_element();
     budget::begin();
     let mut arr = crate::kernel::arrangement::arrange(&[], &[]);
@@ -359,11 +359,15 @@ fn axis_hits_7292(mesh: &crate::Mesh, axis: usize, point: [f64; 3]) -> Vec<f64> 
 #[test]
 fn issue_7292_real_cut_has_one_front_boundary_and_retains_the_next_bottom_cap() {
     use crate::csg::{ClippingProcessor, GroupCut};
-    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _element = budget::enter_element();
     budget::begin();
     let host = cut0_host_7292();
     let clipper = ClippingProcessor::with_unit_scale(0.001);
+    // #7982: under `csg_topology_gate` this cut must also pass the closure
+    // gate. The raw kernel result is closed; consolidation leaves unpaired
+    // edges along the cutter's ~1 um tilted step, which close at the gate's
+    // 0.1 mm grid only when that grid honours the millimetre unit scale.
     let first = match clipper.subtract_mesh(&host, &cut0_cutter_7292()) {
         GroupCut::Cut(mesh) => mesh,
         GroupCut::Retessellated(_) => panic!("the tilted front really removes material"),
@@ -395,7 +399,7 @@ fn issue_7292_real_cut_has_one_front_boundary_and_retains_the_next_bottom_cap() 
 
 #[test]
 fn issue_7292_actual_489647_near_face_cannot_own_a_cell_outside_its_finite_outline() {
-    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _element = budget::enter_element();
     budget::begin();
     // Actual last job004 A4/sourceparent0 versus promoted B11. The centroid
@@ -426,7 +430,7 @@ fn issue_7292_actual_489647_near_face_cannot_own_a_cell_outside_its_finite_outli
 
 #[test]
 fn issue_7292_symbolic_boundary_point_must_not_be_tested_as_rounded_f64() {
-    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _element = budget::enter_element();
     budget::begin();
     use crate::kernel::{rational::point_of, Lpi};

@@ -12,7 +12,7 @@ use crate::diagnostics::{BoolFailureReason, BoolOp};
 use crate::mesh::Mesh;
 #[cfg(feature = "csg_manifold_gate")]
 use crate::mesh_check::edge_multiplicity_defects;
-use crate::mesh_check::{closed_or_hairline, directed_closed};
+use crate::mesh_check::ClosureVerdict;
 
 /// Message carried by the [`BoolFailureReason::KernelError`] record this
 /// module emits.
@@ -38,6 +38,20 @@ pub(crate) const OPEN_TOPOLOGY_MESSAGE: &str =
     "open topology: accepted result passed validate_mesh but failed the directed-edge closure audit (#3440 step 1 — informational, non-gating)";
 
 impl ClippingProcessor {
+    /// The closure predicate both the step-1 record and the step-2 gate read:
+    /// a non-empty mesh that is neither directed-closed nor hairline-closed.
+    ///
+    /// Keyed on the 0.1 mm PHYSICAL grid, `length_unit_scale` applied (#7982).
+    /// This processor's operands are in the caller's unit: METRES on the void
+    /// router, FILE UNITS on the `processors/boolean` path. A raw 1e-4 grid on
+    /// a millimetre operand is 0.1 um, a thousand times finer than the
+    /// documented 0.1 mm, so micron-scale consolidation gaps read as tears there
+    /// and nowhere else. Metre callers (scale 1.0) are keyed exactly as before.
+    fn is_torn(&self, mesh: &Mesh) -> bool {
+        !mesh.is_empty()
+            && !ClosureVerdict::for_mesh_in_units(mesh, self.length_unit_scale).closed_enough_to_emit()
+    }
+
     /// Run the shared closure audit on a mesh `validate_mesh` already
     /// accepted and, on a torn result, record a failure carrying
     /// [`OPEN_TOPOLOGY_MESSAGE`]. Does NOT change what the caller returns — the mesh already
@@ -61,7 +75,7 @@ impl ClippingProcessor {
     /// unions pair-by-pair for the same reason: it drives the un-audited
     /// `union_pair` and audits only the mesh it hands back.
     pub(crate) fn record_topology_tear(&self, op: BoolOp, mesh: &Mesh) {
-        if !mesh.is_empty() && !directed_closed(mesh) && !closed_or_hairline(mesh) {
+        if self.is_torn(mesh) {
             self.record_failure(
                 op,
                 BoolFailureReason::KernelError(OPEN_TOPOLOGY_MESSAGE.to_string()),
@@ -94,7 +108,7 @@ impl ClippingProcessor {
     /// zero cost, not "flag checked, still computed".
     #[cfg(feature = "csg_topology_gate")]
     pub(crate) fn topology_gate_reject(&self, op: BoolOp, mesh: &Mesh) -> bool {
-        if mesh.is_empty() || directed_closed(mesh) || closed_or_hairline(mesh) {
+        if !self.is_torn(mesh) {
             return false;
         }
         self.record_failure(op, BoolFailureReason::OpenTopologyRejected);

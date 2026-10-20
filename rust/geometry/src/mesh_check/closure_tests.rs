@@ -142,6 +142,38 @@ fn closure_verdict_preserves_strict_and_emit_semantics_4796() {
     assert!(!verdict.closed_enough_to_emit());
 }
 
+/// #7982: the closure grid is 0.1 mm PHYSICAL in the caller's unit. A
+/// millimetre tetrahedron (1 m edges) whose apex is split by `gap` mm on one
+/// face. A 1 um crack is 10 cells of the raw 1e-4 grid, which reads it as a
+/// tear in a millimetre frame; at 0.1 mm it is sub-cell and closed. A 1 mm
+/// crack is still a tear in that frame, so the unit scale does not loosen the
+/// verdict past its documented tolerance.
+#[test]
+fn closure_verdict_grid_is_physical_in_millimetre_frames_7982() {
+    let cracked = |gap: f64| {
+        let d = gap / 3f64.sqrt();
+        mesh_of(
+            &[
+                [0.0, 0.0, 0.0],
+                [1000.0, 0.0, 0.0],
+                [0.0, 1000.0, 0.0],
+                [0.0, 0.0, 1000.0],
+                [d, d, 1000.0 + d],
+            ],
+            &[[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 4]],
+        )
+    };
+    let micron = cracked(0.001);
+    assert!(!ClosureVerdict::for_mesh(&micron).closed_enough_to_emit(), "raw 1e-4 grid: a 1 um crack is 10 cells");
+    assert!(!ClosureVerdict::for_mesh_in_units(&micron, 1.0).closed_enough_to_emit(), "metres: identical to for_mesh");
+    assert!(ClosureVerdict::for_mesh_in_units(&micron, 0.001).closed_enough_to_emit(), "millimetres: 1 um is sub-cell at 0.1 mm");
+    let millimetre = cracked(1.0);
+    assert!(!ClosureVerdict::for_mesh_in_units(&millimetre, 0.001).closed_enough_to_emit(), "millimetres: a 1 mm crack is still a tear");
+    for bad_scale in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+        assert!(!ClosureVerdict::for_mesh_in_units(&micron, bad_scale).closed_enough_to_emit(), "an invalid scale falls back to metres");
+    }
+}
+
 /// THREE triangles on one shared edge: the fin. The signed tally nets to zero
 /// on that edge (two uses one way, one the other, plus the fin's own boundary
 /// is what actually fails there), so the interesting assertion is the doubled

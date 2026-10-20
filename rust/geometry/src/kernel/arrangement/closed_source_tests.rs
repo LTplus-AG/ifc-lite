@@ -11,7 +11,7 @@ fn tetra() -> Vec<Tri> {
 // the certificate must decline, without changing any near-band tolerance.
 #[test]
 fn opposed_source_requires_actual_closed_oriented_surface_7292() {
-    let _lock=crate::kernel::budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _lock=crate::kernel::budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _element=crate::kernel::budget::enter_element();crate::kernel::budget::begin();
     let closed=tetra();assert!(strict_closed(&closed));
     assert!(!strict_closed(&closed[..3]));
@@ -20,7 +20,7 @@ fn opposed_source_requires_actual_closed_oriented_surface_7292() {
 }
 #[test]
 fn opposed_closed_source_uses_numeric_zero_and_rejects_invalid_faces_7292() {
-    let _lock=crate::kernel::budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _lock=crate::kernel::budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _element=crate::kernel::budget::enter_element();crate::kernel::budget::begin();
     let mut closed=tetra();closed[0][0][0] = -0.;assert!(strict_closed(&closed));
     let mut invalid=closed.clone();invalid.push([[2.,2.,2.],[3.,3.,3.],[4.,4.,4.]]);assert!(!strict_closed(&invalid));
@@ -28,7 +28,7 @@ fn opposed_closed_source_uses_numeric_zero_and_rejects_invalid_faces_7292() {
 }
 #[test]
 fn opposed_closed_source_declines_unsplit_tjunction_7292() {
-    let _lock=crate::kernel::budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _lock=crate::kernel::budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _element=crate::kernel::budget::enter_element();crate::kernel::budget::begin();
     let mut t=tetra();let face=t.remove(0);let p=[0.5,0.,0.];
     // Replace a real face by its two exact pieces, leaving its neighbor unsplit.
@@ -39,7 +39,7 @@ fn opposed_closed_source_declines_unsplit_tjunction_7292() {
 #[test]
 fn opposed_volume_requires_every_queried_component_closed_7292() {
     use crate::kernel::{arrangement::{box_mesh,difference_all_lenient_with_conformity},ImplicitPoint,predicates::orient3d,Sign};
-    let _lock=crate::kernel::budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _lock=crate::kernel::budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _element=crate::kernel::budget::enter_element();crate::kernel::budget::begin();
     let a=box_mesh([0.,0.,0.],[1.,1.,1.]);let gap=1./65536.;
     let b=box_mesh([-1.,0.25,0.25],[gap,0.75,0.75]);

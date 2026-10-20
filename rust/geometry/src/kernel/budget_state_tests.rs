@@ -11,7 +11,7 @@ fn charge(count: usize) {
 
 #[test]
 fn interleaved_elements_keep_their_cumulative_caps_and_restore_the_caller() {
-    let _lock = GLOBAL_CAP_LOCK.lock().unwrap();
+    let _lock = GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let profile = TestProfile::new();
     profile.set_cap(Some(100));
     profile.set_element_cap(Some(3));
@@ -50,7 +50,7 @@ fn interleaved_elements_keep_their_cumulative_caps_and_restore_the_caller() {
 
 #[test]
 fn resuming_keeps_current_operation_cap_until_an_actual_new_operation_begins() {
-    let _lock = GLOBAL_CAP_LOCK.lock().unwrap();
+    let _lock = GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let profile = TestProfile::new();
     profile.set_cap(Some(2));
     profile.set_element_cap(Some(100));
@@ -77,7 +77,7 @@ fn resuming_keeps_current_operation_cap_until_an_actual_new_operation_begins() {
 
 #[test]
 fn element_budget_survives_thread_migration_and_restores_destination_counters() {
-    let _lock = GLOBAL_CAP_LOCK.lock().unwrap();
+    let _lock = GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let profile = TestProfile::new();
     profile.set_cap(Some(4));
     profile.set_element_cap(Some(6));
@@ -122,7 +122,7 @@ fn element_budget_survives_thread_migration_and_restores_destination_counters() 
 
 #[test]
 fn nested_scopes_and_error_return_restore_enclosing_counters_and_caps() {
-    let _lock = GLOBAL_CAP_LOCK.lock().unwrap();
+    let _lock = GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let profile = TestProfile::new();
     profile.set_cap(Some(8));
     profile.set_element_cap(Some(10));
@@ -159,7 +159,7 @@ fn nested_scopes_and_error_return_restore_enclosing_counters_and_caps() {
 
 #[test]
 fn panic_saves_element_progress_and_restores_the_callers_budget() {
-    let _lock = GLOBAL_CAP_LOCK.lock().unwrap();
+    let _lock = GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let profile = TestProfile::new();
     profile.set_cap(Some(4));
     profile.set_element_cap(Some(6));
@@ -191,7 +191,7 @@ fn panic_saves_element_progress_and_restores_the_callers_budget() {
 
 #[test]
 fn leaving_a_scope_folds_its_last_operation_and_element_totals_into_the_peaks() {
-    let _lock = GLOBAL_CAP_LOCK.lock().unwrap();
+    let _lock = GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let profile = TestProfile::new();
     profile.set_cap(Some(100));
     profile.set_element_cap(Some(100));

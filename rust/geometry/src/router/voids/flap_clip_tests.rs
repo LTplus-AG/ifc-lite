@@ -234,7 +234,7 @@ fn budget_tripped_engulfing_cutter_skips_aabb_fallback() {
     // — so a per-element cap of 1 is invisible to every other test.
     //
     // Serialise against the other cap-mutating tests (they share this lock).
-    let _cap_guard = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _cap_guard = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let profile = budget::TestProfile::new();
 
     let router = GeometryRouter::new();

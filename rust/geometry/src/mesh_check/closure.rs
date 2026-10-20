@@ -9,8 +9,11 @@ use super::hairline::{hairline_closed, Unmatched};
 use super::ledger::{Degenerate, EdgeLedger, VertexKey};
 use crate::mesh::Mesh;
 
-/// The 0.1 mm grid every directed closure verdict snaps to.
-const CLOSURE_GRID: VertexKey = VertexKey::GridDiv(1.0e-4);
+/// The closure grid pitch in metres: 0.1 mm.
+const CLOSURE_GRID_METRES: f64 = 1.0e-4;
+/// The 0.1 mm grid every directed closure verdict snaps to, for a mesh in
+/// metres. See [`ClosureVerdict::for_mesh_in_units`] for any other unit.
+const CLOSURE_GRID: VertexKey = VertexKey::GridDiv(CLOSURE_GRID_METRES);
 
 /// Cached result of the shared 0.1 mm directed-edge walk.
 ///
@@ -24,7 +27,20 @@ pub struct ClosureVerdict {
 
 impl ClosureVerdict {
     pub fn for_mesh(mesh: &Mesh) -> Self {
-        let ledger = EdgeLedger::build(mesh, CLOSURE_GRID, Degenerate::SkipTriangle);
+        Self::for_mesh_keyed(mesh, CLOSURE_GRID)
+    }
+
+    /// The same verdict for a mesh whose coordinates are in a caller unit of
+    /// `metres_per_unit` metres, so the grid stays 0.1 mm PHYSICAL instead of a
+    /// raw 1e-4 caller units (#7982). `for_mesh` is this with `1.0`. A
+    /// non-finite or non-positive scale falls back to `1.0`.
+    pub fn for_mesh_in_units(mesh: &Mesh, metres_per_unit: f64) -> Self {
+        let scale = if metres_per_unit.is_finite() && metres_per_unit > 0.0 { metres_per_unit } else { 1.0 };
+        Self::for_mesh_keyed(mesh, VertexKey::GridDiv(CLOSURE_GRID_METRES / scale))
+    }
+
+    fn for_mesh_keyed(mesh: &Mesh, key: VertexKey) -> Self {
+        let ledger = EdgeLedger::build(mesh, key, Degenerate::SkipTriangle);
         Self { has_edges: !ledger.is_empty(), bad: ledger.unbalanced().collect() }
     }
 

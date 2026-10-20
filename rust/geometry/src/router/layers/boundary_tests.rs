@@ -3,9 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Staged real-host layer boundaries and consuming diagnostic publication.
-use super::stages::{LayerProgram, LayerSkip};
+use super::stages::LayerProgram;
 use crate::material_layer_index::{LayerAxis, LayerBuildup, LayerInfo};
-use crate::{GeometryRouter, Mesh};
+use crate::GeometryRouter;
 use ifc_lite_core::EntityDecoder;
 use nalgebra::Matrix4;
 use rustc_hash::FxHashMap;
@@ -38,20 +38,40 @@ fn buildup() -> LayerBuildup {
     }
 }
 
+/// Drives the real gateway (`process_element_with_material_layers`). An empty
+/// host must be reported as `skip:empty-base-mesh`, never as a placement
+/// problem; the control shows the identical element with a real profile is
+/// sliced, so the empty-host diagnostic can only come from the empty gate.
 #[test]
-fn layer_host_empty_gate_precedes_unreadable_placement() {
-    let source = WALL.replace("$,#3,#8", "$,#999,#8");
-    let mut decoder = EntityDecoder::new(&source);
-    let element = decoder.decode_by_id(9).unwrap();
-    let program = LayerProgram::admit(&element, &mut decoder, &buildup(), 1.)
-        .ok()
-        .flatten()
-        .unwrap();
-    assert!(matches!(
-        program.accept_host(Mesh::new()),
-        Err(LayerSkip::EmptyHost)
-    ));
-    assert!(decoder.get_cached(999).is_none());
+fn layer_gateway_reports_empty_host_without_slicing() {
+    let run = |source: &str| {
+        let mut decoder = EntityDecoder::new(source);
+        let element = decoder.decode_by_id(9).unwrap();
+        let router = GeometryRouter::new();
+        let result = router
+            .process_element_with_material_layers(
+                &element,
+                &mut decoder,
+                &buildup(),
+                &FxHashMap::default(),
+            )
+            .unwrap();
+        (result, router.take_layer_slice_diag())
+    };
+
+    // Empty host: an arbitrary closed profile whose polyline has no points.
+    let empty = WALL.replace(
+        "#4=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,4.,0.3);",
+        "#4=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#11);\n#11=IFCPOLYLINE(());",
+    );
+    let (result, diag) = run(&empty);
+    assert!(result.is_none());
+    assert_eq!(diag, [(9, "skip:empty-base-mesh")]);
+
+    // Control: the same element with a real profile slices.
+    let (result, diag) = run(WALL);
+    assert_eq!(result.unwrap().sub_meshes.len(), 2);
+    assert_eq!(diag, [(9, "ok:sliced")]);
 }
 
 #[test]

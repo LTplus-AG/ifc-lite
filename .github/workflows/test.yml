@@ -1005,6 +1005,15 @@ jobs:
           # revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/router/voids/opening_merge_fixture_tests.rs | grep -Fxq 'rust/geometry/src/router/voids/opening_merge_fixture_tests.rs'; then
             oracle_args+=(--mutation tests/evidence/issue-7941/opening-union.oracle.patch)
+          # #7982: the changed closure/topology tests call the new
+          # ClosureVerdict::for_mesh_in_units, so a whole-change revert cannot
+          # compile them (INCONCLUSIVE). Keep the API and break ONLY its unit
+          # handling: the closure grid is the metre grid for every scale again,
+          # so the millimetre closure and topology-audit regressions turn RED.
+          # Once closure.rs no longer differs from main, ordinary whole-change
+          # revert resumes.
+          elif git diff origin/main...HEAD -- rust/geometry/src/mesh_check/closure.rs | grep -Fq 'fn for_mesh_in_units'; then
+            oracle_args+=(--mutation tests/evidence/issue-7982/unit-grid.oracle.patch)
           # #7673: the new large-stack geometry pool module carries its own
           # tests, so a whole-file revert deletes them (INCONCLUSIVE). Keep the
           # module and remove ONLY the large worker stack: the deep par_iter

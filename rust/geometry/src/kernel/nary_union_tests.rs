@@ -164,7 +164,7 @@ fn issue_3917_a_torn_caller_order_is_repaired_without_the_caller_reordering_anyt
 /// spend up to six times the configured exact-predicate cap (#1109).
 #[test]
 fn issue_3917_retries_share_one_boolean_budget() {
-    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let _element = budget::enter_element();
     // Prove that this fixture still needs recovery, then compare the operation
     // counter with the independent element accumulator. A reset between retry

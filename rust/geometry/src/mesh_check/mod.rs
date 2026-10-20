@@ -40,7 +40,7 @@ mod ledger;
 mod volume;
 
 #[cfg(test)]
-mod closure_tests;
+pub(crate) mod closure_tests;
 #[cfg(test)]
 mod legacy_tests;
 

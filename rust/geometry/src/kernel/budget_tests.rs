@@ -11,7 +11,7 @@ use super::*;
 /// deterministically; `begin()` resets; unbounded never trips.
 #[test]
 fn cap_counts_and_trips_deterministically() {
-    let _guard = GLOBAL_CAP_LOCK.lock().unwrap();
+    let _guard = GLOBAL_CAP_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let profile = TestProfile::new();
 
     profile.set_cap(Some(5));
@@ -52,7 +52,7 @@ fn cap_counts_and_trips_deterministically() {
 /// the server profile), which is what keeps the pinned snapshots unchanged.
 #[test]
 fn per_element_budget_accumulates_across_booleans() {
-    let _guard = GLOBAL_CAP_LOCK.lock().unwrap();
+    let _guard = GLOBAL_CAP_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let profile = TestProfile::new();
     // A bounded per-boolean profile so begin_element() activates the element
     // cap (it is unbounded only when the per-boolean profile is unbounded).

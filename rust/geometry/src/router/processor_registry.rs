@@ -91,7 +91,7 @@ struct RegisteredProcessor {
 ///
 /// This is the single "what can the engine mesh" table. The router's lazy
 /// registry below caches one instance per slot; the boolean operand path
-/// (`BooleanClippingProcessor::process_operand_checked`) builds a transient
+/// (`BooleanClippingProcessor::leaf_operand`) builds a transient
 /// one per operand instead, exactly as it always constructed its leaf
 /// processors by hand. Before #4560 that path kept its OWN six-arm copy of
 /// this table, so every built-in it forgot — `IfcPolygonalFaceSet` first of

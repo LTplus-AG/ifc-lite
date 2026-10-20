@@ -49,7 +49,6 @@
 10 rust/geometry/src/processors/advanced_face/edge_loop.rs
 23 rust/geometry/src/processors/advanced_face/polyline.rs
 4 rust/geometry/src/processors/advanced_face/revolution.rs
-1 rust/geometry/src/processors/boolean/mod.rs
 2 rust/geometry/src/processors/boolean/operand.rs
 1 rust/geometry/src/processors/boolean/polygonal_boundary.rs
 1 rust/geometry/src/processors/csg_primitive.rs

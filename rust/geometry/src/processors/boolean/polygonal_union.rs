@@ -28,7 +28,7 @@ impl BooleanClippingProcessor {
     /// edges, and some had degenerate (zero-length) edges — yet all were
     /// accepted, because nothing here rejects them. What actually stands
     /// between a non-closed union and a wrong subtraction is downstream, in
-    /// the caller (`try_union_polygonal_chain` in `super::mod`): its
+    /// the caller (`cut_polygonal_chain` in `super::mod`): its
     /// intersected-bounds check and the `#3919` accept-gate on the actual
     /// subtract. On the #960 fixture's walls #2152 and #5904 those
     /// downstream checks were sufficient — every wall's Z bounds agreed with

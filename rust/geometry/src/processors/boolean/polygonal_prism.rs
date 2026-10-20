@@ -26,7 +26,7 @@ impl BooleanClippingProcessor {
 
     /// Subtract `cutter` from `base`; an accept-gate rejection (#3919) is `None`
     /// like an empty or degenerate result, and any other rejection hands `base`
-    /// back un-cut. Used by `try_union_polygonal_chain`'s per-cutter trials and
+    /// back un-cut. Used by `cut_polygonal_chain`'s per-cutter trials and
     /// final subtract so a rejected gate always defers to the sequential path.
     /// Leaves any failures in `clipper` for the caller to drain.
     pub(super) fn subtract_checked(

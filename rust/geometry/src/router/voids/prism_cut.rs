@@ -139,9 +139,9 @@ mod diag {
     pub(super) fn defer(i: usize) {
         #[cfg(feature = "opening-perf-trace")]
         crate::opening_perf_trace::record(|c| c.prism_defers[i] = c.prism_defers[i].saturating_add(1));
-        crate::telemetry_transaction::record(move || {
-            DEFERS[i].fetch_add(1, Ordering::Relaxed);
-        });
+        crate::telemetry_transaction::record(
+            crate::telemetry_transaction::Event::PrismDefer { reason: i },
+        );
     }
 
     /// Record one analytic-cut host: (fires, openings cut, openings residual).
@@ -153,11 +153,19 @@ mod diag {
             c.prism_candidate_openings = c.prism_candidate_openings.saturating_add(committed_ops as u64);
             c.prism_residual_openings = c.prism_residual_openings.saturating_add(residual as u64);
         });
-        crate::telemetry_transaction::record(move || {
-            FIRES.fetch_add(1, Ordering::Relaxed);
-            OPENINGS_ANALYTIC.fetch_add(committed_ops as u64, Ordering::Relaxed);
-            OPENINGS_RESIDUAL.fetch_add(residual as u64, Ordering::Relaxed);
+        crate::telemetry_transaction::record(crate::telemetry_transaction::Event::PrismCut {
+            committed: committed_ops as u64,
+            residual: residual as u64,
         });
+    }
+
+    pub(crate) fn publish_defer(reason: usize) {
+        DEFERS[reason].fetch_add(1, Ordering::Relaxed);
+    }
+    pub(crate) fn publish_cut(committed: u64, residual: u64) {
+        FIRES.fetch_add(1, Ordering::Relaxed);
+        OPENINGS_ANALYTIC.fetch_add(committed, Ordering::Relaxed);
+        OPENINGS_RESIDUAL.fetch_add(residual, Ordering::Relaxed);
     }
 
     /// Read + reset the per-reason defer counters as (name, count) pairs.
@@ -210,6 +218,8 @@ mod diag {
 }
 
 use diag::{defer, record_cut};
+#[cfg(any(feature = "observability", feature = "csg_capture", feature = "debug_geometry"))]
+pub(crate) use diag::{publish_cut, publish_defer};
 pub use diag::{take_prism_defers, take_prism_stats};
 
 // ─────────────────────────── small f64 vector kit ───────────────────────────

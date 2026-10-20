@@ -14,8 +14,9 @@ use nalgebra::Matrix3;
 use rustc_hash::FxHashMap;
 
 mod aabb_clip;
+mod attempt;
 mod batch_cutter;
-mod bool2d_path;
+pub(crate) mod bool2d_path;
 mod coaxial_union;
 pub(crate) mod geom;
 mod malformed_opening_repair;
@@ -868,7 +869,7 @@ impl GeometryRouter {
 
         // Forward the WORLD host bounds captured before this rotation so the
         // diagnostic reports world coords, not wall-frame (rotated/centred) ones.
-        let diag_before = frame_snap::HostDiagSnapshot::capture(self, element_id);
+        let diag_before = attempt::HostSnapshot::capture(self, element_id);
         // Whether the host reached us stored relative to a per-element origin
         // (the wasm default): `apply_void_context` then cleared that origin, so
         // the world bounds it passed differ from the stored ones. A world-frame
@@ -906,8 +907,8 @@ impl GeometryRouter {
         if !result_local.positions.is_empty() && !closed {
             let first_volume = frame_snap::enclosed_volume(&result_local);
             // Only the kept run may leave a diagnostics record.
-            let diag_first = frame_snap::HostDiagSnapshot::capture(self, element_id);
-            diag_before.restore(self, element_id);
+            let diag_first = attempt::HostSnapshot::capture(self, element_id);
+            diag_before.restore(self);
             // Rebuilt rather than kept from above: the clean path pays nothing.
             let mut host_snapped = mesh_to_frame(mesh, &axes, center);
             let mut openings_snapped = local_ctx.openings.clone();
@@ -951,7 +952,7 @@ impl GeometryRouter {
             if let Some(emitted) = accepted {
                 result = emitted;
             } else {
-                diag_first.restore(self, element_id);
+                diag_first.restore(self);
             }
         }
         Some(result)

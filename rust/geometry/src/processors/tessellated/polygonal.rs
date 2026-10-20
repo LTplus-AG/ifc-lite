@@ -28,6 +28,13 @@ impl PolygonalFaceSetProcessor {
 }
 
 impl GeometryProcessor for PolygonalFaceSetProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        _quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<crate::Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        Some(polygonal_plan::lower(entity, decoder, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::Polygons(plan))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,

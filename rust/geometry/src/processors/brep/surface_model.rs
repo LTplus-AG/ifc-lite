@@ -8,6 +8,7 @@ use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use super::super::advanced_face::note_face_refused;
 use super::super::helpers::read_loop_points_by_id;
 use crate::router::GeometryProcessor;
+pub(crate) use super::surface_model_plan::SurfaceModelPlan;
 
 /// A dropped `IfcAdvancedFace` (unsupported surface, or a #4901 degree/work
 /// cap) has nowhere else to go here — neither processor has a
@@ -85,27 +86,6 @@ pub(super) fn read_simple_face_bounds(
     Some((outer_points, hole_points))
 }
 
-/// Mesh a surface model whose attribute 0 lists its face collections.
-/// `names` is the (missing-attribute message, collection noun) for errors.
-fn mesh_surface_model(
-    entity: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-    quality: TessellationQuality,
-    rtc_file_units: Option<(f64, f64, f64)>,
-    names: (&str, &str),
-    collection_slot: usize,
-) -> Result<Mesh> {
-    super::surface_model_plan::lower(
-        entity,
-        decoder,
-        quality,
-        rtc_file_units,
-        names,
-        collection_slot,
-    )?
-    .evaluate()
-}
-
 // ---------- FaceBasedSurfaceModelProcessor ----------
 
 /// Handles `IfcFaceBasedSurfaceModel`: FbsmFaces (SET of IfcConnectedFaceSet)
@@ -119,9 +99,33 @@ impl FaceBasedSurfaceModelProcessor {
     pub fn new() -> Self {
         Self
     }
+
+    pub(crate) fn lower(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        quality: TessellationQuality,
+        rtc_file_units: Option<(f64, f64, f64)>,
+    ) -> Result<SurfaceModelPlan> {
+        super::surface_model_plan::lower(
+            entity,
+            decoder,
+            quality,
+            rtc_file_units,
+            Self::NAMES,
+            slot::IfcFaceBasedSurfaceModel::FBSM_FACES.index(),
+        )
+    }
 }
 
 impl GeometryProcessor for FaceBasedSurfaceModelProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<crate::Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        Some(self.lower(entity, decoder, quality, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::SurfaceModel(plan))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,
@@ -129,14 +133,7 @@ impl GeometryProcessor for FaceBasedSurfaceModelProcessor {
         _schema: &IfcSchema,
         quality: TessellationQuality,
     ) -> Result<Mesh> {
-        mesh_surface_model(
-            entity,
-            decoder,
-            quality,
-            None,
-            Self::NAMES,
-            slot::IfcFaceBasedSurfaceModel::FBSM_FACES.index(),
-        )
+        self.lower(entity, decoder, quality, None)?.evaluate()
     }
 
     fn process_in_rtc_frame(
@@ -147,14 +144,10 @@ impl GeometryProcessor for FaceBasedSurfaceModelProcessor {
         quality: TessellationQuality,
         rtc_file_units: (f64, f64, f64),
     ) -> Option<Result<Mesh>> {
-        Some(mesh_surface_model(
-            entity,
-            decoder,
-            quality,
-            Some(rtc_file_units),
-            Self::NAMES,
-            slot::IfcFaceBasedSurfaceModel::FBSM_FACES.index(),
-        ))
+        Some(
+            self.lower(entity, decoder, quality, Some(rtc_file_units))
+                .and_then(SurfaceModelPlan::evaluate),
+        )
     }
 
     fn supported_types(&self) -> Vec<IfcType> {
@@ -182,9 +175,33 @@ impl ShellBasedSurfaceModelProcessor {
     pub fn new() -> Self {
         Self
     }
+
+    pub(crate) fn lower(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        quality: TessellationQuality,
+        rtc_file_units: Option<(f64, f64, f64)>,
+    ) -> Result<SurfaceModelPlan> {
+        super::surface_model_plan::lower(
+            entity,
+            decoder,
+            quality,
+            rtc_file_units,
+            Self::NAMES,
+            slot::IfcShellBasedSurfaceModel::SBSM_BOUNDARY.index(),
+        )
+    }
 }
 
 impl GeometryProcessor for ShellBasedSurfaceModelProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<crate::Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        Some(self.lower(entity, decoder, quality, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::SurfaceModel(plan))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,
@@ -192,14 +209,7 @@ impl GeometryProcessor for ShellBasedSurfaceModelProcessor {
         _schema: &IfcSchema,
         quality: TessellationQuality,
     ) -> Result<Mesh> {
-        mesh_surface_model(
-            entity,
-            decoder,
-            quality,
-            None,
-            Self::NAMES,
-            slot::IfcShellBasedSurfaceModel::SBSM_BOUNDARY.index(),
-        )
+        self.lower(entity, decoder, quality, None)?.evaluate()
     }
 
     fn process_in_rtc_frame(
@@ -210,14 +220,10 @@ impl GeometryProcessor for ShellBasedSurfaceModelProcessor {
         quality: TessellationQuality,
         rtc_file_units: (f64, f64, f64),
     ) -> Option<Result<Mesh>> {
-        Some(mesh_surface_model(
-            entity,
-            decoder,
-            quality,
-            Some(rtc_file_units),
-            Self::NAMES,
-            slot::IfcShellBasedSurfaceModel::SBSM_BOUNDARY.index(),
-        ))
+        Some(
+            self.lower(entity, decoder, quality, Some(rtc_file_units))
+                .and_then(SurfaceModelPlan::evaluate),
+        )
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

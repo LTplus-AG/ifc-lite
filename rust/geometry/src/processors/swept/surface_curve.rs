@@ -18,7 +18,7 @@ use super::disk::directrix_is_sweepable;
 use crate::router::GeometryProcessor;
 #[path = "surface_plan.rs"]
 mod plan;
-use plan::SurfaceCurveSweepPlan;
+pub(crate) use plan::SurfaceCurveSweepPlan;
 
 /// Processor for `IfcSurfaceCurveSweptAreaSolid` and `IfcFixedReferenceSweptAreaSolid`.
 ///
@@ -145,6 +145,14 @@ impl SurfaceCurveSweptAreaSolidProcessor {
 }
 
 impl GeometryProcessor for SurfaceCurveSweptAreaSolidProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<crate::Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        if rtc_file_units.is_some() { return None; }
+        Some(self.lower(entity, decoder, quality).map(|plan| crate::program::OwnedConstructor::new(plan.map_or(Constructor::Empty, Constructor::SweptArea))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,

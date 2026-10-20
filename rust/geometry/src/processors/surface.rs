@@ -40,6 +40,13 @@ impl SurfaceOfLinearExtrusionProcessor {
 }
 
 impl GeometryProcessor for SurfaceOfLinearExtrusionProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        _quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<crate::Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        Some(self.lower(entity, decoder, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::LinearExtrusionSurface(plan))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,

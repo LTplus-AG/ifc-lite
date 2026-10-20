@@ -14,6 +14,7 @@ use crate::router::GeometryProcessor;
 
 #[path = "revolved_plan.rs"]
 mod plan;
+pub(crate) use plan::RevolvedPlan;
 
 /// RevolvedAreaSolid processor
 /// Handles IfcRevolvedAreaSolid - rotates a 2D profile around an axis
@@ -39,6 +40,14 @@ impl RevolvedAreaSolidProcessor {
 }
 
 impl GeometryProcessor for RevolvedAreaSolidProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<crate::Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        if rtc_file_units.is_some() { return None; }
+        Some(self.lower(entity, decoder, quality).map(|plan| crate::program::OwnedConstructor::new(Constructor::Revolved(plan))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,

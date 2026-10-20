@@ -123,6 +123,14 @@ impl ExtrudedAreaSolidProcessor {
 }
 
 impl GeometryProcessor for ExtrudedAreaSolidProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<crate::Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        if rtc_file_units.is_some() { return None; }
+        Some(self.lower(entity, decoder, quality).map(|plan| crate::program::OwnedConstructor::new(Constructor::Extrusion(plan))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,

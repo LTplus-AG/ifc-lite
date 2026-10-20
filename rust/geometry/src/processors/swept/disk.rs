@@ -11,7 +11,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use crate::router::GeometryProcessor;
 #[path = "disk_plan.rs"]
 mod plan;
-use plan::SweptDiskPlan;
+pub(crate) use plan::SweptDiskPlan;
 
 // Two directrix samples closer than this (model units) are one point for
 // tangent purposes: their difference has no usable direction (#5191).
@@ -306,6 +306,14 @@ impl SweptDiskSolidProcessor {
 }
 
 impl GeometryProcessor for SweptDiskSolidProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<crate::Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        if rtc_file_units.is_some() { return None; }
+        Some(self.lower(entity, decoder, quality).map(|plan| crate::program::OwnedConstructor::new(plan.map_or(Constructor::Empty, Constructor::SweptDisk))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,

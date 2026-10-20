@@ -44,3 +44,38 @@ fn a_dangling_placement_is_the_decoders_error_on_both_readings() {
         assert!(err.to_string().contains("Entity #99 not found"), "{err}");
     }
 }
+
+/// Pure pipeline consolidation must preserve externally supplied instance
+/// metadata without an authored placement, while placed products replace it
+/// with their actual world frame (#7781).
+#[test]
+fn placement_application_preserves_unplaced_instance_metadata() {
+    use crate::{InstanceMeta, Mesh, SubMeshCollection};
+
+    let mut decoder = EntityDecoder::new(MODEL);
+    let router = GeometryRouter::with_scale_and_local_frame(1.0, false);
+    let mut mesh = Mesh::new();
+    mesh.positions = vec![0., 0., 0., 1., 0., 0., 0., 1., 0.];
+    mesh.normals = vec![0., 0., 1., 0., 0., 1., 0., 0., 1.];
+    mesh.indices = vec![0, 1, 2];
+    let mut supplied = InstanceMeta::instanceable(42, None);
+    supplied.transform[3] = 7.;
+    let supplied_transform = supplied.transform;
+    mesh.instance_meta = Some(supplied);
+
+    for id in [12, 10] {
+        let mut parts = SubMeshCollection::new();
+        parts.add(20, mesh.clone());
+        let element = decoder.decode_by_id(id).unwrap();
+        router.apply_submesh_placement(&mut parts, &element, &mut decoder).unwrap();
+        let output = &parts.sub_meshes[0].mesh;
+        let metadata = output.instance_meta.as_ref().expect("instance metadata survives placement");
+        if id == 12 {
+            assert_eq!(metadata.transform, supplied_transform);
+            assert_eq!(output.positions, mesh.positions);
+        } else {
+            assert_eq!((metadata.transform[3], metadata.transform[7], metadata.transform[11]), (1000., 2000., 3000.));
+            assert_eq!(&output.positions[..3], &[1000., 2000., 3000.]);
+        }
+    }
+}

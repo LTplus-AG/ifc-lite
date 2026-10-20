@@ -15,7 +15,7 @@ use super::GeometryRouter;
 use crate::math::mat4;
 use crate::placement;
 use crate::{Mesh, Result, SubMeshCollection};
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 
 static LOCAL_FRAME_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
@@ -154,8 +154,10 @@ impl GeometryRouter {
         // occurrence and they all stack on the first one. A placement-less element
         // is the identity, which is the placeholder already.
         let row_major = mat4::from_na(&transform);
+        // Preserve producer-supplied metadata when no authored placement exists.
+        let has_placement = element.ref_at(slot::IfcProduct::OBJECT_PLACEMENT).is_some();
         for sub in &mut sub_meshes.sub_meshes {
-            if instancing_enabled() {
+            if instancing_enabled() && has_placement {
                 if let Some(im) = sub.mesh.instance_meta.as_mut() {
                     im.transform = row_major;
                 }

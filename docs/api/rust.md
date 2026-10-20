@@ -613,7 +613,14 @@ impl ProductShape { pub fn select(&self, element: &DecodedEntity, s: Select) -> 
 pub enum Select { Meshed, Body, RtcVotable, Any, Where(fn(..) -> bool) } // Meshed = what renders
 pub struct RepresentationWalk { pub select: Select, pub nested: NestedMaps }
 // product / map / mapped_item drive a WalkVisitor in DFS pre-order; nesting is
-// capped by depth and a path-scoped visited set.
+// iterative, capped by depth, a path-scoped cycle check and a total work budget.
+pub enum NestedMaps {
+    Expand { max_depth: u32, max_levels: u32 },
+    Refuse, Leaf, FirstChain { max_depth: u32 },
+}
+// Expand reports WalkRefusal::Budget once and stops after max_levels entries.
+// Every enter_map is paired with leave_map, including Stop and SkipChildren.
+// MappedLevel::local_transform returns MappingTarget · MappingOrigin in file units.
 pub fn meshed_representations(element, representations) -> impl Iterator; // = Select::Meshed
 ```
 

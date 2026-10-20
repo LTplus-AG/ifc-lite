@@ -203,7 +203,9 @@ const SCAN_ROOTS = [
 // non-`try` `sample_curve_polyline` wrapper: the walk is the same guarded
 // `sample_curve_polyline_guarded` self-recursion, one cycle member fewer.
 // Set to 32 to restore a margin of one.
-const CANDIDATE_FLOOR = 32;
+// #7873: iterative RepresentationWalk removes the items/enter recursion pair.
+// Measured 31 remaining candidates; retain an exact floor for this layer.
+const CANDIDATE_FLOOR = 31;
 
 /**
  * Allowlist for candidates that are genuinely unguarded and must stay that

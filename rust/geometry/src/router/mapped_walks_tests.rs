@@ -175,7 +175,7 @@ fn issue_7873_local_cache_never_publishes_work_or_depth_truncated_source() {
         let mut router = GeometryRouter::with_scale_and_local_frame(1.0, false);
         router.set_rtc_offset((SITE[0], SITE[1], SITE[2]));
         let root = decoder.decode_by_id(2000).unwrap();
-        let mut sink = super::mapped_sink::MergeSink::new(&router);
+        let mut sink = crate::router::mapped_sink::MergeSink::new(&router);
         RepresentationWalk { select: Select::Any,
             nested: NestedMaps::Expand { max_depth, max_levels },
         }.mapped_item(&root, &mut decoder, &mut sink);

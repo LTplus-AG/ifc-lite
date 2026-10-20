@@ -38,8 +38,9 @@
  *                    `packages/data/src/relationship-type.ts`'s `NAMES` map
  *                    (behind `relationshipTypeName()`) maps a `RelationshipType`
  *                    member to. Meaningful only for `IfcRel*` rows; other rows are `—`.
- *   geometry      — the entity's `IfcType` appears in the `TYPES` const array
- *                    in `rust/geometry/src/router/processor_registry.rs`,
+ *   geometry      — the entity's `IfcType` appears in a row of the
+ *                    `processor_families!` table (which generates the `TYPES`
+ *                    slot array) in `rust/geometry/src/router/processor_registry.rs`,
  *                    the actual slot table the router dispatches through
  *                    (not each processor's own `supported_types()`, which is
  *                    an internal replacement-tracking detail called only
@@ -176,14 +177,21 @@ const relationshipClassesUpper = new Set([...relationshipClasses].map((n) => n.t
 // ─── Geometry (router processor_registry.rs TYPES table) ────────────────
 
 const processorRegistrySrc = read('rust/geometry/src/router/processor_registry.rs');
+// The slot table is declared once through `processor_families! { schema; ... }`
+// (#7955 C1): each `Family => [IfcA, IfcB] => constructor;` row is one TYPES
+// slot. The macro_rules definition itself only carries `$ifc_type`
+// placeholders, so only the invocation is read.
 function extractGeometryTypes(src) {
-  const start = src.indexOf('const TYPES');
-  if (start === -1) throw new Error('coverage-ledger: `const TYPES` not found in processor_registry.rs');
-  const open = src.indexOf('[', src.indexOf('=', start));
-  const close = src.indexOf('];', open);
-  if (open === -1 || close === -1) throw new Error('coverage-ledger: could not bound the TYPES array');
-  const body = src.slice(open, close);
-  return new Set([...body.matchAll(/IfcType::(\w+)/g)].map((m) => m[1].toUpperCase()));
+  const start = src.indexOf('processor_families! {');
+  if (start === -1) throw new Error('coverage-ledger: `processor_families! {` invocation not found in processor_registry.rs');
+  const close = src.indexOf('\n}', start);
+  if (close === -1) throw new Error('coverage-ledger: could not bound the processor_families! invocation');
+  const body = src.slice(start, close).replace(/\/\/[^\n]*/g, '');
+  const types = new Set();
+  for (const row of body.matchAll(/=>\s*\[([^\]]*)\]\s*=>/g)) {
+    for (const name of row[1].matchAll(/\b(Ifc\w+)/g)) types.add(name[1].toUpperCase());
+  }
+  return types;
 }
 const geometryTypes = extractGeometryTypes(processorRegistrySrc);
 assertNonEmpty('geometry(processor_registry TYPES)', geometryTypes);

@@ -50,7 +50,10 @@ mod tests;
 use crate::material_layer_index::MaterialLayerIndex;
 use crate::processors::{BooleanClippingProcessor, CsgSolidProcessor};
 mod processor_registry;
-pub(crate) use processor_registry::builtin_processor;
+mod construction;
+mod registration;
+pub(crate) use processor_registry::{builtin_family, builtin_processor, ProcessorOrigin};
+pub use processor_registry::ConstructionFamily;
 use processor_registry::ProcessorRegistry;
 use crate::tessellation::TessellationQuality;
 use crate::{BoolFailure, Mesh, Result};
@@ -58,7 +61,6 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex, OnceLock};
 
 /// Test/env override for [`GeometryRouter::build_dedup_extra_enabled`]:
@@ -609,12 +611,14 @@ impl GeometryRouter {
     /// never discard records the pipeline had not drained yet (#3821).
     fn register_skip_dependent_processors(&mut self) {
         self.drain_processor_failures();
-        self.register(Box::new(BooleanClippingProcessor::with_skip_small_cuts(
-            self.skip_small_cuts,
-        )));
-        self.register(Box::new(CsgSolidProcessor::with_skip_small_cuts(
-            self.skip_small_cuts,
-        )));
+        self.register_with_origin(
+            Box::new(BooleanClippingProcessor::with_skip_small_cuts(self.skip_small_cuts)),
+            ProcessorOrigin::ConfiguredBuiltin,
+        );
+        self.register_with_origin(
+            Box::new(CsgSolidProcessor::with_skip_small_cuts(self.skip_small_cuts)),
+            ProcessorOrigin::ConfiguredBuiltin,
+        );
     }
 
     /// Set the RTC offset for large coordinate handling
@@ -680,14 +684,6 @@ impl GeometryRouter {
             transform[(0, 3)] *= self.unit_scale;
             transform[(1, 3)] *= self.unit_scale;
             transform[(2, 3)] *= self.unit_scale;
-        }
-    }
-
-    /// Register a geometry processor
-    pub fn register(&mut self, processor: Box<dyn GeometryProcessor>) {
-        let processor_rc: Rc<dyn GeometryProcessor> = Rc::from(processor);
-        for ifc_type in processor_rc.supported_types() {
-            self.processors.insert(ifc_type, Rc::clone(&processor_rc));
         }
     }
 

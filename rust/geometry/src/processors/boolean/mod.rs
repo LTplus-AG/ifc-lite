@@ -18,14 +18,14 @@ use super::csg_primitive::CsgSolidProcessor;
 
 mod bounded_prism_mesh;
 mod bounded_prism_plan;
-mod brep_void_cut;
-mod brep_void_plan;
+pub(crate) mod brep_void_plan;
 mod brep_voids;
 mod cut_heuristics;
 mod failures;
 mod half_space_plan;
 mod polygonal_group_execution;
-mod solid_execution;
+pub(crate) mod solid_execution;
+pub(crate) mod spine_plan;
 use solid_execution::SolidBooleanPlan;
 use polygonal_group_execution::GroupExecution;
 mod polygonal_chain;
@@ -60,7 +60,7 @@ const MAX_BOOLEAN_DEPTH: u32 = 10;
 /// wrong trade.
 const MAX_OPERAND_PATH_NODES: usize = 64;
 
-pub(crate) use operand::{OperandPath, MAX_OPERAND_VISITS};
+pub(crate) use operand::{boolean_operator, OperandPath, MAX_OPERAND_VISITS};
 
 /// BooleanResult processor
 /// Handles IfcBooleanResult and IfcBooleanClippingResult - CSG operations

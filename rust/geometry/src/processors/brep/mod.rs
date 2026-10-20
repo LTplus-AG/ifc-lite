@@ -8,7 +8,7 @@
 //! All deal with boundary representations composed of face loops.
 
 mod faceted;
-mod faceted_plan;
+pub(crate) mod faceted_plan;
 mod surface_model;
 mod surface_model_plan;
 
@@ -16,4 +16,5 @@ mod surface_model_plan;
 mod planar_tests;
 
 pub use faceted::FacetedBrepProcessor;
+pub(crate) use surface_model::SurfaceModelPlan;
 pub use surface_model::{FaceBasedSurfaceModelProcessor, ShellBasedSurfaceModelProcessor};

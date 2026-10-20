@@ -18,19 +18,19 @@ use crate::{ClippingProcessor, Mesh, Result, TessellationQuality};
 
 /// The complete policy read by one solid/solid numerical step.
 #[derive(Debug, Clone, Copy)]
-pub(super) struct SolidBooleanPlan {
+pub(crate) struct SolidBooleanPlan {
     /// `Difference`, `Union` or `Intersection`.
-    pub(super) operator: BoolOp,
-    pub(super) length_unit_scale: f64,
-    pub(super) quality: TessellationQuality,
-    pub(super) skip_small_cuts: bool,
+    pub(crate) operator: BoolOp,
+    pub(crate) length_unit_scale: f64,
+    pub(crate) quality: TessellationQuality,
+    pub(crate) skip_small_cuts: bool,
 }
 
 impl SolidBooleanPlan {
     /// Apply the step to `first` (the host so far) and `second` (the meshed
     /// operand). The `bool` is true only when the result is empty because an
     /// operand was dropped and that loss is already on record.
-    pub(super) fn evaluate(
+    pub(crate) fn evaluate(
         self,
         recorder: &BooleanClippingProcessor,
         first: Mesh,

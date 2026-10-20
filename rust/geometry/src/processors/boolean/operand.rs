@@ -92,7 +92,7 @@ impl OperandPath {
 /// DIFFERENCE and defaulting would execute a subtraction the file never
 /// asked for. An `IfcBooleanClippingResult` has DIFFERENCE as its only legal
 /// operator, so there the default is what the schema says.
-pub(super) fn boolean_operator(entity: &DecodedEntity) -> std::result::Result<BoolOp, &str> {
+pub(crate) fn boolean_operator(entity: &DecodedEntity) -> std::result::Result<BoolOp, &str> {
     let Some(keyword) = entity.get(0).and_then(|v| v.as_enum()) else {
         return match entity.ifc_type {
             IfcType::IfcBooleanClippingResult => Ok(BoolOp::Difference),

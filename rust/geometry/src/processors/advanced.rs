@@ -37,6 +37,13 @@ impl AdvancedBrepProcessor {
 }
 
 impl GeometryProcessor for AdvancedBrepProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<crate::Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        Some(super::advanced_plan::lower_brep(entity, decoder, quality, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::AdvancedBrep(plan))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,
@@ -101,6 +108,13 @@ impl Default for BSplineSurfaceProcessor {
 }
 
 impl GeometryProcessor for BSplineSurfaceProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<crate::Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        Some(super::advanced_plan::lower_bspline_surface(entity, decoder, quality, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::BSplineSurface(plan))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,

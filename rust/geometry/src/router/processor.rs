@@ -54,6 +54,20 @@ pub trait GeometryProcessor {
         None
     }
 
+    /// Admit an owned numerical constructor through this selected processor.
+    /// Default registrations retain their mutable-decoder process/RTC callbacks.
+    /// `Some` commits to the supplied raw-file-unit frame, including RTC when
+    /// present; `None` preserves the historical callback and fallback order.
+    fn lower_owned(
+        &self,
+        _entity: &DecodedEntity,
+        _decoder: &mut EntityDecoder,
+        _quality: TessellationQuality,
+        _rtc_file_units: Option<(f64, f64, f64)>,
+    ) -> Option<Result<crate::program::OwnedConstructor>> {
+        None
+    }
+
     /// Get supported IFC types
     fn supported_types(&self) -> Vec<IfcType>;
 

@@ -33,6 +33,13 @@ impl Default for IfcFaceSurfaceProcessor {
 }
 
 impl GeometryProcessor for IfcFaceSurfaceProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<crate::Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        Some(super::structural_face_plan::lower(entity, decoder, quality, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::FaceSurface(plan))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,

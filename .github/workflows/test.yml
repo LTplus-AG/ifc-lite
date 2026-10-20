@@ -1228,6 +1228,15 @@ jobs:
           # alignment_plan.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/alignment_plan.rs | grep -Fxq 'rust/geometry/src/processors/alignment_plan.rs'; then
             oracle_args+=(--mutation tests/evidence/geometry-alignment-section-plans-b6/behaviour.oracle.patch)
+          # #7955 C1: the construction graph adds construction/ and program/, which
+          # its tests import, so a whole-change revert cannot compile them
+          # (INCONCLUSIVE). Keep the graph and break ONLY the behaviour: unresolved
+          # roots no longer block evaluation, a custom processor is no longer
+          # refused, the RTC frame is dropped from lowering and repeated roots lose
+          # their occurrence order. Once construction/lowering.rs is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/construction/lowering.rs | grep -Fxq 'rust/geometry/src/construction/lowering.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-construction-graph-c1/behaviour.oracle.patch)
           # #7682: keep the new STEP-writer modules, StepStats fields and the TS
           # allocatedExpressId export loadable while disabling ONLY the guards the
           # changed tests pin (value/name/id-reuse refusals, the id-space refusal,

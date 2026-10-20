@@ -12,32 +12,35 @@
 //! authored face order, exactly as the single-pass walk produced it.
 
 use super::super::advanced_face::note_face_refused;
-use super::super::advanced_face::{capture_reports, lower_face, FacePlan, FaceReports};
+use super::super::advanced_face::{lower_face, FacePlan};
+use super::super::diagnostic_capture;
 use super::super::helpers::FaceData;
 use super::faceted::FacetedBrepProcessor;
 use super::surface_model::{read_simple_face_bounds, trace_capped_face};
-use crate::{Error, Mesh, Point3, Result, TessellationQuality};
+use crate::{construction::ConstructionReports, Error, Mesh, Point3, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
+#[derive(Debug, Clone)]
 enum SurfaceFace {
     Simple {
         face_type: IfcType,
         outer: Vec<Point3<f64>>,
         holes: Vec<Vec<Point3<f64>>>,
     },
-    /// The advanced face's owned plan or its source refusal, kept for ordered replay.
-    Advanced {
-        face_id: u32,
-        outcome: Result<FacePlan>,
-    },
+    /// The advanced face's owned plan, kept for ordered replay.
+    Advanced { face_id: u32, plan: FacePlan },
+    /// The advanced face's source refusal, kept for ordered replay.
+    RefusedAdvanced { face_id: u32, error: String },
 }
 
+#[derive(Debug, Clone)]
 struct FaceEntry {
     face: Option<SurfaceFace>,
-    source_reports: FaceReports,
+    source_reports: ConstructionReports,
 }
 
-pub(super) struct SurfaceModelPlan {
+#[derive(Debug, Clone)]
+pub(crate) struct SurfaceModelPlan {
     faces: Vec<FaceEntry>,
     rtc_file_units: Option<(f64, f64, f64)>,
     // An invalid later collection must still return the original error after
@@ -78,7 +81,7 @@ pub(super) fn lower(
         };
         for face_id in face_ids {
             let (face, source_reports) =
-                capture_reports(|| lower_entry(face_id, decoder, quality, rtc_file_units));
+                diagnostic_capture::capture(|| lower_entry(face_id, decoder, quality, rtc_file_units));
             plan.faces.push(FaceEntry {
                 face,
                 source_reports,
@@ -101,9 +104,9 @@ fn lower_entry(
         // A capped B-spline curve EDGE (#4901) inside a still-OK face is
         // deliberately NOT drained here: the router owns the single
         // authoritative drain, and the captured report is replayed in order.
-        return Some(SurfaceFace::Advanced {
-            face_id,
-            outcome: lower_face(&face, decoder, quality, rtc_file_units),
+        return Some(match lower_face(&face, decoder, quality, rtc_file_units) {
+            Ok(plan) => SurfaceFace::Advanced { face_id, plan },
+            Err(error) => SurfaceFace::RefusedAdvanced { face_id, error: error.to_string() },
         });
     }
     let bound_ids = decoder.get_entity_ref_list_fast(face_id)?;
@@ -117,11 +120,21 @@ fn lower_entry(
 }
 
 impl SurfaceModelPlan {
-    pub(super) fn evaluate(self) -> Result<Mesh> {
+    /// Eager graph compilation can retain admission reports without emitting
+    /// them on the production path before preceding numeric work has run.
+    pub(crate) fn source_reports(&self) -> ConstructionReports {
+        let mut reports = ConstructionReports::default();
+        for entry in &self.faces {
+            reports.merge(entry.source_reports.clone());
+        }
+        reports
+    }
+
+    pub(crate) fn evaluate(self) -> Result<Mesh> {
         let mut all_positions = Vec::new();
         let mut all_indices = Vec::new();
         for entry in self.faces {
-            entry.source_reports.restore();
+            diagnostic_capture::restore(&entry.source_reports);
             let Some(face) = entry.face else { continue };
             let (positions, indices) = match face {
                 SurfaceFace::Simple {
@@ -145,9 +158,11 @@ impl SurfaceModelPlan {
                     }
                     (result.positions, result.indices)
                 }
-                SurfaceFace::Advanced { face_id, outcome } => match outcome
-                    .and_then(FacePlan::evaluate)
-                {
+                SurfaceFace::RefusedAdvanced { face_id, error } => {
+                    trace_capped_face(face_id, &error);
+                    continue;
+                }
+                SurfaceFace::Advanced { face_id, plan } => match plan.evaluate() {
                     Ok(result) => result,
                     Err(error) => {
                         trace_capped_face(face_id, &error);

@@ -6,3 +6,4 @@ export { en } from './en.js';
 export { de } from './de.js';
 export { fr } from './fr.js';
 export { it } from './it.js';
+export { ru } from './ru.js';

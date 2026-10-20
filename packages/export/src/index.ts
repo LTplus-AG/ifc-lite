@@ -104,4 +104,4 @@ export { validatePropertyDataType } from './declared-property-type.js';
 export { expandAffectedSet, type RemeshCause } from './affected-set.js';
 export { editOwnershipRefusal } from './edit-ownership.js';
 
-export { exportSectionedStep, type SectionExportPlane, type SectionExportOptions } from './section-export.js';
+export { exportSectionedStep, type SectionExportPlane, type SectionExportOptions } from './section-export-entry.js';

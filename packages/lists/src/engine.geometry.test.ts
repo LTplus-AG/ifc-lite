@@ -132,6 +132,8 @@ describe('geometry (World Coordinate) column/condition (#3671)', () => {
     };
     expect(provider.getWorldPosition).toBeUndefined();
     const result = executeList(walls([{ id: 'g', source: 'geometry', propertyName: 'X' }]), provider);
+    // Guard against a vacuous `every` over zero rows: the provider has 1 wall.
+    expect(result.rows).toHaveLength(1);
     expect(result.rows.every(r => r.values[0] === null)).toBe(true);
     // No value ever resolved -> the column carries no derived quantityType.
     expect(result.columns[0]!.quantityType).toBeUndefined();

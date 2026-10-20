@@ -50,7 +50,7 @@ use super::classify::dot3;
 /// reach `inf`, where `inf >= inf` would call a 46° pair coincident; at the
 /// other end a pair of ~1e-80 m normals flushes to `0 >= 0` and calls a
 /// perpendicular pair coincident.
-pub(super) fn coincident_planes(n_own: [f64; 3], n_face: [f64; 3]) -> bool {
+pub(crate) fn coincident_planes(n_own: [f64; 3], n_face: [f64; 3]) -> bool {
     let (a, b) = (pow2_normalized(n_own), pow2_normalized(n_face));
     let d = dot3(a, b);
     2.0 * d * d >= dot3(a, a) * dot3(b, b)

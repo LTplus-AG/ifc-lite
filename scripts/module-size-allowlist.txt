@@ -246,7 +246,6 @@
    494 packages/parser/src/source-bytes.ts
    513 packages/plugin-api/src/types.ts
    678 packages/pointcloud/src/formats/e57-decode.ts
-   424 packages/pointcloud/src/formats/pcd.ts
    529 packages/pointcloud/src/streaming/e57-source.ts
    423 packages/provenance/src/certificate.ts
    410 packages/provenance/src/commutation.ts
@@ -255,6 +254,7 @@
   1032 packages/provenance/src/merge-model.ts
    609 packages/provenance/src/node-hash.ts
    529 packages/query/src/duckdb-integration.ts
+   412 packages/renderer/src/camera-animation.ts
    583 packages/renderer/src/camera-controls.ts
    684 packages/renderer/src/camera.ts
   3699 packages/renderer/src/index.ts

@@ -1,0 +1,13 @@
+diff --git b/rust/geometry/src/mesh_check/closure.rs a/rust/geometry/src/mesh_check/closure.rs
+index fe7831b9d8..31fcb97598 100644
+--- b/rust/geometry/src/mesh_check/closure.rs
++++ a/rust/geometry/src/mesh_check/closure.rs
+@@ -18,7 +18,7 @@ const CLOSURE_GRID: VertexKey = VertexKey::GridDiv(1.0e-4);
+ /// grid itself, bit for bit.
+ fn closure_grid_in_units(length_unit_scale: f64) -> VertexKey {
+     if length_unit_scale.is_finite() && length_unit_scale > 0.0 && length_unit_scale != 1.0 {
+-        CLOSURE_GRID
++        VertexKey::GridDiv(1.0e-4 / length_unit_scale)
+     } else {
+         CLOSURE_GRID
+     }

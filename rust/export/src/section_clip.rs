@@ -5,7 +5,9 @@ use std::collections::BTreeMap;
 use ifc_lite_core::{slot, EntityDecoder, EntityScanner, IfcType};
 use ifc_lite_geometry::math::v3;
 use ifc_lite_geometry::kernel::arrangement::Tri;
-use ifc_lite_processing::{process_geometry, MeshData, MeshFrame};
+use ifc_lite_processing::{process, ProcessingRequest, MeshData, MeshFrame};
+#[cfg(test)]
+use ifc_lite_processing::process_geometry;
 use ifc_lite_processing::element::GEOM_CLASS_LAYER_SLICE;
 use serde::{Deserialize, Serialize};
 
@@ -13,6 +15,8 @@ use serde::{Deserialize, Serialize};
 mod mesh;
 #[path = "section_clip_parts.rs"]
 mod parts;
+#[path = "section_clip_safety.rs"]
+mod safety;
 
 /// Kept half-space `normal · world <= offset`, IFC Z-up, metres.
 #[derive(Clone, Debug, Deserialize)]
@@ -63,7 +67,9 @@ pub fn plan_section_export(
         Ok(normalized)
     }).collect::<Result<Vec<_>, String>>()?;
     if planes.is_empty() { return Ok(SectionExportPlan::default()); }
-    let processed = process_geometry(content);
+    let mut safety = safety::Safety::default();
+    let processed = process(content, &ProcessingRequest::full_pass(), &mut safety);
+    let mut textured = std::collections::BTreeSet::new();
     let mut groups = BTreeMap::<u32, Vec<&MeshData>>::new();
     for part in &processed.meshes {
         if matches!(part.geometry_class, 0 | GEOM_CLASS_LAYER_SLICE) { groups.entry(part.express_id).or_default().push(part); }
@@ -71,7 +77,8 @@ pub fn plan_section_export(
     // Refuse unmeshed physical products: otherwise a successful crop could leak
     // source geometry the processor could not classify. Spatial/symbolic records
     // remain with the existing STEP subset closure.
-    let mut decoder = EntityDecoder::new(content);
+    let mut decoder = EntityDecoder::new(content).with_strict_reals();
+    safety.index_attachments(content, &mut decoder)?;
     let mut scanner = EntityScanner::new(content);
     let mut unit = 1.0;
     while let Some((id, name, _, _)) = scanner.next_entity() {
@@ -86,10 +93,11 @@ pub fn plan_section_export(
             groups.remove(&id);
             continue;
         }
-        if (product_kind || ifc_lite_core::has_geometry_by_name(name)) && !groups.contains_key(&id) {
+        if product_kind || ifc_lite_core::has_geometry_by_name(name) {
             let entity = decoder.decode_by_id(id).map_err(|error| error.to_string())?;
             if entity.ref_at(slot::IfcProduct::REPRESENTATION).is_some() {
-                return Err(format!("section export cannot safely crop unmeshed {name} #{id}"));
+                if !groups.contains_key(&id) { return Err(format!("section export cannot safely crop unmeshed {name} #{id}")); }
+                if safety.require_product(id, &mut decoder, &processed.stats)? { textured.insert(id); }
             }
         }
     }
@@ -102,6 +110,9 @@ pub fn plan_section_export(
             .map_err(|error| format!("section export #{id}, {error}"))?;
         if clipped.is_empty() { plan.outside.push(id); continue; }
         if !changed || !trim { continue; }
+        if textured.contains(&id) || parts.iter().any(|part| part.texture.is_some() || part.uvs.is_some()) {
+            return Err(format!("section export cannot trim textured product #{id}: texture/UV preservation is unsupported"));
+        }
         let product = decoder.decode_by_id(id).map_err(|error| error.to_string())?;
         let placement = router.resolve_scaled_placement_strict(&product, &mut decoder)
             .map_err(|error| format!("section export cannot resolve placement #{id}: {error}"))?;

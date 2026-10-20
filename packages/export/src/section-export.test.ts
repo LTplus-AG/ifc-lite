@@ -9,7 +9,7 @@ import { renderFrameWorldOffset } from '@ifc-lite/geometry/world-frame';
 import { fileURLToPath } from 'node:url';
 import { IfcParser, EntityExtractor } from '@ifc-lite/parser';
 import { GeometryProcessor } from '@ifc-lite/geometry';
-import { exportSectionedStep } from './section-export.js';
+import { exportSectionedStep } from './section-export-entry.js';
 import { MergedExporter } from './merged-exporter.js';
 import { StepExporter } from './step-exporter.js';
 

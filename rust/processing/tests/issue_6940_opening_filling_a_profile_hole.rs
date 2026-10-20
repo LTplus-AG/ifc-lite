@@ -1,0 +1,360 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Issue #6940 through the shared producer: floor slabs whose profile already
+//! carries its holes (`IfcArbitraryProfileDefWithVoids`) and whose
+//! `IfcOpeningElement`s fill those holes exactly, footprint and depth. The
+//! openings remove nothing, so each slab must come back closed.
+//!
+//! They tore where a second hole had a wall a few micrometres off collinear
+//! with a wall of a filled one: the router extends the opening cutter through
+//! the slab, and the subtract weld then moved the extended corner off its own
+//! hole wall onto the other hole's wall plane. The kernel-level reproduction
+//! is `rust/geometry/tests/issue_6940_hole_wall_cutter_weld.rs` and needs no
+//! fixture. This one enters through `process_geometry`, the native
+//! orchestrator over `produce_element_meshes`, so it covers the path every
+//! consumer shares rather than the kernel entry point alone.
+//!
+//! It needs the fixture because a hand-written slab of this shape does not
+//! tear here: measured with the guard switched off, a two-hole slab with one
+//! or both holes filled has its cutter welded 18 vertices off its walls and
+//! still comes back closed through the router. The seven repeated-storey slabs below do tear
+//! without the guard (39 open edges each on `main`).
+//!
+//! # Every vertex frame
+//!
+//! The result used to depend on the frame the vertices are stored in. The
+//! native pipeline subtracts the `IfcSite` translation and stores world
+//! coordinates; the browser batch path subtracts nothing for this model and
+//! stores each element relative to its own origin. Whichever frame is used
+//! decides which hole corners and opening corners, authored as one point,
+//! round onto neighbouring positions of the kernel grid; a corner one grid
+//! step off its hole tears the slab
+//! (`rust/geometry/src/router/voids/synthesis/host_vertices.rs`). Measured on
+//! slab 137627 with the weld guard alone: 0 open edges in the native frame,
+//! 12 in the browser's, 3 with no offset and no local frame.
+//!
+//! So the second test drives `produce_element_meshes` itself over the four
+//! combinations of model offset and per-element local frame, by an explicit
+//! router policy, the way `issue_5739_local_frame_voided_wall.rs` does. The
+//! combination with no offset and a local frame reproduces the mesh the wasm
+//! bundle emitted for these slabs before the reconcile (416 triangles, 12
+//! open edges through `buildPrePassOnce` and `processGeometryBatch`).
+//!
+//! # Without the fixture
+//!
+//! Fixtures are not committed, and by the repository's rule a test whose
+//! fixture is absent skips: both tests here then print why and return, which
+//! the harness counts as a pass (`IFC_LITE_REQUIRE_FIXTURES=1` turns the skip
+//! into a failure on the lanes that fetch fixtures). A lane without fixtures
+//! therefore learns nothing from this file. The witnesses that need no
+//! fixture are `rust/geometry/tests/issue_6940_hole_wall_cutter_weld.rs` for
+//! the weld guard and `rust/geometry/tests/issue_6940_opening_corner_one_step_off.rs`
+//! for the corner reconcile.
+
+use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
+use ifc_lite_geometry::kernel::mesh_volume::mesh_volume;
+use ifc_lite_geometry::{GeometryRouter, Mesh, Vector3};
+use ifc_lite_processing::element::{
+    produce_element_meshes, ElementJobKind, ElementMeshJob, MeshProductionContext,
+    MeshProductionOptions,
+};
+use ifc_lite_processing::{process_geometry, MeshData};
+use rustc_hash::FxHashMap;
+use std::collections::HashMap;
+
+// Stated oracle invariant (#6940): one kernel snap step is exactly 1/65536 m.
+// Integration tests do not reach into crate-private implementation constants.
+const KERNEL_GRID: f64 = 1.0 / 65536.0;
+
+const FIXTURE: &str = "georeferencer/MiniBIM-3.1-DO_01_VORM.ifc";
+
+/// The slabs every one of whose openings fills a hole of its own profile.
+// Host 150890 has the same authored coincidence: its three openings match
+// profile holes 150876/150878/150880 within exporter arithmetic noise (<1e-13 m),
+// including the common depth [-0.25, 0]; the fourth profile hole has no opening.
+const SLABS: [u32; 8] = [137627, 139545, 141434, 143323, 145212, 151760, 154626, 150890];
+
+/// Undirected edges not used exactly once in each direction, vertices welded
+/// at the 1/65536 m kernel grid. `assert_closed` separately rejects collapsed
+/// triangles, so dropping them here cannot turn degenerate output into a pass.
+fn open_edges(triangles: &[[[i64; 3]; 3]]) -> usize {
+    let mut edges: HashMap<([i64; 3], [i64; 3]), (u32, u32)> = HashMap::new();
+    for [a, b, c] in triangles {
+        if a == b || b == c || c == a {
+            continue;
+        }
+        for (x, y) in [(a, b), (b, c), (c, a)] {
+            let uses = edges.entry((*x.min(y), *x.max(y))).or_insert((0, 0));
+            if x < y {
+                uses.0 += 1;
+            } else {
+                uses.1 += 1;
+            }
+        }
+    }
+    edges.values().filter(|&&(f, r)| f != 1 || r != 1).count()
+}
+
+/// One element's triangles on the 1/65536 m kernel grid of WORLD positions (the per-mesh
+/// origin folded in), over every mesh it produced.
+fn world_triangles<'a>(meshes: impl Iterator<Item = &'a MeshData>) -> Vec<[[i64; 3]; 3]> {
+    let mut triangles = Vec::new();
+    for mesh in meshes {
+        let key = |i: u32| {
+            let b = i as usize * 3;
+            [0, 1, 2]
+                .map(|k| ((mesh.positions[b + k] as f64 + mesh.origin[k]) / KERNEL_GRID).round() as i64)
+        };
+        triangles.extend(
+            mesh.indices
+                .chunks_exact(3)
+                .map(|t| [key(t[0]), key(t[1]), key(t[2])]),
+        );
+    }
+    triangles
+}
+
+fn assert_closed(id: u32, triangles: &[[[i64; 3]; 3]], frame: &str) {
+    assert!(
+        !triangles.is_empty(),
+        "slab {id}, {frame}: no mesh was produced"
+    );
+    for [a, b, c] in triangles {
+        let ab = [0, 1, 2].map(|k| b[k] as i128 - a[k] as i128);
+        let ac = [0, 1, 2].map(|k| c[k] as i128 - a[k] as i128);
+        let cross = [
+            ab[1] * ac[2] - ab[2] * ac[1],
+            ab[2] * ac[0] - ab[0] * ac[2],
+            ab[0] * ac[1] - ab[1] * ac[0],
+        ];
+        assert_ne!(cross, [0; 3], "slab {id}, {frame}: collapsed grid triangle");
+    }
+    assert_eq!(
+        open_edges(triangles),
+        0,
+        "slab {id}, {frame}: openings that fill its profile holes tore it ({} triangles)",
+        triangles.len()
+    );
+}
+
+#[derive(Default)]
+struct Shape {
+    signed_volume: f64,
+    area: f64,
+    perimeter_sum: f64,
+    triangles: usize,
+    max_stored_coordinate: f64,
+}
+
+fn shape(meshes: &[MeshData]) -> Shape {
+    let mut result = Shape::default();
+    for mesh in meshes {
+        // Use the public translation-stable kernel volume oracle. Origins
+        // translate a closed solid without changing its signed volume.
+        result.signed_volume += mesh_volume(&Mesh {
+            positions: mesh.positions.clone(),
+            indices: mesh.indices.clone(),
+            ..Mesh::default()
+        });
+        for &v in &mesh.positions {
+            assert!(v.is_finite(), "#6940: non-finite slab coordinate");
+            result.max_stored_coordinate = result.max_stored_coordinate.max((v as f64).abs());
+        }
+        let point = |i: u32| {
+            let k = i as usize * 3;
+            Vector3::new(
+                mesh.positions[k] as f64,
+                mesh.positions[k + 1] as f64,
+                mesh.positions[k + 2] as f64,
+            )
+        };
+        for t in mesh.indices.chunks_exact(3) {
+            let (a, b, c) = (point(t[0]), point(t[1]), point(t[2]));
+            result.area += (b - a).cross(&(c - a)).norm() * 0.5;
+            result.perimeter_sum += (b - a).norm() + (c - b).norm() + (a - c).norm();
+            result.triangles += 1;
+        }
+    }
+    result
+}
+
+/// These eight slabs' openings occupy existing profile holes: subtracting them may
+/// retessellate the boundary but must preserve its area, volume and winding.
+/// Allow two kernel steps plus two f32 relative-error units per coordinate,
+/// covering the independently rounded input/output frames. The Euclidean
+/// displacement budget is sqrt(3) times that coordinate budget. Volume noise
+/// scales with surface area * displacement (the public mesh_volume contract).
+/// For area, a triangle whose vertices move by at most d changes area by at
+/// most perimeter * d + 2*d*d, from expanding its edge cross product. Summing
+/// both tessellations avoids pinning triangle count or requiring equal diagonals.
+fn assert_shape_retained(id: u32, uncut: &[MeshData], cut: &[MeshData], frame: &str) {
+    let (before, after) = (shape(uncut), shape(cut));
+    let coordinate_error = 2.0 * KERNEL_GRID
+        + 2.0 * f32::EPSILON as f64
+            * before.max_stored_coordinate.max(after.max_stored_coordinate);
+    let displacement = 3.0_f64.sqrt() * coordinate_error;
+    let area_tolerance = (before.perimeter_sum + after.perimeter_sum) * displacement
+        + 2.0 * (before.triangles + after.triangles) as f64 * displacement.powi(2);
+    let volume_tolerance = (before.area + after.area + area_tolerance) * displacement;
+    assert!(before.area > 0.0 && before.signed_volume.abs() > volume_tolerance,
+        "slab {id}, {frame}: uncut shape must have a meaningful volume");
+    assert!(before.signed_volume.signum() == after.signed_volume.signum(),
+        "slab {id}, {frame}: no-op openings reversed the winding");
+    for (quantity, difference, tolerance) in [
+        ("signed volume", (after.signed_volume - before.signed_volume).abs(), volume_tolerance),
+        ("absolute volume", (after.signed_volume.abs() - before.signed_volume.abs()).abs(), volume_tolerance),
+        ("surface area", (after.area - before.area).abs(), area_tolerance),
+    ] {
+        assert!(difference <= tolerance,
+            "slab {id}, {frame}: no-op openings changed {quantity} by {difference}, allowance {tolerance}");
+    }
+}
+
+#[test]
+fn issue_6940_openings_filling_profile_holes_leave_the_slabs_closed() {
+    let Some(bytes) = ifc_lite_testkit::fixture_bytes(FIXTURE) else { return };
+    let result = process_geometry(&bytes);
+    for id in SLABS {
+        let triangles = world_triangles(result.meshes.iter().filter(|m| m.express_id == id));
+        assert_closed(id, &triangles, "the native pipeline");
+    }
+}
+
+/// The `IfcSite` placement's translation in metres: what the native pipeline
+/// subtracts for this model (`MeshFrame::select`'s site tier).
+fn site_translation(
+    content: &[u8],
+    router: &GeometryRouter,
+    decoder: &mut EntityDecoder,
+) -> (f64, f64, f64) {
+    let mut scanner = EntityScanner::new(content);
+    while let Some((id, name, start, end)) = scanner.next_entity() {
+        if name == "IFCSITE" {
+            let site = decoder
+                .decode_at_with_id(id, start, end)
+                .expect("IfcSite decodes");
+            let m = router
+                .resolve_scaled_placement(&site, decoder)
+                .expect("IfcSite placement resolves");
+            return (m[12], m[13], m[14]);
+        }
+    }
+    panic!("{FIXTURE} has no IfcSite");
+}
+
+fn void_index(content: &[u8], decoder: &mut EntityDecoder) -> FxHashMap<u32, Vec<u32>> {
+    let mut index: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    let mut scanner = EntityScanner::new(content);
+    while let Some((id, name, start, end)) = scanner.next_entity() {
+        if name == "IFCRELVOIDSELEMENT" {
+            let rel = decoder
+                .decode_at_with_id(id, start, end)
+                .expect("the relation decodes");
+            if let (Some(host), Some(opening)) = (rel.get_ref(4), rel.get_ref(5)) {
+                index.entry(host).or_default().push(opening);
+            }
+        }
+    }
+    index
+}
+
+/// The slabs through `produce_element_meshes` in each of the four vertex
+/// frames a pipeline can put them in. The frame is a router policy, not a
+/// process-global switch, so this cannot disturb another test.
+#[test]
+fn issue_6940_the_slabs_are_closed_in_every_vertex_frame() {
+    let Some(bytes) = ifc_lite_testkit::fixture_bytes(FIXTURE) else { return };
+    let index = std::sync::Arc::new(build_entity_index(&bytes));
+    let mut decoder = EntityDecoder::with_arc_index(&bytes, index);
+    let units = GeometryRouter::with_units(&bytes, &mut decoder);
+    let site = site_translation(&bytes, &units, &mut decoder);
+    assert!(
+        site.0.abs() > 1.0 && site.1.abs() > 1.0,
+        "the site offset must be a real one for the frames to differ; got {site:?}"
+    );
+    let voids = void_index(&bytes, &mut decoder);
+    let (styles, colours, materials, textures) = (
+        FxHashMap::default(),
+        FxHashMap::default(),
+        FxHashMap::default(),
+        FxHashMap::default(),
+    );
+    let ctx = MeshProductionContext {
+        void_index: &voids,
+        geometry_style_index: &styles,
+        indexed_colour_full: &colours,
+        element_material_colors: &materials,
+        texture_index: &textures,
+        site_local_rotation: None,
+    };
+    let no_voids = FxHashMap::default();
+    let uncut_ctx = MeshProductionContext { void_index: &no_voids, ..ctx };
+    let frames = [
+        (
+            "site offset, world coordinates (native default)",
+            site,
+            false,
+        ),
+        ("site offset, per-element local frame", site, true),
+        (
+            "no offset, per-element local frame (browser batch)",
+            (0.0, 0.0, 0.0),
+            true,
+        ),
+        ("no offset, world coordinates", (0.0, 0.0, 0.0), false),
+    ];
+    for (frame, offset, local_frame) in frames {
+        let mut router =
+            GeometryRouter::with_scale_and_local_frame(units.unit_scale(), local_frame);
+        router.set_rtc_offset(offset);
+        for id in SLABS {
+            let entity = decoder.decode_by_id(id).expect("the slab decodes");
+            assert!(
+                voids.contains_key(&id),
+                "slab {id} has openings in the void index"
+            );
+            let job = ElementMeshJob {
+                id,
+                ifc_type: entity.ifc_type.clone(),
+                entity: &entity,
+                kind: ElementJobKind::Product,
+                element_color: None,
+                metadata: None,
+            };
+            let opts = MeshProductionOptions::default();
+            let uncut = produce_element_meshes(&job, &uncut_ctx, &opts, &mut decoder, &router).meshes;
+            assert_closed(id, &world_triangles(uncut.iter()), &format!("{frame}, uncut"));
+            // #6940: default uncut source output uses Watertight hygiene.
+            // IndexOnly boolean operands may retain T-junctions (#5313);
+            // their final output is checked by the one/all producer cases.
+            let mut source_router = GeometryRouter::with_scale_and_local_frame(
+                units.unit_scale(), local_frame,
+            );
+            source_router.set_rtc_offset(offset);
+            source_router.set_preserve_triangle_order(false);
+            let source = source_router.process_element(&entity, &mut decoder)
+                .expect("the uncut slab source meshes");
+            let mut source_data = MeshData::new(
+                id, "IfcSlab".into(), source.positions, source.normals,
+                source.indices, [1.0; 4],
+            );
+            source_data.origin = source.origin;
+            let source = [source_data];
+            let source_frame = format!("{frame}, source Watertight");
+            assert_closed(id, &world_triangles(source.iter()), &source_frame);
+            assert_shape_retained(id, &uncut, &source, &source_frame);
+            // Select from this host's actual IfcRelVoidsElement records.
+            let selected = *voids[&id].first().expect("the slab has an actual opening");
+            let one_void = [(id, vec![selected])].into_iter().collect();
+            let one_ctx = MeshProductionContext { void_index: &one_void, ..ctx };
+            for (policy, cut_ctx) in [("one opening", &one_ctx), ("all openings", &ctx)] {
+                let cut_frame = format!("{frame}, {policy}");
+                let meshes = produce_element_meshes(&job, cut_ctx, &opts, &mut decoder, &router).meshes;
+                assert_closed(id, &world_triangles(meshes.iter()), &cut_frame);
+                assert_shape_retained(id, &uncut, &meshes, &cut_frame);
+            }
+        }
+    }
+}

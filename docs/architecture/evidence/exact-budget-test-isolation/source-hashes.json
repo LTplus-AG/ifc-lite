@@ -1,0 +1,98 @@
+{
+  "base": "067ef8327b7238a5eef106df722ad7e705c8ed18",
+  "paths": [
+    {
+      "path": "rust/geometry/src/kernel/arrangement/classify_surface_tests.rs",
+      "sha256": "5c7e535dc78d7804e3582628ce3aa0427a95dfb6e9a81068377e6e4f78aa5eef",
+      "blob": "86fc7137404c6c026e94ba311cd9f344b477b1f7"
+    },
+    {
+      "path": "rust/geometry/src/kernel/arrangement/mixed_lazy_tests.rs",
+      "sha256": "52011fbf673c53a2d92f22c5904efd6dd6f3145805b7a1bf62d8eb26c7eeb375",
+      "blob": "dd8e0dea9b940ce0bee709d35e71e4080ca020df"
+    },
+    {
+      "path": "rust/geometry/src/kernel/arrangement/mixed_tests.rs",
+      "sha256": "7d6969bfd8975e615e68007e53adcb39da2713573f1f0281e2e3ea526bacc5f7",
+      "blob": "20f106a224902a79b3e0936a09e5e6fc62850aec"
+    },
+    {
+      "path": "rust/geometry/src/kernel/budget.rs",
+      "sha256": "b080c73b6ba567992890a2f8a9766a736a56d22cbf98b573e903c630b1162628",
+      "blob": "f2892d248da238aa25e4600b94e4bde405f14ada"
+    },
+    {
+      "path": "rust/geometry/src/kernel/budget_test_caps.rs",
+      "sha256": "726decd9ebb51f0751af91f0cb0ba68aa699656742082c0c640d2b6e2428671c",
+      "blob": "926640ea90c1a1e54cebc5b0d137c9e4030fe744"
+    },
+    {
+      "path": "rust/geometry/src/kernel/budget_test_caps_tests.rs",
+      "sha256": "091935fd78dc594a5e66263e9db7f680a125f80aeb52f739117ea1b1856ca4bf",
+      "blob": "03373c20e9de850fe553100a758f00731dbe0c9b"
+    },
+    {
+      "path": "rust/geometry/src/kernel/budget_tests.rs",
+      "sha256": "58e4e733fdc947d3c5eade03719acf446b53aef3d71b084ce5aeb08b758d0aaf",
+      "blob": "257377f24f30787a52c2835846a16b02d87b95e0"
+    },
+    {
+      "path": "rust/geometry/src/kernel/mesh_bridge_tests.rs",
+      "sha256": "362413f2fbd629beb35e1bc4c7dc98e617993665051287bafd0442685f393711",
+      "blob": "9ff6fc3bee56c02635ce65320fee72ee0141cdac"
+    },
+    {
+      "path": "rust/geometry/src/kernel/plane_weld/contact_stability_tests.rs",
+      "sha256": "5bf08a0633083e18ca9443cd5bc47724a41b23b8dea2976e1108631dae829a2f",
+      "blob": "df94b10929454e6b4df487f033d87478e5e3e493"
+    },
+    {
+      "path": "rust/geometry/src/kernel/plane_weld/transversal_tests.rs",
+      "sha256": "0111740fccf801d45b61c64657ce08adb5fa3a1d40adf44b8a3c5125135ddc1a",
+      "blob": "c0aab4dfde09430bccf3dad0bde96e944dd152e1"
+    },
+    {
+      "path": "rust/geometry/src/kernel/retriangulate_recovery_report_tests.rs",
+      "sha256": "a1bed6c75610123cfbeecc35ea9285ed531eccc4341da5e2ea39b4c49d12d24e",
+      "blob": "25056242cb6d7ca010aa32e7b0c5d3ca6b50a2e6"
+    },
+    {
+      "path": "rust/geometry/src/router/voids/batch_miss_tests.rs",
+      "sha256": "9b5246d54ffd2a61bbd73d197ba9beb6b16c9552c8cd29fd96eaa8f59bfb9348",
+      "blob": "f16ab4f8f8cc9289b31c912bd1ce42be34bf768e"
+    },
+    {
+      "path": "rust/geometry/src/router/voids/flap_clip_tests.rs",
+      "sha256": "7ea7264ee4173a6e4aa661df2ba372915c610ea7b0c2d7c03763feff296c76a7",
+      "blob": "257a0d2d917fcc9d77f02e21450529669569f7b6"
+    },
+    {
+      "path": "rust/geometry/src/zone_split_tests.rs",
+      "sha256": "75fc8574c1fc7881fa3b88e305ddf029b590230f0bb7071fa3af33a92032056f",
+      "blob": "f92bd299414414ecf0e9b689fa42724231301a01"
+    },
+    {
+      "path": "rust/geometry/tests/bool_failure_test.rs",
+      "sha256": "d0f7ff35b7f3d8cffbdd2f49b5215b15fe766f9d18a9a883634c56008a857a75",
+      "blob": "2a1c93cd853504f2d83218287cdebae89fe463ad"
+    }
+  ],
+  "static_checks": {
+    "rust_parser_paths": 15,
+    "production_function_equality_after_removing_cfg_test_statements": {
+      "set_cap": true,
+      "set_element_cap": true,
+      "cap": true,
+      "element_cap": true,
+      "begin": true,
+      "begin_element": true
+    },
+    "defaults_unchanged": true,
+    "no_removed_assertions": true,
+    "diff_check": "passed"
+  },
+  "runtime_validation": "not run; parent coordinates",
+  "head": "6c7edd4d4cd7a0a5b1e60a5dc52809bbbca53da2",
+  "geometry_tree": "bc077b8bb2e5dd264edbfb0681ea51b57ca1bf62",
+  "qualified_source": "6c7edd4d4cd7a0a5b1e60a5dc52809bbbca53da2"
+}

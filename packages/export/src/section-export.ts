@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { GeometryProcessor } from '@ifc-lite/geometry';
-import { IfcParser, EntityExtractor, getAttributeNamesForSchema } from '@ifc-lite/parser';
+import { IfcParser, EntityExtractor, getAttributeNamesForSchema, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor, type IfcAttributeValue } from '@ifc-lite/mutations';
 import { StepExporter } from './step-exporter.js';
 import { pruneReplacedSubgraphs } from './demesh-prune.js';
@@ -148,6 +148,20 @@ export async function exportSectionedStep(content: Uint8Array, options: SectionE
   // Retain logical void/fill relationships; detached cutter representations
   // prevent a second subtraction without orphaning IfcOpeningElement records.
   pruneReplacedSubgraphs(store, editor, oldReps, false, report);
+  pruneUnusedTypeMaps(store, view, editor, entity, new Set(oldReps.keys()));
+  const result = new StepExporter(store, view).export({
+    schema: store.schemaVersion ?? 'IFC4', applyMutations: true, visibleOnly: true, hiddenEntityIds: new Set(plan.outside),
+  });
+  return { content: result.content, trimmed: plan.replacements.map(element => element.expressId), outside: plan.outside };
+}
+
+function pruneUnusedTypeMaps(
+  store: IfcDataStore,
+  view: MutablePropertyView,
+  editor: StoreEditor,
+  entity: (id: number) => ReturnType<EntityExtractor['extractEntity']>,
+  detachedIds: ReadonlySet<number>,
+) {
   // Type libraries are templates, not placed bodies. Keep maps only when a
   // surviving original product representation still instantiates them.
   const roots = new Set<number>();
@@ -155,7 +169,7 @@ export async function exportSectionedStep(content: Uint8Array, options: SectionE
   // @raw-entity-enumeration-ok retained original representations only; detached and tombstoned products are excluded below
   for (const [id, ref] of store.entityIndex.byId) {
     if (view.isDeleted(id)) continue;
-    if (PRODUCT_TYPES.has(ref.type.toUpperCase()) && !oldReps.has(id)) {
+    if (PRODUCT_TYPES.has(ref.type.toUpperCase()) && !detachedIds.has(id)) {
       const representation = entity(id)?.attributes[6];
       if (typeof representation === 'number') roots.add(representation);
     }
@@ -171,10 +185,6 @@ export async function exportSectionedStep(content: Uint8Array, options: SectionE
     const retained = maps.filter(map => used.has(map));
     if (retained.length !== maps.length) editor.setPositionalAttribute(id, slot, retained.length ? retained.map(map => `#${map}`) : null);
   }
-  const result = new StepExporter(store, view).export({
-    schema: store.schemaVersion ?? 'IFC4', applyMutations: true, visibleOnly: true, hiddenEntityIds: new Set(plan.outside),
-  });
-  return { content: result.content, trimmed: plan.replacements.map(element => element.expressId), outside: plan.outside };
 }
 
 function readPlan(text: string): Plan {

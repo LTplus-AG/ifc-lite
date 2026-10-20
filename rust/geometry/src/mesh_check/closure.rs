@@ -12,6 +12,18 @@ use crate::mesh::Mesh;
 /// The 0.1 mm grid every directed closure verdict snaps to.
 const CLOSURE_GRID: VertexKey = VertexKey::GridDiv(1.0e-4);
 
+/// [`CLOSURE_GRID`]'s 0.1 mm pitch expressed in a caller unit, where
+/// `length_unit_scale` is metres per caller unit (`0.001` for millimetres).
+/// `1.0`, and any scale that is not a finite positive number, is the metre
+/// grid itself, bit for bit.
+fn closure_grid_in_units(length_unit_scale: f64) -> VertexKey {
+    if length_unit_scale.is_finite() && length_unit_scale > 0.0 && length_unit_scale != 1.0 {
+        VertexKey::GridDiv(1.0e-4 / length_unit_scale)
+    } else {
+        CLOSURE_GRID
+    }
+}
+
 /// Cached result of the shared 0.1 mm directed-edge walk.
 ///
 /// Strict callers read the directed verdict without running the hairline
@@ -24,7 +36,16 @@ pub struct ClosureVerdict {
 
 impl ClosureVerdict {
     pub fn for_mesh(mesh: &Mesh) -> Self {
-        let ledger = EdgeLedger::build(mesh, CLOSURE_GRID, Degenerate::SkipTriangle);
+        Self::for_mesh_in_units(mesh, 1.0)
+    }
+
+    /// The same walk with the 0.1 mm grid (and so the hairline matcher's
+    /// grid-unit slack) measured in the mesh's own length unit. A mesh still
+    /// in millimetre file units read on the metre grid is audited at 0.1 µm,
+    /// a thousand times finer than the tolerance this verdict documents (#7982).
+    pub fn for_mesh_in_units(mesh: &Mesh, length_unit_scale: f64) -> Self {
+        let grid = closure_grid_in_units(length_unit_scale);
+        let ledger = EdgeLedger::build(mesh, grid, Degenerate::SkipTriangle);
         Self { has_edges: !ledger.is_empty(), bad: ledger.unbalanced().collect() }
     }
 

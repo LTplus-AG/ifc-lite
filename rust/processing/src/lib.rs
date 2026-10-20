@@ -55,6 +55,8 @@ mod prepass_styled;
 pub use prepass_styled::flat_styles_rgba8_from_geometry_columns;
 mod prepass_type_material;
 mod processor;
+mod product_geometry_audit;
+pub use product_geometry_audit::ProductGeometryAudit;
 pub mod scan;
 pub(crate) mod point_pca;
 pub mod scan_proposals;

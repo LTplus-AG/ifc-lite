@@ -51,8 +51,15 @@ describe('runMergeBattery', () => {
     expect(report.certificatesVerified).toBeGreaterThan(0);
     // Rates are well-formed.
     expect(report.conflictRate).toBeCloseTo(report.flaggedConflicts / SCHEDULES, 12);
-    expect(report.falseConflictRate).toBeGreaterThanOrEqual(0);
+    // A range check passes for a constant 0, so the rate is recomputed from
+    // its counts. This seed produces false conflicts, so the guard keeps the
+    // recomputation from degenerating to 0 === 0.
+    expect(report.falseConflicts).toBeGreaterThan(0);
+    expect(report.groundTruthConvergent).toBe(report.autoMerged + report.falseConflicts);
+    expect(report.falseConflictRate).toBeCloseTo(report.falseConflicts / report.groundTruthConvergent, 12);
+    expect(report.falseConflictRate).toBeGreaterThan(0);
     expect(report.falseConflictRate).toBeLessThanOrEqual(1);
+    expect(report.killCriterionPass).toBe(report.falseConflictRate < 0.2);
   }, 120_000);
 
   it('decomposes flagged schedules by which rule fired, exhaustively', async () => {

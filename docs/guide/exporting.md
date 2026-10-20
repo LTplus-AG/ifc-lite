@@ -441,6 +441,12 @@ and an empty `Uint32Array` means "the filter is active and matched nothing",
 which produces an empty `@graph`. Collapsing the two would hand a user who
 asked for a subset the entire model.
 
+Each property node's `@type` preserves its IFC class: `IfcPropertySingleValue`,
+`IfcPropertyEnumeratedValue`, `IfcPropertyListValue`, `IfcPropertyBoundedValue`,
+`IfcPropertyTableValue`, `IfcPropertyReferenceValue`, or `IfcComplexProperty`.
+Single values retain their JSON primitive; the other kinds retain their flat
+text display in `ifc:nominalValue`.
+
 ### JSON-LD Structure
 
 ```json
@@ -1302,7 +1308,28 @@ uses faceted boundary representations rather than IFC4-only tessellations.
 Palette fragments share the source solid's cut topology. Retained faces keep
 their colours; new cut faces use the source representation item's first colour.
 A failed geometry intersection refuses the export instead of handing over an
-uncut product. Schema conversion retains its existing conversion limitations.
+uncut product. Before classifying even a fully inside product, section export
+requires a completed per-product processing receipt, readable body/placement
+references, and no recorded item loss, input refusal, CSG diagnostic/fallback,
+or degenerate-triangle drop. Model-wide diagnostics also refuse the operation:
+shared geometry caches do not yet retain enough provenance to attribute every
+loss to every affected product. A partially meshed product is never treated as
+a complete body just because one of its items produced a mesh.
+
+Trimming textured products is currently unsupported. If a textured product
+needs replacement geometry, the operation reports an error and produces no
+download; it never substitutes plain colour or uncut geometry. Fully inside
+products and crossing products in whole-element mode retain their authored
+texture and UV attachments. Entirely excluded textured products can be omitted.
+These rules also cover source texture attachments whose image or UV data could
+not be decoded. Schema conversion retains its existing conversion limitations.
+
+Rust callers needing processing receipts can return a request-local
+`ProductGeometryAudit` from `ProcessingSink::product_geometry_audit` when calling
+`process`. `require_complete(product_id)` refuses missing receipts and recorded
+loss/refusal/CSG diagnostics. This receipt is a diagnostic contract, not a source
+integrity or shared-cache provenance proof; section export additionally checks
+those conditions before accepting a crop.
 
 Programs can crop an already exported, mutation-resolved STEP buffer with the
 same Rust implementation. Planes are IFC world coordinates (Z-up), in metres;

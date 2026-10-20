@@ -1,0 +1,26 @@
+diff --git b/rust/geometry/src/processors/tessellated/polygonal_plan.rs a/rust/geometry/src/processors/tessellated/polygonal_plan.rs
+index fcd2fb4847..029211b4e3 100644
+--- b/rust/geometry/src/processors/tessellated/polygonal_plan.rs
++++ a/rust/geometry/src/processors/tessellated/polygonal_plan.rs
+@@ -213,7 +213,7 @@ impl PolygonalFaceSetPlan {
+         // Closed shells from some exporters may be consistently inward.
+         // Flip globally to outward winding when needed, under the one
+         // `Closed` policy shared with the triangulated processor.
+-        if false && orient_outward {
++        if orient_outward {
+             PolygonalFaceSetProcessor::orient_closed_shell_outward(&positions, &mut indices);
+         }
+ 
+diff --git b/rust/geometry/src/processors/tessellated/triangulated_plan.rs a/rust/geometry/src/processors/tessellated/triangulated_plan.rs
+index 4971d95d89..a46a1565e3 100644
+--- b/rust/geometry/src/processors/tessellated/triangulated_plan.rs
++++ a/rust/geometry/src/processors/tessellated/triangulated_plan.rs
+@@ -108,7 +108,7 @@ impl TriangulatedFaceSetPlan {
+                 .collect();
+             authored = Some(std::mem::replace(&mut indices, remapped));
+         }
+-        let flipped = false && self.orient_outward
++        let flipped = self.orient_outward
+             && PolygonalFaceSetProcessor::orient_closed_shell_outward(
+                 &self.positions,
+                 &mut indices,

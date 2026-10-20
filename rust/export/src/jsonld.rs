@@ -6,7 +6,7 @@
 use serde_json::{json, Value};
 
 use crate::json::{finite_json_number, typed_value};
-use crate::model::build_export_model;
+use ifc_lite_processing::data_model::rows::stream_export_model_with_property_kinds;
 
 const DEFAULT_CONTEXT: &str = "https://standards.buildingsmart.org/IFC/DEV/IFC4/ADD2/OWL";
 
@@ -52,15 +52,14 @@ pub fn export_jsonld_with_filter(
     opts: &JsonLdOptions,
     included: Option<&[u32]>,
 ) -> String {
-    let model = build_export_model(content);
     let filter: Option<std::collections::HashSet<u32>> =
         included.map(|ids| ids.iter().copied().collect());
-    let mut graph: Vec<Value> = Vec::with_capacity(model.entities.len());
+    let mut graph: Vec<Value> = Vec::new();
 
-    for e in &model.entities {
+    stream_export_model_with_property_kinds(content, |e, kinds| {
         if let Some(set) = &filter {
             if !set.contains(&e.express_id) {
-                continue;
+                return;
             }
         }
         let mut node = serde_json::Map::new();
@@ -78,13 +77,15 @@ pub fn export_jsonld_with_filter(
             let psets: Vec<Value> = e
                 .property_sets
                 .iter()
-                .map(|ps| {
+                .zip(kinds)
+                .map(|(ps, kinds)| {
                     let props: Vec<Value> = ps
                         .properties
                         .iter()
-                        .map(|p| {
+                        .zip(kinds)
+                        .map(|(p, kind)| {
                             json!({
-                                "@type": "ifc:IfcPropertySingleValue",
+                                "@type": format!("ifc:{}", ifc_lite_core::ifc_type_from_keyword(kind.class_keyword()).name()),
                                 "ifc:name": p.name,
                                 "ifc:nominalValue": typed_value(p),
                             })
@@ -119,7 +120,7 @@ pub fn export_jsonld_with_filter(
         }
 
         graph.push(Value::Object(node));
-    }
+    });
 
     let doc = json!({
         "@context": { "@vocab": format!("{}#", opts.context), "ifc": format!("{}#", opts.context) },

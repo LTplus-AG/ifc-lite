@@ -2,7 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use super::*;
+use super::stack::merge_thin_layers;
+use crate::material_layer_index::LayerInfo;
 
 fn li(material: u32, thickness: f64) -> LayerInfo {
     LayerInfo { material_id: material, thickness }

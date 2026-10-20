@@ -938,3 +938,6 @@ fn emit_scalar_adjoint_cross_check_points() {
     println!("[{}]", rows.join(","));
     println!("SCALAR_ADJOINT_XCHECK_END");
 }
+
+#[path = "profile_cap_adjoint_tests.rs"]
+mod cap_retry_tests;

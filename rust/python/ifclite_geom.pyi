@@ -649,12 +649,16 @@ def entity_data(
     Pass ``type_properties=False`` for own-sets-only, as in 4.3.0, which
     affects ``property_sets`` and ``quantity_sets`` alike.
 
-    Every property kind is decoded. An ``IfcPropertySingleValue`` keeps its
-    typed value; an enumerated, list, bounded, table, reference or complex
-    property arrives as its display string (``"A, B"``, ``"2 [1 – 5]"``,
-    ``"Table (2 rows)"``, the referenced object's name), typed as text, with
-    ``value_type`` set to the members' shared type tag or else the property
-    class (``IFCPROPERTYTABLEVALUE``, ...).
+    Each property dictionary contains ``name``, ``value`` and ``value_type``.
+    Every property kind is decoded. An ``IfcPropertySingleValue`` returns its
+    nominal value as a string; an enumerated, list, bounded, table, reference
+    or complex property returns its display string (``"A, B"``, ``"2 [1 – 5]"``,
+    ``"Table (2 rows)"``). A reference uses the target's nonblank ``Name``, else
+    its nonblank ``Identification``, else ``#<id>``. For
+    ``IfcPropertySingleValue``, ``value_type`` is the nominal value's rendered
+    type tag (for example, ``IFCLABEL`` or ``IFCREAL``). For other property
+    kinds, it is the members' shared type tag or else the property class
+    (``IFCPROPERTYTABLEVALUE``, ...).
 
     ``attributes`` (on by default) returns each entity's SCHEMA-DECLARED IFC
     attributes, which are not property sets and which no amount of pset work

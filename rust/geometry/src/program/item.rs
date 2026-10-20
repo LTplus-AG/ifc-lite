@@ -138,6 +138,12 @@ fn execute_source(
     let quality = router.tessellation_quality();
     let ((lowered, mut reports), reached) = diagnostic_capture::capture(|| {
         let mut prior = UnwindReports(Some(prior));
+        let lower_plain = |decoder: &mut EntityDecoder| {
+            match processor.lower_owned(item, decoder, quality, None) {
+                Some(plan) => Lowered::Plan(plan, false),
+                None => Lowered::Next(ItemPhase::PlainExtension),
+            }
+        };
         let lowered = match phase {
             // Raw-coordinate items rebase by `offset` (model RTC in the item's
             // own frame) in f64 before f32 narrowing, only when that reduces
@@ -147,7 +153,9 @@ fn execute_source(
                     Some(plan) => Lowered::Plan(plan, true),
                     None => Lowered::Next(ItemPhase::RtcExtension(rtc)),
                 },
-                None => Lowered::Next(ItemPhase::LowerPlain),
+                // No rebase: plain lowering is the same source stage, so it
+                // runs in this step rather than costing a round trip per item.
+                None => lower_plain(decoder),
             },
             ItemPhase::RtcExtension(rtc) => {
                 match processor.process_in_rtc_frame(item, decoder, router.schema(), quality, rtc) {
@@ -155,10 +163,7 @@ fn execute_source(
                     None => Lowered::Next(ItemPhase::LowerPlain),
                 }
             }
-            ItemPhase::LowerPlain => match processor.lower_owned(item, decoder, quality, None) {
-                Some(plan) => Lowered::Plan(plan, false),
-                None => Lowered::Next(ItemPhase::PlainExtension),
-            },
+            ItemPhase::LowerPlain => lower_plain(decoder),
             ItemPhase::PlainExtension => {
                 Lowered::Mesh(processor.process(item, decoder, router.schema(), quality), false)
             }

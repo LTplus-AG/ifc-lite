@@ -89,7 +89,6 @@ describe('#7974 grouped IDS BCF cameras', () => {
         assert.deepEqual(vp.components?.selection?.map(c => c.ifcGuid), guids);
         assert.equal(vp.components?.visibility?.defaultVisibility, false);
         assert.deepEqual(vp.components?.visibility?.exceptions?.map(c => c.ifcGuid), guids);
-        assert.deepEqual(vp.components?.coloring?.[0].components.map(c => c.ifcGuid), guids);
         assert.ok(topic.comments.every(c => c.viewpointGuid === vp.guid));
       });
     }

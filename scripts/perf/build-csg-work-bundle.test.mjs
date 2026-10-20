@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -27,7 +27,7 @@ function builderTest(name, body) {
   });
 }
 // No substitute implementation; a missing module reaches the assertion above.
-const { parsePorcelain, run } = existsSync(builderUrl) ? await import(builderUrl.href) : {};
+const { inspectRustLibraryProvenance, parsePorcelain, run } = existsSync(builderUrl) ? await import(builderUrl.href) : {};
 
 builderTest('#6516 builder keeps porcelain status columns and captures child stdout separately from its log path', async () => {
   assert.deepEqual(parsePorcelain(' M tracked.rs\n?? new.rs\n'), [' M tracked.rs', '?? new.rs']);
@@ -41,6 +41,25 @@ builderTest('#6516 builder keeps porcelain status columns and captures child std
     assert.equal(result.stdout, 'logs/stdout-probe.stdout.log');
     assert.equal(await readFile(join(root, result.stdout), 'utf8'), expected);
     assert.equal(result.stdoutSha256, createHash('sha256').update(expected).digest('hex'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+builderTest('#6516 pinned rust-src prefetch refuses missing or mismatched lock provenance', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'csg-bundle-rust-src-test-'));
+  const library = join(root, 'lib', 'rustlib', 'src', 'rust', 'library');
+  const lockContents = 'version = 4\n\n[[package]]\nname = "fixture"\nversion = "1.0.0"\n';
+  const lockSha256 = createHash('sha256').update(lockContents).digest('hex');
+  try {
+    await mkdir(library, { recursive: true });
+    await writeFile(join(library, 'Cargo.toml'), '[workspace]\nmembers = []\n');
+    await assert.rejects(inspectRustLibraryProvenance(root), /Cargo\.lock missing/);
+    await writeFile(join(library, 'Cargo.lock'), lockContents);
+    await assert.rejects(inspectRustLibraryProvenance(root), /Cargo\.lock SHA-256 mismatch/);
+    const provenance = await inspectRustLibraryProvenance(root, lockSha256);
+    assert.equal(provenance.lockSha256, lockSha256);
+    assert.match(provenance.manifestSha256, /^[a-f0-9]{64}$/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -39,26 +39,23 @@ describe('parseCapability — happy path', () => {
   it('parses prefix glob within a segment', () => {
     const r = parseCapability('model.mutate:Pset_*');
     expect(r.ok).toBe(true);
-    if (r.ok && r.value.target) {
-      expect(r.value.target.segments).toEqual([{ kind: 'literal', value: 'Pset_*' }]);
-    }
+    // Read through `?.` so a dropped target fails the assertion instead of skipping it.
+    expect(r.ok ? r.value.target?.segments : undefined).toEqual([{ kind: 'literal', value: 'Pset_*' }]);
   });
 
   it('parses dotted target with mixed literals and globs', () => {
     const r = parseCapability('model.mutate:Pset_*.FireRating');
     expect(r.ok).toBe(true);
-    if (r.ok && r.value.target) {
-      expect(r.value.target.segments).toHaveLength(2);
-    }
+    expect(r.ok ? r.value.target?.segments : undefined).toHaveLength(2);
   });
 
   it('parses bare-* segments', () => {
     const r = parseCapability('command.invoke:*.export');
     expect(r.ok).toBe(true);
-    if (r.ok && r.value.target) {
-      expect(r.value.target.segments[0]).toEqual({ kind: 'glob' });
-      expect(r.value.target.segments[1]).toEqual({ kind: 'literal', value: 'export' });
-    }
+    expect(r.ok ? r.value.target?.segments : undefined).toEqual([
+      { kind: 'glob' },
+      { kind: 'literal', value: 'export' },
+    ]);
   });
 
   it('parses each scope', () => {

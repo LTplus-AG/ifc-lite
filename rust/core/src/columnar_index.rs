@@ -68,7 +68,6 @@ pub struct ColumnarEntityIndex {
     // One source-scoped inverse lookup shared by native jobs and WASM batches.
     pub(crate) styled_item_index: std::sync::OnceLock<crate::decoder::StyledItemIndexResult>,
     pub(crate) grid_axis_index: Arc<crate::decoder::GridAxisIndex>,
-    uniform_precision: Arc<crate::decoder::UniformContextPrecisionCache>,
 }
 
 /// The three columns handed to [`ColumnarEntityIndex::from_columns`] or
@@ -151,7 +150,7 @@ impl ColumnarEntityIndex {
                 starts,
                 lengths,
                 styled_item_index: std::sync::OnceLock::new(),
-                grid_axis_index: Arc::default(), uniform_precision: Arc::default(),
+                grid_axis_index: Arc::default(),
             });
         }
         Ok(Self::from_unsorted(ids, starts, lengths))
@@ -195,7 +194,7 @@ impl ColumnarEntityIndex {
             starts,
             lengths,
             styled_item_index: std::sync::OnceLock::new(),
-            grid_axis_index: Arc::default(), uniform_precision: Arc::default(),
+            grid_axis_index: Arc::default(),
         })
     }
 
@@ -293,7 +292,7 @@ impl ColumnarEntityIndex {
             starts: out_starts,
             lengths: out_lengths,
             styled_item_index: std::sync::OnceLock::new(),
-            grid_axis_index: Arc::default(), uniform_precision: Arc::default(),
+            grid_axis_index: Arc::default(),
         }
     }
 
@@ -389,8 +388,9 @@ impl<'a> crate::EntityDecoder<'a> {
     /// [`EntityDecoder::set_entity_index`](crate::EntityDecoder::set_entity_index)
     /// but for the compact representation; afterwards `build_index` no-ops.
     pub fn set_columnar_index(&mut self, index: Arc<ColumnarEntityIndex>) {
+        self.execution_owner.changed();
+        self.source_bundle = None;
         self.set_grid_axis_index(index.grid_axis_index.clone());
-        self.set_uniform_context_precision_cache(index.uniform_precision.clone());
         self.entity_index = Some(EntityIndexStore::Columnar(index));
     }
 }

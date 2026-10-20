@@ -1,0 +1,73 @@
+{
+  "qualifiedProductSource": "43ecf3aa3e240e1a7c41c5c799212b60df010ebd",
+  "publishedDocumentationAndTestFollowUp": "cd61a7d9b9626924376bd1d4fb96472968ccec06",
+  "productSourceAndBuildConfigurationUnchanged": true,
+  "completeTreeDiffExceptQualifiedSource": [
+    ":100644 100644 775c3300abf1fb1a64c74959e2a6e1e70bcce9ca 9da50b2357ac564448ed5864da1b022541849d08 M\tapps/viewer/src/lib/commands/modeling/storey-live-frame.test.ts",
+    ":100644 100644 191f7b0f1f1458f1dc2faeb4e2f53340c7f6a6b1 568a163de6aa5e377bb38c0f5967dd82b9da4956 M\tdocs/architecture/evidence/issue-7292/README.md",
+    ":000000 100644 0000000000000000000000000000000000000000 5d900c009f3dea1cf4ad7de17bc65753146777cd A\tdocs/architecture/evidence/issue-7292/final-43ec-validation.json",
+    ":000000 100644 0000000000000000000000000000000000000000 253c5e376b2cdbc50be62dfbfdff4afc9f14ef62 A\tdocs/architecture/evidence/issue-7292/final-43ec-validation.manifest.json",
+    ":000000 100644 0000000000000000000000000000000000000000 2335d9bd27e89f524c2a848162c1f73c3b78f66a A\tdocs/architecture/evidence/issue-7292/final-43ec-validation.tar.gz",
+    ":100644 100644 e7aa34638a0417933a935fefb42d6e81b8382a92 47cb061c4b66b27e5b4268f10ebe971d00d88863 M\tscripts/perf/README.md"
+  ],
+  "onlyNonDocumentationException": "apps/viewer/src/lib/commands/modeling/storey-live-frame.test.ts",
+  "testOnlyConflictResolution": {
+    "commit": "6ebdba18102527d26fab63a9c79ab73960076fb2",
+    "passed": 15,
+    "skipped": 0,
+    "exitCode": 0,
+    "reaped": true,
+    "actualRootTurboTestCommand": "TEST_PATTERN=storey-live-frame.test pnpm test --filter=@ifc-lite/viewer --only --force --concurrency=2 --env-mode=loose",
+    "actualRootTurboViewerTypecheckCommand": "pnpm exec turbo run typecheck --filter=@ifc-lite/viewer --only --force --concurrency=2 --env-mode=loose",
+    "viewerTypecheckExitCode": 0,
+    "testLogSHA256": "e68024f94619750972b879e7050e75d2d89568a73c711250f4d288e02331fcfc",
+    "typecheckLogSHA256": "a8f1677ce7fdfdbe73940eeff5a4525ddb0a2cd691af255b31b2d62ad8a8b481",
+    "sameSourceOfficialRuntimeTransferred": {
+      "qualifiedSource": "43ecf3aa3e240e1a7c41c5c799212b60df010ebd",
+      "testOnlyFollowUp": "6ebdba18102527d26fab63a9c79ab73960076fb2",
+      "files": [
+        {
+          "file": "ifc-lite_bg.wasm",
+          "bytes": 9989671,
+          "sha256": "079deb33760a091ff0df25970e12f087eb3d8c4c15f3e88ce854b63f6809f73f"
+        },
+        {
+          "file": "ifc-lite.js",
+          "bytes": 308669,
+          "sha256": "941031903a209b8ece2bee739ff5b73f4340d001f068c5efeb5c46863cedda23"
+        },
+        {
+          "file": "ifc-lite.d.ts",
+          "bytes": 167629,
+          "sha256": "4b2799a5c8670c65620afb3b368bbab57da0bfbd53621c2ecf10b86d5c0bc7c9"
+        },
+        {
+          "file": "package.json",
+          "bytes": 559,
+          "sha256": "9232de40962f329d8cc52bdee826ea878789839176dd446e4db30e2b6f1c381f"
+        }
+      ]
+    }
+  },
+  "crossPlatform": {
+    "actualSource": "43ecf3aa3e240e1a7c41c5c799212b60df010ebd",
+    "conclusion": "success",
+    "url": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39077407119",
+    "jobs": [
+      {
+        "name": "arm64 mesh-stat parity vs committed x86_64 snapshots",
+        "conclusion": "success"
+      },
+      {
+        "name": "wasm32 mesh-output manifest vs pinned native manifest pair",
+        "conclusion": "success"
+      },
+      {
+        "name": "report-scheduled-failure",
+        "conclusion": "skipped"
+      }
+    ]
+  },
+  "currentRequiredHostedChecksNotQualifiedByHistoricalEvidence": true,
+  "performance": "NO_VERDICT; no runtime budget approval condition asserted"
+}

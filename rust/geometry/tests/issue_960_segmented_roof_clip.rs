@@ -293,26 +293,36 @@ fn segmented_roof_walls_boundary_area_vector_is_negligible() {
     // catching anything a human would call a hole.
     let max_hole_fraction = 1e-6_f64;
 
-    // MEASURED, not assumed: with `csg_topology_gate` alone (a CI-only,
-    // off-by-default-in-production accept gate — see its Cargo.toml doc
-    // comment), the #3919 accept-gate rejects wall #2152's unioned-cutter
-    // subtract and defers to the sequential per-cutter path, which here hits
-    // the `#635` AABB-fallback branch (`[issue-635] AABB fallback used`,
-    // printed below) for a full-cross-section cutter. That fallback's own
-    // result carries a genuine — not hairline — 63 mm² opening on this
+    // MEASURED, not assumed: with BOTH accept gates (a CI-only combination
+    // no shipping build enables, see their Cargo.toml doc comments), the
+    // manifold gate rejects wall #2152's unioned-cutter subtract
+    // (`NonManifoldRejected { over_used: 4 }`) and #3919 defers to the
+    // sequential per-cutter path. On that host the topology gate then rejects
+    // the three opening cuts, so each takes the `#635` AABB-fallback branch
+    // (`[issue-635] AABB fallback used`, printed below), and that fallback's
+    // own result carries a genuine, not hairline, 63 mm² opening on this
     // ~39 m² wall (`|A|` ~= 126.8, fraction ~= 1.63e-6): small enough that the
-    // existing 25 mm Z-bounds pin above cannot see it, but a real hole per
-    // this finer measure. It does NOT reproduce with `csg_manifold_gate`
-    // alone, nor with both gates together (both measured at ~4e-9, same as
-    // the default build) — so it is specific to `csg_topology_gate` alone
-    // choosing that fallback for this wall, not a property of the union path
-    // this issue is about. Since this gate combination never ships, this is
-    // recorded as a MEASURED, pinned exception (moving it means the gate,
-    // the fallback, or this wall's geometry moved and needs re-measuring),
-    // not silently widened tolerance for the default path above.
-    #[cfg(all(feature = "csg_topology_gate", not(feature = "csg_manifold_gate")))]
+    // 25 mm Z-bounds pin above cannot see it, but a real hole per this finer
+    // measure.
+    //
+    // It is an artifact of this test's units, not of the gates' production
+    // output: the walls are processed at router scale 1.0 although the file
+    // is in millimetres, so the void path's metre-calibrated tolerances read
+    // millimetre coordinates. The same both-gates run at the file's real
+    // scale (0.001, metres) reads 1.64e-7 on #2152, below the default build's
+    // 3.24e-7 at that scale (#7982).
+    //
+    // Until #7982 this exception sat on `csg_topology_gate` ALONE, where the
+    // topology gate rejected the unioned-cutter subtract itself: it audited
+    // the boolean path's millimetre operands on the metre 0.1 mm grid, i.e.
+    // at 0.1 µm. Its grid now follows the processor's length unit, so that
+    // false rejection is gone and topology-alone reads ~2.9e-8; the hole now
+    // reproduces only when the manifold gate forces the sequential host.
+    // Moving it again means the gates, the fallback, or this wall's geometry
+    // moved and needs re-measuring, not re-pinning.
+    #[cfg(all(feature = "csg_topology_gate", feature = "csg_manifold_gate"))]
     let gated_exception = |id: u32| if id == 2152 { Some(2e-6_f64) } else { None };
-    #[cfg(not(all(feature = "csg_topology_gate", not(feature = "csg_manifold_gate"))))]
+    #[cfg(not(all(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
     let gated_exception = |_id: u32| None::<f64>;
 
     for (id, gid) in cases {

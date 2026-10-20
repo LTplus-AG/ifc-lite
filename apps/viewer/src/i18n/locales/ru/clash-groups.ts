@@ -1,0 +1,77 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const clashGroupsRu = {
+  "clashGroups.expand": "Развернуть {name}",
+  "clashGroups.collapse": "Свернуть {name}",
+  "clashGroups.focus": "Показать крупно все объекты этой группы",
+  "clashGroups.addToGroup": "Добавить выбранные коллизии в эту группу",
+  "clashGroups.createBcf": "Создать одну тему BCF из этой группы",
+  "clashGroups.rename": "Переименовать эту группу",
+  "clashGroups.ungroup": "Разгруппировать эти коллизии",
+  "clashGroups.select": "Выбрать коллизию {first} и {second}",
+  "clashGroups.selectForGrouping": "Выбрать эту коллизию для ручной группировки",
+  "clashGroups.removeMember": "Удалить эту коллизию из группы",
+  "clashGroups.createTitle": "Сгруппировать выбранные коллизии",
+  "clashGroups.renameTitle": "Переименовать группу коллизий",
+  "clashGroups.addToGroupTitle": "Добавить коллизии в группу",
+  "clashGroups.createDescription": {
+    one: "{count} выбранная коллизия будет представлена как одно разворачиваемое координационное замечание.",
+    few: "{count} выбранные коллизии будут представлены как одно разворачиваемое координационное замечание.",
+    many: "{count} выбранных коллизий будут представлены как одно разворачиваемое координационное замечание.",
+    other: "{count} выбранной коллизии будет представлено как одно разворачиваемое координационное замечание.",
+  },
+  "clashGroups.renameDescription": "Состав группы не изменяется.",
+  "clashGroups.addToGroupDescription": {
+    one: "{count} выбранная коллизия будет добавлена в {name}.",
+    few: "{count} выбранные коллизии будут добавлены в {name}.",
+    many: "{count} выбранных коллизий будут добавлены в {name}.",
+    other: "{count} выбранной коллизии будет добавлено в {name}.",
+  },
+  "clashGroups.alreadyGroupedError": "Перед добавлением в другую группу удалите уже сгруппированные коллизии из текущей группы.",
+  "clashGroups.name": "Название группы",
+  "clashGroups.cancel": "Отменить",
+  "clashGroups.create": "Создать группу",
+  "clashGroups.add": "Добавить",
+  "clashGroups.saveName": "Сохранить имя",
+  "clashGroups.view.pairs": "Пары",
+  "clashGroups.view.issues": "Замечания",
+  "clashGroups.view.groups": "Группы",
+  "clashGroups.viewTitle": "Замечания объединяют соседние пары в пределах {distance} м; группы вы выбираете и называете сами",
+  "clashGroups.issuePairs": "{issues} · {pairs}",
+  "clashGroups.groupPairs": "{groups} · {pairs}",
+  "clashGroups.clashSummary": "{clashes}",
+  "clashGroups.clashSummaryShown": "{clashes} · {shown} показано",
+  "clashGroups.clashSummaryIssues": "{clashes} · {issues}",
+  "clashGroups.clashSummaryShownIssues": "{clashes} · {shown} показано · {issues}",
+  "clashGroups.issueCount": {
+    one: "{count} замечание",
+    many: "{count} замечаний",
+    other: "{count} замечания",
+  },
+  "clashGroups.groupCount": {
+    one: "{count} группа",
+    many: "{count} групп",
+    other: "{count} группы",
+  },
+  "clashGroups.pairCount": {
+    one: "{count} пара",
+    many: "{count} пар",
+    other: "{count} пары",
+  },
+  "clashGroups.clashCount": {
+    one: "{count} коллизия",
+    many: "{count} коллизий",
+    other: "{count} коллизии",
+  },
+  "clashGroups.severity.critical": "Критическая",
+  "clashGroups.severity.major": "Значительная",
+  "clashGroups.severity.minor": "Незначительная",
+  "clashGroups.severity.info": "Информационная",
+  "clashGroups.workspace": "Рабочее пространство группировки",
+  "clashGroups.defaultWorkspace": "Ручные группы коллизий",
+  "clashGroups.storageNotReady": "Хранилище группировок не готово или распределение участников по группам некорректно. Сохраните этот черновик и повторите попытку после восстановления.",
+} satisfies Catalogue;

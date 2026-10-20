@@ -12,7 +12,8 @@
  */
 
 import { useState } from 'react';
-import { ChevronDown, Trash2 } from 'lucide-react';
+import { ArrowUp, ArrowDown, ChevronDown, Trash2 } from 'lucide-react';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -37,14 +38,40 @@ export interface RuleCardProps {
   onRemove: () => void;
   models: ReadonlyArray<FilterGroupEditorModel>;
   schemaVersion?: string;
+  reorder?: {
+    canMoveUp: boolean;
+    canMoveDown: boolean;
+    onMoveUp: () => void;
+    onMoveDown: () => void;
+  };
 }
 
-export function RuleCard({ rule, onChange, onRemove, models, schemaVersion }: RuleCardProps) {
+export function RuleCard({ rule, onChange, onRemove, models, schemaVersion, reorder }: RuleCardProps) {
   const { t } = useTranslation();
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   return (
     <div className="flex flex-col gap-3 rounded border border-zinc-200 p-3 dark:border-zinc-800">
+      {reorder && (
+        <div className="flex justify-end gap-1">
+          <IconButton
+            label={t('validationEditor.ruleCard.moveUp', { name: rule.name })}
+            onClick={reorder.onMoveUp}
+            disabled={!reorder.canMoveUp}
+            className="h-7 w-7"
+          >
+            <ArrowUp className="h-3.5 w-3.5" />
+          </IconButton>
+          <IconButton
+            label={t('validationEditor.ruleCard.moveDown', { name: rule.name })}
+            onClick={reorder.onMoveDown}
+            disabled={!reorder.canMoveDown}
+            className="h-7 w-7"
+          >
+            <ArrowDown className="h-3.5 w-3.5" />
+          </IconButton>
+        </div>
+      )}
       <div className="flex items-start gap-2">
         <div className="flex flex-1 flex-col gap-1.5">
           <Input

@@ -15,7 +15,8 @@
 
 use crate::{Error, Result};
 use ifc_lite_core::{
-    extract_face_indices_from_entity, AttributeValue, DecodedEntity, EntityDecoder, INVALID_INDEX,
+    extract_face_indices_from_entity, slot, AttributeValue, DecodedEntity, EntityDecoder,
+    INVALID_INDEX,
 };
 
 /// `PnIndex` (attribute `attr`) as 0-based `Coordinates` positions, or
@@ -33,7 +34,11 @@ pub(super) fn read_pn_index(entity: &DecodedEntity, attr: usize) -> Option<Vec<u
     if list.iter().any(|v| v.as_list().is_some()) {
         return None;
     }
-    Some(list.iter().map(|v| v.as_ifc_index().unwrap_or(INVALID_INDEX)).collect())
+    Some(
+        list.iter()
+            .map(|v| v.as_ifc_index().unwrap_or(INVALID_INDEX))
+            .collect(),
+    )
 }
 
 /// A 0-based CoordIndex corner as a 0-based `Coordinates` position: itself
@@ -43,7 +48,10 @@ pub(super) fn read_pn_index(entity: &DecodedEntity, attr: usize) -> Option<Vec<u
 pub(super) fn through_pn_index(corner: u32, pn_index: Option<&[u32]>) -> u32 {
     match pn_index {
         None => corner,
-        Some(pn_index) => pn_index.get(corner as usize).copied().unwrap_or(INVALID_INDEX),
+        Some(pn_index) => pn_index
+            .get(corner as usize)
+            .copied()
+            .unwrap_or(INVALID_INDEX),
     }
 }
 
@@ -52,7 +60,9 @@ pub(super) fn through_pn_index(corner: u32, pn_index: Option<&[u32]>) -> u32 {
 /// (which drops the whole face there).
 #[inline]
 pub(super) fn polygon_corner(value: &AttributeValue, pn_index: Option<&[u32]>) -> u32 {
-    let corner = value.as_ifc_index().map_or(INVALID_INDEX, |z| through_pn_index(z, pn_index));
+    let corner = value
+        .as_ifc_index()
+        .map_or(INVALID_INDEX, |z| through_pn_index(z, pn_index));
     corner.checked_add(1).unwrap_or(0)
 }
 
@@ -64,11 +74,14 @@ pub(super) fn read_triangle_coord_index(
     entity: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Result<Vec<u32>> {
-    if let Some(indices) = decoder.get_raw_bytes(entity.id).and_then(extract_face_indices_from_entity) {
+    if let Some(indices) = decoder
+        .get_raw_bytes(entity.id)
+        .and_then(extract_face_indices_from_entity)
+    {
         return Ok(indices);
     }
     let face_list = entity
-        .get(3)
+        .attr(slot::IfcTriangulatedFaceSet::COORD_INDEX)
         .ok_or_else(|| Error::geometry("TriangulatedFaceSet missing CoordIndex".to_string()))?
         .as_list()
         .ok_or_else(|| Error::geometry("Expected face index list".to_string()))?;

@@ -1,0 +1,65 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const changeSetsRu = {
+  "changeSets.panel.title": "Наборы изменений",
+  "changeSets.panel.close": "Закрыть наборы изменений",
+  "changeSets.panel.count": {
+    one: "{count} набор",
+    many: "{count} наборов",
+    other: "{count} набора",
+  },
+  "changeSets.panel.intro": "Новые изменения добавляются в активный набор изменений. Экспортируйте его, чтобы поделиться им в виде файла.",
+  "changeSets.empty": "Пока нет наборов изменений. Ваше первое редактирование запускает набор под названием \"Несохранённые изменения\", или создайте его прямо сейчас.",
+  "changeSets.noActive": "Нет активного набора изменений. Следующая правка создаст \"Несохранённые изменения\".",
+  "changeSets.defaultName": "Набор изменений {number}",
+  "changeSets.new": "Новый",
+  "changeSets.newTitle": "Новый набор изменений",
+  "changeSets.newDescription": "Укажите название набора изменений. Новые правки будут внесены в него.",
+  "changeSets.import": "Импортировать",
+  "changeSets.importFailed": "{file} не является файлом набора изменений.",
+  "changeSets.importDone": "Импортировано {name}.",
+  "changeSets.row.edits": {
+    one: "{count} правка",
+    many: "{count} правок",
+    other: "{count} правки",
+  },
+  "changeSets.row.created": "Создано {time}",
+  "changeSets.row.active": "Активный",
+  "changeSets.row.setActive": "Установить активным",
+  "changeSets.row.activate": "Установить активным: {name}",
+  "changeSets.row.deactivate": "Активный: {name}. Нажмите, чтобы прекратить добавлять в него правки",
+  "changeSets.row.show": "Показать изменения в {name}",
+  "changeSets.row.hide": "Скрыть изменения в {name}",
+  "changeSets.row.rename": "Переименовать {name}",
+  "changeSets.row.export": "Экспортировать {name}",
+  "changeSets.row.discard": "Удалить {name}",
+  "changeSets.renameTitle": "Переименовать набор изменений",
+  "changeSets.renameDescription": "Новое название для {name}.",
+  "changeSets.discardTitle": "Удалить набор изменений",
+  "changeSets.discardDescription": {
+    one: "Удалить {name} и содержащиеся в нём записи о {count} правке? Правки останутся в модели; удалится только их список.",
+    few: "Удалить {name} и содержащиеся в нём записи о {count} правках? Правки останутся в модели; удалится только их список.",
+    many: "Удалить {name} и содержащиеся в нём записи о {count} правках? Правки останутся в модели; удалится только их список.",
+    other: "Удалить {name} и содержащиеся в нём записи о {count} правки? Правки останутся в модели; удалится только их список.",
+  },
+  "changeSets.discardConfirm": "Удалить",
+  "changeSets.contents.empty": "В этом наборе изменений пока нет правок.",
+  "changeSets.contents.entity": "{type} #{id}",
+  "changeSets.contents.modelLevel": "Изменения в масштабе всей модели",
+  "changeSets.contents.select": "Выбрать {entity} в {model}",
+  "changeSets.contents.edits": {
+    one: "{count} правка",
+    many: "{count} правок",
+    other: "{count} правки",
+  },
+  "changeSets.contents.created": "Создано",
+  "changeSets.contents.deleted": "Удалено",
+  "changeSets.contents.retyped": "Класс изменился",
+  "changeSets.rail.label": "Наборы изменений",
+  "changeSets.rail.active": "Активный: {name}",
+  "changeSets.rail.none": "Нет активного набора изменений",
+} satisfies Catalogue;

@@ -7,7 +7,7 @@
 use super::EntityDecoder;
 use crate::{parser::EntityScanner, slot, AttributeValue, IfcType};
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 
 /// A single project's explicit SI length unit and uniform 3D context tree.
 /// Values are in file units; there is no inferred/default Precision or unit.
@@ -21,20 +21,17 @@ pub struct UniformContextPrecision {
     pub precision: f64,
 }
 
-/// Lazy certification for ONE immutable source, shared by its fresh decoders.
-/// Successful and declined results are retained. Strict geometry admission and
-/// permissive data-model decoding have independent cells; never share across
-/// source files. Compact indexes carry their own cache automatically.
+/// Private once cells owned by the immutable SourceBundle, never by a supplied
+/// index or a separately installed cache. Strict and permissive reads differ.
 #[derive(Default)]
-pub struct UniformContextPrecisionCache {
+pub(crate) struct UniformContextPrecisionCache {
     strict: OnceLock<Option<UniformContextPrecision>>,
     permissive: OnceLock<Option<UniformContextPrecision>>,
 }
 
 #[derive(Default)]
 pub(super) struct PrecisionCache {
-    local: Option<(bool, Option<UniformContextPrecision>)>,
-    shared: Option<Arc<UniformContextPrecisionCache>>,
+    pub(super) local: Option<(bool, Option<UniformContextPrecision>)>,
     #[cfg(test)]
     scans: usize,
 }
@@ -52,7 +49,9 @@ impl EntityDecoder<'_> {
             .as_ref()
             .is_none_or(|(strict, _)| *strict != self.strict_reals)
         {
-            let certificate = if let Some(shared) = self.uniform_precision_cache.shared.clone() {
+            let source = self.source_bundle.clone().filter(|source| source.owns_decoder(self));
+            let certificate = if let Some(source) = source {
+                let shared = &source.uniform_precision;
                 let cell = if self.strict_reals {
                     &shared.strict
                 } else {
@@ -65,20 +64,6 @@ impl EntityDecoder<'_> {
             self.uniform_precision_cache.local = Some((self.strict_reals, certificate));
         }
         self.uniform_precision_cache.local.as_ref()?.1.as_ref()
-    }
-
-    /// Install the certificate cache belonging to this decoder's immutable
-    /// source. Native hash indexes and compact indexes share it across jobs;
-    /// a replacement source must receive a fresh cache. Certification stays
-    /// lazy and uses this decoder's normal input-admission policy.
-    pub fn set_uniform_context_precision_cache(
-        &mut self,
-        cache: Arc<UniformContextPrecisionCache>,
-    ) {
-        self.uniform_precision_cache = PrecisionCache {
-            shared: Some(cache),
-            ..Default::default()
-        };
     }
 
     fn scan_uniform_precision(&mut self) -> Option<UniformContextPrecision> {
@@ -126,30 +111,7 @@ impl EntityDecoder<'_> {
                     .ifc_type
                     .is_subtype_of(IfcType::IfcProductRepresentation) => {}
                 _ if name.starts_with("IFCCARTESIANTRANSFORMATIONOPERATOR") => {
-                    // A source displacement must not be magnified beyond the
-                    // context declaration by a mapped scale in this domain.
-                    let scale_indices: &[usize] = match name.as_str() {
-                        "IFCCARTESIANTRANSFORMATIONOPERATOR2D"
-                        | "IFCCARTESIANTRANSFORMATIONOPERATOR3D" => {
-                            &[slot::IfcCartesianTransformationOperator::SCALE.index()]
-                        }
-                        "IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM" => &[
-                            slot::IfcCartesianTransformationOperator::SCALE.index(),
-                            slot::IfcCartesianTransformationOperator2DnonUniform::SCALE2.index(),
-                        ],
-                        "IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM" => &[
-                            slot::IfcCartesianTransformationOperator::SCALE.index(),
-                            slot::IfcCartesianTransformationOperator3DnonUniform::SCALE2.index(),
-                            slot::IfcCartesianTransformationOperator3DnonUniform::SCALE3.index(),
-                        ],
-                        _ => return None,
-                    };
-                    for &index in scale_indices {
-                        let value = entity.get(index)?;
-                        if !value.is_null() && value.as_float() != Some(1.0) {
-                            return None;
-                        }
-                    }
+                    certified_mapped_scale(&entity, &name)?;
                 }
                 _ => return None,
             }
@@ -178,6 +140,30 @@ impl EntityDecoder<'_> {
         if owned.len() != 1 || owned[0].as_entity_ref() != Some(root_id) {
             return None;
         }
+        self.certified_context_tree(&contexts, root_id)?;
+        let precision = contexts.get(&root_id)?
+            .real_at(slot::IfcGeometricRepresentationContext::PRECISION)?;
+        for representation in representations {
+            if !contexts.contains_key(&representation) {
+                return None;
+            }
+        }
+        let (length_unit, metres_per_unit) = self.certified_si_length(&project)?;
+        Some(UniformContextPrecision {
+            project: project.id,
+            root_context: root_id,
+            contexts: contexts.keys().copied().collect(),
+            length_unit,
+            metres_per_unit,
+            precision,
+        })
+    }
+
+    fn certified_context_tree(
+        &mut self,
+        contexts: &BTreeMap<u32, crate::DecodedEntity>,
+        root_id: u32,
+    ) -> Option<()> {
         let root = contexts.get(&root_id)?;
         if root
             .attr(slot::IfcGeometricRepresentationContext::COORDINATE_SPACE_DIMENSION)?
@@ -198,7 +184,7 @@ impl EntityDecoder<'_> {
         if wcs.ifc_type != IfcType::IfcAxis2Placement3D || !self.certified_wcs(&wcs)? {
             return None;
         }
-        for (&id, context) in &contexts {
+        for (&id, context) in contexts {
             if id == root_id {
                 continue;
             }
@@ -222,20 +208,7 @@ impl EntityDecoder<'_> {
                 return None;
             }
         }
-        for representation in representations {
-            if !contexts.contains_key(&representation) {
-                return None;
-            }
-        }
-        let (length_unit, metres_per_unit) = self.certified_si_length(&project)?;
-        Some(UniformContextPrecision {
-            project: project.id,
-            root_context: root_id,
-            contexts: contexts.keys().copied().collect(),
-            length_unit,
-            metres_per_unit,
-            precision,
-        })
+        Some(())
     }
 
     /// Certification must describe the same records that references resolve.
@@ -330,6 +303,34 @@ impl EntityDecoder<'_> {
         }
         length
     }
+}
+
+fn certified_mapped_scale(entity: &crate::DecodedEntity, name: &str) -> Option<()> {
+    // A source displacement must not be magnified beyond the
+    // context declaration by a mapped scale in this domain.
+    let scale_indices: &[usize] = match name {
+        "IFCCARTESIANTRANSFORMATIONOPERATOR2D"
+        | "IFCCARTESIANTRANSFORMATIONOPERATOR3D" => {
+            &[slot::IfcCartesianTransformationOperator::SCALE.index()]
+        }
+        "IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM" => &[
+            slot::IfcCartesianTransformationOperator::SCALE.index(),
+            slot::IfcCartesianTransformationOperator2DnonUniform::SCALE2.index(),
+        ],
+        "IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM" => &[
+            slot::IfcCartesianTransformationOperator::SCALE.index(),
+            slot::IfcCartesianTransformationOperator3DnonUniform::SCALE2.index(),
+            slot::IfcCartesianTransformationOperator3DnonUniform::SCALE3.index(),
+        ],
+        _ => return None,
+    };
+    for &index in scale_indices {
+        let value = entity.get(index)?;
+        if !value.is_null() && value.as_float() != Some(1.0) {
+            return None;
+        }
+    }
+    Some(())
 }
 
 #[cfg(test)]

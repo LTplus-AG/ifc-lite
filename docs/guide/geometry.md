@@ -24,11 +24,19 @@ provenance requires one project, one 3D root context, complete inherited
 subcontexts, an explicit SI length unit and unit mapped scales. Rust callers can
 inspect `EntityDecoder::uniform_context_precision()` for this certificate;
 missing or conflicting provenance returns `None`, without a default `Precision`.
-Native and browser source indexes share a lazy certificate cache across fresh
-decoders, retaining both success and decline. Custom hash-index callers can
-share one `decoder::UniformContextPrecisionCache` through
-`EntityDecoder::set_uniform_context_precision_cache`; it belongs to exactly one
-immutable source and separates strict geometry admission from permissive reads.
+
+Fresh `SourceBundle::decoder()` instances share lazy certificate results across
+native jobs and compact browser batches, retaining success and decline separately
+for strict geometry admission and permissive reads. The immutable source owns
+both its canonical index and the private once cells; independently supplied
+indexes cannot install or share certificate authority. Borrowed compatibility
+decoders retain only their own result.
+
+Normalization happens during owned faceted-plan lowering, before RTC subtraction
+and triangulation; evaluation needs no source. An installed execution resource
+account explicitly refuses a candidate transaction with unsupported coverage:
+exact rational storage and the full certificate scan are not yet accounted.
+Existing sink/resource terminal stops propagate before a plan is published.
 
 IFClite processes IFC geometry through a streaming pipeline:
 
@@ -621,10 +629,21 @@ path, faces with holes go through polygon triangulation with hole support
 
 ### Boolean Operations
 
-Handles `IfcBooleanClippingResult` and opening voids (`IfcRelVoidsElement`).
-Void cutting is a single exact-CSG path in the Rust kernel: boolean
-differences are evaluated with exact arithmetic predicates, so opening cuts
-are watertight rather than approximated.
+Handles `IfcBooleanResult`, `IfcBooleanClippingResult`, and opening voids
+(`IfcRelVoidsElement`).
+Void cutting uses one Rust CSG kernel with exact arithmetic predicates over
+snapped inputs. Near-coplanar reconciliation and f32 mesh storage have finite
+resolution; exact predicates do not guarantee that every emitted mesh is closed.
+`intersection_solid` returns `BelowKernelResolution` when no solid is trusted.
+Its reported thickness describes the limiting output component, including flat
+contact patches, and does not measure physical penetration below that resolution.
+
+The raw Rust `kernel::arrangement::boolean` entry reports budget exhaustion
+through `kernel::budget::tripped()`. Callers must check it before interpreting
+an empty triangle list; `boolean_with_conformity` also exposes a completion
+status. Zone geometry splitting refuses an exhausted intersection, zone union
+or remainder with `None` (`undefined` from `splitMeshByZones`), so a failed cut
+cannot appear as a successful whole-element remainder.
 
 ```mermaid
 flowchart LR

@@ -853,6 +853,16 @@ export function Viewport({
           renderCurrent();
           calculateScale();
         },
+        setPresetDirection: (direction) => {
+          // Diagonals are never north-up: the Cesium top remap only concerns the pole views.
+          camera.setPresetDirection(
+            direction,
+            geometryBoundsRef.current,
+            coordinateInfoRef.current?.buildingRotation,
+          );
+          renderCurrent();
+          calculateScale();
+        },
         fitAll: () => { // Zoom to fit without changing view direction, framing what is VISIBLE (#5884)
           const target = fitAllBounds({ meshes: geometryRef.current ?? [], wholeScene: geometryBoundsRef.current,
             typeOf: (id) => typeNameOfGlobalId(useViewerStore.getState(), id, ifcDataStoreRef.current),

@@ -43,7 +43,7 @@ fn run(source: &str) -> (Option<Witness>, Vec<FaceData>, Vec<FaceData>) {
             hole_points: f.hole_points.clone(),
         })
         .collect();
-    (normalize(&item, &mut decoder, &mut after), before, after)
+    (normalize(&item, &mut decoder, &mut after).unwrap(), before, after)
 }
 
 fn unchanged(source: &str) {

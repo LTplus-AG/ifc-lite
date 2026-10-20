@@ -21,15 +21,12 @@ import {
   describeConstraint as renderConstraint,
   interpolate as interpolateTemplate,
 } from './describe-constraint.js';
-import { en } from './locales/en.js';
-import { de } from './locales/de.js';
-import { fr } from './locales/fr.js';
-import { it } from './locales/it.js';
+import { en, de, fr, it, ru } from './locales/index.js';
 import { describeWithNestedFacets } from '../preview/partof-nested.js';
 
 type Translations = typeof en;
 
-const LOCALES: Record<SupportedLocale, Translations> = { en, de, fr, it };
+const LOCALES: Record<SupportedLocale, Translations> = { en, de, fr, it, ru };
 
 /**
  * Create a translation service for the specified locale

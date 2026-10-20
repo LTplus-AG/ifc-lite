@@ -122,7 +122,7 @@ export function buildStoreyWorkplane(
   // this session has no source chain to read, and refusing would block
   // authoring on it outright (`storey-authoring-frame.ts`).
   const frame = storeyAuthoringFrame(store, storeyId, undefined, s.mutationViews.get(modelId));
-  if (frame.unavailable) return { refused: 'The current storey placement is unreadable, non-planar or exceeds the 256-placement bound.' };
+  if (frame.unavailable) return { refused: 'The current storey placement is unreadable, non-planar or cyclic.' };
   const { plan } = frame;
   let alignment: Affine | null = null;
   let coordinateInfo = model.geometryResult?.coordinateInfo;

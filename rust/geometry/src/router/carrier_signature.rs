@@ -17,6 +17,7 @@ pub(in crate::router) fn try_faceted_brep_signature(
     decoder: &mut EntityDecoder,
     brep_id: u32,
 ) -> Option<u128> {
+    crate::resource::check_current().ok()?;
     // IfcFacetedBrep(#shell): a SINGLE bare ref, not a `((...))` list — so
     // `get_entity_ref_list_fast` (which expects a nested list) can't read it.
     // Parse the one shell ref straight from the brep's bytes. The shell, faces,
@@ -40,6 +41,7 @@ pub(in crate::router) fn try_faceted_brep_signature(
             acc = fold(acc, orientation as u64);
             acc = fold(acc, is_outer as u64);
             decoder.get_polyloop_coords_cached_into(loop_id, &mut coords)?;
+            carrier_domain &= (3..=128).contains(&coords.len());
             potentially_normalized |= carrier_domain
                 && crate::processors::faceted_carrier_warped(&coords, |&(x, y, z)| [x, y, z]);
             acc = fold(acc, coords.len() as u64);
@@ -51,13 +53,8 @@ pub(in crate::router) fn try_faceted_brep_signature(
         }
     }
     // #7714: model-scoped identity preserves adjacency/context through memo hits.
-    Some(
-        if (commented || (carrier_domain && potentially_normalized))
-            && crate::processors::faceted_carrier_source_may_normalize(decoder, brep_id)
-        {
-            fold(acc, brep_id as u64)
-        } else {
-            acc
-        },
-    )
+    let source_distinct = (commented || (carrier_domain && potentially_normalized))
+        && crate::processors::faceted_carrier_source_may_normalize(decoder, brep_id);
+    crate::resource::check_current().ok()?;
+    Some(if source_distinct { fold(acc, brep_id as u64) } else { acc })
 }

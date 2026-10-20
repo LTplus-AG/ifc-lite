@@ -52,6 +52,8 @@ pub(super) fn refused() -> Arrangement {
         interner: Interner::new(),
         tris_a: Vec::new(),
         tris_b: Vec::new(),
+        component_b: Vec::new(),
+        bands: Vec::new(),
         unrecovered: 1,
         coplanar_a: Vec::new(),
         coplanar_b: Vec::new(),

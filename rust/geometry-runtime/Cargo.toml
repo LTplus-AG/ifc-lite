@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+[package]
+name = "ifc-lite-geometry-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Explicit isolated native geometry worker client for IFC-Lite (opt-in, not published)"
+
+[lints]
+workspace = true

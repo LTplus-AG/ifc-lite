@@ -63,7 +63,7 @@ fn issue_7914_projected_arcs_retain_interior_extrema_and_reversed_trims() {
 // trims or ordinary shallow arcs from using the established chord output.
 #[test]
 fn issue_7914_zero_span_and_shallow_arcs_keep_the_chord_path() {
-    for end in [0.0, 0.01] {
+    for end in [0.0_f64, 0.01] {
         let geometry = format!(r#"
 #30=IFCAXIS2PLACEMENT2D(#31,$);
 #31=IFCCARTESIANPOINT((0.,0.));

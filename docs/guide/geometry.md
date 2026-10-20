@@ -33,10 +33,12 @@ indexes cannot install or share certificate authority. Borrowed compatibility
 decoders retain only their own result.
 
 Normalization happens during owned faceted-plan lowering, before RTC subtraction
-and triangulation; evaluation needs no source. An installed execution resource
-account explicitly refuses a candidate transaction with unsupported coverage:
-exact rational storage and the full certificate scan are not yet accounted.
-Existing sink/resource terminal stops propagate before a plan is published.
+and triangulation; evaluation needs no source. Compatibility and Bounded execute
+the same transaction and use the same source-sensitive cache decisions. Bounded
+accounts audited mesh copies, merges and storage growth; rational work and the
+certificate scan remain outside that partial accounting contract. Strict refuses
+opaque coverage up front. Existing sink/resource terminal stops propagate before
+a plan is published; these checks do not make opaque work interruptible mid-call.
 
 IFClite processes IFC geometry through a streaming pipeline:
 

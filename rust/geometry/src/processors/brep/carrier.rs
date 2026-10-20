@@ -25,12 +25,6 @@ pub(crate) fn source_may_normalize(decoder: &mut EntityDecoder, id: u32) -> bool
     if crate::resource::check_current().is_err() {
         return false;
     }
-    // Under explicit resource admission, avoid opaque exact arithmetic in the
-    // hash precheck. A conservative source-distinct key is safe; lowering
-    // reports unsupported coverage if the item needs the transaction.
-    if crate::resource::is_active() {
-        return true;
-    }
     let Ok(entity) = decoder.decode_by_id(id) else {
         return false;
     };
@@ -100,15 +94,9 @@ pub(super) fn normalize(
     {
         return Ok(None);
     }
-    // BigRational storage and the complete certificate scan are opaque to the
-    // current resource accountant. Refuse explicitly before either starts;
-    // never return an unnormalized success after a resource/sink terminal stop.
-    if crate::resource::is_active() {
-        return Err(crate::resource::refused(
-            crate::resource::Dimension::Coverage, 0, 0,
-            crate::resource::RefusalReason::UnsupportedCoverage,
-        ).into());
-    }
+    // Bounded admits audited mesh/storage operations, not opaque numerical
+    // allocations. Run the same exact transaction under both policies; Strict
+    // coverage is refused by account construction, before invocation (#7994).
     let witness = transaction(entity, decoder, faces);
     crate::resource::check_current()?;
     Ok(witness)

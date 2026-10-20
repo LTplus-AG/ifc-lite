@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
-use crate::resource::{ExecutionAccount, ExecutionPolicy, ProgramStop, ResourceLimits};
+use crate::resource::{ExecutionAccount, ExecutionPolicy, ResourceLimits};
 use crate::router::GeometryProcessor;
 
 const SOURCE: &str = include_str!("../../../tests/fixtures/issue_7714_soffice_carrier.ifc");
@@ -30,37 +30,22 @@ fn issue_7714_owned_constructor_keeps_normalized_loops_after_source_drops() {
 }
 
 #[test]
-fn issue_7714_nested_resource_scope_cannot_hide_opaque_transaction_refusal() {
-    let mut decoder = EntityDecoder::new(SOURCE);
-    let item = decoder.decode_by_id(489635).unwrap();
-    let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
-    let compatibility = ExecutionAccount::new(ExecutionPolicy::Compatibility);
-    account.scope(|| compatibility.scope(|| {
-        let error = super::super::faceted_plan::lower(&item, &mut decoder, None).unwrap_err();
-        let crate::Error::ProgramStopped(ProgramStop::ResourceRefused(failure)) = error else {
-            panic!("candidate must report unsupported resource coverage");
-        };
-        assert_eq!(failure.dimension, crate::resource::Dimension::Coverage);
-        assert_eq!(failure.reason, crate::resource::RefusalReason::UnsupportedCoverage);
-        // Catching the error cannot publish a fallback plan on a later call.
-        assert!(matches!(super::super::faceted_plan::lower(&item, &mut decoder, None),
-            Err(crate::Error::ProgramStopped(ProgramStop::ResourceRefused(_)))));
-        assert_eq!(decoder.get_cartesian_point_fast(489593).unwrap().0, 95.0001680875);
-    }));
-    assert!(account.check().is_err());
-}
-
-#[test]
-fn issue_7714_cancelled_execution_stops_before_source_loop_reads() {
-    let mut decoder = EntityDecoder::new(SOURCE);
-    let item = decoder.decode_by_id(489635).unwrap();
-    let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
-    account.cancel();
-    account.scope(|| {
-        assert!(matches!(super::super::faceted_plan::lower(&item, &mut decoder, None),
-            Err(crate::Error::ProgramStopped(ProgramStop::Cancelled))));
-    });
-    assert_eq!(decoder.point_cache_stats(), (0, 0));
+fn issue_7714_cancelled_and_strict_execution_stop_before_source_loop_reads() {
+    for (policy, cancel) in [
+        (ExecutionPolicy::Bounded(ResourceLimits::default()), true),
+        (ExecutionPolicy::Strict(ResourceLimits::default()), false),
+    ] {
+        let mut decoder = EntityDecoder::new(SOURCE);
+        let item = decoder.decode_by_id(489635).unwrap();
+        let account = ExecutionAccount::new(policy);
+        if cancel { account.cancel(); }
+        let expected = account.check().unwrap_err();
+        account.scope(|| {
+            assert!(matches!(super::super::faceted_plan::lower(&item, &mut decoder, None),
+                Err(crate::Error::ProgramStopped(stop)) if stop == expected));
+        });
+        assert_eq!(decoder.point_cache_stats(), (0, 0));
+    }
 }
 
 #[test]

@@ -42,21 +42,22 @@ impl ExecutionWork<'_> {
         resources: Option<SourceResourceContext>,
     ) -> ExecutionSourceScope {
         let capability = self.child_capability();
-        let previous = std::mem::replace(
-            &mut *self
-                .lease
-                .state
-                .active_source
-                .lock()
-                .expect("source borrow lock"),
-            ActiveSource {
-                epoch: Arc::downgrade(&capability.epoch),
-                resources,
-            },
-        );
+        let scope_id = next_id();
+        self.lease
+            .state
+            .active_source
+            .lock()
+            .expect("source borrow lock")
+            .push((
+                scope_id,
+                ActiveSource {
+                    epoch: Arc::downgrade(&capability.epoch),
+                    resources,
+                },
+            ));
         ExecutionSourceScope {
             state: self.lease.state.clone(),
-            previous,
+            scope_id,
             epoch: capability.epoch,
             _thread_bound: std::marker::PhantomData,
         }
@@ -146,11 +147,12 @@ impl ExecutionChildCapability {
 }
 
 /// Thread-bound publication of source-borrow authority. No lock is held while
-/// extension work runs. Nested decoder borrows restore the enclosing authority.
+/// extension work runs. Nested decoder borrows restore the enclosing authority;
+/// out-of-order drops remove only their own entry.
 #[derive(Debug)]
 pub struct ExecutionSourceScope {
     state: Arc<State>,
-    previous: ActiveSource,
+    scope_id: u64,
     epoch: Arc<WorkEpoch>,
     _thread_bound: std::marker::PhantomData<*const ()>,
 }
@@ -161,9 +163,14 @@ impl ExecutionSourceScope {
 }
 impl Drop for ExecutionSourceScope {
     fn drop(&mut self) {
+        // Remove exactly this scope's entry so non-LIFO drops never revive
+        // or clobber another scope's authority. No allocation under the lock.
         let displaced = {
             let mut active = self.state.active_source.lock().expect("source borrow lock");
-            std::mem::replace(&mut *active, std::mem::take(&mut self.previous))
+            active
+                .iter()
+                .rposition(|(id, _)| *id == self.scope_id)
+                .map(|at| active.remove(at))
         };
         drop(displaced); // Final account/pool destruction must occur outside the lock.
     }

@@ -17,8 +17,8 @@ pub use allocation_account::{
 };
 use resource_context::ActiveSource;
 mod work;
-pub use work::{ExecutionChildCapability, ExecutionSourceScope, ExecutionWork};
 use work::WorkEpoch;
+pub use work::{ExecutionChildCapability, ExecutionSourceScope, ExecutionWork};
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 fn next_id() -> u64 {
@@ -46,7 +46,8 @@ struct State {
     generation: AtomicU64,
     reserved: AtomicBool,
     alive: AtomicBool,
-    active_source: Mutex<ActiveSource>,
+    /// Ordered scope stack; empty is the base (no authority) state.
+    active_source: Mutex<Vec<(u64, ActiveSource)>>,
     cache_authority: Mutex<CacheAuthority>,
 }
 
@@ -122,7 +123,7 @@ impl ExecutionOwner {
                 generation: AtomicU64::new(self.generation),
                 reserved: AtomicBool::new(false),
                 alive: AtomicBool::new(true),
-                active_source: Mutex::new(ActiveSource::default()),
+                active_source: Mutex::new(Vec::new()),
                 cache_authority: Mutex::new(self.cache_authority.clone()),
             })
         });
@@ -149,7 +150,9 @@ impl ExecutionOwner {
             .active_source
             .lock()
             .expect("source borrow lock")
-            .clone();
+            .last()
+            .map(|(_, source)| source.clone())
+            .unwrap_or_default();
         let Some(epoch) = source.epoch.upgrade() else {
             return Ok(None);
         };

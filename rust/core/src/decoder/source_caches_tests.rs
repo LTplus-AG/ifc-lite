@@ -255,3 +255,11 @@ fn unbound_raw_imports_still_block_a_later_bind() {
     assert_ne!(decoder.cache_revision, 0);
     assert!(!decoder.can_bind_source());
 }
+
+#[test]
+fn raw_entity_index_install_revokes_like_the_other_raw_setters() {
+    let mut decoder = EntityDecoder::new(b"DATA;#1=IFCWALL();");
+    decoder.set_entity_index(Arc::new(crate::EntityIndex::default()));
+    assert_ne!(decoder.cache_revision, 0);
+    assert!(!decoder.can_bind_source());
+}

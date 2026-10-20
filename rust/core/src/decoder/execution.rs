@@ -11,7 +11,8 @@ impl EntityDecoder<'_> {
     /// `decode_by_id`/ref-resolving call; afterwards `build_index` no-ops.
     pub fn set_entity_index(&mut self, index: Arc<EntityIndex>) {
         self.execution_owner.changed();
-        self.execution_owner.publish_cache_source(None);
+        // A raw index is a trusted external input, like the other raw setters.
+        self.revoke_cache_authority();
         self.source_bundle = None;
         self.entity_index = Some(EntityIndexStore::Hash(index));
     }

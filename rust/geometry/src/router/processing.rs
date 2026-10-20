@@ -351,3 +351,7 @@ impl GeometryRouter {
         std::mem::take(&mut *self.content_hash_oversized_ref_drops.borrow_mut())
     }
 }
+
+#[cfg(test)]
+#[path = "processing_hygiene_tests.rs"]
+mod hygiene_tests;

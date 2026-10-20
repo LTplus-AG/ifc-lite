@@ -96,23 +96,11 @@ impl<'a> MergeSink<'a> {
         match &router.shared_mapped_item_cache {
             _ if !single_frame => {}
             Some(shared) => {
-                // Mirror the item-dedup #1257 guard: a mapped source can contain
-                // IfcBooleanResult/IfcCsgSolid, and on a per-element CSG-budget trip
-                // the boolean bails and returns the UNCUT host. Caching that degraded
-                // source MODEL-WIDE would serve the wrong (uncut) mesh to a later
-                // occurrence in a fresh-budget element that would otherwise get the
-                // full exact cut. Skip the shared insert on a trip (or empty mesh) —
-                // the next occurrence re-meshes and a clean element caches it. The
-                // RefCell fallback arm below stays UNGUARDED: it is per-element
-                // (consistent budget within the element), reproducing main exactly.
-                //
-                // `level_truncated` is the same shape for the nesting bounds: the
-                // depth cap and the visited set depend on where in the walk the
-                // source was reached, which `source_id` does not encode. A source
-                // first met at depth 31 loses everything below it, and caching that
-                // model-wide would serve the short mesh to a later occurrence reached
-                // at depth 0, which would otherwise walk the whole chain. Non-empty
-                // and budget-clean, so only this catches it.
+                // #1257: shared CSG-budget fallbacks must not escape to fresh
+                // elements. Keep that policy separate from traversal truncation:
+                // depth, cycles and per-walk work depend on the current path and
+                // allowance, which source_id cannot encode. Neither cache may
+                // publish those partial sources, even within the same router.
                 if !parts[0].positions.is_empty()
                     && !crate::kernel::budget::tripped()
                     && !level_truncated
@@ -121,10 +109,11 @@ impl<'a> MergeSink<'a> {
                     shared.lock().unwrap_or_else(|e| e.into_inner()).insert(source_id, source_arc);
                 }
             }
-            None => {
+            None if !level_truncated => {
                 let source_arc = router.clone_source_for_cache(&parts[0])?;
                 router.mapped_item_cache.borrow_mut().insert(source_id, source_arc);
             }
+            None => {}
         }
         // Apply MappingTarget transformation to this instance
         let mut local_rm = None;

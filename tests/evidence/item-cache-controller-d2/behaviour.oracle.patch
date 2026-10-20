@@ -1,8 +1,8 @@
 diff --git a/rust/geometry/src/program/inner.rs b/rust/geometry/src/program/inner.rs
-index ded66a4b61..3a23061d3f 100644
+index 2fa0cffd2b..7e97d02e6d 100644
 --- a/rust/geometry/src/program/inner.rs
 +++ b/rust/geometry/src/program/inner.rs
-@@ -156,13 +156,16 @@ impl<'a> GeometryProgram<'a> {
+@@ -157,8 +157,12 @@ impl<'a> GeometryProgram<'a> {
          }
          // Owners are validated before the recipe is taken: a refused call
          // leaves the request executable by its actual router and decoder.
@@ -13,7 +13,10 @@ index ded66a4b61..3a23061d3f 100644
 +        // cannot replay work after its recipe was moved into a lexical call.
 +        self.pending = Some((request, true));
          let value = match &mut self.control {
-             Control::Item(control) => ReplyValue::Item(control.execute(router, decoder)?),
+             Control::Item(control) => {
+                 control.execute(router, decoder)?;
+@@ -166,7 +170,6 @@ impl<'a> GeometryProgram<'a> {
+             }
              Control::Cache(control) => ReplyValue::Cache(control.execute(router, decoder)?),
          };
 -        self.pending = Some((request, true));
@@ -21,10 +24,10 @@ index ded66a4b61..3a23061d3f 100644
          Ok(ProgramReply { request, value })
      }
 diff --git a/rust/geometry/src/program/item.rs b/rust/geometry/src/program/item.rs
-index c1c12b6711..a376a24825 100644
+index 339a30670d..d07e24512e 100644
 --- a/rust/geometry/src/program/item.rs
 +++ b/rust/geometry/src/program/item.rs
-@@ -151,7 +151,7 @@ fn execute_source(
+@@ -155,7 +155,7 @@ fn execute_source(
              ItemPhase::LowerRtc => match router.raw_item_rtc_file_units(item, decoder, offset) {
                  Some(rtc) => match processor.lower_owned(item, decoder, quality, Some(rtc)) {
                      Some(plan) => Lowered::Plan(plan, true),

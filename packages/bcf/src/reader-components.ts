@@ -36,7 +36,8 @@ import { extractElement, parseXsBoolean, unescapeXml } from './xml-text.js';
  * That is why every fixture passed. Uniform lists are the only shape the suite
  * had, and they are the one shape the defect cannot reach.
  */
-const COMPONENT_ELEMENT = /<Component[^>]*?\/>|<Component[^>]*>[\s\S]*?<\/Component>/g;
+// Match the singular name: BCF 3.0 wraps coloring members in <Components>.
+const COMPONENT_ELEMENT = /<Component\b[^>]*?\/>|<Component\b[^>]*>[\s\S]*?<\/Component>/g;
 
 /** Parse each `<Component>` in `xml`, dropping any that does not parse. */
 function parseComponentElements(xml: string): BCFComponent[] {
@@ -55,7 +56,9 @@ export function parseComponents(
   content: string,
   versionId: '2.1' | '3.0',
 ): BCFComponents | undefined {
-  const componentsMatch = content.match(/<Components>([\s\S]*?)<\/Components>/);
+  // A viewpoint has one outer Components block. Its BCF 3.0 coloring groups
+  // contain nested Components blocks, so use the last closer, not the first.
+  const componentsMatch = content.match(/<Components>([\s\S]*)<\/Components>/);
   if (!componentsMatch) return undefined;
 
   const componentsContent = componentsMatch[1];

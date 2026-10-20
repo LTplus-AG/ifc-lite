@@ -312,3 +312,22 @@ fn resource_zero_output_allowance_refuses_mapped_cache_clone() {
     assert!(matches!(result, Err(crate::Error::ProgramStopped(ProgramStop::ResourceRefused(_)))));
     assert!(router.mapped_item_cache.borrow().is_empty(), "nothing was cached after the refusal");
 }
+
+#[test]
+fn resource_mapped_cache_hit_is_charged_and_refused() {
+    use crate::resource::{ProgramStop, ResourceLimits};
+    let source = include_str!("../../tests/fixtures/mapped_instances_synthetic.ifc");
+    let mut decoder = EntityDecoder::new(source);
+    let (first, second) = (decoder.decode_by_id(25).unwrap(), decoder.decode_by_id(32).unwrap());
+    let router = GeometryRouter::new();
+    let expected = router.process_mapped_item_parts(&first, &mut decoder).unwrap();
+    assert!(!router.mapped_item_cache.borrow().is_empty(), "the first occurrence warmed the cache");
+    let charged = bounded(ResourceLimits::default());
+    let hit = charged.scope(|| router.process_mapped_item_parts(&second, &mut decoder)).unwrap();
+    assert_eq!(hit.len(), expected.len());
+    let bytes = crate::resource::mesh::MeshLengths::of(&hit[0]).bytes().unwrap();
+    assert!(charged.usage().copy_bytes >= bytes, "the cache-hit copy was charged");
+    let refused = bounded(ResourceLimits { copy_bytes: Some(0), ..Default::default() });
+    let result = refused.scope(|| router.process_mapped_item_parts(&second, &mut decoder));
+    assert!(matches!(result, Err(crate::Error::ProgramStopped(ProgramStop::ResourceRefused(_)))));
+}

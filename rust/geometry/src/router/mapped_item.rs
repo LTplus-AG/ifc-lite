@@ -137,7 +137,7 @@ impl GeometryRouter {
             None => self.mapped_item_cache.borrow().get(&source_id).cloned(),
         };
         if let Some(cached_mesh) = cached_source {
-            let mut mesh = cached_mesh.as_ref().clone();
+            let mut mesh = self.clone_cached_mesh(cached_mesh.as_ref())?;
             let mut local_rm = None;
             if let Some(mut transform) = mapping_transform {
                 self.scale_transform(&mut transform);
@@ -314,12 +314,18 @@ impl GeometryRouter {
     /// overflowing allowance refuses it. Cache residency beyond the account's
     /// lifetime is not tracked here.
     fn clone_source_for_cache(&self, mesh: &Mesh) -> Result<Arc<Mesh>> {
+        self.clone_cached_mesh(mesh).map(Arc::new)
+    }
+
+    /// Accounted copy for both cache population and every cache hit, so a
+    /// repeated occurrence is charged (or refused) like the first one.
+    fn clone_cached_mesh(&self, mesh: &Mesh) -> Result<Mesh> {
         if !crate::resource::is_active() {
-            return Ok(Arc::new(mesh.clone()));
+            return Ok(mesh.clone());
         }
         let (copy, permit) = crate::resource::mesh::clone_mesh(mesh)?;
         permit.retain();
-        Ok(Arc::new(copy))
+        Ok(copy)
     }
 
     /// Mesh one plain (non-`IfcMappedItem`) item of a mapped source into

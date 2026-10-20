@@ -527,7 +527,11 @@ test('vacuity: an unparseable tsconfig fails rather than contributing nothing', 
   assert.match(out, /unparseable tsconfig apps\/viewer\/tsconfig\.json/);
 });
 
-test('vacuity: an unreadable file fails rather than being skipped', () => {
+test('vacuity: an unreadable file fails rather than being skipped', (t) => {
+  // Invariant: mode 000 binds the current user. Root (a container, a root-run
+  // runner) reads the file anyway, so the gate has nothing to refuse.
+  if (process.platform === 'win32') return t.skip('chmod 000 does not make a file unreadable on Windows');
+  if (process.getuid?.() === 0) return t.skip('root reads a 000 file regardless of mode');
   const { status, out } = runOn(
     { ...BALLAST, 'apps/x/hook.mjs': PRE_FIX_HYDRATE_HOOK, 'apps/x/locked.mjs': 'export const x = 1;\n' },
     { mutate: (dir) => chmodSync(join(dir, 'apps/x/locked.mjs'), 0o000) },

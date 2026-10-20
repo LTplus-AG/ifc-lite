@@ -128,11 +128,18 @@ pub(crate) fn tris_aabb(tris: &[Tri]) -> Aabb {
 
 impl Bvh {
     pub fn build(tris: &[Tri]) -> Bvh {
-        let mut items: Vec<(u32, Aabb, [f64; 3])> = tris
-            .iter()
+        Self::from_boxes(tris.iter().map(tri_aabb))
+    }
+
+    /// Index already conservative finite boxes; queries add no padding.
+    pub(crate) fn from_aabbs(boxes: &[Aabb]) -> Bvh {
+        Self::from_boxes(boxes.iter().copied())
+    }
+
+    fn from_boxes(boxes: impl Iterator<Item = Aabb>) -> Bvh {
+        let mut items: Vec<(u32, Aabb, [f64; 3])> = boxes
             .enumerate()
-            .map(|(i, t)| {
-                let bb = tri_aabb(t);
+            .map(|(i, bb)| {
                 let c = [
                     0.5 * (bb.0[0] + bb.1[0]),
                     0.5 * (bb.0[1] + bb.1[1]),

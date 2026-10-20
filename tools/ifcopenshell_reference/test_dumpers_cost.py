@@ -294,8 +294,11 @@ class ReferenceDumper(unittest.TestCase):
                 *ordered,
                 "#10=IFCCOSTITEM('1JYq7Z8qH3nP9JjM4fLg2A',$,'i',$,$);",
             ], schema="IFC2X3")
+            # #7732 / IfcOpenShell 0.9: keep the file owner alive while
+            # traversing inverse relationships from its entity handles.
+            model = ifcopenshell.file.from_string(text)
             registry = dump_reference_cost.NodeRegistry()
-            registry.register_value("test", ifcopenshell.file.from_string(text).by_id(30))
+            registry.register_value("test", model.by_id(30))
             nodes.append(registry.nodes)
         self.assertEqual(nodes[0], nodes[1])
         node = nodes[0]["test"]

@@ -29,7 +29,9 @@ export async function startViewerDevServer(label: string): Promise<ViewerDevServ
   let server: Server | undefined;
   const close = async () => {
     try { await server?.close(); }
-    finally { await rm(cacheDir, { recursive: true, force: true }); }
+    // #6729: Vite's optimizer can finish a cache write during shutdown.
+    // Retry transient ENOTEMPTY/EBUSY cleanup races; persistent failures throw.
+    finally { await rm(cacheDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
   };
   try {
     const created: Server = await createServer({ root: join(ROOT, 'apps/viewer'), cacheDir, logLevel: 'error', server: { host: '127.0.0.1', port: 0 } });

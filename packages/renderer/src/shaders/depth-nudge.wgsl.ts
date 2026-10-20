@@ -72,32 +72,22 @@ export const MAX_DEPTH_NUDGE_HASH = 255;
 /** Perspective: NDC lift for annotation lines and text; also the orthographic minimum. */
 export const PERSPECTIVE_OVERLAY_DEPTH_LIFT = 5e-5;
 
+/** Keep explanations above, outside the shipped WGSL literals (#7918). */
 const projectionWgsl = `
         const ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL: f32 = ${ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL};
         const ORTHOGRAPHIC_MAX_DEPTH_NUDGE_METRES: f32 = ${ORTHOGRAPHIC_MAX_DEPTH_NUDGE_METRES};
         const MAX_DEPTH_NUDGE_HASH: f32 = ${MAX_DEPTH_NUDGE_HASH}.0;
 
-        // An orthographic view-projection leaves w at 1: its bottom row is exactly
-        // (0, 0, 0, 1), because the projection's and the view's bottom rows are
-        // both (0, 0, 0, 1). A perspective one copies the forward axis into that
-        // row, a unit vector, so it is never zero. Every caller passes the
-        // camera's world view-projection, which each draw packs whether or not
-        // it renders camera-relative.
         fn isOrthographicProjection(viewProj: mat4x4<f32>) -> bool {
           return viewProj[0][3] == 0.0 && viewProj[1][3] == 0.0 && viewProj[2][3] == 0.0 && viewProj[3][3] == 1.0;
         }
 
-        // Orthographic only: how many hash levels fit the metre bound. The z row
-        // of the view-projection has length 1 / (far - near).
         fn orthographicNudgeLevels(viewProj: mat4x4<f32>) -> u32 {
           let depthRange = 1.0 / length(vec3<f32>(viewProj[0][2], viewProj[1][2], viewProj[2][2]));
           let steps = ORTHOGRAPHIC_MAX_DEPTH_NUDGE_METRES / (depthRange * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL);
           return u32(clamp(floor(steps), 0.0, MAX_DEPTH_NUDGE_HASH)) + 1u;
         }
 
-        // Orthographic only: clip z moved \`ndcOffset\` toward the camera without
-        // changing which side of a clip plane the vertex is on. A vertex beyond
-        // either plane, or exactly on the far plane, stays where it is.
         fn orthographicOffsetInsideDepthRange(clip: vec4<f32>, ndcOffset: f32) -> f32 {
           if (!(clip.z > 0.0 && clip.z < clip.w)) { return clip.z; }
           return min(clip.z + ndcOffset * clip.w, clip.w);
@@ -108,7 +98,6 @@ export const depthNudgeWgsl = `
         ${projectionWgsl}
         const PERSPECTIVE_DEPTH_NUDGE_PER_STEP: f32 = ${PERSPECTIVE_DEPTH_NUDGE_PER_STEP};
 
-        // Clip-space z with the entity's depth nudge applied (depth-nudge.wgsl.ts).
         fn nudgedClipZ(clip: vec4<f32>, zHash: u32, viewProj: mat4x4<f32>) -> f32 {
           if (isOrthographicProjection(viewProj)) {
             let level = (zHash * orthographicNudgeLevels(viewProj)) >> 8u;
@@ -122,12 +111,6 @@ export const overlayDepthLiftWgsl = `
         ${projectionWgsl}
         const PERSPECTIVE_OVERLAY_DEPTH_LIFT: f32 = ${PERSPECTIVE_OVERLAY_DEPTH_LIFT};
 
-        // Clip-space z raised above any nudged mesh face (depth-nudge.wgsl.ts).
-        // A multiple of clip.w is a constant NDC offset after the w-divide, which
-        // under reverse-Z reads as "slightly closer". Orthographic keeps at least
-        // the perspective lift, and two levels above the highest nudge level
-        // when that is more (all 256 levels in use), so the text pipeline's
-        // constant depthBias of -4 units is covered too.
         fn overlayLiftedClipZ(clip: vec4<f32>, viewProj: mat4x4<f32>) -> f32 {
           if (isOrthographicProjection(viewProj)) {
             let levelsLift = f32(orthographicNudgeLevels(viewProj) + 1u) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL;

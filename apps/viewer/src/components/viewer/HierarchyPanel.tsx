@@ -333,9 +333,11 @@ export function HierarchyPanel() {
       if (elements.length === 0) return;
       if (node.type === 'group' || node.type === 'presentation-layer') {
         // Explicit membership isolation also reveals hidden-by-default spatial
-        // products. Resolve actual members, rather than substituted mesh parts.
+        // products. Include resolved descendants for nested groups (#7870),
+        // alongside direct members whose geometry may be substituted by parts.
         const state = useViewerStore.getState();
-        const memberTypes = new Set((node.memberGlobalIds ?? []).flatMap((globalId) => {
+        const memberIds = new Set([...(node.memberGlobalIds ?? []), ...elements]);
+        const memberTypes = new Set([...memberIds].flatMap((globalId) => {
           const ref = resolveEntityRef(globalId);
           if (!ref) return [];
           const dataStore = models.get(ref.modelId)?.ifcDataStore ?? ifcDataStore;

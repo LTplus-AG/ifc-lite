@@ -1,0 +1,65 @@
+{
+  "commands": [
+    {
+      "name": "default",
+      "command": [
+        "cargo",
+        "test",
+        "--workspace"
+      ],
+      "exitCode": 0,
+      "seconds": 1504.5029541770054,
+      "logSHA256": "53a0de8d7f6544f00e65e8745b8ebd2dba555de71fce983e6affaa0c3d41e04b"
+    },
+    {
+      "name": "alternate",
+      "command": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--features",
+        "ifc-lite-geometry/triangulation-alt"
+      ],
+      "exitCode": 101,
+      "seconds": 965.8174470469821,
+      "logSHA256": "311700772c26368a8c11d7bce95ce2167521bd9979490eba208586a6120cc355"
+    }
+  ],
+  "status": "FAIL_RETAINED",
+  "performanceApproval": false,
+  "verifiedFixtures": 182,
+  "sourceUnchanged": true,
+  "scope": "Layered-wall membrane repair before the subsequent subgrid-depth review fix. No transfer to later production changes.",
+  "source": {
+    "head": "d9b94ade50dc2368dacf45b01c4cf6edc49c3af8",
+    "tree": "fb4c5883f7ea90d9120da228dc2c9180302c80f8"
+  },
+  "publicEquivalentProductionCommit": "a61ee75bf74045eb4f792a3da92425c8195d7ae3",
+  "defaultTotals": {
+    "passed": 5756,
+    "failed": 0,
+    "ignored": 47,
+    "testGroups": 374
+  },
+  "alternateFailure": {
+    "test": "watertightness_census_and_triangulator_invariance",
+    "fixture": "various/rvt01.ifc",
+    "host": 11232,
+    "openEdges": 0,
+    "strictEdges": 0,
+    "enclosedVolumeCm3": {
+      "golden": 39336,
+      "actual": 39344
+    },
+    "triangleCount": {
+      "golden": 144,
+      "actual": 154
+    },
+    "censusGoldenModified": false,
+    "physicalDisposition": "Pending; volume direction and closure alone cannot approve the change.",
+    "host6305PreviousCensusDiscrepancyPresent": false,
+    "completeAlternateWorkspacePass": false
+  },
+  "runtimeApproval": false,
+  "stackMergeApproval": false
+}

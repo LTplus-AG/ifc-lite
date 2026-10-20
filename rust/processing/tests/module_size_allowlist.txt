@@ -62,7 +62,10 @@
 # Row DELETED: the COLLADA document WRITER moved verbatim to collada_document.rs
 # so collada.rs could take try_export_collada_from_meshes and come
 # back under the 400-line rule instead of raising this budget to 470.
-     468 rust/export/src/model.rs
+# C6-8 (#7783): the export row stream moved here from rust/export/src/model.rs (468 lines,
+# row removed); its pass-1 helpers split into rows/support.rs. The 328-line
+# stream function is the bulk (see function_length_allowlist.txt).
+     420 rust/processing/src/data_model/rows/mod.rs
 # -140 net: text-level STEP primitives (escape/detect_schema/refs_in_line/
 # split_top_level_args/apply_attr_mutations) split out to step_text.rs, making
 # room for the backslash-doubling fix to escape() without raising this
@@ -77,7 +80,6 @@
 # the prism-cut path's cap/decompose triangulator. Skips the ring depth-parity
 # flood that open segments would corrupt.
      1617 rust/geometry/src/cdt.rs
-     956 rust/geometry/src/csg/consolidate.rs
 # -159: inline `mod tests` split out to csg/csg_tests.rs (ratchet-exempt) to make room for the
 # degenerate-triangle NaN-normal fix and its two regression tests; budget refreshed downward.
 # -117: the vertex-vs-plane classification epsilon (per-axis f32 rounding noise
@@ -135,48 +137,15 @@
      700 rust/geometry/src/kernel/predicates.rs
 # -31: extracted the final conformity audit + traversal recovery into kernel/retriangulate_audit.rs and phase-D recovery into retriangulate_recover.rs (issue #098 dense faceted-reveal walls); net down.
               935 rust/geometry/src/kernel/retriangulate.rs
-# split out of retriangulate.rs: phase-D constraint recovery (recover_subsegment/enforce_constraint/between + the Sloan recover_via_traversal fallback for dense reveal pockets, issue #098).
-         438 rust/geometry/src/kernel/retriangulate_recover.rs
 # new row: adds from_spans (build the index from pre-collected IfcRelAssociatesMaterial spans, no re-walk) + the MaterialLayerFlat wire codec (to_flat/from_flat) + round-trip tests, so the streaming pre-pass ships the index to workers once instead of each worker re-scanning the file (perf/single-scan #563).
      563 rust/geometry/src/material_layer_index.rs
 # +14: SubMeshCollection gains `ids_are_materials` + `of_materials()` so a material-layer id can never be read as a representation item (#3199).
 # -531: the 535-line `#[cfg(test)] mod tests` moved to the sibling mesh_tests.rs, which the ratchet exempts. Production code is unchanged (#3199 follow-up).
     1012 rust/geometry/src/mesh.rs
-# +86: #2866 — Boolean and CSG are mutually recursive over file references
-# (IfcBooleanResult operand -> IfcCsgSolid -> TreeRootExpression -> that same
-# IfcBooleanResult). CsgSolidProcessor built a FRESH BooleanClippingProcessor,
-# resetting depth and the cycle guard, so three entities aborted the process.
-# The guard must sit INSIDE the recursion, so this is a visited set threaded
-# through the five functions on the operand path plus a path-scoped
-# insert/remove around process_with_depth. Path-scoped, not global: a boolean
-# tree is a DAG and geometry ACCUMULATES, so an operand referenced down two
-# branches must be processed twice. A lower depth cap was rejected -- #960 made
-# the FirstOperand spine iterative precisely so Revit's 42-node DIFFERENCE
-# chains clear MAX_BOOLEAN_DEPTH=10, and a cap tight enough to stop this cycle
-# would drop those elements' geometry. A SECOND bound, MAX_OPERAND_PATH_NODES,
-# caps the path length: the CSG hop passes `depth` unchanged, so a long ACYCLIC
-# Boolean -> Csg -> Boolean chain never advances MAX_BOOLEAN_DEPTH and every
-# visited.insert succeeds -- 4,000 links aborted the process. The set is
-# path-scoped, so its LENGTH is the current depth and the bound costs no extra
-# parameter. BOTH boolean and CSG ids go in, so len() is an honest frame count
-# (see the +2 note below).
-# +9: #2866 review — the CSG id now goes into the path set too, so
-# MAX_OPERAND_PATH_NODES counts every frame instead of half of them and no
-# longer leans on a rejection in another file. Seven of the nine are the note
-# at the CSG hop recording why `depth` RESTARTS there: carrying it across
-# silently tightened MAX_BOOLEAN_DEPTH, which #960 calibrated against a
-# per-processor reset, and a valid 8-CsgSolid-8 chain that resolves on main
-# would have been dropped with "depth 11 exceeds limit 10". Caught in review,
-# so the note is the record of a regression avoided rather than commentary.
-# -69: #3821 split process_operand_with_depth (with its new unsupported-operand
-# record) out to the operand.rs sibling and the failure-log methods out to
-# failures.rs; 1005 -> 936.
-     936 rust/geometry/src/processors/boolean/mod.rs
 # csg_primitive.rs row REMOVED: #3821 moved IfcSphere (processor + UV-sphere
 # tessellation, verbatim) to the sphere.rs sibling to make room for the
 # CsgSolid boolean-failure hand-off; 422 -> 348, under the 400 limit. That
 # repays the #2866 loosening this row recorded.
-     476 rust/geometry/src/processors/sectioned.rs
      758 rust/geometry/src/profile_extractor.rs
      598 rust/geometry/src/profiles/curves_2d.rs
      495 rust/geometry/src/profiles/curves_3d.rs
@@ -205,21 +174,6 @@
      706 rust/geometry/src/profiles/simplify.rs
 # +26: cap the fast-path opening count (O(N^3) DoS guard) + regression test.
      807 rust/geometry/src/rect_fast.rs
-# +26: #2866 — item_has_identity_position chases IfcBooleanResult.FirstOperand,
-# a file-supplied reference, so one self-referential entity aborted the process
-# (stack overflow = abort in Rust, not a catchable panic). The walk is now
-# ITERATIVE with a visited-id set, matching collect_polygonal_chain in
-# processors/boolean/mod.rs. Iterating is what makes the set sufficient on its
-# own: it breaks on the first repeat, and with no stack to consume there is
-# nothing left for a length cap to protect. A cap would be actively wrong here
-# — #960 records Revit chains 42 DIFFERENCE nodes deep, and bailing on one
-# returns false, silently dropping layer slicing on a file that renders today.
-# A repeat returns false, which is this function's existing "anything exotic
-# bails safely" contract rather than a new special case. Tests are in a sibling
-# layers_cycle_tests.rs.
-# +1: the layered builder now marks its collection as carrying material ids (#3199).
-# -49: the inline `mod tests` moved to layers_tests.rs, matching the layers_cycle_tests.rs include this file already used (#3199 follow-up).
-     610 rust/geometry/src/router/layers.rs
 # +1: unify body-rep predicate — added is_direct_body_representation + docs; net removes ~60 lines from processing.rs and ~12 from layers.rs (crate trends down).
 # +65: promote the per-router IfcMappedItem source cache to a model-wide SharedMappedItemCache (type alias + field + new_/enable_ setters + unique-count diagnostic), meshing each source once model-wide (#1623).
 # +38: #1623 Phase 2 don't-bake — MappedInstancePlan type alias + output_instancing_plan field + enable_/getter + `mod instancing` decl.
@@ -392,7 +346,9 @@
 # +74: #1623 Phase 2 don't-bake — ProcessingResult.instances field + StreamingOptions.enable_instancing + the scan-built MappedInstancePlan + the plan/collector threaded into process_entity_job + the finalize call; the finalize/orphan-recovery bodies were extracted to processor/instancing.rs (new, 147 lines) to hold the net down.
 # +27: #858 palette guard — build the indexed_colour_split_ids set from the indexed-colour map keys (armed only with the plan) + thread it into process_entity_job so an indexed-colour mapped source stays flat (keeps its per-triangle palette).
 # +19: #1910 schedule a representationless spatial container (IfcBuilding et al.) for meshing when it exceptionally carries a non-null Representation, instead of silently dropping its geometry.
-    1661 rust/processing/src/processor/mod.rs
+# -153: the entry points moved to entry_points.rs, the request and sink types to request.rs and sink.rs (C4-1, #7782); 1661 -> 1508.
+# -423: the entity scan moved to scan.rs and the quick-metadata collector to quick_collector.rs (C4-4a, #7782); 1508 -> 1085.
+    1085 rust/processing/src/processor/mod.rs
 # +410: NEW row — #858 palette guard added the indexed_colour_split_ids param to process_entity_job (already the extracted per-job worker body from the #1623 file split), pushing this existing large module one line over 400; splitting the single job function further would fragment the tightly-coupled worker setup.
      410 rust/processing/src/processor/jobs.rs
 # +6: wire per-batch point-cache hit/miss stats into record_pipeline_batch (perf/brep-point-cache-instrumentation).

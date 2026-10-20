@@ -33,6 +33,14 @@ if (!jsonlPath) {
   process.exit(2);
 }
 
+function invalidInput(message) {
+  console.error(`browser-ab-report: invalid comparison input: ${message}`);
+  process.exit(2);
+}
+if (!baseLabel.trim() || !branchLabel.trim() || baseLabel === branchLabel) {
+  invalidInput('base and branch labels must be nonempty and distinct');
+}
+
 const allRows = readFileSync(jsonlPath, 'utf-8')
   .split('\n')
   .filter(Boolean)
@@ -80,16 +88,17 @@ const failedRows = allRows.filter((r) => r.ok === false || lostGpu(r));
 const rows = allRows.filter((r) => r.ok !== false && !lostGpu(r));
 const deviceLossRows = failedRows.filter(lostGpu);
 
+for (const row of rows) {
+  if (row.side !== baseLabel && row.side !== branchLabel) invalidInput('unknown sample side');
+  if (typeof row.fixture !== 'string' || !row.fixture.trim()) invalidInput('missing fixture name');
+  if (!Number.isInteger(row.round) || row.round < 0) invalidInput('round must be a nonnegative integer');
+  if (!Number.isInteger(row.totalMeshes) || row.totalMeshes < 0) invalidInput('totalMeshes must be a nonnegative integer');
+}
+
 const byFixture = new Map();
 for (const r of rows) {
   if (!byFixture.has(r.fixture)) byFixture.set(r.fixture, { [baseLabel]: [], [branchLabel]: [] });
-  const bucket = byFixture.get(r.fixture)[r.side];
-  if (bucket) bucket.push(r);
-  else {
-    // A side label present in the data but not one of --base/--branch — data
-    // integrity problem, not a metric to silently drop.
-    (byFixture.get(r.fixture)[r.side] ??= []).push(r);
-  }
+  byFixture.get(r.fixture)[r.side].push(r);
 }
 
 const coverage = 'Observed metadata/geometry/renderer logs plus canvas allocation (100ms polling); search, cache-tail memory, properties, picking and Firefox unqualified.';
@@ -98,6 +107,8 @@ let anyRealChange = false;
 let anyFingerprintDrift = false;
 let anyTooNoisy = false;
 let anyInsufficientSamples = false;
+let anyBelowResolution = false;
+let anyZeroBaselineIncrease = false;
 // Set when a fixture has zero comparable samples on one side (e.g. every
 // launch on that side threw and was archived as a failure) — distinct from
 // "no metric moved": no comparison happened for that fixture AT ALL, so
@@ -165,28 +176,48 @@ for (const [fixture, sides] of byFixture) {
   lines.push(`    ${'metric'.padEnd(30)} ${baseLabel.padStart(9)} ${branchLabel.padStart(9)}   delta    noise`);
 
   for (const [key, label] of METRICS) {
+    if ([...baseVals, ...branchVals].some(row => row[key] != null &&
+        (!Number.isFinite(row[key]) || row[key] < 0))) {
+      lines.push(`    ⚠️ invalid ${key}; supplied timings must be finite and nonnegative.`);
+      anyIncomparableFixture = true;
+      continue;
+    }
     const baseValues = new Map(baseVals.filter(row => Number.isFinite(row[key])).map(row => [row.round, row[key]]));
     const branchValues = new Map(branchVals.filter(row => Number.isFinite(row[key])).map(row => [row.round, row[key]]));
     const matchedRounds = [...baseValues.keys()].filter(round => branchValues.has(round));
     const bv = matchedRounds.map(round => baseValues.get(round));
     const brv = matchedRounds.map(round => branchValues.get(round));
-    if (!matchedRounds.length) continue;
-    const metricSufficient = sufficient && matchedRounds.length >= 5;
+    // Null legacy metrics may be absent everywhere. Partial coverage must not
+    // disappear, even if five other rounds remain comparable (#7912).
+    const supplied = [...baseVals, ...branchVals].some(row => row[key] != null);
+    if (!matchedRounds.length) {
+      if (supplied) anyInsufficientSamples = true;
+      continue;
+    }
+    const metricSufficient = sufficient && matchedRounds.length >= 5 &&
+      matchedRounds.length === baseVals.length && matchedRounds.length === branchVals.length;
     if (!metricSufficient) anyInsufficientSamples = true;
     const bMed = median(bv);
     const brMed = median(brv);
     const d = pct(brMed, bMed);
-    const noise = metricSufficient ? spreadPct(bv) : null;
+    const noise = metricSufficient && bMed > 0 ? spreadPct(bv) : null;
+    const belowResolution = bMed === 0 && brMed === 0;
+    const zeroBaselineIncrease = bMed === 0 && brMed > 0;
+    if (belowResolution) anyBelowResolution = true;
+    if (zeroBaselineIncrease) anyZeroBaselineIncrease = true;
+    const direction = d == null ? null : d < 0 ? 'faster' : d > 0 ? 'slower' : 'unchanged';
     // Same rule as the native ab-report: a change only counts if it clears
     // both the base's own noise floor AND a small absolute ms floor.
     const real = metricSufficient && noise != null && d != null && Math.abs(d) > Math.max(noise, 3) && Math.abs(brMed - bMed) >= 5;
     if (real) anyRealChange = true;
     if (key === 'metadataRenderReadyMs' && noise != null && noise > 20) anyTooNoisy = true;
-    const tag = real ? (d < 0 ? '  ✅' : '  ⛔') : '  ·';
+    const tag = zeroBaselineIncrease ? '  ⛔ zero baseline'
+      : belowResolution ? '  ? below resolution'
+        : real ? (direction === 'faster' ? '  ✅' : '  ⛔') : '  ·';
     lines.push(
       `    ${label.padEnd(30)} ${fmt(bMed).padStart(9)} ${fmt(brMed).padStart(9)}  ${(sign(d) + (d == null ? '—' : d.toFixed(1)) + '%').padStart(7)}  ${(noise == null ? 'n/a' : '±' + noise.toFixed(0) + '%').padStart(6)}${tag}`
     );
-    fx.metrics.push({ metric: label, baseMedianMs: bMed, branchMedianMs: brMed, deltaPct: d, noisePct: noise, real });
+    fx.metrics.push({ metric: label, baseMedianMs: bMed, branchMedianMs: brMed, deltaPct: d, noisePct: noise, real, direction });
   }
   report.fixtures.push(fx);
 }
@@ -199,6 +230,8 @@ if (rows.length === 0) {
 } else if (failedRows.length > 0) {
   lines.push('VERDICT: failed samples invalidate this run; descriptive successful observations are not a clean performance qualification.');
   if (anyIncomparableFixture) lines.push('VERDICT: inconclusive — at least one fixture had no comparable samples; this is NOT a clean "no regression" result.');
+} else if (anyZeroBaselineIncrease) {
+  lines.push('VERDICT: ⛔ blocked — a metric increased from a zero baseline; its relative delta and noise floor are undefined. This cannot certify no regression.');
 } else if (anyTooNoisy) {
   lines.push('VERDICT: ⚠️  machine too noisy (base observed-readiness spread >20%) — close other load and re-run with more --iters before trusting any delta.');
 } else {
@@ -212,7 +245,10 @@ if (rows.length === 0) {
   if (anyInsufficientSamples) {
     lines.push('VERDICT: insufficient paired samples (minimum five unique matched rounds); functional observations only, no noise-based performance verdict.');
   }
-  if (!anyRealChange && !anyIncomparableFixture && !anyInsufficientSamples) {
+  if (anyBelowResolution) {
+    lines.push('VERDICT: ? inconclusive — a metric is zero on both sides, below timer resolution. This cannot certify no change.');
+  }
+  if (!anyRealChange && !anyIncomparableFixture && !anyInsufficientSamples && !anyBelowResolution) {
     lines.push('VERDICT: no metric moved beyond the machine noise floor — within noise; totalMeshes matched across all rounds.');
   }
 }
@@ -230,6 +266,8 @@ if (jsonOut) {
     realChange: anyRealChange,
     insufficientPairedSamples: anyInsufficientSamples,
     incomparableFixture: anyIncomparableFixture,
+    inconclusive: anyBelowResolution,
+    zeroBaselineIncrease: anyZeroBaselineIncrease,
   };
   writeFileSync(jsonOut, JSON.stringify(report, null, 2));
   console.log(`\n(machine-readable report → ${jsonOut})`);

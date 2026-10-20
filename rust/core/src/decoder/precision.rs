@@ -5,7 +5,7 @@
 //! Declared geometric context precision for context-free analytic extraction.
 
 use super::EntityDecoder;
-use crate::{Error, Result};
+use crate::{slot, Error, Result};
 use crate::parser::{keyword_eq, EntityScanner};
 
 impl EntityDecoder<'_> {
@@ -36,7 +36,7 @@ impl EntityDecoder<'_> {
             }
             let entity = self.decode_at_uncached(start, end)
                 .map_err(|error| format!("geometric context #{id}: {error}"))?;
-            let attribute = entity.get(3)
+            let attribute = entity.attr(slot::IfcGeometricRepresentationContext::PRECISION)
                 .ok_or_else(|| format!("geometric context #{id} has no Precision attribute"))?;
             if attribute.is_null() { continue; }
             let precision = attribute.as_float()

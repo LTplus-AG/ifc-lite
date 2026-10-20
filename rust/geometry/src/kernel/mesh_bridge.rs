@@ -11,8 +11,14 @@ use super::arrangement::{
     difference_all_lenient_with_conformity, BoolOp,
     Tri,
 };
-use super::signed_volume::{signed_volume6, signed_volume6_about, volume_reference};
+use super::signed_volume::signed_volume6;
 use crate::mesh::Mesh;
+#[path = "mesh_bridge/batch_oracle.rs"]
+mod batch_oracle;
+use batch_oracle::validate_lenient_batch;
+
+mod batch_subtract;
+pub use batch_subtract::BatchSubtract;
 
 /// f32-near-coplanar reconciliation snap grid, in the CALLER's unit — NOT
 /// metres (#2684): 15 µm on the METRE path (`router/voids`), 15 nm on the
@@ -38,7 +44,10 @@ fn snap(c: f64) -> f64 {
 // The cross-operand near-coincidence weld lives in `super::plane_weld`: it was
 // split out of this module when #3353 made it a boolean-wide concern rather
 // than a subtraction-only one, and this module was at its size budget.
-use super::plane_weld::{promote_cutter_verts_onto_host_faces, promote_operands_mutually};
+use super::plane_weld::{
+    promote_cutter_verts_onto_host_faces, promote_operands_mutually,
+    promote_subtract_cutter_onto_host_faces,
+};
 
 /// `Mesh` → the kernel's triangle list (f32 → f64, snapped to the reconcile
 /// grid). Panic-free: an out-of-range index OR a non-finite (NaN/Inf) coord drops
@@ -144,14 +153,15 @@ pub(crate) fn orient_outward(mut tris: Vec<Tri>) -> Vec<Tri> {
     tris
 }
 
-/// `host − cutter` as a `Mesh`.
+/// `host − cutter` as a `Mesh`, retaining the general operand weld.
+/// Opening-specific welding is selected internally by the void router.
 ///
 /// Owns its #1109 budget like [`union`] (#7688 KERNEL-17): a fresh count, so
 /// a stale one cannot truncate it, and EMPTY on a trip, never the partial
 /// arrangement. Inside a spent element it trips at once.
 pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
     super::budget::begin();
-    let (out, _, _) = subtract_with_change(host, cutter);
+    let (out, _, _) = subtract_with_change(host, cutter, false);
     if super::budget::tripped() {
         return Mesh::new();
     }
@@ -170,43 +180,21 @@ pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
 /// `boolean(.., Difference)`: the same arrangement over the same operands,
 /// classified through the same one-component `BComponents`, and neither gates
 /// on conformity. The third element says whether the arrangement conformed.
-pub(crate) fn subtract_with_change(host: &Mesh, cutter: &Mesh) -> (Mesh, bool, bool) {
+///
+/// `opening` picks the weld: an opening cutter takes the guarded subtract weld
+/// (#6940), an `IfcBooleanResult` operand the plain one, as before #6940.
+pub(crate) fn subtract_with_change(host: &Mesh, cutter: &Mesh, opening: bool) -> (Mesh, bool, bool) {
     #[cfg(feature = "csg_capture")]
-    crate::csg_capture::record_single(host, cutter);
+    crate::csg_capture::record_single(host, cutter, opening);
+    if super::budget::tripped() { return (Mesh::new(), false, false); }
     let h = orient_outward(mesh_to_tris(host));
     let mut c = mesh_to_tris(cutter);
-    promote_cutter_verts_onto_host_faces(&mut c, &h);
+    let weld = if opening { promote_subtract_cutter_onto_host_faces } else { promote_cutter_verts_onto_host_faces };
+    weld(&mut c, &h);
+    if super::budget::tripped() { return (Mesh::new(), false, false); }
     let c = orient_outward(c);
     let (tris, changed, conforming) = difference_all_lenient_with_conformity(&h, &[&c]);
     (tris_to_mesh_without_plane_tags(&tris), changed, conforming)
-}
-
-/// What [`subtract_many`] made of a cutter group.
-#[must_use]
-#[derive(Debug, Clone)]
-pub enum BatchSubtract {
-    /// The arrangement conformed (or its lenient batch passed the volume
-    /// oracle) and at least one cutter reaches the host solid. Empty when the
-    /// cutters engulf the host.
-    Cut(Mesh),
-    /// The arrangement conformed but no cutter reaches the host solid: every
-    /// host sub-triangle was kept and no cutter face was. The host is unchanged.
-    Unchanged,
-    /// No trustworthy arrangement: an unrecovered constraint remained and the
-    /// lenient batch failed the volume oracle, or the oracle itself tripped the
-    /// budget. The caller falls back to sequential per-cutter subtraction.
-    Nonconforming,
-}
-
-impl BatchSubtract {
-    /// `Cut` when the classifier changed the host, `Unchanged` otherwise.
-    fn classified(tris: &[Tri], changed: bool) -> Self {
-        if changed {
-            Self::Cut(tris_to_mesh_without_plane_tags(tris))
-        } else {
-            Self::Unchanged
-        }
-    }
 }
 
 /// `host − (∪ cutters)` as a `Mesh` — the batched void-group subtract.
@@ -226,7 +214,7 @@ impl BatchSubtract {
 /// false `Unchanged` (#7688 KERNEL-17).
 pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> BatchSubtract {
     super::budget::begin();
-    let (out, _, _) = subtract_many_with_conformity(host, cutters, false);
+    let (out, _, _) = subtract_many_with_conformity(host, cutters, false, false);
     if super::budget::tripped() {
         return BatchSubtract::Nonconforming;
     }
@@ -237,19 +225,23 @@ pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> BatchSubtract {
 /// A volume-checked nonconforming miss must retain the sequential fallback.
 /// Caller-managed budget, as [`subtract_with_change`] (`csg::group_cut`).
 pub(crate) fn subtract_many_with_conformity(
-    host: &Mesh, cutters: &[&Mesh], retain_conforming_miss: bool,
+    host: &Mesh, cutters: &[&Mesh], opening: bool, retain_conforming_miss: bool,
 ) -> (BatchSubtract, bool, Option<Mesh>) {
     #[cfg(feature = "csg_capture")]
-    crate::csg_capture::record_many(host, cutters);
+    crate::csg_capture::record_many(host, cutters, opening, retain_conforming_miss);
+    if super::budget::tripped() { return (BatchSubtract::Nonconforming, false, None); }
     let h = orient_outward(mesh_to_tris(host));
-    let comp_tris: Vec<Vec<Tri>> = cutters
-        .iter()
-        .map(|m| {
-            let mut c = mesh_to_tris(m);
+    let mut comp_tris: Vec<Vec<Tri>> = Vec::with_capacity(cutters.len());
+    for m in cutters {
+        let mut c = mesh_to_tris(m);
+        if opening {
+            promote_subtract_cutter_onto_host_faces(&mut c, &h);
+        } else {
             promote_cutter_verts_onto_host_faces(&mut c, &h);
-            orient_outward(c)
-        })
-        .collect();
+        }
+        if super::budget::tripped() { return (BatchSubtract::Nonconforming, false, None); }
+        comp_tris.push(orient_outward(c));
+    }
     let refs: Vec<&[Tri]> = comp_tris.iter().map(|c| c.as_slice()).collect();
     // Conforming batch: the fast, exact, byte-identical common path.
     if let Some((r, changed)) = difference_all(&h, &refs) {
@@ -273,52 +265,7 @@ pub(crate) fn subtract_many_with_conformity(
     // Trust the lenient batch ONLY when its removed volume matches the true removed
     // volume; else Nonconforming, so the caller runs its full sequential path.
     let (batch, changed) = difference_all_lenient(&h, &refs);
-    // ORACLE for the volume comparison (#1788): batched cutters are pairwise
-    // disjoint (this fn's contract), so the TRUE removed volume is
-    // Σ |host ∩ cutterᵢ| — each a small single boolean against the PRISTINE
-    // host, the well-conditioned regime. The previous oracle re-ran the
-    // sequential subtract chain, but that chain re-jitters its own seams
-    // cut-over-cut and UNDER-cuts on multi-void walls — on the ISSUE_098
-    // Poroton wall its "reference" removed 2% less volume than the (correct)
-    // batch, so a perfect batch was rejected in favour of the broken
-    // sequential fallback, leaving an opening uncut (T6 fail:opening-not-cut).
-    // Budget snapshot/restore: oracle work isn't charged to the caller's
-    // batch budget (codex P2 on #1660); a trip DURING an oracle intersection
-    // makes its volume untrustworthy ⇒ reject the group (as before).
-    let budget_snap = super::budget::snapshot_counters();
-    let mut inter_sum = 0.0f64;
-    let mut oracle_tripped = false;
-    for c in &comp_tris {
-        super::budget::begin();
-        let i = boolean(&h, c, BoolOp::Intersection);
-        if super::budget::tripped() {
-            oracle_tripped = true;
-            break;
-        }
-        inter_sum += signed_volume6(&i).abs();
-    }
-    super::budget::restore_counters(budget_snap);
-    if oracle_tripped {
-        return (BatchSubtract::Nonconforming, false, None);
-    }
-    // Both readings about the HOST's reference point (#4693). A host can arrive
-    // open (the router does not require a closed host), and an open surface's
-    // sum moves with the reference point: read the batch about its own centre
-    // and a cut that trims the host's bounding box leaves the untouched crack's
-    // flux in `batch_removed`.
-    let reference = volume_reference(&h);
-    let host_v = signed_volume6_about(&h, &reference).abs();
-    let batch_removed = host_v - signed_volume6_about(&batch, &reference).abs();
-    // 1% agreement — above f64/FMA noise (parity-stable branch), tight enough to
-    // reject the #1167 gross under-cut (3.7 m³ vs 13 m³).
-    let tol = inter_sum.abs().max(1.0e-9) * 0.01;
-    if (batch_removed - inter_sum).abs() <= tol {
-        #[cfg(feature = "opening-perf-trace")]
-        crate::opening_perf_trace::record(|c| c.batch_volume_checked_misses = c.batch_volume_checked_misses.saturating_add(u64::from(!changed)));
-        (BatchSubtract::classified(&batch, changed), false, None)
-    } else {
-        (BatchSubtract::Nonconforming, false, None)
-    }
+    validate_lenient_batch(&h, &comp_tris, &batch, changed)
 }
 
 /// `a ∪ b` as a `Mesh`.

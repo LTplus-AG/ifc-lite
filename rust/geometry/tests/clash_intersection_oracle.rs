@@ -21,68 +21,9 @@
 
 use ifc_lite_geometry::{intersection_solid, DegenerateReason, IntersectionSolid, Mesh};
 
-/// Axis-aligned box as a `Mesh`, each face subdivided `n`×`n`.
-///
-/// Triangle count is `12·n²`: `n = 1 → 12`, `n = 2 → 48`, `n = 4 → 192`. The
-/// surface is identical for every `n` — only the tessellation changes — so any
-/// quantity that varies across `n` is measuring the mesh, not the solid.
-fn box_mesh(lo: [f64; 3], hi: [f64; 3], n: usize) -> Mesh {
-    assert!(n >= 1);
-    let mut m = Mesh::new();
-    let mut push = |p: [f64; 3]| -> u32 {
-        let idx = (m.positions.len() / 3) as u32;
-        m.positions.push(p[0] as f32);
-        m.positions.push(p[1] as f32);
-        m.positions.push(p[2] as f32);
-        m.normals.extend_from_slice(&[0.0, 0.0, 0.0]);
-        idx
-    };
-    for axis in 0..3usize {
-        let (u, v) = ((axis + 1) % 3, (axis + 2) % 3);
-        for (side, &w) in [lo[axis], hi[axis]].iter().enumerate() {
-            for i in 0..n {
-                for j in 0..n {
-                    let fu = |k: usize| lo[u] + (hi[u] - lo[u]) * (k as f64) / (n as f64);
-                    let fv = |k: usize| lo[v] + (hi[v] - lo[v]) * (k as f64) / (n as f64);
-                    let corner = |cu: f64, cv: f64| {
-                        let mut p = [0.0f64; 3];
-                        p[axis] = w;
-                        p[u] = cu;
-                        p[v] = cv;
-                        p
-                    };
-                    let a = push(corner(fu(i), fv(j)));
-                    let b = push(corner(fu(i + 1), fv(j)));
-                    let c = push(corner(fu(i + 1), fv(j + 1)));
-                    let d = push(corner(fu(i), fv(j + 1)));
-                    // Wind the low and high faces oppositely so the box is
-                    // consistently outward-oriented.
-                    if side == 0 {
-                        m.indices.extend_from_slice(&[a, c, b, a, d, c]);
-                    } else {
-                        m.indices.extend_from_slice(&[a, b, c, a, c, d]);
-                    }
-                }
-            }
-        }
-    }
-    m
-}
-
-/// `box_mesh`, then every vertex mapped by the rotation `r` (row-major 3×3).
-fn rotated_box_mesh(lo: [f64; 3], hi: [f64; 3], n: usize, r: [[f64; 3]; 3]) -> Mesh {
-    let mut m = box_mesh(lo, hi, n);
-    for p in m.positions.chunks_exact_mut(3) {
-        let v = [p[0] as f64, p[1] as f64, p[2] as f64];
-        for k in 0..3 {
-            p[k] = (r[k][0] * v[0] + r[k][1] * v[1] + r[k][2] * v[2]) as f32;
-        }
-    }
-    m
-}
-
-/// The three tessellation levels every oracle sweeps: 12, 48 and 192 triangles.
-const TESSELLATIONS: [usize; 3] = [1, 2, 4];
+#[path = "support/clash_box_fixtures.rs"]
+mod clash_box_fixtures;
+use clash_box_fixtures::{box_mesh, rotated_box_mesh, ROT_Z_3_4_5, TESSELLATIONS};
 
 /// Analytic agreement bound. The API returns f64 positions taken straight from
 /// the exact kernel, so the observed error on every case below is ≤ 2e-15;
@@ -227,15 +168,6 @@ fn containment_returns_the_contained_solid_not_a_shell() {
 // ---------------------------------------------------------------------------
 // Analytic volume — rotated, with a hand derivation.
 // ---------------------------------------------------------------------------
-
-/// Rotation by the exact Pythagorean angle `cos θ = 3/5, sin θ = 4/5` about Z.
-///
-/// Chosen over 45° deliberately: every entry is an exact binary fraction, so the
-/// rotated operand's vertices land exactly on the kernel's `2^-16` snap grid and
-/// the analytic answer stays reachable to f64. A `√2/2` rotation would smear
-/// corners by up to half a snap cell and force a tolerance loose enough to hide
-/// a real error.
-const ROT_Z_3_4_5: [[f64; 3]; 3] = [[0.6, -0.8, 0.0], [0.8, 0.6, 0.0], [0.0, 0.0, 1.0]];
 
 /// The rotated operand: a 5 × 2.5 box in XY (cross-section 12.5 m², preserved by
 /// rotation) spanning z ∈ [0.25, 5], turned by `ROT_Z_3_4_5`.
@@ -451,15 +383,15 @@ fn rotated_near_band_overlap_is_withheld_exactly_as_the_axis_aligned_one_is() {
                     thickness_m,
                     required_m,
                 } => {
-                    // The measured thickness must be the TRUE contact depth,
-                    // not some world-frame projection of it. The tolerance is
-                    // one snap cell: the rotated operands' vertices no longer
-                    // land on the kernel's `2^-16` grid, so the arranged
-                    // geometry is the snapped one, and f32 `Mesh` positions add
-                    // ~6e-8 m on top. Both are far below the 488 µm gate.
+                    // #7292: unresolved intersections can have disconnected tiny
+                    // components. The diagnostic reports their actual thinnest
+                    // violating extent, not the ideal pair's penetration depth.
+                    // The private component-report test independently checks the
+                    // exact report for these same 15 fixtures.
                     assert!(
-                        (thickness_m - depth).abs() < 1.0 / 65536.0,
-                        "{ctx}: reported thickness {thickness_m}, true depth {depth}"
+                        thickness_m.is_finite() && thickness_m >= 0.0
+                            && required_m.is_finite() && thickness_m < required_m,
+                        "{ctx}: invalid component diagnostic {thickness_m} / {required_m}"
                     );
                     assert!(
                         required_m >= 4.0 * NEAR_BAND_FLOOR - 1e-12,

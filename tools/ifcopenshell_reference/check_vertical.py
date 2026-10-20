@@ -171,7 +171,7 @@ def check(path: str, authored: dict) -> tuple[list[str], int]:
         if ours[-1].Transition != "DISCONTINUOUS":
             problems.append(f"{name}: the terminating gradient curve segment is {ours[-1].Transition}, not DISCONTINUOUS")
 
-        fn = W.map_shape(settings, gradient.wrapped_data)
+        fn = W.map_shape(settings, gradient)
         evaluator = W.function_item_evaluator(settings, fn)
         sta_start = authored[name]["staStart"]
         for station, height in authored[name]["heights"]:

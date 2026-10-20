@@ -9,9 +9,9 @@
 //! on `Elevation` (attribute 9) within a tolerance. All extraction is text-level
 //! against the raw STEP line, mirroring the JS which also has no schema table.
 
+use ifc_lite_core::parser::StepRecord;
 use std::collections::HashMap;
 
-use ifc_lite_core::step_encoding::step_string_literal_end;
 
 /// Strategy for matching a later model's `IfcSite` / `IfcBuilding` onto the first.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -49,76 +49,29 @@ pub struct SpatialLookup {
 }
 
 /// Extract the trimmed content of the 0-based top-level attribute `n` of a STEP
-/// entity line (`#id=TYPE(a,b,c,…);`), honouring quoted strings and nested
-/// parentheses. Returns `None` when the line has no argument list or `n` is out
-/// of range.
+/// entity line (`#id=TYPE(a,b,c,...);`), read through core's [`StepRecord`]: a
+/// comment is trivia, a literal is a region, and the attribute list is the
+/// first `(` outside a comment (not the first `(` anywhere). `None` when the
+/// line has no argument list or `n` is out of range.
 pub fn nth_attr(line: &str, n: usize) -> Option<&str> {
-    let bytes = line.as_bytes();
-    let open = bytes.iter().position(|&b| b == b'(')?;
-    let mut depth = 0i32;
-    let mut idx = 0usize;
-    let mut arg_start = open + 1;
-    let mut i = open;
-    while i < bytes.len() {
-        match bytes[i] {
-            // The shared rule for where a literal ends: a `\S\'` operand is
-            // text, not the closing quote (#7589).
-            b'\'' => {
-                i = step_string_literal_end(bytes, i)?;
-                continue;
-            }
-            b'(' => {
-                depth += 1;
-                if depth == 1 {
-                    arg_start = i + 1;
-                }
-            }
-            b')' => {
-                depth -= 1;
-                if depth == 0 {
-                    if idx == n {
-                        return Some(line[arg_start..i].trim());
-                    }
-                    return None;
-                }
-            }
-            b',' if depth == 1 => {
-                if idx == n {
-                    return Some(line[arg_start..i].trim());
-                }
-                idx += 1;
-                arg_start = i + 1;
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    None
+    let attr = StepRecord::parse(line.as_bytes())?.attr(n)?;
+    // Every delimiter is ASCII, so the slice is on char boundaries.
+    std::str::from_utf8(attr).ok()
 }
 
 /// The `Name` (attribute 2) of a rooted entity, lowercased for matching. Returns
 /// `None` when the attribute is null (`$`) or not a quoted string.
 pub fn entity_name(line: &str) -> Option<String> {
-    let raw = nth_attr(line, 2)?;
-    if raw == "$" || raw == "*" || !raw.starts_with('\'') || !raw.ends_with('\'') || raw.len() < 2 {
-        return None;
-    }
-    // Unquote and un-double `''` → `'`; keep other bytes verbatim (both the first
-    // model and later models decode identically, so matching stays consistent).
-    let inner = &raw[1..raw.len() - 1];
-    Some(inner.replace("''", "'").to_lowercase())
+    // The decoded literal (core's one funnel), so `Caf\X2\00E9\X0\` matches
+    // `Café` in the other model; `$`, `*` and non-strings are none.
+    StepRecord::parse(line.as_bytes())?.string_at(2).map(|name| name.to_lowercase())
 }
 
 /// The `Elevation` (attribute 9) of an `IfcBuildingStorey`, if numeric.
 pub fn storey_elevation(line: &str) -> Option<f64> {
-    let raw = nth_attr(line, 9)?;
-    let trimmed = raw.trim();
-    if trimmed.is_empty() || trimmed == "$" || trimmed == "*" {
-        return None;
-    }
     // The core STEP literal reader, not `str::parse::<f64>`, which read `inf`,
     // `NaN` and an overflowing `1.E400` as elevations (#7678).
-    ifc_lite_core::parse_step_real(trimmed.as_bytes())
+    StepRecord::parse(line.as_bytes())?.real_at(9)
 }
 
 impl SpatialLookup {

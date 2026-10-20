@@ -16,9 +16,14 @@ const MAX_DEPTH: usize = 128;
 pub(super) struct CurveWalk {
     path: HashSet<u32>,
     visits: usize,
+    pub(super) source: super::source::SourceCapture,
 }
 
 impl CurveWalk {
+    pub(super) fn with_source() -> Self {
+        Self { source: super::source::SourceCapture::enabled(), ..Self::default() }
+    }
+
     pub(super) fn extract(
         &mut self,
         curve: &DecodedEntity,
@@ -53,6 +58,7 @@ impl CurveWalk {
         curve: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Vec<Segment>>> {
+        self.source.record(curve, decoder);
         match curve.ifc_type {
             IfcType::IfcPolyline => self.polyline(curve, decoder).map(Some),
             IfcType::IfcIndexedPolyCurve => self.indexed(curve, decoder),
@@ -261,6 +267,7 @@ impl CurveWalk {
             if segment.ifc_type != IfcType::IfcCompositeCurveSegment {
                 return Ok(None);
             }
+            self.source.record(&segment, decoder);
             let same_sense = segment.get_bool(1).unwrap_or(true);
             let parent = resolve(segment.get(2), decoder)?;
             let Some(mut pieces) = self.extract(&parent, decoder)? else {
@@ -280,6 +287,9 @@ impl CurveWalk {
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Vec<Segment>>> {
         let basis = resolve(curve.get(0), decoder)?;
+        if matches!(basis.ifc_type, IfcType::IfcLine | IfcType::IfcCircle) {
+            self.source.record(&basis, decoder);
+        }
         Ok(decode_trimmed_primitive(curve, &basis, decoder, TrimRecovery::RequireBoth)?
             .map(|primitive| vec![match primitive {
                 TrimmedPrimitive::Line { start, end } => Segment::Line { start, end },

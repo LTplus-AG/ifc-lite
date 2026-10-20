@@ -49,9 +49,23 @@ interface UndersizedButton {
  * host element alone would miss it. So this reads the `::after`'s computed
  * box too and unions it with the element's own rect before comparing.
  */
+/**
+ * ViewCube edge and corner pieces are exempt. They are the bevels of a
+ * perspective-projected 3D cube, so their on-screen size is dictated by the
+ * cube's geometry and its current orientation (a 16px band foreshortens to
+ * roughly 9-12px wide) and cannot be padded without overlapping their
+ * neighbours; WCAG 2.5.8's "Essential" exception covers a presentation that
+ * is itself the information. They are pointer shortcuts only: the six face
+ * buttons (which do meet the minimum and stay in the tab order) plus the
+ * keyboard view shortcuts reach the same orientations as the faces, and the
+ * edge/corner buttons are `tabIndex=-1`. Faces stay under test.
+ */
+const VIEWCUBE_BEVEL_SELECTOR = '[data-viewcube-zone="edge"], [data-viewcube-zone="corner"]';
+
 async function findUndersizedButtons(page: Page): Promise<UndersizedButton[]> {
-  return page.evaluate((min) => {
-    const nodes = Array.from(document.querySelectorAll<HTMLElement>('button, [role="button"]'));
+  return page.evaluate(({ min, bevels }) => {
+    const nodes = Array.from(document.querySelectorAll<HTMLElement>('button, [role="button"]'))
+      .filter((el) => !el.matches(bevels));
     const out: UndersizedButton[] = [];
     for (const el of nodes) {
       const style = getComputedStyle(el);
@@ -78,7 +92,7 @@ async function findUndersizedButtons(page: Page): Promise<UndersizedButton[]> {
       }
     }
     return out;
-  }, MIN_TARGET_PX);
+  }, { min: MIN_TARGET_PX, bevels: VIEWCUBE_BEVEL_SELECTOR });
 }
 
 /** Non-transparent, non-`none` focus indicator: an outline or a ring

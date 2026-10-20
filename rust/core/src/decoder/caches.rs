@@ -48,11 +48,15 @@ impl EntityDecoder<'_> {
     /// rayon tasks. After calling this, the decoder is empty (cache
     /// moved out); callers typically then drop the decoder.
     pub fn drain_cache(&mut self) -> FxHashMap<u32, Arc<DecodedEntity>> {
+        self.execution_owner.cache_changed();
+        self.execution_owner.changed();
         std::mem::take(&mut self.cache)
     }
 
     /// Clear all caches to free memory
     pub fn clear_cache(&mut self) {
+        self.execution_owner.cache_changed();
+        self.execution_owner.changed();
         self.cache.clear();
         self.point_cache.clear();
         self.placement_transform_cache.clear();
@@ -69,12 +73,16 @@ impl EntityDecoder<'_> {
     /// expensive one away to bound the cheap one, and does it invisibly: output
     /// stays correct and large models simply get slower.
     pub fn clear_entity_cache(&mut self) {
+        self.execution_owner.cache_changed();
+        self.execution_owner.changed();
         self.cache.clear();
     }
 
     /// Clear only the point coordinate cache (used after BREP preprocessing).
     /// The entity cache is preserved for subsequent geometry processing.
     pub fn clear_point_cache(&mut self) {
+        self.execution_owner.cache_changed();
+        self.execution_owner.changed();
         self.point_cache.clear();
     }
 
@@ -85,13 +93,18 @@ impl EntityDecoder<'_> {
     /// elements is byte-identical (speed only). Cheap: moves the map header, not
     /// its contents.
     pub fn take_point_cache(&mut self) -> FxHashMap<u32, (f64, f64, f64)> {
+        self.execution_owner.cache_changed();
+        self.execution_owner.changed();
         std::mem::take(&mut self.point_cache)
     }
 
+    /// Trusted-input compatibility API; revokes coherent source authority.
     /// Install a previously-accumulated point cache (see [`Self::take_point_cache`]).
     /// Does not reset the hit/miss counters, which stay per-decoder so each job's
     /// [`Self::point_cache_stats`] reflect only that job's activity.
     pub fn set_point_cache(&mut self, cache: FxHashMap<u32, (f64, f64, f64)>) {
+        self.revoke_cache_authority();
+        self.execution_owner.changed();
         self.point_cache = cache;
     }
 
@@ -111,12 +124,17 @@ impl EntityDecoder<'_> {
     /// reusing it across elements is byte-identical (speed only). Cheap: moves
     /// the map header, not its contents.
     pub fn take_placement_transform_cache(&mut self) -> FxHashMap<u32, [f64; 16]> {
+        self.execution_owner.cache_changed();
+        self.execution_owner.changed();
         std::mem::take(&mut self.placement_transform_cache)
     }
 
+    /// Trusted-input compatibility API; revokes coherent source authority.
     /// Install a previously-accumulated placement-transform memo (see
     /// [`Self::take_placement_transform_cache`]).
     pub fn set_placement_transform_cache(&mut self, cache: FxHashMap<u32, [f64; 16]>) {
+        self.revoke_cache_authority();
+        self.execution_owner.changed();
         self.placement_transform_cache = cache;
     }
 

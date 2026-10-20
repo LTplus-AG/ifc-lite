@@ -45,11 +45,10 @@
 12 rust/geometry/src/processors/advanced_face/curves.rs
 10 rust/geometry/src/processors/advanced_face/edge_loop.rs
 23 rust/geometry/src/processors/advanced_face/polyline.rs
-4 rust/geometry/src/processors/advanced_face/revolution.rs
 2 rust/geometry/src/processors/boolean/operand.rs
 1 rust/geometry/src/processors/boolean/polygonal_boundary.rs
 1 rust/geometry/src/processors/csg_primitive.rs
-4 rust/geometry/src/processors/extrusion_params.rs
+2 rust/geometry/src/processors/extrusion_params.rs
 3 rust/geometry/src/processors/helpers.rs
 17 rust/geometry/src/processors/sectioned_positions.rs
 3 rust/geometry/src/processors/surface.rs
@@ -61,8 +60,8 @@
 14 rust/geometry/src/profiles/curves_2d.rs
 19 rust/geometry/src/profiles/curves_3d.rs
 4 rust/geometry/src/profiles/directrix.rs
-23 rust/geometry/src/profiles/mod.rs
-13 rust/geometry/src/profiles/placement.rs
+16 rust/geometry/src/profiles/mod.rs
+1 rust/geometry/src/profiles/placement.rs
 2 rust/geometry/src/profiles/regions.rs
 24 rust/geometry/src/profiles/shapes.rs
 26 rust/geometry/src/profiles/steel_shapes.rs
@@ -76,7 +75,7 @@
 3 rust/geometry/src/router/processing.rs
 17 rust/geometry/src/router/rtc_offset.rs
 2 rust/geometry/src/router/rtc_offset/raw_coordinate.rs
-3 rust/geometry/src/router/textured.rs
+2 rust/geometry/src/router/textured.rs
 2 rust/geometry/src/router/transforms/mapped.rs
 3 rust/geometry/src/router/transforms/mod.rs
 43 rust/geometry/src/router/voids/probe.rs

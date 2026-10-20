@@ -305,7 +305,8 @@ impl CurveWalk {
                 Err(error) => return self.source.fail(error.to_string()),
             };
             self.source.record(&segment, decoder);
-            let walked = resolve(segment.get(2), decoder)
+            let parent = ifc_lite_core::slot::IfcCompositeCurveSegment::PARENT_CURVE.index();
+            let walked = resolve(segment.get(parent), decoder)
                 .and_then(|parent| self.extract(&parent, decoder));
             if let Err(error) = walked {
                 return self.source.fail(error.to_string());

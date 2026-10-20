@@ -31,7 +31,6 @@
 10 rust/geometry/src/analytic/curve.rs
 7 rust/geometry/src/analytic/extrusion.rs
 1 rust/geometry/src/analytic/helpers.rs
-7 rust/geometry/src/analytic/mod.rs
 7 rust/geometry/src/analytic/profile.rs
 12 rust/geometry/src/curve_segment.rs
 19 rust/geometry/src/curve_source.rs

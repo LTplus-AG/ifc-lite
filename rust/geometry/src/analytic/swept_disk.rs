@@ -7,7 +7,8 @@
 use super::{curve, helpers, owned_directrix, AnalyticBoundarySource, AnalyticCurveSegment,
     AnalyticStatus, AnalyticSweptDisk, OwnedDirectrix};
 use crate::{Error, Result};
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcType};
+use slot::IfcSweptDiskSolid as Disk;
 
 /// Extract an exact directrix where supported. Unsupported curve types return a
 /// status and no partial segments; malformed required attributes return an error.
@@ -19,12 +20,13 @@ pub fn extract_swept_disk(
         return Err(Error::geometry("expected IfcSweptDiskSolid".to_string()));
     }
     let directrix_id = entity
-        .get_ref(0)
+        .get_ref(Disk::DIRECTRIX.index())
         .ok_or_else(|| Error::geometry("IfcSweptDiskSolid missing Directrix".to_string()))?;
-    let radius = read_optional_numeric(entity.get(1), "Radius")?
+    let radius = read_optional_numeric(entity.get(Disk::RADIUS.index()), "Radius")?
         .filter(|r| r.is_finite() && *r > 0.0)
         .ok_or_else(|| Error::geometry("IfcSweptDiskSolid has invalid Radius".to_string()))?;
-    let inner_radius = read_optional_numeric(entity.get(2), "InnerRadius")?;
+    let inner_radius =
+        read_optional_numeric(entity.get(Disk::INNER_RADIUS.index()), "InnerRadius")?;
     if inner_radius.is_some_and(|r| !r.is_finite() || r <= 0.0 || r >= radius) {
         return Err(Error::geometry(
             "IfcSweptDiskSolid has invalid InnerRadius".to_string(),
@@ -36,12 +38,13 @@ pub fn extract_swept_disk(
             Error::geometry("IfcSweptDiskSolid Directrix cannot be resolved".to_string())
         })?;
     let capture = super::source::requested();
-    let mut walk = if capture { curve::CurveWalk::with_source() } else { curve::CurveWalk::default() };
+    let mut walk =
+        if capture { curve::CurveWalk::with_source() } else { curve::CurveWalk::default() };
     if capture {
         walk.source.record(entity, decoder);
     }
-    let start = read_optional_numeric(entity.get(3), "StartParam")?;
-    let end = read_optional_numeric(entity.get(4), "EndParam")?;
+    let start = read_optional_numeric(entity.get(Disk::START_PARAM.index()), "StartParam")?;
+    let end = read_optional_numeric(entity.get(Disk::END_PARAM.index()), "EndParam")?;
     let has_trim = start.is_some() || end.is_some();
     let extracted = if directrix.ifc_type == IfcType::IfcLine && (start.is_none() || end.is_none())
     {
@@ -70,65 +73,7 @@ pub fn extract_swept_disk(
         ));
     }
     if matches!(status, AnalyticStatus::Complete) && has_trim {
-        match directrix.ifc_type {
-            IfcType::IfcPolyline => {
-                segments = helpers::trim_indexed_segments(&segments, start, end)?;
-            }
-            IfcType::IfcCompositeCurve | IfcType::IfcCompositeCurveOnSurface => {}
-            IfcType::IfcTrimmedCurve => {
-                if !trimmed_line_solid_bounds_redundant(&directrix, &segments, start, end, decoder)?
-                {
-                    status = AnalyticStatus::Unsupported(
-                        "solid-level trim on trimmed directrix is not redundant".to_string(),
-                    );
-                }
-            }
-            IfcType::IfcCircle => {
-                let scale = decoder.plane_angle_to_radians();
-                if !scale.is_finite() || scale <= 0.0 {
-                    return Err(Error::geometry(
-                        "invalid plane angle unit scale".to_string(),
-                    ));
-                }
-                let begin = start.unwrap_or(0.0) * scale;
-                let finish = end.unwrap_or(std::f64::consts::TAU / scale) * scale;
-                let mut sweep = finish - begin;
-                if sweep < 0.0 {
-                    sweep += std::f64::consts::TAU;
-                }
-                if !begin.is_finite()
-                    || !sweep.is_finite()
-                    || sweep <= 0.0
-                    || sweep > std::f64::consts::TAU + 1e-9
-                {
-                    status = AnalyticStatus::Unsupported(
-                        "invalid circular directrix parameter range".to_string(),
-                    );
-                } else if let Some(AnalyticCurveSegment::Arc {
-                    start_angle,
-                    sweep_angle,
-                    ..
-                }) = segments.first_mut()
-                {
-                    *start_angle = begin;
-                    *sweep_angle = sweep;
-                }
-            }
-            IfcType::IfcLine => {
-                // An IfcLine parameter is distance along its IfcVector, not a
-                // normalized segment fraction. The extractor's bare line spans 0..1.
-                let line = segments
-                    .first()
-                    .cloned()
-                    .ok_or_else(|| Error::geometry("empty line".to_string()))?;
-                segments = vec![line.subsegment(start.unwrap_or(0.0), end.unwrap_or(1.0))];
-            }
-            _ => {
-                status = AnalyticStatus::Unsupported(
-                    "solid-level trim for this directrix is unsupported".to_string(),
-                )
-            }
-        }
+        trim_segments(&directrix, &mut segments, &mut status, start, end, decoder)?;
     }
     if matches!(status, AnalyticStatus::Complete)
         && segments.iter().any(|segment| !segment.is_finite())
@@ -165,6 +110,77 @@ pub fn extract_swept_disk(
     })
 }
 
+/// Apply solid-level StartParam/EndParam to the interpreted line/arc segments.
+fn trim_segments(
+    directrix: &DecodedEntity,
+    segments: &mut Vec<AnalyticCurveSegment>,
+    status: &mut AnalyticStatus,
+    start: Option<f64>,
+    end: Option<f64>,
+    decoder: &mut EntityDecoder,
+) -> Result<()> {
+    match directrix.ifc_type {
+        IfcType::IfcPolyline => {
+            *segments = helpers::trim_indexed_segments(segments, start, end)?;
+        }
+        IfcType::IfcCompositeCurve | IfcType::IfcCompositeCurveOnSurface => {}
+        IfcType::IfcTrimmedCurve => {
+            if !trimmed_line_solid_bounds_redundant(directrix, segments, start, end, decoder)?
+            {
+                *status = AnalyticStatus::Unsupported(
+                    "solid-level trim on trimmed directrix is not redundant".to_string(),
+                );
+            }
+        }
+        IfcType::IfcCircle => {
+            let scale = decoder.plane_angle_to_radians();
+            if !scale.is_finite() || scale <= 0.0 {
+                return Err(Error::geometry(
+                    "invalid plane angle unit scale".to_string(),
+                ));
+            }
+            let begin = start.unwrap_or(0.0) * scale;
+            let finish = end.unwrap_or(std::f64::consts::TAU / scale) * scale;
+            let mut sweep = finish - begin;
+            if sweep < 0.0 {
+                sweep += std::f64::consts::TAU;
+            }
+            if !begin.is_finite()
+                || !sweep.is_finite()
+                || sweep <= 0.0
+                || sweep > std::f64::consts::TAU + 1e-9
+            {
+                *status = AnalyticStatus::Unsupported(
+                    "invalid circular directrix parameter range".to_string(),
+                );
+            } else if let Some(AnalyticCurveSegment::Arc {
+                start_angle,
+                sweep_angle,
+                ..
+            }) = segments.first_mut()
+            {
+                *start_angle = begin;
+                *sweep_angle = sweep;
+            }
+        }
+        IfcType::IfcLine => {
+            // An IfcLine parameter is distance along its IfcVector, not a
+            // normalized segment fraction. The extractor's bare line spans 0..1.
+            let line = segments
+                .first()
+                .cloned()
+                .ok_or_else(|| Error::geometry("empty line".to_string()))?;
+            *segments = vec![line.subsegment(start.unwrap_or(0.0), end.unwrap_or(1.0))];
+        }
+        _ => {
+            *status = AnalyticStatus::Unsupported(
+                "solid-level trim for this directrix is unsupported".to_string(),
+            )
+        }
+    }
+    Ok(())
+}
+
 /// A rational B-spline directrix, read from the captured original records and
 /// restricted to the solid-level bounds in its own basis parameter. `None` when
 /// the directrix is not a single rational curve or its bounds are ambiguous.
@@ -199,7 +215,7 @@ fn trimmed_line_solid_bounds_redundant(
     else {
         return Ok(false);
     };
-    let Some(basis_attr) = directrix.get(0) else {
+    let Some(basis_attr) = directrix.get(slot::IfcTrimmedCurve::BASIS_CURVE.index()) else {
         return Ok(false);
     };
     let Some(basis) = decoder.resolve_ref(basis_attr)? else {

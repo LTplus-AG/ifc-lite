@@ -1,11 +1,11 @@
 --- a/rust/geometry/src/analytic/swept_disk.rs
 +++ b/rust/geometry/src/analytic/swept_disk.rs
-@@ -35,7 +35,7 @@
+@@ -37,7 +37,7 @@
          .ok_or_else(|| {
              Error::geometry("IfcSweptDiskSolid Directrix cannot be resolved".to_string())
          })?;
 -    let capture = false;
 +    let capture = super::source::requested();
-     let mut walk = if capture { curve::CurveWalk::with_source() } else { curve::CurveWalk::default() };
+     let mut walk =
+         if capture { curve::CurveWalk::with_source() } else { curve::CurveWalk::default() };
      if capture {
-         walk.source.record(entity, decoder);

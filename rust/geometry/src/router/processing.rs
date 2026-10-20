@@ -10,7 +10,7 @@ use super::frame_parts::{
 use super::transforms::instancing_enabled;
 use super::GeometryRouter;
 use crate::{InstanceMeta, Mesh, Result, SubMeshCollection};
-use crate::representation::{product_shape, rep_items, Select};
+use crate::representation::{product_budget::admit_product, MAX_WALK_LEVELS};
 
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::rc::Rc;
@@ -81,6 +81,13 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
         hygiene: SourceHygiene,
     ) -> Result<Vec<Mesh>> {
+        self.process_element_parts_with_budget(element, decoder, hygiene, MAX_WALK_LEVELS)
+    }
+
+    pub(super) fn process_element_parts_with_budget(
+        &self, element: &DecodedEntity, decoder: &mut EntityDecoder,
+        hygiene: SourceHygiene, allowance: u32,
+    ) -> Result<Vec<Mesh>> {
         // IfcAlignment carries its directrix curve in a dedicated `Axis`
         // attribute (IFC4X1) instead of (or in addition to) a normal
         // IfcShapeRepresentation. Route those through the alignment
@@ -92,9 +99,10 @@ impl GeometryRouter {
             }
         }
 
-        let Some(shape) = product_shape(element, decoder)? else {
-            return Ok(vec![Mesh::new()]); // No geometry
-        };
+        let plan = self.admitted_product(element, decoder, allowance)?;
+        if plan.representations.iter().all(|(_, items)| items.is_empty()) {
+            return Ok(vec![Mesh::new()]);
+        }
 
         // Process all representations and merge meshes
         let mut combined_mesh = Mesh::new();
@@ -113,8 +121,7 @@ impl GeometryRouter {
 
         // Body representations only ('Axis', 'FootPrint', 'Box' are skipped), and
         // a MappedRepresentation is skipped when direct geometry duplicates it.
-        'items: for shape_rep in shape.select(element, Select::Meshed) {
-            let items = rep_items(shape_rep, decoder)?;
+        'items: for (shape_rep, items) in &plan.representations {
             let fill_only = super::annotation::is_fill_only_representation(element, shape_rep);
 
             // Process each representation item
@@ -123,15 +130,15 @@ impl GeometryRouter {
                 let item_parts = if element.ifc_type == IfcType::IfcAnnotation
                     && item.ifc_type == IfcType::IfcAnnotationFillArea
                 {
-                    vec![self.process_annotation_fill(&item, decoder)?]
+                    vec![self.process_annotation_fill(item, decoder)?]
                 } else if fill_only {
                     continue; // symbolic annotation item, never meshed (#5389)
                 } else if let Some(mesh) =
-                    self.process_raw_item_for_element(&item, element, decoder)?
+                    self.process_raw_item_for_element(item, element, decoder)?
                 {
                     vec![mesh]
                 } else {
-                    self.process_representation_item_parts(&item, decoder)?
+                    self.process_representation_item_parts(item, decoder)?
                 };
                 for mesh in item_parts {
                     if mesh.positions.is_empty() {
@@ -235,6 +242,19 @@ impl GeometryRouter {
         >,
         hygiene: SourceHygiene,
     ) -> Result<SubMeshCollection> {
+        self.process_element_submeshes_with_budget(element, decoder, allow_instancing, texture_index, hygiene, MAX_WALK_LEVELS)
+    }
+
+    pub(super) fn process_element_submeshes_with_budget(
+        &self, element: &DecodedEntity, decoder: &mut EntityDecoder,
+        allow_instancing: bool,
+        texture_index: Option<&rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>>,
+        hygiene: SourceHygiene, allowance: u32,
+    ) -> Result<SubMeshCollection> {
+        let plan = self.admitted_product(element, decoder, allowance)?;
+        if plan.representations.iter().all(|(_, items)| items.is_empty()) {
+            return Ok(SubMeshCollection::new());
+        }
         // If a material-layer buildup is attached, try slicing single-solid
         // elements (walls / slabs with IfcMaterialLayerSetUsage) first so each
         // layer gets its own sub-mesh keyed by IfcMaterial id. An empty void
@@ -244,14 +264,9 @@ impl GeometryRouter {
             return Ok(layered);
         }
 
-        let Some(shape) = product_shape(element, decoder)? else {
-            return Ok(SubMeshCollection::new()); // No geometry
-        };
-
         let mut sub_meshes = SubMeshCollection::new();
 
-        for shape_rep in shape.select(element, Select::Meshed) {
-            let items = rep_items(shape_rep, decoder)?;
+        for (shape_rep, items) in &plan.representations {
             let fill_only = super::annotation::is_fill_only_representation(element, shape_rep);
 
             // Process each representation item, preserving geometry IDs
@@ -259,7 +274,7 @@ impl GeometryRouter {
                 if element.ifc_type == IfcType::IfcAnnotation
                     && item.ifc_type == IfcType::IfcAnnotationFillArea
                 {
-                    sub_meshes.add(item.id, self.process_annotation_fill(&item, decoder)?);
+                    sub_meshes.add(item.id, self.process_annotation_fill(item, decoder)?);
                     continue;
                 }
                 if fill_only {
@@ -277,19 +292,19 @@ impl GeometryRouter {
                     ));
                 if let Some(map) = texture {
                     let offset = self.element_frame_rtc(element, decoder)?;
-                    if let Some((mesh, uvs)) = self.textured_face_set(&item, decoder, map, offset) {
+                    if let Some((mesh, uvs)) = self.textured_face_set(item, decoder, map, offset) {
                         sub_meshes.add_textured(item.id, mesh, uvs, map.attachment());
                         continue;
                     }
                 }
-                if let Some(mesh) = self.process_raw_item_for_element(&item, element, decoder)? {
+                if let Some(mesh) = self.process_raw_item_for_element(item, element, decoder)? {
                     if !mesh.is_empty() {
                         sub_meshes.add(item.id, mesh);
                     }
                     continue;
                 }
                 self.collect_submeshes_from_item(
-                    &item,
+                    item,
                     decoder,
                     &mut sub_meshes,
                     allow_instancing,
@@ -315,6 +330,19 @@ impl GeometryRouter {
 
         self.apply_submesh_placement(&mut sub_meshes, element, decoder)?;
         Ok(sub_meshes)
+    }
+
+    fn admitted_product(
+        &self, element: &DecodedEntity, decoder: &mut EntityDecoder, allowance: u32,
+    ) -> Result<crate::representation::product_budget::ProductItems> {
+        let mut plan = admit_product(element, decoder, allowance);
+        if let Some(error) = plan.shape_error.take() {
+            return Err(error.into());
+        }
+        if let Some((item, why)) = plan.refusal.take() {
+            self.drop_item(&item, &why.into_error(item.id), "product walk allowance");
+        }
+        Ok(plan)
     }
 
     /// Run an `IfcAlignment` through the dedicated alignment processor, then
@@ -355,3 +383,7 @@ impl GeometryRouter {
 #[cfg(test)]
 #[path = "processing_hygiene_tests.rs"]
 mod hygiene_tests;
+
+#[cfg(test)]
+#[path = "processing_budget_tests.rs"]
+mod budget_tests;

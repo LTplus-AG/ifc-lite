@@ -11,6 +11,7 @@
 //! RTC-vote probes and the layer slicer are all callers of it.
 
 pub(crate) mod mapped_transform;
+pub(crate) mod product_budget;
 mod select;
 mod walk;
 

@@ -58,7 +58,17 @@ describe.each(['2.1', '3.0'] as const)('BCF %s coloring containers (#7987)', (ve
         { color: '0000FF', components: [identified] },
       ],
     };
-    const out = await roundTrip({ guid: generateUuid(), components }, version);
+    const out = await roundTrip({
+      guid: generateUuid(),
+      orthogonalCamera: {
+        cameraViewPoint: { x: 0, y: 0, z: 10 },
+        cameraDirection: { x: 0, y: 0, z: -1 },
+        cameraUpVector: { x: 0, y: 1, z: 0 },
+        viewToWorldScale: 10,
+        aspectRatio: 1,
+      },
+      components,
+    }, version);
 
     expect(out.components).toEqual(components);
   });

@@ -71,10 +71,7 @@
 5 rust/geometry/src/processors/swept/disk.rs
 12 rust/geometry/src/processors/swept/revolved.rs
 5 rust/geometry/src/processors/swept/surface_curve.rs
-1 rust/geometry/src/processors/tessellated/indices.rs
 2 rust/geometry/src/processors/tessellated/mod.rs
-5 rust/geometry/src/processors/tessellated/polygonal.rs
-2 rust/geometry/src/processors/tessellated/triangulated.rs
 14 rust/geometry/src/processors/texture/mod.rs
 8 rust/geometry/src/profile_extractor.rs
 14 rust/geometry/src/profiles/curves_2d.rs

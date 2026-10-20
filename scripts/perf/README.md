@@ -21,10 +21,15 @@ schependomlaan and ISSUE_129 (CSG). FZK was dropped from timing: its ~47 ms tota
 noise and made every run "too noisy"; its mesh/vertex/triangle fingerprint still matched.
 Lesson: small fixtures cannot certify neutrality for per-element ownership changes; use the
 large corpus, and treat a lone single-fixture excursion as a rerun trigger, not a verdict.
+A main-vs-main control on the same harness shows no parse bias (−0.8%…0.0%), yet slices that never
+touch parsing move the parse phase by about ±2% in both directions (B3 +1.5%, B5 +1.9%, C4 −0.7%, B2 −0.5%):
+with LTO and `codegen-units = 1`, editing geometry code shifts the layout of unrelated parse code. Judge a
+slice by the phases it changes and by output identity, not by a ±2% move in an untouched phase.
 
 | Slice | Fingerprints (6 models) | TOTAL deltas vs base (noise) | Verdict |
 | --- | --- | --- | --- |
 | C2 #7969 boolean operand seams | identical | BWK +1.1% (±2), Holter −3.2% (±30), ISSUE_098 +0.7% (±10), ISSUE_068 −3.3% (±15), schependomlaan +2.3% (±4), ISSUE_129 +1.8% (±6) | neutral: no phase outside noise |
+| B2 #7960 tessellated plans | identical | BWK 0.0% (±1), Holter −0.1% (±9), ISSUE_098 −2.5% (±8), ISSUE_068 +0.3% (±13), schependomlaan −1.0% (±4), ISSUE_129 +0.2% (±5) | neutral: no phase outside noise |
 
 ## Exact rectangular opening union (#7941)
 

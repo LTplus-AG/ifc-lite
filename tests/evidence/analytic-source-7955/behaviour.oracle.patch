@@ -1,0 +1,13 @@
+diff --git a/rust/geometry/src/analytic/source.rs b/rust/geometry/src/analytic/source.rs
+index c57b0099f2..244fc49310 100644
+--- a/rust/geometry/src/analytic/source.rs
++++ b/rust/geometry/src/analytic/source.rs
+@@ -109,7 +109,7 @@ impl SourceCapture {
+     /// Only fixed-depth coefficient dependencies are captured here; composite
+     /// and trimmed curve traversal remains exclusively in CurveWalk.
+     fn try_record(&mut self, entity: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {
+-        if true || !self.enabled {
++        if !self.enabled {
+             return Ok(());
+         }
+         let mut pending = vec![entity.clone()];

@@ -1458,6 +1458,11 @@ jobs:
           # rejected attempts must leak failures and telemetry (RED).
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/router/voids/attempt.rs | grep -Fxq 'rust/geometry/src/router/voids/attempt.rs'; then
             oracle_args+=(--mutation tests/evidence/opening-telemetry-c5a/behaviour.oracle.patch)
+          # #7955: F1a adds analytic/source.rs, which the changed analytic tests
+          # import. Keep the module and make source capture record nothing: the
+          # retained coefficients, trim selectors and traversal flags must turn RED.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/analytic/source.rs | grep -Fxq 'rust/geometry/src/analytic/source.rs'; then
+            oracle_args+=(--mutation tests/evidence/analytic-source-7955/behaviour.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use super::*;
+use crate::kernel::arrangement::issue_7292_fixtures::{bottom_cutter_7292, cut0_cutter_7292, cut0_host_7292};
 
 #[test]
 fn issue_7292_tilted_front_cannot_make_an_interior_patch_a_near_shared_face() {
@@ -31,7 +32,7 @@ fn issue_7292_whole_flush_triangle_retains_near_shared_face_admission() {
 fn issue_7292_boundary_centroid_uses_exact_arranged_points_on_a_tilted_plane() {
     // Exact triangle is on Z=X+Y. Its rounded centroid has a nonzero exact
     // plane residual of 3/2^54, so a rounded-centroid incidence rejects it.
-    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _element = budget::enter_element();
     budget::begin();
     let t = [[0.0, 0.0, 0.0], [1.0, 0.0, 1.0], [0.0, 4.0, 4.0]];
@@ -46,7 +47,7 @@ fn issue_7292_boundary_centroid_uses_exact_arranged_points_on_a_tilted_plane() {
 
 #[test]
 fn issue_7292_exact_boundary_work_reports_budget_and_returns_no_partial_faces() {
-    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _element = budget::enter_element();
     budget::begin();
     let host = crate::kernel::arrangement::box_mesh([0.0; 3], [1.0; 3]);
@@ -93,7 +94,7 @@ fn implicit_at_7292(p: [f64; 3], reverse: bool, triple: bool) -> crate::kernel::
 #[test]
 fn issue_7292_centroid_interval_rejections_equal_exact_for_mixed_symbolic_points() {
     use crate::kernel::{ImplicitPoint, interval, rational};
-    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _element = budget::enter_element();
     budget::begin();
     let points = [[0.0, 0.0, 0.0], [1.0, 0.0, 1.0], [0.0, 4.0, 4.0]];
@@ -131,7 +132,7 @@ fn issue_7292_centroid_interval_rejections_equal_exact_for_mixed_symbolic_points
 
 #[test]
 fn issue_7292_centroid_interval_rejects_without_rational_work_and_caches_exact_fallback() {
-    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _element = budget::enter_element();
     budget::begin();
     let t = [[0.0, 0.0, 0.0], [1.0, 0.0, 1.0], [0.0, 4.0, 4.0]];
@@ -167,7 +168,7 @@ fn issue_7292_centroid_interval_range_failures_use_exact_fallback() {
     let symbolic = t.map(crate::kernel::ImplicitPoint::Explicit);
     let iv = centroid_interval(symbolic.each_ref().map(ilambda_cached)).expect("finite homogeneous inputs");
     assert!(centroid_plane_sign(&iv, &t).is_none(), "an unsafe determinant range must escalate even when all inputs are finite");
-    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _element = budget::enter_element();
     budget::begin();
     let mut arr = crate::kernel::arrangement::arrange(&[], &[]);
@@ -193,142 +194,6 @@ fn issue_7292_centroid_bounds_keep_boundary_and_uncertain_arithmetic() {
 // captured after the production S16 import snap. Caller units are mm.
 // Same closed box and face diagonals as the actual caller, avoiding a
 // triangulator change in a regression about arranged surface ownership.
-fn cut0_host_7292() -> crate::Mesh {
-    let vertices = [
-        [3750.0, 110.0, 0.0],
-        [0.0, 20.0, 0.0],
-        [0.0, 110.0, 0.0],
-        [3750.0, 20.0, 0.0],
-        [3750.0, 110.0, 3250.0],
-        [0.0, 110.0, 3250.0],
-        [0.0, 20.0, 3250.0],
-        [3750.0, 20.0, 3250.0],
-    ];
-    let faces = [
-        [0, 1, 2],
-        [1, 0, 3],
-        [4, 5, 6],
-        [6, 7, 4],
-        [1, 3, 7],
-        [1, 7, 6],
-        [3, 0, 4],
-        [3, 4, 7],
-        [0, 2, 5],
-        [0, 5, 4],
-        [2, 1, 6],
-        [2, 6, 5],
-    ];
-    let tris: Vec<Tri> = faces.iter().map(|t| t.map(|i| vertices[i])).collect();
-    crate::kernel::mesh_bridge::tris_to_mesh(&tris)
-}
-
-// First cutter: 24 vertices / 44 triangles, including its tilted Y front.
-fn cut0_cutter_7292() -> crate::Mesh {
-    let vertices = [
-        [0.0, 125.0, 0.0],
-        [0.0, 125.0, 80.0],
-        [1825.0, 125.0, 80.0],
-        [1825.0, 125.0, 2715.0],
-        [0.0, 125.0, 2715.0],
-        [0.0, 125.0, 3250.0],
-        [3750.0, 125.0, 3250.0],
-        [3749.999755859375, 125.0, 2715.0],
-        [1915.0, 125.0, 80.0],
-        [3749.999755859375, 125.0, 80.0],
-        [3750.0, 125.0, 0.0],
-        [1915.0, 125.0, 2715.0],
-        [1825.0, 110.0, 80.0],
-        [1825.0, 109.99946594238281, 2715.0],
-        [0.0, 110.0, 2715.0],
-        [0.0, 110.0, 3250.0],
-        [3750.0, 110.0, 3250.0],
-        [3749.999755859375, 109.99888610839844, 2715.0],
-        [1915.0, 109.99943542480469, 2715.0],
-        [1915.0, 110.0, 80.0],
-        [3749.999755859375, 110.0, 80.0],
-        [3750.0, 110.0, 0.0],
-        [0.0, 110.0, 0.0],
-        [0.0, 110.0, 80.0],
-    ];
-    let faces = [
-        [0, 1, 2],
-        [3, 4, 5],
-        [5, 6, 7],
-        [8, 9, 10],
-        [10, 0, 2],
-        [5, 7, 11],
-        [8, 10, 2],
-        [3, 5, 11],
-        [11, 8, 2],
-        [2, 3, 11],
-        [3, 2, 12],
-        [3, 12, 13],
-        [4, 3, 13],
-        [4, 13, 14],
-        [4, 14, 15],
-        [4, 15, 5],
-        [5, 15, 16],
-        [5, 16, 6],
-        [17, 7, 6],
-        [17, 6, 16],
-        [11, 7, 17],
-        [11, 17, 18],
-        [8, 11, 18],
-        [8, 18, 19],
-        [20, 9, 8],
-        [20, 8, 19],
-        [9, 20, 21],
-        [9, 21, 10],
-        [21, 22, 0],
-        [21, 0, 10],
-        [23, 1, 0],
-        [23, 0, 22],
-        [2, 1, 23],
-        [2, 23, 12],
-        [12, 23, 22],
-        [22, 21, 20],
-        [18, 17, 16],
-        [16, 15, 14],
-        [22, 20, 19],
-        [16, 14, 13],
-        [12, 22, 19],
-        [18, 16, 13],
-        [13, 12, 19],
-        [19, 18, 13],
-    ];
-    let tris: Vec<Tri> = faces.iter().map(|t| t.map(|i| vertices[i])).collect();
-    crate::kernel::mesh_bridge::tris_to_mesh(&tris)
-}
-
-fn bottom_cutter_7292() -> crate::Mesh {
-    let vertices = [
-        [0.0, 110.0, 80.0],
-        [3749.999755859375, 110.0, 80.0],
-        [3750.0, 110.0, 0.0],
-        [0.0, 110.0, 0.0],
-        [3749.999755859375, 20.0, 80.0],
-        [0.0, 20.0, 80.0],
-        [3750.0, 20.0, 0.0],
-        [0.0, 20.0, 0.0],
-    ];
-    let faces = [
-        [0, 1, 2],
-        [0, 2, 3],
-        [4, 1, 0],
-        [4, 0, 5],
-        [1, 4, 6],
-        [1, 6, 2],
-        [6, 7, 3],
-        [6, 3, 2],
-        [5, 0, 3],
-        [5, 3, 7],
-        [4, 5, 7],
-        [4, 7, 6],
-    ];
-    let tris: Vec<Tri> = faces.iter().map(|t| t.map(|i| vertices[i])).collect();
-    crate::kernel::mesh_bridge::tris_to_mesh(&tris)
-}
-
 /// Independent output measurement: intersect an axis-parallel line with mesh
 /// triangles using projected barycentric coordinates. The chosen probes lie
 /// strictly inside their faces, so shared triangle edges cannot double-count.
@@ -359,11 +224,15 @@ fn axis_hits_7292(mesh: &crate::Mesh, axis: usize, point: [f64; 3]) -> Vec<f64> 
 #[test]
 fn issue_7292_real_cut_has_one_front_boundary_and_retains_the_next_bottom_cap() {
     use crate::csg::{ClippingProcessor, GroupCut};
-    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _element = budget::enter_element();
     budget::begin();
     let host = cut0_host_7292();
     let clipper = ClippingProcessor::with_unit_scale(0.001);
+    // #7982: under `csg_topology_gate` this cut must also pass the closure
+    // gate. The raw kernel result is closed; consolidation leaves unpaired
+    // edges along the cutter's ~1 um tilted step, which close at the gate's
+    // 0.1 mm grid only when that grid honours the millimetre unit scale.
     let first = match clipper.subtract_mesh(&host, &cut0_cutter_7292()) {
         GroupCut::Cut(mesh) => mesh,
         GroupCut::Retessellated(_) => panic!("the tilted front really removes material"),
@@ -395,7 +264,7 @@ fn issue_7292_real_cut_has_one_front_boundary_and_retains_the_next_bottom_cap() 
 
 #[test]
 fn issue_7292_actual_489647_near_face_cannot_own_a_cell_outside_its_finite_outline() {
-    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _element = budget::enter_element();
     budget::begin();
     // Actual last job004 A4/sourceparent0 versus promoted B11. The centroid
@@ -426,7 +295,7 @@ fn issue_7292_actual_489647_near_face_cannot_own_a_cell_outside_its_finite_outli
 
 #[test]
 fn issue_7292_symbolic_boundary_point_must_not_be_tested_as_rounded_f64() {
-    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _element = budget::enter_element();
     budget::begin();
     use crate::kernel::{rational::point_of, Lpi};

@@ -58,6 +58,12 @@ describe('packHoverUniforms carries the section / clip state (#5390)', () => {
   });
   const flagsY = (u: Float32Array) => new Uint32Array(u.buffer, MESH_FLAGS_BYTE_OFFSET, 2)[1];
 
+  it('carries the full federated id into the selection clipping lookup (#8015)', () => {
+    const id = 101 + 0x1000000;
+    const packed = packHoverUniforms(source({ hoveredId: id }), mesh(id));
+    assert.equal(new Uint32Array(packed.buffer)[MESH_UNIFORM_OFFSET.overrideParams], id);
+  });
+
   it('packs no clip bits when nothing is cut', () => {
     assert.equal(flagsY(packHoverUniforms(source({}), mesh(42))), 0);
   });

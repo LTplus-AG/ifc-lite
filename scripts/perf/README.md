@@ -4337,7 +4337,12 @@ spending another capture window. This integration fix grants no timing verdict.
 
 The maintainer accepted the accumulated engine transfer cost measured on main
 `141285f828`. The [hosted measurement](https://github.com/LTplus-AG/ifc-lite/actions/runs/39490083745)
-supplies the value and exact timestamp in the bundle ratchet provenance. The
+supplies the value and exact timestamp in the bundle ratchet provenance. Its
+retained `perf-ratchet-measured/bundle.json` artifact has SHA-256
+`5376ae3b2ef9af8fdebc7832419abf93b2269a1aeb21b600cfe7f0b18712723a`.
+The observed engine transfer measurement was 2,365,134 bytes; the maintainer
+set the ceiling to that same value, retaining the existing relative tolerance.
+These identify the accepted measurement rather than a performance claim. The
 earlier execution-ownership slice (#7956) was already incorporated in the old
 ceiling; this decision does not count that growth again. Only the engine ceiling
 was reset, with its relative tolerance unchanged. No speed improvement is claimed.

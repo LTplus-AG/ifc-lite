@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let source = std::fs::read(path)?;
     for iteration in 0..iterations {
         let start = Instant::now();
-        let data = extract_symbolic_data(std::hint::black_box(&source));
+        let data = extract_symbolic_data(std::hint::black_box(&source))?;
         let elapsed_ns = start.elapsed().as_nanos();
         let payload = serde_json::to_vec(&data)?;
         let hash = payload.iter().fold(0xcbf29ce484222325_u64, |hash, byte| {

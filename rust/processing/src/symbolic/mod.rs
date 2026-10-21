@@ -68,6 +68,7 @@
 
 
 use output_cap::SymbolicAccumulator;
+use ifc_lite_core::resource_stop::ProgramStop;
 use rebase::RenderFrameRebase;
 use ifc_lite_core::{build_entity_index, keyword_eq, EntityDecoder, EntityScanner, IfcType};
 
@@ -117,13 +118,13 @@ use transform::{compose_transforms, resolve_object_placement};
 /// works inside the HTTP server.
 ///
 /// In controlled execution, a terminal stop discards all staged symbols and
-/// provenance. This legacy collection ABI carries no execution error: callers
-/// must inspect their account/source terminal state before publishing a result.
-pub fn extract_symbolic_data<T>(content: &T) -> SymbolicData
+/// provenance and returns the exact `ProgramStop`. An empty successful collection
+/// means no symbols were found; geometric truncation remains an `Ok` result.
+pub fn extract_symbolic_data<T>(content: &T) -> Result<SymbolicData, ProgramStop>
 where
     T: AsRef<[u8]> + ?Sized,
 {
-    extract_symbolic_data_with_provenance(content).into_parts().0
+    extract_symbolic_data_with_provenance(content).map(|data| data.into_parts().0)
 }
 
 /// Extract symbols with ordinal-bound direct fill provenance, preserving the legacy data shape.
@@ -134,13 +135,15 @@ where
 /// caller that also ran the native geometry pipeline must use
 /// [`extract_symbolic_data_with_provenance_in_frame`] instead, or its symbols
 /// and its meshes end up in two different frames (#4706).
-pub fn extract_symbolic_data_with_provenance<T>(content: &T) -> SymbolicDataWithProvenance
+pub fn extract_symbolic_data_with_provenance<T>(content: &T) -> Result<SymbolicDataWithProvenance, ProgramStop>
 where
     T: AsRef<[u8]> + ?Sized,
 {
-    let mut out = SymbolicAccumulator::new();
-    extract_symbolic_data_into(content, &mut out);
-    out.into_provenance()
+    ifc_lite_geometry::resource::with_terminal_scope(|| {
+        let mut out = SymbolicAccumulator::new();
+        extract_symbolic_data_into(content, &mut out);
+        out.into_provenance()
+    })
 }
 
 /// Extract symbols in a frame the caller already chose: the native pipeline's
@@ -155,13 +158,15 @@ where
 pub fn extract_symbolic_data_with_provenance_in_frame<T>(
     content: &T,
     frame: crate::MeshFrame,
-) -> SymbolicDataWithProvenance
+) -> Result<SymbolicDataWithProvenance, ProgramStop>
 where
     T: AsRef<[u8]> + ?Sized,
 {
-    let mut out = SymbolicAccumulator::new();
-    extract_symbolic_data_into_frame(content, Some(frame), &mut out);
-    out.into_provenance()
+    ifc_lite_geometry::resource::with_terminal_scope(|| {
+        let mut out = SymbolicAccumulator::new();
+        extract_symbolic_data_into_frame(content, Some(frame), &mut out);
+        out.into_provenance()
+    })
 }
 
 /// The overlay-frame extraction, writing into a caller-supplied accumulator.

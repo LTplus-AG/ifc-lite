@@ -64,7 +64,7 @@ fn assert_bounds(data: &SymbolicData, expected: [f32; 4]) {
 fn issue_7779_tilted_circle_emits_foreshortened_curve_and_edge_on_line() {
     for (axis, half_y) in [("0.,-0.8660254037844386,0.5", 0.5), ("0.,-1.,0.", 0.0)] {
         let source = SOURCE.replace("0.,-0.8660254037844386,0.5", axis);
-        let data = extract_symbolic_data(&source);
+        let data = extract_symbolic_data(&source).expect("symbolic extraction must complete");
         assert_bounds(&data, [-1., -half_y, 1., half_y]);
         assert!(data.circles.is_empty(), "a projected ellipse/line cannot carry one radius");
         assert_eq!(data.polylines.len(), 1);
@@ -83,7 +83,7 @@ fn issue_7779_tilted_circle_emits_foreshortened_curve_and_edge_on_line() {
 #[test]
 fn issue_7779_similarity_control_keeps_an_exact_native_circle() {
     let source = SOURCE.replace("0.,-0.8660254037844386,0.5", "0.,0.,1.");
-    let data = extract_symbolic_data(&source);
+    let data = extract_symbolic_data(&source).expect("symbolic extraction must complete");
     assert_eq!(data.circles.len(), 1);
     assert!(data.polylines.is_empty());
     assert_eq!(data.circles[0].radius, 1.);
@@ -94,12 +94,12 @@ fn issue_7779_similarity_control_keeps_an_exact_native_circle() {
 fn issue_7779_conic_position_tilt_and_trimmed_arcs_preserve_projected_points() {
     let circle_position = SOURCE.replace("#22=IFCLOCALPLACEMENT($,#21)", "#22=IFCLOCALPLACEMENT($,#11)")
         .replace("#30=IFCAXIS2PLACEMENT2D(#31,$)", "#30=IFCAXIS2PLACEMENT3D(#12,#20,$)");
-    assert_bounds(&extract_symbolic_data(&circle_position), [-1., -0.5, 1., 0.5]);
+    assert_bounds(&extract_symbolic_data(&circle_position).expect("symbolic extraction must complete"), [-1., -0.5, 1., 0.5]);
     // The reachable arc consumer already samples; protect it from scalar-radius substitution.
     for source in [SOURCE.to_string(), circle_position] {
         let source = source.replace("(#32));", "(#33));")
             .replace("#40=", "#33=IFCTRIMMEDCURVE(#32,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(1.5707963267948966)),.T.,.PARAMETER.);\n#40=");
-        let data = extract_symbolic_data(&source);
+        let data = extract_symbolic_data(&source).expect("symbolic extraction must complete");
         assert!(data.circles.is_empty());
         assert_eq!(data.polylines.len(), 1);
         assert!(!data.polylines[0].closed);
@@ -137,21 +137,21 @@ END-ISO-10303-21;
 fn issue_7779_opposed_product_and_conic_tilts_compose_before_projection() {
     // Rx(+60) * Rx(-60) = identity in 3D. Projecting first instead gives
     // diag(1, .5) * diag(1, .5), a quarter-height ellipse (#7779).
-    let circle = extract_symbolic_data(OPPOSED_TILTS);
+    let circle = extract_symbolic_data(OPPOSED_TILTS).expect("symbolic extraction must complete");
     assert_bounds(&circle, [-1., -1., 1., 1.]);
     assert_eq!(circle.circles.len(), 1, "the resulting world curve IS a circle");
     assert!((circle.circles[0].radius - 1.).abs() < 1e-6);
     let ellipse = OPPOSED_TILTS.replace("IFCCIRCLE(#30,1.)", "IFCELLIPSE(#30,2.,1.)");
-    assert_bounds(&extract_symbolic_data(&ellipse), [-2., -1., 2., 1.]);
+    assert_bounds(&extract_symbolic_data(&ellipse).expect("symbolic extraction must complete"), [-2., -1., 2., 1.]);
     let arc = OPPOSED_TILTS.replace("(#32));", "(#33));")
         .replace("#40=", "#33=IFCTRIMMEDCURVE(#32,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(1.5707963267948966)),.T.,.PARAMETER.);\n#40=");
-    assert_bounds(&extract_symbolic_data(&arc), [0., -1., 1., 0.]);
+    assert_bounds(&extract_symbolic_data(&arc).expect("symbolic extraction must complete"), [0., -1., 1., 0.]);
 }
 
 #[test]
 fn issue_7779_conic_position_z_is_carried_through_the_product_tilt() {
     let source = SOURCE.replace("#30=IFCAXIS2PLACEMENT2D(#31,$)", "#30=IFCAXIS2PLACEMENT3D(#34,$,$);#34=IFCCARTESIANPOINT((0.,0.,2.))");
-    let data = extract_symbolic_data(&source);
+    let data = extract_symbolic_data(&source).expect("symbolic extraction must complete");
     let center_y = 3_f32.sqrt(); // plan Y flip of -2*sin(60)
     assert_bounds(&data, [-1., center_y - 0.5, 1., center_y + 0.5]);
 }
@@ -160,7 +160,7 @@ fn issue_7779_conic_position_z_is_carried_through_the_product_tilt() {
 fn issue_7779_cartesian_arc_trims_use_the_unprojected_conic_frame() {
     let source = OPPOSED_TILTS.replace("(#32));", "(#33));")
         .replace("#40=", "#35=IFCCARTESIANPOINT((1.,0.,0.));#36=IFCCARTESIANPOINT((0.7071067811865476,0.3535533905932738,-0.6123724356957945));#33=IFCTRIMMEDCURVE(#32,(#35),(#36),.T.,.CARTESIAN.);\n#40=");
-    let data = extract_symbolic_data(&source);
+    let data = extract_symbolic_data(&source).expect("symbolic extraction must complete");
     assert_eq!(data.polylines.len(), 1);
     assert_bounds(&data, [std::f32::consts::FRAC_1_SQRT_2, -std::f32::consts::FRAC_1_SQRT_2, 1., 0.]);
 }
@@ -174,7 +174,7 @@ fn issue_7779_small_context_tilt_keeps_its_full_3d_coupling() {
         .replace("0.,-0.8660254037844386,0.5", "0.,-0.00001,0.99999999995")
         .replace("#30=IFCAXIS2PLACEMENT2D(#31,$)", "#30=IFCAXIS2PLACEMENT3D(#34,$,$);#34=IFCCARTESIANPOINT((0.,0.,1000000.))")
         .replace("#13,'FootPrint','Curve2D'", "#10,'FootPrint','Curve3D'");
-    assert_bounds(&extract_symbolic_data(&source), [-1., 9., 1., 11.]);
+    assert_bounds(&extract_symbolic_data(&source).expect("symbolic extraction must complete"), [-1., 9., 1., 11.]);
 }
 
 fn filled(source: &str) -> String {
@@ -191,7 +191,7 @@ fn issue_7779_conic_fill_boundaries_compose_outer_and_hole_frames_in_3d() {
         (SOURCE.replace("0.,-0.8660254037844386,0.5", "0.,0.,1."), [-1., -1., 1., 1.]),
         (SOURCE.replace("0.,-0.8660254037844386,0.5", "0.,-1.,0."), [-1., 0., 1., 0.]),
     ] {
-        let data = extract_symbolic_data(&filled(&source));
+        let data = extract_symbolic_data(&filled(&source)).expect("symbolic extraction must complete");
         assert_eq!(data.fills.len(), 1);
         assert_bounds(&data, expected);
         let fill = &data.fills[0];
@@ -207,7 +207,7 @@ fn issue_7779_conic_fill_boundaries_compose_outer_and_hole_frames_in_3d() {
 #[test]
 fn issue_7779_conic_fill_center_elevation_uses_the_composed_3d_frame() {
     let source = SOURCE.replace("#30=IFCAXIS2PLACEMENT2D(#31,$)", "#30=IFCAXIS2PLACEMENT3D(#34,$,$);#34=IFCCARTESIANPOINT((0.,0.,2.))");
-    let data = extract_symbolic_data(&filled(&source));
+    let data = extract_symbolic_data(&filled(&source)).expect("symbolic extraction must complete");
     assert_bounds(&data, [-1., 3_f32.sqrt() - 0.5, 1., 3_f32.sqrt() + 0.5]);
     assert_eq!(data.fills.len(), 1);
     assert!((data.fills[0].world_y - 1.).abs() < 1e-6);
@@ -223,15 +223,15 @@ fn issue_7779_mapped_target_opposed_tilts_compose_before_projection() {
     let source = OPPOSED_TILTS.replace("IFCCIRCLE(#30,1.)", "IFCCIRCLE(#11,1.)");
     let target = "IFCCARTESIANTRANSFORMATIONOPERATOR3D(#91,#97,#90,1.,#98);#97=IFCDIRECTION((0.,0.5,-0.8660254037844386));#98=IFCDIRECTION((0.,0.8660254037844386,0.5))";
     let source = mapped(&source, "#11", target);
-    let data = extract_symbolic_data(&source);
+    let data = extract_symbolic_data(&source).expect("symbolic extraction must complete");
     assert_bounds(&data, [-1., -1., 1., 1.]);
     assert_eq!(data.circles.len(), 1);
     // The same target applies to all reachable conic consumers.
-    assert_bounds(&extract_symbolic_data(&source.replace("IFCCIRCLE(#11,1.)", "IFCELLIPSE(#11,2.,1.)")), [-2., -1., 2., 1.]);
-    assert_bounds(&extract_symbolic_data(&filled(&source)), [-1., -1., 1., 1.]);
+    assert_bounds(&extract_symbolic_data(&source.replace("IFCCIRCLE(#11,1.)", "IFCELLIPSE(#11,2.,1.)")).expect("symbolic extraction must complete"), [-2., -1., 2., 1.]);
+    assert_bounds(&extract_symbolic_data(&filled(&source)).expect("symbolic extraction must complete"), [-1., -1., 1., 1.]);
     let arc = source.replace("(#32));", "(#33));")
         .replace("#40=", "#33=IFCTRIMMEDCURVE(#32,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(1.5707963267948966)),.T.,.PARAMETER.);\n#40=");
-    assert_bounds(&extract_symbolic_data(&arc), [0., -1., 1., 0.]);
+    assert_bounds(&extract_symbolic_data(&arc).expect("symbolic extraction must complete"), [0., -1., 1., 0.]);
 }
 
 #[test]
@@ -240,7 +240,7 @@ fn issue_7779_mapped_origin_tiny_tilt_is_not_discarded_before_large_z_compositio
         .replace("0.,-0.8660254037844386,0.5", "0.,-0.00001,0.99999999995")
         .replace("#30=IFCAXIS2PLACEMENT2D(#31,$)", "#30=IFCAXIS2PLACEMENT3D(#34,$,$);#34=IFCCARTESIANPOINT((0.,0.,1000000.))");
     let source = mapped(&source, "#21", "IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#90,$,$)");
-    assert_bounds(&extract_symbolic_data(&source), [-1., 9., 1., 11.]);
+    assert_bounds(&extract_symbolic_data(&source).expect("symbolic extraction must complete"), [-1., 9., 1., 11.]);
 }
 
 #[test]
@@ -251,7 +251,7 @@ fn issue_7779_mapped_units_scale_target_and_origin_once() {
         .replace("#40=", "#97=IFCAXIS2PLACEMENT3D(#98,$,$);#98=IFCCARTESIANPOINT((10.,0.,0.));\n#40=");
     let source = mapped(&source, "#97", "IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#90,2.,$)")
         .replace("#90=IFCCARTESIANPOINT((0.,0.,0.))", "#90=IFCCARTESIANPOINT((100.,0.,0.))");
-    let data = extract_symbolic_data(&source);
+    let data = extract_symbolic_data(&source).expect("symbolic extraction must complete");
     assert_eq!(data.circles.len(), 1);
     assert!((data.circles[0].center_x - 0.18).abs() < 1e-6);
     assert!((data.circles[0].radius - 0.002).abs() < 1e-6);
@@ -273,12 +273,12 @@ fn issue_7779_mapped_target_canonical_defaults_reflection_signed_and_nonuniform_
                 .replace("#91=IFCDIRECTION((1.,0.,0.))", "#91=IFCDIRECTION((1.,0.))")
                 .replace("#92=IFCDIRECTION((0.,1.,0.))", "#92=IFCDIRECTION((0.,1.))");
         }
-        let data = extract_symbolic_data(&mapped_source);
+        let data = extract_symbolic_data(&mapped_source).expect("symbolic extraction must complete");
         assert_bounds(&data, expected);
         assert_eq!(data.circles.len(), circles, "{target}");
     }
     for target in ["IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,1.,$)", "IFCCARTESIANTRANSFORMATIONOPERATOR3D(#90,$,#90,1.,$)"] {
-        let data = extract_symbolic_data(&mapped(&source, "#11", target));
+        let data = extract_symbolic_data(&mapped(&source, "#11", target)).expect("symbolic extraction must complete");
         assert!(data.circles.is_empty() && data.polylines.is_empty() && data.fills.is_empty(), "malformed canonical operator must drop: {target}");
     }
 }
@@ -293,7 +293,7 @@ fn issue_7779_mapped_target_untilted_single_tilt_and_edge_on_controls() {
         ("0.,0.,-1.", "0.,1.,0.", 0.),
     ] {
         let target = format!("IFCCARTESIANTRANSFORMATIONOPERATOR3D(#91,#97,#90,1.,#98);#97=IFCDIRECTION(({y}));#98=IFCDIRECTION(({z}))");
-        let data = extract_symbolic_data(&mapped(&source, "#11", &target));
+        let data = extract_symbolic_data(&mapped(&source, "#11", &target)).expect("symbolic extraction must complete");
         assert_bounds(&data, [-1., -half_y, 1., half_y]);
         assert_eq!(data.circles.len(), usize::from(half_y == 1.));
         assert_eq!(data.polylines.len(), usize::from(half_y != 1.));
@@ -308,7 +308,7 @@ fn issue_7779_mapped_origin_below_identity_tolerance_keeps_large_z_coupling() {
         .replace("0.,-0.8660254037844386,0.5", "0.,-0.0000000000001,1.")
         .replace("#30=IFCAXIS2PLACEMENT2D(#31,$)", "#30=IFCAXIS2PLACEMENT3D(#34,$,$);#34=IFCCARTESIANPOINT((0.,0.,100000000000000.))");
     let source = mapped(&source, "#21", "IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#90,$,$)");
-    assert_bounds(&extract_symbolic_data(&source), [-1., 9., 1., 11.]);
+    assert_bounds(&extract_symbolic_data(&source).expect("symbolic extraction must complete"), [-1., 9., 1., 11.]);
 }
 
 #[test]
@@ -326,7 +326,7 @@ fn issue_7779_projected_arc_sampling_is_invariant_under_georeferenced_translatio
                     .replace("(#32));", "(#33));")
                     .replace("#40=", "#33=IFCTRIMMEDCURVE(#32,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(1.5707963267948966)),.T.,.PARAMETER.);\n#40=");
                 super::extract_symbolic_data_with_provenance_in_frame(&source,
-                    crate::MeshFrame::ModelRtc { anchor: (translation, translation, 0.) }).into_parts().0
+                    crate::MeshFrame::ModelRtc { anchor: (translation, translation, 0.) }).expect("symbolic extraction must complete").into_parts().0
             };
             let local = extract(0.);
             let translated = extract(offset);

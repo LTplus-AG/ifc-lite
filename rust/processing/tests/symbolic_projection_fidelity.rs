@@ -50,7 +50,7 @@ fn issue_7914_projected_arcs_retain_interior_extrema_and_reversed_trims() {
 #32=IFCCIRCLE(#30,1.);
 #33=IFCTRIMMEDCURVE(#32,(IFCPARAMETERVALUE({start})),(IFCPARAMETERVALUE({end})),{sense},.PARAMETER.);
 "#);
-            let data = extract_symbolic_data(&fixture(axis, "#33", &geometry));
+            let data = extract_symbolic_data(&fixture(axis, "#33", &geometry)).expect("symbolic extraction must complete");
             assert_eq!(data.polylines.len(), 1);
             let points = &data.polylines[0].points;
             let max_x = points.chunks_exact(2).map(|xy| xy[0]).fold(f32::NEG_INFINITY, f32::max);
@@ -70,7 +70,7 @@ fn issue_7914_zero_span_and_shallow_arcs_keep_the_chord_path() {
 #32=IFCCIRCLE(#30,1.);
 #33=IFCTRIMMEDCURVE(#32,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE({end})),.T.,.PARAMETER.);
 "#);
-        let data = extract_symbolic_data(&fixture("0.,0.,1.", "#33", &geometry));
+        let data = extract_symbolic_data(&fixture("0.,0.,1.", "#33", &geometry)).expect("symbolic extraction must complete");
         assert_eq!(data.polylines.len(), 1);
         let points = &data.polylines[0].points;
         assert_eq!(points.len(), 4);
@@ -111,7 +111,7 @@ fn issue_7914_circle_polyline_indexed_curve_and_fills_stay_aligned() {
         if unit == 0.001 {
             source = source.replace(".LENGTHUNIT.,$,.METRE.", ".LENGTHUNIT.,.MILLI.,.METRE.");
         }
-        let data = extract_symbolic_data(&source);
+        let data = extract_symbolic_data(&source).expect("symbolic extraction must complete");
         assert_eq!(data.circles.len() + data.polylines.len(), 3);
         assert_eq!(data.fills.len(), 2);
         for line in &data.polylines {
@@ -131,7 +131,7 @@ fn issue_7914_circle_polyline_indexed_curve_and_fills_stay_aligned() {
 #[test]
 fn issue_7914_vertex_elevation_uses_the_full_frame() {
     let source = fixture("0.,0.,-1.", "#32,#35,#37,#38,#39", &mixed_geometry(1.0, 5.0));
-    let data = extract_symbolic_data(&source);
+    let data = extract_symbolic_data(&source).expect("symbolic extraction must complete");
     assert_eq!(data.circles.len(), 1);
     assert_eq!(data.polylines.len(), 2);
     assert_eq!(data.fills.len(), 2);
@@ -152,7 +152,7 @@ fn issue_7914_tilted_text_keeps_a_unit_baseline() {
         ("0.,0.,1.", std::f32::consts::FRAC_1_SQRT_2, -std::f32::consts::FRAC_1_SQRT_2),
         ("0.8660254037844386,0.,0.5", 1.0 / 5_f32.sqrt(), -2.0 / 5_f32.sqrt()),
     ] {
-        let data = extract_symbolic_data(&fixture(axis, "#32", geometry));
+        let data = extract_symbolic_data(&fixture(axis, "#32", geometry)).expect("symbolic extraction must complete");
         assert_eq!(data.texts.len(), 1);
         let text = &data.texts[0];
         let length = text.dir_x.hypot(text.dir_y);

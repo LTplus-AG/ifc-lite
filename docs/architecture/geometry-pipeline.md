@@ -411,9 +411,12 @@ do not increment the malformed-record counter.
 Symbolic extraction observes the same terminal authority at scan, item and
 append boundaries. A terminal stop discards its staged primitives and direct-fill
 provenance; it is not converted into malformed input or geometric truncation.
-The legacy collection-returning symbolic APIs do not carry an execution error,
-so controlled callers must inspect their account/source terminal state before
-publishing a result.
+The three public symbolic extraction APIs return `Result<_, ProgramStop>` and
+report the exact terminal stop before the execution domain exits. Extraction
+installs a lexical terminal domain even without an account, preserving an outer
+domain when present. WASM throws on a stop; HTTP parse routes fail before cache
+publication, and SSE sends `Error` instead of `Complete`. Successful collection
+and wire shapes are unchanged.
 The result is memoised on the decoder, **unscaled** and column-major, so
 readers with different unit contexts share entries; the caller scales.
 

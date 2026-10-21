@@ -145,7 +145,7 @@ fn issue_4459_direct_pdf_fill_provenance_matches_mesh_without_removing_2d_symbol
     let plan = plan_pdf_fill_annotation(source.as_bytes(), &request).unwrap();
     let exported = apply(&source, &plan.plan);
     let geometry = crate::process_geometry(exported.as_bytes());
-    let (symbols, items) = crate::symbolic::extract_symbolic_data_with_provenance(exported.as_bytes()).into_parts();
+    let (symbols, items) = crate::symbolic::extract_symbolic_data_with_provenance(exported.as_bytes()).expect("symbolic extraction must complete").into_parts();
     let fills: Vec<_> = symbols.fills.iter().enumerate().filter(|(_, f)| f.express_id == plan.annotation_id).collect();
     assert_eq!(fills.len(), 2, "2D drawing primitives must remain available");
     for (ordinal, fill) in fills {

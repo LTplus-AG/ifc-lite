@@ -325,23 +325,21 @@ impl SymbolicAccumulator {
         if self.data.fills.len() > before { self.fill_items.push(item); }
     }
 
-    pub(super) fn into_provenance(self) -> super::SymbolicDataWithProvenance {
-        let (data, items) = self.finish();
-        super::SymbolicDataWithProvenance::new(data, items)
+    pub(super) fn into_provenance(self) -> Result<super::SymbolicDataWithProvenance, ifc_lite_core::resource_stop::ProgramStop> {
+        let (data, items) = self.finish()?;
+        Ok(super::SymbolicDataWithProvenance::new(data, items))
     }
 
     /// Finish, stamping the diagnostics field iff an append was ever refused.
     #[cfg(test)]
-    pub(super) fn into_data(self) -> SymbolicData {
-        self.finish().0
+    pub(super) fn into_data(self) -> Result<SymbolicData, ifc_lite_core::resource_stop::ProgramStop> {
+        self.finish().map(|(data, _)| data)
     }
 
     // Publish data and provenance together. A terminal source owns the error;
     // neither an earlier prefix nor fallback-origin geometry may escape (#7914).
-    fn finish(mut self) -> (SymbolicData, Vec<Option<u32>>) {
-        if ifc_lite_geometry::resource::check_current().is_err() {
-            return (SymbolicData::default(), Vec::new());
-        }
+    fn finish(mut self) -> Result<(SymbolicData, Vec<Option<u32>>), ifc_lite_core::resource_stop::ProgramStop> {
+        ifc_lite_geometry::resource::check_current()?;
         if let Some(reason) = self.reason {
             let emitted = self.data.len();
             let limit = match reason {
@@ -360,6 +358,6 @@ impl SymbolicAccumulator {
                 limit,
             });
         }
-        (self.data, self.fill_items)
+        Ok((self.data, self.fill_items))
     }
 }

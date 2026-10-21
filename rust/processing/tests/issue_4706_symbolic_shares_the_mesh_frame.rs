@@ -168,7 +168,7 @@ fn native_streams(ifc: &str) -> (ProcessingResult, ifc_lite_processing::Symbolic
         (SITE_T[0], SITE_T[1], 0.0),
         "the site translation is what the meshes had subtracted"
     );
-    let symbolic = extract_symbolic_data_with_provenance_in_frame(ifc, result.frame)
+    let symbolic = extract_symbolic_data_with_provenance_in_frame(ifc, result.frame).expect("symbolic extraction must complete")
         .into_parts()
         .0;
     (result, symbolic)
@@ -258,7 +258,7 @@ fn a_rotated_site_comes_out_of_the_text_baseline_too() {
 #[test]
 fn the_overlay_entry_point_still_answers_in_the_browser_frame() {
     let ifc = model(ROTATED_SITE);
-    let overlay = ifc_lite_processing::extract_symbolic_data(&ifc);
+    let overlay = ifc_lite_processing::extract_symbolic_data(&ifc).expect("symbolic extraction must complete");
     let axis_a = overlay
         .grid_axes
         .iter()

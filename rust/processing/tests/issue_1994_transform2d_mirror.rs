@@ -71,7 +71,7 @@ END-ISO-10303-21;
 /// the regression risk, not the new capability.
 #[test]
 fn non_mirroring_axis2_null_is_unchanged() {
-    let data = extract_symbolic_data(&fixture("", "$"));
+    let data = extract_symbolic_data(&fixture("", "$")).expect("symbolic extraction must complete");
     let pl = data
         .polylines
         .iter()
@@ -93,7 +93,7 @@ fn non_mirroring_axis2_null_is_unchanged() {
 #[test]
 fn mirroring_axis2_flips_the_mapped_geometry() {
     let content = fixture("#23=IFCDIRECTION((0.,-1.));", "#23");
-    let data = extract_symbolic_data(&content);
+    let data = extract_symbolic_data(&content).expect("symbolic extraction must complete");
     let pl = data
         .polylines
         .iter()
@@ -143,7 +143,7 @@ fn pure_rotation_is_unchanged() {
         "#20=IFCDIRECTION((1.,0.));",
         "#20=IFCDIRECTION((0.,1.));",
     );
-    let data = extract_symbolic_data(&content);
+    let data = extract_symbolic_data(&content).expect("symbolic extraction must complete");
     let pl = data
         .polylines
         .iter()
@@ -165,7 +165,7 @@ fn uniform_scale_is_unchanged() {
         "#22=IFCCARTESIANTRANSFORMATIONOPERATOR2D(#20,$,#21,$);",
         "#22=IFCCARTESIANTRANSFORMATIONOPERATOR2D(#20,$,#21,2.);",
     );
-    let data = extract_symbolic_data(&content);
+    let data = extract_symbolic_data(&content).expect("symbolic extraction must complete");
     let pl = data
         .polylines
         .iter()
@@ -184,7 +184,7 @@ fn translation_is_unchanged() {
         "#21=IFCCARTESIANPOINT((0.,0.));",
         "#21=IFCCARTESIANPOINT((5.,7.));",
     );
-    let data = extract_symbolic_data(&content);
+    let data = extract_symbolic_data(&content).expect("symbolic extraction must complete");
     let pl = data
         .polylines
         .iter()
@@ -208,7 +208,7 @@ fn translation_is_unchanged() {
 /// off-by-epsilon or NaN, not a crash).
 #[test]
 fn identity_mapping_target_lands_unmoved() {
-    let data = extract_symbolic_data(&fixture("", "$"));
+    let data = extract_symbolic_data(&fixture("", "$")).expect("symbolic extraction must complete");
     let pl = data
         .polylines
         .iter()

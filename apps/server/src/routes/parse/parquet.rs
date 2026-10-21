@@ -226,6 +226,7 @@ pub async fn parse_parquet(
             )
         })
         .await?;
+    let symbolic_data = symbolic_data?;
 
     // Unwrap serialization results
     let combined_parquet = combined_parquet?;

@@ -101,7 +101,7 @@ ENDSEC;\nEND-ISO-10303-21;\n")
 fn issue_7914_stopped_public_extraction_never_scans_or_emits() {
     for grid in [false, true] {
         let source = fixture(grid);
-        let positive = extract_symbolic_data_with_provenance_in_frame(&source, crate::MeshFrame::RawIfc);
+        let positive = extract_symbolic_data_with_provenance_in_frame(&source, crate::MeshFrame::RawIfc).unwrap();
         assert_eq!(positive.data().polylines.len(), 3);
         assert_eq!(positive.data().fills.len(), 3);
         assert_eq!(positive.fill_items(), &[Some(71); 3]);
@@ -118,9 +118,7 @@ fn issue_7914_stopped_public_extraction_never_scans_or_emits() {
                 data
             }));
             assert!(observer.seen.is_empty());
-            assert!(data.is_empty());
-            assert!(data.fill_items().is_empty());
-            assert!(data.data().truncated.is_none(), "execution is not geometric truncation");
+            assert_eq!(data.unwrap_err(), stop, "a stop must not look like empty success");
             assert_eq!(account.check(), Err(stop));
         }
     }
@@ -136,9 +134,7 @@ fn issue_7914_mid_scan_stop_discards_prefix_and_provenance_and_stops_visits() {
             }));
             assert_eq!(observer.seen, [501, 502], "the later product must not be visited");
             assert_eq!(observer.staged_at_stop, 2, "a real prefix must have been emitted first");
-            assert!(data.is_empty());
-            assert!(data.fill_items().is_empty());
-            assert!(data.data().truncated.is_none());
+            assert_eq!(data.unwrap_err(), observer.stop.unwrap());
             assert_eq!(account.check(), Err(observer.stop.unwrap()));
         }
     }
@@ -146,7 +142,7 @@ fn issue_7914_mid_scan_stop_discards_prefix_and_provenance_and_stops_visits() {
 
 #[test]
 fn issue_7914_append_admission_and_final_discard_are_independent() {
-    let positive = extract_symbolic_data_with_provenance_in_frame(&fixture(false), crate::MeshFrame::RawIfc);
+    let positive = extract_symbolic_data_with_provenance_in_frame(&fixture(false), crate::MeshFrame::RawIfc).unwrap();
     for kind in [StopKind::Cancelled, StopKind::Refused] {
         let account = account();
         account.scope(|| {
@@ -159,8 +155,7 @@ fn issue_7914_append_admission_and_final_discard_are_independent() {
             out.push_fill_with_provenance(positive.data().fills[0].clone(), Some(71));
             assert_eq!(out.len(), 2, "append admission must reject after the stop");
             let final_data = out.into_provenance();
-            assert!(final_data.is_empty(), "finalization must discard the earlier prefix");
-            assert!(final_data.fill_items().is_empty());
+            assert_eq!(final_data.unwrap_err(), stop, "no staged prefix may escape as success");
             assert_eq!(resource::check_current(), Err(stop));
         });
     }
@@ -182,8 +177,28 @@ fn issue_7914_sampled_placement_stop_never_becomes_an_origin_frame() {
             });
             assert_eq!(decoder.refused_records(), 0, "execution is not malformed source");
             assert!(decoder.get_placement_transform_cached(10).is_none());
-            let fresh = extract_symbolic_data_with_provenance_in_frame(&source, crate::MeshFrame::RawIfc);
+            let fresh = extract_symbolic_data_with_provenance_in_frame(&source, crate::MeshFrame::RawIfc).unwrap();
             assert_eq!(fresh.data().polylines.len(), 3, "fresh execution must remain valid");
         }
     }
+}
+
+#[test]
+fn issue_7914_unscoped_cancellation_is_reported_and_does_not_leak() {
+    assert!(!resource::is_active());
+    for grid in [false, true] {
+        let source = fixture(grid);
+        let (result, observer) = observe(Some(502), StopKind::Cancelled, || {
+            extract_symbolic_data_with_provenance_in_frame(&source, crate::MeshFrame::RawIfc)
+        });
+        assert_eq!(result.unwrap_err(), ProgramStop::Cancelled);
+        assert_eq!(observer.seen, [501, 502]);
+        assert_eq!(observer.staged_at_stop, 2);
+        assert_eq!(resource::check_current(), Ok(()), "fresh domain must be restored");
+        let fresh = extract_symbolic_data_with_provenance_in_frame(&source, crate::MeshFrame::RawIfc).unwrap();
+        assert_eq!(fresh.data().polylines.len(), 3);
+        assert_eq!(fresh.fill_items(), &[Some(71); 3]);
+    }
+    let empty = crate::symbolic::extract_symbolic_data(b"ISO-10303-21;HEADER;ENDSEC;DATA;ENDSEC;END-ISO-10303-21;").unwrap();
+    assert!(empty.is_empty(), "a genuine no-symbol source remains successful");
 }

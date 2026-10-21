@@ -58,6 +58,17 @@ fn terminal_scope() -> Option<TerminalScope> {
     })
 }
 
+/// Keep terminal stops visible for a complete consumer operation, including
+/// compatibility callers without an execution account. Nested calls share the
+/// existing terminal domain; a fresh domain is restored on return or unwind.
+pub fn with_terminal_scope<T>(operation: impl FnOnce() -> Result<T, ProgramStop>) -> Result<T, ProgramStop> {
+    let _terminal = terminal_scope();
+    check_current()?;
+    let result = operation();
+    check_current()?;
+    result
+}
+
 pub fn current_account() -> Option<ExecutionAccount> {
     CURRENT.with(|slot| slot.borrow().clone())
 }

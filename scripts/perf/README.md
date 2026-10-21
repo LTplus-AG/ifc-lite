@@ -4516,9 +4516,10 @@ the current GeometryProgram controller, and the omitted derived-Axis1 repair
 and parsed Axis2 regression are carried as source. Lower-layer placement
 policy, resource accounting and diagnostics retain current-main authority.
 
-Qualification remains **HOLD for Class R performance neutrality**. This
-source-only recovery ran no build, native test, browser/WASM campaign or
-performance measurement. Historical native observations above and the private
+Qualification remains **HOLD for X3a behavioral/oracle evidence, the required
+performance verdict and applicable gates**. Charter #7779 assigns X3a to #7880;
+Class R neutrality belongs to the later R2a layer (#7896). This source-only
+recovery ran no build, native test, browser/WASM campaign or performance measurement. Historical native observations above and the private
 75-test qualification do not qualify the recovered source. Root review and
 source-matched fleet qualification remain required; no output pin, baseline,
 ceiling or acceptance band is changed.

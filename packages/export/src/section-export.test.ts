@@ -84,7 +84,8 @@ ENDSEC;\nEND-ISO`));
     expect(extractor.extractEntity(store.entityIndex.byId.get(152)!)?.attributes.slice(4)).toEqual([150,52]);
     expect(extractor.extractEntity(store.entityIndex.byId.get(151)!)?.attributes.slice(4)).toEqual([51,150]);
     const reopened = (await meshes(result.content)).meshes;
-    expect(new Set(reopened.map(mesh => mesh.expressId))).toEqual(new Set([50,51,52]));
+    expect(reopened).toHaveLength(3);
+    expect(reopened.map(mesh => mesh.expressId).sort((a,b) => a-b)).toEqual([50,51,52]);
     expect(reopened.filter(mesh => mesh.expressId === 51).reduce((sum,mesh) => sum+meshVolume(mesh),0)).toBeCloseTo(38,4);
   });
   it('reopens a closed palette-split cube with its cut face and both authored colours', async () => {
@@ -123,7 +124,8 @@ ENDSEC;\nEND-ISO`));
           .toEqual(oldExtract.extractEntity(before.entityIndex.byId.get(id)!)?.attributes);
       }
       const reopened = await meshes(result.content);
-      expect(new Set(reopened.meshes.map(mesh => mesh.expressId))).toEqual(new Set([50,51,52]));
+      expect(reopened.meshes).toHaveLength(3);
+      expect(reopened.meshes.map(mesh => mesh.expressId).sort((a,b) => a-b)).toEqual([50,51,52]);
       for (const mesh of reopened.meshes) {
         const origin = mesh.origin ?? [0,0,0];
         for (let i = 0; i < mesh.positions.length; i += 3) {
@@ -162,10 +164,15 @@ ENDSEC;\nEND-ISO`));
     expect(reopened.schemaVersion).toBe('IFC2X3');
     expect(reopened.entities.getTypeName(50)).toBe('IfcSlab');
     expect(reopened.entityIndex.byType.get('IFCTRIANGULATEDFACESET')?.length ?? 0).toBe(0);
-    const originalIds = new Set((await meshes(converted)).meshes.map(mesh => mesh.expressId));
-    expect(originalIds.size).toBeGreaterThanOrEqual(2);
-    expect(reopened.entityIndex.byType.get('IFCFACETEDBREP')?.length).toBe(originalIds.size);
-    expect(new Set((await meshes(cropped.content)).meshes.map(mesh => mesh.expressId))).toEqual(originalIds);
+    // #7908: the authored slab, wall and duct each contribute one mesh; the
+    // expected count must not follow the same mesher if it drops or splits one.
+    const original = (await meshes(converted)).meshes;
+    expect(original).toHaveLength(3);
+    expect(original.map(mesh => mesh.expressId).sort((a,b) => a-b)).toEqual([50,51,52]);
+    expect(reopened.entityIndex.byType.get('IFCFACETEDBREP')).toHaveLength(3);
+    const croppedMeshes = (await meshes(cropped.content)).meshes;
+    expect(croppedMeshes).toHaveLength(3);
+    expect(croppedMeshes.map(mesh => mesh.expressId).sort((a,b) => a-b)).toEqual([50,51,52]);
   });
 
   it('retains clipped representations through the canonical mixed-unit federated merge and id remap', async () => {
@@ -179,6 +186,7 @@ ENDSEC;\nEND-ISO`));
       .exportAsync({schema:'IFC4',unitReconciliation:'normalize'});
     expect(merged.stats.normalizedModelCount).toBe(1);
     const reopened = await meshes(merged.content);
+    expect(reopened.meshes).toHaveLength(6);
     expect(new Set(reopened.meshes.map(mesh => mesh.expressId)).size).toBe(6);
     const shift = renderFrameWorldOffset(reopened.coordinateInfo).x;
     for (const mesh of reopened.meshes) {

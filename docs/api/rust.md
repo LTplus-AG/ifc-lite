@@ -716,8 +716,9 @@ source policy, stops remaining siblings and closes entered sources innermost
 first, retaining the completed geometry prefix with its transforms. Partial
 sources and refused templates are not published. Actual resource stops remain
 sticky. Source-step debits become controller state only after reply acceptance.
-The existing don't-bake eligibility probe still decodes a list before these
-four boundaries; closing that earlier decode gap remains unresolved.
+The don't-bake eligibility probe accepts exactly one raw reference and decodes
+at most that member after root mapped-attempt admission. Malformed multi-slot
+Items with ignored members fall through to guarded flat materialization.
 This is neither a memory bound nor whole-product, cache-independent admission
 spanning representations; that and drawing policy remain separate #7887 work.
 

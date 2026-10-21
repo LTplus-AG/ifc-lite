@@ -10,13 +10,14 @@
 //! Decoder-only: this module meshes nothing and owns no cache. The router,
 //! RTC-vote probes and the layer slicer are all callers of it.
 
+pub(crate) mod mapped_transform;
 mod refusal;
 mod select;
 mod walk;
 
 pub use select::{meshed_representations, Select};
 pub use walk::{
-    Flow, MappedLevel, NestedMaps, RepresentationWalk, WalkCtx, WalkRefusal, WalkVisitor, MAX_WALK_LEVELS,
+    Flow, MappedLevel, NestedMaps, MAX_WALK_LEVELS, RepresentationWalk, WalkCtx, WalkRefusal, WalkVisitor,
 };
 pub(crate) use select::{
     effective_element_rep_type, effective_rep_type, is_body_representation,
@@ -139,3 +140,6 @@ mod work_budget_tests;
 
 #[cfg(test)]
 mod entry_policy_tests;
+
+#[cfg(test)]
+mod work_budget_regression_tests;

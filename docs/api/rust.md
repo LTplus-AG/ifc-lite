@@ -613,12 +613,13 @@ impl ProductShape { pub fn select(&self, element: &DecodedEntity, s: Select) -> 
 pub enum Select { Meshed, Body, RtcVotable, Any, Where(fn(..) -> bool) } // Meshed = what renders
 pub struct RepresentationWalk { pub select: Select, pub nested: NestedMaps }
 // product / map / mapped_item drive a WalkVisitor in DFS pre-order; nesting is
-// capped by depth and a path-scoped visited set.
+// iterative, with caller-selected depth/cycle and expansion policies.
+// MappedLevel::local_transform returns MappingTarget · MappingOrigin in file units.
 pub fn meshed_representations(element, representations) -> impl Iterator; // = Select::Meshed
 ```
 
 `NestedMaps::Expand { max_depth, max_levels }` bounds branching work in the
-recursive walker. Use `MAX_WALK_LEVELS` (65,536) as the default allowance.
+walker. Use `MAX_WALK_LEVELS` (65,536) as the default allowance.
 Two independent counters share that limit: mapped-level attempts (after depth
 and cycle checks, before resolving the source) and total `Items` members.
 Every expanded occurrence pays again, including repeated valid DAG nodes. Each full list
@@ -666,9 +667,22 @@ change which entity each child reference resolves to: child decoding now sees
 the post-callback decoder, while the already resolved mapped representation's
 `Items` attribute remains the snapshot. A fully decoded list is still a snapshot
 before its first item callback. No panic-unwind cleanup guarantee is added;
-normal stop/refusal cleanup pairs every entered scope. Traversal remains
-recursive with its existing path-scoped set; this policy change introduces no
-iterative task engine, router visitor or transform consolidation.
+normal stop/refusal cleanup pairs every entered scope. The Class X prerequisite
+introduced this policy with the recursive walker and its path-scoped set.
+
+The Class R implementation (#8007) uses an explicit DFS task stack (`List`,
+`Enter`, `Leave`) instead of native recursion, preserving that entry, refusal
+and callback policy. The active level path also supplies cycle checks; shared
+nodes on sibling paths remain separate occurrences. All five walk attribute
+reads use named slot indices without typed-owner assertions, preserving the
+malformed-target refusal and root `ShapeError` behavior (#8020).
+`MappedLevel::local_transform` delegates to the shared mapped-transform module
+and returns `MappingTarget · MappingOrigin` in file units, preserving
+target-before-origin error precedence. Router transform calls and the mapped
+RTC vote share that definition. The outer RTC traversal remains recursive.
+The task engine and transform consolidation introduce no additional work-policy
+exception. Source recovery retains the original policy and iterative regression
+tests; runtime validation and performance qualification of this head are pending.
 
 `WalkRefusal` now distinguishes `MissingSource`, `UnresolvedSource`,
 `MissingMappedRepresentation`, `UnresolvedMappedRepresentation`, `MissingItems`
@@ -690,7 +704,7 @@ Source breaks, covered by the pending Rust major in `rust-major-offset.json`:
 
 This decoder policy does not bound the ordinary renderer. GeometryProgram and
 MappingControl remain its sole execution controller; adapting structural budget
-and reporting behavior there (#7873), decoder iteration (#8007), and drawing /
+and reporting behavior there (#7873) and drawing /
 whole-product admission (#7887) remain separate work.
 
 #### mesh_check (test-support)

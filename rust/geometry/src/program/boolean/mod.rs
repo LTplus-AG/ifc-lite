@@ -3,9 +3,12 @@
 //! item, owned by the common program. Operand nesting lives on an owned
 //! frame stack, so no boolean, CSG-hop or spine step recurses on the native
 //! stack, and every step is a program request: source steps read the
-//! decoder through the selected processor's recorder, the solid/solid
-//! boolean is a numerical step over its already-meshed operands, and pure
-//! control frames (path scopes, depth and budget admission, operand
+//! decoder through the selected processor's recorder (the spine walk, the
+//! CSG hop, a leaf operand, a spine node's operator and SecondOperand, a
+//! cutter's plane or prism boundary); numerical steps are owned arithmetic
+//! over meshed operands (the plane clip, the kept-side check, the bounded
+//! prism build and subtract, the batched group, the solid/solid boolean);
+//! pure control frames (path scopes, depth and budget admission, operand
 //! dispatch) settle after each step without reading source.
 //!
 //! The path set is PATH-scoped, not global: a boolean tree is a DAG and one
@@ -16,19 +19,17 @@
 //! path length bounds operand nesting across the CSG hop, which passes `depth`
 //! restarted at 0, and the monotonic visit charge bounds shared fan-out.
 use super::inner::ProgramStage;
-use crate::processors::boolean::{
-    boolean_operator, OperandPath, StepAdmission, MAX_BOOLEAN_DEPTH, MAX_OPERAND_PATH_NODES,
-    MAX_OPERAND_VISITS,
-};
+use crate::processors::boolean::{OperandPath, MAX_BOOLEAN_DEPTH, MAX_OPERAND_PATH_NODES, MAX_OPERAND_VISITS};
 use crate::processors::boolean::solid_execution::SolidBooleanPlan;
 use crate::processors::csg_primitive::{primitive_root_mesh, resolve_tree_root};
 use crate::processors::BooleanClippingProcessor;
 use crate::{BoolFailureReason, BoolOp, Error, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
+mod spine;
 mod state;
 mod walk;
-use state::{Frame, Steps, Value, Walk};
+use state::{Frame, Value, Walk};
 
 /// Owned continuation state. Holds no decoder and no processor: each step
 /// borrows the selected processor's recorder (and, at source, the decoder).
@@ -53,9 +54,9 @@ impl BooleanMachine {
 
     /// The next step's stage; `None` once the continuation completed.
     pub(crate) fn stage(&self) -> Option<ProgramStage> {
-        match self.frames.last()? {
-            Frame::Solid { .. } => Some(ProgramStage::Numerical),
-            _ => Some(ProgramStage::Source),
+        match self.frames.last()?.is_numerical() {
+            true => Some(ProgramStage::Numerical),
+            false => Some(ProgramStage::Source),
         }
     }
 
@@ -70,12 +71,20 @@ impl BooleanMachine {
     /// Run the numerical step at the top of the stack, then settle. Reads no
     /// source.
     pub(crate) fn numerical(&mut self, recorder: &BooleanClippingProcessor) -> Result<()> {
-        let Some(Frame::Solid { mut steps, plan, host, second }) = self.frames.pop() else {
-            return Err(stale());
-        };
-        let (second, loss_recorded) = second;
-        steps.accept(plan.evaluate(recorder, host, second, loss_recorded)?);
-        self.frames.push(Frame::Steps(steps));
+        match self.frames.pop() {
+            Some(Frame::Solid { steps, plan, host, second: (second, loss_recorded) }) => {
+                let result = plan.evaluate(recorder, host, second, loss_recorded)?;
+                self.applied(steps, result)?;
+            }
+            Some(Frame::HalfSpace { cut, plan }) => self.half_space(cut, plan, recorder)?,
+            Some(Frame::Polygonal { cut, cutter, plane }) => self.polygonal(cut, cutter, plane)?,
+            Some(Frame::PolygonalCut { cut, plane, prism, length_unit_scale }) => {
+                self.polygonal_cut(cut, plane, prism, length_unit_scale, recorder)?
+            }
+            Some(Frame::BatchBuild(batch, plane, prism)) => self.batch_build(batch, plane, prism, recorder)?,
+            Some(Frame::BatchGroup(batch)) => self.batch_group(batch, recorder)?,
+            _ => return Err(stale()),
+        }
         self.settle(recorder)
     }
 
@@ -154,6 +163,7 @@ impl BooleanMachine {
                 self.frames.push(Frame::Steps(walk.steps(value, false)));
                 Ok(())
             }
+            Frame::AfterBatch { walk, cutters, mark } => self.after_batch(walk, cutters, mark),
             _ => Err(stale()),
         }
     }
@@ -167,8 +177,10 @@ impl BooleanMachine {
                 Ok(())
             }
             Frame::Walk(walk) => self.walk(walk, recorder, decoder),
-            Frame::AfterBatch { walk, cutters, mark } => self.finish_batch(walk, cutters, mark, recorder, decoder),
             Frame::Steps(steps) => self.steps(steps, recorder, decoder),
+            Frame::PolygonalPrism { cut, cutter, plane } => self.polygonal_prism(cut, cutter, plane, recorder, decoder),
+            Frame::BatchLower(batch) => self.batch_lower(batch, recorder, decoder),
+            Frame::Defer(walk) => self.next_first(walk, decoder),
             Frame::AfterStep { steps, operator, host } => {
                 // The unit scale is read after the operand: it can be
                 // discovered late. The boolean itself is the next, numerical step.
@@ -182,6 +194,7 @@ impl BooleanMachine {
                 self.frames.push(Frame::Solid { steps, plan, host, second });
                 Ok(())
             }
+            frame if frame.is_numerical() => Err(stale()),
             control => self.control(control, recorder),
         }
     }
@@ -260,49 +273,9 @@ impl BooleanMachine {
             .take()
             .ok_or_else(|| Error::geometry("Boolean continuation completed without a value"))
     }
-
-    /// Apply the next spine node, innermost first.
-    fn steps(&mut self, mut steps: Steps, recorder: &BooleanClippingProcessor, decoder: &mut EntityDecoder)
-        -> Result<()> {
-        let Some(node) = steps.nodes.pop() else {
-            self.value = Some((steps.mesh, steps.empty_recorded));
-            return Ok(());
-        };
-        if steps.mesh.is_empty() {
-            match boolean_operator(&node) {
-                // DIFFERENCE or INTERSECTION of nothing is nothing: skip the
-                // step (a UNION higher up still gets its second operand).
-                Ok(BoolOp::Difference | BoolOp::Intersection) => {
-                    self.frames.push(Frame::Steps(steps));
-                    return Ok(());
-                }
-                // UNION(empty, B) = B: the step runs on the second operand
-                // alone, and the emptied first operand is on record once.
-                Ok(BoolOp::Union) => {
-                    recorder.record_empty_operand(BoolOp::Union, steps.empty_recorded);
-                    steps.empty_recorded = true;
-                }
-                // Unknown or unreadable: the step records it, mesh unchanged.
-                Ok(BoolOp::Unknown) | Err(_) => {}
-            }
-        }
-        let host = std::mem::take(&mut steps.mesh);
-        match recorder.begin_boolean_step(&node, host, decoder, self.quality, steps.solo_step)? {
-            StepAdmission::Done(result) => {
-                steps.accept(result);
-                self.frames.push(Frame::Steps(steps));
-            }
-            StepAdmission::Solid { operator, first, operand } => {
-                let depth = steps.depth;
-                self.frames.push(Frame::AfterStep { steps, operator, host: first });
-                self.frames.push(Frame::Operand { entity: operand, operator, depth });
-            }
-        }
-        Ok(())
-    }
 }
 
-fn stale() -> Error {
+pub(super) fn stale() -> Error {
     Error::geometry("Boolean continuation step requested out of order")
 }
 

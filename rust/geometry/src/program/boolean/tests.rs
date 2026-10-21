@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! The Boolean/CSG continuation as common-program steps: the selected
-//! processor's recorder, the solid/solid numerical step, a returned stop,
-//! errors and native-stack independence.
+//! processor's recorder, the numerical cuts between source admissions, a
+//! returned stop, errors and native-stack independence.
 use crate::program::{GeometryProgram, ProgramStage};
 use crate::resource::{self, ExecutionAccount, ExecutionPolicy, ProgramStop, ResourceLimits};
 use crate::{BoolFailureReason, GeometryProcessor, GeometryRouter};
@@ -189,4 +189,85 @@ fn operand_nesting_near_the_path_bound_does_not_use_native_stack() {
         .expect("spawn small-stack worker");
     let vertices = handle.join().expect("no stack overflow").expect("the chain resolves");
     assert!(vertices > 0, "the innermost block reaches the result");
+}
+
+/// A 1000-unit block #2, and the plane #4 through z = 500 with normal +Z.
+const BLOCK: &str = "#2=IFCBLOCK($,1000.,1000.,1000.);\n#4=IFCPLANE(#5);\n#5=IFCAXIS2PLACEMENT3D(#6,#7,$);\n\
+    #6=IFCCARTESIANPOINT((500.,500.,500.));\n#7=IFCDIRECTION((0.,0.,1.));\n";
+
+/// A polygonal-bounded cutter `#{id}` removing everything above `z`, whose
+/// boundary covers the block.
+fn bounded(id: u32, z: f64) -> String {
+    format!(
+        "#{id}=IFCPOLYGONALBOUNDEDHALFSPACE(#{p},.F.,#8,#9);\n#{p}=IFCPLANE(#{a});\n\
+         #{a}=IFCAXIS2PLACEMENT3D(#{o},#7,$);\n#{o}=IFCCARTESIANPOINT((500.,500.,{z:.1}));\n",
+        p = id + 1,
+        a = id + 2,
+        o = id + 3,
+    ) + "#8=IFCAXIS2PLACEMENT3D(#10,#7,#11);\n#10=IFCCARTESIANPOINT((500.,500.,0.));\n\
+         #11=IFCDIRECTION((1.,0.,0.));\n#9=IFCPOLYLINE((#12,#13,#14,#15,#12));\n\
+         #12=IFCCARTESIANPOINT((-1000.,-1000.));\n#13=IFCCARTESIANPOINT((2000.,-1000.));\n\
+         #14=IFCCARTESIANPOINT((2000.,2000.));\n#15=IFCCARTESIANPOINT((-1000.,2000.));\n"
+}
+
+/// The program's stages for item #1, whose mesh is the processor's own
+/// synchronous result and lost everything above z = 500.
+fn staged(data: &str) -> Vec<ProgramStage> {
+    let content = wrap_ifc(data);
+    let router = GeometryRouter::new();
+    let mut decoder = EntityDecoder::new(&content);
+    let item = decoder.decode_by_id(1).unwrap();
+    let mut program = GeometryProgram::item(&item, (0., 0., 0.));
+    let mut stages = Vec::new();
+    while let Some(request) = program.request().unwrap() {
+        stages.push(request.stage());
+        let reply = program.execute(request, &router, &mut decoder).unwrap();
+        program.accept(reply, &router).ok().unwrap();
+    }
+    let mesh = program.finish().unwrap();
+    let mut decoder = EntityDecoder::new(&content);
+    let processor = crate::processors::BooleanClippingProcessor::new();
+    let expected = processor.process(&item, &mut decoder, &IfcSchema::new(), Default::default()).unwrap();
+    assert_eq!(mesh.positions, expected.positions);
+    assert_eq!(mesh.indices, expected.indices);
+    let top = mesh.positions.chunks_exact(3).map(|p| p[2]).fold(f32::MIN, f32::max);
+    assert!((top - 500.).abs() < 1e-3, "the cutter removed the top half: {top}");
+    stages
+}
+
+fn windows(stages: &[ProgramStage], pattern: &[ProgramStage]) -> usize {
+    stages.windows(pattern.len()).filter(|window| *window == pattern).count()
+}
+
+/// A plane half-space is admitted at source and clipped numerically.
+#[test]
+fn a_plane_half_space_clips_numerically() {
+    let data = format!("#1=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#2,#3);\n#3=IFCHALFSPACESOLID(#4,.F.);\n{BLOCK}");
+    let stages = staged(&data);
+    assert_eq!(stages.iter().filter(|stage| **stage == ProgramStage::Numerical).count(), 1, "{stages:?}");
+}
+
+/// A polygonal-bounded cutter: plane at source, kept-side check numerical,
+/// prism boundary at source, prism build and subtract numerical.
+#[test]
+fn a_bounded_half_space_reads_its_boundary_between_numerical_steps() {
+    let data = format!("#1=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#2,#20);\n{}{BLOCK}", bounded(20, 500.));
+    let stages = staged(&data);
+    use ProgramStage::{Numerical, Source};
+    assert_eq!(windows(&stages, &[Source, Numerical, Source, Numerical, Source]), 1, "{stages:?}");
+}
+
+/// A batched chain: each cutter is admitted at source and its prism built
+/// numerically, then one grouped subtract runs numerically.
+#[test]
+fn a_batched_chain_alternates_cutter_admission_and_prism_builds() {
+    let data = format!(
+        "#1=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#30,#20);\n\
+         #30=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#2,#40);\n{}{}{BLOCK}",
+        bounded(20, 500.),
+        bounded(40, 600.),
+    );
+    let stages = staged(&data);
+    use ProgramStage::{Numerical, Source};
+    assert_eq!(windows(&stages, &[Source, Numerical, Source, Numerical, Numerical]), 1, "{stages:?}");
 }

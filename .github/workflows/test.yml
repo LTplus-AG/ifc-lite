@@ -1489,6 +1489,18 @@ jobs:
           # whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/inner.rs | grep -Fxq 'rust/geometry/src/program/inner.rs'; then
             oracle_args+=(--mutation tests/evidence/item-cache-controller-d2/behaviour.oracle.patch)
+          # #7955 G3b: retained sweeps add geometry-runtime worker_sweep.rs and
+          # worker_upload.rs, which the changed runtime tests reach, so a
+          # whole-change revert cannot compile them (INCONCLUSIVE). Most of
+          # those tests need the native SDK worker; the protocol and peer tests
+          # do not. Keep the types and break ONLY the behaviour: curved regions
+          # and disks skip their same-incarnation witness gate and oversized
+          # chunk frames are encoded (RED). Checked before F2c so the stacked
+          # branch uses its own patch. Once
+          # rust/geometry-runtime/src/worker_sweep.rs is on main, ordinary
+          # whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry-runtime/src/worker_sweep.rs | grep -Fxq 'rust/geometry-runtime/src/worker_sweep.rs'; then
+            oracle_args+=(--mutation tests/evidence/retained-sweep-g3b/behaviour.oracle.patch)
           # #7955 F2c: retained swept-disk requests add document/retained_disk.rs
           # and processing tests/retained_disk_requests.rs, which name the new
           # types, so a whole-change revert cannot compile them (INCONCLUSIVE).

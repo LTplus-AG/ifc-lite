@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Qualify reconciled #7914 symbolic behavior and worker-pool performance against its actual canonical-reader parent; distinct from every historical cohort",
+  "source": {
+    "base": "4f179c591afe21b652d7e340f92ef426023ca5a0",
+    "baseParent": "1c2393e0114af4af3b4feab1db745b9101e8314e",
+    "branch": "1a4be7e61a35bece5cb4e0dadcd5a818602dd642",
+    "baseChanges": "identical symbolic_probe example only; production/build inputs verified equal to f89b5edb2b"
+  },
+  "host": "pop-os exclusive benchmark admission",
+  "environment": {
+    "RAYON_NUM_THREADS": "4",
+    "IFC_LITE_INSTANCING": "0",
+    "IFC_LITE_DEDUP_EXTRA": "0"
+  },
+  "fixtures": {
+    "haus": "ara3d/AC20-FZK-Haus.ifc",
+    "duplex": "ara3d/duplex.ifc",
+    "issue129": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+    "holter": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc"
+  },
+  "symbolic": {
+    "pairsPerFixture": 20,
+    "iterationsPerProcess": 1,
+    "metric": "elapsedNs of public extract_symbolic_data; serialization/hash excluded"
+  },
+  "native": {
+    "pairsPerFixture": 6,
+    "iterationsPerProcess": 5,
+    "arguments": [
+      "--iters",
+      "5",
+      "--fingerprint",
+      "--json"
+    ],
+    "metrics": "all full-call wall observations plus stock selected phase counters; report both without substitution"
+  },
+  "order": "AB even rounds; BA odd rounds; fixed fixture order haus,duplex,issue129,holter; symbolic section then native section",
+  "identity": "manifest fixture SHA256; fresh-source frozen executable SHA256; every run full symbolic JSON length/FNV or ordered mesh fingerprint/counts; recheck binaries+fixtures after; complete changed symbolic payloads independently classified",
+  "rules": [
+    "No build/install inside timed admission",
+    "No reused prior timing observations",
+    "Record every failure/adverse/missing sample; no replacement or cherry-picked rerun",
+    "No neutral/speed claim from inconclusive results",
+    "Fingerprint does not cover appearance/UV/auxiliary payloads; state this limitation",
+    "This cohort does not qualify parent Class R neutrality or current-main integration"
+  ]
+}

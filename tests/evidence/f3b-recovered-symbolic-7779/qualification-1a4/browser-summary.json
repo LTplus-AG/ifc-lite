@@ -1,0 +1,83 @@
+{
+  "pass": true,
+  "head": "1a4be7e61a35bece5cb4e0dadcd5a818602dd642",
+  "wasmSha256": "daa5dd3b6021e861c30c82414586caa693f882fa02b3fddc3cfbf892a387d906",
+  "fixtureSha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131",
+  "zeroSpanControl": true,
+  "counts": {
+    "polylines": 481,
+    "circles": 0,
+    "texts": 0,
+    "fills": 0
+  },
+  "checks": [
+    {
+      "expressId": 151535,
+      "points": 65,
+      "maxErrorMetres": 1.504041495852342e-06,
+      "pass": true
+    },
+    {
+      "expressId": 163008,
+      "points": 22,
+      "maxErrorMetres": 9.199143409996903e-07,
+      "pass": true
+    },
+    {
+      "expressId": 328726,
+      "points": 65,
+      "maxErrorMetres": 1.1588606533051795e-06,
+      "pass": true
+    },
+    {
+      "expressId": 329009,
+      "points": 45,
+      "maxErrorMetres": 8.939529077423767e-07,
+      "pass": true
+    },
+    {
+      "expressId": 330721,
+      "points": 2,
+      "maxErrorMetres": 8.57604306488725e-07,
+      "pass": true
+    },
+    {
+      "expressId": 330970,
+      "points": 2,
+      "maxErrorMetres": 7.462743394507554e-07,
+      "pass": true
+    },
+    {
+      "expressId": 331271,
+      "points": 29,
+      "maxErrorMetres": 9.376521456304437e-07,
+      "pass": true
+    },
+    {
+      "expressId": 331536,
+      "points": 2,
+      "maxErrorMetres": 6.030936362286799e-07,
+      "pass": true
+    },
+    {
+      "expressId": 331814,
+      "points": 39,
+      "maxErrorMetres": 9.452002974883912e-07,
+      "pass": true
+    },
+    {
+      "expressId": 332706,
+      "points": 2,
+      "maxErrorMetres": 4.222208592182937e-07,
+      "pass": true
+    },
+    {
+      "expressId": 333054,
+      "points": 30,
+      "maxErrorMetres": 5.145334120720881e-07,
+      "pass": true
+    }
+  ],
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+  "scope": "WASM numeric/canvas boundary; preview WebGPU adapter unavailable; not canonical viewer GPU acceptance"
+}

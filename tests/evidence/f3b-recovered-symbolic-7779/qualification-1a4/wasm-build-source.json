@@ -1,0 +1,32 @@
+{
+  "source": {
+    "commit": "1a4be7e61a35bece5cb4e0dadcd5a818602dd642",
+    "tree": "63f72791fff9d0337a617807860a416eee79a678",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "55d7c4deaf4afe5281b77119a9a1759f9dde9ba8c325cfd59ce4b43bebb571a6",
+      "pnpm-lock.yaml": "4ef03ad9b34812de9d0e6c309d04ae315c09f887c3927f67ab6e31f8131e5283",
+      "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+    }
+  },
+  "originalBuildJob": "98953d13-b883-4346-8fe3-d8ac2bb0299c",
+  "originalBuildJobExit": 1,
+  "originalBuildJobFailure": "root build lacked installed turbo after actual WASM compilation and exact committed-type comparison",
+  "sourceUnchanged": true,
+  "wasmCompilationSeconds": 81,
+  "actualSourceCompilationObserved": [
+    "core",
+    "geometry",
+    "processing",
+    "wasm"
+  ],
+  "buildLogSha256": "9b1a21145fe2eee0b7da68d60adc925d85c72e734d576706786868946584f399",
+  "runtime": {
+    "ifc-lite.js": "941031903a209b8ece2bee739ff5b73f4340d001f068c5efeb5c46863cedda23",
+    "ifc-lite_bg.wasm": "daa5dd3b6021e861c30c82414586caa693f882fa02b3fddc3cfbf892a387d906",
+    "ifc-lite.d.ts": "4b2799a5c8670c65620afb3b368bbab57da0bfbd53621c2ecf10b86d5c0bc7c9"
+  },
+  "scope": "These assets are taken from source1a4 after successful current root build/contracts. Fresh actualsource WASM compilation is observed in prior source-identical job98953d; successful root contract evidence is in job44819224."
+}

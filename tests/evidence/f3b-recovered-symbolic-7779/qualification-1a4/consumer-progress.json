@@ -1,0 +1,18 @@
+{
+  "source": "1a4be7e61a35bece5cb4e0dadcd5a818602dd642",
+  "host": "pc-wsl",
+  "job": "44819224-2f57-4319-b324-4bfdd7e82637",
+  "request": "auto-646331eb545a464d9998ffd14aaf509f",
+  "storageTask": "bf7d2a91-7914-goal-consumers-v2",
+  "rootBuild": "PASS72/72TurboTasks",
+  "rootTypecheck": "PASS127/127TurboTasksplusTailAudit",
+  "actualWasmContracts": {
+    "passed": 218,
+    "failed": 0,
+    "skipped": 1,
+    "skip": "historical fingerprint fallback"
+  },
+  "fullRootTests": "RUNNING; not a passing whole-graph verdict",
+  "sourceAfter": "pending until job finishes",
+  "scope": "Interim stage results only; final source/receipt/log reconciliation and full test outcome remain required."
+}

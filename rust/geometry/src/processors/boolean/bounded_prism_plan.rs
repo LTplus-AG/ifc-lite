@@ -8,7 +8,7 @@
 //! original order; the prism numerics consume the plan afterwards.
 
 use super::BooleanClippingProcessor;
-use crate::processors::helpers::parse_axis2_placement_3d;
+use crate::placement::Axis2Placement;
 use crate::{Error, Point2, Point3, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{slot, DecodedEntity, EntityDecoder};
 
@@ -40,7 +40,7 @@ impl BoundedPrismPlan {
         let position = decoder.resolve_ref(position_attr)?.ok_or_else(|| {
             Error::geometry("Failed to resolve bounded half-space Position".to_string())
         })?;
-        let transform = parse_axis2_placement_3d(&position, decoder)?;
+        let transform = Axis2Placement::read_3d(&position, decoder)?.matrix();
 
         let Some(contour) = processor.bounded_half_space_contour(half_space, decoder, quality)?
         else {

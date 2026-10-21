@@ -20,6 +20,23 @@ All crates live in one Cargo workspace (versioned together, MPL-2.0 licensed):
 
 The Python bindings (`rust/python`, PyPI package `ifclite-geom`) are excluded from the workspace and documented on the [Python API page](python.md).
 
+## Placement readers
+
+Use `ifc_lite_geometry::placement::Axis2Placement::{read_3d, read_2d, read_id}`
+and call `.matrix()` on the returned placement for a frame in file units.
+`EntityDecoder::{point3, direction3}` read point coordinates or raw direction
+ratios by id; `point3_at` and `direction3_at` read a referenced attribute.
+These leaf readers accept two or three finite numbers, promote two dimensions
+with `z = 0`, and count malformed-input refusals. For an already decoded
+direction when no decoder is available, `EntityDecoder::direction3_of` returns
+`Option<[f64; 3]>` and cannot count refusals.
+
+The geometry crate's former `parse_axis2_placement_3d`,
+`parse_axis2_placement_3d_from_id`, `parse_cartesian_point`,
+`parse_cartesian_point_from_id`, `parse_direction`, and `parse_direction_from_id`
+exports are removed in the pending Rust major. `rotation_angle_about_z` remains
+available at the crate root and through `placement`.
+
 ## ifc-lite-core
 
 Core parsing functionality.

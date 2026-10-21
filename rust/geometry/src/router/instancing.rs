@@ -119,6 +119,16 @@ impl GeometryRouter {
         self.instanced_sources_materialized.borrow_mut().remove(&claim.source_id);
     }
 
+    /// Logical refusal withholds the template even without a resource account.
+    /// The caller owns this first-template marker; unrelated claims are untouched.
+    pub(crate) fn rollback_logical_template(&self, source_id: u32, claim: Option<TemplateClaim>) {
+        if let Some(claim) = claim {
+            self.settle_template(claim, false);
+        } else if self.instancing_batch_local() {
+            self.instanced_sources_materialized.borrow_mut().remove(&source_id);
+        }
+    }
+
     /// Whether a don't-bake occurrence must first mesh its source ONCE into the
     /// shared registry (source coords, pre-`MappingTarget`, pre-placement), so
     /// the streaming finalize can recover it in the (effectively unreachable)
@@ -181,11 +191,14 @@ impl GeometryRouter {
 
     /// The shared registry walk's items. A representation whose items do not
     /// resolve walks nothing and so registers nothing.
-    pub(crate) fn shared_source_items(mapped_repr: &DecodedEntity, decoder: &mut EntityDecoder) -> Vec<DecodedEntity> {
-        mapped_repr
-            .get(3)
-            .and_then(|items_attr| decoder.resolve_ref_list(items_attr).ok())
-            .unwrap_or_default()
+    pub(crate) fn shared_source_items(mapped_repr: &DecodedEntity, decoder: &mut EntityDecoder,
+        budget: &mut crate::program::mapping_budget::LogicalBudget)
+        -> crate::program::mapping_budget::SourceResult<Vec<DecodedEntity>> {
+        let Some(items_attr) = mapped_repr.get(3) else { return Ok(Vec::new()) };
+        budget.materialize_items(items_attr.as_list().map_or(0, |items| items.len()))?;
+        // Historical shared-source content failures walk nothing; logical
+        // refusal above must never enter this empty-content fallback.
+        Ok(decoder.resolve_ref_list(items_attr).unwrap_or_default())
     }
 
     /// Register a walked shared source. A missing processor or a failing one

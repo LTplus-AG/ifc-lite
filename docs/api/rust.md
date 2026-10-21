@@ -702,10 +702,24 @@ Source breaks, covered by the pending Rust major in `rust-major-offset.json`:
 `WalkVisitor::refused` implementations must change their argument type.
 `into_error` is additive. No new major offset or semver measurement is claimed.
 
-This decoder policy does not bound the ordinary renderer. GeometryProgram and
-MappingControl remain its sole execution controller; adapting structural budget
-and reporting behavior there (#7873) and drawing /
-whole-product admission (#7887) remain separate work.
+The ordinary renderer remains owned by GeometryProgram/MappingControl. Its
+separate internal Class X policy (#7873) gives each controller invocation two
+independent 65,536 allowances: reached mapped attempts and materialized Items
+members. The four source-list boundaries precharge the full list, including
+ignored non-reference members, before decoding it. Repeated DAG occurrences
+pay again; cache hits and don't-bake skips can avoid child-list charges, but
+still pay their mapped attempt. Existing path/depth checks take precedence.
+
+A typed logical refusal is distinct from resource/cancellation `ProgramStop`.
+Root refusal returns an error. Nested refusal reports once under its parent's
+source policy, stops remaining siblings and closes entered sources innermost
+first, retaining the completed geometry prefix with its transforms. Partial
+sources and refused templates are not published. Actual resource stops remain
+sticky. Source-step debits become controller state only after reply acceptance.
+The existing don't-bake eligibility probe still decodes a list before these
+four boundaries; closing that earlier decode gap remains unresolved.
+This is neither a memory bound nor whole-product, cache-independent admission
+spanning representations; that and drawing policy remain separate #7887 work.
 
 #### mesh_check (test-support)
 

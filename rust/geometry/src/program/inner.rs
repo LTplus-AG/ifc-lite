@@ -379,3 +379,7 @@ fn next_program_id() -> u64 {
 #[cfg(test)]
 #[path = "inner_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "mapping_budget_tests.rs"]
+mod mapping_budget_tests;

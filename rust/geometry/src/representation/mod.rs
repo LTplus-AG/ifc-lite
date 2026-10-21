@@ -12,6 +12,7 @@
 
 pub(crate) mod mapped_transform;
 mod refusal;
+pub(crate) mod product_budget;
 mod select;
 mod walk;
 

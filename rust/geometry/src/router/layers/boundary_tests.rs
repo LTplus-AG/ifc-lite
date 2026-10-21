@@ -153,3 +153,32 @@ fn layer_stages_are_send() {
     send::<super::stages::ReadyLayerSlice>();
     send::<super::stages::LayerSliceResult>();
 }
+
+#[test]
+fn issue_7887_layer_gateway_admits_raw_items_before_probe_or_member_decode() {
+    let cap = crate::representation::MAX_WALK_LEVELS as usize;
+    // Ignored slots still consume the full raw list allowance. The first
+    // referenced record would be rejected and counted if anyone decoded it.
+    let items = format!("#90,{}", vec!["$"; cap].join(","));
+    let source = format!("{}#90=IFCCARTESIANPOINT((1.E400,0.,0.));",
+        WALL.replace("(#6)", &format!("({items})")));
+    let mut decoder = EntityDecoder::new(&source).with_strict_reals();
+    let element = decoder.decode_by_id(9).unwrap();
+    let router = GeometryRouter::new();
+    let result = router.process_element_with_material_layers(
+        &element, &mut decoder, &buildup(), &FxHashMap::default(),
+    ).unwrap();
+    assert!(result.is_none(), "the ordinary caller must render only admitted roots");
+    assert_eq!(decoder.refused_records(), 0, "no malformed member was probed");
+    assert!(decoder.get_cached(90).is_none());
+    assert!(decoder.get_cached(6).is_none());
+    assert!(router.take_layer_slice_diag().is_empty(), "admission precedes layer eligibility diagnostics");
+    assert!(router.take_unsupported_items().is_empty(), "source admission publishes no refusal");
+
+    // The ordinary fallback now reports exactly one logical refusal, outside
+    // any source-suppression scope, with the holding representation's type.
+    let _scope = router.enter_unsupported_policy(false);
+    assert!(router.process_element_with_submeshes(&element, &mut decoder).unwrap().is_empty());
+    assert_eq!(router.take_unsupported_items().get("IfcShapeRepresentation"), Some(&1));
+    assert_eq!(decoder.refused_records(), 0);
+}

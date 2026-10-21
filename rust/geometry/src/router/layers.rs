@@ -48,17 +48,19 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
         void_index: Option<&FxHashMap<u32, Vec<u32>>>,
-    ) -> Option<SubMeshCollection> {
-        let index = self.material_layer_index()?;
-        let buildup = index.get(element.id)?;
+    ) -> Result<Option<SubMeshCollection>> {
+        crate::resource::check_current()?;
+        let Some(index) = self.material_layer_index() else { return Ok(None) };
+        let Some(buildup) = index.get(element.id) else { return Ok(None) };
         if !buildup.is_sliceable() {
-            return None;
+            return Ok(None);
         }
         let empty: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
         let voids = void_index.unwrap_or(&empty);
         let collection = match self.process_element_with_material_layers(element, decoder, buildup, voids) {
             Ok(Some(c)) => c,
-            Ok(None) => return None,
+            Ok(None) => return Ok(None),
+            Err(error @ crate::Error::ProgramStopped(_)) => return Err(error),
             Err(_e) => {
                 // A sliceable wall whose base-mesh build errored falls back to a
                 // single solid. Record for the browser; warn for native.
@@ -70,7 +72,7 @@ impl GeometryRouter {
                         eprintln!("[material-layers] #{}: sliceable but slicing errored", element.id);
                     }
                 );
-                return None;
+                return Ok(None);
             }
         };
         if collection.sub_meshes.len() < 2 {
@@ -86,7 +88,7 @@ impl GeometryRouter {
                     );
                 }
             );
-            return None;
+            return Ok(None);
         }
         crate::diag::diag_debug!(
             { element_id = element.id, sub_meshes = collection.sub_meshes.len(),
@@ -108,7 +110,7 @@ impl GeometryRouter {
         for sub in &mut collection.sub_meshes {
             sub.mesh.clean_degenerate();
         }
-        Some(collection)
+        Ok(Some(collection))
     }
 
     /// Process an element into per-layer sub-meshes, subtracting any
@@ -127,6 +129,19 @@ impl GeometryRouter {
         buildup: &LayerBuildup,
         void_index: &FxHashMap<u32, Vec<u32>>,
     ) -> Result<Option<SubMeshCollection>> {
+        // Eligibility can decode representation members before host meshing.
+        // Run the same source-only admission first, without reporting/claiming:
+        // a refusal abstains so ordinary production renders its completed roots.
+        // Alignments retain their dedicated directrix processor in host meshing.
+        if element.ifc_type != ifc_lite_core::IfcType::IfcAlignment {
+            let mut plan = crate::representation::product_budget::admit_product(
+                element, decoder, crate::representation::MAX_WALK_LEVELS, self,
+            );
+            plan.strict()?;
+            plan.validate(self, decoder)?;
+            if plan.refusal.is_some() { return Ok(None); }
+        }
+        crate::resource::check_current()?;
         let program = match LayerProgram::admit(element, decoder, buildup, self.unit_scale) {
             Ok(Some(program)) => program,
             Ok(None) => return Ok(None),

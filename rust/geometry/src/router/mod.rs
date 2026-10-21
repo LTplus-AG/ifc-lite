@@ -23,6 +23,8 @@ mod layers;
 mod mapped_cache_ownership;
 pub(crate) mod mapped_item;
 pub(crate) mod processing;
+mod product_submeshes;
+mod product_admission;
 mod processor;
 mod rtc_offset;
 pub(crate) mod structural;

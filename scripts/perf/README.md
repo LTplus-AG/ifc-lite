@@ -4331,3 +4331,27 @@ now uses the reviewed first-frame clock contract in both cadence and markers,
 and reads finalized sidecars at their actual case paths. Lesson: verify final
 checker contracts and receipt discovery against retained real captures before
 spending another capture window. This integration fix grants no timing verdict.
+
+
+### C2 router builders recovery (#7867)
+
+The shared frame/builders refactor at runtime source `14c1da6384` was compared
+with current main `141285f828` using separately built, frozen native binaries
+and a finite interleaved cohort on Haus, ISSUE_129 and Holter. No native
+regression was observed on that set. The small Haus model showed an improvement
+signal; the larger models stayed within observed variation. The phase report
+remains inconclusive because one lookup phase is below timer resolution. This
+is a native-only result, not a browser worker-pool performance claim.
+
+Ordered mesh payloads, exact float fields, frames/metadata and complete geometry
+diagnostic bytes matched on all three models with default instancing disabled.
+The unchanged-source workspace run also passed the committed dont-bake and
+batch-local fixtures with actual instances and world-geometry reconstruction.
+Those native tests exercise browser-style batch logic without qualifying WASM
+or GPU execution. The subsequent `387b258725` checkpoint only lowered function
+length allowances; it did not change the measured Rust source.
+
+Lesson: a frame-builder consolidation must retain custom instance metadata
+when ObjectPlacement is absent. Check both single-mesh and submesh paths against
+a parsed placement invariant, and distinguish default flat-output identity from
+enabled instancing coverage before accepting a refactor as behavior-preserving.

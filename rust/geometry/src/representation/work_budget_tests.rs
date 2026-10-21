@@ -10,7 +10,7 @@ use ifc_lite_core::EntityDecoder;
 struct Work {
     events: Vec<(bool, u32)>,
     leaves: Vec<u32>,
-    refusals: Vec<(u32, WalkRefusal, usize, Option<u32>)>,
+    refusals: Vec<(u32, String, usize, Option<u32>)>,
     skip: bool,
 }
 impl WalkVisitor for Work {
@@ -25,8 +25,8 @@ impl WalkVisitor for Work {
     fn leave_map(&mut self, level: &MappedLevel) {
         self.events.push((false, level.item.id));
     }
-    fn refused(&mut self, at: u32, why: WalkRefusal, ctx: &WalkCtx<'_>) {
-        self.refusals.push((at, why, ctx.path.len(), ctx.shape_rep.map(|r| r.id)));
+    fn refused(&mut self, item: &DecodedEntity, why: WalkRefusal, ctx: &WalkCtx<'_>) {
+        self.refusals.push((item.id, format!("{why:?}"), ctx.path.len(), ctx.shape_rep.map(|r| r.id)));
     }
 }
 
@@ -50,7 +50,7 @@ fn wide_source(width: usize) -> String {
 }
 
 #[test]
-fn issue_8007_dag_occurrences_pay_again_and_are_preserved_at_exact_allowance() {
+fn issue_8007_expanded_dag_occurrences_pay_again_at_exact_allowance() {
     let model = wide_source(8);
     let mut decoder = EntityDecoder::new(&model);
     let root = decoder.decode_by_id(100).unwrap();
@@ -63,8 +63,8 @@ fn issue_8007_dag_occurrences_pay_again_and_are_preserved_at_exact_allowance() {
     let mut work = Work::default();
     walk(71).map(&root, &mut decoder, &mut work).unwrap();
     assert_eq!(work.leaves, vec![1; 56]);
-    assert_eq!(work.events, [(true, 300), (false, 300)].repeat(7));
-    assert_eq!(work.refusals, [(300, WalkRefusal::Budget { max_levels: 71 }, 0, None)]);
+    assert_eq!(work.events, [(true, 300), (false, 300)].repeat(8));
+    assert_eq!(work.refusals, [(300, "Budget { max_levels: 71 }".to_string(), 0, None)]);
 }
 
 #[test]
@@ -77,7 +77,7 @@ fn issue_8007_root_list_is_precharged_before_its_first_member_is_decoded() {
     assert!(decoder.get_cached(300).is_none());
     assert!(work.events.is_empty());
     assert!(work.leaves.is_empty());
-    assert_eq!(work.refusals, [(200, WalkRefusal::Budget { max_levels: 7 }, 0, Some(200))]);
+    assert_eq!(work.refusals, [(200, "Budget { max_levels: 7 }".to_string(), 0, Some(200))]);
 }
 
 #[test]
@@ -92,9 +92,9 @@ fn issue_8007_nested_wide_list_stops_once_and_unwinds_ancestors_in_order() {
     walk(9).mapped_item(&root, &mut decoder, &mut work);
     assert!(decoder.get_cached(1).is_none(), "unadmitted source leaves were decoded");
     assert!(work.leaves.is_empty());
-    // Eager pre-entry validation is retained: the refused #300 never enters.
-    assert_eq!(work.events, [(true, 600), (true, 900), (false, 900), (false, 600)]);
-    assert_eq!(work.refusals, [(300, WalkRefusal::Budget { max_levels: 9 }, 2, None)]);
+    // The refused Items belong to an entered level, which leaves before its ancestors.
+    assert_eq!(work.events, [(true, 600), (true, 900), (true, 300), (false, 300), (false, 900), (false, 600)]);
+    assert_eq!(work.refusals, [(300, "Budget { max_levels: 9 }".to_string(), 2, None)]);
 }
 
 #[test]
@@ -111,7 +111,7 @@ fn issue_8007_level_meter_is_independent_of_the_item_member_meter() {
         (true, 10), (true, 40), (false, 40), (true, 40), (false, 40),
         (true, 40), (false, 40), (false, 10),
     ]);
-    assert_eq!(work.refusals, [(40, WalkRefusal::Budget { max_levels: 4 }, 1, None)]);
+    assert_eq!(work.refusals, [(40, "Budget { max_levels: 4 }".to_string(), 1, None)]);
     let mut work = Work::default();
     walk(5).mapped_item(&root, &mut decoder, &mut work);
     assert_eq!(work.events.len(), 10);
@@ -128,7 +128,7 @@ fn issue_8007_ignored_members_are_charged_before_reference_decoding() {
     let mut work = Work::default();
     walk(2).map(&root, &mut decoder, &mut work).unwrap();
     assert!(decoder.get_cached(1).is_none());
-    assert_eq!(work.refusals, [(20, WalkRefusal::Budget { max_levels: 2 }, 0, Some(20))]);
+    assert_eq!(work.refusals, [(20, "Budget { max_levels: 2 }".to_string(), 0, Some(20))]);
     let mut work = Work::default();
     walk(3).map(&root, &mut decoder, &mut work).unwrap();
     assert_eq!(work.leaves, [1]);
@@ -153,22 +153,8 @@ fn issue_8007_product_representations_share_one_budget_and_reset_between_walks()
         assert_eq!(work.leaves, [1]);
         assert!(decoder.get_cached(2).is_none());
         assert!(decoder.get_cached(3).is_none());
-        assert_eq!(work.refusals, [(21, WalkRefusal::Budget { max_levels: 1 }, 0, Some(21))]);
+        assert_eq!(work.refusals, [(21, "Budget { max_levels: 1 }".to_string(), 0, Some(21))]);
     }
-}
-
-#[test]
-fn issue_8007_old_malformed_classification_and_eager_skip_validation_remain() {
-    let model = "#10=IFCMAPPEDITEM(#20,$);#20=IFCREPRESENTATIONMAP($,#30);\
-        #30=IFCSHAPEREPRESENTATION($,'Body','Brep',(#999));";
-    let mut decoder = EntityDecoder::new(model);
-    let root = decoder.decode_by_id(10).unwrap();
-    let mut work = Work { skip: true, ..Work::default() };
-    walk(MAX_WALK_LEVELS).mapped_item(&root, &mut decoder, &mut work);
-    assert!(work.events.is_empty());
-    assert_eq!(work.refusals, [(10, WalkRefusal::Malformed, 0, None)]);
-    let map = decoder.decode_by_id(20).unwrap();
-    assert!(matches!(walk(MAX_WALK_LEVELS).map(&map, &mut decoder, &mut work), Err(ShapeError::Decode(_))));
 }
 
 #[test]
@@ -179,12 +165,12 @@ fn issue_8007_depth_and_cycle_refusals_still_precede_budget() {
     let root = decoder.decode_by_id(10).unwrap();
     let mut work = Work::default();
     walk(1).mapped_item(&root, &mut decoder, &mut work);
-    assert_eq!(work.refusals, [(10, WalkRefusal::Cyclic, 1, None)]);
+    assert_eq!(work.refusals, [(10, "Cyclic".to_string(), 1, None)]);
     let mut work = Work::default();
     RepresentationWalk {
         select: Select::Any, nested: NestedMaps::Expand { max_depth: 0, max_levels: 0 },
     }.mapped_item(&root, &mut decoder, &mut work);
-    assert_eq!(work.refusals, [(10, WalkRefusal::TooDeep, 0, None)]);
+    assert_eq!(work.refusals, [(10, "TooDeep { max_depth: 0 }".to_string(), 0, None)]);
 }
 
 #[test]
@@ -212,7 +198,7 @@ fn issue_8007_branching_acyclic_dag_has_a_global_stop_and_a_positive_control() {
     assert!(!limited.leaves.is_empty());
     assert!(limited.leaves.len() < 64);
     assert_eq!(limited.refusals.len(), 1);
-    assert!(matches!(limited.refusals[0].1, WalkRefusal::Budget { max_levels: 16 }));
+    assert_eq!(limited.refusals[0].1, "Budget { max_levels: 16 }");
     let mut scopes = Vec::new();
     for (entering, id) in limited.events {
         if entering { scopes.push(id); }
@@ -243,27 +229,21 @@ fn issue_8007_non_expand_policies_keep_their_original_wide_list_behavior() {
         .map(&root, &mut decoder, &mut refuse).unwrap();
     assert!(refuse.leaves.is_empty());
     assert!(refuse.events.is_empty());
-    assert_eq!(refuse.refusals, [(300, WalkRefusal::TooDeep, 0, None)]);
+    assert_eq!(refuse.refusals, [(300, "TooDeep { max_depth: 0 }".to_string(), 0, None)]);
 }
 
+
 #[test]
-fn issue_8007_refusal_classes_are_preserved_until_the_new_allowance_is_exhausted() {
-    let model = "#10=IFCMAPPEDITEM();#11=IFCMAPPEDITEM(#999,$);\
-        #12=IFCMAPPEDITEM(#20,$);#20=IFCREPRESENTATIONMAP($);\
-        #13=IFCMAPPEDITEM(#21,$);#21=IFCREPRESENTATIONMAP($,#30);\
-        #30=IFCSHAPEREPRESENTATION($,'Body','Brep');\
-        #14=IFCMAPPEDITEM(#22,$);#22=IFCREPRESENTATIONMAP($,#31);\
-        #31=IFCSHAPEREPRESENTATION($,'Body','Brep',7);";
-    let mut decoder = EntityDecoder::new(model);
-    for (id, why) in [(10, WalkRefusal::Dangling), (11, WalkRefusal::Dangling),
-        (12, WalkRefusal::Malformed), (13, WalkRefusal::Malformed), (14, WalkRefusal::Malformed)] {
-        let item = decoder.decode_by_id(id).unwrap();
-        let mut work = Work::default();
-        walk(1).mapped_item(&item, &mut decoder, &mut work);
-        assert!(work.events.is_empty());
-        assert_eq!(work.refusals, [(id, why, 0, None)]);
-        let mut work = Work::default();
-        walk(0).mapped_item(&item, &mut decoder, &mut work);
-        assert_eq!(work.refusals, [(id, WalkRefusal::Budget { max_levels: 0 }, 0, None)]);
-    }
+fn issue_8007_skipped_dag_occurrences_do_not_claim_logical_admission() {
+    let model = wide_source(8);
+    let mut decoder = EntityDecoder::new(&model);
+    let root = decoder.decode_by_id(100).unwrap();
+    let mut work = Work { skip: true, ..Work::default() };
+    walk(8).map(&root, &mut decoder, &mut work).unwrap();
+    assert_eq!(work.events, [(true, 300), (false, 300)].repeat(8));
+    assert!(work.refusals.is_empty());
+    assert!(work.leaves.is_empty());
+    assert!(decoder.get_cached(1).is_none());
+    // Continue needs 72 member slots, as the positive control above proves.
+    // This lower layer meters actual expansion, not cached logical roots.
 }

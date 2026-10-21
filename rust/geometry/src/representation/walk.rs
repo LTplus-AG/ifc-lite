@@ -49,20 +49,7 @@ pub enum Flow {
     Stop,
 }
 
-/// Why the walk declined to enter or continue past a mapped item.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum WalkRefusal {
-    /// A reference does not resolve (or the item has no `MappingSource`).
-    Dangling,
-    /// The mapped item is already on the path.
-    Cyclic,
-    /// The depth cap, or a nested map under [`NestedMaps::Refuse`].
-    TooDeep,
-    /// The map has no `MappedRepresentation`, or its `Items` cannot be read.
-    Malformed,
-    /// The mapped-level or total Items-member allowance was exhausted.
-    Budget { max_levels: u32 },
-}
+pub use super::refusal::WalkRefusal;
 
 /// Recommended default for both independent Expand work meters.
 pub const MAX_WALK_LEVELS: u32 = 1 << 16;
@@ -96,7 +83,11 @@ pub trait WalkVisitor {
     /// A representation item. Under every policy but [`NestedMaps::Leaf`] it is
     /// never an `IfcMappedItem`.
     fn item(&mut self, item: &DecodedEntity, at: &WalkCtx<'_>, decoder: &mut EntityDecoder) -> Flow;
-    /// A mapped level was entered; its items follow unless `SkipChildren`.
+    /// The source and mapped representation resolved. Only `Continue` reads,
+    /// charges and decodes its Items, after this callback; `SkipChildren` and
+    /// `Stop` suppress those operations and their errors. The level entities
+    /// are snapshots, but child references resolve through the decoder as
+    /// mutated by this callback.
     fn enter_map(
         &mut self,
         _level: &MappedLevel,
@@ -108,9 +99,11 @@ pub trait WalkVisitor {
     /// Pairs every `enter_map`, whatever it answered and however the level's
     /// items ended.
     fn leave_map(&mut self, _level: &MappedLevel) {}
-    /// A mapped item at `at` (its id) was not entered. A root-list budget
-    /// refusal instead identifies its representation, with `shape_rep` set.
-    fn refused(&mut self, _at: u32, _why: WalkRefusal, _ctx: &WalkCtx<'_>) {}
+    /// A refused mapped item, or the holding representation for a root-list
+    /// budget refusal. `ctx.path` excludes the refused level. Nested Items
+    /// failures follow `enter_map` and are paired with `leave_map`; source,
+    /// depth, cycle and level-budget failures occur before entry.
+    fn refused(&mut self, _item: &DecodedEntity, _why: WalkRefusal, _ctx: &WalkCtx<'_>) {}
 }
 
 /// The walk: which representations ([`Select`]) and how mapped items nest.
@@ -202,7 +195,7 @@ impl RepresentationWalk {
         let list = rep.get(3).ok_or(ShapeError::MissingItems)?;
         if let Err(why) = self.admit_items(&mut run.items, list.as_list().map_or(0, |l| l.len())) {
             let at = WalkCtx { element: run.element, shape_rep: Some(rep), path: &run.path };
-            run.visitor.refused(rep.id, why, &at);
+            run.visitor.refused(rep, why, &at);
             return Ok(None);
         }
         Ok(Some(decoder.resolve_ref_list(list)?))
@@ -252,11 +245,11 @@ impl RepresentationWalk {
         let bail = matches!(self.nested, NestedMaps::Refuse);
         let refuse = |run: &mut Run<'_, V>, why| {
             let at = WalkCtx { element: run.element, shape_rep: None, path: &run.path };
-            run.visitor.refused(item.id, why, &at);
+            run.visitor.refused(item, why, &at);
             if bail { Flow::Stop } else { Flow::Continue }
         };
         if run.path.len() >= max_depth as usize {
-            return refuse(run, WalkRefusal::TooDeep);
+            return refuse(run, WalkRefusal::TooDeep { max_depth });
         }
         if run.on_path.contains(&item.id) {
             return refuse(run, WalkRefusal::Cyclic);
@@ -268,28 +261,9 @@ impl RepresentationWalk {
             }
             run.levels += 1;
         }
-        let Some(source) = item.get(0).map(|a| decoder.resolve_ref(a)) else {
-            return refuse(run, WalkRefusal::Dangling);
-        };
-        let Ok(Some(map)) = source else {
-            return refuse(run, WalkRefusal::Dangling);
-        };
-        let mapped_rep = match map.get(1).map(|a| decoder.resolve_ref(a)) {
-            Some(Ok(Some(rep))) => rep,
-            _ => return refuse(run, WalkRefusal::Malformed),
-        };
-        // Keep the recursive walk's eager list validation BEFORE enter_map,
-        // including when a visitor would skip children. Only Budget is new.
-        let list = match mapped_rep.get(3) {
-            Some(list) => list,
-            None => return refuse(run, WalkRefusal::Malformed),
-        };
-        if let Err(why) = self.admit_items(&mut run.items, list.as_list().map_or(0, |l| l.len())) {
-            refuse(run, why);
-            return Flow::Stop;
-        }
-        let Ok(items) = decoder.resolve_ref_list(list) else {
-            return refuse(run, WalkRefusal::Malformed);
+        let (map, mapped_rep) = match Self::resolve_level(item, decoder) {
+            Ok(level) => level,
+            Err(why) => return refuse(run, why),
         };
         let level = MappedLevel { item: item.clone(), map, mapped_rep };
         let at = WalkCtx { element: run.element, shape_rep: None, path: &run.path };
@@ -297,11 +271,42 @@ impl RepresentationWalk {
         run.path.push(level.clone());
         run.on_path.insert(item.id);
         if flow == Flow::Continue {
-            flow = self.items(run, Some(&level.mapped_rep), &items, decoder);
+            match self.level_items(&mut run.items, &level.mapped_rep, decoder) {
+                Ok(items) => flow = self.items(run, Some(&level.mapped_rep), &items, decoder),
+                Err(why) => {
+                    let terminal = matches!(why, WalkRefusal::Budget { .. });
+                    // Items refusal describes this item at its parent context,
+                    // while its entered scope is still active until leave_map.
+                    let at = WalkCtx { element: run.element, shape_rep: None,
+                        path: &run.path[..run.path.len() - 1] };
+                    run.visitor.refused(item, why, &at);
+                    if bail || terminal { flow = Flow::Stop; }
+                }
+            }
         }
         run.on_path.remove(&item.id);
         run.path.pop();
         run.visitor.leave_map(&level);
         if flow == Flow::Stop { Flow::Stop } else { Flow::Continue }
+    }
+
+    fn resolve_level(
+        item: &DecodedEntity, decoder: &mut EntityDecoder,
+    ) -> Result<(DecodedEntity, DecodedEntity), WalkRefusal> {
+        let source = item.get(0).ok_or(WalkRefusal::MissingSource)?;
+        let map = decoder.resolve_ref(source).map_err(WalkRefusal::Decode)?
+            .ok_or(WalkRefusal::UnresolvedSource)?;
+        let rep = map.get(1).ok_or(WalkRefusal::MissingMappedRepresentation)?;
+        let mapped_rep = decoder.resolve_ref(rep).map_err(WalkRefusal::Decode)?
+            .ok_or(WalkRefusal::UnresolvedMappedRepresentation)?;
+        Ok((map, mapped_rep))
+    }
+
+    fn level_items(
+        &self, used: &mut u32, rep: &DecodedEntity, decoder: &mut EntityDecoder,
+    ) -> Result<Vec<DecodedEntity>, WalkRefusal> {
+        let list = rep.get(3).ok_or(WalkRefusal::MissingItems)?;
+        self.admit_items(used, list.as_list().map_or(0, |items| items.len()))?;
+        decoder.resolve_ref_list(list).map_err(WalkRefusal::Decode)
     }
 }

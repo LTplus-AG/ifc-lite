@@ -10,6 +10,7 @@
 //! Decoder-only: this module meshes nothing and owns no cache. The router,
 //! RTC-vote probes and the layer slicer are all callers of it.
 
+mod refusal;
 mod select;
 mod walk;
 
@@ -135,3 +136,6 @@ mod walk_tests;
 
 #[cfg(test)]
 mod work_budget_tests;
+
+#[cfg(test)]
+mod entry_policy_tests;

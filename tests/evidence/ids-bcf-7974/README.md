@@ -29,3 +29,9 @@ the fixed source was restored afterward.
 The earlier `bounds.oracle.patch` documents #7988's mesh-only regression.
 It did not cover geometry-less failures or grouped snapshots. No direct
 BIMcollab import result is claimed by this receipt.
+
+The browser test uses the shared `gpu-device-loss.ts` guard around model loading
+and GPU snapshot capture. Hosted CI (`E2E_GPU_STRICT=0`) skips only on recorded
+device-loss evidence; strict hardware runs still fail on errors. This was checked
+with a passing strict production run and a forced device-loss run that skipped
+with the expected diagnostic. Archive assertions remain outside the GPU guard.

@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { readBCF } from '../../packages/bcf/src/index.js';
 import type { RuleSetFile } from '@ifc-lite/rules';
 import { startViewerDevServer, type ViewerDevServer } from './viewer-dev-server';
+import { watchGpuDeviceLoss } from './gpu-device-loss';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const MODEL = join(ROOT, 'tests/models/ara3d/AC20-FZK-Haus.ifc');
@@ -22,11 +23,15 @@ test.afterAll(async () => { await server?.close(); });
 
 test('#7974 actual validation exports cameras and snapshots for physical and spatial failures', async ({ page }, info) => {
   test.skip(!existsSync(MODEL), 'Real Archicad fixture absent; run pnpm fixtures ara3d/AC20-FZK-Haus.ifc');
+  const gpu = await watchGpuDeviceLoss(page);
   await page.setViewportSize({ width: 1600, height: 1000 });
-  await page.goto(url);
-  const loaded = page.waitForEvent('console', { predicate: message => message.text().includes('[ifc-lite] Added model AC20-FZK-Haus.ifc'), timeout: 120000 });
-  await page.locator('#file-input-add').setInputFiles(MODEL);
-  await loaded;
+  await gpu.raceLoss('load the Archicad model for grouped BCF export', async () => {
+    await page.goto(url);
+    await Promise.all([
+      page.waitForEvent('console', { predicate: message => message.text().includes('[ifc-lite] Added model AC20-FZK-Haus.ifc'), timeout: 120000 }),
+      page.locator('#file-input-add').setInputFiles(MODEL),
+    ]);
+  });
   const file: RuleSetFile = { version: 1, name: '7974 BCF viewpoints', rules: ['IfcWallStandardCase', 'IfcBuilding'].map((type, index) => ({
     id: `bcf-7974-${index}`, name: type,
     applicability: { authoredAs: 'chips', groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: [type] }] }] },
@@ -52,9 +57,10 @@ test('#7974 actual validation exports cameras and snapshots for physical and spa
   await expect(dialog.locator('#grouping')).toContainText(/specification/i);
   await expect(dialog.locator('#include-camera')).toBeChecked();
   await dialog.locator('#include-snapshots').click();
-  const downloaded = page.waitForEvent('download', { timeout: 120000 });
-  await dialog.getByRole('button', { name: 'Export BCF', exact: true }).click();
-  const download = await downloaded;
+  const [download] = await gpu.raceLoss('capture grouped IDS BCF snapshots', () => Promise.all([
+    page.waitForEvent('download', { timeout: 120000 }),
+    dialog.getByRole('button', { name: 'Export BCF', exact: true }).click(),
+  ]));
   const path = info.outputPath('7974-validation.bcfzip');
   await download.saveAs(path);
   const bytes = await readFile(path);

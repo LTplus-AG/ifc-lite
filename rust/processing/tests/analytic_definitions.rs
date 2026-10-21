@@ -174,7 +174,8 @@ fn issue_5787_combined_walk_matches_standalone_views_and_ordinals() {
 
 #[test]
 fn issue_7955_captured_definitions_own_the_authored_rational_directrix() {
-    use ifc_lite_geometry::analytic::{with_source_capture, AnalyticStatus, OwnedDirectrix, SourceValue};
+    use ifc_lite_geometry::analytic::AnalyticCurveSegment;
+use ifc_lite_geometry::analytic::{with_source_capture, AnalyticStatus, OwnedDirectrix, SourceValue};
     let model = fixture().replace(
         "#43=IFCSWEPTDISKSOLID(#42,14.5,$,0.,2750.);",
         "#60=IFCCARTESIANPOINT((2000.,0.,0.));\n#61=IFCCARTESIANPOINT((2000.,2000.,0.));\n\
@@ -208,7 +209,11 @@ fn issue_7955_captured_definitions_own_the_authored_rational_directrix() {
 
     let trimmed = with_source_capture(|| extract_swept_disk_definitions(fixture().as_bytes(), None));
     let line = &trimmed.sources[0];
-    assert_eq!(line.owned_directrix, Some(OwnedDirectrix::Segments(line.directrix.clone())));
+    // Pinned to the fixture, not to the same call's own `directrix`: #42 trims
+    // the line #41 (origin #10, direction #12 = +X) to parameters [0, 2750].
+    let expected = vec![AnalyticCurveSegment::Line { start: [0., 0., 0.], end: [2750., 0., 0.] }];
+    assert_eq!(line.directrix, expected);
+    assert_eq!(line.owned_directrix, Some(OwnedDirectrix::Segments(expected)));
     let graph = line.source.as_ref().unwrap();
     assert_eq!(graph.capture_status, AnalyticStatus::Complete);
     assert!(graph.records.contains_key(&42) && graph.records.contains_key(&41));

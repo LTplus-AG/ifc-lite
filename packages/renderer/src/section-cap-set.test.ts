@@ -267,15 +267,16 @@ describe('cap highlight (#7950)', () => {
 });
 
 it('removes and restores excluded caps, hatch fills and outlines on primary and extra planes (#8015)', () => {
-  const { renderer } = newRenderer();
+  const { renderer, writes } = newRenderer();
   const polygons = [...TRIANGLE, { ...TRIANGLE[0]!, expressId: 2 }];
   renderer.uploadDrawing(polygons, [], 'down', 1);
   renderer.uploadExtraDrawing('extra', polygons, [], 'front', 2);
   const ids = new Set<number>();
   const draw = () => {
     const { pass, draws } = makePass();
-    renderer.draw(pass, { ...OPTIONS, sectionExcludedIds: ids });
-    renderer.drawExtras(pass, { ...OPTIONS, sectionExcludedIds: ids }, [{ key: 'extra', clippedBy: [] }]);
+    // Match the frame scheduler's cached-source checks so restoration must pass them too.
+    if (renderer.hasGeometry()) renderer.draw(pass, { ...OPTIONS, sectionExcludedIds: ids });
+    if (renderer.hasExtraGeometry()) renderer.drawExtras(pass, { ...OPTIONS, sectionExcludedIds: ids }, [{ key: 'extra', clippedBy: [] }]);
     return draws;
   };
   const all = draw();
@@ -283,7 +284,11 @@ it('removes and restores excluded caps, hatch fills and outlines on primary and 
   ids.add(1);
   assert.deepEqual(draw(), ['drawIndexed:3', 'drawIndexed:3', 'draw:6', 'drawIndexed:3', 'drawIndexed:3', 'draw:6']);
   ids.add(2);
+  const beforeFullyExcluded = writes.length;
   assert.deepEqual(draw(), [], 'no fill/depth/hatch/outline remains');
+  const excludedWrites = writes.slice(beforeFullyExcluded);
+  assert.equal(uniformWrites(excludedWrites).length, 0, 'fully excluded caps write no per-draw uniforms');
+  assert.equal(clipWrites(excludedWrites).length, 0, 'fully excluded caps write no per-draw clipping blocks');
   ids.clear();
   assert.deepEqual(draw(), all, 'clearing the same Set restores both cached caps');
   renderer.dispose();

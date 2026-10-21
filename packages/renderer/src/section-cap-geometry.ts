@@ -37,8 +37,14 @@ export class CapGeometry {
     this.excluded = new Set(ids);
   }
 
+  /** Cached source can be redrawn when exclusions change, even if currently fully excluded. */
   has(): boolean {
     return this.sourceHasGeometry;
+  }
+
+  /** Whether the current filtered buffers contain a fill or outline to submit. */
+  hasDrawable(): boolean {
+    return this.fillIndexCount > 0 || this.lineVertexCount > 0;
   }
 
   clear(): void {
@@ -134,7 +140,7 @@ export class CapGeometry {
       this.lineVertexCount = outline.length / 3; // Each vertex is 3 floats
     }
     this.anchor = anchor;
-    this.sourceHasGeometry = this.fillIndexCount > 0 || this.lineVertexCount > 0;
+    this.sourceHasGeometry = this.hasDrawable();
   }
 }
 

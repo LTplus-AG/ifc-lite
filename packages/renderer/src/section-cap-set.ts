@@ -77,10 +77,10 @@ export class SectionCapSet {
     for (const geometry of this.extras.values()) geometry.setHighlight(device, this.highlight);
   }
 
-  /** Whether the primary plane's cap holds anything. */
+  /** Whether the primary cap has cached source, including geometry currently excluded. */
   has(): boolean { return this.primary.has(); }
 
-  /** Whether any extra plane's cap holds anything. */
+  /** Whether an extra cap has cached source, including geometry currently excluded. */
   hasExtras(): boolean {
     for (const geometry of this.extras.values()) if (geometry.has()) return true;
     return false;
@@ -157,7 +157,7 @@ export class SectionCapSet {
     clippedBy: readonly ExtraClipPlane[],
   ): void {
     geometry.setExclusions(res.device, this.highlight, options.sectionExcludedIds);
-    if (!geometry.has()) return;
+    if (!geometry.hasDrawable()) return;
     const { viewProj } = options;
 
     // No offset — cap renders exactly on the section plane. The previous

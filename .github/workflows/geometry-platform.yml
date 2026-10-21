@@ -15,6 +15,10 @@ on:
       # Browser module-Worker staging and its actual-Worker probe.
       - 'scripts/stage-retained-browser-assets.mjs'
       - 'scripts/smlib-browser-worker-probe.mjs'
+      - 'scripts/wasm-test-mime-driver.mjs'
+      # The browser executor lives in the published wasm crate.
+      - 'rust/wasm-bindings/src/retained_browser/**'
+      - 'rust/wasm-bindings/js/**'
       - '.github/workflows/geometry-platform.yml'
   workflow_dispatch:
 
@@ -91,6 +95,22 @@ jobs:
         run: |
           node scripts/smlib-browser-worker-probe.mjs --build "$RUNNER_TEMP/smlib-wasm" \
             --sdk "$GITHUB_WORKSPACE/upstream-smlib"
+      - name: Stage /smlib beside the wasm crate for its actual-Worker tests
+        run: |
+          # wasm-bindgen-test serves the crate directory; the staging script
+          # refuses an existing output, so this is always a fresh bundle.
+          node scripts/stage-retained-browser-assets.mjs --build "$RUNNER_TEMP/smlib-wasm" \
+            --sdk "$GITHUB_WORKSPACE/upstream-smlib" --out "$GITHUB_WORKSPACE/rust/wasm-bindings/smlib"
+          echo "IFCLITE_REAL_CHROMEDRIVER=$(command -v chromedriver)" >> "$GITHUB_ENV"
+      - name: Actual module-Worker retained browser executor (ifc-lite-wasm)
+        id: browser-runtime
+        continue-on-error: true
+        env:
+          WASM_BINDGEN_TEST_TIMEOUT: 300
+        run: |
+          wasm-pack test --headless --chrome \
+            --chromedriver "$GITHUB_WORKSPACE/scripts/wasm-test-mime-driver.mjs" rust/wasm-bindings --lib \
+            --features retained-browser -- retained_browser
       # Gather independent failures, then preserve a failing overall verdict.
       - name: Require every independent result
         if: always()
@@ -99,9 +119,10 @@ jobs:
           NATIVE_CONSUMERS: ${{ steps.native-consumers.outcome }}
           WASM_CTEST: ${{ steps.wasm-ctest.outcome }}
           BROWSER_WORKERS: ${{ steps.browser-workers.outcome }}
+          BROWSER_RUNTIME: ${{ steps.browser-runtime.outcome }}
         run: |
           failed=0
-          for lane in NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS; do
+          for lane in NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME; do
             printf '%s=%s\n' "$lane" "${!lane}"
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done

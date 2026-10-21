@@ -4344,13 +4344,13 @@ was reset, with its relative tolerance unchanged. No speed improvement is claime
 
 The accepted code supports bounded resource accounts, source-free construction,
 transactional opening diagnostics, explicit CSG continuations and canonical
-analytic source capture. These retain shared execution and source ownership
-across native and browser consumers. The browser extrusion-definition bindings
-already consume analytic capture, so blanket WASM exclusion would remove used
-behavior. Individual compressed-byte contributions have not been isolated.
+analytic source capture. Browser extrusion-definition bindings consume shared
+analytic extraction, but the new opt-in original-source capture has no production
+caller at the measured commit. Individual compressed-byte contributions have
+not been isolated.
 
-Making analytic capture opt-in addressed runtime work but did not remove its
-compiled code. A future compile exclusion remains unimplemented and unmeasured;
+Runtime opt-in is not evidence of a measured linked-byte reduction. Excluding
+capture-only code from WASM remains proposed, unimplemented and unmeasured;
 no proven main-byte reduction is claimed here. Accept this measured cost
 explicitly, retain the current build policy and automatic lowering, and require
 a new measurement and maintainer decision for any later increase. Source-matched

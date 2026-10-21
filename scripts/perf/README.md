@@ -4344,35 +4344,29 @@ cut is capped, and a repeated leaf cannot collapse distant occurrences into one
 f32 clip frame. Strict export additionally requests per-product processing
 receipts and validates source references. Ordinary processing sinks do not
 request or allocate those receipts. These export-only integrity checks and the
-conservative diagnostic/texture refusals still require exact-head performance
-and real-model qualification.
+conservative diagnostic/texture refusals require separately attributed load-cost
+and real-model qualification, recorded below.
 Retained face colours use bounded BVH attribution after the exact topology cut.
 
-The historical [retained cohort](evidence/section-export-7711/README.md) measures actual
-base/branch STEP serialization with identical DATA output and records the new
-section operation's complete parse, serialization, remesh and cut cost. It does
-not establish a useful speed win. There is no equivalent baseline operation for
-the new trim API. The native worker-pool arms use byte-identical binaries and
-source inputs: they are controls, not causal evidence about changed export code.
-Prepared artifacts were verified before and after exclusive measurement; no
-compilation or dependency installation ran inside that cohort.
+The [historical export cohort](evidence/section-export-7711/README.md) retains
+its original source attribution and operation timings. Its identical native
+controls do not qualify changed native code; the fresh comparison below does.
 
-Historical qualification remained mixed: hosted viewer entry/eager bundle ceilings failed,
-and the causal-test witness, generated-table and viewer-shard checks remain
-unresolved in that packet. Its API/docs/lint qualification remained unrun after its ordinary
-worker's admission timeout.
-The operation timings do not waive those gates or qualify browser startup.
-Lesson: charge remeshing and intersection to the requested export operation,
-measure its public path separately from ordinary loading, and preserve the eager
-import budget. Identical native controls cannot validate a changed export path.
+The recovered backend `de3c774` was measured against authenticated main
+`141285f` in a fresh native worker-pool cohort. Six untimed full-payload calls
+preserve ordered mesh output, raw float bits, frames/metadata/instances and all
+diagnostic bytes on Haus, ISSUE_129 and heavy Holter. All timed counts and
+fingerprints match. The stock phase report identifies no real change but remains
+inconclusive; complete-load observations include small adverse changes. No speed
+or neutrality claim follows.
 
-Recovery above corrected #7900 safety head `f964de2774537061d3ca73acbbfc94f01a45bf93`
-preserves that packet unchanged. Its measured source predates the lazy facade,
-indexed-colour closure and generated slot corrections, strict processing receipts,
-and occurrence-origin/texture safeguards. Those changes and this combined head
-still need source-matched functional, real-model/oracle and performance qualification.
-The historical browser result (23 trimmed, 34 outside, 136 reopened meshes and
-zero bound violations) and oracle result (56 products, 23 identities, 13 opening
-links) are not current-head proof. The parent-reported workspace/clippy passes
-on the safety head and its separately running fresh-WASM/root TypeScript job
-do not qualify this combined head. No new speed or neutral-performance claim is made.
+Disposition: accept the disclosed ordinary native cost for the section-export
+capability demonstrated by the separate fresh Haus real-WASM crop and external
+IfcOpenShell/OCC witness. Ordinary sinks allocate no audit receipts, but the
+changed diagnostic drain order and unsupported-map key cloning therefore required this
+full-load measurement. The [retained native evidence](evidence/section-export-7711/recovery-native-load/README.md)
+separates that cost from the requested crop operation. It establishes no browser,
+GPU, crop-throughput or opt-in-audit throughput verdict. Existing native-instruction,
+bundle, parity and required CI gates remain binding; no baseline or ceiling was
+changed. Lesson: measure the default path even when its new consumer is opt-in,
+and keep actual crop behavior proof separate from load-cost acceptance.

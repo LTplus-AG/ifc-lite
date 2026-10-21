@@ -14,7 +14,7 @@ use std::collections::VecDeque;
 
 pub(crate) struct Classifier<'a> {
     host: &'a DecodedEntity,
-    ids: std::slice::Iter<'a, u32>,
+    ids: Ids<'a>,
     /// QUIET mode (`false`) is a full no-op for statistics and diagnostics: a
     /// residual subset of an already classified host must not count twice.
     recording: bool,
@@ -27,6 +27,22 @@ pub(crate) struct Classifier<'a> {
     diagnostic: Vec<OpeningDiagnostic>,
     /// Requested id and vertex count attributed to the running decisions.
     decision: (u32, usize),
+}
+
+/// The requested ids: the gateway's borrowed list, or a residual subset the
+/// planar capture collected for its quiet pass.
+enum Ids<'a> {
+    Borrowed(std::slice::Iter<'a, u32>),
+    Owned(std::vec::IntoIter<u32>),
+}
+
+impl Ids<'_> {
+    fn next(&mut self) -> Option<u32> {
+        match self {
+            Self::Borrowed(ids) => ids.next().copied(),
+            Self::Owned(ids) => ids.next(),
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -55,9 +71,19 @@ struct Occurrence {
 
 impl<'a> Classifier<'a> {
     pub(super) fn new(host: &'a DecodedEntity, ids: &'a [u32], recording: bool) -> Self {
+        Self::with_ids(host, Ids::Borrowed(ids.iter()), ids.len(), recording)
+    }
+
+    /// A QUIET pass over owned residual ids.
+    pub(super) fn residual(host: &'a DecodedEntity, ids: Vec<u32>) -> Self {
+        let count = ids.len();
+        Self::with_ids(host, Ids::Owned(ids.into_iter()), count, false)
+    }
+
+    fn with_ids(host: &'a DecodedEntity, ids: Ids<'a>, count: usize, recording: bool) -> Self {
         Self {
             host,
-            ids: ids.iter(),
+            ids,
             recording,
             requested: 0,
             current: None,
@@ -65,7 +91,7 @@ impl<'a> Classifier<'a> {
             phase: Phase::Decode,
             next: None,
             output: Vec::new(),
-            diagnostic: if recording { Vec::with_capacity(ids.len()) } else { Vec::new() },
+            diagnostic: if recording { Vec::with_capacity(count) } else { Vec::new() },
             decision: (0, 0),
         }
     }
@@ -90,7 +116,7 @@ impl<'a> Classifier<'a> {
             let phase = std::mem::replace(&mut self.phase, Phase::Waiting);
             match phase {
                 Phase::Decode => {
-                    let Some(&id) = self.ids.next() else {
+                    let Some(id) = self.ids.next() else {
                         return OpeningPoll::Ready(OpeningReady::FinishClassifier {
                             output: std::mem::take(&mut self.output),
                             diagnostic: std::mem::take(&mut self.diagnostic),

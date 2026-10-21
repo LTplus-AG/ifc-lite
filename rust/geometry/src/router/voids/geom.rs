@@ -221,7 +221,7 @@ pub(super) fn thin_axis(half: &[f64; 3]) -> usize {
 /// If `m` is a signed permutation matrix (each row one entry ≈±1, the rest ≈0, with
 /// distinct dominant columns), return the per-row `(source-column, sign)` map; else
 /// `None`. Used to align an opening's axes with the host frame.
-pub(super) fn signed_permutation_map(m: &Matrix3<f64>, tol: f64) -> Option<[(usize, f64); 3]> {
+pub(crate) fn signed_permutation_map(m: &Matrix3<f64>, tol: f64) -> Option<[(usize, f64); 3]> {
     let mut out = [(0usize, 1.0f64); 3];
     let mut used = [false; 3];
     for i in 0..3 {

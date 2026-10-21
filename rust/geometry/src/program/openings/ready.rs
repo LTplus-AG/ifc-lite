@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Exact geometry-only opening decisions and cutter placement arithmetic.
+use super::planar::PlanarHost;
 use super::requests::{OpeningReady, OpeningReply};
 use crate::program::opening::OpeningBounds;
 use crate::router::processing::SourceHygiene;
@@ -73,6 +74,24 @@ impl OpeningReady {
             Self::ProbeParts { parts, placement } => place_probe_parts(parts, placement),
             Self::FinishClassifier { output, diagnostic } => {
                 OpeningReply::ClassifierFinished(output, diagnostic)
+            }
+            Self::Merge(openings) => {
+                let merged = crate::GeometryRouter::merge_rectangular_openings(&openings);
+                OpeningReply::Merged(openings, merged)
+            }
+            Self::RectOrientation { host, boxes } => {
+                OpeningReply::RectOrientation(super::rectangular::share_frame(&host, boxes))
+            }
+            Self::RectReconcile { boxes, meshes } => {
+                OpeningReply::RectReconciled(super::rectangular::reconcile(boxes, &meshes))
+            }
+            Self::PlanarHost(solid) => OpeningReply::PlanarHost(PlanarHost::prepare(solid)),
+            Self::Footprint { host, solid } => {
+                let footprint = host.footprint(&solid);
+                OpeningReply::Footprint(host, footprint)
+            }
+            Self::PlanarTransform { placement, scale, rtc } => {
+                OpeningReply::PlanarTransform(super::planar::world_transform(placement, scale, rtc))
             }
         }
     }

@@ -122,6 +122,11 @@ impl Drop for Transaction {
 pub(crate) struct EffectSet(Vec<Event>);
 
 impl EffectSet {
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.0.len()
+    }
+
     pub(crate) fn commit(self) {
         for event in self.0 {
             record(event);

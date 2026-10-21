@@ -41,20 +41,20 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 
 use super::geom::{mesh_signed_volume, param_cut_watertight};
-use super::{world_host_bounds, GeometryRouter, VoidContext};
+use super::{world_host_bounds, VoidContext};
 use crate::bool2d::{subtract_multiple_2d_counted, subtract_staged_2d_counted};
 use crate::extrusion::{apply_transform, extrude_profile, extrude_profile_watertight};
 use crate::mesh::Mesh;
 use crate::profile::Profile2D;
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use crate::program::openings::execute::Execution;
 use nalgebra::{Matrix4, Point2, Vector3};
 
 mod footprint;
-use footprint::{footprint_interior, opening_solid_footprint};
+pub(crate) use footprint::{footprint_interior, opening_solid_footprint};
 
 /// `IFC_LITE_VOID_2D=0` disables the 2D opening-subtraction path (exact kernel
 /// for every host). Default ON; read once.
-pub(super) fn enabled() -> bool {
+pub(crate) fn enabled() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();
     *ON.get_or_init(|| std::env::var("IFC_LITE_VOID_2D").as_deref() != Ok("0"))
 }
@@ -79,148 +79,27 @@ pub fn take_bool2d_stats() -> (u64, u64) {
 }
 
 /// Captured 2D-subtraction data for a host + its openings, sufficient to build
-/// the cut mesh WITHOUT the decoder (so [`GeometryRouter::apply_void_context`]
-/// can run it on pure geometry). Built in [`GeometryRouter::capture_bool2d`].
-pub(super) struct Bool2dCut {
+/// the cut mesh WITHOUT the decoder (so the numerical execution can run it on
+/// pure geometry). Captured by the owned planar opening control.
+pub(crate) struct Bool2dCut {
     /// Host profile (outer + any existing holes) in the solid's profile plane.
-    host_profile: Profile2D,
+    pub(crate) host_profile: Profile2D,
     /// Host extrusion depth (> 0).
-    depth: f64,
+    pub(crate) depth: f64,
     /// +1 / -1 host sweep sense (drives the extrude cap placement).
-    dir_sign: f64,
+    pub(crate) dir_sign: f64,
     /// Profile-local → world (metres, RTC-relative) transform: `scale · m − rtc`.
-    wt: Matrix4<f64>,
+    pub(crate) wt: Matrix4<f64>,
     /// Eligible (parallel through-cut) opening footprints in the host profile
     /// plane (host XY).
-    footprints: Vec<Vec<Point2<f64>>>,
+    pub(crate) footprints: Vec<Vec<Point2<f64>>>,
     /// Ineligible openings (perpendicular / partial / non-extruded) as a residual
     /// exact-kernel context, cut on the re-extruded host after the 2D subtract.
     /// `None` when every opening was eligible (pure 2D result).
-    residual: Option<Box<VoidContext>>,
+    pub(crate) residual: Option<Box<VoidContext>>,
 }
 
-impl GeometryRouter {
-    /// Build the 2D-subtraction data for a host + its openings. Splits the
-    /// openings into eligible (parallel through-cut → 2D) and residual
-    /// (everything else → exact kernel). Returns `None` if the host is not a
-    /// single clean extrusion or no opening is eligible (nothing to gain).
-    pub(super) fn capture_bool2d(
-        &self,
-        element: &DecodedEntity,
-        opening_ids: &[u32],
-        decoder: &mut EntityDecoder,
-    ) -> Option<Bool2dCut> {
-        if opening_ids.is_empty() {
-            return None;
-        }
-        let host = self.host_extruded_solid(element, decoder)?;
-        let hm_inv = host.m.try_inverse()?;
-        let host_rot = host.m.fixed_view::<3, 3>(0, 0).into_owned();
-        let host_axis = (host_rot * Vector3::new(0.0, 0.0, host.dir_sign)).try_normalize(1e-9)?;
-        // Host extrusion span in the solid's profile frame.
-        let (hz_min, hz_max) = if host.dir_sign >= 0.0 {
-            (0.0, host.depth)
-        } else {
-            (-host.depth, 0.0)
-        };
-        // Numerical-precision coincidence (1 ppm): near-through blind openings
-        // defer to the exact kernel instead of becoming a full-depth hole.
-        let z_tol = 1.0e-6 * host.depth.abs() + 1.0e-9;
-
-        let mut footprints: Vec<Vec<Point2<f64>>> = Vec::new();
-        let mut residual_ids: Vec<u32> = Vec::new();
-        for &oid in opening_ids {
-            let opening = match decoder.decode_by_id(oid) {
-                Ok(e) if e.ifc_type == IfcType::IfcOpeningElement => e,
-                // A non-opening (or undecodable) id: hand it to the exact kernel.
-                _ => {
-                    residual_ids.push(oid);
-                    continue;
-                }
-            };
-            // An opening is eligible only when EVERY constituent solid is a
-            // parallel through-cut whose hole-free footprint lands STRICTLY
-            // INTERIOR to the host profile. A footprint that touches / breaches
-            // the boundary, or lands in an existing profile hole, is routed to
-            // the residual so it never silently no-ops. Collect tentatively; any
-            // ineligible solid sends the
-            // whole opening (all its solids) to the residual so nothing is
-            // double-cut.
-            let mut opening_footprints: Vec<Vec<Point2<f64>>> = Vec::new();
-            let eligible = self
-                .opening_extruded_solids(&opening, decoder)
-                .map(|solids| {
-                    solids.iter().all(|op| {
-                        match opening_solid_footprint(
-                            op, &hm_inv, &host_axis, hz_min, hz_max, z_tol,
-                        ) {
-                            Some(fp) if footprint_interior(&fp, &host.profile) => {
-                                opening_footprints.push(fp);
-                                true
-                            }
-                            _ => false,
-                        }
-                    })
-                })
-                .unwrap_or(false);
-            if eligible && !opening_footprints.is_empty() {
-                footprints.append(&mut opening_footprints);
-            } else {
-                residual_ids.push(oid);
-            }
-        }
-        if footprints.is_empty() {
-            return None;
-        }
-
-        // Profile-local → world metres, RTC-relative: world = scale·(m·p) − rtc.
-        // Scaling rows 0..3 (incl. their translation column) then subtracting the
-        // RTC offset reproduces `center_native · s − rtc` from the rect probe.
-        let s = self.unit_scale;
-        let (rx, ry, rz) = self.rtc_offset;
-        let mut wt = host.m;
-        for i in 0..3 {
-            for j in 0..4 {
-                wt[(i, j)] *= s;
-            }
-        }
-        wt[(0, 3)] -= rx;
-        wt[(1, 3)] -= ry;
-        wt[(2, 3)] -= rz;
-
-        // Residual exact-kernel context for the ineligible openings (diagnostics
-        // suppressed — the full opening set is already diagnosed by
-        // `build_void_context`'s own `program::openings::classify`).
-        let residual = if residual_ids.is_empty() {
-            None
-        } else {
-            // A typed stop is sticky and surfaces at `build_void_context`.
-            let openings =
-                crate::program::openings::classify(element, &residual_ids, false, self, decoder)
-                    .ok()?;
-            if openings.is_empty() {
-                None
-            } else {
-                let merged = Self::merge_rectangular_openings(&openings);
-                Some(Box::new(VoidContext {
-                    openings,
-                    merged_openings: merged,
-                    param: None,
-                    bool2d: None,
-                }))
-            }
-        };
-
-        Some(Bool2dCut {
-            host_profile: host.profile,
-            depth: host.depth,
-            dir_sign: host.dir_sign,
-            wt,
-            footprints,
-            residual,
-        })
-    }
-
+impl Execution {
     /// Emit the staged re-extruded precursor and mandatory correction cutters.
     /// The caller must cut residual openings, then remove all corrections before
     /// returning a mixed result. Returns `None` (→ full exact kernel) if
@@ -305,11 +184,6 @@ impl GeometryRouter {
             footprints,
         });
         Some((out, corrections))
-    }
-
-    /// The captured residual (ineligible-opening) exact-kernel context, if any.
-    pub(super) fn bool2d_residual<'a>(&self, cut: &'a Bool2dCut) -> Option<&'a VoidContext> {
-        cut.residual.as_deref()
     }
 }
 

@@ -24,9 +24,10 @@ pub(crate) struct ProbePlacement {
 impl OpeningReady {
     pub(crate) fn execute(self) -> OpeningReply {
         match self {
-            Self::Metrics(parts) => {
-                let parts: std::collections::VecDeque<_> =
-                    parts.into_iter().filter(|mesh| !mesh.is_empty()).collect();
+            Self::Metrics(mut parts) => {
+                // In place, and the deque takes the same buffer: no new allocation.
+                parts.retain(|mesh| !mesh.is_empty());
+                let parts = std::collections::VecDeque::from(parts);
                 // Triangle count, not raw position-buffer length: welding (#4103)
                 // merges duplicate vertex slots without touching `indices`, so
                 // byte-identical cutters must not straddle the gate (#4119).

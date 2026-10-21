@@ -390,6 +390,13 @@ impl<'a> EntityDecoder<'a> {
 
 The decoder also exposes fast single-purpose accessors used by the geometry pipeline (`get_cartesian_point_fast`, `get_polyloop_coords_cached`, `get_entity_ref_list_fast`, ...); see `rust/core/src/decoder.rs`.
 
+`EntityDecoder::direction3_of(&entity)` reads an already decoded `IfcDirection`
+when no decoder is available. It accepts exactly one `DirectionRatios` attribute
+containing two or three finite plain numeric values and returns the raw
+`Option<[f64; 3]>`, promoting two ratios with `z = 0` without normalizing or
+rejecting a zero vector. A wrong record type, extra attributes, malformed list
+or non-finite ratio returns `None`. This read does not decode or count refusals.
+
 `DenseEntityIndex::try_from_columns(ids, starts, lengths)` accepts sorted, unique
 IDs and `u32` span columns. It returns `None` if the columns disagree or direct
 addressing would allocate more than compact columns. `lookup(id)` preserves

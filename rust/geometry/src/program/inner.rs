@@ -29,6 +29,9 @@ enum Control<'a> {
     #[cfg_attr(not(test), allow(dead_code))]
     Item(&'a DecodedEntity, ItemControl),
     Cache(&'a DecodedEntity, CacheControl),
+    /// A styled walk's root plain item: no mapping to walk, so it runs the
+    /// cache controller directly and lands in its sub-meshes under its own id.
+    StyledItem(&'a DecodedEntity, CacheControl, crate::SubMeshCollection),
     Mapping(MappingControl<'a>),
 }
 
@@ -132,6 +135,10 @@ impl<'a> GeometryProgram<'a> {
     pub(crate) fn styled_item(item: &'a DecodedEntity, meshes: crate::SubMeshCollection, allow_instancing: bool,
         textures: Option<&'a rustc_hash::FxHashMap<u32, crate::ResolvedTextureMap>>,
         offset_meters: (f64, f64, f64)) -> Self {
+        if item.ifc_type != ifc_lite_core::IfcType::IfcMappedItem
+            && !textures.is_some_and(|index| index.contains_key(&item.id)) {
+            return Self::with_control(Control::StyledItem(item, CacheControl::new(offset_meters), meshes));
+        }
         let control = MappingControl::styled(item, meshes, allow_instancing, textures, offset_meters);
         Self::with_control(Control::Mapping(control))
     }
@@ -167,7 +174,7 @@ impl<'a> GeometryProgram<'a> {
         }
         let stage = match &self.control {
             Control::Item(_, control) => control.stage()?,
-            Control::Cache(_, control) => control.stage()?,
+            Control::Cache(_, control) | Control::StyledItem(_, control, _) => control.stage()?,
             Control::Mapping(control) => control.stage()?,
         };
         let Some(stage) = stage else { return Ok(None) };
@@ -205,7 +212,9 @@ impl<'a> GeometryProgram<'a> {
         self.pending = Some((request, true));
         let value = match &mut self.control {
             Control::Item(item, control) => ReplyValue::Item(control.execute(item, router, decoder)?),
-            Control::Cache(item, control) => ReplyValue::Cache(control.execute(item, router, decoder)?),
+            Control::Cache(item, control) | Control::StyledItem(item, control, _) => {
+                ReplyValue::Cache(control.execute(item, router, decoder)?)
+            }
             Control::Mapping(control) => ReplyValue::Mapping(control.execute(router, decoder)?),
         };
         self.expected_payload = Some(value.tag());
@@ -235,6 +244,11 @@ impl<'a> GeometryProgram<'a> {
         match (&mut self.control, reply.value) {
             (Control::Item(_, control), ReplyValue::Item(step)) => control.accept(step, router),
             (Control::Cache(item, control), ReplyValue::Cache(reply)) => control.accept(item, reply, router),
+            // A root item records its drops, as the mapping walk's root does.
+            (Control::StyledItem(item, control, _), ReplyValue::Cache(reply)) => {
+                let _policy = router.enter_unsupported_policy(true);
+                control.accept(item, reply, router)
+            }
             (Control::Mapping(control), ReplyValue::Mapping(reply)) => control.accept(reply, router),
             (_, value) => {
                 let reply = ProgramReply { request, value };
@@ -253,6 +267,7 @@ impl<'a> GeometryProgram<'a> {
             Control::Item(_, control) => control.take_result(),
             Control::Cache(_, control) => control.take_result(),
             Control::Mapping(_) => Some(Err(Error::geometry("a mapping program completes as frame parts"))),
+            Control::StyledItem(..) => Some(Err(Error::geometry("a styled program completes as sub-meshes"))),
         };
         result.unwrap_or_else(|| Err(Error::geometry("geometry program finished before completion")))
     }
@@ -265,6 +280,7 @@ impl<'a> GeometryProgram<'a> {
             Control::Item(..) | Control::Cache(..) => {
                 Some(Err(Error::geometry("an item program completes as one mesh")))
             }
+            Control::StyledItem(..) => Some(Err(Error::geometry("a styled program completes as sub-meshes"))),
         };
         result.unwrap_or_else(|| Err(Error::geometry("geometry program finished before completion")))
     }
@@ -294,6 +310,19 @@ impl<'a> GeometryProgram<'a> {
     pub(crate) fn drain_styled(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder)
         -> Result<crate::SubMeshCollection> {
         self.run(router, decoder)?;
+        if let Control::StyledItem(item, control, meshes) = &mut self.control {
+            let result = match self.pending {
+                None => control.take_result(),
+                Some(_) => None,
+            };
+            let mut meshes = std::mem::take(meshes);
+            match result {
+                Some(Ok(mesh)) => meshes.add(item.id, mesh),
+                Some(Err(error)) => MappingControl::drop_styled_root(item, error, router)?,
+                None => return Err(Error::geometry("geometry program finished before completion")),
+            }
+            return Ok(meshes);
+        }
         match self.finish_mapping()? {
             MappingOutput::Styled(meshes) => Ok(meshes),
             _ => Err(Error::geometry("this mapping program does not complete as sub-meshes")),

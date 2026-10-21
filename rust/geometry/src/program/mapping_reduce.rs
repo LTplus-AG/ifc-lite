@@ -81,16 +81,30 @@ impl MappingControl<'_> {
     /// Record a failed plain item as dropped beneath the innermost source, or
     /// return the program stop it carried.
     pub(super) fn drop_item(&self, item: &DecodedEntity, error: Error, router: &GeometryRouter) -> Result<()> {
-        let _e = GeometryRouter::recoverable_source_error(error)?;
         let policy = self.levels.last().is_none_or(|level| level.policy);
-        let _policy = router.enter_unsupported_policy(policy);
-        router.record_unsupported_item(item.ifc_type.clone());
         let walk = match self.levels.last().map(|level| &level.sink) {
             Some(Sink::Shared(_)) => "shared-source",
             Some(Sink::TypeMap) => "representation-map",
             Some(Sink::Styled { .. }) | None if self.walk == Walk::Styled => "styled-source",
             _ => "mapped-source",
         };
+        Self::record_drop(item, error, policy, walk, router)
+    }
+
+    /// A styled walk's failed root plain item (`GeometryProgram::styled_item`):
+    /// recorded like the walk's own root drop, or the program stop it carried.
+    #[cold]
+    #[inline(never)]
+    pub(in crate::program) fn drop_styled_root(item: &DecodedEntity, error: Error, router: &GeometryRouter)
+        -> Result<()> {
+        Self::record_drop(item, error, true, "styled-source", router)
+    }
+
+    fn record_drop(item: &DecodedEntity, error: Error, policy: bool, walk: &'static str, router: &GeometryRouter)
+        -> Result<()> {
+        let _e = GeometryRouter::recoverable_source_error(error)?;
+        let _policy = router.enter_unsupported_policy(policy);
+        router.record_unsupported_item(item.ifc_type.clone());
         let _ = walk;
         crate::diag::diag_debug!(
             { item_id = item.id, ifc_type = ?item.ifc_type, walk, error = %_e,

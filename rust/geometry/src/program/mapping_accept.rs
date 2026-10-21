@@ -109,6 +109,32 @@ impl<'a> MappingControl<'a> {
     }
 
     pub(in crate::program) fn accept(&mut self, reply: MappingReply, router: &GeometryRouter) {
+        // A child step drives its control in place: the action, which holds
+        // the child's whole state, moves only once the child completes.
+        let reply = match (&mut self.action, reply) {
+            (Action::Child(item, control), reply @ (MappingReply::Child(_) | MappingReply::CacheChild(_))) => {
+                let policy = self.levels.last().is_none_or(|level| level.policy);
+                let result = {
+                    let _policy = router.enter_unsupported_policy(policy);
+                    match (control, reply) {
+                        (ChildControl::Item(control), MappingReply::Child(step)) => {
+                            control.accept(step, router);
+                            control.take_result()
+                        }
+                        (ChildControl::Cache(control), MappingReply::CacheChild(reply)) => {
+                            control.accept(item.item(), reply, router);
+                            control.take_result()
+                        }
+                        _ => None,
+                    }
+                };
+                if let Some(result) = result {
+                    self.accept_child_result(result, router);
+                }
+                return;
+            }
+            (_, reply) => reply,
+        };
         let event = match (std::mem::replace(&mut self.action, Action::Taken), reply) {
             (Action::Taken, MappingReply::Entered { item_id, value }) => match value {
                 Err(error) => Event::Deliver { item_id, truncated: false, value: Err(error) },
@@ -126,37 +152,6 @@ impl<'a> MappingControl<'a> {
                 let sink = Sink::Shared(placeholder);
                 self.enter_source(u32::MAX, source_id, None, representation.item(), items, sink, router);
                 Event::Advance
-            }
-            (Action::Child(item, mut control), reply @ (MappingReply::Child(_) | MappingReply::CacheChild(_))) => {
-                let policy = self.levels.last().is_none_or(|level| level.policy);
-                let result = {
-                    let _policy = router.enter_unsupported_policy(policy);
-                    match (&mut control, reply) {
-                        (ChildControl::Item(control), MappingReply::Child(step)) => {
-                            control.accept(step, router);
-                            control.take_result()
-                        }
-                        (ChildControl::Cache(control), MappingReply::CacheChild(reply)) => {
-                            control.accept(item.item(), reply, router);
-                            control.take_result()
-                        }
-                        _ => None,
-                    }
-                };
-                match result {
-                    None => {
-                        self.action = Action::Child(item, control);
-                        return;
-                    }
-                    Some(Ok(mesh)) => {
-                        self.action = Action::Merge(match control {
-                            ChildControl::Item(_) => Merging::Item(mesh),
-                            ChildControl::Cache(_) => Merging::Styled(item.item().id, mesh),
-                        });
-                        return;
-                    }
-                    Some(Err(error)) => self.drop_or_fail(item.item(), error, router),
-                }
             }
             (Action::Texture(item), MappingReply::Textured(built)) => match built {
                 Some((mesh, uvs)) => {
@@ -236,6 +231,30 @@ impl<'a> MappingControl<'a> {
                 self.action = action;
                 return;
             }
+        };
+        self.reduce(event, router);
+    }
+
+    /// A completed child: its mesh merges next, in item order; a failure is
+    /// a recorded drop or fails its level.
+    fn accept_child_result(&mut self, result: Result<crate::Mesh>, router: &GeometryRouter) {
+        let Action::Child(item, control) = std::mem::replace(&mut self.action, Action::Taken) else { return };
+        let event = match result {
+            // A styled walk's root plain item is its only item, kept at its
+            // own coordinates: its sub-mesh is the walk's whole output.
+            Ok(mesh) if self.walk == Walk::Styled && self.levels.is_empty() => {
+                self.meshes.add(item.item().id, mesh);
+                self.complete(Ok(Vec::new()));
+                return;
+            }
+            Ok(mesh) => {
+                self.action = Action::Merge(match control {
+                    ChildControl::Item(_) => Merging::Item(mesh),
+                    ChildControl::Cache(_) => Merging::Styled(item.item().id, mesh),
+                });
+                return;
+            }
+            Err(error) => self.drop_or_fail(item.item(), error, router),
         };
         self.reduce(event, router);
     }

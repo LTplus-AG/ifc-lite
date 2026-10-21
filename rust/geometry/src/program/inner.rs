@@ -2,9 +2,10 @@
 //! Linear request/execute/accept protocol for one reached geometry occurrence.
 //! Recipes live in the program, never in tickets: a copied request cannot
 //! replay work, and a foreign router or decoder is refused before any recipe
-//! is moved. Only the Item and Cache controllers exist so far.
+//! is moved. The Item, Cache and Mapping controllers exist so far.
 use super::inner_cache::{CacheControl, CacheReply};
 use super::item::{ItemControl, ItemStep};
+use super::mapping::{MappingControl, MappingReply};
 use crate::{Error, GeometryRouter, Mesh, Result};
 use ifc_lite_core::execution_owner::ExecutionIdentity;
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
@@ -23,8 +24,9 @@ pub(crate) struct GeometryProgram<'a> {
 }
 
 enum Control<'a> {
-    Item(ItemControl<'a>),
+    Item(&'a DecodedEntity, ItemControl),
     Cache(CacheControl<'a>),
+    Mapping(MappingControl<'a>),
 }
 
 /// Identity only. Copying this value cannot copy or replay its recipe.
@@ -67,6 +69,7 @@ enum Payload {
     CacheBegin,
     CacheItem,
     CacheHash,
+    Mapping(u8),
 }
 
 pub(crate) struct ProgramReply {
@@ -76,6 +79,7 @@ pub(crate) struct ProgramReply {
 enum ReplyValue {
     Item(ItemStep),
     Cache(CacheReply),
+    Mapping(MappingReply),
 }
 impl ReplyValue {
     fn tag(&self) -> Payload {
@@ -84,6 +88,7 @@ impl ReplyValue {
             Self::Cache(CacheReply::Begin(_)) => Payload::CacheBegin,
             Self::Cache(CacheReply::Item(_)) => Payload::CacheItem,
             Self::Cache(CacheReply::Hash(..)) => Payload::CacheHash,
+            Self::Mapping(reply) => Payload::Mapping(reply.tag()),
         }
     }
 }
@@ -100,7 +105,19 @@ pub(crate) struct RejectedProgramReply {
 impl<'a> GeometryProgram<'a> {
     /// The selected processor work for one item, without content-dedup.
     pub(crate) fn item(item: &'a DecodedEntity, offset_meters: (f64, f64, f64)) -> Self {
-        Self::with_control(Control::Item(ItemControl::new(item, offset_meters)))
+        Self::with_control(Control::Item(item, ItemControl::new(offset_meters)))
+    }
+
+    /// One `IfcMappedItem` occurrence: its source walk (nested maps included),
+    /// the mapped-item caches and its placement, as source-coords frame parts.
+    pub(crate) fn mapped_item(item: &'a DecodedEntity) -> Self {
+        Self::with_control(Control::Mapping(MappingControl::occurrence(item)))
+    }
+
+    /// The don't-bake shared registry entry for one source (#1623): the same
+    /// flat source walk, published instead of placed.
+    pub(crate) fn shared_mapped_source(representation: &'a DecodedEntity, source_id: u32) -> Self {
+        Self::with_control(Control::Mapping(MappingControl::shared_source(representation, source_id)))
     }
 
     /// One representation item wrapped by the content-dedup and hash caches.
@@ -126,8 +143,9 @@ impl<'a> GeometryProgram<'a> {
             return Err(ProgramError::Outstanding);
         }
         let stage = match &self.control {
-            Control::Item(control) => control.stage()?,
+            Control::Item(_, control) => control.stage()?,
             Control::Cache(control) => control.stage()?,
+            Control::Mapping(control) => control.stage()?,
         };
         let Some(stage) = stage else { return Ok(None) };
         self.sequence = self.sequence.wrapping_add(1);
@@ -163,8 +181,9 @@ impl<'a> GeometryProgram<'a> {
         // cannot replay work after its recipe was moved into a lexical call.
         self.pending = Some((request, true));
         let value = match &mut self.control {
-            Control::Item(control) => ReplyValue::Item(control.execute(router, decoder)?),
+            Control::Item(item, control) => ReplyValue::Item(control.execute(item, router, decoder)?),
             Control::Cache(control) => ReplyValue::Cache(control.execute(router, decoder)?),
+            Control::Mapping(control) => ReplyValue::Mapping(control.execute(router, decoder)?),
         };
         self.expected_payload = Some(value.tag());
         Ok(ProgramReply { request, value })
@@ -191,8 +210,9 @@ impl<'a> GeometryProgram<'a> {
         }
         let request = reply.request;
         match (&mut self.control, reply.value) {
-            (Control::Item(control), ReplyValue::Item(step)) => control.accept(step, router),
+            (Control::Item(_, control), ReplyValue::Item(step)) => control.accept(step, router),
             (Control::Cache(control), ReplyValue::Cache(reply)) => control.accept(reply, router),
+            (Control::Mapping(control), ReplyValue::Mapping(reply)) => control.accept(reply, router),
             (_, value) => {
                 let reply = ProgramReply { request, value };
                 return Err(Box::new(RejectedProgramReply { error: ProgramError::WrongPayload, reply }));
@@ -207,19 +227,44 @@ impl<'a> GeometryProgram<'a> {
     pub(crate) fn finish(mut self) -> Result<Mesh> {
         let result = match &mut self.control {
             _ if self.pending.is_some() => None,
-            Control::Item(control) => control.take_result(),
+            Control::Item(_, control) => control.take_result(),
             Control::Cache(control) => control.take_result(),
+            Control::Mapping(_) => Some(Err(Error::geometry("a mapping program completes as frame parts"))),
+        };
+        result.unwrap_or_else(|| Err(Error::geometry("geometry program finished before completion")))
+    }
+
+    /// The completed mapping program's frame parts (#6446).
+    pub(crate) fn finish_parts(mut self) -> Result<Vec<Mesh>> {
+        let result = match &mut self.control {
+            Control::Mapping(control) if self.pending.is_none() => control.take_result(),
+            Control::Mapping(_) => None,
+            Control::Item(..) | Control::Cache(_) => {
+                Some(Err(Error::geometry("an item program completes as one mesh")))
+            }
         };
         result.unwrap_or_else(|| Err(Error::geometry("geometry program finished before completion")))
     }
 
     /// Run every request synchronously against one router and decoder.
     pub(crate) fn drain(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder) -> Result<Mesh> {
+        self.run(router, decoder)?;
+        self.finish()
+    }
+
+    /// [`Self::drain`] for a mapping program.
+    pub(crate) fn drain_parts(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder)
+        -> Result<Vec<Mesh>> {
+        self.run(router, decoder)?;
+        self.finish_parts()
+    }
+
+    fn run(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder) -> Result<()> {
         while let Some(request) = self.request().map_err(program_error)? {
             let reply = self.execute(request, router, decoder).map_err(program_error)?;
             self.accept(reply, router).map_err(|rejected| program_error(rejected.error))?;
         }
-        self.finish()
+        Ok(())
     }
 }
 

@@ -504,7 +504,7 @@ impl GeometryRouter {
                     // Nested items never independently don't-bake (`allow_instancing =
                     // false`): they are this occurrence's own shared geometry.
                     let count_before = sub_meshes.len();
-                    if let Err(e) = self.collect_submeshes_from_item_inner(
+                    if let Err(_e) = self.collect_submeshes_from_item_inner(
                         &nested_item,
                         decoder,
                         sub_meshes,
@@ -513,7 +513,7 @@ impl GeometryRouter {
                         false,
                         texture_index,
                     ) {
-                        self.drop_recoverable_item(&nested_item, e, "nested geometry")?;
+                        self.record_unsupported_nested_geometry(&nested_item, _e);
                         continue;
                     }
 
@@ -598,8 +598,8 @@ impl GeometryRouter {
                         sub_meshes.add(item.id, mesh);
                     }
                 }
-                Err(e) => {
-                    self.drop_recoverable_item(item, e, "geometry")?;
+                Err(_e) => {
+                    self.record_unsupported_geometry(item, _e);
                 }
             }
         }

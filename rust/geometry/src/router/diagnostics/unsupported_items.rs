@@ -96,39 +96,71 @@ impl GeometryRouter {
         source_id: u32,
         mapped_repr: &DecodedEntity,
     ) -> UnsupportedSourceScope<'_> {
+        let record = self.claim_unsupported_source(source_id, mapped_repr);
+        self.enter_unsupported_policy(record)
+    }
+
+    /// The decision [`Self::enter_unsupported_source`] makes, without opening a
+    /// scope: whether drops beneath this source are recorded, claiming the
+    /// source on a Body representation's first walk. An owning walk keeps the
+    /// result and installs it with [`Self::enter_unsupported_policy`] around
+    /// each of its steps that can record.
+    pub(crate) fn claim_unsupported_source(&self, source_id: u32, mapped_repr: &DecodedEntity) -> bool {
         let is_body = crate::router::effective_rep_type(mapped_repr)
             .is_none_or(crate::router::is_body_representation);
-        let mut state = self.unsupported.borrow_mut();
-        let record = is_body && state.sources_recorded.insert(source_id);
-        state.scope.push(record);
+        is_body && self.unsupported.borrow_mut().sources_recorded.insert(source_id)
+    }
+
+    /// Open a scope with an already-claimed source's recording decision.
+    pub(crate) fn enter_unsupported_policy(&self, record: bool) -> UnsupportedSourceScope<'_> {
+        self.unsupported.borrow_mut().scope.push(record);
         UnsupportedSourceScope { router: self }
     }
 
-    /// The one drop of a representation item the walks skip: counts it under
-    /// its own type (see [`Self::record_unsupported_item`]) and logs why. `what`
-    /// names the walk or item kind for the log line only. A typed resource stop
-    /// propagates before any unsupported-item count or log is recorded.
-    pub(crate) fn drop_recoverable_item(
+    /// Count and log a dropped nested occurrence item; the caller continues.
+    pub(crate) fn record_unsupported_nested_geometry(
         &self,
-        item: &ifc_lite_core::DecodedEntity,
-        error: crate::Error,
-        what: &str,
-    ) -> crate::Result<()> {
-        let error = Self::recoverable_source_error(error)?;
-        self.record_unsupported_item(item.ifc_type.clone());
-        let _ = (&error, what);
+        nested_item: &DecodedEntity,
+        _e: crate::Error,
+    ) {
+        self.record_unsupported_item(nested_item.ifc_type.clone());
         crate::diag::diag_debug!(
-            { item_id = item.id, ifc_type = ?item.ifc_type, what, error = %error,
-              "skipping unsupported item" }
+            { item_id = nested_item.id, ifc_type = ?nested_item.ifc_type,
+              error = %_e, "skipping unsupported nested geometry item" }
             else {
                 #[cfg(debug_assertions)]
                 eprintln!(
-                    "[ifc-lite] Skipping unsupported {what} #{} ({:?}): {}",
-                    item.id, item.ifc_type, error
+                    "[ifc-lite] Skipping unsupported nested geometry #{} ({:?}): {}",
+                    nested_item.id, nested_item.ifc_type, _e
                 );
             }
         );
-        Ok(())
+    }
+
+    /// Count and log a dropped occurrence item; the caller continues.
+    pub(crate) fn record_unsupported_geometry(
+        &self,
+        item: &DecodedEntity,
+        _e: crate::Error,
+    ) {
+        self.record_unsupported_item(item.ifc_type.clone());
+        crate::diag::diag_debug!(
+            { item_id = item.id, ifc_type = ?item.ifc_type, error = %_e,
+              "skipping unsupported geometry item" }
+            else {
+                #[cfg(debug_assertions)]
+                eprintln!(
+                    "[ifc-lite] Skipping unsupported geometry #{} ({:?}): {}",
+                    item.id, item.ifc_type, _e
+                );
+            }
+        );
+    }
+
+    /// Open scopes; zero between walks.
+    #[cfg(test)]
+    pub(crate) fn unsupported_scope_depth(&self) -> usize {
+        self.unsupported.borrow().scope.len()
     }
 
     /// Record one dropped representation item (unsupported type, or its

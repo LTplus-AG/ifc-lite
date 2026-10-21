@@ -1,0 +1,20 @@
+diff --git a/rust/geometry/src/program/mapping_reduce.rs b/rust/geometry/src/program/mapping_reduce.rs
+--- a/rust/geometry/src/program/mapping_reduce.rs
++++ b/rust/geometry/src/program/mapping_reduce.rs
+@@ -15,7 +15,7 @@
+     /// after its items resolved: the point the historical walk entered it.
+     pub(super) fn enter_source(&mut self, item_id: u32, source_id: u32, transform: Option<Matrix4<f64>>,
+         representation: &DecodedEntity, items: Vec<DecodedEntity>, router: &GeometryRouter) {
+-        let policy = { let _ = (router, representation); true };
++        let policy = router.claim_unsupported_source(source_id, representation);
+         self.levels.push(Level {
+             item_id,
+             source_id,
+@@ -168,6 +168,7 @@
+                 // The nested source's geometry is gone, so this source is short.
+                 // Recording `IfcMappedItem`, not the inner type, is deliberate:
+                 // the nested walk failed before it could attribute anything.
++                parent.truncated = true;
+                 let _policy = router.enter_unsupported_policy(parent.policy);
+                 router.record_unsupported_item(IfcType::IfcMappedItem);
+                 crate::diag::diag_debug!(

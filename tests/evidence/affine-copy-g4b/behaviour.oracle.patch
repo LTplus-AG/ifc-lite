@@ -1,0 +1,21 @@
+diff --git a/rust/geometry-runtime/src/worker_affine.rs b/rust/geometry-runtime/src/worker_affine.rs
+--- a/rust/geometry-runtime/src/worker_affine.rs
++++ b/rust/geometry-runtime/src/worker_affine.rs
+@@ -65,7 +65,7 @@
+     }
+     let det = m[0] * (m[5] * m[10] - m[9] * m[6]) - m[4] * (m[1] * m[10] - m[9] * m[2])
+         + m[8] * (m[1] * m[6] - m[5] * m[2]);
+-    if false && det == 0. {
++    if det == 0. {
+         return Err("singular affine matrix");
+     }
+     Ok(())
+@@ -169,7 +169,7 @@
+             .checked_add(1)
+             .filter(|&n| n <= MAX_OPERATIONS)
+             .ok_or(WorkerError::ResourceLimit("retained operation depth"))?;
+-        if false && self.capabilities()? & AFFINE_COPY == 0 {
++        if self.capabilities()? & AFFINE_COPY == 0 {
+             return Err(WorkerError::Protocol(
+                 "affine rational copy extension unavailable",
+             ));

@@ -68,6 +68,8 @@ fn retain_account(
     Ok(())
 }
 
+#[cold]
+#[inline(never)]
 fn unsupported_coverage() -> ProgramStop {
     resource::refused(
         resource::Dimension::Coverage,
@@ -107,6 +109,8 @@ impl GeometryRouter {
 
     /// Router-local caches (the hash cache and the RefCell mapped fallback) keep
     /// their publishing accounts alive for exactly the router's lifetime.
+    #[cold]
+    #[inline(never)]
     pub(crate) fn retain_local_resource_account(&self) -> Result<(), ProgramStop> {
         if let Some(account) = resource::current_account() {
             retain_account(&mut self.mapped_cache_accounts.borrow_mut(), account)?;
@@ -136,6 +140,8 @@ impl GeometryRouter {
 
     /// Call after complete source production but before inserting the owned
     /// cache payload. A later branch failure cannot discard this retained owner.
+    #[cold]
+    #[inline(never)]
     pub(crate) fn retain_mapped_cache_account(&self) -> Result<(), ProgramStop> {
         self.check_mapped_cache_coverage()?;
         let Some(account) = resource::current_account() else {
@@ -159,6 +165,13 @@ impl GeometryRouter {
         if !crate::resource::is_active() {
             return Ok(Arc::new(mesh.clone()));
         }
+        self.clone_source_for_cache_accounted(mesh)
+    }
+
+    /// The accounted branch of [`Self::clone_source_for_cache`], out of line.
+    #[cold]
+    #[inline(never)]
+    fn clone_source_for_cache_accounted(&self, mesh: &Mesh) -> crate::Result<Arc<Mesh>> {
         self.check_mapped_cache_coverage()?;
         let (copy, permit) = crate::resource::mesh::clone_mesh(mesh)?;
         self.retain_mapped_cache_account()?;
@@ -168,6 +181,8 @@ impl GeometryRouter {
 
     /// A program stop reached by a source item is terminal for the whole walk;
     /// any other item failure stays an ordinary recoverable drop.
+    #[cold]
+    #[inline(never)]
     pub(super) fn recoverable_source_error(error: Error) -> crate::Result<Error> {
         match crate::resource::observe::<()>(Err(error)) {
             Err(stop @ Error::ProgramStopped(_)) => Err(stop),
@@ -187,6 +202,13 @@ impl GeometryRouter {
         if !crate::resource::is_active() {
             return Ok(mesh.clone());
         }
+        Self::clone_cached_mesh_accounted(mesh)
+    }
+
+    /// The accounted branch of [`Self::clone_cached_mesh`], out of line.
+    #[cold]
+    #[inline(never)]
+    fn clone_cached_mesh_accounted(mesh: &Mesh) -> crate::Result<Mesh> {
         let (copy, permit) = crate::resource::mesh::clone_mesh(mesh)?;
         permit.retain();
         Ok(copy)

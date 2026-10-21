@@ -14,6 +14,14 @@ use super::frame_parts::{single_frame_source, SourceParts};
 use super::GeometryRouter;
 use crate::{Error, Mesh, Result, SubMeshCollection};
 
+/// The accounted header admission for one retained UV-carrying part, out of line.
+#[cold]
+#[inline(never)]
+fn admit_textured_part<T>(textured: &mut Vec<T>) -> Result<()> {
+    crate::resource::reserve_headers(textured, 1)?.retain();
+    Ok(())
+}
+
 impl GeometryRouter {
     /// Texture-aware [`Self::process_element_with_submeshes`] (#1781): a face
     /// set listed in `texture_index` becomes its own textured sub-mesh carrying
@@ -171,7 +179,7 @@ impl GeometryRouter {
                     // UV-carrying parts are retained output: admit the header
                     // growth before the push, so a zero allowance refuses it.
                     if crate::resource::is_active() {
-                        crate::resource::reserve_headers(&mut textured, 1)?.retain();
+                        admit_textured_part(&mut textured)?;
                     }
                     textured.push((sub_mesh, sub_uvs, map.attachment()));
                     continue;

@@ -84,9 +84,17 @@ impl GeometryRouter {
         if mesh.positions.is_empty() {
             return Ok(mesh);
         }
-        if !crate::resource::is_active() {
-            return Ok((*self.get_or_cache_by_hash(mesh)).clone());
+        if crate::resource::is_active() {
+            return self.accept_local_item_cache_accounted(mesh);
         }
+        Ok((*self.get_or_cache_by_hash(mesh)).clone())
+    }
+
+    /// The accounted publication of [`Self::accept_local_item_cache`], kept out
+    /// of line so the default (unaccounted) item drain does not carry it.
+    #[cold]
+    #[inline(never)]
+    fn accept_local_item_cache_accounted(&self, mesh: Mesh) -> crate::Result<Mesh> {
         let bytes = crate::resource::mesh::resident_bytes(&mesh)
             .map_err(|_| crate::resource::overflow())?;
         crate::resource::charge(crate::resource::Cost {

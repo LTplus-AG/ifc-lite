@@ -16,6 +16,8 @@ pub use error::WorkerError;
 #[path = "worker_mesh.rs"]
 mod mesh;
 pub use mesh::{MeshLimits, TessellatedMesh};
+#[path = "worker_handles.rs"]
+mod handles;
 #[path = "worker_upload.rs"]
 mod upload;
 #[path = "worker_qualification.rs"]
@@ -261,75 +263,6 @@ impl SmlibWorker {
                 Err(error)
             }
         }
-    }
-
-    fn check_command_objects(&self, command: &KernelCommand) -> Result<(), WorkerError> {
-        let check = |wire| {
-            self.check(BrepHandle {
-                worker: self.identity,
-                wire,
-            })
-        };
-        match command {
-            KernelCommand::Boolean { left, right, .. } => {
-                check(*left)?;
-                check(*right)
-            }
-            KernelCommand::CopyTransform { solid, .. }
-            | KernelCommand::Volume { solid, .. }
-            | KernelCommand::Manifold { solid, .. }
-            | KernelCommand::Tessellate { solid, .. } => check(*solid),
-            KernelCommand::MeshInfo { mesh, .. } | KernelCommand::MeshRead { mesh, .. } => {
-                check(*mesh)
-            }
-            _ => Ok(()),
-        }
-    }
-
-    fn handle(&mut self, bytes: Vec<u8>) -> Result<BrepHandle, WorkerError> {
-        let wire = WireHandle::from_bytes(&bytes).map_err(|error| self.poison(error.as_str()))?;
-        if wire.session != self.session {
-            return Err(self.poison("returned handle belongs to another session"));
-        }
-        if self.objects.contains_key(&wire) {
-            return Err(self.poison("duplicate live object handle"));
-        }
-        self.objects.insert(wire, Arc::new(AtomicBool::new(true)));
-        Ok(BrepHandle {
-            worker: self.identity,
-            wire,
-        })
-    }
-
-    fn wire(&self, solid: BrepHandle) -> Result<WireHandle, WorkerError> {
-        self.check(solid)?;
-        Ok(solid.wire)
-    }
-
-    fn check(&self, solid: BrepHandle) -> Result<(), WorkerError> {
-        if !self.is_live() {
-            return Err(WorkerError::Protocol("worker requires restart"));
-        }
-        if solid.worker != self.identity || solid.wire.session != self.session {
-            return Err(WorkerError::WrongWorker);
-        }
-        if !self
-            .objects
-            .get(&solid.wire)
-            .is_some_and(|live| live.load(Ordering::Acquire))
-        {
-            return Err(WorkerError::WrongWorker);
-        }
-        Ok(())
-    }
-
-    /// The shared liveness flag of one live object, for receipts naming it.
-    fn object_liveness(&self, solid: BrepHandle) -> Result<Arc<AtomicBool>, WorkerError> {
-        self.check(solid)?;
-        self.objects
-            .get(&solid.wire)
-            .cloned()
-            .ok_or(WorkerError::WrongWorker)
     }
 
     fn call(&mut self, command: KernelCommand) -> Result<Vec<u8>, WorkerError> {

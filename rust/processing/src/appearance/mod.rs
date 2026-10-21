@@ -29,6 +29,7 @@ mod registration_types;
 pub use registration::register_scan_correspondences;
 pub use registration_types::*;
 mod canonical;
+mod owned_context;
 mod catalog;
 mod context;
 mod mapping;

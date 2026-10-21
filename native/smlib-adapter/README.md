@@ -85,6 +85,39 @@ Without `IFCLITE_SMLIB_WORKER` the tests that need real SMLib geometry print a
 `SKIP:` line and pass vacuously; the protocol and supervision fault-injection tests
 (which use inert peer scripts, never mock geometry) still run.
 
+## Browser module-Worker transport
+
+An Emscripten build (`emcmake cmake ...`, Emscripten 4.0.15) produces
+`ifclite_smlib_browser.{mjs,wasm}` instead of the native worker. Its only export
+is `ifclite_smlib_dispatch_owned` (`src/browser.cpp`): it copies one version-1
+request body (12–4096 bytes, no stdio length prefix) into the same dispatcher
+and returns a separately allocated response. A nonzero return poisons that
+module incarnation. The same CTest boundaries run under Node, plus
+`smlib_browser_protocol`, which drives the actual browser binary through
+`browser/node-tests.mjs`.
+
+`browser/` holds the deployable JavaScript, all served together from `/smlib/`:
+
+| Module | Role |
+| --- | --- |
+| `module.mjs` | Owned dispatch against one module instance; frees every allocation, refuses responses above one 4096-byte frame. |
+| `worker.mjs` | Module Worker: serial batches; any fault posts `fatal` and closes the Worker. |
+| `client.mjs` | `SmlibWorkerTransport`: one Worker per incarnation (a frozen object, never a number), transfer-on-submit, pending limit (`submitted: false` leaves frames attached), deadline, `retire(incarnation)` that only affects the captured owner, `restart()`. Raw handles are valid only with the incarnation that issued them. |
+| `sweep.mjs` | Staged recipe upload (opcodes 12–16): capability check, ≤3840-byte chunks, abort on uncertain upload, commit never retried, foreign or stale handles retire the incarnation. |
+| `sweep-contract.mjs` | The ordered-region and rational-disk witnesses the native worker runs before opening its curved gates, executed through one transport incarnation. |
+| `contract.mjs` | Frame helpers and the G1 primitive contract. |
+
+`node scripts/stage-retained-browser-assets.mjs --build ABS --sdk ABS --out ABS`
+publishes exactly these modules, the generated pair and the SDK licences with a
+sha256 manifest. It refuses an existing output, a stale configured module, a
+modified SDK or a build bound to another adapter. Staging is packaging only,
+never qualification. `node scripts/smlib-browser-worker-probe.mjs --build ABS
+--sdk ABS` stages a bundle, adds `test.html` and its fault fixtures, and runs
+it in Chromium: two independent Workers, restart during upload, cross-Worker
+incarnation rejection, hung and missing-asset Workers, and recovery.
+
+Nothing in the viewer or the default WASM package imports these modules.
+
 ## Native subprocess protocol
 
 Native builds produce `ifclite_smlib_worker`, with one serial request stream per
@@ -207,6 +240,5 @@ OS job/cgroup limits to the worker process.
 
 ## Not included
 
-Affine rational copies, finite plane clipping, face lineage and the
-browser/WASM module-worker transport are separate, later slices and are not part
-of this directory yet.
+Affine rational copies, finite plane clipping and face lineage are separate,
+later slices and are not part of this directory yet.

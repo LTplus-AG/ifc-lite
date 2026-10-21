@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MPL-2.0
-# Opt-in qualification of the isolated NVIDIA SMLib native adapter and its Rust
-# worker client. Nothing in core/geometry/processing/wasm depends on either, so
+# Opt-in qualification of the isolated NVIDIA SMLib native adapter, its Rust
+# worker client and its browser module-Worker build. Nothing in core/geometry/processing/wasm depends on either, so
 # this workflow is path-filtered to them and is intentionally NOT a required check.
 name: Geometry platform (native adapter)
 
@@ -12,6 +12,9 @@ on:
       # Retained requests the worker executes are lowered here.
       - 'rust/geometry/src/document/**'
       - 'rust/geometry/src/analytic/**'
+      # Browser module-Worker staging and its actual-Worker probe.
+      - 'scripts/stage-retained-browser-assets.mjs'
+      - 'scripts/smlib-browser-worker-probe.mjs'
       - '.github/workflows/geometry-platform.yml'
   workflow_dispatch:
 
@@ -56,15 +59,49 @@ jobs:
           test -x "$IFCLITE_SMLIB_PATH"
           IFCLITE_SMLIB_WORKER="$IFCLITE_SMLIB_PATH" \
             cargo test --locked -p ifc-lite-geometry-runtime --all-targets --no-fail-fast
+      - name: Checkout pinned Emscripten SDK
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          repository: emscripten-core/emsdk
+          ref: 3b3963d86a5c97adaf6eaa845cdfe0b811c2f960
+          path: emsdk
+          persist-credentials: false
+      - name: Build the browser module-Worker boundary (Emscripten 4.0.15)
+        run: |
+          emsdk/emsdk install 4.0.15
+          emsdk/emsdk activate 4.0.15
+          source emsdk/emsdk_env.sh
+          emcmake cmake -S native/smlib-adapter -B "$RUNNER_TEMP/smlib-wasm" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DSMLIB_SOURCE="$GITHUB_WORKSPACE/upstream-smlib"
+          cmake --build "$RUNNER_TEMP/smlib-wasm" --parallel 4
+      - name: Execute every owned boundary under Node, plus the browser binary
+        id: wasm-ctest
+        continue-on-error: true
+        run: ctest --test-dir "$RUNNER_TEMP/smlib-wasm" --output-on-failure
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Actual module Workers over the staged /smlib bundle
+        id: browser-workers
+        continue-on-error: true
+        run: |
+          node scripts/smlib-browser-worker-probe.mjs --build "$RUNNER_TEMP/smlib-wasm" \
+            --sdk "$GITHUB_WORKSPACE/upstream-smlib"
       # Gather independent failures, then preserve a failing overall verdict.
       - name: Require every independent result
         if: always()
         env:
           NATIVE_CTEST: ${{ steps.native-ctest.outcome }}
           NATIVE_CONSUMERS: ${{ steps.native-consumers.outcome }}
+          WASM_CTEST: ${{ steps.wasm-ctest.outcome }}
+          BROWSER_WORKERS: ${{ steps.browser-workers.outcome }}
         run: |
           failed=0
-          for lane in NATIVE_CTEST NATIVE_CONSUMERS; do
+          for lane in NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS; do
             printf '%s=%s\n' "$lane" "${!lane}"
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done

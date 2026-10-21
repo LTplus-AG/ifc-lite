@@ -167,6 +167,9 @@ fn grid_ref_direction_vector(
         }
         _ => return Err(unsupported(decoder, entity.id, entity.ifc_type)),
     };
+    if !(x.x.is_finite() && x.y.is_finite()) {
+        return Err(missing(decoder, entity.id, "a finite PlacementRefDirection"));
+    }
     Ok((x.norm() >= 1e-9).then_some(x))
 }
 

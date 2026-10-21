@@ -188,6 +188,7 @@ fn unreadable_grid_direction_refuses_but_readable_zero_keeps_repair_7877() {
         ("#38", "#38=IFCDIRECTION((0.,1.));", true),
         ("#38", "#38=IFCDIRECTION((IFCREAL(0.),1.));", false),
         ("#38", "#38=IFCDIRECTION((1.));", false),
+        ("#38", "#38=IFCDIRECTION((1.E400,0.));", false),
         ("#30", "", false),
         ("IFCLABEL('bad')", "", false),
     ] {

@@ -208,6 +208,14 @@ test('#7711 merged dialog download preserves authored placement in reopened worl
   click(scope);
   const merged = [...document.querySelectorAll('[role="option"]')].find(el => el.textContent?.includes('Merged (All Models)'));
   assert.ok(merged); click(merged);
+  const units = [...document.querySelectorAll('[role="combobox"]')]
+    .find(el => el.textContent?.trim() === 'Keep each unit (separate projects)');
+  assert.ok(units, 'mixed-unit handling is mounted');
+  click(units);
+  const normalize = [...document.querySelectorAll('[role="option"]')]
+    .find(el => el.textContent?.trim() === 'Normalize to first model');
+  assert.ok(normalize); click(normalize);
+  assert.ok(units.textContent?.includes('Normalize to first model'));
   visibleOnly();
   click(button('Export'));
   await waitFor(() => downloads.length === 1, 'merged section export did not download');

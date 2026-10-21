@@ -49,17 +49,32 @@ function subject(placement, frames = '') {
   return wall(100, placement, frames, 2);
 }
 
+function gridSubject(ratios) {
+  return subject('#109', `
+#130=IFCCARTESIANPOINT((0.,0.));
+#131=IFCCARTESIANPOINT((10.,0.));
+#132=IFCPOLYLINE((#130,#131));
+#133=IFCGRIDAXIS('U',#132,.T.);
+#134=IFCCARTESIANPOINT((0.,10.));
+#135=IFCPOLYLINE((#130,#134));
+#136=IFCGRIDAXIS('V',#135,.T.);
+#137=IFCVIRTUALGRIDINTERSECTION((#133,#136),(0.,0.));
+#138=IFCDIRECTION((${ratios}));
+#109=IFCGRIDPLACEMENT($,#137,#138);`);
+}
+
 /** Copies from the canonical helper; it frees the real mesh/collection handles.
  * The outer finally also covers a prepass throw, before its own finally starts.
  * Each load owns its API so counters and caches cannot leak between controls.
  */
-function load(IfcAPI, body, elementCount, meshCount) {
+function load(IfcAPI, body, elementCount, meshCount, schema = 'IFC4') {
   const api = new IfcAPI();
   let collection;
   try {
     assert.equal(api.is_ready, true, 'a real initialized WASM API is required');
     assert.equal(api.getPipelineDiagnostics(), undefined, 'fresh load has no batch');
-    collection = parseMeshesViaPrePass(api, `${HEAD}${body}ENDSEC;\nEND-ISO-10303-21;`);
+    const header = HEAD.replace("FILE_SCHEMA(('IFC4'))", `FILE_SCHEMA(('${schema}'))`);
+    collection = parseMeshesViaPrePass(api, `${header}${body}ENDSEC;\nEND-ISO-10303-21;`);
     const diagnostics = api.getPipelineDiagnostics();
     assert.ok(diagnostics, 'normal batch must publish diagnostics');
     assert.equal(diagnostics.schemaVersion, 1);
@@ -82,6 +97,8 @@ function load(IfcAPI, body, elementCount, meshCount) {
       assert.ok(mesh.positions.length > 0);
       assert.equal(mesh.indices.length, 36);
       assert.ok(mesh.positions.every(Number.isFinite));
+      assert.ok(mesh.normals.every(Number.isFinite));
+      assert.ok(!mesh.origin || mesh.origin.every(Number.isFinite));
       assert.ok(mesh.indices.every(index => index < mesh.positions.length / 3));
       meshes.set(mesh.expressId, {
         positions: mesh.positions,
@@ -129,6 +146,59 @@ export function runPlacementRefusalContracts(IfcAPI, test) {
     assert.deepEqual([...absent.keys()].sort(), [100, 200]);
     assertBounds(absent.get(100), [-1, 0, -0.5, 1, 1, 0.5]);
     assert.deepEqual(absent, explicit, 'optional absence agrees with authored identity');
+  });
+
+  test('#7877: null and derived ObjectPlacement preserve explicit identity geometry', () => {
+    const explicit = load(IfcAPI, subject('#109',
+      '#109=IFCLOCALPLACEMENT($,#4);') + NEIGHBOR, 2, 2);
+    for (const absent of ['$', '*']) {
+      const meshes = load(IfcAPI, subject(absent) + NEIGHBOR, 2, 2);
+      assertBounds(meshes.get(100), [-1, 0, -0.5, 1, 1, 0.5]);
+      assert.deepEqual(meshes, explicit, `${absent} is optional absence`);
+    }
+  });
+
+  test('#7877: present non-reference ObjectPlacement refuses geometry and preserves neighbor', () => {
+    const control = load(IfcAPI, NEIGHBOR, 1, 1);
+    for (const placement of ['42', "IFCLABEL('bad')", '(#4)']) {
+      const meshes = load(IfcAPI, subject(placement) + NEIGHBOR, 2, 1);
+      assert.deepEqual([...meshes.keys()], [200], `${placement} must not fabricate identity`);
+      assertBounds(meshes.get(200), [9.5, 0, -0.5, 10.5, 1, 0.5]);
+      assert.deepEqual(meshes.get(200), control.get(200));
+    }
+  });
+
+  test('#7877: overflowing finite grid direction norms preserve a unit rigid frame', () => {
+    const diagonalBound = 1.5 * Math.SQRT1_2;
+    for (const [large, unit, bounds] of [
+      ['1.E308,0.', '1.,0.', [-1, 0, -0.5, 1, 1, 0.5]],
+      ['0.,-1.E308', '0.,-1.', [-0.5, 0, -1, 0.5, 1, 1]],
+      ['1.E308,1.E308', '1.,1.', [-diagonalBound, 0, -diagonalBound, diagonalBound, 1, diagonalBound]],
+      ['1.7976931348623157E308,-1.7976931348623157E308', '1.,-1.',
+        [-diagonalBound, 0, -diagonalBound, diagonalBound, 1, diagonalBound]],
+    ]) {
+      const meshes = load(IfcAPI, gridSubject(large) + NEIGHBOR, 2, 2, 'IFC4X3');
+      const control = load(IfcAPI, gridSubject(unit) + NEIGHBOR, 2, 2, 'IFC4X3');
+      assertBounds(meshes.get(100), bounds);
+      assert.deepEqual(meshes, control, `${large} agrees with the same finite unit orientation`);
+      const normals = meshes.get(100).normals;
+      assert.ok(normals.length > 0 && normals.length % 3 === 0);
+      for (let i = 0; i < normals.length; i += 3) {
+        assert.ok(Math.abs(Math.hypot(normals[i], normals[i + 1], normals[i + 2]) - 1) < 1e-6,
+          'a rigid frame preserves unit normals');
+      }
+    }
+  });
+
+  test('#7877: nonfinite or unreadable grid directions refuse geometry and preserve neighbor', () => {
+    const control = load(IfcAPI, NEIGHBOR, 1, 1, 'IFC4X3');
+    // STEP has no NaN real literal: NaN is unreadable input. Overflowing real
+    // literals exercise decoded positive/negative infinity through the real API.
+    for (const ratios of ['NaN,0.', '1.E400,0.', '-1.E400,0.']) {
+      const meshes = load(IfcAPI, gridSubject(ratios) + NEIGHBOR, 2, 1, 'IFC4X3');
+      assert.deepEqual([...meshes.keys()], [200], `${ratios} must not invent a grid frame`);
+      assert.deepEqual(meshes.get(200), control.get(200));
+    }
   });
 
   test('#7877/#7779: valid 2D placement chain translates and rotates real vertices', () => {

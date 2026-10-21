@@ -4,8 +4,8 @@
 
 # Historical placement refusal cohort (#7877, #7779)
 
-Local document-only preparation on the actual published candidate source;
-supported-publication audit remains pending. No merge or
+Document-only update based directly on published `f96b2c2a5b…`;
+the supported reduced plain-file publication is completed and verified. No merge or
 performance acceptance is granted here. Existing packets remain historical and
 unchanged. The parent session retains the issue claim.
 
@@ -13,7 +13,8 @@ The measured pair is base `5a834675c8e6d1935442763246c85baa0cd1d372`
 (tree `e6c70a83fde5d80970adc7885879e5b7b072a794`) against candidate
 `2f53f7941ad3fe330de749c7124d8a7e20d30cd4`
 (tree `774869cc7c8b8483d5221e07db0fbd21a0d53930`).
-The containing document-only descendant is based directly on candidate
+The containing document-only descendant is based directly on published
+`f96b2c2a5b85c6c56d4ec9a7145f0556fd18795a`, which descends from candidate
 `2f53f794…`, with unchanged production, test and build inputs. It is not a new
 measurement. `source-identity.json` proves the baseline entries. The prior
 private preparation `8b9ca3b636cef530629ffd53e9cebee7f2919a7b` was based on
@@ -97,14 +98,33 @@ before normalization separately from packet bytes afterward. The retained
 original collection is named `placement-current-native-e2d8-original`; timing
 terminal, report and comparison were checked byte-for-byte against their
 original storage-task records. Hashes authenticate absent private originals but
-do not reconstruct them or replace the pending publication audit. No credentials,
-binaries, target contents, full raw logs or private absolute host paths are
-published. Only lightweight JSON/hash/diff/source-blob checks were performed
+do not reconstruct omitted bytes. The repository packet contains no credentials,
+binaries, target contents, full raw logs or private absolute host paths; the
+separate supported reduced publication retains the selected original payloads.
+Only lightweight JSON/hash/diff/source-blob checks were performed
 for this documentation descendant; no build, test or measurement was run.
 
-Supported selected publication remains `EVIDENCE_PENDING` after three vault lock
-failures. Originals remain intact; no data loss is claimed. The compact bundle
-is `PREPARED_NOT_PUBLISHED`: the archive guard requires digest review, and no
-archive completion or guard configuration change is claimed. The reviewable
-packet retains all selected and raw numerical data with source, corpus, tool,
-compiler and receipt bindings; hash-only private originals remain a limitation.
+Supported reduced plain-file publication completed with exit code 0. The root
+agent verified all 82 stored/decoded artifact hashes and sizes, all four original
+receipt/output links and all 155 unchanged local originals. The selection is
+81 unique original payloads plus its alias inventory, representing 108 original
+paths; 47 omitted paths are explained individually. Both full protocol closures,
+independent checksum records, strict compiler proof/actual stderr, four binaries
+and receipt/log records, six full witness/custody/diagnostic records and all
+selected/inner rows, chronology and statistics remain in that selected scope.
+
+[Verification manifest](reduced-publication-verification.json) binds the original
+summary, manifest, selection freeze and proof files and lists all 82 artifact
+hashes/sizes. [Normalized aliases and omissions](reduced-publication-aliases.json)
+retains logical names, digests and reasons without private host paths. These are
+normalized documentation, not substitutes for the byte-identical stored originals.
+Historical `PREPARED_NOT_PUBLISHED` text inside the frozen selection records
+remains historical; it does not describe the completed reduced publication.
+
+Full-155 vault/archive completion is **not** established. Exact local originals
+and the three earlier publication failures remain preserved. The tar bundle is
+still `PREPARED_NOT_PUBLISHED`; its archive guard was not bypassed. One owner
+closure attempt was refused by `safety.idle` with “benchmark queued or active”.
+The task remains `ACTIVE` under that closure hold, but is no longer evidence
+pending for this reduced selection. No retry, override, new measurement,
+qualification, neutrality, speedup or cost acceptance follows from publication.

@@ -4380,8 +4380,15 @@ protocol/compiler/receipt identity and retain adverse phases when publishing a
 mixed report. The packet is prepared as a document-only descendant of the
 actual published measured candidate, with baseline source entries unchanged.
 It does not measure the previous private integration or a new document head.
-Selected publication remains EVIDENCE_PENDING after vault lock failures; the
-compact bundle is PREPARED_NOT_PUBLISHED pending archive digest review.
+Supported reduced plain-file publication completed and was verified: 82 artifacts
+(81 unique original payloads plus alias inventory), representing 108 original
+paths with 47 omissions explained. All four receipt/output links and all 155
+unchanged local originals were verified. The packet's normalized verification
+manifest binds that scope. Full-155 vault/archive completion remains unproven;
+the tar bundle stays PREPARED_NOT_PUBLISHED under its unchanged archive guard.
+Three earlier publication failures remain preserved. One owner closure attempt
+was refused by safety.idle (“benchmark queued or active”); the task remains
+ACTIVE under the closure hold, rather than evidence pending for this selection.
 Inherited main holds and required hosted/oracle qualification remain outstanding.
 
 ### Missing polygonal-face records (#7911)

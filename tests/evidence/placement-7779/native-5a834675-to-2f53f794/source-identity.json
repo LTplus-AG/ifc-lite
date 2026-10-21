@@ -23,5 +23,24 @@
       ],
       "allowedAddedDirectory": "tests/evidence/placement-7779/native-5a834675-to-2f53f794"
     }
+  },
+  "documentationUpdate": {
+    "parentCommit": "f96b2c2a5b85c6c56d4ec9a7145f0556fd18795a",
+    "parentTree": "08d17ebdd3241927878e52839f80442801106e70",
+    "method": "Exact git ls-tree -r -z mode/type/blob/path entry equality for every published-parent path except allowedChangedExistingPaths. Only allowedAddedPaths may be added. SHA256 covers retained entries in Git order including NUL terminators. The measured-candidate equivalence proof above remains binding.",
+    "unchangedPublishedParentEntries": 20279,
+    "unchangedPublishedParentEntriesSHA256": "e16ac86a96f29ecdbab7e69839c7dce02d87303852734bfb8cc05415d1ffe505",
+    "allowedChangedExistingPaths": [
+      "scripts/perf/README.md",
+      "tests/evidence/placement-7779/native-5a834675-to-2f53f794/README.md",
+      "tests/evidence/placement-7779/native-5a834675-to-2f53f794/publication-manifest.json",
+      "tests/evidence/placement-7779/native-5a834675-to-2f53f794/source-identity.json"
+    ],
+    "allowedAddedPaths": [
+      "tests/evidence/placement-7779/native-5a834675-to-2f53f794/reduced-publication-aliases.json",
+      "tests/evidence/placement-7779/native-5a834675-to-2f53f794/reduced-publication-verification.json"
+    ],
+    "productionTestBuildBudgetChanges": false,
+    "newHeadMeasured": false
   }
 }

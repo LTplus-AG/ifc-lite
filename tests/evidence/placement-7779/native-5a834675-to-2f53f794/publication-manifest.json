@@ -1,5 +1,5 @@
 {
-  "status": "LOCAL_REVIEW_PACKET_NOT_A_PUBLICATION_APPROVAL",
+  "status": "LOCAL_REVIEW_PACKET_WITH_VERIFIED_REDUCED_PUBLICATION_NO_ACCEPTANCE",
   "normalization": {
     "<fixture-checkout>": "original fixture checkout root; suffix tests/models/... is repository-relative",
     "<storage-tasks>": "original worker storage-task registry root",
@@ -144,8 +144,8 @@
   },
   "packetFiles": {
     "README.md": {
-      "sha256": "7a4fc0b344a160fcc831be37533f69ad91b1621163d763c84b0a5dfd068b692c",
-      "bytes": 6834
+      "sha256": "996cdba1358a49d246be2e8f90a3214fa74ddc0e6fd28c6176b9c11c9e9819d0",
+      "bytes": 8351
     },
     "bindings.json": {
       "sha256": "e2402f04dcb1d8306bf34574e9fc49b17cf4dce65a0d0c1b16314cc2643863bb",
@@ -168,8 +168,8 @@
       "bytes": 24159
     },
     "source-identity.json": {
-      "sha256": "6c6fd85a7408e85f03d2c714dd11061c26e3124d8684e423d8044bb82851576b",
-      "bytes": 1840
+      "sha256": "74370a291b34ab8104a04e7b688dcea2bfad38b85c4b7b39fa3ead7397db970c",
+      "bytes": 3120
     },
     "stock-report.json": {
       "sha256": "3b284248814e5953b5bef8799ef8beefe08abc3438644ff74369822935537ea0",
@@ -178,17 +178,27 @@
     "timing-terminal.json": {
       "sha256": "6d326106da567357a7a300d4c98caeba430382dea83e6d28f3eefeeeac14ab37",
       "bytes": 9659
+    },
+    "reduced-publication-aliases.json": {
+      "sha256": "457f3284b7b8b335b23b34dfccb80dbd2c751472aeab296ea74ac361b7b39bc5",
+      "bytes": 68613
+    },
+    "reduced-publication-verification.json": {
+      "sha256": "26fd6bae619f877354ab4f2df2470d26e1948d33c1372a0bd3973a332b96e897",
+      "bytes": 32232
     }
   },
   "preparation": {
     "baselineCommit": "2f53f7941ad3fe330de749c7124d8a7e20d30cd4",
     "baselineTree": "774869cc7c8b8483d5221e07db0fbd21a0d53930",
-    "descendantScope": "Document-only descendant containing this manifest; no new measurement or publication approval. See source-identity.json.",
+    "descendantScope": "Document-only direct descendant of published f96b2c2a5b85c6c56d4ec9a7145f0556fd18795a; measured source remains 2f53f794. No new measurement or acceptance. See source-identity.json and reduced-publication-verification.json.",
     "previousPacketCommit": "8b9ca3b636cef530629ffd53e9cebee7f2919a7b",
-    "supportedSelectedPublication": "EVIDENCE_PENDING",
+    "supportedSelectedPublication": "COMPLETED_VERIFIED_REDUCED_SELECTION",
     "vaultLockFailures": 3,
     "originals": "INTACT",
     "compactBundle": "PREPARED_NOT_PUBLISHED",
-    "archiveRequirement": "Digest review required by existing archive guard; no guard configuration change or archive completion."
+    "archiveRequirement": "Digest review required by existing archive guard; no guard configuration change or archive completion.",
+    "closure": "ACTIVE; one safety.idle refusal: benchmark queued or active; no retry or override",
+    "full155VaultArchiveComplete": false
   }
 }

@@ -1,0 +1,75 @@
+{
+  "status": "measured native cost accepted; full-output identity passed; stock timing report inconclusive",
+  "issue": 7779,
+  "pullRequest": 7880,
+  "base": "03e2ad0369b3c69cedcaac6496b9a14d4b951ad1",
+  "branch": "a806aed09f4aa860d180c2cc1059032bd87b4a20",
+  "originalJob": "43fc6ed1-2bfe-4e88-ba62-45fc0bf65b57",
+  "originalReceiptSha256": "1d03a57c144b6c31ebd9a899ca76bbe6195d32f72ee2ec4bb724592df9c68815",
+  "originalOutputSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "originalReconciliationSha256": "7610f56625a6fcd0228e5d8c3eaeeda61beeec65fbb0c296dad7269d2f46a874",
+  "protocolFreezeSha256": "bf2ee138a7348ea78943cb594581f1ce56f192e4b14c413f2aafa08d186de277",
+  "sourceBindingsSha256": "f291a3d419666308de202859b6e7192935c01f642e7601f6e8e53075d4517f60",
+  "runtime": {
+    "IFC_LITE_INSTANCING": "0",
+    "IFC_LITE_DEDUP_EXTRA": "0",
+    "RAYON_NUM_THREADS": "4",
+    "CARGO_BUILD_JOBS": "4",
+    "IFC_LITE_LOCAL_FRAME": null
+  },
+  "profile": "profiling",
+  "features": [],
+  "counts": {
+    "untimedPayloadCalls": 6,
+    "timedProcesses": 10,
+    "selectedRows": 30,
+    "timedFullModelLoads": 150
+  },
+  "stockVerdict": {
+    "fingerprintDrift": false,
+    "tooNoisy": false,
+    "realChange": false,
+    "inconclusive": true,
+    "zeroBaselineIncrease": false
+  },
+  "realStockPhaseChanges": {
+    "AC20-FZK-Haus.ifc": [],
+    "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": [],
+    "ISSUE_053_20181220Holter_Tower_10.ifc": []
+  },
+  "allInnerOuterBlockMedianDeltasPercent": {
+    "AC20-FZK-Haus.ifc": {
+      "parseMs": -7.692307692307687,
+      "geometryMs": 3.8461538461538547,
+      "totalMs": 2.499999999999991,
+      "fullCallWallMs": 2.555142086215434
+    },
+    "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": {
+      "parseMs": 0.0,
+      "geometryMs": 0.9421950598421214,
+      "totalMs": 0.9591115598182709,
+      "fullCallWallMs": 0.9321477848978299
+    },
+    "ISSUE_053_20181220Holter_Tower_10.ifc": {
+      "parseMs": -0.5201560468140465,
+      "geometryMs": 0.2123142250530785,
+      "totalMs": 0.4166666666666652,
+      "fullCallWallMs": 0.21727225070589107
+    }
+  },
+  "allFullOrderedOutputFloatFrameMetadataInstanceRawDiagnosticsMatch": true,
+  "allTimedCountersAndFingerprintsMatch": true,
+  "acceptance": "Accept disclosed native cost for canonical placement/direction consumer fixes with exact full geometry/refusal identity. This is not speed, neutrality, or a required-gate waiver.",
+  "provenance": [
+    "Actual standalone03 compiled in successful original9d488; correctedXa806 compiled and fully source-bound in originalb1ef before its later R Fresh-core guard failure. Originalb1ef remains failed, not relabelled as overall successful.",
+    "Both selected arms have actual core/geometry/processing and both example rustc records with BLAKE3 freshness. Frozen observation injections/toolchain/profile/defaultfeatures match; no transitive R-core exception is used in this pair.",
+    "New metadata-only copy and assembly authenticate all original source/compiler/helper/input/binary hashes and copy exact artifacts into a new owned task. Six output calls and150 timed loads are fresh; no prior timing observations are reused."
+  ],
+  "limitations": [
+    "Native own-layer standalone03 versus correctedXa806 only; no main-to-X, combined631 or Rdelta substitution.",
+    "Stock reporter finds no real phase change and remains inconclusive overall. Small adverse full-load observations are retained, not claimed neutral; causal attribution unproven.",
+    "Five outer paired rounds, five inner iterations per fixed-order fixture; not25 independent outer rounds. OS page cache is not purged.",
+    "Native ordinary full-load only, no WASM/browser/GPU, speed or throughput guarantee.",
+    "No ceiling/baseline/band/pin changes. Other required CI and ratchet gates remain binding."
+  ]
+}

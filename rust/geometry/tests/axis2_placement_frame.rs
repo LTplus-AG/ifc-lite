@@ -3,7 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! `IfcAxis2Placement3D` with BOTH a non-identity rotation and a non-zero
-//! Location — the one combination `transform.rs`'s own unit tests never make.
+//! Location — the combination the moved `placement/axis_frame_tests.rs`
+//! unit tests do not cover together.
 //!
 //! `parse_axis2_placement_3d_defaults_missing_axis_and_ref_direction` is at
 //! `(10, 20, 30)` with the identity rotation, and the three orthogonalization

@@ -1,0 +1,12 @@
+diff --git a/rust/geometry-runtime/src/worker_empty.rs b/rust/geometry-runtime/src/worker_empty.rs
+--- a/rust/geometry-runtime/src/worker_empty.rs
++++ b/rust/geometry-runtime/src/worker_empty.rs
+@@ -41,7 +41,7 @@
+         &mut self,
+         solid: BrepHandle,
+     ) -> Result<TessellatedMesh, WorkerError> {
+-        if false && !self.is_empty(solid)? {
++        if !self.is_empty(solid)? {
+             return Err(self.poison("zero tessellation of a nonempty solid"));
+         }
+         Ok(TessellatedMesh::empty())

@@ -1,0 +1,27 @@
+diff --git a/rust/wasm-bindings/src/retained_browser/mod.rs b/rust/wasm-bindings/src/retained_browser/mod.rs
+index 32741bd86c..83070d2cd6 100644
+--- a/rust/wasm-bindings/src/retained_browser/mod.rs
++++ b/rust/wasm-bindings/src/retained_browser/mod.rs
+@@ -93,8 +93,8 @@ impl BrowserCapabilities {
+             incarnation,
+             sdk_bits,
+             rectangle: region,
+-            ordered_region: region,
+-            rational_disk: sdk_bits & SWEEP_DISK_BIT != 0 || disks_qualified,
++            ordered_region: region && regions_qualified,
++            rational_disk: sdk_bits & SWEEP_DISK_BIT != 0 && disks_qualified,
+         }
+     }
+     /// Whether `family` is executable on this incarnation.
+diff --git a/packages/wasm/retained.js b/packages/wasm/retained.js
+index cee0951998..2781d940a9 100644
+--- a/packages/wasm/retained.js
++++ b/packages/wasm/retained.js
+@@ -26,6 +26,7 @@ export function loadRetainedEngine({ moduleUrl = DEFAULT_MODULE, wasm } = {}) {
+       return engine;
+     });
+     // A failed load is not cached: the caller may deploy the bundle and retry.
++    pending.catch(() => loaded.delete(key));
+     loaded.set(key, pending);
+   }
+   return loaded.get(key);

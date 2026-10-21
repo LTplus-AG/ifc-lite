@@ -8,7 +8,7 @@
 use crate::math::tol;
 use super::super::GeometryRouter;
 use crate::{Point3, Result, Vector3};
-use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix4;
 
 impl GeometryRouter {
@@ -184,7 +184,8 @@ fn base_axis_2d_x(
     x_axis_raw: Vector3<f64>,
     y_axis_raw: Option<Vector3<f64>>,
 ) -> Vector3<f64> {
-    let axis1_absent = entity.attr(slot::IfcCartesianTransformationOperator::AXIS1).is_none_or(|attr| attr.is_null());
+    let axis1_absent = entity.attr(slot::IfcCartesianTransformationOperator::AXIS1)
+        .is_none_or(|attr| matches!(attr, AttributeValue::Null | AttributeValue::Derived));
     match y_axis_raw {
         Some(d) if is_2d && axis1_absent && d.xy().norm() > 1e-9 => Vector3::new(d.y, -d.x, 0.0),
         _ => x_axis_raw,

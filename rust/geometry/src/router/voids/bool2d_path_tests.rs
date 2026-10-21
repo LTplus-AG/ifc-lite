@@ -8,6 +8,7 @@
 //! private helpers.
 
 use super::*;
+use crate::GeometryRouter;
 use super::super::probe::ExtrudedSolidInfo as ExtrudedSolidLike;
 use nalgebra::{Point3, Rotation3};
 
@@ -341,4 +342,53 @@ fn mixed_duplicate_footprints_apply_mandatory_union_correction_4617() {
     // removes 2 minus its 0.5 overlap with the corrected through-opening.
     assert!((mesh_signed_volume(&result).abs() - 90.5).abs() < 1e-5);
     assert!(crate::mesh_check::closed_or_hairline(&result));
+}
+
+/// #7955 C5b: the staged 2D route classifies its residual openings through the
+/// owned classifier in QUIET mode. A capture that is later rejected must not
+/// have leaked classification statistics or a host diagnostic into the parent,
+/// which classifies the full opening set exactly once.
+#[test]
+fn residual_classification_publishes_nothing_into_the_parent() {
+    let source = "#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCAXIS2PLACEMENT3D(#1,$,$);
+#3=IFCDIRECTION((0.,0.,1.));
+#5=IFCCARTESIANPOINT((0.,0.));
+#6=IFCAXIS2PLACEMENT2D(#5,$);
+#4=IFCRECTANGLEPROFILEDEF(.AREA.,$,#6,10.,1.);
+#7=IFCEXTRUDEDAREASOLID(#4,#2,#3,3.);
+#8=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#7));
+#9=IFCPRODUCTDEFINITIONSHAPE($,$,(#8));
+#10=IFCWALL('host',$,$,$,$,$,#9,$);
+#11=IFCRECTANGLEPROFILEDEF(.AREA.,$,#6,1.,0.4);
+#12=IFCCARTESIANPOINT((0.,0.,-1.));
+#13=IFCAXIS2PLACEMENT3D(#12,$,$);
+#14=IFCEXTRUDEDAREASOLID(#11,#13,#3,5.);
+#15=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#14));
+#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#15));
+#20=IFCOPENINGELEMENT('through',$,$,$,$,$,#16,$);
+#30=IFCCARTESIANPOINT((3.,-0.2,-1.));
+#31=IFCAXIS2PLACEMENT3D(#30,$,$);
+#32=IFCBLOCK(#31,1.,0.4,5.);
+#33=IFCSHAPEREPRESENTATION($,'Body','CSG',(#32));
+#34=IFCPRODUCTDEFINITIONSHAPE($,$,(#33));
+#21=IFCOPENINGELEMENT('block',$,$,$,$,$,#34,$);";
+    let router = GeometryRouter::new();
+    let mut decoder = ifc_lite_core::EntityDecoder::new(source);
+    let host = decoder.decode_by_id(10).unwrap();
+    let context = crate::program::openings::context(&host, &[20, 21], &router, &mut decoder).unwrap();
+    assert_eq!(context.openings.len(), 2, "the parent classifies the full set");
+    let cut = context.bool2d.expect("eligible through-cut");
+    assert_eq!(cut.footprints.len(), 1, "only the extruded through-cut is planar");
+    let residual = cut.residual.expect("the block opening is residual");
+    assert_eq!(residual.openings.len(), 1, "the residual is still classified");
+    let counts = router.take_classification_stats();
+    assert_eq!(
+        counts.rectangular + counts.diagonal + counts.non_rectangular,
+        2,
+        "only the parent's recording pass counts"
+    );
+    let diagnostics = router.take_host_opening_diagnostics();
+    let openings = &diagnostics[&10].openings;
+    assert_eq!(openings.iter().map(|o| o.opening_id).collect::<Vec<_>>(), [20, 21]);
 }

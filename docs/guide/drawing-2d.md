@@ -441,3 +441,7 @@ When using the Select / Pan tool (or after pressing Escape to exit a creation to
 | Scale | 1:100 | Drawing scale for dimensions |
 | Symbolic representations | Off | Use authored Plan/Annotation representations when available |
 | Scan → Vector outline | Off | Trace closed outlines from the scan points in the section band (see below) |
+
+### Selective section cutting
+
+`SectionPlaneConfig.sectionExcludedIds` accepts a `ReadonlySet<number>` of mesh `expressId` values to keep whole. `SectionCutter`, `cutMeshesStreaming` and `GPUSectionCutter` omit those meshes before producing segments and polygons, so they contribute neither caps, hatch regions nor cut outlines. Pass the renderer's same full scene-ID set when producing its primary and extra-plane caps. An absent or empty set cuts every mesh as usual.

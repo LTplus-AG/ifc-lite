@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { entityClip } from './section-exclusions.js';
 /**
  * CPU rectangle selection against bounding-box data.
  *
@@ -114,7 +115,7 @@ export function selectBoundingBoxesInRect(
     for (const [expressId, bbox] of boundingBoxes) {
         if (hiddenIds?.has(expressId)) continue;
         if (isolatedIds !== null && isolatedIds !== undefined && !isolatedIds.has(expressId)) continue;
-        if (hasClip && boxFullyClipped(clip, bbox)) continue;
+        if (hasClip && boxFullyClipped(entityClip(clip, expressId), bbox)) continue;
 
         let allInside = true;
 

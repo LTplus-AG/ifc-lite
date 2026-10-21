@@ -33,7 +33,6 @@ fn map_2x3_to_4(t: &str) -> Option<&'static str> {
 
 fn map_4_to_2x3(t: &str) -> Option<&'static str> {
     Some(match t {
-        "IFCELECTRICDISTRIBUTIONBOARD" => "IFCELECTRICDISTRIBUTIONPOINT",
         "IFCBURNERTYPE" => "IFCGASTERMINALTYPE",
         "IFCCHIMNEY" | "IFCSHADINGDEVICE" | "IFCCIVILELEMENT" | "IFCGEOGRAPHICELEMENT"
         | "IFCBEARING" | "IFCCOURSE" | "IFCKERB" | "IFCBUILTELEMENT" => "IFCBUILDINGELEMENTPROXY",
@@ -183,6 +182,11 @@ pub(crate) fn convert_entity_type(entity_type: &str, from: &str, to: &str) -> St
 /// The renamed type for an uppercase `u` between two canonical schemas, or
 /// `None` when it keeps its name.
 pub(crate) fn rename_type(u: &str, from: &str, to: &str) -> Option<&'static str> {
+    if to == "IFC2X3" {
+        if let Some(target) = crate::schema_mep::ifc2x3_type(u) {
+            return Some(target);
+        }
+    }
     match (from, to) {
         // 2X3 → 4 (then 4 → 4X3 is a no-op rename-wise)
         ("IFC2X3", "IFC4") | ("IFC2X3", "IFC4X3") | ("IFC2X3", "IFC5") => map_2x3_to_4(u),

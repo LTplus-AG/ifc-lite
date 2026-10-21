@@ -220,3 +220,33 @@ fn issue_7914_terminal_consumer_scope_reports_stops_and_restores_after_unwind() 
     }).is_err());
     assert_eq!(with_terminal_scope(|| Ok(42)), Ok(42));
 }
+
+#[test]
+fn explicit_typed_stop_in_compatibility_scope_is_terminal_without_counter_allocation() {
+    let account = ExecutionAccount::default();
+    account.scope(|| {
+        let result: crate::Result<()> = Err(crate::Error::ProgramStopped(ProgramStop::Cancelled));
+        assert!(observe(result).is_err());
+        assert_eq!(check_current(), Err(ProgramStop::Cancelled));
+        assert_eq!(charge(Cost::default()).unwrap_err(), ProgramStop::Cancelled);
+        assert!(!is_active());
+    });
+    assert_eq!(check_current(), Ok(()));
+    assert_eq!(account.usage(), Usage::default());
+}
+
+#[test]
+fn observe_surfaces_a_sticky_stop_behind_an_ordinary_error_and_passes_others() {
+    let plain: crate::Result<u8> = Err(crate::Error::geometry("unsupported"));
+    assert!(matches!(observe(plain), Err(crate::Error::GeometryError(_))));
+    assert!(matches!(observe(Ok(3u8)), Ok(3)));
+    let account = bounded(ResourceLimits {
+        work: Some(0),
+        ..ResourceLimits::default()
+    });
+    account.scope(|| {
+        assert!(charge(Cost { work: 1, ..Cost::default() }).is_err());
+        let flattened: crate::Result<u8> = Err(crate::Error::geometry("refused"));
+        assert!(matches!(observe(flattened), Err(crate::Error::ProgramStopped(_))));
+    });
+}

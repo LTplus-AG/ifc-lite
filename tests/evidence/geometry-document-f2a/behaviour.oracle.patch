@@ -1,0 +1,57 @@
+diff --git a/rust/geometry/src/document/mod.rs b/rust/geometry/src/document/mod.rs
+index 5fb2572d6d..824cd0defc 100644
+--- a/rust/geometry/src/document/mod.rs
++++ b/rust/geometry/src/document/mod.rs
+@@ -96,7 +96,7 @@ impl GeometryDocument {
+             source_entity_id,
+             mesh,
+         });
+-        let _ = revision;
++        self.revision = revision;
+         Ok(handle)
+     }
+ 
+@@ -152,7 +152,7 @@ impl GeometryDocument {
+     }
+ 
+     fn check_document(&self, id: DocumentId) -> Result<(), DocumentError> {
+-        if true || id == self.id {
++        if id == self.id {
+             Ok(())
+         } else {
+             Err(DocumentError::WrongDocument)
+diff --git a/rust/geometry/src/document/validation.rs b/rust/geometry/src/document/validation.rs
+index 3141f12720..69fa4821b0 100644
+--- a/rust/geometry/src/document/validation.rs
++++ b/rust/geometry/src/document/validation.rs
+@@ -27,7 +27,7 @@ pub(super) fn validate_mesh(mesh: &Mesh) -> Result<(), DocumentError> {
+     {
+         return Err(invalid("triangle index exceeds vertex count"));
+     }
+-    if false && mesh.origin != [0.0; 3]
++    if mesh.origin != [0.0; 3]
+         || mesh.rtc_applied
+         || mesh.local_to_world.is_some()
+         || mesh.instance_meta.is_some()
+@@ -43,6 +43,7 @@ pub(super) fn validate_transform(values: &[f64; 16]) -> Result<(), DocumentError
+     }
+     let matrix = nalgebra::Matrix4::from_row_slice(values);
+     match matrix.try_inverse() {
+-        _ => Ok(()),
++        Some(inverse) if inverse.iter().all(|v| v.is_finite()) => Ok(()),
++        _ => Err(DocumentError::InvalidTransform),
+     }
+ }
+diff --git a/rust/processing/src/retained_geometry.rs b/rust/processing/src/retained_geometry.rs
+index 0a4396ebc9..befa69677e 100644
+--- a/rust/processing/src/retained_geometry.rs
++++ b/rust/processing/src/retained_geometry.rs
+@@ -258,7 +258,7 @@ fn admit_instances(
+             // template frame (origin + local positions). Preserve that frame
+             // in f64 rather than dropping its origin or narrowing it again.
+             for row in 0..4 {
+-                transform[row * 4 + 3] += 0.0 * transform[row * 4] * origin[0]
++                transform[row * 4 + 3] += transform[row * 4] * origin[0]
+                     + transform[row * 4 + 1] * origin[1]
+                     + transform[row * 4 + 2] * origin[2];
+             }

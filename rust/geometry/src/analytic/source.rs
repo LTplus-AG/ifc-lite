@@ -71,7 +71,9 @@ thread_local! {
 /// scope every `source` field stays `None` and extraction does no source
 /// traversal: the capture costs 3-24% of analytic export time, so it is
 /// paid only by a consumer that asks for it. The previous state is restored
-/// on every exit, including a panic.
+/// on every exit, including a panic. On wasm32 capture is compiled out unless
+/// the `wasm_source_capture` feature (the opt-in retained browser engine) is
+/// on: otherwise `f` runs and every `source` stays `None`.
 pub fn with_source_capture<R>(f: impl FnOnce() -> R) -> R {
     struct Restore(bool);
     impl Drop for Restore {
@@ -84,7 +86,18 @@ pub fn with_source_capture<R>(f: impl FnOnce() -> R) -> R {
 }
 
 pub(super) fn requested() -> bool {
-    REQUESTED.with(Cell::get)
+    // The default browser engine never opts in, so capture is compiled out
+    // there: a constant `false` lets the optimiser drop the whole source
+    // traversal from the bundle. `with_source_capture` still runs its closure.
+    // Only the opt-in retained engine (`wasm_source_capture`) keeps it.
+    #[cfg(all(target_arch = "wasm32", not(feature = "wasm_source_capture")))]
+    {
+        false
+    }
+    #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
+    {
+        REQUESTED.with(Cell::get)
+    }
 }
 
 #[derive(Default)]
@@ -116,7 +129,11 @@ impl SourceCapture {
         }
     }
 
-    fn fail(&mut self, reason: String) {
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub fn fail(&mut self, reason: String) {
         self.records.clear();
         self.enabled = false;
         if self.failure.is_none() {
@@ -181,6 +198,30 @@ impl SourceCapture {
             IfcType::IfcExtrudedAreaSolid => {
                 &["SweptArea", "Position", "ExtrudedDirection", "Depth"]
             }
+            IfcType::IfcSweptDiskSolid => {
+                &["Directrix", "Radius", "InnerRadius", "StartParam", "EndParam"]
+            }
+            IfcType::IfcBSplineCurveWithKnots => &[
+                "Degree",
+                "ControlPointsList",
+                "CurveForm",
+                "ClosedCurve",
+                "SelfIntersect",
+                "KnotMultiplicities",
+                "Knots",
+                "KnotSpec",
+            ],
+            IfcType::IfcRationalBSplineCurveWithKnots => &[
+                "Degree",
+                "ControlPointsList",
+                "CurveForm",
+                "ClosedCurve",
+                "SelfIntersect",
+                "KnotMultiplicities",
+                "Knots",
+                "KnotSpec",
+                "WeightsData",
+            ],
             IfcType::IfcCircle => &["Position", "Radius"],
             IfcType::IfcAxis2Placement2D => &["Location", "RefDirection"],
             IfcType::IfcAxis2Placement3D => &["Location", "Axis", "RefDirection"],
@@ -238,8 +279,18 @@ impl SourceCapture {
                 dependencies.push(Self::coefficient(id, expected, decoder)?);
             }
         }
-        if entity.ifc_type == IfcPolyline {
-            if let Some(points) = entity.get_list(ifc_lite_core::slot::IfcPolyline::POINTS.index()) {
+        let points = match entity.ifc_type {
+            IfcPolyline => Some(ifc_lite_core::slot::IfcPolyline::POINTS.index()),
+            IfcBSplineCurveWithKnots => {
+                Some(ifc_lite_core::slot::IfcBSplineCurveWithKnots::CONTROL_POINTS_LIST.index())
+            }
+            IfcRationalBSplineCurveWithKnots => Some(
+                ifc_lite_core::slot::IfcRationalBSplineCurveWithKnots::CONTROL_POINTS_LIST.index(),
+            ),
+            _ => None,
+        };
+        if let Some(slot) = points {
+            if let Some(points) = entity.get_list(slot) {
                 for point in points {
                     if let Some(id) = point.as_entity_ref() {
                         dependencies.push(Self::coefficient(id, &[IfcCartesianPoint], decoder)?);

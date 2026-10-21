@@ -61,6 +61,62 @@ fn run(body: &str) -> ifc_lite_processing::ProcessingResult {
     process_geometry(&format!("{HEAD}{body}ENDSEC;\nEND-ISO-10303-21;\n"))
 }
 
+/// #7877: absent placement has no authored row matrix, including STEP `*`.
+#[test]
+fn absent_placement_markers_preserve_geometry_without_inventing_row_placement_7877() {
+    use ifc_lite_processing::data_model::rows::{build_export_model_with_options, ModelOptions};
+
+    let authored = wall(100, "(5.,0.,0.)", "(0.,0.,1.)");
+    let mut reference = None;
+    for marker in ["$", "*"] {
+        let body = authored.replace(",#109,#105,$,$)", &format!(",{marker},#105,$,$)"));
+        let content = format!("{HEAD}{body}ENDSEC;\nEND-ISO-10303-21;\n");
+        let model = build_export_model_with_options(
+            content.as_bytes(), &ModelOptions::default().with_placements(true),
+        );
+        let row = model.entities.iter().find(|row| row.express_id == 100).expect("wall row");
+        assert!(row.placement.is_none(), "{marker} is not an authored identity matrix");
+        let result = process_geometry(&content);
+        assert_eq!(result.stats.refused_input_elements, 0, "{marker}");
+        let mesh = result.meshes.iter().find(|mesh| mesh.express_id == 100).expect("wall mesh");
+        if let Some(positions) = &reference {
+            assert_eq!(&mesh.positions, positions, "absent markers have the same geometry");
+        } else {
+            reference = Some(mesh.positions.clone());
+        }
+    }
+}
+
+/// #7877: both public router mesh paths share canonical placement admission.
+#[test]
+fn router_mesh_paths_refuse_present_non_reference_placements_7877() {
+    use ifc_lite_core::EntityDecoder;
+    use ifc_lite_geometry::GeometryRouter;
+
+    let authored = wall(100, "(5.,0.,0.)", "(0.,0.,1.)");
+    for (marker, valid) in [("$", true), ("*", true), ("#21", true),
+        ("IFCLABEL('bad')", false), ("17", false), ("#999", false)] {
+        let body = authored.replace(",#109,#105,$,$)", &format!(",{marker},#105,$,$)"));
+        let content = format!("{HEAD}{body}ENDSEC;\nEND-ISO-10303-21;\n");
+        for submeshes in [false, true] {
+            let mut decoder = EntityDecoder::new(&content);
+            let router = GeometryRouter::with_units(&content, &mut decoder);
+            let entity = decoder.decode_by_id(100).unwrap();
+            let result = if submeshes {
+                router.process_element_with_submeshes(&entity, &mut decoder)
+                    .map(|meshes| meshes.sub_meshes.iter().any(|m| !m.mesh.positions.is_empty()))
+            } else {
+                router.process_element(&entity, &mut decoder).map(|mesh| !mesh.positions.is_empty())
+            };
+            if valid {
+                assert!(result.unwrap(), "{marker}, submeshes={submeshes}");
+            } else {
+                assert!(result.is_err(), "{marker}, submeshes={submeshes}: no fabricated identity");
+            }
+        }
+    }
+}
+
 fn min_x(result: &ifc_lite_processing::ProcessingResult, id: u32) -> f32 {
     let mesh = result.meshes.iter().find(|m| m.express_id == id).expect("meshed");
     mesh.positions.chunks(3).map(|p| p[0]).fold(f32::INFINITY, f32::min)

@@ -179,7 +179,7 @@ fn mapping_origin_is_composed_inside_the_mapping_target() {
 /// Occurrences A (#74, uniform `Scale = 0.001`) and B (#81, non-uniform
 /// `(0.001, 0.001, 0.002)`) share the SAME `IfcRepresentationMap` (#13, differing
 /// only by `MappingTarget`), which is exactly the router's don't-bake eligibility
-/// condition (see `router/processing.rs`'s "occurrences sharing a map but
+/// condition (see `GeometryRouter::bake_styled_mapping`'s "occurrences sharing a map but
 /// differing by target collate under one template" and
 /// `router/instancing.rs::mapped_source_single_item`) — so under
 /// `enable_instancing` A materializes as the template and B rides as an

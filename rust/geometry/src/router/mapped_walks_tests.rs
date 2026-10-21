@@ -44,7 +44,7 @@ fn router_27_shared_source_rebases_like_the_mapped_item_walk() {
     let mut decoder = EntityDecoder::new(RAW_WORLD_MAP);
     let router = shared_rtc_router();
     let rep = decoder.decode_by_id(1000).unwrap();
-    router.ensure_shared_mapped_source(&rep, 1003, &mut decoder);
+    router.ensure_shared_mapped_source(&rep, 1003, &mut decoder).unwrap();
     let shared = cached_source(&router, 1003);
     // Rebased before narrowing, with the offset kept as the f64 origin: the
     // mapping target and the placement still apply to a source (#7690).
@@ -88,7 +88,7 @@ fn router_26_capped_curve_in_a_shared_source_is_reported_for_that_source() {
     let mut router = GeometryRouter::new();
     router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
     let rep = decoder.decode_by_id(55).unwrap();
-    router.ensure_shared_mapped_source(&rep, 60, &mut decoder);
+    router.ensure_shared_mapped_source(&rep, 60, &mut decoder).unwrap();
     let after_source = router.take_unsupported_items();
     assert_eq!(after_source.get("IfcBSplineCurveWithKnots"), Some(&1), "{after_source:?}");
 

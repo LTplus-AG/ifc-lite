@@ -12,6 +12,8 @@ export type ShadowDrawKind = 'flat' | 'quantized' | 'instanced' | 'textured';
 /** One occluder draw recorded into the depth pre-pass. */
 export interface ShadowOccluderDraw {
   kind: ShadowDrawKind;
+  /** Smallest full scene id in this draw, for the packed 24-bit vertex lane. */
+  entityIdAnchor?: number;
   vertexBuffer: GPUBuffer;
   indexBuffer: GPUBuffer;
   indexCount: number;
@@ -34,6 +36,8 @@ export interface ShadowRteFrame { cameraWorld: WorldPoint }
 
 /** World-space clip contract shared by colour and depth paths. */
 export interface ShadowClip {
+  /** Full scene ids exempt from primary and extra section planes; crop boxes still apply. */
+  sectionExcludedIds?: ReadonlySet<number>;
   section?: { normal: readonly [number, number, number]; distance: number; flipped?: boolean } | null;
   box?: { min: readonly [number, number, number]; max: readonly [number, number, number] } | null;
   /** Cutting planes beyond `section` (#7545), world-space; an occluder is clipped against all of them. */

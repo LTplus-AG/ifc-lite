@@ -234,7 +234,7 @@ ENDSEC;\nEND-ISO`));
         expect(items).toHaveLength(1);
         for (const item of items) {
           if (typeof item !== 'number') throw new Error('BRep reference must be an entity ID');
-          expect(reopened.entities.getTypeName(item)).toBe('IfcFacetedBrep');
+          expect(reopened.entityIndex.byId.get(item)?.type).toBe('IFCFACETEDBREP');
           reachableBreps.add(item);
         }
       }

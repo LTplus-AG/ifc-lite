@@ -115,6 +115,7 @@ function test(name, fn) {
   }
 }
 runEarlyContracts({ IfcAPI, api, test, skip, root: ROOT_DIR });
+(await import('./lib/wasm-placement-refusal-contracts.mjs')).runPlacementRefusalContracts(IfcAPI, test); // #7877/#7779, fixture-free
 runScanOutlineContracts({ test }); // #6871, fixture-free
 (await import('./lib/wasm-step-page-contracts.mjs')).runStepPageContracts(api, test); // #7540, fixture-free: must precede unrelated fixture early-exit.
 (await import('./lib/wasm-stray-apostrophe-contracts.mjs')).runStrayApostropheContracts(api, test); // #7541, fixture-free

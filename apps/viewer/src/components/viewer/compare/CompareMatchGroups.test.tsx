@@ -11,7 +11,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { type CompareMatchRow } from './changeRow.js';
+import type { CompareMatchRow } from './changeRow.js';
 import { CompareMatchGroups } from './CompareMatchGroups.js';
 
 /** `retiring: true` rows are the Matched section; `false` rows belong to Suggestions. */

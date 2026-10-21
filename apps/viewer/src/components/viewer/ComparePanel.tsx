@@ -77,7 +77,18 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
   // starts unfiltered without a stale visibility effect in between (#8017).
   const [filterState, setFilterState] = useState({ result, filter: ALL_COMPARE_RESULTS });
   const filter = filterState.result === result ? filterState.filter : ALL_COMPARE_RESULTS;
-  const setFilter = (filter: CompareResultFilter) => setFilterState({ result, filter });
+  const setFilter = (filter: CompareResultFilter) => {
+    setFilterState({ result, filter });
+    if (!filter.category && !filter.kind) return;
+    const refs = (result?.diff.entries ?? []).filter((entry) => matchesCompareEntry(entry, filter))
+      .map(drawableEntryRef).filter((ref): ref is CompareRef => !!ref);
+    refs.push(...allMatchRows.filter((row) => matchesCompareMatch(row, filter)).flatMap((row) => row.refs));
+    if (refs.length) focusRefs(refs, null);
+    else {
+      useViewerStore.getState().clearEntitySelection();
+      useViewerStore.getState().setCompareSelectedKey(null);
+    }
+  };
   useCompareOverlay(filter);
   const filtering = !!(filter.category || filter.kind);
   // Row names and change details read the stores the diff was computed from (#5312).

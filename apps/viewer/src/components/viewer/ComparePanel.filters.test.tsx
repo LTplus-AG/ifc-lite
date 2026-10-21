@@ -65,6 +65,7 @@ describe('comparison filters (#8017)', () => {
     assert.match(rows(ui), /added/);
     assert.doesNotMatch(rows(ui), /removed|old-match/);
     const state = useViewerStore.getState();
+    assert.deepEqual(state.selectedEntityIds, new Set([offset + 5]));
     assert.equal(state.hiddenEntities.has(offset + 5), false);
     for (const id of [1, 2, 3, 4, 6, offset + 1, offset + 2, offset + 3, offset + 7]) assert.ok(state.hiddenEntities.has(id), `${id} excluded`);
     click(badge(ui, 'Added'));

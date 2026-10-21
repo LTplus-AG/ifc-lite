@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import { COMPARE_COLORS, rgbaCss, type RGBA } from '@/lib/compare/overlay';
 import { MATCH_KIND_HINT, MATCH_KIND_LABEL } from '@/lib/compare/contentMatches';
-import { type CompareMatchRow } from './changeRow';
+import type { CompareMatchRow } from './changeRow';
 import { AnalysisResultList } from '../analysis/AnalysisResultList';
 
 /** Right-hand summary for a row: the kind, plus the group shape when the match

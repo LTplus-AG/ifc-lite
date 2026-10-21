@@ -122,10 +122,28 @@ test('comparison categories isolate results and remain reachable on a short pane
   const before = await page.evaluate(() => [...(globalThis as unknown as {
     __ifc_lite_viewer_store__: { getState(): { hiddenEntities: Set<number> } }
   }).__ifc_lite_viewer_store__.getState().hiddenEntities].sort((a, b) => a - b));
+  // Observe the real camera actuator; await its animation before capturing
+  // the viewport, so screenshots demonstrate the isolated geometry as well.
+  await page.evaluate(() => {
+    const realm = globalThis as unknown as {
+      __compareFrameCount: number; __compareFrameReady?: Promise<boolean> | boolean;
+      __ifc_lite_viewer_store__: { getState(): { cameraCallbacks: { frameSelection?: (duration?: number) => Promise<boolean> | boolean } } };
+    };
+    realm.__compareFrameCount = 0;
+    const callbacks = realm.__ifc_lite_viewer_store__.getState().cameraCallbacks;
+    const frame = callbacks.frameSelection;
+    callbacks.frameSelection = (duration) => {
+      realm.__compareFrameCount++;
+      return realm.__compareFrameReady = frame?.(duration) ?? false;
+    };
+  });
+  let frames = 0;
   for (const [label, diffState] of [['Added', 'added'], ['Deleted', 'deleted'], ['Changed', 'modified']] as const) {
     const badge = page.getByRole('button', { name: label, exact: true });
     await badge.click();
     await expect(badge).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(() => page.evaluate(() => (globalThis as unknown as { __compareFrameCount: number }).__compareFrameCount)).toBe(++frames);
+    expect(await page.evaluate(() => (globalThis as unknown as { __compareFrameReady: Promise<boolean> }).__compareFrameReady)).toBe(true);
     const visibility = await page.evaluate((category) => {
       const s = (globalThis as unknown as { __ifc_lite_viewer_store__: { getState(): {
         hiddenEntities: Set<number>; compareResult: { diff: { entries: Array<{
@@ -139,6 +157,28 @@ test('comparison categories isolate results and remain reachable on a short pane
     await results.scrollIntoViewIfNeeded();
     await expect(results).toContainText(label);
     expect(await results.evaluate(el => el.getBoundingClientRect().height)).toBeGreaterThan(26);
+    // Read the production color attachment as well: headless Chromium can
+    // omit a WebGPU canvas from compositor screenshots even when it renders.
+    const frame = await page.evaluate(async () => {
+      const host = globalThis as unknown as { __ifc_lite_capture_color_frame__: () => Promise<string | null> };
+      const png = await host.__ifc_lite_capture_color_frame__();
+      if (!png) return null;
+      const bitmap = await createImageBitmap(await (await fetch(png)).blob());
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const context = canvas.getContext('2d')!;
+      context.drawImage(bitmap, 0, 0);
+      const bytes = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+      let colored = 0;
+      for (let i = 0; i < bytes.length; i += 4) {
+        if (Math.max(bytes[i], bytes[i + 1], bytes[i + 2]) - Math.min(bytes[i], bytes[i + 1], bytes[i + 2]) > 30) colored++;
+      }
+      bitmap.close();
+      return { png, colored };
+    });
+    expect(frame?.colored).toBeGreaterThan(20);
+    await testInfo.attach(`compare-8017-${diffState}-gpu.png`, {
+      body: Buffer.from(frame!.png.split(',')[1], 'base64'), contentType: 'image/png',
+    });
     await page.screenshot({ path: testInfo.outputPath(`compare-8017-${diffState}.png`) });
     await badge.click();
     await expect(badge).toHaveAttribute('aria-pressed', 'false');

@@ -20,18 +20,8 @@ import type {
   DiffState,
 } from '@ifc-lite/diff';
 
-/**
- * Cap rows RENDERED per group so a huge diff can't stall the DOM.
- *
- * Applies to the Added/Changed/Deleted buckets (`ComparePanel`) and, since
- * #1891, to the Matched / Needs review sections (`CompareMatchGroups`) - the
- * content pass is on by default and a from-scratch re-export can produce one
- * match per element, so that list is the one most likely to be enormous.
- *
- * Display-only in both places: the group counts and the section-header "select
- * all in 3D" action always cover the FULL set, and the overflow is reported as
- * "+N more not shown" so a subset is never shown silently.
- */
+/** Suggestions retain an explicit display cap. Change and Matched groups
+ * use AnalysisResultList to make every row reachable with bounded DOM work. */
 export const MAX_ROWS_PER_GROUP = 1000;
 
 /** One row in the compare results list. */

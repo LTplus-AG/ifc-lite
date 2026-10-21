@@ -11,7 +11,6 @@
  */
 
 import type { ReactNode } from 'react';
-import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
@@ -74,7 +73,7 @@ export function CompareResultView({ result, filter = ALL_COMPARE_RESULTS, onFilt
       onClick={onFilter ? () => onFilter({ category: filter.category === category ? null : category, kind: null }) : undefined} />
   );
   const summary = counts ? (
-    <div className={cn('grid gap-1 text-center', matchedElements !== null ? 'grid-cols-5' : 'grid-cols-4')}>
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(4rem,1fr))] gap-1 text-center">
       {badge('modified', t('comparePanel.resultsList.stateChanged'), split?.products.modified ?? counts.modified, typeObjectHint(split?.typeObjects.modified ?? 0))}
       {badge('added', t('comparePanel.resultsList.stateAdded'), split?.products.added ?? counts.added, typeObjectHint(split?.typeObjects.added ?? 0))}
       {badge('deleted', t('comparePanel.resultsList.stateDeleted'), split?.products.deleted ?? counts.deleted, typeObjectHint(split?.typeObjects.deleted ?? 0))}

@@ -1,5 +1,10 @@
 # Bounded adjacent-carrier normalization (#7714)
 
+> Historical evidence packet: each receipt qualifies only its recorded source and
+> base revisions. These results do not qualify later recovery commits or restacks.
+> Current implementation and integration holds are tracked in [#7903](https://github.com/LTplus-AG/ifc-lite/pull/7903)
+> and [#7904](https://github.com/LTplus-AG/ifc-lite/pull/7904).
+
 The source witness is SOffice operand `IfcFacetedBrep` #489635. Its original
 file SHA256 is `38c4ecbbc67d0759dfcffb2c90664f5b5231e6c48fc54597c62975b41bb629db`.
 The committed `rust/geometry/tests/fixtures/issue_7714_soffice_carrier.ifc`

@@ -3,11 +3,12 @@
 
 use crate::process_control::ProcessControl;
 use crate::protocol::{self, BooleanOperation, KernelCommand, KernelResponse, WireHandle, VERSION};
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::io::{Read, Write};
 use std::process::{ChildStdin, ChildStdout, Command, Stdio};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Weak};
 
 #[path = "worker_error.rs"]
 mod error;
@@ -15,6 +16,29 @@ pub use error::WorkerError;
 #[path = "worker_mesh.rs"]
 mod mesh;
 pub use mesh::{MeshLimits, TessellatedMesh};
+#[path = "worker_empty.rs"]
+mod empty;
+pub use empty::NumericalOutcome;
+#[path = "worker_handles.rs"]
+mod handles;
+#[path = "worker_upload.rs"]
+mod upload;
+#[path = "worker_qualification.rs"]
+mod qualification;
+pub use qualification::RegionQualificationReport;
+#[path = "worker_disk_qualification.rs"]
+mod disk_qualification;
+#[path = "worker_sweep.rs"]
+mod sweep;
+pub use sweep::RetainedRealization;
+#[path = "worker_objects.rs"]
+mod objects;
+#[path = "worker_dependencies.rs"]
+mod dependencies;
+pub use dependencies::{RetainedDependency, RetainedDependencyResult, RetainedLineage};
+#[path = "worker_affine.rs"]
+mod affine;
+pub use affine::{AffineCertificate, AffineCopyIdentity, RetainedAffineCopy, RetainedTransformInput};
 
 static NEXT_WORKER: AtomicU64 = AtomicU64::new(1);
 
@@ -39,7 +63,17 @@ pub struct SmlibWorker {
     session: u64,
     sequence: u32,
     healthy: bool,
-    objects: HashSet<WireHandle>,
+    /// Same-incarnation numerical witnesses; never set by capability bits.
+    regions_qualified: bool,
+    disks_qualified: bool,
+    /// Live objects; each flag is shared with the receipts that name it and
+    /// cleared before the object is released.
+    objects: HashMap<WireHandle, Arc<AtomicBool>>,
+    /// Managed objects whose final receipt was dropped, released before the
+    /// next command by this exact worker.
+    releases: Arc<objects::ReleaseQueue>,
+    /// One shared lease per managed object.
+    managed: HashMap<WireHandle, Weak<objects::ManagedObjectLease>>,
 }
 
 impl SmlibWorker {
@@ -71,7 +105,11 @@ impl SmlibWorker {
             session: 0,
             sequence: 0,
             healthy: true,
-            objects: HashSet::new(),
+            regions_qualified: false,
+            disks_qualified: false,
+            objects: HashMap::new(),
+            releases: Arc::new(objects::ReleaseQueue::default()),
+            managed: HashMap::new(),
         })
     }
 
@@ -222,86 +260,20 @@ impl SmlibWorker {
         self.handle(bytes)
     }
 
-    /// Release one live object. A reported kernel failure retires the process
-    /// because the object's state is then unknown.
-    pub fn release(&mut self, solid: BrepHandle) -> Result<(), WorkerError> {
-        if solid.worker != self.identity || solid.wire.session != self.session {
-            return Err(WorkerError::WrongWorker);
+    /// Additive adapter extension bits. They name implementations, never
+    /// same-incarnation numerical qualification.
+    fn capabilities(&mut self) -> Result<u32, WorkerError> {
+        match self.call(KernelCommand::Capabilities)?.as_slice() {
+            [1, 0, 0, 0, a, b, c, d] => Ok(u32::from_le_bytes([*a, *b, *c, *d])),
+            _ => Err(self.poison("invalid capability response")),
         }
-        self.check(solid)?;
-        self.objects.remove(&solid.wire);
-        match self.exchange(&KernelCommand::Release {
-            session: self.session,
-            object: solid.wire,
-        }) {
-            Ok(bytes) if bytes.is_empty() => Ok(()),
-            Ok(_) => Err(self.poison("release returned unexpected payload")),
-            Err(error) => {
-                self.retire();
-                Err(error)
-            }
-        }
-    }
-
-    fn check_command_objects(&self, command: &KernelCommand) -> Result<(), WorkerError> {
-        let check = |wire| {
-            self.check(BrepHandle {
-                worker: self.identity,
-                wire,
-            })
-        };
-        match command {
-            KernelCommand::Boolean { left, right, .. } => {
-                check(*left)?;
-                check(*right)
-            }
-            KernelCommand::CopyTransform { solid, .. }
-            | KernelCommand::Volume { solid, .. }
-            | KernelCommand::Manifold { solid, .. }
-            | KernelCommand::Tessellate { solid, .. } => check(*solid),
-            KernelCommand::MeshInfo { mesh, .. } | KernelCommand::MeshRead { mesh, .. } => {
-                check(*mesh)
-            }
-            _ => Ok(()),
-        }
-    }
-
-    fn handle(&mut self, bytes: Vec<u8>) -> Result<BrepHandle, WorkerError> {
-        let wire = WireHandle::from_bytes(&bytes).map_err(|error| self.poison(error.as_str()))?;
-        if wire.session != self.session {
-            return Err(self.poison("returned handle belongs to another session"));
-        }
-        if !self.objects.insert(wire) {
-            return Err(self.poison("duplicate live object handle"));
-        }
-        Ok(BrepHandle {
-            worker: self.identity,
-            wire,
-        })
-    }
-
-    fn wire(&self, solid: BrepHandle) -> Result<WireHandle, WorkerError> {
-        self.check(solid)?;
-        Ok(solid.wire)
-    }
-
-    fn check(&self, solid: BrepHandle) -> Result<(), WorkerError> {
-        if !self.is_live() {
-            return Err(WorkerError::Protocol("worker requires restart"));
-        }
-        if solid.worker != self.identity || solid.wire.session != self.session {
-            return Err(WorkerError::WrongWorker);
-        }
-        if !self.objects.contains(&solid.wire) {
-            return Err(WorkerError::WrongWorker);
-        }
-        Ok(())
     }
 
     fn call(&mut self, command: KernelCommand) -> Result<Vec<u8>, WorkerError> {
         if !self.is_live() {
             return Err(WorkerError::Protocol("worker requires restart"));
         }
+        self.flush_releases()?;
         self.check_command_objects(&command)?;
         let result = self.exchange(&command);
         // Only known synchronized statuses 1..7 guarantee transactional refusal.

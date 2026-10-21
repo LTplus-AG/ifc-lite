@@ -28,6 +28,10 @@ mod fast_buffers;
 mod leaf_read;
 #[path = "decoder/precision.rs"]
 mod precision;
+#[path = "decoder/precision_certificate.rs"]
+mod precision_certificate;
+pub use precision_certificate::UniformContextPrecision;
+pub(crate) use precision_certificate::UniformContextPrecisionCache;
 #[path = "decoder/schema_layout.rs"]
 mod schema_layout;
 #[path = "decoder/styled_items.rs"]
@@ -100,6 +104,7 @@ pub struct EntityDecoder<'a> {
     /// Smallest and largest declared geometric-context Precision in file units.
     /// Errors are cached too, so malformed input cannot trigger repeated scans.
     geometric_precision_cache: Option<std::result::Result<Option<(f64, f64)>, String>>,
+    uniform_precision_cache: precision_certificate::PrecisionCache,
     /// Per-worker memo of resolved placement world transforms, keyed by the
     /// IfcObjectPlacement entity id and stored as an opaque column-major
     /// `[f64; 16]` (core must not depend on nalgebra; the geometry crate owns
@@ -151,6 +156,7 @@ impl<'a> EntityDecoder<'a> {
             project_id_cache: None,
             length_unit_scale_cache: None,
             geometric_precision_cache: None,
+            uniform_precision_cache: Default::default(),
             placement_transform_cache: FxHashMap::default(),
             styled_item_index: std::sync::OnceLock::new(),
             schema_version_cache: None,

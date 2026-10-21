@@ -1,0 +1,60 @@
+diff --git a/rust/geometry/src/document/retained_disk.rs b/rust/geometry/src/document/retained_disk.rs
+--- a/rust/geometry/src/document/retained_disk.rs
++++ b/rust/geometry/src/document/retained_disk.rs
+@@ -66,7 +66,7 @@ pub(super) fn lower(recipe: &RetainedSweptDisk) -> Result<SweepPayload, Retained
+     {
+         return invalid("invalid original solid metadata");
+     }
+-    if false && disk.inner_radius.is_some() {
++    if disk.inner_radius.is_some() {
+         return Err(RetainedRefusal::UnsupportedSource(
+             "hollow swept disks are not supported by this request encoding".into(),
+         ));
+@@ -112,14 +112,14 @@ pub(super) fn lower(recipe: &RetainedSweptDisk) -> Result<SweepPayload, Retained
+     ] {
+         bytes.extend(value.to_le_bytes());
+     }
+-    for value in [path.knots[0], path.knots[path.knots.len() - 1]] {
++    for value in path.parameter_range {
+         scalar(&mut bytes, value)?;
+     }
+     for (point, weight) in path.control_points.iter().zip(&path.weights) {
+         for axis in 0..3 {
+-            scalar(&mut bytes, point[axis] * units)?;
++            scalar(&mut bytes, (point[axis] - anchor[axis]) * units)?;
+         }
+-        scalar(&mut bytes, 1.0)?;
++        scalar(&mut bytes, *weight)?;
+     }
+     for (knot, multiplicity) in path.knots.iter().zip(&path.multiplicities) {
+         scalar(&mut bytes, *knot)?;
+@@ -228,7 +228,7 @@ fn exact_path(
+             let sweep = sweep_angle.abs();
+             if sweep.is_nan()
+                 || sweep <= tol::RETAINED_ARC_INTERVAL_EPS_RAD
+-                || sweep > TAU + tol::RETAINED_ARC_INTERVAL_EPS_RAD
++                || sweep >= TAU - tol::RETAINED_ARC_INTERVAL_EPS_RAD
+             {
+                 return Err(RetainedRefusal::UnsupportedSource(
+                     "closed circular directrix requires an additional qualified route".into(),
+@@ -287,7 +287,7 @@ fn arc(
+     let mut weights = vec![1.0];
+     for span in 0..spans {
+         let base = start + delta * span as f64;
+-        controls.push(point(base + delta / 2.0, radius));
++        controls.push(point(base + delta / 2.0, radius / weight));
+         weights.push(weight);
+         controls.push(point(base + delta, radius));
+         weights.push(1.0);
+diff --git a/rust/processing/src/retained_requests.rs b/rust/processing/src/retained_requests.rs
+--- a/rust/processing/src/retained_requests.rs
++++ b/rust/processing/src/retained_requests.rs
+@@ -312,7 +312,7 @@ fn occurrence(
+     // encodes its owned coefficients instead, so that inherited status is no
+     // reason to refuse the placement.
+     if let AnalyticStatus::Unsupported(reason) = &instance.status {
+-        if true || instance.status != *source_status {
++        if instance.status != *source_status {
+             return Err(RetainedSourceRefusal::OccurrenceUnsupported(reason.clone()));
+         }
+     }

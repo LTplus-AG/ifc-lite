@@ -20,7 +20,7 @@
 import type { IfcSourceBytes } from '@ifc-lite/parser';
 import { collectRefsInByteRange } from './reference-collector.js';
 import { isGeometryEntity } from './step-geometry-types.js';
-import { TEXTURE_MAP_TYPES, textureMapTarget } from './texture-map-closure.js';
+import { PRESENTATION_MAP_TYPES, presentationMapTarget } from './presentation-map-closure.js';
 import type { EffectiveEntityIndex } from './effective-index.js';
 
 /**
@@ -37,7 +37,7 @@ export const STYLE_RESCUE_TYPES: ReadonlySet<string> = new Set([
   'IFCSTYLEDREPRESENTATION',
   'IFCPRESENTATIONLAYERASSIGNMENT',
   'IFCPRESENTATIONLAYERWITHSTYLE',
-  ...TEXTURE_MAP_TYPES,
+  ...PRESENTATION_MAP_TYPES,
 ]);
 
 /**
@@ -175,15 +175,15 @@ export function collectStyleEntities(
     }
   }
 
-  // Texture maps are inverse attachments too, but sharing an image never
-  // proves that their MappedTo geometry is visible (#4243).
-  for (const type of TEXTURE_MAP_TYPES) {
+  // Texture/colour maps are inverse attachments too; sharing an appearance
+  // resource never proves their MappedTo geometry is visible (#4243/#7711).
+  for (const type of PRESENTATION_MAP_TYPES) {
     // @raw-entity-enumeration-ok candidate membership comes from the caller-supplied effective or overlay-free index
     for (const id of entityIndex.byType.get(type) ?? []) {
       // @raw-entity-enumeration-ok membership and liveness are checked against that same caller-supplied index
       if (closure.has(id) || excludeIds?.has(id) || !entityIndex.byId.has(id)) continue;
-      // @raw-entity-enumeration-ok textureMapTarget receives the same caller-supplied index for a single accepted candidate
-      const target = textureMapTarget(source, entityIndex.byId, id);
+      // @raw-entity-enumeration-ok presentationMapTarget receives the same caller-supplied index for a single accepted candidate
+      const target = presentationMapTarget(source, entityIndex.byId, id);
       if (target !== undefined && closure.has(target)) { closure.add(id); queue.push(id); }
     }
   }

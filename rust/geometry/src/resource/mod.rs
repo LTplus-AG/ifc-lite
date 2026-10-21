@@ -61,8 +61,19 @@ fn terminal_scope() -> Option<TerminalScope> {
 pub fn current_account() -> Option<ExecutionAccount> {
     CURRENT.with(|slot| slot.borrow().clone())
 }
+/// Whether an execution account is installed on this thread. Resource
+/// accounting is native-only: no wasm32 consumer installs an account, so the
+/// browser engine compiles every accounted path out (a constant `false` lets
+/// the optimiser drop them from the bundle).
 pub fn is_active() -> bool {
-    CURRENT.with(|slot| slot.borrow().is_some())
+    #[cfg(target_arch = "wasm32")]
+    {
+        false
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        CURRENT.with(|slot| slot.borrow().is_some())
+    }
 }
 pub fn check_current() -> Result<(), ProgramStop> {
     let source = SOURCE_STOP.with(|slot| {

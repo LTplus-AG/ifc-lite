@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Retained authored-source requests, kept apart from display meshes.
 //!
-//! A retained definition owns one captured authored extrusion plus its encoded
-//! numerical request ([`SweepPayload`]). It is never a mesh and never enters
+//! A retained definition owns one captured authored source ([`RetainedRecipe`]:
+//! an extrusion or a swept disk) plus its encoded numerical request
+//! ([`SweepPayload`]). It is never a mesh and never enters
 //! [`GeometryDocument::mesh`]. The only way from a retained definition to a
 //! mesh is [`GeometryDocument::publish_retained_display`], which admits a
 //! worker's tessellation as an ordinary display-approximation definition.
 
+use super::retained_disk::{self, RetainedSweptDisk};
 use super::retained_sweep::{self, SweepPayload};
 use super::{
     validation, DefinitionHandle, DocumentError, DocumentId, GeometryDocument, OccurrenceHandle,
@@ -29,6 +31,24 @@ pub struct RetainedExtrusion {
     pub source: AnalyticExtrusion,
     /// Raw IFC file length unit -> metres.
     pub length_unit_scale: f64,
+}
+
+/// The captured authored source a retained definition owns, unchanged.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum RetainedRecipe {
+    Extrusion(RetainedExtrusion),
+    SweptDisk(RetainedSweptDisk),
+}
+
+impl RetainedRecipe {
+    /// STEP id of the authored solid; a published display is attributed to it.
+    pub fn solid_id(&self) -> u32 {
+        match self {
+            Self::Extrusion(recipe) => recipe.source.solid_id,
+            Self::SweptDisk(recipe) => recipe.solid_id,
+        }
+    }
 }
 
 /// Every refusal of the retained contract. A refused call leaves the document
@@ -83,7 +103,7 @@ pub enum RetainedDisplayContract {
 
 #[derive(Debug)]
 pub(super) struct RetainedEntry {
-    recipe: RetainedExtrusion,
+    recipe: RetainedRecipe,
     payload: SweepPayload,
 }
 
@@ -114,7 +134,7 @@ impl RetainedRequest {
     pub fn worker_incarnation(&self) -> u64 {
         self.worker_incarnation
     }
-    pub fn recipe(&self) -> &RetainedExtrusion {
+    pub fn recipe(&self) -> &RetainedRecipe {
         &self.entry.recipe
     }
     /// The encoded request a worker evaluates.
@@ -180,6 +200,25 @@ impl GeometryDocument {
         recipe: RetainedExtrusion,
     ) -> Result<RetainedDefinitionHandle, RetainedRefusal> {
         let payload = retained_sweep::lower(&recipe)?;
+        self.retain(RetainedRecipe::Extrusion(recipe), payload)
+    }
+
+    /// Encodes and retains one captured authored swept disk. Refuses every
+    /// source wire format 2 cannot represent exactly; see `retained_disk`'s
+    /// module documentation for the supported family.
+    pub fn add_retained_swept_disk(
+        &mut self,
+        recipe: RetainedSweptDisk,
+    ) -> Result<RetainedDefinitionHandle, RetainedRefusal> {
+        let payload = retained_disk::lower(&recipe)?;
+        self.retain(RetainedRecipe::SweptDisk(recipe), payload)
+    }
+
+    fn retain(
+        &mut self,
+        recipe: RetainedRecipe,
+        payload: SweepPayload,
+    ) -> Result<RetainedDefinitionHandle, RetainedRefusal> {
         let revision = self.next_revision()?;
         let handle = RetainedDefinitionHandle {
             document: self.id,
@@ -191,10 +230,10 @@ impl GeometryDocument {
         Ok(handle)
     }
 
-    pub fn retained_extrusion(
+    pub fn retained_recipe(
         &self,
         handle: RetainedDefinitionHandle,
-    ) -> Result<&RetainedExtrusion, DocumentError> {
+    ) -> Result<&RetainedRecipe, DocumentError> {
         Ok(&self.retained_entry(handle)?.recipe)
     }
 
@@ -206,7 +245,7 @@ impl GeometryDocument {
     }
 
     /// Snapshots `definition` for the worker incarnation the caller selected.
-    pub fn prepare_retained_extrusion(
+    pub fn prepare_retained(
         &self,
         definition: RetainedDefinitionHandle,
         worker_incarnation: u64,
@@ -288,7 +327,7 @@ impl GeometryDocument {
         self.revision
             .checked_add(additions)
             .ok_or(DocumentError::RevisionExhausted)?;
-        let solid_id = packet.request.entry.recipe.source.solid_id;
+        let solid_id = packet.request.entry.recipe.solid_id();
         let definition = self.add_mesh_definition(solid_id, mesh)?;
         let mut handles = Vec::with_capacity(occurrences.len());
         for &(entity_id, transform) in occurrences {

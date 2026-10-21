@@ -1,24 +1,27 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Opt-in retained authored-extrusion requests for a model.
+//! Opt-in retained authored-source requests for a model.
 //!
-//! Re-reads the model's authored `IfcExtrudedAreaSolid` sources with original
-//! records captured, admits each supported source into its own
-//! [`GeometryDocument`] and keeps the placed occurrences that can host it.
-//! Ordinary loads never call this; its walk and memory cost are opt-in.
+//! Re-reads the model's authored `IfcExtrudedAreaSolid` or `IfcSweptDiskSolid`
+//! sources with original records captured, admits each supported source into
+//! its own [`GeometryDocument`] and keeps the placed occurrences that can host
+//! it. Ordinary loads never call this; its walk and memory cost are opt-in.
 //!
 //! Strictly source-only: a request describes the raw authored solid. Openings,
 //! enclosing booleans, styles and other representation items are never
 //! applied, so a published retained display is not final product geometry.
 //! Every source or occurrence outside the supported family is listed in
-//! [`RetainedExtrusionSources::refused`] with its reason, never dropped
+//! [`RetainedSources::refused`] with its reason, never dropped
 //! silently or replaced by a tessellated mesh.
 
-use crate::{extract_extrusion_definitions, AnalyticSourceKey, ExtrusionInstance};
-use ifc_lite_geometry::analytic::{with_source_capture, AnalyticStatus};
+use crate::{
+    extract_extrusion_definitions, extract_swept_disk_definitions, AnalyticSourceKey,
+    ExtrusionInstance, SweptDiskDefinition,
+};
+use ifc_lite_geometry::analytic::{with_source_capture, AnalyticStatus, AnalyticSweptDisk};
 use ifc_lite_geometry::document::{
     DefinitionHandle, GeometryDocument, OccurrenceHandle, RegionQualification, RetainedCompletion,
     RetainedDefinitionHandle, RetainedDisplayContract, RetainedExtrusion, RetainedRefusal,
-    RetainedRequest,
+    RetainedRequest, RetainedSweptDisk,
 };
 use nalgebra::Matrix4;
 use std::collections::{BTreeMap, HashSet};
@@ -30,7 +33,7 @@ const WORLD_RIGID_EPS: f64 = 1e-9;
 /// Why a source or one of its occurrences is outside the retained family.
 #[derive(Debug, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum RetainedExtrusionRefusal {
+pub enum RetainedSourceRefusal {
     /// The geometry document refused the authored source itself.
     Source(RetainedRefusal),
     /// The solid is an operand of an enclosing boolean; publishing the raw
@@ -44,15 +47,15 @@ pub enum RetainedExtrusionRefusal {
 
 /// A refused source (`product_id` is `None`) or a refused occurrence of it.
 #[derive(Debug)]
-pub struct RefusedExtrusion {
+pub struct RefusedSource {
     pub key: AnalyticSourceKey,
     pub product_id: Option<u32>,
-    pub refusal: RetainedExtrusionRefusal,
+    pub refusal: RetainedSourceRefusal,
 }
 
 /// One admitted placement of a retained source.
 #[derive(Debug, Clone)]
-pub struct RetainedExtrusionOccurrence {
+pub struct RetainedOccurrence {
     pub product_id: u32,
     /// Family-local ordinal from [`ExtrusionInstance::ordinal`].
     pub ordinal: usize,
@@ -65,20 +68,20 @@ pub struct RetainedExtrusionOccurrence {
 #[derive(Debug)]
 pub struct PublishedRetainedDisplay {
     pub definition: DefinitionHandle,
-    /// `(product_id, occurrence)` in [`RetainedExtrusionSource::occurrences`] order.
+    /// `(product_id, occurrence)` in [`RetainedSource::occurrences`] order.
     pub occurrences: Vec<(u32, OccurrenceHandle)>,
 }
 
 /// One supported authored source, its own document and its admitted placements.
 #[derive(Debug)]
-pub struct RetainedExtrusionSource {
+pub struct RetainedSource {
     key: AnalyticSourceKey,
     document: GeometryDocument,
     definition: RetainedDefinitionHandle,
-    occurrences: Vec<RetainedExtrusionOccurrence>,
+    occurrences: Vec<RetainedOccurrence>,
 }
 
-impl RetainedExtrusionSource {
+impl RetainedSource {
     pub fn key(&self) -> &AnalyticSourceKey {
         &self.key
     }
@@ -89,7 +92,7 @@ impl RetainedExtrusionSource {
     pub fn definition(&self) -> RetainedDefinitionHandle {
         self.definition
     }
-    pub fn occurrences(&self) -> &[RetainedExtrusionOccurrence] {
+    pub fn occurrences(&self) -> &[RetainedOccurrence] {
         &self.occurrences
     }
 
@@ -104,7 +107,7 @@ impl RetainedExtrusionSource {
     /// Request for the worker incarnation the caller selected (never 0).
     pub fn prepare(&self, worker_incarnation: u64) -> Result<RetainedRequest, RetainedRefusal> {
         self.document
-            .prepare_retained_extrusion(self.definition, worker_incarnation)
+            .prepare_retained(self.definition, worker_incarnation)
     }
 
     /// Publishes a completion as one display definition placed at every
@@ -142,82 +145,111 @@ impl RetainedExtrusionSource {
 
 /// Every retained request source of one model, admitted or refused.
 #[derive(Debug)]
-pub struct RetainedExtrusionSources {
+pub struct RetainedSources {
     pub model_sha256: String,
     /// Raw IFC file length unit -> metres.
     pub length_unit_scale: f64,
-    pub admitted: Vec<RetainedExtrusionSource>,
-    pub refused: Vec<RefusedExtrusion>,
+    pub admitted: Vec<RetainedSource>,
+    pub refused: Vec<RefusedSource>,
     /// Representation walk diagnostics; affected products have no sources.
     pub diagnostics: Vec<String>,
 }
 
-impl RetainedExtrusionSources {
+impl RetainedSources {
     /// Walk the model's authored extrusions, optionally only for the given
     /// product STEP IDs (`Some(empty)` returns nothing). No geometry is
     /// evaluated and nothing is tessellated.
-    pub fn extract(content: &[u8], ids: Option<&HashSet<u32>>) -> Self {
+    pub fn extrusions(content: &[u8], ids: Option<&HashSet<u32>>) -> Self {
         let definitions = with_source_capture(|| extract_extrusion_definitions(content, ids));
-        let mut by_source: BTreeMap<AnalyticSourceKey, Vec<ExtrusionInstance>> = BTreeMap::new();
-        for instance in definitions.instances.into_values().flatten() {
-            by_source
-                .entry(instance.source.clone())
-                .or_default()
-                .push(instance);
-        }
-        let mut sources = Self {
-            model_sha256: definitions.model_sha256,
-            length_unit_scale: definitions.length_unit_scale,
-            admitted: Vec::new(),
-            refused: Vec::new(),
-            diagnostics: definitions.diagnostics,
-        };
+        let mut sources = Self::new(
+            definitions.model_sha256,
+            definitions.length_unit_scale,
+            definitions.diagnostics,
+        );
+        let mut placements = by_source(definitions.instances.into_values().flatten());
         for definition in definitions.sources {
-            let instances = by_source.remove(&definition.key).unwrap_or_default();
             let recipe = RetainedExtrusion {
                 source: definition.source,
                 length_unit_scale: sources.length_unit_scale,
             };
-            sources.admit(definition.key, recipe, instances);
+            let placements = placements.remove(&definition.key).unwrap_or_default();
+            let status = recipe.source.status.clone();
+            sources.admit(definition.key, &status, placements, |document| {
+                document.add_retained_extrusion(recipe)
+            });
         }
         sources
     }
 
+    /// Walk the model's authored swept disks, as [`Self::extrusions`] does.
+    /// Only solid disks along one rational B-spline, line or partial arc are
+    /// admitted (wire format 2); every other directrix is refused by name.
+    pub fn swept_disks(content: &[u8], ids: Option<&HashSet<u32>>) -> Self {
+        let definitions = with_source_capture(|| extract_swept_disk_definitions(content, ids));
+        let mut sources = Self::new(
+            definitions.model_sha256,
+            definitions.length_unit_scale,
+            definitions.diagnostics,
+        );
+        let mut placements = by_source(definitions.instances.into_values().flatten());
+        for definition in definitions.sources {
+            let recipe = swept_disk_recipe(&definition, sources.length_unit_scale);
+            let placements = placements.remove(&definition.key).unwrap_or_default();
+            sources.admit(definition.key, &definition.status, placements, |document| {
+                document.add_retained_swept_disk(recipe)
+            });
+        }
+        sources
+    }
+
+    fn new(model_sha256: String, length_unit_scale: f64, diagnostics: Vec<String>) -> Self {
+        Self {
+            model_sha256,
+            length_unit_scale,
+            admitted: Vec::new(),
+            refused: Vec::new(),
+            diagnostics,
+        }
+    }
+
+    /// `source_status` is the source's line/arc interpretation status, which
+    /// every occurrence inherits; only occurrence-specific failures refuse one.
     fn admit(
         &mut self,
         key: AnalyticSourceKey,
-        recipe: RetainedExtrusion,
-        instances: Vec<ExtrusionInstance>,
+        source_status: &AnalyticStatus,
+        placements: Vec<ExtrusionInstance>,
+        retain: impl FnOnce(&mut GeometryDocument) -> Result<RetainedDefinitionHandle, RetainedRefusal>,
     ) {
         let mut document = GeometryDocument::new();
-        let admitted = document
-            .add_retained_extrusion(recipe)
-            .and_then(|definition| {
-                let frame = document.retained_payload(definition)?.source_from_evaluation;
-                Ok((definition, frame))
-            });
+        let admitted = retain(&mut document).and_then(|definition| {
+            let frame = document
+                .retained_payload(definition)?
+                .source_from_evaluation;
+            Ok((definition, frame))
+        });
         let (definition, source_from_evaluation) = match admitted {
             Ok(admitted) => admitted,
             Err(refusal) => {
-                self.refused.push(RefusedExtrusion {
+                self.refused.push(RefusedSource {
                     key,
                     product_id: None,
-                    refusal: RetainedExtrusionRefusal::Source(refusal),
+                    refusal: RetainedSourceRefusal::Source(refusal),
                 });
                 return;
             }
         };
-        let mut occurrences = Vec::with_capacity(instances.len());
-        for instance in instances {
-            match occurrence(&instance, &source_from_evaluation) {
-                Ok(world_from_evaluation) => occurrences.push(RetainedExtrusionOccurrence {
-                    product_id: instance.product_id,
-                    ordinal: instance.ordinal,
+        let mut occurrences = Vec::with_capacity(placements.len());
+        for placement in placements {
+            match occurrence(&placement, source_status, &source_from_evaluation) {
+                Ok(world_from_evaluation) => occurrences.push(RetainedOccurrence {
+                    product_id: placement.product_id,
+                    ordinal: placement.ordinal,
                     world_from_evaluation,
                 }),
-                Err(refusal) => self.refused.push(RefusedExtrusion {
+                Err(refusal) => self.refused.push(RefusedSource {
                     key: key.clone(),
-                    product_id: Some(instance.product_id),
+                    product_id: Some(placement.product_id),
                     refusal,
                 }),
             }
@@ -225,7 +257,7 @@ impl RetainedExtrusionSources {
         // A source with no placeable occurrence has nothing to publish; its
         // occurrence refusals above already explain why.
         if !occurrences.is_empty() {
-            self.admitted.push(RetainedExtrusionSource {
+            self.admitted.push(RetainedSource {
                 key,
                 document,
                 definition,
@@ -235,20 +267,60 @@ impl RetainedExtrusionSources {
     }
 }
 
+/// Extrusion and swept-disk occurrences share one instance type.
+fn by_source(
+    instances: impl Iterator<Item = ExtrusionInstance>,
+) -> BTreeMap<AnalyticSourceKey, Vec<ExtrusionInstance>> {
+    let mut placements = BTreeMap::<AnalyticSourceKey, Vec<ExtrusionInstance>>::new();
+    for instance in instances {
+        placements
+            .entry(instance.source.clone())
+            .or_default()
+            .push(instance);
+    }
+    placements
+}
+
+/// The definition carries every captured field of the extracted disk.
+fn swept_disk_recipe(
+    definition: &SweptDiskDefinition,
+    length_unit_scale: f64,
+) -> RetainedSweptDisk {
+    RetainedSweptDisk {
+        solid_id: definition.key.solid_id,
+        source: AnalyticSweptDisk {
+            directrix_id: definition.directrix_id,
+            start_param: definition.start_param,
+            end_param: definition.end_param,
+            source: definition.source.clone(),
+            owned_directrix: definition.owned_directrix.clone(),
+            radius: definition.radius,
+            inner_radius: definition.inner_radius,
+            segments: definition.directrix.clone(),
+            status: definition.status.clone(),
+        },
+        length_unit_scale,
+    }
+}
+
 fn occurrence(
     instance: &ExtrusionInstance,
+    source_status: &AnalyticStatus,
     source_from_evaluation: &[f64; 16],
-) -> Result<[f64; 16], RetainedExtrusionRefusal> {
+) -> Result<[f64; 16], RetainedSourceRefusal> {
+    // A rational disk directrix has no line/arc interpretation; the request
+    // encodes its owned coefficients instead, so that inherited status is no
+    // reason to refuse the placement.
     if let AnalyticStatus::Unsupported(reason) = &instance.status {
-        return Err(RetainedExtrusionRefusal::OccurrenceUnsupported(
-            reason.clone(),
-        ));
+        if instance.status != *source_status {
+            return Err(RetainedSourceRefusal::OccurrenceUnsupported(reason.clone()));
+        }
     }
     if instance.source_modified {
-        return Err(RetainedExtrusionRefusal::EnclosingBooleanUnevaluated);
+        return Err(RetainedSourceRefusal::EnclosingBooleanUnevaluated);
     }
     let world_from_source = instance.world_from_source.ok_or_else(|| {
-        RetainedExtrusionRefusal::OccurrenceUnsupported("occurrence placement unavailable".into())
+        RetainedSourceRefusal::OccurrenceUnsupported("occurrence placement unavailable".into())
     })?;
     let world = Matrix4::from_column_slice(&world_from_source)
         * Matrix4::from_column_slice(source_from_evaluation);
@@ -263,7 +335,7 @@ fn occurrence(
         || (world.fixed_view::<3, 3>(0, 0).determinant() - 1.0).abs() > WORLD_RIGID_EPS
         || world.fixed_view::<1, 4>(3, 0) != nalgebra::RowVector4::new(0.0, 0.0, 0.0, 1.0)
     {
-        return Err(RetainedExtrusionRefusal::UnqualifiedOccurrenceTransform);
+        return Err(RetainedSourceRefusal::UnqualifiedOccurrenceTransform);
     }
     Ok(std::array::from_fn(|i| world[(i / 4, i % 4)]))
 }

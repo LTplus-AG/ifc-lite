@@ -69,16 +69,19 @@ fn uncaptured_source_is_refused_without_changing_the_document() {
 fn retained_definition_is_not_a_mesh_and_requests_carry_identity() {
     let (document, handle) = admitted();
     assert_eq!(document.revision(), 1);
-    assert_eq!(document.retained_extrusion(handle).unwrap(), &recipe(true));
+    assert_eq!(
+        document.retained_recipe(handle).unwrap(),
+        &RetainedRecipe::Extrusion(recipe(true))
+    );
     assert_eq!(
         document.retained_payload(handle).unwrap().qualification,
         RegionQualification::Rectangle
     );
     assert_eq!(
-        document.prepare_retained_extrusion(handle, 0).unwrap_err(),
+        document.prepare_retained(handle, 0).unwrap_err(),
         RetainedRefusal::WrongWorker
     );
-    let request = document.prepare_retained_extrusion(handle, 7).unwrap();
+    let request = document.prepare_retained(handle, 7).unwrap();
     assert_eq!(
         (
             request.definition(),
@@ -87,10 +90,10 @@ fn retained_definition_is_not_a_mesh_and_requests_carry_identity() {
         ),
         (handle, 1, 7)
     );
-    assert_eq!(request.recipe().source.solid_id, 5);
+    assert_eq!(request.recipe().solid_id(), 5);
     let other = GeometryDocument::new();
     assert_eq!(
-        other.prepare_retained_extrusion(handle, 7).unwrap_err(),
+        other.prepare_retained(handle, 7).unwrap_err(),
         RetainedRefusal::Document(DocumentError::WrongDocument)
     );
 }
@@ -98,10 +101,7 @@ fn retained_definition_is_not_a_mesh_and_requests_carry_identity() {
 #[test]
 fn completions_are_bound_to_worker_revision_and_frame() {
     let (mut document, handle) = admitted();
-    let packet = completion(
-        document.prepare_retained_extrusion(handle, 7).unwrap(),
-        triangle(),
-    );
+    let packet = completion(document.prepare_retained(handle, 7).unwrap(), triangle());
     assert_eq!(document.validate_retained_completion(&packet, 7), Ok(()));
     // A restarted worker is a different incarnation; nothing replays.
     assert_eq!(
@@ -112,10 +112,7 @@ fn completions_are_bound_to_worker_revision_and_frame() {
         document.validate_retained_completion(&packet, 0),
         Err(RetainedRefusal::WrongWorker)
     );
-    let mut shifted = completion(
-        document.prepare_retained_extrusion(handle, 7).unwrap(),
-        triangle(),
-    );
+    let mut shifted = completion(document.prepare_retained(handle, 7).unwrap(), triangle());
     shifted.source_from_evaluation[12] += 1.;
     assert_eq!(
         document.validate_retained_completion(&shifted, 7),
@@ -131,10 +128,7 @@ fn completions_are_bound_to_worker_revision_and_frame() {
 #[test]
 fn display_publication_is_explicit_flat_and_never_authored() {
     let (mut document, handle) = admitted();
-    let packet = completion(
-        document.prepare_retained_extrusion(handle, 7).unwrap(),
-        triangle(),
-    );
+    let packet = completion(document.prepare_retained(handle, 7).unwrap(), triangle());
     for (contract, refusal) in [
         (
             RetainedDisplayContract::PersistentIfcFaces,
@@ -205,14 +199,17 @@ fn display_publication_is_explicit_flat_and_never_authored() {
         RetainedRefusal::Document(DocumentError::StaleRevision)
     );
     // The retained source stays authoritative beside its display mesh.
-    assert_eq!(document.retained_extrusion(handle).unwrap(), &recipe(true));
+    assert_eq!(
+        document.retained_recipe(handle).unwrap(),
+        &RetainedRecipe::Extrusion(recipe(true))
+    );
 }
 
 #[test]
 fn flat_corners_are_expanded_without_averaging_normals() {
     let (mut document, handle) = admitted();
     let mut packet = completion(
-        document.prepare_retained_extrusion(handle, 7).unwrap(),
+        document.prepare_retained(handle, 7).unwrap(),
         vec![0., 0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 1.],
     );
     packet.tessellation.indices = vec![0, 1, 2, 0, 3, 1];
@@ -244,7 +241,7 @@ fn flat_corners_are_expanded_without_averaging_normals() {
 #[test]
 fn invalid_tessellations_are_refused_and_kept() {
     let (mut document, handle) = admitted();
-    let request = document.prepare_retained_extrusion(handle, 7).unwrap();
+    let request = document.prepare_retained(handle, 7).unwrap();
     let collapsing = completion(
         request.clone(),
         vec![1., 0., 0., 1. + 1e-12, 0., 0., 1., 1., 0.],

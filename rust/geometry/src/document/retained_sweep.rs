@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Ordered-region extrusion request encoding. The source recipe is never
+//! Ordered-region extrusion request encoding (wire format 1; the swept-disk
+//! format 2 lives in `retained_disk.rs`). The source recipe is never
 //! modified; this module grants no execution qualification.
 //!
 //! Supported family: a linear extrusion of one planar region (one outer and up
@@ -30,7 +31,7 @@ mod region;
 pub(super) const MAX_LOOPS: usize = 128;
 pub(super) const MAX_SEGMENTS: usize = 8192;
 /// Largest admitted coordinate or depth in the local evaluation frame (metres).
-const MAX_LOCAL_M: f64 = 1e9;
+pub(super) const MAX_LOCAL_M: f64 = 1e9;
 
 /// Evidence the executing runtime must hold before evaluating a request. The
 /// variant is derived from geometry, never from a type name alone, and holding
@@ -42,6 +43,8 @@ pub enum RegionQualification {
     Rectangle,
     /// Any other supported ordered region of lines, arcs and circles.
     OrderedRegion,
+    /// One solid disk swept along one open rational B-spline (wire format 2).
+    RationalDisk,
 }
 
 /// One encoded retained request.
@@ -169,7 +172,7 @@ fn rigid(values: Option<[f64; 16]>) -> Result<Matrix4<f64>, RetainedRefusal> {
     Ok(matrix)
 }
 
-fn array(matrix: Matrix4<f64>) -> [f64; 16] {
+pub(super) fn array(matrix: Matrix4<f64>) -> [f64; 16] {
     std::array::from_fn(|i| matrix.as_slice()[i])
 }
 

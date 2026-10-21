@@ -124,12 +124,50 @@ handles.
 | 10 | Mesh info | u64 session, mesh handle | six u32: vertices, triangles, source faces, boundary edges, spine edges, failed faces |
 | 11 | Mesh read | u64 session, mesh handle, u32 stream, u32 scalar offset, u32 scalar count | scalar bytes in little endian |
 | 12 | Capabilities | empty | u32 capability version (1), u32 capability bits |
+| 13 | Sweep begin | u64 session, u32 format, u32 byte length, u32 loops, u32 segments | u64 upload token |
+| 14 | Sweep chunk | u64 session, u64 upload, u32 offset, u32 length, recipe bytes (<=3840) | empty |
+| 15 | Sweep commit | u64 session, u64 upload | handle |
+| 16 | Sweep abort | u64 session, u64 upload | empty |
 | 17 | Rigid copy | u64 session, handle, 16 f64 column-major matrix | handle |
 
-Capability bit 3 (value 8) reports opcode 17: copy a retained solid, then
-transform the copy by a validated proper rigid frame. Capability reports
-implementation, never qualification. Opcode numbers 13-16 and 18+ are reserved
-for later extensions and are rejected as unknown in this version.
+Capability bit 0 (value 1) reports staged recipe format 1, bit 1 (value 2)
+format 2, and bit 3 (value 8) opcode 17: copy a retained solid, then transform
+the copy by a validated proper rigid frame. Capability reports implementation,
+never qualification. Opcode numbers 18+ are reserved for later extensions and
+are rejected as unknown in this version.
+
+## Staged authored recipes
+
+Opcodes 13-16 construct one solid from a numerical recipe that the Rust
+geometry document lowered from an authored IFC source; the adapter never
+interprets IFC. The byte formats are specified in `include/ifclite_smlib.h`.
+
+- **Format 1**: a linear extrusion of one planar region, an outer loop then up
+  to 127 holes, of XY lines, partial circular arcs and full circles. Outer loops
+  are counter-clockwise and holes clockwise. Each full circle (kind 2) is
+  validated within 1e-12 of +/-2pi and then built as an exact 360-degree SDK
+  arc whose authored seam phase, normal and traversal live in its rigid frame.
+  Partial arcs (kind 3) keep their exact signed interval, shifted as a whole
+  into the SDK's [-360, 360] degree domain, so a trim that crosses the
+  parameter seam keeps its side. The capped solid publishes only when it is
+  manifold and its volume matches the region area times the projected depth.
+- **Format 2**: a solid disk swept along one open, clamped rational B-spline
+  with its original control points, weights, knots and parameter trim. Hollow
+  disks and closed paths are refused as unsupported. The solid publishes only
+  when it is manifold with positive volume.
+
+One upload is active per session, bounded to 1 MiB, 8192 curves and 128 loops.
+Chunks are sequential; an invalid chunk discards the upload. Every commit with
+an output consumes the upload, including a failed one, and publishes no handle
+on failure. `ctest` runs `smlib_retained_sweeps`: actual SDK solids for each
+witness with independent analytic volume, bounds, mid-height section length and
+strict planar/curved surface counts (oblique line extrusions are certified
+planar from their control hull, not the SDK's bounding-box `IsPlanar`), plus
+the upload bounds and malformed rational records.
+
+Capability is not qualification. The Rust client opens its curved-region and
+rational-disk routes only after `qualify_ordered_regions` /
+`qualify_rational_disks` pass on that exact worker process.
 
 Handles/session identifiers are scoped to one worker incarnation. Identical
 numeric values in two workers do not identify the same geometry; the client must
@@ -169,6 +207,6 @@ OS job/cgroup limits to the worker process.
 
 ## Not included
 
-Authored sweeps and disks, affine rational copies, finite plane clipping, face
-lineage and the browser/WASM module-worker transport are separate, later slices and
-are not part of this directory yet.
+Affine rational copies, finite plane clipping, face lineage and the
+browser/WASM module-worker transport are separate, later slices and are not part
+of this directory yet.

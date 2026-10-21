@@ -11,7 +11,7 @@ import { ViewerBenchmarkPage } from '../benchmark/viewer-benchmark-page';
 // the Compare panel's impact and run-reconciliation sections driven through
 // the UI. Only the store is read back; every number comes from native runs.
 
-// A tall coordinator display: below ~1000 px the Compare controls leave the change list little height.
+// Impact/reconciliation uses a tall display; #8017 below covers a normal laptop viewport.
 test.use({ viewport: { width: 1440, height: 1500 } });
 
 type StoreState = {

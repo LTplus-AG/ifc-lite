@@ -10,7 +10,7 @@ The `@ifc-lite/diff` package compares two revisions of a model and classifies ev
 ## Filtering viewer results
 
 After running **Compare models**, click **Changed**, **Added**, **Deleted**, or
-**Matched** to filter the result list and isolate that category in the viewport.
+**Matched** to filter the result list, isolate that category in the viewport, and frame its elements.
 Click the active count again, or **Show all results**, to restore the comparison.
 **Change kind** narrows changed elements to **Data / properties**, **Geometry**,
 or **Container**; an element with both data and geometry changes appears under

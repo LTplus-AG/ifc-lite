@@ -1,0 +1,37 @@
+diff --git a/rust/geometry/src/program/product.rs b/rust/geometry/src/program/product.rs
+--- a/rust/geometry/src/program/product.rs
++++ b/rust/geometry/src/program/product.rs
+@@ -201,8 +201,7 @@ impl<'a> ProductControl<'a> {
+             // The alignment processor's own source-and-mesh callback.
+             Action::Alignment => Some(ProgramStage::Extension),
+             Action::Shape | Action::Items(_) | Action::Annotation(_) | Action::Raw(_)
+-            | Action::Texture(_) => Some(ProgramStage::Source),
+-            Action::Placement => Some(ProgramStage::Numerical),
++            | Action::Texture(_) | Action::Placement => Some(ProgramStage::Source),
+             Action::Cache { control, .. } | Action::StyledCache { control, .. } => return control.stage(),
+             Action::Mapping { control, .. } => return control.stage(),
+             Action::AnnotationMesh(..) | Action::Merge(_) | Action::Finish | Action::Place(_) => {
+diff --git a/rust/geometry/src/program/product/accept.rs b/rust/geometry/src/program/product/accept.rs
+--- a/rust/geometry/src/program/product/accept.rs
++++ b/rust/geometry/src/program/product/accept.rs
+@@ -132,7 +132,7 @@ impl<'a> ProductControl<'a> {
+             return Action::Raw(item);
+         }
+         let next = self.shape.as_ref().and_then(|shape| {
+-            shape.next_selected(self.element, Select::Any, self.direct, self.next_rep)
++            shape.next_selected(self.element, Select::Meshed, self.direct, self.next_rep)
+         });
+         match next {
+             Some(index) => {
+diff --git a/rust/geometry/src/program/voids.rs b/rust/geometry/src/program/voids.rs
+--- a/rust/geometry/src/program/voids.rs
++++ b/rust/geometry/src/program/voids.rs
+@@ -185,7 +185,7 @@ fn hosts_complete<'a>(host: &'a DecodedEntity, ids: &'a [u32], hosts: Result<Pro
+         Ok(ProductOutput::Styled(sub_meshes)) if sub_meshes.is_empty() => {
+             Phase::Complete(Ok(ProductOutput::Styled(SubMeshCollection::new())))
+         }
+-        Ok(hosts) => Phase::Complete(Ok(hosts)),
++        Ok(hosts) => poll_openings(Box::new(OpeningControl::host(host, ids)), hosts),
+         Err(error) => Phase::Complete(Err(error)),
+     }
+ }

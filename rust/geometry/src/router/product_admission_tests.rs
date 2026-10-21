@@ -4,8 +4,7 @@
 
 //! #7887: a private product plan cannot migrate between execution owners.
 use super::*;
-#[path = "../../tests/support/profile_walk_model.rs"]
-mod model;
+use crate::profile_walk_model as model;
 
 #[test]
 fn issue_7887_decoder_replacement_between_admitted_roots_is_rejected() {

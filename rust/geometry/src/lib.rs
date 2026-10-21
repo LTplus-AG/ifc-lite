@@ -159,6 +159,9 @@ pub mod placement;
 pub(crate) mod processors;
 pub(crate) mod profile;
 pub(crate) mod profile_extractor;
+#[cfg(test)]
+#[path = "../tests/support/profile_walk_model.rs"]
+mod profile_walk_model;
 /// [`SkippedProfile`], split out of `profile_extractor` to keep it under
 /// its module-size ratchet.
 pub(crate) mod profile_skip;

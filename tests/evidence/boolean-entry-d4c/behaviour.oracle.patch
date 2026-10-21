@@ -1,0 +1,25 @@
+diff --git a/rust/geometry/src/program/boolean/mod.rs b/rust/geometry/src/program/boolean/mod.rs
+--- a/rust/geometry/src/program/boolean/mod.rs
++++ b/rust/geometry/src/program/boolean/mod.rs
+@@ -54,7 +54,7 @@ impl BooleanMachine {
+     /// The next step's stage; `None` once the continuation completed.
+     pub(crate) fn stage(&self) -> Option<ProgramStage> {
+         match self.frames.last()? {
+-            Frame::Solid { .. } => Some(ProgramStage::Source),
++            Frame::Solid { .. } => Some(ProgramStage::Numerical),
+             _ => Some(ProgramStage::Source),
+         }
+     }
+diff --git a/rust/geometry/src/program/item.rs b/rust/geometry/src/program/item.rs
+--- a/rust/geometry/src/program/item.rs
++++ b/rust/geometry/src/program/item.rs
+@@ -218,6 +218,9 @@ fn execute_boolean(
+         let result = Err(Error::geometry("the selected processor no longer records this boolean"));
+         return ItemStep::Complete(ItemResult { result, reports: prior });
+     };
++    if let Err(stop) = crate::resource::check_current() {
++        return ItemStep::Complete(ItemResult { result: Err(stop.into()), reports: prior });
++    }
+     let numerical = machine.stage() == Some(ProgramStage::Numerical);
+     let ((result, mut reports), reached) = diagnostic_capture::capture(|| {
+         let mut prior = UnwindReports(Some(prior));

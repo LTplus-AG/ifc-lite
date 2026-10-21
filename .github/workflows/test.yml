@@ -904,6 +904,16 @@ jobs:
           # and timeout. Once source_axes.rs is on main, whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/kernel/plane_weld/source_axes.rs | grep -Fxq 'rust/geometry/src/kernel/plane_weld/source_axes.rs'; then
             oracle_args+=(--mutation docs/architecture/evidence/issue-7292/signed-zero.oracle.patch)
+          # #7955 D4c: the Boolean entry adds program/boolean/mod.rs (the
+          # continuation moved out of the boolean processor), which the item
+          # control and its tests drive, so a whole-change revert cannot
+          # compile them (INCONCLUSIVE). Keep the continuation and break ONLY
+          # the behaviour: the solid/solid boolean is reported as a source
+          # step and a stop between boolean steps is not observed. Listed
+          # before the D4b parent it is stacked on; once
+          # program/boolean/mod.rs is on main, whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/boolean/mod.rs | grep -Fxq 'rust/geometry/src/program/boolean/mod.rs'; then
+            oracle_args+=(--mutation tests/evidence/boolean-entry-d4c/behaviour.oracle.patch)
           # #7955 D4b: the layer control and the styled entries add
           # program/layers.rs and program/styled.rs, which the production
           # gateways and their tests drive, so a whole-change revert cannot

@@ -79,8 +79,9 @@ pub enum WalkRefusal {
     Decode(ifc_lite_core::Error),
 }
 
-/// The fan-out budget every geometry caller walks with: far above any real
-/// model's mapped levels and item references per element, finite for a hostile DAG.
+/// The default fan-out allowance for `Expand` callers: mapped levels and
+/// materialized item references are bounded separately by this value.
+/// `FirstChain` keeps its caller-selected depth/cycle policy instead.
 pub const MAX_WALK_LEVELS: u32 = 1 << 16;
 
 impl WalkRefusal {

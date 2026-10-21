@@ -1,0 +1,68 @@
+{
+  "status": "measured native ordinary full-load cost accepted; timing report inconclusive",
+  "issue": 7711,
+  "base": "141285f8287bbc88a420d0ce1168cb7f1a6aa72c",
+  "branch": "de3c77400d37dd08527095530483b3f07a5eb573",
+  "equivalentPublishedViewerRuntime": "6d3be261e0412b02b8d520d992beef000ab54e7e",
+  "runtimeIdentityScope": "All Rust/native build inputs identical between backend de3 and viewer layer6d3. This is not a new execution at6d3.",
+  "originalBenchmarkJob": "583e0258-d4bf-48ce-acce-9353f104931f",
+  "originalBenchmarkReceiptSha256": "eb6a5e799677b3b1a22d8578dd4e54dc225d381bfbdc04c0e993d9bc5d73adb6",
+  "originalBenchmarkOutputSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "originalReconciliationSha256": "8ed45a74017dc76ff58362acbf344e2c7470e2c74d1ccc3a4d8afb90ce768a1f",
+  "protocolFreezeSha256": "c6d5754de6af7f27d0e43104fa1a6eca4b9e7614b03f7865669a270262ab4c78",
+  "sourceBindingsSha256": "c2b0f5151ef884e59feb507acee237b4ead7bcef3c3d02cef1d33c12789f10a8",
+  "runtime": {
+    "IFC_LITE_INSTANCING": "0",
+    "IFC_LITE_DEDUP_EXTRA": "0",
+    "RAYON_NUM_THREADS": "4",
+    "CARGO_BUILD_JOBS": "4",
+    "IFC_LITE_LOCAL_FRAME": null
+  },
+  "profile": "profiling",
+  "features": [],
+  "baselineProvenance": "Main141 binaries compiled in original b97156fc-48c9-4245-b84d-1a94480eda62; authenticated original source/compiler/profile/injections and copied unchanged into this owned task. No old timing observations reused.",
+  "observationScope": "Six untimed full-output calls; 10 timed processes, 5 paired outer rounds, 3 fixed-order models, 5 inner iterations per model. All phases and complete-call wall retained; selected rows use stock last-tied-minimum total.",
+  "counts": {
+    "untimedPayloadCalls": 6,
+    "timedProcesses": 10,
+    "selectedRows": 30,
+    "timedFullModelLoads": 150
+  },
+  "stockVerdict": {
+    "fingerprintDrift": false,
+    "tooNoisy": false,
+    "realChange": false,
+    "inconclusive": true,
+    "zeroBaselineIncrease": false
+  },
+  "allInnerOuterBlockMedianDeltasPercent": {
+    "AC20-FZK-Haus.ifc": {
+      "parseMs": 0.0,
+      "geometryMs": 0.0,
+      "totalMs": 0.0,
+      "fullCallWallMs": -1.3971730433691154
+    },
+    "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": {
+      "parseMs": 0.0,
+      "geometryMs": 0.7549068948162985,
+      "totalMs": 0.8233532934131649,
+      "fullCallWallMs": 0.8466809029203715
+    },
+    "ISSUE_053_20181220Holter_Tower_10.ifc": {
+      "parseMs": 0.9271523178807861,
+      "geometryMs": -0.10610079575597009,
+      "totalMs": 0.3418154196733747,
+      "fullCallWallMs": 0.1178330329404842
+    }
+  },
+  "completeOrderedOutputRawFloatFrameMetadataInstanceAndRawDiagnosticsMatch": true,
+  "stockCountsAndEveryInnerFingerprintMatch": true,
+  "limitations": [
+    "Ordinary native process_geometry worker pool only, no WASM/browser/GPU or section-crop/opt-in-audit throughput claim.",
+    "Default sinks allocate no ProductGeometryAudit receipts, but diagnostic drain order and unsupported-map key cloning change; this cohort measures that default path.",
+    "No real phase change identified by stock reporter, whose overall verdict remains inconclusive. Small adverse observations remain; no speed or neutrality claim and causal attribution unproven.",
+    "Five outer paired rounds, not 25 independent observations; fixed model order and warm OS page cache.",
+    "No ceilings, tolerance bands, baseline or pins changed; required CI remains binding.",
+    "Full source-specific real-WASM and external crop oracle proof are separate in recovery-current, not inferred from this timing run."
+  ]
+}

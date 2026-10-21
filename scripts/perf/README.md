@@ -4344,13 +4344,29 @@ cut is capped, and a repeated leaf cannot collapse distant occurrences into one
 f32 clip frame. Strict export additionally requests per-product processing
 receipts and validates source references. Ordinary processing sinks do not
 request or allocate those receipts. These export-only integrity checks and the
-conservative diagnostic/texture refusals still require exact-head performance
-and real-model qualification.
+conservative diagnostic/texture refusals require separately attributed load-cost
+and real-model qualification, recorded below.
 Retained face colours use bounded BVH attribution after the exact topology cut.
 
-Performance qualification is pending. Concurrent owned work on the shared host
-prevents an otherwise-idle, interleaved worker-pool cohort; a successful source
-build, functional export/reopen, or native test is not a browser performance
-verdict. No speed or neutral-performance claim is made. The lesson is to charge
-remeshing and intersection to the requested export operation and measure that
-operation separately from normal loading before interpreting timing changes.
+The [historical export cohort](evidence/section-export-7711/README.md) retains
+its original source attribution and operation timings. Its identical native
+controls do not qualify changed native code; the fresh comparison below does.
+
+The recovered backend `de3c774` was measured against authenticated main
+`141285f` in a fresh native worker-pool cohort. Six untimed full-payload calls
+preserve ordered mesh output, raw float bits, frames/metadata/instances and all
+diagnostic bytes on Haus, ISSUE_129 and heavy Holter. All timed counts and
+fingerprints match. The stock phase report identifies no real change but remains
+inconclusive; complete-load observations include small adverse changes. No speed
+or neutrality claim follows.
+
+Disposition: accept the disclosed ordinary native cost for the section-export
+capability demonstrated by the separate fresh Haus real-WASM crop and external
+IfcOpenShell/OCC witness. Ordinary sinks allocate no audit receipts, but the
+changed diagnostic drain order and unsupported-map key cloning therefore required this
+full-load measurement. The [retained native evidence](evidence/section-export-7711/recovery-native-load/README.md)
+separates that cost from the requested crop operation. It establishes no browser,
+GPU, crop-throughput or opt-in-audit throughput verdict. Existing native-instruction,
+bundle, parity and required CI gates remain binding; no baseline or ceiling was
+changed. Lesson: measure the default path even when its new consumer is opt-in,
+and keep actual crop behavior proof separate from load-cost acceptance.

@@ -18,7 +18,7 @@
 //! `jobs::process_entity_job`). If the plan's chosen template id belongs to
 //! an `IfcWindow`/`IfcDoor` job the filter skips, that job's `EntityDecoder`
 //! path returns before the router ever sees mapped item — so
-//! `is_template` (`geometry/src/router/processing.rs`) is `item.id ==
+//! the template decision (`GeometryRouter::claim_template`) is `item.id ==
 //! template_item_id` for every SURVIVING occurrence too, and none of them
 //! is ever `true`. Every occurrence of that source becomes a don't-bake
 //! placeholder, `template_by_rep.get(&rep)` finds no non-empty template mesh,

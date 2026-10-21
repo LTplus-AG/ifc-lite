@@ -4331,3 +4331,27 @@ now uses the reviewed first-frame clock contract in both cadence and markers,
 and reads finalized sidecars at their actual case paths. Lesson: verify final
 checker contracts and receipt discovery against retained real captures before
 spending another capture window. This integration fix grants no timing verdict.
+
+
+## Engine transfer ceiling acceptance (#8000, #8003)
+
+The maintainer accepted the accumulated engine transfer cost measured on main
+`141285f828`. The [hosted measurement](https://github.com/LTplus-AG/ifc-lite/actions/runs/39490083745)
+supplies the value and exact timestamp in the bundle ratchet provenance. The
+earlier execution-ownership slice (#7956) was already incorporated in the old
+ceiling; this decision does not count that growth again. Only the engine ceiling
+was reset, with its relative tolerance unchanged. No speed improvement is claimed.
+
+The accepted code supports bounded resource accounts, source-free construction,
+transactional opening diagnostics, explicit CSG continuations and canonical
+analytic source capture. These retain shared execution and source ownership
+across native and browser consumers. The browser extrusion-definition bindings
+already consume analytic capture, so blanket WASM exclusion would remove used
+behavior. Individual compressed-byte contributions have not been isolated.
+
+Making analytic capture opt-in addressed runtime work but did not remove its
+compiled code. A future compile exclusion remains unimplemented and unmeasured;
+no proven main-byte reduction is claimed here. Accept this measured cost
+explicitly, retain the current build policy and automatic lowering, and require
+a new measurement and maintainer decision for any later increase. Source-matched
+performance acceptance and transfer-size acceptance remain separate decisions.

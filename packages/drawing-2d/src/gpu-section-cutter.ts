@@ -289,7 +289,7 @@ export class GPUSectionCutter {
     }
 
     // Collect all triangles with entity info
-    const triangleData = this.collectTriangles(meshes);
+    const triangleData = this.collectTriangles(meshes.filter(mesh => !config.sectionExcludedIds?.has(mesh.expressId)));
     const triangleCount = triangleData.count;
 
     if (triangleCount === 0) {

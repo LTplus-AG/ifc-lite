@@ -265,3 +265,26 @@ describe('cap highlight (#7950)', () => {
     assert.equal(writes.length, before);
   });
 });
+
+it('removes and restores excluded caps, hatch fills and outlines on primary and extra planes (#8015)', () => {
+  const { renderer } = newRenderer();
+  const polygons = [...TRIANGLE, { ...TRIANGLE[0]!, expressId: 2 }];
+  renderer.uploadDrawing(polygons, [], 'down', 1);
+  renderer.uploadExtraDrawing('extra', polygons, [], 'front', 2);
+  const ids = new Set<number>();
+  const draw = () => {
+    const { pass, draws } = makePass();
+    renderer.draw(pass, { ...OPTIONS, sectionExcludedIds: ids });
+    renderer.drawExtras(pass, { ...OPTIONS, sectionExcludedIds: ids }, [{ key: 'extra', clippedBy: [] }]);
+    return draws;
+  };
+  const all = draw();
+  assert.deepEqual(all, ['drawIndexed:6', 'drawIndexed:6', 'draw:12', 'drawIndexed:6', 'drawIndexed:6', 'draw:12']);
+  ids.add(1);
+  assert.deepEqual(draw(), ['drawIndexed:3', 'drawIndexed:3', 'draw:6', 'drawIndexed:3', 'drawIndexed:3', 'draw:6']);
+  ids.add(2);
+  assert.deepEqual(draw(), [], 'no fill/depth/hatch/outline remains');
+  ids.clear();
+  assert.deepEqual(draw(), all, 'clearing the same Set restores both cached caps');
+  renderer.dispose();
+});

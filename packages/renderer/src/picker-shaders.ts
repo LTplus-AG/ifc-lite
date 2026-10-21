@@ -10,12 +10,14 @@
  */
 
 import { relativeToEyeWgsl } from './shaders/relative-to-eye.wgsl.js';
+import { sectionExclusionsWgsl } from './section-exclusions.js';
 import { extraClipWgsl } from './extra-clip-planes.js';
 
 /** Flat meshes: one dynamic-offset uniform slot per mesh, expressIds in a storage buffer. */
 export const flatPickShaderWgsl = `
         ${relativeToEyeWgsl}
         ${extraClipWgsl}
+        ${sectionExclusionsWgsl}
         struct Uniforms {
           viewProj: mat4x4<f32>, // translation-free RTE projection
           model: mat4x4<f32>,    // linear transform; translation lives in originHigh/Low
@@ -55,9 +57,10 @@ export const flatPickShaderWgsl = `
 
         @fragment
         fn fs_main(input: VertexOutput) -> @location(0) u32 {
+          let excluded = sectionExcluded(uniforms.clipFlags.y);
           // Mirror the main render's clip discards so a click can't select a
           // fragment the user has sectioned or cropped out of view.
-          if ((uniforms.clipFlags.x & 1u) != 0u) {  // section plane enabled
+          if (!excluded && (uniforms.clipFlags.x & 1u) != 0u) {  // section plane enabled
             let flipped = (uniforms.clipFlags.x & 2u) != 0u;
             let side = select(1.0, -1.0, flipped);
             let distToPlane = (dot(input.worldPos, uniforms.sectionPlane.xyz) - uniforms.sectionPlane.w) * side;
@@ -65,7 +68,7 @@ export const flatPickShaderWgsl = `
               discard;
             }
           }
-          if (extraClipClipped(extraClip, input.worldPos)) {  // cutting planes beyond the first (#7545)
+          if (!excluded && extraClipClipped(extraClip, input.worldPos)) {  // cutting planes beyond the first (#7545)
             discard;
           }
           if ((uniforms.clipFlags.x & 4u) != 0u) {  // clip box enabled
@@ -82,6 +85,7 @@ export const flatPickShaderWgsl = `
 export const instancedPickShaderWgsl = `
         ${relativeToEyeWgsl}
         ${extraClipWgsl}
+        ${sectionExclusionsWgsl}
         struct Uniforms {
           viewProj: mat4x4<f32>,
           clipBoxMin: vec4<f32>,   // xyz = min corner (world), w = pad
@@ -125,13 +129,14 @@ export const instancedPickShaderWgsl = `
         }
         @fragment
         fn fs_main(input: VertexOutput) -> @location(0) u32 {
+          let excluded = sectionExcluded(input.objectId & 0x3FFFFFFFu);
           // Hidden occurrences (flags bit 1) are not pickable — mirror the render-pass
           // discard so a hidden instanced element can't be selected through the picker.
           if ((input.instFlags & 2u) != 0u) {
             discard;
           }
           // Mirror the main render's section + crop-box discards for occurrences.
-          if ((uniforms.clipFlags.x & 1u) != 0u) {  // section plane enabled
+          if (!excluded && (uniforms.clipFlags.x & 1u) != 0u) {  // section plane enabled
             let flipped = (uniforms.clipFlags.x & 2u) != 0u;
             let side = select(1.0, -1.0, flipped);
             let distToPlane = (dot(input.worldPos, uniforms.sectionPlane.xyz) - uniforms.sectionPlane.w) * side;
@@ -139,7 +144,7 @@ export const instancedPickShaderWgsl = `
               discard;
             }
           }
-          if (extraClipClipped(extraClip, input.worldPos)) {  // cutting planes beyond the first (#7545)
+          if (!excluded && extraClipClipped(extraClip, input.worldPos)) {  // cutting planes beyond the first (#7545)
             discard;
           }
           if ((uniforms.clipFlags.x & 4u) != 0u) {  // clip box enabled

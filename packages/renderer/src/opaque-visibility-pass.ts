@@ -106,7 +106,7 @@ export class OpaqueVisibilityPass {
     if (!fragment) return undefined;
     const module = this.device.createShaderModule({ code: guardedMeshShader(source, this.samples, fragment.entryPoint ?? 'fs_main') });
     const colour = await this.device.createRenderPipelineAsync({ ...d,
-      layout: this.device.createPipelineLayout({ bindGroupLayouts: [base.getBindGroupLayout(0), base.getBindGroupLayout(1), opaqueVisibilityLayout(this.device, this.samples)] }),
+      layout: this.device.createPipelineLayout({ bindGroupLayouts: [base.getBindGroupLayout(0), base.getBindGroupLayout(1), opaqueVisibilityLayout(this.device, this.samples), base.getBindGroupLayout(3)] }),
       vertex: { ...d.vertex, module }, fragment: { ...fragment, module } });
     let depth: GPURenderPipeline | null = null;
     if (d.depthStencil?.depthWriteEnabled) {
@@ -138,7 +138,7 @@ export class OpaqueVisibilityPass {
     const draw = (name: PropertyKey, args: unknown[]) => {
       if (variant?.depth) {
         depthPass.setPipeline(variant.depth);
-        for (const [group, args] of groups) if (group < OPAQUE_VISIBILITY_GROUP) invoke(depthPass, 'setBindGroup', args);
+        for (const [group, args] of groups) if (group !== OPAQUE_VISIBILITY_GROUP) invoke(depthPass, 'setBindGroup', args);
         for (const args of vertices.values()) invoke(depthPass, 'setVertexBuffer', args);
         if (indices) invoke(depthPass, 'setIndexBuffer', indices);
         for (const [method, args] of raster) invoke(depthPass, method, args);

@@ -54,14 +54,17 @@ export function useSectionExport(enabled: boolean) {
   };
 }
 
-/** Crop each source in its own length unit before the canonical merge reconciles units and ids. */
+type MergeVisibility = { hidden: Map<string, Set<number>>; isolated: Map<string, Set<number> | null> };
+
+/** Crop each source before merging; visibility is consumed in the original source namespace. */
 export async function sectionMergeInputs(
   inputs: MergeModelInput[],
-  visibility: { hidden: Map<string, Set<number>>; isolated: Map<string, Set<number> | null> },
+  visibility: MergeVisibility,
   schema: IfcSchemaVersion,
   optionsFor: (modelId: string) => SectionExportOptions | undefined,
-): Promise<MergeModelInput[]> {
+): Promise<{ inputs: MergeModelInput[]; visibility: MergeVisibility }> {
   const result: MergeModelInput[] = [];
+  const remainingVisibility = { hidden: new Map(visibility.hidden), isolated: new Map(visibility.isolated) };
   for (const input of inputs) {
     const options = optionsFor(input.id);
     if (!options) { result.push(input); continue; }
@@ -72,6 +75,10 @@ export async function sectionMergeInputs(
     const buffer = new ArrayBuffer(cropped.content.byteLength);
     new Uint8Array(buffer).set(cropped.content);
     result.push({ ...input, mutationView: undefined, dataStore: await new IfcParser().parseColumnar(buffer, { disableWorkerScan: true }) });
+    // The cropped store may reuse a removed product id for new geometry.
+    // Its original selection was applied above and cannot filter this namespace.
+    remainingVisibility.hidden.delete(input.id);
+    remainingVisibility.isolated.delete(input.id);
   }
-  return result;
+  return { inputs: result, visibility: remainingVisibility };
 }

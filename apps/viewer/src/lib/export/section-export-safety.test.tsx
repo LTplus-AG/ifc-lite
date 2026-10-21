@@ -4,7 +4,8 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, test, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { initSync } from '@ifc-lite/wasm';
 import { IfcParser, EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
 import type { Renderer } from '@ifc-lite/renderer';
@@ -207,11 +208,32 @@ test('#7711 merged dialog download preserves authored placement in reopened worl
   click(scope);
   const merged = [...document.querySelectorAll('[role="option"]')].find(el => el.textContent?.includes('Merged (All Models)'));
   assert.ok(merged); click(merged);
+  const units = [...document.querySelectorAll('[role="combobox"]')]
+    .find(el => el.textContent?.trim() === 'Keep each unit (separate projects)');
+  assert.ok(units, 'mixed-unit handling is mounted');
+  click(units);
+  const normalize = [...document.querySelectorAll('[role="option"]')]
+    .find(el => el.textContent?.trim() === 'Normalize to first model');
+  assert.ok(normalize); click(normalize);
+  assert.ok(units.textContent?.includes('Normalize to first model'));
   visibleOnly();
   click(button('Export'));
   await waitFor(() => downloads.length === 1, 'merged section export did not download');
   const downloadBytes = new Uint8Array(await downloads[0].arrayBuffer());
   const reopened = await new IfcParser().parseColumnar(new Uint8Array(downloadBytes).buffer, {disableWorkerScan:true});
+  // Diagnostic-only: preserve the real failing output and scanner namespace
+  // before following its references. Every geometry assertion below remains.
+  const evidenceDir = process.env.IFC_LITE_SECTION_EVIDENCE_DIR;
+  if (evidenceDir) {
+    mkdirSync(evidenceDir, { recursive: true });
+    writeFileSync(join(evidenceDir, 'merged-download.ifc'), downloadBytes);
+    writeFileSync(join(evidenceDir, 'merged-source-index.json'), JSON.stringify({
+      byId: Array.from(reopened.entityIndex.byId, ([id, record]) => ({ id, type: record.type,
+        byteOffset: record.byteOffset, byteLength: record.byteLength })),
+      byType: Array.from(reopened.entityIndex.byType),
+      deferredSize: reopened.deferredEntityIndex?.size ?? 0,
+    }, null, 2));
+  }
   const products = reopened.entityIndex.byType.get('IFCSLAB') ?? [];
   assert.equal(products.length, 2, 'both hidden #51 and non-isolated #52 are omitted in each model');
   const first = products.find(id => reopened.entities.getGlobalId(id) === '0M7tQ9Jbj1BAeHd7rqnDmR');

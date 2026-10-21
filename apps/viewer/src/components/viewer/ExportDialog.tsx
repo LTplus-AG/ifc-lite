@@ -326,7 +326,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
           model,
           dataStore: await ensureModelExportReady(model.id),
         })));
-        let mergeInputs: MergeModelInput[] = [];
+        const mergeInputs: MergeModelInput[] = [];
         const portableByModel = new Map<string, NonNullable<ReturnType<typeof roomStepExportSource>>>();
         for (const entry of hydratedModels) {
           if (!entry.dataStore) {
@@ -344,8 +344,8 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
           ? roomMergeVisibility(models.keys(), portableByModel, getLocalHiddenIds, getLocalIsolatedIds)
           : { hidden: new Map<string, Set<number>>(), isolated: new Map<string, Set<number> | null>() };
 
-        mergeInputs = await sectionMergeInputs(mergeInputs, visibility, schema, sectionExport.options);
-        const mergedExporter = new MergedExporter(mergeInputs);
+        const prepared = await sectionMergeInputs(mergeInputs, visibility, schema, sectionExport.options);
+        const mergedExporter = new MergedExporter(prepared.inputs);
         // Assemble the merged download off-heap so it does not materialise as
         // one contiguous Uint8Array on the JS heap.
         const result = await mergedExporter.exportBlobAsync({
@@ -353,8 +353,8 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
           projectStrategy: 'keep-first',
           unitReconciliation,
           visibleOnly,
-          hiddenEntityIdsByModel: visibility.hidden,
-          isolatedEntityIdsByModel: visibility.isolated,
+          hiddenEntityIdsByModel: prepared.visibility.hidden,
+          isolatedEntityIdsByModel: prepared.visibility.isolated,
           description: `Merged export of ${mergeInputs.length} models from ifc-lite`,
           application: 'ifc-lite',
           onProgress: (p: ExportProgress) => setExportProgress({

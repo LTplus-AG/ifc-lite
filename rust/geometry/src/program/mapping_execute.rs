@@ -73,6 +73,9 @@ impl MappingControl<'_> {
                 let item = entering.item();
                 // Only the top-level occurrence is independent: a nested map is
                 // part of its parent's shared geometry, never don't-baked.
+                // Eligibility decodes at most one member. This is the root's
+                // first action: Items usage is zero, and mapped_attempt above
+                // proved limit >= 1. No additional debit or meter is needed.
                 let eligible = self.allow_instancing && self.levels.is_empty();
                 let value = router.admit_styled_occurrence(item, eligible, self.textures, decoder);
                 MappingValue::StyledEntered { item_id: item.id, value }

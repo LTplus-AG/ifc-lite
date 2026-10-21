@@ -257,7 +257,7 @@ fn issue_7873_source_modes_preserve_missing_and_non_list_items_policy() {
 fn issue_7873_refused_template_rolls_back_and_placeholder_skip_avoids_child_charge() {
     use crate::resource::{ExecutionAccount, ExecutionPolicy, ResourceLimits};
     use std::sync::Arc;
-    let source = format!("{}#9=IFCMAPPEDITEM(#6,#7);", SOURCE.replace("(#4)", "(#4,$)"));
+    let source = format!("{SOURCE}#9=IFCMAPPEDITEM(#6,#7);");
     for accounted in [false, true] {
         let mut router = GeometryRouter::new();
         router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
@@ -267,8 +267,15 @@ fn issue_7873_refused_template_rolls_back_and_placeholder_skip_avoids_child_char
         let first = decoder.decode_by_id(8).unwrap();
         let next = decoder.decode_by_id(9).unwrap();
         let mut attempt = || {
-            limited(GeometryProgram::styled_item(&first, crate::SubMeshCollection::new(), true,
-                None, router.rtc_offset()), 1).drain_styled(&router, &mut decoder)
+            let mut program = GeometryProgram::styled_item(&first, crate::SubMeshCollection::new(), true,
+                None, router.rtc_offset());
+            let request = program.request().unwrap().unwrap();
+            let reply = program.execute(request, &router, &mut decoder).unwrap();
+            program.accept(reply, &router).unwrap_or_else(|_| panic!("owner accepts"));
+            // #7873 exact-single eligibility has claimed the template. Force
+            // the later Items refusal to exercise rollback, without relying on
+            // malformed (#4,$), which now intentionally materializes flat.
+            limited(program, 0).drain_styled(&router, &mut decoder)
         };
         let result = if accounted {
             ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default())).scope(attempt)
@@ -279,7 +286,7 @@ fn issue_7873_refused_template_rolls_back_and_placeholder_skip_avoids_child_char
             None, router.rtc_offset()), 2).drain_styled(&router, &mut decoder).unwrap();
         assert_eq!(parts.sub_meshes.iter().map(|part| part.mesh.indices.len()).sum::<usize>(), 3);
         // Populate the shared registry, then the placeholder need not read its
-        // two-member child list. It still pays its one mapped attempt.
+        // single-member child list. It still pays its one mapped attempt.
         GeometryProgram::mapped_item(&first).drain_parts(&router, &mut decoder).unwrap();
         let parts = limited(GeometryProgram::styled_item(&first, crate::SubMeshCollection::new(), true,
             None, router.rtc_offset()), 1).drain_styled(&router, &mut decoder).unwrap();
@@ -303,3 +310,6 @@ fn issue_7873_sticky_cancellation_outranks_logical_refusal_without_content_drop(
     assert!(router.take_unsupported_items().is_empty());
     assert_eq!(router.unsupported_scope_depth(), 0);
 }
+
+#[path = "mapping_eligibility_tests.rs"]
+mod eligibility_tests;

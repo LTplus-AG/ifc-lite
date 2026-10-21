@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { relativeToEyeWgsl } from './relative-to-eye.wgsl.js';
+import { sectionExclusionsWgsl } from '../section-exclusions.js';
 import { extraClipWgsl } from '../extra-clip-planes.js';
 
 /**
@@ -37,6 +38,7 @@ import { extraClipWgsl } from '../extra-clip-planes.js';
 export const shadowShaderSource = `
         ${relativeToEyeWgsl}
 ${extraClipWgsl}
+${sectionExclusionsWgsl}
         struct Light {
           lightViewProj: mat4x4<f32>,
           cameraHigh: vec4<f32>,
@@ -51,6 +53,7 @@ ${extraClipWgsl}
           quantParams: vec4<f32>,
           originHigh: vec4<f32>,
           originLow: vec4<f32>,
+          entity: vec4<u32>,
         }
         @binding(1) @group(0) var<uniform> draw: Draw;
 
@@ -68,9 +71,11 @@ ${extraClipWgsl}
 
         struct FlatIn {
           @location(0) position: vec3<f32>,
+          @location(2) entityId: u32,
         }
 
         struct QuantIn {
+          @location(2) entityId: u32,
           @location(0) q: vec4<u32>,   // uint16x4: lattice x, y, z, packedOct
         }
 
@@ -83,6 +88,7 @@ ${extraClipWgsl}
           // colour pass reads. Locations 7 (entityId) and 8 (rgba) are in the
           // shared layout but unused by the depth pass.
           @location(9) flags: u32,
+          @location(7) entityId: u32,
           // Split drawable-minus-camera delta from the slot-2 delta stream.
           @location(10) anchorHigh: vec4<f32>,
           @location(11) anchorLow: vec4<f32>,
@@ -91,19 +97,21 @@ ${extraClipWgsl}
         struct ShadowOut {
           @builtin(position) position: vec4<f32>,
           @location(0) worldPos: vec3<f32>,
+          @location(1) @interpolate(flat) entityId: u32,
         }
 
-        fn emit(eyePos: vec4<f32>) -> ShadowOut {
+        fn emit(eyePos: vec4<f32>, id: u32) -> ShadowOut {
           var out: ShadowOut;
           out.position = light.lightViewProj * eyePos;
           out.worldPos = eyePos.xyz;
+          out.entityId = id;
           return out;
         }
 
         @vertex
         fn vs_shadow_flat(input: FlatIn) -> ShadowOut {
           let linear = (draw.model * vec4<f32>(input.position, 0.0)).xyz;
-          return emit(rteWorldPosition(linear, RteDrawableUniform(draw.originHigh, draw.originLow)));
+          return emit(rteWorldPosition(linear, RteDrawableUniform(draw.originHigh, draw.originLow)), sectionEntityFromLane(draw.entity.x, input.entityId));
         }
 
         @vertex
@@ -111,7 +119,7 @@ ${extraClipWgsl}
           let p = draw.quantParams.xyz
             + vec3<f32>(f32(input.q.x), f32(input.q.y), f32(input.q.z)) * draw.quantParams.w;
           let linear = (draw.model * vec4<f32>(p, 0.0)).xyz;
-          return emit(rteWorldPosition(linear, RteDrawableUniform(draw.originHigh, draw.originLow)));
+          return emit(rteWorldPosition(linear, RteDrawableUniform(draw.originHigh, draw.originLow)), sectionEntityFromLane(draw.entity.x, input.entityId));
         }
 
         @vertex
@@ -133,28 +141,29 @@ ${extraClipWgsl}
           let linear = (instMat * vec4<f32>(input.position, 0.0)).xyz;
           return emit(rteWorldPosition(linear, RteDrawableUniform(
             inst.anchorHigh, inst.anchorLow,
-          )));
+          )), inst.entityId);
         }
 
         @vertex
         fn vs_shadow_textured(input: FlatIn) -> ShadowOut {
           let linear = (draw.model * vec4<f32>(input.position, 0.0)).xyz;
-          return emit(rteWorldPosition(linear, RteDrawableUniform(draw.originHigh, draw.originLow)));
+          return emit(rteWorldPosition(linear, RteDrawableUniform(draw.originHigh, draw.originLow)), sectionEntityFromLane(draw.entity.x, input.entityId));
         }
 
         // Clipped variant: discard before the depth write, so a clipped-away
         // occluder leaves the shadow map untouched. Kept byte-for-byte in step
         // with the fs_main section/clip-box branches.
         @fragment
-        fn fs_shadow_clip(@location(0) worldPos: vec3<f32>) {
-          if ((clip.flags.x & 1u) == 1u) {
+        fn fs_shadow_clip(@location(0) worldPos: vec3<f32>, @location(1) @interpolate(flat) entityId: u32) {
+          let excluded = sectionExcluded(entityId);
+          if (!excluded && (clip.flags.x & 1u) == 1u) {
             let side = select(1.0, -1.0, (clip.flags.x & 2u) == 2u);
             let distToPlane = (dot(worldPos, clip.sectionPlane.xyz) - clip.sectionPlane.w) * side;
             if (distToPlane > 0.0) {
               discard;
             }
           }
-          if (extraClipClipped(clip.extra, worldPos)) {
+          if (!excluded && extraClipClipped(clip.extra, worldPos)) {
             discard;
           }
           if ((clip.flags.x & 4u) != 0u) {

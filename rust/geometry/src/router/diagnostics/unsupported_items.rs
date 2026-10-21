@@ -13,7 +13,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 /// All dropped-representation-item state, behind one `RefCell` on the router:
 /// the counts themselves, the sources already counted, and the open
-/// [`GeometryRouter::enter_unsupported_source`] scopes. One struct rather than
+/// [`GeometryRouter::enter_unsupported_policy`] scopes. One struct rather than
 /// three fields because `router/mod.rs` sits exactly at its module-size budget,
 /// and because the three are meaningless apart.
 #[derive(Default)]
@@ -36,7 +36,13 @@ impl UnsupportedItemState {
 }
 
 impl GeometryRouter {
-    /// Enter a `RepresentationMap` source's item walk, returning a scope guard.
+    /// Claim a `RepresentationMap` source's drop-count decision: whether drops
+    /// beneath it are recorded. An owning walk (`crate::program::mapping`)
+    /// keeps the result per source level and installs it with
+    /// [`Self::enter_unsupported_policy`] around each of its steps that can
+    /// record, so it holds where a source's unsupported item is actually
+    /// recorded: one level down, by the walk's own item step, not by the
+    /// mapped-item branch that entered the source.
     ///
     /// Two things are decided once, here, instead of at each write site beneath:
     ///
@@ -80,38 +86,37 @@ impl GeometryRouter {
     ///   for `is_direct_body_representation` would compile and silently suppress
     ///   real drops.
     ///
-    /// Deciding it here rather than at each `record_unsupported_item` call is
-    /// what makes it hold on the OCCURRENCE path: a mapped source's unsupported
-    /// item is not recorded by the mapped-item branch at all, it is recorded by
-    /// `collect_submeshes_from_item_inner`'s own plain-item arm one recursion
-    /// level down. A per-site gate at the mapped-item branch would never see it.
-    ///
     /// Scoped to this router, like `mapped_item_cache`: the native pool builds a
     /// fresh router per element and the wasm path one per batch, so two elements
     /// sharing a TOTAL-LOSS source still contribute one each. Every source that
     /// yields any geometry is shared model-wide through
     /// `shared_mapped_item_cache` and walked once.
-    pub(crate) fn enter_unsupported_source(
-        &self,
-        source_id: u32,
-        mapped_repr: &DecodedEntity,
-    ) -> UnsupportedSourceScope<'_> {
+    pub(crate) fn claim_unsupported_source(&self, source_id: u32, mapped_repr: &DecodedEntity) -> bool {
         let is_body = crate::router::effective_rep_type(mapped_repr)
             .is_none_or(crate::router::is_body_representation);
-        let mut state = self.unsupported.borrow_mut();
-        let record = is_body && state.sources_recorded.insert(source_id);
-        state.scope.push(record);
+        is_body && self.unsupported.borrow_mut().sources_recorded.insert(source_id)
+    }
+
+    /// Open a scope with an already-claimed source's recording decision.
+    pub(crate) fn enter_unsupported_policy(&self, record: bool) -> UnsupportedSourceScope<'_> {
+        self.unsupported.borrow_mut().scope.push(record);
         UnsupportedSourceScope { router: self }
+    }
+
+    /// Open scopes; zero between walks.
+    #[cfg(test)]
+    pub(crate) fn unsupported_scope_depth(&self) -> usize {
+        self.unsupported.borrow().scope.len()
     }
 
     /// Record one dropped representation item (unsupported type, or its
     /// processor errored), keyed by `IfcType`.
     ///
-    /// Suppressed while inside an [`enter_unsupported_source`] scope that
+    /// Suppressed while inside an [`enter_unsupported_policy`] scope that
     /// declined to record — a non-Body source, or one already counted. Outside
     /// any scope (an element's own representation item) it always records.
     ///
-    /// [`enter_unsupported_source`]: Self::enter_unsupported_source
+    /// [`enter_unsupported_policy`]: Self::enter_unsupported_policy
     pub(crate) fn record_unsupported_item(&self, ifc_type: ifc_lite_core::IfcType) {
         let mut state = self.unsupported.borrow_mut();
         if state.scope.last() == Some(&false) {
@@ -141,7 +146,7 @@ impl GeometryRouter {
     }
 }
 
-/// Guard returned by [`GeometryRouter::enter_unsupported_source`]. Pops on drop,
+/// Guard returned by [`GeometryRouter::enter_unsupported_policy`]. Pops on drop,
 /// so a `?` out of the middle of a source walk cannot leave the scope stack
 /// unbalanced. Nested maps stack: a drop is attributed to the INNERMOST source
 /// being walked, which is the one that owns the item.

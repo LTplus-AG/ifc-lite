@@ -909,3 +909,76 @@ fn content_dedup_extra_facesets_byte_identical_when_flagged() {
     assert_ne!(on[0], on[1], "per-instance placement lost on the extra-type path");
     assert_eq!(unique_on, 2, "the two identical facesets must collapse to 1 (+1 distinct = 2)");
 }
+
+// #7911 / review 4330063641: the extra-family cache must not hide the
+// newly recoverable absent-face refusal on a subsequent independent rebuild.
+fn polygonal_dedup_model_7911(face_refs: &str) -> String {
+    format!("ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;\n\
+        #1=IFCPOLYGONALFACESET(#2,.F.,({face_refs}),$);\n\
+        #2=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.)));\n\
+        #3=IFCINDEXEDPOLYGONALFACE((1,2,3));\n\
+        ENDSEC;END-ISO-10303-21;")
+}
+
+#[test]
+fn content_dedup_polygonal_absent_face_reports_each_rebuild_7911() {
+    let _extra_on = DedupExtraOverrideGuard::set(true);
+    let content = polygonal_dedup_model_7911("#3,#999");
+    // One immutable source/model, one cache, two independently cold routers
+    // AND decoders. A router-local memo cannot make the second run pass.
+    let cache = GeometryRouter::new_dedup_cache();
+    let mut meshes = Vec::new();
+    for build in 0..2 {
+        let mut decoder = EntityDecoder::with_index(&content, build_entity_index(&content));
+        let mut router = GeometryRouter::new();
+        router.enable_content_dedup_shared(cache.clone());
+        let item = decoder.decode_by_id(1).expect("polygonal item");
+        let mesh = router.process_representation_item(&item, &mut decoder).expect("surviving face");
+        assert_eq!(mesh.indices.len(), 3, "the real triangle survives");
+        assert!(!mesh.positions.is_empty());
+        meshes.push(mesh);
+        // Keep geometry comparisons before the diagnostic assertion so the
+        // exclusion-only mutation demonstrates unchanged geometry, lost report.
+        if build == 1 {
+            assert_eq!(meshes[0].positions, meshes[1].positions);
+            assert_eq!(meshes[0].normals, meshes[1].normals);
+            assert_eq!(meshes[0].indices, meshes[1].indices);
+        }
+        let refused = router.take_unsupported_items();
+        assert_eq!(refused.get("IfcIndexedPolygonalFace"), Some(&1),
+            "each independent rebuild must report its absent face");
+        assert_eq!(refused.len(), 1, "only the absent face is refused");
+        if build == 1 {
+            assert_eq!(router.dedup_unique_count(), 0, "partial item stays uncached");
+        }
+        assert!(decoder.get_cached(3).is_some(), "surviving face was rebuilt");
+    }
+}
+
+#[test]
+fn content_dedup_healthy_polygonal_shared_hit_7911() {
+    let _extra_on = DedupExtraOverrideGuard::set(true);
+    let content = polygonal_dedup_model_7911("#3");
+    let cache = GeometryRouter::new_dedup_cache();
+    let mut meshes = Vec::new();
+    for build in 0..2 {
+        let mut decoder = EntityDecoder::with_index(&content, build_entity_index(&content));
+        let mut router = GeometryRouter::new();
+        router.enable_content_dedup_shared(cache.clone());
+        let item = decoder.decode_by_id(1).expect("healthy polygonal item");
+        assert!(decoder.get_cached(3).is_none(), "fresh decoder has no decoded face");
+        let mesh = router.process_representation_item(&item, &mut decoder).expect("healthy triangle");
+        assert_eq!(mesh.indices.len(), 3);
+        assert!(!mesh.positions.is_empty());
+        assert!(router.take_unsupported_items().is_empty());
+        assert_eq!(router.dedup_unique_count(), 1, "healthy polygonal set remains eligible");
+        // Hashing/eligibility read raw bytes. Only an actual mesh rebuild
+        // decodes #3: populated on the miss, untouched on the shared hit.
+        assert_eq!(decoder.get_cached(3).is_some(), build == 0,
+            "second fresh router must actually skip face lowering via shared cache");
+        meshes.push(mesh);
+    }
+    assert_eq!(meshes[0].positions, meshes[1].positions);
+    assert_eq!(meshes[0].normals, meshes[1].normals);
+    assert_eq!(meshes[0].indices, meshes[1].indices);
+}

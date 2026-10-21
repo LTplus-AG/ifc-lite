@@ -122,6 +122,20 @@ impl Drop for Transaction {
 pub(crate) struct EffectSet(Vec<Event>);
 
 impl EffectSet {
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.0.len()
+    }
+    /// Fast-path route facts only; observability/capture builds add prism
+    /// census events that are not route telemetry.
+    #[cfg(test)]
+    pub(crate) fn fast_path_len(&self) -> usize {
+        self.0
+            .iter()
+            .filter(|event| matches!(event, Event::ParametricCut | Event::PlanarCut { .. }))
+            .count()
+    }
+
     pub(crate) fn commit(self) {
         for event in self.0 {
             record(event);

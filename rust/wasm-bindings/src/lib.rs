@@ -68,6 +68,9 @@ pub use wasm_bindgen_rayon::init_thread_pool;
 
 mod api;
 mod progress_hook;
+// Private retained-geometry module-Worker executor (opt-in; see the module docs).
+#[cfg(feature = "retained-browser")]
+mod retained_browser;
 #[cfg(feature = "opening-perf-trace")]
 mod opening_perf_trace;
 #[cfg(feature = "console-tracing")]

@@ -50,6 +50,7 @@ impl TrustedDecoderInputs {
 impl EntityDecoder<'_> {
     pub(crate) fn revoke_cache_authority(&mut self) {
         self.execution_owner.publish_cache_source(None);
+        self.uniform_precision_cache = Default::default();
         // An unbound decoder has no source authority to protect: any nonzero
         // revision already blocks a later bind, and unbound caches never
         // compare revisions. Skip the process-wide counter on that path, which
@@ -72,6 +73,7 @@ impl EntityDecoder<'_> {
             && self.length_unit_scale_cache.is_none()
             && self.plane_angle_to_radians_cache.is_none()
             && self.geometric_precision_cache.is_none()
+            && self.uniform_precision_cache.local.is_none()
             && self.schema_version_cache.is_none()
             && self.styled_item_index.get().is_none()
     }

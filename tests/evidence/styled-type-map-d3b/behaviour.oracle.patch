@@ -1,0 +1,42 @@
+diff --git a/rust/geometry/src/program/mapping_reduce.rs b/rust/geometry/src/program/mapping_reduce.rs
+--- a/rust/geometry/src/program/mapping_reduce.rs
++++ b/rust/geometry/src/program/mapping_reduce.rs
+@@ -168,7 +168,7 @@
+         if item.ifc_type == IfcType::IfcMappedItem {
+             // A type map's own items start a fresh path: its nested mapped
+             // item is a root occurrence, as when it was walked on its own.
+-            let depth = self.levels.len();
++            let depth = self.levels.len() - usize::from(self.walk == Walk::TypeMap);
+             if depth >= MAX_MAPPED_ITEM_DEPTH as usize {
+                 let error = Error::geometry(format!(
+                     "MappedItem nesting exceeded maximum depth of {} at #{}",
+@@ -190,7 +190,7 @@
+     /// mapped, and the cut item is recorded as its own type.
+     fn next_styled(&mut self, item: DecodedEntity, router: &GeometryRouter) -> Option<Event> {
+         let depth = self.levels.len();
+-        let error = if depth >= MAX_MAPPED_ITEM_DEPTH as usize && item.ifc_type == IfcType::IfcMappedItem {
++        let error = if depth >= MAX_MAPPED_ITEM_DEPTH as usize {
+             Error::geometry(format!(
+                 "MappedItem nesting exceeded maximum depth of {} at #{}",
+                 MAX_MAPPED_ITEM_DEPTH, item.id
+@@ -242,7 +242,7 @@
+         // One drop policy for this source's walk, claimed before its items
+         // resolve. Body-only, and once per source rather than per occurrence;
+         // see `GeometryRouter::claim_unsupported_source`.
+-        let policy = { let _ = &representation; true };
++        let policy = router.claim_unsupported_source(source_id, &representation);
+         self.action = Action::StyledItems(Pending { item_id, source_id, representation, transform, policy, template });
+         Event::Advance
+     }
+diff --git a/rust/geometry/src/router/instancing.rs b/rust/geometry/src/router/instancing.rs
+--- a/rust/geometry/src/router/instancing.rs
++++ b/rust/geometry/src/router/instancing.rs
+@@ -110,7 +110,7 @@
+     /// Keep a provisional template claim once its occurrence materialized
+     /// geometry, else roll it back.
+     pub(crate) fn settle_template(&self, claim: TemplateClaim, materialized: bool) {
+-        if (materialized || true) && self.retain_local_resource_account().is_ok() {
++        if materialized && self.retain_local_resource_account().is_ok() {
+             if let Some(permit) = claim.permit {
+                 permit.retain();
+             }

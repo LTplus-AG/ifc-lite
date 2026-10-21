@@ -1,0 +1,204 @@
+{
+  "status": "LOCAL_REVIEW_PACKET_WITH_VERIFIED_REDUCED_PUBLICATION_NO_ACCEPTANCE",
+  "normalization": {
+    "<fixture-checkout>": "original fixture checkout root; suffix tests/models/... is repository-relative",
+    "<storage-tasks>": "original worker storage-task registry root",
+    "<jobs>": "original worker job registry root",
+    "<recovery-artifacts>": "original parent-session recovery artifact root",
+    "<launcher-checkout>": "original source launch checkout"
+  },
+  "transform": "JSON path strings and keys use logical roots; stock numbers and all selected/inner rows unchanged. Compiler summary omits raw argv/logs and binds complete originals by SHA256. Receipt summaries retain source and result fields; no binaries, target contents or full raw logs are included. Original digests apply before normalization; packet digests apply after normalization.",
+  "originals": {
+    "summary.json": {
+      "sha256": "4af9ed2748e2277f740a6ed096c6c75eb98401e8e0b6e0bc321591668e2212ef",
+      "bytes": 17225
+    },
+    "snapshots/source-bindings.json": {
+      "sha256": "7c4753145653070e34b532b08fb21907986b2a643d230eb550bec56f5f3be56c",
+      "bytes": 17519
+    },
+    "timing/terminal.json": {
+      "sha256": "4a69625737a3b15b075e08f7d08ed13c1905ea80eb7e51c5470149e238709cf2",
+      "bytes": 10889
+    },
+    "timing/placement-v-main/report.json": {
+      "sha256": "e842e29225ab13f9988f4484cf6170ca77964c8054ab21196b369f6fc200b597",
+      "bytes": 6275
+    },
+    "timing/placement-v-main/comparison.json": {
+      "sha256": "0e9909ac346afe1dc993c6607d151f0c6cf948b64102c41e11dbd4db37d5201e",
+      "bytes": 13655
+    },
+    "timing/environment.json": {
+      "sha256": "f0470fb67ec7b163d945879ddb0d53899b70d14f80e5df1196e9ed7c928623bf",
+      "bytes": 510
+    },
+    "identity/main-0.stdout": {
+      "sha256": "7a980fd870a807979bce1826df8bff2864bce2f5aa2f9105298839cd9ef92032",
+      "bytes": 779
+    },
+    "identity/main-0.diagnostics.json": {
+      "sha256": "d3ba8ad41eb3804761b58408f45775a46a62d7c21a4f0960d001c4ee121edf07",
+      "bytes": 455
+    },
+    "identity/main-1.stdout": {
+      "sha256": "c4652b83d40ee5f1b4f16dd3f29b027779ac3421840b60893b5d1c83dd2ebdda",
+      "bytes": 780
+    },
+    "identity/main-1.diagnostics.json": {
+      "sha256": "d1a2e40a36ee734a3898d7b467b21a0c00e7d463def70d9a5623b9fcb6802bd2",
+      "bytes": 1129
+    },
+    "identity/main-2.stdout": {
+      "sha256": "95cce4841943c29dd4750e365ef8ed6dd33abca90cfa7d312303722adc2da8b7",
+      "bytes": 782
+    },
+    "identity/main-2.diagnostics.json": {
+      "sha256": "31da8fec0b5a96e898ee37692788dd3f89bd4f6ce593cb2891ab369c49f00c83",
+      "bytes": 463
+    },
+    "identity/placement-0.stdout": {
+      "sha256": "7a980fd870a807979bce1826df8bff2864bce2f5aa2f9105298839cd9ef92032",
+      "bytes": 779
+    },
+    "identity/placement-0.diagnostics.json": {
+      "sha256": "d3ba8ad41eb3804761b58408f45775a46a62d7c21a4f0960d001c4ee121edf07",
+      "bytes": 455
+    },
+    "identity/placement-1.stdout": {
+      "sha256": "c4652b83d40ee5f1b4f16dd3f29b027779ac3421840b60893b5d1c83dd2ebdda",
+      "bytes": 780
+    },
+    "identity/placement-1.diagnostics.json": {
+      "sha256": "d1a2e40a36ee734a3898d7b467b21a0c00e7d463def70d9a5623b9fcb6802bd2",
+      "bytes": 1129
+    },
+    "identity/placement-2.stdout": {
+      "sha256": "95cce4841943c29dd4750e365ef8ed6dd33abca90cfa7d312303722adc2da8b7",
+      "bytes": 782
+    },
+    "identity/placement-2.diagnostics.json": {
+      "sha256": "31da8fec0b5a96e898ee37692788dd3f89bd4f6ce593cb2891ab369c49f00c83",
+      "bytes": 463
+    },
+    "snapshots/main/compiler-proof.json": {
+      "sha256": "69379a1f978af41c339ab87c0641714e696a7b8065a6f0eea4bb877b357f1282",
+      "bytes": 302265
+    },
+    "snapshots/placement/compiler-proof.json": {
+      "sha256": "a14c65ecccc8838a1af187b7b03516ac2a59c818443ad39cd2168863aa77ddf2",
+      "bytes": 302277
+    },
+    "jobs/05fb2817-57b7-4dc7-bf22-c8c49763c06a/receipt.json": {
+      "sha256": "bbcbb68c246c48e79a948b95f81ca88b2f4d167b5621698a8bac8415b41fec89",
+      "bytes": 3646
+    },
+    "jobs/7e823548-b381-4b84-a89a-364c2efc2487/receipt.json": {
+      "sha256": "32f1c143a02ce6f997aaf71d9b46c7a6042d5907f4303ea23308e8d3eca65e57",
+      "bytes": 3653
+    },
+    "jobs/064500da-088e-4211-a6ba-aeaa0790485f/receipt.json": {
+      "sha256": "32dd57d3612190ad5a9f98373d0230057bc3e56b9d9efa036810309bb7020b81",
+      "bytes": 3879
+    },
+    "jobs/e2d8cb8c-ff7a-411e-995c-f55abe31ac3f/receipt.json": {
+      "sha256": "045c7b675ca4ef02a70c36457c30c93aed6a8cfd4cf55d04640e7bc6cd0b320d",
+      "bytes": 3755
+    },
+    "reporter-verification.json": {
+      "sha256": "71cac1ffa371ef994400f50edc9f8ca28c0988935b57538f903e58cadebecf51",
+      "bytes": 352
+    },
+    "timing/placement-v-main/runs.jsonl": {
+      "sha256": "923f2486e56a0d06df9584c7e8ad13b5e1d66388ee5c0f085376f5587d5feb4d",
+      "bytes": 27459
+    },
+    "protocols/placement-7877-current-native-v3/freeze.json": {
+      "sha256": "75620e9f4fe18be0b27d32cb396c9ef295a412ae6e097139703edfb625052096",
+      "bytes": 4647
+    },
+    "protocols/placement-7877-current-native-v4/freeze.json": {
+      "sha256": "134b8052bcb54a9b0b34f792e4dcc8097eb8e2d4203a3657ab008a555bffc33c",
+      "bytes": 2507
+    },
+    "timing/identity-before.json": {
+      "sha256": "0db3560846b23ca9770e2cfdb9eaf0ff9988d76d38774321bda64a87ca154b95",
+      "bytes": 7920
+    },
+    "timing/identity-after.json": {
+      "sha256": "0db3560846b23ca9770e2cfdb9eaf0ff9988d76d38774321bda64a87ca154b95",
+      "bytes": 7920
+    },
+    "identity/terminal.json": {
+      "sha256": "e621ec0132241da64439f56a50bcc81d923d925c9ebd94f9f9dc732e2d44c321",
+      "bytes": 12293
+    },
+    "snapshots/assembly.json": {
+      "sha256": "8862b6ba15b3ff81e987847e39a1018a5d5e7a7a4635db9ea21ba3aa0f16b4ac",
+      "bytes": 153
+    },
+    "original-files-sha256.json": {
+      "sha256": "0d37eab5be6acfd557342f7048aedbcf155b98be919ede520112914552920649",
+      "bytes": 17420
+    }
+  },
+  "packetFiles": {
+    "README.md": {
+      "sha256": "e8cf3e70d013d8c7c40a5ae5b50941a3c8948c1b4e9184f0b31fe138a9bd009e",
+      "bytes": 10559
+    },
+    "bindings.json": {
+      "sha256": "e2402f04dcb1d8306bf34574e9fc49b17cf4dce65a0d0c1b16314cc2643863bb",
+      "bytes": 32285
+    },
+    "environment.json": {
+      "sha256": "f0470fb67ec7b163d945879ddb0d53899b70d14f80e5df1196e9ed7c928623bf",
+      "bytes": 510
+    },
+    "identity.json": {
+      "sha256": "a22407a57dbb3d07933a9d8e1de7808e3f5d07daa466cdbbf2e0760cc16778eb",
+      "bytes": 9892
+    },
+    "raw-block-comparison.json": {
+      "sha256": "3d81ce140a3bdb4f3aade7feb911cd4f2362c9b54fd746e36a296b2e35e4952e",
+      "bytes": 13595
+    },
+    "selected-and-inner-rows.jsonl": {
+      "sha256": "ba8aef6dec0e501aa52b48772e1a87bc4443e4ce53b02c37c3eeb7f5b7380c42",
+      "bytes": 24159
+    },
+    "source-identity.json": {
+      "sha256": "74370a291b34ab8104a04e7b688dcea2bfad38b85c4b7b39fa3ead7397db970c",
+      "bytes": 3120
+    },
+    "stock-report.json": {
+      "sha256": "3b284248814e5953b5bef8799ef8beefe08abc3438644ff74369822935537ea0",
+      "bytes": 6276
+    },
+    "timing-terminal.json": {
+      "sha256": "6d326106da567357a7a300d4c98caeba430382dea83e6d28f3eefeeeac14ab37",
+      "bytes": 9659
+    },
+    "reduced-publication-aliases.json": {
+      "sha256": "457f3284b7b8b335b23b34dfccb80dbd2c751472aeab296ea74ac361b7b39bc5",
+      "bytes": 68613
+    },
+    "reduced-publication-verification.json": {
+      "sha256": "26fd6bae619f877354ab4f2df2470d26e1948d33c1372a0bd3973a332b96e897",
+      "bytes": 32232
+    }
+  },
+  "preparation": {
+    "baselineCommit": "2f53f7941ad3fe330de749c7124d8a7e20d30cd4",
+    "baselineTree": "774869cc7c8b8483d5221e07db0fbd21a0d53930",
+    "descendantScope": "Document-only direct descendant of published f96b2c2a5b85c6c56d4ec9a7145f0556fd18795a; measured source remains 2f53f794. No new measurement or acceptance. See source-identity.json and reduced-publication-verification.json.",
+    "previousPacketCommit": "8b9ca3b636cef530629ffd53e9cebee7f2919a7b",
+    "supportedSelectedPublication": "COMPLETED_VERIFIED_REDUCED_SELECTION",
+    "vaultLockFailures": 3,
+    "originals": "INTACT",
+    "compactBundle": "PREPARED_NOT_PUBLISHED",
+    "archiveRequirement": "Digest review required by existing archive guard; no guard configuration change or archive completion.",
+    "closure": "ACTIVE; one safety.idle refusal: benchmark queued or active; no retry or override",
+    "full155VaultArchiveComplete": false
+  }
+}

@@ -167,7 +167,16 @@ fn grid_ref_direction_vector(
         }
         _ => return Err(unsupported(decoder, entity.id, entity.ifc_type)),
     };
-    Ok((x.norm() >= 1e-9).then_some(x))
+    if !(x.x.is_finite() && x.y.is_finite()) {
+        return Err(missing(decoder, entity.id, "a finite PlacementRefDirection"));
+    }
+    let norm = x.norm();
+    if norm.is_infinite() {
+        // Finite direction ratios can overflow the squared norm. Rescale only
+        // this case, preserving ordinary frames while making normalization safe.
+        return Ok(Some(x / x.x.abs().max(x.y.abs())));
+    }
+    Ok((norm >= 1e-9).then_some(x))
 }
 
 /// Build a rotation matrix whose local +X follows the given in-plane

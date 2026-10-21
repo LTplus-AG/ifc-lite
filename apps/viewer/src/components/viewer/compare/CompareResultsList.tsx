@@ -9,7 +9,6 @@
 
 import type { ReactNode } from 'react';
 import { Plus, Minus, PencilLine, MousePointerClick } from 'lucide-react';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useTranslation, type TranslationKey } from '@/i18n';
@@ -50,25 +49,37 @@ export function CountBadge({
   value,
   color,
   hint,
+  pressed,
+  onClick,
 }: {
   label: string;
   value: number;
   color: RGBA;
   hint?: string;
+  pressed?: boolean;
+  onClick?: () => void;
 }) {
-  return (
-    <div className="flex flex-col items-center gap-0.5">
+  const content = (
+    <>
       <span className="text-sm font-semibold tabular-nums" style={{ color: rgbaCss([color[0], color[1], color[2], 1]) }}>
         {value.toLocaleString()}
       </span>
       <span className="text-2xs text-muted-foreground">{label}</span>
       {hint && <span className="text-2xs text-muted-foreground">{hint}</span>}
-    </div>
+    </>
   );
+  const className = 'flex flex-col items-center gap-0.5 rounded px-1 py-1 min-w-0';
+  return onClick ? (
+    <button type="button" aria-label={label} aria-pressed={pressed} onClick={onClick}
+      className={cn(className, 'hover:bg-muted focus-visible:outline focus-visible:outline-primary', pressed && 'bg-muted ring-1 ring-primary')}>
+      {content}
+    </button>
+  ) : <div className={className}>{content}</div>;
 }
 
 interface CompareResultsListProps {
   result: CompareResult | null;
+  filtering?: boolean;
   groups: Map<DiffState, CompareBucket>;
   counts: CompareResult['diff']['counts'] | undefined;
   /** Products / type-objects split of the FULL entry list. The section
@@ -96,6 +107,7 @@ interface CompareResultsListProps {
 
 export function CompareResultsList({
   result,
+  filtering = false,
   groups,
   counts,
   split,
@@ -115,7 +127,7 @@ export function CompareResultsList({
 }: CompareResultsListProps) {
   const { t } = useTranslation();
   return (
-    <ScrollArea className="flex-1 min-h-0" {...tourAnchor(TOUR_ANCHORS.compareResults)}>
+    <div {...tourAnchor(TOUR_ANCHORS.compareResults)}>
       {!result ? (
         <div className="p-4 text-sm text-muted-foreground">
           {t('comparePanel.resultsList.emptyPrompt')}
@@ -191,7 +203,10 @@ export function CompareResultsList({
           {/* Exact negation of the panel's "Download report" bar, through the
               same predicate - offering a report over "the models match" (or the
               reverse) is precisely what two independent derivations produced. */}
-          {counts && !hasReportableChanges(counts, matchRows) && (
+          {filtering && ![...groups.values()].some((bucket) => bucket.rows.length) && !matchRows.length && (
+            <output className="block p-3 text-sm text-muted-foreground">{t('comparePanel.filters.empty')}</output>
+          )}
+          {!filtering && counts && !hasReportableChanges(counts, matchRows) && (
             <div className="p-3 text-sm text-muted-foreground">
               {t('comparePanel.resultsList.noDifferences', { scope: result.scope })}
             </div>
@@ -199,6 +214,6 @@ export function CompareResultsList({
         </div>
         </>
       )}
-    </ScrollArea>
+    </div>
   );
 }

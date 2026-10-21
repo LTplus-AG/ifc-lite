@@ -43,7 +43,7 @@ export class SectionCutter {
   /** Set when `config.customPlane` is supplied — disables cardinal projection. */
   private customPlane: SectionPlaneConfig['customPlane'];
 
-  constructor(config: SectionPlaneConfig) {
+  constructor(private config: SectionPlaneConfig) {
     this.axis = config.axis;
     this.flipped = config.flipped;
     this.customPlane = config.customPlane;
@@ -80,7 +80,6 @@ export class SectionCutter {
     let totalTriangles = 0;
     let intersectedTriangles = 0;
 
-    // Process each mesh - collect segment arrays for efficient flattening
     for (const mesh of meshes) {
       const result = this.cutSingleMesh(mesh);
       segmentArrays.push(result.segments);
@@ -115,6 +114,7 @@ export class SectionCutter {
    */
   cutSingleMesh(mesh: MeshData): MeshCutResult {
     const segments: CutSegment[] = [];
+    if (this.config.sectionExcludedIds?.has(mesh.expressId)) return { segments, trianglesProcessed: 0, trianglesIntersected: 0 };
     const { positions, indices, expressId, ifcType, modelIndex, origin, color } = mesh;
 
     const triangleCount = indices.length / 3;

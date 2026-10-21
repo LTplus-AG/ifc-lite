@@ -1633,6 +1633,10 @@ dependencies = [
 [[package]]
 name = "ifc-lite-geometry-runtime"
 version = "21.4.0"
+dependencies = [
+ "ifc-lite-core",
+ "ifc-lite-geometry",
+]
 
 [[package]]
 name = "ifc-lite-imported-geometry"
@@ -1731,6 +1735,7 @@ dependencies = [
  "serde_json",
  "tracing",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "wasm-bindgen-rayon",
  "wasm-bindgen-test",
  "web-sys",

@@ -11,6 +11,14 @@ pub(crate) fn restore(reports: &ConstructionReports) {
     super::advanced_face::restore_reports(reports.curve_capped, &reports.face_refused);
 }
 
+/// Insert an already reached prefix before this capture's newer diagnostics.
+/// Call inside the capture so its caller's saved log keeps its original place.
+pub(crate) fn restore_before_current(reports: &ConstructionReports) {
+    let current = take();
+    restore(reports);
+    restore(&current);
+}
+
 struct Scope(Option<ConstructionReports>);
 impl Scope {
     fn finish(mut self) -> ConstructionReports {

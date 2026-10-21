@@ -4333,6 +4333,34 @@ checker contracts and receipt discovery against retained real captures before
 spending another capture window. This integration fix grants no timing verdict.
 
 
+## Engine transfer ceiling acceptance (#8000, #8003)
+
+The maintainer accepted the accumulated engine transfer cost measured on main
+`141285f828`. The [hosted measurement](https://github.com/LTplus-AG/ifc-lite/actions/runs/39490083745)
+supplies the value and exact timestamp in the bundle ratchet provenance. Its
+retained `perf-ratchet-measured/bundle.json` artifact has SHA-256
+`5376ae3b2ef9af8fdebc7832419abf93b2269a1aeb21b600cfe7f0b18712723a`.
+The observed engine transfer measurement was 2,365,134 bytes; the maintainer
+set the ceiling to that same value, retaining the existing relative tolerance.
+These identify the accepted measurement rather than a performance claim. The
+earlier execution-ownership slice (#7956) was already incorporated in the old
+ceiling; this decision does not count that growth again. Only the engine ceiling
+was reset, with its relative tolerance unchanged. No speed improvement is claimed.
+
+The accepted code supports bounded resource accounts, source-free construction,
+transactional opening diagnostics, explicit CSG continuations and canonical
+analytic source capture. Browser extrusion-definition bindings consume shared
+analytic extraction, but the new opt-in original-source capture has no production
+caller at the measured commit. Individual compressed-byte contributions have
+not been isolated.
+
+Runtime opt-in is not evidence of a measured linked-byte reduction. Excluding
+capture-only code from WASM remains proposed, unimplemented and unmeasured;
+no proven main-byte reduction is claimed here. Accept this measured cost
+explicitly, retain the current build policy and automatic lowering, and require
+a new measurement and maintainer decision for any later increase. Source-matched
+performance acceptance and transfer-size acceptance remain separate decisions.
+
 ### C2 router builders recovery (#7867)
 
 The shared frame/builders refactor at runtime source `14c1da6384` was compared

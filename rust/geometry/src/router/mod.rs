@@ -16,8 +16,8 @@ mod diagnostics;
 mod diagnostics_recording;
 mod frame_parts;
 mod instancing;
-mod item;
-mod item_direct;
+pub(crate) mod item;
+pub(crate) mod item_cache_program;
 mod item_dedup_cache;
 mod layers;
 mod mapped_item;
@@ -246,6 +246,8 @@ pub struct GeometryRouter {
     /// built per `produce_batch`. Unused (stays empty) in the native global mode.
     instanced_sources_materialized: RefCell<FxHashSet<u32>>,
     unsupported: RefCell<diagnostics::UnsupportedItemState>, // dropped items by `IfcType` + per-source bookkeeping
+    /// Instance + configuration generation checked by pending item programs.
+    execution_owner: ifc_lite_core::execution_owner::ExecutionOwner,
 }
 
 impl GeometryRouter {
@@ -284,6 +286,7 @@ impl GeometryRouter {
             instancing_batch_local: false, // native global-template mode by default
             instanced_sources_materialized: RefCell::new(FxHashSet::default()),
             unsupported: RefCell::new(Default::default()),
+            execution_owner: Default::default(),
         }
     }
 
@@ -346,6 +349,7 @@ impl GeometryRouter {
     /// [`Self::new_dedup_cache`] and inject it into every router with
     /// [`Self::enable_content_dedup_shared`] so the cache persists across them.
     fn arm_content_dedup(&mut self) {
+        self.execution_owner.changed();
         self.item_dedup_cache = Some(Self::new_dedup_cache());
     }
 
@@ -392,6 +396,7 @@ impl GeometryRouter {
     /// byte-identical geometry is meshed once across the whole model regardless of
     /// how elements are partitioned across threads or batches.
     pub fn enable_content_dedup_shared(&mut self, cache: ItemDedupCache) {
+        self.execution_owner.changed();
         self.item_dedup_cache = Some(cache);
     }
 
@@ -482,6 +487,7 @@ impl GeometryRouter {
     /// returns `None` and meshing is never skipped). Test/bench helper for an A/B
     /// against the deduped path.
     pub fn disable_content_dedup(&mut self) {
+        self.execution_owner.changed();
         self.item_dedup_cache = None;
     }
 
@@ -570,6 +576,7 @@ impl GeometryRouter {
         if self.tessellation_quality == quality {
             return;
         }
+        self.execution_owner.changed();
         self.tessellation_quality = quality;
         self.mapped_item_cache.get_mut().clear();
         self.unsupported.get_mut().forget_sources();
@@ -625,6 +632,7 @@ impl GeometryRouter {
 
     /// Set the RTC offset for large coordinate handling
     pub fn set_rtc_offset(&mut self, offset: (f64, f64, f64)) {
+        self.execution_owner.changed();
         self.rtc_offset = offset;
     }
 
@@ -670,12 +678,7 @@ impl GeometryRouter {
     /// Only applies scaling if unit_scale != 1.0
     #[inline]
     fn scale_mesh(&self, mesh: &mut Mesh) {
-        if self.unit_scale != 1.0 {
-            let scale = self.unit_scale as f32;
-            for pos in mesh.positions.iter_mut() {
-                *pos *= scale;
-            }
-        }
+        item::scale_positions(mesh, self.unit_scale);
     }
 
     /// Scale the translation component of a transform matrix from file units to meters

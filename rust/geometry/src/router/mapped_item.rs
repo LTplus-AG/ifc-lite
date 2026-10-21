@@ -313,8 +313,8 @@ impl GeometryRouter {
     ///
     /// It rebases a raw-coordinate item by the model RTC in f64 before f32
     /// narrowing (#5698, ROUTER-27), kept as the item's origin (see
-    /// [`Self::keep_rebase_in_origin`]), and, through
-    /// [`Self::process_item_in_rtc_frame`], drains the #4901 curve-capped flag
+    /// [`Self::keep_rebase_in_origin`]), and, through the common item program
+    /// (`crate::program::GeometryProgram::item`), drains the #4901 curve-capped flag
     /// for this source rather than the next item on the thread (ROUTER-26). A
     /// failed or unsupported item is recorded as dropped; `walk` only names
     /// the caller in the debug message.

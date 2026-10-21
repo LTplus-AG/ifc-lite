@@ -17,6 +17,7 @@ const packageDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const rootDir = join(packageDir, '..', '..');
 const fixture = join(rootDir, 'rust', 'geometry', 'tests', 'fixtures', 'mapped_instances_synthetic.ifc');
 const defaultJs = join(packageDir, 'pkg', 'ifc-lite.js');
+const defaultWasm = join(packageDir, 'pkg', 'ifc-lite_bg.wasm');
 const retainedJs = join(packageDir, 'pkg-retained', 'ifc-lite.js');
 const retainedWasm = join(packageDir, 'pkg-retained', 'ifc-lite_bg.wasm');
 
@@ -33,12 +34,19 @@ function observe() {
   return seen;
 }
 
-it('the default engine carries no retained executor or retained API', (t) => {
+it('the default engine carries no retained executor or retained API', async (t) => {
   if (!existsSync(defaultJs)) { t.skip('wasm bundle not built — run `bash scripts/build-wasm.sh`'); return; }
-  const glue = readFileSync(defaultJs, 'utf8');
-  for (const name of ['RetainedBrowserExecutor', 'retainedSources', 'retained-driver', '/smlib/']) {
-    assert.equal(glue.includes(name), false, `${name} must stay out of the default engine`);
-  }
+  const seen = observe();
+  try {
+    // Behaviour, not text: load the actual default engine and probe its API.
+    const engine = await import(pathToFileURL(defaultJs).href);
+    engine.initSync(readFileSync(defaultWasm));
+    assert.equal('RetainedBrowserExecutor' in engine, false, 'no retained executor export');
+    const api = new engine.IfcAPI();
+    assert.equal(typeof api.retainedSources, 'undefined', 'no retainedSources on the default IfcAPI');
+    api.free();
+    assert.deepEqual([seen.workers, seen.fetches], [[], []], 'loading the default engine reaches no /smlib Worker');
+  } finally { seen.restore(); }
 });
 
 it('importing the opt-in loader fetches nothing and starts no Worker', async () => {

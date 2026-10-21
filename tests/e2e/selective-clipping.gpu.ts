@@ -7,7 +7,8 @@ import type { RenderOptions } from '../../packages/renderer/src/types.js';
 import type { DecodedInstancedShard, MeshData } from '../../packages/geometry/src/index.js';
 import { shadowProbe } from './selective-clipping-shadow.gpu.js';
 
-const WIDTH = 640, HEIGHT = 480;
+// Keep the native Vulkan presentation image aligned as well as its readback rows.
+const WIDTH = 512, HEIGHT = 512;
 const COLOR: [number, number, number, number] = [0.1, 0.8, 1, 1];
 const PRIMARY = { axis: 'side' as const, position: 50, enabled: true, normal: [0, 1, 0] as [number, number, number], distance: 0 };
 const EXTRA = { ...PRIMARY, normal: [0, -1, 0] as [number, number, number], distance: 2 };
@@ -34,7 +35,8 @@ function shard(cx = 18, firstId = 201): DecodedInstancedShard {
     normals: new Float32Array([0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0]),
     indices: new Uint32Array([0, 1, 2, 0, 2, 3]) }],
     instances: [-6, 6].map((x, i) => ({ templateIndex: 0, entityId: firstId + i, color: COLOR,
-      transform: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, 0, 0, 1]) })),
+      // Decoded IFC transforms are row-major; preparation folds in the Y-up swap.
+      transform: new Float32Array([1, 0, 0, x, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) })),
     carriesItemIds: false };
 }
 

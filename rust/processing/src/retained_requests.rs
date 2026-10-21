@@ -192,10 +192,12 @@ impl RetainedExtrusionSources {
         let mut document = GeometryDocument::new();
         let admitted = document
             .add_retained_extrusion(recipe)
-            .map_err(RetainedRefusal::from)
-            .and_then(|definition| Ok((definition, document.retained_payload(definition)?)));
+            .and_then(|definition| {
+                let frame = document.retained_payload(definition)?.source_from_evaluation;
+                Ok((definition, frame))
+            });
         let (definition, source_from_evaluation) = match admitted {
-            Ok((definition, payload)) => (definition, payload.source_from_evaluation),
+            Ok(admitted) => admitted,
             Err(refusal) => {
                 self.refused.push(RefusedExtrusion {
                     key,

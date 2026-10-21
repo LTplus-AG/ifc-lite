@@ -5,6 +5,9 @@
 //! historical order: owned lowering in the RTC frame, the RTC extension hook,
 //! plain owned lowering, then the plain extension callback. Only an admitted
 //! owned constructor becomes a numerical recipe; it evaluates without source.
+//! A selected Boolean/CSG processor's extension is its continuation instead,
+//! driven here one source or numerical step at a time.
+use super::boolean::BooleanMachine;
 use super::inner::{ProgramError, ProgramStage};
 use super::OwnedConstructor;
 use crate::construction::ConstructionReports;
@@ -24,6 +27,9 @@ pub(super) enum ItemPhase {
 pub(super) enum ItemStep {
     Source { phase: ItemPhase, reports: ConstructionReports },
     Ready(ReadyItem),
+    /// The selected processor's Boolean/CSG continuation, mid-walk. Boxed: the
+    /// step moves with every reply, and the continuation owns a mesh and stacks.
+    Boolean { machine: Box<BooleanMachine>, reports: ConstructionReports },
     Complete(ItemResult),
 }
 
@@ -61,6 +67,7 @@ impl ItemControl {
             }
             ItemStep::Source { .. } => Some(ProgramStage::Source),
             ItemStep::Ready(_) => Some(ProgramStage::Numerical),
+            ItemStep::Boolean { machine, .. } => Some(machine.stage().ok_or(ProgramError::Outstanding)?),
             ItemStep::Complete(_) => None,
         })
     }
@@ -74,6 +81,7 @@ impl ItemControl {
                 execute_source(item, self.offset, phase, reports, router, decoder)
             }
             ItemStep::Ready(ready) => ItemStep::Complete(ready.execute()),
+            ItemStep::Boolean { machine, reports } => execute_boolean(item, machine, reports, router, decoder),
             ItemStep::Complete(value) => ItemStep::Complete(value),
         })
     }
@@ -173,6 +181,11 @@ fn execute_source(
     reports.merge(reached);
     let rtc_offset = |rebased: bool| rebased.then_some(offset);
     match lowered {
+        // The extension of a selected Boolean/CSG processor is its
+        // continuation, run as the item's own steps.
+        Lowered::Next(ItemPhase::PlainExtension) if processor.boolean_recorder().is_some() => {
+            ItemStep::Boolean { machine: Box::new(BooleanMachine::new(item, quality)), reports }
+        }
         Lowered::Next(phase) => ItemStep::Source { phase, reports },
         Lowered::Plan(Ok(plan), rebased) => ItemStep::Ready(ReadyItem {
             plan,
@@ -189,6 +202,46 @@ fn execute_source(
             ItemStep::Complete(ItemResult { result, reports })
         }
     }
+}
+
+/// One continuation step through the selected processor's recorder: a
+/// source step reads the decoder, a numerical step only its owned operands.
+/// A resource stop ends the item before the step runs.
+fn execute_boolean(
+    item: &DecodedEntity,
+    mut machine: Box<BooleanMachine>,
+    prior: ConstructionReports,
+    router: &GeometryRouter,
+    decoder: &mut EntityDecoder,
+) -> ItemStep {
+    let recorder = router.processor_for(&item.ifc_type).and_then(|processor| processor.boolean_recorder());
+    let Some(recorder) = recorder else {
+        let result = Err(Error::geometry("the selected processor no longer records this boolean"));
+        return ItemStep::Complete(ItemResult { result, reports: prior });
+    };
+    if let Err(stop) = crate::resource::check_current() {
+        return ItemStep::Complete(ItemResult { result: Err(stop.into()), reports: prior });
+    }
+    let numerical = machine.stage() == Some(ProgramStage::Numerical);
+    let ((result, mut reports), reached) = diagnostic_capture::capture(|| {
+        let mut prior = UnwindReports(Some(prior));
+        let stepped = if numerical { machine.numerical(recorder) } else { machine.source(recorder, decoder) };
+        let result = stepped.and_then(|()| match machine.stage() {
+            Some(_) => Ok(None),
+            None => machine.finish().map(|(mesh, _)| Some(mesh)),
+        });
+        (result, prior.take())
+    });
+    reports.merge(reached);
+    let result = match result {
+        Ok(None) => return ItemStep::Boolean { machine, reports },
+        Ok(Some(mut mesh)) => {
+            crate::router::processing::finish_item_mesh(&mut mesh, router.unit_scale(), None);
+            Ok(mesh)
+        }
+        Err(error) => Err(error),
+    };
+    ItemStep::Complete(ItemResult { result, reports })
 }
 
 impl ReadyItem {

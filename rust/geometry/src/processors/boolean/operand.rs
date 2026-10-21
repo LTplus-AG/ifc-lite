@@ -172,7 +172,7 @@ impl BooleanClippingProcessor {
     ///
     /// `IfcCsgSolid` and the boolean types never arrive here: the continuation
     /// dispatches them as frames, carrying `depth` and the cycle guard.
-    pub(super) fn leaf_operand(
+    pub(crate) fn leaf_operand(
         &self,
         op: BoolOp,
         operand: &DecodedEntity,

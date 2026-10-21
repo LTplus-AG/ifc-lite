@@ -15,7 +15,6 @@ mod bounded_prism_mesh;
 mod bounded_prism_plan;
 pub(crate) mod brep_void_plan;
 mod brep_voids;
-mod continuation;
 mod cut_heuristics;
 mod failures;
 mod half_space_plan;
@@ -28,6 +27,7 @@ mod halfspace_cap;
 mod polygonal_boundary;
 mod polygonal_prism;
 mod single_cutter_gate;
+mod spine_step;
 mod polygonal_union;
 mod polygonal_removal;
 #[cfg(test)]
@@ -39,20 +39,22 @@ use halfspace_cap::force_cdt_fail_on_ring_for_test;
 /// Prevents stack overflow from deeply nested IfcBooleanResult chains.
 /// In WASM, the stack is limited (~1-8MB), and each recursion level uses
 /// significant stack space for CSG operations.
-const MAX_BOOLEAN_DEPTH: u32 = 10;
+pub(crate) const MAX_BOOLEAN_DEPTH: u32 = 10;
 
 /// Longest chain of nested boolean/CSG operand nodes on one path. Bounds the
-/// stack where `MAX_BOOLEAN_DEPTH` cannot: see the continuation's `enter_boolean`.
+/// stack where `MAX_BOOLEAN_DEPTH` cannot: see the program continuation's
+/// `enter_boolean` (`program/boolean`).
 ///
 /// Both boolean AND CSG nodes go into the set, so `len()` is an honest count of
 /// recursion frames on the current path and this number means what it says. An
 /// earlier revision counted booleans only and leaned on `IfcCsgSolid ->
 /// IfcCsgSolid` being rejected elsewhere to keep the ratio bounded; see
-/// the CSG hop in `continuation` (and #2866) for why that was the
+/// the CSG hop in the program continuation (and #2866) for why that was the
 /// wrong trade.
-const MAX_OPERAND_PATH_NODES: usize = 64;
+pub(crate) const MAX_OPERAND_PATH_NODES: usize = 64;
 
 pub(crate) use operand::{boolean_operator, OperandPath, MAX_OPERAND_VISITS};
+pub(crate) use spine_step::StepAdmission;
 
 /// BooleanResult processor
 /// Handles IfcBooleanResult and IfcBooleanClippingResult - CSG operations
@@ -101,6 +103,18 @@ impl BooleanClippingProcessor {
             failures: RefCell::new(Vec::new()),
             skip_small_cuts,
         }
+    }
+}
+
+impl BooleanClippingProcessor {
+    /// The schema the built-in operand processors are given.
+    pub(crate) fn schema(&self) -> &IfcSchema {
+        &self.schema
+    }
+
+    /// The per-build small-cut skip a solid/solid step reads.
+    pub(crate) fn skip_small_cuts(&self) -> bool {
+        self.skip_small_cuts
     }
 }
 

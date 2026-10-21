@@ -9,7 +9,7 @@
 //! Split out of `boolean/mod.rs` (module-size ratchet) when the one-record-
 //! per-step rule needed a home (#3821).
 
-use super::{BooleanClippingProcessor, OperandPath};
+use super::BooleanClippingProcessor;
 use crate::diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 use crate::router::GeometryProcessor;
 use crate::{Mesh, Result, TessellationQuality};
@@ -23,9 +23,13 @@ impl GeometryProcessor for BooleanClippingProcessor {
         _schema: &IfcSchema,
         quality: TessellationQuality,
     ) -> Result<Mesh> {
-        let mut visited = OperandPath::default();
-        self.execute_boolean(entity, decoder, 0, quality, &mut visited)
-            .map(|(mesh, _)| mesh)
+        // The program's continuation, drained with this processor as its
+        // recorder; the router drives the same continuation step by step.
+        crate::program::BooleanMachine::new(entity, quality).drain(self, decoder).map(|(mesh, _)| mesh)
+    }
+
+    fn boolean_recorder(&self) -> Option<&BooleanClippingProcessor> {
+        Some(self)
     }
 
     fn supported_types(&self) -> Vec<IfcType> {
@@ -55,7 +59,7 @@ impl BooleanClippingProcessor {
         std::mem::take(&mut *self.failures.borrow_mut())
     }
 
-    pub(super) fn record_failure(&self, op: BoolOp, reason: BoolFailureReason) {
+    pub(crate) fn record_failure(&self, op: BoolOp, reason: BoolFailureReason) {
         self.failures.borrow_mut().push(BoolFailure::new(op, reason));
     }
 
@@ -69,7 +73,7 @@ impl BooleanClippingProcessor {
     }
 
     /// A mark in the failure log, for [`Self::rewind_to`].
-    pub(super) fn failure_mark(&self) -> usize {
+    pub(crate) fn failure_mark(&self) -> usize {
         self.failures.borrow().len()
     }
 
@@ -99,7 +103,7 @@ impl BooleanClippingProcessor {
     /// already on record (an unsupported operand, or a nested one emptied by
     /// a drop inside it). One dropped step, one record: see the flag's
     /// rationale there.
-    pub(super) fn record_empty_operand(&self, op: BoolOp, already_recorded: bool) {
+    pub(crate) fn record_empty_operand(&self, op: BoolOp, already_recorded: bool) {
         if !already_recorded {
             self.record_failure(op, BoolFailureReason::EmptyOperand);
         }

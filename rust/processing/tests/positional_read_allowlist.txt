@@ -131,9 +131,9 @@
 10 rust/processing/src/symbolic/fill.rs
 5 rust/processing/src/symbolic/grid.rs
 12 rust/processing/src/symbolic/items.rs
-6 rust/processing/src/symbolic/mod.rs
+4 rust/processing/src/symbolic/mod.rs
 5 rust/processing/src/symbolic/text.rs
-1 rust/processing/src/symbolic/transform.rs
+3 rust/processing/src/symbolic/transform.rs
 4 rust/processing/src/symbolic/trimmed_curve.rs
 2 rust/wasm-bindings/src/api/gpu_meshes/batch.rs
 1 rust/wasm-bindings/src/api/gpu_meshes/prepass.rs

@@ -14,14 +14,15 @@ import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const BROWSER = resolve(import.meta.dirname, '../native/smlib-adapter/browser');
 const TEST_FILES = ['test.html', 'lifecycle-contract.mjs', 'tests/hung-worker.mjs', 'tests/missing-asset-worker.mjs'];
-const TYPES = { '.html': 'text/html', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json' };
+const TYPES = { '.html': 'text/html', '.mjs': 'text/javascript', '.js': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json' };
 
-/** Serves `root` under /smlib/ only; every other path is 404. */
-export function serveStaged(root) {
+/** Serves each `prefix -> directory` mount; every other path is 404. */
+export function serveRoots(mounts) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url, 'http://127.0.0.1').pathname;
-    const file = normalize(join(root, decodeURIComponent(path.slice('/smlib/'.length))));
-    if (!path.startsWith('/smlib/') || !file.startsWith(root + sep)) { response.writeHead(404); response.end(); return; }
+    const [prefix, root] = Object.entries(mounts).find(([mount]) => path.startsWith(mount)) ?? [];
+    const file = root && normalize(join(root, decodeURIComponent(path.slice(prefix.length))));
+    if (!file || !file.startsWith(root + sep)) { response.writeHead(404); response.end(); return; }
     try {
       const bytes = await readFile(file);
       response.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-store' });
@@ -30,15 +31,21 @@ export function serveStaged(root) {
   });
 }
 
-export async function runWorkerProbe({ build, sdk, timeout = 300_000 }) {
+/** Stages the canonical /smlib bundle from an existing Emscripten build. */
+export async function stageTemporary({ build, sdk }) {
   const temporary = await mkdtemp(join(tmpdir(), 'smlib-worker-probe-'));
   const root = join(temporary, 'smlib');
+  await stageRetainedBrowserAssets({ build, sdk, out: root });
+  return { temporary, root };
+}
+
+export async function runWorkerProbe({ build, sdk, timeout = 300_000 }) {
+  const { temporary, root } = await stageTemporary({ build, sdk });
   let server, browser;
   try {
-    await stageRetainedBrowserAssets({ build, sdk, out: root });
     await mkdir(join(root, 'tests'));
     for (const name of TEST_FILES) await copyFile(join(BROWSER, name), join(root, name));
-    server = serveStaged(root);
+    server = serveRoots({ '/smlib/': root });
     await new Promise((done) => server.listen(0, '127.0.0.1', done));
     browser = await chromium.launch();
     const page = await browser.newPage();

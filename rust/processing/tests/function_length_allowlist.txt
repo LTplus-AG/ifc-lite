@@ -46,7 +46,6 @@
    300 rust/geometry/src/processors/boolean/halfspace_cap.rs cap_half_space_clip
    181 rust/geometry/src/processors/tessellated/triangulate.rs PolygonalFaceSetProcessor::triangulate_polygon
    182 rust/geometry/src/profiles/simplify.rs simplify_smooth_curve_polyline
-   291 rust/geometry/src/router/processing.rs GeometryRouter::collect_submeshes_from_item_inner
    189 rust/geometry/src/router/transforms/operator.rs parse_transformation_operator
    224 rust/geometry/src/router/voids/aabb_clip.rs GeometryRouter::clip_triangle_against_box
    168 rust/geometry/src/router/voids/aabb_clip.rs GeometryRouter::triangle_intersects_box
@@ -56,8 +55,6 @@
    161 rust/geometry/src/router/voids/prism_cut.rs build_face_cap
    233 rust/geometry/src/router/voids/prism_cut.rs cut_prism
    193 rust/geometry/src/router/voids/prism_cut.rs detect_prism
-   155 rust/geometry/src/router/voids/probe.rs GeometryRouter::get_opening_item_bounds_with_direction
-   247 rust/geometry/src/router/voids/synthesis.rs GeometryRouter::classify_openings_impl
    214 rust/geometry/src/router/voids/synthesis.rs GeometryRouter::extend_opening_along_direction
    168 rust/geometry/src/router/voids/synthesis/membrane.rs GeometryRouter::remove_internal_membrane
    269 rust/geometry/src/simplify/cavities.rs drop_enclosed_cavities

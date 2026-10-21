@@ -798,6 +798,41 @@ console.log(`  Total triangles: ${result.totalTriangles}`);
 console.log(`  Total vertices: ${result.totalVertices}`);
 ```
 
+## Opt-in retained browser geometry
+
+`@ifc-lite/wasm` can evaluate supported authored extrusions and swept disks
+with the NVIDIA SMLib kernel in a module Worker. This is opt-in and off the
+ordinary load path. The executor lives in a separate engine bundle, built with
+`BUILD_RETAINED=1 bash scripts/build-wasm.sh` into `packages/wasm/pkg-retained`
+and deployed by your application; the default engine never contains it. The
+SMLib bundle itself is deployed separately at `/smlib/` (build and stage it as
+described in `native/smlib-adapter/README.md`) and is requested only when you
+construct an executor.
+
+```ts
+import { loadRetainedEngine } from '@ifc-lite/wasm/retained';
+
+declare const ifcBytes: Uint8Array; // the loaded IFC file
+const engine = await loadRetainedEngine({ moduleUrl: '/ifc-lite-retained/ifc-lite.js' });
+const api = new engine.IfcAPI();
+const sources = api.retainedSources(ifcBytes);        // read-only, no Worker
+const executor = new engine.RetainedBrowserExecutor(); // loads /smlib/, starts the Worker
+const caps = await executor.capabilities();           // rectangle / ordered_region / rational_disk
+if (!caps.ordered_region) await executor.qualifyNumericalRoutes();
+const [first] = sources.sources();
+const display = await sources.execute(first.index, executor, 0.001, 5, 16 << 20);
+```
+
+`capabilities()` reads the actual Worker's SDK capability bits; curved regions
+and rational disks additionally need that Worker's own
+`qualifyNumericalRoutes()` witnesses. A display is
+`unstyled_flat_source_only`: f32 evaluation-frame buffers plus f64 row-major
+occurrence matrices into absolute IFC Z-up world metres. It is the raw authored
+solid only (no openings, enclosing Booleans, styles or persistent face
+identity), so it is not final product geometry. `executor.cancellation()`
+returns a handle whose `retire()` stays callable while an execution is pending;
+a retired or replaced Worker invalidates everything it produced.
+
 ## Next Steps
 
 - [Rendering Guide](rendering.md) - Display geometry with WebGPU

@@ -190,11 +190,14 @@ impl GeometryRouter {
 
         // Residual exact-kernel context for the ineligible openings (diagnostics
         // suppressed — the full opening set is already diagnosed by
-        // `build_void_context`'s own `classify_openings`).
+        // `build_void_context`'s own `program::openings::classify`).
         let residual = if residual_ids.is_empty() {
             None
         } else {
-            let openings = self.classify_openings_quiet(element, &residual_ids, decoder);
+            // A typed stop is sticky and surfaces at `build_void_context`.
+            let openings =
+                crate::program::openings::classify(element, &residual_ids, false, self, decoder)
+                    .ok()?;
             if openings.is_empty() {
                 None
             } else {

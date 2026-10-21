@@ -1,0 +1,45 @@
+diff --git a/rust/geometry/src/program/opening.rs b/rust/geometry/src/program/opening.rs
+index 274c5fed92..21b10d939f 100644
+--- a/rust/geometry/src/program/opening.rs
++++ b/rust/geometry/src/program/opening.rs
+@@ -37,6 +37,7 @@ impl OpeningChild<'_> {
+     pub(crate) fn run(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder) -> Result<Vec<Mesh>> {
+         let fault = |error| protocol(&format!("opening child {error:?}"));
+         loop {
++            crate::resource::check_current()?;
+             let Some(request) = self.program.request().map_err(fault)? else { break };
+             let reply = self.program.execute(request, router, decoder).map_err(fault)?;
+             self.program.accept(reply, router).map_err(|rejected| fault(rejected.error))?;
+diff --git a/rust/geometry/src/program/openings/classify.rs b/rust/geometry/src/program/openings/classify.rs
+index e613789791..4da170bad9 100644
+--- a/rust/geometry/src/program/openings/classify.rs
++++ b/rust/geometry/src/program/openings/classify.rs
+@@ -261,7 +261,7 @@ impl<'a> Classifier<'a> {
+ 
+     /// Bump the aggregate counter and push the per-host line together.
+     fn publish(&mut self, opening: OpeningType, id: u32, vertices: usize, router: &GeometryRouter) {
+-        {
++        if self.recording {
+             let (counter, kind) = super::decision::kind(&opening);
+             router.bump_classification(counter);
+             self.diagnostic.push(OpeningDiagnostic { opening_id: id, kind, vertex_count: vertices });
+diff --git a/rust/geometry/src/program/openings/mod.rs b/rust/geometry/src/program/openings/mod.rs
+index 075c1a6b03..27f0e55198 100644
+--- a/rust/geometry/src/program/openings/mod.rs
++++ b/rust/geometry/src/program/openings/mod.rs
+@@ -86,6 +86,7 @@ impl<'a> OpeningControl<'a> {
+     /// reached stop ends the control before its next request.
+     pub(crate) fn drain(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder) -> Result<OpeningOutput> {
+         loop {
++            crate::resource::check_current()?;
+             let reply = match self.poll() {
+                 OpeningPoll::Source(source) => self.source(source, router, decoder),
+                 OpeningPoll::Ready(ready) => ready.execute(),
+@@ -143,6 +144,7 @@ pub(crate) fn protocol(what: &str) -> Error {
+ fn source_option<T>(result: Result<T>) -> Result<Option<T>> {
+     match crate::resource::observe(result) {
+         Ok(value) => Ok(Some(value)),
++        Err(error @ Error::ProgramStopped(_)) => Err(error),
+         Err(_) => Ok(None),
+     }
+ }

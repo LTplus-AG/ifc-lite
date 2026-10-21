@@ -19,7 +19,7 @@ pub(crate) use crate::mesh_check::{
 };
 
 /// Extract rotation columns from a 4x4 transform matrix.
-pub(super) fn extract_rotation_columns(m: &Matrix4<f64>) -> (Vector3<f64>, Vector3<f64>, Vector3<f64>) {
+pub(crate) fn extract_rotation_columns(m: &Matrix4<f64>) -> (Vector3<f64>, Vector3<f64>, Vector3<f64>) {
     (
         Vector3::new(m[(0, 0)], m[(1, 0)], m[(2, 0)]),
         Vector3::new(m[(0, 1)], m[(1, 1)], m[(2, 1)]),
@@ -28,7 +28,7 @@ pub(super) fn extract_rotation_columns(m: &Matrix4<f64>) -> (Vector3<f64>, Vecto
 }
 
 /// Apply rotation from columns to a direction and normalize.
-pub(super) fn rotate_and_normalize(
+pub(crate) fn rotate_and_normalize(
     rot: &(Vector3<f64>, Vector3<f64>, Vector3<f64>),
     dir: &Vector3<f64>,
 ) -> Result<Vector3<f64>> {
@@ -120,12 +120,12 @@ pub(super) fn opening_mesh_thinnest_axis_dir(opening_mesh: &Mesh) -> Vector3<f64
 /// Two AABBs join the same cluster when they overlap or touch on every axis
 /// (within `TOUCH_EPS`, so adjacent wall-leaf halves of one window count as one
 /// cluster); AABBs separated by a real gap on any axis stay in different
-/// clusters. Used by `classify_openings` to tell a row of SEPARATE window voids
+/// clusters. Used by `program::openings::classify` to tell a row of SEPARATE window voids
 /// (many clusters → subtract per item) from one void split into touching parts
 /// (one cluster → keep merged). See the call site for the #1367 / FZK-Haus
 /// rationale. O(n²) union-find; `n` is the void-body count of a single opening
 /// (tiny in practice).
-pub(super) fn spatial_cluster_count(
+pub(crate) fn spatial_cluster_count(
     bounds: &[(Point3<f64>, Point3<f64>, Option<Vector3<f64>>)],
 ) -> usize {
     const TOUCH_EPS: f64 = 1.0e-3; // 1 mm: adjacent faces count as connected
@@ -188,7 +188,7 @@ pub(super) fn spatial_cluster_count(
 /// routing anything rotated by ≥ 1° to the exact oriented cut. At 1° the
 /// residual AABB over-cut would be sub-millimetre anyway.
 #[inline]
-pub(super) fn is_axis_aligned_direction(dir: &Vector3<f64>) -> bool {
+pub(crate) fn is_axis_aligned_direction(dir: &Vector3<f64>) -> bool {
     // cos(1°). Deliberately tight — see the doc comment (issue #1167).
     const AXIS_THRESHOLD: f64 = 0.999_847_695;
     dir.x.abs().max(dir.y.abs()).max(dir.z.abs()) > AXIS_THRESHOLD
@@ -583,7 +583,7 @@ pub(super) fn extent_along_axis(mesh: &Mesh, axis: &Vector3<f64>) -> Option<f64>
 ///
 /// Matches the anti-parallel merge tolerance used by `infer_opening_frame` so
 /// the two helpers agree on what counts as a single axis.
-pub(super) fn is_rectangular_box_mesh(mesh: &Mesh) -> bool {
+pub(crate) fn is_rectangular_box_mesh(mesh: &Mesh) -> bool {
     let mut axes: Vec<Vector3<f64>> = Vec::with_capacity(4);
     let mut tri_axes: Vec<(usize, f64)> = Vec::with_capacity(mesh.indices.len() / 3);
     for tri in mesh.indices.chunks_exact(3) {
@@ -661,7 +661,7 @@ pub(super) fn is_rectangular_box_mesh(mesh: &Mesh) -> bool {
     true
 }
 
-pub(super) fn infer_opening_frame(mesh: &Mesh, extrusion_dir: Option<&Vector3<f64>>) -> Option<OpeningFrame> {
+pub(crate) fn infer_opening_frame(mesh: &Mesh, extrusion_dir: Option<&Vector3<f64>>) -> Option<OpeningFrame> {
     let mut axes: Vec<(Vector3<f64>, f64)> = Vec::new();
 
     for tri in mesh.indices.chunks_exact(3) {

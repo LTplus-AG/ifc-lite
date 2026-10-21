@@ -1530,6 +1530,18 @@ jobs:
           # main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry-runtime/src/worker_empty.rs | grep -Fxq 'rust/geometry-runtime/src/worker_empty.rs'; then
             oracle_args+=(--mutation tests/evidence/sealed-empty-g4a/behaviour.oracle.patch)
+          # #7955 H1b: the private retained browser executor adds ifc-lite-wasm
+          # src/retained_browser/mod.rs (its unit tests live beside it) and
+          # js/retained-driver.mjs, which the changed driver tests import, so a
+          # whole-change revert cannot compile or load them (INCONCLUSIVE). Keep
+          # them and break ONLY the behaviour: an abandoned in-flight future
+          # leaves its Worker live, a dropped lease stays live until its release
+          # runs and the next command no longer waits for queued releases (RED,
+          # protocol peer only). Checked before H1a so the stacked branch uses
+          # its own patch. Once rust/wasm-bindings/src/retained_browser/mod.rs is
+          # on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/wasm-bindings/src/retained_browser/mod.rs | grep -Fxq 'rust/wasm-bindings/src/retained_browser/mod.rs'; then
+            oracle_args+=(--mutation tests/evidence/browser-driver-h1b/behaviour.oracle.patch)
           # #7955 H1a: the browser module-Worker transport adds
           # native/smlib-adapter/browser/client.mjs and module.mjs, which the
           # changed transport tests import, so a whole-change revert cannot load
@@ -3156,6 +3168,16 @@ jobs:
         env:
           IFC_LITE_REQUIRE_FIXTURES: "1"
         run: cargo test -p ifc-lite-export --features parquet-bos
+
+      # #7955 H1: the opt-in `retained-browser` feature of ifc-lite-wasm keeps
+      # the retained executor out of the default engine bundle, so the
+      # workspace clippy/test above never compile it. Lint and test it here
+      # (native bookkeeping; the wasm32 actual-Worker tests run in
+      # geometry-platform.yml, which has the SDK).
+      - name: Rust tests and Clippy (ifc-lite-wasm retained-browser feature)
+        run: |
+          cargo test -p ifc-lite-wasm --lib --features retained-browser retained_browser
+          cargo clippy -p ifc-lite-wasm --features retained-browser --all-targets -- -D warnings
 
       # rust/python is excluded from the workspace (its own lockfile), so
       # `cargo test --workspace` never runs its unit tests (finite_json, rebar

@@ -116,6 +116,21 @@ never qualification. `node scripts/smlib-browser-worker-probe.mjs --build ABS
 it in Chromium: two independent Workers, restart during upload, cross-Worker
 incarnation rejection, hung and missing-asset Workers, and recovery.
 
+The Rust side lives in `ifc-lite-wasm` (`rust/wasm-bindings/src/retained_browser`,
+wasm32, behind the off-by-default `retained-browser` feature, which also keeps
+authored-source capture on wasm32), so the published package never depends on the unpublished native
+`ifc-lite-geometry-runtime`. A `BrowserWorker` owns one module Worker through
+the private driver `rust/wasm-bindings/js/retained-driver.mjs`, which imports
+`/smlib/` only when the worker is constructed. It mirrors the native retained
+contract: requests bind to the incarnation they were prepared for, curved
+regions and disks need that incarnation's own `qualify()` witnesses, a dropped
+realization releases only its own object before the next command, and a
+dropped in-flight future retires the captured Worker. Its actual-Worker tests
+run with `wasm-pack test --headless --chrome --chromedriver
+scripts/wasm-test-mime-driver.mjs rust/wasm-bindings --lib --features
+retained-browser -- retained_browser`
+after staging `/smlib` into `rust/wasm-bindings/smlib`.
+
 Nothing in the viewer or the default WASM package imports these modules.
 
 ## Native subprocess protocol

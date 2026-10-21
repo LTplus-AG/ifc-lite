@@ -80,7 +80,7 @@
 2 rust/geometry/src/router/transforms/mapped.rs
 3 rust/geometry/src/router/transforms/mod.rs
 15 rust/geometry/src/router/transforms/operator.rs
-43 rust/geometry/src/router/voids/probe.rs
+40 rust/geometry/src/router/voids/probe.rs
 2 rust/geometry/src/router/voids/representation.rs
 3 rust/geometry/src/transform.rs
 5 rust/geometry/src/trimmed_curve.rs

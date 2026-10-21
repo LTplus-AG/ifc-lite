@@ -5,9 +5,9 @@
 
 use ifc_lite_geometry::document::{
     DocumentError, RegionQualification, RetainedCompletion, RetainedDisplayContract,
-    RetainedRefusal, RetainedTessellation,
+    RetainedRecipe, RetainedRefusal, RetainedTessellation,
 };
-use ifc_lite_processing::retained_requests::{RetainedExtrusionRefusal, RetainedExtrusionSources};
+use ifc_lite_processing::retained_requests::{RetainedSourceRefusal, RetainedSources};
 use std::collections::HashSet;
 
 /// The fixture's 64 proxies, #31 + 7k, all mapping the one extrusion #12.
@@ -33,7 +33,7 @@ fn word(bytes: &[u8], at: usize) -> u32 {
 
 #[test]
 fn mapped_rectangle_is_one_retained_source_with_every_occurrence() {
-    let sources = RetainedExtrusionSources::extract(fixture().as_bytes(), None);
+    let sources = RetainedSources::extrusions(fixture().as_bytes(), None);
     assert!(sources.diagnostics.is_empty(), "{:?}", sources.diagnostics);
     assert!(sources.refused.is_empty(), "{:?}", sources.refused);
     assert_eq!(sources.admitted.len(), 1);
@@ -43,8 +43,11 @@ fn mapped_rectangle_is_one_retained_source_with_every_occurrence() {
     assert_eq!(source.qualification(), Ok(RegionQualification::Rectangle));
     let recipe = source
         .document()
-        .retained_extrusion(source.definition())
+        .retained_recipe(source.definition())
         .unwrap();
+    let RetainedRecipe::Extrusion(recipe) = recipe else {
+        panic!("extrusion source retained as {recipe:?}");
+    };
     assert!(
         recipe.source.source.is_some(),
         "original records are captured"
@@ -79,16 +82,16 @@ fn mapped_rectangle_is_one_retained_source_with_every_occurrence() {
 #[test]
 fn product_filter_limits_occurrences_not_the_source() {
     let ids = HashSet::from([38]);
-    let sources = RetainedExtrusionSources::extract(fixture().as_bytes(), Some(&ids));
+    let sources = RetainedSources::extrusions(fixture().as_bytes(), Some(&ids));
     assert_eq!(sources.admitted.len(), 1);
     assert_eq!(sources.admitted[0].occurrences().len(), 1);
-    let none = RetainedExtrusionSources::extract(fixture().as_bytes(), Some(&HashSet::new()));
+    let none = RetainedSources::extrusions(fixture().as_bytes(), Some(&HashSet::new()));
     assert!(none.admitted.is_empty() && none.refused.is_empty());
 }
 
 #[test]
 fn published_display_is_one_flat_definition_placed_at_every_occurrence() {
-    let mut sources = RetainedExtrusionSources::extract(fixture().as_bytes(), None);
+    let mut sources = RetainedSources::extrusions(fixture().as_bytes(), None);
     let source = &mut sources.admitted[0];
     let request = source.prepare(4).unwrap();
     let (from, to) = (
@@ -150,7 +153,7 @@ fn published_display_is_one_flat_definition_placed_at_every_occurrence() {
         assert_eq!(occurrence.local_to_model, expected.world_from_evaluation);
     }
     // The authored source stays retained beside its display; the packet is spent.
-    assert!(document.retained_extrusion(source.definition()).is_ok());
+    assert!(document.retained_recipe(source.definition()).is_ok());
     assert_eq!(
         source
             .publish_display(
@@ -169,14 +172,14 @@ fn boolean_operands_are_refused_per_occurrence_and_not_admitted() {
         "#13=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#12));",
         "#1001=IFCBOOLEANRESULT(.UNION.,#12,#12);\n#13=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#1001));",
     );
-    let sources = RetainedExtrusionSources::extract(model.as_bytes(), None);
+    let sources = RetainedSources::extrusions(model.as_bytes(), None);
     assert!(sources.admitted.is_empty());
     assert_eq!(sources.refused.len(), 2 * PRODUCTS);
     assert!(sources
         .refused
         .iter()
         .all(|refused| refused.product_id.is_some()
-            && refused.refusal == RetainedExtrusionRefusal::EnclosingBooleanUnevaluated));
+            && refused.refusal == RetainedSourceRefusal::EnclosingBooleanUnevaluated));
 }
 
 #[test]
@@ -193,7 +196,7 @@ fn mirrored_and_scaled_occurrences_are_refused_beside_admitted_ones() {
         (mirrored, 31, "UnqualifiedOccurrenceTransform"),
         (scaled, 38, "UnqualifiedOccurrenceTransform"),
     ] {
-        let sources = RetainedExtrusionSources::extract(model.as_bytes(), None);
+        let sources = RetainedSources::extrusions(model.as_bytes(), None);
         assert_eq!(sources.refused.len(), 1, "{:?}", sources.refused);
         assert_eq!(sources.refused[0].product_id, Some(product));
         assert!(
@@ -217,14 +220,14 @@ fn unsupported_profile_refuses_the_source_without_a_mesh() {
         "#8=IFCRECTANGLEPROFILEDEF(.AREA.,$,#7,1.0,1.0);",
         "#8=IFCISHAPEPROFILEDEF(.AREA.,$,#7,1.0,1.0,0.1,0.1,$,$,$);",
     );
-    let sources = RetainedExtrusionSources::extract(model.as_bytes(), None);
+    let sources = RetainedSources::extrusions(model.as_bytes(), None);
     assert!(sources.admitted.is_empty());
     assert_eq!(sources.refused.len(), 1);
     assert_eq!(sources.refused[0].product_id, None);
     assert!(
         matches!(
             sources.refused[0].refusal,
-            RetainedExtrusionRefusal::Source(RetainedRefusal::UnsupportedSource(_))
+            RetainedSourceRefusal::Source(RetainedRefusal::UnsupportedSource(_))
         ),
         "{:?}",
         sources.refused[0]

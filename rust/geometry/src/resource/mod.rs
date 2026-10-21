@@ -145,6 +145,14 @@ pub fn allocation_failure() -> ProgramStop {
 #[cfg(test)]
 mod tests;
 
+/// Translate the typed legacy callback error at the first audited boundary.
+/// Source faults (including identical diagnostic text) retain ordinary recovery.
+pub(crate) fn observe<T>(result: crate::Result<T>) -> crate::Result<T> {
+    if let Err(crate::Error::ProgramStopped(error)) = &result { stop(*error); }
+    check_current()?;
+    result
+}
+
 /// Resource-only capability transport for joined source-borrow workers. Cloning
 /// the existing account Arc allocates nothing and transfers no unrelated TLS.
 pub fn current_source_context() -> Option<ifc_lite_core::execution_owner::SourceResourceContext> {

@@ -44,6 +44,7 @@ slice by the phases it changes and by output identity, not by a ±2% move in an 
 | C5a #7991 opening telemetry transaction | identical | BWK −0.3% (±3), Holter −0.3% (±16), ISSUE_098 −2.1% (±13), ISSUE_068 −0.8% (±19), schependomlaan +0.6% (±7), ISSUE_129 −1.2% (±5) | neutral: the per-event thread-local borrow on the opening paths is below noise on all six models |
 | F1a #7992 analytic original-source capture | identical (6 models; meshing path untouched) | meshing A/B within noise; analytic export (`extract_extrusion_definitions` / `extract_analytic_quantity_sources`, 2×7 interleaved): unconditional capture measured +3% to +24%, so capture is now opt-in (`analytic::with_source_capture`); default path +0.7% to +1.1% on every model (IQR 0.4–2.4%) | neutral on the default path after opt-in; a consistent ~1% residual on analytic export remains below the 2% bar |
 | F1b swept-disk directrix source | identical (output SHA-256 on 6 models) | analytic export default path (definitions / descriptions / quantity sources, 7 interleaved rounds vs 78d7bd9cf5): worst +0.27%, most −0.2% to −2.3% (IQR 0.3–3.9%) | neutral: capture is opt-in (`with_source_capture`); the default walk records nothing |
+| D1b #8002 cache residency ownership and typed resource stops | identical | BWK +1.0% (±3), Holter +0.7% (±30), ISSUE_098 −1.9% (±10), ISSUE_068 +0.5% (±23), schependomlaan +0.6% (±7), ISSUE_129 +0.1% (±4) | neutral: with no account installed, one thread-local read per cache publication/lookup; geometry within ±2% on every model |
 
 ## Exact rectangular opening union (#7941)
 
@@ -4367,3 +4368,61 @@ performance acceptance and transfer-size acceptance remain separate decisions.
 The standalone native comparison preserves ordered mesh payloads, exact float/frame/metadata identity and complete diagnostic bytes on the catalog corpus. The stock reporter remains inconclusive; all-sample block summaries are retained beside the stock selected-row report, including the adverse parse observations and geometry offsets. The maintainer accepts the observed native cost for consistently refusing unreadable authored local, linear and grid placements while retaining absent-placement identity and readable degenerate-direction repair. This is a correctness tradeoff, not a speedup or statistical-neutrality claim. This is a maintainer judgment, not a statistical test result. The evidence does not waive browser/WASM qualification, WASM size budgets or required gates, and the later combined placement/memo measurements must not be relabelled as this standalone result.
 
 [Retained native observations](evidence/placement-refusal-7877-recovery/README.md) bind the exact standalone source. Keep strict malformed-placement reporting and output preservation separate from claims about native speed or the browser pipeline.
+
+### Missing polygonal-face records (#7911)
+
+Correctness change, with no performance improvement or neutrality claim. The
+original native cohort retained ordered mesh identity on Haus, ISSUE_129 and
+Holter, but its phase and complete-sample timing results were inconclusive.
+That original evidence remains historical rather than qualifying the recovery.
+
+The recovered runtime source `e8d7a7e595` was compared with main `141285f828`
+using separately built frozen binaries and five fixed interleaved rounds.
+Complete ordered mesh payloads, float fields, frames/metadata and diagnostic
+bytes match on all three controls. The new timing report is also noisy and
+inconclusive; no browser worker-pool or speed result follows from it.
+
+Controlled corruption of the committed Bonsai polygonal-cutter fixture confirms
+that the recovery retains the same geometry as removing only the absent face
+reference. The old source drops the face set; the recovery reports the missing
+face while retaining its valid neighbors. The first verifier failed because it
+read a snake_case diagnostic key rather than the serialized camelCase contract.
+A separate strict-schema reconciliation of the retained outputs passed; the
+original failed result and raw bytes remain unchanged, with no probe rerun.
+
+Lesson: keep missing-face refusal local, distinguish output identity from
+inconclusive timing, and reject unknown diagnostic schemas instead of treating
+missing fields as zero. The wider Rust charter obligations remain separate.
+
+The final recovery `f05119b6d92a` also excludes absent-face polygonal sets from
+opt-in extra dedup, retaining healthy cache reuse and a refusal on every fresh
+router. Removing only that exclusion fails the second-router report assertion;
+exact restoration passes. Its source-specific native workspace and strict
+clippy qualification passed.
+
+The fixed final-source timing cohort against the retained, authenticated main
+arm preserves all mesh fingerprints, counts and failure counters. Its report
+remains noisy and inconclusive overall, but flags the Haus parse phase as
+slower; complete-load wall medians also increase on all controls. Preserve that
+adverse result rather than substituting the earlier recovery's timing or calling
+this neutral. Causal attribution remains unproven. This
+default-off dedup/native cohort establishes no opt-in or browser performance
+claim.
+
+The separate final-source full-payload witness passes on the same frozen arms:
+the control models preserve ordered meshes, exact float payloads, frame/metadata
+and diagnostic bytes. Controlled damage again preserves the reference-removed
+geometry and adds the missing-face refusal. Its first preflight failed before
+any model call because a negative parser control caught the wrong exception
+type. A separately reviewed derivative corrects only that control and binds both
+the original verifier and its own reviewed bytes; all model calls then pass.
+The original failure remains preserved. Correctness and timing are separate
+verdicts: output identity does not establish performance neutrality.
+
+Disposition: accept the disclosed native cost for this localized Class X
+correctness change, which preserves valid neighboring geometry with a counted
+refusal. Independent adversarial review approves its source and correctness
+evidence. The charter requires a performance verdict for this class; this is an
+adverse verdict, with causal attribution still unproven, rather than a neutrality
+claim. Existing native-instruction, bundle, parity and required CI ceilings stay
+binding. No benchmark rerun, baseline, acceptance band or pin change is made.

@@ -178,7 +178,7 @@ function panelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
     // multi-selection, empty): the welcome tour's "Read its data" step broke
     // whenever the panel showed one of the branches that lacked it.
     case 'properties': return <div {...tourAnchor(TOUR_ANCHORS.propertiesPanel)} className="h-full"><PropertiesPanel /></div>;
-    case 'compare': return <ChunkErrorBoundary label="Compare models"><Suspense fallback={null}><ComparePanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
+    case 'compare': return <ChunkErrorBoundary key="compare" label="Compare models"><Suspense fallback={null}><ComparePanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
     case 'bcf': return <BCFPanel onClose={onClose} />;
     case 'validation': return <ValidationPanel onClose={onClose} />;
     case 'lens': return <LensPanel onClose={onClose} />;

@@ -286,7 +286,13 @@ mod structural_allowance_diagnostics {
         }
     }
 
-    fn nested_fixture(parent: &str, child: &str, items: &str) -> String {
+    fn nested_fixture(
+        parent_identifier: &str,
+        parent_type: &str,
+        child_identifier: &str,
+        child_type: &str,
+        items: &str,
+    ) -> String {
         format!("{RAW_WORLD_MAP}\
             #8000=IFCGEOMETRICSET(());\
             #2010=IFCCARTESIANPOINT((10.,0.,0.));\
@@ -296,10 +302,10 @@ mod structural_allowance_diagnostics {
             #2100=IFCMAPPEDITEM(#1003,#2111);\
             #2000=IFCMAPPEDITEM(#2001,#2011);\
             #2001=IFCREPRESENTATIONMAP(#2,#2002);\
-            #2002=IFCSHAPEREPRESENTATION($,'{parent}','MappedRepresentation',(#2100,#3000,#4000));\
+            #2002=IFCSHAPEREPRESENTATION($,'{parent_identifier}','{parent_type}',(#2100,#3000,#4000));\
             #3000=IFCMAPPEDITEM(#3001,#1004);\
             #3001=IFCREPRESENTATIONMAP(#2,#3002);\
-            #3002=IFCSHAPEREPRESENTATION($,'{child}','Tessellation',({items}));\
+            #3002=IFCSHAPEREPRESENTATION($,'{child_identifier}','{child_type}',({items}));\
             #4000=IFCMAPPEDITEM(#1003,#1004);")
     }
 
@@ -320,8 +326,17 @@ mod structural_allowance_diagnostics {
     /// source policy (not the refused child's already-entered source policy).
     #[test]
     fn issue_7873_submesh_nested_structural_allowance_retains_prefix_and_reports_budget() {
-        for (parent, child, expected_count) in [("Body", "FootPrint", 1), ("FootPrint", "Body", 0)] {
-            let content = nested_fixture(parent, child, &over_allowance_items());
+        // A present nonblank RepresentationType takes precedence over the
+        // identifier: both original typed cases have body policy, even with
+        // a FootPrint identifier. Only blank types use the documented CATIA
+        // identifier fallback, giving the differing parent/child policies.
+        for (parent, parent_type, child, child_type, expected_count) in [
+            ("Body", "MappedRepresentation", "FootPrint", "Tessellation", 1),
+            ("FootPrint", "MappedRepresentation", "Body", "Tessellation", 1),
+            ("Body", "", "FootPrint", "", 1),
+            ("FootPrint", "", "Body", "", 0),
+        ] {
+            let content = nested_fixture(parent, parent_type, child, child_type, &over_allowance_items());
             let router = shared_rtc_router();
             for expected_count in [expected_count, 0] {
                 let mut decoder = EntityDecoder::new(&content);
@@ -337,7 +352,8 @@ mod structural_allowance_diagnostics {
                 // The parent's list is eagerly decoded, so #4000 itself may be
                 // cached. Its geometry/transform must still never be visited.
                 let drops = router.take_unsupported_items();
-                assert_eq!(drops.values().sum::<u64>(), expected_count, "{parent}/{child}: {drops:?}");
+                assert_eq!(drops.values().sum::<u64>(), expected_count,
+                    "{parent}/{parent_type} -> {child}/{child_type}: {drops:?}");
                 assert_eq!(drops.get("IfcMappedItem").copied().unwrap_or(0), expected_count);
                 let expected_error = crate::representation::WalkRefusal::Budget {
                     max_levels: crate::representation::MAX_WALK_LEVELS,
@@ -349,7 +365,7 @@ mod structural_allowance_diagnostics {
 
             // Same parsed structure with a small valid nested source: both the
             // nested mesh and the later root sibling contribute, with transforms.
-            let content = nested_fixture(parent, child, "#900");
+            let content = nested_fixture(parent, parent_type, child, child_type, "#900");
             let mut decoder = EntityDecoder::new(&content);
             let router = shared_rtc_router();
             let log = Refusals::default();

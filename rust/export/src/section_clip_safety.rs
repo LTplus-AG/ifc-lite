@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Strict section-export receipts, source integrity and texture refusal (#7711).
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use ifc_lite_core::{AttributeValue, EntityDecoder, EntityScanner, IfcType};
 use ifc_lite_processing::{ProcessingSink, ProcessingStats, ProductGeometryAudit};
 
@@ -8,7 +8,7 @@ use ifc_lite_processing::{ProcessingSink, ProcessingStats, ProductGeometryAudit}
 pub(super) struct Safety {
     audit: ProductGeometryAudit,
     // Inverse presentation attachments cannot be reached by a forward body walk.
-    attachments: Vec<(u32, u32)>,
+    attachments: HashMap<u32, Vec<u32>>,
 }
 
 impl ProcessingSink for Safety {
@@ -26,7 +26,7 @@ impl Safety {
                 _ => continue,
             };
             let entity = decoder.decode_by_id(id).map_err(|e| format!("section presentation #{id}: {e}"))?;
-            if let Some(target) = entity.ref_at(slot) { self.attachments.push((target, id)); }
+            if let Some(target) = entity.ref_at(slot) { self.attachments.entry(target).or_default().push(id); }
         }
         Ok(())
     }
@@ -41,8 +41,7 @@ impl Safety {
         self.audit.require_complete(id).map_err(|e| format!("section export {e}"))?;
         let (body, mut textured) = source_graph(id, decoder)
             .map_err(|e| format!("section export incomplete product #{id}: {e}"))?;
-        for (target, attachment) in &self.attachments {
-            if !body.contains(target) { continue; }
+        for attachment in body.iter().filter_map(|target| self.attachments.get(target)).flatten() {
             let (_, has_texture) = source_graph(*attachment, decoder)
                 .map_err(|e| format!("section export incomplete product #{id}: {e}"))?;
             let is_map = decoder.decode_by_id(*attachment).map_err(|e| e.to_string())?.ifc_type != IfcType::IfcStyledItem;

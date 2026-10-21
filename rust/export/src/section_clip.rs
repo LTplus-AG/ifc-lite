@@ -72,7 +72,10 @@ pub fn plan_section_export(
     let mut textured = std::collections::BTreeSet::new();
     let mut groups = BTreeMap::<u32, Vec<&MeshData>>::new();
     for part in &processed.meshes {
-        if matches!(part.geometry_class, 0 | GEOM_CLASS_LAYER_SLICE) { groups.entry(part.express_id).or_default().push(part); }
+        if !matches!(part.geometry_class, 0 | GEOM_CLASS_LAYER_SLICE) {
+            return Err(format!("section export cannot safely crop geometry class {} for #{}", part.geometry_class, part.express_id));
+        }
+        groups.entry(part.express_id).or_default().push(part);
     }
     // Refuse unmeshed physical products: otherwise a successful crop could leak
     // source geometry the processor could not classify. Spatial/symbolic records

@@ -4400,18 +4400,3 @@ bundle, parity and required CI gates remain binding; no baseline or ceiling was
 changed. Lesson: measure the default path even when its new consumer is opt-in,
 and keep actual crop behavior proof separate from load-cost acceptance.
 
-## Section-export engine transfer ceiling acceptance (#7711, #8006)
-
-The audited section-clipping backend links new export code into the engine
-WASM. The [hosted measurement](https://github.com/LTplus-AG/ifc-lite/actions/runs/39541536266)
-of #8006 head `c6855d9cdb` merged onto main `3c32c1ca97` (merge commit
-`d07a0eb83d`) measured 2,379,431 brotli bytes. That is 14,297 bytes (+0.60%)
-above the previous 2,365,134 ceiling and 2,472 bytes above its 0.5% tolerance.
-Its retained `perf-ratchet-measured/bundle.json` artifact has SHA-256
-`c7a622d1ed39376d2326e8602abe93b248254650e048cc4795eebb1d66d66f5e`.
-
-The maintainer accepted this measured cost and set the engine ceiling to the
-measured value, retaining the relative tolerance. Only the engine ceiling
-changed; viewer JS ceilings are unchanged. No byte reduction or runtime
-improvement is claimed. Any later increase needs a new measurement and
-maintainer decision.

@@ -223,9 +223,10 @@ A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it
 ## Placement consumer consistency (#7779, #7906)
 
 Historical qualification of the original stack only (through `7cdd67bc3e`):
-the recovered stack has changed and awaits new qualification. The following
-verdict is retained as historical evidence, not a current performance or
-output-identity claim.
+the recovered stack has changed. The fresh R-versus-X result is recorded below;
+standalone X still requires its own load-cost comparison. The following verdict
+is retained as historical evidence, not a current performance or output-identity
+claim.
 
 The frozen X3a, R2a and corrective-tail native cohort preserved mesh, vertex,
 triangle and per-mesh fingerprint output on Haus, ISSUE_129 and Holter. The
@@ -244,6 +245,27 @@ WASM worker scheduling or browser load time. Lesson: preserve phase-level
 failures and wall-time disagreements even when aggregate instructions and
 committed ceilings pass; attribute the retained preprocessing dumps before
 changing production work or accepting the regression.
+
+
+The fresh corrected-X `a806aed` versus R `fde7d3c` native cohort preserves
+complete ordered mesh/float/frame/metadata/instance output and all diagnostic
+bytes on Haus, ISSUE_129 and heavy Holter. Every timed count and fingerprint
+also matches. The stock report flags an adverse Haus parse phase and remains
+inconclusive overall; complete-call wall observations have both directions.
+Timing neutrality is not established. Accept the disclosed native cost for
+canonical-reader deletion and unification with exact preserved geometry/refusal
+output; this is not a gate waiver. See the
+[retained R comparison](evidence/placement-7779/recovery-r-native/README.md).
+
+All four original helpers completed, but the original preparation failed its
+strict compiler guard when R reused unchanged core from X. A separately reviewed
+metadata recovery preserves that failure and distinguishes actual R compiler
+commands from transitive X core provenance; the historical core dependency byte
+hash was not captured. Fresh witnesses and timing use the retained exact binaries,
+not pooled old samples. Lesson: preserve adverse phase evidence and dependency
+provenance limitations even when full outputs match. This pair supplies no
+standalone-X cost, browser/GPU, speed or neutrality verdict and changes no
+acceptance band, baseline or ceiling.
 
 ## Generated shader commentary and eager bytes (#7918)
 
@@ -4523,3 +4545,28 @@ recovery ran no build, native test, browser/WASM campaign or performance measure
 75-test qualification do not qualify the recovered source. Root review and
 source-matched fleet qualification remain required; no output pin, baseline,
 ceiling or acceptance band is changed.
+
+
+### Current-source wrapper deletion qualification hold (#7896)
+
+The public R2a history `1c2393e0114a` is merged with the approved recovered
+X3a parent `abaab36312f7`, preserving the actual #7906 merge and its consumer
+repairs. The canonical placement readers replace the deleted wrappers;
+GeometryProgram and MappingControl retain current rendering and type-map
+origin authority. The lower X2 resource, finite-grid, refusal and WASM contracts
+and the X3a authored Axis2 / derived-Axis1 correction remain prerequisites.
+
+Qualification is **HOLD**: Class R requires a neutral base-versus-branch
+performance verdict for this recovered source, plus source-matched behavioral
+and oracle evidence and applicable gates. External Rust consumer qualification
+includes export's `step_map_rigid`, geometry tests/examples, PyO3 and the
+separate csg-thread-bench crate; the latter two are not covered by workspace
+checks. The six removed exports remain accounted by pending Rust break #11 and
+the matching API migration guide; no additional waiver is introduced.
+
+This restack is source-only. Historical native observations above, private
+`75bf`/R75 qualifications and inherited WASM results bind their original sources
+and do not qualify this head. No new runtime, oracle or performance result is
+claimed, and no output pin, digest/floor protection, baseline, ceiling or
+acceptance band is changed. Root independent review and qualification remain
+required before publication or landing.

@@ -60,7 +60,7 @@ impl ProfileProcessor {
     /// the planar `IfcAxis2Placement2D`. Used by both the full-circle sampler
     /// and the trimmed-arc sampler so a 3D-placed arc is never flattened to z=0.
     ///
-    /// Both kinds go through the canonical readers in [`crate::transform`]
+    /// Both kinds go through the canonical reader, [`crate::placement::Axis2Placement`],
     /// (#7687, PROC-13), as the trimmed-circle path (`circle_basis`) already
     /// did. This reader's own copy normalised a zero Axis to NaN and used a
     /// RefDirection not perpendicular to Axis as written, tilting the circle

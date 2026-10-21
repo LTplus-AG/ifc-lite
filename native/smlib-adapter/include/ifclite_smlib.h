@@ -63,10 +63,39 @@ ifclite_smlib_status ifclite_smlib_boolean(ifclite_smlib_session session,
  * Matrix has 16 column-major doubles: finite positive rigid affine only. */
 ifclite_smlib_status ifclite_smlib_transform(ifclite_smlib_session session,
     ifclite_smlib_handle solid, const double* matrix, ifclite_smlib_handle* out);
+/* Bounded general affine copy into a generic rational BRep (opcode 18,
+ * capability bit 4, numeric 16); rigid ifclite_smlib_transform is unchanged.
+ * Matrix: 16 column-major doubles, |entry|<=1e9, last row exactly 0,0,0,1,
+ * nonsingular (else status 1); singular values in [1e-6,1e6] and condition
+ * number <=1e6 (else status 7). Only these source classes convert exactly:
+ * curve BSpline/Line/Circle/Ellipse/Parabola/Hyperbola and surface
+ * BSpline/Plane/Cylinder/Cone/Sphere/Torus with materialized rational data
+ * owned by their own edge/face. Anything else (offsets, composites, shared
+ * geometry, knots the SDK copy would normalize) refuses with status 7 before
+ * any copy; the source is never modified. A failure after copying starts
+ * returns status 8 (tainted domain). The certificate counts unique source
+ * geometry objects per class in that order: an exact rationalizable
+ * representation conversion with floating-point transformation, not exact
+ * arithmetic, durable face identity or execution qualification. The copy is
+ * owned independently of its source. Policy and SDK sources: src/affine.cpp. */
+typedef struct ifclite_smlib_affine_certificate {
+    uint32_t version, representation, source_classes[12];
+} ifclite_smlib_affine_certificate;
+ifclite_smlib_status ifclite_smlib_copy_affine(ifclite_smlib_session session,
+    ifclite_smlib_handle solid, const double* matrix, ifclite_smlib_handle* out,
+    ifclite_smlib_affine_certificate* certificate);
 /* Relative numerical-integration tolerance, supported range [1e-8, 1e-1]. */
 ifclite_smlib_status ifclite_smlib_volume(ifclite_smlib_session session,
     ifclite_smlib_handle solid, double integration_tolerance, double* out);
 ifclite_smlib_status ifclite_smlib_manifold(ifclite_smlib_session session,
+    ifclite_smlib_handle solid, uint32_t* out);
+/* Semantic emptiness of the actual retained solid: no boundary or lower-
+ * dimensional topology and only known-void regions (a material or UNSURE
+ * infinite region is full space, not empty). Not a mesh or volume heuristic.
+ * Writes exactly 0 or 1; the solid is not consumed. Strict tessellation of a
+ * solid certified empty yields an owned mesh whose six counts are all zero.
+ * Additive opcode 19, capability bit 5 (numeric 32). */
+ifclite_smlib_status ifclite_smlib_is_empty(ifclite_smlib_session session,
     ifclite_smlib_handle solid, uint32_t* out);
 ifclite_smlib_status ifclite_smlib_release(ifclite_smlib_session session,
     ifclite_smlib_handle solid);
@@ -85,10 +114,41 @@ ifclite_smlib_status ifclite_smlib_mesh_copy(ifclite_smlib_session session,
     ifclite_smlib_handle mesh, uint32_t stream, uint32_t offset, uint32_t count,
     void* out, uint32_t capacity_bytes);
 /* Additive extension negotiation, independent of unchanged ABI/protocol v1.
- * Bit 3 (numeric 8): copied rigid transform. Capability indicates
+ * Bit 0 (numeric 1): staged sweep recipe format 1 (ordered planar region).
+ * Bit 1 (numeric 2): staged format 2 capped open rational-path solid disk.
+ * Bit 3 (numeric 8): copied rigid transform.
+ * Bit 4 (numeric 16): bounded affine rational copy (opcode 18).
+ * Bit 5 (numeric 32): semantic empty query (opcode 19). Capability indicates
  * implementation, never execution qualification. */
+#define IFCLITE_SMLIB_CAPABILITY_SWEEP_REGION 1u
+#define IFCLITE_SMLIB_CAPABILITY_SWEEP_DISK 2u
 #define IFCLITE_SMLIB_CAPABILITY_RIGID_COPY 8u
+#define IFCLITE_SMLIB_CAPABILITY_AFFINE_COPY 16u
+#define IFCLITE_SMLIB_CAPABILITY_SEMANTIC_EMPTY 32u
 uint32_t ifclite_smlib_capabilities(void);
+/* Staged authored recipes, local metres. One upload per session; at most
+ * 1 MiB, 8192 curves and 128 loops.
+ * Format 1 LE: u32 format,loops,segments,reserved; f64 unit direction XYZ,depth;
+ * per loop u32 role (0 outer first, 1 inner thereafter),count; per curve u32
+ * kind,reserved and 12 f64. Line(1): start XYZ,end XYZ,6 zeros. Circle(2):
+ * centre XYZ,normal XYZ,x-axis XYZ,radius,start radians,signed sweep (+/-2pi).
+ * Arc(3): same fields with a partial signed interval. XY profiles; normal +/-Z,
+ * unit XY x-axis. Multiple loops require outer CCW, holes CW.
+ * Format 2 LE: u32 2,1,1,0; f64 radius,inner radius (0); u32 kind 4,0,degree,
+ * control count,unique knot count,0; f64 trim start,end; per control f64 XYZ,
+ * weight; per unique knot f64 knot,u32 multiplicity,u32 0. Open paths only.
+ * Begin declares exact size/counts. Chunks are sequential and <=3840 bytes.
+ * An invalid chunk discards the transaction. Each matching commit with
+ * non-null output consumes it, including incomplete/failed commits; null
+ * output leaves the upload active. Abort/session destroy discard incomplete
+ * input. New solids publish only after manifold/positive-volume checks. */
+ifclite_smlib_status ifclite_smlib_sweep_begin(uint64_t session, uint32_t format,
+    uint32_t length, uint32_t loops, uint32_t segments, uint64_t* out);
+ifclite_smlib_status ifclite_smlib_sweep_chunk(uint64_t session, uint64_t upload,
+    uint32_t offset, const uint8_t* bytes, uint32_t length);
+ifclite_smlib_status ifclite_smlib_sweep_abort(uint64_t session, uint64_t upload);
+ifclite_smlib_status ifclite_smlib_sweep_commit(uint64_t session, uint64_t upload,
+    ifclite_smlib_handle* out);
 /* Returns required bytes INCLUDING NUL. Copies a terminated, possibly truncated
  * message when capacity > 0 and buffer != NULL. Buffer may be NULL for sizing. */
 uint32_t ifclite_smlib_error_copy(char* buffer, uint32_t capacity);

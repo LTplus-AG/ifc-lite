@@ -16,7 +16,7 @@
 //! also meters total mapped-level attempts and Items members across the walk.
 
 use super::{product_shape, Select, ShapeError};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot::{IfcMappedItem, IfcRepresentation, IfcRepresentationMap}, DecodedEntity, EntityDecoder, IfcType};
 use rustc_hash::FxHashSet;
 
 /// What an `IfcMappedItem` among the items means to the walk.
@@ -153,7 +153,7 @@ impl RepresentationWalk {
         decoder: &mut EntityDecoder,
         visitor: &mut V,
     ) -> Result<(), ShapeError> {
-        let Some(rep) = map.get(1).map(|a| decoder.resolve_ref(a)).transpose()?.flatten() else {
+        let Some(rep) = map.attr(IfcRepresentationMap::MAPPED_REPRESENTATION).map(|a| decoder.resolve_ref(a)).transpose()?.flatten() else {
             return Err(ShapeError::MissingItems);
         };
         let mut run = Run { visitor, element: None, path: Vec::new(), on_path: FxHashSet::default(), levels: 0, items: 0 };
@@ -192,7 +192,7 @@ impl RepresentationWalk {
         rep: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Vec<DecodedEntity>>, ShapeError> {
-        let list = rep.get(3).ok_or(ShapeError::MissingItems)?;
+        let list = rep.attr(IfcRepresentation::ITEMS).ok_or(ShapeError::MissingItems)?;
         if let Err(why) = self.admit_items(&mut run.items, list.as_list().map_or(0, |l| l.len())) {
             let at = WalkCtx { element: run.element, shape_rep: Some(rep), path: &run.path };
             run.visitor.refused(rep, why, &at);
@@ -293,10 +293,10 @@ impl RepresentationWalk {
     fn resolve_level(
         item: &DecodedEntity, decoder: &mut EntityDecoder,
     ) -> Result<(DecodedEntity, DecodedEntity), WalkRefusal> {
-        let source = item.get(0).ok_or(WalkRefusal::MissingSource)?;
+        let source = item.attr(IfcMappedItem::MAPPING_SOURCE).ok_or(WalkRefusal::MissingSource)?;
         let map = decoder.resolve_ref(source).map_err(WalkRefusal::Decode)?
             .ok_or(WalkRefusal::UnresolvedSource)?;
-        let rep = map.get(1).ok_or(WalkRefusal::MissingMappedRepresentation)?;
+        let rep = map.attr(IfcRepresentationMap::MAPPED_REPRESENTATION).ok_or(WalkRefusal::MissingMappedRepresentation)?;
         let mapped_rep = decoder.resolve_ref(rep).map_err(WalkRefusal::Decode)?
             .ok_or(WalkRefusal::UnresolvedMappedRepresentation)?;
         Ok((map, mapped_rep))
@@ -305,7 +305,7 @@ impl RepresentationWalk {
     fn level_items(
         &self, used: &mut u32, rep: &DecodedEntity, decoder: &mut EntityDecoder,
     ) -> Result<Vec<DecodedEntity>, WalkRefusal> {
-        let list = rep.get(3).ok_or(WalkRefusal::MissingItems)?;
+        let list = rep.attr(IfcRepresentation::ITEMS).ok_or(WalkRefusal::MissingItems)?;
         self.admit_items(used, list.as_list().map_or(0, |items| items.len()))?;
         decoder.resolve_ref_list(list).map_err(WalkRefusal::Decode)
     }

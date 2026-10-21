@@ -11,7 +11,7 @@ const WIDTH = 640, HEIGHT = 480;
 const COLOR: [number, number, number, number] = [0.1, 0.8, 1, 1];
 const PRIMARY = { axis: 'side' as const, position: 50, enabled: true, normal: [0, 1, 0] as [number, number, number], distance: 0 };
 const EXTRA = { ...PRIMARY, normal: [0, -1, 0] as [number, number, number], distance: 2 };
-type Family = 'batched' | 'instanced' | 'individual';
+type Family = 'batched' | 'instanced' | 'wide-instanced' | 'individual';
 interface Sample { id: number; x: number; y: number; expected: boolean; color: boolean; gpu: number | null; cpu: number | null }
 export interface SelectiveClippingReport {
   adapter: ReturnType<Renderer['getAdapterInfo']>;
@@ -28,12 +28,12 @@ function mesh(id: number, x: number): MeshData {
     indices: new Uint32Array([0, 1, 2, 0, 2, 3]) };
 }
 
-function shard(): DecodedInstancedShard {
-  return { templates: [{ origin: [18, 0, 0],
+function shard(cx = 18, firstId = 201): DecodedInstancedShard {
+  return { templates: [{ origin: [cx, 0, 0],
     positions: new Float32Array([-4, 0, -4, 4, 0, -4, 4, 0, 4, -4, 0, 4]),
     normals: new Float32Array([0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0]),
     indices: new Uint32Array([0, 1, 2, 0, 2, 3]) }],
-    instances: [-6, 6].map((x, i) => ({ templateIndex: 0, entityId: 201 + i, color: COLOR,
+    instances: [-6, 6].map((x, i) => ({ templateIndex: 0, entityId: firstId + i, color: COLOR,
       transform: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, 0, 0, 1]) })),
     carriesItemIds: false };
 }
@@ -73,15 +73,16 @@ export async function runSelectiveClippingWitness(): Promise<SelectiveClippingRe
       throw new Error('Witness must exercise two entities in the same colour batch');
     }
     renderer.getScene().addInstancedShard(device, shard());
+    renderer.getScene().addInstancedShard(device, shard(54, 0x40000065));
     shadow = shadowProbe(device, renderer.getScene());
-    for (const family of ['batched', 'instanced', 'individual'] as const) {
-      const cx = family === 'batched' ? -18 : family === 'instanced' ? 18 : 0;
-      const first = family === 'batched' ? 101 : family === 'instanced' ? 201 : 301;
+    for (const family of ['batched', 'instanced', 'wide-instanced', 'individual'] as const) {
+      const cx = family === 'batched' ? -18 : family === 'instanced' ? 18 : family === 'wide-instanced' ? 54 : 0;
+      const first = family === 'batched' ? 101 : family === 'instanced' ? 201 : family === 'wide-instanced' ? 0x40000065 : 301;
       if (family === 'individual') {
         renderer.getScene().clear();
         for (const index of [0, 1]) {
           const data = mesh(first + index, index === 0 ? -6 : 6);
-          renderer.getScene().addMeshData(data);
+          renderer['scene'].addMeshData(data); // Internal registration for the individual-draw CPU oracle.
           renderer.createMeshFromData(data);
         }
         for (const individual of renderer.getScene().getMeshes()) individual.hydrated = false;
@@ -125,7 +126,10 @@ export async function runSelectiveClippingWitness(): Promise<SelectiveClippingRe
           const gpu = (await renderer.pick(Math.floor(screen.x), Math.floor(screen.y)))?.expressId ?? null;
           const cpu = renderer.raycastScene(screen.x, screen.y)?.intersection.expressId ?? null;
           row.checked++;
-          if (color !== expected || gpu !== (expected ? id : null) || cpu !== (expected ? id : null)) row.mismatches.push({ id, x, y, expected, color, gpu, cpu });
+          // The existing pick transport stores 30-bit IDs. Its clipping lookup
+          // must still use the full ID, independently of the encoded sample.
+          const pickId = family === 'wide-instanced' ? id & 0x3FFFFFFF : id;
+          if (color !== expected || gpu !== (expected ? pickId : null) || cpu !== (expected ? id : null)) row.mismatches.push({ id, x, y, expected, color, gpu, cpu });
         }
         // Visibility partitioning is tested through Renderer above. The depth oracle
         // tests the production ShadowPass clipping itself on the real scene buffers.

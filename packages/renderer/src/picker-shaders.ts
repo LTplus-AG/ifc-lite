@@ -113,6 +113,7 @@ export const instancedPickShaderWgsl = `
           @location(0) @interpolate(flat) objectId: u32,
           @location(1) @interpolate(flat) instFlags: u32,
           @location(2) worldPos: vec3<f32>,
+          @location(3) @interpolate(flat) sectionEntityId: u32,
         }
         @vertex
         fn vs_main(input: VertexInput, inst: InstanceInput) -> VertexOutput {
@@ -124,12 +125,13 @@ export const instancedPickShaderWgsl = `
           output.worldPos = relative;
           // bit 30 = instanced marker; express id in the low 30 bits.
           output.objectId = 0x40000000u | (inst.instEntityId & 0x3FFFFFFFu);
+          output.sectionEntityId = inst.instEntityId;
           output.instFlags = inst.instFlags;
           return output;
         }
         @fragment
         fn fs_main(input: VertexOutput) -> @location(0) u32 {
-          let excluded = sectionExcluded(input.objectId & 0x3FFFFFFFu);
+          let excluded = sectionExcluded(input.sectionEntityId);
           // Hidden occurrences (flags bit 1) are not pickable — mirror the render-pass
           // discard so a hidden instanced element can't be selected through the picker.
           if ((input.instFlags & 2u) != 0u) {

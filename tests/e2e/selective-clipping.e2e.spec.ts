@@ -22,7 +22,7 @@ test('#8015 selective clipping agrees in colour, GPU picking and CPU raycasting'
     await info.attach('selective-clipping-report', { body: JSON.stringify({ ...report, screenshot: undefined }, null, 2), contentType: 'application/json' });
     expect(report.errors).toEqual([]);
     expect(report.gpuErrors).toBe(0);
-    expect(report.rows).toHaveLength(27);
+    expect(report.rows).toHaveLength(36);
     for (const row of report.rows) {
       expect(row.checked).toBe(6);
       expect(row.mismatches, `${row.family}/${row.state}`).toEqual([]);

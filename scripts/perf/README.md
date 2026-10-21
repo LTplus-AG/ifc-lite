@@ -4331,3 +4331,10 @@ now uses the reviewed first-frame clock contract in both cadence and markers,
 and reads finalized sidecars at their actual case paths. Lesson: verify final
 checker contracts and receipt discovery against retained real captures before
 spending another capture window. This integration fix grants no timing verdict.
+
+
+## Standalone placement refusal reconciliation (#7877)
+
+The standalone native comparison preserves ordered mesh payloads, exact float/frame/metadata identity and complete diagnostic bytes on the catalog corpus. The stock reporter remains inconclusive; all-sample block summaries are retained beside the stock selected-row report, including the adverse parse observations and geometry offsets. The maintainer accepts the observed native cost for consistently refusing unreadable authored local, linear and grid placements while retaining absent-placement identity and readable degenerate-direction repair. This is a correctness tradeoff, not a speedup or statistical-neutrality claim. This is a maintainer judgment, not a statistical test result. The evidence does not waive browser/WASM qualification, WASM size budgets or required gates, and the later combined placement/memo measurements must not be relabelled as this standalone result.
+
+[Retained native observations](evidence/placement-refusal-7877-recovery/README.md) bind the exact standalone source. Keep strict malformed-placement reporting and output preservation separate from claims about native speed or the browser pipeline.

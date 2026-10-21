@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { act } from 'react';
 import { diffModels, type EntityFingerprint } from '@ifc-lite/diff';
-import { render, click, cleanup } from '@/test/render.js';
+import { render, click, cleanup, advance } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
@@ -73,8 +73,9 @@ describe('comparison filters (#8017)', () => {
     assert.match(rows(ui), /removed/);
   });
 
-  it('filters changed elements by kind including combined changes; bulk selection follows the filter', () => {
+  it('filters changed elements by kind including combined changes; bulk selection follows the filter', async () => {
     const ui = render(<ComparePanel />);
+    for (let attempt = 0; attempt < 100 && !ui.querySelector('select[aria-label="Change kind"]'); attempt++) await advance(10);
     const select = ui.querySelector<HTMLSelectElement>('select[aria-label="Change kind"]')!;
     act(() => { select.value = 'geometry'; select.dispatchEvent(new Event('change', { bubbles: true })); });
     assert.equal(badge(ui, 'Changed').getAttribute('aria-pressed'), 'true');
@@ -107,8 +108,9 @@ describe('comparison filters (#8017)', () => {
     assert.deepEqual(useViewerStore.getState().hiddenEntities, new Set([999]));
   });
 
-  it('result replacement resets filters and empty kind filters report no matching results', () => {
+  it('result replacement resets filters and empty kind filters report no matching results', async () => {
     const ui = render(<ComparePanel />);
+    for (let attempt = 0; attempt < 100 && !ui.querySelector('select[aria-label="Change kind"]'); attempt++) await advance(10);
     const select = ui.querySelector<HTMLSelectElement>('select[aria-label="Change kind"]')!;
     act(() => { select.value = 'container'; select.dispatchEvent(new Event('change', { bubbles: true })); });
     assert.match(rows(ui), /No results match these filters/);

@@ -87,7 +87,7 @@ export function contentMatchRows(
     if (!sample) return; // an empty match record carries nothing to show
     const refs = retiring
       ? drawableMatchRefs(match)
-      : [...match.base.map((f) => f.ref), ...drawableMatchRefs(match)];
+      : [...match.base, ...match.head].map((fingerprint) => fingerprint.ref);
     rows.push({
       key: `match:${index}`,
       kind: match.kind,

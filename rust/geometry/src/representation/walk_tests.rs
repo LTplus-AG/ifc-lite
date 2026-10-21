@@ -102,7 +102,7 @@ fn expand_visits_in_preorder_with_a_path_scoped_set() {
     let mut d = EntityDecoder::new(MODEL);
     let wall = d.decode_by_id(10).unwrap();
     let mut trace = Trace::default();
-    let walk = RepresentationWalk { select: Select::Body, nested: NestedMaps::Expand { max_depth: 32 } };
+    let walk = RepresentationWalk { select: Select::Body, nested: NestedMaps::Expand { max_depth: 32, max_levels: MAX_WALK_LEVELS } };
     walk.product(&wall, &mut d, &mut trace).unwrap();
     // #71 and #73 both re-enter map #62: a DAG, not a cycle.
     let expected = [
@@ -126,13 +126,13 @@ fn expand_visits_in_preorder_with_a_path_scoped_set() {
 fn expand_refuses_a_cycle_and_the_depth_cap() {
     let mut d = EntityDecoder::new(MODEL);
     let cycle = d.decode_by_id(80).unwrap();
-    let walk = RepresentationWalk { select: Select::Any, nested: NestedMaps::Expand { max_depth: 32 } };
+    let walk = RepresentationWalk { select: Select::Any, nested: NestedMaps::Expand { max_depth: 32, max_levels: MAX_WALK_LEVELS } };
     let mut trace = Trace::default();
     walk.mapped_item(&cycle, &mut d, &mut trace);
     assert_eq!(trace.refused, [(80, WalkRefusal::Cyclic)]);
 
     let nested = d.decode_by_id(30).unwrap();
-    let shallow = RepresentationWalk { select: Select::Any, nested: NestedMaps::Expand { max_depth: 1 } };
+    let shallow = RepresentationWalk { select: Select::Any, nested: NestedMaps::Expand { max_depth: 1, max_levels: MAX_WALK_LEVELS } };
     let mut trace = Trace::default();
     shallow.mapped_item(&nested, &mut d, &mut trace);
     assert_eq!(trace.refused, [(71, WalkRefusal::TooDeep), (73, WalkRefusal::TooDeep)]);

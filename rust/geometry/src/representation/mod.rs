@@ -15,7 +15,7 @@ mod walk;
 
 pub use select::{meshed_representations, Select};
 pub use walk::{
-    Flow, MappedLevel, NestedMaps, RepresentationWalk, WalkCtx, WalkRefusal, WalkVisitor,
+    Flow, MappedLevel, NestedMaps, RepresentationWalk, WalkCtx, WalkRefusal, WalkVisitor, MAX_WALK_LEVELS,
 };
 pub(crate) use select::{
     effective_element_rep_type, effective_rep_type, is_body_representation,
@@ -132,3 +132,6 @@ pub fn rep_items(
 
 #[cfg(test)]
 mod walk_tests;
+
+#[cfg(test)]
+mod work_budget_tests;

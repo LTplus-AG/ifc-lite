@@ -617,6 +617,39 @@ pub struct RepresentationWalk { pub select: Select, pub nested: NestedMaps }
 pub fn meshed_representations(element, representations) -> impl Iterator; // = Select::Meshed
 ```
 
+`NestedMaps::Expand { max_depth, max_levels }` bounds branching work in the
+recursive walker. Use `MAX_WALK_LEVELS` (65,536) as the default allowance.
+Two independent counters share that limit: mapped-level attempts (after depth
+and cycle checks, before resolving the source) and total `Items` members.
+Every occurrence pays again, including repeated valid DAG nodes. Each full list
+is charged before allocating or decoding its members, including ignored
+non-reference members. Product representations share the counters; each public
+walk call starts fresh. This bounds expansion work, not source parsing or
+visitor-owned computation.
+
+Exhaustion reports one `WalkRefusal::Budget { max_levels }` and stops the entire
+walk, unwinding every entered level. A root-list refusal identifies the
+representation ID and sets `WalkCtx::shape_rep`; nested refusals identify the
+mapped item and exclude it from the path. Product/map calls still return
+`Ok(())` on budget refusal: callers must handle the visitor's refusal channel to
+report truncation. Existing `ShapeError` results remain errors.
+
+The recursive walk still validates and decodes nested lists before `enter_map`,
+including for `SkipChildren`. A budget-refused list therefore has no enter/leave
+pair of its own. This preserves the old malformed-list classification and
+callback order; it deliberately does not adopt the later iterative engine's
+post-entry list validation. Depth and cycle refusals retain precedence. Within
+an admitted list, missing/dangling/malformed classifications and decoder errors
+are unchanged; an over-budget list is refused before examining its members,
+so `Budget` can supersede an otherwise malformed member. An exhausted level
+allowance also reports `Budget` before resolving the next source, potentially
+superseding `Dangling` or `Malformed` there. `FirstChain`, `Refuse`
+and `Leaf` retain their existing policies without these work meters.
+
+Adding `max_levels` breaks `Expand` constructors and exhaustive patterns;
+adding `Budget` breaks exhaustive `WalkRefusal` matches. These source breaks
+ride the pending Rust major recorded in `rust-major-offset.json`.
+
 #### mesh_check (test-support)
 
 `ifc_lite_geometry::mesh_check` is the one home for closure, edge-pairing and

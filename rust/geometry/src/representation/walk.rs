@@ -12,9 +12,10 @@
 //! walks"): the set is entered on `enter_map` and left on `leave_map`, so a
 //! source reached twice along different branches is a shared DAG node, not a
 //! cycle. The nesting is at most [`MAX_MAPPED_ITEM_DEPTH`](ifc_lite_core::MAX_MAPPED_ITEM_DEPTH)
-//! levels for every geometry caller, so the recursion below is bounded.
+//! levels for every geometry caller, so the recursion below is bounded. Expand
+//! also meters total mapped-level attempts and Items members across the walk.
 
-use super::{product_shape, rep_items, Select, ShapeError};
+use super::{product_shape, Select, ShapeError};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rustc_hash::FxHashSet;
 
@@ -22,8 +23,10 @@ use rustc_hash::FxHashSet;
 #[derive(Clone, Copy)]
 pub enum NestedMaps {
     /// Descend into every mapped item, in list order, to `max_depth` levels
-    /// (the mesh walks).
-    Expand { max_depth: u32 },
+    /// (the mesh walks). `max_levels` independently caps mapped-level attempts
+    /// and materialized Items members across one walk. Every DAG occurrence
+    /// pays again; exhaustion reports [`WalkRefusal::Budget`] and stops globally.
+    Expand { max_depth: u32, max_levels: u32 },
     /// A nested map ends the walk with [`WalkRefusal::TooDeep`] and nothing
     /// after it is visited: the source is not shareable (don't-bake instancing).
     Refuse,
@@ -57,7 +60,12 @@ pub enum WalkRefusal {
     TooDeep,
     /// The map has no `MappedRepresentation`, or its `Items` cannot be read.
     Malformed,
+    /// The mapped-level or total Items-member allowance was exhausted.
+    Budget { max_levels: u32 },
 }
+
+/// Recommended default for both independent Expand work meters.
+pub const MAX_WALK_LEVELS: u32 = 1 << 16;
 
 /// One `IfcMappedItem → IfcRepresentationMap → MappedRepresentation` level.
 #[derive(Clone)]
@@ -100,7 +108,8 @@ pub trait WalkVisitor {
     /// Pairs every `enter_map`, whatever it answered and however the level's
     /// items ended.
     fn leave_map(&mut self, _level: &MappedLevel) {}
-    /// A mapped item at `at` (its id) was not entered.
+    /// A mapped item at `at` (its id) was not entered. A root-list budget
+    /// refusal instead identifies its representation, with `shape_rep` set.
     fn refused(&mut self, _at: u32, _why: WalkRefusal, _ctx: &WalkCtx<'_>) {}
 }
 
@@ -115,6 +124,8 @@ struct Run<'a, V> {
     element: Option<&'a DecodedEntity>,
     path: Vec<MappedLevel>,
     on_path: FxHashSet<u32>,
+    levels: u32,
+    items: u32,
 }
 
 impl RepresentationWalk {
@@ -128,12 +139,12 @@ impl RepresentationWalk {
         let Some(shape) = product_shape(element, decoder)? else {
             return Ok(());
         };
-        let mut run = Run { visitor, element: Some(element), path: Vec::new(), on_path: FxHashSet::default() };
+        let mut run = Run { visitor, element: Some(element), path: Vec::new(), on_path: FxHashSet::default(), levels: 0, items: 0 };
         for rep in shape.select(element, self.select) {
             if run.visitor.shape_rep(rep) == Flow::Stop {
                 break;
             }
-            let items = rep_items(rep, decoder)?;
+            let Some(items) = self.root_items(&mut run, rep, decoder)? else { break; };
             if self.items(&mut run, Some(rep), &items, decoder) == Flow::Stop {
                 break;
             }
@@ -152,8 +163,8 @@ impl RepresentationWalk {
         let Some(rep) = map.get(1).map(|a| decoder.resolve_ref(a)).transpose()?.flatten() else {
             return Err(ShapeError::MissingItems);
         };
-        let items = rep_items(&rep, decoder)?;
-        let mut run = Run { visitor, element: None, path: Vec::new(), on_path: FxHashSet::default() };
+        let mut run = Run { visitor, element: None, path: Vec::new(), on_path: FxHashSet::default(), levels: 0, items: 0 };
+        let Some(items) = self.root_items(&mut run, &rep, decoder)? else { return Ok(()); };
         self.items(&mut run, Some(&rep), &items, decoder);
         Ok(())
     }
@@ -165,8 +176,36 @@ impl RepresentationWalk {
         decoder: &mut EntityDecoder,
         visitor: &mut V,
     ) {
-        let mut run = Run { visitor, element: None, path: Vec::new(), on_path: FxHashSet::default() };
+        let mut run = Run { visitor, element: None, path: Vec::new(), on_path: FxHashSet::default(), levels: 0, items: 0 };
         self.enter(&mut run, item, decoder);
+    }
+
+    /// Charge the full list before resolve_ref_list allocates or decodes any
+    /// member, including ignored non-reference slots and repeated DAG uses.
+    fn admit_items(&self, used: &mut u32, count: usize) -> Result<(), WalkRefusal> {
+        if let NestedMaps::Expand { max_levels, .. } = self.nested {
+            if count > (max_levels - *used) as usize {
+                return Err(WalkRefusal::Budget { max_levels });
+            }
+            *used += count as u32;
+        }
+        Ok(())
+    }
+
+    /// Root errors retain ShapeError; budget exhaustion uses the visitor.
+    fn root_items<V: WalkVisitor>(
+        &self,
+        run: &mut Run<'_, V>,
+        rep: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Option<Vec<DecodedEntity>>, ShapeError> {
+        let list = rep.get(3).ok_or(ShapeError::MissingItems)?;
+        if let Err(why) = self.admit_items(&mut run.items, list.as_list().map_or(0, |l| l.len())) {
+            let at = WalkCtx { element: run.element, shape_rep: Some(rep), path: &run.path };
+            run.visitor.refused(rep.id, why, &at);
+            return Ok(None);
+        }
+        Ok(Some(decoder.resolve_ref_list(list)?))
     }
 
     /// Visit one list of items in order; the flow of the last visit.
@@ -207,7 +246,7 @@ impl RepresentationWalk {
         decoder: &mut EntityDecoder,
     ) -> Flow {
         let max_depth = match self.nested {
-            NestedMaps::Expand { max_depth } | NestedMaps::FirstChain { max_depth } => max_depth,
+            NestedMaps::Expand { max_depth, .. } | NestedMaps::FirstChain { max_depth } => max_depth,
             NestedMaps::Refuse | NestedMaps::Leaf => 0,
         };
         let bail = matches!(self.nested, NestedMaps::Refuse);
@@ -222,6 +261,13 @@ impl RepresentationWalk {
         if run.on_path.contains(&item.id) {
             return refuse(run, WalkRefusal::Cyclic);
         }
+        if let NestedMaps::Expand { max_levels, .. } = self.nested {
+            if run.levels >= max_levels {
+                refuse(run, WalkRefusal::Budget { max_levels });
+                return Flow::Stop;
+            }
+            run.levels += 1;
+        }
         let Some(source) = item.get(0).map(|a| decoder.resolve_ref(a)) else {
             return refuse(run, WalkRefusal::Dangling);
         };
@@ -232,7 +278,17 @@ impl RepresentationWalk {
             Some(Ok(Some(rep))) => rep,
             _ => return refuse(run, WalkRefusal::Malformed),
         };
-        let Ok(items) = rep_items(&mapped_rep, decoder) else {
+        // Keep the recursive walk's eager list validation BEFORE enter_map,
+        // including when a visitor would skip children. Only Budget is new.
+        let list = match mapped_rep.get(3) {
+            Some(list) => list,
+            None => return refuse(run, WalkRefusal::Malformed),
+        };
+        if let Err(why) = self.admit_items(&mut run.items, list.as_list().map_or(0, |l| l.len())) {
+            refuse(run, why);
+            return Flow::Stop;
+        }
+        let Ok(items) = decoder.resolve_ref_list(list) else {
             return refuse(run, WalkRefusal::Malformed);
         };
         let level = MappedLevel { item: item.clone(), map, mapped_rep };

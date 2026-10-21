@@ -119,9 +119,9 @@ pub(super) fn plan(
         let frame = decoder
             .decode_by_id(frame_id)
             .map_err(|error| error.to_string())?;
-        // Validation already checked every axis. Reuse the renderer's canonical
-        // orthonormalization; point and directions are in authored project units.
-        let local = ifc_lite_geometry::parse_axis2_placement_3d(&frame, decoder)
+        // Validation checked every axis; reuse canonical orthonormalization in file units.
+        let local = ifc_lite_geometry::placement::Axis2Placement::read_3d(&frame, decoder)
+            .map(|placement| placement.matrix())
             .map_err(|error| error.to_string())?;
         let normalized = affine * local;
         preflight::rigid_frame(&normalized, id)?;

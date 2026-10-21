@@ -5,7 +5,7 @@
 //! Authored `IfcExtrudedAreaSolid` parameters before occurrence placement.
 
 use super::{extract_analytic_profile, AnalyticProfile, AnalyticStatus};
-use crate::transform::parse_axis2_placement_3d;
+use crate::placement::Axis2Placement;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use serde::Serialize;
 
@@ -99,7 +99,8 @@ fn parse_extrusion(
         if position.ifc_type != IfcType::IfcAxis2Placement3D {
             return Err(format!("Position #{id} is not IfcAxis2Placement3D"));
         }
-        let matrix = parse_axis2_placement_3d(&position, decoder)
+        let matrix = Axis2Placement::read_3d(&position, decoder)
+            .map(|placement| placement.matrix())
             .map_err(|error| format!("Position #{id}: {error}"))?;
         if matrix.iter().any(|value| !value.is_finite()) {
             return Err(format!("Position #{id} has non-finite coordinates"));

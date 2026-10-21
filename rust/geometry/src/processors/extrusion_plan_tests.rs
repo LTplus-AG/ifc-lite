@@ -156,18 +156,28 @@ fn malformed_direction_is_refused_before_missing_depth_and_bad_position() {
         "#12=IFCDIRECTION((0.,0.,0.));",
         "#12=IFCCARTESIANPOINT((0.,0.,0.));",
     );
+    // #7880: the canonical leaf reader refuses the wrong-kind direction
+    // before either the missing Depth or dangling Position is consulted.
+    let mut decoder = EntityDecoder::new(&source);
+    let entity = decoder.decode_by_id(15).unwrap();
+    let error = ExtrudedAreaSolidProcessor::new(IfcSchema::new())
+        .lower(&entity, &mut decoder, TessellationQuality::Medium)
+        .unwrap_err();
+    assert!(matches!(error, crate::Error::CoreError(ifc_lite_core::Error::MalformedRecord(12))));
     assert_eq!(
-        owned_plan(&source).unwrap_err().to_string(),
-        "Geometry processing error: Expected IfcDirection, got IfcCartesianPoint"
+        error.to_string(),
+        "Core parser error: Entity #12 is malformed geometry input; refused"
     );
+    assert_eq!(decoder.refused_records(), 1);
 }
 
 #[test]
-fn production_direction_defaults_and_missing_position_remain_admitted() {
+fn explicit_vertical_direction_and_missing_position_remain_admitted() {
+    // #7880: missing Position stays identity with an explicit valid +Z direction.
     let source = HOLED
         .replace(
             "#12=IFCDIRECTION((0.,3.,4.));",
-            "#12=IFCDIRECTION((0.,0.));",
+            "#12=IFCDIRECTION((0.,0.,1.));",
         )
         .replace(
             "#15=IFCEXTRUDEDAREASOLID(#11,#14,#12,5.);",
@@ -187,6 +197,22 @@ fn production_direction_defaults_and_missing_position_remain_admitted() {
     let mesh = plan.evaluate().unwrap();
     assert_eq!(bounds(&mesh), ([-2., -2., 0.], [2., 2., 5.]));
     assert!((signed_volume(&mesh) - 60.).abs() < 1e-9);
+}
+
+#[test]
+fn two_ratio_zero_direction_is_refused_without_inventing_z_7880() {
+    // #7880: promotion to Z=0 preserves the authored zero vector; it must
+    // refuse instead of inventing a vertical extrusion of the holed profile.
+    let source = HOLED.replace(
+        "#12=IFCDIRECTION((0.,3.,4.));",
+        "#12=IFCDIRECTION((0.,0.));",
+    );
+    let error = owned_plan(&source).unwrap_err();
+    assert!(matches!(error, crate::Error::GeometryError(_)));
+    assert_eq!(
+        error.to_string(),
+        "Geometry processing error: ExtrudedAreaSolid has zero-length ExtrudedDirection"
+    );
 }
 
 #[test]

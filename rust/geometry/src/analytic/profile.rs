@@ -5,7 +5,7 @@
 //! Exact profile boundaries before extrusion, in IFC file-length units.
 
 use super::{curve::CurveWalk, AnalyticCurveSegment, AnalyticPoint, AnalyticStatus};
-use crate::transform::parse_axis2_placement_2d;
+use crate::placement::Axis2Placement;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use serde::Serialize;
 use std::f64::consts::TAU;
@@ -138,7 +138,8 @@ fn parse_profile_position(
     if entity.ifc_type != IfcType::IfcAxis2Placement2D {
         return Err(format!("Position #{id} is not IfcAxis2Placement2D"));
     }
-    let matrix = parse_axis2_placement_2d(&entity, decoder)
+    let matrix = Axis2Placement::read_2d(&entity, decoder)
+        .map(|placement| placement.matrix())
         .map_err(|error| format!("Position #{id}: {error}"))?;
     if matrix.iter().any(|value| !value.is_finite()) {
         return Err(format!("Position #{id} has non-finite coordinates"));

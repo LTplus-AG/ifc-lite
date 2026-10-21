@@ -19,6 +19,11 @@ on:
       # The browser executor lives in the published wasm crate.
       - 'rust/wasm-bindings/src/retained_browser/**'
       - 'rust/wasm-bindings/js/**'
+      # Feature wiring for the retained-browser build (the wasm32 path
+      # only these actual-Worker lanes exercise).
+      - 'rust/wasm-bindings/Cargo.toml'
+      - 'rust/wasm-bindings/src/lib.rs'
+      - 'rust/geometry/Cargo.toml'
       - '.github/workflows/geometry-platform.yml'
   workflow_dispatch:
 

@@ -84,11 +84,12 @@ was not executed. Native 6,155-pass/strict-Clippy-zero evidence belongs to
 `7948335296…`, whose Rust source is identical to `2f53f794…`; the only intervening
 change is the MJS boundary tests. This is source equivalence, not a fresh run.
 The integrated-upper `75…` native job `1f498…` completed 6,211 functional passes
-and strict Clippy zero, but had `CHECKSUM=false`: its strong qualification
-condition was unmet. It is not promoted as qualification for this packet.
+and strict Clippy zero, but omitted the checksum-freshness assertion;
+source-bound geometry fingerprints recorded `checksum:false`. Its stronger
+qualification condition was unmet. It is not promoted as qualification for this packet.
 Inherited main `1e…` holds, source-matched hosted checks, required oracles,
 WASM/browser qualification and existing ceilings remain binding. This packet
-records a current ready Class X candidate under the all-18 land-or-close goal;
+records the measured Class X candidate under the all-18 land-or-close goal;
 it grants neither acceptance nor merge and finishes no charter stop line.
 
 `publication-manifest.json` maps logical path roots and binds original bytes

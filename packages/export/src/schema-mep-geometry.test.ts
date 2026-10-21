@@ -24,14 +24,14 @@ describe.skipIf(!available)('MEP downgrade reopens authored geometry (#8019)', (
     const store = await new IfcParser().parseColumnar(new TextEncoder().encode(mepOccurrences).buffer, { disableWorkerScan: true });
     const output = new StepExporter(store).export({ schema: 'IFC2X3' });
     const text = new TextDecoder().decode(output.content);
-    expect(text).toContain("#52=IFCFLOWSEGMENT('0000000000000000000052',#5,'Supply duct','Authored duct','Supply',#35,#25,'duct');");
+    expect(text).toContain("#52=IFCFLOWSEGMENT('0000000000000000000052',#5,'Supply duct','Authored duct','Supply',#35,#37,'duct');");
     expect(text).toContain("#60=IFCDUCTSEGMENTTYPE('0000000000000000000060',#5,'Rigid duct type',$,$,$,$,$,'Supply',.RIGIDSEGMENT.);");
     expect(text).toContain("#61=IFCRELDEFINESBYTYPE('0000000000000000000061',#5,$,$,(#52),#60);");
     expect(text).toContain("#64=IFCRELDEFINESBYPROPERTIES('0000000000000000000064',#5,$,$,(#52),#63);");
     const api = new IfcAPI();
     try {
       const native = new TextDecoder().decode(api.exportStep(new TextEncoder().encode(mepOccurrences), 'IFC2X3', undefined, ''));
-      expect(native).toContain("#52=IFCFLOWSEGMENT('0000000000000000000052',#5,'Supply duct','Authored duct','Supply',#35,#25,'duct');");
+      expect(native).toContain("#52=IFCFLOWSEGMENT('0000000000000000000052',#5,'Supply duct','Authored duct','Supply',#35,#37,'duct');");
       for (const source of [mepOccurrences, text, native]) {
         const meshes = meshMepFixture(api, source);
         expect(meshes.map(m => m.expressId).sort((a, b) => a - b)).toEqual([50, 51, 52]);

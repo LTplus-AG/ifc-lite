@@ -35,7 +35,7 @@ window.runMepRegression = async () => {
         if (m.triangles !== 12 || Math.abs(m.volume-6)>1e-6 || JSON.stringify(m.bounds)!==JSON.stringify([x-1,0,-0.5,x+1,3,0.5])) throw Error(`${name}: incorrect authored geometry: ${JSON.stringify(m)}`);
       }
       if (name !== 'source') {
-        for (const expected of ["#52=IFCFLOWSEGMENT('0000000000000000000052',#5,'Supply duct','Authored duct','Supply',#35,#25,'duct');", "#60=IFCDUCTSEGMENTTYPE('0000000000000000000060',#5,'Rigid duct type',$,$,$,$,$,'Supply',.RIGIDSEGMENT.);", "#61=IFCRELDEFINESBYTYPE('0000000000000000000061',#5,$,$,(#52),#60);", "#64=IFCRELDEFINESBYPROPERTIES('0000000000000000000064',#5,$,$,(#52),#63);"]) {
+        for (const expected of ["#52=IFCFLOWSEGMENT('0000000000000000000052',#5,'Supply duct','Authored duct','Supply',#35,#37,'duct');", "#60=IFCDUCTSEGMENTTYPE('0000000000000000000060',#5,'Rigid duct type',$,$,$,$,$,'Supply',.RIGIDSEGMENT.);", "#61=IFCRELDEFINESBYTYPE('0000000000000000000061',#5,$,$,(#52),#60);", "#64=IFCRELDEFINESBYPROPERTIES('0000000000000000000064',#5,$,$,(#52),#63);"]) {
           if (!text.includes(expected)) throw Error(`${name}: missing product/type/relationship record: ${expected}`);
         }
       }

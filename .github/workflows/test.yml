@@ -914,6 +914,16 @@ jobs:
           # and timeout. Once source_axes.rs is on main, whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/kernel/plane_weld/source_axes.rs | grep -Fxq 'rust/geometry/src/kernel/plane_weld/source_axes.rs'; then
             oracle_args+=(--mutation docs/architecture/evidence/issue-7292/signed-zero.oracle.patch)
+          # #7955 E2a: the owned model context adds element/model_context.rs
+          # (and appearance/owned_context.rs), which the changed context tests
+          # drive, so a whole-change revert cannot compile them (INCONCLUSIVE).
+          # Keep the snapshots and break ONLY two lifecycle rules: an
+          # explicitly invalidated source still validates, and an appearance
+          # style edit keeps serving the snapshot it replaced. Listed before
+          # the E1b parent it is stacked on; once element/model_context.rs is
+          # on main, whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/element/model_context.rs | grep -Fxq 'rust/processing/src/element/model_context.rs'; then
+            oracle_args+=(--mutation tests/evidence/model-context-e2a/behaviour.oracle.patch)
           # #7955 E1b: late presentation adds element/presentation_source.rs
           # (and the assembly_* modules), which the changed presentation tests
           # drive, so a whole-change revert cannot compile them (INCONCLUSIVE).

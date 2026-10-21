@@ -127,15 +127,15 @@ impl GeometryProcessor for Counted {
 #[test]
 fn a_styled_source_is_claimed_before_its_items_resolve() {
     let source = format!("{BASE}#90=IFCPOLYLINE((#1,#1));\
-        #20=IFCSHAPEREPRESENTATION($,'Body','CSG',(#10,#999));\
-        #21=IFCREPRESENTATIONMAP(#2,#20);#22=IFCMAPPEDITEM(#21,#3);");
+        #50=IFCSHAPEREPRESENTATION($,'Body','CSG',(#10,#999));\
+        #51=IFCREPRESENTATIONMAP(#2,#50);#52=IFCMAPPEDITEM(#51,#3);");
     let mut decoder = EntityDecoder::new(&source);
     let router = GeometryRouter::new();
-    assert!(styled(&router, &mut decoder, 22, false).is_err());
+    assert!(styled(&router, &mut decoder, 52, false).is_err());
     assert!(router.take_unsupported_items().is_empty());
     let repaired = decoder.decode_by_id(90).unwrap();
     decoder.inject_shared_cache(&[(999, Arc::new(repaired))].into_iter().collect());
-    assert_eq!(styled(&router, &mut decoder, 22, false).unwrap().len(), 1);
+    assert_eq!(styled(&router, &mut decoder, 52, false).unwrap().len(), 1);
     assert!(router.take_unsupported_items().is_empty(), "the failed walk already claimed the source");
 }
 

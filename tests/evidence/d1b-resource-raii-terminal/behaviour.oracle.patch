@@ -11,11 +11,11 @@ index 7badc2a7bd..7a5e0c82ef 100644
      result
  }
  
-diff --git b/rust/geometry/src/router/caching.rs a/rust/geometry/src/router/caching.rs
-index 48401a3656..d8ccca41b6 100644
---- b/rust/geometry/src/router/caching.rs
-+++ a/rust/geometry/src/router/caching.rs
-@@ -169,6 +169,7 @@ impl GeometryRouter {
+diff --git b/rust/geometry/src/router/item_cache_program.rs a/rust/geometry/src/router/item_cache_program.rs
+index 378785ee6f..afab56588c 100644
+--- b/rust/geometry/src/router/item_cache_program.rs
++++ a/rust/geometry/src/router/item_cache_program.rs
+@@ -94,6 +94,7 @@ impl GeometryRouter {
              ..Default::default()
          })?
          .retain();

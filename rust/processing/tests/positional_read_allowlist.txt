@@ -74,7 +74,6 @@
 2 rust/geometry/src/router/instancing.rs
 3 rust/geometry/src/router/mapped_item.rs
 1 rust/geometry/src/router/mod.rs
-3 rust/geometry/src/router/processing.rs
 17 rust/geometry/src/router/rtc_offset.rs
 2 rust/geometry/src/router/rtc_offset/raw_coordinate.rs
 3 rust/geometry/src/router/textured.rs

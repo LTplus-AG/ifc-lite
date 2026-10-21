@@ -4,6 +4,7 @@
 //! explicit file-unit RTC is removed in f64 before that narrowing. Product
 //! placement and unit scaling remain the router's responsibility.
 use super::polygonal::PolygonalFaceSetProcessor;
+use super::super::advanced_face::note_face_refused;
 use crate::triangulation::straight_corners::StraightCorners;
 use crate::{Error, Mesh, Point3, Result};
 use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcType};
@@ -105,7 +106,15 @@ pub(crate) fn lower(
             .as_entity_ref()
             .ok_or_else(|| Error::geometry("Expected entity reference for face".to_string()))?;
 
-        let face_entity = decoder.decode_by_id(face_id)?;
+        let face_entity = match decoder.decode_by_id(face_id) {
+            Ok(face) => face,
+            Err(_) if decoder.get_raw_bytes(face_id).is_none() => {
+                // The source record is absent (#7779); its subtype is unknown.
+                note_face_refused(&IfcType::IfcIndexedPolygonalFace);
+                continue;
+            }
+            Err(error) => return Err(error.into()),
+        };
 
         // IfcIndexedPolygonalFace has CoordIndex at attribute 0
         // IfcIndexedPolygonalFaceWithVoids has CoordIndex at 0 and InnerCoordIndices at 1

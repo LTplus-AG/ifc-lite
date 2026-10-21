@@ -530,7 +530,7 @@ impl GeometryRouter {
                     // geometry_id is the nested SOLID's id (not the mapped-item id) so
                     // emit_sub_meshes resolves the occurrence colour identically to the
                     // flat/template sub-mesh.
-                    self.ensure_shared_mapped_source(&mapped_repr, source_id, decoder);
+                    self.ensure_shared_mapped_source(&mapped_repr, source_id, decoder)?;
                     let local_rm = mapping_transform.map(|mut t| {
                         self.scale_transform(&mut t);
                         mat4::from_na(&t)

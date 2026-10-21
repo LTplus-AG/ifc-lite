@@ -9,6 +9,7 @@ use std::sync::Arc;
 /// rewrite. Cloning the Arc or making a decoder does not rescan or copy inputs.
 pub struct SourceBundle {
     bytes: Arc<Vec<u8>>,
+    pub(crate) uniform_precision: crate::decoder::UniformContextPrecisionCache,
     index: SourceIndex,
     grid_axes: Arc<crate::GridAxisIndex>,
     pub(crate) styled_items: std::sync::OnceLock<crate::decoder::StyledItemIndexResult>,
@@ -17,6 +18,7 @@ impl SourceBundle {
     fn paired(bytes: Arc<Vec<u8>>, index: SourceIndex) -> Arc<Self> {
         Arc::new(Self {
             bytes,
+            uniform_precision: Default::default(),
             index,
             grid_axes: Arc::default(),
             styled_items: Default::default(),
@@ -51,6 +53,18 @@ impl SourceBundle {
     pub fn columnar(bytes: Arc<Vec<u8>>) -> Result<Arc<Self>, crate::SpanBeyondU32> {
         let index = crate::ColumnarEntityIndex::from_scan(bytes.as_slice())?;
         Ok(Self::paired(bytes, SourceIndex::Columnar(Arc::new(index))))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn dense_for_certificate_test(bytes: Arc<Vec<u8>>) -> Arc<Self> {
+        let columns = crate::ColumnarEntityIndex::from_scan(bytes.as_slice()).unwrap();
+        let dense = crate::DenseEntityIndex::try_from_columns(
+            columns.ids(),
+            columns.starts(),
+            columns.lengths(),
+        )
+        .unwrap();
+        Self::paired(bytes, SourceIndex::Dense(Arc::new(dense)))
     }
 
     /// Validate a delivered compact index against the canonical byte scanner

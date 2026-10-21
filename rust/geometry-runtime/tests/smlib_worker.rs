@@ -2,7 +2,7 @@
 //! actual isolated native SMLib processes; no mock geometry engine.
 #![cfg(not(target_arch = "wasm32"))]
 use ifc_lite_geometry_runtime::protocol::BooleanOperation;
-use ifc_lite_geometry_runtime::{SmlibWorker, WorkerError};
+use ifc_lite_geometry_runtime::{MeshLimits, NumericalOutcome, SmlibWorker, WorkerError};
 
 fn worker() -> Option<SmlibWorker> {
     let Some(path) = std::env::var_os("IFCLITE_SMLIB_WORKER") else {
@@ -37,6 +37,17 @@ fn real_worker_preserves_boolean_inputs_and_empty_success() {
         .boolean(left, left, BooleanOperation::Difference)
         .unwrap();
     close(worker.volume(empty, 1e-8).unwrap(), 0.);
+    // Zero volume is no proof; the solid's own certificate and its all-zero
+    // strict mesh seal the outcome, and the worker stays live.
+    assert!(worker.is_empty(empty).unwrap());
+    assert!(!worker.is_empty(left).unwrap());
+    let incarnation = worker.incarnation();
+    let mesh = worker
+        .tessellate(empty, 0.001, 15., MeshLimits::default())
+        .unwrap();
+    assert_eq!(mesh.outcome(), NumericalOutcome::Empty);
+    assert!(mesh.positions.is_empty() && mesh.indices.is_empty());
+    assert_eq!(worker.incarnation(), incarnation);
     worker.release(empty).unwrap();
     worker.release(right).unwrap();
     assert!(matches!(
@@ -152,7 +163,6 @@ fn mesh_volume(mesh: &ifc_lite_geometry_runtime::TessellatedMesh) -> f64 {
 
 #[test]
 fn real_worker_returns_closed_face_attributed_mesh() {
-    use ifc_lite_geometry_runtime::MeshLimits;
     let Some(mut worker) = worker() else { return };
     let a = worker.create_box([0.; 3], [2.; 3]).unwrap();
     let b = worker.create_box([1., 0., 0.], [2.; 3]).unwrap();

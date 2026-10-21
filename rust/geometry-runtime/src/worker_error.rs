@@ -13,6 +13,9 @@ pub enum WorkerError {
     /// Caller input refused before any request reached the worker.
     InvalidArgument(&'static str),
     ResourceLimit(&'static str),
+    /// A retained request needs a same-incarnation numerical witness that has
+    /// not passed; nothing was uploaded.
+    Unqualified(&'static str),
 }
 
 impl std::fmt::Display for WorkerError {
@@ -28,6 +31,7 @@ impl std::fmt::Display for WorkerError {
             }
             Self::WrongWorker => write!(f, "BRep handle belongs to another worker"),
             Self::ResourceLimit(message) => write!(f, "geometry worker resource limit: {message}"),
+            Self::Unqualified(message) => write!(f, "unqualified retained request: {message}"),
         }
     }
 }

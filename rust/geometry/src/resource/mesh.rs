@@ -55,6 +55,26 @@ impl MeshLengths {
     }
 }
 
+/// Backing retained when an existing mesh moves into a cache. Deep copies use
+/// logical lengths instead; spare Vec capacity is resident but is not copied.
+pub(crate) fn resident_bytes(mesh: &Mesh) -> Result<u64, MeshAdmissionError> {
+    MeshLengths::of(mesh).bytes()?;
+    [
+        (mesh.positions.capacity(), 4),
+        (mesh.normals.capacity(), 4),
+        (mesh.indices.capacity(), 4),
+        (
+            mesh.plane_tags.as_ref().map_or(0, Vec::capacity),
+            std::mem::size_of::<PlaneTag>(),
+        ),
+    ]
+    .into_iter()
+    .try_fold(0u64, |sum, (count, width)| {
+        sum.checked_add(checked_buffer(count, width)?)
+            .ok_or(MeshAdmissionError::Representation)
+    })
+}
+
 /// Every individual vector must fit the executing target's signed Vec extent.
 /// The pure limit parameter also qualifies wasm32 arithmetic on native hosts.
 fn checked_buffer(count: usize, width: usize) -> Result<u64, MeshAdmissionError> {

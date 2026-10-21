@@ -14,16 +14,16 @@
 //!   are never baked into the definition's f32 buffers.
 //! - Handles resolve only in the document that minted them.
 //!
-//! - Retained definitions are captured authored extrusions plus their encoded
-//!   worker request ([`RetainedRequest`]), kept apart from display meshes. A
-//!   worker completion becomes a mesh only through
+//! - Retained definitions are captured authored extrusions or rational swept
+//!   disks plus their encoded worker request ([`RetainedRequest`]), kept apart
+//!   from display meshes. A worker completion becomes a mesh only through
 //!   [`GeometryDocument::publish_retained_display`], and then as an ordinary
-//!   display approximation. The swept-disk family and any execution runtime
-//!   are not part of this contract yet.
+//!   display approximation. No execution runtime is part of this contract yet.
 //!
 //! Operations over definitions land with their first caller.
 
 mod retained;
+mod retained_disk;
 mod retained_display;
 mod retained_sweep;
 mod types;
@@ -31,8 +31,9 @@ mod validation;
 
 pub use retained::{
     RetainedCompletion, RetainedDefinitionHandle, RetainedDisplayContract, RetainedExtrusion,
-    RetainedRefusal, RetainedRequest, RetainedTessellation,
+    RetainedRecipe, RetainedRefusal, RetainedRequest, RetainedTessellation,
 };
+pub use retained_disk::RetainedSweptDisk;
 pub use retained_sweep::{RegionQualification, SweepPayload};
 pub use types::{DefinitionHandle, DocumentError, DocumentId, Occurrence, OccurrenceHandle};
 

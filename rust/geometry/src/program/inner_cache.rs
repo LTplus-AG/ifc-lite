@@ -11,9 +11,9 @@ use crate::router::item_cache_program::{direct_rep_identity, CacheAdmission, Cac
 use crate::{GeometryRouter, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
-enum State<'a> {
+enum State {
     Begin,
-    Child(CacheContext, ItemControl<'a>),
+    Child(CacheContext, ItemControl),
     Hash(CacheContext, Mesh),
     Publishing(CacheContext),
     Complete(Result<Mesh>),
@@ -22,7 +22,7 @@ enum State<'a> {
 }
 
 pub(super) enum CacheReply {
-    Begin(CacheAdmission),
+    Begin(Result<CacheAdmission>),
     Item(ItemStep),
     Hash(Mesh, Option<u128>),
 }
@@ -30,7 +30,7 @@ pub(super) enum CacheReply {
 pub(super) struct CacheControl<'a> {
     item: &'a DecodedEntity,
     offset: (f64, f64, f64),
-    state: State<'a>,
+    state: State,
 }
 
 impl<'a> CacheControl<'a> {
@@ -54,7 +54,9 @@ impl<'a> CacheControl<'a> {
             State::Begin => {
                 return Ok(CacheReply::Begin(router.admit_item_cache(self.item, decoder, self.offset)));
             }
-            State::Child(_, item) => return item.execute(router, decoder).map(CacheReply::Item),
+            State::Child(_, control) => {
+                return control.execute(self.item, router, decoder).map(CacheReply::Item);
+            }
             _ => {}
         }
         match std::mem::replace(&mut self.state, State::Taken) {
@@ -72,15 +74,19 @@ impl<'a> CacheControl<'a> {
 
     pub(super) fn accept(&mut self, reply: CacheReply, router: &GeometryRouter) {
         self.state = match (std::mem::replace(&mut self.state, State::Taken), reply) {
-            (State::Begin, CacheReply::Begin(CacheAdmission::Hit(mesh))) => State::Complete(Ok(mesh)),
-            (State::Begin, CacheReply::Begin(CacheAdmission::Miss(context))) => {
-                State::Child(context, ItemControl::new(self.item, self.offset))
+            (State::Begin, CacheReply::Begin(Ok(CacheAdmission::Hit(mesh)))) => State::Complete(Ok(mesh)),
+            (State::Begin, CacheReply::Begin(Err(error))) => State::Complete(Err(error)),
+            (State::Begin, CacheReply::Begin(Ok(CacheAdmission::Miss(context)))) => {
+                State::Child(context, ItemControl::new(self.offset))
             }
             (State::Child(context, mut item), CacheReply::Item(step)) => {
                 item.accept(step, router);
                 match item.take_result() {
                     None => State::Child(context, item),
-                    Some(Ok(mesh)) => State::Hash(context, router.accept_local_item_cache(mesh)),
+                    Some(Ok(mesh)) => match router.accept_local_item_cache(mesh) {
+                        Ok(mesh) => State::Hash(context, mesh),
+                        Err(error) => State::Complete(Err(error)),
+                    },
                     Some(Err(error)) => State::Complete(Err(error)),
                 }
             }

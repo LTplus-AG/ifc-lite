@@ -60,6 +60,7 @@ use crate::bool2d::union_contours_to_shapes;
 use crate::csg::ClippingProcessor;
 use crate::extrusion::{apply_transform, extrude_profile_watertight};
 use crate::mesh::Mesh;
+use crate::program::openings::execute::Execution;
 use crate::router::GeometryRouter;
 
 #[cfg(test)]
@@ -113,7 +114,7 @@ struct Footprint {
     z_hi: f64,
 }
 
-impl GeometryRouter {
+impl Execution {
     /// Cut every OVERLAPPING opening cluster in `all_openings` from `result` via
     /// the coaxial footprint-union (or the 3D `union_many` fallback), marking the
     /// consumed openings in `consumed` and setting `host_mutated` on any real cut.
@@ -185,7 +186,7 @@ impl GeometryRouter {
             }
             // Extended-AABB for the overlap graph: pierce the host along `dir`
             // exactly as the cut will, so the cluster reflects the CUT footprints.
-            let ext = Self::extend_opening_mesh_through_host(mesh, result, dir);
+            let ext = GeometryRouter::extend_opening_mesh_through_host(mesh, result, dir);
             let (elo, ehi) = ext.bounds();
             cands.push(UnionCand {
                 idx,
@@ -333,7 +334,7 @@ impl GeometryRouter {
             // internal seams, not authored exits/jambs: pulling those seams in
             // independently leaves a gap inside a through opening (#6940,
             // rvt01 #6305 at the 12 mm render/core interface).
-            let prepared = Self::extend_opening_mesh_through_host(&cands[m].mesh, result, d);
+            let prepared = GeometryRouter::extend_opening_mesh_through_host(&cands[m].mesh, result, d);
             fps.push(cutter_footprint(&prepared, &u, &v, &d)?);
             cutter_volumes.push(mesh_signed_volume(&prepared).abs());
         }

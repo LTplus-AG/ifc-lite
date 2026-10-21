@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { sectionExclusions, withSectionExclusions } from './section-exclusions.js';
 /**
  * Selection/hover mask pass (#5390): draws the selected and hovered
  * meshes into two resolved targets the edge
@@ -116,10 +117,11 @@ export class SelectionMaskPass {
 
   constructor(device: WebGPUDevice, meshBindGroupLayout: GPUBindGroupLayout, sampleCount: number) {
     this.device = device.getDevice();
+    sectionExclusions(this.device).retain();
     this.meshBindGroupLayout = meshBindGroupLayout;
 
     this.sampleCount = sampleCount;
-    const layout = this.device.createPipelineLayout({ bindGroupLayouts: [this.meshBindGroupLayout] });
+    const layout = this.device.createPipelineLayout({ bindGroupLayouts: withSectionExclusions(this.device, [this.meshBindGroupLayout]) });
 
     const vertexModule = this.device.createShaderModule({ label: 'selection-mask-vs', code: mainShaderSource });
     const fragmentModule = this.device.createShaderModule({
@@ -164,6 +166,7 @@ export class SelectionMaskPass {
         pass.setPipeline(this.geometricPipelines[kind]); pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, frame.geometricVisibility);
       } else pass.setPipeline(this.pipelines[kind]);
       for (const mesh of meshes) {
+        pass.setBindGroup(3, sectionExclusions(this.device).bindGroup);
         pass.setBindGroup(0, mesh.bindGroup);
         pass.setVertexBuffer(0, mesh.vertexBuffer);
         pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
@@ -249,5 +252,6 @@ export class SelectionMaskPass {
     this.hoverUniforms = [];
     this.instanced?.destroy();
     this.instanced = null;
+    sectionExclusions(this.device).release();
   }
 }

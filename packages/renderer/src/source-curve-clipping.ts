@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { entityClip } from './section-exclusions.js';
 import type { PickClipState, Vec3 } from './types.js';
 import type { SourceSnapCurve } from './source-curve-snap.js';
 import { pointClipped } from './scene-raycaster.js';
@@ -142,6 +143,7 @@ function arcIntervals(curve: SourceSnapCurve, planes: readonly Plane[], clip: Pi
 
 /** Feasible source-parameter intervals for the renderer's current clip. */
 export function sourceCurveClipIntervals(curve: SourceSnapCurve, clip?: PickClipState | null): Interval[] {
+  clip = entityClip(clip, curve.globalId);
   if (!clip || (!clip.sectionPlane && !clip.extraPlanes?.length && !clip.clipBox?.enabled)) return [[0, 1]];
   const planes = planesFor(clip);
   // Cross-CRS curves have no analytic clip roots. Numerically bracket crossings

@@ -188,6 +188,7 @@ fn unreadable_grid_direction_refuses_but_readable_zero_keeps_repair_7877() {
         ("#38", "#38=IFCDIRECTION((0.,1.));", true),
         ("#38", "#38=IFCDIRECTION((IFCREAL(0.),1.));", false),
         ("#38", "#38=IFCDIRECTION((1.));", false),
+        ("#38", "#38=IFCDIRECTION((1.E400,0.));", false),
         ("#30", "", false),
         ("IFCLABEL('bad')", "", false),
     ] {
@@ -206,6 +207,31 @@ fn unreadable_grid_direction_refuses_but_readable_zero_keeps_repair_7877() {
             assert_eq!(decoder.refused_records(), 1);
             assert!(decoder.get_placement_transform_cached(10).is_none());
         }
+    }
+}
+
+/// #7877: readable finite direction ratios must not create a NaN frame.
+#[test]
+fn large_finite_grid_directions_normalize_without_overflow_7877() {
+    let diagonal = std::f64::consts::FRAC_1_SQRT_2;
+    for (ratios, expected) in [
+        ("1.E308,0.", [1., 0.]),
+        ("0.,-1.E308", [0., -1.]),
+        ("1.E308,1.E308", [diagonal, diagonal]),
+        ("1.7976931348623157E308,-1.7976931348623157E308", [diagonal, -diagonal]),
+    ] {
+        let content = doc(&format!(
+            "{GRID}#38=IFCDIRECTION(({ratios}));#10=IFCGRIDPLACEMENT($,#37,#38);"
+        )).replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC4X3'))");
+        let mut decoder = EntityDecoder::new(&content);
+        let node = decoder.decode_by_id(10).unwrap();
+        let matrix = resolve_chain(&node, &mut decoder).unwrap();
+        assert!(matrix.iter().all(|value| value.is_finite()), "{ratios}: {matrix}");
+        for (row, want) in expected.into_iter().enumerate() {
+            assert!((matrix[(row, 0)] - want).abs() < 1e-12, "{ratios}: {matrix}");
+        }
+        assert!((matrix.determinant() - 1.).abs() < 1e-12, "{ratios}: {matrix}");
+        assert_eq!(decoder.refused_records(), 0);
     }
 }
 

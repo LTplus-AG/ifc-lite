@@ -147,7 +147,7 @@ impl FrameParts {
 /// (#6446). A single-frame source, which is every source observed in the
 /// fixture corpus, runs the exact historical `Mesh::merge` sequence.
 #[derive(Default)]
-pub(super) struct SourceParts {
+pub(crate) struct SourceParts {
     /// The primary accumulator first, then the far frame parts.
     parts: Vec<SourcePart>,
 }
@@ -160,7 +160,7 @@ struct SourcePart {
 }
 
 impl SourceParts {
-    pub(super) fn merge(&mut self, mesh: &Mesh) {
+    pub(crate) fn merge(&mut self, mesh: &Mesh) {
         if mesh.is_empty() {
             return; // Mesh::merge would ignore it too
         }
@@ -197,7 +197,7 @@ impl SourceParts {
     /// Under an installed resource account a refused merge is only recorded
     /// as the account's sticky terminal stop; it surfaces here, before any
     /// partial source can be published.
-    pub(super) fn into_parts(self) -> Result<Vec<Mesh>> {
+    pub(crate) fn into_parts(self) -> Result<Vec<Mesh>> {
         if crate::resource::is_active() {
             crate::resource::check_current()?;
             let mut output = Vec::new();

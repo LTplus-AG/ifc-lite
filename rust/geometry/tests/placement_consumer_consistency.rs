@@ -144,3 +144,36 @@ fn issue_7779_mapped_items_refuse_a_missing_operator_origin() {
         }
     }
 }
+
+// #7880: both absent markers must derive X from an authored 2D Axis2.
+#[test]
+fn issue_7880_derived_axis1_preserves_the_authored_axis2_frame() {
+    for (kind, tail, half_width) in [("2D", "", 1.0), ("2DNONUNIFORM", ",3.", 3.0)] {
+        let mut reference = None;
+        for marker in ["$", "*"] {
+            let content = format!("#1=IFCCARTESIANPOINT((10.,20.));\n\
+                #2=IFCDIRECTION((1.,0.));\n\
+                #3=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,4.,2.);\n\
+                #4=IFCCARTESIANTRANSFORMATIONOPERATOR{kind}({marker},#2,#1,1.{tail});\n\
+                #5=IFCDERIVEDPROFILEDEF(.AREA.,$,#3,#4,$);");
+            let mut decoder = EntityDecoder::new(&content);
+            let entity = decoder.decode_by_id(5).unwrap();
+            let profile = ProfileProcessor::new(IfcSchema::new())
+                .process(&entity, &mut decoder, TessellationQuality::Medium).unwrap();
+            assert_eq!(profile.outer.len(), 4);
+            // Local X follows (0,-1), local Y follows (1,0), then translation.
+            for x in [10. - half_width, 10. + half_width] {
+                for y in [18., 22.] {
+                    assert!(profile.outer.iter().any(|p| (p.x - x).abs() < 1e-12 && (p.y - y).abs() < 1e-12),
+                        "{kind} {marker}: missing corner ({x},{y}): {:?}", profile.outer);
+                }
+            }
+            if let Some(expected) = &reference {
+                assert_eq!(&profile.outer, expected, "{kind}: absent markers disagree");
+            } else {
+                reference = Some(profile.outer.clone());
+            }
+            assert_eq!(decoder.refused_records(), 0);
+        }
+    }
+}

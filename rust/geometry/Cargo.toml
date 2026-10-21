@@ -24,6 +24,11 @@ debug_geometry = []
 # global buffer so a bench can replay the real CSG corpus under varying thread
 # counts. Zero cost when absent. See src/csg_capture.rs.
 csg_capture = []
+# Keep authored-source capture (`analytic::with_source_capture`) on wasm32.
+# Off by default: the default browser engine compiles capture out so its
+# source traversal costs no bundle bytes. Only ifc-lite-wasm's opt-in
+# `retained-browser` engine enables it (#7955).
+wasm_source_capture = []
 # Structured diagnostics: routes the production warn/debug messages through
 # `tracing` (structured fields, subscriber-controlled) instead of eprintln.
 # Default OFF so default builds carry no tracing code in this crate; the

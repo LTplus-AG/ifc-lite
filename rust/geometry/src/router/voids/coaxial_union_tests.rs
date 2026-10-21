@@ -11,6 +11,20 @@ use crate::mesh::Mesh;
 use crate::router::GeometryRouter;
 use nalgebra::{Point2, Point3, Vector3};
 
+impl GeometryRouter {
+    /// Test entry to the owned execution's coaxial prism builder.
+    fn build_coaxial_prisms(
+        &self,
+        result: &Mesh,
+        cands: &[UnionCand],
+        members: &[usize],
+        axis: &Vector3<f64>,
+    ) -> Option<(Vec<Mesh>, bool, Vec<usize>, f64)> {
+        crate::program::openings::execute::Execution::new(self.tessellation_quality)
+            .build_coaxial_prisms(result, cands, members, axis)
+    }
+}
+
 /// Closed axis-aligned box mesh (per-face vertices, outward normals) spanning
 /// `[min, max]`.
 fn box_mesh(min: [f64; 3], max: [f64; 3]) -> Mesh {

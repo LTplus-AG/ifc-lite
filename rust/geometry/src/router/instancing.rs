@@ -2,15 +2,25 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! #1623 Phase 2 "don't-bake" router helpers: eligibility of a mapped source for
-//! instancing, and the one-time source mesh into the shared registry that backs the
-//! finalize's orphan recovery. The don't-bake decision itself lives at the top-level
-//! mapped-item branch of `collect_submeshes_from_item_inner` (see `processing.rs`).
+//! #1623 Phase 2/3 "don't-bake" router helpers: eligibility of a mapped source for
+//! instancing, the template claim, the placeholder and template re-tag, and the
+//! one-time source mesh into the shared registry that backs the finalize's orphan
+//! recovery. The walk itself is the common mapping controller's styled walk
+//! (`crate::program::mapping`).
 
-use super::frame_parts::SourceParts;
 use super::GeometryRouter;
+use crate::math::mat4;
+use crate::{InstanceMeta, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use nalgebra::Matrix4;
 use std::sync::Arc;
+
+/// A provisional batch-local template claim (see
+/// [`GeometryRouter::claim_template`]): settled once its occurrence finished.
+pub(crate) struct TemplateClaim {
+    source_id: u32,
+    permit: Option<crate::resource::Reservation>,
+}
 
 impl GeometryRouter {
     /// #1623 Phase 2 eligibility: if this `MappedRepresentation` resolves to exactly
@@ -35,95 +45,179 @@ impl GeometryRouter {
         }
     }
 
-    /// #1623 Phase 2: mesh a mapped source ONCE into the shared registry (source
-    /// coords, pre-`MappingTarget`, pre-placement), if not already present. Called on
-    /// the don't-bake instance path so the streaming finalize can recover an
-    /// occurrence's geometry from the registry in the (effectively unreachable) case
-    /// that the template occurrence never materialized — never a silent geometry loss.
-    /// The meshing runs OUTSIDE the brief lock (no join held under lock).
+    /// #1623 Phase 2/3 eligibility of a TOP-LEVEL styled occurrence: its source
+    /// is a REPEATED (count >= 2) single-solid `IfcRepresentationMap` the armed
+    /// plan lists. Returns that solid's id, the placeholder's `geometry_id`, so
+    /// colour resolves EXACTLY as the flat/template sub-mesh. `None` with no
+    /// armed plan, so the flat output is unchanged.
+    pub(super) fn dont_bake_solid(
+        &self,
+        source_id: u32,
+        mapped_repr: &DecodedEntity,
+        textures: Option<&rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>>,
+        decoder: &mut EntityDecoder,
+    ) -> Option<u32> {
+        self.output_instancing_plan()
+            .and_then(|plan| plan.get(&source_id).copied())
+            .filter(|&(count, _)| count >= 2)
+            .and_then(|_| {
+                self.mapped_source_single_item(mapped_repr, decoder)
+                    // #858: a solid carrying an IfcIndexedColourMap materializes
+                    // flat so emit_sub_meshes can split it per palette group; an
+                    // instance placeholder resolves ONE colour.
+                    .filter(|&item_id| !self.is_indexed_colour_split_source(item_id))
+                    // #1781: a TEXTURED solid too: a placeholder carries no UVs.
+                    .filter(|&item_id| textures.is_none_or(|index| !index.contains_key(&item_id)))
+            })
+    }
+
+    /// Which eligible occurrence MATERIALIZES the template. Native (global)
+    /// mode: the plan's deterministic min-id occurrence, so all occurrences
+    /// resolve against ONE model-wide template across the rayon pool. WASM
+    /// batch-local mode: the FIRST occurrence this router sees, so each batch
+    /// is a self-contained shard. Both emit identical world triangles.
     ///
-    /// It shares `process_mapped_item_cached`'s insert guards — empty mesh and #1257
-    /// budget trip — because both write the same model-wide cache, but deliberately
-    /// NOT its recursion into nested mapped items: this is a flat walk. The only
-    /// caller reaches here having passed `mapped_source_single_item`, so the source
-    /// is exactly ONE non-mapped item and a nested one cannot occur. Should that ever
-    /// change, the walk below bails without inserting rather than registering a mesh
-    /// short of the source's real geometry — a truncated source under a key that does
-    /// not encode the truncation is served to every later occurrence.
-    ///
-    /// The #6446 single-frame guard needs no copy here: one non-mapped item is one
-    /// mesh with one origin, so it can never be a multi-frame source. A mixed
-    /// near+far source has at least two items, so it never reaches this walk.
+    /// Under a resource account a batch-local claim is provisional: the marker
+    /// is admitted before insertion and kept only by [`Self::settle_template`]
+    /// once the template materialized geometry, so a refused or empty template
+    /// leaves the next occurrence free to become it. Without an account the
+    /// claim is permanent, as it always was.
+    pub(crate) fn claim_template(&self, item_id: u32, source_id: u32) -> Result<(bool, Option<TemplateClaim>)> {
+        if !self.instancing_batch_local() {
+            let template = self
+                .output_instancing_plan()
+                .and_then(|plan| plan.get(&source_id))
+                .map_or(item_id, |&(_, template)| template);
+            return Ok((item_id == template, None));
+        }
+        let accounted = crate::resource::is_active();
+        let mut permit = None;
+        if accounted && !self.instanced_sources_materialized.borrow().contains(&source_id) {
+            // The marker id is admitted before insertion; hash-table control
+            // and allocator backing stay opaque coverage.
+            let cost = crate::resource::Cost { work: 1, live_bytes: std::mem::size_of::<u32>() as u64,
+                ..crate::resource::Cost::default() };
+            permit = Some(crate::resource::charge(cost)?);
+            self.instanced_sources_materialized
+                .borrow_mut()
+                .try_reserve(1)
+                .map_err(|_| crate::resource::allocation_failure())?;
+        }
+        let template = self.mark_source_materialized_if_first(source_id);
+        Ok((template, (accounted && template).then_some(TemplateClaim { source_id, permit })))
+    }
+
+    /// Keep a provisional template claim once its occurrence materialized
+    /// geometry, else roll it back.
+    pub(crate) fn settle_template(&self, claim: TemplateClaim, materialized: bool) {
+        if materialized && self.retain_local_resource_account().is_ok() {
+            if let Some(permit) = claim.permit {
+                permit.retain();
+            }
+            return;
+        }
+        self.instanced_sources_materialized.borrow_mut().remove(&claim.source_id);
+    }
+
+    /// Whether a don't-bake occurrence must first mesh its source ONCE into the
+    /// shared registry (source coords, pre-`MappingTarget`, pre-placement), so
+    /// the streaming finalize can recover it in the (effectively unreachable)
+    /// case that the template occurrence never materialized. Without a shared
+    /// registry there is nothing to recover from; callers that arm output
+    /// instancing always enable it too.
+    pub(crate) fn shared_mapped_source_needed(&self, source_id: u32) -> Result<bool> {
+        let Some(shared) = self.shared_mapped_item_cache.as_ref() else {
+            return Ok(false);
+        };
+        // A hit is coverage too (as in the mapped-item walk): refuse an
+        // unaccounted shared cache under a bounded account before the lookup.
+        self.check_mapped_cache_coverage()?;
+        Ok(!shared.lock().unwrap_or_else(|e| e.into_inner()).contains_key(&source_id))
+    }
+
+    /// The instance-only placeholder of a don't-bake occurrence: empty geometry
+    /// carrying the scaled mapping transform and the source's `rep_identity`.
+    /// `apply_submesh_placement` folds the world placement into its transform;
+    /// the finalize turns it into an occurrence against the template.
+    pub(crate) fn dont_bake_placeholder(source_id: u32, transform: Option<&Matrix4<f64>>) -> Mesh {
+        let mut placeholder = Mesh::new();
+        placeholder.instance_meta = Some(InstanceMeta {
+            transform: mat4::IDENTITY,
+            local_transform: transform.map(mat4::from_na),
+            canonical_transform: None,
+            rep_identity: source_id as u128,
+            instanceable: true,
+        });
+        placeholder
+    }
+
+    /// The don't-bake TEMPLATE occurrence materialized normally (a single-solid
+    /// source, so exactly one sub-mesh). Re-tag its `rep_identity` to the source
+    /// and record the scaled mapping as `local_transform`, MATCHING the
+    /// placeholders so the finalize collates them onto it. The baked geometry is
+    /// untouched: its world geometry is `transform · local_transform · source`,
+    /// so `m_ref` recovers the same `source` the placeholders reference.
+    pub(crate) fn retag_dont_bake_template(sub_meshes: &mut [crate::SubMesh], source_id: u32,
+        transform: Option<&Matrix4<f64>>) {
+        let local = transform.map(mat4::from_na);
+        for sub in sub_meshes {
+            if let Some(instance) = sub.mesh.instance_meta.as_mut() {
+                instance.rep_identity = source_id as u128;
+                instance.local_transform = local;
+            }
+        }
+    }
+
+    /// Mesh a mapped source ONCE into the shared registry, if not already
+    /// present: the walk a don't-bake occurrence runs before its placeholder.
+    #[cfg(test)]
     pub(super) fn ensure_shared_mapped_source(
         &self,
         mapped_repr: &DecodedEntity,
         source_id: u32,
         decoder: &mut EntityDecoder,
-    ) {
+    ) -> Result<()> {
+        if !self.shared_mapped_source_needed(source_id)? {
+            return Ok(());
+        }
+        crate::program::GeometryProgram::shared_mapped_source(mapped_repr, source_id)
+            .drain_parts(self, decoder)
+            .map(drop)
+    }
+
+    /// The shared registry walk's items. A representation whose items do not
+    /// resolve walks nothing and so registers nothing.
+    pub(crate) fn shared_source_items(mapped_repr: &DecodedEntity, decoder: &mut EntityDecoder) -> Vec<DecodedEntity> {
+        mapped_repr
+            .get(3)
+            .and_then(|items_attr| decoder.resolve_ref_list(items_attr).ok())
+            .unwrap_or_default()
+    }
+
+    /// Register a walked shared source. A missing processor or a failing one
+    /// leaves the mesh short of the source's real geometry; that partial mesh is
+    /// consistent with the per-occurrence walk (which also keeps going past a
+    /// failed item), so the drop is recorded rather than the source withheld.
+    pub(crate) fn publish_shared_mapped_source(&self, source_id: u32, mut parts: Vec<Mesh>) -> Result<()> {
         let Some(shared) = self.shared_mapped_item_cache.as_ref() else {
-            // Without a shared registry there is nothing to recover from; callers
-            // that arm output instancing always enable the shared cache too.
-            return;
-        };
-        if shared
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .contains_key(&source_id)
-        {
-            return;
-        }
-        // Same two rules the other three walks apply, from one place: a non-Body
-        // source's dropped items are not a content loss, and this source's drops
-        // are counted once rather than once per occurrence that re-walks it —
-        // which is exactly this function, since the insert below is skipped for a
-        // total-loss (empty) source and every later occurrence lands here again.
-        // See `GeometryRouter::enter_unsupported_source`.
-        let _drop_scope = self.enter_unsupported_source(source_id, mapped_repr);
-        let mut source = SourceParts::default();
-        if let Some(items_attr) = mapped_repr.get(3) {
-            if let Ok(items) = decoder.resolve_ref_list(items_attr) {
-                for sub_item in items {
-                    if sub_item.ifc_type == IfcType::IfcMappedItem {
-                        // Unreachable via the only caller (see the doc above).
-                        // Skipping it would leave `mesh` short of the source's real
-                        // geometry, and the insert below would publish that model-wide.
-                        //
-                        // If it ever becomes reachable, note the second cost: the
-                        // scope above has already CLAIMED `source_id` in
-                        // `sources_recorded`, so a later, complete walk of the same
-                        // source through `mapped_item.rs` would find it claimed and
-                        // record nothing — losing its drops rather than duplicating
-                        // them. Releasing the claim belongs with whatever makes this
-                        // branch reachable.
-                        return;
-                    }
-                    // A missing processor or a failing one leaves the mesh short of
-                    // the source's real geometry, and the insert below publishes
-                    // that to EVERY instance of this source model-wide. The partial
-                    // mesh itself is consistent with the per-occurrence path
-                    // (`mapped_item.rs` also keeps going past a failed sub-item), so
-                    // the drop is recorded rather than the source withheld — but it
-                    // MUST be recorded, or the one place the loss is visible at all
-                    // is the one place instancing removed. `mapped_item.rs` writes
-                    // this same cache entry, so both mesh the item through the one
-                    // per-item step (RTC rebase, curve-cap drain; #7690).
-                    self.merge_source_item(&sub_item, decoder, &mut source, "shared-source");
-                }
-            }
-        }
-        let Ok(mut parts) = source.into_parts() else {
-            return;
+            return Ok(());
         };
         if parts.len() == 1
             && !parts[0].positions.is_empty()
             && !crate::kernel::budget::tripped()
         {
+            // The moved mesh is published as is: under accounting its merges
+            // were already admitted, so only the cache owner must be retained.
+            if crate::resource::is_active() {
+                self.retain_mapped_cache_account()?;
+            }
             let mesh = parts.pop().unwrap_or_default();
             shared
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .insert(source_id, Arc::new(mesh));
         }
+        Ok(())
     }
 }
 
@@ -135,8 +229,8 @@ mod tests {
     /// A Body source whose two items both fail to mesh: `#8` has no registered
     /// processor at all (the `None` arm), `#7` has one that errors on a null
     /// profile/placement (the `Err` arm). `ensure_shared_mapped_source` is the
-    /// don't-bake path's own flat walk of a source, structurally separate from
-    /// `mapped_item.rs`'s, and its two drop arms had no test: deleting both
+    /// don't-bake path's own flat walk of a source, a separate entry into the
+    /// mapping controller from a mapped item's, and its two drop arms had no test: deleting both
     /// `record_unsupported_item` calls left the whole suite green, so the one
     /// place a don't-bake occurrence's loss is visible was unguarded.
     const TWO_FAILING_ITEMS: &str = r#"
@@ -152,7 +246,7 @@ mod tests {
         router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
 
         let rep = decoder.decode_by_id(9).expect("decode #9");
-        router.ensure_shared_mapped_source(&rep, 100, &mut decoder);
+        router.ensure_shared_mapped_source(&rep, 100, &mut decoder).unwrap();
 
         assert_eq!(
             router.mapped_shared_unique_count(),
@@ -189,7 +283,7 @@ mod tests {
         router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
 
         let rep = decoder.decode_by_id(9).expect("decode #9");
-        router.ensure_shared_mapped_source(&rep, 101, &mut decoder);
+        router.ensure_shared_mapped_source(&rep, 101, &mut decoder).unwrap();
 
         let unsupported = router.take_unsupported_items();
         assert!(
@@ -211,7 +305,7 @@ mod tests {
         router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
 
         let rep = decoder.decode_by_id(9).expect("decode #9");
-        router.ensure_shared_mapped_source(&rep, 102, &mut decoder);
+        router.ensure_shared_mapped_source(&rep, 102, &mut decoder).unwrap();
 
         let unsupported = router.take_unsupported_items();
         assert_eq!(
@@ -226,9 +320,9 @@ mod tests {
             .expect("read tests/fixtures/nested_mapped_item.ifc")
     }
 
-    /// `ensure_shared_mapped_source` walks the source's items FLAT — it has no
-    /// depth/visited bound, so it cannot recurse into a nested `IfcMappedItem` the
-    /// way `process_mapped_item_cached` now does. Handed a nested source anyway, it
+    /// `ensure_shared_mapped_source` walks the source's items FLAT — it does not
+    /// recurse into a nested `IfcMappedItem` the way `process_mapped_item_cached`
+    /// does. Handed a nested source anyway, it
     /// must publish NOTHING: the shared cache is keyed on the source id, so a mesh
     /// missing the nested contribution would be served to every later occurrence,
     /// including through `process_mapped_item_cached`'s own lookup.
@@ -244,7 +338,7 @@ mod tests {
         router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
 
         let nested_rep = decoder.decode_by_id(20).expect("decode #20");
-        router.ensure_shared_mapped_source(&nested_rep, 21, &mut decoder);
+        router.ensure_shared_mapped_source(&nested_rep, 21, &mut decoder).unwrap();
         assert_eq!(
             router.mapped_shared_unique_count(),
             0,
@@ -254,7 +348,7 @@ mod tests {
         // Negative half: the inner map's representation `#13` is a single solid,
         // the shape the caller actually reaches here, and it IS registered.
         let flat_rep = decoder.decode_by_id(13).expect("decode #13");
-        router.ensure_shared_mapped_source(&flat_rep, 14, &mut decoder);
+        router.ensure_shared_mapped_source(&flat_rep, 14, &mut decoder).unwrap();
         assert_eq!(router.mapped_shared_unique_count(), 1);
     }
 
@@ -276,7 +370,7 @@ mod tests {
         router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
 
         let empty_rep = decoder.decode_by_id(40).expect("decode #40");
-        router.ensure_shared_mapped_source(&empty_rep, 999, &mut decoder);
+        router.ensure_shared_mapped_source(&empty_rep, 999, &mut decoder).unwrap();
         assert_eq!(
             router.mapped_shared_unique_count(),
             0,
@@ -284,7 +378,7 @@ mod tests {
         );
 
         let flat_rep = decoder.decode_by_id(13).expect("decode #13");
-        router.ensure_shared_mapped_source(&flat_rep, 999, &mut decoder);
+        router.ensure_shared_mapped_source(&flat_rep, 999, &mut decoder).unwrap();
         assert_eq!(
             router.mapped_shared_unique_count(),
             1,
@@ -293,3 +387,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "styled_walk_tests.rs"]
+mod styled_walk_tests;

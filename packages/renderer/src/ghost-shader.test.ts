@@ -32,7 +32,7 @@ describe('ghost.wgsl', () => {
   it('keeps the discards and the light rig, at the translucent alpha', () => {
     const fs = fsMain(ghostShaderSource);
     const ret = fs.indexOf('return ghost;');
-    for (const kept of ['if (sectionClipped(fragmentPos)) { discard; }', 'let faceN', 'let irradiance', 'input.color.a * TRANSLUCENT_OPACITY_SCALE']) {
+    for (const kept of ['if (sectionClipped(fragmentPos, input.sectionEntityId)) { discard; }', 'let faceN', 'let irradiance', 'input.color.a * TRANSLUCENT_OPACITY_SCALE']) {
       const at = fs.indexOf(kept);
       assert.ok(at > 0 && at < ret, `${kept} runs before the ghost return`);
     }

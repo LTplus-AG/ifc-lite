@@ -72,6 +72,15 @@ overflow-checks = false # Remove overflow checks in release
 opt-level = 3
 strip = true
 
+# LandXML import is a cold, parse-bound path (one document per import, not a
+# per-frame or per-element loop). Size-optimizing just this crate shrinks the
+# engine WASM by ~33 KB brotli at a measured ~5-8% LandXML parse-time cost;
+# the geometry/core/processing hot paths stay at opt-level 3. The `"*"` rule
+# above only covers non-workspace dependencies, so workspace members need an
+# explicit override.
+[profile.release.package.ifc-lite-landxml]
+opt-level = "s"
+
 # Server-only release profile: re-enables stack unwinding so a panic while
 # parsing untrusted, attacker-supplied IFC bytes on a `spawn_blocking` thread
 # becomes a per-request `JoinError` (mapped to HTTP 500) instead of aborting

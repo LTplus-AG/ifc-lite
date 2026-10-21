@@ -1,0 +1,1400 @@
+{
+  "license": "SPDX-License-Identifier: MPL-2.0",
+  "status": "VERIFIED_REDUCED_SELECTION",
+  "historicalInventoryStatus": "PREPARED_NOT_PUBLISHED at selection freeze; superseded only for this reduced publication by the verification manifest.",
+  "originalInventorySHA256": "b1712095345a742cd857f192eb1d56470803a98ce60b17f0afddf45ea0bc2892",
+  "scope": "81 unchanged unique original payloads represent 108 of 155 original path entries; 47 path entries omitted. This normalized inventory is not the byte-identical published inventory.",
+  "payloads": [
+    {
+      "sha256": "0db3560846b23ca9770e2cfdb9eaf0ff9988d76d38774321bda64a87ca154b95",
+      "bytes": 7920,
+      "representativeSelectionKey": "cohort:identity/identity-after.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:identity/identity-after.json",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        },
+        {
+          "selectionKey": "cohort:identity/identity-before.json",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        },
+        {
+          "selectionKey": "cohort:timing/identity-after.json",
+          "modeOctal": "0o664",
+          "reason": "Full 30 selected/150 raw inner rows, exact 10 command chronology/identities, environment/order, stock verdict and independently checked block statistics"
+        },
+        {
+          "selectionKey": "cohort:timing/identity-before.json",
+          "modeOctal": "0o664",
+          "reason": "Full 30 selected/150 raw inner rows, exact 10 command chronology/identities, environment/order, stock verdict and independently checked block statistics"
+        }
+      ]
+    },
+    {
+      "sha256": "692792f99924bde04c4f751edfc013adf1f79568d37ad0b00bd051004d33d907",
+      "bytes": 804,
+      "representativeSelectionKey": "cohort:identity/main-0.command.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:identity/main-0.command.json",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        }
+      ]
+    },
+    {
+      "sha256": "d3ba8ad41eb3804761b58408f45775a46a62d7c21a4f0960d001c4ee121edf07",
+      "bytes": 455,
+      "representativeSelectionKey": "cohort:identity/main-0.diagnostics.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:identity/main-0.diagnostics.json",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        },
+        {
+          "selectionKey": "cohort:identity/placement-0.diagnostics.json",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        }
+      ]
+    },
+    {
+      "sha256": "7a980fd870a807979bce1826df8bff2864bce2f5aa2f9105298839cd9ef92032",
+      "bytes": 779,
+      "representativeSelectionKey": "cohort:identity/main-0.stdout",
+      "aliases": [
+        {
+          "selectionKey": "cohort:identity/main-0.stdout",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        },
+        {
+          "selectionKey": "cohort:identity/placement-0.stdout",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        }
+      ]
+    },
+    {
+      "sha256": "cae11a502cfef0433c62c87453833a29178f98b0e85862d900a9444d765bcbb0",
+      "bytes": 845,
+      "representativeSelectionKey": "cohort:identity/main-1.command.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:identity/main-1.command.json",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        }
+      ]
+    },
+    {
+      "sha256": "d1a2e40a36ee734a3898d7b467b21a0c00e7d463def70d9a5623b9fcb6802bd2",
+      "bytes": 1129,
+      "representativeSelectionKey": "cohort:identity/main-1.diagnostics.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:identity/main-1.diagnostics.json",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        },
+        {
+          "selectionKey": "cohort:identity/placement-1.diagnostics.json",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        }
+      ]
+    },
+    {
+      "sha256": "c4652b83d40ee5f1b4f16dd3f29b027779ac3421840b60893b5d1c83dd2ebdda",
+      "bytes": 780,
+      "representativeSelectionKey": "cohort:identity/main-1.stdout",
+      "aliases": [
+        {
+          "selectionKey": "cohort:identity/main-1.stdout",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        },
+        {
+          "selectionKey": "cohort:identity/placement-1.stdout",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        }
+      ]
+    },
+    {
+      "sha256": "472eae38e0f389f1dd57ac57a7ab502c6af3cf1787f922c5643384889467e32e",
+      "bytes": 825,
+      "representativeSelectionKey": "cohort:identity/main-2.command.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:identity/main-2.command.json",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        }
+      ]
+    },
+    {
+      "sha256": "31da8fec0b5a96e898ee37692788dd3f89bd4f6ce593cb2891ab369c49f00c83",
+      "bytes": 463,
+      "representativeSelectionKey": "cohort:identity/main-2.diagnostics.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:identity/main-2.diagnostics.json",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        },
+        {
+          "selectionKey": "cohort:identity/placement-2.diagnostics.json",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        }
+      ]
+    },
+    {
+      "sha256": "95cce4841943c29dd4750e365ef8ed6dd33abca90cfa7d312303722adc2da8b7",
+      "bytes": 782,
+      "representativeSelectionKey": "cohort:identity/main-2.stdout",
+      "aliases": [
+        {
+          "selectionKey": "cohort:identity/main-2.stdout",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        },
+        {
+          "selectionKey": "cohort:identity/placement-2.stdout",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        }
+      ]
+    },
+    {
+      "sha256": "7bcc2de98fa870c93eece3fbd594d2ecac750035e10b9196b223d2b7d0dac316",
+      "bytes": 813,
+      "representativeSelectionKey": "cohort:identity/placement-0.command.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:identity/placement-0.command.json",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        }
+      ]
+    },
+    {
+      "sha256": "d59b10c1ea5e0794455825ade451e09e684684dd351c7997f1733ec7790b6f7c",
+      "bytes": 855,
+      "representativeSelectionKey": "cohort:identity/placement-1.command.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:identity/placement-1.command.json",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        }
+      ]
+    },
+    {
+      "sha256": "e7ce283c45216009f82b535c9dcc4e49fc6eedfd59ff778c5dfd4de3a01e06b4",
+      "bytes": 835,
+      "representativeSelectionKey": "cohort:identity/placement-2.command.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:identity/placement-2.command.json",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        }
+      ]
+    },
+    {
+      "sha256": "e621ec0132241da64439f56a50bcc81d923d925c9ebd94f9f9dc732e2d44c321",
+      "bytes": 12293,
+      "representativeSelectionKey": "cohort:identity/terminal.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:identity/terminal.json",
+          "modeOctal": "0o664",
+          "reason": "All six raw witness payloads, full diagnostic bytes, exact commands, terminal identity result and source/binary/fixture custody"
+        }
+      ]
+    },
+    {
+      "sha256": "6ca9f7072e6f0b7143aa5e9ba0ef2d8676bc04fa8fa33c6f52d5af942c0a94a4",
+      "bytes": 181,
+      "representativeSelectionKey": "cohort:jobs/05fb2817-57b7-4dc7-bf22-c8c49763c06a/output.log",
+      "aliases": [
+        {
+          "selectionKey": "cohort:jobs/05fb2817-57b7-4dc7-bf22-c8c49763c06a/output.log",
+          "modeOctal": "0o664",
+          "reason": "All four exact original completed source-bound outcomes and output digests"
+        }
+      ]
+    },
+    {
+      "sha256": "bbcbb68c246c48e79a948b95f81ca88b2f4d167b5621698a8bac8415b41fec89",
+      "bytes": 3646,
+      "representativeSelectionKey": "cohort:jobs/05fb2817-57b7-4dc7-bf22-c8c49763c06a/receipt.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:jobs/05fb2817-57b7-4dc7-bf22-c8c49763c06a/receipt.json",
+          "modeOctal": "0o664",
+          "reason": "All four exact original completed source-bound outcomes and output digests"
+        }
+      ]
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "representativeSelectionKey": "cohort:jobs/064500da-088e-4211-a6ba-aeaa0790485f/output.log",
+      "aliases": [
+        {
+          "selectionKey": "cohort:jobs/064500da-088e-4211-a6ba-aeaa0790485f/output.log",
+          "modeOctal": "0o664",
+          "reason": "All four exact original completed source-bound outcomes and output digests"
+        },
+        {
+          "selectionKey": "cohort:jobs/e2d8cb8c-ff7a-411e-995c-f55abe31ac3f/output.log",
+          "modeOctal": "0o664",
+          "reason": "All four exact original completed source-bound outcomes and output digests"
+        },
+        {
+          "selectionKey": "cohort:snapshots/checksum-config.stderr",
+          "modeOctal": "0o664",
+          "reason": "Original independent actual-checksum proof for both arm builds"
+        },
+        {
+          "selectionKey": "cohort:snapshots/main/build-payload.stdout",
+          "modeOctal": "0o664",
+          "reason": "Actual strict compiler commands/source attestations/logs/bindings and four native repro binaries"
+        },
+        {
+          "selectionKey": "cohort:snapshots/main/build-probe.stdout",
+          "modeOctal": "0o664",
+          "reason": "Actual strict compiler commands/source attestations/logs/bindings and four native repro binaries"
+        },
+        {
+          "selectionKey": "cohort:snapshots/placement-checksum-config.stderr",
+          "modeOctal": "0o664",
+          "reason": "Original independent actual-checksum proof for both arm builds"
+        },
+        {
+          "selectionKey": "cohort:snapshots/placement/build-payload.stdout",
+          "modeOctal": "0o664",
+          "reason": "Actual strict compiler commands/source attestations/logs/bindings and four native repro binaries"
+        },
+        {
+          "selectionKey": "cohort:snapshots/placement/build-probe.stdout",
+          "modeOctal": "0o664",
+          "reason": "Actual strict compiler commands/source attestations/logs/bindings and four native repro binaries"
+        }
+      ]
+    },
+    {
+      "sha256": "32dd57d3612190ad5a9f98373d0230057bc3e56b9d9efa036810309bb7020b81",
+      "bytes": 3879,
+      "representativeSelectionKey": "cohort:jobs/064500da-088e-4211-a6ba-aeaa0790485f/receipt.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:jobs/064500da-088e-4211-a6ba-aeaa0790485f/receipt.json",
+          "modeOctal": "0o664",
+          "reason": "All four exact original completed source-bound outcomes and output digests"
+        }
+      ]
+    },
+    {
+      "sha256": "aeed06cf86261c66f6a70988a489436f1b981a03204d8b8a3366720013cb4a66",
+      "bytes": 186,
+      "representativeSelectionKey": "cohort:jobs/7e823548-b381-4b84-a89a-364c2efc2487/output.log",
+      "aliases": [
+        {
+          "selectionKey": "cohort:jobs/7e823548-b381-4b84-a89a-364c2efc2487/output.log",
+          "modeOctal": "0o664",
+          "reason": "All four exact original completed source-bound outcomes and output digests"
+        }
+      ]
+    },
+    {
+      "sha256": "32f1c143a02ce6f997aaf71d9b46c7a6042d5907f4303ea23308e8d3eca65e57",
+      "bytes": 3653,
+      "representativeSelectionKey": "cohort:jobs/7e823548-b381-4b84-a89a-364c2efc2487/receipt.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:jobs/7e823548-b381-4b84-a89a-364c2efc2487/receipt.json",
+          "modeOctal": "0o664",
+          "reason": "All four exact original completed source-bound outcomes and output digests"
+        }
+      ]
+    },
+    {
+      "sha256": "045c7b675ca4ef02a70c36457c30c93aed6a8cfd4cf55d04640e7bc6cd0b320d",
+      "bytes": 3755,
+      "representativeSelectionKey": "cohort:jobs/e2d8cb8c-ff7a-411e-995c-f55abe31ac3f/receipt.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:jobs/e2d8cb8c-ff7a-411e-995c-f55abe31ac3f/receipt.json",
+          "modeOctal": "0o664",
+          "reason": "All four exact original completed source-bound outcomes and output digests"
+        }
+      ]
+    },
+    {
+      "sha256": "0d37eab5be6acfd557342f7048aedbcf155b98be919ede520112914552920649",
+      "bytes": 17420,
+      "representativeSelectionKey": "cohort:original-files-sha256.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:original-files-sha256.json",
+          "modeOctal": "0o664",
+          "reason": "Derived verdict/scope and original complete file-integrity inventory"
+        }
+      ]
+    },
+    {
+      "sha256": "4c291fbabe88ebb457b84575d268868e908d75830fcee990ebe29cc6e2a5b401",
+      "bytes": 2665,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v3/BUILD-COMMANDS.md",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v3/BUILD-COMMANDS.md",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "affe5ee7be6416579df64c1d8611ff85b1245e6a27978b4fcdd96916344c0dbf",
+      "bytes": 3093,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v3/README.md",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v3/README.md",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "a6542cc3c687cbd0877a5fd1ae6d2154a93ca650ee91c3fe24c6dc205283deea",
+      "bytes": 5919,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v3/assemble.py",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v3/assemble.py",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "efa272eadb210ed60eb6bd75feae163e2c798f0eb084eed1579a987b9c656913",
+      "bytes": 278,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v3/cargo-verbose.sh",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v3/cargo-verbose.sh",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        },
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v4/cargo-verbose.sh",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "770dc345b75bc751b03d51614e2725e82fee357c05a85a928f941ea4c6726d99",
+      "bytes": 7456,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v3/common.py",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v3/common.py",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "51b38f4bcab5f00452042c3c6a923f3086cf8c8a7f215c94c5ac8765df59d771",
+      "bytes": 20351,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v3/derivation.diff",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v3/derivation.diff",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "75620e9f4fe18be0b27d32cb396c9ef295a412ae6e097139703edfb625052096",
+      "bytes": 4647,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v3/freeze.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v3/freeze.json",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "73c980470c2a8735906de2835e4ebb60305714fd1c4599e3102a7d3358b67935",
+      "bytes": 3338,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v3/launcher-argv.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v3/launcher-argv.json",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "400483c3590908da87abbeb9c9fba44b9d61a43779504e141e3095593e749548",
+      "bytes": 5890,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v3/measure.py",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v3/measure.py",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        },
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v4/measure.py",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "a3dcc5b964c5e8d289f74ef6c5f10cbed3f904fa9184c19583756f222382783e",
+      "bytes": 4307,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v3/measurement-observed.rs",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v3/measurement-observed.rs",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        },
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v4/measurement-observed.rs",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "3a487c9887988afd2e19451b8bfe66208bbb2be47535cb1071a2fe425b870bbe",
+      "bytes": 6503,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v3/parsers.py",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v3/parsers.py",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        },
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v4/parsers.py",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "95143c5e25f362bc46f566929fb0b9eb61f746d017165b024e334528ae7ceba6",
+      "bytes": 4438,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v3/payload-diagnostics-v2.rs",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v3/payload-diagnostics-v2.rs",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        },
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v4/payload-diagnostics-v2.rs",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "dd50137fdc1cdfd980743afe7692e5c70bdba782f9b18d78d715624c6b7f053b",
+      "bytes": 13637,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v3/perf_probe-observed.rs",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v3/perf_probe-observed.rs",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        },
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v4/perf_probe-observed.rs",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "ebcab992f163c6f3d872cf9d46a6aaf578cd5df509f249f7722a91c55de67588",
+      "bytes": 6350,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v3/prepare-arms.py",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v3/prepare-arms.py",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "c5c501b2aab5ee5697fc7092eaf2533a12cf51be5074fcc806ae7b07f4aad4b6",
+      "bytes": 2443,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v3/probe-observation.diff",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v3/probe-observation.diff",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        },
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v4/probe-observation.diff",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "72f2a6ef3f6d74b085f31e8da39f65c0de4758189a18fcacfc80b0f2fda5a023",
+      "bytes": 11622,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v3/protocol.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v3/protocol.json",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "5b3f186c16f59420439ee652e57594ea97ddfc85c03fcdf26d70351517abf75d",
+      "bytes": 2335,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v3/source-proof.py",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v3/source-proof.py",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        },
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v4/source-proof.py",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "a09a3cc07b70d5c85e7bb05dc71eb3490d210915b9f1afe47e487f843786683e",
+      "bytes": 3040,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v3/witness.py",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v3/witness.py",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        },
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v4/witness.py",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "ffaf7f28e92656c982f5b58eb86f83c9ad07434d63a9a3324c5593d7a39d0bba",
+      "bytes": 2074,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v4/BUILD-COMMANDS.md",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v4/BUILD-COMMANDS.md",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "e0a7f1bab0ad341460efc6bc3755d391c1464076a8d2bcb2d8f453860b36a259",
+      "bytes": 2371,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v4/README.md",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v4/README.md",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        },
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v4/SCOPE.md",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "f918eca36e2cdb05c5cec8ccc325437e6ea7f32773283acf843e5783502b2823",
+      "bytes": 7652,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v4/assemble.py",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v4/assemble.py",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "2226c4d6131f7ac84615164059504d92bc3586849785797bbb1b94c31f9b709f",
+      "bytes": 9370,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v4/common.py",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v4/common.py",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "3df394ce63d0de77e87a628b0e1ca609161153598a4dd5e5da4823cfa71ca91a",
+      "bytes": 23749,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v4/derivation.diff",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v4/derivation.diff",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "134b8052bcb54a9b0b34f792e4dcc8097eb8e2d4203a3657ab008a555bffc33c",
+      "bytes": 2507,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v4/freeze.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v4/freeze.json",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "06f45c0f4d0afd10552d660475360085456e0c803db3a593304539512132d426",
+      "bytes": 2774,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v4/launcher-argv.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v4/launcher-argv.json",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "da07f489d6a0d96d0c4d5509617741cbf2163b7c0cc2d2cf8693ef0f73b82bab",
+      "bytes": 6881,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v4/prepare-arms.py",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v4/prepare-arms.py",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "f1cf58d328be1477c5b95f95fe66e9d164c85731212655f71b91405127275fb2",
+      "bytes": 6214,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v4/prior-main-pins.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v4/prior-main-pins.json",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "f0b0d6b3649c8bb54da26eea8ca5a5b904cd7d4b2246a79aa50ae639395decbf",
+      "bytes": 12940,
+      "representativeSelectionKey": "cohort:protocols/placement-7877-current-native-v4/protocol.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:protocols/placement-7877-current-native-v4/protocol.json",
+          "modeOctal": "0o664",
+          "reason": "Complete original frozen v3/v4 control-source closures, hashes, Rust observations and reproducibility instructions"
+        }
+      ]
+    },
+    {
+      "sha256": "8862b6ba15b3ff81e987847e39a1018a5d5e7a7a4635db9ea21ba3aa0f16b4ac",
+      "bytes": 153,
+      "representativeSelectionKey": "cohort:snapshots/assembly.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/assembly.json",
+          "modeOctal": "0o664",
+          "reason": "Cross-version original v3/v4 provenance and preparation/assembly evidence"
+        }
+      ]
+    },
+    {
+      "sha256": "3e2a5498c6c5f8ab25224736121e96c444b0ae00cc24ab652addda781a6ab153",
+      "bytes": 573,
+      "representativeSelectionKey": "cohort:snapshots/checksum-config.command.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/checksum-config.command.json",
+          "modeOctal": "0o664",
+          "reason": "Original independent actual-checksum proof for both arm builds"
+        }
+      ]
+    },
+    {
+      "sha256": "5a0536d91eee3664b48a9f65d847fb9f9075b4a3f79e2f4f9738fea714387388",
+      "bytes": 41,
+      "representativeSelectionKey": "cohort:snapshots/checksum-config.stdout",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/checksum-config.stdout",
+          "modeOctal": "0o664",
+          "reason": "Original independent actual-checksum proof for both arm builds"
+        },
+        {
+          "selectionKey": "cohort:snapshots/placement-checksum-config.stdout",
+          "modeOctal": "0o664",
+          "reason": "Original independent actual-checksum proof for both arm builds"
+        }
+      ]
+    },
+    {
+      "sha256": "52147f774ba30cd0e5e534968cc8f55ae41df795a758f323ef4509da15a34b96",
+      "bytes": 1126,
+      "representativeSelectionKey": "cohort:snapshots/main/build-payload.command.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/main/build-payload.command.json",
+          "modeOctal": "0o664",
+          "reason": "Actual strict compiler commands/source attestations/logs/bindings and four native repro binaries"
+        }
+      ]
+    },
+    {
+      "sha256": "aa33136c84cd1d6d3e518af21e633e6151a551f10b175e04a4462d68224e4c2b",
+      "bytes": 179545,
+      "representativeSelectionKey": "cohort:snapshots/main/build-payload.stderr",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/main/build-payload.stderr",
+          "modeOctal": "0o664",
+          "reason": "Actual strict compiler commands/source attestations/logs/bindings and four native repro binaries"
+        }
+      ]
+    },
+    {
+      "sha256": "87b38cd17ffc43d5b014b4007fe3cd5bf19a037c216751d69211291289698630",
+      "bytes": 1231,
+      "representativeSelectionKey": "cohort:snapshots/main/build-probe.command.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/main/build-probe.command.json",
+          "modeOctal": "0o664",
+          "reason": "Actual strict compiler commands/source attestations/logs/bindings and four native repro binaries"
+        }
+      ]
+    },
+    {
+      "sha256": "3ab1be869b976153e4991949bc21931eeb4c1b6dd865e60fe8a64a1eee872687",
+      "bytes": 480894,
+      "representativeSelectionKey": "cohort:snapshots/main/build-probe.stderr",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/main/build-probe.stderr",
+          "modeOctal": "0o664",
+          "reason": "Actual strict compiler commands/source attestations/logs/bindings and four native repro binaries"
+        }
+      ]
+    },
+    {
+      "sha256": "69379a1f978af41c339ab87c0641714e696a7b8065a6f0eea4bb877b357f1282",
+      "bytes": 302265,
+      "representativeSelectionKey": "cohort:snapshots/main/compiler-proof.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/main/compiler-proof.json",
+          "modeOctal": "0o664",
+          "reason": "Actual strict compiler commands/source attestations/logs/bindings and four native repro binaries"
+        }
+      ]
+    },
+    {
+      "sha256": "7adcb83f666d4758e182b763fd32b9316f1ac2ad3a2e30621999c7547df909d8",
+      "bytes": 29135392,
+      "representativeSelectionKey": "cohort:snapshots/main/payload-diagnostics",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/main/payload-diagnostics",
+          "modeOctal": "0o775",
+          "reason": "Actual strict compiler commands/source attestations/logs/bindings and four native repro binaries"
+        }
+      ]
+    },
+    {
+      "sha256": "2c421ef0b1f1b972c202d58adf2c7d6cfbb003ba4266f72e63f8ac9af1b1b0b6",
+      "bytes": 28731024,
+      "representativeSelectionKey": "cohort:snapshots/main/perf-probe",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/main/perf-probe",
+          "modeOctal": "0o775",
+          "reason": "Actual strict compiler commands/source attestations/logs/bindings and four native repro binaries"
+        }
+      ]
+    },
+    {
+      "sha256": "9b5d81379f8c500716402d26db0e35e02625925338980e5b12f9f36c05a5a865",
+      "bytes": 4514,
+      "representativeSelectionKey": "cohort:snapshots/main/source-binding.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/main/source-binding.json",
+          "modeOctal": "0o664",
+          "reason": "Actual strict compiler commands/source attestations/logs/bindings and four native repro binaries"
+        }
+      ]
+    },
+    {
+      "sha256": "e924d75219cba1680ae539c10c88cf33172d4309bef92bb10007ebc1c401d1bf",
+      "bytes": 575,
+      "representativeSelectionKey": "cohort:snapshots/placement-checksum-config.command.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/placement-checksum-config.command.json",
+          "modeOctal": "0o664",
+          "reason": "Original independent actual-checksum proof for both arm builds"
+        }
+      ]
+    },
+    {
+      "sha256": "6f84f11f25df58d954d5919078f08efbc6f5b70c547e0ad4a5293755a7e329cc",
+      "bytes": 1132,
+      "representativeSelectionKey": "cohort:snapshots/placement/build-payload.command.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/placement/build-payload.command.json",
+          "modeOctal": "0o664",
+          "reason": "Actual strict compiler commands/source attestations/logs/bindings and four native repro binaries"
+        }
+      ]
+    },
+    {
+      "sha256": "491841aac8aa9e0809f5e74f134fd4fbf4b09781dd30e5a65daa656c6f8a853a",
+      "bytes": 179481,
+      "representativeSelectionKey": "cohort:snapshots/placement/build-payload.stderr",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/placement/build-payload.stderr",
+          "modeOctal": "0o664",
+          "reason": "Actual strict compiler commands/source attestations/logs/bindings and four native repro binaries"
+        }
+      ]
+    },
+    {
+      "sha256": "440d3ac35c1cee1b0f154c928198a32c1a938467bb6d22cbfb8b7d9a48d3b6dd",
+      "bytes": 1235,
+      "representativeSelectionKey": "cohort:snapshots/placement/build-probe.command.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/placement/build-probe.command.json",
+          "modeOctal": "0o664",
+          "reason": "Actual strict compiler commands/source attestations/logs/bindings and four native repro binaries"
+        }
+      ]
+    },
+    {
+      "sha256": "2d120056c2628190bd0985ca66bdd6182143c8914f086d52e56b3aef02bc5a77",
+      "bytes": 480899,
+      "representativeSelectionKey": "cohort:snapshots/placement/build-probe.stderr",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/placement/build-probe.stderr",
+          "modeOctal": "0o664",
+          "reason": "Actual strict compiler commands/source attestations/logs/bindings and four native repro binaries"
+        }
+      ]
+    },
+    {
+      "sha256": "a14c65ecccc8838a1af187b7b03516ac2a59c818443ad39cd2168863aa77ddf2",
+      "bytes": 302277,
+      "representativeSelectionKey": "cohort:snapshots/placement/compiler-proof.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/placement/compiler-proof.json",
+          "modeOctal": "0o664",
+          "reason": "Actual strict compiler commands/source attestations/logs/bindings and four native repro binaries"
+        }
+      ]
+    },
+    {
+      "sha256": "9a18a90691b70facccdd1488c1f3ba4a435b50d1385c38afa2e9c30cd9b24b88",
+      "bytes": 29161032,
+      "representativeSelectionKey": "cohort:snapshots/placement/payload-diagnostics",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/placement/payload-diagnostics",
+          "modeOctal": "0o775",
+          "reason": "Actual strict compiler commands/source attestations/logs/bindings and four native repro binaries"
+        }
+      ]
+    },
+    {
+      "sha256": "c0dc439f376f2d540c4d1ecfb50c5e5df3d6181b20b18d7f2cff423eee35cb3b",
+      "bytes": 28756680,
+      "representativeSelectionKey": "cohort:snapshots/placement/perf-probe",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/placement/perf-probe",
+          "modeOctal": "0o775",
+          "reason": "Actual strict compiler commands/source attestations/logs/bindings and four native repro binaries"
+        }
+      ]
+    },
+    {
+      "sha256": "cbffe73cee68b73b484ba028108af507a3b2d3adae361382438aed286fc09765",
+      "bytes": 4534,
+      "representativeSelectionKey": "cohort:snapshots/placement/source-binding.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/placement/source-binding.json",
+          "modeOctal": "0o664",
+          "reason": "Actual strict compiler commands/source attestations/logs/bindings and four native repro binaries"
+        }
+      ]
+    },
+    {
+      "sha256": "8306d38583198f0ff11f16e6596b44787a2e9663014f42ddf34f1e2dc508129e",
+      "bytes": 4248,
+      "representativeSelectionKey": "cohort:snapshots/preparation-main.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/preparation-main.json",
+          "modeOctal": "0o664",
+          "reason": "Cross-version original v3/v4 provenance and preparation/assembly evidence"
+        }
+      ]
+    },
+    {
+      "sha256": "c318000e771e40b860e43d7ee83d82f250c35f816b573580793c528f08c6c969",
+      "bytes": 5846,
+      "representativeSelectionKey": "cohort:snapshots/preparation-placement.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/preparation-placement.json",
+          "modeOctal": "0o664",
+          "reason": "Cross-version original v3/v4 provenance and preparation/assembly evidence"
+        }
+      ]
+    },
+    {
+      "sha256": "7c4753145653070e34b532b08fb21907986b2a643d230eb550bec56f5f3be56c",
+      "bytes": 17519,
+      "representativeSelectionKey": "cohort:snapshots/source-bindings.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:snapshots/source-bindings.json",
+          "modeOctal": "0o664",
+          "reason": "Cross-version original v3/v4 provenance and preparation/assembly evidence"
+        }
+      ]
+    },
+    {
+      "sha256": "4af9ed2748e2277f740a6ed096c6c75eb98401e8e0b6e0bc321591668e2212ef",
+      "bytes": 17225,
+      "representativeSelectionKey": "cohort:summary.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:summary.json",
+          "modeOctal": "0o664",
+          "reason": "Derived verdict/scope and original complete file-integrity inventory"
+        }
+      ]
+    },
+    {
+      "sha256": "f0470fb67ec7b163d945879ddb0d53899b70d14f80e5df1196e9ed7c928623bf",
+      "bytes": 510,
+      "representativeSelectionKey": "cohort:timing/environment.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:timing/environment.json",
+          "modeOctal": "0o664",
+          "reason": "Full 30 selected/150 raw inner rows, exact 10 command chronology/identities, environment/order, stock verdict and independently checked block statistics"
+        }
+      ]
+    },
+    {
+      "sha256": "f783b7463dba3de6d1701f1edf5c19b2bc26da849e95b503412f45cd5e26272c",
+      "bytes": 60,
+      "representativeSelectionKey": "cohort:timing/order.txt",
+      "aliases": [
+        {
+          "selectionKey": "cohort:timing/order.txt",
+          "modeOctal": "0o664",
+          "reason": "Full 30 selected/150 raw inner rows, exact 10 command chronology/identities, environment/order, stock verdict and independently checked block statistics"
+        }
+      ]
+    },
+    {
+      "sha256": "0e9909ac346afe1dc993c6607d151f0c6cf948b64102c41e11dbd4db37d5201e",
+      "bytes": 13655,
+      "representativeSelectionKey": "cohort:timing/placement-v-main/comparison.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:timing/placement-v-main/comparison.json",
+          "modeOctal": "0o664",
+          "reason": "Full 30 selected/150 raw inner rows, exact 10 command chronology/identities, environment/order, stock verdict and independently checked block statistics"
+        }
+      ]
+    },
+    {
+      "sha256": "a497a73e7a083ee1aaf37f56a6d76aa912ecd9de8f6c32a6b2e56968da7a56d1",
+      "bytes": 52363,
+      "representativeSelectionKey": "cohort:timing/placement-v-main/per-iteration.jsonl",
+      "aliases": [
+        {
+          "selectionKey": "cohort:timing/placement-v-main/per-iteration.jsonl",
+          "modeOctal": "0o664",
+          "reason": "Full 30 selected/150 raw inner rows, exact 10 command chronology/identities, environment/order, stock verdict and independently checked block statistics"
+        }
+      ]
+    },
+    {
+      "sha256": "e842e29225ab13f9988f4484cf6170ca77964c8054ab21196b369f6fc200b597",
+      "bytes": 6275,
+      "representativeSelectionKey": "cohort:timing/placement-v-main/report.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:timing/placement-v-main/report.json",
+          "modeOctal": "0o664",
+          "reason": "Full 30 selected/150 raw inner rows, exact 10 command chronology/identities, environment/order, stock verdict and independently checked block statistics"
+        }
+      ]
+    },
+    {
+      "sha256": "923f2486e56a0d06df9584c7e8ad13b5e1d66388ee5c0f085376f5587d5feb4d",
+      "bytes": 27459,
+      "representativeSelectionKey": "cohort:timing/placement-v-main/runs.jsonl",
+      "aliases": [
+        {
+          "selectionKey": "cohort:timing/placement-v-main/runs.jsonl",
+          "modeOctal": "0o664",
+          "reason": "Full 30 selected/150 raw inner rows, exact 10 command chronology/identities, environment/order, stock verdict and independently checked block statistics"
+        }
+      ]
+    },
+    {
+      "sha256": "4a69625737a3b15b075e08f7d08ed13c1905ea80eb7e51c5470149e238709cf2",
+      "bytes": 10889,
+      "representativeSelectionKey": "cohort:timing/terminal.json",
+      "aliases": [
+        {
+          "selectionKey": "cohort:timing/terminal.json",
+          "modeOctal": "0o664",
+          "reason": "Full 30 selected/150 raw inner rows, exact 10 command chronology/identities, environment/order, stock verdict and independently checked block statistics"
+        }
+      ]
+    }
+  ],
+  "omittedOriginalPaths": [
+    {
+      "selectionKey": "cohort:identity/main-0.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "reason": "Exact payload bytes recoverable from retained SHA-identical representative cohort:jobs/064500da-088e-4211-a6ba-aeaa0790485f/output.log. This omitted path remains listed with original digest and size; it is not separately published."
+    },
+    {
+      "selectionKey": "cohort:identity/main-1.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "reason": "Exact payload bytes recoverable from retained SHA-identical representative cohort:jobs/064500da-088e-4211-a6ba-aeaa0790485f/output.log. This omitted path remains listed with original digest and size; it is not separately published."
+    },
+    {
+      "selectionKey": "cohort:identity/main-2.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "reason": "Exact payload bytes recoverable from retained SHA-identical representative cohort:jobs/064500da-088e-4211-a6ba-aeaa0790485f/output.log. This omitted path remains listed with original digest and size; it is not separately published."
+    },
+    {
+      "selectionKey": "cohort:identity/placement-0.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "reason": "Exact payload bytes recoverable from retained SHA-identical representative cohort:jobs/064500da-088e-4211-a6ba-aeaa0790485f/output.log. This omitted path remains listed with original digest and size; it is not separately published."
+    },
+    {
+      "selectionKey": "cohort:identity/placement-1.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "reason": "Exact payload bytes recoverable from retained SHA-identical representative cohort:jobs/064500da-088e-4211-a6ba-aeaa0790485f/output.log. This omitted path remains listed with original digest and size; it is not separately published."
+    },
+    {
+      "selectionKey": "cohort:identity/placement-2.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "reason": "Exact payload bytes recoverable from retained SHA-identical representative cohort:jobs/064500da-088e-4211-a6ba-aeaa0790485f/output.log. This omitted path remains listed with original digest and size; it is not separately published."
+    },
+    {
+      "selectionKey": "cohort:jobs/05fb2817-57b7-4dc7-bf22-c8c49763c06a/storage-status.json",
+      "sha256": "cc27c23577beb96a3b5320452ae5c85d16126e34d8b62ec556792fa7f0ca8e4c",
+      "bytes": 258,
+      "reason": "Historical storage-status snapshot omitted. Original job receipt/output retained; storage lifecycle state is not reconstructed by their bytes. Snapshot remains immutable locally; no claim that this snapshot was published."
+    },
+    {
+      "selectionKey": "cohort:jobs/064500da-088e-4211-a6ba-aeaa0790485f/storage-status.json",
+      "sha256": "f2173a98fefac25208aa0a74c6cbe7ae874106f9c8b846a464bace0c73c38c2f",
+      "bytes": 258,
+      "reason": "Historical storage-status snapshot omitted. Original job receipt/output retained; storage lifecycle state is not reconstructed by their bytes. Snapshot remains immutable locally; no claim that this snapshot was published."
+    },
+    {
+      "selectionKey": "cohort:jobs/7e823548-b381-4b84-a89a-364c2efc2487/storage-status.json",
+      "sha256": "f74b4272c0a2abe91c86ea344eebf7b420809236cabe3c39d5daca8b4a8eb0ec",
+      "bytes": 258,
+      "reason": "Historical storage-status snapshot omitted. Original job receipt/output retained; storage lifecycle state is not reconstructed by their bytes. Snapshot remains immutable locally; no claim that this snapshot was published."
+    },
+    {
+      "selectionKey": "cohort:jobs/e2d8cb8c-ff7a-411e-995c-f55abe31ac3f/storage-status.json",
+      "sha256": "49804fcf5cdd45d1b54e2519c1b1bad53af2c0aff1058596aa590233189c631e",
+      "bytes": 258,
+      "reason": "Historical storage-status snapshot omitted. Original job receipt/output retained; storage lifecycle state is not reconstructed by their bytes. Snapshot remains immutable locally; no claim that this snapshot was published."
+    },
+    {
+      "selectionKey": "cohort:reporter-recompute.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "reason": "Exact payload bytes recoverable from retained SHA-identical representative cohort:jobs/064500da-088e-4211-a6ba-aeaa0790485f/output.log. This omitted path remains listed with original digest and size; it is not separately published."
+    },
+    {
+      "selectionKey": "cohort:reporter-recompute.stdout",
+      "sha256": "e532a9af349524448b6052da8b21a41b64268e2064ff80ee5bff1387d128b99c",
+      "bytes": 1963,
+      "reason": "Independent reporter-recomputation presentation/verification record omitted. Original frozen reporter, raw selected data, original report and comparison retained; recomputation can be repeated without rerunning benchmarks. This omitted original remains locally immutable."
+    },
+    {
+      "selectionKey": "cohort:reporter-recomputed.json",
+      "sha256": "e842e29225ab13f9988f4484cf6170ca77964c8054ab21196b369f6fc200b597",
+      "bytes": 6275,
+      "reason": "Exact payload bytes recoverable from retained SHA-identical representative cohort:timing/placement-v-main/report.json. This omitted path remains listed with original digest and size; it is not separately published."
+    },
+    {
+      "selectionKey": "cohort:reporter-verification.json",
+      "sha256": "71cac1ffa371ef994400f50edc9f8ca28c0988935b57538f903e58cadebecf51",
+      "bytes": 352,
+      "reason": "Independent reporter-recomputation presentation/verification record omitted. Original frozen reporter, raw selected data, original report and comparison retained; recomputation can be repeated without rerunning benchmarks. This omitted original remains locally immutable."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/1-base.command.json",
+      "sha256": "98666f6291c3b94a6ce1cf55f71fcacafe78ce0426468a1cdb126b3fb18d9459",
+      "bytes": 945,
+      "reason": "Individual timing/report command record omitted. Retained timing/terminal.json carries command chronology and execution metadata, and raw rows/report retain results; omitted original byte serialization remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/1-base.stderr",
+      "sha256": "0cadeb671debdcca130103ec77b8bd4562ff663f2801e6e4b968b740caab0a45",
+      "bytes": 2748,
+      "reason": "Individual timing-process stderr omitted. It remains immutable locally; retained raw rows preserve measured data but do not reproduce stderr bytes. Actual compilation stderr is retained separately."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/1-base.stdout",
+      "sha256": "945a5358f30a2b1401d61268c4d691318033d598f3468f92f89531f0520c8ce7",
+      "bytes": 2461,
+      "reason": "Individual timing/report stdout serialization omitted. Retained runs.jsonl and per-iteration.jsonl preserve all30 selected and150 inner rows, and original report/comparison preserve reporter results. Exact stdout formatting remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/1-branch.command.json",
+      "sha256": "fced283a26be425b317107cf16253d491f8997174a9dc737dda8d26a881870ab",
+      "bytes": 947,
+      "reason": "Individual timing/report command record omitted. Retained timing/terminal.json carries command chronology and execution metadata, and raw rows/report retain results; omitted original byte serialization remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/1-branch.stderr",
+      "sha256": "e8c6143e99d254a20c54c147638c87a2a1163c9090ec50d15737bcaf0768fdc2",
+      "bytes": 2761,
+      "reason": "Individual timing-process stderr omitted. It remains immutable locally; retained raw rows preserve measured data but do not reproduce stderr bytes. Actual compilation stderr is retained separately."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/1-branch.stdout",
+      "sha256": "44aeda8ceacf9f1f183662e3709f6e7febb72ea8f5541dccef5280f88a11244c",
+      "bytes": 2475,
+      "reason": "Individual timing/report stdout serialization omitted. Retained runs.jsonl and per-iteration.jsonl preserve all30 selected and150 inner rows, and original report/comparison preserve reporter results. Exact stdout formatting remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/2-base.command.json",
+      "sha256": "cd37f016a8e32c45cc5c068b2f86e59346df10ee7ee9ed4cfdcac095c3d74916",
+      "bytes": 946,
+      "reason": "Individual timing/report command record omitted. Retained timing/terminal.json carries command chronology and execution metadata, and raw rows/report retain results; omitted original byte serialization remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/2-base.stderr",
+      "sha256": "4c7ef42f5a9b2a4befd7d7d6ebf45f6acf373a068a58cc91d59a1a399ba79ba0",
+      "bytes": 2760,
+      "reason": "Individual timing-process stderr omitted. It remains immutable locally; retained raw rows preserve measured data but do not reproduce stderr bytes. Actual compilation stderr is retained separately."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/2-base.stdout",
+      "sha256": "185c57ae2b202d734dd5efac576f2fa773a1f32bf1b99ca25aa951f6575af9f7",
+      "bytes": 2473,
+      "reason": "Individual timing/report stdout serialization omitted. Retained runs.jsonl and per-iteration.jsonl preserve all30 selected and150 inner rows, and original report/comparison preserve reporter results. Exact stdout formatting remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/2-branch.command.json",
+      "sha256": "0a712be8f7bbd8924d31fbf00a00816b0c9f6323d6d337d0159ab0bb6f8f4ece",
+      "bytes": 951,
+      "reason": "Individual timing/report command record omitted. Retained timing/terminal.json carries command chronology and execution metadata, and raw rows/report retain results; omitted original byte serialization remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/2-branch.stderr",
+      "sha256": "66497b2e0232834cb3b120f8a88100e11441794a4d97a1e0e08acbaa72361992",
+      "bytes": 2759,
+      "reason": "Individual timing-process stderr omitted. It remains immutable locally; retained raw rows preserve measured data but do not reproduce stderr bytes. Actual compilation stderr is retained separately."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/2-branch.stdout",
+      "sha256": "5273844f23cae2d0eb0d3869d1052c19b75f59705a8c22ffa15bb0a97df797a5",
+      "bytes": 2472,
+      "reason": "Individual timing/report stdout serialization omitted. Retained runs.jsonl and per-iteration.jsonl preserve all30 selected and150 inner rows, and original report/comparison preserve reporter results. Exact stdout formatting remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/3-base.command.json",
+      "sha256": "a51d10850ad15f164f24ba0537bcf5a3ad3c1592d3fd1a85bc192d6b6d2ef57a",
+      "bytes": 945,
+      "reason": "Individual timing/report command record omitted. Retained timing/terminal.json carries command chronology and execution metadata, and raw rows/report retain results; omitted original byte serialization remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/3-base.stderr",
+      "sha256": "94fb2d9f1585caf8ab7eb1f3cb99fa03edcdddd2fa1dac3f46d6debeaa602571",
+      "bytes": 2746,
+      "reason": "Individual timing-process stderr omitted. It remains immutable locally; retained raw rows preserve measured data but do not reproduce stderr bytes. Actual compilation stderr is retained separately."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/3-base.stdout",
+      "sha256": "af1b8cde6f7d821ee5ef999d3408f8cea1c9240ef6d4460474ef636e3495ddfa",
+      "bytes": 2459,
+      "reason": "Individual timing/report stdout serialization omitted. Retained runs.jsonl and per-iteration.jsonl preserve all30 selected and150 inner rows, and original report/comparison preserve reporter results. Exact stdout formatting remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/3-branch.command.json",
+      "sha256": "7a8d06e0110e27e7c7e8686b1775ed9e7d76f9857abb7493b97cbea94773c9c9",
+      "bytes": 951,
+      "reason": "Individual timing/report command record omitted. Retained timing/terminal.json carries command chronology and execution metadata, and raw rows/report retain results; omitted original byte serialization remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/3-branch.stderr",
+      "sha256": "f425907883be4c464513ce906f1132b88f089e1732ef71084371c8f8742708bb",
+      "bytes": 2768,
+      "reason": "Individual timing-process stderr omitted. It remains immutable locally; retained raw rows preserve measured data but do not reproduce stderr bytes. Actual compilation stderr is retained separately."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/3-branch.stdout",
+      "sha256": "3321e3bd34a468e35d1ad0e320ab5a7c754ef49b20abcea77bb49c61f41d8e77",
+      "bytes": 2481,
+      "reason": "Individual timing/report stdout serialization omitted. Retained runs.jsonl and per-iteration.jsonl preserve all30 selected and150 inner rows, and original report/comparison preserve reporter results. Exact stdout formatting remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/4-base.command.json",
+      "sha256": "a4212e018404f1090fbc1e05eec231b4e2d5b17cf258afeae916eb8f60007625",
+      "bytes": 946,
+      "reason": "Individual timing/report command record omitted. Retained timing/terminal.json carries command chronology and execution metadata, and raw rows/report retain results; omitted original byte serialization remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/4-base.stderr",
+      "sha256": "7f48b18a0ba4252431beee115b4b39e6b6ab99cabd42699ac0fbde5c248810e2",
+      "bytes": 2757,
+      "reason": "Individual timing-process stderr omitted. It remains immutable locally; retained raw rows preserve measured data but do not reproduce stderr bytes. Actual compilation stderr is retained separately."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/4-base.stdout",
+      "sha256": "f7ae0c5ed16d92d2732e9e88d69ac0c2ab83ce2729c8cd9faf6135fa8f4bea90",
+      "bytes": 2470,
+      "reason": "Individual timing/report stdout serialization omitted. Retained runs.jsonl and per-iteration.jsonl preserve all30 selected and150 inner rows, and original report/comparison preserve reporter results. Exact stdout formatting remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/4-branch.command.json",
+      "sha256": "fc1ab6388feaf16b227618db268dc70ce8d24bf666bcf9cbb0a235cb7ee795ad",
+      "bytes": 951,
+      "reason": "Individual timing/report command record omitted. Retained timing/terminal.json carries command chronology and execution metadata, and raw rows/report retain results; omitted original byte serialization remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/4-branch.stderr",
+      "sha256": "5b334f14f462eaaa3a7e42005b50cc54d972ac3758a33fa925e22577ea12df0d",
+      "bytes": 2736,
+      "reason": "Individual timing-process stderr omitted. It remains immutable locally; retained raw rows preserve measured data but do not reproduce stderr bytes. Actual compilation stderr is retained separately."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/4-branch.stdout",
+      "sha256": "65ab96e5ced83b9d7f5180eb6d6dae4b109b339a546541a1c822a11779288dff",
+      "bytes": 2450,
+      "reason": "Individual timing/report stdout serialization omitted. Retained runs.jsonl and per-iteration.jsonl preserve all30 selected and150 inner rows, and original report/comparison preserve reporter results. Exact stdout formatting remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/5-base.command.json",
+      "sha256": "d743645c283fa889b32feb57a3a62839d1d284c0d3afe3c7b741d0481969d642",
+      "bytes": 945,
+      "reason": "Individual timing/report command record omitted. Retained timing/terminal.json carries command chronology and execution metadata, and raw rows/report retain results; omitted original byte serialization remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/5-base.stderr",
+      "sha256": "883abde5a9cb70c305019b9bc30ab039a9c5046e4c9df6d5272a5761ca59ee27",
+      "bytes": 2759,
+      "reason": "Individual timing-process stderr omitted. It remains immutable locally; retained raw rows preserve measured data but do not reproduce stderr bytes. Actual compilation stderr is retained separately."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/5-base.stdout",
+      "sha256": "e78e4cc5f876ef7d86028367b84fd870a0d3c980542241abcdd904d5dae8fe75",
+      "bytes": 2472,
+      "reason": "Individual timing/report stdout serialization omitted. Retained runs.jsonl and per-iteration.jsonl preserve all30 selected and150 inner rows, and original report/comparison preserve reporter results. Exact stdout formatting remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/5-branch.command.json",
+      "sha256": "cead9ebb796bdf94d67a25a1a753fd5dcba6ac73e974fc01cd73087237276c36",
+      "bytes": 951,
+      "reason": "Individual timing/report command record omitted. Retained timing/terminal.json carries command chronology and execution metadata, and raw rows/report retain results; omitted original byte serialization remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/5-branch.stderr",
+      "sha256": "405d23074e7ec85694e677ab0cdd79dd534d999f4f34bbd89f24f824c2924ec7",
+      "bytes": 2777,
+      "reason": "Individual timing-process stderr omitted. It remains immutable locally; retained raw rows preserve measured data but do not reproduce stderr bytes. Actual compilation stderr is retained separately."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/5-branch.stdout",
+      "sha256": "09b578493d0d79037b7a45181095f7de785b03b16050993ebffe783613bc5080",
+      "bytes": 2490,
+      "reason": "Individual timing/report stdout serialization omitted. Retained runs.jsonl and per-iteration.jsonl preserve all30 selected and150 inner rows, and original report/comparison preserve reporter results. Exact stdout formatting remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/report.command.json",
+      "sha256": "02da4bae78716630adb029780c25b378bebb09f81995b9d56fbd98e4fcdc230c",
+      "bytes": 951,
+      "reason": "Individual timing/report command record omitted. Retained timing/terminal.json carries command chronology and execution metadata, and raw rows/report retain results; omitted original byte serialization remains only locally retained."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/report.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "reason": "Exact payload bytes recoverable from retained SHA-identical representative cohort:jobs/064500da-088e-4211-a6ba-aeaa0790485f/output.log. This omitted path remains listed with original digest and size; it is not separately published."
+    },
+    {
+      "selectionKey": "cohort:timing/placement-v-main/report.stdout",
+      "sha256": "bf82da233789a2131dab428c546824cf84af814c8f262889a0648d82982a7065",
+      "bytes": 1983,
+      "reason": "Individual timing/report stdout serialization omitted. Retained runs.jsonl and per-iteration.jsonl preserve all30 selected and150 inner rows, and original report/comparison preserve reporter results. Exact stdout formatting remains only locally retained."
+    }
+  ]
+}

@@ -289,6 +289,17 @@ The set can change from frame to frame (seven planes, then two, then none) witho
 
 A plane's cap comes from the cut polygons you upload for it: `renderer.uploadSection2DOverlay(polygons, lines, axis, position, range, flipped, customPlane, 'wing')`, and `renderer.clearSection2DOverlay('wing')` or `renderer.clearSection2DExtraOverlays(['face'])` to release caps. A cap is clipped by every other plane, never by its own. `sectionPlane.showGizmo = false` hides only the primary plane's preview quad.
 
+To keep chosen entities whole, pass `sectionExcludedIds`. The set uses the same full scene IDs as `hiddenIds` (federated global IDs in the viewer), and exempts those entities from both the primary and every extra section plane. Flat, colour-batched, textured and instanced meshes, their shadows, GPU picking, CPU raycasting and selection outlines agree. Hidden/isolation filtering and `clipBox` still apply. Point clouds have no IFC entity IDs and keep their existing clipping behavior.
+
+```typescript
+renderer.render({
+  sectionPlane: { axis: 'down', position: 50, enabled: true },
+  sectionExcludedIds: new Set([101, 202]),
+});
+```
+
+Omit the set or pass an empty set to restore clipping. In-place set edits take effect on the next render; picking uses a snapshot of that frame. Already-uploaded cap polygons and their outlines are filtered by `expressId`, including extra-plane caps. Standalone cap lines need `ownerId` to identify the excluded entity; unowned lines remain visible. Pass the same set in `SectionPlaneConfig.sectionExcludedIds` when generating drawings with `SectionCutter`, `cutMeshesStreaming` or `GPUSectionCutter`, so excluded entities generate no cut segments or polygons in the first place. Recompute standalone drawings after changing the set.
+
 ### Section Plane Visualization
 
 ```mermaid

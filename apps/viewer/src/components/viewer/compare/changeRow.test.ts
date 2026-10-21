@@ -61,6 +61,13 @@ describe('contentMatchRows (#1891)', () => {
     assert.deepStrictEqual(row.refs.map((r) => r.globalId), [1, 2, 1001]);
   });
 
+  it('#8017: review rows retain both candidates when the head is unmeshed', () => {
+    const unresolved = match('ambiguous', [1, 2], [1001]);
+    unresolved.head[0].ref.meshed = false;
+    const [row] = contentMatchRows([unresolved], nameOf);
+    assert.deepStrictEqual(row.refs.map((ref) => ref.globalId), [1, 2, 1001]);
+  });
+
   it('carries the engine distance through', () => {
     const [row] = contentMatchRows([match('moved', [1], [1001], 1.75)], nameOf);
     assert.strictEqual(row.distance, 1.75);

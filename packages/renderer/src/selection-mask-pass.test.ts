@@ -21,11 +21,11 @@ import type { WorldPoint } from './relative-to-eye.js';
 // The fake constructs globals WebGPU would provide in a browser.
 (globalThis as Record<string, unknown>).GPUShaderStage ??= { VERTEX: 1, FRAGMENT: 2, COMPUTE: 4 };
 (globalThis as Record<string, unknown>).GPUTextureUsage ??= { RENDER_ATTACHMENT: 16, TEXTURE_BINDING: 4 };
-(globalThis as Record<string, unknown>).GPUBufferUsage ??= { UNIFORM: 64, COPY_DST: 8 };
+(globalThis as Record<string, unknown>).GPUBufferUsage ??= { UNIFORM: 64, COPY_DST: 8, STORAGE: 128 };
 
 function fakeDevice() {
   const stats = {
-    buffers: [] as { size: number; destroyed: boolean }[], bindGroups: 0, writes: 0, textures: 0,
+    buffers: [] as { size: number; usage: number; destroyed: boolean }[], bindGroups: 0, writes: 0, textures: 0,
     passes: [] as { view: unknown; loadOp: string }[],
   };
   const pass = { setPipeline() {}, setBindGroup() {}, setVertexBuffer() {}, setIndexBuffer() {}, drawIndexed() {}, end() {} };
@@ -35,8 +35,8 @@ function fakeDevice() {
     createShaderModule: () => ({}),
     createRenderPipeline: () => ({}),
     createTexture: (desc: { label?: string }) => { stats.textures++; return { createView: () => ({ label: desc.label }), destroy() {} }; },
-    createBuffer: (desc: { size: number }) => {
-      const b = { size: desc.size, destroyed: false, destroy() { b.destroyed = true; } };
+    createBuffer: (desc: { size: number; usage: number }) => {
+      const b = { size: desc.size, usage: desc.usage, destroyed: false, destroy() { b.destroyed = true; } };
       stats.buffers.push(b);
       return b;
     },
@@ -77,17 +77,17 @@ describe('SelectionMaskPass GPU resources (#5390)', () => {
     const { device, encoder, stats } = fakeDevice();
     const pass = new SelectionMaskPass(device, {} as GPUBindGroupLayout, 1);
     for (let i = 0; i < 5; i++) pass.encode(frame(encoder, hoverMesh()));
-    assert.equal(stats.buffers.length, 1, 'hovering must not allocate a uniform buffer per frame');
+    assert.equal(stats.buffers.filter(b => (b.usage & GPUBufferUsage.UNIFORM) !== 0).length, 1, 'hovering must not allocate a uniform buffer per frame');
     assert.equal(stats.writes, 5, 'each frame writes the fresh hover uniforms');
     pass.destroy();
-    assert.equal(stats.buffers[0]!.destroyed, true);
+    assert.ok(stats.buffers.every(b => b.destroyed), 'hover uniforms and shared exclusions are released');
   });
 
   it('draws an already-bound hovered mesh without a buffer of its own', () => {
     const { device, encoder, stats } = fakeDevice();
     const pass = new SelectionMaskPass(device, {} as GPUBindGroupLayout, 1);
     pass.encode(frame(encoder, { vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexCount: 3, bindGroup: {} as GPUBindGroup }));
-    assert.equal(stats.buffers.length, 0);
+    assert.equal(stats.buffers.filter(b => (b.usage & GPUBufferUsage.UNIFORM) !== 0).length, 0);
   });
 
   it('clears each mask target once per frame, so hover does not wipe the selection', () => {
@@ -108,7 +108,7 @@ describe('SelectionMaskPass GPU resources (#5390)', () => {
     const { device, encoder, stats } = fakeDevice();
     const pass = new SelectionMaskPass(device, {} as GPUBindGroupLayout, 1);
     for (let i = 0; i < 3; i++) pass.encode(frame(encoder, [hoverMesh(), hoverMesh(), hoverMesh()]));
-    assert.equal(stats.buffers.length, 3, 'one buffer per piece, allocated once and reused across frames');
+    assert.equal(stats.buffers.filter(b => (b.usage & GPUBufferUsage.UNIFORM) !== 0).length, 3, 'one buffer per piece, allocated once and reused across frames');
     assert.equal(stats.writes, 9, 'every piece is written every frame');
     pass.destroy();
     assert.ok(stats.buffers.every((b) => b.destroyed));

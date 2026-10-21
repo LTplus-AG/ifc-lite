@@ -203,7 +203,11 @@ const SCAN_ROOTS = [
 // non-`try` `sample_curve_polyline` wrapper: the walk is the same guarded
 // `sample_curve_polyline_guarded` self-recursion, one cycle member fewer.
 // Set to 32 to restore a margin of one.
-const CANDIDATE_FLOOR = 32;
+// Re-measured at 31 when #7955 D3 moved the mapped-item walk off recursion onto
+// the common mapping controller's explicit level stack. Set to 30, a margin of one.
+// Re-measured at 30 when #7955 D3b moved the styled/type-map walk onto the same
+// controller. Set to 29, a margin of one.
+const CANDIDATE_FLOOR = 29;
 
 /**
  * Allowlist for candidates that are genuinely unguarded and must stay that

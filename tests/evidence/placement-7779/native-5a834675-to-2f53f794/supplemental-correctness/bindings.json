@@ -1,0 +1,275 @@
+{
+  "license": "MPL-2.0",
+  "scope": "Exact original compiled source pair only; no later integration is newly measured.",
+  "arms": {
+    "main": {
+      "source": {
+        "ref": "5a834675c8e6d1935442763246c85baa0cd1d372",
+        "tree": "e6c70a83fde5d80970adc7885879e5b7b072a794",
+        "blobs": {
+          "Cargo.toml": "4a8d7f2ce0bde0afcc2b1774eaf222f0c146e08e",
+          "Cargo.lock": "d94ff20af86fb15f85e977f7648340e0bc4483fe",
+          "rust-toolchain.toml": "481488eb349c6f022f238b6226e9d5a69125df1f",
+          ".cargo/config.toml": "5e7efdc5525a8e68c33dc48b0e6c21ee178dfbac",
+          "scripts/perf/build-at-ref.sh": "017314d18b89b759254e18542e170532abce0c2d",
+          "rust/processing/examples/perf_probe.rs": "9f3ba330fed0fa5087ef54bbd42025f5a22e860b",
+          "scripts/perf/ab-order.mjs": "dfdd4588de6f90cc7f8933815fda981fb09233d0",
+          "scripts/perf/ab-report.mjs": "6053c2a3d9d6e4cce91dfccfe91d0f0570fa6ffb"
+        }
+      },
+      "compilerProof": {
+        "ref": "5a834675c8e6d1935442763246c85baa0cd1d372",
+        "tree": "e6c70a83fde5d80970adc7885879e5b7b072a794",
+        "compilerProofSHA256": "69379a1f978af41c339ab87c0641714e696a7b8065a6f0eea4bb877b357f1282",
+        "criticalCrates": [
+          "ifc_lite_core",
+          "ifc_lite_geometry",
+          "ifc_lite_processing",
+          "perf_probe",
+          "recovery_payload_diagnostics"
+        ]
+      },
+      "compilerSummary": {
+        "originalSHA256": "69379a1f978af41c339ab87c0641714e696a7b8065a6f0eea4bb877b357f1282",
+        "records": [
+          {
+            "crate": "ifc_lite_core",
+            "example": "perf_probe",
+            "sourceSha256": "f952ab4b01df549504091e5083e27ffdc64032f46166dd63dc127f4b9fd3ed5e"
+          },
+          {
+            "crate": "ifc_lite_geometry",
+            "example": "perf_probe",
+            "sourceSha256": "1a57b174c3b9fe7db0d1adbf06332426ac82831b218d889f968f5c3885d37cb3"
+          },
+          {
+            "crate": "ifc_lite_processing",
+            "example": "perf_probe",
+            "sourceSha256": "aa7c254ee56cccc098054be87f959bed519c23b10de42f101c222286d360024c"
+          },
+          {
+            "crate": "perf_probe",
+            "example": "perf_probe",
+            "sourceSha256": "dd50137fdc1cdfd980743afe7692e5c70bdba782f9b18d78d715624c6b7f053b"
+          },
+          {
+            "crate": "recovery_payload_diagnostics",
+            "example": "recovery_payload_diagnostics",
+            "sourceSha256": "95143c5e25f362bc46f566929fb0b9eb61f746d017165b024e334528ae7ceba6"
+          }
+        ],
+        "sourceAttestations": [
+          {
+            "example": "perf_probe",
+            "cargoArgv": [
+              "build",
+              "--profile",
+              "profiling",
+              "-p",
+              "ifc-lite-processing",
+              "--example",
+              "perf_probe"
+            ],
+            "fileCount": 1028,
+            "fileManifestSHA256": "ff246d94f2c0f939824ccda30f065494a24f9b5f4992e2d05feb2657d361958d"
+          },
+          {
+            "example": "recovery_payload_diagnostics",
+            "cargoArgv": [
+              "build",
+              "--profile",
+              "profiling",
+              "-p",
+              "ifc-lite-processing",
+              "--example",
+              "recovery_payload_diagnostics"
+            ],
+            "fileCount": 1027,
+            "fileManifestSHA256": "0617413f696fcfda73c4fcd002af440c0f35bd1684eae0b4c23bbc6192643501"
+          }
+        ]
+      },
+      "tools": {
+        "cargo": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)",
+        "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+      },
+      "profile": "profiling",
+      "features": [],
+      "checksumFreshness": true,
+      "binaries": {
+        "perf-probe": {
+          "sha256": "2c421ef0b1f1b972c202d58adf2c7d6cfbb003ba4266f72e63f8ac9af1b1b0b6",
+          "bytes": 28731024
+        },
+        "payload-diagnostics": {
+          "sha256": "7adcb83f666d4758e182b763fd32b9316f1ac2ad3a2e30621999c7547df909d8",
+          "bytes": 29135392
+        }
+      }
+    },
+    "placement": {
+      "source": {
+        "ref": "2f53f7941ad3fe330de749c7124d8a7e20d30cd4",
+        "tree": "774869cc7c8b8483d5221e07db0fbd21a0d53930",
+        "blobs": {
+          "Cargo.toml": "4a8d7f2ce0bde0afcc2b1774eaf222f0c146e08e",
+          "Cargo.lock": "d94ff20af86fb15f85e977f7648340e0bc4483fe",
+          "rust-toolchain.toml": "481488eb349c6f022f238b6226e9d5a69125df1f",
+          ".cargo/config.toml": "5e7efdc5525a8e68c33dc48b0e6c21ee178dfbac",
+          "scripts/perf/build-at-ref.sh": "017314d18b89b759254e18542e170532abce0c2d",
+          "rust/processing/examples/perf_probe.rs": "9f3ba330fed0fa5087ef54bbd42025f5a22e860b",
+          "scripts/perf/ab-order.mjs": "dfdd4588de6f90cc7f8933815fda981fb09233d0",
+          "scripts/perf/ab-report.mjs": "6053c2a3d9d6e4cce91dfccfe91d0f0570fa6ffb"
+        }
+      },
+      "compilerProof": {
+        "ref": "2f53f7941ad3fe330de749c7124d8a7e20d30cd4",
+        "tree": "774869cc7c8b8483d5221e07db0fbd21a0d53930",
+        "compilerProofSHA256": "a14c65ecccc8838a1af187b7b03516ac2a59c818443ad39cd2168863aa77ddf2",
+        "criticalCrates": [
+          "ifc_lite_core",
+          "ifc_lite_geometry",
+          "ifc_lite_processing",
+          "perf_probe",
+          "recovery_payload_diagnostics"
+        ]
+      },
+      "compilerSummary": {
+        "originalSHA256": "a14c65ecccc8838a1af187b7b03516ac2a59c818443ad39cd2168863aa77ddf2",
+        "records": [
+          {
+            "crate": "ifc_lite_core",
+            "example": "perf_probe",
+            "sourceSha256": "f952ab4b01df549504091e5083e27ffdc64032f46166dd63dc127f4b9fd3ed5e"
+          },
+          {
+            "crate": "ifc_lite_geometry",
+            "example": "perf_probe",
+            "sourceSha256": "1a57b174c3b9fe7db0d1adbf06332426ac82831b218d889f968f5c3885d37cb3"
+          },
+          {
+            "crate": "ifc_lite_processing",
+            "example": "perf_probe",
+            "sourceSha256": "aa7c254ee56cccc098054be87f959bed519c23b10de42f101c222286d360024c"
+          },
+          {
+            "crate": "perf_probe",
+            "example": "perf_probe",
+            "sourceSha256": "dd50137fdc1cdfd980743afe7692e5c70bdba782f9b18d78d715624c6b7f053b"
+          },
+          {
+            "crate": "recovery_payload_diagnostics",
+            "example": "recovery_payload_diagnostics",
+            "sourceSha256": "95143c5e25f362bc46f566929fb0b9eb61f746d017165b024e334528ae7ceba6"
+          }
+        ],
+        "sourceAttestations": [
+          {
+            "example": "perf_probe",
+            "cargoArgv": [
+              "build",
+              "--profile",
+              "profiling",
+              "-p",
+              "ifc-lite-processing",
+              "--example",
+              "perf_probe"
+            ],
+            "fileCount": 1028,
+            "fileManifestSHA256": "7715b72f31a52451fa23114eb26cb8e6e1f092745577e4c2984613657629dcea"
+          },
+          {
+            "example": "recovery_payload_diagnostics",
+            "cargoArgv": [
+              "build",
+              "--profile",
+              "profiling",
+              "-p",
+              "ifc-lite-processing",
+              "--example",
+              "recovery_payload_diagnostics"
+            ],
+            "fileCount": 1027,
+            "fileManifestSHA256": "9bb02ceb8d4c6a776b7b01dd59c2862282ce3c8ae951a489b1bc0b384f28a7c1"
+          }
+        ]
+      },
+      "tools": {
+        "cargo": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)",
+        "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+      },
+      "profile": "profiling",
+      "features": [],
+      "checksumFreshness": true,
+      "binaries": {
+        "perf-probe": {
+          "sha256": "c0dc439f376f2d540c4d1ecfb50c5e5df3d6181b20b18d7f2cff423eee35cb3b",
+          "bytes": 28756680
+        },
+        "payload-diagnostics": {
+          "sha256": "9a18a90691b70facccdd1488c1f3ba4a435b50d1385c38afa2e9c30cd9b24b88",
+          "bytes": 29161032
+        }
+      }
+    }
+  },
+  "priorSelectedManifestID": "pop-os-placement-7877-current-native-v3-5be21541-selected",
+  "priorSelectedManifest": {
+    "sha256": "c686b21271fda43d413dee1e2214fe1102cd595851ea8086ccbc957405a00f5f",
+    "bytes": 43953
+  },
+  "sourceObservationManifest": {
+    "sha256": "0d37eab5be6acfd557342f7048aedbcf155b98be919ede520112914552920649",
+    "bytes": 17420
+  },
+  "priorPublicBindings": {
+    "path": "../bindings.json",
+    "sha256": "e2402f04dcb1d8306bf34574e9fc49b17cf4dce65a0d0c1b16314cc2643863bb",
+    "bytes": 32285
+  },
+  "custody": {
+    "before": {
+      "sha256": "1def6cbe1856569720b1de4c64be96d51ae8bfce7f0b581297454f8728bc6924",
+      "bytes": 5904
+    },
+    "after": {
+      "sha256": "1def6cbe1856569720b1de4c64be96d51ae8bfce7f0b581297454f8728bc6924",
+      "bytes": 5904
+    },
+    "exactEqual": true
+  },
+  "runnerSHA256": "88d1ded25897f4e502eec6d7265b343ed986da89a0d78ccd122f65fcef74a9bd",
+  "parsersSHA256": "14edb5ff6f181f76c592985c2e0bf0d2b932cde8e6246ea9dad15b392a4634f5",
+  "fixtures": [
+    {
+      "path": "tests/models/ara3d/duplex.ifc",
+      "sha256": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+      "bytes": 2380763
+    },
+    {
+      "path": "tests/models/ara3d/IfcOpenHouse_IFC4.ifc",
+      "sha256": "71c9466bf02306be58d45b77d738541a0e7410767960b5eed1cf85737dfa34c9",
+      "bytes": 113264
+    },
+    {
+      "path": "rust/geometry/tests/fixtures/bath_csg_solid.ifc",
+      "sha256": "950424788ef247ebde29026d3a103cd59bb971eee697175bfdd4277f61a4d2e3",
+      "bytes": 3233
+    },
+    {
+      "path": "rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc",
+      "sha256": "29b00edd100732871c063ec7bb738360a66956acdf0796eff177c72cc28dcb91",
+      "bytes": 2572
+    },
+    {
+      "path": "rust/geometry/tests/fixtures/swept_disk_composite_arc_crankbar.ifc",
+      "sha256": "7653f051eef21dc23e6749770246d2e71ebf45647700ff271ff7d00ddec2fad4",
+      "bytes": 2856
+    },
+    {
+      "path": "rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc",
+      "sha256": "287ccd9d9cfb73623c74168d79162a590dfbe53b4fd8d3f484995b6c1272f9fb",
+      "bytes": 1961
+    }
+  ]
+}

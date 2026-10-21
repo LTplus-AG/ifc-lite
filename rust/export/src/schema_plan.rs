@@ -63,7 +63,8 @@ pub(crate) fn plan_for(entity_type: &str, cfrom: &'static str, cto: &'static str
     let adjust = match (src_names, schema_attribute_names(cto, new_type)) {
         (Some(src), Some(tgt)) if is_strict_attr_prefix(entity_type, tgt, src) => Adjust::Trim(tgt.len()),
         (Some(src), Some(tgt)) if is_strict_attr_prefix(entity_type, src, tgt) => Adjust::Pad(tgt.len()),
-        (Some(src), Some(tgt)) if new_type != entity_type && BY_NAME_ATTR_REMAP_TYPES.contains(&entity_type) => {
+        (Some(src), Some(tgt)) if new_type != entity_type
+            && (BY_NAME_ATTR_REMAP_TYPES.contains(&entity_type) || (cto == "IFC2X3" && crate::schema_mep::ifc2x3_type(entity_type).is_some())) => {
             Adjust::ByName(src, tgt)
         }
         _ => Adjust::Keep,

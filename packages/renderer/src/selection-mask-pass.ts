@@ -117,6 +117,7 @@ export class SelectionMaskPass {
 
   constructor(device: WebGPUDevice, meshBindGroupLayout: GPUBindGroupLayout, sampleCount: number) {
     this.device = device.getDevice();
+    sectionExclusions(this.device).retain();
     this.meshBindGroupLayout = meshBindGroupLayout;
 
     this.sampleCount = sampleCount;
@@ -251,5 +252,6 @@ export class SelectionMaskPass {
     this.hoverUniforms = [];
     this.instanced?.destroy();
     this.instanced = null;
+    sectionExclusions(this.device).release();
   }
 }

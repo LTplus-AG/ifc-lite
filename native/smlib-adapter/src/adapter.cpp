@@ -4,6 +4,7 @@
 #include "failure.hpp"
 #include "rigid.hpp"
 #include "copy.hpp"
+#include "affine.hpp"
 #include "empty.hpp"
 #include "sweep.hpp"
 #include <SmApiBrep.h>
@@ -301,9 +302,20 @@ int32_t ifclite_smlib_transform(uint64_t session, ifclite_smlib_handle handle,
         *out=store(session,std::move(result));
     });
 }
+int32_t ifclite_smlib_copy_affine(uint64_t session, ifclite_smlib_handle handle,
+    const double* matrix, ifclite_smlib_handle* out, ifclite_smlib_affine_certificate* certificate) {
+    return boundary([&] {
+        output(out);
+        require(certificate != nullptr,IFCLITE_SMLIB_INVALID_ARGUMENT,"null affine certificate");
+        *certificate={}; ifclite_smlib_affine_certificate prepared{};
+        auto result=copy_affine_rational(solid(session,handle),matrix,prepared);
+        *out=store(session,std::move(result)); *certificate=prepared;
+    });
+}
 uint32_t ifclite_smlib_capabilities(void) {
     return IFCLITE_SMLIB_CAPABILITY_SWEEP_REGION | IFCLITE_SMLIB_CAPABILITY_SWEEP_DISK |
-        IFCLITE_SMLIB_CAPABILITY_RIGID_COPY | IFCLITE_SMLIB_CAPABILITY_SEMANTIC_EMPTY;
+        IFCLITE_SMLIB_CAPABILITY_RIGID_COPY | IFCLITE_SMLIB_CAPABILITY_AFFINE_COPY |
+        IFCLITE_SMLIB_CAPABILITY_SEMANTIC_EMPTY;
 }
 int32_t ifclite_smlib_sweep_begin(uint64_t session, uint32_t format,
     uint32_t length, uint32_t loops, uint32_t segments, uint64_t* out) {

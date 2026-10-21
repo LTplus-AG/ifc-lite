@@ -134,6 +134,15 @@ Writer dispatch(Reader& reader) {
             const uint64_t upload=reader.u64(); reader.end();
             status=ifclite_smlib_sweep_abort(session,upload); break;
         }
+        case 18: {
+            const auto input=reader.handle(); std::array<double,16> matrix{};
+            for(double& value:matrix) value=reader.f64();
+            reader.end(); ifclite_smlib_handle result{}; ifclite_smlib_affine_certificate certificate{};
+            status=ifclite_smlib_copy_affine(session,input,matrix.data(),&result,&certificate);
+            payload.handle(result); payload.u32(certificate.version); payload.u32(certificate.representation);
+            for(auto count:certificate.source_classes) payload.u32(count);
+            break;
+        }
         case 17: {
             const auto input=reader.handle(); std::array<double,16> matrix{};
             for(double& value:matrix) value=reader.f64();

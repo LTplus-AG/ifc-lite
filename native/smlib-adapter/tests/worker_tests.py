@@ -49,6 +49,22 @@ with subprocess.Popen([worker], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
     assert call(8, session + moved)[0] == 0
     reflected = (-1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
     assert call(17, session + solid + struct.pack("<16d", *reflected))[0] == 1
+    # Opcode 18 is independent of unchanged rigid opcode 17 and returns the
+    # conversion certificate of the real adapter after the new handle.
+    affine = (-2, 0, 0, 0, 0.4, 3, 0, 0, 0.2, 0.3, 4, 0, 7, -4, 2, 1)
+    status, copied = call(18, session + solid + struct.pack("<16d", *affine))
+    assert status == 0 and len(copied) == 72
+    handle, certificate = copied[:16], copied[16:]
+    version, representation, *classes = struct.unpack("<14I", certificate)
+    assert version == representation == 1 and classes[1] == 12 and classes[7] == 6
+    status, value = call(6, session + handle + struct.pack("<d", 1e-8))
+    assert status == 0 and abs(struct.unpack("<d", value)[0] - 24*24) < 24*24*1e-5
+    assert call(8, session + handle)[0] == 0
+    singular = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1)
+    status, refused = call(18, session + solid + struct.pack("<16d", *singular))
+    assert status == 1 and refused
+    status, value = call(6, session + solid + struct.pack("<d", 1e-8))
+    assert status == 0 and abs(struct.unpack("<d", value)[0] - 24) < 1e-6
     status, error = call(6, session + solid + struct.pack("<d", 1e-12))
     assert status == 1 and b"tolerance" in error
     status, mesh = call(9, session + solid + struct.pack("<dd", 0.001, 5))

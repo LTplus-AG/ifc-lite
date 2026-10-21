@@ -246,3 +246,41 @@ fn semantic_empty_query_is_additive_opcode_19_and_preserves_solid_identity() {
     assert_eq!(&bytes[12..20], &solid.session.to_le_bytes());
     assert_eq!(&bytes[20..], &solid.to_bytes());
 }
+
+#[test]
+fn affine_copy_is_additive_opcode_18_beside_unchanged_rigid_17() {
+    let solid = WireHandle {
+        session: (1u64 << 60) + 7,
+        slot: 3,
+        generation: 29,
+    };
+    let matrix = [
+        -2., -0., 0., 0., 0.4, 3., 0., 0., 0.2, 0.3, 4., 0., 7., -4., 2., 1.,
+    ];
+    for (opcode, command) in [
+        (
+            17u32,
+            KernelCommand::CopyTransform {
+                session: solid.session,
+                solid,
+                column_major: matrix,
+            },
+        ),
+        (
+            18u32,
+            KernelCommand::CopyAffine {
+                session: solid.session,
+                solid,
+                column_major: matrix,
+            },
+        ),
+    ] {
+        let bytes = encode_request(91, &command).unwrap();
+        assert_eq!(bytes.len(), 164);
+        assert_eq!(&bytes[8..12], &opcode.to_le_bytes());
+        assert_eq!(&bytes[20..36], &solid.to_bytes());
+        for (i, value) in matrix.iter().enumerate() {
+            assert_eq!(&bytes[36 + 8 * i..44 + 8 * i], &value.to_le_bytes());
+        }
+    }
+}

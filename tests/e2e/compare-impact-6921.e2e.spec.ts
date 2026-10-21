@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { test, expect, type Page } from '@playwright/test';
+import { writeFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
 import { ViewerBenchmarkPage } from '../benchmark/viewer-benchmark-page';
 
@@ -107,9 +108,19 @@ test('comparison impact and run reconciliation on the demo revision pair', async
   await shoot(page, assistant, n => testInfo.outputPath(n), 'compare-assistant-evidence');
 });
 
+// Keep ANGLE presentation on the same Vulkan backend as the CI WebGPU
+// adapter. Mixed GL/Vulkan presentation can invalidate swapchain images on
+// Linux; retain every other launch option from the selected project.
+const comparisonGpuTest = test.extend({
+  launchOptions: async ({ launchOptions }, use) => {
+    const args = (launchOptions.args ?? []).filter(arg => !arg.startsWith('--use-angle='));
+    await use({ ...launchOptions, args: [...args, '--use-angle=vulkan'] });
+  },
+});
+
 // #8017: real demo comparison, normal laptop height. The old results-only
 // scroller collapsed after setup/source/export chrome consumed the column.
-test('comparison categories isolate results and remain reachable on a short panel (#8017)', async ({ page }, testInfo) => {
+comparisonGpuTest('comparison categories isolate results and remain reachable on a short panel (#8017)', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const viewer = new ViewerBenchmarkPage(page);
   await viewer.setup();
@@ -176,9 +187,9 @@ test('comparison categories isolate results and remain reachable on a short pane
       return { png, colored };
     });
     expect(frame?.colored).toBeGreaterThan(20);
-    await testInfo.attach(`compare-8017-${diffState}-gpu.png`, {
-      body: Buffer.from(frame!.png.split(',')[1], 'base64'), contentType: 'image/png',
-    });
+    const gpuPath = testInfo.outputPath(`compare-8017-${diffState}-gpu.png`);
+    await writeFile(gpuPath, Buffer.from(frame!.png.split(',')[1], 'base64'));
+    await testInfo.attach(`compare-8017-${diffState}-gpu.png`, { path: gpuPath, contentType: 'image/png' });
     await page.screenshot({ path: testInfo.outputPath(`compare-8017-${diffState}.png`) });
     await badge.click();
     await expect(badge).toHaveAttribute('aria-pressed', 'false');

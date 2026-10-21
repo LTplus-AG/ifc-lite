@@ -47,6 +47,14 @@ fn values_are_the_shipped_literals() {
         ("PARTIAL_VOID_EPS", PARTIAL_VOID_EPS, 0.001),
         ("MIN_PROFILE_DIMENSION", MIN_PROFILE_DIMENSION, 0.001),
         ("EXTRUSION_AXIS_COMPONENT_EPS", EXTRUSION_AXIS_COMPONENT_EPS, 0.001),
+        ("RETAINED_MIN_LENGTH_M", RETAINED_MIN_LENGTH_M, 1e-12),
+        ("RETAINED_RECTANGLE_EDGE_EPS_M", RETAINED_RECTANGLE_EDGE_EPS_M, 1e-12),
+        ("RETAINED_BOUNDARY_JOIN_EPS_M", RETAINED_BOUNDARY_JOIN_EPS_M, 1e-10),
+        ("RETAINED_TWICE_AREA_EPS_M2", RETAINED_TWICE_AREA_EPS_M2, 1e-18),
+        ("RETAINED_TWICE_AREA_REL", RETAINED_TWICE_AREA_REL, 1e-9),
+        ("RETAINED_ARC_INTERVAL_EPS_RAD", RETAINED_ARC_INTERVAL_EPS_RAD, 1e-12),
+        ("RETAINED_CIRCLE_BASIS_EPS", RETAINED_CIRCLE_BASIS_EPS, 1e-12),
+        ("RETAINED_RIGID_DOT_EPS", RETAINED_RIGID_DOT_EPS, 1e-10),
     ];
     for (name, got, want) in pins {
         assert_eq!(got.to_bits(), want.to_bits(), "{name} moved: {got:e} != {want:e}");
@@ -121,14 +129,22 @@ fn count_epsilon_literals(src: &str) -> usize {
 /// `triangulation.rs` literals #7826 landed concurrently (GEOM-38 territory, C3
 /// names them), minus one that #7834 removed, plus `math/geom2d.rs`'s
 /// `PARALLEL_EPS` (left local: #7834 moved that file, see the PR review).
-const MAX_INLINE_EPSILON_LITERALS: usize = 480;
+///
+/// 455 since F2b (#7955): the catalogue `math/tol.rs` is no longer counted
+/// (its 24 definitions were inside the 479 measured then), so naming a new
+/// tolerance there no longer raises the count. Inline literals are unchanged.
+const MAX_INLINE_EPSILON_LITERALS: usize = 455;
 
 #[test]
 fn inline_epsilon_literals_only_go_down() {
     let mut files = Vec::new();
     rust_files(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut files);
+    // The catalogue itself is where named tolerances belong; counting its
+    // definitions would charge every newly named tolerance to the ratchet.
+    let catalogue = Path::new("math").join("tol.rs");
     let total: usize = files
         .iter()
+        .filter(|f| !f.ends_with(&catalogue))
         .map(|f| count_epsilon_literals(&std::fs::read_to_string(f).unwrap()))
         .sum();
     assert!(

@@ -73,14 +73,16 @@ pub(super) struct VoidControl<'a> {
 }
 
 impl<'a> VoidControl<'a> {
-    /// `host`'s frame parts cut by the openings `ids`.
+    /// `host`'s frame parts cut by the openings `ids`. With no openings it
+    /// is the host's plain product walk, under output hygiene.
     pub(super) fn merged(host: &'a DecodedEntity, ids: &'a [u32]) -> Self {
-        let product = ProductControl::merged(host, SourceHygiene::BooleanOperand);
+        let hygiene = if ids.is_empty() { SourceHygiene::Watertight } else { SourceHygiene::BooleanOperand };
+        let product = ProductControl::merged(host, hygiene);
         Self { host, styled: false, phase: Phase::Host(product, ids) }
     }
 
     /// `host`'s per-item sub-meshes cut by the openings `ids`, or its uncut
-    /// `layered` slices when the layer gateway already sliced it. A voided
+    /// `layered` slices when the uncut layer attempt sliced it. A voided
     /// occurrence materializes its cut geometry (#1623 don't-bake off) with
     /// no texture index (#1781: a cut rebuilds vertices, orphaning UVs).
     pub(super) fn styled(host: &'a DecodedEntity, ids: &'a [u32], layered: Option<SubMeshCollection>) -> Self {
@@ -239,12 +241,13 @@ impl<'a> VoidControl<'a> {
 }
 
 /// The host geometry is complete: capture its void context, unless there is
-/// no sub-mesh to cut.
+/// no sub-mesh to cut or no opening to cut it by.
 fn hosts_complete<'a>(host: &'a DecodedEntity, ids: &'a [u32], hosts: Result<ProductOutput>) -> Phase<'a> {
     match hosts {
         Ok(ProductOutput::Styled(sub_meshes)) if sub_meshes.is_empty() => {
             Phase::Complete(Ok(ProductOutput::Styled(SubMeshCollection::new())))
         }
+        Ok(hosts) if ids.is_empty() => Phase::Complete(Ok(hosts)),
         Ok(hosts) => poll_openings(Box::new(OpeningControl::host(host, ids)), hosts),
         Err(error) => Phase::Complete(Err(error)),
     }

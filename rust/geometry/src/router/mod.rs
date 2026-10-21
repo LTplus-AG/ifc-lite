@@ -18,7 +18,7 @@ pub(crate) mod frame_parts;
 pub(crate) mod instancing;
 pub(crate) mod item_cache_program;
 mod item_dedup_cache;
-mod layers;
+pub(crate) mod layers;
 mod mapped_cache_ownership;
 pub(crate) mod mapped_item;
 pub(crate) mod processing;

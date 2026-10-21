@@ -24,7 +24,7 @@ index 378785ee6f..afab56588c 100644
          let (mesh, permit) = crate::resource::mesh::clone_mesh(&cached)?;
          permit.retain();
 diff --git b/rust/geometry/src/router/mapped_cache_ownership.rs a/rust/geometry/src/router/mapped_cache_ownership.rs
-index 70fac074f3..fe1ef42b1e 100644
+index 0397cda21d..9ebf18ef9f 100644
 --- b/rust/geometry/src/router/mapped_cache_ownership.rs
 +++ a/rust/geometry/src/router/mapped_cache_ownership.rs
 @@ -63,7 +63,7 @@ fn retain_account(
@@ -36,7 +36,7 @@ index 70fac074f3..fe1ef42b1e 100644
      permit.retain();
      Ok(())
  }
-@@ -116,7 +116,7 @@ impl GeometryRouter {
+@@ -120,7 +120,7 @@ impl GeometryRouter {
  
      pub(crate) fn check_mapped_cache_coverage(&self) -> Result<(), ProgramStop> {
          resource::check_current()?;
@@ -45,7 +45,7 @@ index 70fac074f3..fe1ef42b1e 100644
              && self.shared_mapped_item_cache.is_some()
              && self.accounted_mapped_cache.is_none()
          {
-@@ -128,7 +128,7 @@ impl GeometryRouter {
+@@ -132,7 +132,7 @@ impl GeometryRouter {
      /// The shared content-dedup cache stores unaccounted deep copies with no
      /// admission owner: bounded execution refuses it rather than claim coverage.
      pub(super) fn check_item_dedup_coverage(&self) -> Result<(), ProgramStop> {
@@ -54,8 +54,8 @@ index 70fac074f3..fe1ef42b1e 100644
              return Err(unsupported_coverage());
          }
          Ok(())
-@@ -170,7 +170,7 @@ impl GeometryRouter {
-     /// any other item failure stays an ordinary recoverable drop.
+@@ -185,7 +185,7 @@ impl GeometryRouter {
+     #[inline(never)]
      pub(super) fn recoverable_source_error(error: Error) -> crate::Result<Error> {
          match crate::resource::observe::<()>(Err(error)) {
 -            Err(stop @ Error::ProgramStopped(_)) => Ok(stop),

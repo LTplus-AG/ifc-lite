@@ -16,6 +16,11 @@ pub(super) struct SplitBody {
     pub retained: u32,
 }
 pub(super) struct Source<'a> {
+    /// This session's model lifecycle. Every canonical pass snapshots its maps
+    /// under it; injecting authored entities expires the earlier snapshots.
+    pub production_model: crate::element::ProductionModel,
+    /// The empty maps of a pass without appearance styles, cached like any other.
+    pub empty_styles: super::owned_context::Styles,
     pub context: Option<super::context::Context>,
     pub decoder: EntityDecoder<'a>,
     pub types: BTreeMap<u32, IfcType>,
@@ -31,6 +36,16 @@ pub(super) struct Source<'a> {
     texture_index: Option<Arc<FxHashMap<u32, ResolvedTextureMap>>>,
 }
 impl<'a> Source<'a> {
+    /// Authored entities change what the decoder resolves, so every snapshot
+    /// taken before them is expired before the next canonical product runs.
+    pub(super) fn install_authored_entities(
+        &mut self,
+        entities: &FxHashMap<u32, Arc<DecodedEntity>>,
+    ) {
+        self.decoder.inject_shared_cache(entities);
+        self.production_model.invalidate_source();
+    }
+
     /// The model's surface-texture index, built on first use and shared by
     /// every later caller of this session. Each build decodes every texture
     /// and counts each refused binary, so building it per planning stage
@@ -48,6 +63,8 @@ impl<'a> Source<'a> {
             return Err("Appearance source exceeds 128 MiB budget".into());
         }
         let mut source = Self {
+            production_model: crate::element::ProductionModel::new(),
+            empty_styles: super::owned_context::Styles::default(),
             context: None,
             decoder: EntityDecoder::new(bytes),
             types: BTreeMap::new(),

@@ -1473,6 +1473,18 @@ jobs:
           # whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/inner.rs | grep -Fxq 'rust/geometry/src/program/inner.rs'; then
             oracle_args+=(--mutation tests/evidence/item-cache-controller-d2/behaviour.oracle.patch)
+          # #7955 F2c: retained swept-disk requests add document/retained_disk.rs
+          # and processing tests/retained_disk_requests.rs, which name the new
+          # types, so a whole-change revert cannot compile them (INCONCLUSIVE).
+          # Keep the types and break ONLY the behaviour: hollow and closed disks
+          # are admitted, controls lose the anchor rebase and their original
+          # weights, the active range widens to the knot ends, conic middles
+          # leave the circle and inherited rational status refuses every
+          # occurrence (RED). Checked before F2b so the stacked branch uses its
+          # own patch. Once rust/geometry/src/document/retained_disk.rs is on
+          # main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/document/retained_disk.rs | grep -Fxq 'rust/geometry/src/document/retained_disk.rs'; then
+            oracle_args+=(--mutation tests/evidence/retained-disk-f2c/behaviour.oracle.patch)
           # #7955 F2b: retained extrusion requests add document/retained.rs and
           # processing retained_requests.rs, which their tests name, so a
           # whole-change revert cannot compile them (INCONCLUSIVE). Keep the

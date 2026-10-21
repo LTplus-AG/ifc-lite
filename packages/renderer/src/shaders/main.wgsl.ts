@@ -87,6 +87,7 @@ export const mainShaderSource = `
           @location(0) worldPos: vec3<f32>,
           @location(1) normal: vec3<f32>,
           @location(2) @interpolate(flat) entityId: u32,
+          @location(9) @interpolate(flat) sectionEntityId: u32,
           // Per-draw albedo carried from the vertex stage so the fragment shader
           // is shared by the flat path (vs_main writes uniforms.baseColor — the
           // per-batch colour) AND the instanced path
@@ -170,6 +171,7 @@ export const mainShaderSource = `
           output.worldPos = worldPos.xyz;
           output.normal = normalize((uniforms.model * vec4<f32>(localNormal, 0.0)).xyz);
           output.entityId = entityId;
+          output.sectionEntityId = sectionEntityFromLane(uniforms.overrideParams.x, entityId);
           output.color = uniforms.baseColor;
           output.instSelected = 0u;
           output.eyePos = eyePos;
@@ -211,6 +213,7 @@ export const mainShaderSource = `
           output.worldPos = worldPos.xyz;
           output.normal = normalize((uniforms.model * vec4<f32>(input.normal, 0.0)).xyz);
           output.entityId = input.entityId;
+          output.sectionEntityId = sectionEntityFromLane(uniforms.overrideParams.x, input.entityId);
           output.color = uniforms.baseColor;
           output.instSelected = 0u;  // flat path selects via uniforms.flags.x
           output.eyePos = eyePos;
@@ -240,6 +243,7 @@ export const mainShaderSource = `
           output.worldPos = worldPos.xyz;
           output.normal = normalize((instMat * vec4<f32>(input.normal, 0.0)).xyz);
           output.entityId = inst.instEntityId;
+          output.sectionEntityId = inst.instEntityId;
           output.color = inst.instColor;
           output.instSelected = inst.instSelected;
           output.eyePos = eyePos;
@@ -289,7 +293,7 @@ export const mainShaderSource = `
           }
           // Section plane / clip box (mesh-uniforms.wgsl.ts, shared with the
           // selection mask so an outline is cut where its surface is).
-          if (sectionClipped(fragmentPos)) { discard; }
+          if (sectionClipped(fragmentPos, input.sectionEntityId)) { discard; }
 
           // Compute normal via derivative-based flat shading.
           //

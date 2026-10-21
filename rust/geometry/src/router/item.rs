@@ -2,20 +2,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! `ItemMesher`: the one per-item pipeline. A representation item is meshed
-//! under an [`ItemFrame`] that selects the stages the walk it belongs to has
-//! always applied: content dedup and the direct-instance stamp for a direct
-//! item, the f64 rebase kept in `origin` for a mapped-source item. The item
-//! work itself (processor lowering, cache admission and publication) runs in
-//! the common item program ([`crate::program::GeometryProgram`]). Split out of
-//! `processing.rs` (the element walks).
+//! Per-item finishing and raw-coordinate helpers. Item execution and admission
+//! remain owned by `crate::program::GeometryProgram` and its controllers.
 
 use super::frame_parts::mesh_bounds;
 use super::GeometryRouter;
-use crate::math::mat4;
-use crate::{Error, Mesh, Result};
+use crate::{Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
-use nalgebra::Matrix4;
 
 /// The nearest f32 that does not shrink the interval: rounds a minimum down
 /// and a maximum up, so an f32 box always encloses the f64 geometry.
@@ -79,57 +72,7 @@ pub(crate) fn finish_item_mesh(mesh: &mut Mesh, unit_scale: f64, rtc_offset: Opt
     }
 }
 
-/// The frame an item is meshed in, i.e. which per-item stages apply.
-#[derive(Clone, Copy)]
-pub(super) enum ItemFrame {
-    /// A direct item of an element or a probe: content dedup, the instance
-    /// stamp, and `rtc_applied` kept.
-    Direct,
-    /// An item of a mapped source: no dedup, and the rebase moved into `origin`
-    /// (the `MappingTarget` and placement still apply to it, #7690).
-    MappedSource,
-    /// A direct item nested under a mapped item in the sub-mesh walk: the
-    /// direct stages, then the rebase moved into `origin`.
-    Nested,
-}
-
 impl GeometryRouter {
-    /// `transform` unit-scaled (see [`Self::scale_transform`]) as the row-major
-    /// array `InstanceMeta` stores.
-    pub(crate) fn scaled_row_major(&self, transform: &Matrix4<f64>) -> [f64; 16] {
-        let mut scaled = *transform;
-        self.scale_transform(&mut scaled);
-        mat4::from_na(&scaled)
-    }
-
-    /// Mesh `item` under `frame`.
-    pub(super) fn mesh_item(
-        &self,
-        item: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        frame: ItemFrame,
-    ) -> Result<Mesh> {
-        match frame {
-            ItemFrame::Direct => self.process_representation_item(item, decoder),
-            ItemFrame::Nested => {
-                let mut mesh = self.process_representation_item(item, decoder)?;
-                self.keep_rebase_in_origin(&mut mesh);
-                Ok(mesh)
-            }
-            ItemFrame::MappedSource => {
-                // The common item program without the cache controller: a
-                // mapped source is already shared, so it skips content dedup.
-                if self.processor_for(&item.ifc_type).is_none() {
-                    return Err(Error::geometry("no processor"));
-                }
-                let mut mesh =
-                    crate::program::GeometryProgram::item(item, self.rtc_offset).drain(self, decoder)?;
-                self.keep_rebase_in_origin(&mut mesh);
-                Ok(mesh)
-            }
-        }
-    }
-
     /// Process a single representation item (IfcExtrudedAreaSolid, etc.), with
     /// content-dedup: a 128-bit structural hash of the item subtree skips the
     /// meshing + CSG for geometry byte-identical to an item meshed earlier (e.g.
@@ -183,17 +126,7 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Mesh>> {
-        if !self.has_rtc_offset()
-            || !self
-                .representation_item_first_vertex_meters(item, decoder)
-                .is_some_and(crate::coord_is_large)
-        {
-            return Ok(None);
-        }
-        if self.processor_for(&item.ifc_type).is_none() {
-            return Ok(None);
-        }
-        let Some(offset) = self.element_frame_rtc(element, decoder)? else {
+        let Some(offset) = self.raw_item_element_offset(item, element, decoder)? else {
             return Ok(None);
         };
         // The ordinary item path, in the element's frame: it keeps content
@@ -202,30 +135,12 @@ impl GeometryRouter {
         self.process_representation_item_in_frame(item, decoder, offset).map(Some)
     }
 
-    /// The model RTC offset expressed in `element`'s object frame (metres):
-    /// pulled through the placement's inverse linear transform, so placing
-    /// a mesh rebased by it yields `M(p) - rtc`. `None` for a singular
-    /// placement, where no object-frame offset exists.
-    pub(super) fn element_frame_rtc(
-        &self,
-        element: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Result<Option<(f64, f64, f64)>> {
-        let placement = self.element_world_placement(element, decoder, false)?;
-        let linear = placement.fixed_view::<3, 3>(0, 0).into_owned();
-        Ok(linear.try_inverse().map(|inverse| {
-            let rtc = inverse
-                * nalgebra::Vector3::new(self.rtc_offset.0, self.rtc_offset.1, self.rtc_offset.2);
-            (rtc.x, rtc.y, rtc.z)
-        }))
-    }
-
     /// A textured `IfcTriangulatedFaceSet` meshed with its per-vertex UVs,
     /// unit-scaled and rebased by `offset_meters` (item frame) when that
     /// preserves precision (#5698). Shared by the occurrence walk and the
     /// type-geometry walk (#7690). `None` when the item is not a face set,
     /// or the textured build fails or is empty.
-    pub(super) fn textured_face_set(
+    pub(crate) fn textured_face_set(
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,

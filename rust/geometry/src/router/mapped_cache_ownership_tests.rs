@@ -207,7 +207,7 @@ fn hash_cache_miss_refuses_unadmitted_spare_backing_before_publication() {
         .unwrap()
         .evaluate()
         .unwrap();
-    crate::router::item::finish_item_mesh(&mut raw, producer.unit_scale(), None);
+    crate::router::processing::finish_item_mesh(&mut raw, producer.unit_scale(), None);
     let logical = resource::mesh::MeshLengths::of(&raw).bytes().unwrap();
     let backing = resource::mesh::resident_bytes(&raw).unwrap();
     assert!(backing >= logical);

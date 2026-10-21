@@ -6,7 +6,7 @@
 
 pub(crate) mod mapped;
 mod mesh_world;
-pub(crate) use mesh_world::LARGE_MAPPED_ORIGIN_M;
+pub(crate) use mesh_world::{WorldFrame, LARGE_MAPPED_ORIGIN_M};
 pub(crate) mod operator;
 
 mod parsers;
@@ -110,12 +110,17 @@ impl GeometryRouter {
         // consumers (renderer, demesher session) reconstruct
         // `true_world = origin + position + rtc` uniformly and must not
         // special-case placement-less geometry.
-        let transform = self.element_world_placement(element, decoder, false)?;
+        let has_placement = element.ref_at(slot::IfcProduct::OBJECT_PLACEMENT).is_some();
+        let transform = if has_placement {
+            self.element_world_placement(element, decoder, false)?
+        } else {
+            Matrix4::identity()
+        };
         // Instancing: record the full (scaled) world placement on the mesh's
         // instance metadata BEFORE it is baked + RTC-folded by transform_mesh_world.
         // Only fires when processing already marked this mesh instanceable (so the
         // metadata exists); a no-op otherwise, keeping the flat path untouched.
-        if element.ref_at(slot::IfcProduct::OBJECT_PLACEMENT).is_some() {
+        if has_placement {
             if let Some(im) = mesh.instance_meta.as_mut() {
                 im.transform = mat4::from_na(&transform);
             }
@@ -146,7 +151,12 @@ impl GeometryRouter {
         // ObjectPlacement translation is in file units (e.g. mm) but geometry is
         // scaled to metres, so the transform MUST be scaled to match (inside
         // `element_world_placement`).
-        let transform = self.element_world_placement(element, decoder, false)?;
+        let has_placement = element.ref_at(slot::IfcProduct::OBJECT_PLACEMENT).is_some();
+        let transform = if has_placement {
+            self.element_world_placement(element, decoder, false)?
+        } else {
+            Matrix4::identity()
+        };
         // Instancing: record the per-element world placement on EACH sub-mesh's
         // instance metadata BEFORE it is baked into the vertices, mirroring
         // `apply_placement` for the single-mesh path. Without this, the sub-mesh
@@ -157,7 +167,6 @@ impl GeometryRouter {
         // is the identity, which is the placeholder already.
         let row_major = mat4::from_na(&transform);
         // Preserve producer-supplied metadata when no authored placement exists.
-        let has_placement = element.ref_at(slot::IfcProduct::OBJECT_PLACEMENT).is_some();
         for sub in &mut sub_meshes.sub_meshes {
             if instancing_enabled() && has_placement {
                 if let Some(im) = sub.mesh.instance_meta.as_mut() {

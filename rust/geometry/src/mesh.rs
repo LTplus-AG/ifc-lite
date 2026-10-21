@@ -32,9 +32,8 @@ pub struct InstanceMeta {
 impl InstanceMeta {
     /// Metadata of a provably shareable mesh before placement: identity world
     /// transform, no rigid-congruence tier, `local_transform` the occurrence's
-    /// (scaled) mapping transform if any. The one constructor of the four sites
-    /// that tag an occurrence (direct solid, mapped hit/miss, don't-bake
-    /// placeholder).
+    /// (scaled) mapping transform if any. Shared by direct solids, mapped
+    /// occurrences (cache hit or miss), and don't-bake placeholders.
     pub(crate) fn instanceable(rep_identity: u128, local_transform: Option<[f64; 16]>) -> Self {
         Self {
             transform: crate::math::mat4::IDENTITY,

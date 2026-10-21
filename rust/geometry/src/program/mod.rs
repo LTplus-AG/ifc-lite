@@ -8,6 +8,9 @@ mod inner;
 mod inner_cache;
 mod item;
 mod mapping;
+mod opening;
+mod opening_bounds;
+pub(crate) mod openings;
 pub(crate) use inner::GeometryProgram;
 #[cfg(test)]
 pub(crate) use inner::{ProgramError, ProgramStage};

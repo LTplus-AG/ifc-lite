@@ -5,7 +5,6 @@
  * Core types for 2D architectural drawing generation
  */
 
-// ═══════════════════════════════════════════════════════════════════════════
 // VECTOR TYPES
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -21,12 +20,13 @@ export interface Vec3 {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SECTION CONFIGURATION
 // ═══════════════════════════════════════════════════════════════════════════
 
 export type SectionAxis = 'x' | 'y' | 'z';
 
 export interface SectionPlaneConfig {
+  /** Scene ids kept whole by all section planes; excluded entities emit no cut geometry (#8015). */
+  sectionExcludedIds?: ReadonlySet<number>;
   /** Axis perpendicular to the section plane */
   axis: SectionAxis;
   /** Position along the axis in world units */

@@ -45,6 +45,8 @@ slice by the phases it changes and by output identity, not by a ±2% move in an 
 | F1a #7992 analytic original-source capture | identical (6 models; meshing path untouched) | meshing A/B within noise; analytic export (`extract_extrusion_definitions` / `extract_analytic_quantity_sources`, 2×7 interleaved): unconditional capture measured +3% to +24%, so capture is now opt-in (`analytic::with_source_capture`); default path +0.7% to +1.1% on every model (IQR 0.4–2.4%) | neutral on the default path after opt-in; a consistent ~1% residual on analytic export remains below the 2% bar |
 | F1b swept-disk directrix source | identical (output SHA-256 on 6 models) | analytic export default path (definitions / descriptions / quantity sources, 7 interleaved rounds vs 78d7bd9cf5): worst +0.27%, most −0.2% to −2.3% (IQR 0.3–3.9%) | neutral: capture is opt-in (`with_source_capture`); the default walk records nothing |
 | D1b #8002 cache residency ownership and typed resource stops | identical | BWK +1.0% (±3), Holter +0.7% (±30), ISSUE_098 −1.9% (±10), ISSUE_068 +0.5% (±23), schependomlaan +0.6% (±7), ISSUE_129 +0.1% (±4) | neutral: with no account installed, one thread-local read per cache publication/lookup; geometry within ±2% on every model |
+| C5b opening source probe/classifier | identical | BWK −1.7% (±3), Holter +2.5% (±18), ISSUE_098 +0.7% (±12), ISSUE_068 −1.5% (±17), schependomlaan −1.6% (±5), ISSUE_129 −1.7% (±5) vs D3 base c282c7bebf | neutral: owned classify/probe on every opening host, all deltas inside noise |
+| C5c opening gateway cutover | identical | BWK +1.2% (±8), Holter −0.4% (±9), ISSUE_098 +2.9% (±33), ISSUE_068 −3.1% (±55), schependomlaan +0.3% (±11), ISSUE_129 +1.1% (±14) vs C5b | neutral within noise; fingerprints identical on 6 models and 122/122 corpus models; deterministic FZK instruction ratchet is the strict check |
 
 ## Exact rectangular opening union (#7941)
 
@@ -341,6 +343,17 @@ regression reopens customization after Reset and confirms Restore is gone.
 This is a bundle-size verdict; it makes no model-load speed claim.
 Lesson: measure queued viewer features together, and keep optional editor
 surfaces behind their actual entry point.
+
+## Comparison panel loads on demand (#8017)
+
+Comparison filtering initially exceeded the viewer entry allowance. Deferring
+only its filter controls did not recover enough headroom. Loading the complete
+comparison panel through the shared panel host's existing lazy boundary kept
+both raw viewer JavaScript metrics inside their unchanged ceilings. The real
+revision-pair browser regression still opens the panel, compares, filters,
+frames and reads rendered GPU pixels. This is a bundle-size verdict, with no
+model-load or geometry-runtime speed claim. Lesson: defer an optional panel at
+its canonical host rather than splitting a small control inside an eager panel.
 
 ## Structural counters and long frames per load (#6957)
 
@@ -4362,29 +4375,6 @@ no proven main-byte reduction is claimed here. Accept this measured cost
 explicitly, retain the current build policy and automatic lowering, and require
 a new measurement and maintainer decision for any later increase. Source-matched
 performance acceptance and transfer-size acceptance remain separate decisions.
-
-### C2 router builders recovery (#7867)
-
-The shared frame/builders refactor at runtime source `14c1da6384` was compared
-with current main `141285f828` using separately built, frozen native binaries
-and a finite interleaved cohort on Haus, ISSUE_129 and Holter. No native
-regression was observed on that set. The small Haus model showed an improvement
-signal; the larger models stayed within observed variation. The phase report
-remains inconclusive because one lookup phase is below timer resolution. This
-is a native-only result, not a browser worker-pool performance claim.
-
-Ordered mesh payloads, exact float fields, frames/metadata and complete geometry
-diagnostic bytes matched on all three models with default instancing disabled.
-The unchanged-source workspace run also passed the committed dont-bake and
-batch-local fixtures with actual instances and world-geometry reconstruction.
-Those native tests exercise browser-style batch logic without qualifying WASM
-or GPU execution. The subsequent `387b258725` checkpoint only lowered function
-length allowances; it did not change the measured Rust source.
-
-Lesson: a frame-builder consolidation must retain custom instance metadata
-when ObjectPlacement is absent. Check both single-mesh and submesh paths against
-a parsed placement invariant, and distinguish default flat-output identity from
-enabled instancing coverage before accepting a refactor as behavior-preserving.
 
 ### Missing polygonal-face records (#7911)
 

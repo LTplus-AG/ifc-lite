@@ -81,13 +81,14 @@ export function selectionMaskFragmentSource(instanced = false, samples?: number)
         struct MaskInput {
           @builtin(position) fragPos: vec4<f32>,
           @location(0) worldPos: vec3<f32>,
+          @location(9) @interpolate(flat) sectionEntityId: u32,
           @location(6) eyePos: vec3<f32>,${instanceVaryings}
           ${samples === undefined ? '' : '@location(8) @interpolate(linear, sample) geometricDepth: f32,'}
         }
         ${occurrenceFilterWgsl(instanced)}
 
         fn isCut(input: MaskInput) -> bool {
-          return sectionClipped(clipSpacePos(input.worldPos, input.eyePos));
+          return sectionClipped(clipSpacePos(input.worldPos, input.eyePos), input.sectionEntityId);
         }
 
         @fragment

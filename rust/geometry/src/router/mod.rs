@@ -15,10 +15,10 @@ mod content_hash;
 mod diagnostics;
 mod diagnostics_recording;
 pub(crate) mod frame_parts;
-mod instancing;
-pub(crate) mod item;
+pub(crate) mod instancing;
 pub(crate) mod item_cache_program;
 mod item_dedup_cache;
+pub(crate) mod item;
 mod layers;
 mod mapped_cache_ownership;
 pub(crate) mod mapped_item;
@@ -26,7 +26,7 @@ pub(crate) mod processing;
 mod processor;
 mod rtc_offset;
 pub(crate) mod structural;
-mod textured;
+pub(crate) mod textured;
 mod unit_admission;
 pub(crate) mod transforms;
 pub(crate) mod voids;
@@ -177,7 +177,7 @@ pub struct GeometryRouter {
     csg_failures: RefCell<FxHashMap<u32, Vec<BoolFailure>>>,
     /// Cumulative counters for opening classification (T1.1 / classifier fix
     /// diagnostic). Tracks how many openings went through each branch of
-    /// `classify_openings` so a maintainer can verify the fix is firing on
+    /// `program::openings::classify` so a maintainer can verify the fix is firing on
     /// real models. Drainable via [`Self::take_classification_stats`].
     classification_stats: RefCell<ClassificationStats>,
     /// Per-host opening diagnostic, keyed by host product express ID.

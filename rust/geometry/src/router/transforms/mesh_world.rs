@@ -99,7 +99,7 @@ impl GeometryRouter {
             });
         }
 
-        self.transform_normals(mesh, transform);
+        transform_normals(mesh, transform);
     }
 
     /// Transform mesh by the final world/object placement matrix.
@@ -112,12 +112,48 @@ impl GeometryRouter {
         // Native normally keeps absolute f32 vertices, but an intermediate
         // mapped origin at this scale needs the same local frame as the viewer.
         // Opening cutters also use this policy when their mapped origin is large.
-        let needs_local_frame = self.needs_local_frame(mesh, transform);
-        self.transform_mesh_world_framed(
+        let frame = self.world_frame();
+        let needs_local_frame = frame.needs_local_frame(mesh, transform);
+        frame.transform_mesh_world_framed(
             mesh,
             transform,
             self.local_frame_enabled() || needs_local_frame,
         );
+    }
+
+    /// The captured RTC frame that world placement and its predicates use.
+    #[inline]
+    pub(crate) fn world_frame(&self) -> WorldFrame {
+        WorldFrame { rtc_offset: self.rtc_offset }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn needs_local_frame(&self, mesh: &Mesh, transform: &Matrix4<f64>) -> bool {
+        self.world_frame().needs_local_frame(mesh, transform)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn transform_mesh_world_framed(
+        &self,
+        mesh: &mut Mesh,
+        transform: &Matrix4<f64>,
+        relativize: bool,
+    ) {
+        self.world_frame().transform_mesh_world_framed(mesh, transform, relativize);
+    }
+}
+
+/// Captured numerical world-frame policy: the model RTC offset only, with no
+/// router or source authority, so owned opening packets can place cutters.
+#[derive(Clone, Copy)]
+pub(crate) struct WorldFrame {
+    pub(crate) rtc_offset: (f64, f64, f64),
+}
+
+impl WorldFrame {
+    #[inline]
+    fn has_rtc_offset(&self) -> bool {
+        self.rtc_offset.0 != 0.0 || self.rtc_offset.1 != 0.0 || self.rtc_offset.2 != 0.0
     }
 
     /// The RTC offset still to be subtracted from `mesh`: zero when it is
@@ -283,7 +319,7 @@ impl GeometryRouter {
             if needs_rtc {
                 mesh.rtc_applied = true;
             }
-            self.transform_normals(mesh, transform);
+            transform_normals(mesh, transform);
             return;
         }
 
@@ -347,15 +383,16 @@ impl GeometryRouter {
             mesh.rtc_applied = true;
         }
 
-        self.transform_normals(mesh, transform);
+        transform_normals(mesh, transform);
     }
 
-    #[inline]
-    fn transform_normals(&self, mesh: &mut Mesh, transform: &Matrix4<f64>) {
-        // Inverse-transpose, zero on a singular transform (D23): see
-        // `math::normals`.
-        crate::math::normals::transform_normals_in_place(&mut mesh.normals, transform);
-    }
+}
+
+#[inline]
+fn transform_normals(mesh: &mut Mesh, transform: &Matrix4<f64>) {
+    // Inverse-transpose, zero on a singular transform (D23): see
+    // `math::normals`.
+    crate::math::normals::transform_normals_in_place(&mut mesh.normals, transform);
 }
 
 #[cfg(test)]

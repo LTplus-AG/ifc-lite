@@ -5,6 +5,7 @@
 //! Prepare opening prisms using the shared cutter/host corner reconciliation.
 
 use super::*;
+use crate::GeometryRouter;
 
 /// Build the analytic prism for one classified opening, expressed in the
 /// host's local frame (`origin` subtracted in f64). `None` ⇒ the opening is

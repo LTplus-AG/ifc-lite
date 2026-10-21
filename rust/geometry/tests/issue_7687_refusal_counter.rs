@@ -285,7 +285,7 @@ fn direct_processor_call(data: &str) {
 
 /// Stale-flag hazard (#7745 review): a direct processor call that refuses a
 /// face leaves the face-refused flag set on the thread; the next router item
-/// must not inherit it. the common item program resets the flags first.
+/// must not inherit it. `process_item_in_rtc_frame` resets the flags first.
 #[test]
 fn direct_processor_refusal_does_not_leak_into_the_next_router_item_7687() {
     direct_processor_call(&cube(&[(

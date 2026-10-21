@@ -2,8 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! The item-pipeline builders: `InstanceMeta::instanceable`, the unit-scaled
-//! row-major transform and the one element placement resolver (#7781).
+//! Parsed placement and producer metadata contracts recovered from #7867 (#7781).
 
 use crate::router::GeometryRouter;
 use ifc_lite_core::EntityDecoder;
@@ -11,17 +10,9 @@ use nalgebra::Matrix4;
 
 const MODEL: &str = "#1=IFCCARTESIANPOINT((1000.,2000.,3000.));#2=IFCAXIS2PLACEMENT3D(#1,$,$);\
     #3=IFCLOCALPLACEMENT($,#2);#10=IFCWALL('g',$,$,$,$,#3,$,$);\
-    #11=IFCWALL('g',$,$,$,$,#99,$,$);#12=IFCWALL('g',$,$,$,$,$,$,$);";
-
-#[test]
-fn scaled_row_major_scales_the_translation_only() {
-    let router = GeometryRouter::with_scale(0.001);
-    let mut m = Matrix4::<f64>::identity();
-    m[(0, 3)] = 1000.0;
-    m[(0, 0)] = 2.0;
-    let row = router.scaled_row_major(&m);
-    assert_eq!((row[0], row[3]), (2.0, 1.0));
-}
+    #11=IFCWALL('g',$,$,$,$,#99,$,$);#12=IFCWALL('g',$,$,$,$,$,$,$);\
+    #13=IFCWALL('g',$,$,$,$,123.,$,$);#14=IFCWALL('g',$,$,$,$,*,$,$);\
+    #15=IFCWALL('g',$,$,$,$);";
 
 #[test]
 fn element_world_placement_scales_and_defaults_to_identity() {
@@ -30,8 +21,10 @@ fn element_world_placement_scales_and_defaults_to_identity() {
     let wall = d.decode_by_id(10).unwrap();
     let t = router.element_world_placement(&wall, &mut d, false).unwrap();
     assert_eq!((t[(0, 3)], t[(1, 3)], t[(2, 3)]), (1.0, 2.0, 3.0));
-    let bare = d.decode_by_id(12).unwrap();
-    assert_eq!(router.element_world_placement(&bare, &mut d, true).unwrap(), Matrix4::identity());
+    for id in [12, 14, 15] {
+        let bare = d.decode_by_id(id).unwrap();
+        assert_eq!(router.element_world_placement(&bare, &mut d, true).unwrap(), Matrix4::identity());
+    }
 }
 
 #[test]
@@ -63,7 +56,7 @@ fn placement_application_preserves_unplaced_instance_metadata() {
     let supplied_transform = supplied.transform;
     mesh.instance_meta = Some(supplied);
 
-    for id in [12, 10] {
+    for id in [12, 13, 14, 15, 10] {
         for submesh_path in [false, true] {
             let element = decoder.decode_by_id(id).unwrap();
             let mut output = mesh.clone();
@@ -76,7 +69,11 @@ fn placement_application_preserves_unplaced_instance_metadata() {
                 router.apply_placement(&element, &mut decoder, &mut output).unwrap();
             }
             let metadata = output.instance_meta.as_ref().expect("instance metadata survives placement");
-            if id == 12 {
+            assert_eq!(metadata.rep_identity, 42);
+            assert!(metadata.instanceable);
+            assert_eq!(metadata.local_transform, None);
+            assert_eq!(metadata.canonical_transform, None);
+            if id != 10 {
                 assert_eq!(metadata.transform, supplied_transform);
                 assert_eq!(output.positions, mesh.positions);
             } else {
@@ -85,4 +82,16 @@ fn placement_application_preserves_unplaced_instance_metadata() {
             }
         }
     }
+}
+
+/// Wrong-shaped placement values remain lenient for meshing and are refused
+/// only by the existing strict exact-description entry point (#7867).
+#[test]
+fn issue_7867_nonreference_placement_keeps_the_existing_strict_split() {
+    let mut decoder = EntityDecoder::new(MODEL);
+    let router = GeometryRouter::with_scale(0.001);
+    let element = decoder.decode_by_id(13).unwrap();
+    assert_eq!(router.element_world_placement(&element, &mut decoder, false).unwrap(), Matrix4::identity());
+    let error = router.resolve_scaled_placement_strict(&element, &mut decoder).unwrap_err();
+    assert!(error.to_string().contains("cannot be resolved"), "{error}");
 }

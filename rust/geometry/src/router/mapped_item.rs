@@ -14,7 +14,7 @@ use super::transforms::instancing_enabled;
 use crate::math::mat4;
 use super::GeometryRouter;
 use crate::{Error, InstanceMeta, Mesh, Result};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix4;
 use std::sync::Arc;
 
@@ -24,6 +24,17 @@ use std::sync::Arc;
 pub(crate) enum MappedOccurrence {
     Cached { mesh: Arc<Mesh>, transform: Option<Matrix4<f64>> },
     Source { representation: DecodedEntity, items: Vec<DecodedEntity>, transform: Option<Matrix4<f64>> },
+}
+
+/// A styled occurrence's admitted source. Styled sources are never cached:
+/// each occurrence walks its source into per-item sub-meshes. `transform` is
+/// the scaled `MappingTarget` over `MappingOrigin`; `solid_id` is the single
+/// solid of a top-level source the armed don't-bake plan may instance (#1623).
+pub(crate) struct StyledSource {
+    pub(crate) source_id: u32,
+    pub(crate) representation: DecodedEntity,
+    pub(crate) transform: Option<Matrix4<f64>>,
+    pub(crate) solid_id: Option<u32>,
 }
 
 impl GeometryRouter {
@@ -125,6 +136,51 @@ impl GeometryRouter {
         Ok((source_id, MappedOccurrence::Source { representation, items, transform }))
     }
 
+    /// Admit one styled mapped item: its `MappingSource`, the source's
+    /// representation and its transform, then (top level only, when
+    /// `eligible`) its don't-bake eligibility. The items resolve later, after
+    /// the source's drop-count claim, as the historical walk read them.
+    pub(crate) fn admit_styled_occurrence(
+        &self,
+        item: &DecodedEntity,
+        eligible: bool,
+        textures: Option<&rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>>,
+        decoder: &mut EntityDecoder,
+    ) -> Result<StyledSource> {
+        let source_attr = item
+            .get(slot::IfcMappedItem::MAPPING_SOURCE.index())
+            .ok_or_else(|| Error::geometry("MappedItem missing MappingSource".to_string()))?;
+        let source = decoder
+            .resolve_ref(source_attr)?
+            .ok_or_else(|| Error::geometry("Failed to resolve MappingSource".to_string()))?;
+        let representation_attr = source.get(slot::IfcRepresentationMap::MAPPED_REPRESENTATION.index())
+            .ok_or_else(|| Error::geometry("RepresentationMap missing MappedRepresentation".to_string()))?;
+        let representation = decoder
+            .resolve_ref(representation_attr)?
+            .ok_or_else(|| Error::geometry("Failed to resolve MappedRepresentation".to_string()))?;
+        // MappingTarget · MappingOrigin (#1985), scaled once for every use.
+        let mut transform = self.mapped_item_transform(item, &source, decoder)?;
+        if let Some(transform) = &mut transform {
+            self.scale_transform(transform);
+        }
+        let solid_id = if eligible {
+            self.dont_bake_solid(source.id, &representation, textures, decoder)
+        } else {
+            None
+        };
+        Ok(StyledSource { source_id: source.id, representation, transform, solid_id })
+    }
+
+    /// A styled source's items. A representation without an Items attribute
+    /// walks nothing; one whose Items do not resolve is an error.
+    pub(crate) fn styled_source_items(representation: &DecodedEntity, decoder: &mut EntityDecoder)
+        -> Result<Vec<DecodedEntity>> {
+        match representation.get(slot::IfcRepresentation::ITEMS.index()) {
+            Some(items_attr) => Ok(decoder.resolve_ref_list(items_attr)?),
+            None => Ok(Vec::new()),
+        }
+    }
+
     /// Publish a walked source's frame parts (source coordinates, before the
     /// mapping) for later occurrences. A multi-frame source is never cached
     /// or instanced: both assume one source-coords mesh per map (#6446).
@@ -187,6 +243,28 @@ impl GeometryRouter {
         }
         if let ([part], true) = (parts, instancing_enabled()) {
             part.instance_meta = Some(InstanceMeta::instanceable(source_id as u128, local_rm));
+        }
+    }
+
+    /// Bake a styled source's mapping into the sub-meshes its items produced.
+    /// The MappingTarget is a PER-OCCURRENCE transform: baked into the vertices
+    /// (flat output unchanged), and for INSTANCING recorded in an instanceable
+    /// sub-mesh's `local_transform` (keeping its canonical `rep_identity`), so
+    /// occurrences sharing a map but differing by target collate under one
+    /// template (GLB export #1443, the multi-item class Phase 2 leaves flat). #1623
+    pub(crate) fn bake_styled_mapping(&self, sub_meshes: &mut [crate::SubMesh], transform: &Matrix4<f64>) {
+        let nontrivial_target = !transform.is_identity(1e-9);
+        for sub in sub_meshes {
+            self.transform_mesh_local(&mut sub.mesh, transform);
+            if nontrivial_target {
+                if let Some(instance) = sub.mesh.instance_meta.as_mut().filter(|instance| instance.instanceable) {
+                    instance.local_transform = Some(match instance.local_transform {
+                        // Nested map: outer target ∘ inner, bake order.
+                        Some(inner) => mat4::from_na(&(transform * Matrix4::from_row_slice(&inner))),
+                        None => mat4::from_na(transform),
+                    });
+                }
+            }
         }
     }
 

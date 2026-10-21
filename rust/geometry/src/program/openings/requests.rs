@@ -21,8 +21,6 @@ use std::collections::VecDeque;
 pub(crate) enum OpeningSource {
     /// Decode the next requested opening occurrence.
     Decode,
-    /// The occurrence's merged body through the product pipeline.
-    Body,
     /// A probe's meshed representation items and unit-scaled placement.
     Probe,
     /// The element-frame RTC offset of the reached raw-coordinate item.

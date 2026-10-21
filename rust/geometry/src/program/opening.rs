@@ -30,7 +30,12 @@ pub(crate) struct OpeningChild<'a> {
     parts: bool,
 }
 
-impl OpeningChild<'_> {
+impl<'a> OpeningChild<'a> {
+    /// An opening occurrence's merged body under boolean-operand hygiene.
+    pub(crate) fn body(entity: &'a DecodedEntity) -> Self {
+        Self { program: GeometryProgram::product(entity, SourceHygiene::BooleanOperand), parts: true }
+    }
+
     /// Drive the child's own requests. A stop reached by one request ends the
     /// child before its next one, so a sticky stop behind an ordinary miss can
     /// never select a later fallback callback.

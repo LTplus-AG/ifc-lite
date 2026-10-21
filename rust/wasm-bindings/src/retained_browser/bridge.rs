@@ -24,6 +24,8 @@ extern "C" {
     pub(super) fn release_object(this: &Driver, object: &JsValue);
     #[wasm_bindgen(method)]
     fn qualify(this: &Driver) -> js_sys::Promise;
+    #[wasm_bindgen(method)]
+    fn capabilities(this: &Driver) -> js_sys::Promise;
     #[cfg(test)]
     #[wasm_bindgen(method, js_name = nextDispatch)]
     pub(super) fn next_dispatch(this: &Driver, opcode: u32) -> js_sys::Promise;
@@ -94,6 +96,27 @@ impl BrowserWorker {
         self.regions_qualified = true;
         self.disks_qualified = true;
         Ok(())
+    }
+
+    /// Select executable families from this actual Worker: its SDK extension
+    /// bits (never sufficient alone) and this incarnation's own witnesses.
+    pub async fn capabilities(&mut self) -> Result<BrowserCapabilities, BrowserError> {
+        self.owner.validate()?;
+        let mut flight = InFlight::new(&self.owner);
+        let bits = JsFuture::from(self.owner.driver.capabilities())
+            .await
+            .map_err(driver_error)?
+            .as_f64()
+            .filter(|bits| bits.fract() == 0. && (0. ..=f64::from(u32::MAX)).contains(bits))
+            .ok_or_else(|| BrowserError::Driver("invalid capability bits".into()))? as u32;
+        self.owner.validate()?;
+        flight.disarm();
+        Ok(BrowserCapabilities::select(
+            self.owner.identity,
+            bits,
+            self.regions_qualified,
+            self.disks_qualified,
+        ))
     }
 
     /// Execute one retained source request on the incarnation it was prepared

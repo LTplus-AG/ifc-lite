@@ -37,8 +37,10 @@ threads = ["dep:wasm-bindgen-rayon"]
 # `wasm-pack build ... --features console-tracing`.
 console-tracing = ["dep:tracing", "ifc-lite-processing/observability"]
 # Opt-in retained-geometry browser executor (src/retained_browser,
-# js/retained-driver.mjs). OFF by default: the engine bundle every viewer load
-# fetches never carries it, nor the authored-source capture it needs.
+# src/api/retained_browser.rs, js/retained-driver.mjs). OFF by default: the
+# engine bundle every viewer load fetches never carries it, nor the
+# authored-source capture it needs. Built as the separate pkg-retained bundle
+# with `BUILD_RETAINED=1 scripts/build-wasm.sh`.
 retained-browser = ["dep:wasm-bindgen-futures", "ifc-lite-geometry/wasm_source_capture"]
 
 [dependencies]

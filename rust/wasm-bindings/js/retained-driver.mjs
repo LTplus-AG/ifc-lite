@@ -124,6 +124,18 @@ export class RetainedDriver {
     this.#busy = true;
   }
   #releaseBusy() { this.#busy = false; this.#scheduleReleases(); }
+  // The actual Worker's SDK extension bits (opcode 12). Observation only: a
+  // bit never qualifies a family; an unreadable reply retires the Worker.
+  async capabilities() {
+    await this.#acquire();
+    try {
+      const reply = await this.#call(12);
+      const view = new DataView(reply.buffer);
+      if (reply.byteLength !== 8 || view.getUint32(0, true) !== 1) throw new Error('invalid capability response');
+      return view.getUint32(4, true);
+    } catch (error) { this.retire(); throw error; }
+    finally { this.#releaseBusy(); }
+  }
   // Same-incarnation SDK witnesses (ordered regions and rational disks). A
   // failure retires the Worker; a replacement must qualify on its own.
   async qualify() {

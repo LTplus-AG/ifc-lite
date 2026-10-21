@@ -74,3 +74,18 @@ fn invalid_limits_are_refused_before_any_submission() {
     }
     assert_eq!(evaluation_limits(0.001, 180., 1), Ok(()));
 }
+
+#[test]
+fn capability_bits_never_qualify_curved_families_alone() {
+    use ifc_lite_geometry::document::RegionQualification as Family;
+    let unqualified = BrowserCapabilities::select(7, SWEEP_REGION_BIT | SWEEP_DISK_BIT, false, false);
+    assert!(unqualified.admits(Family::Rectangle));
+    assert!(!unqualified.admits(Family::OrderedRegion) && !unqualified.admits(Family::RationalDisk));
+    let qualified = BrowserCapabilities::select(7, SWEEP_REGION_BIT | SWEEP_DISK_BIT, true, true);
+    assert!(qualified.admits(Family::OrderedRegion) && qualified.admits(Family::RationalDisk));
+    // Witnesses cannot open a format the actual adapter does not implement.
+    let missing = BrowserCapabilities::select(7, 0, true, true);
+    assert!(!missing.admits(Family::Rectangle) && !missing.admits(Family::OrderedRegion));
+    assert!(!missing.admits(Family::RationalDisk));
+    assert!(!BrowserCapabilities::select(7, SWEEP_REGION_BIT, true, true).admits(Family::RationalDisk));
+}

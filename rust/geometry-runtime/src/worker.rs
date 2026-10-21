@@ -8,7 +8,7 @@ use std::ffi::OsStr;
 use std::io::{Read, Write};
 use std::process::{ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 #[path = "worker_error.rs"]
 mod error;
@@ -28,6 +28,11 @@ mod disk_qualification;
 #[path = "worker_sweep.rs"]
 mod sweep;
 pub use sweep::RetainedRealization;
+#[path = "worker_objects.rs"]
+mod objects;
+#[path = "worker_dependencies.rs"]
+mod dependencies;
+pub use dependencies::{RetainedDependency, RetainedDependencyResult, RetainedLineage};
 
 static NEXT_WORKER: AtomicU64 = AtomicU64::new(1);
 
@@ -58,6 +63,11 @@ pub struct SmlibWorker {
     /// Live objects; each flag is shared with the receipts that name it and
     /// cleared before the object is released.
     objects: HashMap<WireHandle, Arc<AtomicBool>>,
+    /// Managed objects whose final receipt was dropped, released before the
+    /// next command by this exact worker.
+    releases: Arc<objects::ReleaseQueue>,
+    /// One shared lease per managed object.
+    managed: HashMap<WireHandle, Weak<objects::ManagedObjectLease>>,
 }
 
 impl SmlibWorker {
@@ -92,6 +102,8 @@ impl SmlibWorker {
             regions_qualified: false,
             disks_qualified: false,
             objects: HashMap::new(),
+            releases: Arc::new(objects::ReleaseQueue::default()),
+            managed: HashMap::new(),
         })
     }
 
@@ -242,33 +254,11 @@ impl SmlibWorker {
         self.handle(bytes)
     }
 
-    /// Release one live object. A reported kernel failure retires the process
-    /// because the object's state is then unknown.
-    pub fn release(&mut self, solid: BrepHandle) -> Result<(), WorkerError> {
-        if solid.worker != self.identity || solid.wire.session != self.session {
-            return Err(WorkerError::WrongWorker);
-        }
-        self.check(solid)?;
-        if let Some(live) = self.objects.remove(&solid.wire) {
-            live.store(false, Ordering::Release);
-        }
-        match self.exchange(&KernelCommand::Release {
-            session: self.session,
-            object: solid.wire,
-        }) {
-            Ok(bytes) if bytes.is_empty() => Ok(()),
-            Ok(_) => Err(self.poison("release returned unexpected payload")),
-            Err(error) => {
-                self.retire();
-                Err(error)
-            }
-        }
-    }
-
     fn call(&mut self, command: KernelCommand) -> Result<Vec<u8>, WorkerError> {
         if !self.is_live() {
             return Err(WorkerError::Protocol("worker requires restart"));
         }
+        self.flush_releases()?;
         self.check_command_objects(&command)?;
         let result = self.exchange(&command);
         // Only known synchronized statuses 1..7 guarantee transactional refusal.

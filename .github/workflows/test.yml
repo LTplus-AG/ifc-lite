@@ -1489,6 +1489,17 @@ jobs:
           # whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/inner.rs | grep -Fxq 'rust/geometry/src/program/inner.rs'; then
             oracle_args+=(--mutation tests/evidence/item-cache-controller-d2/behaviour.oracle.patch)
+          # #7955 G3a: managed object cleanup adds geometry-runtime
+          # worker_objects.rs, which its unit tests live beside, so a
+          # whole-change revert cannot compile them (INCONCLUSIVE). Keep the
+          # types and break ONLY the behaviour: a dropped receipt retires the
+          # whole worker instead of queueing its one object, and any rejected
+          # handle drains the queue (RED, protocol peer only). Checked before
+          # G3b so the stacked branch uses its own patch. Once
+          # rust/geometry-runtime/src/worker_objects.rs is on main, ordinary
+          # whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry-runtime/src/worker_objects.rs | grep -Fxq 'rust/geometry-runtime/src/worker_objects.rs'; then
+            oracle_args+=(--mutation tests/evidence/managed-objects-g3a/behaviour.oracle.patch)
           # #7955 G3b: retained sweeps add geometry-runtime worker_sweep.rs and
           # worker_upload.rs, which the changed runtime tests reach, so a
           # whole-change revert cannot compile them (INCONCLUSIVE). Most of

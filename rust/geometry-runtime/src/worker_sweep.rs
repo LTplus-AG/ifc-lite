@@ -10,13 +10,14 @@ use std::sync::Arc;
 /// Executor-issued binding of one completion to the live solid it describes.
 /// Public host-trusted completions cannot construct this receipt.
 ///
-/// The solid stays owned by the worker until [`SmlibWorker::release`] or
-/// worker exit; dropping the receipt does not release it.
+/// The receipt owns its solid: dropping it releases that one object before the
+/// worker's next command, and never retires the process or another object.
 #[derive(Debug)]
 pub struct RetainedRealization {
     solid: BrepHandle,
     completion: RetainedCompletion,
     owner: crate::RuntimeOwner,
+    lease: Arc<super::objects::ManagedObjectLease>,
     object_live: Arc<AtomicBool>,
 }
 
@@ -30,9 +31,11 @@ impl RetainedRealization {
     pub fn owner(&self) -> &crate::RuntimeOwner {
         &self.owner
     }
-    /// Explicit standalone host-trusted escape. Consumes the receipt; the
+    /// Explicit standalone host-trusted escape. Consumes the receipt and hands
+    /// the solid to the caller, who must [`SmlibWorker::release`] it; the
     /// returned numerical data cannot recreate runtime authority.
     pub fn into_host_trusted_parts(self) -> (BrepHandle, RetainedCompletion) {
+        self.lease.disarm();
         (self.solid, self.completion)
     }
     /// The producing process is live and the solid has not been released.
@@ -110,6 +113,7 @@ impl SmlibWorker {
             spine_edges: mesh.spine_edges,
         };
         Ok(RetainedRealization {
+            lease: self.manage_object(solid)?,
             object_live: self.object_liveness(solid)?,
             owner: self.retained_owner(),
             solid,

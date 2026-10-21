@@ -1495,6 +1495,11 @@ jobs:
           # revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/document/mod.rs | grep -Fxq 'rust/geometry/src/document/mod.rs'; then
             oracle_args+=(--mutation tests/evidence/geometry-document-f2a/behaviour.oracle.patch)
+          # #7955 F1b: adds analytic/owned_directrix.rs, whose types the changed
+          # disk and definitions tests import. Keep it and never open the swept-
+          # disk capture: the directrix source and owned rational must turn RED.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/analytic/owned_directrix.rs | grep -Fxq 'rust/geometry/src/analytic/owned_directrix.rs'; then
+            oracle_args+=(--mutation tests/evidence/analytic-directrix-source-7955/behaviour.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

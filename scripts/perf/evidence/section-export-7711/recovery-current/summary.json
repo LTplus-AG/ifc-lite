@@ -1,0 +1,52 @@
+{
+  "SPDX-License-Identifier": "MPL-2.0",
+  "qualifiedProducerSource": "696a244b6f67d0d84c5c70884059b1c315e4052f",
+  "qualifiedTree": "97e4bdaad6a42b3a32fef4021b1d8af388dadfcb",
+  "historyOnlyCarry": "b3856bf4708275bd932ba12082b7f73e8d75b88f",
+  "producerJob": "8fda8c9d-36b6-4fb8-8166-72c857a622fa",
+  "producerDriverSha256": "16f2c9070be0bcbdb9d13b61284bad12cf97a9d4b496abb68e32a0fcccf70389",
+  "oracleJob": "52481ef7-70c7-438c-b944-faff5fa4b355",
+  "oracleDriverSha256": "b32a9f42b053af3beb075b003b84730631e35ab36e0aff96a25eafa1768ce6ea",
+  "oracleProbeSha256": "c87b5a6fe5e7da672cf9895829d4936b923651d0bd780e0489365f2fff88e130",
+  "runtimeWasmSha256": "8b91b33a3b1e99aefb5fbd41f3c2fae0856193cf0815858347239f972fa7fdfc",
+  "sourceFixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+  "sourceSha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+  "outputSha256": "3167ef822f7a0dd26dd91366a42bf0f93b62558296592484b949c740ad89f916",
+  "outputBytes": 1161942,
+  "producerEvidenceSha256": "99ce995c0584f9ed933d4de70511834e16144df530bb3fca284128eb528b61c3",
+  "oracleResultSha256": "8996a115d1054f42dfff8ccc149018062aee65abde3ad965bb8ce7da75153e62",
+  "rootTypecheckExitCode": 0,
+  "directRealWasmFacadeTests": {
+    "passed": 7,
+    "failed": 0,
+    "skipped": 0
+  },
+  "producer": {
+    "trimmed": 23,
+    "outside": 34,
+    "reopenedMeshes": 136,
+    "violations": []
+  },
+  "oracle": {
+    "engine": "0.8.5",
+    "sourceSha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+    "outputSha256": "3167ef822f7a0dd26dd91366a42bf0f93b62558296592484b949c740ad89f916",
+    "reopenedProducts": 56,
+    "maxX": 6.0,
+    "planeOffset": 6,
+    "checkedIdentities": 23,
+    "checkedOpeningLinks": 13,
+    "types": [
+      "IfcBeam",
+      "IfcDoor",
+      "IfcMember",
+      "IfcSite",
+      "IfcSlab",
+      "IfcSpace",
+      "IfcWallStandardCase",
+      "IfcWindow"
+    ]
+  },
+  "scope": "Fresh current-source realWASM serialization/reopen plus independent OCC geometry/identity/relationship checks. Not a browser/GPU/performance or merge-readiness result.",
+  "environmentLimit": "Existing IfcOpenShell0.8.5 Python3.12 runtime; Shapely2.1.2 differs lock2.0.7. Unchanged probe invokes no Shapely operation; no whole requirements-lock parity claimed."
+}

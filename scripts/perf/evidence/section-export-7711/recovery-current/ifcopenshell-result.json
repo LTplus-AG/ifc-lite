@@ -1,0 +1,20 @@
+{
+  "engine": "0.8.5",
+  "sourceSha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+  "outputSha256": "3167ef822f7a0dd26dd91366a42bf0f93b62558296592484b949c740ad89f916",
+  "reopenedProducts": 56,
+  "maxX": 6.0,
+  "planeOffset": 6,
+  "checkedIdentities": 23,
+  "checkedOpeningLinks": 13,
+  "types": [
+    "IfcBeam",
+    "IfcDoor",
+    "IfcMember",
+    "IfcSite",
+    "IfcSlab",
+    "IfcSpace",
+    "IfcWallStandardCase",
+    "IfcWindow"
+  ]
+}

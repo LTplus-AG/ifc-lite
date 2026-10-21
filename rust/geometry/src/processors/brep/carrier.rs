@@ -43,15 +43,21 @@ pub(crate) fn warped<T>(coords: &[T], point: impl Fn(&T) -> [f64; 3]) -> bool {
     if coords.len() < 4 {
         return false;
     }
-    if coords
-        .iter()
-        .any(|p| point(p).iter().any(|x| !x.is_finite()))
-    {
-        return true;
-    }
     let a = point(&coords[0]);
+    let mut constant_axis = [true; 3];
+    // Validate every coordinate even when an axis is constant: a NaN or
+    // infinity on another axis must still enter the conservative refusal path.
+    for p in coords {
+        let p = point(p);
+        if p.iter().any(|x| !x.is_finite()) {
+            return true;
+        }
+        for axis in 0..3 {
+            constant_axis[axis] &= p[axis] == a[axis];
+        }
+    }
     // Common authored axis planes need no adaptive determinant evaluation.
-    if (0..3).any(|axis| coords.iter().all(|p| point(p)[axis] == a[axis])) {
+    if constant_axis.iter().any(|&constant| constant) {
         return false;
     }
     for i in 1..coords.len() - 1 {

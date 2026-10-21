@@ -368,3 +368,29 @@ fn issue_7714_a_closed_positive_volume_nonconvex_shell_declines() {
     assert_eq!(volume6,R::from_float(18.).unwrap());
     assert!(super::super::carrier_validate::validate(&shell,&rings,&planes).is_none());
 }
+
+
+#[test]
+fn issue_7903_warped_precheck_preserves_planarity_and_nonfinite_refusal() {
+    let xy = [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [2.0, 3.0, 0.0], [0.0, 3.0, 0.0]];
+    for axis in 0..3 {
+        let plane = xy.map(|p| match axis {
+            0 => [p[2], p[0], p[1]],
+            1 => [p[0], p[2], p[1]],
+            _ => p,
+        });
+        assert!(!warped(&plane, |p| *p), "constant axis {axis}");
+    }
+    let oblique = xy.map(|p| [p[0], p[1], p[0] + p[1]]);
+    assert!(!warped(&oblique, |p| *p), "exact oblique plane");
+    let collinear = [[0.0, 0.0, 0.0], [1.0, 2.0, 3.0], [2.0, 4.0, 6.0], [3.0, 6.0, 9.0]];
+    assert!(!warped(&collinear, |p| *p));
+    let mut bent = oblique;
+    bent[3][2] += 0.25;
+    assert!(warped(&bent, |p| *p), "one out-of-plane corner");
+    for nonfinite in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let mut malformed = xy;
+        malformed[3][0] = nonfinite;
+        assert!(warped(&malformed, |p| *p), "constant Z must not hide {nonfinite}");
+    }
+}

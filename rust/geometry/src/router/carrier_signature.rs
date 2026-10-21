@@ -42,8 +42,8 @@ pub(in crate::router) fn try_faceted_brep_signature(
             acc = fold(acc, is_outer as u64);
             decoder.get_polyloop_coords_cached_into(loop_id, &mut coords)?;
             carrier_domain &= (3..=128).contains(&coords.len());
-            potentially_normalized |= carrier_domain
-                && crate::processors::faceted_carrier_warped(&coords, |&(x, y, z)| [x, y, z]);
+            potentially_normalized = potentially_normalized || (carrier_domain
+                && crate::processors::faceted_carrier_warped(&coords, |&(x, y, z)| [x, y, z]));
             acc = fold(acc, coords.len() as u64);
             for &(x, y, z) in &coords {
                 acc = fold(acc, x.to_bits());

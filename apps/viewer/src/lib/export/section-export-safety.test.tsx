@@ -31,7 +31,7 @@ beforeEach(() => {
   });
   mock.method(URL, 'revokeObjectURL', () => {});
   mock.method(HTMLAnchorElement.prototype, 'click', () => {});
-  setGlobalRendererRef({ current: { getCamera: () => ({ getSceneBounds: () => ({ min: {x:-5,y:-4,z:-3}, max: {x:5,y:4,z:3} }) }) } } as unknown as Renderer);
+  setGlobalRendererRef({ current: { getCamera: () => ({ getSceneBounds: () => ({ min: {x:-5,y:-4,z:-3}, max: {x:5,y:4,z:3} }) }) } as unknown as Renderer });
 });
 afterEach(() => { cleanup(); mock.restoreAll(); clearGlobalRefs(); useViewerStore.getState().resetViewerState(); });
 
@@ -173,7 +173,11 @@ function replacementPoints(store: IfcDataStore, id: number): [number, number, nu
   const repId = reps[0]; assert.ok(typeof repId === 'number');
   const items = args(repId)?.[3]; assert.ok(Array.isArray(items));
   const itemId = items[0]; assert.ok(typeof itemId === 'number');
-  assert.equal(store.entities.getTypeName(itemId), 'IfcTriangulatedFaceSet');
+  // Representation items live in the complete source index; the compact
+  // product metadata table does not contain every geometry record.
+  const item = store.entityIndex.byId.get(itemId);
+  assert.ok(item, 'downloaded replacement item must exist in the reopened source');
+  assert.equal(item.type, 'IFCTRIANGULATEDFACESET');
   const pointsId = args(itemId)?.[0]; assert.ok(typeof pointsId === 'number');
   const coords = args(pointsId)?.[0]; assert.ok(Array.isArray(coords));
   return coords.map((p): [number, number, number] => {

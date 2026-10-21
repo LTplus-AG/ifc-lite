@@ -915,6 +915,15 @@ jobs:
           # main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/mapping_accept.rs | grep -Fxq 'rust/geometry/src/program/mapping_accept.rs'; then
             oracle_args+=(--mutation tests/evidence/styled-type-map-d3b/behaviour.oracle.patch)
+          # #7955 C5b: owned opening capture adds program/openings/, which its
+          # tests drive, so a whole-change revert cannot compile them
+          # (INCONCLUSIVE). Keep the controls and break ONLY the behaviour:
+          # reached stops become ordinary misses, neither drain checks the
+          # sticky stop between requests, and quiet residual classification
+          # publishes. Listed before the D2/D3 parents it is stacked on; once
+          # program/openings/classify.rs is on main, whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/openings/classify.rs | grep -Fxq 'rust/geometry/src/program/openings/classify.rs'; then
+            oracle_args+=(--mutation tests/evidence/opening-source-c5b/behaviour.oracle.patch)
           # #7955 D3: the mapping controller adds program/mapping.rs and
           # mapping_reduce.rs, which its tests drive, so a whole-change revert
           # cannot compile them (INCONCLUSIVE). Keep the controller and break

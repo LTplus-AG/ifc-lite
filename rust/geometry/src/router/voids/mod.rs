@@ -22,7 +22,7 @@ pub(crate) mod geom;
 mod malformed_opening_repair;
 mod local_frame;
 mod frame_snap;
-mod hygiene;
+pub(crate) mod hygiene;
 pub(crate) mod prism_cut;
 mod probe;
 mod representation;
@@ -71,7 +71,7 @@ const ENGULF_TOLERANCE_F32: f32 = 0.03;
 
 /// Classification of an opening for void subtraction.
 #[derive(Clone)]
-enum OpeningType {
+pub(crate) enum OpeningType {
     /// Rectangular opening with AABB clipping
     /// Fields: (min_bounds, max_bounds, extrusion_direction)
     Rectangular(Point3<f64>, Point3<f64>, Option<Vector3<f64>>),
@@ -89,7 +89,7 @@ enum OpeningType {
 
 /// World-space basis for an oriented rectangular opening.
 #[derive(Clone, Copy)]
-struct OpeningFrame {
+pub(crate) struct OpeningFrame {
     depth: Vector3<f64>,
     cross_a: Vector3<f64>,
     cross_b: Vector3<f64>,
@@ -114,7 +114,7 @@ impl OpeningFrame {
         })
     }
 
-    fn is_axis_aligned(&self) -> bool {
+    pub(crate) fn is_axis_aligned(&self) -> bool {
         is_axis_aligned_direction(&self.depth)
             && is_axis_aligned_direction(&self.cross_a)
             && is_axis_aligned_direction(&self.cross_b)
@@ -123,7 +123,7 @@ impl OpeningFrame {
 
 /// Pre-computed per-element void subtraction data.
 ///
-/// Building this is expensive: `classify_openings` re-runs `process_element`
+/// Building this is expensive: `program::openings::classify` re-runs `process_element`
 /// on each `IfcOpeningElement`, and clipping-plane extraction resolves the
 /// element's representation. Once built, it can be reused across every
 /// sub-mesh of the same element without re-doing any of that work, so the
@@ -341,7 +341,7 @@ impl GeometryRouter {
             self.process_element_parts_with_hygiene(element, decoder, SourceHygiene::BooleanOperand)?;
         // Opening and clip geometry are resolved in world coordinates, the
         // frame every part is in once placement has been applied.
-        let ctx = self.build_void_context(element, opening_ids, decoder);
+        let ctx = self.build_void_context(element, opening_ids, decoder)?;
         Ok(parts
             .into_iter()
             .map(|part| {
@@ -370,7 +370,7 @@ impl GeometryRouter {
         element: &DecodedEntity,
         opening_ids: &[u32],
         decoder: &mut EntityDecoder,
-    ) -> VoidContext {
+    ) -> Result<VoidContext> {
         // NOTE (issue #635): we no longer extract `IfcBooleanClippingResult`
         // planes here. They are applied by `BooleanClippingProcessor::process`
         // when building the input mesh (the wall-inversion fix in
@@ -378,7 +378,7 @@ impl GeometryRouter {
         // correct per IFC); re-applying them as unbounded planes discarded
         // the polygonal bound and chopped off gable peaks (see
         // `apply_void_context` for the full rationale).
-        let openings = self.classify_openings(element, opening_ids, decoder);
+        let openings = crate::program::openings::classify(element, opening_ids, true, self, decoder)?;
         let merged_openings = Self::merge_rectangular_openings(&openings);
 
         // PARAMETRIC fast-path capture (flag-gated, zero cost when off): probe the
@@ -402,12 +402,14 @@ impl GeometryRouter {
             None
         };
 
-        VoidContext {
+        // A stop reached by an Option-returning parametric/2D capture is sticky.
+        crate::resource::check_current()?;
+        Ok(VoidContext {
             openings,
             merged_openings,
             param,
             bool2d,
-        }
+        })
     }
 
     /// Build the parametric-cut data for a host + its openings, or `None` if any
@@ -1831,7 +1833,7 @@ impl GeometryRouter {
         // and re-extract clipping planes N times, multiplying the expensive
         // parsing/CSG setup by the sub-mesh count on the exact elements this
         // path targets (multi-layer walls with windows).
-        let ctx = self.build_void_context(element, &opening_ids, decoder);
+        let ctx = self.build_void_context(element, &opening_ids, decoder)?;
 
         // INHERIT the discriminator rather than assuming rep-item ids. This path
         // is reached only when `try_layered_sub_meshes` declined above, so the

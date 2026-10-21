@@ -6,7 +6,7 @@
 
 pub(crate) mod mapped;
 mod mesh_world;
-pub(crate) use mesh_world::LARGE_MAPPED_ORIGIN_M;
+pub(crate) use mesh_world::{WorldFrame, LARGE_MAPPED_ORIGIN_M};
 pub(crate) mod operator;
 
 mod parsers;

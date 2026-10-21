@@ -21,17 +21,16 @@ use ifc_lite_core::slot::IfcRepresentationMap;
 
 mod engine;
 
+#[cfg(test)]
+mod engine_tests;
+
 /// What an `IfcMappedItem` among the items means to the walk.
 #[derive(Clone, Copy)]
 pub enum NestedMaps {
     /// Descend into every mapped item, in list order, to `max_depth` levels
-    /// (the mesh walks). `max_levels` is the WORK budget (AGENTS.md "Bounding
-    /// walks"): both the most mapped levels entered and the most Items
-    /// members materialized across all occurrences in one walk. A DAG whose every
-    /// branch succeeds never repeats a path id and never errors, yet expands to
-    /// `2^levels` levels; neither the depth cap nor the path-scoped set sees
-    /// it. Exhausting the budget is reported ([`WalkRefusal::Budget`]) and ends
-    /// the walk.
+    /// (the mesh walks). `max_levels` independently caps mapped-level attempts
+    /// and materialized Items members across one walk. Every DAG occurrence
+    /// pays again; exhaustion reports [`WalkRefusal::Budget`] and stops globally.
     Expand { max_depth: u32, max_levels: u32 },
     /// A nested map ends the walk with [`WalkRefusal::TooDeep`] and nothing
     /// after it is visited: the source is not shareable (don't-bake instancing).
@@ -55,61 +54,10 @@ pub enum Flow {
     Stop,
 }
 
-/// Why the walk declined to enter, or to continue past, a mapped item. All
-/// but the items of an entered level are refused before `enter_map`.
-#[derive(Debug)]
-pub enum WalkRefusal {
-    /// The mapped item is already on the path.
-    Cyclic,
-    /// The depth cap, or a nested map under [`NestedMaps::Refuse`].
-    TooDeep { max_depth: u32 },
-    /// The `IfcMappedItem` has no `MappingSource` attribute.
-    MissingSource,
-    /// `MappingSource` does not resolve.
-    UnresolvedSource,
-    /// The map has no `MappedRepresentation` attribute.
-    MissingMappedRepresentation,
-    /// `MappedRepresentation` does not resolve.
-    UnresolvedMappedRepresentation,
-    /// The mapped representation has no `Items` attribute.
-    MissingItems,
-    /// The mapped-level or total Items-member allowance was exhausted.
-    Budget { max_levels: u32 },
-    /// The decoder failed on one of the references.
-    Decode(ifc_lite_core::Error),
-}
+pub use super::refusal::WalkRefusal;
 
-/// The default fan-out allowance for `Expand` callers: mapped levels and
-/// materialized item references are bounded separately by this value.
-/// `FirstChain` keeps its caller-selected depth/cycle policy instead.
+/// Recommended default for both independent Expand work meters.
 pub const MAX_WALK_LEVELS: u32 = 1 << 16;
-
-impl WalkRefusal {
-    /// The error the strict callers have always reported for this refusal,
-    /// with its exact message text; `item` is the refused `IfcMappedItem`'s id.
-    pub fn into_error(self, item: u32) -> crate::Error {
-        let msg = match self {
-            WalkRefusal::Cyclic => format!("Detected cyclic IfcMappedItem reference at #{item}"),
-            WalkRefusal::TooDeep { max_depth } => format!(
-                "MappedItem nesting exceeded maximum depth of {max_depth} at #{item}"
-            ),
-            WalkRefusal::Budget { max_levels } => format!(
-                "IfcMappedItem expansion exceeded the work budget of {max_levels} levels or item references at #{item}"
-            ),
-            WalkRefusal::MissingSource => "MappedItem missing MappingSource".to_string(),
-            WalkRefusal::UnresolvedSource => "Failed to resolve MappingSource".to_string(),
-            WalkRefusal::MissingMappedRepresentation => {
-                "RepresentationMap missing MappedRepresentation".to_string()
-            }
-            WalkRefusal::UnresolvedMappedRepresentation => {
-                "Failed to resolve MappedRepresentation".to_string()
-            }
-            WalkRefusal::MissingItems => "Representation missing Items".to_string(),
-            WalkRefusal::Decode(error) => return crate::Error::CoreError(error),
-        };
-        crate::Error::geometry(msg)
-    }
-}
 
 /// One `IfcMappedItem → IfcRepresentationMap → MappedRepresentation` level.
 #[derive(Clone)]
@@ -152,7 +100,11 @@ pub trait WalkVisitor {
     /// A representation item. Under every policy but [`NestedMaps::Leaf`] it is
     /// never an `IfcMappedItem`.
     fn item(&mut self, item: &DecodedEntity, at: &WalkCtx<'_>, decoder: &mut EntityDecoder) -> Flow;
-    /// A mapped level was entered; its items follow unless `SkipChildren`.
+    /// The source and mapped representation resolved. Only `Continue` reads,
+    /// charges and decodes its Items, after this callback; `SkipChildren` and
+    /// `Stop` suppress those operations and their errors. The level entities
+    /// are snapshots, but child references resolve through the decoder as
+    /// mutated by this callback.
     fn enter_map(
         &mut self,
         _level: &MappedLevel,
@@ -164,10 +116,10 @@ pub trait WalkVisitor {
     /// Pairs every `enter_map`, whatever it answered and however the level's
     /// items ended.
     fn leave_map(&mut self, _level: &MappedLevel) {}
-    /// `item`, an `IfcMappedItem` at `ctx` (whose path excludes it), was refused.
-    /// A root-list budget refusal instead identifies its holding representation.
-    /// Unless the refusal is of its `Items` (`MissingItems`, `Decode` or `Budget`, after
-    /// `enter_map`), it has no `enter_map`/`leave_map` pair.
+    /// A refused mapped item, or the holding representation for a root-list
+    /// budget refusal. `ctx.path` excludes the refused level. Nested Items
+    /// failures follow `enter_map` and are paired with `leave_map`; source,
+    /// depth, cycle and level-budget failures occur before entry.
     fn refused(&mut self, _item: &DecodedEntity, _why: WalkRefusal, _ctx: &WalkCtx<'_>) {}
 }
 
@@ -183,7 +135,7 @@ struct Run<'a, V> {
     /// The levels entered, outermost first: also the path-scoped visited set
     /// (at most `max_depth` entries, so a scan is the cheapest set).
     path: Vec<MappedLevel>,
-    /// Mapped levels entered so far (the work budget's meter).
+    /// Mapped-level attempts admitted after depth/cycle checks (Expand only).
     levels: u32,
     /// Items members admitted before allocating/decoding a list, per occurrence.
     items: u32,

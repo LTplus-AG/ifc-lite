@@ -88,10 +88,9 @@ impl RepresentationWalk {
         &self, run: &mut Run<'_, V>, item: &DecodedEntity,
         decoder: &mut EntityDecoder, tasks: &mut Vec<Task>,
     ) -> Flow {
-        let (max_depth, max_levels) = match self.nested {
-            NestedMaps::Expand { max_depth, max_levels } => (max_depth, max_levels),
-            NestedMaps::FirstChain { max_depth } => (max_depth, u32::MAX),
-            NestedMaps::Refuse | NestedMaps::Leaf => (0, u32::MAX),
+        let max_depth = match self.nested {
+            NestedMaps::Expand { max_depth, .. } | NestedMaps::FirstChain { max_depth } => max_depth,
+            NestedMaps::Refuse | NestedMaps::Leaf => 0,
         };
         let bail = matches!(self.nested, NestedMaps::Refuse);
         let refuse = |run: &mut Run<'_, V>, why| {
@@ -105,11 +104,13 @@ impl RepresentationWalk {
         if run.path.iter().any(|level| level.item.id == item.id) {
             return refuse(run, WalkRefusal::Cyclic);
         }
-        if run.levels >= max_levels {
-            refuse(run, WalkRefusal::Budget { max_levels });
-            return Flow::Stop;
+        if let NestedMaps::Expand { max_levels, .. } = self.nested {
+            if run.levels >= max_levels {
+                refuse(run, WalkRefusal::Budget { max_levels });
+                return Flow::Stop;
+            }
+            run.levels += 1;
         }
-        run.levels += 1;
         let (map, mapped_rep) = match Self::resolve_level(item, decoder) {
             Ok(resolved) => resolved,
             Err(why) => return refuse(run, why),

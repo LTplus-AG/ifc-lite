@@ -19,9 +19,8 @@
 //! Loops are emitted outer counter-clockwise and inner clockwise; the source
 //! keeps its authored order, winding, trims and composite metadata.
 
-use super::retained::validate_source;
 use super::{RetainedExtrusion, RetainedRefusal};
-use crate::analytic::AnalyticCurveSegment;
+use crate::analytic::{AnalyticCurveSegment, AnalyticStatus, ProfileLoopKind};
 use crate::math::tol;
 use nalgebra::{Matrix4, Vector4};
 
@@ -147,6 +146,85 @@ pub(super) fn lower(recipe: &RetainedExtrusion) -> Result<SweepPayload, Retained
         source_from_evaluation: array(source_from_evaluation),
         evaluation_from_source: array(inverse),
     })
+}
+
+/// Strict source admission: complete extraction, captured original records,
+/// outer-then-inner loops and bounded size. Numerical checks follow in lowering.
+fn validate_source(recipe: &RetainedExtrusion) -> Result<(), RetainedRefusal> {
+    if !recipe.length_unit_scale.is_finite() || recipe.length_unit_scale <= 0.0 {
+        return Err(RetainedRefusal::InvalidSource(
+            "invalid source length units",
+        ));
+    }
+    let source = &recipe.source;
+    if let AnalyticStatus::Unsupported(reason) = &source.status {
+        return Err(RetainedRefusal::UnsupportedSource(reason.clone()));
+    }
+    let original = source
+        .source
+        .as_ref()
+        .ok_or(RetainedRefusal::SourceNotCaptured)?;
+    if let AnalyticStatus::Unsupported(reason) = &original.capture_status {
+        return Err(RetainedRefusal::UnsupportedSource(format!(
+            "original solid capture: {reason}"
+        )));
+    }
+    if original.root_entity_id != source.solid_id
+        || !original.records.contains_key(&source.solid_id)
+    {
+        return Err(RetainedRefusal::InvalidSource(
+            "invalid original solid metadata",
+        ));
+    }
+    let profile = source
+        .profile
+        .as_ref()
+        .ok_or(RetainedRefusal::InvalidSource("missing profile"))?;
+    if let AnalyticStatus::Unsupported(reason) = &profile.status {
+        return Err(RetainedRefusal::UnsupportedSource(reason.clone()));
+    }
+    if profile.loops.is_empty() || profile.loops.len() > MAX_LOOPS {
+        return Err(RetainedRefusal::InvalidSource(
+            "invalid bounded region loop count",
+        ));
+    }
+    let mut count = 0;
+    for (index, boundary) in profile.loops.iter().enumerate() {
+        let expected = if index == 0 {
+            ProfileLoopKind::Outer
+        } else {
+            ProfileLoopKind::Inner
+        };
+        if boundary.kind != expected {
+            return Err(RetainedRefusal::InvalidSource(
+                "expected outer then inner boundaries",
+            ));
+        }
+        if boundary.segments.is_empty() || boundary.segments.len() > MAX_SEGMENTS - count {
+            return Err(RetainedRefusal::InvalidSource(
+                "curve count exceeds bounded recipe",
+            ));
+        }
+        count += boundary.segments.len();
+        let original = boundary
+            .source
+            .as_ref()
+            .ok_or(RetainedRefusal::SourceNotCaptured)?;
+        if let AnalyticStatus::Unsupported(reason) = &original.capture_status {
+            return Err(RetainedRefusal::UnsupportedSource(format!(
+                "original boundary capture: {reason}"
+            )));
+        }
+        if !original.plane_angle_to_radians.is_finite()
+            || original.plane_angle_to_radians <= 0.0
+            || !original.records.contains_key(&original.root_entity_id)
+        {
+            return Err(RetainedRefusal::InvalidSource(
+                "invalid original boundary metadata",
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Absent placements are identity; present ones must be proper rigid motions.

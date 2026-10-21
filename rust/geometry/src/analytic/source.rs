@@ -71,7 +71,8 @@ thread_local! {
 /// scope every `source` field stays `None` and extraction does no source
 /// traversal: the capture costs 3-24% of analytic export time, so it is
 /// paid only by a consumer that asks for it. The previous state is restored
-/// on every exit, including a panic.
+/// on every exit, including a panic. On wasm32 capture is compiled out (no
+/// browser consumer opts in): `f` runs and every `source` stays `None`.
 pub fn with_source_capture<R>(f: impl FnOnce() -> R) -> R {
     struct Restore(bool);
     impl Drop for Restore {
@@ -84,7 +85,17 @@ pub fn with_source_capture<R>(f: impl FnOnce() -> R) -> R {
 }
 
 pub(super) fn requested() -> bool {
-    REQUESTED.with(Cell::get)
+    // No wasm32 consumer opts in, so capture is compiled out of the browser
+    // engine: a constant `false` lets the optimiser drop the whole source
+    // traversal from the bundle. `with_source_capture` still runs its closure.
+    #[cfg(target_arch = "wasm32")]
+    {
+        false
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        REQUESTED.with(Cell::get)
+    }
 }
 
 #[derive(Default)]

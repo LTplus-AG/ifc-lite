@@ -176,7 +176,7 @@ pub struct GeometryRouter {
     csg_failures: RefCell<FxHashMap<u32, Vec<BoolFailure>>>,
     /// Cumulative counters for opening classification (T1.1 / classifier fix
     /// diagnostic). Tracks how many openings went through each branch of
-    /// `classify_openings` so a maintainer can verify the fix is firing on
+    /// `program::openings::classify` so a maintainer can verify the fix is firing on
     /// real models. Drainable via [`Self::take_classification_stats`].
     classification_stats: RefCell<ClassificationStats>,
     /// Per-host opening diagnostic, keyed by host product express ID.

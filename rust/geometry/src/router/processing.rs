@@ -79,7 +79,7 @@ pub(crate) fn finish_item_mesh(mesh: &mut Mesh, unit_scale: f64, rtc_offset: Opt
 
 /// Which source hygiene an element's meshes get before placement (#5313).
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum SourceHygiene {
+pub(crate) enum SourceHygiene {
     /// [`Mesh::clean_degenerate_watertight`]: drops slivers without opening a
     /// T-junction. The default for output meshes.
     Watertight,
@@ -96,11 +96,11 @@ pub(super) enum SourceHygiene {
 impl SourceHygiene {
     /// `self`, downgraded to `IndexOnly` while the router is told to keep
     /// triangle order (see `GeometryRouter::set_preserve_triangle_order`).
-    pub(super) fn for_router(self, router: &GeometryRouter) -> Self {
+    pub(crate) fn for_router(self, router: &GeometryRouter) -> Self {
         if router.preserve_triangle_order.get() { Self::IndexOnly } else { self }
     }
 
-    pub(super) fn apply(self, mesh: &mut Mesh) {
+    pub(crate) fn apply(self, mesh: &mut Mesh) {
         match self {
             Self::Watertight => mesh.clean_degenerate_watertight(),
             Self::IndexOnly => mesh.clean_degenerate(),
@@ -137,7 +137,7 @@ impl GeometryRouter {
 
     /// [`Self::process_element_parts`] with an explicit [`SourceHygiene`]; the
     /// void path passes `IndexOnly` for hosts and cutters.
-    pub(super) fn process_element_parts_with_hygiene(
+    pub(crate) fn process_element_parts_with_hygiene(
         &self,
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
@@ -432,42 +432,13 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Mesh>> {
-        if !self.has_rtc_offset()
-            || !self
-                .representation_item_first_vertex_meters(item, decoder)
-                .is_some_and(crate::coord_is_large)
-        {
-            return Ok(None);
-        }
-        if self.processor_for(&item.ifc_type).is_none() {
-            return Ok(None);
-        }
-        let Some(offset) = self.element_frame_rtc(element, decoder)? else {
+        let Some(offset) = self.raw_item_element_offset(item, element, decoder)? else {
             return Ok(None);
         };
         // The ordinary item path, in the element's frame: it keeps content
         // dedup and direct-solid instancing (keyed by the offset), and a
         // declined rebase is decided in the right frame too (#5684).
         self.process_representation_item_in_frame(item, decoder, offset).map(Some)
-    }
-
-    /// The model RTC offset expressed in `element`'s object frame (metres):
-    /// pulled through the placement's inverse linear transform, so placing
-    /// a mesh rebased by it yields `M(p) - rtc`. `None` for a singular
-    /// placement, where no object-frame offset exists.
-    fn element_frame_rtc(
-        &self,
-        element: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Result<Option<(f64, f64, f64)>> {
-        let mut placement = self.get_placement_transform_from_element(element, decoder)?;
-        self.scale_transform(&mut placement);
-        let linear = placement.fixed_view::<3, 3>(0, 0).into_owned();
-        Ok(linear.try_inverse().map(|inverse| {
-            let rtc = inverse
-                * nalgebra::Vector3::new(self.rtc_offset.0, self.rtc_offset.1, self.rtc_offset.2);
-            (rtc.x, rtc.y, rtc.z)
-        }))
     }
 
     /// A textured `IfcTriangulatedFaceSet` meshed with its per-vertex UVs,

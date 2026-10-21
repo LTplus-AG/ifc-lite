@@ -14,17 +14,31 @@
 //!   are never baked into the definition's f32 buffers.
 //! - Handles resolve only in the document that minted them.
 //!
-//! What it is not yet: retained authored sources, worker identity and the
-//! retained/display distinction arrive with the retained-request layer
-//! (F2b, #7955). Operations over definitions land with their first caller.
+//! - Retained definitions are captured authored extrusions plus their encoded
+//!   worker request ([`RetainedRequest`]), kept apart from display meshes. A
+//!   worker completion becomes a mesh only through
+//!   [`GeometryDocument::publish_retained_display`], and then as an ordinary
+//!   display approximation. The swept-disk family and any execution runtime
+//!   are not part of this contract yet.
+//!
+//! Operations over definitions land with their first caller.
 
+mod retained;
+mod retained_display;
+mod retained_sweep;
 mod types;
 mod validation;
 
+pub use retained::{
+    RetainedCompletion, RetainedDefinitionHandle, RetainedDisplayContract, RetainedExtrusion,
+    RetainedRefusal, RetainedRequest, RetainedTessellation,
+};
+pub use retained_sweep::{RegionQualification, SweepPayload};
 pub use types::{DefinitionHandle, DocumentError, DocumentId, Occurrence, OccurrenceHandle};
 
 use crate::Mesh;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 static NEXT_DOCUMENT: AtomicU64 = AtomicU64::new(1);
 
@@ -43,6 +57,7 @@ pub struct GeometryDocument {
     revision: u64,
     definitions: Vec<Definition>,
     occurrences: Vec<Occurrence>,
+    retained: Vec<Arc<retained::RetainedEntry>>,
 }
 
 impl Default for GeometryDocument {
@@ -60,6 +75,7 @@ impl GeometryDocument {
             revision: 0,
             definitions: Vec::new(),
             occurrences: Vec::new(),
+            retained: Vec::new(),
         }
     }
 

@@ -42,6 +42,7 @@ const SOURCE_RELS = [
   'packages/create/src/ifc-creator.ts',
   'packages/create/src/cost-authoring-rules.ts',
   'packages/export/src/schema-converter.ts',
+  'packages/export/src/schema-converter-mep.ts',
 ];
 
 const IN_STORE_DIR = 'packages/create/src/in-store';
@@ -531,4 +532,16 @@ test('fixture column: every resolved row in the real ledger cites a fixture decl
     }
   }
   assert.ok(checkedRows > 0, 'test anchor drifted — no resolved fixture rows found to check across the whole ledger');
+});
+
+test('IFC4 MEP occurrences with native IFC2X3 bases are convertible in the emitted ledger (#8019)', () => {
+  const { status, ledger } = runOn();
+  assert.equal(status, 0);
+  const section = sectionOf(ledger, 'IFC4');
+  for (const entity of ['IfcDuctSegment', 'IfcPipeFitting', 'IfcSensor', 'IfcSanitaryTerminal', 'IfcElectricDistributionBoard']) {
+    // @source-text-assertion-ok asserts on the executed generator's emitted ledger, not source text
+    const row = section.split('\n').find((line) => line.startsWith(`| ${entity} |`));
+    assert.ok(row, `missing ${entity} in emitted IFC4 ledger`);
+    assert.equal(row.split('|').map((column) => column.trim())[8], 'IFC2X3:✅ IFC4X3:✅');
+  }
 });

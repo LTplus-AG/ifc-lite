@@ -57,7 +57,8 @@
  *                    `packages/export/src/schema-converter.ts` exports
  *                    (`convertEntityType`'s own `IFC2X3_TO_IFC4` /
  *                    `IFC4_TO_IFC2X3` / `IFC4_TO_IFC4X3` / `IFC4X3_TO_IFC4`
- *                    Maps), parsed from that file's source rather than a
+ *                    Maps), parsed from that file's source, plus the audited
+ *                    `schema-converter-mep.ts` map imported directly, rather than a
  *                    restated copy.
  *   writable      — the entity's uppercase STEP keyword appears in a
  *                    dedicated `this.line(id, 'IFCXXX', ...)` call inside
@@ -99,7 +100,7 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { generatedNames, parseEntityTable } from './lib/entity-table.mjs';
 import { deriveCreatableTypes } from './coverage-ledger-creatable.mjs';
 
@@ -239,6 +240,10 @@ const RENAME = {
 assertNonEmpty('convertible(IFC2X3_TO_IFC4)', RENAME['IFC2X3->IFC4']);
 assertNonEmpty('convertible(IFC4_TO_IFC2X3)', RENAME['IFC4->IFC2X3']);
 assertNonEmpty('convertible(IFC4X3_TO_IFC4)', RENAME['IFC4X3->IFC4']);
+// Read the runtime's audited map directly; do not keep a second MEP list (#8019).
+const { MEP_IFC2X3_TYPES } = await import(pathToFileURL(join(ROOT, 'packages/export/src/schema-converter-mep.ts')).href);
+assertNonEmpty('convertible(MEP_IFC2X3_TYPES)', MEP_IFC2X3_TYPES);
+for (const [source, target] of MEP_IFC2X3_TYPES) RENAME['IFC4->IFC2X3'].set(source, target);
 
 // ─── Fixture (committed .ifc corpus, per #4208 — see DERIVATION above) ──
 

@@ -107,7 +107,6 @@
 3 rust/processing/src/data_model/property_value.rs
 5 rust/processing/src/data_model/quantities.rs
 1 rust/processing/src/data_model/relationships.rs
-1 rust/processing/src/element.rs
 15 rust/processing/src/element/element_color.rs
 1 rust/processing/src/pdf_vector/extent.rs
 15 rust/processing/src/prepass.rs

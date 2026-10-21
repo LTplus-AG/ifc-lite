@@ -183,7 +183,7 @@ impl GeometryRouter {
     /// any other item failure stays an ordinary recoverable drop.
     #[cold]
     #[inline(never)]
-    pub(super) fn recoverable_source_error(error: Error) -> crate::Result<Error> {
+    pub(crate) fn recoverable_source_error(error: Error) -> crate::Result<Error> {
         match crate::resource::observe::<()>(Err(error)) {
             Err(stop @ Error::ProgramStopped(_)) => Err(stop),
             Err(error) => Ok(error),
@@ -193,7 +193,7 @@ impl GeometryRouter {
 
     /// Accounted copy for both cache population and every cache hit, so a
     /// repeated occurrence is charged (or refused) like the first one.
-    pub(super) fn clone_cached_mesh(&self, mesh: &Mesh) -> crate::Result<Mesh> {
+    pub(crate) fn clone_cached_mesh(&self, mesh: &Mesh) -> crate::Result<Mesh> {
         // A hit is coverage too: under a bounded account an ordinary
         // (unaccounted) shared cache is refused on lookup, not only on insert.
         if self.shared_mapped_item_cache.is_some() {

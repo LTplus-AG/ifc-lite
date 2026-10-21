@@ -7,14 +7,14 @@
       "metric": "brotli-bytes",
       "unit": "bytes",
       "description": "packages/wasm/pkg/ifc-lite_bg.wasm, the single-thread engine bundle",
-      "ceiling": 2365134,
+      "ceiling": 2379124,
       "tolerance": {
         "kind": "relative",
         "value": 0.005
       },
       "provenance": {
-        "commit": "141285f8287bbc88a420d0ce1168cb7f1a6aa72c",
-        "measuredAt": "2026-10-20T20:23:39.718Z"
+        "commit": "d1e99646f7d41cb72ea92933a5432bd935cccdd9",
+        "measuredAt": "2026-10-21T08:56:19.000Z"
       }
     },
     {

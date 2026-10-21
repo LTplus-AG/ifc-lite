@@ -11,9 +11,9 @@ use crate::router::item_cache_program::{direct_rep_identity, CacheAdmission, Cac
 use crate::{GeometryRouter, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
-enum State<'a> {
+enum State {
     Begin,
-    Child(CacheContext, ItemControl<'a>),
+    Child(CacheContext, ItemControl),
     Hash(CacheContext, Mesh),
     Publishing(CacheContext),
     Complete(Result<Mesh>),
@@ -30,7 +30,7 @@ pub(super) enum CacheReply {
 pub(super) struct CacheControl<'a> {
     item: &'a DecodedEntity,
     offset: (f64, f64, f64),
-    state: State<'a>,
+    state: State,
 }
 
 impl<'a> CacheControl<'a> {
@@ -54,7 +54,9 @@ impl<'a> CacheControl<'a> {
             State::Begin => {
                 return Ok(CacheReply::Begin(router.admit_item_cache(self.item, decoder, self.offset)));
             }
-            State::Child(_, item) => return item.execute(router, decoder).map(CacheReply::Item),
+            State::Child(_, control) => {
+                return control.execute(self.item, router, decoder).map(CacheReply::Item);
+            }
             _ => {}
         }
         match std::mem::replace(&mut self.state, State::Taken) {
@@ -75,7 +77,7 @@ impl<'a> CacheControl<'a> {
             (State::Begin, CacheReply::Begin(Ok(CacheAdmission::Hit(mesh)))) => State::Complete(Ok(mesh)),
             (State::Begin, CacheReply::Begin(Err(error))) => State::Complete(Err(error)),
             (State::Begin, CacheReply::Begin(Ok(CacheAdmission::Miss(context)))) => {
-                State::Child(context, ItemControl::new(self.item, self.offset))
+                State::Child(context, ItemControl::new(self.offset))
             }
             (State::Child(context, mut item), CacheReply::Item(step)) => {
                 item.accept(step, router);

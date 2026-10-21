@@ -904,6 +904,15 @@ jobs:
           # and timeout. Once source_axes.rs is on main, whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/kernel/plane_weld/source_axes.rs | grep -Fxq 'rust/geometry/src/kernel/plane_weld/source_axes.rs'; then
             oracle_args+=(--mutation docs/architecture/evidence/issue-7292/signed-zero.oracle.patch)
+          # #7955 D3: the mapping controller adds program/mapping.rs and
+          # mapping_reduce.rs, which its tests drive, so a whole-change revert
+          # cannot compile them (INCONCLUSIVE). Keep the controller and break
+          # ONLY the behaviour: every source records its drops (no Body gate,
+          # no once-per-source claim) and a failed nested map no longer marks
+          # its parent truncated. Once program/mapping.rs is on main, ordinary
+          # whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/mapping.rs | grep -Fxq 'rust/geometry/src/program/mapping.rs'; then
+            oracle_args+=(--mutation tests/evidence/mapping-controller-d3/behaviour.oracle.patch)
           # #7955 D1b: cache ownership adds mapped_cache_ownership.rs, which
           # the tests name, so a whole-change revert cannot compile them
           # (REVERT-BROKE-BUILD). Keep the module and break ONLY the behaviour:

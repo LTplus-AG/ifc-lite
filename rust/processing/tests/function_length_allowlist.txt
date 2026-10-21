@@ -46,7 +46,6 @@
    300 rust/geometry/src/processors/boolean/halfspace_cap.rs cap_half_space_clip
    181 rust/geometry/src/processors/tessellated/triangulate.rs PolygonalFaceSetProcessor::triangulate_polygon
    182 rust/geometry/src/profiles/simplify.rs simplify_smooth_curve_polyline
-   213 rust/geometry/src/router/mapped_item.rs GeometryRouter::process_mapped_item_cached_body
    291 rust/geometry/src/router/processing.rs GeometryRouter::collect_submeshes_from_item_inner
    189 rust/geometry/src/router/transforms/operator.rs parse_transformation_operator
    224 rust/geometry/src/router/voids/aabb_clip.rs GeometryRouter::clip_triangle_against_box

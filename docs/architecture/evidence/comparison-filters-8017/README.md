@@ -33,10 +33,14 @@ PLAYWRIGHT_PORT=5187 pnpm exec playwright test --project=viewer-e2e-ci \
   tests/e2e/compare-impact-6921.e2e.spec.ts --grep 'short panel'
 ```
 
-Application source was built at `6620777533`; subsequent changes are test
+Application source was built at `616141cf00`; subsequent changes are test
 harness, documentation and evidence only. Local validation used Chrome for
 Testing 156.0.8078.47, the CI project's SwiftShader/Vulkan flags, and this test's
 ANGLE Vulkan override. The override keeps presentation and WebGPU on the same
 backend: mixed GL/Vulkan presentation failed before comparison ran on this host.
 The local config changed only the Chrome executable location. The final browser
 run passed, including all three GPU readbacks.
+
+Both raw viewer JavaScript metrics fit their unchanged committed ceilings after
+loading Compare through the shared panel host only when opened. The focused
+root-Turbo regression run passed all 84 tests, including panel-host coverage.

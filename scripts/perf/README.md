@@ -342,6 +342,17 @@ This is a bundle-size verdict; it makes no model-load speed claim.
 Lesson: measure queued viewer features together, and keep optional editor
 surfaces behind their actual entry point.
 
+## Comparison panel loads on demand (#8017)
+
+Comparison filtering initially exceeded the viewer entry allowance. Deferring
+only its filter controls did not recover enough headroom. Loading the complete
+comparison panel through the shared panel host's existing lazy boundary kept
+both raw viewer JavaScript metrics inside their unchanged ceilings. The real
+revision-pair browser regression still opens the panel, compares, filters,
+frames and reads rendered GPU pixels. This is a bundle-size verdict, with no
+model-load or geometry-runtime speed claim. Lesson: defer an optional panel at
+its canonical host rather than splitting a small control inside an eager panel.
+
 ## Structural counters and long frames per load (#6957)
 
 Sender-side accounting (#6993) now distinguishes actual worker transfer lists

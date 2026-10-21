@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { sectionExclusions, withSectionExclusions } from './section-exclusions.js';
 /**
  * GPU-based object picking
  */
@@ -68,6 +69,7 @@ export class Picker {
     this.device = device.getDevice();
     this.readbacks = new PickerReadbackOwner(this.device);
     this.depthSample = new PickDepthSample(this.device);
+    sectionExclusions(this.device).retain();
 
     // Create textures for picking
     this.colorTexture = this.device.createTexture({
@@ -111,13 +113,13 @@ export class Picker {
     });
 
     this.pipeline = this.device.createRenderPipeline({
-      layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.device.createBindGroupLayout({
+      layout: this.device.createPipelineLayout({ bindGroupLayouts: withSectionExclusions(this.device, [this.device.createBindGroupLayout({
         entries: [
           { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 224 } },
           { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
           { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', minBindingSize: EXTRA_CLIP_BYTES } },
         ],
-      })] }),
+      })]) }),
       vertex: {
         module: shaderModule,
         entryPoint: 'vs_main',
@@ -185,7 +187,10 @@ export class Picker {
     // renderPickPass skips the instanced pick draw.
     try {
       this.instancedPickPipeline = this.device.createRenderPipeline({
-        layout: 'auto',
+        layout: this.device.createPipelineLayout({ bindGroupLayouts: withSectionExclusions(this.device, [this.device.createBindGroupLayout({ entries: [
+          { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+          { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+        ] })]) }),
         vertex: {
           module: instancedPickModule,
           entryPoint: 'vs_main',
@@ -476,7 +481,9 @@ export class Picker {
     packExtraClip(clip?.extraPlanes, pointRteSnapshot?.getCameraWorld() ?? null, this.extraClipScratch, 0);
     this.device.queue.writeBuffer(this.extraClipBuffer, 0, this.extraClipScratch);
 
+    sectionExclusions(this.device).update(clip?.sectionExcludedIds);
     pass.setPipeline(this.pipeline);
+    pass.setBindGroup(3, sectionExclusions(this.device).bindGroup);
     for (let i = 0; i < meshes.length; i++) {
       const mesh = meshes[i];
       if (!mesh) continue;
@@ -496,7 +503,7 @@ export class Picker {
         // Compatibility for direct Picker callers that predate RTE snapshots.
         // Renderer/PickingManager always supplies one so production draws use
         // the per-mesh immutable RTE slots above.
-        writePickUniforms(this.device, this.uniformBuffer, this.uniformScratch, this.clipFlags, viewProj, clip);
+        writePickUniforms(this.device, this.uniformBuffer, this.uniformScratch, this.clipFlags, viewProj, clip, mesh.expressId, i);
       }
       pass.setBindGroup(0, this.bindGroup, [i * 256]);
       pass.setVertexBuffer(0, mesh.vertexBuffer);
@@ -518,6 +525,7 @@ export class Picker {
         clip,
       );
       pass.setPipeline(this.instancedPickPipeline);
+      pass.setBindGroup(3, sectionExclusions(this.device).bindGroup);
       pass.setBindGroup(0, this.instancedPickBindGroup);
       for (const [i, it] of instancedTemplates.entries()) {
         pass.setVertexBuffer(0, it.vertexBuffer);
@@ -595,6 +603,7 @@ export class Picker {
     if (this.destroyed) return;
     this.destroyed = true;
     this.readbacks.destroy();
+    sectionExclusions(this.device).release();
     this.colorTexture.destroy();
     this.depthTexture.destroy();
     this.uniformBuffer.destroy();

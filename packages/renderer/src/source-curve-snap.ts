@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { entityClip } from './section-exclusions.js';
 import type { PickClipState, Vec3 } from './types.js';
 import type { Ray } from './raycaster.js';
 import { SnapType, type SnapOptions, type SnapTarget } from './snap-detector.js';
@@ -108,7 +109,7 @@ export function sourceCurveSnapCandidate(
     const at = (t: number): { distanceSquared: number; point: Vec3 | null } => {
       const point = curve.pointAt(t);
       if (!point || ![point.x, point.y, point.z].every(Number.isFinite)
-        || pointClipped(clip, point.x, point.y, point.z) || !accepts(curve, point)) {
+        || pointClipped(entityClip(clip, curve.globalId), point.x, point.y, point.z) || !accepts(curve, point)) {
         return { distanceSquared: Infinity, point: null };
       }
       const screen = project(point);

@@ -85,3 +85,28 @@ describe('shadow pass and the RTE eye envelope (#6128)', () => {
     assert.equal(draws[1]!.deltas, rteDeltas.buffer, 'the instanced draw reads its template\'s delta stream at slot 2');
   });
 });
+
+it('shadow submission preserves full entity anchors and updates the shared clipping exclusion set (#8015)', () => {
+  const writes: Array<{ label: string; words: Uint32Array }> = [];
+  const recordingDevice = { ...device, queue: { writeBuffer(buffer: GPUBuffer, _offset: number, data: ArrayBuffer | ArrayBufferView, byteOffset = 0, size?: number) {
+    const raw = ArrayBuffer.isView(data) ? data.buffer : data;
+    const start = ArrayBuffer.isView(data) ? data.byteOffset : byteOffset;
+    const length = ArrayBuffer.isView(data) ? data.byteLength : size ?? raw.byteLength;
+    writes.push({ label: buffer.label, words: new Uint32Array(raw.slice(start, start + length)) });
+  } } } as unknown as GPUDevice;
+  const shadow = new ShadowPass(recordingDevice, 512);
+  const id = 101 + 0x1000000;
+  const ids = new Set([id]);
+  const draw: ShadowOccluderDraw = { kind: 'flat', vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer,
+    indexCount: 3, model: MathUtils.identity().m, entityIdAnchor: id };
+  const clip = { section: { normal: [0, 1, 0] as const, distance: 0 }, sectionExcludedIds: ids };
+  const { encoder, draws } = recordingEncoder();
+  shadow.render(encoder, MathUtils.identity(), [draw], clip);
+  assert.equal(draws.length, 1, 'excluded entity still casts a shadow');
+  assert.equal(writes.find(w => w.label === 'shadow-per-draw-uniform')!.words[28], id, 'anchor is full u32 in the shader ABI');
+  assert.deepEqual([...writes.find(w => w.label === 'section-excluded-ids')!.words], [1, id]);
+  ids.clear();
+  shadow.render(encoder, MathUtils.identity(), [draw], clip);
+  assert.deepEqual([...writes.filter(w => w.label === 'section-excluded-ids').at(-1)!.words], [0], 'same-Set mutation restores clipping');
+  shadow.destroy();
+});

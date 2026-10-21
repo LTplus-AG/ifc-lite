@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { sectionExclusions, withSectionExclusions } from './section-exclusions.js';
 /**
  * Sun shadow-map depth pre-pass (issue #2670, Phase 2a).
  *
@@ -39,7 +40,7 @@ export { resolveShadowMapResolution } from './shadow-types.js';
 export type { ShadowClip, ShadowDrawKind, ShadowOccluderDraw, ShadowRteFrame } from './shadow-types.js';
 
 /** Bytes of the per-draw uniform: linear model + quant params + split RTE origin. */
-const PER_DRAW_BYTES = 112;
+const PER_DRAW_BYTES = 128;
 
 /** Bytes of the clip uniform: sectionPlane + boxMin + boxMax + flags (4 vec4), then the extra-plane block (#7545). */
 const CLIP_BYTES = 64 + EXTRA_CLIP_BYTES;
@@ -85,10 +86,9 @@ export class ShadowPass {
 
   constructor(device: GPUDevice, resolution: number) {
     this.device = device;
+    sectionExclusions(device).retain();
     this.resolution = Math.max(256, Math.floor(resolution));
 
-    // Per-draw uniforms are addressed by dynamic offset, which must be a
-    // multiple of the device's minimum alignment (256 on most GPUs).
     const align = device.limits.minUniformBufferOffsetAlignment || 256;
     this.drawStride = Math.ceil(PER_DRAW_BYTES / align) * align;
 
@@ -131,7 +131,7 @@ export class ShadowPass {
       label: 'shadow-shader',
       code: shadowShaderSource,
     });
-    this.pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [this.bindGroupLayout] });
+    this.pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: withSectionExclusions(this.device, [this.bindGroupLayout]) });
     this.pipelines = this.createPipelineSet(false);
   }
 
@@ -147,7 +147,6 @@ export class ShadowPass {
     };
   }
 
-  /** Depth-texture view for the colour pass to sample. */
   getDepthTextureView(): GPUTextureView {
     return this.depthTextureView;
   }
@@ -182,8 +181,8 @@ export class ShadowPass {
     rte?: ShadowRteFrame | null,
   ): void {
     if (this.destroyed) return;
+    sectionExclusions(this.device).update(clip?.sectionExcludedIds);
 
-    // Shared light matrix — one write per frame.
     this.lightScratch.set(lightViewProj.m, 0);
     packRteOrigin(rte?.cameraWorld ?? [0, 0, 0], this.lightScratch, 16);
     this.device.queue.writeBuffer(this.lightBuffer, 0, this.lightScratch);
@@ -211,7 +210,6 @@ export class ShadowPass {
       }], rte?.cameraWorld ?? [0, 0, 0])[0]!;
     }
 
-    // Grow the per-draw ring if this frame needs more slots than it holds.
     if (draws.length > this.drawBufferSlots) {
       let slots = this.drawBufferSlots;
       while (slots < draws.length) slots *= 2;
@@ -222,11 +220,11 @@ export class ShadowPass {
       this.drawBindGroup = this.createDrawBindGroup();
     }
 
-    // Pack per-draw uniforms (model + quantParams) at dynamic-offset strides.
     const strideFloats = this.drawStride / 4;
     for (let i = 0; i < draws.length; i++) {
       const d = draws[i];
       const base = i * strideFloats;
+      new Uint32Array(this.drawScratch.buffer)[base + 28] = d.entityIdAnchor ?? 0;
       if (d.model) this.drawScratch.set(d.model, base);
       // Translation is always supplied through the f64 origin lanes below.
       // Retaining it in the f32 model matrix would add a 5,000-km number before
@@ -276,6 +274,7 @@ export class ShadowPass {
       const d = draws[i];
       if (!drawable[i]) continue;
       pass.setPipeline(pipelines[d.kind]);
+      pass.setBindGroup(3, sectionExclusions(this.device).bindGroup);
       pass.setBindGroup(0, this.drawBindGroup, [i * this.drawStride]);
       pass.setVertexBuffer(0, d.vertexBuffer);
       pass.setIndexBuffer(d.indexBuffer, 'uint32');
@@ -296,6 +295,7 @@ export class ShadowPass {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    sectionExclusions(this.device).release();
     this.depthTexture.destroy();
     this.lightBuffer.destroy();
     this.drawBuffer.destroy();
@@ -360,14 +360,14 @@ export class ShadowPass {
   private posBuffer(stride: number): GPUVertexBufferLayout {
     return {
       arrayStride: stride,
-      attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }],
+      attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 2, offset: 24, format: 'uint32' }],
     };
   }
 
   private quantBuffer(): GPUVertexBufferLayout {
     return {
       arrayStride: 12,
-      attributes: [{ shaderLocation: 0, offset: 0, format: 'uint16x4' }],
+      attributes: [{ shaderLocation: 0, offset: 0, format: 'uint16x4' }, { shaderLocation: 2, offset: 8, format: 'uint32' }],
     };
   }
 

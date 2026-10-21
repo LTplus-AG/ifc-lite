@@ -21,6 +21,7 @@ impl GeometryRouter {
     /// Reuse completed BREP signatures across routers of the SAME source model.
     /// Attach a fresh cache when replacing the source, just like the item cache.
     pub fn enable_shared_brep_signature_cache(&mut self, cache: SharedBrepSignatureCache) {
+        self.execution_owner.changed();
         self.shared_brep_signatures = Some(cache);
     }
 

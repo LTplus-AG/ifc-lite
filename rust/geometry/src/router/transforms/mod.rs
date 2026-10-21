@@ -10,7 +10,6 @@ pub(crate) use mesh_world::LARGE_MAPPED_ORIGIN_M;
 pub(crate) mod operator;
 
 mod parsers;
-mod walk;
 
 use super::GeometryRouter;
 use crate::math::mat4;

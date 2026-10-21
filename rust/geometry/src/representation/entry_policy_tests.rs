@@ -233,3 +233,45 @@ fn issue_8007_typed_refusals_preserve_missing_unresolved_and_decode_distinctions
         assert_eq!(why.into_error(42).to_string(), format!("Geometry processing error: {text}"));
     }
 }
+
+
+#[test]
+fn issue_8020_wrong_class_mapping_targets_refuse_without_owner_assertions() {
+    for nested in [NestedMaps::Expand { max_depth: 32, max_levels: 10 },
+        NestedMaps::FirstChain { max_depth: 32 }] {
+        for (source, missing_map_rep) in [
+            ("#20=IFCCARTESIANPOINT((0.,0.,0.));", true),
+            ("#20=IFCREPRESENTATIONMAP($,#30);#30=IFCCARTESIANPOINT((0.,0.,0.));", false),
+        ] {
+            let model = format!("#10=IFCMAPPEDITEM(#20,$);{source}");
+            let mut decoder = EntityDecoder::new(&model);
+            let root = decoder.decode_by_id(10).unwrap();
+            let mut trace = Trace::default();
+            RepresentationWalk { select: Select::Any, nested }
+                .mapped_item(&root, &mut decoder, &mut trace);
+            assert_eq!(trace.refusals.len(), 1);
+            assert_eq!(trace.refusals[0].0, 10);
+            if missing_map_rep {
+                assert!(matches!(&trace.refusals[0].1, WalkRefusal::MissingMappedRepresentation));
+                assert_eq!(trace.events, ["refuse 10 depth 0 shape None"]);
+            } else {
+                assert!(matches!(&trace.refusals[0].1, WalkRefusal::MissingItems));
+                assert_eq!(trace.events, ["enter 10 depth 0",
+                    "refuse 10 depth 0 shape None", "leave 10"]);
+            }
+        }
+    }
+}
+
+#[test]
+fn issue_8020_wrong_class_root_map_and_representation_keep_shape_errors() {
+    for model in ["#20=IFCCARTESIANPOINT((0.,0.,0.));",
+        "#20=IFCREPRESENTATIONMAP($,#30);#30=IFCCARTESIANPOINT((0.,0.,0.));"] {
+        let mut decoder = EntityDecoder::new(model);
+        let root = decoder.decode_by_id(20).unwrap();
+        let mut trace = Trace::default();
+        let result = walk(10).map(&root, &mut decoder, &mut trace);
+        assert!(matches!(result, Err(ShapeError::MissingItems)));
+        assert!(trace.events.is_empty());
+    }
+}

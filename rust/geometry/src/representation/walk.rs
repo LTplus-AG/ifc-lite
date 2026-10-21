@@ -153,7 +153,7 @@ impl RepresentationWalk {
         decoder: &mut EntityDecoder,
         visitor: &mut V,
     ) -> Result<(), ShapeError> {
-        let Some(rep) = map.attr(IfcRepresentationMap::MAPPED_REPRESENTATION).map(|a| decoder.resolve_ref(a)).transpose()?.flatten() else {
+        let Some(rep) = map.get(IfcRepresentationMap::MAPPED_REPRESENTATION.index()).map(|a| decoder.resolve_ref(a)).transpose()?.flatten() else {
             return Err(ShapeError::MissingItems);
         };
         let mut run = Run { visitor, element: None, path: Vec::new(), on_path: FxHashSet::default(), levels: 0, items: 0 };
@@ -192,7 +192,7 @@ impl RepresentationWalk {
         rep: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Vec<DecodedEntity>>, ShapeError> {
-        let list = rep.attr(IfcRepresentation::ITEMS).ok_or(ShapeError::MissingItems)?;
+        let list = rep.get(IfcRepresentation::ITEMS.index()).ok_or(ShapeError::MissingItems)?;
         if let Err(why) = self.admit_items(&mut run.items, list.as_list().map_or(0, |l| l.len())) {
             let at = WalkCtx { element: run.element, shape_rep: Some(rep), path: &run.path };
             run.visitor.refused(rep, why, &at);
@@ -290,13 +290,16 @@ impl RepresentationWalk {
         if flow == Flow::Stop { Flow::Stop } else { Flow::Continue }
     }
 
+    // File references and public walk inputs are not owner-validated. Read the
+    // named position without a typed-owner assertion, preserving refusal on
+    // malformed targets rather than a debug-build panic (#8020).
     fn resolve_level(
         item: &DecodedEntity, decoder: &mut EntityDecoder,
     ) -> Result<(DecodedEntity, DecodedEntity), WalkRefusal> {
-        let source = item.attr(IfcMappedItem::MAPPING_SOURCE).ok_or(WalkRefusal::MissingSource)?;
+        let source = item.get(IfcMappedItem::MAPPING_SOURCE.index()).ok_or(WalkRefusal::MissingSource)?;
         let map = decoder.resolve_ref(source).map_err(WalkRefusal::Decode)?
             .ok_or(WalkRefusal::UnresolvedSource)?;
-        let rep = map.attr(IfcRepresentationMap::MAPPED_REPRESENTATION).ok_or(WalkRefusal::MissingMappedRepresentation)?;
+        let rep = map.get(IfcRepresentationMap::MAPPED_REPRESENTATION.index()).ok_or(WalkRefusal::MissingMappedRepresentation)?;
         let mapped_rep = decoder.resolve_ref(rep).map_err(WalkRefusal::Decode)?
             .ok_or(WalkRefusal::UnresolvedMappedRepresentation)?;
         Ok((map, mapped_rep))
@@ -305,7 +308,7 @@ impl RepresentationWalk {
     fn level_items(
         &self, used: &mut u32, rep: &DecodedEntity, decoder: &mut EntityDecoder,
     ) -> Result<Vec<DecodedEntity>, WalkRefusal> {
-        let list = rep.attr(IfcRepresentation::ITEMS).ok_or(WalkRefusal::MissingItems)?;
+        let list = rep.get(IfcRepresentation::ITEMS.index()).ok_or(WalkRefusal::MissingItems)?;
         self.admit_items(used, list.as_list().map_or(0, |items| items.len()))?;
         decoder.resolve_ref_list(list).map_err(WalkRefusal::Decode)
     }

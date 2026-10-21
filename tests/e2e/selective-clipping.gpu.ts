@@ -62,20 +62,26 @@ export async function runSelectiveClippingWitness(): Promise<SelectiveClippingRe
   const renderer = new Renderer(canvas);
   let shadow: ReturnType<typeof shadowProbe> | undefined;
   const report: SelectiveClippingReport = { adapter: null, rows: [], errors: [], gpuErrors: 0, screenshot: null };
+  let location = 'setup';
+  let stage = 'renderer init';
   try {
     await renderer.init();
     report.adapter = renderer.getAdapterInfo();
     const device = renderer.getGPUDevice();
     if (!device) throw new Error('No live WebGPU device');
     device.addEventListener('uncapturederror', (event: Event) => report.errors.push((event as GPUUncapturedErrorEvent).error.message));
+    stage = 'geometry upload';
     renderer.loadGeometry([mesh(101, -24), mesh(102, -12)]);
     if (!renderer.getScene().getBatchedMeshes().some(batch => batch.expressIds.includes(101) && batch.expressIds.includes(102))) {
       throw new Error('Witness must exercise two entities in the same colour batch');
     }
     renderer.getScene().addInstancedShard(device, shard());
     renderer.getScene().addInstancedShard(device, shard(54, 0x40000065));
+    stage = 'shadow probe init';
     shadow = shadowProbe(device, renderer['scene']);
     for (const family of ['batched', 'instanced', 'wide-instanced', 'individual'] as const) {
+      location = family;
+      stage = 'family setup';
       const cx = family === 'batched' ? -18 : family === 'instanced' ? 18 : family === 'wide-instanced' ? 54 : 0;
       const first = family === 'batched' ? 101 : family === 'instanced' ? 201 : family === 'wide-instanced' ? 0x40000065 : 301;
       if (family === 'individual') {
@@ -94,6 +100,8 @@ export async function runSelectiveClippingWitness(): Promise<SelectiveClippingRe
       camera.setPosition(cx, 0, 35); camera.setTarget(cx, 0, 0);
       const states = ['baseline', 'clipped', 'first-whole', 'both-whole', 'second-whole', 'cleared', 'extra-only', 'hidden', 'crop-box'] as const;
       for (const state of states) {
+        location = `${family}/${state}`;
+        stage = 'frame setup';
         if (state === 'first-whole') excluded.add(first);
         if (state === 'both-whole') excluded.add(first + 1);
         if (state === 'second-whole') excluded.delete(first);
@@ -107,11 +115,16 @@ export async function runSelectiveClippingWitness(): Promise<SelectiveClippingRe
         }
         if (state === 'hidden') options.hiddenIds = new Set([first]);
         if (state === 'crop-box') options.clipBox = { enabled: true, min: [cx - 2, -10, -10], max: [cx + 12, 10, 10] };
+        const visibility = { hiddenIds: options.hiddenIds, isolatedIds: options.isolatedIds };
+        stage = 'render';
         renderer.render(options);
+        stage = 'frame completion';
         await device.queue.onSubmittedWorkDone();
+        stage = 'screenshot';
         const screenshot = await renderer.captureScreenshot();
         if (!screenshot) throw new Error(`No screenshot: ${family}/${state}`);
         if (family === 'batched' && state === 'first-whole') report.screenshot = screenshot;
+        stage = 'pixel readback';
         const foreground = await pixels(screenshot);
         const row: SelectiveClippingReport['rows'][number] = { family, state, checked: 0, mismatches: [], shadowMismatches: [] };
         const expectedSamples: boolean[] = [];
@@ -123,8 +136,10 @@ export async function runSelectiveClippingWitness(): Promise<SelectiveClippingRe
           const expected = planeKeeps && !(state === 'hidden' && id === first) && !(state === 'crop-box' && index === 0);
           expectedSamples.push(expected);
           const color = foreground(screen.x, screen.y);
-          const gpu = (await renderer.pick(Math.floor(screen.x), Math.floor(screen.y)))?.expressId ?? null;
-          const cpu = renderer.raycastScene(screen.x, screen.y)?.intersection.expressId ?? null;
+          stage = `GPU pick id=${id} y=${y}`;
+          const gpu = (await renderer.pick(Math.floor(screen.x), Math.floor(screen.y), visibility))?.expressId ?? null;
+          stage = `CPU raycast id=${id} y=${y}`;
+          const cpu = renderer.raycastScene(screen.x, screen.y, visibility)?.intersection.expressId ?? null;
           row.checked++;
           // The existing pick transport stores 30-bit IDs. Its clipping lookup
           // must still use the full ID, independently of the encoded sample.
@@ -134,6 +149,7 @@ export async function runSelectiveClippingWitness(): Promise<SelectiveClippingRe
         // Visibility partitioning is tested through Renderer above. The depth oracle
         // tests the production ShadowPass clipping itself on the real scene buffers.
         if (state !== 'hidden') {
+          stage = 'shadow readback';
           const depths = await shadow.read(cx, {
             sectionExcludedIds: excluded,
             section: options.sectionPlane ? { normal: PRIMARY.normal, distance: PRIMARY.distance } : null,
@@ -147,5 +163,8 @@ export async function runSelectiveClippingWitness(): Promise<SelectiveClippingRe
     }
     report.gpuErrors = renderer.getDiagnostics().gpuErrors;
     return report;
+  } catch (error) {
+    const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    throw new Error(`Selective clipping ${location} at ${stage}: ${message}`, { cause: error });
   } finally { shadow?.destroy(); renderer.destroy(); }
 }

@@ -7,11 +7,10 @@
 //! finalize's orphan recovery. The don't-bake decision itself lives at the top-level
 //! mapped-item branch of `collect_submeshes_from_item_inner` (see `processing.rs`).
 
-use super::frame_parts::SourceParts;
 use super::GeometryRouter;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::sync::Arc;
-use crate::{Error, Result};
+use crate::{Mesh, Result};
 
 impl GeometryRouter {
     /// #1623 Phase 2 eligibility: if this `MappedRepresentation` resolves to exactly
@@ -43,14 +42,18 @@ impl GeometryRouter {
     /// that the template occurrence never materialized — never a silent geometry loss.
     /// The meshing runs OUTSIDE the brief lock (no join held under lock).
     ///
-    /// It shares `process_mapped_item_cached`'s insert guards — empty mesh and #1257
-    /// budget trip — because both write the same model-wide cache, but deliberately
-    /// NOT its recursion into nested mapped items: this is a flat walk. The only
-    /// caller reaches here having passed `mapped_source_single_item`, so the source
-    /// is exactly ONE non-mapped item and a nested one cannot occur. Should that ever
-    /// change, the walk below bails without inserting rather than registering a mesh
-    /// short of the source's real geometry — a truncated source under a key that does
-    /// not encode the truncation is served to every later occurrence.
+    /// The walk is the common mapping controller's
+    /// (`crate::program::GeometryProgram::shared_mapped_source`): the same per-item
+    /// step, ordered accumulation and once-per-source drop counting as a mapped
+    /// item's own source walk, which writes the same model-wide cache entry. It
+    /// shares that walk's insert guards — empty mesh and #1257 budget trip — but
+    /// deliberately NOT its recursion into nested mapped items: this is a flat walk.
+    /// The only caller reaches here having passed `mapped_source_single_item`, so
+    /// the source is exactly ONE non-mapped item and a nested one cannot occur.
+    /// Should that ever change, the walk bails without inserting rather than
+    /// registering a mesh short of the source's real geometry — a truncated source
+    /// under a key that does not encode the truncation is served to every later
+    /// occurrence.
     ///
     /// The #6446 single-frame guard needs no copy here: one non-mapped item is one
     /// mesh with one origin, so it can never be a multi-frame source. A mixed
@@ -76,50 +79,27 @@ impl GeometryRouter {
         {
             return Ok(());
         }
-        // Same two rules the other three walks apply, from one place: a non-Body
-        // source's dropped items are not a content loss, and this source's drops
-        // are counted once rather than once per occurrence that re-walks it —
-        // which is exactly this function, since the insert below is skipped for a
-        // total-loss (empty) source and every later occurrence lands here again.
-        // See `GeometryRouter::enter_unsupported_source`.
-        let _drop_scope = self.enter_unsupported_source(source_id, mapped_repr);
-        let mut source = SourceParts::default();
-        if let Some(items_attr) = mapped_repr.get(3) {
-            if let Ok(items) = decoder.resolve_ref_list(items_attr) {
-                for sub_item in items {
-                    if sub_item.ifc_type == IfcType::IfcMappedItem {
-                        // Unreachable via the only caller (see the doc above).
-                        // Skipping it would leave `mesh` short of the source's real
-                        // geometry, and the insert below would publish that model-wide.
-                        //
-                        // If it ever becomes reachable, note the second cost: the
-                        // scope above has already CLAIMED `source_id` in
-                        // `sources_recorded`, so a later, complete walk of the same
-                        // source through `mapped_item.rs` would find it claimed and
-                        // record nothing — losing its drops rather than duplicating
-                        // them. Releasing the claim belongs with whatever makes this
-                        // branch reachable.
-                        return Ok(());
-                    }
-                    // A missing processor or a failing one leaves the mesh short of
-                    // the source's real geometry, and the insert below publishes
-                    // that to EVERY instance of this source model-wide. The partial
-                    // mesh itself is consistent with the per-occurrence path
-                    // (`mapped_item.rs` also keeps going past a failed sub-item), so
-                    // the drop is recorded rather than the source withheld — but it
-                    // MUST be recorded, or the one place the loss is visible at all
-                    // is the one place instancing removed. `mapped_item.rs` writes
-                    // this same cache entry, so both mesh the item through the one
-                    // per-item step (RTC rebase, curve-cap drain; #7690).
-                    self.merge_source_item(&sub_item, decoder, &mut source, "shared-source")?;
-                }
-            }
-        }
-        // A refused merge is a typed terminal, not a skipped registration.
-        let mut parts = match source.into_parts() {
-            Ok(parts) => parts,
-            Err(error @ Error::ProgramStopped(_)) => return Err(error),
-            Err(_) => return Ok(()),
+        crate::program::GeometryProgram::shared_mapped_source(mapped_repr, source_id)
+            .drain_parts(self, decoder)
+            .map(drop)
+    }
+
+    /// The shared registry walk's items. A representation whose items do not
+    /// resolve walks nothing and so registers nothing.
+    pub(crate) fn shared_source_items(mapped_repr: &DecodedEntity, decoder: &mut EntityDecoder) -> Vec<DecodedEntity> {
+        mapped_repr
+            .get(3)
+            .and_then(|items_attr| decoder.resolve_ref_list(items_attr).ok())
+            .unwrap_or_default()
+    }
+
+    /// Register a walked shared source. A missing processor or a failing one
+    /// leaves the mesh short of the source's real geometry; that partial mesh is
+    /// consistent with the per-occurrence walk (which also keeps going past a
+    /// failed item), so the drop is recorded rather than the source withheld.
+    pub(crate) fn publish_shared_mapped_source(&self, source_id: u32, mut parts: Vec<Mesh>) -> Result<()> {
+        let Some(shared) = self.shared_mapped_item_cache.as_ref() else {
+            return Ok(());
         };
         if parts.len() == 1
             && !parts[0].positions.is_empty()
@@ -148,8 +128,8 @@ mod tests {
     /// A Body source whose two items both fail to mesh: `#8` has no registered
     /// processor at all (the `None` arm), `#7` has one that errors on a null
     /// profile/placement (the `Err` arm). `ensure_shared_mapped_source` is the
-    /// don't-bake path's own flat walk of a source, structurally separate from
-    /// `mapped_item.rs`'s, and its two drop arms had no test: deleting both
+    /// don't-bake path's own flat walk of a source, a separate entry into the
+    /// mapping controller from a mapped item's, and its two drop arms had no test: deleting both
     /// `record_unsupported_item` calls left the whole suite green, so the one
     /// place a don't-bake occurrence's loss is visible was unguarded.
     const TWO_FAILING_ITEMS: &str = r#"
@@ -239,9 +219,9 @@ mod tests {
             .expect("read tests/fixtures/nested_mapped_item.ifc")
     }
 
-    /// `ensure_shared_mapped_source` walks the source's items FLAT — it has no
-    /// depth/visited bound, so it cannot recurse into a nested `IfcMappedItem` the
-    /// way `process_mapped_item_cached` now does. Handed a nested source anyway, it
+    /// `ensure_shared_mapped_source` walks the source's items FLAT — it does not
+    /// recurse into a nested `IfcMappedItem` the way `process_mapped_item_cached`
+    /// does. Handed a nested source anyway, it
     /// must publish NOTHING: the shared cache is keyed on the source id, so a mesh
     /// missing the nested contribution would be served to every later occurrence,
     /// including through `process_mapped_item_cached`'s own lookup.

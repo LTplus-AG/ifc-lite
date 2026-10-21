@@ -12,6 +12,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
 use super::frame_parts::{single_frame_source, SourceParts};
 use super::GeometryRouter;
+use super::item::ItemFrame;
 use crate::{Error, Mesh, Result, SubMeshCollection};
 
 /// The accounted header admission for one retained UV-carrying part, out of line.
@@ -174,7 +175,7 @@ impl GeometryRouter {
                 }
             }
 
-            self.merge_source_item(&item, decoder, &mut untextured, "representation-map")?;
+            self.merge_source_item(&item, decoder, &mut untextured)?;
         }
 
         // attr 0: MappingOrigin (IfcAxis2Placement3D) — the only 3D transform;
@@ -218,5 +219,30 @@ impl GeometryRouter {
         }
 
         Ok(out)
+    }
+
+    /// Mesh one plain (non-`IfcMappedItem`) item of a type's representation
+    /// map into `source`: the type-geometry walk's per-item step. It matches
+    /// the mapping controller's (`crate::program::mapping`) item step, which
+    /// this walk shares once the type-map consumer is cut over to it.
+    ///
+    /// It rebases a raw-coordinate item by the model RTC in f64 before f32
+    /// narrowing (#5698, ROUTER-27), kept as the item's origin (see
+    /// [`Self::keep_rebase_in_origin`]), and, through the common item program
+    /// (`crate::program::GeometryProgram::item`), drains the #4901 curve-capped flag
+    /// for this source rather than the next item on the thread (ROUTER-26). A
+    /// failed or unsupported item is recorded as dropped. A program stop is not
+    /// a drop: it propagates as a typed terminal and nothing further is merged.
+    fn merge_source_item(
+        &self,
+        item: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        source: &mut SourceParts,
+    ) -> Result<()> {
+        match self.mesh_item(item, decoder, ItemFrame::MappedSource) {
+            Ok(mesh) => source.merge(&mesh),
+            Err(error) => self.drop_recoverable_item(item, error, "representation-map item")?,
+        }
+        Ok(())
     }
 }

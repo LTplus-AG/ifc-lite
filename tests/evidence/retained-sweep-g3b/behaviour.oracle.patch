@@ -1,0 +1,31 @@
+diff --git a/rust/geometry-runtime/src/protocol.rs b/rust/geometry-runtime/src/protocol.rs
+index f7b9d100ee..ab95716a6c 100644
+--- a/rust/geometry-runtime/src/protocol.rs
++++ b/rust/geometry-runtime/src/protocol.rs
+@@ -252,7 +252,10 @@ fn encode_arguments(command: &KernelCommand, out: &mut Vec<u8>) -> Result<(), Pr
+             bytes,
+         } => {
+             let length = u32::try_from(bytes.len()).map_err(|_| ProtocolError::PayloadSize)?;
+-            if bytes.is_empty() || offset.checked_add(length).is_none() {
++            if bytes.is_empty()
++                || bytes.len() > MAX_SWEEP_CHUNK_BYTES
++                || offset.checked_add(length).is_none()
++            {
+                 return Err(ProtocolError::PayloadSize);
+             }
+             out.extend(session.to_le_bytes());
+diff --git a/rust/geometry-runtime/src/worker_sweep.rs b/rust/geometry-runtime/src/worker_sweep.rs
+index d74b3792f5..7bf6876f0d 100644
+--- a/rust/geometry-runtime/src/worker_sweep.rs
++++ b/rust/geometry-runtime/src/worker_sweep.rs
+@@ -70,8 +70,8 @@ impl SmlibWorker {
+         let payload = request.payload();
+         let qualified = match payload.qualification {
+             RegionQualification::Rectangle => true,
+-            RegionQualification::OrderedRegion => true,
+-            RegionQualification::RationalDisk => true,
++            RegionQualification::OrderedRegion => self.regions_qualified,
++            RegionQualification::RationalDisk => self.disks_qualified,
+             _ => false,
+         };
+         if !qualified {

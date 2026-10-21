@@ -49,6 +49,22 @@ with subprocess.Popen([worker], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
     assert call(8, session + moved)[0] == 0
     reflected = (-1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
     assert call(17, session + solid + struct.pack("<16d", *reflected))[0] == 1
+    # Opcode 18 is independent of unchanged rigid opcode 17 and returns the
+    # conversion certificate of the real adapter after the new handle.
+    affine = (-2, 0, 0, 0, 0.4, 3, 0, 0, 0.2, 0.3, 4, 0, 7, -4, 2, 1)
+    status, copied = call(18, session + solid + struct.pack("<16d", *affine))
+    assert status == 0 and len(copied) == 72
+    handle, certificate = copied[:16], copied[16:]
+    version, representation, *classes = struct.unpack("<14I", certificate)
+    assert version == representation == 1 and classes[1] == 12 and classes[7] == 6
+    status, value = call(6, session + handle + struct.pack("<d", 1e-8))
+    assert status == 0 and abs(struct.unpack("<d", value)[0] - 24*24) < 24*24*1e-5
+    assert call(8, session + handle)[0] == 0
+    singular = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1)
+    status, refused = call(18, session + solid + struct.pack("<16d", *singular))
+    assert status == 1 and refused
+    status, value = call(6, session + solid + struct.pack("<d", 1e-8))
+    assert status == 0 and abs(struct.unpack("<d", value)[0] - 24) < 1e-6
     status, error = call(6, session + solid + struct.pack("<d", 1e-12))
     assert status == 1 and b"tolerance" in error
     status, mesh = call(9, session + solid + struct.pack("<dd", 0.001, 5))
@@ -57,6 +73,17 @@ with subprocess.Popen([worker], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
     vertices, triangles, faces, boundary, spine, failed = struct.unpack("<6I", info)
     assert status == 0 and vertices and triangles and faces == 6
     assert boundary == spine == failed == 0
+    # Opcode 19 classifies the actual solid; a mesh handle is no solid.
+    status, caps = call(12)
+    assert status == 0 and struct.unpack("<II", caps)[0] == 1 and struct.unpack("<II", caps)[1] & 32
+    assert call(19, session + solid) == (0, struct.pack("<I", 0))
+    assert call(19, session + mesh)[0] == 3
+    status, empty = call(5, session + solid + solid + struct.pack("<I", 3))
+    assert status == 0 and call(19, session + empty) == (0, struct.pack("<I", 1))
+    status, empty_mesh = call(9, session + empty + struct.pack("<dd", 0.001, 5))
+    assert status == 0 and call(10, session + empty_mesh) == (0, bytes(24))
+    assert call(8, session + empty_mesh) == (0, b"") and call(8, session + empty) == (0, b"")
+    assert call(19, session + empty)[0] == 3
     status, positions = call(11, session + mesh + struct.pack("<3I", 1, 0, vertices*3))
     assert status == 0 and len(positions) == vertices*3*8
     status, error = call(11, session + mesh + struct.pack("<3I", 1, 0, 481))

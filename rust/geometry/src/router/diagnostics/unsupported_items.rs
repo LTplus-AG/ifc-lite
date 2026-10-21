@@ -96,11 +96,24 @@ impl GeometryRouter {
         source_id: u32,
         mapped_repr: &DecodedEntity,
     ) -> UnsupportedSourceScope<'_> {
+        let record = self.claim_unsupported_source(source_id, mapped_repr);
+        self.enter_unsupported_policy(record)
+    }
+
+    /// The decision [`Self::enter_unsupported_source`] makes, without opening a
+    /// scope: whether drops beneath this source are recorded, claiming the
+    /// source on a Body representation's first walk. An owning walk keeps the
+    /// result and installs it with [`Self::enter_unsupported_policy`] around
+    /// each of its steps that can record.
+    pub(crate) fn claim_unsupported_source(&self, source_id: u32, mapped_repr: &DecodedEntity) -> bool {
         let is_body = crate::router::effective_rep_type(mapped_repr)
             .is_none_or(crate::router::is_body_representation);
-        let mut state = self.unsupported.borrow_mut();
-        let record = is_body && state.sources_recorded.insert(source_id);
-        state.scope.push(record);
+        is_body && self.unsupported.borrow_mut().sources_recorded.insert(source_id)
+    }
+
+    /// Open a scope with an already-claimed source's recording decision.
+    pub(crate) fn enter_unsupported_policy(&self, record: bool) -> UnsupportedSourceScope<'_> {
+        self.unsupported.borrow_mut().scope.push(record);
         UnsupportedSourceScope { router: self }
     }
 
@@ -129,6 +142,12 @@ impl GeometryRouter {
             }
         );
         Ok(())
+    }
+
+    /// Open scopes; zero between walks.
+    #[cfg(test)]
+    pub(crate) fn unsupported_scope_depth(&self) -> usize {
+        self.unsupported.borrow().scope.len()
     }
 
     /// Record one dropped representation item (unsupported type, or its

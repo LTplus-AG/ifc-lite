@@ -18,7 +18,7 @@ import { ComparePanel } from './ComparePanel';
 
 const initial = useViewerStore.getState();
 const offset = 1_000_000;
-const keys = ['data', 'geometry', 'both', 'removed', 'added', 'old-match', 'new-match'];
+const keys = ['data', 'geometry', 'both', 'removed', 'added', 'old-match', 'new-match', 'type'];
 function fp(modelId: string, key: string, dataHash = key, geometryHash = 'g'): EntityFingerprint<CompareRef> {
   const localId = keys.indexOf(key) + 1;
   return { key, dataHash, geometryHash, ifcType: 'IfcWall',
@@ -26,8 +26,8 @@ function fp(modelId: string, key: string, dataHash = key, geometryHash = 'g'): E
 }
 function result(): CompareResult {
   const diff = diffModels(
-    [fp('A', 'data'), fp('A', 'geometry'), fp('A', 'both'), fp('A', 'removed')],
-    [fp('B', 'data', 'edited'), fp('B', 'geometry', 'geometry', 'edited'), fp('B', 'both', 'edited', 'edited'), fp('B', 'added')],
+    [fp('A', 'data'), fp('A', 'geometry'), fp('A', 'both'), fp('A', 'removed'), { ...fp('A', 'type'), ifcType: 'IfcWallType' }],
+    [fp('B', 'data', 'edited'), fp('B', 'geometry', 'geometry', 'edited'), fp('B', 'both', 'edited', 'edited'), fp('B', 'added'), { ...fp('B', 'type', 'edited', 'edited'), ifcType: 'IfcWallType' }],
     { scope: 'both' },
   );
   // Stated invariant: retiring matches live outside diff.entries, and their
@@ -82,8 +82,9 @@ describe('comparison filters (#8017)', () => {
     assert.doesNotMatch(rows(ui), /removed|added|old-match/);
     const group = [...ui.querySelectorAll('button')].find(b => b.title === 'Select all changed in 3D');
     assert.ok(group);
+    assert.match(group.textContent ?? '', /Changed\s*\(2 \+1 type object\)/);
     click(group);
-    assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set([offset + 2, offset + 3]));
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set([offset + 2, offset + 3, offset + 8]));
     act(() => { select.value = 'data'; select.dispatchEvent(new Event('change', { bubbles: true })); });
     assert.ok(useViewerStore.getState().hiddenEntities.has(offset + 2));
     assert.equal(useViewerStore.getState().hiddenEntities.has(offset + 1), false);

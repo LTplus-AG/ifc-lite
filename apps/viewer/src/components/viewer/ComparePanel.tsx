@@ -160,6 +160,10 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
     [result],
   );
 
+  const filteredSplit = useMemo(() => result
+    ? productTypeSplit(result.diff.entries.filter((entry) => matchesCompareEntry(entry, filter)))
+    : null, [result, filter]);
+
   // Classes present among the current changes - the "ignore a class" picker's
   // options (#1470). Excluded classes are already absent from the diff.
   const typeCounts = useMemo(
@@ -293,7 +297,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                       result={result}
                       groups={groups}
                       counts={counts}
-                      split={filtering ? null : split}
+                      split={filteredSplit}
                       filtering={filtering}
                       matchRows={matchRows}
                       selectedKey={selectedKey}

@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Retained authored-source requests, kept apart from display meshes.
 //!
-//! A retained definition owns one captured authored extrusion plus its encoded
-//! numerical request ([`SweepPayload`]). It is never a mesh and never enters
+//! A retained definition owns one captured authored source ([`RetainedRecipe`]:
+//! an extrusion or a swept disk) plus its encoded numerical request
+//! ([`SweepPayload`]). It is never a mesh and never enters
 //! [`GeometryDocument::mesh`]. The only way from a retained definition to a
 //! mesh is [`GeometryDocument::publish_retained_display`], which admits a
 //! worker's tessellation as an ordinary display-approximation definition.
 
+use super::retained_disk::{self, RetainedSweptDisk};
 use super::retained_sweep::{self, SweepPayload};
 use super::{
     validation, DefinitionHandle, DocumentError, DocumentId, GeometryDocument, OccurrenceHandle,
 };
-use crate::analytic::{AnalyticExtrusion, AnalyticStatus, ProfileLoopKind};
+use crate::analytic::AnalyticExtrusion;
 use std::sync::Arc;
 
 /// A retained source definition owned by exactly one [`GeometryDocument`].
@@ -29,6 +31,24 @@ pub struct RetainedExtrusion {
     pub source: AnalyticExtrusion,
     /// Raw IFC file length unit -> metres.
     pub length_unit_scale: f64,
+}
+
+/// The captured authored source a retained definition owns, unchanged.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum RetainedRecipe {
+    Extrusion(RetainedExtrusion),
+    SweptDisk(RetainedSweptDisk),
+}
+
+impl RetainedRecipe {
+    /// STEP id of the authored solid; a published display is attributed to it.
+    pub fn solid_id(&self) -> u32 {
+        match self {
+            Self::Extrusion(recipe) => recipe.source.solid_id,
+            Self::SweptDisk(recipe) => recipe.solid_id,
+        }
+    }
 }
 
 /// Every refusal of the retained contract. A refused call leaves the document
@@ -83,7 +103,7 @@ pub enum RetainedDisplayContract {
 
 #[derive(Debug)]
 pub(super) struct RetainedEntry {
-    recipe: RetainedExtrusion,
+    recipe: RetainedRecipe,
     payload: SweepPayload,
 }
 
@@ -114,7 +134,7 @@ impl RetainedRequest {
     pub fn worker_incarnation(&self) -> u64 {
         self.worker_incarnation
     }
-    pub fn recipe(&self) -> &RetainedExtrusion {
+    pub fn recipe(&self) -> &RetainedRecipe {
         &self.entry.recipe
     }
     /// The encoded request a worker evaluates.
@@ -180,6 +200,25 @@ impl GeometryDocument {
         recipe: RetainedExtrusion,
     ) -> Result<RetainedDefinitionHandle, RetainedRefusal> {
         let payload = retained_sweep::lower(&recipe)?;
+        self.retain(RetainedRecipe::Extrusion(recipe), payload)
+    }
+
+    /// Encodes and retains one captured authored swept disk. Refuses every
+    /// source wire format 2 cannot represent exactly; see `retained_disk`'s
+    /// module documentation for the supported family.
+    pub fn add_retained_swept_disk(
+        &mut self,
+        recipe: RetainedSweptDisk,
+    ) -> Result<RetainedDefinitionHandle, RetainedRefusal> {
+        let payload = retained_disk::lower(&recipe)?;
+        self.retain(RetainedRecipe::SweptDisk(recipe), payload)
+    }
+
+    fn retain(
+        &mut self,
+        recipe: RetainedRecipe,
+        payload: SweepPayload,
+    ) -> Result<RetainedDefinitionHandle, RetainedRefusal> {
         let revision = self.next_revision()?;
         let handle = RetainedDefinitionHandle {
             document: self.id,
@@ -191,10 +230,10 @@ impl GeometryDocument {
         Ok(handle)
     }
 
-    pub fn retained_extrusion(
+    pub fn retained_recipe(
         &self,
         handle: RetainedDefinitionHandle,
-    ) -> Result<&RetainedExtrusion, DocumentError> {
+    ) -> Result<&RetainedRecipe, DocumentError> {
         Ok(&self.retained_entry(handle)?.recipe)
     }
 
@@ -206,7 +245,7 @@ impl GeometryDocument {
     }
 
     /// Snapshots `definition` for the worker incarnation the caller selected.
-    pub fn prepare_retained_extrusion(
+    pub fn prepare_retained(
         &self,
         definition: RetainedDefinitionHandle,
         worker_incarnation: u64,
@@ -288,7 +327,7 @@ impl GeometryDocument {
         self.revision
             .checked_add(additions)
             .ok_or(DocumentError::RevisionExhausted)?;
-        let solid_id = packet.request.entry.recipe.source.solid_id;
+        let solid_id = packet.request.entry.recipe.solid_id();
         let definition = self.add_mesh_definition(solid_id, mesh)?;
         let mut handles = Vec::with_capacity(occurrences.len());
         for &(entity_id, transform) in occurrences {
@@ -306,87 +345,6 @@ impl GeometryDocument {
             .get(handle.slot)
             .ok_or(DocumentError::WrongDocument)
     }
-}
-
-/// Strict source admission: complete extraction, captured original records,
-/// outer-then-inner loops and bounded size. Numerical checks follow in lowering.
-pub(super) fn validate_source(recipe: &RetainedExtrusion) -> Result<(), RetainedRefusal> {
-    if !recipe.length_unit_scale.is_finite() || recipe.length_unit_scale <= 0.0 {
-        return Err(RetainedRefusal::InvalidSource(
-            "invalid source length units",
-        ));
-    }
-    let source = &recipe.source;
-    if let AnalyticStatus::Unsupported(reason) = &source.status {
-        return Err(RetainedRefusal::UnsupportedSource(reason.clone()));
-    }
-    let original = source
-        .source
-        .as_ref()
-        .ok_or(RetainedRefusal::SourceNotCaptured)?;
-    if let AnalyticStatus::Unsupported(reason) = &original.capture_status {
-        return Err(RetainedRefusal::UnsupportedSource(format!(
-            "original solid capture: {reason}"
-        )));
-    }
-    if original.root_entity_id != source.solid_id
-        || !original.records.contains_key(&source.solid_id)
-    {
-        return Err(RetainedRefusal::InvalidSource(
-            "invalid original solid metadata",
-        ));
-    }
-    let profile = source
-        .profile
-        .as_ref()
-        .ok_or(RetainedRefusal::InvalidSource("missing profile"))?;
-    if let AnalyticStatus::Unsupported(reason) = &profile.status {
-        return Err(RetainedRefusal::UnsupportedSource(reason.clone()));
-    }
-    if profile.loops.is_empty() || profile.loops.len() > retained_sweep::MAX_LOOPS {
-        return Err(RetainedRefusal::InvalidSource(
-            "invalid bounded region loop count",
-        ));
-    }
-    let mut count = 0;
-    for (index, boundary) in profile.loops.iter().enumerate() {
-        let expected = if index == 0 {
-            ProfileLoopKind::Outer
-        } else {
-            ProfileLoopKind::Inner
-        };
-        if boundary.kind != expected {
-            return Err(RetainedRefusal::InvalidSource(
-                "expected outer then inner boundaries",
-            ));
-        }
-        if boundary.segments.is_empty()
-            || boundary.segments.len() > retained_sweep::MAX_SEGMENTS - count
-        {
-            return Err(RetainedRefusal::InvalidSource(
-                "curve count exceeds bounded recipe",
-            ));
-        }
-        count += boundary.segments.len();
-        let original = boundary
-            .source
-            .as_ref()
-            .ok_or(RetainedRefusal::SourceNotCaptured)?;
-        if let AnalyticStatus::Unsupported(reason) = &original.capture_status {
-            return Err(RetainedRefusal::UnsupportedSource(format!(
-                "original boundary capture: {reason}"
-            )));
-        }
-        if !original.plane_angle_to_radians.is_finite()
-            || original.plane_angle_to_radians <= 0.0
-            || !original.records.contains_key(&original.root_entity_id)
-        {
-            return Err(RetainedRefusal::InvalidSource(
-                "invalid original boundary metadata",
-            ));
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]

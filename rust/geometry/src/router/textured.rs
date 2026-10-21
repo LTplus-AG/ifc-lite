@@ -14,6 +14,14 @@ use super::frame_parts::{single_frame_source, SourceParts};
 use super::GeometryRouter;
 use crate::{Error, Mesh, Result, SubMeshCollection};
 
+/// The accounted header admission for one retained UV-carrying part, out of line.
+#[cold]
+#[inline(never)]
+fn admit_textured_part<T>(textured: &mut Vec<T>) -> Result<()> {
+    crate::resource::reserve_headers(textured, 1)?.retain();
+    Ok(())
+}
+
 impl GeometryRouter {
     /// Texture-aware [`Self::process_element_with_submeshes`] (#1781): a face
     /// set listed in `texture_index` becomes its own textured sub-mesh carrying
@@ -142,7 +150,8 @@ impl GeometryRouter {
                 match self.process_mapped_item_parts(&item, decoder) {
                     // already scaled inside the cached path
                     Ok(sub_parts) => sub_parts.iter().for_each(|part| untextured.merge(part)),
-                    Err(_e) => {
+                    Err(error) => {
+                        let _e = Self::recoverable_source_error(error)?;
                         self.record_unsupported_item(item.ifc_type.clone());
                         crate::diag::diag_debug!(
                             { item_id = item.id, error = %_e,
@@ -167,12 +176,17 @@ impl GeometryRouter {
                     self.textured_face_set(&item, decoder, map, Some(self.rtc_offset))
                 {
                     self.keep_rebase_in_origin(&mut sub_mesh);
+                    // UV-carrying parts are retained output: admit the header
+                    // growth before the push, so a zero allowance refuses it.
+                    if crate::resource::is_active() {
+                        admit_textured_part(&mut textured)?;
+                    }
                     textured.push((sub_mesh, sub_uvs, map.attachment()));
                     continue;
                 }
             }
 
-            self.merge_source_item(&item, decoder, &mut untextured, "representation-map");
+            self.merge_source_item(&item, decoder, &mut untextured)?;
         }
 
         // attr 0: MappingOrigin (IfcAxis2Placement3D) — the only 3D transform;
@@ -216,5 +230,51 @@ impl GeometryRouter {
         }
 
         Ok(out)
+    }
+
+    /// Mesh one plain (non-`IfcMappedItem`) item of a type's representation
+    /// map into `source`: the type-geometry walk's per-item step. It matches
+    /// the mapping controller's (`crate::program::mapping`) item step, which
+    /// this walk shares once the type-map consumer is cut over to it.
+    ///
+    /// It rebases a raw-coordinate item by the model RTC in f64 before f32
+    /// narrowing (#5698, ROUTER-27), kept as the item's origin (see
+    /// [`Self::keep_rebase_in_origin`]), and, through the common item program
+    /// (`crate::program::GeometryProgram::item`), drains the #4901 curve-capped flag
+    /// for this source rather than the next item on the thread (ROUTER-26). A
+    /// failed or unsupported item is recorded as dropped. A program stop is not
+    /// a drop: it propagates as a typed terminal and nothing further is merged.
+    fn merge_source_item(
+        &self,
+        item: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        source: &mut SourceParts,
+    ) -> Result<()> {
+        let meshed = match self.processor_for(&item.ifc_type) {
+            Some(_) => crate::program::GeometryProgram::item(item, self.rtc_offset).drain(self, decoder),
+            None => Err(Error::geometry("no processor")),
+        };
+        match meshed {
+            Ok(mut mesh) => {
+                self.keep_rebase_in_origin(&mut mesh);
+                source.merge(&mesh);
+            }
+            Err(error) => {
+                let _e = Self::recoverable_source_error(error)?;
+                self.record_unsupported_item(item.ifc_type.clone());
+                crate::diag::diag_debug!(
+                    { item_id = item.id, ifc_type = ?item.ifc_type, walk = "representation-map",
+                      error = %_e, "skipping unsupported source item" }
+                    else {
+                        #[cfg(debug_assertions)]
+                        eprintln!(
+                            "[ifc-lite] Skipping unsupported representation-map item #{} ({:?}): {}",
+                            item.id, item.ifc_type, _e
+                        );
+                    }
+                );
+            }
+        }
+        Ok(())
     }
 }

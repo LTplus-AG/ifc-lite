@@ -115,6 +115,7 @@
     "RuleResult": "struct { records: Vec<ClashRecord> }"
   },
   "ifc-lite-geometry": {
+    "AccountedMappedItemCache": "struct {  }",
     "AdvancedBrepProcessor": "struct (unit)",
     "AlignmentAxis": "struct { GlobalId: Option<String>; Name: Option<String>; approximate: bool; express_id: u32 }",
     "AlignmentCurve": "struct {  }",

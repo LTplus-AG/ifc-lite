@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Owned numerical constructors admitted by the actual selected processor, and
-//! the common item/cache controller that drives them for a reached item.
+//! the common item/cache/mapping controller that drives them for a reached item.
 
 pub(crate) mod constructor;
 mod execute;
 mod inner;
 mod inner_cache;
 mod item;
+mod mapping;
 pub(crate) use inner::GeometryProgram;
+#[cfg(test)]
+pub(crate) use inner::{ProgramError, ProgramStage};
 
 /// Opaque, owned constructor admitted by the actual selected processor instance.
 /// It contains sampled production parameters in file units, never a decoder,

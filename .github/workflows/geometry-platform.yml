@@ -9,6 +9,9 @@ on:
     paths:
       - 'native/**'
       - 'rust/geometry-runtime/**'
+      # Retained requests the worker executes are lowered here.
+      - 'rust/geometry/src/document/**'
+      - 'rust/geometry/src/analytic/**'
       - '.github/workflows/geometry-platform.yml'
   workflow_dispatch:
 

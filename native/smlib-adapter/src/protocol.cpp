@@ -76,6 +76,10 @@ Writer dispatch(Reader& reader) {
             const auto solid = reader.handle(); reader.end(); uint32_t value = 0;
             status = ifclite_smlib_manifold(session,solid,&value); payload.u32(value); break;
         }
+        case 19: {
+            const auto solid = reader.handle(); reader.end(); uint32_t value = 0;
+            status = ifclite_smlib_is_empty(session,solid,&value); payload.u32(value); break;
+        }
         case 8: {
             const auto solid = reader.handle(); reader.end();
             status = ifclite_smlib_release(session,solid); break;
@@ -105,6 +109,38 @@ Writer dispatch(Reader& reader) {
                     else { uint32_t value; std::memcpy(&value,buffer.data()+4*i,4); payload.u32(value); }
                 }
             }
+            break;
+        }
+        case 13: {
+            const uint32_t format=reader.u32(), length=reader.u32();
+            const uint32_t loops=reader.u32(), segments=reader.u32(); reader.end();
+            uint64_t upload=0;
+            status=ifclite_smlib_sweep_begin(session,format,length,loops,segments,&upload);
+            payload.u64(upload); break;
+        }
+        case 14: {
+            const uint64_t upload=reader.u64(); const uint32_t offset=reader.u32();
+            const uint32_t length=reader.u32();
+            if (length>3840 || reader.bytes.size()-reader.offset!=length)
+                throw std::runtime_error("invalid upload chunk frame");
+            status=ifclite_smlib_sweep_chunk(session,upload,offset,
+                reader.bytes.data()+reader.offset,length); break;
+        }
+        case 15: {
+            const uint64_t upload=reader.u64(); reader.end(); ifclite_smlib_handle solid{};
+            status=ifclite_smlib_sweep_commit(session,upload,&solid); payload.handle(solid); break;
+        }
+        case 16: {
+            const uint64_t upload=reader.u64(); reader.end();
+            status=ifclite_smlib_sweep_abort(session,upload); break;
+        }
+        case 18: {
+            const auto input=reader.handle(); std::array<double,16> matrix{};
+            for(double& value:matrix) value=reader.f64();
+            reader.end(); ifclite_smlib_handle result{}; ifclite_smlib_affine_certificate certificate{};
+            status=ifclite_smlib_copy_affine(session,input,matrix.data(),&result,&certificate);
+            payload.handle(result); payload.u32(certificate.version); payload.u32(certificate.representation);
+            for(auto count:certificate.source_classes) payload.u32(count);
             break;
         }
         case 17: {

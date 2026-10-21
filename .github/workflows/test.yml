@@ -904,6 +904,17 @@ jobs:
           # and timeout. Once source_axes.rs is on main, whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/kernel/plane_weld/source_axes.rs | grep -Fxq 'rust/geometry/src/kernel/plane_weld/source_axes.rs'; then
             oracle_args+=(--mutation docs/architecture/evidence/issue-7292/signed-zero.oracle.patch)
+          # #7955 D3b: the styled and type-map walks add program/mapping_accept.rs,
+          # which the controller its tests drive needs, so a whole-change revert
+          # cannot compile them (INCONCLUSIVE). Keep the walks and break ONLY
+          # the behaviour: a type map's nested item no longer starts a fresh
+          # depth path, styled plain items escape the depth bound, a styled
+          # source never claims its drop count and a provisional template
+          # claim is never rolled back. Listed before D3 because this branch
+          # also adds program/mapping.rs. Once program/mapping_accept.rs is on
+          # main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/mapping_accept.rs | grep -Fxq 'rust/geometry/src/program/mapping_accept.rs'; then
+            oracle_args+=(--mutation tests/evidence/styled-type-map-d3b/behaviour.oracle.patch)
           # #7955 D3: the mapping controller adds program/mapping.rs and
           # mapping_reduce.rs, which its tests drive, so a whole-change revert
           # cannot compile them (INCONCLUSIVE). Keep the controller and break

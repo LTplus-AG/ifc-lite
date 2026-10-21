@@ -169,3 +169,37 @@ fn issue_8006_attachment_index_keeps_only_the_requested_body_attachments() {
     assert_eq!(plan.replacements.len(), 1);
     assert_eq!(plan.replacements[0].express_id, 50);
 }
+
+#[test]
+fn issue_8006_axis_only_alignment_still_requires_readable_source_references() {
+    let broken = r"ISO-10303-21;
+HEADER;FILE_DESCRIPTION(('alignment section integrity'),'2;1');FILE_NAME('','',(''),(''),'','','');FILE_SCHEMA(('IFC4X1'));ENDSEC;
+DATA;
+#1=IFCPROJECT('p',$,'Project',$,$,$,$,(#10),#4);
+#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);#4=IFCUNITASSIGNMENT((#2));
+#10=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#11,$);
+#11=IFCAXIS2PLACEMENT3D(#12,$,$);#12=IFCCARTESIANPOINT((0.,0.,0.));
+#20=IFCCARTESIANPOINT((10.,0.,0.));#21=IFCCARTESIANPOINT((20.,0.,0.));
+#22=IFCPOLYLINE((#20,#21));
+#50=IFCALIGNMENT('0M7tQ9Jbj1BAeHd7rqnDmR',#999,'Road',$,$,$,$,#22);
+ENDSEC;END-ISO-10303-21;
+";
+    let clean = broken.replace("',#999,'Road'", "',$,'Road'");
+    let plane = [SectionExportPlane { normal: [1., 0., 0.], offset: 15. }];
+    for source in [broken, clean.as_str()] {
+        let processed = process_geometry(&source);
+        assert!(processed.meshes.iter().any(|part| part.express_id == 50 && !part.indices.is_empty()),
+            "the Axis must genuinely mesh without a Representation");
+    }
+    let cropped = plan_section_export(clean.as_bytes(), &plane, true).unwrap();
+    assert_eq!(cropped.replacements.len(), 1);
+    assert_eq!(cropped.replacements[0].express_id, 50);
+    assert!(!cropped.replacements[0].parts.is_empty());
+    for trim in [false, true] {
+        for offset in [5., 15., 25.] {
+            let error = plan_section_export(broken.as_bytes(),
+                &[SectionExportPlane { normal: [1., 0., 0.], offset }], trim).unwrap_err();
+            assert!(error.contains("incomplete product #50") && error.contains("unreadable reference #999"), "{error}");
+        }
+    }
+}

@@ -109,7 +109,7 @@ fn router_mesh_paths_refuse_present_non_reference_placements_7877() {
                 router.process_element(&entity, &mut decoder).map(|mesh| !mesh.positions.is_empty())
             };
             if valid {
-                assert_eq!(result.unwrap(), true, "{marker}, submeshes={submeshes}");
+                assert!(result.unwrap(), "{marker}, submeshes={submeshes}");
             } else {
                 assert!(result.is_err(), "{marker}, submeshes={submeshes}: no fabricated identity");
             }

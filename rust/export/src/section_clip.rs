@@ -69,7 +69,6 @@ pub fn plan_section_export(
     if planes.is_empty() { return Ok(SectionExportPlan::default()); }
     let mut safety = safety::Safety::default();
     let processed = process(content, &ProcessingRequest::full_pass(), &mut safety);
-    let mut textured = std::collections::BTreeSet::new();
     let mut groups = BTreeMap::<u32, Vec<&MeshData>>::new();
     for part in &processed.meshes {
         if !matches!(part.geometry_class, 0 | GEOM_CLASS_LAYER_SLICE) {
@@ -98,9 +97,8 @@ pub fn plan_section_export(
         }
         if product_kind || ifc_lite_core::has_geometry_by_name(name) {
             let entity = decoder.decode_by_id(id).map_err(|error| error.to_string())?;
-            if entity.ref_at(slot::IfcProduct::REPRESENTATION).is_some() {
-                if !groups.contains_key(&id) { return Err(format!("section export cannot safely crop unmeshed {name} #{id}")); }
-                if safety.require_product(id, &mut decoder, &processed.stats)? { textured.insert(id); }
+            if entity.ref_at(slot::IfcProduct::REPRESENTATION).is_some() && !groups.contains_key(&id) {
+                return Err(format!("section export cannot safely crop unmeshed {name} #{id}"));
             }
         }
     }
@@ -108,12 +106,16 @@ pub fn plan_section_export(
     let router = ifc_lite_geometry::GeometryRouter::with_scale(unit);
     let mut plan = SectionExportPlan::default();
     for (id, parts) in groups {
+        // Axis-based products can mesh without an IfcProduct Representation.
+        // Every retained mesh group still needs the same complete receipt and
+        // readable source graph before any inside/outside/crossing decision.
+        let textured = safety.require_product(id, &mut decoder, &processed.stats)?;
         let _budget = ifc_lite_geometry::kernel::budget::enter_element();
         let (clipped, changed) = parts::cut_parts(&parts, processed.frame, &planes, trim)
             .map_err(|error| format!("section export #{id}, {error}"))?;
         if clipped.is_empty() { plan.outside.push(id); continue; }
         if !changed || !trim { continue; }
-        if textured.contains(&id) || parts.iter().any(|part| part.texture.is_some() || part.uvs.is_some()) {
+        if textured || parts.iter().any(|part| part.texture.is_some() || part.uvs.is_some()) {
             return Err(format!("section export cannot trim textured product #{id}: texture/UV preservation is unsupported"));
         }
         let product = decoder.decode_by_id(id).map_err(|error| error.to_string())?;

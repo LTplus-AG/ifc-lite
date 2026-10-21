@@ -165,8 +165,7 @@ function targetDocs() {
   let packageReadmes = 0;
   for (const { dir } of publishedPackages()) {
     const rel = join('packages', dir, 'README.md');
-    // A missing README is check-package-readmes.mjs's verdict, not this
-    // gate's, which would only crash on the unreadable path.
+    // A missing README is check-package-readmes.mjs's verdict; this gate would only crash on it.
     if (!existsOrFail(join(ROOT, rel), 'package README')) continue;
     files.push(rel);
     packageReadmes += 1;
@@ -233,10 +232,9 @@ function buildPaths() {
     // A manifest with no `name` is not in the published set's business, but it
     // is in this map's: the name IS the key here (#3846 review).
     if (!pkg.name) continue;
-    // @ifc-lite/wasm ships a committed .d.ts (no src/index.ts).
+    // @ifc-lite/wasm ships committed .d.ts (no src/); retained.d.ts sits beside pkg/.
     if (pkg.name === '@ifc-lite/wasm') {
       paths['@ifc-lite/wasm'] = ['packages/wasm/pkg/ifc-lite.d.ts'];
-      // The opt-in retained loader ships beside pkg/, not inside it (#7955 H1).
       paths['@ifc-lite/wasm/retained'] = ['packages/wasm/retained.d.ts'];
       paths['@ifc-lite/wasm/*'] = ['packages/wasm/pkg/*'];
       continue;

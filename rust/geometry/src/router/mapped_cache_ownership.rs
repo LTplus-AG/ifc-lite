@@ -179,6 +179,11 @@ impl GeometryRouter {
     /// Accounted copy for both cache population and every cache hit, so a
     /// repeated occurrence is charged (or refused) like the first one.
     pub(super) fn clone_cached_mesh(&self, mesh: &Mesh) -> crate::Result<Mesh> {
+        // A hit is coverage too: under a bounded account an ordinary
+        // (unaccounted) shared cache is refused on lookup, not only on insert.
+        if self.shared_mapped_item_cache.is_some() {
+            self.check_mapped_cache_coverage()?;
+        }
         if !crate::resource::is_active() {
             return Ok(mesh.clone());
         }

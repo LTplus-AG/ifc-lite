@@ -128,11 +128,6 @@ impl GeometryRouter {
         // shared lock; the source build below (which nests faceted-brep's rayon
         // `par_iter`) runs OUTSIDE any lock, so a lock is never held across a nested
         // join (the #1587 deadlock class).
-        // A hit is coverage too: under a bounded account an ordinary
-        // (unaccounted) shared cache is refused on lookup, not only on insert.
-        if self.shared_mapped_item_cache.is_some() {
-            self.check_mapped_cache_coverage()?;
-        }
         let cached_source: Option<Arc<Mesh>> = match &self.shared_mapped_item_cache {
             Some(shared) => shared
                 .lock()

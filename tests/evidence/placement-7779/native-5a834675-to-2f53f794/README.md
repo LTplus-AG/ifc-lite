@@ -128,3 +128,35 @@ closure attempt was refused by `safety.idle` with “benchmark queued or active�
 The task remains `ACTIVE` under that closure hold, but is no longer evidence
 pending for this reduced selection. No retry, override, new measurement,
 qualification, neutrality, speedup or cost acceptance follows from publication.
+
+## Supplemental six-fixture correctness observation
+
+[Supplemental records](supplemental-correctness/receipt.json) add the six missing
+named fixtures using the same four authenticated original binaries and exact
+`5a834675…` → `2f53f794…` compiled source pair. Twenty-four bounded sequential
+processes completed with exit 0, without skips: stock probe and strong witness on
+each arm for duplex, OpenHouse and four small in-tree geometry fixtures.
+[Bindings](supplemental-correctness/bindings.json) retain exact fixture sizes and
+hashes, source/compiler/binary pins and original manifest/custody bindings.
+[Observations](supplemental-correctness/observations.json) retain every declared
+stock/FNV and strong-witness comparison plus exact witness and diagnostic bytes;
+all six pairs match. Four in-tree diagnostics are literal `null` on both arms.
+Separate material/texture-definition result fields remain outside this scope.
+
+Together with the three retained original fixture pairs above, identity collection
+is complete for the nine named fixtures in this declared scope. The original
+three-model five-iteration timing cohort and strong witnesses were reused as
+separate retained evidence; those models were not rerun. This supplement is a
+small-fixture-only local Pop correctness observation under the explicit machine
+policy exemption, with no builds or cache access. The first local attempt stopped
+before any model call because a benchmark was queued/running; a newly reviewed
+one-shot attempt ran only after that external state changed and fresh safety
+checks passed. The prior PC admission timeout likewise executed no project
+commands. Neither failed attempt is relabelled as coverage.
+
+This is no new timing cohort, speedup, neutrality or cost acceptance, and supplies
+no qualification for later private integrations or other source pairs. Original
+raw hashes and normalized command outcomes are recorded without private host
+paths or PIDs. The containing documentation commit changes no production, build,
+Rust, test, golden or budget inputs; [source equivalence](supplemental-correctness/source-identity.json)
+binds its published parent. No new validation was run to prepare this supplement.

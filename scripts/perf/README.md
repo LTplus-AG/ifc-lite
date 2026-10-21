@@ -4362,3 +4362,61 @@ no proven main-byte reduction is claimed here. Accept this measured cost
 explicitly, retain the current build policy and automatic lowering, and require
 a new measurement and maintainer decision for any later increase. Source-matched
 performance acceptance and transfer-size acceptance remain separate decisions.
+
+### Missing polygonal-face records (#7911)
+
+Correctness change, with no performance improvement or neutrality claim. The
+original native cohort retained ordered mesh identity on Haus, ISSUE_129 and
+Holter, but its phase and complete-sample timing results were inconclusive.
+That original evidence remains historical rather than qualifying the recovery.
+
+The recovered runtime source `e8d7a7e595` was compared with main `141285f828`
+using separately built frozen binaries and five fixed interleaved rounds.
+Complete ordered mesh payloads, float fields, frames/metadata and diagnostic
+bytes match on all three controls. The new timing report is also noisy and
+inconclusive; no browser worker-pool or speed result follows from it.
+
+Controlled corruption of the committed Bonsai polygonal-cutter fixture confirms
+that the recovery retains the same geometry as removing only the absent face
+reference. The old source drops the face set; the recovery reports the missing
+face while retaining its valid neighbors. The first verifier failed because it
+read a snake_case diagnostic key rather than the serialized camelCase contract.
+A separate strict-schema reconciliation of the retained outputs passed; the
+original failed result and raw bytes remain unchanged, with no probe rerun.
+
+Lesson: keep missing-face refusal local, distinguish output identity from
+inconclusive timing, and reject unknown diagnostic schemas instead of treating
+missing fields as zero. The wider Rust charter obligations remain separate.
+
+The final recovery `f05119b6d92a` also excludes absent-face polygonal sets from
+opt-in extra dedup, retaining healthy cache reuse and a refusal on every fresh
+router. Removing only that exclusion fails the second-router report assertion;
+exact restoration passes. Its source-specific native workspace and strict
+clippy qualification passed.
+
+The fixed final-source timing cohort against the retained, authenticated main
+arm preserves all mesh fingerprints, counts and failure counters. Its report
+remains noisy and inconclusive overall, but flags the Haus parse phase as
+slower; complete-load wall medians also increase on all controls. Preserve that
+adverse result rather than substituting the earlier recovery's timing or calling
+this neutral. Causal attribution remains unproven. This
+default-off dedup/native cohort establishes no opt-in or browser performance
+claim.
+
+The separate final-source full-payload witness passes on the same frozen arms:
+the control models preserve ordered meshes, exact float payloads, frame/metadata
+and diagnostic bytes. Controlled damage again preserves the reference-removed
+geometry and adds the missing-face refusal. Its first preflight failed before
+any model call because a negative parser control caught the wrong exception
+type. A separately reviewed derivative corrects only that control and binds both
+the original verifier and its own reviewed bytes; all model calls then pass.
+The original failure remains preserved. Correctness and timing are separate
+verdicts: output identity does not establish performance neutrality.
+
+Disposition: accept the disclosed native cost for this localized Class X
+correctness change, which preserves valid neighboring geometry with a counted
+refusal. Independent adversarial review approves its source and correctness
+evidence. The charter requires a performance verdict for this class; this is an
+adverse verdict, with causal attribution still unproven, rather than a neutrality
+claim. Existing native-instruction, bundle, parity and required CI ceilings stay
+binding. No benchmark rerun, baseline, acceptance band or pin change is made.

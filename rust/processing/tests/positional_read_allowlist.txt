@@ -70,7 +70,6 @@
 26 rust/geometry/src/profiles/steel_shapes.rs
 3 rust/geometry/src/representation/mod.rs
 1 rust/geometry/src/representation/select.rs
-3 rust/geometry/src/representation/walk.rs
 4 rust/geometry/src/router/annotation.rs
 2 rust/geometry/src/router/instancing.rs
 3 rust/geometry/src/router/mapped_item.rs

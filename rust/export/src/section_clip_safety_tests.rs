@@ -143,3 +143,29 @@ fn issue_7711_source_texture_discovery_is_independent_of_mesh_uvs_and_other_atta
         assert!(error.contains("cannot trim textured product #50"), "{label}: {error}");
     }
 }
+
+#[test]
+fn issue_8006_orphan_type_geometry_refuses_instead_of_leaking_uncropped_source() {
+    let source = slab("$", 0.).replace(
+        "#50=IFCSLAB('0M7tQ9Jbj1BAeHd7rqnDmR',$,'Slab',$,$,#22,#45,$,.FLOOR.);",
+        "#60=IFCREPRESENTATIONMAP(#11,#44);\n#50=IFCBOILERTYPE('0M7tQ9Jbj1BAeHd7rqnDmR',$,'Boiler',$,$,$,(#60),$,$,.NOTDEFINED.);",
+    );
+    let processed = process_geometry(&source);
+    assert!(processed.meshes.iter().any(|part| part.express_id == 50 && part.geometry_class == 1), "control must genuinely produce orphan type geometry");
+    for trim in [false, true] {
+        let error = plan_section_export(source.as_bytes(), &[SectionExportPlane {normal:[1.,0.,0.],offset:0.}], trim).unwrap_err();
+        assert!(error.contains("cannot safely crop geometry class 1 for #50"), "{error}");
+    }
+}
+
+#[test]
+fn issue_8006_attachment_index_keeps_only_the_requested_body_attachments() {
+    // Many unrelated inverse attachments must not be scanned for each product.
+    // A dangling unrelated style also cannot contaminate a clean body's verdict.
+    let source = slab("$", 0.).replace("ENDSEC;\nEND-ISO", "#90=IFCSTYLEDITEM(#42,(#91),$);\n#91=IFCSURFACESTYLE($,.BOTH.,(#92));\n#92=IFCSURFACESTYLESHADING(#93,$);\n#93=IFCCOLOURRGB($,1.,0.,0.);\n#94=IFCSTYLEDITEM(#999,(#998),$);\nENDSEC;\nEND-ISO");
+    // Read the actual product graph and its indexed inverse lookup, rather than
+    // imposing a timing threshold on this small correctness fixture.
+    let plan = plan_section_export(source.as_bytes(), &[SectionExportPlane {normal:[1.,0.,0.],offset:0.}], true).unwrap();
+    assert_eq!(plan.replacements.len(), 1);
+    assert_eq!(plan.replacements[0].express_id, 50);
+}

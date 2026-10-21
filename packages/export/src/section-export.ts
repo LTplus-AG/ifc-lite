@@ -59,7 +59,9 @@ export async function exportSectionedStep(content: Uint8Array, options: SectionE
   // Detach excluded bodies too, so those metadata records cannot leak geometry.
   for (const id of plan.outside) {
     const oldRep = entity(id)?.attributes[6];
-    if (typeof oldRep !== 'number') throw new Error('Excluded section product has no original Representation.');
+    // Alignments can mesh through segment children without a product Representation.
+    if (oldRep === null || oldRep === undefined) continue;
+    if (typeof oldRep !== 'number') throw new Error('Excluded section product has malformed original Representation.');
     oldReps.set(id, oldRep);
     editor.setPositionalAttribute(id, 6, null);
   }

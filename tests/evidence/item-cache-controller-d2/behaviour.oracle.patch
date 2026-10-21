@@ -1,0 +1,48 @@
+diff --git a/rust/geometry/src/program/inner.rs b/rust/geometry/src/program/inner.rs
+index ded66a4b61..3a23061d3f 100644
+--- a/rust/geometry/src/program/inner.rs
++++ b/rust/geometry/src/program/inner.rs
+@@ -156,13 +156,16 @@ impl<'a> GeometryProgram<'a> {
+         }
+         // Owners are validated before the recipe is taken: a refused call
+         // leaves the request executable by its actual router and decoder.
++        self.validate_owner(router, Some(decoder))?;
+         self.expected_router = Some(router.execution_identity());
+         self.expected_decoder = Some(decoder.execution_identity());
++        // Consume admission before any callback can unwind. A copied ticket
++        // cannot replay work after its recipe was moved into a lexical call.
++        self.pending = Some((request, true));
+         let value = match &mut self.control {
+             Control::Item(control) => ReplyValue::Item(control.execute(router, decoder)?),
+             Control::Cache(control) => ReplyValue::Cache(control.execute(router, decoder)?),
+         };
+-        self.pending = Some((request, true));
+         self.expected_payload = Some(value.tag());
+         Ok(ProgramReply { request, value })
+     }
+diff --git a/rust/geometry/src/program/item.rs b/rust/geometry/src/program/item.rs
+index c1c12b6711..a376a24825 100644
+--- a/rust/geometry/src/program/item.rs
++++ b/rust/geometry/src/program/item.rs
+@@ -151,7 +151,7 @@ fn execute_source(
+             ItemPhase::LowerRtc => match router.raw_item_rtc_file_units(item, decoder, offset) {
+                 Some(rtc) => match processor.lower_owned(item, decoder, quality, Some(rtc)) {
+                     Some(plan) => Lowered::Plan(plan, true),
+-                    None => lower_plain(decoder),
++                    None => Lowered::Next(ItemPhase::RtcExtension(rtc)),
+                 },
+                 // No rebase: plain lowering is the same source stage, so it
+                 // runs in this step rather than costing a round trip per item.
+diff --git a/rust/geometry/src/router/item_cache_program.rs b/rust/geometry/src/router/item_cache_program.rs
+index aa0adac95b..b71675575e 100644
+--- a/rust/geometry/src/router/item_cache_program.rs
++++ b/rust/geometry/src/router/item_cache_program.rs
+@@ -49,7 +49,7 @@ impl GeometryRouter {
+                 .unwrap_or_else(|e| e.into_inner())
+                 .get(&key)
+                 .cloned();
+-            if let Some(entry) = hit.filter(|_| false) {
++            if let Some(entry) = hit {
+                 let (mesh, rep) = (entry.0.clone(), entry.1);
+                 return CacheAdmission::Hit(stamp_direct_instance(mesh, rep));
+             }

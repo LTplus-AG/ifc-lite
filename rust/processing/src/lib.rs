@@ -39,6 +39,8 @@ pub use shard_classes::{
 #[path = "determinism_tests.rs"]
 mod determinism_tests;
 pub mod element;
+pub mod retained_geometry;
+pub mod retained_requests;
 mod geometry_pool;
 pub use geometry_pool::{
     geometry_pool, geometry_pool_builder, run_on_geometry_pool, GEOMETRY_STACK_BYTES,

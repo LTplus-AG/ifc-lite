@@ -125,7 +125,7 @@ fn root_capped_failure_publishes_once_with_accepted_geometry() {
         "the engulfing box-cut stays suppressed"
     );
     assert_eq!(
-        telemetry.len(),
+        telemetry.fast_path_len(),
         0,
         "the exact route records no fast-path telemetry"
     );

@@ -19,6 +19,7 @@ mod instancing;
 pub(crate) mod item_cache_program;
 mod item_dedup_cache;
 mod layers;
+mod mapped_cache_ownership;
 mod mapped_item;
 pub(crate) mod processing;
 mod processor;
@@ -31,6 +32,7 @@ pub(crate) mod voids;
 
 pub use processor::GeometryProcessor;
 pub use brep_signatures::SharedBrepSignatureCache;
+pub use mapped_cache_ownership::AccountedMappedItemCache;
 pub use item_dedup_cache::{ItemDedupCache, ItemDedupCacheState};
 pub use transforms::local_frame_set_enabled_override;
 pub use voids::{take_bool2d_stats, take_prism_defers, take_prism_stats, RectParam};
@@ -126,6 +128,11 @@ pub struct GeometryRouter {
     /// meshing (which nests faceted-brep's rayon `par_iter`) runs OUTSIDE the
     /// lock, so it is never held across a nested join (#1587). `None` ⇒ fallback.
     shared_mapped_item_cache: Option<SharedMappedItemCache>,
+    /// Admission owner for `shared_mapped_item_cache` under bounded execution;
+    /// a plain shared cache is refused as unsupported coverage there.
+    accounted_mapped_cache: Option<AccountedMappedItemCache>,
+    /// Publishing accounts retained by this router's local caches.
+    mapped_cache_accounts: RefCell<Vec<crate::resource::ExecutionAccount>>,
     /// Cache for geometry deduplication by content hash (buildings with
     /// repeated floors have 99% identical geometry). Key: mesh-content hash.
     geometry_hash_cache: RefCell<FxHashMap<u64, Arc<Mesh>>>,
@@ -261,6 +268,8 @@ impl GeometryRouter {
             processors: ProcessorRegistry::new(),
             mapped_item_cache: RefCell::new(FxHashMap::default()),
             shared_mapped_item_cache: None, // armed by `enable_shared_mapped_item_cache`
+            accounted_mapped_cache: None,
+            mapped_cache_accounts: RefCell::new(Vec::new()),
             geometry_hash_cache: RefCell::new(FxHashMap::default()),
             item_dedup_cache: None, // armed by `with_units` / `enable_content_dedup_shared`
             content_sig_memo: RefCell::new(FxHashMap::default()),
@@ -397,25 +406,6 @@ impl GeometryRouter {
     pub fn enable_content_dedup_shared(&mut self, cache: ItemDedupCache) {
         self.execution_owner.changed();
         self.item_dedup_cache = Some(cache);
-    }
-
-    /// A fresh empty shared `IfcMappedItem` source cache, to be cloned into every
-    /// per-element / per-batch router of ONE loaded model so a mapped source shared
-    /// across owning elements is meshed once model-wide (#1623). Mirrors
-    /// [`Self::new_dedup_cache`]. Keep one per model/pass: the cached meshes bake in
-    /// this pass's unit scale / tessellation quality.
-    pub fn new_mapped_item_cache() -> SharedMappedItemCache {
-        Arc::new(Mutex::new(FxHashMap::default()))
-    }
-
-    /// Inject a shared `IfcMappedItem` source cache (see
-    /// [`Self::new_mapped_item_cache`]) into this router. All routers given the
-    /// SAME `Arc` mesh each unique `IfcRepresentationMap` source once across the
-    /// whole model, instead of once per owning element (a fresh router is built per
-    /// element). Takes precedence over the per-router RefCell `mapped_item_cache`;
-    /// leaving it unset keeps the per-router fallback for single-shot callers.
-    pub fn enable_shared_mapped_item_cache(&mut self, cache: SharedMappedItemCache) {
-        self.shared_mapped_item_cache = Some(cache);
     }
 
     /// Arm the #1623 Phase 2 don't-bake instancing plan (see [`MappedInstancePlan`])

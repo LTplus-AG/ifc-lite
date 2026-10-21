@@ -12,11 +12,10 @@
 //!                ├─ ConsumedByOpening → empty is the correct answer
 //!                └─ Retry → PlainParts → present each non-empty frame part
 //! ```
+use super::assembly_types::TypePart;
 use super::plan::{ElementPlan, PlanKind, PrimaryStrategy};
+use super::presentation_source;
 use super::*;
-
-/// One type map's executed parts: (mesh, per-vertex UVs, texture).
-pub(super) type TypePart = (Mesh, Vec<f32>, Option<ifc_lite_geometry::TextureAttachment>);
 
 enum PrimaryOutcome {
     Candidate(SubMeshCollection),
@@ -39,6 +38,7 @@ pub(super) fn execute(
     hasher: &mut Option<GeometryHasher>,
 ) -> (Vec<MeshData>, Vec<RawInstanceOccurrence>) {
     let element_color = plan.element_color;
+    let assembly = AssemblyJob::from(job);
     let (primary, layer_class) = match plan.kind {
         PlanKind::NoRepresentation => return (Vec::new(), Vec::new()),
         PlanKind::TypeMaps(maps) => {
@@ -47,10 +47,9 @@ pub(super) fn execute(
             // reads source after its own geometry and before the next map's.
             for &(map_id, class) in maps {
                 if let Some(parts) = type_map_parts(map_id, ctx, decoder, router) {
-                    meshes.extend(emit_type_parts(
-                        job,
-                        map_id,
-                        class,
+                    meshes.extend(presentation_source::type_parts(
+                        &assembly,
+                        (map_id, class),
                         parts,
                         element_color,
                         ctx,
@@ -69,8 +68,15 @@ pub(super) fn execute(
     match primary_outcome(primary, job, ctx, decoder, router) {
         PrimaryOutcome::RefusedAnnotation => return (Vec::new(), Vec::new()),
         PrimaryOutcome::Candidate(sub_meshes) => {
-            let (meshes, occurrences) =
-                emit_sub_meshes(job, sub_meshes, element_color, ctx, decoder, hasher, layer_class);
+            let (meshes, occurrences) = presentation_source::submeshes(
+                &assembly,
+                sub_meshes,
+                element_color,
+                ctx,
+                decoder,
+                hasher,
+                layer_class,
+            );
             // #1623 Phase 2: a pure don't-bake occurrence produces NO flat mesh
             // (only instance placeholders); that is success, so the fallback
             // chain must not re-materialize the element flat.
@@ -97,7 +103,15 @@ pub(super) fn execute(
     };
     let mut meshes = Vec::new();
     for mesh in parts.into_iter().filter(|mesh| !mesh.is_empty()) {
-        meshes.extend(emit_fallback_mesh(job, mesh, element_color, ctx, decoder, hasher));
+        meshes.extend(presentation_source::fallback(
+            &assembly,
+            job.entity,
+            mesh,
+            element_color,
+            ctx,
+            decoder,
+            hasher,
+        ));
     }
     (meshes, Vec::new())
 }

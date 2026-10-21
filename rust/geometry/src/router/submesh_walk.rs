@@ -138,14 +138,9 @@ impl WalkVisitor for SubMeshSink<'_> {
     fn item(&mut self, item: &DecodedEntity, at: &WalkCtx<'_>, decoder: &mut EntityDecoder) -> Flow {
         let policy = self.frames.last().is_none_or(|frame| frame.policy);
         let _scope = self.router.enter_unsupported_policy(policy);
-        // Preserve the recursive caller's nested-item drop at the depth cap.
-        if at.path.len() >= MAX_MAPPED_ITEM_DEPTH as usize {
-            self.router.record_unsupported_nested_geometry(item, Error::geometry(format!(
-                "MappedItem nesting exceeded maximum depth of {} at #{}",
-                MAX_MAPPED_ITEM_DEPTH, item.id
-            )));
-            return Flow::Continue;
-        }
+        // #7887: the walk bounds MAP levels, not the terminal solid. A leaf
+        // under exactly 32 maps is valid; entering map 33 is refused by the
+        // shared walk. Plain-item failures still count/log and continue.
         self.router.submesh_plain_item(item, decoder, self.sub_meshes, at.path.len(), self.texture_index);
         Flow::Continue
     }

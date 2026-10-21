@@ -599,6 +599,32 @@ impl Mesh {
 
 Related mesh types: `SubMesh`, `SubMeshCollection`, `InstanceMeta`.
 
+`extract_profiles_with_diagnostics` selects the same meshed representations as
+ordinary element production, including mapped-duplicate exclusion. It extracts
+constant `IfcExtrudedAreaSolid` profiles through the shared representation walk,
+with the router's placement, mapping transforms and length units. The shared
+32-map bound admits terminal solids beneath 32 mapped levels and refuses entry
+to level 33; cycle, depth and work-budget refusals produce `SkippedProfile`
+records. Repeated sources on different DAG paths remain distinct occurrences.
+
+Extraction and ordinary merged/submesh production share a cache-independent
+logical admission pass per product, across all selected representations. It
+charges every root `Items` member and every mapped occurrence's `Items` members
+against 65,536 total members, with a separate 65,536 entered-map allowance.
+Lists are charged before decoding their members. Admission is structural:
+transform failure and mesh cache hits do not discount descendants. No stored
+source weight bypasses the complete logical source traversal. At exhaustion,
+completed earlier root items survive, the current
+root item is withheld as a whole, a refusal is reported, and later roots stop.
+An oversized root list is refused before any item in that list runs. This root
+atomicity prevents budget-truncated sources from being meshed or cached. It
+adds a bounded decoder pass even for cache hits; runtime and corpus effects
+require qualification. Dedicated non-representation geometry, such as an
+alignment's directrix, retains its own admission rules. The material-layer
+shortcut runs only for an untruncated admission plan. Product shape errors still
+propagate from strict mesh entrypoints; profile extraction retains completed
+earlier representations on a later shape error, without claiming completeness.
+
 #### representation
 
 `ifc_lite_geometry::representation` is the decoder-only home of a product's

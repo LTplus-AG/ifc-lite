@@ -182,6 +182,20 @@ impl RepresentationWalk {
         Ok(())
     }
 
+    /// Walk already resolved items, retaining the holding representation.
+    pub(crate) fn items_of<V: WalkVisitor>(
+        &self, rep: &DecodedEntity, items: &[DecodedEntity],
+        decoder: &mut EntityDecoder, visitor: &mut V,
+    ) {
+        let mut run = Run { visitor, element: None, path: Vec::new(), levels: 0, items: 0 };
+        if let Err(why) = self.admit_items(&mut run.items, items.len()) {
+            let at = WalkCtx { element: None, shape_rep: Some(rep), path: &run.path };
+            run.visitor.refused(rep, why, &at);
+            return;
+        }
+        self.items(&mut run, Some(rep), items, decoder);
+    }
+
     /// Walk from one `IfcMappedItem` (the item's own level is the first entered).
     pub fn mapped_item<V: WalkVisitor>(
         &self,

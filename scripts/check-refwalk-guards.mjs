@@ -205,7 +205,9 @@ const SCAN_ROOTS = [
 // Set to 32 to restore a margin of one.
 // Iterative representation and mapping-controller stacks remove recursion pairs.
 // #7873: the submesh visitor removes the remaining router recursion.
-const CANDIDATE_FLOOR = 28;
+// #7887: profile extraction delegates to RepresentationWalk, removing its
+// mapped-item recursion. Exactly 27 guarded candidates remain.
+const CANDIDATE_FLOOR = 27;
 
 /**
  * Allowlist for candidates that are genuinely unguarded and must stay that

@@ -27,6 +27,8 @@ on:
       - 'rust/wasm-bindings/src/api/retained_browser.rs'
       - 'rust/wasm-bindings/tests/retained-browser/**'
       - 'scripts/retained-browser-contract.mjs'
+      # The actual-Worker contract serves the geometry fixture directory to the browser.
+      - 'rust/geometry/tests/fixtures/**'
       - 'scripts/build-wasm.sh'
       - 'packages/wasm/retained.*'
       - 'packages/wasm/pkg-retained/**'

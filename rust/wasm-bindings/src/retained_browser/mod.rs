@@ -16,9 +16,8 @@
 //! The Worker constructor and its async operations exist on wasm32 alone;
 //! natively only the ownership bookkeeping compiles, for its unit tests.
 //! Crate-private: the JavaScript host contract (`api::retained_browser`) is
-//! its only consumer. Until that contract lands in the next stacked slice the
-//! executor is reached by its own actual-Worker tests alone, hence the allow.
-#![allow(dead_code)]
+//! its only consumer.
+#![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
@@ -71,6 +70,45 @@ fn next_identity() -> Result<u64, BrowserError> {
         .map_err(|_| BrowserError::Exhausted)
 }
 
+/// Format 1 (ordered planar region) staged sweep, adapter capability bit 0.
+const SWEEP_REGION_BIT: u32 = 1;
+/// Format 2 (open rational-path solid disk) staged sweep, capability bit 1.
+const SWEEP_DISK_BIT: u32 = 2;
+
+/// Which retained families this exact Worker incarnation can execute now.
+/// A capability bit says the adapter implements a format; only this
+/// incarnation's own witnesses open the curved families.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BrowserCapabilities {
+    pub incarnation: u64,
+    pub sdk_bits: u32,
+    pub rectangle: bool,
+    pub ordered_region: bool,
+    pub rational_disk: bool,
+}
+impl BrowserCapabilities {
+    fn select(incarnation: u64, sdk_bits: u32, regions_qualified: bool, disks_qualified: bool) -> Self {
+        let region = sdk_bits & SWEEP_REGION_BIT != 0;
+        Self {
+            incarnation,
+            sdk_bits,
+            rectangle: region,
+            ordered_region: region && regions_qualified,
+            rational_disk: sdk_bits & SWEEP_DISK_BIT != 0 && disks_qualified,
+        }
+    }
+    /// Whether `family` is executable on this incarnation.
+    pub fn admits(&self, family: ifc_lite_geometry::document::RegionQualification) -> bool {
+        use ifc_lite_geometry::document::RegionQualification as Family;
+        match family {
+            Family::Rectangle => self.rectangle,
+            Family::OrderedRegion => self.ordered_region,
+            Family::RationalDisk => self.rational_disk,
+            _ => false,
+        }
+    }
+}
+
 struct Owner {
     identity: u64,
     live: AtomicBool,
@@ -116,9 +154,11 @@ pub struct BrowserCancellation {
 }
 impl BrowserCancellation {
     /// The captured incarnation while it and its actual Worker are live.
+    #[cfg(all(test, not(target_arch = "wasm32")))]
     pub fn incarnation(&self) -> Option<u64> {
         self.owner.validate().ok().map(|()| self.owner.identity)
     }
+    #[cfg(test)]
     pub fn same_worker(&self, worker: &BrowserWorker) -> bool {
         Arc::ptr_eq(&self.owner, &worker.owner)
     }
@@ -168,6 +208,7 @@ impl BrowserRealization {
     pub fn incarnation(&self) -> u64 {
         self.owner.identity
     }
+    #[cfg(test)]
     pub fn belongs_to(&self, worker: &BrowserWorker) -> bool {
         Arc::ptr_eq(&self.owner, &worker.owner)
     }

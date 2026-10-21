@@ -131,6 +131,13 @@ scripts/wasm-test-mime-driver.mjs rust/wasm-bindings --lib --features
 retained-browser -- retained_browser`
 after staging `/smlib` into `rust/wasm-bindings/smlib`.
 
+The JavaScript host contract (`IfcAPI.retainedSources`,
+`RetainedBrowserExecutor`) is compiled only with the `retained-browser` feature
+into the separate `packages/wasm/pkg-retained` bundle
+(`BUILD_RETAINED=1 bash scripts/build-wasm.sh`), loaded on demand through
+`@ifc-lite/wasm/retained`. `node scripts/retained-browser-contract.mjs --build
+ABS --sdk ABS` runs that bundle against an actual module Worker in Chromium.
+
 Nothing in the viewer or the default WASM package imports these modules.
 
 ## Native subprocess protocol

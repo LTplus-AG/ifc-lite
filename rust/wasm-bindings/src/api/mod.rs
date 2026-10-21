@@ -40,6 +40,9 @@ mod landxml_stream;
 mod mesh_outline;
 mod overlay_frame;
 mod parsing;
+// Opt-in retained-geometry host contract over the private module-Worker executor.
+#[cfg(all(feature = "retained-browser", target_arch = "wasm32"))]
+mod retained_browser;
 mod pipeline_diagnostics;
 mod simplify;
 mod swept_disk_descriptions;

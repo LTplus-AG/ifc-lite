@@ -24,6 +24,13 @@ on:
       - 'rust/wasm-bindings/Cargo.toml'
       - 'rust/wasm-bindings/src/lib.rs'
       - 'rust/geometry/Cargo.toml'
+      - 'rust/wasm-bindings/src/api/retained_browser.rs'
+      - 'rust/wasm-bindings/tests/retained-browser/**'
+      - 'scripts/retained-browser-contract.mjs'
+      - 'scripts/build-wasm.sh'
+      - 'packages/wasm/retained.*'
+      - 'packages/wasm/pkg-retained/**'
+      - 'packages/wasm/test/retained-browser.test.mjs'
       - '.github/workflows/geometry-platform.yml'
   workflow_dispatch:
 
@@ -100,6 +107,14 @@ jobs:
         run: |
           node scripts/smlib-browser-worker-probe.mjs --build "$RUNNER_TEMP/smlib-wasm" \
             --sdk "$GITHUB_WORKSPACE/upstream-smlib"
+      - name: Strict Clippy and unit tests with the opt-in retained-browser feature
+        id: retained-clippy
+        continue-on-error: true
+        run: |
+          cargo clippy --locked -p ifc-lite-wasm --all-targets --features retained-browser -- -D warnings
+          cargo clippy --locked -p ifc-lite-wasm --all-targets --features retained-browser \
+            --target wasm32-unknown-unknown -- -D warnings
+          cargo test --locked -p ifc-lite-wasm --lib --features retained-browser retained_browser
       - name: Stage /smlib beside the wasm crate for its actual-Worker tests
         run: |
           # wasm-bindgen-test serves the crate directory; the staging script
@@ -116,6 +131,22 @@ jobs:
           wasm-pack test --headless --chrome \
             --chromedriver "$GITHUB_WORKSPACE/scripts/wasm-test-mime-driver.mjs" rust/wasm-bindings --lib \
             --features retained-browser -- retained_browser
+      - name: Build the canonical WASM package and the opt-in retained bundle
+        run: BUILD_RETAINED=1 bash scripts/build-wasm.sh
+      - name: Committed declarations match both bundles
+        id: generated-types
+        continue-on-error: true
+        run: git diff --exit-code -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-retained/ifc-lite.d.ts
+      - name: Opt-in package boundary (default engine, loader, retained engine)
+        id: package-boundary
+        continue-on-error: true
+        run: node --test packages/wasm/test/retained-browser.test.mjs
+      - name: Canonical JavaScript retained API with an actual module Worker
+        id: browser-api
+        continue-on-error: true
+        run: |
+          node scripts/retained-browser-contract.mjs --build "$RUNNER_TEMP/smlib-wasm" \
+            --sdk "$GITHUB_WORKSPACE/upstream-smlib"
       # Gather independent failures, then preserve a failing overall verdict.
       - name: Require every independent result
         if: always()
@@ -125,9 +156,13 @@ jobs:
           WASM_CTEST: ${{ steps.wasm-ctest.outcome }}
           BROWSER_WORKERS: ${{ steps.browser-workers.outcome }}
           BROWSER_RUNTIME: ${{ steps.browser-runtime.outcome }}
+          BROWSER_API: ${{ steps.browser-api.outcome }}
+          GENERATED_TYPES: ${{ steps.generated-types.outcome }}
+          PACKAGE_BOUNDARY: ${{ steps.package-boundary.outcome }}
+          RETAINED_CLIPPY: ${{ steps.retained-clippy.outcome }}
         run: |
           failed=0
-          for lane in NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME; do
+          for lane in NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY; do
             printf '%s=%s\n' "$lane" "${!lane}"
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done

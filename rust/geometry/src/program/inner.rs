@@ -5,7 +5,7 @@
 //! is moved. The Item, Cache and Mapping controllers exist so far.
 use super::inner_cache::{CacheControl, CacheReply};
 use super::item::{ItemControl, ItemStep};
-use super::mapping::{MappingControl, MappingReply};
+use super::mapping::{MappingControl, MappingOutput, MappingReply};
 use crate::{Error, GeometryRouter, Mesh, Result};
 use ifc_lite_core::execution_owner::ExecutionIdentity;
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
@@ -24,8 +24,14 @@ pub(crate) struct GeometryProgram<'a> {
 }
 
 enum Control<'a> {
+    /// A bare item program: production items run inside the cache or mapping
+    /// controller, so only the item-protocol tests construct one.
+    #[cfg_attr(not(test), allow(dead_code))]
     Item(&'a DecodedEntity, ItemControl),
-    Cache(CacheControl<'a>),
+    Cache(&'a DecodedEntity, CacheControl),
+    /// A styled walk's root plain item: no mapping to walk, so it runs the
+    /// cache controller directly and lands in its sub-meshes under its own id.
+    StyledItem(&'a DecodedEntity, CacheControl, crate::SubMeshCollection),
     Mapping(MappingControl<'a>),
 }
 
@@ -104,6 +110,7 @@ pub(crate) struct RejectedProgramReply {
 
 impl<'a> GeometryProgram<'a> {
     /// The selected processor work for one item, without content-dedup.
+    #[cfg(test)]
     pub(crate) fn item(item: &'a DecodedEntity, offset_meters: (f64, f64, f64)) -> Self {
         Self::with_control(Control::Item(item, ItemControl::new(offset_meters)))
     }
@@ -114,15 +121,38 @@ impl<'a> GeometryProgram<'a> {
         Self::with_control(Control::Mapping(MappingControl::occurrence(item)))
     }
 
-    /// The don't-bake shared registry entry for one source (#1623): the same
-    /// flat source walk, published instead of placed.
+    /// The don't-bake shared registry entry for one source (#1623): the flat
+    /// source walk a styled placeholder runs, published instead of placed.
+    #[cfg(test)]
     pub(crate) fn shared_mapped_source(representation: &'a DecodedEntity, source_id: u32) -> Self {
         Self::with_control(Control::Mapping(MappingControl::shared_source(representation, source_id)))
     }
 
+    /// One styled representation item appended to `meshes` under its own id:
+    /// a plain item, or a mapped item's source walked into per-item sub-meshes
+    /// (nested maps included), with the #1623 don't-bake template/placeholder
+    /// decision at the top level when `allow_instancing`.
+    pub(crate) fn styled_item(item: &'a DecodedEntity, meshes: crate::SubMeshCollection, allow_instancing: bool,
+        textures: Option<&'a rustc_hash::FxHashMap<u32, crate::ResolvedTextureMap>>,
+        offset_meters: (f64, f64, f64)) -> Self {
+        if item.ifc_type != ifc_lite_core::IfcType::IfcMappedItem
+            && !textures.is_some_and(|index| index.contains_key(&item.id)) {
+            return Self::with_control(Control::StyledItem(item, CacheControl::new(offset_meters), meshes));
+        }
+        let control = MappingControl::styled(item, meshes, allow_instancing, textures, offset_meters);
+        Self::with_control(Control::Mapping(control))
+    }
+
+    /// An orphan type's `IfcRepresentationMap` (#957, #961): its items, nested
+    /// maps and textured face sets, with its MappingOrigin baked in.
+    pub(crate) fn type_map(rep_map: &'a DecodedEntity,
+        textures: &'a rustc_hash::FxHashMap<u32, crate::ResolvedTextureMap>) -> Self {
+        Self::with_control(Control::Mapping(MappingControl::type_map(rep_map, textures)))
+    }
+
     /// One representation item wrapped by the content-dedup and hash caches.
     pub(crate) fn representation_item(item: &'a DecodedEntity, offset_meters: (f64, f64, f64)) -> Self {
-        Self::with_control(Control::Cache(CacheControl::new(item, offset_meters)))
+        Self::with_control(Control::Cache(item, CacheControl::new(offset_meters)))
     }
 
     fn with_control(control: Control<'a>) -> Self {
@@ -144,7 +174,7 @@ impl<'a> GeometryProgram<'a> {
         }
         let stage = match &self.control {
             Control::Item(_, control) => control.stage()?,
-            Control::Cache(control) => control.stage()?,
+            Control::Cache(_, control) | Control::StyledItem(_, control, _) => control.stage()?,
             Control::Mapping(control) => control.stage()?,
         };
         let Some(stage) = stage else { return Ok(None) };
@@ -182,7 +212,9 @@ impl<'a> GeometryProgram<'a> {
         self.pending = Some((request, true));
         let value = match &mut self.control {
             Control::Item(item, control) => ReplyValue::Item(control.execute(item, router, decoder)?),
-            Control::Cache(control) => ReplyValue::Cache(control.execute(router, decoder)?),
+            Control::Cache(item, control) | Control::StyledItem(item, control, _) => {
+                ReplyValue::Cache(control.execute(item, router, decoder)?)
+            }
             Control::Mapping(control) => ReplyValue::Mapping(control.execute(router, decoder)?),
         };
         self.expected_payload = Some(value.tag());
@@ -211,7 +243,12 @@ impl<'a> GeometryProgram<'a> {
         let request = reply.request;
         match (&mut self.control, reply.value) {
             (Control::Item(_, control), ReplyValue::Item(step)) => control.accept(step, router),
-            (Control::Cache(control), ReplyValue::Cache(reply)) => control.accept(reply, router),
+            (Control::Cache(item, control), ReplyValue::Cache(reply)) => control.accept(item, reply, router),
+            // A root item records its drops, as the mapping walk's root does.
+            (Control::StyledItem(item, control, _), ReplyValue::Cache(reply)) => {
+                let _policy = router.enter_unsupported_policy(true);
+                control.accept(item, reply, router)
+            }
             (Control::Mapping(control), ReplyValue::Mapping(reply)) => control.accept(reply, router),
             (_, value) => {
                 let reply = ProgramReply { request, value };
@@ -228,22 +265,32 @@ impl<'a> GeometryProgram<'a> {
         let result = match &mut self.control {
             _ if self.pending.is_some() => None,
             Control::Item(_, control) => control.take_result(),
-            Control::Cache(control) => control.take_result(),
+            Control::Cache(_, control) => control.take_result(),
             Control::Mapping(_) => Some(Err(Error::geometry("a mapping program completes as frame parts"))),
+            Control::StyledItem(..) => Some(Err(Error::geometry("a styled program completes as sub-meshes"))),
+        };
+        result.unwrap_or_else(|| Err(Error::geometry("geometry program finished before completion")))
+    }
+
+    /// The completed mapping program's output.
+    fn finish_mapping(mut self) -> Result<MappingOutput> {
+        let result = match &mut self.control {
+            Control::Mapping(control) if self.pending.is_none() => control.take_result(),
+            Control::Mapping(_) => None,
+            Control::Item(..) | Control::Cache(..) => {
+                Some(Err(Error::geometry("an item program completes as one mesh")))
+            }
+            Control::StyledItem(..) => Some(Err(Error::geometry("a styled program completes as sub-meshes"))),
         };
         result.unwrap_or_else(|| Err(Error::geometry("geometry program finished before completion")))
     }
 
     /// The completed mapping program's frame parts (#6446).
-    pub(crate) fn finish_parts(mut self) -> Result<Vec<Mesh>> {
-        let result = match &mut self.control {
-            Control::Mapping(control) if self.pending.is_none() => control.take_result(),
-            Control::Mapping(_) => None,
-            Control::Item(..) | Control::Cache(_) => {
-                Some(Err(Error::geometry("an item program completes as one mesh")))
-            }
-        };
-        result.unwrap_or_else(|| Err(Error::geometry("geometry program finished before completion")))
+    pub(crate) fn finish_parts(self) -> Result<Vec<Mesh>> {
+        match self.finish_mapping()? {
+            MappingOutput::Parts(parts) => Ok(parts),
+            _ => Err(Error::geometry("this mapping program does not complete as frame parts")),
+        }
     }
 
     /// Run every request synchronously against one router and decoder.
@@ -257,6 +304,39 @@ impl<'a> GeometryProgram<'a> {
         -> Result<Vec<Mesh>> {
         self.run(router, decoder)?;
         self.finish_parts()
+    }
+
+    /// [`Self::drain`] for a styled program: the sub-meshes it appended to.
+    pub(crate) fn drain_styled(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder)
+        -> Result<crate::SubMeshCollection> {
+        self.run(router, decoder)?;
+        if let Control::StyledItem(item, control, meshes) = &mut self.control {
+            let result = match self.pending {
+                None => control.take_result(),
+                Some(_) => None,
+            };
+            let mut meshes = std::mem::take(meshes);
+            match result {
+                Some(Ok(mesh)) => meshes.add(item.id, mesh),
+                Some(Err(error)) => MappingControl::drop_styled_root(item, error, router)?,
+                None => return Err(Error::geometry("geometry program finished before completion")),
+            }
+            return Ok(meshes);
+        }
+        match self.finish_mapping()? {
+            MappingOutput::Styled(meshes) => Ok(meshes),
+            _ => Err(Error::geometry("this mapping program does not complete as sub-meshes")),
+        }
+    }
+
+    /// [`Self::drain`] for a type-map program: its render parts.
+    pub(crate) fn drain_type_parts(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder)
+        -> Result<crate::router::textured::TypeParts> {
+        self.run(router, decoder)?;
+        match self.finish_mapping()? {
+            MappingOutput::Type(parts) => Ok(parts),
+            _ => Err(Error::geometry("this mapping program does not complete as type parts")),
+        }
     }
 
     fn run(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder) -> Result<()> {

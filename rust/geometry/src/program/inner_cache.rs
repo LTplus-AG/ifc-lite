@@ -27,15 +27,16 @@ pub(super) enum CacheReply {
     Hash(Mesh, Option<u128>),
 }
 
-pub(super) struct CacheControl<'a> {
-    item: &'a DecodedEntity,
+/// The cache controller owns only its state; like [`ItemControl`], its item
+/// is lent by its owner on every step, so an owning walk can drive it.
+pub(super) struct CacheControl {
     offset: (f64, f64, f64),
     state: State,
 }
 
-impl<'a> CacheControl<'a> {
-    pub(super) fn new(item: &'a DecodedEntity, offset: (f64, f64, f64)) -> Self {
-        Self { item, offset, state: State::Begin }
+impl CacheControl {
+    pub(super) fn new(offset: (f64, f64, f64)) -> Self {
+        Self { offset, state: State::Begin }
     }
 
     pub(super) fn stage(&self) -> std::result::Result<Option<ProgramStage>, ProgramError> {
@@ -48,14 +49,14 @@ impl<'a> CacheControl<'a> {
         }
     }
 
-    pub(super) fn execute(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder)
-        -> std::result::Result<CacheReply, ProgramError> {
+    pub(super) fn execute(&mut self, item: &DecodedEntity, router: &GeometryRouter,
+        decoder: &mut EntityDecoder) -> std::result::Result<CacheReply, ProgramError> {
         match &mut self.state {
             State::Begin => {
-                return Ok(CacheReply::Begin(router.admit_item_cache(self.item, decoder, self.offset)));
+                return Ok(CacheReply::Begin(router.admit_item_cache(item, decoder, self.offset)));
             }
             State::Child(_, control) => {
-                return control.execute(self.item, router, decoder).map(CacheReply::Item);
+                return control.execute(item, router, decoder).map(CacheReply::Item);
             }
             _ => {}
         }
@@ -72,7 +73,7 @@ impl<'a> CacheControl<'a> {
         }
     }
 
-    pub(super) fn accept(&mut self, reply: CacheReply, router: &GeometryRouter) {
+    pub(super) fn accept(&mut self, item: &DecodedEntity, reply: CacheReply, router: &GeometryRouter) {
         self.state = match (std::mem::replace(&mut self.state, State::Taken), reply) {
             (State::Begin, CacheReply::Begin(Ok(CacheAdmission::Hit(mesh)))) => State::Complete(Ok(mesh)),
             (State::Begin, CacheReply::Begin(Err(error))) => State::Complete(Err(error)),
@@ -91,7 +92,7 @@ impl<'a> CacheControl<'a> {
                 }
             }
             (State::Publishing(context), CacheReply::Hash(mesh, rep)) => {
-                State::Complete(Ok(router.publish_item_cache(self.item, context, mesh, rep)))
+                State::Complete(Ok(router.publish_item_cache(item, context, mesh, rep)))
             }
             // Payload validation precedes acceptance; a mismatch cannot reach here.
             (state, _) => state,

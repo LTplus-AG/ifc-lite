@@ -236,6 +236,8 @@ function buildPaths() {
     // @ifc-lite/wasm ships a committed .d.ts (no src/index.ts).
     if (pkg.name === '@ifc-lite/wasm') {
       paths['@ifc-lite/wasm'] = ['packages/wasm/pkg/ifc-lite.d.ts'];
+      // The opt-in retained loader ships beside pkg/, not inside it (#7955 H1).
+      paths['@ifc-lite/wasm/retained'] = ['packages/wasm/retained.d.ts'];
       paths['@ifc-lite/wasm/*'] = ['packages/wasm/pkg/*'];
       continue;
     }

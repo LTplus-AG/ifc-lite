@@ -812,6 +812,7 @@ construct an executor.
 ```ts
 import { loadRetainedEngine } from '@ifc-lite/wasm/retained';
 
+declare const ifcBytes: Uint8Array; // the loaded IFC file
 const engine = await loadRetainedEngine({ moduleUrl: '/ifc-lite-retained/ifc-lite.js' });
 const api = new engine.IfcAPI();
 const sources = api.retainedSources(ifcBytes);        // read-only, no Worker

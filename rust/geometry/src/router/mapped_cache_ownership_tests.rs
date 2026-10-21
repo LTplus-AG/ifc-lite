@@ -108,6 +108,27 @@ fn ordinary_shared_cache_refuses_bounded_hit_as_unsupported_coverage() {
     assert_eq!(again[0].indices, warm[0].indices, "the default path still hits unchanged");
 }
 
+// The don't-bake shared-source walk applies the same hit rule.
+#[test]
+fn ordinary_shared_cache_refuses_bounded_dont_bake_hit() {
+    let pool = ModelResourcePool::new(1_000_000);
+    let mut router = GeometryRouter::with_scale_and_local_frame(1., false);
+    router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
+    let mut decoder = EntityDecoder::new(SOURCE);
+    let item = decoder.decode_by_id(8).unwrap();
+    router.process_mapped_item_parts(&item, &mut decoder).unwrap();
+    assert_eq!(router.mapped_shared_unique_count(), 1, "unaccounted run warmed the cache");
+    let rep = decoder.decode_by_id(5).unwrap();
+    router.ensure_shared_mapped_source(&rep, 6, &mut decoder).unwrap();
+    let account = request(&pool);
+    account.scope(|| {
+        assert!(router.ensure_shared_mapped_source(&rep, 6, &mut decoder).is_err());
+        assert!(matches!(account.check(), Err(ProgramStop::ResourceRefused(failure))
+            if failure.dimension == Dimension::Coverage
+                && failure.reason == RefusalReason::UnsupportedCoverage));
+    });
+}
+
 // A refused later publication leaves the earlier entry, its bytes and its
 // retained owner exactly as they were.
 #[test]

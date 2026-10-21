@@ -66,6 +66,9 @@ impl GeometryRouter {
             // that arm output instancing always enable the shared cache too.
             return Ok(());
         };
+        // A hit is coverage too (as in the mapped-item walk): refuse an
+        // unaccounted shared cache under a bounded account before the lookup.
+        self.check_mapped_cache_coverage()?;
         if shared
             .lock()
             .unwrap_or_else(|e| e.into_inner())

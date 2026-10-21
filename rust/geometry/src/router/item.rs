@@ -5,11 +5,13 @@
 //! `ItemMesher`: the one per-item pipeline. A representation item is meshed
 //! under an [`ItemFrame`] that selects the stages the walk it belongs to has
 //! always applied: content dedup and the direct-instance stamp for a direct
-//! item, the f64 rebase kept in `origin` for a mapped-source item. Split out of
+//! item, the f64 rebase kept in `origin` for a mapped-source item. The item
+//! work itself (processor lowering, cache admission and publication) runs in
+//! the common item program ([`crate::program::GeometryProgram`]). Split out of
 //! `processing.rs` (the element walks).
 
 use super::frame_parts::mesh_bounds;
-use super::{GeometryProcessor, GeometryRouter};
+use super::GeometryRouter;
 use crate::math::mat4;
 use crate::{Error, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
@@ -53,6 +55,30 @@ fn publish_object_frame_bounds(mesh: &mut Mesh, offset: (f64, f64, f64)) {
     mesh.local_bounds = Some(bounds);
 }
 
+/// Scale mesh positions from file units to meters by `unit_scale`; a no-op at
+/// `1.0`. Source-free, so owned numerical recipes apply the same scaling.
+#[inline]
+pub(crate) fn scale_positions(mesh: &mut Mesh, unit_scale: f64) {
+    if unit_scale != 1.0 {
+        let scale = unit_scale as f32;
+        for pos in mesh.positions.iter_mut() {
+            *pos *= scale;
+        }
+    }
+}
+
+/// Finish one item mesh at the boundary every item walk shares: strip
+/// out-of-bounds indices, scale file units to metres, and publish object-frame
+/// bounds when it was rebased by `rtc_offset` (metres, item frame).
+pub(crate) fn finish_item_mesh(mesh: &mut Mesh, unit_scale: f64, rtc_offset: Option<(f64, f64, f64)>) {
+    // Safety net: strip any out-of-bounds indices before downstream use
+    mesh.validate_indices();
+    scale_positions(mesh, unit_scale);
+    if let Some(offset) = rtc_offset {
+        publish_object_frame_bounds(mesh, offset);
+    }
+}
+
 /// The frame an item is meshed in, i.e. which per-item stages apply.
 #[derive(Clone, Copy)]
 pub(super) enum ItemFrame {
@@ -91,15 +117,13 @@ impl GeometryRouter {
                 Ok(mesh)
             }
             ItemFrame::MappedSource => {
-                let processor = self
-                    .processor_for(&item.ifc_type)
-                    .ok_or_else(|| Error::geometry("no processor"))?;
-                let mut mesh = self.process_item_in_rtc_frame(
-                    processor.as_ref(),
-                    item,
-                    decoder,
-                    self.rtc_offset,
-                )?;
+                // The common item program without the cache controller: a
+                // mapped source is already shared, so it skips content dedup.
+                if self.processor_for(&item.ifc_type).is_none() {
+                    return Err(Error::geometry("no processor"));
+                }
+                let mut mesh =
+                    crate::program::GeometryProgram::item(item, self.rtc_offset).drain(self, decoder)?;
                 self.keep_rebase_in_origin(&mut mesh);
                 Ok(mesh)
             }
@@ -121,7 +145,7 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Result<Mesh> {
         // The curve-capped flag (#4901) is drained where the processor runs,
-        // in `process_item_in_rtc_frame`, so every walk reports it once.
+        // in the common item program, so every walk reports it once.
         self.process_representation_item_in_frame(item, decoder, self.rtc_offset)
     }
 
@@ -135,7 +159,13 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
         offset_meters: (f64, f64, f64),
     ) -> Result<Mesh> {
-        self.process_representation_item_body(item, decoder, offset_meters)
+        // MappedItem has its own instancing cache (the source representation is
+        // already shared), so it never enters the structural-hash path. It also
+        // sets its own instance_meta, so direct-solid tagging is skipped.
+        if item.ifc_type == IfcType::IfcMappedItem {
+            return self.process_mapped_item_cached(item, decoder);
+        }
+        crate::program::GeometryProgram::representation_item(item, offset_meters).drain(self, decoder)
     }
 
     /// Mesh a raw-coordinate item (tessellated, Brep, surface model or
@@ -224,75 +254,10 @@ impl GeometryRouter {
         Some((mesh, uvs))
     }
 
-    /// Mesh one item, rebasing it by `offset_meters` (model RTC expressed in
-    /// the item's own coordinate frame) before f32 narrowing.
-    ///
-    /// The rebase runs only when it reduces the item's coordinate magnitude
-    /// (#5684: site-local vertices kilometres from a national-grid site must
-    /// stay local) and the processor implements
-    /// [`GeometryProcessor::process_in_rtc_frame`]. Every built-in
-    /// raw-coordinate processor does; they subtract in f64 so detail below one
-    /// f32 ULP at national-grid magnitude survives (#5698). Otherwise the
-    /// ordinary output keeps its object frame and final placement applies RTC
-    /// in f64: shifting already-f32 output cannot recover precision.
-    ///
-    /// Returns the unit-scaled mesh. A rebased mesh carries `rtc_applied`
-    /// and object-frame `local_bounds`.
-    ///
-    /// Every walk meshes an item's processor here and nowhere else, so this
-    /// is also where the thread-local curve-capped flag (#4901) is drained:
-    /// a capped edge is reported for the item that set it, never for the next
-    /// item on the thread, whichever walk ran it (ROUTER-26, #7690).
-    pub(super) fn process_item_in_rtc_frame(
-        &self,
-        processor: &dyn GeometryProcessor,
-        item: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        offset_meters: (f64, f64, f64),
-    ) -> Result<Mesh> {
-        // Drop flags a direct `AdvancedBrepProcessor` call left set on this
-        // thread: the drains below must count THIS item only (#7687).
-        let _ = crate::processors::take_curve_capped();
-        let _ = crate::processors::take_face_refused();
-        let rebased = self
-            .raw_item_rtc_file_units(item, decoder, offset_meters)
-            .and_then(|rtc_file_units| {
-                processor.process_in_rtc_frame(
-                    item,
-                    decoder,
-                    self.schema,
-                    self.tessellation_quality,
-                    rtc_file_units,
-                )
-            });
-        let rtc_applied = rebased.is_some();
-        let result = match rebased {
-            Some(result) => result,
-            None => processor.process(item, decoder, self.schema, self.tessellation_quality),
-        };
-        if crate::processors::take_curve_capped() {
-            self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
-        }
-        // A face refused because its loop, curve or surface data does not
-        // read (#7687, D3): the brep skips it per face, so this is the only
-        // place the drop becomes visible.
-        for face_type in crate::processors::take_face_refused() {
-            self.record_unsupported_item(face_type);
-        }
-        let mut mesh = result?;
-        // Safety net: strip any out-of-bounds indices before downstream use
-        mesh.validate_indices();
-        self.scale_mesh(&mut mesh);
-        if rtc_applied {
-            publish_object_frame_bounds(&mut mesh, offset_meters);
-        }
-        Ok(mesh)
-    }
-
     /// `offset_meters` in file units when rebasing `item` by it before f32
     /// narrowing reduces the item's coordinate magnitude; `None` when there
     /// is no model RTC or the item is not raw-coordinate geometry (#5684).
-    fn raw_item_rtc_file_units(
+    pub(crate) fn raw_item_rtc_file_units(
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
@@ -308,42 +273,6 @@ impl GeometryRouter {
             )
         })
     }
-
-    /// The meshing body of [`Self::process_representation_item`] (everything except
-    /// the MappedItem path and the content-dedup wrapper).
-    pub(super) fn process_representation_item_uncached(
-        &self,
-        item: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        offset_meters: (f64, f64, f64),
-    ) -> Result<Mesh> {
-        // Raw-coordinate items rebase in the model frame here; element
-        // walkers take `process_raw_item_for_element` first for their own
-        // items, so this frame matters for mapped and opening items.
-        if let Some(processor) = self.processor_for(&item.ifc_type) {
-            let mesh =
-                self.process_item_in_rtc_frame(processor.as_ref(), item, decoder, offset_meters)?;
-
-            // Deduplicate by hash - buildings with repeated floors have identical geometry
-            if !mesh.positions.is_empty() {
-                let cached = self.get_or_cache_by_hash(mesh);
-                return Ok((*cached).clone());
-            }
-            return Ok(mesh);
-        }
-
-        // No processor is registered for this type. Every `GeometryCategory`
-        // that has a real implementation (SweptSolid, ExplicitMesh, Boolean) is
-        // already caught by the processor lookup above; `MappedItem` never
-        // reaches here (`process_representation_item` intercepts it first, see
-        // `process_mapped_item_cached`). So landing here means the type is
-        // genuinely unsupported, not merely "not implemented yet".
-        Err(Error::geometry(format!(
-            "Unsupported representation type: {}",
-            item.ifc_type
-        )))
-    }
-
 }
 
 #[cfg(test)]

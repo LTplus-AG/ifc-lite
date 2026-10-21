@@ -469,7 +469,7 @@ impl GeometryRouter {
                     // geometry_id is the nested SOLID's id (not the mapped-item id) so
                     // emit_sub_meshes resolves the occurrence colour identically to the
                     // flat/template sub-mesh.
-                    self.ensure_shared_mapped_source(&mapped_repr, source_id, decoder);
+                    self.ensure_shared_mapped_source(&mapped_repr, source_id, decoder)?;
                     let local_rm = mapping_transform.map(|t| self.scaled_row_major(&t));
                     let mut placeholder = Mesh::new();
                     placeholder.instance_meta = Some(InstanceMeta::instanceable(source_id as u128, local_rm));
@@ -513,7 +513,7 @@ impl GeometryRouter {
                         false,
                         texture_index,
                     ) {
-                        self.drop_item(&nested_item, &e, "nested geometry");
+                        self.drop_recoverable_item(&nested_item, e, "nested geometry")?;
                         continue;
                     }
 
@@ -599,7 +599,7 @@ impl GeometryRouter {
                     }
                 }
                 Err(e) => {
-                    self.drop_item(item, &e, "geometry");
+                    self.drop_recoverable_item(item, e, "geometry")?;
                 }
             }
         }

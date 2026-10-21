@@ -223,3 +223,37 @@ pub const MIN_PROFILE_DIMENSION: f64 = 0.001;
 /// An extrusion direction component below this is zero (the extrusion is
 /// along local Z). Unit: dimensionless.
 pub const EXTRUSION_AXIS_COMPONENT_EPS: f64 = 0.001;
+
+// Retained numerical edge (already scaled to metres; not raw IFC units)
+// ---------------------------------------------------------------------
+
+/// Smallest admitted retained line length, circle radius or sweep thickness
+/// normal to the profile. Unit: metres. Floor of the retained request domain.
+pub const RETAINED_MIN_LENGTH_M: f64 = 1e-12;
+
+/// Maximum component mismatch between opposite parameterized rectangle edges.
+/// Unit: metres. Kept separate from minimum feature size: this checks closure
+/// of the derived rectangle that selects the rectangle qualification.
+pub const RETAINED_RECTANGLE_EDGE_EPS_M: f64 = 1e-12;
+
+/// Absolute join distance for consecutive derived retained boundary endpoints.
+/// Unit: metres. Independent trigonometric evaluation may introduce roundoff.
+pub const RETAINED_BOUNDARY_JOIN_EPS_M: f64 = 1e-10;
+
+/// Absolute floor in twice-area checks and their source/derived agreement
+/// budget. Unit: metres squared (on twice signed area, not ordinary area).
+pub const RETAINED_TWICE_AREA_EPS_M2: f64 = 1e-18;
+
+/// Relative source/derived twice-area agreement budget. Unit: relative.
+/// Added to the separate absolute twice-area floor.
+pub const RETAINED_TWICE_AREA_REL: f64 = 1e-9;
+
+/// Circular-interval endpoint margin at zero and one full turn. Unit: radians.
+pub const RETAINED_ARC_INTERVAL_EPS_RAD: f64 = 1e-12;
+
+/// Circular X-axis length deviation from unity. Unit: dimensionless.
+pub const RETAINED_CIRCLE_BASIS_EPS: f64 = 1e-12;
+
+/// Dot-product deviation of source placement axes from an orthonormal frame.
+/// Unit: dimensionless. Retained requests accept rigid placements only.
+pub const RETAINED_RIGID_DOT_EPS: f64 = 1e-10;

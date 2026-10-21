@@ -36,7 +36,7 @@
 //! That broke a contract the pipeline depends on. Every occurrence of one
 //! `IfcRepresentationMap` is a clone of ONE cached source mesh
 //! (`router::mapped_item`), and every direct-solid `rep_identity` is a hash of
-//! the mesh BEFORE placement (`router::processing::direct_rep_identity`), so
+//! the mesh BEFORE placement (`router::item_cache_program::direct_rep_identity`), so
 //! occurrences of one representation are meant to be bit-identical. A post-bake
 //! weld rewrote each of them differently, and `instancing::collate_refs` refuses
 //! a group whose members disagree on vertex count, so nothing ever collated:

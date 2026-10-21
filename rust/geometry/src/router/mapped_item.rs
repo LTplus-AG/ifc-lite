@@ -205,19 +205,14 @@ impl GeometryRouter {
                     &mut level_truncated,
                 ) {
                     Ok(sub_parts) => sub_parts.iter().for_each(|part| source.merge(part)),
-                    Err(e) => {
+                    Err(error) => {
+                        self.drop_recoverable_item(&sub_item, error, "nested IfcMappedItem")?;
                         level_truncated = true;
-                        // Same drop, same counter as `merge_source_item`: the
-                        // nested map's geometry is gone from this source. Recording
-                        // `IfcMappedItem` (not the inner item's type) is deliberate —
-                        // the inner walk errored before it could attribute anything,
-                        // so this level names the item it actually lost.
-                        self.drop_item(&sub_item, &e, "nested IfcMappedItem");
                     }
                 }
                 continue;
             }
-            self.merge_source_item(&sub_item, decoder, &mut source, "mapped-source");
+            self.merge_source_item(&sub_item, decoder, &mut source, "mapped-source")?;
         }
         // The merge above is short, so every enclosing level's is too.
         *truncated |= level_truncated;
@@ -286,26 +281,6 @@ impl GeometryRouter {
         Ok(parts)
     }
 
-    /// Deep-copy a source mesh for a mapped-item cache. Without an installed
-    /// account this is `Mesh::clone`; with one, the copy is admitted (and its
-    /// storage charged, never refunded) before any allocation, so a zero or
-    /// overflowing allowance refuses it. Cache residency beyond the account's
-    /// lifetime is not tracked here.
-    fn clone_source_for_cache(&self, mesh: &Mesh) -> Result<Arc<Mesh>> {
-        self.clone_cached_mesh(mesh).map(Arc::new)
-    }
-
-    /// Accounted copy for both cache population and every cache hit, so a
-    /// repeated occurrence is charged (or refused) like the first one.
-    fn clone_cached_mesh(&self, mesh: &Mesh) -> Result<Mesh> {
-        if !crate::resource::is_active() {
-            return Ok(mesh.clone());
-        }
-        let (copy, permit) = crate::resource::mesh::clone_mesh(mesh)?;
-        permit.retain();
-        Ok(copy)
-    }
-
     /// Mesh one plain (non-`IfcMappedItem`) item of a mapped source into
     /// `source`. The one per-item step of the three source walks that do not
     /// go through [`Self::process_representation_item`]: this file,
@@ -313,27 +288,29 @@ impl GeometryRouter {
     ///
     /// It rebases a raw-coordinate item by the model RTC in f64 before f32
     /// narrowing (#5698, ROUTER-27), kept as the item's origin (see
-    /// [`Self::keep_rebase_in_origin`]), and, through
-    /// [`Self::process_item_in_rtc_frame`], drains the #4901 curve-capped flag
+    /// [`Self::keep_rebase_in_origin`]), and, through the common item program
+    /// (`crate::program::GeometryProgram::item`), drains the #4901 curve-capped flag
     /// for this source rather than the next item on the thread (ROUTER-26). A
     /// failed or unsupported item is recorded as dropped; `walk` only names
-    /// the caller in the debug message.
+    /// the caller in the debug message. A program stop is not a drop: it
+    /// propagates as a typed terminal and nothing further is merged.
     pub(super) fn merge_source_item(
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
         source: &mut SourceParts,
         walk: &str,
-    ) {
+    ) -> Result<()> {
         let meshed = self.mesh_item(item, decoder, ItemFrame::MappedSource);
         match meshed {
             Ok(mesh) => {
                 source.merge(&mesh);
             }
-            Err(e) => {
-                self.drop_item(item, &e, &format!("{walk} item"));
+            Err(error) => {
+                self.drop_recoverable_item(item, error, &format!("{walk} item"))?;
             }
         }
+        Ok(())
     }
 
     /// Re-express a mapped-source item rebased by the model RTC (`rtc_applied`,

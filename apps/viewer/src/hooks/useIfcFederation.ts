@@ -296,21 +296,12 @@ export function useIfcFederation(
    * Remove a model from the federation
    */
   const removeModel = useCallback((modelId: string) => {
+    // The store selects the successor and updates both active-data mirrors
+    // atomically. Re-copying the first survivor here overwrites a different
+    // active model's source and geometry under its existing ID range (#7890).
     storeRemoveModel(modelId);
-
-    // Read fresh state from store after removal to avoid stale closure
-    const freshModels = useViewerStore.getState().models;
-    const remaining = Array.from(freshModels.values()) as FederatedModel[];
-    if (remaining.length > 0) {
-      const newActive = remaining[0];
-      setIfcDataStore(newActive.ifcDataStore);
-      setGeometryResult(newActive.geometryResult);
-    } else {
-      setIfcDataStore(null);
-      setGeometryResult(null);
-    }
     realignFederatedPointClouds(findReferenceSpatialModel()?.placement ?? null);
-  }, [storeRemoveModel, setIfcDataStore, setGeometryResult]);
+  }, [storeRemoveModel]);
 
   /**
    * Get query instance for a specific model

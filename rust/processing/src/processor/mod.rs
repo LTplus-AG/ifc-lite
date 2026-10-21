@@ -41,6 +41,7 @@ pub use sink::ClosureSink;
 pub use sink::{FrameEvent, OnBatch, ProcessingSink};
 pub(crate) mod instancing;
 mod jobs;
+mod run_snapshot;
 mod opening_filter;
 mod phase_marks;
 use phase_marks::{mark, Mark};
@@ -597,6 +598,14 @@ pub fn process(
         })
         .collect();
     let element_material_colors = Arc::new(element_material_colors);
+    let mut run = run_snapshot::RunSnapshot::new(crate::element::OwnedMeshProductionData {
+        void_index: Arc::clone(&void_index_arc),
+        geometry_style_index: Arc::clone(&geometry_style_index),
+        indexed_colour_full: Arc::clone(&indexed_colour_full),
+        element_material_colors: Arc::clone(&element_material_colors),
+        texture_index: Arc::clone(&texture_index),
+        site_local_rotation: run_snapshot::site_rotation(site_transform.as_deref(), coord_space),
+    });
 
     let total_jobs = entity_jobs.len();
     let initial_chunk_size = req.batching.initial.max(1);
@@ -806,12 +815,6 @@ pub fn process(
                 req.features.presentation_layers,
             );
         }
-        let site_local_rotation: Option<&Vec<f64>> =
-            if coord_space == MeshCoordinateSpace::SiteLocal {
-                site_transform.as_ref()
-            } else {
-                None
-            };
         // Each job borrows its worker's persistent point cache by thread index, so a
         // shared point list is parsed once per worker for the whole model, not per
         // chunk/part. `.map`/`.flatten_iter()` keeps the former `flat_map_iter` order;
@@ -859,13 +862,8 @@ pub fn process(
                     rtc_offset,
                     seed_plane_angle_to_radians,
                     req.quality,
-                    void_index_arc.as_ref(),
+                    run.context(),
                     skipped_entity_ids.as_ref(),
-                    geometry_style_index.as_ref(),
-                    indexed_colour_full.as_ref(),
-                    element_material_colors.as_ref(),
-                    texture_index.as_ref(),
-                    site_local_rotation,
                     &diag_collectors,
                     &item_dedup_cache,
                     &brep_signature_cache,
@@ -910,6 +908,7 @@ pub fn process(
                 deferred_style_refusals.extend(style_decoder.refused_record_ids());
                 crate::prepass::merge_indexed_colours(&mut rebuilt_styles, &indexed_colour_index);
                 geometry_style_index = Arc::new(rebuilt_styles);
+                run.replace_styles(&geometry_style_index);
                 let deferred_color_updates = build_color_updates_for_jobs(
                     &entity_jobs[..processed_jobs], geometry_style_index.as_ref(), content,
                     &entity_index_arc, &mut deferred_style_refusals,

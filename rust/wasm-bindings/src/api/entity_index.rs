@@ -115,6 +115,7 @@ impl IfcAPI {
         // The geometry-style maps belong to the previous load's wire styles —
         // drop them on content swap so a reused IfcAPI can't reuse a stale map
         // (the (len,first,last) signature would otherwise collide rarely).
+        self.production_model.invalidate_source();
         self.cached_geometry_styles
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

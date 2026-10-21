@@ -215,14 +215,20 @@ fn carrier_policy_sample(
     cache: SharedBrepSignatureCache,
 ) -> crate::Result<(Vec<u128>, crate::Mesh)> {
     let mut decoder = source.decoder().with_strict_reals();
-    let router = router(cache, 0.001, TessellationQuality::Medium);
+    // Key-only identity checks need dedup enabled, but its legacy shared mesh
+    // cache has no admission owner and cannot serve bounded public meshing.
+    let key_router = router(cache.clone(), 0.001, TessellationQuality::Medium);
     let mut keys = Vec::new();
     for id in [489635, 900011] {
         let item = decoder.decode_by_id(id).unwrap();
-        let key = router.item_dedup_key(&item, &mut decoder).unwrap();
-        assert_eq!(router.item_dedup_key(&item, &mut decoder), Some(key));
+        let key = key_router.item_dedup_key(&item, &mut decoder).unwrap();
+        assert_eq!(key_router.item_dedup_key(&item, &mut decoder), Some(key));
         keys.push(key);
     }
+    // Keep the signature authority shared, with supported router-local mesh
+    // caches so the product reaches geometry and audited copy admission.
+    let mut router = GeometryRouter::with_scale_and_quality(0.001, TessellationQuality::Medium);
+    router.enable_shared_brep_signature_cache(cache);
     let product = decoder.decode_by_id(900004).unwrap();
     Ok((keys, router.process_element(&product, &mut decoder)?))
 }

@@ -112,6 +112,13 @@ pub enum KernelCommand {
         solid: WireHandle,
         column_major: [f64; 16],
     },
+    /// Bounded general affine copy into a generic rational BRep (opcode 18,
+    /// capability bit 16). Replies with the new handle and its certificate.
+    CopyAffine {
+        session: u64,
+        solid: WireHandle,
+        column_major: [f64; 16],
+    },
     CreateSession,
     DestroySession {
         session: u64,
@@ -184,6 +191,7 @@ pub fn encode_request(request_id: u32, command: &KernelCommand) -> Result<Vec<u8
         KernelCommand::SweepChunk { .. } => 14,
         KernelCommand::SweepCommit { .. } => 15,
         KernelCommand::CopyTransform { .. } => 17,
+        KernelCommand::CopyAffine { .. } => 18,
         KernelCommand::CreateSession => 1,
         KernelCommand::DestroySession { .. } => 2,
         KernelCommand::Box { .. } => 3,
@@ -245,6 +253,11 @@ fn encode_arguments(command: &KernelCommand, out: &mut Vec<u8>) -> Result<(), Pr
             out.extend(upload.to_le_bytes());
         }
         CopyTransform {
+            session,
+            solid,
+            column_major,
+        }
+        | CopyAffine {
             session,
             solid,
             column_major,

@@ -36,6 +36,9 @@ mod objects;
 #[path = "worker_dependencies.rs"]
 mod dependencies;
 pub use dependencies::{RetainedDependency, RetainedDependencyResult, RetainedLineage};
+#[path = "worker_affine.rs"]
+mod affine;
+pub use affine::{AffineCertificate, AffineCopyIdentity, RetainedAffineCopy, RetainedTransformInput};
 
 static NEXT_WORKER: AtomicU64 = AtomicU64::new(1);
 

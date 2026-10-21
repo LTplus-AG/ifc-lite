@@ -22,7 +22,7 @@ pub use supervision::{
 pub use runtime_owner::RuntimeOwner;
 #[cfg(not(target_arch = "wasm32"))]
 pub use worker::{
-    BrepHandle, MeshLimits, NumericalOutcome, RegionQualificationReport, RetainedDependency,
-    RetainedDependencyResult, RetainedLineage, RetainedRealization, SmlibWorker, TessellatedMesh,
-    WorkerError,
+    AffineCertificate, AffineCopyIdentity, BrepHandle, MeshLimits, NumericalOutcome, RegionQualificationReport, RetainedDependency,
+    RetainedAffineCopy, RetainedDependencyResult, RetainedLineage, RetainedRealization,
+    RetainedTransformInput, SmlibWorker, TessellatedMesh, WorkerError,
 };

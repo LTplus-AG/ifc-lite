@@ -20,6 +20,7 @@ impl SmlibWorker {
                 check(*right)
             }
             KernelCommand::CopyTransform { solid, .. }
+            | KernelCommand::CopyAffine { solid, .. }
             | KernelCommand::Volume { solid, .. }
             | KernelCommand::Manifold { solid, .. }
             | KernelCommand::IsEmpty { solid, .. }

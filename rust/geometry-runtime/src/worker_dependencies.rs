@@ -3,16 +3,16 @@
 //! result owns its solid through its own managed lease, independently of the
 //! receipts it was built from.
 use super::{
-    rigid, BrepHandle, MeshLimits, NumericalOutcome, RetainedRealization, SmlibWorker,
-    TessellatedMesh, WorkerError,
+    rigid, AffineCertificate, BrepHandle, MeshLimits, NumericalOutcome, RetainedAffineCopy,
+    RetainedRealization, SmlibWorker, TessellatedMesh, WorkerError,
 };
 use crate::protocol::BooleanOperation;
 use ifc_lite_geometry::document::RetainedRequest;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-/// Deepest admitted chain of retained Boolean operations.
-const MAX_OPERATIONS: usize = 128;
+/// Deepest admitted chain of retained Boolean and affine-copy operations.
+pub(super) const MAX_OPERATIONS: usize = 128;
 
 /// A sealed numerical operand. A raw handle cannot manufacture one.
 pub enum RetainedDependency<'a> {
@@ -25,6 +25,13 @@ pub enum RetainedDependency<'a> {
     },
     /// An earlier result, in its own unchanged world frame.
     Result(&'a RetainedDependencyResult),
+    /// A baked affine copy placed by an explicit proper rigid
+    /// `world_from_affine` (column-major, copy metres -> world metres). Never
+    /// inferred from authored units or a relative-to-centre origin.
+    Affine {
+        copy: &'a RetainedAffineCopy,
+        world_from_affine: [f64; 16],
+    },
 }
 
 /// The evaluated operations behind a result, separate from revision-local SDK
@@ -40,6 +47,24 @@ pub enum RetainedLineage {
         operation: BooleanOperation,
         left: Arc<Self>,
         right: Arc<Self>,
+    },
+    /// A realization's raw authored source in its own evaluation frame, as
+    /// the input of an affine copy (no world placement applies to it).
+    Definition {
+        request: Box<RetainedRequest>,
+        source_from_evaluation: [f64; 16],
+        evaluation_from_source: [f64; 16],
+    },
+    /// A bounded affine copy of `input`, in the input's evaluation frame.
+    AffineCopy {
+        input: Arc<Self>,
+        column_major: [f64; 16],
+        certificate: AffineCertificate,
+    },
+    /// An explicit rigid placement of a copied value as a Boolean operand.
+    Placed {
+        value: Arc<Self>,
+        world_from_evaluation: [f64; 16],
     },
 }
 
@@ -94,6 +119,11 @@ impl RetainedDependencyResult {
             Err(WorkerError::WrongWorker)
         }
     }
+    /// Live solid, shared lineage and operation count, for a further operation.
+    pub(super) fn parts(&self) -> Result<(BrepHandle, Arc<RetainedLineage>, usize), WorkerError> {
+        self.validate_live()?;
+        Ok((self.solid, self.lineage.clone(), self.operations))
+    }
 }
 
 type Operand = (BrepHandle, [f64; 16], Arc<RetainedLineage>, usize);
@@ -118,13 +148,20 @@ impl RetainedDependency<'_> {
                 Ok((realization.solid(), frame, Arc::new(lineage), 0))
             }
             Self::Result(result) => {
-                result.validate_live()?;
-                Ok((
-                    result.solid,
-                    result.world_from_evaluation,
-                    result.lineage.clone(),
-                    result.operations,
-                ))
+                let (solid, lineage, operations) = result.parts()?;
+                Ok((solid, result.world_from_evaluation, lineage, operations))
+            }
+            Self::Affine {
+                copy,
+                world_from_affine,
+            } => {
+                let (solid, value, operations) = copy.parts()?;
+                rigid(*world_from_affine).map_err(WorkerError::InvalidArgument)?;
+                let lineage = RetainedLineage::Placed {
+                    value,
+                    world_from_evaluation: *world_from_affine,
+                };
+                Ok((solid, *world_from_affine, Arc::new(lineage), operations))
             }
         }
     }

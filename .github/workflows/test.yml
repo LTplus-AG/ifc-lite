@@ -1498,6 +1498,17 @@ jobs:
           # whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/inner.rs | grep -Fxq 'rust/geometry/src/program/inner.rs'; then
             oracle_args+=(--mutation tests/evidence/item-cache-controller-d2/behaviour.oracle.patch)
+          # #7955 G4b: bounded affine copies add geometry-runtime
+          # worker_affine.rs, whose types the changed runtime tests name, so a
+          # whole-change revert cannot compile them (INCONCLUSIVE). Keep the
+          # types and break ONLY admission: a singular matrix passes the
+          # pre-dispatch check and opcode 18 is sent to an adapter that never
+          # advertised it (RED, unit and protocol peer only). Checked before
+          # G4a so the stacked branch uses its own patch. Once
+          # rust/geometry-runtime/src/worker_affine.rs is on main, ordinary
+          # whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry-runtime/src/worker_affine.rs | grep -Fxq 'rust/geometry-runtime/src/worker_affine.rs'; then
+            oracle_args+=(--mutation tests/evidence/affine-copy-g4b/behaviour.oracle.patch)
           # #7955 G4a: sealed empty outcomes add geometry-runtime
           # worker_empty.rs, whose NumericalOutcome the changed runtime tests
           # name, so a whole-change revert cannot compile them (INCONCLUSIVE).

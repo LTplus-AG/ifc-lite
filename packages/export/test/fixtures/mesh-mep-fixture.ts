@@ -19,11 +19,12 @@ export function meshMepFixture(api: IfcAPI, source: string) {
         try {
           const positions = mesh.positions;
           const indices = mesh.indices;
+          const origin = mesh.origin;
           const bounds = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
           for (let j = 0; j < positions.length; j += 3) {
             for (let axis = 0; axis < 3; axis++) {
-              bounds[axis] = Math.min(bounds[axis], positions[j + axis]);
-              bounds[axis + 3] = Math.max(bounds[axis + 3], positions[j + axis]);
+              bounds[axis] = Math.min(bounds[axis], positions[j + axis] + (origin?.[axis] ?? 0));
+              bounds[axis + 3] = Math.max(bounds[axis + 3], positions[j + axis] + (origin?.[axis] ?? 0));
             }
           }
           let volume = 0;

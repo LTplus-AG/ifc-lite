@@ -151,8 +151,7 @@ impl GeometryRouter {
                     // already scaled inside the cached path
                     Ok(sub_parts) => sub_parts.iter().for_each(|part| untextured.merge(part)),
                     Err(error) => {
-                        let error = Self::recoverable_source_error(error)?;
-                        self.drop_item(&item, &error, "nested IfcMappedItem in representation map");
+                        self.drop_recoverable_item(&item, error, "nested IfcMappedItem in representation map")?;
                     }
                 }
                 continue;

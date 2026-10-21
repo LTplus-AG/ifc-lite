@@ -513,8 +513,7 @@ impl GeometryRouter {
                         false,
                         texture_index,
                     ) {
-                        let e = Self::recoverable_source_error(e)?;
-                        self.drop_item(&nested_item, &e, "nested geometry");
+                        self.drop_recoverable_item(&nested_item, e, "nested geometry")?;
                         continue;
                     }
 
@@ -600,8 +599,7 @@ impl GeometryRouter {
                     }
                 }
                 Err(e) => {
-                    let e = Self::recoverable_source_error(e)?;
-                    self.drop_item(item, &e, "geometry");
+                    self.drop_recoverable_item(item, e, "geometry")?;
                 }
             }
         }

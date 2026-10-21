@@ -106,15 +106,17 @@ impl GeometryRouter {
 
     /// The one drop of a representation item the walks skip: counts it under
     /// its own type (see [`Self::record_unsupported_item`]) and logs why. `what`
-    /// names the walk or item kind for the log line only.
-    pub(crate) fn drop_item(
+    /// names the walk or item kind for the log line only. A typed resource stop
+    /// propagates before any unsupported-item count or log is recorded.
+    pub(crate) fn drop_recoverable_item(
         &self,
         item: &ifc_lite_core::DecodedEntity,
-        error: &crate::Error,
+        error: crate::Error,
         what: &str,
-    ) {
+    ) -> crate::Result<()> {
+        let error = Self::recoverable_source_error(error)?;
         self.record_unsupported_item(item.ifc_type.clone());
-        let _ = (error, what);
+        let _ = (&error, what);
         crate::diag::diag_debug!(
             { item_id = item.id, ifc_type = ?item.ifc_type, what, error = %error,
               "skipping unsupported item" }
@@ -126,6 +128,7 @@ impl GeometryRouter {
                 );
             }
         );
+        Ok(())
     }
 
     /// Record one dropped representation item (unsupported type, or its

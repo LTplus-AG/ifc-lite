@@ -206,9 +206,8 @@ impl GeometryRouter {
                 ) {
                     Ok(sub_parts) => sub_parts.iter().for_each(|part| source.merge(part)),
                     Err(error) => {
-                        let error = Self::recoverable_source_error(error)?;
+                        self.drop_recoverable_item(&sub_item, error, "nested IfcMappedItem")?;
                         level_truncated = true;
-                        self.drop_item(&sub_item, &error, "nested IfcMappedItem");
                     }
                 }
                 continue;
@@ -308,8 +307,7 @@ impl GeometryRouter {
                 source.merge(&mesh);
             }
             Err(error) => {
-                let error = Self::recoverable_source_error(error)?;
-                self.drop_item(item, &error, &format!("{walk} item"));
+                self.drop_recoverable_item(item, error, &format!("{walk} item"))?;
             }
         }
         Ok(())

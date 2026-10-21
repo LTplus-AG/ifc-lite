@@ -103,7 +103,7 @@ pub use primitives::{
 use color::build_styled_item_index;
 use grid::extract_grid;
 use item_walk::extract_symbolic_item;
-use transform::{compose_transforms, parse_axis2_placement_2d, resolve_object_placement, Transform2D};
+use transform::{compose_transforms, resolve_object_placement};
 
 // ────────────────────────────────────────────────────────────────────────────
 // Top-level extraction. Mirror of the wasm `parse_symbolic_representations`

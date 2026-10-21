@@ -91,11 +91,33 @@ pub fn check_current() -> Result<(), ProgramStop> {
     if let Err(error) = account {
         return Err(stop(error));
     }
-    if let Some(error) = TERMINAL.with(|slot| slot.get().flatten()) {
+    if let Some(error) = current_terminal() {
         return Err(error);
     }
     Ok(())
 }
+fn current_terminal() -> Option<ProgramStop> {
+    TERMINAL.with(|slot| slot.get().flatten())
+}
+
+/// Poll live stop state without constructing an aggregate result when no
+/// authorities are installed. Presence is observed afresh on every call.
+pub fn is_stopped() -> bool {
+    if SOURCE_STOP.with(|slot| slot.borrow().is_none())
+        && CURRENT.with(|slot| slot.borrow().is_none())
+    {
+        current_terminal().is_some()
+    } else {
+        check_active_stop()
+    }
+}
+
+#[cold]
+#[inline(never)]
+fn check_active_stop() -> bool {
+    check_current().is_err()
+}
+
 pub fn charge(cost: Cost) -> Result<Reservation, ProgramStop> {
     check_current()?;
     match current_account() {

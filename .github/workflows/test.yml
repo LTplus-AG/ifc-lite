@@ -1473,6 +1473,18 @@ jobs:
           # whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/inner.rs | grep -Fxq 'rust/geometry/src/program/inner.rs'; then
             oracle_args+=(--mutation tests/evidence/item-cache-controller-d2/behaviour.oracle.patch)
+          # #7955 F2b: retained extrusion requests add document/retained.rs and
+          # processing retained_requests.rs, which their tests name, so a
+          # whole-change revert cannot compile them (INCONCLUSIVE). Keep the
+          # types and break ONLY the behaviour: any worker incarnation and
+          # stale revisions are accepted, completion frames go unchecked, every
+          # display claim is admitted, inner loops keep authored winding, depth
+          # skips unit scaling, boolean operands and non-rigid placements are
+          # admitted (RED). Checked before F2a so the stacked branch uses its
+          # own patch. Once rust/geometry/src/document/retained.rs is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/document/retained.rs | grep -Fxq 'rust/geometry/src/document/retained.rs'; then
+            oracle_args+=(--mutation tests/evidence/retained-requests-f2b/behaviour.oracle.patch)
           # #7955 F2a: the geometry document adds document/mod.rs and processing
           # retained_geometry.rs, which their tests name, so a whole-change
           # revert cannot compile them (INCONCLUSIVE). Keep the types and break

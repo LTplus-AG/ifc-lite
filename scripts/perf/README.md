@@ -4363,3 +4363,25 @@ spending another capture window. This integration fix grants no timing verdict.
 The standalone native comparison preserves ordered mesh payloads, exact float/frame/metadata identity and complete diagnostic bytes on the catalog corpus. The stock reporter remains inconclusive; all-sample block summaries are retained beside the stock selected-row report, including the adverse parse observations and geometry offsets. The maintainer accepts the observed native cost for consistently refusing unreadable authored local, linear and grid placements while retaining absent-placement identity and readable degenerate-direction repair. This is a correctness tradeoff, not a speedup or statistical-neutrality claim. This is a maintainer judgment, not a statistical test result. The evidence does not waive browser/WASM qualification, WASM size budgets or required gates, and the later combined placement/memo measurements must not be relabelled as this standalone result.
 
 [Retained native observations](evidence/placement-refusal-7877-recovery/README.md) bind the exact standalone source. Keep strict malformed-placement reporting and output preservation separate from claims about native speed or the browser pipeline.
+
+
+### Canonical placement consumer own-layer native verdict (#7880)
+
+The fresh standalone03 `03e2ad` versus corrected-X `a806aed` native worker-pool
+cohort preserves complete ordered mesh/float/frame/metadata/instance output and
+all diagnostic bytes on Haus, ISSUE_129 and heavy Holter. Every timed count and
+fingerprint also matches. The stock report identifies no real phase change but
+remains inconclusive; complete-load observations are modestly adverse on all
+three controls. No speed or neutrality claim follows.
+
+Disposition: accept the disclosed native cost for canonical placement/direction
+consumer fixes with exact preserved geometry/refusal output. This is an accepted
+cost, not a required-gate waiver. The [own-layer evidence](evidence/placement-7779/recovery-x-native/README.md)
+retains every phase/sample and distinguishes the stock selected report from
+all-inner outer-block statistics. Both actual selected sources retain original
+core/geometry/processing and example compiler proof; the original X preparation's
+later R-guard failure remains failed. No prior timing observations are pooled or
+subtracted. Lesson: qualify the actual layer against its own base and preserve
+small adverse results even when full output matches and the stock report is
+inconclusive. Browser/WASM and other required CI/ratchet gates remain separate;
+no baseline, ceiling, acceptance band or pin changes.

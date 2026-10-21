@@ -6,6 +6,8 @@ import { test, expect, type Page } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
 import { ViewerBenchmarkPage } from '../benchmark/viewer-benchmark-page';
+import { GPU_STRICT, watchGpuDeviceLoss } from './gpu-device-loss';
+import { classifyViewportWitness } from './viewport-witness';
 
 // #6921: the committed demo revision pair (SketchUp base + derived rev B)
 // loaded through "Try with demo data", compared, clash-checked natively, and
@@ -121,6 +123,7 @@ const comparisonGpuTest = test.extend({
 // #8017: real demo comparison, normal laptop height. The old results-only
 // scroller collapsed after setup/source/export chrome consumed the column.
 comparisonGpuTest('comparison categories isolate results and remain reachable on a short panel (#8017)', async ({ page }, testInfo) => {
+  const gpu = await watchGpuDeviceLoss(page);
   await page.setViewportSize({ width: 1280, height: 800 });
   const viewer = new ViewerBenchmarkPage(page);
   await viewer.setup();
@@ -186,10 +189,18 @@ comparisonGpuTest('comparison categories isolate results and remain reachable on
       bitmap.close();
       return { png, colored };
     });
-    expect(frame?.colored).toBeGreaterThan(20);
-    const gpuPath = testInfo.outputPath(`compare-8017-${diffState}-gpu.png`);
-    await writeFile(gpuPath, Buffer.from(frame!.png.split(',')[1], 'base64'));
-    await testInfo.attach(`compare-8017-${diffState}-gpu.png`, { path: gpuPath, contentType: 'image/png' });
+    if (frame) {
+      expect(frame.colored).toBeGreaterThan(20);
+      const gpuPath = testInfo.outputPath(`compare-8017-${diffState}-gpu.png`);
+      await writeFile(gpuPath, Buffer.from(frame.png.split(',')[1], 'base64'));
+      await testInfo.attach(`compare-8017-${diffState}-gpu.png`, { path: gpuPath, contentType: 'image/png' });
+    } else {
+      // #8017: retain every UI assertion after a hosted GPU loss. A missing
+      // readback without loss evidence, or on a strict run, must still fail.
+      const witness = classifyViewportWitness({ frame: null, lossEvidence: await gpu.lost(), strict: GPU_STRICT });
+      testInfo.annotations.push({ type: `viewport-witness:${diffState}`, description: witness.summary });
+      expect(witness.status, witness.summary).toBe('not-established');
+    }
     await page.screenshot({ path: testInfo.outputPath(`compare-8017-${diffState}.png`) });
     await badge.click();
     await expect(badge).toHaveAttribute('aria-pressed', 'false');

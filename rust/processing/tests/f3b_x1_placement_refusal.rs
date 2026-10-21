@@ -87,6 +87,36 @@ fn absent_placement_markers_preserve_geometry_without_inventing_row_placement_78
     }
 }
 
+/// #7877: both public router mesh paths share canonical placement admission.
+#[test]
+fn router_mesh_paths_refuse_present_non_reference_placements_7877() {
+    use ifc_lite_core::EntityDecoder;
+    use ifc_lite_geometry::GeometryRouter;
+
+    let authored = wall(100, "(5.,0.,0.)", "(0.,0.,1.)");
+    for (marker, valid) in [("$", true), ("*", true), ("#21", true),
+        ("IFCLABEL('bad')", false), ("17", false), ("#999", false)] {
+        let body = authored.replace(",#109,#105,$,$)", &format!(",{marker},#105,$,$)"));
+        let content = format!("{HEAD}{body}ENDSEC;\nEND-ISO-10303-21;\n");
+        for submeshes in [false, true] {
+            let mut decoder = EntityDecoder::new(&content);
+            let router = GeometryRouter::with_units(&content, &mut decoder);
+            let entity = decoder.decode_by_id(100).unwrap();
+            let result = if submeshes {
+                router.process_element_with_submeshes(&entity, &mut decoder)
+                    .map(|meshes| meshes.sub_meshes.iter().any(|m| !m.mesh.positions.is_empty()))
+            } else {
+                router.process_element(&entity, &mut decoder).map(|mesh| !mesh.positions.is_empty())
+            };
+            if valid {
+                assert_eq!(result.unwrap(), true, "{marker}, submeshes={submeshes}");
+            } else {
+                assert!(result.is_err(), "{marker}, submeshes={submeshes}: no fabricated identity");
+            }
+        }
+    }
+}
+
 fn min_x(result: &ifc_lite_processing::ProcessingResult, id: u32) -> f32 {
     let mesh = result.meshes.iter().find(|m| m.express_id == id).expect("meshed");
     mesh.positions.chunks(3).map(|p| p[0]).fold(f32::INFINITY, f32::min)

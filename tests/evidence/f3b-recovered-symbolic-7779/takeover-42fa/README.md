@@ -1,5 +1,10 @@
 # PR #7914 takeover: qualification and remaining holds
 
+This packet is historical source-specific evidence. The later
+[placement-stack reconciliation](../reconciliation-6fa/README.md) has a separate
+native qualification; its combined dependencies are not covered by the browser,
+TypeScript or performance observations below.
+
 The user authorized session bf7d2a91 to take over the existing held PR. Source
 `42fa46cfd093d82b45e0f36427649637a5c0f7af` fixes projected arc extrema,
 full-frame vertex/elevation alignment and projected text direction. The source

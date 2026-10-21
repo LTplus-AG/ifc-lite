@@ -1,0 +1,78 @@
+{
+  "job": "d2a8ab1d-5300-4d3f-a3af-2f2955fa5138",
+  "request": "auto-5339733dc9e54a2ea3c213ba8288f856",
+  "host": "pc-wsl",
+  "command": [
+    "bash",
+    "-c",
+    "node scripts/fixtures/fetch-fixtures.mjs && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace"
+  ],
+  "sourceBefore": {
+    "commit": "6fa1915e9fc88c9b78c89bc6079095a92fc2bdff",
+    "tree": "20380a242319e33eab65e3f7f477c804c3866df0",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "55d7c4deaf4afe5281b77119a9a1759f9dde9ba8c325cfd59ce4b43bebb571a6",
+      "pnpm-lock.yaml": "4ef03ad9b34812de9d0e6c309d04ae315c09f887c3927f67ab6e31f8131e5283",
+      "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+    }
+  },
+  "sourceAfter": {
+    "commit": "6fa1915e9fc88c9b78c89bc6079095a92fc2bdff",
+    "tree": "20380a242319e33eab65e3f7f477c804c3866df0",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "55d7c4deaf4afe5281b77119a9a1759f9dde9ba8c325cfd59ce4b43bebb571a6",
+      "pnpm-lock.yaml": "4ef03ad9b34812de9d0e6c309d04ae315c09f887c3927f67ab6e31f8131e5283",
+      "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+    }
+  },
+  "sourceUnchanged": true,
+  "exitCode": 0,
+  "fixtures": {
+    "fetched": 182,
+    "skipped": 0,
+    "errors": 0
+  },
+  "workspaceTests": {
+    "passed": 6103,
+    "failed": 0,
+    "declaredIgnored": 46,
+    "reportedSuites": 384
+  },
+  "strictClippy": "PASS before full workspace tests",
+  "outputLogSha256": "68baa178c143e18906b31728b25b337ef200a06c32208508a23960a1f4a5b040",
+  "base": "4bcaed8303",
+  "resolution": "Merged updated placement stack; retained both performance ledger entries, kept the symbolic PlacementError classification dependency, lowered five positional-read allowlist rows. Symbolic implementation and regression source unchanged from fcc592a954.",
+  "scope": "Native qualification at6fa1915e9f only. Historical42fa browser/WASM/TypeScript/perf records do not qualify these combined dependencies. Required hosted checks and current-source consumer/performance acceptance remain pending.",
+  "supersededAttempts": [
+    {
+      "job": "a5ff7c20-c784-4ac6-8b31-d9ec4eda2889",
+      "commit": "a83ce211bb459d870b73c411e0ce0d0fe8b42a45",
+      "exitCode": 101,
+      "state": "failed",
+      "sourceUnchanged": true,
+      "passed": 0,
+      "failed": 0,
+      "ignored": 0,
+      "logSha256": "e6319eb34f6bb428ee7f70888410e9b1019f54d297b1903e7480295af2e9d68b",
+      "cause": "E0599 missing still-used is_admission_refusal helper"
+    },
+    {
+      "job": "80dc5bad-5272-472a-93b5-5a6bca2c4f07",
+      "commit": "d732e8e29c96d4e50de478e599cbd04532cd2469",
+      "exitCode": 101,
+      "state": "failed",
+      "sourceUnchanged": true,
+      "passed": 5344,
+      "failed": 1,
+      "ignored": 36,
+      "logSha256": "d32ef58f4f6224832bed5e3eaad30ec649347688a1df793d67125319a069cbf4",
+      "cause": "positional_read_ratchet:5 symbolic allowlist rows must decrease; strict Clippy not executed"
+    }
+  ]
+}

@@ -4412,6 +4412,10 @@ fresh workspace compilation, embedded source paths and frozen executable hashes
 established the replacement pair. Keep source correctness, complete output
 identity and performance acceptance as separate evidence questions.
 
+The later [placement-stack reconciliation](../../tests/evidence/f3b-recovered-symbolic-7779/reconciliation-6fa/README.md)
+has separate native correctness and Clippy qualification. These earlier paired
+measurements do not qualify that combined source's performance or consumers.
+
 ## Standalone placement refusal reconciliation (#7877)
 
 The standalone native comparison preserves ordered mesh payloads, exact float/frame/metadata identity and complete diagnostic bytes on the catalog corpus. The stock reporter remains inconclusive; all-sample block summaries are retained beside the stock selected-row report, including the adverse parse observations and geometry offsets. The maintainer accepts the observed native cost for consistently refusing unreadable authored local, linear and grid placements while retaining absent-placement identity and readable degenerate-direction repair. This is a correctness tradeoff, not a speedup or statistical-neutrality claim. This is a maintainer judgment, not a statistical test result. The evidence does not waive browser/WASM qualification, WASM size budgets or required gates, and the later combined placement/memo measurements must not be relabelled as this standalone result.

@@ -51,7 +51,7 @@ export class OpaqueVisibilityPass {
   private height = 0;
   private active = false;
 
-  constructor(private readonly device: GPUDevice, private readonly samples: number) {}
+  constructor(private readonly device: GPUDevice, private readonly samples: number, private readonly sectionBinding?: () => GPUBindGroup) {}
 
   create(descriptor: GPURenderPipelineDescriptor, source = mainShaderSource): GPURenderPipeline {
     return this.register(this.device.createRenderPipeline(descriptor), descriptor, source);
@@ -121,6 +121,8 @@ export class OpaqueVisibilityPass {
   begin(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor, orthographic: boolean, width: number, height: number): GPURenderPassEncoder {
     this.active = orthographic;
     const main = encoder.beginRenderPass(descriptor);
+    const section = this.sectionBinding?.();
+    if (section) main.setBindGroup(3, section);
     if (!orthographic) { this.releaseTexture(); return main; }
     this.ensureSize(width, height);
     const before = this.device.createCommandEncoder({ label: 'opaque-visibility-before-main' });
@@ -131,6 +133,7 @@ export class OpaqueVisibilityPass {
     });
     let variant: Variants | undefined;
     const groups = new Map<number, unknown[]>(), vertices = new Map<number, unknown[]>();
+    if (section) groups.set(3, [3, section]);
     let indices: unknown[] | undefined;
     const raster = new Map<string, unknown[]>();
     const methods = new Map<PropertyKey, unknown>();

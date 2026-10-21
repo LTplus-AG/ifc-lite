@@ -108,7 +108,7 @@ export class RenderPipeline {
         // 4x MSAA provides good anti-aliasing for thin geometry
         const maxSampleCount = (this.device.limits as unknown as Record<string, number>)?.maxSampleCount ?? 4;
         this.sampleCount = Math.min(4, maxSampleCount);
-        this.visibility = new OpaqueVisibilityPass(this.device, this.sampleCount);
+        this.visibility = new OpaqueVisibilityPass(this.device, this.sampleCount, () => sectionExclusions(this.device).bindGroup);
 
         // Create depth texture with MSAA support
         this.depthTexture = this.device.createTexture({

@@ -155,7 +155,7 @@ fn issue_7873_rejected_reply_and_replayed_request_cannot_spend_an_attempt() {
     let request = program.request().unwrap().unwrap();
     let reply = program.execute(request, &router, &mut decoder).unwrap();
     assert!(matches!(program.execute(request, &router, &mut decoder), Err(ProgramError::AlreadyExecuted)));
-    let rejected = program.accept(reply, &foreign).err().expect("foreign owner");
+    let rejected = program.accept(reply, &foreign).expect_err("foreign owner");
     assert_eq!(rejected.error, ProgramError::WrongOwner);
     program.accept(rejected.reply, &router).unwrap_or_else(|_| panic!("owner accepts"));
     let parts = program.drain_parts(&router, &mut decoder).unwrap();

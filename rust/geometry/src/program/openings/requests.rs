@@ -3,15 +3,17 @@
 //! item child. Source requests are tags: the entities they read stay in the
 //! owning controller, so a request can neither copy nor replay source.
 use super::decision::Decisions;
+use super::planar::PlanarHost;
 use super::ready::ProbePlacement;
 use crate::program::opening::OpeningBounds;
 use crate::router::processing::SourceHygiene;
 use crate::router::transforms::WorldFrame;
-use crate::router::voids::OpeningType;
+use crate::router::voids::probe::ExtrudedSolidInfo;
+use crate::router::voids::{OpeningType, RectParam};
 use crate::router::OpeningDiagnostic;
 use crate::{Mesh, Result, Vector3};
 use ifc_lite_core::DecodedEntity;
-use nalgebra::Matrix4;
+use nalgebra::{Matrix3, Matrix4, Point2};
 use std::collections::VecDeque;
 
 /// A source admission, executed against the requesting controller's own state.
@@ -27,6 +29,16 @@ pub(crate) enum OpeningSource {
     RawChoice,
     /// The reached item's authored extrusion direction.
     Direction,
+    /// The host's exact parametric box.
+    RectHost,
+    /// The reached opening's parametric boxes.
+    RectBoxes,
+    /// The host's single extruded solid.
+    SolidHost,
+    /// The reached opening's extruded solids.
+    Solids,
+    /// The router's unit scale and RTC offset.
+    Frame,
 }
 
 /// Owned numerical work. Every payload is values only: no decoder, router or
@@ -51,6 +63,29 @@ pub(crate) enum OpeningReady {
         output: Vec<OpeningType>,
         diagnostic: Vec<OpeningDiagnostic>,
     },
+    /// Merge classified rectangles into larger boxes.
+    Merge(Vec<OpeningType>),
+    /// Every opening box must share the host frame (a signed permutation).
+    RectOrientation {
+        host: Matrix3<f64>,
+        boxes: Vec<RectParam>,
+    },
+    /// The boxes must account for the meshed opening by volume.
+    RectReconcile {
+        boxes: Vec<RectParam>,
+        meshes: Vec<Mesh>,
+    },
+    PlanarHost(ExtrudedSolidInfo),
+    /// One opening solid's footprint; the host moves through the packet.
+    Footprint {
+        host: PlanarHost,
+        solid: ExtrudedSolidInfo,
+    },
+    PlanarTransform {
+        placement: Matrix4<f64>,
+        scale: f64,
+        rtc: (f64, f64, f64),
+    },
 }
 
 pub(crate) enum OpeningReply {
@@ -69,4 +104,15 @@ pub(crate) enum OpeningReply {
     ProbeDirection(Option<Vector3<f64>>),
     ProbeParts(ProbePlacement),
     ClassifierFinished(Vec<OpeningType>, Vec<OpeningDiagnostic>),
+    Merged(Vec<OpeningType>, Vec<OpeningType>),
+    RectHost(Option<RectParam>),
+    RectBoxes(Option<Vec<RectParam>>),
+    RectOrientation(Option<Vec<RectParam>>),
+    RectReconciled(Option<Vec<RectParam>>),
+    SolidHost(Option<ExtrudedSolidInfo>),
+    PlanarHost(Option<PlanarHost>),
+    Solids(Option<Vec<ExtrudedSolidInfo>>),
+    Footprint(PlanarHost, Option<Vec<Point2<f64>>>),
+    Frame(f64, (f64, f64, f64)),
+    PlanarTransform(Matrix4<f64>),
 }

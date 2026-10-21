@@ -8,6 +8,7 @@
 //! private helpers.
 
 use super::*;
+use crate::GeometryRouter;
 use super::super::probe::ExtrudedSolidInfo as ExtrudedSolidLike;
 use nalgebra::{Point3, Rotation3};
 
@@ -375,11 +376,19 @@ fn residual_classification_publishes_nothing_into_the_parent() {
     let router = GeometryRouter::new();
     let mut decoder = ifc_lite_core::EntityDecoder::new(source);
     let host = decoder.decode_by_id(10).unwrap();
-    let cut = router.capture_bool2d(&host, &[20, 21], &mut decoder).expect("eligible through-cut");
+    let context = crate::program::openings::context(&host, &[20, 21], &router, &mut decoder).unwrap();
+    assert_eq!(context.openings.len(), 2, "the parent classifies the full set");
+    let cut = context.bool2d.expect("eligible through-cut");
     assert_eq!(cut.footprints.len(), 1, "only the extruded through-cut is planar");
     let residual = cut.residual.expect("the block opening is residual");
     assert_eq!(residual.openings.len(), 1, "the residual is still classified");
     let counts = router.take_classification_stats();
-    assert_eq!((counts.rectangular, counts.diagonal, counts.non_rectangular), (0, 0, 0));
-    assert!(router.take_host_opening_diagnostics().is_empty());
+    assert_eq!(
+        counts.rectangular + counts.diagonal + counts.non_rectangular,
+        2,
+        "only the parent's recording pass counts"
+    );
+    let diagnostics = router.take_host_opening_diagnostics();
+    let openings = &diagnostics[&10].openings;
+    assert_eq!(openings.iter().map(|o| o.opening_id).collect::<Vec<_>>(), [20, 21]);
 }

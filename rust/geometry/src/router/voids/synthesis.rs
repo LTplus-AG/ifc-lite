@@ -19,7 +19,7 @@ impl GeometryRouter {
     /// This prevents exponential triangle growth when many small openings
     /// tile a wall surface — each clip creates boundary triangles that get
     /// re-split by the next clip, causing O(2^N) growth.
-    pub(super) fn merge_rectangular_openings(openings: &[OpeningType]) -> Vec<OpeningType> {
+    pub(crate) fn merge_rectangular_openings(openings: &[OpeningType]) -> Vec<OpeningType> {
         const MERGE_TOLERANCE: f64 = 0.01; // Broad phase only; never credit filled volume
 
         // Separate rectangular and non-rectangular openings
@@ -118,11 +118,9 @@ impl GeometryRouter {
         result.extend(others);
         result
     }
+}
 
-    // Cut a rectangular opening from a mesh using optimized plane clipping.
-    // This is more efficient than full CSG because it only processes triangles
-    // that intersect the opening bounds.
-    //
+impl crate::program::openings::execute::Execution {
     /// Extend opening bounds along extrusion direction to match wall extent
     ///
     /// Projects wall corners onto the extrusion axis and extends the opening
@@ -343,7 +341,9 @@ impl GeometryRouter {
 
         (new_min, new_max)
     }
+}
 
+impl GeometryRouter {
     /// An axis-aligned box `[min,max]` as a closed 12-triangle outward-wound mesh —
     /// the cutter solid for a RECTANGULAR opening routed through the exact subtract
     /// (PART B). 24 verts (4 per face) so each face carries its own outward normal.

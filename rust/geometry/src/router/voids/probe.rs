@@ -17,7 +17,7 @@ use rustc_hash::FxHashSet;
 /// ([`super::bool2d_path`]). `m` maps profile-local coordinates (profile in the
 /// z=0 plane, swept to `dir_sign·depth`) to NATIVE world (pre unit-scale / RTC),
 /// composed as `placement · mapped-chain · solid-Position`.
-pub(super) struct ExtrudedSolidInfo {
+pub(crate) struct ExtrudedSolidInfo {
     /// Full 2D profile (outer + any holes) in the solid's profile plane.
     pub profile: Profile2D,
     /// Extrusion depth (> 0).
@@ -650,7 +650,7 @@ impl GeometryRouter {
     /// The host element's body as a SINGLE eligible extruded solid (exactly one
     /// Body item, an `IfcExtrudedAreaSolid` after unwrapping mapped items). A
     /// multi-item body or a clipped host returns `None`.
-    pub(super) fn host_extruded_solid(
+    pub(crate) fn host_extruded_solid(
         &self,
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
@@ -668,7 +668,7 @@ impl GeometryRouter {
     /// Every Body item of an opening element as an eligible extruded solid (an
     /// opening may be a union of extruded prisms — Tekla multi-solid). `None` if
     /// the body is empty or ANY item is not a clean extruded solid.
-    pub(super) fn opening_extruded_solids(
+    pub(crate) fn opening_extruded_solids(
         &self,
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,

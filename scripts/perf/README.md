@@ -46,6 +46,7 @@ slice by the phases it changes and by output identity, not by a ±2% move in an 
 | F1b swept-disk directrix source | identical (output SHA-256 on 6 models) | analytic export default path (definitions / descriptions / quantity sources, 7 interleaved rounds vs 78d7bd9cf5): worst +0.27%, most −0.2% to −2.3% (IQR 0.3–3.9%) | neutral: capture is opt-in (`with_source_capture`); the default walk records nothing |
 | D1b #8002 cache residency ownership and typed resource stops | identical | BWK +1.0% (±3), Holter +0.7% (±30), ISSUE_098 −1.9% (±10), ISSUE_068 +0.5% (±23), schependomlaan +0.6% (±7), ISSUE_129 +0.1% (±4) | neutral: with no account installed, one thread-local read per cache publication/lookup; geometry within ±2% on every model |
 | C5b opening source probe/classifier | identical | BWK −1.7% (±3), Holter +2.5% (±18), ISSUE_098 +0.7% (±12), ISSUE_068 −1.5% (±17), schependomlaan −1.6% (±5), ISSUE_129 −1.7% (±5) vs D3 base c282c7bebf | neutral: owned classify/probe on every opening host, all deltas inside noise |
+| C5c opening gateway cutover | identical | BWK +1.2% (±8), Holter −0.4% (±9), ISSUE_098 +2.9% (±33), ISSUE_068 −3.1% (±55), schependomlaan +0.3% (±11), ISSUE_129 +1.1% (±14) vs C5b | neutral within noise; fingerprints identical on 6 models and 122/122 corpus models; deterministic FZK instruction ratchet is the strict check |
 
 ## Exact rectangular opening union (#7941)
 

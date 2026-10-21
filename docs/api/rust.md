@@ -655,9 +655,12 @@ This laziness permits a visitor to reject/skip a source before paying for its
 children (for example, an already cached source or a failed transform). It is
 not sufficient for strict cache-independent admission. These generic meters
 bound actual expanded work; they do **not** charge cached logical occurrences
-that a visitor skips. The deferred #7887 structural prepass is intended to own per-product
-logical admission, including cached occurrences; it is not implemented here. Cache hits must not be treated
-as proof that this lower walk validated all descendants. Continued expansion
+that a visitor skips. The router's #7887 decoder-only product admission prepass
+now charges root members and repeated mapped occurrences across the selected
+meshed representations before rendering, independently of renderer cache hits.
+The existing `GeometryProgram` remains the renderer. A generic walk visitor's
+cache hit is still not proof that this lower walk validated all descendants.
+Continued expansion
 retains both work bounds and reports truncation. `FirstChain` remains unmetered
 by either work counter (no `u32::MAX` sentinel); its depth and cycle policy is
 unchanged. `Refuse` and `Leaf` also have no work meters.

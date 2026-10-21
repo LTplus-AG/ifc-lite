@@ -268,3 +268,63 @@ fn program_stop_in_a_source_walk_is_terminal_not_an_unsupported_item() {
     assert!(router.take_unsupported_items().is_empty(), "a stop is not a dropped item");
     assert!(router.mapped_item_cache.borrow().is_empty());
 }
+
+// #7873: migrating each source visitor must preserve real quota refusals and
+// avoid publishing a partial cache entry or counting a terminal as a drop.
+#[test]
+fn issue_7873_canonical_source_controllers_preserve_zero_work_refusal() {
+    fn run(router: &GeometryRouter, decoder: &mut EntityDecoder, mode: u8) -> crate::Result<usize> {
+        let item = decoder.decode_by_id(8).unwrap();
+        let rep = decoder.decode_by_id(5).unwrap();
+        match mode {
+            0 => router.process_mapped_item_parts(&item, decoder)
+                .map(|parts| parts.iter().map(|mesh| mesh.indices.len()).sum()),
+            2 => {
+                let map = decoder.decode_by_id(6).unwrap();
+                router.process_representation_map_with_texture(&map, decoder, &rustc_hash::FxHashMap::default())
+                    .map(|parts| parts.iter().map(|part| part.0.indices.len()).sum())
+            }
+            _ => router.ensure_shared_mapped_source(&rep, 6, decoder)
+                .map(|()| router.mapped_shared_unique_count()),
+        }
+    }
+    // Occurrence submeshes deliberately retain da364a7's count-and-continue policy.
+    for mode in [0, 2, 3] {
+        let mut control = GeometryRouter::with_scale_and_local_frame(1., false);
+        control.enable_accounted_mapped_item_cache(AccountedMappedItemCache::new());
+        assert_eq!(run(&control, &mut EntityDecoder::new(SOURCE), mode).unwrap(),
+            if mode == 3 { 1 } else { 3 }, "mode {mode}: real mesh control");
+        let mut router = GeometryRouter::with_scale_and_local_frame(1., false);
+        router.enable_accounted_mapped_item_cache(AccountedMappedItemCache::new());
+        let account = bounded(ResourceLimits { work: Some(0), ..Default::default() });
+        let result = account.scope(|| run(&router, &mut EntityDecoder::new(SOURCE), mode));
+        assert!(matches!(&result, Err(crate::Error::ProgramStopped(ProgramStop::ResourceRefused(failure)))
+            if failure.dimension == Dimension::Work), "mode {mode}: {result:?}");
+        assert!(router.take_unsupported_items().is_empty(), "mode {mode}: stop is not a drop");
+        assert_eq!(router.mapped_shared_unique_count(), 0, "mode {mode}: no partial source publication");
+    }
+}
+
+// #7873 / da364a7: occurrence submeshes count a failed plain item and keep
+// going, including a typed resource stop. The caller owns terminal policy.
+#[test]
+fn issue_7873_submesh_plain_item_retains_occurrence_recovery() {
+    let router = GeometryRouter::with_scale_and_local_frame(1., false);
+    let mut decoder = EntityDecoder::new(SOURCE);
+    let item = decoder.decode_by_id(8).unwrap();
+    let mut control = crate::SubMeshCollection::new();
+    router.collect_submeshes_from_item(&item, &mut decoder, &mut control, false, None).unwrap();
+    assert_eq!(control.sub_meshes.iter().map(|part| part.mesh.indices.len()).sum::<usize>(), 3);
+
+    let router = GeometryRouter::with_scale_and_local_frame(1., false);
+    let account = bounded(ResourceLimits { work: Some(0), ..Default::default() });
+    let mut parts = crate::SubMeshCollection::new();
+    let result = account.scope(|| router.collect_submeshes_from_item(
+        &item, &mut decoder, &mut parts, false, None,
+    ));
+    assert!(result.is_ok(), "the occurrence caller keeps count-and-continue: {result:?}");
+    assert!(parts.sub_meshes.is_empty());
+    assert_eq!(router.take_unsupported_items().get("IfcTriangulatedFaceSet"), Some(&1));
+    assert_eq!(router.unsupported_scope_depth(), 0);
+    assert!(router.mapped_item_cache.borrow().is_empty());
+}

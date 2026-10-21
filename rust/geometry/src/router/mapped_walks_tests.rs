@@ -97,3 +97,288 @@ fn router_26_capped_curve_in_a_shared_source_is_reported_for_that_source() {
     let after_plain = router.take_unsupported_items();
     assert!(after_plain.is_empty(), "the plain item inherited a drop: {after_plain:?}");
 }
+
+/// #7781 / #7873 r4303907552: refusing an unentered repeat of the current
+/// item must retain both earlier and later solid siblings in that frame.
+#[test]
+fn issue_7781_current_item_cycle_retains_solid_siblings() {
+    for items in ["#900,#1005", "#1005,#900"] {
+        let content = RAW_WORLD_MAP.replace("(#900)", &format!("({items})"));
+        let mut decoder = EntityDecoder::new(&content);
+        let router = shared_rtc_router();
+        let item = decoder.decode_by_id(1005).unwrap();
+        let parts = router.process_mapped_item_parts(&item, &mut decoder).unwrap();
+        assert_eq!(parts.len(), 1, "the valid tetrahedron was discarded: {items}");
+        assert_eq!(parts[0].indices.len(), 12, "one reachable tetrahedron: {items}");
+        let drops = router.take_unsupported_items();
+        assert_eq!(drops.get("IfcMappedItem"), Some(&1), "one cycle refusal: {drops:?}");
+        let cache = router.shared_mapped_item_cache.as_ref().unwrap().lock().unwrap();
+        assert!(!cache.contains_key(&1003), "a cycle-truncated source is not shared");
+    }
+}
+
+/// Positive control for #7781: reaching the same source down separate paths
+/// contributes twice; the cycle set is scoped to the active path.
+#[test]
+fn issue_7781_shared_source_siblings_both_contribute() {
+    let content = format!("{RAW_WORLD_MAP}#2000=IFCMAPPEDITEM(#2001,#1004);\
+        #2001=IFCREPRESENTATIONMAP(#2,#2002);\
+        #2002=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#1005,#1005));");
+    let mut decoder = EntityDecoder::new(&content);
+    let router = shared_rtc_router();
+    let item = decoder.decode_by_id(2000).unwrap();
+    let parts = router.process_mapped_item_parts(&item, &mut decoder).unwrap();
+    assert_eq!(parts.len(), 1);
+    assert_eq!(parts[0].indices.len(), 24, "both tetrahedron occurrences survive");
+    assert!(router.take_unsupported_items().is_empty());
+}
+
+/// The cycle correction must keep the entered-frame failure policy (#7781):
+/// missing Items fails the top call, or drops just that nested frame.
+#[test]
+fn issue_7781_entered_frame_missing_items_keeps_its_failure_scope() {
+    let content = RAW_WORLD_MAP.replace("'Tessellation',(#900)", "'Tessellation'");
+    let mut decoder = EntityDecoder::new(&content);
+    let router = shared_rtc_router();
+    let item = decoder.decode_by_id(1005).unwrap();
+    let error = router.process_mapped_item_parts(&item, &mut decoder).unwrap_err();
+    assert!(error.to_string().contains("missing Items"), "{error}");
+
+    let content = format!("{content}#2000=IFCMAPPEDITEM(#2001,#1004);\
+        #2001=IFCREPRESENTATIONMAP(#2,#2002);\
+        #2002=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#900,#1005));");
+    let mut decoder = EntityDecoder::new(&content);
+    let router = shared_rtc_router();
+    let item = decoder.decode_by_id(2000).unwrap();
+    let parts = router.process_mapped_item_parts(&item, &mut decoder).unwrap();
+    assert_eq!(parts.len(), 1);
+    assert_eq!(parts[0].indices.len(), 12);
+    assert_eq!(router.take_unsupported_items().get("IfcMappedItem"), Some(&1));
+}
+
+/// #7873: the submesh visitor retains siblings around a refused cycle.
+#[test]
+fn issue_7873_submesh_current_item_cycle_retains_solid_siblings() {
+    for items in ["#900,#1005", "#1005,#900"] {
+        let content = RAW_WORLD_MAP.replace("(#900)", &format!("({items})"));
+        let mut decoder = EntityDecoder::new(&content);
+        let router = shared_rtc_router();
+        let item = decoder.decode_by_id(1005).unwrap();
+        let mut collection = crate::SubMeshCollection::new();
+        router.collect_submeshes_from_item(&item, &mut decoder, &mut collection, false, None).unwrap();
+        let parts: Vec<_> = collection.sub_meshes.into_iter().map(|part| part.mesh).collect();
+        assert_eq!(parts.len(), 1, "the valid tetrahedron was discarded: {items}");
+        assert_eq!(parts[0].indices.len(), 12, "one reachable tetrahedron: {items}");
+        let drops = router.take_unsupported_items();
+        assert_eq!(drops.get("IfcMappedItem"), Some(&1), "one cycle refusal: {drops:?}");
+    }
+}
+
+/// Positive control for #7781: reaching the same source down separate paths
+/// contributes twice; the cycle set is scoped to the active path.
+#[test]
+fn issue_7873_submesh_shared_source_siblings_both_contribute() {
+    let content = format!("{RAW_WORLD_MAP}#2000=IFCMAPPEDITEM(#2001,#1004);\
+        #2001=IFCREPRESENTATIONMAP(#2,#2002);\
+        #2002=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#1005,#1005));");
+    let mut decoder = EntityDecoder::new(&content);
+    let router = shared_rtc_router();
+    let item = decoder.decode_by_id(2000).unwrap();
+    let mut collection = crate::SubMeshCollection::new();
+    router.collect_submeshes_from_item(&item, &mut decoder, &mut collection, false, None).unwrap();
+    let parts: Vec<_> = collection.sub_meshes.into_iter().map(|part| part.mesh).collect();
+    assert_eq!(parts.len(), 2);
+    assert_eq!(parts.iter().map(|part| part.indices.len()).sum::<usize>(), 24, "both tetrahedron occurrences survive");
+    assert!(router.take_unsupported_items().is_empty());
+}
+
+/// #7873 Class X: the occurrence walk now admits Items against the real
+/// shared structural allowance. No resource account or synthetic small cap.
+fn over_allowance_items() -> String {
+    // A readable sentinel followed by dangling references: absent admission,
+    // resolve_ref_list caches #8000 before failing on #999999. No large mesh.
+    let mut items = String::from("#8000");
+    for _ in 0..crate::representation::MAX_WALK_LEVELS {
+        items.push_str(",#999999");
+    }
+    items
+}
+
+fn collect_occurrence(
+    router: &GeometryRouter,
+    decoder: &mut EntityDecoder,
+    id: u32,
+) -> crate::Result<crate::SubMeshCollection> {
+    let item = decoder.decode_by_id(id).unwrap();
+    let mut collection = crate::SubMeshCollection::new();
+    router.collect_submeshes_from_item(&item, decoder, &mut collection, false, None)?;
+    Ok(collection)
+}
+
+#[test]
+fn issue_7873_submesh_root_structural_allowance_refuses_before_member_decode() {
+    let content = format!("{}#8000=IFCGEOMETRICSET(());", RAW_WORLD_MAP.replace(
+        "(#900)", &format!("({})", over_allowance_items()),
+    ));
+    let mut decoder = EntityDecoder::new(&content);
+    let router = shared_rtc_router();
+    let item = decoder.decode_by_id(1005).unwrap();
+    let mut collection = crate::SubMeshCollection::new();
+    let error = router.collect_submeshes_from_item(
+        &item, &mut decoder, &mut collection, false, None,
+    ).unwrap_err();
+    assert_eq!(error.to_string(), crate::representation::WalkRefusal::Budget {
+        max_levels: crate::representation::MAX_WALK_LEVELS,
+    }.into_error(1005).to_string(), "must report budget, not a dangling-reference error");
+    assert!(decoder.get_cached(8000).is_none(), "no Items member may be decoded before admission");
+    assert!(collection.sub_meshes.is_empty(), "refusal must not fabricate geometry");
+    assert!(router.take_unsupported_items().is_empty(), "root refusal is returned, not a nested drop");
+    assert_eq!(router.unsupported_scope_depth(), 0);
+
+    let mut decoder = EntityDecoder::new(RAW_WORLD_MAP);
+    let parts = collect_occurrence(&router, &mut decoder, 1005).unwrap();
+    assert_eq!(parts.sub_meshes.len(), 1, "a small valid root still meshes");
+    assert_eq!(parts.sub_meshes[0].mesh.indices.len(), 12);
+    assert!(router.take_unsupported_items().is_empty());
+}
+
+// Nested refusal consumes Error into an IFC-type-only counter. Capture the
+// EXISTING structured diagnostic to assert the actual refusal classification;
+// an IfcMappedItem count alone could equally mean a member decode failed.
+#[cfg(feature = "observability")]
+mod structural_allowance_diagnostics {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+    use tracing::{span, Event, Metadata, Subscriber};
+
+    #[derive(Clone, Default)]
+    struct Refusals(Arc<Mutex<Vec<(String, String)>>>);
+
+    #[derive(Default)]
+    struct Fields {
+        item: String,
+        error: String,
+    }
+
+    impl tracing::field::Visit for Fields {
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            match field.name() {
+                "item_id" => self.item = format!("{value:?}"),
+                "error" => self.error = format!("{value:?}"),
+                _ => {}
+            }
+        }
+    }
+
+    impl Subscriber for Refusals {
+        fn enabled(&self, _: &Metadata<'_>) -> bool { true }
+        fn new_span(&self, _: &span::Attributes<'_>) -> span::Id { span::Id::from_u64(1) }
+        fn record(&self, _: &span::Id, _: &span::Record<'_>) {}
+        fn record_follows_from(&self, _: &span::Id, _: &span::Id) {}
+        fn enter(&self, _: &span::Id) {}
+        fn exit(&self, _: &span::Id) {}
+        fn event(&self, event: &Event<'_>) {
+            let mut fields = Fields::default();
+            event.record(&mut fields);
+            if !fields.error.is_empty() {
+                self.0.lock().unwrap().push((fields.item, fields.error));
+            }
+        }
+    }
+
+    fn nested_fixture(
+        parent_identifier: &str,
+        parent_type: &str,
+        child_identifier: &str,
+        child_type: &str,
+        items: &str,
+    ) -> String {
+        format!("{RAW_WORLD_MAP}\
+            #8000=IFCGEOMETRICSET(());\
+            #2010=IFCCARTESIANPOINT((10.,0.,0.));\
+            #2011=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#2010,1.,$);\
+            #2110=IFCCARTESIANPOINT((3.,0.,0.));\
+            #2111=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#2110,1.,$);\
+            #2100=IFCMAPPEDITEM(#1003,#2111);\
+            #2000=IFCMAPPEDITEM(#2001,#2011);\
+            #2001=IFCREPRESENTATIONMAP(#2,#2002);\
+            #2002=IFCSHAPEREPRESENTATION($,'{parent_identifier}','{parent_type}',(#2100,#3000,#4000));\
+            #3000=IFCMAPPEDITEM(#3001,#1004);\
+            #3001=IFCREPRESENTATIONMAP(#2,#3002);\
+            #3002=IFCSHAPEREPRESENTATION($,'{child_identifier}','{child_type}',({items}));\
+            #4000=IFCMAPPEDITEM(#1003,#1004);")
+    }
+
+    fn assert_tetrahedron_at(mesh: &crate::Mesh, dx: f64) {
+        assert_eq!(mesh.indices.len(), 12);
+        for p in CORNERS {
+            assert!(mesh.positions.chunks_exact(3).any(|v| {
+                (0..3).all(|axis| {
+                    let shift = if axis == 0 { dx } else { 0.0 };
+                    (v[axis] as f64 + mesh.origin[axis] - SITE[axis] - p[axis] - shift).abs() < 1e-5
+                })
+            }), "transformed corner {p:?} missing at x+{dx}");
+        }
+    }
+
+    /// #7873 Class X bounded recovery: a nested budget refusal stops the
+    /// remaining root siblings, unwinds transforms, and reports under PARENT
+    /// source policy (not the refused child's already-entered source policy).
+    #[test]
+    fn issue_7873_submesh_nested_structural_allowance_retains_prefix_and_reports_budget() {
+        // A present nonblank RepresentationType takes precedence over the
+        // identifier: both original typed cases have body policy, even with
+        // a FootPrint identifier. Only blank types use the documented CATIA
+        // identifier fallback, giving the differing parent/child policies.
+        for (parent, parent_type, child, child_type, expected_count) in [
+            ("Body", "MappedRepresentation", "FootPrint", "Tessellation", 1),
+            ("FootPrint", "MappedRepresentation", "Body", "Tessellation", 1),
+            ("Body", "", "FootPrint", "", 1),
+            ("FootPrint", "", "Body", "", 0),
+        ] {
+            let content = nested_fixture(parent, parent_type, child, child_type, &over_allowance_items());
+            let router = shared_rtc_router();
+            for expected_count in [expected_count, 0] {
+                let mut decoder = EntityDecoder::new(&content);
+                let log = Refusals::default();
+                let parts = tracing::subscriber::with_default(log.clone(), || {
+                    collect_occurrence(&router, &mut decoder, 2000).unwrap()
+                });
+                assert_eq!(parts.sub_meshes.len(), 1, "later mapped-root siblings must stop");
+                assert_eq!(parts.sub_meshes[0].geometry_id, 900);
+                assert_tetrahedron_at(&parts.sub_meshes[0].mesh, 13.0);
+                assert!(decoder.get_cached(8000).is_none(), "refused members were not decoded");
+                assert!(decoder.get_cached(3000).is_some(), "the refused level was reached");
+                // The parent's list is eagerly decoded, so #4000 itself may be
+                // cached. Its geometry/transform must still never be visited.
+                let drops = router.take_unsupported_items();
+                assert_eq!(drops.values().sum::<u64>(), expected_count,
+                    "{parent}/{parent_type} -> {child}/{child_type}: {drops:?}");
+                assert_eq!(drops.get("IfcMappedItem").copied().unwrap_or(0), expected_count);
+                let expected_error = crate::representation::WalkRefusal::Budget {
+                    max_levels: crate::representation::MAX_WALK_LEVELS,
+                }.into_error(3000).to_string();
+                assert_eq!(*log.0.lock().unwrap(), [("3000".to_string(), expected_error)],
+                    "one actual budget refusal, independent of count suppression");
+                assert_eq!(router.unsupported_scope_depth(), 0);
+            }
+
+            // Same parsed structure with a small valid nested source: both the
+            // nested mesh and the later root sibling contribute, with transforms.
+            let content = nested_fixture(parent, parent_type, child, child_type, "#900");
+            let mut decoder = EntityDecoder::new(&content);
+            let router = shared_rtc_router();
+            let log = Refusals::default();
+            let parts = tracing::subscriber::with_default(log.clone(), || {
+                collect_occurrence(&router, &mut decoder, 2000).unwrap()
+            });
+            assert_eq!(parts.sub_meshes.len(), 3);
+            for (part, dx) in parts.sub_meshes.iter().zip([13.0, 10.0, 10.0]) {
+                assert_tetrahedron_at(&part.mesh, dx);
+            }
+            assert!(router.take_unsupported_items().is_empty());
+            assert!(log.0.lock().unwrap().is_empty());
+            assert_eq!(router.unsupported_scope_depth(), 0);
+        }
+    }
+}

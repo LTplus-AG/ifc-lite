@@ -5,7 +5,7 @@
 //! #1623 Phase 2 "don't-bake" router helpers: eligibility of a mapped source for
 //! instancing, and the one-time source mesh into the shared registry that backs the
 //! finalize's orphan recovery. The don't-bake decision itself lives at the top-level
-//! mapped-item branch of `collect_submeshes_from_item_inner` (see `processing.rs`).
+//! mapped-item visitor in `submesh_walk.rs`.
 
 use super::GeometryRouter;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};

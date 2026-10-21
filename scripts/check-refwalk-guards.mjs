@@ -204,7 +204,8 @@ const SCAN_ROOTS = [
 // `sample_curve_polyline_guarded` self-recursion, one cycle member fewer.
 // Set to 32 to restore a margin of one.
 // Iterative representation and mapping-controller stacks remove recursion pairs.
-const CANDIDATE_FLOOR = 29;
+// #7873: the submesh visitor removes the remaining router recursion.
+const CANDIDATE_FLOOR = 28;
 
 /**
  * Allowlist for candidates that are genuinely unguarded and must stay that

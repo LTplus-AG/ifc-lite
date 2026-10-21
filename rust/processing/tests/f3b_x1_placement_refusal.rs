@@ -61,6 +61,32 @@ fn run(body: &str) -> ifc_lite_processing::ProcessingResult {
     process_geometry(&format!("{HEAD}{body}ENDSEC;\nEND-ISO-10303-21;\n"))
 }
 
+/// #7877: absent placement has no authored row matrix, including STEP `*`.
+#[test]
+fn absent_placement_markers_preserve_geometry_without_inventing_row_placement_7877() {
+    use ifc_lite_processing::data_model::rows::{build_export_model_with_options, ModelOptions};
+
+    let authored = wall(100, "(5.,0.,0.)", "(0.,0.,1.)");
+    let mut reference = None;
+    for marker in ["$", "*"] {
+        let body = authored.replace(",#109,#105,$,$)", &format!(",{marker},#105,$,$)"));
+        let content = format!("{HEAD}{body}ENDSEC;\nEND-ISO-10303-21;\n");
+        let model = build_export_model_with_options(
+            content.as_bytes(), &ModelOptions::default().with_placements(true),
+        );
+        let row = model.entities.iter().find(|row| row.express_id == 100).expect("wall row");
+        assert!(row.placement.is_none(), "{marker} is not an authored identity matrix");
+        let result = process_geometry(&content);
+        assert_eq!(result.stats.refused_input_elements, 0, "{marker}");
+        let mesh = result.meshes.iter().find(|mesh| mesh.express_id == 100).expect("wall mesh");
+        if let Some(positions) = &reference {
+            assert_eq!(&mesh.positions, positions, "absent markers have the same geometry");
+        } else {
+            reference = Some(mesh.positions.clone());
+        }
+    }
+}
+
 fn min_x(result: &ifc_lite_processing::ProcessingResult, id: u32) -> f32 {
     let mesh = result.meshes.iter().find(|m| m.express_id == id).expect("meshed");
     mesh.positions.chunks(3).map(|p| p[0]).fold(f32::INFINITY, f32::min)

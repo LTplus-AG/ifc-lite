@@ -19,12 +19,12 @@ double coverage. Unsupported or ambiguous input follows the established meshing
 path. Kernel tolerances and snapping policies are unchanged.
 
 The initial domain is limited to 32 single-bound faces, 64 distinct source points
-and 128 corners, with exactly representable corrected coordinates. Context
-provenance requires one project, one 3D root context, complete inherited
-subcontexts, an explicit SI length unit and unit mapped scales. Rust callers can
-inspect `EntityDecoder::uniform_context_precision()` for this certificate;
-missing or conflicting provenance returns `None`, without a default `Precision`.
-
+and 128 corners, with exactly representable corrected coordinates.
+Rust callers can inspect `EntityDecoder::uniform_context_precision()` for a
+restricted source-precision certificate: one project, one owned 3D context,
+complete direct subcontexts and an explicit SI length unit. It verifies all
+representation context references and unit mapped scales. Missing or conflicting
+provenance returns `None`, without inferring a default `Precision`.
 Fresh `SourceBundle::decoder()` instances share lazy certificate results across
 native jobs and compact browser batches, retaining success and decline separately
 for strict geometry admission and permissive reads. The immutable source owns

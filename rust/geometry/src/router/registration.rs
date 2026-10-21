@@ -15,6 +15,7 @@ impl GeometryRouter {
         processor: Box<dyn GeometryProcessor>,
         origin: ProcessorOrigin,
     ) {
+        self.execution_owner.changed();
         let processor_rc: Rc<dyn GeometryProcessor> = Rc::from(processor);
         for ifc_type in processor_rc.supported_types() {
             self.processors.insert(ifc_type, Rc::clone(&processor_rc), origin);

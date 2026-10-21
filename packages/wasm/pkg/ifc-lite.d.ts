@@ -2722,7 +2722,7 @@ export interface InitOutput {
     readonly ifcapi_parseLandXmlSourceBytes: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_parseLandXmlSourceBytesWithOptions: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_parseLandXmlTinBytes: (a: number, b: number, c: number, d: number) => void;
-    readonly ifcapi_parseSymbolicRepresentations: (a: number, b: number, c: number) => number;
+    readonly ifcapi_parseSymbolicRepresentations: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_parseSymbolicRepresentationsInFrame: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_planAnnotationPlane: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_planAppearance: (a: number, b: number, c: number, d: number, e: number, f: number) => void;

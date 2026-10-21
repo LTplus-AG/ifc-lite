@@ -163,7 +163,6 @@ pub async fn parse_parquet_optimized(
                 },
             );
             drop(content);
-            let symbolic_data = symbolic_data?;
             let (parquet_data, opt_stats) = serialized?;
             let dm_parquet = dm_parquet?;
             // Nothing after this reads the meshes; free them here rather than
@@ -181,7 +180,7 @@ pub async fn parse_parquet_optimized(
             Ok((
                 result,
                 dm_stats,
-                symbolic_data,
+                symbolic_data?,
                 parquet_data,
                 dm_parquet,
                 opt_stats,
